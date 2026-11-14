@@ -1,3 +1,4 @@
+import { citationDisplay } from "./test-fixtures";
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
@@ -53,7 +54,7 @@ test("editing Page in a pasted list preserves every reference in preview and cop
         ...(item ? [{ item: null, text: "; " }] : []),
         { item, text: `@${id.key}${locator_input ? `, p. ${locator_input.text}` : ""}` },
       ]);
-      return { ...receipt(spans.map((span) => span.text).join("")), spans };
+      return { ...receipt(spans.map((span) => span.text).join("")), display: citationDisplay(spans) };
     },
     copy_file_citation: copied,
   });
@@ -3506,7 +3507,7 @@ test("typed locators stay with selected references across later searches", async
   const copies: unknown[] = [];
   backend({
     search: () => ({ revision: "1", results: [result(second ? "b" : "a", second ? "Second locator" : "First locator")],
-      interpretation: { search: second ? "B" : "A", locator: { label: "page", value: second ? "9" : "12" }, typed: second ? "p.9" : "p.12" } }),
+      interpretation: { search: second ? "B" : "A", locator: { term: "page", value: second ? "9" : "12" }, typed: second ? "p.9" : "p.12" } }),
     copy_file_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request; copies.push(args); return { text: "selected pages", warnings: [] }; },
   });
   render(<App />);
@@ -3518,22 +3519,22 @@ test("typed locators stay with selected references across later searches", async
   fireEvent.click(await screen.findByText("Second locator"), { ctrlKey: true });
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copies).toMatchObject([{ items: [
-    { id: { library: "refs.bib", key: "a" }, locator: { label: "page", value: "12" } },
-    { id: { library: "refs.bib", key: "b" }, locator: { label: "page", value: "9" } },
+    { id: { library: "refs.bib", key: "a" }, locator: { term: "page", value: "12" } },
+    { id: { library: "refs.bib", key: "b" }, locator: { term: "page", value: "9" } },
   ], output: "pandoc", expectedRevision: "1" }]));
 });
 
 
-function locatorReply(value = "12", label: api.Locator["label"] = "page") {
+function locatorReply(value = "12", label: api.Locator["term"] = "page") {
   return { revision: "1", results: [result("a", "Locator reference")],
-    interpretation: { search: "Smith", locator: { label, value }, typed: `p.${value}` } };
+    interpretation: { search: "Smith", locator: { term: label, value }, typed: `p.${value}` } };
 }
 
 test("typed shorthand adds the reference with its prefix and page, and the token says what will be cited", async () => {
   const previews: PreviewRequest[] = [];
   backend({
     search: ({ query }) => ({ revision: "1", results: [result("vale", "Lanterns at the edge of the sea")],
-      interpretation: query.interpret_locators ? { search: "vale", prefix: "see", locator: { label: "page", value: "417" }, typed: "417" } : null }),
+      interpretation: query.interpret_locators ? { search: "vale", prefix: "see", locator: { term: "page", value: "417" }, typed: "417" } : null }),
     preview_file_citation: (request) => { previews.push(request); return receipt("[see @vale, p. 417]"); },
   });
   render(<App />);
@@ -3541,7 +3542,7 @@ test("typed shorthand adds the reference with its prefix and page, and the token
   fireEvent.change(box, { target: { value: "see vale 417" } });
   await screen.findByRole("group", { name: "Using see · p. 417" });
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
-  await waitFor(() => expect(previews.at(-1)?.items).toEqual([expect.objectContaining({ prefix: "see", locator: { label: "page", value: "417" } })]));
+  await waitFor(() => expect(previews.at(-1)?.items).toEqual([expect.objectContaining({ prefix: "see", locator: { term: "page", value: "417" } })]));
   // Searching as typed forgets what was read.
   fireEvent.click(screen.getByRole("button", { name: "Search as typed" }));
   expect(screen.queryByRole("group", { name: /^Using / })).toBeNull();
@@ -3645,7 +3646,7 @@ test.each(OUTPUTS.filter((output) => !output.style).map((output) => output.id))(
   render(<App />);
   await screen.findByText("Locator reference");
   await waitFor(() => expect(preview).toHaveBeenLastCalledWith({ items: [
-    { id: result("a", "").id, cite: result("a", "").cite, locator: { label: "page", value: "12" } },
+    { id: result("a", "").id, cite: result("a", "").cite, locator: { term: "page", value: "12" } },
   ], output: format, expectedRevision: "1", intent: {
     page: expect.any(Number), request: expect.any(Number), cancel: false, context: null, keep_order: false,
   } }));
@@ -3730,7 +3731,7 @@ test("a same-identity locator edit cancels a waiting style click and its engine 
   fireEvent.click(screen.getByText("Locator reference"), { detail: 2 });
   fireEvent.click(screen.getByRole("button", { name: "Apply locator to a" }));
   await waitFor(() => expect(pending["9"]).toBeTypeOf("function"));
-  expect(contexts).toEqual([[{ label: "page", value: "12" }], [{ label: "page", value: "9" }]]);
+  expect(contexts).toEqual([[{ term: "page", value: "12" }], [{ term: "page", value: "9" }]]);
   await act(async () => { pending["12"]!(); pending["9"]!(); });
   await screen.findByText("CSL page 9");
   expect(copies).toEqual([]);
@@ -3742,7 +3743,7 @@ test("the engine receives ordered locators and an empty locator for a record wit
   backend({ search: ({ query }) => {
     const key = query.text.startsWith("B") ? "b" : query.text.startsWith("C") ? "c" : "a";
     return { revision: "1", results: [{ ...result(key, `CSL reference ${key}`), key: key === "c" ? "" : key }],
-      interpretation: key === "c" ? null : { search: key, locator: { label: key === "b" ? "section" : "page", value: key === "b" ? "9" : "12" }, typed: "synthetic" } };
+      interpretation: key === "c" ? null : { search: key, locator: { term: key === "b" ? "section" : "page", value: key === "b" ? "9" : "12" }, typed: "synthetic" } };
   }, preview_file_citation: previews,
     picker_preferences: () => ({ output: "apa", density: "comfortable", larger_text: false }) });
   render(<App />);
@@ -3753,8 +3754,8 @@ test("the engine receives ordered locators and an empty locator for a record wit
   fireEvent.change(box, { target: { value: "C" } });
   fireEvent.click(await screen.findByText("CSL reference c"), { ctrlKey: true });
   await waitFor(() => expect(previews).toHaveBeenLastCalledWith(expect.objectContaining({ items: [
-    { id: result("a", "").id, cite: result("a", "").cite, locator: { label: "page", value: "12" } },
-    { id: result("b", "").id, cite: result("b", "").cite, locator: { label: "section", value: "9" } },
+    { id: result("a", "").id, cite: result("a", "").cite, locator: { term: "page", value: "12" } },
+    { id: result("b", "").id, cite: result("b", "").cite, locator: { term: "section", value: "9" } },
     { id: result("c", "").id, cite: result("c", "").cite, locator: null },
   ], output: "apa", expectedRevision: "1" })));
 });

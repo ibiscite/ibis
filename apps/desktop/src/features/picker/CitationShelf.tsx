@@ -1,7 +1,7 @@
 import { Icon } from "../../icons";
 import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type Ref, type RefObject } from "react";
 import type { SearchResult } from "../../api";
-import type { FilePreview, Notice } from "../../bindings";
+import type { Preview, Notice } from "../../bindings";
 import { outputName, writesEntries, type FormattedCitation, type OutputId } from "../../format/outputs";
 import { render, renderRuns } from "../../format/markup";
 import { say } from "../../i18n";
@@ -66,7 +66,7 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
   selected: Map<string, CitationReference>;
   highlightedReference?: CitationReference;
   highlightedReferences?: CitationReference[];
-  previewReceipt?: FilePreview;
+  previewReceipt?: Preview;
   onChangeReference?: (reference: CitationReference, change: CitationDetailsChange) => void;
   onRemove: (r: SearchResult) => void;
   referenceLibrary?: (r: SearchResult) => string | null;
@@ -198,7 +198,7 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
   const fromPrevious = !ready && retainedSegments;
   const referenceAt = (item: number) => fromPrevious ? references.find((reference) => idKey(reference.id) === retainedIds[item]) : references[item];
   const keyText = (value: string) => keys ? value.split(/([^\p{L}\p{N}\s]+)/u).map((part, index) => index % 2 ? <span className="shelf-punctuation" key={index}>{part}</span> : part) : value;
-  const segments = visible?.spans ?? (shown === undefined || shown === null && !previous ? references.map((_, item) => ({ item, text: `${item ? "; " : ""}${labels[item]}` })) : undefined);
+  const segments = visible?.display?.nodes.map((node) => ({ item: node.item, text: node.content.map((run) => run.text).join(""), runs: node.content })) ?? (shown === undefined || shown === null && !previous ? references.map((_, item) => ({ item, text: `${item ? "; " : ""}${labels[item]}` })) : undefined);
   // The line's order, which a style may have sorted: moves follow what the person sees.
   const shownOrder = [...new Set(segments?.flatMap((span) => span.item === null ? [] : [referenceAt(span.item)]).filter((r) => r !== undefined).map((r) => idKey(r.id)))];
   // With the order kept (always, for keys) the line is the person's order, which
@@ -296,7 +296,7 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
   }));
   // A token is the reference's own words; the brackets and separators the output
   // adds are shared and quieter, never part of a token, for one reference too.
-  const spanned = Boolean(visible?.spans?.some((span) => span.item === null));
+  const spanned = Boolean(visible?.display?.nodes.some((span) => span.item === null));
   const token = (reference: CitationReference, name: string, words: string, contents: React.ReactNode, describedBy: string | undefined, index?: number) =>
     <CitationToken key={idKey(reference.id)} reference={idKey(reference.id)} referenceKey={reference.key} aria-label={say("citation-details-edit", { reference: name })}
       handle={names(words, reference) ? undefined : referenceLabel(reference)} title={words}

@@ -2,14 +2,14 @@ import { afterEach, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import axe from "axe-core";
-import type { Locator, ReferenceForm } from "../bindings";
+import type { Locator, CitationForm } from "../bindings";
 import { CitationDetails } from "./CitationDetails";
 
 afterEach(cleanup);
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 
-const answer = (forms: Partial<Record<ReferenceForm, string | { reason: string }>>, current: ReferenceForm | null = "normal") => ({ current_form: current,
+const answer = (forms: Partial<Record<CitationForm, string | { reason: string }>>, current: CitationForm | null = "normal") => ({ current_form: current,
   forms: (["normal", "narrative", "author-only", "year-only", "full"] as const).map((form) => {
     const value = forms[form];
     return { form, example: typeof value === "string" ? value : null, reason: typeof value === "object" ? value.reason : value === undefined ? "Not in this output." : null };
@@ -18,7 +18,7 @@ const examples = { normal: "(Example, 2026)", narrative: "Example (2026)", "year
 
 function Editor({ choices = answer(examples) }: { choices?: ReturnType<typeof answer> }) {
   const [locator, setLocator] = useState<Locator | null>(null);
-  const [form, setForm] = useState<ReferenceForm>("normal");
+  const [form, setForm] = useState<CitationForm>("normal");
   const [prefix, setPrefix] = useState("");
   return <CitationDetails prefix={prefix} suffix="" onPrefixChange={setPrefix} onSuffixChange={vi.fn()} locator={locator} form={form}
     choices={{ ...choices, current_form: form }} onLocatorChange={setLocator} onFormChange={setForm} />;
@@ -44,7 +44,7 @@ test("before the engine answers, every form can be tried from a pop-up of their 
   const change = vi.fn();
   render(<CitationDetails prefix="" suffix="" onPrefixChange={vi.fn()} onSuffixChange={vi.fn()} locator={null} form="narrative" onLocatorChange={vi.fn()} onFormChange={change} />);
   fireEvent.click(screen.getByRole("button", { name: "Show as Name in the sentence" }));
-  expect((await screen.findAllByRole("menuitemradio")).map((item) => item.textContent)).toHaveLength(5);
+  expect((await screen.findAllByRole("menuitemradio")).map((item) => item.textContent)).toHaveLength(6);
   fireEvent.click(screen.getByRole("menuitemradio", { name: "Name in brackets" }));
   expect(change).toHaveBeenCalledExactlyOnceWith("normal");
 });

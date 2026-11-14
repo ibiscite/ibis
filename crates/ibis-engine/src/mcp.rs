@@ -50,6 +50,7 @@ struct ToolRequest {
     cancel: Arc<Cancellation>,
     session: Session,
     message: Value,
+    citation: Option<crate::citations::SubmittedCitation>,
 }
 
 fn request_key(id: &Value) -> Option<String> {
@@ -70,6 +71,7 @@ fn serve_with<R: BufRead, W: Write + Send>(
     writer: W,
     execute: impl Fn(&Engine, &mut Session, &Value, &Cancellation) -> Option<Value> + Sync,
 ) -> io::Result<()> {
+    session.ensure_citations(engine).map_err(io::Error::other)?;
     let transport = Mutex::new(Transport {
         writer,
         requests: HashMap::new(),
@@ -85,6 +87,7 @@ fn serve_with<R: BufRead, W: Write + Send>(
             .name("ibis-mcp-tools".into())
             .spawn_scoped(scope, move || {
                 while let Ok(mut job) = jobs.recv() {
+                    job.session.submission = job.citation.map(Arc::new);
                     let reply = if job.cancel.is_cancelled() {
                         None
                     } else {
@@ -181,8 +184,29 @@ fn serve_with<R: BufRead, W: Write + Send>(
                                     transport.requests.insert(key.clone(), cancel.clone());
                                     let job = ToolRequest {
                                         key: key.clone(),
-                                        cancel,
+                                        cancel: cancel.clone(),
                                         session: session.clone(),
+                                        citation: if message.pointer("/params/name").and_then(Value::as_str)
+                                            == Some("cite")
+                                        {
+                                            Some(
+                                                engine
+                                                    .citations()
+                                                    .submit(
+                                                        session
+                                                            .citations
+                                                            .as_ref()
+                                                            .ok_or_else(|| {
+                                                                io::Error::other("citation session unavailable")
+                                                            })?
+                                                            .id,
+                                                        (*cancel).clone(),
+                                                    )
+                                                    .map_err(io::Error::other)?,
+                                            )
+                                        } else {
+                                            None
+                                        },
                                         message,
                                     };
                                     match send.try_send(job) {
@@ -252,17 +276,42 @@ fn skip_line(reader: &mut impl BufRead) -> io::Result<()> {
 /// 2026-07-28 revision never depend on the first.
 #[derive(Debug, Default, Clone)]
 pub struct Session {
+    citations: Option<Arc<ConnectionCitations>>,
+    submission: Option<Arc<crate::citations::SubmittedCitation>>,
     legacy: bool,
     library_problem: Option<Refusal>,
 }
 
+struct ConnectionCitations {
+    engine: Engine,
+    id: crate::citations::SessionId,
+}
+impl std::fmt::Debug for ConnectionCitations {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConnectionCitations").finish_non_exhaustive()
+    }
+}
+impl Drop for ConnectionCitations {
+    fn drop(&mut self) {
+        self.engine.citations().close(self.id)
+    }
+}
 impl Session {
+    fn ensure_citations(&mut self, engine: &Engine) -> Result<(), crate::citations::SessionError> {
+        if self.citations.is_none() {
+            self.citations = Some(Arc::new(ConnectionCitations {
+                engine: engine.clone(),
+                id: engine.citations().open()?,
+            }));
+        }
+        Ok(())
+    }
     /// A server whose libraries did not open still starts, so an agent can read why
     /// and tell the person, rather than meeting a server that is simply gone.
     pub fn without_libraries(problem: Refusal) -> Self {
         Self {
-            legacy: false,
             library_problem: Some(problem),
+            ..Self::default()
         }
     }
 }
@@ -271,7 +320,18 @@ const CAPABILITIES_KEY: &str = "io.modelcontextprotocol/clientCapabilities";
 
 /// One message in, at most one message out. Notifications get no answer.
 pub fn handle(engine: &Engine, session: &mut Session, message: &Value) -> Option<Value> {
-    handle_with_cancellation(engine, session, message, &Cancellation::default())
+    let cancel = Cancellation::default();
+    if message.pointer("/params/name").and_then(Value::as_str) == Some("cite") {
+        if let Err(failure) = session.ensure_citations(engine) {
+            return Some(error(message["id"].clone(), -32603, &failure.to_string()));
+        }
+        session.submission = engine
+            .citations()
+            .submit(session.citations.as_ref()?.id, cancel.clone())
+            .ok()
+            .map(Arc::new);
+    }
+    handle_with_cancellation(engine, session, message, &cancel)
 }
 
 fn handle_with_cancellation(
@@ -411,7 +471,14 @@ fn handle_message(engine: &Engine, session: &mut Session, message: &Value, cance
             let name = params.get("name").and_then(Value::as_str);
             let arguments = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
             match tools::TOOLS.iter().find(|tool| Some(tool.name) == name) {
-                Some(tool) => tools::call(engine, session.library_problem.as_ref(), tool, &arguments, cancel),
+                Some(tool) => tools::call(
+                    engine,
+                    session.library_problem.as_ref(),
+                    tool,
+                    &arguments,
+                    cancel,
+                    session.submission.as_deref(),
+                ),
                 None => return Some(error(id, -32602, "Unknown tool")),
             }
         }

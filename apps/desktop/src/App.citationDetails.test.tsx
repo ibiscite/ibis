@@ -1,3 +1,4 @@
+import { citationDisplay } from "./test-fixtures";
 import { fixtureCitationKey } from "./testing/app";
 import { recordId } from "./test-fixtures";
 import { afterEach, expect, test, vi } from "vitest";
@@ -5,6 +6,13 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import { backend, chooseForm, chooseFromMore, paletteRow, prepared, receipt, resetApp, result, openCitationDetails, textField, closeCitationDetails, type PreviewRequest, inCitation, findInCitation, citationDetails, citationKeys, lineReceipt, removeFromCitation } from "./testing/app";
+
+import type { Problem } from "./bindings";
+
+const pageProblem: Problem = { code: "invalid-locator", message: { id: "app-command-page-missing", args: { number: "1", label: "Page" } }, recovery: { action: "edit-citation" }, focus: "locator" };
+const formProblem: Problem = { code: "unsupported-form", message: { id: "app-command-unsupported-form", args: { number: "1", form: "Narrative" } }, recovery: { action: "choose-form" }, focus: "citation-form" };
+const pageMessage = "Reference 1: Page needs a page or range. Enter one after the label, or clear Page.";
+const formMessage = "Reference 1: Narrative cannot be expressed in this output or group.";
 
 afterEach(resetApp);
 
@@ -30,7 +38,8 @@ test("closing slow inspector formatting lets citation B finish before the abando
 test.each([96, 280].flatMap((height) => [false, true].flatMap((built) =>
   ["observer", "window"].map((reflow) => ({ height, built, reflow })),
 )))("a delayed long refusal keeps priority over automatic row scrolling (%j)", async ({ height, built, reflow }) => {
-  const message = "Reference 1: Choose another form or clear Page. ".repeat(30);
+  const failure: Problem = { ...formProblem, message: { ...formProblem.message, args: { number: "1", form: "An invented long form name ".repeat(70) } } };
+  const message = `Reference 1: ${failure.message.args.form} cannot be expressed in this output or group.`;
   const observations: { callback: () => void; nodes: Set<Element> }[] = [];
   vi.stubGlobal("ResizeObserver", class {
     nodes = new Set<Element>(); constructor(callback: () => void) { observations.push({ callback, nodes: this.nodes }); }
@@ -75,7 +84,7 @@ test.each([96, 280].flatMap((height) => [false, true].flatMap((built) =>
     } });
     if (built) fireEvent.keyDown(search, { key: "Enter", shiftKey: true });
     act(() => search.focus()); middle.scrollTop = 380; fireEvent.scroll(middle);
-    await act(async () => rejectPreview!({ code: "failed", message }));
+    await act(async () => rejectPreview!(failure));
     const refusal = await screen.findByRole("alert");
     expect(refusal.textContent).toBe(message);
     expect(refusal.getBoundingClientRect().top).toBe(middle.getBoundingClientRect().top);
@@ -106,9 +115,9 @@ test.each([96, 280].flatMap((height) => [false, true].flatMap((built) =>
 });
 
 test("explicit arrows still reveal another result while a built citation is refused", async () => {
-  const message = "Reference 1: Choose another form or clear Page.";
+  const message = formMessage;
   backend({ search: () => [result("a", "First invented work"), result("b", "Second invented work")],
-    preview_file_citation: () => { throw { code: "failed", message }; },
+    preview_file_citation: () => { throw formProblem; },
   });
   render(<App />);
   const refusal = await screen.findByRole("alert");
@@ -264,7 +273,7 @@ test("source and sentence-case warnings stay visible in preview and copy feedbac
 
 test.each(["S.12", "pages of notes"])("a form edit preserves the captured page %s as canonical text", async (value) => {
   const previews: PreviewRequest[] = [];
-  const locator = { label: "page", value };
+  const locator = { term: "page", value };
   backend({ search: () => ({ revision: "1", results: [result("a", "Synthetic work")],
     interpretation: { search: "Example", locator, typed: `pp. "${value}"` } }),
     preview_file_citation: (request) => { previews.push(request); return receipt("Canonical output"); } });
@@ -279,11 +288,11 @@ test.each(["S.12", "pages of notes"])("a form edit preserves the captured page %
 });
 
 test("a label-only Page refuses copy until corrected", async () => {
-  const message = "Reference 1: Page needs a page or range. Enter one after the label, or clear Page.";
+  const message = pageMessage;
   const copied: string[] = [];
   const calls = backend({ search: () => [result("a", "Synthetic work")],
     preview_file_citation: ({ items }) => {
-      if (items[0]?.locator_input?.text === "pp.") throw { code: "failed", message };
+      if (items[0]?.locator_input?.text === "pp.") throw pageProblem;
       return receipt(items[0]?.locator_input?.text ? "Synthetic normalized output" : "Original output");
     },
     copy_file_citation: (args) => { const saved = prepared(args); copied.push(saved.preview.text); return { text: saved.preview.text, warnings: [] }; },
@@ -335,10 +344,10 @@ test.each(["pointer", " ", "ArrowDown"])("a token activated with %s opens its de
 });
 
 test("actionable refusals remain visible until corrected", async () => {
-  const message = "Reference 1: Narrative cannot be expressed in this output. Choose Normal or another output.";
+  const message = formMessage;
   const calls = backend({ search: () => [result("a", "Synthetic work")],
     preview_file_citation: ({ items }) => {
-      if (items[0]?.form === "narrative") throw { code: "failed", message };
+      if (items[0]?.form === "narrative") throw formProblem;
       return receipt("Synthetic output");
     } });
   render(<App />);
@@ -412,7 +421,7 @@ test("losses keep a visible count and an unsupported form blocks copying until c
   const warning = "Reference 1: Page is not included in this output.";
   const calls = backend({ search: () => [result("a", "Synthetic work")],
     preview_file_citation: ({ items }) => {
-      if (items[0]?.form === "narrative") throw { code: "failed", message: "Reference 1: Narrative cannot be expressed in this output." };
+      if (items[0]?.form === "narrative") throw formProblem;
       return receipt("Synthetic output", null, items[0]?.locator_input?.text ? [warning] : []);
     } });
   render(<App />);
@@ -457,7 +466,7 @@ test("a form edit cancels queued Enter and ignores the retired preview", async (
 
 test("changing only the form does not offer to reapply an unchanged search page", async () => {
   backend({ search: () => ({ revision: "1", results: [result("a", "Synthetic work")],
-    interpretation: { search: "Synthetic", locator: { label: "page", value: "12" }, language: "en-US" } }) });
+    interpretation: { search: "Synthetic", locator: { term: "page", value: "12" }, language: "en-US" } }) });
   render(<App />);
   await openCitationDetails();
   await chooseForm("Smith (2020)");
@@ -522,14 +531,14 @@ test("true Year only is sent to the engine; an engine refusal can be corrected f
     preview_file_citation: (request) => {
       previews.push(request);
       return request.items[0]?.form === "year-only"
-        ? { ...receipt(""), spans: [], problem: "Year only cannot show this reference’s year in this output." }
+        ? { ...receipt(""), display: citationDisplay([]), problem: "Reference 1: Year only cannot be expressed in this output or group.", failure: { ...formProblem, message: { ...formProblem.message, args: { number: "1", form: "Year only" } } } }
         : receipt("(Smith, 2020)");
     },
   });
   render(<App />);
   await openCitationDetails();
   await chooseForm("(2020)");
-  expect((await screen.findByRole("alert")).textContent).toContain("Year only cannot show");
+  expect((await screen.findByRole("alert")).textContent).toContain("Year only cannot be expressed");
   expect(previews.at(-1)?.items[0]?.form).toBe("year-only");
   await chooseForm("(Smith, 2020)");
   await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
@@ -578,8 +587,8 @@ test("Search and the list stay live beside the details, and Esc from Search clos
 });
 
 test("a citation refusal shows once, in the details beside its fields, and returns to the list when they close", async () => {
-  const message = "Reference 1: Page needs a page or range.";
-  backend({ search: () => [result("a", "Synthetic work")], preview_file_citation: () => { throw { code: "failed", message }; } });
+  const message = pageMessage;
+  backend({ search: () => [result("a", "Synthetic work")], preview_file_citation: () => { throw pageProblem; } });
   render(<App />);
   const inList = await screen.findByRole("alert");
   expect(inList.closest(".notices")).toBeTruthy();
@@ -643,9 +652,9 @@ test("Enter in Page does what the footer says, once, and a held key does not rep
 });
 
 test("a refused page stays visible in place, and Enter in Page copies nothing", async () => {
-  const message = "Reference 1: Page needs a page or range.";
+  const message = pageMessage;
   const calls = backend({ search: () => [result("a", "Synthetic work")], preview_file_citation: ({ items }) => {
-    if (items[0]?.locator_input?.text === "pp.") throw { code: "failed", message };
+    if (items[0]?.locator_input?.text === "pp.") throw pageProblem;
     return receipt("Original output");
   } });
   render(<App />);
@@ -663,7 +672,7 @@ test("a refused page stays visible in place, and Enter in Page copies nothing", 
 
 test("failed examples leave every form usable and say so once, quietly", async () => {
   const previews: PreviewRequest[] = [];
-  backend({ search: () => [result("a", "Invented work")], citation_details: () => { throw { code: "failed", message: "Invented failure" }; },
+  backend({ search: () => [result("a", "Invented work")], citation_details: () => { throw { code: "internal", message: { id: "error-internal", args: {} }, recovery: { action: "retry" }, focus: "recovery-action" } satisfies Problem; },
     preview_file_citation: (request) => { previews.push(request); return receipt("Output"); } });
   render(<App />);
   await openCitationDetails();
@@ -702,7 +711,7 @@ test("examples from the last answer stay while a page is typed, so the choices n
 test("pressing another token moves the details to it and retires the first reference's examples", async () => {
   const replies: { item: number; resolve: (value: unknown) => void }[] = [];
   backend({ search: () => [result("a", "First work"), result("b", "Second work")],
-    preview_file_citation: (request) => ({ ...receipt("(First; Second)"), spans: [{ item: 0, text: "First" }, { item: null, text: "; " }, { item: 1, text: "Second" }].slice(0, request.items.length * 2 - 1) }),
+    preview_file_citation: (request) => ({ ...receipt("(First; Second)"), display: citationDisplay([{ item: 0, text: "First" }, { item: null, text: "; " }, { item: 1, text: "Second" }].slice(0, request.items.length * 2 - 1)) }),
     citation_details: (args) => args.intent?.cancel ? null : new Promise((resolve) => replies.push({ item: Number(args.item), resolve })) });
   render(<App />);
   fireEvent.click(await screen.findByText("First work"), { ctrlKey: true });
@@ -727,7 +736,7 @@ test("a form picked while no receipt exists shows the form asked for, and an old
     citation_details: () => ({ current_form: "normal", forms: [{ form: "normal", example: "(Smith, 2020)", reason: null }, { form: "narrative", example: null, reason: "Cite it alone." }, { form: "year-only", example: "(2020)", reason: null }] }),
     preview_file_citation: (request) => {
       previews.push(request);
-      if (request.items[0]?.locator_input?.text === "pp.") throw { code: "failed", message: "Reference 1: Page needs a page or range." };
+      if (request.items[0]?.locator_input?.text === "pp.") throw pageProblem;
       return receipt("(Smith, 2020)");
     } });
   render(<App />);
@@ -793,7 +802,7 @@ function sortingStyle(held?: Map<string, () => void>) {
     const order = items.map(({ id }, index) => ({ key: fixtureCitationKey(id), index }));
     if (!intent.keep_order) order.sort((x, y) => x.key.localeCompare(y.key));
     const spans = order.flatMap(({ key, index }, n) => [...n ? [{ item: null, text: "; " }] : [], { item: index, text: `(${key})` }]);
-    const preview = { ...receipt(spans.map((span) => span.text).join("")), spans };
+    const preview = { ...receipt(spans.map((span) => span.text).join("")), display: citationDisplay(spans) };
     if (!held) return preview;
     return new Promise<typeof preview>((resolve) => held.set(`${intent.keep_order ? "kept" : "sorted"}:${order.map(({ key }) => key).join(",")}`, () => resolve(preview)));
   };

@@ -224,23 +224,19 @@ pub(crate) fn prepare(
     let OutputSpec::Csl { style } = &request.output else {
         return Err(FormatError::UnsupportedStyle);
     };
-    prepare_with_style(snapshot, request, limits, &*catalog::resolve(style)?)
+    let resolved = ResolvedOutput::new(style, request.output_locale.as_deref())?;
+    prepare_resolved(snapshot, request, limits, &resolved)
 }
 
-fn prepare_with_style(
+pub(crate) fn prepare_resolved(
     snapshot: &Snapshot,
     request: &CitationRequest,
     limits: &Limits,
-    style: &catalog::Resolved,
+    resolved: &ResolvedOutput,
 ) -> Result<Prepared, FormatError> {
+    let style = &*resolved.style;
     let traits = style.traits;
-    let locale = request
-        .output_locale
-        .as_deref()
-        .map(catalog::locale_tag)
-        .transpose()?
-        .map(str::to_owned)
-        .or_else(|| style.forced_locale.clone());
+    let locale = resolved.locale.clone();
     bounded_json(request, limits.input_bytes)?;
     if request
         .input_language
@@ -941,4 +937,40 @@ mod tests {
             assert_eq!(traits.citation_has_issued, expected);
         }
     }
+}
+
+/// A validated style, language tag and bundled locale, resolved once before item work.
+#[derive(Debug, Clone)]
+pub struct ResolvedOutput {
+    style: std::sync::Arc<catalog::Resolved>,
+    locale: Option<String>,
+    pub language: String,
+}
+impl ResolvedOutput {
+    pub fn new(style: &str, locale: Option<&str>) -> Result<Self, FormatError> {
+        let style = catalog::resolve(style)?;
+        let locale = locale
+            .map(catalog::locale_tag)
+            .transpose()?
+            .map(str::to_owned)
+            .or_else(|| style.forced_locale.clone());
+        let language = locale.clone().unwrap_or_else(|| style.language.clone());
+        Ok(Self {
+            style,
+            locale,
+            language,
+        })
+    }
+}
+#[cfg(test)]
+fn prepare_with_style(
+    snapshot: &Snapshot,
+    request: &CitationRequest,
+    limits: &Limits,
+    style: &catalog::Resolved,
+) -> Result<Prepared, FormatError> {
+    let mut resolved = ResolvedOutput::new(&style.id, request.output_locale.as_deref())?;
+    // Style-trait test fixtures vary real rules without inventing an adapter.
+    resolved.style = std::sync::Arc::new(style.clone());
+    prepare_resolved(snapshot, request, limits, &resolved)
 }

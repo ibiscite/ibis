@@ -22,7 +22,7 @@ pub mod health;
 mod sources;
 pub use sources::{PreparedFileReload, PreparedZoteroReload};
 
-mod formatting;
+pub(crate) mod formatting;
 pub use formatting::Cancellation;
 mod prepared;
 mod receipt;
@@ -292,7 +292,8 @@ struct State {
     index: Arc<SnapshotIndex>,
     libraries: BTreeMap<LibraryId, LibraryInfo>,
 }
-struct Shared {
+pub(crate) struct Shared {
+    pub(crate) citations: crate::citations::Registry,
     formatter: Mutex<Option<ibis_csl::Formatter>>,
     state: RwLock<Arc<State>>,
     /// Serializes publications without blocking readers during index building.
@@ -304,6 +305,7 @@ struct Shared {
 impl Shared {
     fn new(state: Arc<State>) -> Self {
         Self {
+            citations: crate::citations::Registry::default(),
             formatter: Mutex::new(None),
             state: RwLock::new(state),
             publication: Mutex::new(()),
@@ -315,7 +317,7 @@ impl Shared {
 }
 #[derive(Clone)]
 pub struct Engine {
-    shared: Arc<Shared>,
+    pub(crate) shared: Arc<Shared>,
     resources: Arc<sources::Owners>,
     watch_files: bool,
 }
@@ -715,23 +717,22 @@ impl Engine {
         request: &CitationRequest,
         cancel: &Cancellation,
     ) -> Result<CitationResult, EngineError> {
+        let resolved = crate::outputs::resolve_request(request)?;
+        self.cite_resolved(context, &resolved, cancel)
+    }
+    fn cite_resolved(
+        &self,
+        context: &receipt::CitationContext,
+        resolved: &crate::outputs::ResolvedRequest,
+        cancel: &Cancellation,
+    ) -> Result<CitationResult, EngineError> {
+        let request = &resolved.request;
         let snapshot = &context.snapshot;
         if request.items.is_empty() || request.items.len() > ibis_core::syntax::MAX_CITATION_ITEMS {
             return Err(error(ErrorCode::BadInput));
         }
         crate::wire::serialized_size(request, crate::protocol::MAX_REQUEST_BYTES)
             .map_err(|_| error(ErrorCode::ResourceLimit))?;
-        let resolved;
-        let request = match &request.output {
-            OutputSpec::Preset { .. } => {
-                resolved = CitationRequest {
-                    output: crate::outputs::resolve(&request.output)?,
-                    ..request.clone()
-                };
-                &resolved
-            }
-            _ => request,
-        };
         let key_error = |failure| {
             error(if failure == CitationError::OutputTooLarge {
                 ErrorCode::ResourceLimit
@@ -756,7 +757,12 @@ impl Engine {
                 .map_err(key_error)?
             }
             OutputSpec::Key { .. } => ibis_core::syntax::cite(snapshot, request).map_err(key_error)?,
-            OutputSpec::Csl { .. } => self.formatted(snapshot, request, cancel)?,
+            OutputSpec::Csl { .. } => self.formatted(
+                snapshot,
+                request,
+                cancel,
+                resolved.formatted.as_ref().ok_or_else(|| error(ErrorCode::Internal))?,
+            )?,
             OutputSpec::Preset { .. } => return Err(error(ErrorCode::Internal)),
         };
         cancel.check()?;

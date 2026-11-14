@@ -37,7 +37,7 @@ pub(super) fn begin_check(library: &Mutex<Library>, requests: &LoadRequests) -> 
 fn begin_check_with(
     library: &Mutex<Library>,
     requests: &LoadRequests,
-    file_needs_check: impl FnOnce(&super::engine_file::FileLibrary) -> bool,
+    file_needs_check: impl FnOnce(&super::engine_library::FileLibrary) -> bool,
 ) -> Option<(u64, Source)> {
     let mut library = library.lock().ok()?;
     let source = library.source.clone()?;
@@ -170,7 +170,7 @@ mod tests {
         let library = Mutex::new(Library {
             source: Some(Source::File(path)),
             file: Some(std::sync::Arc::new(
-                super::super::engine_file::FileLibrary::from_engine(engine),
+                super::super::engine_library::FileLibrary::from_engine(engine),
             )),
             ..Library::default()
         });

@@ -1,3 +1,4 @@
+import { citationDisplay } from "../../test-fixtures";
 import { recordId } from "../../test-fixtures";
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
@@ -33,10 +34,10 @@ const press = (node: HTMLElement, key: string) => {
 
 test("engine-owned segments retain punctuation, per-reference removal and arrow selection", () => {
   const a = record("a", "Alpha"), b = record("b", "Beta"), remove = vi.fn();
-  const formatted = { ...output("(Beta, 2021; Alpha, 2021)"), spans: [
+  const formatted = { ...output("(Beta, 2021; Alpha, 2021)"), display: citationDisplay([
     { item: null, text: "(" }, { item: 1, text: "Beta, 2021" }, { item: null, text: "; " },
     { item: 0, text: "Alpha, 2021" }, { item: null, text: ")" },
-  ] };
+  ]) };
   render(shelf({ selected: chosen([a, b]), shown: formatted, onRemove: remove }));
   const beta = screen.getByRole("button", { name: "Edit Beta 2021" });
   const alpha = screen.getByRole("button", { name: "Edit Alpha 2021" });
@@ -50,7 +51,7 @@ test("engine-owned segments retain punctuation, per-reference removal and arrow 
 
 test("a segment is the reference's own words: brackets and separators are shared, for one reference too", () => {
   const a = record("a", "Alpha");
-  render(shelf({ selected: chosen([a]), shown: { ...output("(Alpha, 2021, p. 4)"), spans: [{ item: null, text: "(" }, { item: 0, text: "Alpha, 2021, p. 4" }, { item: null, text: ")" }] } }));
+  render(shelf({ selected: chosen([a]), shown: { ...output("(Alpha, 2021, p. 4)"), display: citationDisplay([{ item: null, text: "(" }, { item: 0, text: "Alpha, 2021, p. 4" }, { item: null, text: ")" }]) } }));
   const segment = screen.getByRole("button", { name: "Edit Alpha 2021" });
   expect(segment.textContent).toBe("Alpha, 2021, p. 4");
   expect([...document.querySelectorAll(".shelf-shared")].map((node) => node.textContent)).toEqual(["(", ")"]);
@@ -59,11 +60,11 @@ test("a segment is the reference's own words: brackets and separators are shared
 test("formatted segments preserve engine emphasis and keep source strings inert", () => {
   const a = record("a", "Alpha"), b = record("b", "Beta");
   const text = "Alpha species; Beta <script>literal</script>";
-  render(shelf({ selected: chosen([a, b]), shown: { ...output(text), spans: [
+  render(shelf({ selected: chosen([a, b]), shown: { ...output(text), display: citationDisplay([
     { item: 0, text: "Alpha species", runs: [{ text: "Alpha species", italic: true, bold: false, script: "normal" }] },
     { item: null, text: "; " },
     { item: 1, text: "Beta <script>literal</script>", runs: [{ text: "Beta <script>literal</script>", italic: false, bold: true, script: "normal" }] },
-  ] } }));
+  ]) } }));
   expect(document.querySelector(".shelf-citation")?.textContent).toBe(text);
   expect(document.querySelector(".shelf-citation i")?.textContent).toBe("Alpha species");
   expect(document.querySelector(".shelf-citation b")?.textContent).toBe("Beta <script>literal</script>");
@@ -76,10 +77,10 @@ test("short names distinguish identical author/year labels without using the cit
 });
 
 test("formatted segments keep passive small caps and underline from the engine", () => {
-  render(shelf({ selected: chosen([record("a"), record("b")]), shown: { ...output("Caps; Under"), spans: [
+  render(shelf({ selected: chosen([record("a"), record("b")]), shown: { ...output("Caps; Under"), display: citationDisplay([
     { item: 0, text: "Caps", runs: [{ text: "Caps", bold: false, italic: false, script: "normal", small_caps: true }] },
     { item: null, text: "; " }, { item: 1, text: "Under", runs: [{ text: "Under", bold: false, italic: false, script: "normal", underline: true }] },
-  ] } }));
+  ]) } }));
   expect(document.querySelector<HTMLElement>('.shelf [style*="small-caps"]')?.textContent).toBe("Caps");
   expect(document.querySelector<HTMLElement>('.shelf [style*="underline"]')?.textContent).toBe("Under");
 });
@@ -90,12 +91,12 @@ test("colliding keys from different libraries have distinct visible and screen-r
   const change = vi.fn();
   render(shelf({ selected: new Map([["first", first], ["second", second]]), onChangeReference: change,
     referenceLibrary: (r) => r.source === "invented-one" ? "First library" : "Second library",
-    shown: { ...output("(García, 2021; García, 2021)"), spans: [{ item: 0, text: "(García, 2021" }, { item: null, text: "; " }, { item: 1, text: "García, 2021)" }] } }));
+    shown: { ...output("(García, 2021; García, 2021)"), display: citationDisplay([{ item: 0, text: "(García, 2021" }, { item: null, text: "; " }, { item: 1, text: "García, 2021)" }]) } }));
   expect(screen.getByRole("button", { name: "Edit García 2021 · shared · First library" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Edit García 2021 · shared · Second library" }));
   expect(details("Citation details for Second invented work")).toBeTruthy();
   fireEvent.change(screen.getByRole("textbox", { name: "Page" }), { target: { value: "42" } });
-  expect(change).toHaveBeenCalledWith(second, { locator: { label: "page", value: "42", input: "editor" } });
+  expect(change).toHaveBeenCalledWith(second, { locator: { term: "page", value: "42", input: "editor" } });
 });
 
 test.each(["click", "ArrowDown", " "])("a single reference is the whole citation segment; %s opens its details and focuses Page", (key) => {
@@ -126,7 +127,7 @@ test("Enter on a token pastes, as it does everywhere, and never opens its detail
 
 test("Keep My Order is in the details only for a style with two or more references in the citation", () => {
   const a = record("a", "Alpha"), b = record("b", "Beta"), keep = vi.fn();
-  const two = { ...output("(Alpha, 2021; Beta, 2021)"), spans: [{ item: 0, text: "Alpha, 2021" }, { item: null, text: "; " }, { item: 1, text: "Beta, 2021" }] };
+  const two = { ...output("(Alpha, 2021; Beta, 2021)"), display: citationDisplay([{ item: 0, text: "Alpha, 2021" }, { item: null, text: "; " }, { item: 1, text: "Beta, 2021" }]) };
   const { rerender } = render(shelf({ selected: chosen([a, b]), shown: two, onKeepOrder: keep }));
   fireEvent.click(screen.getByRole("button", { name: "Edit Alpha 2021" }));
   fireEvent.click(within(details(/^Citation details for/)).getByRole("switch", { name: "Keep My Order" }));
@@ -139,7 +140,7 @@ test("Keep My Order is in the details only for a style with two or more referenc
 
 test("pressing the open segment closes its details; another segment moves them", () => {
   const a = record("a", "Alpha"), b = record("b", "Beta");
-  render(shelf({ selected: chosen([a, b]), shown: { ...output("(Alpha, 2021; Beta, 2021)"), spans: [{ item: 0, text: "Alpha, 2021" }, { item: null, text: "; " }, { item: 1, text: "Beta, 2021" }] } }));
+  render(shelf({ selected: chosen([a, b]), shown: { ...output("(Alpha, 2021; Beta, 2021)"), display: citationDisplay([{ item: 0, text: "Alpha, 2021" }, { item: null, text: "; " }, { item: 1, text: "Beta, 2021" }]) } }));
   const alpha = screen.getByRole("button", { name: "Edit Alpha 2021" }), beta = screen.getByRole("button", { name: "Edit Beta 2021" });
   fireEvent.click(alpha);
   expect(details("Citation details for Invented title a")).toBeTruthy();
@@ -173,7 +174,7 @@ test("pending retains dimmed old text for 300 ms, then Formatting without treati
   try {
     const reference = record("a");
     const { rerender } = render(shelf({ selected: chosen([reference]), shown: output("Original citation") }));
-    rerender(shelf({ selected: chosen([{ ...reference, locator: { label: "page", value: "9" } }]), shown: null }));
+    rerender(shelf({ selected: chosen([{ ...reference, locator: { term: "page", value: "9" } }]), shown: null }));
     expect(document.querySelector('.shelf-output[data-state="pending"] .preview-text')?.textContent).toBe("Original citation");
     act(() => vi.advanceTimersByTime(299));
     expect(screen.queryByText("Formatting…")).toBeNull();
@@ -213,14 +214,14 @@ test("a formatting reply cannot retire a segment while it is being activated", (
 });
 
 test("Page retains typed input, canonical pages from search, and independent reference details", () => {
-  const reference: CitationReference = { ...record("a"), locator: { label: "page", value: "S.12" }, form: "year-only" };
+  const reference: CitationReference = { ...record("a"), locator: { term: "page", value: "S.12" }, form: "year-only" };
   const change = vi.fn();
   render(shelf({ highlightedReference: reference, shown: output("(2021, S.12)"), onChangeReference: change }));
   fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
   const page = screen.getByRole<HTMLInputElement>("textbox", { name: "Page" });
   expect(page.value).toBe("S.12");
   fireEvent.change(page, { target: { value: "pp. ١٢–١٥" } });
-  expect(change).toHaveBeenCalledWith(reference, { locator: { label: "page", value: "pp. ١٢–١٥", input: "editor" } });
+  expect(change).toHaveBeenCalledWith(reference, { locator: { term: "page", value: "pp. ١٢–١٥", input: "editor" } });
   expect(document.activeElement).toBe(page);
   fireEvent.change(page, { target: { value: "" } });
   expect(change).toHaveBeenLastCalledWith(reference, { locator: null });
@@ -287,7 +288,7 @@ test.each([1, 2])("many references at the minimum frame and %s× text retain exa
   const records = Array.from({ length: 50 }, (_, i) => record(`synthetic${i}`, `Author${i}`));
   const spans = records.flatMap((r, item) => [...item ? [{ item: null, text: "; " }] : [], { item, text: `${r.first_author}, an invented very long citation, 2021` }]);
   const text = spans.map((span) => span.text).join("");
-  render(shelf({ selected: chosen(records), shown: { ...output(text), spans } }));
+  render(shelf({ selected: chosen(records), shown: { ...output(text), display: citationDisplay(spans) } }));
   expect(document.querySelector(".shelf-citation")?.textContent).toBe(text);
   expect(screen.getAllByRole("button", { name: /^Edit Author\d+ 2021$/ })).toHaveLength(50);
   fireEvent.click(screen.getByRole("button", { name: "Edit Author49 2021" }));
@@ -379,8 +380,8 @@ test("Copied shows the exact receipt between matching beaks, with one polite con
 test("a multi-reference Copied receipt has one complete read-only line for ellipsis", () => {
   const text = "(Alpha, 2021; Beta, 2021)";
   render(shelf({ selected: chosen([record("a", "Alpha"), record("b", "Beta")]), copied: { text, warnings: [] }, shown: {
-    ...output(text), spans: [{ item: null, text: "(" }, { item: 0, text: "Alpha, 2021" },
-      { item: null, text: "; " }, { item: 1, text: "Beta, 2021" }, { item: null, text: ")" }],
+    ...output(text), display: citationDisplay([{ item: null, text: "(" }, { item: 0, text: "Alpha, 2021" },
+      { item: null, text: "; " }, { item: 1, text: "Beta, 2021" }, { item: null, text: ")" }]),
   } }));
   expect(document.querySelector('.shelf[data-copied] .preview-text')?.textContent).toBe(text);
   expect(screen.queryByRole("button", { name: /^Edit / })).toBeNull();
@@ -417,7 +418,7 @@ test("an old receipt never replaces the live copy target or confirms a different
 
 test("a token whose words don't name its reference shows a quiet first-author-and-year handle; one that names it shows none", () => {
   const { rerender } = render(shelf({ selected: chosen([record("a")]), style: "ieee",
-    shown: { ...output("[1]"), spans: [{ item: null, text: "[" }, { item: 0, text: "1" }, { item: null, text: "]" }] } }));
+    shown: { ...output("[1]"), display: citationDisplay([{ item: null, text: "[" }, { item: 0, text: "1" }, { item: null, text: "]" }]) } }));
   expect(screen.getByRole("button", { name: "Edit García 2021" }).textContent).toBe("1García 2021");
   rerender(shelf({ selected: chosen([record("a")]), shown: output() }));
   expect(screen.getByRole("button", { name: "Edit García 2021" }).textContent).toBe("(García, 2021)");

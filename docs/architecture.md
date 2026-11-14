@@ -149,16 +149,28 @@ loads the requested style and locale. Formatting receives citable fields,
 without notes, annotations or private links. Zotero differential fixtures
 check output independently of the renderer.
 
-Inspector examples and bibliography work (including Copy and Save) own separate
-cancellation tokens. Closing or replacing their view stops formatting and its
-fallback passes; it leaves the citation receipt usable. MCP reads cancellation
-notifications while a bounded tool worker runs, tracks each request ID's owner,
-and sends no result after that owner is cancelled.
+`engine.citations()` owns a bounded registry: one picker session and up to 64
+connection sessions. Submission reserves order before workers run. A newer
+preview retires the session's previous preview, its forms and queued
+bibliography work. Running bibliography work keeps its own cancellation owner;
+closing a session stops all its work. Connections close their registry entries.
+One-shot RPC/MCP cite calls reserve independent operations and answer every
+accepted request; interactive preview supersession does not swallow their replies.
 
-A prepared citation pins its request and fingerprints. Copy re-cites it
-against current data and requires the shown content hash. Changed or removed
-items, ambiguous keys and changed Zotero generations refuse the copy.
-`copy_content(expected_items)` also requires every requested item to succeed.
+Desktop drafts, previews, display trees, locators and all six citation forms
+come from core through generated bindings. Output and locale resolve together
+before item formatting; the formatter receives the validated style and bundled
+locale. Human CLI record renderers receive only presentation rows made from
+`RecordSummary` and citation-key status, without lookup identities or raw JSON.
+
+A prepared citation pins its request and fingerprints. Commit re-cites it
+against current data and requires the shown hash. Changed or removed items,
+ambiguous keys and changed Zotero generations refuse it, including a changed
+record that would produce identical text. Checked content retains its session
+identity and the citable revision checked during commit; the app holds the engine's final freshness guard while writing the
+clipboard on the main thread. Clipboard and paste proof remain native-owned.
+Bibliographies name unrenderable records in `left_out` and retain the rest;
+their shown receipt pins the selected records, including those left out.
 
 Complete citations carry [receipts](cli.md#receipts-and-strict-citations) of
 the records, options, reads and formatting versions used. `--strict` returns

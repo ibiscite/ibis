@@ -35,3 +35,8 @@ export const testStates = [
   { id: "many-results", library: library(), query: "memory", results: many },
   { id: "tray-20", library: library({ references: 50 }), query: "selection", results: [] },
 ];
+
+/** Invented engine display nodes for presentation tests. */
+export function citationDisplay(spans: readonly { item: number | null; text: string; runs?: readonly (Partial<import("./bindings").DisplayRun> & { text: string })[] }[]): import("./bindings").DisplayTree {
+  return { nodes: spans.map((span) => ({ item: span.item, content: (span.runs ?? [{ text: span.text }]).map((run) => ({ italic: false, bold: false, small_caps: false, underline: false, script: "normal", ...run })) })) };
+}

@@ -186,3 +186,49 @@ pub fn resolve(output: &OutputSpec) -> Result<OutputSpec, EngineError> {
         output => Ok(output.clone()),
     }
 }
+
+/// Resolution is shared by all clients, previews, examples and re-citing.
+pub(crate) struct ResolvedRequest {
+    pub request: ibis_core::contract::CitationRequest,
+    pub formatted: Option<ibis_csl::ResolvedOutput>,
+}
+pub(crate) fn resolve_request(request: &ibis_core::contract::CitationRequest) -> Result<ResolvedRequest, EngineError> {
+    let output = resolve(&request.output)?;
+    // Language tags are data, not processor options or operating-system defaults.
+    for language in [request.input_language.as_deref(), request.output_locale.as_deref()]
+        .into_iter()
+        .flatten()
+    {
+        if language.is_empty()
+            || language.len() > 63
+            || !language.split('-').enumerate().all(|(index, part)| {
+                !part.is_empty()
+                    && part.len() <= 8
+                    && part
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphabetic() || index > 0 && byte.is_ascii_digit())
+            })
+        {
+            return Err(EngineError::because(ErrorCode::BadInput, ErrorReason::UnknownLocale));
+        }
+    }
+    let formatted = match &output {
+        OutputSpec::Csl { style } => Some(
+            ibis_csl::ResolvedOutput::new(style, request.output_locale.as_deref())
+                .map_err(crate::service::formatting::formatter_error)?,
+        ),
+        OutputSpec::Key { .. } => {
+            ibis_core::syntax::capabilities(&output)
+                .map_err(|_| EngineError::because(ErrorCode::BadInput, ErrorReason::UnknownOutput))?;
+            None
+        }
+        OutputSpec::Preset { .. } => return Err(ErrorCode::Internal.into()),
+    };
+    Ok(ResolvedRequest {
+        request: ibis_core::contract::CitationRequest {
+            output,
+            ..request.clone()
+        },
+        formatted,
+    })
+}

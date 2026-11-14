@@ -1,6 +1,7 @@
+import { CITATION_FORMS } from "../bindings";
 import { Input, Label, Text, TextField } from "react-aria-components";
 import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
-import type { Locator, LocatorTerm, ReferenceDetails, ReferenceForm } from "../bindings";
+import type { Locator, LocatorTerm, FormDetails, CitationForm } from "../bindings";
 import { composing } from "../composition";
 import { say, type MessageId } from "../i18n";
 import { Icon } from "../icons";
@@ -10,13 +11,7 @@ import { ToolbarMenu } from "./ToolbarMenu";
 import "./CitationDetails.css";
 
 /** Each form by its one name, for before the engine has written examples. */
-const FORMS = [
-  { value: "normal", label: say("form-normal") },
-  { value: "narrative", label: say("form-narrative") },
-  { value: "author-only", label: say("form-author-only") },
-  { value: "year-only", label: say("form-year-only") },
-  { value: "full", label: say("form-full") },
-] as const;
+const FORMS = CITATION_FORMS.map((value) => ({ value, label: say(`form-${value}` as MessageId) }));
 
 /** The 29 CSL locator types, Page first, as Zotero's dialog lists them. */
 const LOCATOR_TERMS: readonly LocatorTerm[] = ["page", "chapter", "section", "paragraph", "line", "verse", "volume", "book", "part", "figure", "table", "note",
@@ -31,15 +26,15 @@ const termShort = (term: LocatorTerm) => say(`locator-short-${term}` as MessageI
  * the engine says a form cannot be printed, and only those it can are offered. */
 export function CitationDetails({ locator, form, prefix, suffix, locatorRef, choices, autoFocus = false, choosePage, onLocatorChange, onFormChange, onPrefixChange, onSuffixChange, onSubmit }: {
   /** The locator as typed, or captured from search; null when there is none. */
-  locator: Locator | null; form: ReferenceForm; prefix: string; suffix: string;
+  locator: Locator | null; form: CitationForm; prefix: string; suffix: string;
   locatorRef?: RefObject<HTMLInputElement | null>;
   autoFocus?: boolean;
-  choices?: ReferenceDetails | "failed";
+  choices?: FormDetails | "failed";
   /** Picks the page from the reference's PDF, where it has one. */
   choosePage?: () => void;
   /** Null when the field is cleared; the type stays until another is chosen. */
   onLocatorChange: (value: Locator | null) => void;
-  onFormChange: (value: ReferenceForm) => void;
+  onFormChange: (value: CitationForm) => void;
   onPrefixChange: (value: string) => void;
   onSuffixChange: (value: string) => void;
   /** Enter in a text field does what it does in Search. */
@@ -51,8 +46,8 @@ export function CitationDetails({ locator, form, prefix, suffix, locatorRef, cho
   const ownField = useRef<HTMLInputElement>(null);
   const field = locatorRef ?? ownField;
   // A cleared field keeps its type, so a new value never changes what it means.
-  const [term, setTerm] = useState<LocatorTerm>(locator?.label ?? "page");
-  useEffect(() => { if (locator) setTerm(locator.label); }, [locator]);
+  const [term, setTerm] = useState<LocatorTerm>(locator?.term ?? "page");
+  useEffect(() => { if (locator) setTerm(locator.term); }, [locator]);
   const [shown, setShown] = useState({ before: prefix !== "", after: suffix !== "" });
   const submit = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter" && !event.repeat && !composing(event)) { event.preventDefault(); onSubmit?.(); }
@@ -60,7 +55,7 @@ export function CitationDetails({ locator, form, prefix, suffix, locatorRef, cho
   const answer = typeof choices === "object" ? choices : undefined;
   // The engine answers null where no name form applies, as for Keys only.
   const current = answer ? answer.current_form : form;
-  const choice = (value: ReferenceForm) => answer?.forms.find((option) => option.form === value);
+  const choice = (value: CitationForm) => answer?.forms.find((option) => option.form === value);
   // Only the forms this output can print, each as the text it would paste.
   // Once the engine answers, only the forms it lists without a reason; before, every one.
   const offered = FORMS.filter((option) => answer ? choice(option.value) && !choice(option.value)?.reason : true)
@@ -92,9 +87,9 @@ export function CitationDetails({ locator, form, prefix, suffix, locatorRef, cho
             const chosen = LOCATOR_TERMS.find((option) => option === key);
             if (!chosen) return;
             setTerm(chosen);
-            if (locator) onLocatorChange({ ...locator, label: chosen });
+            if (locator) onLocatorChange({ ...locator, term: chosen });
           }} />
-        <TextField aria-label={termName(term)} value={locator?.value ?? ""} onChange={(value) => onLocatorChange(value.trim() ? { label: term, value } : null)}>
+        <TextField aria-label={termName(term)} value={locator?.value ?? ""} onChange={(value) => onLocatorChange(value.trim() ? { term, value } : null)}>
           <Input ref={field} autoFocus={autoFocus} placeholder={term === "page" ? say("citation-details-page-placeholder") : say("citation-details-locator-placeholder")} onKeyDown={submit} />
           <Text slot="description" className="visually-hidden">{say("citation-details-page-hint")}</Text>
         </TextField>

@@ -169,6 +169,7 @@ fn contract() -> Value {
         "input": schemas.input.take_definitions(true),
         "output": schemas.output.take_definitions(true),
         "constants": {
+            "CITATION_FORMS": ibis_core::contract::CitationForm::ALL,
             "OUTPUTS": crate::output::choices(),
             "DEFAULT_OUTPUT": ibis_engine::outputs::DEFAULT,
             "DEFAULT_STYLE": ibis_engine::outputs::DEFAULT_STYLE,

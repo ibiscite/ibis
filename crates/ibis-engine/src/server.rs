@@ -19,26 +19,34 @@ struct Job {
     method: Method,
     params: Value,
     cancel: Cancellation,
+    citation: Option<crate::citations::SubmittedCitation>,
 }
 
 pub fn serve<R: BufRead, W: Write + Send>(engine: Engine, reader: R, writer: W) -> Result<(), FrameError> {
     let changes = engine.subscribe().map_err(|_| FrameError::Io)?;
-    run_with_changes(
+    let session = engine.citations().open().map_err(|_| FrameError::Io)?;
+    let connection = engine.clone();
+    let result = run_with_changes(
         Arc::new(move |method, params, cancel| engine.dispatch(method, params, cancel)),
         reader,
         writer,
         Some(changes),
-    )
+        Some((connection.clone(), session)),
+    );
+    connection.citations().close(session);
+    result
 }
+
 #[cfg(test)]
 fn run<R: BufRead, W: Write + Send>(dispatch: Arc<Dispatch>, reader: R, writer: W) -> Result<(), FrameError> {
-    run_with_changes(dispatch, reader, writer, None)
+    run_with_changes(dispatch, reader, writer, None, None)
 }
 fn run_with_changes<R: BufRead, W: Write + Send>(
     dispatch: Arc<Dispatch>,
     mut reader: R,
     writer: W,
     changes: Option<LibrarySubscription>,
+    connection: Option<(Engine, crate::citations::SessionId)>,
 ) -> Result<(), FrameError> {
     thread::scope(|scope| {
         let (output, frames) = mpsc::sync_channel::<Value>(8);
@@ -70,7 +78,15 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
             for job in jobs {
                 let result = ibis_core::panic_guard::attempt(|| {
                     job.cancel.check()?;
-                    let result = dispatch(job.method, &job.params, &job.cancel)?;
+                    let result = if let Some(citation) = job.citation {
+                        let request: ibis_core::contract::CitationRequest = serde_json::from_value(job.params.clone())
+                            .map_err(|_| EngineError::new(ErrorCode::BadInput))?;
+                        let prepared = citation.prepare(&request, false)?;
+                        DispatchResult::citation(prepared.result().clone(), request.items.len())?
+                            .with_health(prepared.source_health())?
+                    } else {
+                        dispatch(job.method, &job.params, &job.cancel)?
+                    };
                     job.cancel.check()?;
                     Ok(result)
                 })
@@ -127,6 +143,15 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
                                 id: request.id.clone(),
                                 method: request.method,
                                 params: request.params.clone(),
+                                citation: if request.method == Method::Cite {
+                                    connection
+                                        .as_ref()
+                                        .map(|(engine, session)| engine.citations().submit(*session, cancel.clone()))
+                                        .transpose()
+                                        .map_err(|_| FrameError::Io)?
+                                } else {
+                                    None
+                                },
                                 cancel: cancel.clone(),
                             }) {
                                 Ok(()) => {
@@ -314,6 +339,7 @@ mod tests {
                     current: vec![],
                 },
                 Some(changes),
+                None,
             )
         });
         engine

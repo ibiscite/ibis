@@ -293,6 +293,21 @@ impl fmt::Display for CommandError {
 impl std::error::Error for CommandError {}
 
 /// Failures as the engine reports them, for tests.
+impl From<ibis_engine::citations::SessionError> for CommandError {
+    fn from(error: ibis_engine::citations::SessionError) -> Self {
+        use ibis_engine::citations::SessionError;
+        match error {
+            SessionError::Engine(error) => error.into(),
+            SessionError::Presented(problem) => Self::Presented(problem),
+            SessionError::SharedCitationKey { key } => Self::SharedCitationKey { key },
+            SessionError::SnapshotChanged => Self::SnapshotChanged,
+            SessionError::Cancelled => Self::Cancelled,
+            SessionError::CitationTooLarge => Self::CitationTooLarge,
+            SessionError::NotPrepared => Self::NotPrepared,
+        }
+    }
+}
+
 #[cfg(test)]
 pub(crate) const FILE_UNREADABLE: LoadError = LoadError::File(EngineError::new(ErrorCode::Internal));
 #[cfg(test)]

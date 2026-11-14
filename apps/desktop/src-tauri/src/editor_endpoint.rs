@@ -335,7 +335,9 @@ impl Host for AppHost {
             .ok()
             .and_then(|library| library.file.clone());
         if let Some(file) = file {
-            file.invalidate_preview();
+            file.engine
+                .citations()
+                .invalidate(ibis_engine::citations::SessionId::PICKER);
         }
     }
     fn present(&self, id: u64) {

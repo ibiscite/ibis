@@ -1,10 +1,10 @@
-import { recordId } from "../src/test-fixtures";
+import { recordId, citationDisplay } from "../src/test-fixtures";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "../src/App";
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
-import type { FileSelection, PickerPreferences, PreviewIntent, ReferenceDetails, SearchQuery } from "../src/bindings";
+import type { DraftItem, PickerPreferences, CitationIntent, FormDetails, SearchQuery } from "../src/bindings";
 import type { OutputId } from "../src/format/outputs";
 import { Button } from "../src/ui/Button";
 import { KeyCaps } from "../src/ui/KeyCaps";
@@ -99,7 +99,7 @@ const fixtures: Partial<Record<Scenario, {
 // the same boundary as interface tests; App needs no alternate API or feature flags.
 function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (page: string | null) => Promise<void>) {
   type Request = {
-    query: SearchQuery; items: FileSelection[]; output: OutputId; intent: PreviewIntent;
+    query: SearchQuery; items: DraftItem[]; output: OutputId; intent: CitationIntent;
     ticket: string; item: number; preferences: Partial<PickerPreferences>; receipt: number; page: string | null;
   };
   const firstRun = scenario === "first-run";
@@ -119,7 +119,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
     stale: false, updated_at: null, checked_at: firstRun ? null : Date.now() - 3 * 60_000, ...fixed?.library,
   };
   let sequence = 0;
-  const receipts = new Map<string, { text: string; items: FileSelection[] }>();
+  const receipts = new Map<string, { text: string; items: DraftItem[] }>();
   const handlers: Record<string, (request: Request) => unknown> = {
     "plugin:window|is_visible": () => true,
     library_status: () => library,
@@ -127,7 +127,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
     search: ({ query }) => {
       const page = query.interpret_locators ? /^(.*\S)\s+(?:pp?\.\s*)?(\d+(?:[-–]\d+)?)$/.exec(query.text) : null;
       return { revision: "1", results: query.text && !fixture ? shown : [],
-        ...page ? { interpretation: { search: page[1]!, locator: { label: "page", value: page[2]!.replace("-", "–") }, typed: page[2]! } } : {} };
+        ...page ? { interpretation: { search: page[1]!, locator: { term: "page", value: page[2]!.replace("-", "–") }, typed: page[2]! } } : {} };
     },
     recent_references: () => [{ revision: "1", results: [] }, false, false],
     preview_file_citation: ({ items, output, intent }) => {
@@ -149,7 +149,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
       spans.push({ item: null, text: !style || numbered ? "]" : ")" });
       const text = spans.map((span) => span.text).join("");
       receipts.set(ticket, { text, items });
-      return { ticket, content_hash: ticket, text, spans, html: null, warnings: [], project_refusal: refusal };
+      return { ticket, content_hash: ticket, text, display: citationDisplay(spans), html: null, warnings: [], project_refusal: refusal };
     },
     copy_file_citation: ({ ticket }) => {
       const receipt = receipts.get(ticket);
@@ -161,7 +161,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
       { form: "narrative", example: "Aster (2026)", reason: null },
       { form: "author-only", example: "Aster", reason: null },
       { form: "year-only", example: "(2026)", reason: null },
-    ] } satisfies ReferenceDetails),
+    ] } satisfies FormDetails),
     picker_destination: () => projectContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
       automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false,
       writing_project: project, writing_context: "invented-opening", context_version: [1, 0] } : null,

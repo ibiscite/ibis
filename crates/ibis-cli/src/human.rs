@@ -1,11 +1,11 @@
 //! Sentences and summaries for people; `--json` output never passes through here.
+mod projection;
+mod record;
 use super::out::{self, Out};
 pub(super) use ibis_core::model::is_hidden;
 use ibis_core::{
     contract::*,
     destination::{CopyReason, Decision, Destination},
-    model::strip_markup,
-    summary::RecordSummary,
     syntax::MAX_CITATION_ITEMS,
 };
 use ibis_engine::catalogue::{self, Audience};
@@ -39,7 +39,7 @@ pub(super) fn with_summary(
 }
 
 /// The search's rows, or what it means that there are none.
-fn search_summary(hits: &[Value], holdings: Holdings, out: Out) -> Option<String> {
+fn search_summary(hits: &[record::Row], holdings: Holdings, out: Out) -> Option<String> {
     if hits.is_empty() {
         return match holdings {
             Holdings::NoLibrary => Some("No library is open; add --file <library> or --zotero.".into()),
@@ -49,15 +49,15 @@ fn search_summary(hits: &[Value], holdings: Holdings, out: Out) -> Option<String
         };
     }
     let rows = if let Some(width) = out.width {
-        terminal_search(hits, width, out)?
+        record::terminal_search(hits, width, out)?
     } else {
-        hits.iter().map(search_row).collect::<Option<Vec<_>>>()?.join("\n")
+        hits.iter()
+            .map(record::search_row)
+            .collect::<Option<Vec<_>>>()?
+            .join("\n")
     };
     // Closest matches are said to be so, never shown as full matches.
-    if hits
-        .iter()
-        .any(|hit| hit.get("partial").and_then(Value::as_bool) == Some(true))
-    {
+    if hits.iter().any(|hit| hit.partial) {
         return Some(format!("No reference matches every word. Closest matches:\n{rows}"));
     }
     Some(rows)
@@ -71,7 +71,11 @@ fn summary(
     out: Out,
 ) -> Option<String> {
     match method {
-        Method::Show => reference(data),
+        Method::Show => Some(record::reference(&projection::row(
+            data.pointer("/object/data")?,
+            false,
+            false,
+        )?)),
         Method::Search => {
             let hits = data.get("hits")?.as_array()?;
             // What was read around the words, said once before the rows, as the picker shows it.
@@ -82,7 +86,8 @@ fn summary(
                 let cited = [prefix, locator].into_iter().flatten().collect::<Vec<_>>().join(" · ");
                 format!("Cited with: {}; searched for: {}\n", field(&cited), field(words))
             });
-            let summary = search_summary(hits, holdings, out)?;
+            let rows = hits.iter().map(projection::hit).collect::<Option<Vec<_>>>()?;
+            let summary = search_summary(&rows, holdings, out)?;
             Some(format!("{}{summary}", read.unwrap_or_default()))
         }
         Method::Libraries => {
@@ -281,113 +286,6 @@ pub(super) fn locale_list(mut result: DispatchResult) -> DispatchResult {
     result
 }
 
-fn search_row(hit: &Value) -> Option<String> {
-    let record = hit.pointer("/item/object/data")?;
-    let summary = record_summary(record.get("csl")?);
-    // The engine decides a word matched only with a spelling change; the row says so.
-    let spelling = (hit.get("typo").and_then(Value::as_bool) == Some(true)
-        && hit.get("partial").and_then(Value::as_bool) != Some(true))
-    .then(|| catalogue::text("cli-spelling-match", None, &[]))
-    .flatten()
-    .map(|label| format!(" {label}"))
-    .unwrap_or_default();
-    Some(format!(
-        "{}\t{}\t{}\t{}{spelling}",
-        field(citation_key(record)?),
-        if summary.authors.is_empty() {
-            "—".into()
-        } else {
-            field(&authors(&summary, Some(3)))
-        },
-        field(summary.year.as_deref().unwrap_or("n.d.")),
-        field(summary.title.as_deref().unwrap_or("[untitled]"))
-    ))
-}
-
-fn terminal_search(hits: &[Value], width: usize, out: Out) -> Option<String> {
-    let rows = hits
-        .iter()
-        .map(|hit| {
-            let record = hit.pointer("/item/object/data")?;
-            let summary = record_summary(record.get("csl")?);
-            let key = field(citation_key(record)?);
-            let author = match summary.authors.first() {
-                None => "—".into(),
-                Some(first)
-                    if summary.authors.len() > 2
-                        || summary.authors.last().is_some_and(|author| author.name == "et al.") =>
-                {
-                    format!("{} et al.", first.name)
-                }
-                Some(_) => authors(&summary, None),
-            };
-            let year = field(summary.year.as_deref().unwrap_or("n.d."));
-            let author = out::truncate(&field(&author), (width / 4).saturating_sub(out::width(&year) + 1));
-            let byline = if author.is_empty() {
-                year
-            } else {
-                format!("{author} {year}")
-            };
-            let mut title = field(summary.title.as_deref().unwrap_or("[untitled]"));
-            if hit.get("typo").and_then(Value::as_bool) == Some(true)
-                && hit.get("partial").and_then(Value::as_bool) != Some(true)
-                && let Some(label) = catalogue::text("cli-spelling-match", None, &[])
-            {
-                title = format!("{label} {title}");
-            }
-            Some((key, byline, title))
-        })
-        .collect::<Option<Vec<_>>>()?;
-    // Bound the two secondary columns so ordinary keys never squeeze out the
-    // title. Outlier keys keep their own line rather than widening every row.
-    let key_limit = width / 3;
-    let key_columns = rows
-        .iter()
-        .map(|(key, _, _)| out::width(key))
-        .filter(|w| *w <= key_limit)
-        .max()
-        .unwrap_or(0);
-    let byline_columns = rows.iter().map(|(_, byline, _)| out::width(byline)).max().unwrap_or(0);
-    let mut lines = Vec::new();
-    for (key, byline, title) in rows {
-        let separate = out::width(&key) > key_limit;
-        if separate {
-            lines.push(out.bold(&key));
-        }
-        let prefix = if separate {
-            2.min(width)
-        } else {
-            key_columns.saturating_add(2).min(width)
-        };
-        let secondary = out.dim(&format!(
-            "{byline}{}",
-            " ".repeat(byline_columns.saturating_sub(out::width(&byline)))
-        ));
-        let title_start = prefix + byline_columns + 2;
-        let title = out::truncate(&title, width.saturating_sub(title_start));
-        let lead = if separate {
-            " ".repeat(prefix)
-        } else {
-            format!(
-                "{}{}",
-                out.bold(&key),
-                " ".repeat(key_columns.saturating_sub(out::width(&key)) + 2)
-            )
-        };
-        // When even the year cannot fit, keep it and the key intact on their
-        // own lines. Only author lists and titles may be shortened.
-        if title_start > width {
-            if !separate {
-                lines.push(out.bold(&key));
-            }
-            lines.push(out.dim(&byline));
-        } else {
-            lines.push(format!("{lead}{secondary}  {title}"));
-        }
-    }
-    Some(lines.join("\n"))
-}
-
 fn library_name(library: &Value, names: &BTreeMap<String, String>) -> Option<String> {
     let id = library.get("id")?.as_str()?;
     Some(field(&names.get(id).cloned().unwrap_or_else(
@@ -561,76 +459,6 @@ pub(super) fn search_notes(data: &Value, libraries: &[Value], names: &BTreeMap<S
             }
         })
         .collect()
-}
-
-fn record_summary(csl: &Value) -> RecordSummary {
-    RecordSummary::of(|name| csl.get(name))
-}
-
-fn citation_key(record: &Value) -> Option<&str> {
-    let keys = record.get("citation_keys")?.as_array()?;
-    Some(
-        match keys.first().and_then(|key| key.get("value")).and_then(Value::as_str) {
-            None => "[no citation key]",
-            Some(key) if key.is_empty() || key.chars().any(|c| c.is_whitespace() || c.is_control()) => {
-                "[invalid citation key]"
-            }
-            Some(key)
-                if keys
-                    .iter()
-                    .any(|other| other.get("value").and_then(Value::as_str) != Some(key)) =>
-            {
-                "[conflicting citation keys]"
-            }
-            Some(key) => key,
-        },
-    )
-}
-
-/// The authors' reading names, the first `limit` then "et al.".
-fn authors(summary: &RecordSummary, limit: Option<usize>) -> String {
-    let limit = limit.unwrap_or(summary.authors.len());
-    let mut names: Vec<_> = summary
-        .authors
-        .iter()
-        .take(limit)
-        .map(|author| author.name.as_str())
-        .collect();
-    if summary.authors.len() > limit && names.last() != Some(&"et al.") {
-        names.push("et al.");
-    }
-    names.join(", ")
-}
-
-/// One reference for reading. Anything that is not a reference stays as JSON.
-fn reference(data: &Value) -> Option<String> {
-    let record = data.pointer("/object/data")?;
-    let csl = record.get("csl")?;
-    let text = |name: &str| csl.get(name).and_then(Value::as_str).map(strip_markup);
-    let summary = record_summary(csl);
-    let authors = Some(authors(&summary, None)).filter(|authors| !authors.is_empty());
-    let number = |name: &str| {
-        csl.get(name)
-            .map(|value| value.as_str().map_or_else(|| value.to_string(), str::to_owned))
-    };
-    let rows = [
-        ("Title", summary.title.clone()),
-        ("Authors", authors),
-        ("Year", summary.year.clone()),
-        ("Published in", text("container-title")),
-        ("Publisher", text("publisher")),
-        ("Volume", number("volume")),
-        ("Issue", number("issue")),
-        ("Pages", number("page")),
-        ("DOI", text("DOI")),
-        ("URL", text("URL")),
-    ];
-    let mut lines = vec![field(citation_key(record)?)];
-    lines.extend(
-        rows.into_iter()
-            .filter_map(|(label, value)| Some(format!("{label}: {}", field(&value?)))),
-    );
-    Some(lines.join("\n"))
 }
 
 /// A source warning as a sentence.
@@ -1029,11 +857,15 @@ mod terminal_tests {
     use super::*;
     use serde_json::json;
 
-    fn hit(key: &str, title: &str) -> Value {
+    fn wire_hit(key: &str, title: &str) -> Value {
         json!({"item":{"object":{"data":{
             "citation_keys":[{"value":key}],
             "csl":{"title":title, "author":[{"family":"Valé"},{"family":"Fen"},{"family":"Ng"},{"family":"Park"}], "issued":{"date-parts":[[2024]]}}
         }}}})
+    }
+
+    fn hit(key: &str, title: &str) -> record::Row {
+        projection::hit(&wire_hit(key, title)).unwrap_or_else(|| panic!("synthetic row"))
     }
 
     #[test]
@@ -1043,7 +875,7 @@ mod terminal_tests {
             color: false,
         };
         let mut data = json!({
-            "hits": [hit("vale2024", &"Lantern gardens ".repeat(10))],
+            "hits": [wire_hit("vale2024", &"Lantern gardens ".repeat(10))],
             "shorthand": {"prefix":"see", "locator":{"typed":"417"}, "search":"vale"}
         });
         let reading = "Cited with: see · 417; searched for: vale\n";
@@ -1082,7 +914,7 @@ mod terminal_tests {
             hit(&"longkey".repeat(9), &"城市庭園 ".repeat(30)),
         ];
         for width in [80, 120] {
-            let text = terminal_search(
+            let text = record::terminal_search(
                 &hits,
                 width,
                 Out {
@@ -1105,11 +937,11 @@ mod terminal_tests {
         }
         // Plain stdout keeps the original four TSV columns, authors and title.
         assert_eq!(
-            search_row(&hit("vale2024", "城市庭園")),
+            record::search_row(&hit("vale2024", "城市庭園")),
             Some("vale2024\tValé, Fen, Ng, et al.\t2024\t城市庭園".into())
         );
         let key = "長".repeat(100);
-        let text = terminal_search(
+        let text = record::terminal_search(
             &[hit(&key, &"城市庭園".repeat(30))],
             80,
             Out {
@@ -1127,7 +959,7 @@ mod terminal_tests {
             "{text}"
         );
         for width in [1, 4] {
-            let text = terminal_search(
+            let text = record::terminal_search(
                 &[hit(&key, "Lantern gardens")],
                 width,
                 Out {

@@ -268,7 +268,7 @@ fn a_file_radio_event_opens_its_exact_file_and_a_retired_event_cannot_open_the_r
     let Source::File(path) = &opened else {
         return Err("file choice".into());
     };
-    let file = crate::library::engine_file::FileLibrary::open(path).map_err(|e| e.to_string())?;
+    let file = crate::library::engine_library::FileLibrary::open(path).map_err(|e| e.to_string())?;
     let mut library = Library::default();
     library.file = Some(std::sync::Arc::new(file));
     library.source = Some(opened);

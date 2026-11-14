@@ -113,7 +113,7 @@ export function createSessionController(initial = initialSession()) {
         try {
           const preview = await ports.previewFileCitation(ask.selection, ask.output, ask.revision, abort.signal, ask.projectContext, ask.keepOrder);
           dispatch({ type: "previewed", request, preview, value: { markup: preview.html ? parse(preview.html) : [preview.text], text: preview.text, html: preview.html ?? "",
-            effective_output: preview.effective_output, warnings: preview.warnings, spans: preview.spans, project_refusal: preview.project_refusal, notices: preview.notices, fileTicket: preview.ticket, fileHash: preview.content_hash } });
+            effective_output: preview.effective_output, warnings: preview.warnings, display: preview.display, project_refusal: preview.project_refusal, notices: preview.notices, fileTicket: preview.ticket, fileHash: preview.content_hash } });
         } catch (error) {
           dispatch({ type: "preview-failed", request, failure: previewFailure(error) });
         } finally {

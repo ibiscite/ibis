@@ -172,8 +172,9 @@ pub(super) fn call(
     tool: &Tool,
     arguments: &Value,
     cancel: &Cancellation,
+    submission: Option<&crate::citations::SubmittedCitation>,
 ) -> Value {
-    let answered = answer(engine, problem, tool, arguments, cancel).and_then(|(text, data)| {
+    let answered = answer(engine, problem, tool, arguments, cancel, submission).and_then(|(text, data)| {
         // The answer goes twice, as text and as structured content: the bound is on what is sent.
         let result = json!({
             "content": [{"type": "text", "text": text}],
@@ -208,6 +209,7 @@ fn answer(
     tool: &Tool,
     arguments: &Value,
     cancel: &Cancellation,
+    submission: Option<&crate::citations::SubmittedCitation>,
 ) -> Result<(String, Value), Refusal> {
     cancel.check()?;
     let arguments = arguments
@@ -222,7 +224,11 @@ fn answer(
             return Err(Refusal::bad(ToolProblem::NoLibrary, &[]));
         }
     }
-    let data = (tool.answer)(engine, arguments, cancel)?;
+    let data = if tool.name == "cite" {
+        cite_submitted(engine, arguments, cancel, submission)?
+    } else {
+        (tool.answer)(engine, arguments, cancel)?
+    };
     cancel.check()?;
     Ok((data.to_string(), data))
 }
@@ -584,6 +590,14 @@ fn format_ids() -> Vec<&'static str> {
 }
 
 fn cite(engine: &Engine, arguments: &Map<String, Value>, cancel: &Cancellation) -> Result<Value, Refusal> {
+    cite_submitted(engine, arguments, cancel, None)
+}
+fn cite_submitted(
+    engine: &Engine,
+    arguments: &Map<String, Value>,
+    cancel: &Cancellation,
+    submission: Option<&crate::citations::SubmittedCitation>,
+) -> Result<Value, Refusal> {
     if arguments.contains_key("records") {
         return cite_records(engine, arguments, cancel);
     }
@@ -646,30 +660,28 @@ fn cite(engine: &Engine, arguments: &Map<String, Value>, cancel: &Cancellation) 
             .as_str()
             .is_some_and(|reference| !reference.starts_with("id:"))
     });
-    let Checked {
-        value: result,
-        source_health,
-    } = engine
-        .prepare_consulting(
-            &CitationRequest {
-                items,
-                form,
-                keep_order: keep_order || matches!(output, OutputSpec::Key { .. }),
-                output,
-                input_language: None,
-                strict: strict(arguments)?,
-                output_locale: locale,
-            },
-            by_key,
-            cancel,
-        )?
-        .into_checked();
-    let mut answer = written(&result, count)?;
+    let request = CitationRequest {
+        items,
+        form,
+        keep_order: keep_order || matches!(output, OutputSpec::Key { .. }),
+        output,
+        input_language: None,
+        strict: strict(arguments)?,
+        output_locale: locale,
+    };
+    let prepared = if let Some(submission) = submission {
+        submission.prepare(&request, by_key)?
+    } else {
+        std::sync::Arc::new(engine.prepare_consulting(&request, by_key, cancel)?)
+    };
+    let result = prepared.result();
+    let source_health = prepared.source_health();
+    let mut answer = written(result, count)?;
     answer["provenance"] = json!(PROVENANCE);
     if let Some(destination) = destination {
         answer["destination"] = json!(destination);
     }
-    with_library_notes(answer, engine, &source_health)
+    with_library_notes(answer, engine, source_health)
 }
 
 fn strict(arguments: &Map<String, Value>) -> Result<bool, Refusal> {

@@ -25,6 +25,7 @@ struct Handlers {
     tasks: BTreeMap<u64, CancellationToken>,
 }
 struct Registration {
+    parents: Vec<Registration>,
     cancel: Cancellation,
     id: u64,
 }
@@ -56,6 +57,9 @@ impl Cancellation {
             parent: Some(self.clone()),
             ..CancelState::default()
         }))
+    }
+    pub(crate) fn same(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
     }
     pub fn cancel(&self) {
         self.0.cancelled.store(true, Ordering::Release);
@@ -96,10 +100,15 @@ impl Cancellation {
         if self.is_cancelled() {
             token.cancel();
         }
-        Ok(Registration {
+        let mut registration = Registration {
             cancel: self.clone(),
             id,
-        })
+            parents: vec![],
+        };
+        if let Some(parent) = &self.0.parent {
+            registration.parents.push(parent.track(token)?);
+        }
+        Ok(registration)
     }
 }
 impl Engine {
@@ -148,11 +157,10 @@ impl Engine {
         snapshot: &Arc<Snapshot>,
         request: &CitationRequest,
         cancel: &Cancellation,
+        output: &ibis_csl::ResolvedOutput,
     ) -> Result<CitationResult, EngineError> {
         cancel.check()?;
         // The request is wrong, not its items: refuse it whole, before formatting.
-        ibis_csl::Formatter::check_output(&request.output, request.output_locale.as_deref())
-            .map_err(formatter_error)?;
         let annotations: Vec<_> = request
             .items
             .iter()
@@ -188,7 +196,7 @@ impl Engine {
                 formatter
             }
         };
-        let task = match formatter.submit(snapshot.clone(), request.clone()) {
+        let task = match formatter.submit_resolved(snapshot.clone(), request.clone(), output) {
             Ok(task) => task,
             Err(failure) => return Err(formatter_error(failure)),
         };
@@ -198,7 +206,7 @@ impl Engine {
         result.map_err(formatter_error)
     }
 }
-fn formatter_error(failure: FormatError) -> EngineError {
+pub(crate) fn formatter_error(failure: FormatError) -> EngineError {
     match failure {
         FormatError::Busy | FormatError::TimedOut | FormatError::ResourceLimit => error(ErrorCode::ResourceLimit),
         FormatError::Cancelled => error(ErrorCode::Cancelled),

@@ -57,7 +57,7 @@ use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_global_shortcut::ShortcutState;
 
 use crate::diagnostics::{NativeIssue, application_message, checked, report};
-use crate::library::{Library, LoadRequests, PreviewRequests, SearchRequests, Source, start_open};
+use crate::library::{Library, LoadRequests, SearchRequests, Source, start_open};
 use crate::picker::{
     ChooserOpen, Pinned, ShortcutStatus, dismiss_picker, hides_on_blur, show_picker, start_shortcut, toggle_picker,
 };
@@ -168,8 +168,6 @@ fn main() {
         .manage(LoadRequests::default())
         .manage(SearchRequests::default())
         .manage(tray::SearchRequest::default())
-        .manage(PreviewRequests::default())
-        .manage(library::FormattingRequests::default())
         .manage(setup::Offered::default())
         .manage(ChooserOpen::default())
         .manage(settings_backup::PendingRestore::default())
@@ -505,3 +503,6 @@ mod offline_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod test_citations;
