@@ -156,8 +156,6 @@ ssh_options=(-o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o 
 
 mac_gate() {
   set -Ee
-  # Development Python is Miniconda's on every machine, never the system's.
-  export PATH="$HOME/miniconda3/bin:$PATH"
   trap 'printf "FAILED (%s): %s\n" "$?" "$BASH_COMMAND"' ERR
   pnpm -C apps/desktop install --frozen-lockfile --prefer-offline
   node scripts/check.mjs
@@ -187,7 +185,6 @@ git fetch -q origin "refs/heads/$branch"
 [ "$(git rev-parse FETCH_HEAD)" = "$sha" ] || { echo 'error: fetched branch moved'; exit 1; }
 git checkout -q --detach "$sha"
 . "$HOME/.cargo/env"
-export PATH="$HOME/miniconda3/bin:$PATH"
 export NVM_DIR="$HOME/.nvm"
 . "$NVM_DIR/nvm.sh"
 nvm use 26

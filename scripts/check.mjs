@@ -4,8 +4,19 @@
 //        node scripts/check.mjs test -p ibis-engine TEST_FILTER
 //        node scripts/check.mjs vitest FILE
 import { spawnSync } from "node:child_process";
-import { readdirSync, realpathSync } from "node:fs";
+import { accessSync, constants, readdirSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+export function python(platform = process.platform, env = process.env, home = homedir()) {
+  if (env.PYTHON) return env.PYTHON;
+  if (platform === "darwin" || platform === "linux") {
+    const conda = join(home, "miniconda3", "bin", "python3");
+    try { accessSync(conda, constants.X_OK); return conda; } catch { /* Use PATH. */ }
+  }
+  return "python3";
+}
 
 export function check(suite = "all", args = [], { platform = process.platform, spawn = spawnSync } = {}) {
   const root = fileURLToPath(new URL("..", import.meta.url));
@@ -16,7 +27,7 @@ export function check(suite = "all", args = [], { platform = process.platform, s
     cargo: { default: ["cargo"] },
     node: { default: ["node"] },
     pnpm: { default: ["pnpm", "-C", "apps/desktop"], win32: ["pnpm.cmd", "-C", "apps/desktop"] },
-    python: { default: [process.env.PYTHON || "python3", "-B"], win32: [process.env.PYTHON || "python", "-B"] },
+    python: { default: [python(platform), "-B"] },
     powershell: { win32: ["powershell.exe", ...powershellArgs] },
     powershell7: { default: ["pwsh", ...powershellArgs] },
   };
@@ -68,7 +79,7 @@ export function check(suite = "all", args = [], { platform = process.platform, s
     }
     const [executable, ...prefix] = command;
     console.log([...command, ...commandArgs].join(" "));
-    const result = spawn(executable, [...prefix, ...commandArgs], { cwd: root, stdio: "inherit", shell: platform === "win32" && executable.endsWith(".cmd") });
+    const result = spawn(executable, [...prefix, ...commandArgs], { cwd: root, stdio: "inherit", env: { ...process.env, PYTHON: python(platform) }, shell: platform === "win32" && executable.endsWith(".cmd") });
     if (result.error) console.error(`Required runtime ${executable}: ${result.error.message}`);
     if (result.status !== 0) return result.status || 1;
   }

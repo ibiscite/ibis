@@ -1,12 +1,29 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { check } from "./check.mjs";
+import { check, python } from "./check.mjs";
+
+test("Python selection honors the override, then an executable Miniconda, then PATH", (t) => {
+  const home = mkdtempSync(join(tmpdir(), "ibis-python-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const conda = join(home, "miniconda3", "bin", "python3");
+  assert.equal(python("linux", {}, home), "python3");
+  mkdirSync(join(home, "miniconda3", "bin"), { recursive: true });
+  writeFileSync(conda, "");
+  chmodSync(conda, 0o755);
+  for (const platform of ["linux", "darwin"]) {
+    assert.equal(python(platform, {}, home), conda);
+    assert.equal(python(platform, { PYTHON: "custom-python" }, home), "custom-python");
+  }
+  assert.equal(python("win32", {}, home), "python3");
+});
 
 function laptop(t, { missing, powershellStatus = 0 } = {}) {
-  const calls = [], errors = [], python = process.env.PYTHON || "python";
+  const calls = [], errors = [], interpreter = python("win32");
   t.mock.method(console, "log", () => {});
   t.mock.method(console, "error", (message) => errors.push(message));
   return { calls, errors, run: (suite = "windows") => check(suite, [], {
@@ -14,7 +31,7 @@ function laptop(t, { missing, powershellStatus = 0 } = {}) {
     spawn(command, args) {
       calls.push([command, ...args]);
       // The SSH launcher's PATH has only these runtimes: no Bash or PowerShell 7.
-      if (command === missing || !["node", python, "powershell.exe"].includes(command)) {
+      if (command === missing || !["node", interpreter, "powershell.exe"].includes(command)) {
         return { status: null, error: Object.assign(new Error(`spawn ${command} ENOENT`), { code: "ENOENT" }) };
       }
       return { status: command === "powershell.exe" && args.includes("-File") ? powershellStatus : 0 };

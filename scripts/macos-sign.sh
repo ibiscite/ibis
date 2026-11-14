@@ -91,7 +91,7 @@ sign() {
   # Extract before importing any identity. Python's data filter rejects paths
   # and links escaping the destination, devices and other special members.
   mkdir "$WORK/app"
-  python3 - "$dist/Ibis-$platform.app.tar.gz" "$WORK/app" <<'PY'
+  "${PYTHON:-python3}" - "$dist/Ibis-$platform.app.tar.gz" "$WORK/app" <<'PY'
 import pathlib, sys, tarfile
 with tarfile.open(sys.argv[1], 'r:gz') as archive:
     archive.extractall(sys.argv[2], filter='data')

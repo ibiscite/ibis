@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { python } from "./check.mjs";
 
 const script = fileURLToPath(new URL("./macos-sign.sh", import.meta.url));
 const leaf = "0123456789abcdef0123456789abcdef01234567";
@@ -88,7 +89,7 @@ test("hostile archives are rejected before touching a keychain", { skip: process
     writeFileSync(join(dir, "security"), '#!/bin/sh\ntouch "$CALLED"\nexit 1\n');
     chmodSync(join(dir, "security"), 0o755);
     for (const kind of ["traversal", "symlink", "two-apps"]) {
-      const generated = spawnSync("python3", ["-c", `import sys, tarfile
+      const generated = spawnSync(python(), ["-c", `import sys, tarfile
 with tarfile.open(sys.argv[1], 'w:gz') as archive:
     for name in ({'traversal': ['../escaped'], 'symlink': ['Ibis.app'], 'two-apps': ['One.app', 'Two.app']}[sys.argv[2]]):
         info = tarfile.TarInfo(name)
@@ -121,7 +122,7 @@ function signCheck({ fail = "", keychains = originalKeychains, found = leaf, aut
     mkdirSync(tools);
     mkdirSync(dist);
     const archive = join(dist, "Ibis-macOS-Apple-silicon.app.tar.gz");
-    const made = spawnSync("python3", ["-c", `import sys, tarfile
+    const made = spawnSync(python(), ["-c", `import sys, tarfile
 with tarfile.open(sys.argv[1], 'w:gz') as archive:
     info = tarfile.TarInfo('Ibis.app')
     info.type = tarfile.DIRTYPE

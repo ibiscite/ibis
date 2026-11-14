@@ -104,7 +104,7 @@ for both this gate and CI; callers prepare dependencies and select suites.
 | --- | --- |
 | Mac | Workspace Clippy with all targets (including desktop), workspace tests, TypeScript, Biome, full Vitest, web build/budget, Node and Python script tests, full generated-file freshness, PR title, formatting, repository guards and dependency licence/bans/source policy. |
 | Ubuntu (`db-scr-ubuntu`) | Workspace Clippy and tests, full Vitest; one build at a time in `~/Code/ibis`. A detached build and SHA-bound end marker survive dropped SSH connections. |
-| Windows laptop | When packaging or PowerShell paths change (including the gate itself): declared Windows-safe Node tests, Python script tests and every `*.tests.ps1` under Windows PowerShell 5.1; no Rust. |
+| Windows laptop | When Rust, packaging or PowerShell paths change (including the gate itself): workspace Rust check, declared Windows-safe Node tests, Python script tests and every `*.tests.ps1` under Windows PowerShell 5.1. |
 
 Changes matching the independent-review path table in `land.sh` need an existing
 PR with a maintainer-authored comment containing this exact line:
