@@ -24,7 +24,10 @@ icons. Each came from a rule, not from one screen, so the rules change:
    footer; a dot appears only with look or stop words.
 6. **Use Default follows the setting's name**, so nothing is reserved at a
    row's end and every control shares the card's trailing edge.
-7. **Icons by meaning, from Phosphor Regular** (MIT, `@phosphor-icons/core`
+7. **Type and spacing** stay the existing tokens, now with one rule each: four
+   type sizes in the picker (search, title, body, label; lead and display only
+   for empty states and Settings), and parts read spacing roles, never steps.
+8. **Icons by meaning, from Phosphor Regular** (MIT, `@phosphor-icons/core`
    2.1.1), vendored unchanged in `brand/icons/` with `SOURCES.json` naming the
    upstream glyph and `LICENSE-phosphor`. One meaning, one glyph. Lucide's set
    was a 36-glyph subset hand-normalized to one path each, so adding a meaning
@@ -34,3 +37,25 @@ icons. Each came from a rule, not from one screen, so the rules change:
    and reads closest to SF Symbols; Tabler and an optically retuned Lucide were
    close seconds, Heroicons lacked a quote, pin, keyboard and contrast glyph and
    has outlines only at 24 px.
+
+## Not done on this branch
+
+- `icon-paths.ts` (Lucide) still feeds the Copied check draw
+  (`copyFeedback.ts`), the website demo (`website/demo.js`, `build.mjs`) and
+  several tests; move them to `icon-art.ts` (draw the check with a mask, since
+  Phosphor is filled), then delete `icon-paths.ts`, `LICENSE-lucide`,
+  `scripts/check-icons.mjs` and `scripts/icons.test.mjs`, and replace the guard
+  with one that checks `brand/icons` against `SOURCES.json`.
+- `brand/settings.json` and `build.py`: regenerate `pickerMark` for 32 px (its
+  eye opening is tuned for 24 px); the README's "24 px pickerMark" line changes
+  with it.
+- `SearchField`'s unused `clearLabel`/`onClear`, `.search-clear` and the
+  `--search-clear-size` rules; the ui README and `canvas/geometry.ts`,
+  `canvas/parts.tsx` mentions.
+- Healthy footer words: drop the count in `LibraryStatusLine` rather than
+  hiding it with CSS.
+- Command rows use title type; make them body like palette rows.
+- Tests asserting withdrawn behaviour: `icons.test.tsx` (Lucide stroke),
+  `HeldKeys.test.tsx` (marks on controls), `SettingsGroup.test.tsx` (reset
+  slot), `SourceAction.test.tsx` and `App.sourceActions.test.tsx` (path data).
+- Render a changed opening shortcut in Settings › Shortcuts (not rendered here).
