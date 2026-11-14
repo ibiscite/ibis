@@ -312,3 +312,14 @@ test("an answer after the screen left changes nothing", async () => {
   await act(async () => { answer("available"); await Promise.resolve(); });
   expect(document.querySelectorAll("[data-suggested]")).toHaveLength(0);
 });
+
+test("an empty library offers one primary card, the one that fills it, first; its key sits after its title", async () => {
+  render(<LibrarySetup api={{ chooseLibrary: async () => undefined, useZotero: async () => undefined, findZotero: async () => "available" as const }}
+    perform={async (_action, run) => { await run(); }}
+    empty={{ title: "No references in invented.bib", zotero: false, source: { label: "Open invented.bib", help: "Add references there", open: () => undefined } }} />);
+  await act(async () => { await Promise.resolve(); });
+  const options = screen.getAllByRole("option");
+  expect(options[0]?.textContent).toContain("Open invented.bib");
+  expect([...document.querySelectorAll("[data-suggested]")]).toEqual([options[0]]);
+  expect(options[0]?.querySelector(".choice-line-title")?.textContent).toMatch(/^Open invented\.bib.+O$/);
+});

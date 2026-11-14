@@ -9,7 +9,7 @@ import type { Operation } from "./Notices";
 
 /** Which opening, format choice and paste choice a copy was made for. */
 export type OutputToken = { opening: number; choice: number; delivery: number };
-export type ProjectEdit = Parameters<typeof nativeApi.editWritingProject>[1];
+export type ProjectEdit = Parameters<typeof nativeApi.editWriting>[1];
 
 export type DestinationState = {
   /** Whether this picker reads its destination at all; without a reader it is always ready. */
@@ -74,16 +74,14 @@ export type DestinationStep = { destination: DestinationState; effects: Destinat
 
 /** The format the next paste uses. */
 export function destinationFormat(d: DestinationState, fallback: OutputId) {
-  const project = listedOutput(d.destination?.writing_project?.output);
-  return d.held ?? project ?? listedOutput(d.destination?.remembered) ?? listedOutput(d.destination?.automatic) ?? fallback;
+  return d.held ?? listedOutput(d.destination?.format.id) ?? fallback;
 }
 /** Whether Enter first asks how to paste into this app. */
 export const asksPaste = (d: DestinationState) => Boolean(d.remembers && d.destination?.app_id && d.destination.paste_question);
 /** Whether Enter first asks: how to paste, or the first format for an app that has none. */
-export const shouldAsk = (d: DestinationState) => asksPaste(d) || Boolean(!d.destination?.writing_project && d.remembers && d.destination?.app_id
-  && d.destination.output_question && !listedOutput(d.destination.remembered) && d.held === null);
+export const shouldAsk = (d: DestinationState) => asksPaste(d);
 /** Ready to copy: read, or nothing to read. */
-export const destinationReady = (d: DestinationState) => !d.reader || d.ready;
+export const destinationReady = (d: DestinationState) => !d.reader || d.ready && (!d.destination || listedOutput(d.destination.format.id) !== null);
 export const projectVersion = (d: DestinationState) => d.observedVersion?.join(":") ?? null;
 export const sameOutput = (a: OutputToken, b: OutputToken) => a.opening === b.opening && a.choice === b.choice && a.delivery === b.delivery;
 
@@ -175,15 +173,15 @@ export function reduceDestination(d: DestinationState, event: DestinationEvent):
     }
     case "choose-format": {
       let next: DestinationState = { ...d, held: event.choice, output: { ...d.output, choice: d.output.choice + 1 } };
-      if (!next.ready && next.reader) return { destination: next, effects: [] };
+      const rereadingDefault = event.pick === "default" && d.destination?.app_id === null && !d.resetRead && !d.settlingOpening && !d.settlingProject;
+      if (!next.ready && next.reader && !rereadingDefault) return { destination: next, effects: [] };
       const id = d.destination?.app_id;
       if (event.pick === "app" && id) {
         return save(next, { appId: id, output: event.choice, paste: null, identity: d.destination?.app_identity ?? null,
           remembered: event.choice, reread: Boolean(d.destination?.unreadable), clearHeld: true, rereadOnFailure: false });
       }
       if (event.pick !== "default") return { destination: next, effects: [] };
-      next = { ...next, held: null };
-      return { destination: next, effects: [{ type: "choose-default", output: event.choice }] };
+      return { destination: { ...next, saves: next.saves + 1 }, effects: [{ type: "choose-default", output: event.choice }] };
     }
     case "choose-once": return { destination: { ...d, held: event.choice, output: { ...d.output, choice: d.output.choice + 1 } }, effects: [] };
     case "choose-paste": {
@@ -199,7 +197,8 @@ export function reduceDestination(d: DestinationState, event: DestinationEvent):
     case "destination-saved": {
       const { save: s } = event;
       if (s.opening !== d.output.opening) return null;
-      let next = s.remembered && d.destination ? { ...d, destination: { ...d.destination, remembered: s.remembered } } : d;
+      let next = s.remembered && d.destination ? { ...d, destination: { ...d.destination,
+        format: { ...d.destination.format, id: s.remembered, from: "app" as const } } } : d;
       if (s.clearHeld && s.choice === d.output.choice) next = { ...next, preserveOpeningOutput: false, held: null };
       const reports = [report("appChoice", false), report("appDelivery", false)];
       return s.reread ? withEffects(read(next, false), reports) : { destination: next, effects: reports };

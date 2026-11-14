@@ -8,7 +8,7 @@ import type { CopiedReason } from "../../bindings";
 
 const a: CitationReference = { ...testStates[1]!.results[0]!, locator: { term: "page", value: "١٢–١٤" } };
 const b = testStates[1]!.results[1]!;
-const prepared = { text: "canonical engine text", html: "", markup: ["canonical engine text"], warnings: [], fileTicket: "ticket-b", fileHash: "hash-b" };
+const prepared = { display: { nodes: [] }, text: "canonical engine text", warnings: [], fileTicket: "ticket-b", fileHash: "hash-b" };
 function scenario() {
   let state = { ...initialSession(), presentation: 0 as number | null };
   let effects: ReturnType<typeof reduceSession>[1] = [];
@@ -52,38 +52,38 @@ test("a project switch keeps search, ordered references and pages but cancels pe
   const s = scenario();
   s.send({ type: "query", value: "synthetic" });
   s.send({ type: "toggle", result: a, locator: a.locator });
-  s.send(s.view({ writingProjectId: "a", shown: null, searchPending: true }));
+  s.send(s.view({ writingId: "a", shown: null, searchPending: true }));
   s.send({ type: "enter", choice: null });
   expect(s.state.pendingCopy).not.toBeNull();
-  s.send(s.view({ writingProjectId: "b", output: { opening: 0, choice: 1, delivery: 0 } }));
+  s.send(s.view({ writingId: "b", output: { opening: 0, choice: 1, delivery: 0 } }));
   expect(s.state.pendingCopy).toBeNull();
   expect(s.state.changing).toBeNull();
   expect(s.state.query).toBe("synthetic");
   expect([...s.state.selected.values()]).toMatchObject([{ key: a.key, locator: a.locator }]);
-  expect(s.send(s.view({ writingProjectId: "b", output: { opening: 0, choice: 1, delivery: 0 } }))).toEqual([]);
+  expect(s.send(s.view({ writingId: "b", output: { opening: 0, choice: 1, delivery: 0 } }))).toEqual([]);
 });
 
 test("a project switch does not offer another project's citation for replacement", () => {
   const s = scenario();
-  s.send(s.view({ appId: "example.editor", writingProjectId: "a" }));
+  s.send(s.view({ appId: "example.editor", writingId: "a" }));
   s.send({ type: "enter", choice: choiceKey([a]) });
   s.complete(1, { pinned: true });
   expect(s.state.lastCitations.has("example.editor")).toBe(true);
   s.send({ type: "change-last" });
   expect(s.state.changing).toEqual([prepared.text]);
-  s.send(s.view({ appId: "example.editor", writingProjectId: "b", output: { opening: 0, choice: 1, delivery: 0 } }));
+  s.send(s.view({ appId: "example.editor", writingId: "b", output: { opening: 0, choice: 1, delivery: 0 } }));
   expect(s.state.changing).toBeNull();
   s.send({ type: "change-last" });
   expect(s.state.changing).toBeNull();
 });
 
 test.each([
-  { writingProjectId: "project-b", format: "pandoc" as const },
-  { writingProjectId: "project-a", format: "typst" as const },
-  { writingProjectId: null, format: "pandoc" as const },
-])("a last citation cannot cross project or output identity even before its change event: $writingProjectId $format", (next) => {
+  { writingId: "project-b", format: "pandoc" as const },
+  { writingId: "project-a", format: "typst" as const },
+  { writingId: null, format: "pandoc" as const },
+])("a last citation cannot cross project or output identity even before its change event: $writingId $format", (next) => {
   const s = scenario();
-  s.send(s.view({ appId: "example.editor", writingProjectId: "project-a" }));
+  s.send(s.view({ appId: "example.editor", writingId: "project-a" }));
   s.send({ type: "enter", choice: choiceKey([a]) });
   s.complete(1, { pinned: true });
   expect(s.state.lastCitations.get("example.editor")?.project).toBe("project-a");
@@ -94,10 +94,10 @@ test.each([
 
 test.each(["before", "after"] as const)("a refreshed checked receipt cannot adopt an earlier copy or let its response hide the picker (%s new Enter)", (oldResponse) => {
   const s = scenario();
-  const first = { writingProjectId: "a", projectVersion: "1:0" };
+  const first = { writingId: "a", projectVersion: "1:0" };
   s.send(s.view(first));
   s.send({ type: "enter", choice: choiceKey([a]) });
-  const checked = { writingProjectId: "a", projectVersion: "1:1", shown: { ...prepared, fileTicket: "checked-ticket", warnings: ["Couldn't check a2026 against thesis.bib."] } };
+  const checked = { writingId: "a", projectVersion: "1:1", shown: { ...prepared, fileTicket: "checked-ticket", warnings: ["Couldn't check a2026 against thesis.bib."] } };
   s.send(s.view(checked));
   if (oldResponse === "before") {
     s.complete(1);

@@ -3,8 +3,8 @@
 use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use ibis_core::settings::ZoteroLibrary;
 use ibis_engine::LibraryKind;
+use ibis_engine::settings::ZoteroLibrary;
 use serde::Serialize;
 
 use super::LoadError;
@@ -286,6 +286,7 @@ fn refresh_error(
         reason,
         detail: None,
         strict_cause: None,
+        citation_error: None,
     };
     Some(match kind {
         LibraryKind::File => LoadError::file_refresh(error),

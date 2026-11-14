@@ -115,6 +115,9 @@ impl EngineError {
     pub fn recovery_info(self) -> RecoveryInfo {
         use FocusTarget as F;
         use Recovery as R;
+        if let Some(error) = self.citation_error {
+            return error.problem().info;
+        }
         if let Some(cause) = self.strict_cause {
             let mut info = match cause {
                 super::StrictCause::Loss { .. } => {
@@ -147,6 +150,7 @@ impl EngineError {
                 ErrorReason::MissingFile => (R::LocateFile, F::LibraryPicker),
                 ErrorReason::AppMissing | ErrorReason::NotIbis => (R::UpgradeIbis, F::RecoveryAction),
                 ErrorReason::NoAnswer => (R::Retry, F::RecoveryAction),
+                ErrorReason::SettingsReadTimeout => (R::Retry, F::RecoveryAction),
                 ErrorReason::ZoteroSharingOff => (R::OpenZoteroSharingHelp, F::ZoteroSharingHelp),
                 ErrorReason::ZoteroProfileNeeded | ErrorReason::ZoteroNotFound => (R::ChooseLibrary, F::LibraryPicker),
                 ErrorReason::ZoteroNeedsOpening => (R::OpenZotero, F::RecoveryAction),
@@ -178,7 +182,9 @@ impl EngineError {
 impl From<EngineError> for Problem {
     fn from(error: EngineError) -> Self {
         Self {
-            code: error.reason.map_or_else(|| name(error.code), name),
+            code: error
+                .citation_error
+                .map_or_else(|| error.reason.map_or_else(|| name(error.code), name), name),
             info: error.recovery_info(),
         }
     }
@@ -211,6 +217,8 @@ impl CitationError {
             ),
             Self::FormatterUnavailable | Self::Unknown => (R::Retry, F::RecoveryAction),
             Self::NotCitable => (R::SelectReferences, F::Results),
+            // DOI links need a DOI on every reference; another form (BibTeX) has no such need.
+            Self::MissingDoi => (R::ChooseForm, F::CitationForm),
         };
         let code = name(self);
         let id = if self == Self::Unknown {
@@ -221,42 +229,6 @@ impl CitationError {
         Problem {
             code,
             info: RecoveryInfo::new(&id, recovery, focus),
-        }
-    }
-}
-
-impl From<&crate::settings::writing_projects::ProjectError> for Problem {
-    fn from(error: &crate::settings::writing_projects::ProjectError) -> Self {
-        use crate::settings::writing_projects::ProjectError as P;
-        let (code, recovery, focus) = match error {
-            P::InvalidName => ("invalid-name", Recovery::RenameProject, FocusTarget::ProjectName),
-            P::DuplicateName => ("duplicate-name", Recovery::RenameProject, FocusTarget::ProjectName),
-            P::NotFound => ("not-found", Recovery::ChooseProject, FocusTarget::ProjectMenu),
-            P::TooMany => ("too-many", Recovery::RemoveProject, FocusTarget::ProjectMenu),
-            P::Invalid => ("invalid", Recovery::ReviewSettings, FocusTarget::Settings),
-            P::Settings(error) => return error.into(),
-        };
-        Self {
-            code: format!("project-{code}"),
-            info: RecoveryInfo::new(&format!("app-project-error-{code}"), recovery, focus),
-        }
-    }
-}
-
-impl From<&crate::settings::SettingsError> for Problem {
-    fn from(error: &crate::settings::SettingsError) -> Self {
-        use crate::settings::SettingsError as S;
-        let (code, recovery, focus) = match error {
-            S::Unreadable(_) => ("unreadable", Recovery::Retry, FocusTarget::RecoveryAction),
-            S::Invalid(_) | S::InvalidZoteroLibraryEntry { .. } => {
-                ("invalid", Recovery::ReviewSettings, FocusTarget::Settings)
-            }
-            S::NewerVersion(_) => ("newer", Recovery::UpgradeIbis, FocusTarget::RecoveryAction),
-            S::Backup(inner) => return inner.as_ref().into(),
-        };
-        Self {
-            code: format!("settings-{code}"),
-            info: RecoveryInfo::new(&format!("app-settings-error-{code}"), recovery, focus),
         }
     }
 }

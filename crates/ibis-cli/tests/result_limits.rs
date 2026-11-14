@@ -204,9 +204,14 @@ fn renderer_and_transport_quotas_are_resource_errors_on_real_cli_and_stdio() {
             assert!(response.get("result").is_some());
         } else {
             assert_eq!(output.status.code(), Some(5), "CLI repeats: {count}; RPC: {response}");
+            let expected = if count == 84 {
+                json!({"code":"resource-limit","citation_error":"output-too-large","message":{"id":"problem-output-too-large","args":{}},"recovery":{"action":"reduce-selection"},"focus":"results"})
+            } else {
+                json!({"code":"resource-limit","message":{"id":"error-resource-limit","args":{}},"recovery":{"action":"reduce-selection"},"focus":"search"})
+            };
             assert_eq!(
                 serde_json::from_slice::<Value>(&output.stdout).unwrap(),
-                json!({"ibis":1,"ok":false,"error":{"code":"resource-limit","message":{"id":"error-resource-limit","args":{}},"recovery":{"action":"reduce-selection"},"focus":"search"}})
+                json!({"ibis":1,"ok":false,"error":expected})
             );
             assert_eq!(response["error"]["code"], -32000, "RPC repeats: {count}");
             assert_eq!(response["error"]["data"]["code"], "resource-limit");
@@ -226,5 +231,6 @@ fn renderer_and_transport_quotas_are_resource_errors_on_real_cli_and_stdio() {
     );
     assert_eq!(response["error"]["code"], -32602);
     assert_eq!(response["error"]["data"]["code"], "bad-input");
+    assert_eq!(response["error"]["data"]["citation_error"], "invalid-rich-text");
     std::fs::remove_file(path).unwrap();
 }

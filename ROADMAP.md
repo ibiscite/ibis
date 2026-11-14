@@ -2,6 +2,8 @@
 
 Ibis is a writing companion for the references people already keep. One shortcut, in any app, finds anything in their sources (a reference, its PDF page, a highlight or a note), shows it to be sure, and cites or quotes it where they are writing. People writing in LaTeX, Markdown, Quarto and Typst decide close calls; first-time and expert users, every major operating system and many languages all count. Ibis stays about references and research material, never a general file or web search (maintainer, 2026-11-05).
 
+**Where Ibis is going** (maintainer, 2026-11-13): the most robust and capable open-source companion for everything in working with literature: adding, finding, remembering, citing and sharing references, and the workflows that join them, for academics, journalists and any researcher at every stage. It works with every source and writing app, stays fast and reliable, and is open and customisable: simple for a first-time user and deep for an expert, as an engine, a command line, an MCP server and an app. Writing is where it starts; [references in and out](#06-your-document) is the next step, and each step is built on lasting engine concepts so the next one is small. Until a decision allows writes, the sources rule below still holds.
+
 Every feature in the releases below ships before 1.0. Versions before 1.0 are working steps: each finished milestone becomes one release with a GitHub milestone of the same name, and Nightly carries daily testing. 1.0 adds no features: people test everything, then the maintainer moves to 1.0 by hand. Dates are not promised; scope is. The maintainer adds to or changes this plan at any time; agents bring the plan, docs and code into line the same day.
 
 ## How we build
@@ -38,7 +40,7 @@ A month of fast building left parallel paths, rules no one has used and code tha
 5. **One set of interface parts and plain words:** buttons, fields, sheets, list rows and the Inspector come from `ui/`, and a check fails a screen that brings its own spacing or colours; the visible glitches go with them (key badges over controls, the sheet without padding, a two-line title over the byline). Every message the app and command line show uses people's words (design principle 12).
 6. **One owner for shared settings:** settings, formats per app, the selected project and backup change through one engine transaction; the app's own file and ordering code goes. Paste permissions, windows and other system effects stay with the app.
 7. **The picker session, in working slices** ([#1260](https://github.com/ibiscite/ibis/issues/1260)): session behaviour moves into one state machine a slice at a time, the library's lifecycle separately; shared sheets, menus and buttons in `ui/` are consolidated as each screen is touched.
-8. **Leaner checks** ([#1678](https://github.com/ibiscite/ibis/issues/1678), [#1693](https://github.com/ibiscite/ibis/issues/1693)): `scripts/check.mjs` plans the checks and `land.sh` uses the same plan; finer CI path classes; long inline programs in `preview.yml` move into scripts; tests that read source or CSS become rendered outcome checks; sleeps become fake clocks; engine output checks become reviewed snapshots.
+8. **Leaner checks** ([#1678](https://github.com/ibiscite/ibis/issues/1678), [#1693](https://github.com/ibiscite/ibis/issues/1693)): `scripts/land.sh` runs one local gate on the Mac, Ubuntu and Windows (decision 0049); long inline programs in `preview.yml` move into scripts; tests that read source or CSS become rendered outcome checks; sleeps become fake clocks; engine output checks become reviewed snapshots.
 
 - Isolate each client's task context: capture project, source scope and output at task start so another client's selection cannot retarget it; source changes still revalidate citations (from architecture).
 - Merge `ibis-zotero-local` into `ibis-sources` once its callers reach it through the engine (from architecture).
@@ -99,7 +101,11 @@ A month of fast building left parallel paths, rules no one has used and code tha
 - `ibis check` on a manuscript (`.md`, `.qmd`, `.tex`, `.typ`) as a build gate, with an optional lock file for co-authors.
 - `ibis format` turns a `.docx` or `.odt` written with keys into a finished copy with formatted citations and a bibliography; running it again changes the style, and the original is never edited.
 - A warning when a reference's citation key changed since it was last copied ([#1092](https://github.com/ibiscite/ibis/issues/1092)).
-- **Opt-in online lookup** (maintainer, 2026-11-11): DOI lookup and open search for references not in the library, through Crossref, OpenAlex and doi.org. Off until the person turns it on, either when setup asks once or later in Settings; nothing goes online otherwise.
+- **Opt-in online lookup** (maintainer, 2026-11-11; rules in [decision 0008](docs/decisions/0008-offline-by-default.md)): DOI lookup and open search for references not in the library, through Crossref, OpenAlex and doi.org. Off until the person turns it on, either when setup asks once or later in Settings; nothing goes online otherwise.
+- **References in and out** (maintainer, 2026-11-13): Ibis grows from citing to everyday reference handling, each step quick and on open standards.
+  - **In:** paste or drop a DOI (or another standard identifier) and cite it, link it, save it to a `.bib` file, or add it to Zotero.
+  - **Out:** select references and share them as DOI links, a `.bib` or CSL-JSON file, a zip, by email or through the system's share sheet.
+  - **Groundwork first:** identifiers read locally, the one lookup module from decision 0008, and a single selection → format → destination path that every share and save uses. Order, writes and attachments: [decision 0051](docs/decisions/0051-references-in-and-out.md).
 
 ### 0.7 Everywhere you work
 
@@ -139,4 +145,4 @@ Research briefs beyond exported passages, decision memory, resuming research and
 
 ## Not planned
 
-Ibis is the fast front door to your references, not a reference manager: no organising, merging or attaching files (Zotero does this), no citation key generation, export translators or auto-export (Better BibTeX does this), no Ibis plugin for Word, Google Docs or Zotero and no live citation fields of Ibis's own (Zotero's plugins and ODF/DOCX Scan do this), no reading other managers' private databases or cloud accounts, no general file or web search, no AI writing and no legal citation short forms.
+Ibis is the fast front door to your references and the companion around them, not a library organiser: no organising, merging or attaching files inside a library (Zotero does this), no auto-export (Better BibTeX does this), no citation key generation until `.bib` writes are decided (decision 0051), no Ibis plugin for Word, Google Docs or Zotero and no live citation fields of Ibis's own (Zotero's plugins and ODF/DOCX Scan do this), no reading other managers' private databases or cloud accounts, no general file or web search, no AI writing and no legal citation short forms.

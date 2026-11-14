@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Condvar, Mutex};
 
-use ibis_core::settings::{LibrarySetting, ZoteroLibraries, ZoteroLibrary};
+use ibis_engine::settings::{LibrarySetting, ZoteroLibraries, ZoteroLibrary};
 #[cfg(debug_assertions)]
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
@@ -33,8 +33,21 @@ pub(super) fn publish<R: tauri::Runtime>(app: &AppHandle<R>, status: LibraryStat
 
 pub(crate) fn refresh_settings_notice<R: tauri::Runtime>(app: &AppHandle<R>, settings_file: &SettingsFile) {
     if let Some(library) = app.try_state::<Mutex<Library>>() {
-        update_notices(&library, |_| true, |library| settings_file.refresh_notice(library));
-        if let Ok(library) = library.lock() {
+        let Ok(previous) = library.lock().map(|library| library.settings_notice.clone()) else {
+            return;
+        };
+        let mut feedback = Library::default();
+        // File I/O stays outside the lock used by native copy commands.
+        settings_file.refresh_notice(&mut feedback);
+        // A settings read is not a library reload. Repeating unchanged status
+        // makes the picker prepare a replacement citation, cancelling a copy
+        // already using the shown ticket. Keep a newer notice if one arrived
+        // while reading this one.
+        if let Ok(mut library) = library.lock()
+            && library.settings_notice == previous
+            && library.settings_notice != feedback.settings_notice
+        {
+            library.settings_notice = feedback.settings_notice;
             publish(app, status(&library));
         }
     }
@@ -173,6 +186,7 @@ fn observe_current(
 enum OpenIntent {
     Remember,
     Read,
+    ReadOnly,
     Refresh,
 }
 
@@ -398,6 +412,19 @@ pub(crate) fn start_open(app: &AppHandle, source: Source, remember: bool) {
     run_open(app, request, source, reload, intent, None);
 }
 
+/// Apply the explicit file choice through the normal replacement request path.
+/// This starts a read only; it never saves a second, guessed library choice.
+pub(crate) fn apply_file_settings(app: &AppHandle, source: Option<LibrarySetting>, profile: Option<String>) {
+    let Some(source) = source.map(Source::from) else {
+        super::state::clear(&app.state(), &app.state());
+        publish_current(app);
+        return;
+    };
+    if let Some((request, reload, _)) = begin_open(&app.state(), &app.state(), source.clone()) {
+        run_open(app, request, source, reload, OpenIntent::ReadOnly, profile);
+    }
+}
+
 /// Read Zotero with this profile from now on. The request is numbered here, so
 /// a newer choice replaces it; it is saved only by a closed read that used it.
 pub(crate) fn use_zotero_profile(app: &AppHandle, name: String) {
@@ -479,7 +506,11 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
                 #[cfg(debug_assertions)]
                 let loading = std::time::Instant::now();
                 let read_profile = if matches!(source, Source::Zotero(_)) {
-                    reading_profile.or_else(|| loading_app.state::<SettingsFile>().zotero_profile())
+                    if matches!(intent, OpenIntent::ReadOnly) {
+                        reading_profile
+                    } else {
+                        reading_profile.or_else(|| loading_app.state::<SettingsFile>().zotero_profile())
+                    }
                 } else {
                     None
                 };
@@ -817,7 +848,7 @@ mod engine_read_cancellation {
         let replacement = ibis_engine::Cancellation::default();
         let request = |id, cancel| OpenRequest {
             request: id,
-            source: Source::Zotero(ibis_core::settings::ZoteroLibrary::User.into()),
+            source: Source::Zotero(ibis_engine::settings::ZoteroLibrary::User.into()),
             reload: true,
             intent: OpenIntent::Refresh,
             profile: None,

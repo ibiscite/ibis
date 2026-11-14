@@ -174,11 +174,13 @@ pub enum KeySyntax {
     ScannableCite,
     Keys,
     CslJson,
+    Bibtex,
+    DoiLinks,
     CaywJson,
 }
 
 impl KeySyntax {
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 18] = [
         Self::Pandoc,
         Self::Biblatex,
         Self::Natbib,
@@ -194,6 +196,8 @@ impl KeySyntax {
         Self::ScannableCite,
         Self::Keys,
         Self::CslJson,
+        Self::Bibtex,
+        Self::DoiLinks,
         Self::CaywJson,
     ];
 }
@@ -252,6 +256,7 @@ pub enum CitationError {
     MissingItem,
     ChangedItem,
     MissingKey,
+    MissingDoi,
     AmbiguousKey,
     ConflictingKey,
     InvalidKey,
@@ -270,7 +275,7 @@ pub enum CitationError {
 }
 
 impl CitationError {
-    pub const ALL: [Self; 19] = [
+    pub const ALL: [Self; 20] = [
         Self::EmptySelection,
         Self::TooManyItems,
         Self::InvalidLocator,
@@ -280,6 +285,7 @@ impl CitationError {
         Self::MissingItem,
         Self::ChangedItem,
         Self::MissingKey,
+        Self::MissingDoi,
         Self::AmbiguousKey,
         Self::ConflictingKey,
         Self::InvalidKey,
@@ -442,14 +448,36 @@ fn is_false(value: &bool) -> bool {
     !value
 }
 
-/// One display group owns ordered text leaves; shared punctuation has no item.
+/// Passive CSL layout, independent of HTML class names or CSS.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum DisplayBlockKind {
+    Entry,
+    Margin,
+    Inline,
+    Block,
+    Indent,
+}
+
+/// A block covers content runs in [start, end). Blocks are in opening order;
+/// ranges are nested or disjoint, never crossing. Equal ranges retain nesting.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct DisplayBlock {
+    pub kind: DisplayBlockKind,
+    pub start: usize,
+    pub end: usize,
+}
+
+/// One display group owns ordered text leaves and their block layout;
+/// shared punctuation has no item.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct DisplayNode {
     pub item: Option<usize>,
     pub content: Vec<DisplayRun>,
+    pub blocks: Vec<DisplayBlock>,
 }
 
-/// A bounded-depth tree: root -> ownership groups -> styled text leaves.
+/// Ownership groups with bounded-depth passive blocks and styled text leaves.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct DisplayTree {
     pub nodes: Vec<DisplayNode>,
@@ -760,6 +788,7 @@ mod tests {
             Some("{\\rtf1 synthetic}".into()),
             DisplayTree {
                 nodes: vec![DisplayNode {
+                    blocks: vec![],
                     item: Some(0),
                     content: vec![DisplayRun {
                         text: "合成 & <work>".into(),

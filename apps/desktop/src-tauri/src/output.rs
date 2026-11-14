@@ -68,7 +68,7 @@ pub(crate) fn default_style(default: OutputRef) -> &'static str {
 /// The listed output a writing project's stored output writes. A project
 /// made in the command line can name a style the picker does not list; that is
 /// refused, never replaced by a plausible wrong output.
-pub(crate) fn of_project(output: &OutputSpec) -> Result<OutputRef, String> {
+pub(crate) fn of_writing(output: &OutputSpec) -> Result<OutputRef, String> {
     outputs::named(output).map(OutputRef).ok_or_else(|| {
         "This project's output is available in the command line. Choose a listed output there before using it in the picker."
             .into()

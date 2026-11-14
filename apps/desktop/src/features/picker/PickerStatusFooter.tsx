@@ -1,5 +1,5 @@
 import type * as nativeApi from "../../api";
-import type { ReactNode, RefObject } from "react";
+import type { RefObject } from "react";
 import type { CitationLineActions } from "./CitationShelf";
 import { say } from "../../i18n";
 import { zoteroLibraryNames } from "../../LibraryStatusLine";
@@ -8,7 +8,7 @@ import { PickerFooter } from "./PickerFooter";
 import { PickerLibraryStatus } from "./PickerLibraryStatus";
 import { PickerMenu } from "./PickerMenu";
 import { libraryOperations, OPERATION_FAILURES } from "./Notices";
-import { closeNearestLayer } from "../../ui/layers";
+import { goBack } from "../../ui/layers";
 import type { useZoteroScope } from "./useZoteroScope";
 import type { usePickerSource } from "./usePickerSource";
 import type { usePickerMenus } from "./usePickerMenus";
@@ -22,7 +22,7 @@ import { libraryMessages } from "../../libraryWords";
 
 export function PickerStatusFooter({
   api, library, scope, sourceState, menus, actions, run, copyChosen, recents,
-  operations, altHeld, lastOutcome, emptyAction, notices, project, highlighted, copyProblem, command, peek, citationLine,
+  operations, altHeld, lastOutcome, emptyAction, project, highlighted, copyProblem, command, peek, citationLine,
 }: {
   /** The highlighted reference's details (⌘Y), when there is one. */
   peek?: (() => void) | null;
@@ -43,7 +43,6 @@ export function PickerStatusFooter({
   altHeld: boolean;
   lastOutcome: string | null;
   emptyAction?: boolean;
-  notices?: ReactNode;
   copyProblem?: string | null;
   /** ">" in the search: Enter runs this, so the footer says so. */
   command?: { label: string | null; run: () => void } | null;
@@ -57,7 +56,7 @@ export function PickerStatusFooter({
   // Read when More opens, the only time it is shown there.
   const libraryDetail = menuOpen ? libraryMessages.detail(library, Date.now(), (status) => zoteroLibraryNames(status, groupName)) : null;
   return <PickerFooter library={library} groupName={groupName} emptyAction={emptyAction} copyProblem={copyProblem}
-    status={<PickerLibraryStatus library={library} groupName={groupName} notice={notices} isOpen={libraryMenuOpen}
+    status={<PickerLibraryStatus library={library} groupName={groupName} isOpen={libraryMenuOpen}
       onOpenChange={(open) => (open ? openLibrary() : closeLibrary())}
       searchRef={input} sourceAction={sourceAction} sourceFailure={sourceOpen.failure !== null}
       statusIcon={source.status_icon ?? null} hideAction={sourceState.libraryChoices}
@@ -72,7 +71,7 @@ export function PickerStatusFooter({
       groupsFailed={failures.zoteroGroups} failure={sourceOpen.failure?.message ?? [...libraryOperations].filter((operation) => operation !== "zoteroGroups" && failures[operation]).map((operation) => say(OPERATION_FAILURES[operation])).join(" ")} />}
 
     hints={command ? { ...hints, enter: command.label, shiftEnter: null } : hints}
-    altHeld={altHeld} actions={{ copy: command ? command.run : copyChosen, add: toggleHighlighted, escape: () => closeNearestLayer() }}
+    altHeld={altHeld} actions={{ copy: command ? command.run : copyChosen, add: toggleHighlighted, escape: () => goBack() }}
     more={
       <PickerMenu isOpen={menuOpen} onOpenChange={(open) => (open ? openMore() : closeMore())}
         buttonRef={moreButton} searchRef={input} libraryDetail={libraryDetail}

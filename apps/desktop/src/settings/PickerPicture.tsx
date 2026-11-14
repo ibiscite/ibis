@@ -12,11 +12,12 @@ import iconButtonStyles from "../ui/IconButton.css?raw";
 import iconStyles from "../ui/Icon.css?raw";
 import optionStyles from "../ui/Option.css?raw";
 import searchBarStyles from "../ui/SearchBar.css?raw";
+import bandStyles from "../ui/Band.css?raw";
 
 const ignore = () => undefined;
 // The real styles stay isolated from Settings, in the app's own order. Each host inherits the current
 // appearance or owns its explicitly requested scheme, never the system default.
-const styles = (foundationStyles + iconStyles + buttonStyles + iconButtonStyles + optionStyles + searchBarStyles + pickerStyles).replace(/@import[^;]+;/g, "")
+const styles = (foundationStyles + iconStyles + buttonStyles + iconButtonStyles + optionStyles + bandStyles + searchBarStyles + pickerStyles).replace(/@import[^;]+;/g, "")
   .replace(/:root(\[[^\]]+\])?/g, (_, attribute: string | undefined) => attribute ? `:host(${attribute})` : ":host");
 /** `frame` is the window's size in CSS pixels; the picture is that window scaled (the default size otherwise). */
 export function PickerPicture({ density = "comfortable", appearance, split = false, frame }: {

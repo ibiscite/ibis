@@ -84,6 +84,7 @@ impl ProjectBibliography {
     }
 
     /// Replace the choice. Nothing from the old file carries over.
+    #[cfg(test)]
     fn choose(&self, path: Option<PathBuf>) -> Option<Ticket> {
         let mut slot = self.lock();
         slot.generation = slot.generation.wrapping_add(1);
@@ -382,12 +383,6 @@ pub(crate) fn activate_context(
     start_read(app, ticket);
 }
 
-/// Read the saved choice at launch.
-pub(crate) fn start(app: &AppHandle, saved: Option<PathBuf>) {
-    let ticket = app.state::<ProjectBibliography>().choose(saved);
-    start_read(app, ticket);
-}
-
 /// One read each time the picker opens, as for a library that has no watch.
 pub(crate) fn watch_openings(app: &AppHandle) {
     use tauri::Listener;
@@ -399,8 +394,8 @@ pub(crate) fn watch_openings(app: &AppHandle) {
 }
 
 fn apply(app: &AppHandle, path: Option<PathBuf>) -> Result<(), crate::library::CommandError> {
-    let owner = crate::writing_projects::bibliography_owner(app)?;
-    crate::writing_projects::set_bibliography(app, &owner, path)
+    let owner = crate::writings::bibliography_owner(app)?;
+    crate::writings::set_bibliography(app, &owner, path)
 }
 
 #[tauri::command]
@@ -416,7 +411,7 @@ pub(crate) fn retry_project(app: AppHandle) {
     // A project changed elsewhere, by the command line for one, is used as
     // saved; a changed bibliography starts its own read here.
     let captured = crate::paste::last_app(&app);
-    let _ = crate::writing_projects::refresh(&app, captured.as_ref().map(|(id, _, _)| id));
+    let _ = crate::writings::refresh(&app, captured.as_ref().map(|(id, _, _)| id));
     let ticket = app.state::<ProjectBibliography>().check_again();
     start_read(&app, ticket);
 }
@@ -431,14 +426,14 @@ pub(crate) fn choose_project(app: AppHandle) {
     #[cfg(target_os = "macos")]
     crate::panel::activate_for_dialog(&app);
     let generation = app.state::<crate::picker::PickerGeneration>().current();
-    let Ok(bibliography_owner) = crate::writing_projects::bibliography_owner(&app) else {
+    let Ok(bibliography_owner) = crate::writings::bibliography_owner(&app) else {
         let _ = app.emit("project:not-saved", ());
         return;
     };
     let mut dialog = app
         .dialog()
         .file()
-        .set_title("Choose the project's bibliography")
+        .set_title("Choose the writing's bibliography")
         .add_filter("BibTeX and BibLaTeX", &["bib", "bibtex", "biblatex"]);
     if let Some(window) = app.get_webview_window("main") {
         dialog = dialog.set_parent(&window);
@@ -447,7 +442,7 @@ pub(crate) fn choose_project(app: AppHandle) {
     dialog.pick_file(move |picked| {
         owner.during(|| {
             if let Some(Ok(path)) = picked.map(|path| path.into_path())
-                && crate::writing_projects::set_bibliography(&handle, &bibliography_owner, Some(path)).is_err()
+                && crate::writings::set_bibliography(&handle, &bibliography_owner, Some(path)).is_err()
             {
                 report(handle.emit("project:not-saved", ()), NativeIssue::LibraryEvent);
             }
@@ -523,7 +518,7 @@ pub(crate) async fn copy_project_entry(
     };
     // Checked last: the choice may have changed during that read.
     let captured = crate::paste::last_app(&app);
-    crate::writing_projects::refresh(&app, captured.as_ref().map(|(id, _, _)| id))?;
+    crate::writings::refresh(&app, captured.as_ref().map(|(id, _, _)| id))?;
     app.state::<ProjectBibliography>()
         .commit_generation(generation, || {
             crate::copy::write_plain(&app, &text).map_err(|_| crate::library::CommandError::ClipboardUnavailable)?;

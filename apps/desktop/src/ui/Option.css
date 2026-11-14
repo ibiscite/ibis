@@ -41,6 +41,18 @@
 .result-title { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: var(--type-title-size); font-weight: var(--strong); line-height: var(--type-title-line); letter-spacing: -.01em; }
 .result-year, .result-meta, .result-why, .result-project, .result-first-author { color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
 .result-year { flex-shrink: 0; margin-inline-start: auto; font-variant-numeric: tabular-nums; }
+/* A row's ⌘1–9 key while the command key is held (docs/design/picker.md, Keys):
+   plain text in the tile column, as a numbered list's marker, never a cap on a
+   plate. It ends where the tile column ends, so a wide "Ctrl+1" grows towards the
+   row's edge and keeps the row gap before the title; the tile drops its glyph and
+   plate for the hold. Paint only: nothing moves, and the year stays. */
+.result-tile > .type-icon { grid-area: 1 / 1; }
+:root[data-keys-held] .result-tile[data-key]::before { content: attr(data-key); position: absolute; inset-block: 0; inset-inline-end: 0; display: flex; align-items: center; white-space: nowrap; direction: ltr; unicode-bidi: isolate; color: var(--text-secondary); font-size: var(--type-body-size); font-weight: 400; line-height: var(--type-body-line); font-variant-numeric: tabular-nums; }
+:root[data-keys-held] [data-active] .result-tile[data-key]::before { color: var(--selected-text-secondary); }
+@media (prefers-contrast: more) { :root[data-keys-held] .result-tile[data-key]::before { color: var(--text); } }
+/* #results lets the hold outrank every row state's plate: hover, selected, cited, contrast. */
+:root[data-keys-held] #results .result-tile[data-key] { position: relative; background: transparent; color: inherit; }
+:root[data-keys-held] #results .result-tile[data-key] > * { visibility: hidden; }
 /* The meta line wraps only when the byline, type and library badge cannot
    all fit at their sizes; then they move under the byline. A body at least
    25em wide (after reserving the tile and year columns) keeps one line, and
@@ -84,6 +96,7 @@
 :root[data-density="compact"] { --row-height: var(--row-compact); }
 :root[data-density="compact"] [role="option"]:where(:not(.ui-side-navigation-item, .ui-palette-row)):not([data-citation-selected]) .result-tile { background: transparent; }
 :root[data-density="compact"] .result-tile { width: 1.5rem; height: 1.5rem; margin-inline: calc((var(--tile) - var(--control-small-h)) / 2); }
+:root[data-density="compact"][data-keys-held] .result-tile[data-key]::before { margin-inline-end: calc((var(--control-small-h) - var(--tile)) / 2); }
 :root[data-density="compact"] .result-meta { display: none; }
 /* Rows that tell similar references apart (#492). Comfortable rows show
    shortened authors and the container on one line; Compact puts the first

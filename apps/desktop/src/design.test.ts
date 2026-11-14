@@ -12,9 +12,11 @@ const { readFileSync, readdirSync } = await vi.importActual<{
 }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const root = new FileURL("./", import.meta.url);
+// Paths read with "/" on every system, so the allowlists below match on Windows too.
+const sources = () => readdirSync(root, { recursive: true }).map((name) => name.replaceAll("\\", "/"));
 const read = (name: string) => readFileSync(new FileURL(name, root), "utf8");
 const sheets = [
-  ...readdirSync(root, { recursive: true }).filter((name) => name.endsWith(".css")).sort().map((name) => [name, read(name)] as const),
+  ...sources().filter((name) => name.endsWith(".css")).sort().map((name) => [name, read(name)] as const),
   ...["style.css", "demo.css"].map((name) => [`website/${name}`, readFileSync(new FileURL(`../../../website/${name}`, import.meta.url), "utf8")] as const),
 ];
 const tokens = read("tokens.css").replace(/\/\*[^]*?\*\//g, "");
@@ -77,7 +79,7 @@ const rules: { says: string; applies?: (file: string) => boolean; breaks: (d: De
   { says: "the glyph stroke cannot be changed by a part", applies: (file) => app(file) && file !== "ui/Progress.css",
     breaks: ({ property }) => property === "stroke-width", planted: ".planted svg { stroke-width: 2; }" },
   { says: "only the shared overlay paints the raised layer, its shadow and its material", applies: (file) => outsideTokens(file) && file !== "ui/Overlay.css",
-    breaks: ({ property, value }) => /backdrop-filter$/.test(property) || /var\(--(surface-overlay|shadow-overlay|blur)\)/.test(value),
+    breaks: ({ property, value }) => /backdrop-filter$/.test(property) || /var\(--(surface-overlay|shadow-overlay|blur|layer-overlay[\w-]*)\)/.test(value),
     planted: ".planted { background: var(--surface-overlay); }" },
   { says: "the floating layer is see-through or blurred only while Reduce Transparency, Increase Contrast and forced colours are all off",
     breaks: ({ property, value, conditions }) => (property === "--surface-overlay" && /\/\s*\d|transparent|color-mix/.test(value)
@@ -113,6 +115,17 @@ test.each(rules)("$says", (rule) => {
   expect(declarations("planted.css", rule.planted).some(rule.breaks), "the rule sees what it forbids").toBe(true);
 });
 
+// [C3] Alignment is decided once, by bands and tokens, never copied as arithmetic:
+// the count of calc() in the app's stylesheets may only fall. Lower the ceiling
+// when it does; a part that needs a column takes a Band or a token instead.
+const CALC_CEILING = 121;
+test(`calc() in the app's stylesheets stays at or under ${CALC_CEILING}`, () => {
+  const count = (css: string) => css.replace(/\/\*[^]*?\*\//g, "").match(/\bcalc\(/g)?.length ?? 0;
+  const found = sheets.filter(([file]) => !file.startsWith("website/")).reduce((sum, [, css]) => sum + count(css), 0);
+  expect(found).toBeLessThanOrEqual(CALC_CEILING);
+  expect(count("/* calc(1px) */ .planted { width: calc(1px + 1rem); }"), "the count sees what it limits").toBe(1);
+});
+
 /** Movements without a Reduce Motion answer: the same selector in the same file
  * answers under prefers-reduced-motion: reduce, or the movement reads a token
  * that the reduced :root redefines. */
@@ -142,7 +155,7 @@ const fromScript = /^--(native-accent|scroll-fade-|choice-columns|footer-fix|tri
 test("every token a stylesheet reads is defined, and every token is read", () => {
   const reads = all.flatMap((d) => [...d.value.matchAll(/var\((--[\w-]+)/g)].map((match) => [d.file, match[1]!] as const));
   expect([...new Set(reads.filter(([, name]) => !defined.has(name) && !fromScript.test(name)).map(([file, name]) => `${file}: ${name}`))]).toEqual([]);
-  const scripts = readdirSync(root, { recursive: true }).filter((name) => name.endsWith(".tsx")).map(read).join("");
+  const scripts = sources().filter((name) => name.endsWith(".tsx")).map(read).join("");
   const used = new Set([...reads.map(([, name]) => name), ...[...scripts.matchAll(/var\((--[\w-]+)/g)].map((match) => match[1]!)]);
   const own = new Set(declarations("tokens.css", read("tokens.css")).filter((d) => d.property.startsWith("--")).map((d) => d.property));
   expect([...own].filter((token) => !token.startsWith("--website-") && !used.has(token))).toEqual([]);
@@ -323,7 +336,7 @@ test("Settings row labels are sentence case, except Apple's own name for a login
 });
 
 test("every icon is one shape, so translucent colours paint it once", () => {
-  const files = readdirSync(root, { recursive: true }).filter((name) => name.endsWith(".tsx") && !name.includes(".test."));
+  const files = sources().filter((name) => name.endsWith(".tsx") && !name.includes(".test."));
   const split = files.flatMap((name) => [...read(name).matchAll(/<svg[^]*?<\/svg>/g)]
     .filter((match) => (match[0].match(/<(path|circle|rect|line)\b/g) ?? []).length > 1).map(() => name));
   expect(split).toEqual([]);

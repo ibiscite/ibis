@@ -39,7 +39,7 @@ The values every part reads, in [`tokens.css`](../../apps/desktop/src/tokens.css
 
 ## Type
 
-- The system UI font (SF Pro on macOS), never another platform's; `--mono` only for citation keys and key-format output.
+- The system UI font (SF Pro on macOS), never another platform's; `--mono` only for citation keys and key-format output. One exception, for reading (maintainer, 2026-11-13): a reference's **title** in the Inspector and the format preview uses Ibis's serif, the website's reading face, as iA Writer and Ulysses set reading text apart from chrome. Everything else stays in the system font.
 - The Mac's text styles as `--type-*` roles: search (title 1, frameless like Spotlight), title (row titles), body (text and menus), meta (descriptions, footer, shelf), label (the smallest), display (Settings headings and the welcome).
 - Weights 400, 500, 600; no uppercase transforms; italics only for "why it matched"; `tabular-nums` on years, counts and pages.
 - Type and vertical sizes are rem; radii and hairlines stay px. Larger text multiplies the root by `--larger-text-scale` and grows the window by the same factor; system scaling multiplies with it, capped at 2.
@@ -93,7 +93,7 @@ The bird appears only where Ibis itself is the subject, in the one treatment of 
 ## Key caps
 
 - One cap per shortcut, written as menus write it: ⌘K, ⇧⌘F, ↵ on macOS; Ctrl+K and Ctrl+Alt+Shift+K, modifiers in that order, on Windows and Linux (`ui/KeyCaps`). A pointer binding reads ⌘-click (Ctrl+click elsewhere).
-- Caps appear only in the footer, the notice slot and key lists. Menus and Settings write shortcuts as plain text in native order (⇧⌘C), secondary like a menu's key equivalent [C8].
+- Caps appear only in the footer, the notice slot and key lists. Menus, Settings and a held row's number write shortcuts as plain text in native order (⇧⌘C), secondary like a menu's key equivalent [C8] (`kbd[data-plain]`).
 - A cap is `--fill-control` with `--r-small`, label type, never an outline or scarlet. Inside a quiet button it keeps its fill; on the primary it is the pressed fill. A trailing cap in a small button is concentric: `--key-gap` above, below and at the end. A one-symbol cap (↵) is square, and ↵ is lowered .1em so it sits optically centred.
 - "or" alternatives keep two caps. Decorative caps are hidden from screen readers; `aria-keyshortcuts` names the keys.
 

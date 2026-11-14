@@ -1,5 +1,5 @@
 //! Formatting and cancellation stay behind the same typed engine boundary.
-use super::{Engine, LocaleInfo, StyleInfo, StylesResult, UpstreamRelease, error};
+use super::{Engine, StylesResult, error};
 use crate::request::StylesRequest;
 use ibis_core::contract::*;
 use ibis_csl::{CancellationToken, FormatError};
@@ -28,6 +28,29 @@ struct Registration {
     parents: Vec<Registration>,
     cancel: Cancellation,
     id: u64,
+}
+
+/// A lazy formatter owner, shareable by libraries in one desktop session.
+/// Key citations leave its worker unstarted unless the client explicitly warms it.
+#[derive(Clone, Default)]
+pub struct Formatting(Arc<Mutex<Option<ibis_csl::Formatter>>>);
+impl Formatting {
+    fn formatter(&self) -> Result<ibis_csl::Formatter, EngineError> {
+        let mut current = self.0.lock().map_err(|_| error(ErrorCode::Internal))?;
+        if let Some(formatter) = current.as_ref() {
+            return Ok(formatter.clone());
+        }
+        // Construction only spawns the worker. A transient OS resource failure
+        // must not permanently disable formatting for this owner.
+        let formatter = ibis_csl::Formatter::new().map_err(|_| error(ErrorCode::ResourceLimit))?;
+        *current = Some(formatter.clone());
+        Ok(formatter)
+    }
+    /// Call in the background at startup, independently of source acquisition.
+    /// No library state, settings or citation receipts are changed.
+    pub fn warm(&self, style: &str, locale: Option<&str>) -> Result<(), EngineError> {
+        self.formatter()?.warm(style, locale).map_err(formatter_error)
+    }
 }
 impl Drop for Registration {
     fn drop(&mut self) {
@@ -116,41 +139,7 @@ impl Engine {
         if !(1..=20_000).contains(&request.limit) || request.query.as_ref().is_some_and(|query| query.len() > 1024) {
             return Err(error(ErrorCode::BadInput));
         }
-        let page = ibis_csl::styles(request.query.as_deref().unwrap_or(""), request.limit, request.offset)
-            .map_err(formatter_error)?;
-        let release = |release: ibis_csl::Release| UpstreamRelease {
-            repo: release.repo,
-            tag: release.tag,
-            commit: release.commit,
-        };
-        Ok(StylesResult {
-            styles: page
-                .styles
-                .into_iter()
-                .map(|style| StyleInfo {
-                    id: style.id,
-                    title: style.title,
-                    updated: style.updated,
-                    curated: style.curated,
-                    parent: style.parent,
-                    default_locale: style.default_locale,
-                    format: style.format,
-                    fields: style.fields,
-                })
-                .collect(),
-            total: page.total,
-            locales: page
-                .locales
-                .into_iter()
-                .map(|locale| LocaleInfo {
-                    tag: locale.tag,
-                    native: locale.native,
-                    english: locale.english,
-                })
-                .collect(),
-            styles_release: release(page.styles_release),
-            locales_release: release(page.locales_release),
-        })
+        ibis_csl::styles(request.query.as_deref().unwrap_or(""), request.limit, request.offset).map_err(formatter_error)
     }
     pub(super) fn formatted(
         &self,
@@ -160,42 +149,7 @@ impl Engine {
         output: &ibis_csl::ResolvedOutput,
     ) -> Result<CitationResult, EngineError> {
         cancel.check()?;
-        // The request is wrong, not its items: refuse it whole, before formatting.
-        let annotations: Vec<_> = request
-            .items
-            .iter()
-            .map(|pick| super::prepared::annotation_error(snapshot, pick, None))
-            .collect();
-        if annotations.iter().any(Option::is_some) {
-            return Ok(CitationResult::new(
-                String::new(),
-                None,
-                None,
-                DisplayTree::default(),
-                annotations
-                    .into_iter()
-                    .enumerate()
-                    .map(|(item, error)| ItemOutcome::Refused {
-                        item,
-                        error: error.unwrap_or(CitationError::UnsupportedForm),
-                    })
-                    .collect(),
-                vec![],
-                vec![],
-            ));
-        }
-        let formatter = {
-            let mut current = self.shared.formatter.lock().map_err(|_| error(ErrorCode::Internal))?;
-            if let Some(formatter) = current.as_ref() {
-                formatter.clone()
-            } else {
-                // Construction only spawns the worker. A transient OS resource failure
-                // must not permanently disable formatting for this engine.
-                let formatter = ibis_csl::Formatter::new().map_err(|_| error(ErrorCode::ResourceLimit))?;
-                *current = Some(formatter.clone());
-                formatter
-            }
-        };
+        let formatter = self.formatting.formatter()?;
         let task = match formatter.submit_resolved(snapshot.clone(), request.clone(), output) {
             Ok(task) => task,
             Err(failure) => return Err(formatter_error(failure)),
@@ -208,6 +162,7 @@ impl Engine {
 }
 pub(crate) fn formatter_error(failure: FormatError) -> EngineError {
     match failure {
+        FormatError::Citation(error) => EngineError::citation(error),
         FormatError::Busy | FormatError::TimedOut | FormatError::ResourceLimit => error(ErrorCode::ResourceLimit),
         FormatError::Cancelled => error(ErrorCode::Cancelled),
         FormatError::InvalidRequest => error(ErrorCode::BadInput),
@@ -224,6 +179,30 @@ mod tests {
     use std::time::{Duration, Instant};
     fn case() -> GoldenCase {
         serde_json::from_str(include_str!("../../../../fixtures/cases/02-pandoc.json")).unwrap()
+    }
+    #[test]
+    fn startup_formatting_does_not_wait_for_library_acquisition() {
+        let formatting = Formatting::default();
+        std::thread::scope(|scope| {
+            let (release, held) = std::sync::mpsc::channel();
+            let (finished, warmed) = std::sync::mpsc::channel();
+            let loading = formatting.clone();
+            let library = scope.spawn(move || {
+                // The source cannot finish until formatting has warmed.
+                held.recv_timeout(Duration::from_secs(5)).unwrap();
+                Engine::from_snapshot(Arc::new(case().library)).with_formatting(loading)
+            });
+            scope.spawn(move || finished.send(formatting.warm("apa", None)).unwrap());
+            let warm = warmed.recv_timeout(Duration::from_secs(5));
+            release.send(()).unwrap();
+            warm.unwrap().unwrap();
+            let engine = library.join().unwrap();
+            let mut request = case().request;
+            request.output = OutputSpec::Csl { style: "apa".into() };
+            let preview = engine.cite(&request, &Cancellation::default()).unwrap();
+            assert!(!preview.text.is_empty());
+            assert!(preview.copy_content(request.items.len()).is_some());
+        });
     }
     #[test]
     fn cancellation_reaches_format_workers_and_next_request_recovers() {

@@ -68,17 +68,18 @@ export function usePickerActions({
   const stayOpen = pinned || Boolean(shown && typeof shown === "object" && (shown.warnings.length || closestMatchWarnings(offered).length));
   // The keys sheet names what Enter does from the same answer as the footer,
   // and lists the global shortcut too, when it works.
-  const enterRow = enterPastes(destination.app, canPaste, stayOpen) ? "shortcuts-action-paste" as const : "shortcuts-action-copy-only" as const;
+  const enterRow = destination.findOpen ? "shortcuts-action-find-open" as const : enterPastes(destination.app, canPaste, stayOpen) ? "shortcuts-action-paste" as const : "shortcuts-action-copy-only" as const;
   const bindings: readonly KeyBinding[] = [
     ...KEY_TABLE.map((binding) => binding.action === "copy" ? { ...binding, label: enterRow } : binding),
+    ...destination.findOpen ? [{ region: "search", action: "copyCitation", keys: ["Alt+Enter"] } as const] : [],
     ...shortcut?.registered ? [{ region: "system", action: "open", keys: [shortcut.shortcut], displayLabel: shortcut.desktop ? shortcut.shortcut : undefined } as const] : [],
   ];
   // What Enter does now, from the same state the copy uses; null when it does nothing.
   // A refused or stale engine preview cannot be copied.
   const enterAction = offered.length === 0 || shown === "stale" || shown === "failed" ? null
-    : state.changing !== null ? say("picker-change-citation", { format: outputName(format) })
+    : destination.findOpen ? say("picker-find-open") : state.changing !== null ? say("picker-change-citation", { format: outputName(format) })
     : enterLabel(format, offered.length, destination.app, canPaste, stayOpen, Boolean(list && selected.size === 0))
-      // A style that would sort keeps the person's order: the footer says so, not the line.
+      // A style that would sort keeps the person’s order: the footer says so, not the line.
       + (state.keepOrder && writesStyle && offered.length > 1 ? ` · ${say("picker-your-order")}` : "");
   // Only a row that answers the current query can be added or given a locator.
   const highlighted = ready ? results[active] : undefined;
@@ -89,11 +90,11 @@ export function usePickerActions({
     choiceKey([prepared]) !== choiceKey([{ ...prepared, locator: usingLocator.locator ?? prepared.locator, prefix: usingLocator.prefix ?? prepared.prefix }]);
   const shiftEnterAction = highlighted && showCitations
     ? (selected.has(idKey(highlighted.id)) ? say("key-remove-from-citation") : say("key-add-to-citation")) : null;
-  const escapeAction = nearest === "sheet" || nearest === "panel" || nearest === "chooser" ? say("key-close") : nearest === "menu" ? say("key-close-menu")
+  const escapeAction = nearest === "sheet" || nearest === "panel" || nearest === "chooser" ? say("key-close") : nearest === "menu" || nearest === "palette" ? say("key-close-menu")
     : nearest === "search" ? say("key-clear-search") : say("key-hide");
   const rememberedCitation = showCitations && destination.ready && state.view?.remembersLast && destination.appId ? state.lastCitations.get(destination.appId) : undefined;
-  const lastCitation = rememberedCitation && (rememberedCitation.project ?? null) === (destination.writingProject?.id ?? null)
-    && (!destination.writingProject || rememberedCitation.format === format) ? rememberedCitation : undefined;
+  const lastCitation = rememberedCitation && (rememberedCitation.project ?? null) === (destination.writing?.id ?? null)
+    && (!destination.writing || rememberedCitation.format === format) ? rememberedCitation : undefined;
   /** Change Last Citation acts on the shelf, so nothing stays in its way. */
   const changeLast = () => {
     if (!lastCitation) return;

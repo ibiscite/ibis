@@ -1,5 +1,5 @@
-import { citationDisplay } from "../../test-fixtures";
 import { recordId } from "../../test-fixtures";
+import { displayTree } from "../../testing/app";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { initialSession } from "./session";
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -54,7 +54,7 @@ function reference(revision = "1", key = "synthetic"): CitationReference {
 }
 
 function preview(text: string): Preview {
-  return { effective_output: null, text, display: citationDisplay([{ item: 0, text }]), html: null, warnings: [], ticket: "synthetic-ticket", content_hash: "synthetic-hash" };
+  return { effective_output: null, text, display: displayTree([{ item: 0, text }]), warnings: [], ticket: "synthetic-ticket", content_hash: "synthetic-hash" };
 }
 
 function options(overrides: Partial<Options>): Options {
@@ -227,7 +227,7 @@ test("a failed native preview keeps its actionable explanation without refreshin
 
 test("a shared citation key keeps its existing explanation ahead of a supplied message", async () => {
   const previewFileCitation = vi.fn<PreviewOperation>().mockRejectedValue({
-    code: "shared_citation_key", message: { id: "app-command-shared-citation-key", args: { key: "synthetic" } }, recovery: { action: "choose-style" }, focus: "format-picker",
+    code: "ambiguous-key", message: { id: "app-command-shared-citation-key", args: { key: "synthetic" } }, recovery: { action: "choose-style" }, focus: "format-picker",
   });
   const { result } = renderHook(useOutputInSession, {
     initialProps: options({ previewFileCitation }),

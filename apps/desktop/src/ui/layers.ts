@@ -1,26 +1,46 @@
-// What Esc closes in a window, and the one key listener that decides. Screens
-// and controls register what they open and never handle Escape themselves.
-import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
+// The view stack: what is open in a window, nearest first, and the one key
+// listener that walks back through it. Screens and controls register what they
+// open and never handle a going-back key themselves (decision 0047).
+import { createContext, useContext, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { flushSync } from "react-dom";
 import { composing } from "../composition";
 import { isBackShortcut } from "../keys";
 
-/** What Esc closes, nearest first. */
-export const LAYER_ORDER = ["menu", "sheet", "panel", "chooser", "search", "window"] as const;
+/** What is open, nearest first. A menu and a popover are transient: they float
+ * over the window, one at a time. A palette and a sheet are views: they take the
+ * window's place. A panel sits in the window, beside the list. */
+export const LAYER_ORDER = ["menu", "popover", "palette", "sheet", "panel", "chooser", "search", "window"] as const;
 export type LayerKind = (typeof LAYER_ORDER)[number];
+
+/** The ways back: Esc; the platform's Back (⌘[, Alt+Left, the mouse's Back
+ * button); Backspace in an empty field. */
+export type Gesture = "escape" | "back" | "erase";
+/** Decision 0047's table: which ways back each layer answers. The nearest layer
+ * decides alone, so an open pop-up keeps Back and Backspace from the view under it. */
+export const GOING_BACK: Record<LayerKind, readonly Gesture[]> = {
+  menu: ["escape"], popover: ["escape", "back"], palette: ["escape", "back", "erase"], sheet: ["escape", "back"], panel: ["escape", "back"],
+  chooser: ["escape"], search: ["escape"], window: ["escape"],
+};
 
 /** A layer closes itself. Given the key that asked, it returns focus to what
  * opened it, or returns false to hand that key on (a menu with a submenu open).
  * Without a key a command is clearing the way: it closes at once and goes home. */
 export type LayerClose = (event?: KeyboardEvent) => boolean | void;
-type Layer = { kind: LayerKind; close: LayerClose };
+type Layer = { kind: LayerKind; close: LayerClose; parent: Scope | null };
+const TRANSIENT: readonly LayerKind[] = ["menu", "popover"];
+const VIEWS: readonly LayerKind[] = ["palette", "sheet"];
+// What opens over the picker or Settings. Search and the window register too, but
+// typing is not opening anything, so they close nothing.
+const SURFACES: readonly LayerKind[] = [...TRANSIENT, ...VIEWS, "panel"];
+// Read when asked: a surface that mounts open registers before the layer around it.
+const within = (layer: Layer, outer: Layer) => { for (let at = layer.parent?.current; at; at = at.parent?.current) if (at === outer) return true; return false; };
 
 /** The window's own keys and where its keyboard rests. Without an owner the
  * listener still closes layers, so Settings' menus follow the same rule. */
 export type KeyOwner = { keyDown: (event: KeyboardEvent) => void; home: () => void };
 
 // What floats over the window. A panel sits in it and stays live beside the list.
-const OVERLAYS: readonly LayerKind[] = ["sheet", "menu"];
+const OVERLAYS: readonly LayerKind[] = ["sheet", "palette", "menu"];
 const layers: Layer[] = [];
 const watchers = new Set<() => void>();
 let owner: KeyOwner | null = null;
@@ -29,7 +49,8 @@ let settling = false;
 let listening = false;
 
 const rank = (layer: Layer) => LAYER_ORDER.indexOf(layer.kind);
-const nearest = () => layers.reduce<Layer | undefined>((best, layer) => !best || rank(layer) <= rank(best) ? layer : best, undefined);
+const nearest = () => layers.filter((layer) => !layers.some((other) => within(other, layer)))
+  .reduce<Layer | undefined>((best, layer) => !best || rank(layer) <= rank(best) ? layer : best, undefined);
 
 /** Whether the keyboard rests where no key handler or text field can use it. */
 export function focusLost(): boolean {
@@ -46,15 +67,16 @@ export function composingKey(event: KeyboardEvent): boolean {
 export const compositionInProgress = () => composition instanceof Node && composition.isConnected;
 
 /** A key has one effect: nothing else sees a key that a layer or command used. */
-export function consumeKey(event: KeyboardEvent) {
+export function consumeKey(event: Event) {
   event.preventDefault();
   event.stopPropagation();
 }
 
-/** Close the nearest layer, as Esc does. False when it handed the key on. */
-export function closeNearestLayer(event?: KeyboardEvent): boolean {
+/** Go back one step: the nearest layer closes if it answers `gesture`. False
+ * when nothing answered or the layer handed the key on. */
+export function goBack(gesture: Gesture = "escape", event?: KeyboardEvent): boolean {
   const layer = nearest();
-  if (!layer) return false;
+  if (!layer || !GOING_BACK[layer.kind].includes(gesture)) return false;
   let closed = true;
   // Commit now: the layer returns focus itself, then the screen it left is checked.
   flushSync(() => { closed = layer.close(event) !== false; });
@@ -69,16 +91,33 @@ export function closeOverlays() {
   for (const layer of [...layers].filter((candidate) => OVERLAYS.includes(candidate.kind)).sort((a, b) => rank(a) - rank(b))) layer.close();
 }
 
+const answered = (gesture: Gesture) => { const layer = nearest(); return layer !== undefined && GOING_BACK[layer.kind].includes(gesture); };
+const emptyField = (target: EventTarget | null) => (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) && target.value === "";
+
 // Runs before anything in the page, so no control can swallow Escape or a
-// command, and focus resting nowhere cannot lose them.
+// command, and focus resting nowhere cannot lose them. Back and an empty
+// Backspace go back here; Esc goes to the window's owner first, which keeps one
+// step per press.
 function keyDown(event: KeyboardEvent) {
-  if (owner) owner.keyDown(event);
-  else if (event.key === "Escape" && !composingKey(event) && closeNearestLayer(event)) consumeKey(event);
+  const plain = !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
+  const gesture = isBackShortcut(event) ? "back" : event.key === "Backspace" && plain && emptyField(event.target) ? "erase" : null;
+  if (gesture && !composingKey(event) && answered(gesture)) {
+    consumeKey(event);
+    // A held key never walks back: it must be released and pressed again.
+    if (!event.repeat) goBack(gesture, event);
+  } else if (owner) owner.keyDown(event);
+  // One press, one step: a held Esc never walks down the stack.
+  else if (event.key === "Escape" && !composingKey(event) && (event.repeat ? answered("escape") : goBack("escape", event))) consumeKey(event);
+}
+function mouseDown(event: MouseEvent) {
+  if (event.button !== 3 || event.defaultPrevented || compositionInProgress() || !answered("back")) return;
+  event.preventDefault(); event.stopPropagation();
+  goBack("back");
 }
 const compositionStart = (event: Event) => { composition = event.target; };
 const compositionEnd = () => { composition = null; };
-// Views handle Back first. Any unused Back must still never leave the webview,
-// including Search's no-op and the release after a mouse press closed a view.
+// Any unused Back must still never leave the webview, including Search's no-op
+// and the release after a mouse press closed a view.
 const preventBrowserBackKey = (event: KeyboardEvent) => { if (isBackShortcut(event) && !composingKey(event)) event.preventDefault(); };
 const preventBrowserBackMouse = (event: MouseEvent) => { if (event.button === 3) event.preventDefault(); };
 
@@ -88,6 +127,7 @@ function listen() {
   listening = needed;
   const change = needed ? window.addEventListener : window.removeEventListener;
   change("keydown", keyDown, true);
+  change("mousedown", mouseDown, true);
   change("compositionstart", compositionStart, true);
   change("compositionend", compositionEnd, true);
   change("keydown", preventBrowserBackKey);
@@ -98,6 +138,9 @@ function listen() {
 
 function changed() {
   listen();
+  // While a view is open the window shows only it.
+  if (layers.some((layer) => VIEWS.includes(layer.kind))) document.documentElement.dataset.view = "";
+  else delete document.documentElement.dataset.view;
   for (const watcher of watchers) watcher();
 }
 
@@ -109,26 +152,61 @@ function settle() {
   if (focusLost() && !overlayOpen()) owner?.home();
 }
 
+/** A layer's handle: whether it is nearest, so its own keys act only then, and
+ * `leave`, which takes it off the stack at once, before it unmounts, so what is
+ * under it shows before focus returns there. */
+export type LayerHandle = { nearest: () => boolean; leave: () => void; scope: Scope };
+type Scope = { readonly current: Layer | null };
+/** The layer whatever renders inside it belongs to (ui/Layer). It crosses portals. */
+export const LayerParent = createContext<Scope | null>(null);
+
+// One rule, so no opener has to clear the way itself: a surface opening closes
+// every open transient it is not inside or around, and a view every other view.
+// It runs after the commit that opened it, where a closing layer may flush, and
+// focus stays where the new surface put it.
+function displace(layer: Layer) {
+  const rivals = layers.filter((other) => other !== layer && !within(layer, other) && !within(other, layer)
+    && (TRANSIENT.includes(other.kind) || VIEWS.includes(layer.kind) && VIEWS.includes(other.kind))).reverse();
+  if (!rivals.length) return;
+  queueMicrotask(() => {
+    if (!layers.includes(layer)) return;
+    const focused = document.activeElement;
+    for (const rival of rivals) if (layers.includes(rival)) flushSync(() => { rival.close(); });
+    if (focused instanceof HTMLElement && focused.isConnected && document.activeElement !== focused) focused.focus({ preventScroll: true });
+  });
+}
+
 /** Keep a layer on the stack while `open`. `close` may change every render. */
-export function useLayer(kind: LayerKind, open: boolean, close: LayerClose) {
+export function useLayer(kind: LayerKind, open: boolean, close: LayerClose): LayerHandle {
   const latest = useRef(close);
   const registered = useRef<Layer | null>(null);
+  const parent = useContext(LayerParent);
   useLayoutEffect(() => { latest.current = close; });
   useLayoutEffect(() => {
     if (!open) return;
-    const layer: Layer = { kind, close: (event) => latest.current(event) };
+    const layer: Layer = { kind, close: (event) => latest.current(event), parent };
     registered.current = layer;
     layers.push(layer);
     changed();
+    if (SURFACES.includes(kind)) displace(layer);
     return () => {
       registered.current = null;
-      layers.splice(layers.indexOf(layer), 1);
-      changed();
+      const at = layers.indexOf(layer);
+      if (at >= 0) { layers.splice(at, 1); changed(); }
       settling = true;
       queueMicrotask(settle);
     };
-  }, [kind, open]);
-  return () => registered.current !== null && nearest() === registered.current;
+  }, [kind, open, parent]);
+  const handle = useRef<LayerHandle>(null);
+  handle.current ??= {
+    scope: registered,
+    nearest: () => registered.current !== null && nearest() === registered.current,
+    leave: () => {
+      const at = registered.current ? layers.indexOf(registered.current) : -1;
+      if (at >= 0) { layers.splice(at, 1); changed(); }
+    },
+  };
+  return handle.current;
 }
 
 /** Make `keys` the window's key owner while mounted. */

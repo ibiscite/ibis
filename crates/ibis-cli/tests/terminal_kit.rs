@@ -120,7 +120,7 @@ fn broken_config_does_not_hide_sources_or_repair_primary_or_backup() {
     let config = dir.join("settings.json");
     let backup = dir.join("settings.json.bak");
     let broken = b"{synthetic private config payload";
-    let saved = serde_json::to_vec(&ibis_core::settings::Settings::default()).unwrap_or_default();
+    let saved = serde_json::to_vec(&ibis_engine::settings::Settings::default()).unwrap_or_default();
     std::fs::write(&config, broken).unwrap_or_else(|error| panic!("{error}"));
     std::fs::write(&backup, &saved).unwrap_or_else(|error| panic!("{error}"));
     let (code, report) = doctor(&[
@@ -165,7 +165,7 @@ fn doctor_leaves_an_entire_invented_home_and_selected_sources_unchanged() {
     std::fs::write(&config, b"{invalid invented settings").unwrap();
     std::fs::write(
         config.with_extension("json.bak"),
-        serde_json::to_vec(&ibis_core::settings::Settings::default()).unwrap(),
+        serde_json::to_vec(&ibis_engine::settings::Settings::default()).unwrap(),
     )
     .unwrap();
     std::fs::write(&file, "@misc{invented,title={Invented}}").unwrap();

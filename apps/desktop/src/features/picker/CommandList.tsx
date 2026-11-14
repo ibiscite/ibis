@@ -2,6 +2,7 @@ import { Icon } from "../../icons";
 import { keyLabel } from "../../keys";
 import { say } from "../../i18n";
 import { currentPlatform } from "../../platform";
+import { FrameHeading } from "../../ui/Frame";
 import { Option } from "../../ui/Option";
 import type { PickerCommandEntry } from "./commands";
 
@@ -14,9 +15,10 @@ export function CommandList({ commands, active, hoverAllowed, onRun }: {
   onRun: (command: PickerCommandEntry) => void;
 }) {
   const mac = currentPlatform() === "macos";
-  if (!commands.length) return <div className="results-heading" role="status"><span>{say("picker-no-commands")}</span></div>;
+  // The heading sits in the frame's line, as the results' does, where a notice can stand in for it.
+  if (!commands.length) return <FrameHeading><div className="results-heading" role="status"><span>{say("picker-no-commands")}</span></div></FrameHeading>;
   return <>
-    <div className="results-heading" aria-hidden="true"><span>{say("picker-commands")}</span></div>
+    <FrameHeading><div className="results-heading" aria-hidden="true"><span>{say("picker-commands")}</span></div></FrameHeading>
     <ul id="results" role="listbox" aria-label={say("picker-commands")}>
       {commands.map((command, i) => <Option key={command.id} id={`command-${i}`} className="command-row" role="option" aria-selected={i === active}
         aria-keyshortcuts={command.keys || undefined} aria-description={command.about} data-density="compact" data-active={i === active || undefined}

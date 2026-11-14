@@ -11,11 +11,13 @@ export type EditorEndpointApi = {
   editorEndpoint: () => Promise<EndpointStatus>;
   setEditorEndpoint: (on: boolean) => Promise<EndpointStatus>;
   copyEditorEndpoint: () => Promise<null>;
+  onEditorEndpoint?: (listener: (status: EndpointStatus) => void) => Promise<() => void>;
 };
 
 const PROBLEMS: Record<EndpointProblem, MessageId> = {
   "port-in-use": "citations-editor-port-in-use", "bad-setting": "citations-editor-bad-setting", "not-saved": "citations-editor-not-saved",
 };
+const sameStatus = (a: EndpointStatus, b: EndpointStatus) => a.on === b.on && a.url === b.url && a.problem === b.problem;
 
 /** Settings › Citations › Editor endpoint (#42). Off until switched on; the
  * address holds the token that opens the picker, so it is shown only here. */
@@ -28,25 +30,54 @@ export function EditorEndpointRow({ api, highlighted, resetSetting, onEdit }: {
   const [failed, setFailed] = useState(false);
   const [copied, setCopied] = useState(false);
   const asked = useRef(0);
+  const latestStatus = useRef<EndpointStatus | null>(null);
+  const pending = useRef<{ ticket: number; expected: boolean; observed: EndpointStatus | null } | null>(null);
   const mounted = useRef(true);
   const fallback = useRef<HTMLElement | null>(null);
   const localUndo = useSettingUndo(false, fallback);
   const reset = resetSetting ?? localUndo.reset;
   // Only the newest answer counts: a slow read cannot undo a newer switch.
-  const take = (request: Promise<EndpointStatus>, expected?: boolean) => {
+  const take = (request: () => Promise<EndpointStatus>, expected?: boolean) => {
     const ticket = ++asked.current;
+    pending.current = expected === undefined ? null : { ticket, expected, observed: null };
     if (mounted.current) { setFailed(false); setCopied(false); }
-    return request.then((next) => {
-      if (mounted.current && ticket !== asked.current) throw new Error("Endpoint change superseded");
-      if (mounted.current) setStatus(next);
+    return request().then((next) => {
+      if (!mounted.current || ticket !== asked.current) throw new Error("Endpoint change superseded");
+      const observed = pending.current?.observed;
+      if (observed && !sameStatus(observed, next)) {
+        asked.current += 1;
+        onEdit?.(); localUndo.clear();
+        throw new Error("Endpoint change superseded");
+      }
+      latestStatus.current = next; setStatus(next);
       if (expected !== undefined && (next.on !== expected || next.problem)) throw new Error("Endpoint change refused");
-    }).catch((error: unknown) => { if (mounted.current && ticket === asked.current) setFailed(true); throw error; });
+    }).catch((error: unknown) => { if (mounted.current && ticket === asked.current) setFailed(true); throw error; })
+      .finally(() => { if (pending.current?.ticket === ticket) pending.current = null; });
   };
   // biome-ignore lint/correctness/useExhaustiveDependencies: read once when the page opens.
-  useEffect(() => { mounted.current = true; void take(api.editorEndpoint()).catch(() => undefined); return () => { mounted.current = false; asked.current += 1; }; }, [api.editorEndpoint]);
+  useEffect(() => { mounted.current = true; void take(api.editorEndpoint).catch(() => undefined); return () => { mounted.current = false; asked.current += 1; }; }, [api.editorEndpoint]);
+  useEffect(() => {
+    let alive = true;
+    const events = api.onEditorEndpoint?.((next) => {
+      if (!alive) return;
+      // An acknowledgement of this save may arrive before its command reply.
+      // A different live choice retires the operation and its possible Undo.
+      if (pending.current?.expected !== next.on || next.problem) {
+        asked.current += 1;
+        pending.current = null;
+        const previous = latestStatus.current;
+        if (!previous || !sameStatus(previous, next)) {
+          onEdit?.(); localUndo.clear();
+        }
+      } else pending.current.observed = next;
+      latestStatus.current = next;
+      setStatus(next); setFailed(false); setCopied(false);
+    });
+    return () => { alive = false; void events?.then((stop) => stop()); };
+  }, [api.onEditorEndpoint, onEdit, localUndo.clear]);
   const change = (on: boolean, restoring = false) => {
     if (!restoring) { onEdit?.(); localUndo.clear(); }
-    return take(api.setEditorEndpoint(on), on);
+    return take(() => api.setEditorEndpoint(on), on);
   };
   const problem = status?.problem ? PROBLEMS[status.problem] : failed ? "citations-editor-not-saved" : undefined;
   return <>

@@ -1,4 +1,4 @@
-import { citationDisplay } from "./test-fixtures";
+import { fixtureDestination, formatAnswer } from "./testing/format";
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
@@ -10,7 +10,7 @@ import config from "../src-tauri/tauri.conf.json";
 import { OUTPUTS } from "./bindings";
 import { outputName, type OutputId } from "./format/outputs";
 import { recordId } from "./test-fixtures";
-import { backend, chooseFromMore, paletteRow, chooseFromLibrary, libraryButton, prepared, receipt, resetApp, result, type PreviewRequest, type SyntheticId, openCitationDetails, closeCitationDetails, inCitation, findInCitation, removeFromCitation, citationKeys } from "./testing/app";
+import { displayTree, backend, chooseFromMore, paletteRow, chooseFromLibrary, libraryButton, prepared, receipt, resetApp, result, type PreviewRequest, type SyntheticId, openCitationDetails, closeCitationDetails, inCitation, findInCitation, removeFromCitation, citationKeys } from "./testing/app";
 
 afterEach(resetApp);
 
@@ -54,7 +54,7 @@ test("editing Page in a pasted list preserves every reference in preview and cop
         ...(item ? [{ item: null, text: "; " }] : []),
         { item, text: `@${id.key}${locator_input ? `, p. ${locator_input.text}` : ""}` },
       ]);
-      return { ...receipt(spans.map((span) => span.text).join("")), display: citationDisplay(spans) };
+      return { ...receipt(spans.map((span) => span.text).join("")), display: displayTree(spans) };
     },
     copy_file_citation: copied,
   });
@@ -253,7 +253,7 @@ test("a preview the engine keeps refusing says so, and Copy is gone instead of w
 });
 
 test("a duplicate-key refusal stays visible before Details and copying stays blocked", async () => {
-  const shared = { code: "shared_citation_key", message: { id: "app-command-shared-citation-key", args: { key: "same" } },
+  const shared = { code: "ambiguous-key", message: { id: "app-command-shared-citation-key", args: { key: "same" } },
     recovery: { action: "choose-style" }, focus: "format-picker" };
   const calls = backend({
     search: () => [result("same", "First")],
@@ -267,7 +267,7 @@ test("a duplicate-key refusal stays visible before Details and copying stays blo
   const refusal = await screen.findByRole("alert");
   expect(refusal.textContent).toContain(message);
   expect(refusal.textContent).toContain("Give one of them a different key in Zotero or your .bib file.");
-  expect(refusal.closest(".notices")).toBeTruthy();
+  expect(refusal.closest(".shelf")).toBeTruthy();
   expect(screen.queryByRole("dialog")).toBeNull();
   fireEvent.keyDown(box, { key: "Enter" });
   expect(calls).not.toContain("copy_file_citation");
@@ -347,6 +347,31 @@ test("C5 click selects without copying and double-click copies the highlighted c
   await waitFor(() => expect(copied).toHaveBeenCalledOnce());
 });
 
+test("⌘1–9 (Ctrl elsewhere) does what a double-click on that numbered row does, only while the list is shown", async () => {
+  const copied = vi.fn(() => ({ text: "[@b]", warnings: [] }));
+  backend({ search: () => [result("a", "First"), result("b", "Second"), result("c", "Third")], copy_file_citation: copied });
+  render(<App />);
+  const search = screen.getByLabelText("Search references");
+  await screen.findByText("Third");
+  // Each shown row carries its number for the keys sheet and assistive technology.
+  expect(screen.getAllByRole("option").map((row) => row.getAttribute("aria-keyshortcuts"))).toEqual(["Control+1", "Control+2", "Control+3"]);
+  // Held, each number takes its row's leading tile; the year, citation context, stays.
+  expect(screen.getAllByRole("option").map((row) => [row.querySelector(".result-tile")?.getAttribute("data-key"), row.querySelector(".result-year")?.textContent]))
+    .toEqual([["Ctrl+1", "2020"], ["Ctrl+2", "2020"], ["Ctrl+3", "2020"]]);
+  screen.getAllByRole("option").forEach((row, i) => expect(row.textContent).not.toContain(`Ctrl+${i + 1}`));
+  // No fourth row: the key is left alone.
+  expect(fireEvent.keyDown(search, { key: "4", code: "Digit4", ctrlKey: true })).toBe(true);
+  // The command list stands in for the results: no row has a number.
+  fireEvent.change(search, { target: { value: ">" } });
+  expect(fireEvent.keyDown(search, { key: "2", code: "Digit2", ctrlKey: true })).toBe(true);
+  fireEvent.change(search, { target: { value: "" } });
+  await screen.findByText("Third");
+  // AZERTY types & on the 2 key's neighbour; the physical key decides.
+  expect(fireEvent.keyDown(search, { key: "é", code: "Digit2", ctrlKey: true })).toBe(false);
+  await waitFor(() => expect(copied).toHaveBeenCalledOnce());
+  expect(screen.getByRole("option", { name: /Second/ }).getAttribute("aria-selected")).toBe("true");
+});
+
 test.each([null, "toggle", "copy"])("C5 native context completion %s uses the current row without a browser menu", async (action) => {
   const context = vi.fn(() => action);
   const copied = vi.fn(() => ({ text: "[@b]", warnings: [] }));
@@ -377,7 +402,7 @@ test.each(["query", "hide", "selection", "revision", "highlight", "failure"])("C
   if (change === "revision") await act(async () => { await emit("library:changed", { state: "loaded", has_snapshot: true, revision: "2", references: 2 }); });
   if (change === "selection") fireEvent.click(screen.getByText("First"), { shiftKey: true });
   if (change === "failure") {
-    expect(await screen.findByRole("alert")).toHaveProperty("textContent", "The reference menu could not open. Use Enter to copy or Shift+Enter to add.");
+    expect(await screen.findByRole("alert")).toHaveProperty("textContent", "The row menu could not open. Enter copies, Shift+Enter adds.");
     expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
   } else await act(async () => { finish(change === "highlight" ? "toggle" : "copy"); await pending; });
   expect(copied).not.toHaveBeenCalled();
@@ -986,7 +1011,7 @@ test("the library is shown, can be chosen and reloaded, and failures are explain
     note: null,
   });
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("not opened"));
-  expect(document.querySelector(".notices")?.textContent).toBe("");
+  expect(document.querySelector(".ui-line-notice, .notice-slot")).toBeNull();
   expect(document.querySelector(".library-status-trigger")?.getAttribute("title")).toContain("could not be opened");
 });
 
@@ -1108,7 +1133,7 @@ test("failed status and saved choice reads show safe notices without hiding sear
   await screen.findByText("Available reference");
   expect(screen.getByText("Ibis could not check your library. Choose the file again.").getAttribute("role")).toBe("alert");
   // Unreadable choices are not replaced with defaults on disk; the default format applies meanwhile.
-  expect(await screen.findByText("Ibis could not read or save your picker choices. They apply until Ibis restarts.")).toBeTruthy();
+  expect(await screen.findByText("Your picker choices could not be saved. They apply until restart.")).toBeTruthy();
   expect(screen.getByRole("region", { name: "Picker actions" }).textContent).not.toContain("No library chosen");
   expect(formatValue()).toBe("pandoc");
   expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
@@ -1293,7 +1318,7 @@ test.each(["", "sleep"])("an empty loaded library is explained even for query %s
   const title = await screen.findByText("No references in empty 研究.bib");
   expect(title.compareDocumentPosition(screen.getByRole("listbox", { name: "No references in empty 研究.bib" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(document.querySelector(".results-heading")).toBeNull();
-  expect(screen.getByText("Choose a library with references.")).toBeTruthy();
+  expect(screen.getByText("Add references to it, or choose another library.")).toBeTruthy();
   expect(screen.queryByText("Type to find a reference")).toBeNull();
   expect(screen.queryByText("No matching references")).toBeNull();
   expect(screen.getByRole("option", { name: /^Choose a Library File…/ })).toBeTruthy();
@@ -1314,7 +1339,10 @@ test("a citation style shows a safe engine preview and copies its receipt with w
   backend({
     search: () => [result("a", "First"), result("b", "Second")],
     preview_file_citation: ({ items, output }) => output === "ieee"
-      ? receipt("Garcia, First", "Garcia, <i>First</i><img src=x onerror=alert(1)>")
+      ? receipt("Garcia, First", displayTree([{ item: 0, text: "Garcia, First", runs: [
+          { text: "Garcia, ", italic: false, bold: false, script: "normal" },
+          { text: "First", italic: true, bold: false, script: "normal" },
+        ] }]))
       : receipt(items.length > 1 ? "(Garcia, 2021); Second" : "(Garcia, 2021)", null,
           items.length > 1 ? ["“Second”: this style could not format the reference"] : []),
     copy_file_citation: (args) => { const { preview } = prepared(args); copies.push(preview); return { text: preview.text, warnings: preview.warnings }; },
@@ -1337,7 +1365,7 @@ test("a citation style shows a safe engine preview and copies its receipt with w
   await within(preview).findByText("(Garcia, 2021); Second");
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copies).toHaveLength(1));
-  expect(copies[0]).toMatchObject({ text: "(Garcia, 2021); Second", html: null });
+  expect(copies[0]).toMatchObject({ text: "(Garcia, 2021); Second" });
   await screen.findByText("Copied");
   expect(screen.getAllByText(/“Second”: this style could not format the reference/).length).toBeGreaterThan(0);
 });
@@ -1784,7 +1812,7 @@ test("a saved citation style, density and text size come back at start", async (
   });
 });
 
-const savedOutput = (preferences: unknown) => (preferences as { output?: string }).output ?? null;
+const savedOutput = (preferences: unknown) => (preferences as { output?: string; key_output?: string }).key_output ?? (preferences as { output?: string }).output ?? null;
 
 // Every key output the engine lists; styles wait for the formatter and have their own tests.
 test.each(OUTPUTS.filter((output) => !output.style).map((output) => output.id))("choosing %s survives a restart without copying", async (choice) => {
@@ -1828,13 +1856,13 @@ test("rapid A-B-A choices keep the last failed choice applied and never resend i
   chooseFormat("cite");
   expect(keys).toEqual(["cite"]);
   await act(async () => { finish(); await firstSave; });
-  await screen.findByText(/could not read or save your picker choices/);
+  await screen.findByText(/picker choices could not be saved/);
   expect(remembered).toBe("pandoc");
   expect(screen.queryByText(/SYNTHETIC_PRIVATE_SAVE_ERROR/)).toBeNull();
   // The unsaved choice still applies in the picker until Ibis restarts.
   expect(formatValue()).toBe("cite");
   chooseFormat("typst");
-  await waitFor(() => expect(screen.queryByText(/could not read or save your picker choices/)).toBeNull());
+  await waitFor(() => expect(screen.queryByText(/picker choices could not be saved/)).toBeNull());
   // The failed choice is never sent again: the next save is the next choice.
   expect(keys).toEqual(["cite", "pandoc", "cite", "typst"]);
   expect(remembered).toBe("typst");
@@ -1899,7 +1927,7 @@ test("a refused preference save reports failure and still allows Quit", async ()
   render(<App />);
   await waitFor(() => expect(formatValue()).toBe("typst"));
   chooseFormat("cite");
-  await screen.findByText(/could not read or save your picker choices/);
+  await screen.findByText(/picker choices could not be saved/);
   await chooseFromMore("Quit Ibis");
   await waitFor(() => expect(calls).toContain("quit"));
   expect(screen.queryByText(/SYNTHETIC_PRIVATE_SAVE_ERROR/)).toBeNull();
@@ -1927,13 +1955,13 @@ test("a choice made while saved choices load is kept and saved, not replaced", a
   backend({
     // Reads what is on disk when it answers, as the settings file does.
     picker_preferences: async () => { await loaded; return { output: saved.at(-1)?.output ?? "apa", density: "compact", larger_text: false }; },
-    picker_preferences_saved: ({ preferences }) => { saved.push(preferences as { output?: string }); return null; },
+    picker_preferences_saved: ({ preferences }) => { saved.push(preferences as { output?: string; key_output?: string }); return null; },
   });
   render(<App />);
   await waitFor(() => formatButton());
   chooseFormat("cite");
   await act(async () => { finish(); await loaded; });
-  await waitFor(() => expect(saved).toEqual([{ output: "cite" }]));
+  await waitFor(() => expect(saved).toEqual([{ key_output: "cite" }]));
   expect(formatValue()).toBe("cite");
 });
 
@@ -1944,7 +1972,7 @@ test("unreadable saved choices are reported and never overwritten with defaults"
     picker_preferences_saved: ({ preferences }) => { saved.push(preferences); throw new Error("synthetic refusal"); },
   });
   render(<App />);
-  await screen.findByText(/could not read or save your picker choices/);
+  await screen.findByText(/picker choices could not be saved/);
   // Nothing could be read, so the engine's default applies for now.
   expect(formatValue()).toBe("pandoc");
   chooseFormat("apa");
@@ -1995,7 +2023,7 @@ test("a refused choice from an older list looks again and shows the new list", a
   pressRow(await screen.findByRole("option", { name: /^Use v1\.bib/ }));
   expect(await screen.findByRole("option", { name: /^Use v2\.bib/ })).toBeTruthy();
   expect(screen.queryByRole("option", { name: /^Use v1\.bib/ })).toBeNull();
-  expect(screen.getByText("That file could not be opened from the list. Pick it again from the new list.")).toBeTruthy();
+  expect(screen.getByText("That file could not be opened. Pick it again from the new list.")).toBeTruthy();
 });
 
 test("when looking for libraries fails, setup still offers the file chooser and Zotero and says why", async () => {
@@ -2005,7 +2033,7 @@ test("when looking for libraries fails, setup still offers the file chooser and 
   });
   render(<App />);
   pressRow(await screen.findByRole("option", { name: /^Find Them on This Computer/ }));
-  expect(await screen.findByText("Ibis could not look for libraries on this computer. Choose a file instead.")).toBeTruthy();
+  expect(await screen.findByText("Ibis could not look for libraries here. Choose a file instead.")).toBeTruthy();
   expect(choiceRow(FILE_ROW).getAttribute("aria-disabled")).toBeNull();
   expect(choiceRow(/^Use Zotero/).getAttribute("aria-disabled")).toBeNull();
   expect(choiceRow(/^Look Again/).getAttribute("aria-disabled")).toBeNull();
@@ -2020,7 +2048,7 @@ test("setup failures go away once a library is chosen", async () => {
   });
   render(<App />);
   pressRow(await screen.findByRole("option", { name: /^Find Them on This Computer/ }));
-  const failure = "Ibis could not look for libraries on this computer. Choose a file instead.";
+  const failure = "Ibis could not look for libraries here. Choose a file instead.";
   await screen.findByText(failure);
   status = { ...NO_LIBRARY, state: "loaded", has_snapshot: true, name: "refs.bib", snapshot_name: "refs.bib", references: 1 };
   await act(async () => { await emit("library:changed", status); });
@@ -2574,7 +2602,7 @@ test("the footer names the source and count, the age only when it matters, and t
 test("the keys sheet names what Enter does from the same answer as the footer", async () => {
   backend({
     search: () => [result("a", "First")],
-    picker_destination: () => ({ app: "Example Writer", app_id: "example.writer", app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: true, output_question: null, paste: null, paste_question: false, can_choose_paste: false }),
+    picker_destination: () => (fixtureDestination({ app: "Example Writer", app_id: "example.writer", app_identity: null, unreadable: false, can_paste: true, paste: null, paste_question: false, can_choose_paste: false, format: formatAnswer("pandoc", "yours") })),
   });
   render(<App />);
   const box = screen.getByLabelText("Search references");
@@ -3331,10 +3359,10 @@ test("the format chooser shows prepared engine text without exposing lookup IDs 
   fireEvent.keyDown(formatButton(), { key: "ArrowDown" });
   const palette = await screen.findByRole("dialog", { name: "Format" });
   const field = within(palette).getByRole("combobox");
-  // Prepared text is authoritative. An unprepared format is a labeled example.
+  // Prepared text is authoritative; another key format previews the citation key.
   expect(palette.querySelector(".ui-palette-preview-text")?.textContent).toBe(text);
   fireEvent.pointerMove(paletteRow(palette, "Pandoc without brackets"));
-  expect(palette.querySelector(".ui-palette-preview-text")?.textContent).toBe("@key");
+  expect(palette.querySelector(".ui-palette-preview-text")?.textContent).toBe("@a");
   expect(palette.textContent).not.toContain("SENTINEL-ID");
   fireEvent.keyDown(field, { key: "ArrowDown" });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 120)); });

@@ -24,8 +24,11 @@ const remember = (output: OutputId) => { recent.splice(0, recent.length, output,
  * the palette: the way back to your format first, your recent formats, the
  * app's own choices, then every format by typing, with a key citation or a
  * labelled style example beside the list. Focus returns to Search. */
-export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpenChange, pasteChoices, onPasteChange, disabled, styles, onChange, searchRef, writingProject, onWritingProjects, preview }: {
+export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpenChange, pasteChoices, onPasteChange, disabled, styles, onChange, searchRef, writing, onWritings, preview, usualFormat, onUseUsual, formatLabel }: {
   format: OutputId;
+  formatLabel?: string;
+  usualFormat?: OutputId | null;
+  onUseUsual?: () => void;
   /** Your own format, the one a "back" row returns to. */
   yours?: OutputId;
   buttonRef?: RefObject<HTMLButtonElement | null>;
@@ -45,35 +48,36 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
   onChange: (output: OutputId) => void;
   searchRef: RefObject<HTMLElement | null>;
   /** Explicit project context, distinct from the destination app. */
-  writingProject?: { name: string } | null;
-  onWritingProjects?: () => void;
+  writing?: { name: string } | null;
+  onWritings?: () => void;
   preview?: FormatPreview | null;
 }) {
   const [open, setOpen] = useState(false);
-  const name = outputName(format);
-  const value = writingProject ? say("picker-format-for-app", { format: name, app: writingProject.name }) : source === "held" ? say("picker-format-this-paste", { format: name }) : source === "default" || !app ? name : say("picker-format-for-app", { format: name, app });
-  const why = writingProject ? say("writing-project-remembered", { name: isolate(writingProject.name) }) : source === "held" ? say("picker-format-held", { format: name }) : source === "default" ? app ? say("picker-format-app-default", { app }) : say("picker-format-no-app")
-    : app ? source === "remembered" ? say("picker-format-remembered", { app }) : say("picker-format-suggested", { app }) : say("picker-format-no-app");
-  const next = writingProject ? say("writing-project-pick") : source === "held" ? pick === "app" ? say("picker-pick-to-remember") : pick === "default" ? say("picker-pick-to-set-default") : ""
+  const name = formatLabel ?? outputName(format);
+  const value = writing ? say("picker-format-for-app", { format: name, app: writing.name }) : source === "held" ? say("picker-format-this-paste", { format: name }) : source === "default" || !app ? name : say("picker-format-for-app", { format: name, app });
+  const why = writing ? say("writing-remembered", { name: isolate(writing.name) }) : source === "held" ? say("picker-format-held", { format: name }) : source === "default" ? app ? say("picker-format-app-default", { app }) : say("picker-format-no-app")
+    : app ? source === "remembered" ? say("picker-format-remembered", { app }) : say("picker-format-suggested", { app }) : source === "suggested" ? say("picker-format-suggestion") : say("picker-format-no-app");
+  const next = writing ? say("writing-pick") : source === "held" ? pick === "app" ? say("picker-pick-to-remember") : pick === "default" ? say("picker-pick-to-set-default") : ""
     : pick === "paste" ? say("picker-pick-this-paste") : pick === "default" ? say("picker-pick-default") : source === "remembered" ? say("picker-pick-replaces") : say("picker-pick-remembered");
   // Whose a pick is, in the frame's footer status.
-  const whose = writingProject ? writingProject.name : pick === "paste" ? say("picker-pick-heading-this-paste") : pick === "default" || !app ? say("picker-pick-heading-default") : say("picker-for-app", { app });
-  const back = !writingProject && app && yours && yours !== format && (source === "remembered" || source === "suggested") ? yours : null;
+  const whose = writing ? writing.name : pick === "paste" ? say("picker-pick-heading-this-paste") : pick === "default" || !app ? say("picker-pick-heading-default") : say("picker-for-app", { app });
+  const usual = usualFormat ?? yours;
+  const back = app && onUseUsual && (writing || source === "remembered") ? usual ?? format : null;
   const row = (output: OutputChoice): PaletteItem => ({
     id: output.id, label: output.name, checked: output.id === format, keywords: [output.example, output.description].filter(Boolean).join(" "),
     ...output.style && !styles ? { disabled: true, detail: say("palette-style-unavailable") } : {},
   });
-  const shortIds = [...new Set<OutputId>([format, ...recent, ...yours ? [yours] : []])].slice(0, 5);
+  const shortIds = [...new Set<OutputId>([format, ...recent, ...usual ? [usual] : []])].slice(0, 5);
   const shortList = shortIds.map((id) => row(outputOf(id)));
   const notRecent = (output: OutputChoice) => !shortIds.includes(output.id);
   const sections: PaletteSection[] = [
-    ...back ? [{ id: "back", items: [{ id: "back", back: true, label: say("palette-use-again", { format: outputName(back), app: app! }) }] }] : [],
+    ...back ? [{ id: "back", items: [{ id: "back", back: true, label: writing ? say("picker-stop-writing", { name: writing.name, app: app! }) : say("picker-use-usual", { format: outputName(back), app: app! }) }] }] : [],
     { id: "recent", label: say("palette-recent"), items: shortList, only: "browsing" },
     // The app's own choices, together (decision 0042): paste into it or only copy.
     ...app && pasteChoices ? [{ id: "app", label: say("picker-for-app", { app }), items: [
       { id: "paste", label: say("picker-paste-from-now-on", { app }) }, { id: "copy-only", label: say("picker-copy-only") },
     ] }] : [],
-    ...onWritingProjects ? [{ id: "writings", items: [{ id: "writing-projects", label: say("writing-project-menu") }] }] : [],
+    ...onWritings ? [{ id: "writings", items: [{ id: "writings", label: say("writing-menu") }] }] : [],
     // Each format appears once: before typing, the catalogue leaves out the recent ones above it.
     { id: "key-formats", label: say("picker-key-formats"), items: keyOutputs.filter(notRecent).map(row), only: "browsing" },
     { id: "citation-styles", label: say("picker-formatted-styles"), items: styleOutputs.filter(notRecent).map(row), only: "browsing" },
@@ -88,10 +92,11 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
   };
   const choose = (key: string) => {
     close("action");
-    if (key === "writing-projects") onWritingProjects?.();
+    if (key === "writings") onWritings?.();
+    else if (key === "back") onUseUsual?.();
     else if (key === "paste" || key === "copy-only") onPasteChange?.(key);
     else {
-      const output = listedOutput(key === "back" ? back : key);
+      const output = listedOutput(key);
       if (output) { remember(output); onChange(output); }
     }
   };
@@ -104,7 +109,7 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
       onKeyDown={(event) => { if (event.key === "ArrowDown" && !open && !disabled) { setOpen(true); onOpenChange?.(true); } else event.continuePropagation(); }}>{value}</PopupButton>
     {open && <Palette id="format-palette" title={say("picker-format-title")} subtitle={whose} placeholder={say("palette-search-formats")}
       sections={sections} initial={back ? "back" : format} onAction={choose} onClose={close} empty={say("palette-no-formats")}
-      actionLabel={(item) => item.back || listedOutput(item.id) ? say(pick === "paste" ? "palette-use-this-paste" : pick === "default" || !app ? "palette-use-default" : "palette-use-for-app", { app: writingProject?.name ?? app ?? "" }) : say("palette-run")}
+      actionLabel={(item) => item.back || listedOutput(item.id) ? say(pick === "paste" ? "palette-use-this-paste" : pick === "default" || !app ? "palette-use-default" : "palette-use-for-app", { app: writing?.name ?? app ?? "" }) : say("palette-run")}
       description={`${why} ${next}`.trim()} preview={(item) => <FormatPreviewPane output={listedOutput(item.back ? back : item.id)} preview={preview ?? null} />} />}
   </>;
 }

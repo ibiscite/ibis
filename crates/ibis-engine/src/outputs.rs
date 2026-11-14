@@ -35,8 +35,8 @@ pub struct OutputInfo {
     pub output: OutputSpec,
     /// The forms one reference can be cited in.
     pub forms: Vec<CitationForm>,
-    /// It writes each reference's whole record, notes included, not a
-    /// citation; agents are not offered it.
+    /// It shares reference metadata rather than a citation; private fields
+    /// never leave, and agents are not offered it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub exports_records: bool,
     /// It writes reference entries, never in-text citations: a numbered

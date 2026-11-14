@@ -22,7 +22,7 @@ pub struct DraftItem {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SessionBibliography {
     pub text: String,
-    pub html: Option<String>,
+    pub display: DisplayTree,
     pub content_hash: String,
     pub warnings: Vec<String>,
     /// References this style cannot write, by key or title. They are named so
@@ -55,7 +55,6 @@ pub struct Preview {
     pub ticket: String,
     pub content_hash: String,
     pub text: String,
-    pub html: Option<String>,
     pub warnings: Vec<String>,
     pub display: DisplayTree,
     #[serde(skip_serializing_if = "Option::is_none")]

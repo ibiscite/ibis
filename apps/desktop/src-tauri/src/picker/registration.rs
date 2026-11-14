@@ -26,7 +26,7 @@ const NO_KEY_TYPES_THE_LETTER: &str =
 pub(crate) struct Registered(Mutex<Option<(OpeningShortcut, Shortcut)>>);
 
 #[cfg(target_os = "macos")]
-pub(crate) fn registered_shortcut(app: &AppHandle) -> Option<Shortcut> {
+pub(crate) fn registered_shortcut<R: tauri::Runtime>(app: &AppHandle<R>) -> Option<Shortcut> {
     app.state::<Registered>().0.lock().ok()?.map(|(_, key)| key)
 }
 
@@ -76,8 +76,8 @@ pub(crate) fn register_shortcut(
 /// Swap the registered shortcut for `requested`, from Settings. The new key is
 /// registered before the working one is released, so a refusal keeps it.
 /// Runs on the main thread, where layout queries are answered.
-pub(crate) fn replace_shortcut(
-    app: &AppHandle,
+pub(crate) fn replace_shortcut<R: tauri::Runtime>(
+    app: &AppHandle<R>,
     requested: OpeningShortcut,
 ) -> Result<Option<&'static str>, &'static str> {
     let state = app.state::<Registered>();

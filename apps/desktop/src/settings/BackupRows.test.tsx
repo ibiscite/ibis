@@ -85,6 +85,7 @@ test.each([
   ["settings-file", /Ibis’s own settings file, not a backup/],
   ["newer", /newer version of Ibis/],
   ["invalid", /backup is damaged\. Nothing changed/],
+  ["busy", /Settings are being saved by another Ibis\. Wait for it to finish, then try again/],
   [new Error("private synthetic detail"), /couldn’t save\. Nothing changed/],
 ])("a refused backup (%s) is explained and nothing is restored", async (refusal, words) => {
   const api = fakeApi({ chooseSettingsBackup: vi.fn().mockRejectedValueOnce(typeof refusal === "string" ? {

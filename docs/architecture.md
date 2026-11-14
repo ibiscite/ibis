@@ -7,7 +7,7 @@ describes this checkout. Plans live in [ROADMAP.md](../ROADMAP.md).
 
 | Location | Responsibility |
 | --- | --- |
-| `crates/ibis-core` | Shared model, citation requests/results, key syntaxes, search, settings and delivery rules. |
+| `crates/ibis-core` | Shared model, citation requests/results, key syntaxes, search and delivery rules. |
 | `crates/ibis-zotero-local` | Zotero local API client. |
 | `crates/ibis-sources` | Read-only file and Zotero adapters, discovery, database snapshots and file watches. |
 | `crates/ibis-csl` | citeproc-js in QuickJS, ICU4X collation, bundled CSL styles and locales. |
@@ -16,14 +16,11 @@ describes this checkout. Plans live in [ROADMAP.md](../ROADMAP.md).
 | `apps/desktop/src-tauri` | Native windows, clipboard, paste, shortcuts, settings dialogs and updates. Depends on core, engine and its command macro crate. |
 | `apps/desktop/src` | React interface, shared controls in `ui/`, tokens in `tokens.css`. |
 
-The desktop links the engine in process. Its window-scoped commands have
-generated TypeScript bindings. The CLI exposes commands, JSON-RPC and MCP;
-see [the CLI reference](cli.md) for their contracts. The desktop also provides
-the [editor endpoint](parity.md#better-bibtex-cite-as-you-write).
-
-JSON contract version 1 is selected with `--contract 1`. Library results carry
-`source_health` from the same published state and only the libraries they read;
-later refresh failures cannot change it. RPC and MCP carry the same health.
+The desktop links the engine in process, with generated TypeScript bindings.
+Contracts for the CLI, JSON-RPC and MCP are in [the CLI reference](cli.md); the
+desktop also provides the [editor endpoint](parity.md#better-bibtex-cite-as-you-write).
+Library results carry `source_health` from the state they read; later refresh
+failures cannot change it.
 
 ## Data and identity
 
@@ -98,10 +95,7 @@ wraps these failures at the IPC boundary and tests every generated error schema.
 
 ## Sources
 
-The [compatibility guide](compatibility.md#library-files) lists file formats
-and their limits. Files are bounded to 64 MiB of UTF-8 text. Parsers report
-skipped records without discarding valid neighbours. Duplicate identities
-make all records under that identity unavailable.
+File formats and limits are in [compatibility](compatibility.md#library-files). Files are bounded to 64 MiB; parsers report skipped records without discarding valid neighbours.
 
 Zotero reads use the same pinned Zotero-to-CSL mapping in both modes:
 
@@ -115,28 +109,9 @@ Zotero reads use the same pinned Zotero-to-CSL mapping in both modes:
   source warning after required table, column and lookup shapes validate;
   incompatible layouts are refused.
 
-A choice names the personal library or specific groups. Missing groups fail
-instead of falling back. Several closed profiles require a named choice.
-Keys come from Zotero's key field, Extra or Better BibTeX; disagreements
-remain visible and block key output.
+Missing Zotero groups fail instead of falling back; several closed profiles require a named choice. Disagreeing citation keys stay visible and block key output.
 
-Long-lived file readers accept a change after two identical reads. Watchers
-recover parent-directory registrations after replacement. Network and unknown
-mounts use manual refresh and report `live-refresh-off`; opening the picker
-rechecks these and failed sources. There is no periodic filesystem retry.
-One-shot CLI reads install no watches.
-
-Known cloud placeholders are refused before reading, without requesting a
-download. Each file load shares one two-second filesystem deadline and the
-eight-call pool. Pure decoding leaves attachment references for the source to
-probe in one batch, capped at 256 local attachments. Unchecked references remain
-in the snapshot with `unknown` availability; completed probes survive a later
-blocked path. Bibliographic-only project and original-entry reads do no
-attachment probing.
-Desktop loads have a two-minute deadline and at most four complete loads in
-flight. Blocked OS calls can outlive the wait, but their late results cannot
-publish. A failed refresh keeps the previous snapshot and reports its health.
-New selections and publications retire stale candidates and their watchers.
+Readers accept a change after two identical reads; network and unknown mounts use manual refresh and report `live-refresh-off`. Cloud placeholders are refused before reading. Filesystem probes wait two seconds with eight calls; desktop loads have a two-minute deadline, four per source family. Decoding is pure: the source probes attachments in one batch under the load's deadline, capped at 256, and unchecked ones stay with `unknown` availability. A failed refresh keeps the previous snapshot and reports its health; stale results cannot publish.
 
 ## Citations
 
@@ -161,6 +136,14 @@ bibliography work. Running bibliography work keeps its own cancellation owner;
 closing a session stops all its work. Connections close their registry entries.
 One-shot RPC/MCP cite calls reserve independent operations and answer every
 accepted request; interactive preview supersession does not swallow their replies.
+Session failures carry a typed `Problem` with its catalogue message, recovery and
+focus. BibTeX and DOI links use the same preview and checked commit as citations;
+record exports pass through `CitableFields`.
+
+The desktop warms its saved default style, locale and runtime in the background,
+independently of the library, and shares that formatter for the session. Warm-up
+publishes no citation; a foreground request retires it. The idle worker sleeps
+while Ibis is hidden.
 
 Desktop drafts, previews, display trees, locators and all six citation forms
 come from core through generated bindings. Output and locale resolve together
@@ -177,26 +160,13 @@ clipboard on the main thread. Clipboard and paste proof remain native-owned.
 Bibliographies name unrenderable records in `left_out` and retain the rest;
 their shown receipt pins the selected records, including those left out.
 
-Complete citations carry [receipts](cli.md#receipts-and-strict-citations) of
-the records, options, reads and formatting versions used. `--strict` returns
-an error without text for any loss, refusal, source warning or failed refresh.
+Receipts, `--strict` and caller-supplied records are specified in the
+[CLI reference](cli.md#receipts-and-strict-citations); records open no library
+and never combine with `--keep-order`.
 
-Caller-supplied CSL-JSON records need their own `id`; invalid or duplicate
-records refuse the whole request. Numeric IDs survive transport parsing.
-No library is opened or remembered. `cite --records` and MCP records refuse
-`--keep-order`/`keep_order`; [record limits](cli.md#records-you-send) apply.
+One locator parser serves search, the Page field and the CLI (all 29 CSL terms, ranges, quoted labels; a typed label overrides the default type).
 
-The locator parser is shared by search, the picker's Page field and CLI.
-It recognises all 29 CSL locator terms, ranges and quoted literal labels.
-A typed label overrides the field's default type; an incomplete label is an
-error. Canonical locators stay distinct from raw editor text.
-
-Writing projects save an output and optional bibliography, with a stable ID.
-The picker remembers selection per app; CLI requests name a project explicitly.
-Bibliography checking is advice unless a DOI conflicts. For key outputs,
-`--strict` also requires a complete current read finding every emitted key
-unambiguously. Project generations and bibliography revisions retire old
-previews and pending delivery. See [project commands](cli.md#writing-projects).
+A writing is an optional name, format and read-only `.bib` in `settings.json` ([decision 0042](decisions/0042-formats-apps-and-writings.md)); the picker remembers one per app, and CLI/editor clients select one explicitly. Writings grant no paste authority and receipts never carry paths. Bibliography checks, `--strict` and stale-identity rules are in [writing commands](cli.md#writings).
 
 <a id="task-contexts-planned"></a>
 Cross-client task-context plans are in [the roadmap](../ROADMAP.md#consolidation-now-alongside-finishing-03).
@@ -213,11 +183,17 @@ work. Library notifications use channels rather than polling.
 native app. Generated bindings and output lists come from Rust; front ends
 do not maintain separate output vocabularies.
 
-`ibis_engine::settings::Owner` serializes settings changes. Core holds the
-cross-process lock and performs atomic saves. Backup validation and preparation
-are shared; desktop owns dialogs and single-use restore previews. Formats per
-app live in `settings.json`; paste choices live in `apps.json`. Storage and
-data flows are documented in [PRIVACY.md](../PRIVACY.md).
+`ibis_engine::settings::Owner` serializes settings changes; engine settings hold
+the cross-process lock and perform atomic saves. Backup validation and preparation
+are shared; desktop owns dialogs and single-use restore previews.
+
+The engine chooses one output: the selected writing, the app's remembered format, the person's
+format for its kind (documents or keys), then a suggestion, naming its source.
+First run asks nothing; the first successful suggested paste remembers the
+app's format and reports it once per kind. Delayed delivery cannot overwrite
+newer choices. Formats per app live in `settings.json`; paste choices live in
+`apps.json`. Nothing polls while hidden. Storage and data flows are documented
+in [PRIVACY.md](../PRIVACY.md).
 
 Native copy writes the prepared result. Paste uses a one-use proof tied to
 the target, picker presentation and clipboard generation:
@@ -234,10 +210,8 @@ the target, picker presentation and clipboard generation:
   keys. Elevated targets, password fields and uncertain checks copy instead.
 - **Linux:** copies and reports why; the person pastes.
 
-Paste refusals do not retry automatically. Permission recovery needs a fresh
-summon and Enter. The [compatibility guide](compatibility.md) describes
-platform coverage, shortcuts and installation; the [design](design.md)
-describes controls and interaction.
+Paste refusals do not retry; permission recovery needs a fresh summon and
+Enter. Platform coverage is in [compatibility](compatibility.md).
 
 ## Performance checks
 
@@ -248,12 +222,22 @@ These are implemented checks, not measurements of every released app:
 | `scripts/picker-budget.mjs` | Entry JS, static imports and CSS total at most 400 KiB gzipped; lazy imports and other windows are excluded. |
 | `ibis-engine/tests/library_memory.rs` | Heap accounting at 10,000 generated records: 48 MiB for BibTeX, 49 MiB for CSL-JSON. |
 | `ibis-engine/tests/refresh_budget.rs` | 100,000 generated records; per-query search p95 ≤ 20 ms, open/refresh < 3 s. Timing failures enforce only with `IBIS_ENFORCE_BUDGETS`; otherwise report. Ranking and correctness assertions still fail. |
+| `startup_format_breakdown` (CSL and desktop unit tests) | Invented references, cold formatter phase breakdown and 30 warm samples; desktop also separates settings, a 10k library read and output catalogue lookup. A warmed first preview and warm formatting p95 have a 100 ms limit, enforced only with `IBIS_ENFORCE_BUDGETS`; shared runners report. |
 
 Run the ignored engine cases explicitly in release mode, one test thread:
 
 ```sh
 CARGO_TARGET_DIR="$PWD/target" cargo test -p ibis-engine --locked --release --test refresh_budget -- search_budget --ignored --nocapture --test-threads=1
 CARGO_TARGET_DIR="$PWD/target" cargo test -p ibis-engine --locked --release --test refresh_budget -- open_refresh_budget --ignored --nocapture --test-threads=1
+```
+
+Run the test-only startup harness in separate processes for cold and warmed
+desktop starts; it reads no personal settings or libraries.
+
+```sh
+CARGO_TARGET_DIR="$PWD/target" cargo test -p ibis-csl --locked --lib startup_format_breakdown -- --ignored --nocapture --test-threads=1
+CARGO_TARGET_DIR="$PWD/target" cargo test -p ibis-desktop --locked startup_format_breakdown -- --ignored --nocapture --test-threads=1
+IBIS_MEASURE_WARM=1 CARGO_TARGET_DIR="$PWD/target" cargo test -p ibis-desktop --locked startup_format_breakdown -- --ignored --nocapture --test-threads=1
 ```
 
 ### Native release measurements (#1369)
@@ -267,6 +251,13 @@ and at least 30 samples per case. It reports p50/p95/p99 and checks:
 - every idle sample ≤ 0.2% of one CPU core and ≤ 1 wakeup/s;
 - whole-process-tree memory ≤ 200 MiB at 10k and < 400 MB at 100k.
 
-The input schema is enforced by the validator. Debug smoke timings do not
-satisfy it. Collection and release-machine qualification remain
+Debug smoke timings do not satisfy it. Collection is
 [roadmap work](../ROADMAP.md#10-stable).
+
+## Vocabulary
+
+A **deep module** hides much behaviour behind a small **interface**; a **seam**
+is where two modules meet and behaviour can be swapped. Apply the **deletion
+test**: if removing a module only moves its complexity to its callers, it earns
+its place. One adapter is a hypothetical seam; add the seam when a second
+exists.

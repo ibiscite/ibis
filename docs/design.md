@@ -19,14 +19,14 @@ has its own page; read only the one your change touches:
 | [Components](../apps/desktop/src/ui/README.md) | Each shared part in `ui/`, its states, and menus | C9 C21, D7 |
 | [Picker](design/picker.md) | Search bar, results, search rules, shelf, footer, keys, window behaviour | C2 C5–C8 C11 |
 | [Inspector and Reader](design/inspector-and-reader.md) | Citation details, the side panel and the planned PDF reader | C19 C20 C23 |
-| [Copying, pasting and notices](design/delivery.md) | What Enter does, the format rule, writing projects, notices and their words | |
+| [Copying, pasting and notices](design/delivery.md) | What Enter does, the format rule, writings, notices and their words | |
 | [First run and choice screens](design/choice-screens.md) | Welcome, no library, empty and failed libraries | C12 |
 | [Settings](design/settings.md) | The Settings window and its pages | C18, D17 |
 | [Source checks and sheets](design/sources-and-sheets.md) | The project bibliography check, passages (planned), Cited Since Opening | |
 
 ## Principles
 
-1. **One anatomy everywhere.** Search, list, shelf and footer, in that order, at every size; layouts fold, never reorder.
+1. **One anatomy everywhere.** Search, the list with its heading line, shelf and footer, in that order, at every size; layouts fold, never reorder.
 2. **One design, macOS first.** Every system uses the macOS design; only correctness follows the system (see [Per platform](design/foundations.md#per-platform)).
 3. **Readable first.** Nothing smaller than 12 px; secondary text (helper lines, the footer, a row's byline) passes 4.5:1 on every surface, in light and dark, and with Increase Contrast.
 4. **Easy to hit.** Every target is at least 32 px, 44 px under `pointer: coarse`, whatever the drawn size.
@@ -45,7 +45,9 @@ has its own page; read only the one your change touches:
 13. **One of each, defined once** (maintainer, 2026-11-07, design pass 2). Three corners, one space scale, one raised layer for everything that floats, one scroll bar, one picture for every visual choice; a sheet is drawn with Settings' cards and rows. A part reads these and never names a second value for them; a screen that looks different is a missing part or token, not a local fix.
 14. **A control lives where its choice lasts** (maintainer, 2026-11-10). A choice for this citation lives on the citation and is forgotten after the paste; for this app or document, in the picker's header, remembered for that app and showing where it came from; for this person, in Settings; for this computer, in first run and the system's prompts; for scripts, in the command line. How often and how costly a mistake is decides how visible it is: every time is one key and visible, rare is in the command list (More), rare and consequential is in Settings with Undo. What a context cannot do is hidden, and Ibis says why where people look; the engine decides. A remembered value wins over a default and says so; a choice Ibis can infer has no control. Every action has three doors: a visible control with its key, the key, and the command list. Each control names who needs it; a control nobody needs is removed.
 15. **Name controls by their job.** A setting and the action it changes have distinct accessible names. Add a group name when it gives context. A live status names the subject of its updates.
-16. **Nothing jumps** (maintainer, 2026-11-11). A region that changes keeps its size; content changes in place, with short motion only on what changed, never moving neighbours. This holds in the app and on the website.
+16. **Nothing jumps** (maintainer, 2026-11-11). A region that changes keeps its size; content changes in place, with short motion only on what changed, never moving neighbours. This holds in the app and on the website. [C24] By construction: the picker is a **frame of fixed slots** (`ui/Frame`: search, the list's heading line, content, shelf, footer), and feedback renders only into room that is already there: a notice stands in for the list's heading line, or, with no list, takes the room above the empty state. Nothing is reserved empty either. Hover, press, focus, selection and an open menu change paint, never size: a control reserves the room for every state it can take (a chip's ×, a ring drawn inside). Words are written for their slot: a one-line slot's messages fit it at the narrowest window.
+17. **One grid, one layer per role** [C3] [C24]. Bands (`ui/Band`) carry the window's columns (inset, icon, label, trailing) so a glyph and the words after it line up with the rows by construction; a new part takes a band rather than computing a column with `calc()`. Every surface is one of four layer roles (`--layer-base`, `--layer-inset`, `--layer-overlay`, `--layer-view`), each with one fill, edge and material that follow the theme Ibis shows, not the system's when they differ.
+18. **One owner for what is open** (decision 0047). Everything that opens (a menu, a palette, a sheet, the Inspector, the library chooser, a search, the window itself) registers on one view stack (`ui/layers`) with what closing it means, and one listener walks back through it: decision 0047's table (Esc, Back, an empty Backspace) is one entry per kind there, the nearest layer alone answers, and a held key never walks. No screen or control handles a going-back key itself; a palette or sheet on the stack is what hides the picker under it. One surface floats at a time: a popover or menu floats through `ui/Layer`'s `Floating` (a submenu is part of its menu) and a palette or sheet through `ViewFrame`, and opening one closes every open menu or popover it is not inside, and a view any other view; openers never clear the way themselves, and the canvas fails when two surfaces show at once.
 
 ## Where Ibis departs from macOS
 
@@ -75,8 +77,8 @@ side of the same window, one region at a time, and folds back with Esc:
 | --- | --- | --- |
 | Search | Types | The list, the shelf with what Enter pastes, the footer's one action |
 | Several references | ⇧↵, ⌘-click or a row's + | One shelf segment each, in order; the count names them |
-| Details | Clicks a segment, or ⌘I | The **Inspector** beside the list: title, Show as, Page, what will be pasted, the source actions |
-| Pages | **Show PDF** (⌘D) in the Inspector | The window takes a reading shape once, taller and wider; the list folds away and the **Reader**'s thumbnails and pages take its place beside the column |
+| Details | Clicks a segment, or ⌘I | The segment's token popover ([inspector-and-reader](design/inspector-and-reader.md), decision 0045) |
+| Pages | **Show PDF** (⌘D) | The window takes a reading shape once, taller and wider; the list folds away and the **Reader**'s thumbnails and pages take its place beside the column |
 | Choose a page | Clicks a thumbnail (⇧-click a range, ⌘-click another), or ⌘↵ on the page in view | The Page field and the shelf segment show it, "p. 417–419, 423" |
 | Deliver | Enter, as the footer says | Pasted or copied, then the window hides |
 
@@ -88,17 +90,12 @@ side of the same window, one region at a time, and folds back with Esc:
   shelf or footer. Reading is the one change of shape, because a portrait page
   needs height: the list folds away while the PDF is open, and typing in Search
   or Esc brings it back with the steady size.
-- **Planned jobs have their place already.** Passages are results with their
-  quotation under the title, and choosing one fills its reference and page;
-  collections and tags are a search scope pop-up before the query (as Finder's
-  search scope); a manuscript check is a sheet from More listing each citation
-  with its state. None of these adds a window or a mode.
 
 ## Small delights
 
 The approved, final list; no new delights until the next design pass. Each lives only in About, the welcome, the notice slot or existing feedback; never changes results, output or focus; happens once within the motion cap; never loops or plays a sound. Warm, never childish: at most one short sentence, no slang, exclamation marks, emoji or jokes about the person's work. A delight is a person's action answered, or a real moment marked; nothing appears at random. The fun items sit behind Settings › General › **Small surprises** (on by default).
 
-- **Feel:** a pressed shortcut briefly presses its footer cap; holding ⌘ shows every visible action's key; Enter with nothing to paste shakes the action once and says why; ⌘+/⌘− show the size briefly; the menu bar ibis dips its beak after a copy.
+- **Feel:** a pressed shortcut briefly presses its footer cap; holding ⌘ shows the ⌘ key of every visible action, beside it where that covers no words and no other control, else in the control's own place, as a row's number takes its icon's (`ui/HeldKeys`, checked held by the canvas guards); Enter with nothing to paste shakes the action once and says why; ⌘+/⌘− show the size briefly; the menu bar ibis dips its beak after a copy.
 - **Saves time:** Services › Search with Ibis; a `.bib` dropped on the menu bar ibis becomes a library; every Undo names its action ("Undo Remove Vale 2021"); ⌥ on About shows the full build; once, after the first paste, a tip that ⇧⌘P keeps Ibis open between citations.
 - **Fun:** About's line on the name ("Named for the bird ancient Egyptians linked with Thoth, god of writing and keeper of records."); clicking the About icon dips the bird's beak, the menu bar's gesture, and the line says the next bird fact, one click, one fact, carrying on next time, until you leave the page; the first open greets with the mark; the first, 100th and 1,000th paste say so on the receipt; a library's size is marked once, with the highest milestone reached only ("A good start.", "A solid library.", "A remarkable library."), so a large import is one moment; the day a year after first use, the line reads "One year with Ibis today."
 - **Left out:** confetti, sounds, seasonal themes, joke results, a "what's new" screen, alternative app icons.
@@ -109,19 +106,7 @@ The approved, final list; no new delights until the next design pass. Each lives
 
 ## Coming features
 
-How each user-visible item planned before 1.0 in ROADMAP.md fits the pages above.
-
-| Feature (release) | Fits as |
-|---|---|
-| Output per app, self-finishing setup (0.3) | [First run](design/choice-screens.md) |
-| Paste into the app you came from (0.3) | Enter pastes; the footer says "Paste into Word"; a refusal copies and says why |
-| Citation forms, 29 locator types, prefix and suffix, reorder, any style, presets (0.4) | The shelf, more label and control rows in the **Inspector**, the format pop-up and Settings › Citations |
-| `ibis://` links, Show in Zotero, Open PDF in Zotero (0.4) | A link opens the picker filled in; the Zotero actions sit in More and the row's menu |
-| Settings window (0.4, #776) | [Settings](design/settings.md) |
-| Browse, "Selected in Zotero", passages (0.5) | Collections and tags as search filters; a reference's highlights unfold under its row and fill in its page |
-| Bibliography, "Cited since opening", project `.bib` (0.4) | A sheet from More; rows say "In refs.bib" or "Missing from refs.bib" |
-| `ibis check`, DOI lookup (0.6) | Command line first; DOI lookup as an opt-in no-results fallback |
-| A source's PDF, choosing the page there (#1252) | [Reader](design/inspector-and-reader.md#reader-planned-1252): the window widens once, the one planned exception to [C10]; thumbnails and pages sit between the list and the column, and a page is cited by choosing it ([M1]) |
+How planned features fit these pages is in [ROADMAP.md](../ROADMAP.md).
 
 ## How the design changes
 
@@ -132,7 +117,7 @@ How each user-visible item planned before 1.0 in ROADMAP.md fits the pages above
 - The five parameters at the top of `tokens.css` (spacing unit, control radius, body text size, Ibis red light and dark) are the knobs. The canvas's Parameters board turns them live; `node apps/desktop/canvas/apply-params.mjs --radius=10px …` writes chosen values back (then `python3 brand/build.py` for the reds).
 - The canvas boards run the real app live (`pnpm -C apps/desktop build:canvas`, then upload `ibis-canvas.js` and `.css` and point the two constants in `Screen.dc.html` at them; boards link neither, so a refresh changes one file); a missing state gets a scenario in `apps/desktop/canvas/main.tsx`, never a hand-drawn copy. A hand-drawn sketch is only for a direction not yet built; once it is built, the live board replaces the sketch, so each screen has one picture.
 - **One stylesheet check** (decision 0035, #1678): `apps/desktop/src/design.test.ts` parses every stylesheet into the CSS object model and holds each rule of these pages as one table entry (corners from the three steps, spacing from the scale, colours and type from tokens, the overlay layer and the scroll bar each set in one place, no one-sided state edges, a Reduce Motion answer for every movement), each with a planted stylesheet it must catch; contrast is computed from the token values. A new rule is one entry there, never a test that reads a stylesheet's text.
-- **Rules that can be measured are measured** [C22]: `apps/desktop/canvas/geometry.ts` holds the layout rules as data (the two columns [C3], pop-ups under their button [C21], form rows sharing edges, equal choice cards [C12]) and checks every canvas screen in the Mac's WebKit (`gallery/webkit.swift`, run by `scripts/check.mjs`) and in Chromium (`gallery/canvas.mjs`). A new part joins a rule by adding its selector to the table; a new rule is a few lines there, never a test per screen. A visual bug a rule could have caught gets a rule.
+- **Rules that can be measured are measured** [C22]: `apps/desktop/canvas/geometry.ts` holds the layout rules as data (the two columns [C3], pop-ups under their button [C21], form rows sharing edges, equal choice cards [C12]) and, across states [C24], the frame's anchors (search field, first row, footer action, shelf) between idle, loading, failures, a refusal, notices, details and menus; paint-only states on every control; nothing covering a live control; each slot's messages at the narrowest window; and every floating surface's layer against the theme, in each Mac and Ibis appearance (`canvas/audit.ts`). An exception is one line in its table with a reason. These checks run on every canvas screen in the Mac's WebKit (`gallery/webkit.swift`, run by daily/manual CI) and in Chromium (`gallery/canvas.mjs`). A new part joins a rule by adding its selector to the table; a new rule is a few lines there, never a test per screen. A visual bug a rule could have caught gets a rule.
 - **Judged from pictures** (maintainer, 2026-11-04): every visible change renders its canvas scenarios (light and dark, plus larger text, right-to-left, Windows key labels and the forced-colours and Increase Contrast captures where it matters) and is judged by a reviewer who did not make it. A small change needs one judge; a batch gets the panel of independent views (macOS, visual design, first-time user, keyboard only, accessibility, Windows and Linux). A pass merges when no view scores any screen lower than before; work continues until every view scores every screen 9 or better. A defect is fixed in the rule that allowed it, so it cannot come back.
 - Record maintainer decisions in [decisions](decisions.md) and update the rule on its page in place, deleting the text it replaces. A rule lives on one page; anywhere else links to it.
 - Review these pages against Apple's guidelines on each new macOS release.

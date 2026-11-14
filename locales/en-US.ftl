@@ -65,6 +65,7 @@ reason-not-ibis = The program given as the Ibis app is not Ibis.
     .cli = Give the Ibis app’s location with --app <path>.
 reason-no-answer = The Ibis app started but did not answer.
     .cli = Open Ibis once by hand, then try again.
+reason-settings-read-timeout = Reading the Ibis app’s library settings timed out.
 reason-zotero-sharing-off = Zotero is open but is not sharing your library with other apps.
     .cli = In Zotero, open Settings, Advanced, and turn on Allow other applications on this computer to communicate with Zotero.
     .agent = Ask the person to turn on Allow other applications in Zotero’s Advanced settings.
@@ -119,6 +120,7 @@ refusal-changed-item = { $reference } changed while citing.
     .agent = Search again.
     .app = Search again.
 refusal-missing-key = { $reference } has no citation key.
+refusal-missing-doi = { $reference } has no usable DOI.
     .cli = Cite it with --style instead.
     .agent = A key syntax cannot name it; use a style.
     .app = Give it one in your library, or choose a style.
@@ -225,9 +227,9 @@ cli-options-refused = Cannot cite { $reference } with { $options } in { $output 
 cli-together-refused = { $output } cannot write these references together as asked. Cite them one at a time to see which one fails.
 cli-loss-left-out = { $output } cannot show { $what }{ $target }, so it was left out.
 cli-loss-flattened = { $output } wrote { $what }{ $target } as plain text.
+cli-writing-without-bibliography = no .bib file
 cli-loss-unknown = { $output } changed { $what }{ $target } in a way this version of Ibis can’t name. Check the citation.
 cli-loss-something = part of the citation
-cli-project-without-bibliography = no .bib file
 cli-doctor-about = Check your libraries and settings offline, without writing or sending anything
 cli-doctor-summary = Ibis { $version } · contract { $contract } · { $methods } engine methods, { $outputs } key outputs, { $styles } citation styles
 cli-spelling-match = (spelling match)
@@ -254,7 +256,7 @@ app-tray-whats-new = What’s New
 app-tray-problem = Report a Problem…
 app-tray-idea = Suggest an Idea…
 app-tray-reset = Reset Window Position
-app-tray-library-settings = Library Settings…
+app-tray-fix-library = Fix in Ibis…
 app-tray-library = Library
 app-tray-no-library = No library yet
 app-tray-opening = Opening { $name }…
@@ -278,6 +280,13 @@ app-tray-zotero-work-limit = Zotero took too long to read
 app-tray-not-updated = { $name } could not be updated
 app-tray-not-opened = { $name } could not be opened
 app-tray-version-copy-failed = The version could not be copied. Try again.
+app-tray-fix-problem = Fix 1 Problem…
+app-tray-fix-problems = Fix { $count } Problems…
+app-tray-fix-failed = The library could not be opened for editing. Open it from the picker to try again.
+app-tray-spoken-reading = Ibis, reading { $name }
+app-tray-spoken-problem = Ibis, { $problem }
+app-tray-spoken-empty = Ibis, no library yet
+app-tray-spoken-ready = Ibis, ready
 app-saved-title = Save References Cited Since Opening
 app-saved-file = Cited since opening
 app-saved-page = References cited since opening
@@ -353,6 +362,7 @@ general-login-unreadable = { $name } could not check whether it starts when you 
 general-menu-bar-label = Show in menu bar
 general-menu-bar-description = If hidden, open Ibis from Applications to come back here.
 general-paste-title = Pasting
+general-behavior-title = Behavior
 general-paste-label = Paste into the app you came from
 general-paste-key =
     { $platform ->
@@ -425,6 +435,7 @@ shortcuts-action-paste = Paste the citation
 shortcuts-action-copy-only = Copy the citation
 shortcuts-action-add = Add another reference
 shortcuts-action-move = Move through results
+shortcuts-action-pick = Paste or copy a result by its number
 shortcuts-action-peek = Peek at the highlighted reference
 shortcuts-action-escape = Step back or hide
 shortcuts-action-format = Change the format
@@ -479,6 +490,8 @@ settings-results-count = { $count ->
    *[other] { $count } results
     }
 settings-read-failed = Ibis could not read your settings; reopen Settings to try again.
+settings-forget-failed = Ibis could not forget the app’s format; the saved choice is shown.
+settings-open-failed = Ibis could not open the settings file.
 settings-choice-failed = Ibis could not save this choice; the saved value is shown.
 settings-startup-words = startup launch restart login
 settings-paste-words = paste copy clipboard Enter
@@ -625,6 +638,7 @@ backup-problem-settings-file = That’s Ibis’s own settings file, not a backup
 backup-problem-newer = That backup is from a newer version of Ibis. Update Ibis, then try again.
 backup-problem-invalid = That backup is damaged. Nothing changed.
 backup-problem-settings-unusable = Ibis can’t use its settings file as it is. Nothing changed.
+backup-problem-busy = Settings are being saved by another Ibis. Wait for it to finish, then try again. Nothing changed.
 backup-problem-changed = Settings changed after the backup was shown. Choose it again.
 backup-problem-not-saved = Ibis couldn’t save. Nothing changed.
 
@@ -727,30 +741,30 @@ citation-details-edit = Edit { $reference }
 citation-details-details = Citation details for { $reference }
 operation-failures-recent-history = Recent citations could not be forgotten. Try again.
 operation-failures-project = The .bib file to check against could not be changed. Try again.
-operation-failures-row-context = The reference menu could not open. Use Enter to copy or Shift+Enter to add.
+operation-failures-row-context = The row menu could not open. Enter copies, Shift+Enter adds.
 operation-failures-status = Ibis could not check your library. Choose the file again.
-operation-failures-shortcut = Ibis could not check the shortcut. Open Ibis from the menu bar or tray.
+operation-failures-shortcut = Could not check the shortcut. Open Ibis from the menu bar or tray.
 operation-failures-choose = The file chooser did not open. Try again.
-operation-failures-drop-refused = Ibis opens one { -library-formats } file at a time.
+operation-failures-drop-refused = Drop one { -library-formats } file at a time.
 operation-failures-zotero = Ibis could not start reading Zotero. Try again.
 operation-failures-samples = Ibis could not change the sample library. Try again.
 operation-failures-zotero-groups = Ibis could not list your Zotero groups. Check that Zotero is open, then try again.
 operation-failures-reload = Ibis could not reload your library. Choose the file again.
 operation-failures-hide = Ibis could not hide this window. Try again.
 operation-failures-pin = Ibis could not change the pin. Try again.
-operation-failures-preferences = Ibis could not read or save your picker choices. They apply until Ibis restarts.
+operation-failures-preferences = Your picker choices could not be saved. They apply until restart.
 operation-failures-window-size = Ibis could not save the window size. It will be kept until you quit.
 operation-failures-quit = Ibis could not quit. Try again.
 operation-failures-update-events = Update progress is unavailable.
 operation-failures-picker-events = Ibis could not focus the search box. Restart Ibis to try again.
 operation-failures-library-events = Your library may not update automatically. Use Reload, or restart Ibis.
-operation-failures-find-sources = Ibis could not look for libraries on this computer. Choose a file instead.
-operation-failures-open-found = That file could not be opened from the list. Pick it again from the new list.
+operation-failures-find-sources = Ibis could not look for libraries here. Choose a file instead.
+operation-failures-open-found = That file could not be opened. Pick it again from the new list.
 operation-failures-settings = Settings could not open. Try again.
-operation-failures-app-choices = Ibis needs your paste choice for this app because its saved app choices were damaged. Choose Paste or Copy Only in the format menu.
-operation-failures-app-read = Ibis could not tell which app this is for. Your default applies, and a format you pick is for this paste only. Reopen Ibis to try again.
+operation-failures-app-choices = App choices were damaged. Choose Paste or Copy Only again.
+operation-failures-app-read = Ibis could not tell which app this is. Your default applies.
 operation-failures-app-choice = Ibis could not save the choice for this app. Try again.
-operation-failures-app-delivery = Ibis saved the format for this app, but not whether to paste into it. Choose Paste or Copy Only again.
+operation-failures-app-delivery = Ibis saved the format but not Paste or Copy Only. Choose it again.
 setup-sources-title = Where do your references live?
 setup-sources-line =
     { $platform ->
@@ -769,7 +783,7 @@ setup-sample-title = Sample references
 setup-sample-search-help = Search for “lantern”, choose the lantern gardens reference, then press Enter.
 setup-own-library = Use Your Own Library
 setup-own-library-help = Choose Zotero or a library file instead of samples
-setup-empty-line = Choose a library with references.
+setup-empty-line = Add references to it, or choose another library.
 setup-zotero = Zotero
 setup-find-libraries = Find Them on This Computer
 setup-found-in = Found in { $folder }
@@ -820,35 +834,37 @@ session-not-read = The references could not be read. Try again.
 session-not-formatted = These references could not be written as a bibliography. Try another style.
 session-not-copied = The bibliography could not be copied. Try again.
 session-not-saved = The bibliography could not be saved. Try again.
-writing-project-title = Writing Projects
-writing-project-loading = Loading writing projects…
-writing-project-saving = Saving project…
-writing-project-menu = Writing Projects…
-writing-project-about = A writing project keeps its citation format and optional bibliography together. Your choice is remembered for this app; changes apply wherever you use this project. Ibis does not identify the document.
-writing-project-session-only = Ibis can’t identify the app, so this project applies only until Ibis quits.
-writing-project-close = Back
-writing-project-none = No Writing Project
-writing-project-empty = No writing projects yet. Your app’s format applies until you choose one.
-writing-project-use = Use { $name }
-writing-project-selected = Selected writing project
-writing-project-bibliography = Bibliography: { $name }
-writing-project-no-bibliography = No bibliography selected.
-writing-project-choose-bibliography = Choose Bibliography…
-writing-project-remove-bibliography = Remove Bibliography
-writing-project-create = New Writing Project…
-writing-project-confirm-create = Create Project
-writing-project-starts-with = Starts with { $format }. Change it in the format menu after creating the project.
-writing-project-name = Project name
-writing-project-rename = Rename Project…
-writing-project-save-name = Save Name
-writing-project-remove = Remove Project…
-writing-project-confirm-remove = Remove Project
-writing-project-cancel = Cancel
-writing-project-unsupported = This app version cannot use this project’s format.
-writing-project-not-read = The writing projects could not be read. Close this sheet, then try again.
-writing-project-not-saved = The project could not be saved. Your previous choice still applies. Try again.
-writing-project-bibliography-not-saved = The bibliography choice could not be saved. Try again.
-writing-project-pick = Your pick changes this project’s format.
+writing-title = Writings
+writing-loading = Loading writings…
+writing-saving = Saving project…
+writing-menu = New writing…
+writing-about = A writing keeps its citation format and optional bibliography together. Your choice is remembered for this app; changes apply wherever you use this writing. Ibis does not identify the document.
+writing-session-only = Ibis can’t identify the app, so this writing applies only until Ibis quits.
+writing-close = Close
+writing-none = No Writing
+writing-empty = No writings yet. Your app’s format applies until you choose one.
+writing-use = Use { $name }
+writing-selected = Selected writing
+writing-selected-label = Selected
+writing-format = Format: { $name }
+writing-bibliography = Bibliography: { $name }
+writing-no-bibliography = No bibliography selected.
+writing-choose-bibliography = Choose Bibliography…
+writing-remove-bibliography = Remove Bibliography
+writing-create = New Writing…
+writing-confirm-create = Create Writing
+writing-starts-with = Starts with { $format }. Change it in the format menu after creating the writing.
+writing-name = Writing name
+writing-rename = Rename Writing…
+writing-save-name = Save Name
+writing-remove = Remove Writing…
+writing-confirm-remove = Remove Writing
+writing-cancel = Cancel
+writing-unsupported = This app version cannot use this writing’s format.
+writing-not-read = The writings could not be read. Close this sheet, then try again.
+writing-not-saved = The project could not be saved. Your previous choice still applies. Try again.
+writing-bibliography-not-saved = The bibliography choice could not be saved. Try again.
+writing-pick = Your pick changes this writing’s format.
 project-check-retry = Retry
 project-check-locate = Locate Bibliography…
 picker-choose-project = Check Against a .bib File…
@@ -865,7 +881,7 @@ picker-snapshot-changed = The library changed. Search again and reselect the ref
 picker-shared-key = More than one reference has the key { $key }, so it can’t be cited by key. Give one of them a different key in Zotero or your .bib file.
 picker-using-shorthand = Using { $value }
 picker-apply = Apply
-picker-shorthand-hint = Type it with the search: a page “vale 417”, a chapter “vale ch 2”, text before “see vale”.
+picker-shorthand-hint = Type “vale 417” for page 417, or “see vale” to add “see”.
 picker-search-as-typed = Search as typed
 picker-apply-locator = Apply locator to { $key }
 picker-copied = Copied
@@ -1013,8 +1029,8 @@ session-absent =
 session-left-out = Left out because this style can’t write them: { $names }.
 session-bibliography-in = Bibliography in { $style }
 session-saved = Saved { $name }.
-writing-project-remove-question = Remove { $name } from Ibis? Its bibliography file stays where it is.
-writing-project-remembered = Saved for { $name }.
+writing-remove-question = Remove { $name } from Ibis? Its bibliography file stays where it is.
+writing-remembered = Saved for { $name }.
 picker-project-state =
     { $state ->
         [in] In { $name }
@@ -1042,12 +1058,12 @@ picker-copy-project-entry = Copy Entry for { $name }
 picker-project-entry =
     { $outcome ->
         [copied] Copied the entry for { $key } as your file has it, including any file or note field. Check it, then add it to { $name }.
-        [no-original] This reference has no original BibTeX entry here. Export it from your reference manager in your project’s dialect, keeping its key.
+        [no-original] This reference has no original BibTeX entry here. Export it from your reference manager in your writing’s dialect, keeping its key.
         [changed] The library or the bibliography changed. Search again, then try again.
         [repeated] The library file repeats this key, so Ibis can’t tell which entry to copy.
        *[dependency] This entry relies on a crossref, xdata or @string that can’t come with it. Export it from your reference manager, keeping its key.
     }
-picker-editor-waiting = Citing for your editor in { $format }. Enter sends what you see; Esc cancels.
+picker-editor-waiting = Citing for your editor in { $format }. Esc cancels.
 picker-find-source = Find { $name }…
 picker-find-source-unnamed = Find…
 picker-show-source-folder =
@@ -1236,7 +1252,7 @@ copied-notice-reason =
 update-title = Updating Ibis
 update-downloading = Downloading
 update-installing = Checking and installing
-update-failed = The update could not be installed. Use Check for Updates in Settings › About to try again later.
+update-failed = Update not installed. Use Check for Updates in Settings › About.
 library-entries-to-check =
     { $count ->
         [one] 1 entry to check
@@ -1248,6 +1264,27 @@ library-more-not-listed =
        *[other] { $count } more are not listed.
     }
 
+settings-changed = Changed
+citations-documents = In documents
+citations-keys = In Markdown, LaTeX and Typst
+citations-apps = Formats remembered for apps
+citations-forget = Forget
+citations-writings = Writings
+settings-open-file = Open Settings File
+settings-file-description = Edits to settings.json apply while Ibis is running.
+picker-use-usual = Use { $format } in { $app } again
+picker-stop-writing = Stop using { $name } in { $app }
+
+copied-notice-suggested = Pasted in { $format }
+copied-notice-suggestion = Suggested { $format }
+copied-notice-change = Change
+
+picker-find-open = Open PDF, or show item in Zotero
+shortcuts-action-find-open = Open PDF, or show item
+
+citations-unlisted = Custom format
+
+picker-format-suggestion = Suggested until you choose a format.
 ## The palette: the format chooser and More (ui/Palette).
 palette-back = Back
 palette-run = Run
@@ -1356,6 +1393,7 @@ problem-formatter-unavailable = The citation could not be written just now.
 problem-annotation-mismatch = This annotation belongs to another reference.
 problem-not-citable = This item cannot be cited as a reference.
 problem-not-from-zotero = This reference was not read from Zotero.
+problem-missing-doi = A selected reference has no DOI. Share it as BibTeX instead.
 
 ## Native command failures.
 app-failure-cli-status = The command line setup could not be read.
@@ -1379,14 +1417,14 @@ app-failure-search = The search could not be completed.
 app-failure-drag-paste-app = The Ibis app could not be dragged.
 
 app-command-no-library = Choose a library to search.
-app-project-error-invalid-name = Give the project a name of 1 to 80 characters, without control characters.
-app-project-error-duplicate-name = A writing project already has that name. Choose another name.
-app-project-error-not-found = That writing project is no longer available. Choose a project again.
-app-project-error-too-many = Ibis can remember at most 64 writing projects. Remove one before adding another.
-app-project-error-invalid = The writing-project definitions are not valid. Check Settings.
-app-project-error-changed = The writing project or destination changed. Open the project menu again.
-app-project-error-editor = This editor request chooses its own output. Finish it before changing writing projects.
-app-project-error-output = This project’s output is not available in the picker. Choose another format.
+app-project-error-invalid-name = Give the writing a name of 1 to 80 characters, without control characters.
+app-project-error-duplicate-name = A writing already has that name. Choose another name.
+app-project-error-not-found = That writing is no longer available. Choose a writing again.
+app-project-error-too-many = Ibis can remember at most 64 writings. Remove one before adding another.
+app-project-error-invalid = The writing definitions are not valid. Check Settings.
+app-project-error-changed = The writing or destination changed. Open the format menu again.
+app-project-error-editor = This editor request chooses its own output. Finish it before changing writings.
+app-project-error-output = This writing’s format is not available in the picker. Choose another format.
 app-settings-error-unreadable = The settings file could not be read or saved.
 app-settings-error-invalid = The settings file is not valid. Open Settings to review it.
 app-settings-error-newer = Settings were written by a newer version of Ibis. Update Ibis before changing them.
@@ -1453,3 +1491,14 @@ app-clipboard-unavailable = The clipboard could not be written. Try again.
 
 app-recent-history-not-saved = Recent citations could not be forgotten. Try again.
 app-project-citation-conflict = Citation keys { $keys } identify different works in the project bibliography. Check the bibliography before copying.
+
+app-settings-error-changed = Settings changed while saving. Try again.
+app-settings-error-busy = Settings are being saved by another Ibis. Wait for it to finish, then try again.
+app-settings-error-document-format = Choose a style for documents.
+app-settings-error-key-format = Choose a key format for Markdown and LaTeX.
+app-project-error-context-unavailable = The document context could not be read. Try again.
+app-project-error-invalid-context = The document context must name one bibliography and CSL style as plain values.
+app-project-error-ambiguous-context = More than one writing matches this context. Choose a writing by name.
+mcp-error-citation-format = This format exports records or Zotero markers. Choose a citation format.
+
+app-failure-open-settings-file = The settings file could not be opened. Try again.

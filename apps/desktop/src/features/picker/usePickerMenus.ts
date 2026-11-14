@@ -37,22 +37,18 @@ export function usePickerMenus(api: typeof nativeApi, { perform }: Pick<ReturnTy
   useEffect(() => { if (windowUndo.ticket !== null) queueMicrotask(closeOverlays); }, [windowUndo.ticket]);
   // Where focus goes back to when a sheet closes.
   const sheetReturn = useRef<HTMLElement | null>(null);
+  // Opening one closes any other: ui/layers displaces what it is not inside.
   const openMore = () => {
     cancelCopy();
-    closeOverlays();
     // From a hidden field (the welcome hides Search), More itself is where Esc returns.
     if (focusLost()) moreButton.current?.focus();
     setOverlay("more");
   };
   const openLibrary = () => {
     cancelCopy();
-    closeOverlays();
     setOverlay("library");
   };
-  const openFormat = () => {
-    closeOverlays();
-    formatButtonRef.current?.click();
-  };
+  const openFormat = () => { formatButtonRef.current?.click(); };
   /** A command that acts on the picker or leaves it: nothing stays in its way. */
   const leaveOverlays = () => {
     cancelCopy();
@@ -65,7 +61,6 @@ export function usePickerMenus(api: typeof nativeApi, { perform }: Pick<ReturnTy
   };
   const openSheet = (sheet: "keys" | "session" | "projects") => {
     cancelCopy();
-    closeOverlays();
     const focused = document.activeElement;
     sheetReturn.current = focused instanceof HTMLElement && !focusLost() ? focused : null;
     setOverlay(sheet);

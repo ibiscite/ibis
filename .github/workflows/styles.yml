@@ -77,8 +77,7 @@ jobs:
     if: ${{ !cancelled() && needs.sweep.outputs.moved == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    # The app's token, unlike GITHUB_TOKEN, starts CI on the pull request. It
-    # pushes only the styles/newest branch; main takes it through the merge queue.
+    # The app pushes only styles/newest; agents review it and run land.sh.
     environment: release
     permissions: {}
     steps:

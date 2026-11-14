@@ -82,7 +82,7 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
                         let request: ibis_core::contract::CitationRequest = serde_json::from_value(job.params.clone())
                             .map_err(|_| EngineError::new(ErrorCode::BadInput))?;
                         let prepared = citation.prepare(&request, false)?;
-                        DispatchResult::citation(prepared.result().clone(), request.items.len())?
+                        DispatchResult::citation(prepared.result().clone(), request.items.len(), &request.output)?
                             .with_health(prepared.source_health())?
                     } else {
                         dispatch(job.method, &job.params, &job.cancel)?

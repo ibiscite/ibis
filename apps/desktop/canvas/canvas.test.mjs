@@ -67,6 +67,7 @@ test("the built scenario list renders, switches and reopens without Tauri or net
       }
       else if (scenario === "error") expect(host.textContent).toContain("Can’t open invented.bib");
       else if (scenario === "loading") expect(host.textContent).toContain("Opening invented.bib");
+      else if (scenario.startsWith("unknown-app")) expect(host.textContent).toContain("could not tell which app");
       else if (scenario === "tokens") for (const token of ["--accent", "--space-8", "--r-large", "--r-small"]) expect(host.textContent).toContain(token);
       else if (scenario === "shortcuts") expect(window.document.querySelector('[role="dialog"]')).not.toBeNull();
       else if (scenario === "parts") for (const part of ["Button: primary", "Settings rows", "Marks and icons"]) expect(host.textContent).toContain(part);
@@ -97,7 +98,7 @@ test("the built scenario list renders, switches and reopens without Tauri or net
           if (scenario === "library-menu") expect(window.document.querySelector("#library-menu")?.textContent).toContain("Field Notes");
         }
         if (scenario === "reference-details") expect(window.document.querySelector('.ui-popover [role="dialog"]')?.textContent).toContain("Page");
-        if (scenario === "show-as-menu") expect([...window.document.querySelectorAll('[role="menuitemradio"]')].some((item) => item.textContent.includes("Aster (2026)"))).toBe(true);
+        if (scenario === "show-as-menu") expect([...window.document.querySelectorAll('[role="menuitemradio"]')].some((item) => item.textContent.includes("[-@synthetic0]"))).toBe(true);
         if (scenario === "reader") expect(host.textContent).toContain("Hide PDF");
       }
     });

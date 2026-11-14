@@ -9,7 +9,7 @@ function Harness({ initial = "" }: { initial?: string }) {
   const [page, setPage] = useState(initial);
   return <>
     <input aria-label="Page" value={page} onChange={(event) => setPage(event.target.value)} />
-    <Reader source={inventedSource()} title="Invented title" page={page} onPageChange={setPage} onClose={() => undefined} />
+    <Reader source={inventedSource()} title="Invented title" page={page} onPageChange={setPage} />
   </>;
 }
 const strip = () => screen.getByRole("listbox", { name: "Pages" });

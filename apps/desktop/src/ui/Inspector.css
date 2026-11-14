@@ -5,7 +5,7 @@
    meets the search bar's divider at the top and the shelf at the bottom. The
    content keeps S from both inside it. */
 @container (max-width: 36rem) {
-  .inspector { --inspector-pad: calc(var(--inset) + var(--row-pad)); grid-area: middle; width: auto; margin-block: 0; border: 0; }
+  .inspector { --inspector-pad: var(--row-start); grid-area: middle; width: auto; margin-block: 0; border: 0; }
   .picker-content:has(~ .inspector) { visibility: hidden; }
 }
 .inspector-body { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
@@ -40,7 +40,8 @@
 .inspector-action.ui-button[data-variant] { justify-content: space-between; gap: var(--space-4); width: calc(100% + 2 * var(--space-2)); max-width: none; min-height: var(--control-h); margin-inline: calc(-1 * var(--space-2)); padding-inline: var(--space-2); border: 0; border-radius: var(--r-small); font: var(--type-body-size) / var(--type-body-line) var(--font); text-align: start; }
 /* Reading: the list folds away and the panel takes the whole middle row, so the
    pages sit between the thumbnails and the column (decision 0038). */
-.inspector[data-reading] { grid-column: 1 / -1; width: auto; border-inline-start: 0; }
+/* Reading takes the content slot's whole width, under the notice line. */
+.inspector[data-reading] { grid-row: middle; grid-column: 1 / -1; width: auto; border-inline-start: 0; }
 /* The reader draws its own canvas edge to edge, between the dividers. */
 .inspector[data-reading] .inspector-document { padding: 0; }
 main:has(> .inspector[data-reading]) > .picker-content { display: none; }

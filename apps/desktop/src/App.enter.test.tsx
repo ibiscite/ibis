@@ -1,4 +1,5 @@
 import { recordId } from "./test-fixtures";
+import { fixtureDestination, formatAnswer } from "./testing/format";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
@@ -124,7 +125,7 @@ test("a completed copy cannot be repeated while hidden; reopening requires fresh
 test.each([true, false])("the footer names action and output together (paste=%s)", async (canPaste) => {
   backend({
     search: () => [result("a", "First")],
-    picker_destination: () => ({ app: "Example Word", app_id: "example.word", app_identity: null, automatic: "apa", remembered: null, unreadable: false, can_paste: canPaste, output_question: null, paste: null, paste_question: false, can_choose_paste: false }),
+    picker_destination: () => (fixtureDestination({ app: "Example Word", app_id: "example.word", app_identity: null, unreadable: false, can_paste: canPaste, paste: null, paste_question: false, can_choose_paste: false, format: formatAnswer("apa", "suggestion") })),
   });
   await act(async () => { render(<App />); });
   expect(keys().getByRole("button", { name: canPaste ? "Paste into Example Word · APA" : "Copy as APA" })).toBeTruthy();
