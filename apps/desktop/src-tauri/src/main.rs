@@ -40,6 +40,9 @@ mod project;
 mod row_context;
 mod session_references;
 mod settings_backup;
+#[cfg(test)]
+#[path = "../../../../crates/ibis-engine/tests/support/settings.rs"]
+mod settings_fixture;
 mod settings_window;
 mod setup;
 mod shortcut_setting;
@@ -287,8 +290,8 @@ fn main() {
             ibis_engine::identity::use_saved_key(true);
             let settings_path = app.path().app_config_dir()?.join("settings.json");
             let loaded = settings::load(&settings_path);
-            let interface = loaded.usable(settings::Purpose::Interface).cloned().unwrap_or_default();
-            let cites = loaded.usable(settings::Purpose::Cites).ok();
+            let interface = loaded.interface().unwrap_or_default();
+            let cites = loaded.cites().ok();
             library::engine_file::warm_formatter(cites.and_then(|settings| settings.portable.output.clone()));
             app.manage(SettingsFile::new(settings_path.clone()));
             let remember = cites.is_some_and(|settings| settings.portable.recent_citations.unwrap_or(true));
@@ -352,10 +355,10 @@ fn main() {
                 Ok(Err(error)) => report(Err::<(), _>(error), NativeIssue::TrayCreation),
                 Err(_) => application_message("the menu bar item is not available on this system"),
             }
-            tray::show_in_menu_bar(app.handle(), interface.portable.menu_bar.unwrap_or(true), 0);
-            start_shortcut(app.handle(), interface.portable.shortcut.here());
+            tray::show_in_menu_bar(app.handle(), interface.menu_bar.unwrap_or(true), 0);
+            start_shortcut(app.handle(), interface.shortcut.as_deref());
             // After the tray, so the menu item shows the saved choice.
-            updater::start(app.handle(), interface.device.update_checks, loaded.problem.is_none());
+            updater::start(app.handle(), interface.update_checks, loaded.problem.is_none());
             // The library from settings; IBIS_LIBRARY overrides it for development.
             project::watch_openings(app.handle());
             editor_endpoint::start(
@@ -375,7 +378,7 @@ fn main() {
             }
             // With no menu bar item, opening Ibis opens Settings, as reopening does.
             #[cfg(target_os = "macos")]
-            if interface.portable.menu_bar == Some(false) && !login_item::launched_at_login(std::env::args_os()) {
+            if interface.menu_bar == Some(false) && !login_item::launched_at_login(std::env::args_os()) {
                 panel::cancel_initial_presentation(app.handle());
                 settings_window::open(app.handle(), None);
             }

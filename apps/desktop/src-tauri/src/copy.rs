@@ -1,6 +1,5 @@
 //! Copying the selected references as a citation.
 
-use ibis_engine::settings::Purpose;
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -460,7 +459,7 @@ fn commit_shown(
     let format = {
         let settings = ibis_engine::settings::load(&app.state::<crate::preferences::SettingsFile>().path);
         let target = captured.as_ref().map(|(id, _, _)| id);
-        settings.usable(Purpose::Cites).ok().and_then(|saved| {
+        settings.cites().ok().and_then(|saved| {
             let chosen = ibis_engine::format::choose(saved, target);
             (chosen.output == *recited.output()).then(|| (target.cloned(), chosen))
         })

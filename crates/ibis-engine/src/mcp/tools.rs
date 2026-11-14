@@ -586,7 +586,7 @@ fn cite(
                 Formats::File(path) => {
                     let loaded = crate::settings::load(path);
                     loaded
-                        .usable(crate::settings::Purpose::Cites)
+                        .cites()
                         .map_err(|problem| {
                             Refusal::new(crate::settings_backup::settings_code(problem), UNREADABLE_FORMATS)
                         })?

@@ -51,7 +51,7 @@ pub(crate) fn load() -> Result<AppLibraries, Failure> {
 pub(crate) fn format_settings(nightly: bool) -> Result<settings::Settings, Failure> {
     let (app, path) = crate::settings_backup::settings_file(nightly)?;
     let loaded = settings::load(&path);
-    match loaded.usable(settings::Purpose::Cites) {
+    match loaded.cites() {
         Err(problem) => Err(Failure::new(
             problem_code(problem),
             format!(
@@ -69,7 +69,7 @@ fn read(app: &'static str, path: &Path) -> Result<Option<AppLibraries>, Failure>
     if loaded.primary_read == PrimaryRead::Missing && loaded.problem.is_none() && !loaded.from_backup {
         return Ok(None);
     }
-    if let Err(problem) = loaded.usable(settings::Purpose::Cites) {
+    let settings = loaded.cites().map_err(|problem| {
         let reason = if loaded.from_backup {
             format!("{}, and Ibis does not use its backup here", problem_text(problem))
         } else {
@@ -81,14 +81,11 @@ fn read(app: &'static str, path: &Path) -> Result<Option<AppLibraries>, Failure>
         } else {
             format!("Open {app} to repair its settings")
         };
-        return Err(Failure::new(
+        Failure::new(
             code,
             format!("cannot read the libraries chosen in {app}: {reason}. {fix}, or {NAME_ONE}."),
-        ));
-    }
-    let settings = loaded
-        .usable(settings::Purpose::Cites)
-        .map_err(|problem| Failure::new(problem_code(problem), problem_text(problem)))?;
+        )
+    })?;
     let (files, zotero) = match settings.portable.library.clone() {
         None => {
             return Err(Failure::new(

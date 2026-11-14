@@ -3,7 +3,6 @@ use super::*;
 use crate::library::engine_file::{FileLibrary, FileSelection};
 use ibis_core::contract::OutputSpec;
 use ibis_core::destination::System;
-use ibis_engine::settings::Purpose;
 use serde_json::json;
 
 #[test]
@@ -64,10 +63,7 @@ fn app_outputs_and_remembered_key_workflows_copy_the_exact_preview() -> Result<(
             .update(|settings| settings.remember_app_output(&browser, output.id().to_owned()))
             .map_err(|error| format!("remember {}: {error}", output.id()))?;
         // What a restart reads for the app.
-        let reopened = ibis_engine::settings::load(&settings_path)
-            .usable(Purpose::Interface)
-            .unwrap_or_else(|error| panic!("{error}"))
-            .clone();
+        let reopened = crate::settings_fixture::read(&settings_path);
         let remembered = reopened
             .app_output(&browser)
             .and_then(crate::output::listed)

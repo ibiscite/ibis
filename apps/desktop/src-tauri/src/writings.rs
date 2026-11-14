@@ -3,8 +3,6 @@
 //! opening reads the projects as saved, so a change made in another app is
 //! used by the next citation.
 
-#[cfg(test)]
-use ibis_engine::settings::Purpose;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -158,7 +156,7 @@ fn context_token_for(target: &Target, activation: u32) -> String {
 
 fn read_settings(path: &Path) -> Result<Settings, String> {
     settings::load(path)
-        .usable(settings::Purpose::Cites)
+        .cites()
         .cloned()
         .map_err(crate::preferences::settings_message)
 }
@@ -736,18 +734,9 @@ mod tests {
                 Ok::<_, ChangeError>(())
             })
             .unwrap_or_else(|error| panic!("{error}"));
-        let reopened = settings::load(&path);
-        assert!(reopened.problem.is_none());
+        let reopened = crate::settings_fixture::read(&path);
         let before = active_for(&settings, &target, None).unwrap_or_else(|error| panic!("{error}"));
-        let after = active_for(
-            &reopened
-                .usable(Purpose::Interface)
-                .unwrap_or_else(|error| panic!("{error}"))
-                .clone(),
-            &known("example.editor", 2),
-            None,
-        )
-        .unwrap_or_else(|error| panic!("{error}"));
+        let after = active_for(&reopened, &known("example.editor", 2), None).unwrap_or_else(|error| panic!("{error}"));
         assert_eq!(
             before.map(|project| project.view()),
             after.map(|project| project.view())

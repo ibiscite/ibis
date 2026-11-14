@@ -201,7 +201,7 @@ pub(crate) async fn choose_settings_backup(window: WebviewWindow) -> Result<Opti
         .file()
         .set_parent(&window)
         .set_title("Restore Settings")
-        .add_filter("Ibis settings backup", &["json"]);
+        .add_filter("Ibis settings backup", &["json", "bak"]);
     let chosen = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_file())
         .await
         .map_err(|_| BackupProblem::Unreadable)?;

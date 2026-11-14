@@ -1,7 +1,6 @@
 //! The macOS calls behind a paste. The identity-only AX, lifecycle and
 //! secure-input FFI are isolated; other calls use safe objc2 bindings.
 
-use ibis_engine::settings::Purpose;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
@@ -130,7 +129,7 @@ fn manual_accessibility_allowed(app: &AppHandle, front: &Front) -> bool {
         return false;
     };
     let settings = ibis_engine::settings::load(&app.state::<crate::preferences::SettingsFile>().path);
-    let Ok(settings) = settings.usable(Purpose::Cites) else {
+    let Ok(settings) = settings.cites() else {
         return false;
     };
     manual_accessibility_policy(front, id, preference, settings.portable.paste.unwrap_or(true))

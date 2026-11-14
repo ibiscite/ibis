@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
-use ibis_engine::settings::{PickerWindow, Settings};
+use ibis_engine::settings::PickerWindow;
 use owner::{Display, Event, MINIMUM, Owner, Sample, Save, content_room};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -170,11 +170,11 @@ fn chosen(saved: Option<Frame>, size: (u32, u32), larger: bool, room: (f64, f64)
 }
 
 impl Sizing {
-    pub(crate) fn load(&self, settings: &Settings) {
+    pub(crate) fn load(&self, settings: &ibis_engine::settings::Interface) {
         if let Ok(mut state) = self.shared.state.lock() {
-            state.windows = settings.device.picker_windows.clone();
+            state.windows = settings.picker_windows.clone();
         }
-        self.set_larger_text(settings.portable.larger_text.unwrap_or(false));
+        self.set_larger_text(settings.larger_text.unwrap_or(false));
     }
 
     /// An accepted text choice applies until quit even if its flush fails.

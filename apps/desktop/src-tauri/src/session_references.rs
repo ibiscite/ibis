@@ -5,7 +5,6 @@
 //! nowhere unless the person exports the bibliography, and it never reaches a
 //! library. Text comes from the open library each time it is shown.
 
-use ibis_engine::settings::Purpose;
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -336,7 +335,7 @@ pub(crate) fn manage<R: tauri::Runtime>(app: &AppHandle<R>, settings_path: &std:
                 let history = app.state::<SessionReferences>();
                 let loaded = ibis_engine::settings::load(&settings_path);
                 let saved = loaded
-                    .usable(Purpose::Cites)
+                    .cites()
                     .is_ok_and(|settings| settings.portable.recent_citations.unwrap_or(true));
                 if !on && saved {
                     let _ = history.forget();

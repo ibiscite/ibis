@@ -281,12 +281,11 @@ impl Owner {
         &self.path
     }
     pub fn read(&self) -> Loaded {
-        self.in_turn(settings::load)
-            .unwrap_or_else(|| settings::load(&self.path))
+        self.in_turn(|path| settings::load(path.unwrap_or(&self.path)))
     }
     /// Read and apply read effects in order, without saving or repairing a file.
     pub fn read_with<T>(&self, read: impl FnOnce(Loaded) -> T) -> Option<T> {
-        self.in_turn(|path| read(settings::load(path)))
+        self.in_turn(|path| path.ok().map(|path| read(settings::load(path))))
     }
     pub fn submit<T, E>(
         &self,
@@ -340,32 +339,35 @@ impl Owner {
         change: impl FnOnce(&mut Settings) -> Result<T, E>,
         after: impl FnOnce(Result<(Settings, T), E>) -> U,
     ) -> U {
-        let mut after = Some(after);
         self.in_turn(|path| {
-            after.take().unwrap_or_else(|| unreachable!("one settings turn"))(settings::transaction(path, change))
+            after(
+                path.map_err(E::from)
+                    .and_then(|path| settings::transaction(path, change)),
+            )
         })
-        .unwrap_or_else(|| after.take().unwrap_or_else(|| unreachable!("no settings turn"))(Err(closed().into())))
     }
     /// Prepare a file for the external editor, leaving existing contents alone.
     pub fn ensure_file(&self) -> Result<(), SettingsError> {
-        self.in_turn(settings::ensure_file).unwrap_or_else(|| Err(closed()))
+        self.in_turn(|path| path.and_then(settings::ensure_file))
     }
 
     /// Restores exactly the previewed settings, preserving this device's state.
     pub fn restore(&self, plan: &super::backup::Plan) -> Result<Settings, super::backup::BackupError> {
-        self.in_turn(|path| super::backup::restore(path, plan))
-            .unwrap_or_else(|| Err(closed().into()))
-            .map_err(|error| match error {
-                super::backup::BackupError::Settings(problem) => super::backup::BackupError::Current(problem),
-                other => other,
-            })
+        self.in_turn(|path| {
+            path.map_err(super::backup::BackupError::from)
+                .and_then(|path| super::backup::restore(path, plan))
+        })
+        .map_err(|error| match error {
+            super::backup::BackupError::Settings(problem) => super::backup::BackupError::Current(problem),
+            other => other,
+        })
     }
 
-    fn in_turn<T>(&self, work: impl FnOnce(&Path) -> T) -> Option<T> {
+    fn in_turn<T>(&self, work: impl FnOnce(Result<&Path, SettingsError>) -> T) -> T {
         let (start, turn) = mpsc::channel::<()>();
         let (finished, done) = mpsc::channel::<Vec<Commit>>();
         let (settled, completion) = mpsc::channel::<()>();
-        enqueue(
+        let queued = enqueue(
             &self.jobs,
             Box::new(move |_, _| {
                 let _ = start.send(());
@@ -378,12 +380,14 @@ impl Owner {
                     })),
                 }
             }),
-        )?;
-        turn.recv().ok()?;
-        let (result, written) = tracking(|| work(&self.path));
+        );
+        if queued.is_none() || turn.recv().is_err() {
+            return work(Err(closed()));
+        }
+        let (result, written) = tracking(|| work(Ok(&self.path)));
         let _ = finished.send(written);
-        completion.recv().ok()?;
-        Some(result)
+        let _ = completion.recv();
+        result
     }
     pub fn close(&self) {
         if let Ok(mut jobs) = self.jobs.lock() {
@@ -780,7 +784,7 @@ mod tests {
             assert!(Some(reported_receipt) < receipt);
             assert_eq!(
                 reported
-                    .usable(super::super::Purpose::Cites)
+                    .cites()
                     .map_err(|error| error.to_string())?
                     .portable
                     .shortcut
@@ -1070,5 +1074,38 @@ mod tests {
                 .density,
             Some(settings::Density::Compact)
         );
+    }
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn a_queued_read_refuses_missing_citation_settings_without_restoring_the_backup() {
+        let (_directory, owner) = owner();
+        let path = owner.path().to_path_buf();
+        std::fs::write(&path, r#"{"output":"ieee"}"#).unwrap();
+        density(&owner, settings::Density::Compact).unwrap();
+        let backup = std::fs::read(path.with_extension("json.bak")).unwrap();
+        let (started, entering) = mpsc::channel();
+        let (release, held) = mpsc::channel();
+        let pending = owner.submit(move |_| {
+            started.send(()).unwrap();
+            held.recv_timeout(CHANNEL_LIMIT).unwrap();
+            Ok::<_, SettingsError>(())
+        });
+        entering.recv_timeout(CHANNEL_LIMIT).unwrap();
+        std::thread::scope(|scope| {
+            let read = scope.spawn(|| {
+                owner.read_with(|loaded| {
+                    assert!(loaded.cites().is_err());
+                    assert_eq!(loaded.interface().unwrap().output.as_deref(), Some("ieee"));
+                })
+            });
+            std::fs::remove_file(&path).unwrap();
+            release.send(()).unwrap();
+            assert!(pending.wait().unwrap().is_err());
+            assert_eq!(read.join().unwrap(), Some(()));
+        });
+        owner.close();
+        assert!(!path.exists());
+        assert_eq!(std::fs::read(path.with_extension("json.bak")).unwrap(), backup);
+        assert!(settings::load(&path).cites().is_err());
     }
 }

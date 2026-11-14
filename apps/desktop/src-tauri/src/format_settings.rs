@@ -1,5 +1,4 @@
 //! Settings views contain names and format IDs, never bibliography paths.
-use ibis_engine::settings::Purpose;
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
@@ -23,9 +22,7 @@ pub(crate) struct FormatSettingsView {
 #[ibis_desktop_macros::command]
 pub(crate) fn format_settings(app: AppHandle) -> Result<FormatSettingsView, String> {
     let loaded = ibis_engine::settings::load(&app.state::<SettingsFile>().path);
-    let settings = loaded
-        .usable(Purpose::Cites)
-        .map_err(ibis_engine::settings_backup::settings_message)?;
+    let settings = loaded.cites().map_err(ibis_engine::settings_backup::settings_message)?;
     Ok(FormatSettingsView {
         apps: settings
             .device

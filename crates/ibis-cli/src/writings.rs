@@ -77,7 +77,7 @@ fn failure(error: WritingError) -> Failure {
 fn load(nightly: bool) -> Result<(PathBuf, settings::Settings), Failure> {
     let (_, path) = settings_backup::settings_file(nightly)?;
     let loaded = settings::load(&path);
-    let settings = loaded.usable(settings::Purpose::Cites).map_err(|problem| {
+    let settings = loaded.cites().map_err(|problem| {
         Failure::new(
             ibis_engine::settings_backup::settings_code(problem),
             ibis_engine::settings_backup::settings_message(problem),

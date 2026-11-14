@@ -251,7 +251,7 @@ struct CopyProof {
 impl LastTarget {
     /// Showing the picker invalidates an earlier delivery. Hide/blur events
     /// may happen more than once and must not retire the successful copy.
-    fn begin_presentation(&self, captured: Option<Captured>) {
+    pub(crate) fn begin_presentation(&self, captured: Option<Captured>) {
         if let Ok(mut last) = self.0.lock() {
             last.presentation = last.presentation.wrapping_add(1);
             last.copied = None;

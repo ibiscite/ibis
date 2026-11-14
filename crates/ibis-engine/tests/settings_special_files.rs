@@ -1,6 +1,7 @@
 #![cfg(unix)]
 
-use ibis_engine::settings::Purpose;
+#[path = "support/settings.rs"]
+mod fixture;
 use std::fs;
 use std::os::unix::fs::FileTypeExt;
 use std::process::{Command, Stdio};
@@ -31,24 +32,19 @@ fn special_settings_files_never_block_or_replace_a_recovery_file() {
         assert!(loaded.from_backup);
         assert_eq!(
             loaded
-                .usable(Purpose::Interface)
+                .interface()
                 .unwrap_or_else(|error| panic!("{error}"))
-                .clone()
-                .portable
                 .shortcut
-                .here(),
+                .as_deref(),
             Some("Alt+Space")
         );
         assert!(matches!(loaded.problem, Some(SettingsError::Unreadable(_))));
         assert_eq!(loaded.primary_read, settings::PrimaryRead::Unreadable);
         assert!(
-            settings::Owner::open(path.clone())
-                .change(|s| {
-                    s.portable.shortcut.set_here(None);
-                    Ok::<_, settings::SettingsError>(())
-                })
-                .map(|(settings, ())| settings)
-                .is_err()
+            fixture::edit(&path, |s| {
+                s.portable.shortcut.set_here(None);
+            })
+            .is_err()
         );
         assert!(
             fs::symlink_metadata(&path)
@@ -77,13 +73,10 @@ fn special_settings_files_never_block_or_replace_a_recovery_file() {
         ));
         fs::write(&path, b"{}").unwrap_or_else(|e| panic!("{e}"));
         assert!(
-            settings::Owner::open(path.clone())
-                .change(|s| {
-                    s.portable.shortcut.set_here(Some("Alt+Space".into()));
-                    Ok::<_, settings::SettingsError>(())
-                })
-                .map(|(settings, ())| settings)
-                .is_err()
+            fixture::edit(&path, |s| {
+                s.portable.shortcut.set_here(Some("Alt+Space".into()));
+            })
+            .is_err()
         );
         assert_eq!(fs::read(&path).unwrap_or_default(), b"{}");
         assert!(!temporary.exists());
@@ -98,13 +91,10 @@ fn special_settings_files_never_block_or_replace_a_recovery_file() {
         fs::write(&backup, recovery).unwrap_or_else(|e| panic!("{e}"));
         pipe(&temporary);
         assert!(
-            settings::Owner::open(path.clone())
-                .change(|s| {
-                    s.portable.shortcut.set_here(Some("Alt+Space".into()));
-                    Ok::<_, settings::SettingsError>(())
-                })
-                .map(|(settings, ())| settings)
-                .is_err()
+            fixture::edit(&path, |s| {
+                s.portable.shortcut.set_here(Some("Alt+Space".into()));
+            })
+            .is_err()
         );
         assert_eq!(fs::read(&path).unwrap_or_default(), b"{}");
         assert_eq!(fs::read(&backup).unwrap_or_default(), recovery);
@@ -119,24 +109,12 @@ fn special_settings_files_never_block_or_replace_a_recovery_file() {
         let ordinary = root.join("ordinary.json");
         fs::write(&ordinary, recovery).unwrap_or_else(|e| panic!("{e}"));
         std::os::unix::fs::symlink(&ordinary, &path).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(
-            settings::load(&path)
-                .usable(Purpose::Interface)
-                .unwrap_or_else(|error| panic!("{error}"))
-                .clone()
-                .portable
-                .shortcut
-                .here(),
-            Some("Alt+Space")
-        );
+        assert_eq!(fixture::read(&path).portable.shortcut.here(), Some("Alt+Space"));
         return;
     }
 
     // Keep the deadline outside the loader process, as in the existing budgets.
-    let root = tempfile::Builder::new()
-        .prefix("ibis-special-settings-")
-        .tempdir()
-        .unwrap_or_else(|e| panic!("{e}"));
+    let (root, _) = fixture::file();
     let mut child = Command::new(std::env::current_exe().unwrap_or_else(|e| panic!("{e}")))
         .args([
             "--exact",

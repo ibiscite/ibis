@@ -5,8 +5,6 @@ use ibis_core::contract::{
     CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, Fingerprint, ItemOutcome, ItemRef,
     KeySyntax, LibraryId, LibraryObject, LocatorTerm, Notice, OutputSpec, Snapshot, TextRun,
 };
-#[cfg(test)]
-use ibis_engine::settings::Purpose;
 use ibis_engine::{
     Cancellation, Engine, Method, PreparedCitation,
     request::{SearchRequest, ZoteroLibrary as EngineZoteroLibrary},
@@ -1319,7 +1317,7 @@ mod tests {
         if warmed {
             let formatting = formatting.clone();
             let output = loaded
-                .usable(Purpose::Interface)
+                .cites()
                 .unwrap_or_else(|error| panic!("{error}"))
                 .clone()
                 .portable

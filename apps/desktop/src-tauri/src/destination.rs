@@ -8,8 +8,6 @@
 //! citation text. An unreadable file uses default formats and retains a durable
 //! delivery-recovery refusal until each app gets an explicit delivery choice.
 
-#[cfg(test)]
-use ibis_engine::settings::Purpose;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -20,7 +18,6 @@ use ibis_engine::settings;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
-use crate::output::OutputRef;
 use crate::preferences::SettingsFile;
 
 /// Apps remembered; the least recently chosen goes first.
@@ -151,12 +148,8 @@ impl AppMemory {
         self.paste_for(app, test_identity(app).as_deref())
     }
 
-    /// Remember how to deliver into `app`. Formats are saved in settings.json,
-    /// so `output` is always `None` here.
     #[cfg(test)]
-    pub(crate) fn set_choice(&self, app: &AppId, output: Option<OutputRef>, paste: Option<AppPaste>) -> io::Result<()> {
-        assert!(output.is_none(), "formats are saved in settings.json");
-        let paste = paste.ok_or_else(|| io::Error::other("there is no choice to remember"))?;
+    pub(crate) fn set_choice(&self, app: &AppId, paste: AppPaste) -> io::Result<()> {
         self.set_bound_choice(app, paste, test_identity(app))
     }
 
@@ -422,8 +415,8 @@ pub(crate) fn picker_destination(
 /// to the per-app file; a delivery that fails after its format saved says so.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) fn remember_app_output(
-    app: AppHandle,
+pub(crate) fn remember_app_output<R: tauri::Runtime>(
+    app: AppHandle<R>,
     memory: State<'_, AppMemory>,
     settings_file: State<'_, SettingsFile>,
     app_id: String,
@@ -436,40 +429,46 @@ pub(crate) fn remember_app_output(
         .map(|id| crate::output::listed(&id).ok_or("this format is not available; choose another"))
         .transpose()
         .map_err(AppChoiceError::not_saved)?;
+    if output.is_none() && paste.is_none() {
+        return Err(AppChoiceError::not_saved("there is no choice to remember"));
+    }
+    let target = |captured: Option<&crate::paste::Captured>| -> Result<AppId, String> {
+        let captured = captured.ok_or("no app to remember a choice for")?;
+        let id = captured.target.app.as_ref().ok_or("no app to remember a choice for")?;
+        if id.normalized() != app_id || captured.app_identity != identity {
+            return Err("the app changed; open the output menu again".into());
+        }
+        Ok(id.clone())
+    };
+    let delivery = || {
+        if let Some(paste) = paste {
+            crate::paste::change_destination(&app, true, |captured| {
+                memory
+                    .set_bound_choice(&target(captured)?, paste, identity.clone())
+                    .map_err(|_| "the choice for this app could not be saved".into())
+            })
+            .map_err(|message| {
+                if output.is_some() {
+                    AppChoiceError::DeliveryNotSaved
+                } else {
+                    AppChoiceError::not_saved(message)
+                }
+            })?;
+        }
+        Ok(())
+    };
+    let Some(output) = output else { return delivery() };
     settings_file.owner.change_with(
         |settings| {
             crate::paste::change_destination(&app, paste.is_some(), |captured| {
-                let captured = captured.ok_or("no app to remember a choice for")?;
-                let id = captured.target.app.as_ref().ok_or("no app to remember a choice for")?;
-                if id.normalized() != app_id || captured.app_identity != identity {
-                    return Err("the app changed; open the output menu again".into());
-                }
-                edit_format(settings, id, output, paste).map_err(|error| error.to_string())?;
-                Ok(id.clone())
+                settings.remember_app_output(&target(captured)?, output.id().to_owned());
+                Ok(())
             })
             .map_err(AppChoiceError::not_saved)
         },
         |saved| {
-            let (_, id) = saved?;
-            // Delivery remains a separate save. Recheck the captured app after
-            // the format commit, before granting any paste permission.
-            if paste.is_some() {
-                crate::paste::change_destination(&app, true, |captured| {
-                    let captured = captured.ok_or("the app changed")?;
-                    if captured.target.app.as_ref() != Some(&id) || captured.app_identity != identity {
-                        return Err("the app changed".into());
-                    }
-                    save_delivery(&memory, &id, output, paste, identity.clone()).map_err(|error| error.to_string())
-                })
-                .map_err(|message| {
-                    if output.is_some() {
-                        AppChoiceError::DeliveryNotSaved
-                    } else {
-                        AppChoiceError::not_saved(message)
-                    }
-                })?;
-            }
-            Ok(())
+            saved?;
+            delivery()
         },
     )
 }
@@ -538,74 +537,6 @@ impl std::fmt::Display for AppChoiceError {
     }
 }
 
-fn edit_format(
-    settings: &mut settings::Settings,
-    id: &AppId,
-    output: Option<OutputRef>,
-    paste: Option<AppPaste>,
-) -> Result<(), AppChoiceError> {
-    if output.is_none() && paste.is_none() {
-        return Err(AppChoiceError::not_saved("there is no choice to remember"));
-    }
-    if let Some(output) = output {
-        settings.remember_app_output(id, output.id().to_owned());
-    }
-    Ok(())
-}
-
-fn save_delivery(
-    memory: &AppMemory,
-    id: &AppId,
-    output: Option<OutputRef>,
-    paste: Option<AppPaste>,
-    identity: Option<String>,
-) -> Result<(), AppChoiceError> {
-    if let Some(paste) = paste {
-        memory.set_bound_choice(id, paste, identity).map_err(|_| {
-            if output.is_some() {
-                AppChoiceError::DeliveryNotSaved
-            } else {
-                AppChoiceError::not_saved("the choice for this app could not be saved")
-            }
-        })?;
-    }
-    Ok(())
-}
-
-#[cfg(test)]
-fn remember(
-    settings_file: &SettingsFile,
-    memory: &AppMemory,
-    id: &AppId,
-    output: Option<OutputRef>,
-    paste: Option<AppPaste>,
-    identity: Option<String>,
-) -> Result<(), AppChoiceError> {
-    settings_file.owner.change_with(
-        |settings| edit_format(settings, id, output, paste),
-        |saved| {
-            saved?;
-            save_delivery(memory, id, output, paste, identity)
-        },
-    )
-}
-
-/// The command's checks and saves, for the app `expected` names.
-#[cfg(test)]
-fn remember_for(
-    settings_file: &SettingsFile,
-    memory: &AppMemory,
-    id: &AppId,
-    expected: &str,
-    output: Option<OutputRef>,
-    paste: Option<AppPaste>,
-) -> Result<(), String> {
-    if id.normalized() != expected {
-        return Err("the app changed; open the output menu again".into());
-    }
-    remember(settings_file, memory, id, output, paste, test_identity(id)).map_err(|error| error.to_string())
-}
-
 #[cfg(test)]
 fn test_identity(app: &AppId) -> Option<String> {
     let path = if app.system == ibis_core::destination::System::Windows {
@@ -624,6 +555,7 @@ pub(crate) fn manage(app: &AppHandle, settings: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::output::OutputRef;
     use ibis_core::destination::System;
 
     fn mac(id: &str) -> AppId {
@@ -648,37 +580,57 @@ mod tests {
     /// The settings file and the per-app file side by side, as the app keeps them.
     struct Choices {
         directory: tempfile::TempDir,
-        settings: SettingsFile,
-        memory: AppMemory,
+        app: tauri::App<tauri::test::MockRuntime>,
     }
 
     impl Choices {
         fn new() -> io::Result<Self> {
-            let directory = tempfile::tempdir()?;
-            let settings = SettingsFile::new(directory.path().join("settings.json"));
-            let memory = memory_in(&directory);
-            Ok(Choices {
-                directory,
-                settings,
-                memory,
-            })
+            Self::open(tempfile::tempdir()?)
+        }
+
+        fn open(directory: tempfile::TempDir) -> io::Result<Self> {
+            let app = tauri::test::mock_builder()
+                .manage(SettingsFile::new(directory.path().join("settings.json")))
+                .manage(memory_in(&directory))
+                .manage(crate::paste::LastTarget::default())
+                .build(tauri::test::mock_context(tauri::test::noop_assets()))
+                .map_err(io::Error::other)?;
+            Ok(Self { directory, app })
         }
 
         fn choose(&self, app: &AppId, output: Option<&str>, paste: Option<AppPaste>) -> Result<(), AppChoiceError> {
-            remember(
-                &self.settings,
-                &self.memory,
-                app,
-                output.and_then(listed),
+            self.choose_for(app, &app.normalized(), output, paste, test_identity(app))
+        }
+
+        fn choose_for(
+            &self,
+            app: &AppId,
+            expected: &str,
+            output: Option<&str>,
+            paste: Option<AppPaste>,
+            identity: Option<String>,
+        ) -> Result<(), AppChoiceError> {
+            let mut captured = crate::paste::Captured::unknown(app.system);
+            captured.target.app = Some(app.clone());
+            captured.app_identity = identity.clone();
+            self.app
+                .state::<crate::paste::LastTarget>()
+                .begin_presentation(Some(captured));
+            remember_app_output(
+                self.app.handle().clone(),
+                self.app.state(),
+                self.app.state(),
+                expected.into(),
+                output.map(str::to_owned),
                 paste,
-                test_identity(app),
+                identity,
             )
         }
 
         /// The format a restart reads for `app`.
         fn format(&self, app: &AppId) -> Option<OutputRef> {
             settings::load(&self.directory.path().join("settings.json"))
-                .usable(Purpose::Interface)
+                .cites()
                 .unwrap_or_else(|error| panic!("{error}"))
                 .clone()
                 .app_output(app)
@@ -704,13 +656,13 @@ mod tests {
     #[test]
     fn the_plugin_note_survives_later_choices_for_the_app() -> io::Result<()> {
         let choices = Choices::new()?;
-        assert!(choices.memory.take_plugin_note(&word()));
+        assert!(choices.app.state::<AppMemory>().take_plugin_note(&word()));
         choices.choose(&word(), Some("apa"), None).map_err(io::Error::other)?;
         choices
             .choose(&word(), None, Some(AppPaste::CopyOnly))
             .map_err(io::Error::other)?;
         assert!(
-            !choices.memory.take_plugin_note(&word()),
+            !choices.app.state::<AppMemory>().take_plugin_note(&word()),
             "a choice keeps the note shown"
         );
         assert_eq!(choices.format(&word()), listed("apa"));
@@ -776,7 +728,7 @@ mod tests {
             system: System::Windows,
             id: r"C:\Invented\Viewer\editor.exe".into(),
         };
-        memory.set_choice(&first, None, Some(AppPaste::Paste))?;
+        memory.set_choice(&first, AppPaste::Paste)?;
         assert_eq!(memory.paste(&first), Ok(Some(AppPaste::Paste)));
         assert_eq!(memory.paste(&other), Ok(None));
         Ok(())
@@ -797,8 +749,10 @@ mod tests {
         assert_eq!(reopened.paste_for(&app, other.as_deref()), Ok(None));
         assert_eq!(reopened.paste_for(&app, None), Ok(None));
         // A format save from the replacement program cannot carry the old approval forward.
-        let settings = SettingsFile::new(directory.path().join("settings.json"));
-        remember(&settings, &reopened, &app, listed("pandoc"), None, other.clone()).map_err(io::Error::other)?;
+        let choices = Choices::open(directory)?;
+        choices
+            .choose_for(&app, &app.normalized(), Some("pandoc"), None, other.clone())
+            .map_err(io::Error::other)?;
         assert_eq!(reopened.paste_for(&app, other.as_deref()), Ok(None));
         let json = fs::read_to_string(path)?;
         assert!(!json.contains("/invented/"), "only an identity digest is saved");
@@ -811,19 +765,19 @@ mod tests {
         let path = directory.path().join("apps.json");
         let word = mac("com.microsoft.word");
         let other = mac("org.example.other");
-        AppMemory::open(path.clone()).set_choice(&word, None, Some(AppPaste::CopyOnly))?;
+        AppMemory::open(path.clone()).set_choice(&word, AppPaste::CopyOnly)?;
         fs::write(&path, "damaged invented preferences")?;
         let memory = AppMemory::open(path.clone());
         assert_eq!(memory.paste(&word), Err(CopyReason::PasteUnavailable));
-        let settings = SettingsFile::new(directory.path().join("settings.json"));
-        remember(&settings, &memory, &other, listed("pandoc"), None, None).map_err(io::Error::other)?;
+        let choices = Choices::open(directory)?;
+        choices.choose(&other, Some("pandoc"), None).map_err(io::Error::other)?;
         assert_eq!(memory.paste(&word), Err(CopyReason::PasteUnavailable));
         let reopened = AppMemory::open(path.clone());
         assert_eq!(reopened.paste(&word), Err(CopyReason::PasteUnavailable));
-        reopened.set_choice(&other, None, Some(AppPaste::CopyOnly))?;
+        reopened.set_choice(&other, AppPaste::CopyOnly)?;
         assert_eq!(reopened.paste(&other), Ok(Some(AppPaste::CopyOnly)));
         assert_eq!(reopened.paste(&word), Err(CopyReason::PasteUnavailable));
-        reopened.set_choice(&word, None, Some(AppPaste::CopyOnly))?;
+        reopened.set_choice(&word, AppPaste::CopyOnly)?;
         assert_eq!(reopened.paste(&word), Ok(Some(AppPaste::CopyOnly)));
         assert_eq!(AppMemory::open(path).paste(&word), Ok(Some(AppPaste::CopyOnly)));
         Ok(())
@@ -848,7 +802,7 @@ mod tests {
         }
         let other = mac("org.example.other");
         choices.choose(&other, Some("pandoc"), None).map_err(io::Error::other)?;
-        assert_eq!(choices.memory.paste(&other), Ok(None));
+        assert_eq!(choices.app.state::<AppMemory>().paste(&other), Ok(None));
         Ok(())
     }
 
@@ -866,7 +820,11 @@ mod tests {
             "the picker says which choice was kept"
         );
         assert_eq!(choices.format(&app), listed("typst"), "the format half stays saved");
-        assert_eq!(choices.memory.paste(&app), Ok(None), "no delivery was recorded");
+        assert_eq!(
+            choices.app.state::<AppMemory>().paste(&app),
+            Ok(None),
+            "no delivery was recorded"
+        );
         Ok(())
     }
 
@@ -889,23 +847,23 @@ mod tests {
         let path = directory.path().join("apps.json");
         let memory = AppMemory::open(path.clone());
         let app = mac("org.example.Writer");
-        let settings = SettingsFile::new(directory.path().join("settings.json"));
+        let choices = Choices::open(directory)?;
         assert!(
-            remember_for(
-                &settings,
-                &memory,
-                &app,
-                "org.example.other",
-                None,
-                Some(AppPaste::Paste)
-            )
-            .is_err()
+            choices
+                .choose_for(
+                    &app,
+                    "org.example.other",
+                    None,
+                    Some(AppPaste::Paste),
+                    test_identity(&app)
+                )
+                .is_err()
         );
         assert_eq!(memory.paste(&app), Ok(None));
-        memory.set_choice(&app, None, Some(AppPaste::CopyOnly))?;
+        memory.set_choice(&app, AppPaste::CopyOnly)?;
         fs::remove_file(&path)?;
         fs::create_dir(&path)?;
-        assert!(memory.set_choice(&app, None, Some(AppPaste::Paste)).is_err());
+        assert!(memory.set_choice(&app, AppPaste::Paste).is_err());
         assert_eq!(memory.paste(&app), Ok(Some(AppPaste::CopyOnly)));
         assert_eq!(AppMemory::open(path).paste(&app), Err(CopyReason::PasteUnavailable));
         Ok(())
@@ -923,11 +881,7 @@ mod tests {
                 system: entry.system,
                 id: entry.id.into(),
             };
-            assert!(
-                memory.set_choice(&app, None, Some(AppPaste::Paste)).is_err(),
-                "{}",
-                entry.name
-            );
+            assert!(memory.set_choice(&app, AppPaste::Paste).is_err(), "{}", entry.name);
             assert_eq!(memory.paste(&app), Ok(None));
         }
         Ok(())
@@ -951,7 +905,7 @@ mod tests {
             let memory = AppMemory::open(path.clone());
             assert_eq!(memory.paste(&word), Ok(Some(AppPaste::CopyOnly)), "{output}");
             memory
-                .set_choice(&word, None, Some(AppPaste::CopyOnly))
+                .set_choice(&word, AppPaste::CopyOnly)
                 .unwrap_or_else(|e| panic!("{e}"));
             assert!(
                 !fs::read_to_string(&path).unwrap_or_default().contains("output"),
@@ -975,7 +929,8 @@ mod tests {
         assert_eq!(choices.format(&mac("com.microsoft.Word")), listed("typst"));
         // An output this Ibis does not list reads as no choice.
         choices
-            .settings
+            .app
+            .state::<SettingsFile>()
             .update(|settings| settings.remember_app_output(&mac("com.microsoft.Word"), "a-later-output".into()))
             .map_err(io::Error::other)?;
         assert_eq!(choices.format(&mac("com.microsoft.Word")), None);
@@ -989,7 +944,7 @@ mod tests {
         let memory = AppMemory::open(path.clone());
         for n in 0..=MAX_APPS {
             memory
-                .set_choice(&mac(&format!("org.example.app{n}")), None, Some(AppPaste::CopyOnly))
+                .set_choice(&mac(&format!("org.example.app{n}")), AppPaste::CopyOnly)
                 .unwrap_or_else(|e| panic!("{e}"));
         }
         let reopened = AppMemory::open(path.clone());
@@ -1015,7 +970,7 @@ mod tests {
     fn an_unreadable_file_keeps_delivery_recovery_after_format_choices() {
         let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let path = memory_path(&directory.path().join("settings.json"));
-        let settings = SettingsFile::new(directory.path().join("settings.json"));
+        let choices = Choices::open(directory).unwrap_or_else(|error| panic!("{error}"));
         let word = mac("com.microsoft.Word");
         for damaged in [
             "not json".to_string(),
@@ -1030,7 +985,7 @@ mod tests {
             fs::write(&path, damaged).unwrap_or_else(|e| panic!("{e}"));
             let memory = AppMemory::open(path.clone());
             assert_eq!(memory.paste(&word), Err(CopyReason::PasteUnavailable));
-            remember(&settings, &memory, &word, listed("cite"), None, None).unwrap_or_else(|e| panic!("{e}"));
+            choices.choose(&word, Some("cite"), None).unwrap_or_else(|e| panic!("{e}"));
             assert_eq!(AppMemory::open(path.clone()).paste(&word), Err(CopyReason::PasteUnavailable));
         }
     }
@@ -1038,15 +993,15 @@ mod tests {
     fn a_stale_app_cannot_receive_the_previous_apps_choice() -> io::Result<()> {
         let choices = Choices::new()?;
         assert!(
-            remember_for(
-                &choices.settings,
-                &choices.memory,
-                &mac("example.editor"),
-                "example.browser",
-                listed("cite"),
-                None
-            )
-            .is_err()
+            choices
+                .choose_for(
+                    &mac("example.editor"),
+                    "example.browser",
+                    Some("cite"),
+                    None,
+                    test_identity(&mac("example.editor"))
+                )
+                .is_err()
         );
         assert_eq!(choices.format(&mac("example.editor")), None);
         Ok(())
@@ -1059,19 +1014,19 @@ mod tests {
         let memory = AppMemory::open(path.clone());
         let browser = mac("example.browser");
         memory
-            .set_choice(&browser, None, Some(AppPaste::CopyOnly))
+            .set_choice(&browser, AppPaste::CopyOnly)
             .unwrap_or_else(|e| panic!("{e}"));
         let before = fs::read(&path).unwrap_or_default();
         assert!(
             memory
-                .set_choice(&mac(&"x".repeat(MAX_BYTES as usize)), None, Some(AppPaste::CopyOnly))
+                .set_choice(&mac(&"x".repeat(MAX_BYTES as usize)), AppPaste::CopyOnly)
                 .is_err()
         );
         assert_eq!(fs::read(&path).unwrap_or_default(), before);
         // A directory at the destination refuses the atomic replacement.
         fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
         fs::create_dir(&path).unwrap_or_else(|e| panic!("{e}"));
-        assert!(memory.set_choice(&browser, None, Some(AppPaste::Paste)).is_err());
+        assert!(memory.set_choice(&browser, AppPaste::Paste).is_err());
         assert_eq!(memory.paste(&browser), Ok(Some(AppPaste::CopyOnly)));
     }
 
@@ -1084,7 +1039,7 @@ mod tests {
         fs::write(&occupied, "synthetic existing data").unwrap_or_else(|e| panic!("{e}"));
         std::os::unix::fs::symlink(&occupied, path.with_extension("json.tmp-1")).unwrap_or_else(|e| panic!("{e}"));
         AppMemory::open(path)
-            .set_choice(&mac("example.browser"), None, Some(AppPaste::CopyOnly))
+            .set_choice(&mac("example.browser"), AppPaste::CopyOnly)
             .unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(
             fs::read_to_string(occupied).unwrap_or_default(),
@@ -1101,6 +1056,22 @@ mod tests {
             AppMemory::open(path).paste(&mac("example.browser")),
             Err(CopyReason::PasteUnavailable)
         );
+    }
+    #[test]
+    fn always_copy_saves_through_the_command_with_read_only_settings() -> Result<(), Box<dyn std::error::Error>> {
+        let (directory, path) = crate::settings_fixture::file();
+        crate::settings_fixture::edit(&path, |settings| settings.portable.output = Some("ieee".into()))?;
+        let before = fs::read(&path)?;
+        let mut permissions = fs::metadata(&path)?.permissions();
+        permissions.set_readonly(true);
+        fs::set_permissions(&path, permissions)?;
+        let choices = Choices::open(directory)?;
+        let id = mac("example.writer");
+        choices.choose(&id, None, Some(AppPaste::CopyOnly))?;
+        assert_eq!(choices.reopened().paste(&id), Ok(Some(AppPaste::CopyOnly)));
+        assert_eq!(fs::read(&path)?, before);
+        assert!(!path.with_extension("json.bak").exists());
+        Ok(())
     }
 }
 

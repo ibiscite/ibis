@@ -8,7 +8,6 @@
 //! to answer, so nothing late can answer for a newer one. Nothing here polls:
 //! threads block on `accept`, on a read or on the answer.
 
-use ibis_engine::settings::Purpose;
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, Shutdown, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -364,7 +363,7 @@ impl Host for AppHost {
             return Ok(None);
         }
         let loaded = settings::load(&self.0.state::<SettingsFile>().path);
-        let saved = loaded.usable(Purpose::Cites).map_err(|_| cayw::Refusal::Option)?;
+        let saved = loaded.cites().map_err(|_| cayw::Refusal::Option)?;
         settings::writings::from_context(
             saved,
             pick.document.as_deref(),
@@ -384,7 +383,7 @@ impl Host for AppHost {
     }
     fn style(&self) -> Result<String, cayw::Refusal> {
         let loaded = settings::load(&self.0.state::<SettingsFile>().path);
-        let saved = loaded.usable(Purpose::Cites).map_err(|_| cayw::Refusal::Option)?;
+        let saved = loaded.cites().map_err(|_| cayw::Refusal::Option)?;
         Ok(crate::output::default_style(crate::output::stored(saved.portable.output.as_deref())).to_owned())
     }
     fn changed(&self) {
@@ -507,7 +506,7 @@ fn forget_unavailable(file: &SettingsFile, failed: &EditorEndpoint) {
 
 fn status(app: &AppHandle) -> EndpointStatus {
     let saved = settings::load(&app.state::<SettingsFile>().path)
-        .usable(Purpose::Cites)
+        .cites()
         .ok()
         .and_then(|settings| settings.device.editor_endpoint.clone());
     let state = app.state::<Endpoint>();
@@ -583,7 +582,7 @@ pub(crate) fn apply_file_setting(app: &AppHandle, expected: Option<EditorEndpoin
     let _changing = state.1.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let loaded = settings::load(&app.state::<SettingsFile>().path);
     if !loaded
-        .usable(Purpose::Cites)
+        .cites()
         .is_ok_and(|settings| settings.device.editor_endpoint == expected)
     {
         return;
@@ -657,24 +656,11 @@ mod tests {
             .unwrap_or_else(|error| panic!("{error}"));
         forget_unavailable(&file, &older);
         assert_eq!(
-            settings::load(&file.path)
-                .usable(Purpose::Interface)
-                .unwrap_or_else(|error| panic!("{error}"))
-                .clone()
-                .device
-                .editor_endpoint,
+            crate::settings_fixture::read(&file.path).device.editor_endpoint,
             Some(newer.clone())
         );
         forget_unavailable(&file, &newer);
-        assert_eq!(
-            settings::load(&file.path)
-                .usable(Purpose::Interface)
-                .unwrap_or_else(|error| panic!("{error}"))
-                .clone()
-                .device
-                .editor_endpoint,
-            None
-        );
+        assert_eq!(crate::settings_fixture::read(&file.path).device.editor_endpoint, None);
     }
 
     type Then = Box<dyn FnOnce(&Pending) + Send>;

@@ -26,6 +26,8 @@ through one owner per settings file, `ibis_engine::settings::Owner`.
   this device's settings and unknown fields, and runs through the same owner.
   Ordinary edits require usable citation settings (decision 0052); a recovered
   baseline needs this explicit restore, including when the primary is missing.
+  Both clients can preview and restore that owner's automatic `settings.json.bak`
+  through the same restore entry point as an exported backup.
 - **Other processes (the command line) are ordered by the file lock.** A busy
   lock refuses at once: "settings are being saved by another Ibis; wait for it
   to finish, then try again". Within one process, one writer guard serializes
@@ -57,7 +59,8 @@ through one owner per settings file, `ibis_engine::settings::Owner`.
   - `apps.json` keeps only what is about pasting: the delivery choice (paste or
     copy only), the identity binding and the one-time plugin note (decision 0031).
   - A successful suggested paste remembers its format (decision 0042). Delivery
-    approval remains separate; a format never grants it.
+    approval remains separate; a format never grants it. Delivery-only choices
+    use the destination guard and delivery owner without a settings transaction.
 - **System effects stay with the app.** It registers the shortcut, shows the
   menu bar item, sizes windows and applies larger text; the owner only saves.
 
