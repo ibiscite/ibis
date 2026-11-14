@@ -416,7 +416,8 @@ fn sizing_takes_the_text_size_at_dispatch_and_keeps_it_if_its_save_fails() {
             remember(dragged(840, 600), (3000.0, 2000.0))
         );
         assert_eq!(
-            saved.portable.accent, Some(Accent::Ibis),
+            saved.portable.accent,
+            Some(Accent::Ibis),
             "the earlier choice's other field is saved"
         );
         assert_eq!(saved.portable.larger_text.unwrap_or(false), !failed_newer_flush);
