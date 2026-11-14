@@ -1,10 +1,11 @@
-import type { HTMLAttributes, ReactNode, RefObject } from "react";
+import { useContext, type HTMLAttributes, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Band } from "./Band";
 import { Button } from "./Button";
 import { IconButton } from "./IconButton";
 import { KeyHint } from "./KeyCaps";
-import { composingKey, type LayerHandle } from "./layers";
+import { composingKey, LayerParent, type LayerHandle } from "./layers";
+import { LayerScope } from "./Layer";
 import "./ViewFrame.css";
 
 /** A view of the picker window (maintainer, 2026-11-10: palette and sheets, option
@@ -29,7 +30,8 @@ export function ViewFrame({ title, titleId, search, back, layer, status, actions
   children: ReactNode;
   frameRef?: RefObject<HTMLDivElement | null>;
 } & Omit<HTMLAttributes<HTMLDivElement>, "title">) {
-  return createPortal(<div ref={frameRef} className="ui-view" aria-labelledby={titleId} {...dialog}
+  const within = useContext(LayerParent) !== null;
+  return createPortal(<LayerScope layer={layer}><div ref={frameRef} className="ui-view" aria-labelledby={titleId} {...dialog} data-layer-surface data-layer-within={within || undefined}
     onKeyDown={(event) => { if (layer.nearest() && !composingKey(event.nativeEvent)) onKeyDown?.(event); }}>
     {/* The pointer's Back, in the icon column; the footer's Back is the one keys and screen readers reach. */}
     <Band className="ui-view-head" icon={<IconButton icon="back" className="ui-view-back" aria-label={back.label} aria-hidden excludeFromTabOrder onPress={back.onBack} />}>
@@ -46,5 +48,5 @@ export function ViewFrame({ title, titleId, search, back, layer, status, actions
     </>}>
       <span className="ui-view-status">{status}{leadingActions}</span>
     </Band>
-  </div>, document.body);
+  </div></LayerScope>, document.body);
 }

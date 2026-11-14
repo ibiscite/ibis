@@ -37,7 +37,7 @@ import "../src/ui/CopiedNotice.css";
 import pickerStyles from "../src/ui/Window.css?inline";
 import { noFormatChosen } from "../src/testing/format";
 
-export const scenarios = ["notice", "results", "unknown-app", "unknown-app-empty", "first-run", "more", "format-menu", "writings", "writings-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-selector", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "citation-order", "citation-handles", "citation-details-larger", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
+export const scenarios = ["notice", "results", "unknown-app", "unknown-app-empty", "first-run", "more", "format-menu", "writings", "writings-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "reference-details-more", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-selector", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "citation-order", "citation-handles", "citation-details-larger", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -76,6 +76,8 @@ const fixtures: Partial<Record<Scenario, {
   "reference-details": { keys: [{ key: "Enter", shiftKey: true }], click: 'button[aria-label^="Edit "]' },
   "citation-details-larger": { preferences: { larger_text: true }, keys: [{ key: "Enter", shiftKey: true }], click: 'button[aria-label^="Edit "]' },
   reader: { keys: [{ key: "Enter", shiftKey: true }], click: ['button[aria-label^="Edit "]', 'button.citation-reveal'] },
+  // The details, then More over them: More takes their place.
+  "reference-details-more": { keys: [{ key: "Enter", shiftKey: true }], click: ['button[aria-label^="Edit "]', 'button[aria-label="More"]'] },
   "show-as-menu": { keys: [{ key: "Enter", shiftKey: true }], click: ['button[aria-label^="Edit "]', ".citation-field .ui-popup-button"] },
   "writings-pending": { click: 'button[aria-label="Use Field Notes"]' },
   "library-selector": { library: zoteroLibrary },
@@ -125,7 +127,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
     stale: false, updated_at: null, checked_at: firstRun ? null : Date.now() - 3 * 60_000, ...fixed?.library,
   };
   let sequence = 0;
-  const receipts = new Map<string, { text: string; items: FileSelection[] }>();
+  const receipts = new Map<string, { text: string; items: FileSelection[]; output: OutputId; key: string }>();
   const handlers: Record<string, (request: Request) => unknown> = {
     "plugin:window|is_visible": () => true,
     library_status: () => library,
@@ -155,7 +157,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
       spans.unshift({ item: null, text: !style || numbered ? "[" : "(" });
       spans.push({ item: null, text: !style || numbered ? "]" : ")" });
       const text = spans.map((span) => span.text).join("");
-      receipts.set(ticket, { text, items });
+      receipts.set(ticket, { text, items, output, key: key(0) });
       return { ticket, content_hash: ticket, text, display: { nodes: spans.map(({ item, text }) => ({ item, blocks: [], content: [{ text, italic: false, bold: false, script: "normal" }] })) }, warnings: [], project_refusal: refusal };
     },
     copy_file_citation: ({ ticket }) => {
@@ -163,12 +165,24 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
       if (!receipt) throw new Error("Unknown synthetic preview");
       return { text: receipt.text, warnings: [] };
     },
-    citation_details: ({ ticket, item }) => ({ current_form: receipts.get(ticket)?.items[item]?.form ?? "normal", forms: [
-      { form: "normal", example: "(Aster, 2026)", reason: null },
-      { form: "narrative", example: "Aster (2026)", reason: null },
-      { form: "author-only", example: "Aster", reason: null },
-      { form: "year-only", example: "(2026)", reason: null },
-    ] } satisfies ReferenceDetails),
+    // As the engine answers: a style writes names; Pandoc writes keys and has no name-only or full form.
+    citation_details: ({ ticket, item }) => {
+      const receipt = receipts.get(ticket);
+      const current_form = receipt?.items[item]?.form ?? "normal";
+      if (receipt && !isStyle(receipt.output)) return { current_form, forms: [
+        { form: "normal", example: `[@${receipt.key}]`, reason: null },
+        { form: "narrative", example: `@${receipt.key}`, reason: null },
+        { form: "author-only", example: null, reason: "Not in this output" },
+        { form: "year-only", example: `[-@${receipt.key}]`, reason: null },
+        { form: "full", example: null, reason: "Not in this output" },
+      ] } satisfies ReferenceDetails;
+      return { current_form, forms: [
+        { form: "normal", example: "(Aster, 2026)", reason: null },
+        { form: "narrative", example: "Aster (2026)", reason: null },
+        { form: "author-only", example: "Aster", reason: null },
+        { form: "year-only", example: "(2026)", reason: null },
+      ] } satisfies ReferenceDetails;
+    },
     picker_destination: () => knownApp && !projectContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
       find_open: false, usual_format: "apa", format: noFormatChosen, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false,
       writing: null, writing_context: null, context_version: [1, 0] } : projectContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,

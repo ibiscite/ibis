@@ -5,7 +5,7 @@ import { englishMessages, type MessageId } from "../src/i18n";
 import { libraryOperations, OPERATION_FAILURES, type Operation } from "../src/features/picker/Notices";
 import { HOLD_MS } from "../src/ui/HeldKeys";
 import { currentPlatform } from "../src/platform";
-import { anchorBoxes, anchorMoves, frameStates, geometry, heldKeys, layerRoles, occlusion, overflow, paintOnly, settle, slots } from "./geometry";
+import { anchorBoxes, anchorMoves, frameStates, geometry, heldKeys, layerRoles, occlusion, oneSurface, overflow, paintOnly, settle, slots } from "./geometry";
 
 type Mount = (host: HTMLElement, options: { scenario: string; theme: string }) => () => void;
 
@@ -131,6 +131,7 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
       ...occlusion(),
       ...paintOnly(),
       ...layerRoles(),
+      ...oneSurface(),
     ];
     for (const [slot, { selector }] of Object.entries(slots).filter(([, { catalogue }]) => catalogue)) for (const words of document.querySelectorAll(selector))
       if (words.textContent && !declared.some((pattern) => pattern.test(plain(words.textContent!)))) found.push(`[C24 words] ${slot} shows a message it does not declare: "${words.textContent}"`);
