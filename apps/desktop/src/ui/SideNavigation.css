@@ -27,7 +27,7 @@
 .ui-side-navigation-item[data-focus-visible][aria-selected="true"] { outline-color: var(--selected-text); outline-offset: calc(-2 * var(--ring-width)); }
 .ui-side-navigation-empty { margin: 0; padding: var(--row-spacing) var(--space-2); color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
 .ui-side-results-group { display: flex; flex-direction: column; gap: var(--row-spacing); }
-.ui-side-results-heading { padding: var(--space-2); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: var(--strong); }
+.ui-side-results-heading { padding: var(--space-2); }
 /* About sits at the foot of the sidebar. */
 .ui-side-navigation-item[data-gap-before] { margin-block-start: auto; }
 @media (prefers-contrast: more), (forced-colors: active) {

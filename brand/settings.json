@@ -76,10 +76,10 @@
   },
   "words": {
     "tagline": "Your next citation, a shortcut away.",
-    "subline": "Early preview · Free and open source · Works with Zotero and BibTeX",
+    "subline": "Early preview \u00b7 Free and open source \u00b7 Works with Zotero and BibTeX",
     "end_card": [
       "github.com/ibiscite/ibis",
-      "Early preview · Free and open source"
+      "Early preview \u00b7 Free and open source"
     ],
     "thumbnail": [
       "New in",
@@ -89,5 +89,9 @@
   "desktop_identifiers": {
     "stable": "com.ibiscite.ibis",
     "nightly": "com.ibiscite.ibis.nightly"
+  },
+  "picker": {
+    "size": 32,
+    "eye_opening": 2
   }
 }

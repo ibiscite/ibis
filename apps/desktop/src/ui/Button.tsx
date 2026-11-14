@@ -18,13 +18,17 @@ export function Button({ variant = "secondary", size = "default", className = ""
   return <AriaButton {...props} aria-label={props["aria-label"] ?? label} className={`ui-button ${className}`} data-variant={variant} data-size={size}
     render={props.render ?? ((native) => <button {...native as ComponentPropsWithRef<"button">} title={props.title} aria-busy={props["aria-busy"]} aria-keyshortcuts={shortcut} aria-hidden={props["aria-hidden"]} tabIndex={props.excludeFromTabOrder ? -1 : native.tabIndex} />)}>
     {(values) => <>{icon && <span className="ui-button-icon">{icon}</span>}
-      {label ? keys ? <KeyHint label={label} keys={keys} primary={variant === "primary" || variant === "action"} hidden echo /> : <bdi>{label}</bdi> : typeof children === "function" ? children(values) : children}</>}
+      {label ? keys ? <KeyHint label={label} keys={keys} primary={variant === "primary" || variant === "action"} hidden echo /> : <bdi>{label}</bdi> : typeof children === "function" ? children(values) : children}
+</>}
   </AriaButton>;
 }
 
-export function ToggleButton({ variant = "secondary", size = "default", className = "", ...props }: Omit<ToggleButtonProps, "className"> & Look) {
+export function ToggleButton({ variant = "secondary", size = "default", className = "", keys, children, ...props }: Omit<ToggleButtonProps, "className"> & Look) {
+  const shortcut = keys ? ariaKeys(keys, currentPlatform() === "macos") : props["aria-keyshortcuts"];
   return <AriaToggleButton {...props} className={`ui-button ${className}`} data-variant={variant} data-size={size}
-    render={props.render ?? ((native) => <button {...native as ComponentPropsWithRef<"button">} title={props.title} aria-busy={props["aria-busy"]} aria-keyshortcuts={props["aria-keyshortcuts"]} aria-hidden={props["aria-hidden"]} tabIndex={props.excludeFromTabOrder ? -1 : native.tabIndex} />)} />;
+    render={props.render ?? ((native) => <button {...native as ComponentPropsWithRef<"button">} title={props.title} aria-busy={props["aria-busy"]} aria-keyshortcuts={shortcut} aria-hidden={props["aria-hidden"]} tabIndex={props.excludeFromTabOrder ? -1 : native.tabIndex} />)}>
+    {(values) => <>{typeof children === "function" ? children(values) : children}</>}
+  </AriaToggleButton>;
 }
 
 /** A presentational option child: pointer states without a role or Tab stop. */

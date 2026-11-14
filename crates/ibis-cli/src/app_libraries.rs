@@ -51,15 +51,15 @@ pub(crate) fn load() -> Result<AppLibraries, Failure> {
 pub(crate) fn format_settings(nightly: bool) -> Result<settings::Settings, Failure> {
     let (app, path) = crate::settings_backup::settings_file(nightly)?;
     let loaded = settings::load(&path);
-    match &loaded.problem {
-        Some(problem) => Err(Failure::new(
+    match loaded.cites() {
+        Err(problem) => Err(Failure::new(
             problem_code(problem),
             format!(
                 "cannot read the formats chosen in {app}: {}. Open {app} to repair its settings.",
                 problem_text(problem)
             ),
         )),
-        None => Ok(loaded.settings),
+        Ok(settings) => Ok(settings.clone()),
     }
 }
 
@@ -69,7 +69,7 @@ fn read(app: &'static str, path: &Path) -> Result<Option<AppLibraries>, Failure>
     if loaded.primary_read == PrimaryRead::Missing && loaded.problem.is_none() && !loaded.from_backup {
         return Ok(None);
     }
-    if let Some(problem) = &loaded.problem {
+    let settings = loaded.cites().map_err(|problem| {
         let reason = if loaded.from_backup {
             format!("{}, and Ibis does not use its backup here", problem_text(problem))
         } else {
@@ -81,12 +81,12 @@ fn read(app: &'static str, path: &Path) -> Result<Option<AppLibraries>, Failure>
         } else {
             format!("Open {app} to repair its settings")
         };
-        return Err(Failure::new(
+        Failure::new(
             code,
             format!("cannot read the libraries chosen in {app}: {reason}. {fix}, or {NAME_ONE}."),
-        ));
-    }
-    let (files, zotero) = match loaded.settings.library {
+        )
+    })?;
+    let (files, zotero) = match settings.portable.library.clone() {
         None => {
             return Err(Failure::new(
                 ErrorCode::Usage,
@@ -117,7 +117,7 @@ fn read(app: &'static str, path: &Path) -> Result<Option<AppLibraries>, Failure>
         app,
         files,
         zotero,
-        zotero_profile: loaded.settings.zotero_profile,
+        zotero_profile: settings.device.zotero_profile.clone(),
     }))
 }
 

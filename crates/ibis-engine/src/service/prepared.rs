@@ -291,10 +291,8 @@ impl Engine {
         // The receipt keeps the output the preset means, and the exact objects
         // it cites: citing it again refuses a changed reference even when its
         // text would come out alike.
-        let mut request = CitationRequest {
-            output: crate::outputs::resolve(&request.output)?,
-            ..request.clone()
-        };
+        let mut resolved = crate::outputs::resolve_request(request)?;
+        let request = &mut resolved.request;
         request.keep_order |= matches!(request.output, OutputSpec::Key { .. });
         for pick in &mut request.items {
             let held = |id: &ItemRef| snapshot.get(id).map(|object| object.fingerprints.cite.clone());
@@ -304,11 +302,11 @@ impl Engine {
                 .take()
                 .or_else(|| pick.annotation.as_ref().and_then(held));
         }
-        let result = self.cite_snapshot(&context, &request, cancel)?;
+        let result = self.cite_resolved(&context, &resolved, cancel)?;
         let prepared = PreparedCitation {
             context,
             zotero_generation: uses_zotero.then_some(state.zotero_generation),
-            request,
+            request: resolved.request,
             result,
             sample: false,
             source_health,
@@ -372,7 +370,19 @@ impl Engine {
     /// Zotero read. Cheap, with no formatting: a copy checks it right before
     /// it writes, because a full read can begin while the copy waits.
     pub fn still_current(&self, prepared: &PreparedCitation) -> Result<(), CitationCommitError> {
-        prepared.check_zotero(self.state()?.as_ref())
+        let state = self.state()?;
+        prepared.check_zotero(state.as_ref())?;
+        let snapshot = state.index.snapshot();
+        let checks = ibis_core::citation::check(snapshot, Some(&prepared.context.snapshot), &prepared.request, |_| {
+            ibis_core::citation::ItemSupport::ALL
+        })
+        .map_err(EngineError::citation)?;
+        for (item, checked) in checks.into_iter().enumerate() {
+            if let Err(error) = checked {
+                return Err(CitationCommitError::Refused { item, error });
+            }
+        }
+        Ok(())
     }
 }
 impl PreparedCitation {

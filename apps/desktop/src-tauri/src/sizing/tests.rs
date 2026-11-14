@@ -151,10 +151,10 @@ fn sizing_hidden_choice_without_display_identity_survives_reopen_only_in_session
     assert_eq!(save.windows.len(), 1);
     assert!(!save.windows.contains_key(""));
     assert_eq!(sizing.persist(&file, save), Some(true));
-    let settings = ibis_engine::settings::load(&file.path).settings;
-    assert!(!settings.picker_windows.contains_key(""));
+    let settings = crate::settings_fixture::read(&file.path);
+    assert!(!settings.device.picker_windows.contains_key(""));
     let relaunched = Sizing::default();
-    relaunched.load(&settings);
+    relaunched.load(&(&settings).into());
     assert_eq!(WindowSize::of(relaunched.remembered("", room)), WindowSize::Medium);
     assert_eq!(WindowSize::of(sizing.remembered("", room)), WindowSize::Large);
 }
@@ -410,18 +410,19 @@ fn sizing_takes_the_text_size_at_dispatch_and_keeps_it_if_its_save_fails() {
             .record("display-a".into(), dragged(840, 600))
             .unwrap_or_else(|| panic!("missing synthetic frame"));
         assert_eq!(sizing.persist(&app.state::<SettingsFile>(), geometry), Some(true));
-        let saved = ibis_engine::settings::load(&path).settings;
+        let saved = crate::settings_fixture::read(&path);
         assert_eq!(
-            saved.picker_windows["display-a"],
+            saved.device.picker_windows["display-a"],
             remember(dragged(840, 600), (3000.0, 2000.0))
         );
         assert_eq!(
-            saved.unknown["accent"], "ibis",
+            saved.portable.accent,
+            Some(Accent::Ibis),
             "the earlier choice's other field is saved"
         );
-        assert_eq!(saved.larger_text.unwrap_or(false), !failed_newer_flush);
+        assert_eq!(saved.portable.larger_text.unwrap_or(false), !failed_newer_flush);
         let restarted = Sizing::default();
-        restarted.load(&saved);
+        restarted.load(&(&saved).into());
         assert_eq!(
             restarted.remembered("display-a", (3000.0, 2000.0)),
             Some(dragged(840, 600))
@@ -541,7 +542,7 @@ fn sizing_a_delayed_event_reads_the_live_frame_and_cannot_restore_an_older_drag(
     assert_eq!(sizing.persist(&file, b), Some(true));
     assert_eq!(sizing.persist(&file, a), None);
     assert_eq!(
-        ibis_engine::settings::load(&file.path).settings.picker_windows["display-a"],
+        crate::settings_fixture::read(&file.path).device.picker_windows["display-a"],
         remember(dragged(840, 600), (3000.0, 2000.0))
     );
 }
@@ -567,7 +568,7 @@ fn sizing_failed_save_keeps_the_visible_frame_for_reopen_and_a_later_drag_can_sa
         .unwrap_or_else(|| panic!("missing synthetic frame"));
     assert_eq!(sizing.persist(&file, save), Some(true));
     assert_eq!(
-        ibis_engine::settings::load(&path).settings.picker_windows["display-a"],
+        crate::settings_fixture::read(&path).device.picker_windows["display-a"],
         remember(dragged(840, 600), (3000.0, 2000.0))
     );
 }
@@ -576,7 +577,7 @@ fn sizing_failed_save_keeps_the_visible_frame_for_reopen_and_a_later_drag_can_sa
 fn sizing_hide_reopen_relaunch_and_another_display_keep_independent_sizes_and_other_settings() {
     let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
     let file = SettingsFile::new(directory.path().join("settings.json"));
-    file.update(|settings| settings.larger_text = Some(true))
+    file.update(|settings| settings.portable.larger_text = Some(true))
         .unwrap_or_else(|error| panic!("{error}"));
     let sizing = Sizing::default();
     let a = sizing
@@ -587,10 +588,10 @@ fn sizing_hide_reopen_relaunch_and_another_display_keep_independent_sizes_and_ot
         .unwrap_or_else(|| panic!("missing synthetic frame"));
     assert_eq!(sizing.persist(&file, a), None);
     assert_eq!(sizing.persist(&file, b), Some(true));
-    let settings = ibis_engine::settings::load(&file.path).settings;
-    assert_eq!(settings.larger_text, Some(true));
+    let settings = crate::settings_fixture::read(&file.path);
+    assert_eq!(settings.portable.larger_text, Some(true));
     let restarted = Sizing::default();
-    restarted.load(&settings);
+    restarted.load(&(&settings).into());
     assert_eq!(
         plan(
             restarted.remembered("display-a", (3000.0, 2000.0)),
@@ -660,10 +661,10 @@ fn sizing_reset_invalidates_pending_drag_and_clears_only_this_displays_spot() {
         sizing.remembered("display-b", (3000.0, 2000.0)),
         Some(dragged(640, 400))
     );
-    let settings = ibis_engine::settings::load(&file.path).settings;
-    assert_eq!(settings.picker_windows["display-a"].position, None);
+    let settings = crate::settings_fixture::read(&file.path);
+    assert_eq!(settings.device.picker_windows["display-a"].position, None);
     let reopened = plan(
-        Some(restore(settings.picker_windows["display-a"], (3000.0, 2000.0))),
+        Some(restore(settings.device.picker_windows["display-a"], (3000.0, 2000.0))),
         false,
         (3000.0, 2000.0),
     );
@@ -673,7 +674,7 @@ fn sizing_reset_invalidates_pending_drag_and_clears_only_this_displays_spot() {
         "Reset clears the spot and keeps the chosen size"
     );
     assert_eq!(
-        settings.picker_windows["display-b"],
+        settings.device.picker_windows["display-b"],
         remember(dragged(640, 400), (3000.0, 2000.0))
     );
 }
@@ -757,7 +758,7 @@ fn sizing_a_save_waiting_for_the_settings_owner_is_obsolete_before_it_can_write(
                     blocked
                         .recv_timeout(Duration::from_secs(5))
                         .unwrap_or_else(|error| panic!("{error}"));
-                    settings.larger_text = Some(true);
+                    settings.portable.larger_text = Some(true);
                 })
                 .unwrap_or_else(|error| panic!("{error}"))
         });
@@ -776,12 +777,12 @@ fn sizing_a_save_waiting_for_the_settings_owner_is_obsolete_before_it_can_write(
             None
         );
     });
-    let saved = ibis_engine::settings::load(&file.path).settings;
+    let saved = crate::settings_fixture::read(&file.path);
     assert_eq!(
-        saved.picker_windows["display-a"],
+        saved.device.picker_windows["display-a"],
         remember(dragged(840, 600), (3000.0, 2000.0))
     );
-    assert_eq!(saved.larger_text, Some(true));
+    assert_eq!(saved.portable.larger_text, Some(true));
 }
 
 #[test]
@@ -805,7 +806,7 @@ fn sizing_appkit_keeps_the_top_edge_and_handles_displays_above_and_left() {
 fn sizing_owned_worker_flushes_on_hide_then_drains_the_final_frame_before_exit() {
     let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
     let file = SettingsFile::new(directory.path().join("settings.json"));
-    file.update(|settings| settings.larger_text = Some(true))
+    file.update(|settings| settings.portable.larger_text = Some(true))
         .unwrap_or_else(|error| panic!("{error}"));
     let sizing = Sizing::default();
     sizing.record("display-a".into(), dragged(840, 600));
@@ -827,7 +828,7 @@ fn sizing_owned_worker_flushes_on_hide_then_drains_the_final_frame_before_exit()
         (1, true)
     );
     assert_eq!(
-        ibis_engine::settings::load(&file.path).settings.picker_windows["display-a"],
+        crate::settings_fixture::read(&file.path).device.picker_windows["display-a"],
         remember(dragged(840, 600), (3000.0, 2000.0))
     );
     sizing.record("display-a".into(), dragged(900, 640));
@@ -839,14 +840,14 @@ fn sizing_owned_worker_flushes_on_hide_then_drains_the_final_frame_before_exit()
     worker
         .join()
         .unwrap_or_else(|_| panic!("synthetic geometry worker panicked"));
-    let saved = ibis_engine::settings::load(&file.path).settings;
+    let saved = crate::settings_fixture::read(&file.path);
     assert_eq!(
-        saved.picker_windows["display-a"],
+        saved.device.picker_windows["display-a"],
         remember(dragged(900, 640), (3000.0, 2000.0))
     );
-    assert_eq!(saved.larger_text, Some(true));
+    assert_eq!(saved.portable.larger_text, Some(true));
     let relaunched = Sizing::default();
-    relaunched.load(&saved);
+    relaunched.load(&(&saved).into());
     assert_eq!(
         relaunched.remembered("display-a", (3000.0, 2000.0)),
         Some(dragged(900, 640))
@@ -901,7 +902,7 @@ fn sizing_exit_drain_is_bounded_even_when_another_settings_writer_is_blocked() {
                 blocked
                     .recv_timeout(Duration::from_secs(5))
                     .unwrap_or_else(|error| panic!("{error}"));
-                settings.larger_text = Some(true);
+                settings.portable.larger_text = Some(true);
             })
             .unwrap_or_else(|error| panic!("{error}"));
     });
@@ -925,10 +926,10 @@ fn sizing_exit_drain_is_bounded_even_when_another_settings_writer_is_blocked() {
     worker
         .join()
         .unwrap_or_else(|_| panic!("synthetic geometry worker panicked"));
-    let saved = ibis_engine::settings::load(&file.path).settings;
+    let saved = crate::settings_fixture::read(&file.path);
     assert_eq!(
-        saved.picker_windows["display-a"],
+        saved.device.picker_windows["display-a"],
         remember(dragged(840, 600), (3000.0, 2000.0))
     );
-    assert_eq!(saved.larger_text, Some(true));
+    assert_eq!(saved.portable.larger_text, Some(true));
 }
