@@ -91,3 +91,32 @@ fn explicit_identifiers_are_normalized_and_malformed_values_are_ignored() {
         ]
     );
 }
+
+#[test]
+fn bibliographic_identifiers_follow_extra_overrides_and_keep_source_only_ids() {
+    use ibis_core::identifier::{Identifier, of_record};
+    let snapshot = changed(&seed(), |record| {
+        record.csl = serde_json::from_value(json!({
+            "type": "article-journal",
+            "note": "DOI: 10.5555/INVENTED-EXTRA.\nISBN: 0-306-40615-2\nPMID: 0012345\narXiv:2101.00001v2"
+        }))
+        .unwrap();
+        record.identifiers = vec![Identifier::Doi("10.5555/source-only".into())];
+    });
+    let LibraryObject::Record(mut record) = snapshot.objects()[0].object.clone() else {
+        panic!("seed");
+    };
+    let expected = vec![
+        Identifier::Doi("10.48550/arxiv.2101.00001".into()),
+        Identifier::Doi("10.5555/invented-extra.".into()),
+        Identifier::Doi("10.5555/source-only".into()),
+        Identifier::Isbn("9780306406157".into()),
+        Identifier::Arxiv("2101.00001".into()),
+        Identifier::Pmid("12345".into()),
+    ];
+    assert_eq!(of_record(&record), expected);
+    record.csl.insert("DOI".into(), json!("10.5555/explicit"));
+    let mut expected = expected;
+    expected[1] = Identifier::Doi("10.5555/explicit".into());
+    assert_eq!(of_record(&record), expected);
+}

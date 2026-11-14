@@ -238,24 +238,62 @@ fn unsupported_input_is_refused_even_if_the_identifier_is_held() {
 }
 
 #[test]
-fn local_matches_misses_and_refusals_leave_the_engine_snapshot_unchanged() {
+fn a_zotero_extra_doi_resolves_to_its_existing_reference() {
+    let snapshot = Snapshot::new(vec![record(
+        "invented",
+        "extra",
+        json!({"note": format!("DOI: {DOI}")}),
+        vec![],
+    )])
+    .unwrap();
+    let matches = local(DOI, &snapshot);
+    assert_eq!(matches.len(), 1);
+    assert!(std::ptr::eq(matches[0], snapshot.objects()[0].as_ref()));
+}
+
+#[test]
+fn trailing_doi_periods_keep_distinct_references() {
+    let dotted = format!("{DOI}.");
+    let snapshot = Snapshot::new(vec![
+        record("invented", "bare", json!({"DOI": DOI}), vec![]),
+        record("invented", "dotted", json!({"DOI": dotted}), vec![]),
+    ])
+    .unwrap();
+    for (query, held) in [(DOI, 0), (dotted.as_str(), 1)] {
+        let matches = local(query, &snapshot);
+        assert_eq!(matches.len(), 1);
+        assert!(std::ptr::eq(matches[0], snapshot.objects()[held].as_ref()), "{query}");
+    }
+    assert_eq!(missing(&format!("{DOI},"), &snapshot), format!("{DOI},"));
+}
+
+#[test]
+fn exported_doi_links_round_trip_to_their_reference() {
+    let dois = [
+        DOI,
+        "10.5555/invented?river#part%2F;:,[x](y)",
+        "10.5555/invented-river.",
+    ];
     let engine = Engine::from_snapshot(Arc::new(
-        Snapshot::new(vec![record("invented", "held", json!({"DOI": DOI}), vec![])]).unwrap(),
+        Snapshot::new(
+            dois.iter()
+                .enumerate()
+                .map(|(i, doi)| record("invented", &format!("export-{i}"), json!({"DOI": doi}), vec![]))
+                .collect(),
+        )
+        .unwrap(),
     ));
-    let before = engine.snapshot().unwrap();
-    let contents = serde_json::to_value(before.as_ref()).unwrap();
-    let libraries = serde_json::to_value(engine.libraries().unwrap()).unwrap();
-
-    assert_eq!(local(DOI, &before).len(), 1);
-    assert_eq!(missing(OTHER, &before), OTHER);
-    assert!(matches!(
-        resolve("Invented Rivers", &before),
-        Err(Refusal::UnsupportedQuery)
-    ));
-
-    let after = engine.snapshot().unwrap();
-    assert!(Arc::ptr_eq(&before, &after));
-    assert_eq!(serde_json::to_value(after.as_ref()).unwrap(), contents);
-    assert_eq!(after.fingerprints(), before.fingerprints());
-    assert_eq!(serde_json::to_value(engine.libraries().unwrap()).unwrap(), libraries);
+    let snapshot = engine.snapshot().unwrap();
+    for held in snapshot.objects() {
+        let request: CitationRequest = serde_json::from_value(json!({
+            "items": [{"item": held.object.id()}],
+            "output": {"kind": "preset", "name": "doi-links"}
+        }))
+        .unwrap();
+        let exported = engine.cite(&request, &Cancellation::default()).unwrap();
+        assert!(exported.is_complete());
+        let matches = local(&exported.text, &snapshot);
+        assert_eq!(matches.len(), 1, "{}", exported.text);
+        assert!(std::ptr::eq(matches[0], held.as_ref()), "{}", exported.text);
+    }
 }

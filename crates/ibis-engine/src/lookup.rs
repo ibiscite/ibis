@@ -22,7 +22,7 @@ pub enum Refusal {
 
 /// Resolve against the complete snapshot, without search ranking or a hit cap.
 pub fn resolve<'a>(query: &str, libraries: &'a Snapshot) -> Result<Resolution<'a>, Refusal> {
-    let Some(Identifier::Doi(doi)) = identifier::parse_query(query) else {
+    let Some(doi) = identifier::doi(query) else {
         return Err(Refusal::UnsupportedQuery);
     };
     let matches: Vec<_> = libraries

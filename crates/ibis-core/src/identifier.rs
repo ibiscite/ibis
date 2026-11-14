@@ -262,7 +262,9 @@ fn percent_decode(text: &str) -> String {
     String::from_utf8(out).unwrap_or_else(|_| text.to_string())
 }
 
-fn doi(text: &str) -> Option<String> {
+/// Canonical DOI without search's sentence-punctuation heuristics. Resolver
+/// links decode percent escapes once; bare identifiers retain literal bytes.
+pub fn doi(text: &str) -> Option<String> {
     let text = text.trim();
     let decoded;
     let body = match strip_link(text, &["doi.org/", "dx.doi.org/"]) {
