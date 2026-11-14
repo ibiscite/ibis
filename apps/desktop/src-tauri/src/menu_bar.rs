@@ -135,12 +135,7 @@ fn native_search_query(text: &NSString) -> String {
     if len > 0 {
         // SAFETY: The range is within the NSString's UTF-16 length and the
         // buffer holds at least `len` UTF-16 units. Neither escapes this call.
-        unsafe {
-            text.getCharacters_range(
-                std::ptr::NonNull::from(&mut prefix[0]),
-                NSRange::new(0, len),
-            )
-        };
+        unsafe { text.getCharacters_range(std::ptr::NonNull::from(&mut prefix[0]), NSRange::new(0, len)) };
     }
     normalize_prefix(&prefix[..len])
 }

@@ -673,7 +673,9 @@ fn menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
                         handle.state::<Mutex<Library>>(),
                     )
                     .await;
-                    if matches!(result, Err(crate::library::CommandError::Failed { .. }))
+                    // Only a real failure: being cancelled, replaced or still loading is not one.
+                    use crate::library::CommandError as E;
+                    if matches!(&result, Err(e) if !matches!(e, E::SnapshotChanged | E::LibraryLoading | E::Cancelled | E::SharedCitationKey { .. }))
                         && handle.state::<crate::picker::PickerGeneration>().current() == presentation
                         && crate::library::current_status(&handle).source_generation == source_generation
                     {
