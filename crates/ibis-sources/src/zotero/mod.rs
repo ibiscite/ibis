@@ -1,4 +1,4 @@
-//! Pure, bounded Zotero-to-CSL conversion shared by both future access paths.
+//! Pure, bounded Zotero conversion shared by both access paths.
 //! No filesystem, transport, installed Zotero, or library discovery lives here.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -12,14 +12,18 @@ use thiserror::Error;
 mod creators;
 mod dates;
 mod extra;
+mod passages;
 mod rich_text;
+
+pub use passages::map_annotation;
 
 /// Access adapters construct this same neutral shape. Metadata such as API
 /// versions, database IDs, and locations do not masquerade as citation fields.
 /// BBT values must already have been obtained by its separate versioned adapter.
 /// Date fields contain the typed text (Zotero's `multipartToStr`), never the
 /// database's sortable multipart prefix. `accessDate` is a SQL UTC or ISO value.
-/// This is not a raw API response: adapters select bibliographic string fields.
+/// This is not a raw API response: adapters select native string fields.
+/// For annotations, `annotationPosition` is the stored JSON serialized as a string.
 ///
 /// As in Zotero's CSL export, non-date Extra overrides remain in CSL `note`
 /// for citeproc to consume once. Inspecting `csl` does not apply those overrides;
@@ -74,6 +78,8 @@ pub enum MappingError {
     InvalidIdentity,
     #[error("unsupported Zotero item type")]
     UnsupportedType,
+    #[error("invalid Zotero annotation position")]
+    InvalidPosition,
     #[error("Zotero mapping input limit exceeded")]
     InputLimit,
     #[error("invalid bundled Zotero schema")]
@@ -136,6 +142,9 @@ fn schema() -> Result<&'static Schema, MappingError> {
 /// citation-key priority never hides disagreeing values from other sources.
 pub fn map_item(library: LibraryId, item: &ZoteroItem) -> Result<MappedItem, MappingError> {
     validate(item)?;
+    if matches!(item.item_type.as_str(), "attachment" | "note" | "annotation") {
+        return Err(MappingError::UnsupportedType);
+    }
     let schema = schema()?;
     let kind = schema
         .item_types
@@ -280,13 +289,15 @@ pub fn map_item(library: LibraryId, item: &ZoteroItem) -> Result<MappedItem, Map
     })
 }
 
-fn validate(item: &ZoteroItem) -> Result<(), MappingError> {
-    if item.key.is_empty() || item.key.len() > 128 || item.key.chars().any(|c| c.is_whitespace() || c.is_control()) {
+fn validate_identity(key: &str) -> Result<(), MappingError> {
+    if key.is_empty() || key.len() > 128 || key.chars().any(|c| c.is_whitespace() || c.is_control()) {
         return Err(MappingError::InvalidIdentity);
     }
-    if matches!(item.item_type.as_str(), "attachment" | "note" | "annotation") {
-        return Err(MappingError::UnsupportedType);
-    }
+    Ok(())
+}
+
+fn validate(item: &ZoteroItem) -> Result<(), MappingError> {
+    validate_identity(&item.key)?;
     if item.fields.len() > MAX_FIELDS || item.creators.len() > MAX_CREATORS || item.better_bibtex_keys.len() > MAX_KEYS
     {
         return Err(MappingError::InputLimit);
