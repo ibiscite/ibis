@@ -7,20 +7,15 @@ definition does not certify a passing run. Plans live in
 
 ## What a test must earn
 
-- Assert a distinct supported outcome or regression a person or client sees.
-  The test must fail without the change. Prefer an existing fixture or test
-  over a second assertion of the same outcome.
+- Assert a distinct supported outcome or regression a person or client sees;
+  it must fail without the change. Prefer an existing fixture over a second
+  assertion of the same outcome.
 - Protect citation fidelity, parser bounds, public contracts, failed saves,
   cancellation, stale replies, delivery ownership and privacy. Keep native
-  tests where the operating system determines the outcome.
-- Use invented data, deferred promises and fake clocks. Native waits need
-  deadlines. Keep private paths, clipboard text and personal libraries out of
-  shared evidence.
-- Remove tests for withdrawn behaviour and assertions of source text, CSS
-  declarations or incidental call order. Structured architecture/security
-  checks and native WebKit colour checks protect separate outcomes.
-- Review snapshot changes as code. A consolidation that grows tests needs a
-  reason in its pull request.
+  tests where the operating system decides the outcome.
+- Use invented data, deferred promises and fake clocks; native waits need
+  deadlines. Delete tests for withdrawn behaviour and for source text, CSS
+  declarations or call order. Review snapshot changes as code.
 
 ## Local commands
 
@@ -57,66 +52,20 @@ records against pinned and newest upstream styles, locales and citeproc-js.
 Known exceptions are explicit. Preview compares a numbered release with its
 predecessor and attaches changed style IDs to the release notes.
 
-## Native journeys
+## Native journeys and installed updates
 
-`scripts/smoke-native.py` drives the real desktop app with invented data.
-Daily/manual CI runs installed nightly journeys; Preview checks package
-install/start and offline observation.
-Hosted runner coverage is listed in [compatibility](compatibility.md#platforms-tested-and-targeted).
-
-- **Linux/X11:** Xvfb/Openbox, one display and the default layout. Checks
-  shortcut/focus, search, Pandoc clipboard text, hide/reopen, settings, reload
-  and recovery. After Enter copies, it checks the reason, explicitly pastes
-  with Shift+Insert into its xterm editor and reads the citation back.
-  Require passing `smoke.json`; 100k launch/memory figures are diagnostics.
-- **macOS journey:** `bash scripts/hands-on-macos.sh --journey` installs a
-  nightly in an isolated profile and invokes the harness. From TextEdit,
-  selected text becomes the search; Enter must replace it with the expected
-  citation exactly once, verified through Accessibility. A safe copy gets
-  one retry. A Terminal collector must receive no keys. Missing terminal
-  Accessibility permission or an already open TextEdit makes it unavailable.
-  Daily/manual CI runs this journey on the installed nightly.
-- **Windows journey:** `smoke-native.py --journey` uses Notepad and an inert
-  console collector. It types the search, checks selection replacement once
-  through `WM_GETTEXT`, and checks that the console gets no automatic input.
-  `journey.json` records the editor and console host. A locked/disconnected
-  desktop is unavailable. `scripts/windows-journey.ps1` supplies native control.
-
-The separate Windows paste primitive test bypasses the picker. Foreground
-denial can skip it. macOS/Windows notice text is checked only when native
-accessibility exposes it. These journeys do not establish every editor,
-keyboard layout, screen reader, cloud provider or Wayland compositor.
-
-## Installed update qualification
-
-`scripts/update-e2e.py` installs the previous nightly, reopens it once,
-identifies its owned native offer, activates Install once, verifies package
-replacement and a fresh process, and checks persisted library/shortcut
-choices. Ambiguous ownership, uncertain input or failed checks terminate the
-run without another activation. `--self-test` exercises the harness contract.
-
-Linux targets the verified X11 window and observes GTK focus through
-`update-gtk-probe.c`; macOS verifies sheet/button Accessibility identities;
-Windows verifies UI Automation ownership and invokes Install or sends one
-bounded TaskDialog action. Models cannot prove an installed update.
-See [signing](code-signing.md#qualification-before-claiming-permission-survival)
-for the separate paste-permission check.
+Real-app journeys and the installed-update qualification are specified in the
+headers of `scripts/smoke-native.py` and `scripts/update-e2e.py`; hosted runner
+coverage is in [compatibility](compatibility.md#platforms-tested-and-targeted),
+and paste permission survival in [signing](code-signing.md#qualification-before-claiming-permission-survival).
 
 ## Update consent keyboard safety
 
-Automatic offers wait for empty search, an idle interval of 1.5 seconds,
-no held input, no overlays or copy, and a visible focused picker. Interaction
-changes retire the idle ticket; native presentation checks it again.
-
-Later is the safe default. macOS and Windows put it before Install; Linux
-explicitly sets its default and initial focus. Only the exact Install action
-accepts; Escape/close cancel. Node monitor tests cover Enter, held keys,
-composition and stale replies. Rust tests cover busy input and obsolete
-tickets. Linux native CI runs
-`gtk_offer_return_declines_and_explicit_install_button_accepts` under Xvfb.
-The qualifier navigates to a verified Install button before sending Space;
-it does not change dialog defaults. Installed keyboard behaviour still needs
-platform evidence.
+An update offer waits for an idle, empty, focused picker; Later is the default
+and only the exact Install action accepts. Node monitor tests cover Enter, held
+keys, composition and stale replies; Rust tests cover busy input and obsolete
+tickets; Linux CI runs `gtk_offer_return_declines_and_explicit_install_button_accepts`
+under Xvfb. Installed keyboard behaviour still needs platform evidence.
 
 ## Native evidence and replay
 
@@ -127,10 +76,9 @@ The [closed schema](../scripts/native_evidence.schema.json) is checked on
 write and read. Bundles are limited to one manifest, 1 MiB and 4,000 events,
 in a new directory. Other logs are separate diagnostics.
 
-The manifest records build/harness/fixture hashes, observed environment,
-fixed action/result codes, relative times and harness completion order.
-Unobserved fields have reasons. It records harness order, not app-internal
-IPC scheduling, and attaches no screenshot, raw readback or desktop text.
+The manifest records build, harness and fixture hashes, the observed
+environment and fixed action/result codes; unobserved fields have reasons. It
+attaches no screenshot, raw readback or desktop text.
 
 Replay on the same isolated Linux desktop:
 
@@ -139,15 +87,10 @@ python3 scripts/smoke-native.py --app target/debug/ibis-desktop \
   --output screenshots/replay --replay screenshots/run/evidence-RUN_ID/manifest.json
 ```
 
-Replay validates build, fixtures and observed environment before acting.
-Changed, missing or extra actions and results are `replay-diverged`.
-Relative times are diagnostic, not replayed delays. The seed is recorded;
-current deterministic scenarios do not consume it.
-
-Use one GUI worker per isolated synthetic desktop. Preserve a failing bundle,
-separate product/harness/unavailable failures, replay and minimize it, then
-add the regression at the layer that owns the cause. Never export personal
-library data or `.local/`. Evidence does not certify unobserved capabilities.
+Replay validates build, fixtures and environment before acting; changed,
+missing or extra actions and results are `replay-diverged`. Use one GUI worker
+per synthetic desktop, keep a failing bundle, replay it, then add the regression
+at the layer that owns the cause.
 
 ## Where checks run
 
@@ -184,10 +127,7 @@ publication evidence: a red main keeps the preceding nightly. Run manual
 qualification before a stable release. [Preview](../.github/workflows/preview.yml)
 keeps full builds, signing and install/start checks before publishing.
 
-Only the read-only title workflow remains on outside PRs, to give contributors
-feedback. Trusted branches get the same check locally. Nix and syntax-tool
-workflows confirm after merge. Licences, bans, sources and identity privacy
-checks remain; DCO is not enforced. RustSec advisories block dependency changes,
-release publication and the weekly check; other failures warn. Ubuntu package
-sources retain security pockets; mirror/provisioning failures report infrastructure.
-Publication details are in [RELEASING.md](../RELEASING.md).
+Only the read-only title workflow runs on outside PRs. Nix and syntax-tool
+workflows confirm after merge. RustSec advisories block dependency changes,
+release publication and the weekly check; other failures warn. Publication
+details are in [RELEASING.md](../RELEASING.md).

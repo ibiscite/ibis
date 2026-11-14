@@ -4,6 +4,36 @@
 Exit 1 means a failed assertion; exit 2 means the session lacks a required native
 capability. Only synthetic test text is recorded, never the accessibility tree or
 clipboard contents. See ../CONTRIBUTING.md before running on a personal desktop.
+
+Journeys (daily/manual CI and Preview run them on the installed nightly):
+
+`scripts/smoke-native.py` drives the real desktop app with invented data.
+Daily/manual CI runs installed nightly journeys; Preview checks package
+install/start and offline observation.
+Hosted runner coverage is listed in [compatibility](compatibility.md#platforms-tested-and-targeted).
+
+- **Linux/X11:** Xvfb/Openbox, one display and the default layout. Checks
+  shortcut/focus, search, Pandoc clipboard text, hide/reopen, settings, reload
+  and recovery. After Enter copies, it checks the reason, explicitly pastes
+  with Shift+Insert into its xterm editor and reads the citation back.
+  Require passing `smoke.json`; 100k launch/memory figures are diagnostics.
+- **macOS journey:** `bash scripts/hands-on-macos.sh --journey` installs a
+  nightly in an isolated profile and invokes the harness. From TextEdit,
+  selected text becomes the search; Enter must replace it with the expected
+  citation exactly once, verified through Accessibility. A safe copy gets
+  one retry. A Terminal collector must receive no keys. Missing terminal
+  Accessibility permission or an already open TextEdit makes it unavailable.
+  Daily/manual CI runs this journey on the installed nightly.
+- **Windows journey:** `smoke-native.py --journey` uses Notepad and an inert
+  console collector. It types the search, checks selection replacement once
+  through `WM_GETTEXT`, and checks that the console gets no automatic input.
+  `journey.json` records the editor and console host. A locked/disconnected
+  desktop is unavailable. `scripts/windows-journey.ps1` supplies native control.
+
+The separate Windows paste primitive test bypasses the picker. Foreground
+denial can skip it. macOS/Windows notice text is checked only when native
+accessibility exposes it. These journeys do not establish every editor,
+keyboard layout, screen reader, cloud provider or Wayland compositor.
 """
 import argparse
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
