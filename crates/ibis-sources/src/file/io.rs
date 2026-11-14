@@ -94,6 +94,7 @@ impl Budget {
 /// One source load shares this absolute deadline, including capacity waits.
 pub(super) struct Scope<'a> {
     until: Instant,
+    now: Arc<dyn Fn() -> Instant + Send + Sync>,
     cancelled: &'a dyn Fn() -> bool,
 }
 
@@ -101,6 +102,7 @@ impl<'a> Scope<'a> {
     pub(super) fn new(cancelled: &'a dyn Fn() -> bool) -> Self {
         Self {
             until: Instant::now() + DEADLINE,
+            now: Arc::new(Instant::now),
             cancelled,
         }
     }
@@ -115,7 +117,7 @@ impl<'a> Scope<'a> {
 
     fn remaining(&self) -> Result<Duration, SourceError> {
         self.check_cancelled()?;
-        let remaining = self.until.saturating_duration_since(Instant::now());
+        let remaining = self.until.saturating_duration_since((self.now)());
         if remaining.is_zero() {
             Err(SourceError::Unavailable)
         } else {
@@ -159,14 +161,15 @@ impl<'a> Scope<'a> {
         references.truncate(MAX_ATTACHMENT_PROBES);
         references.shrink_to_fit();
         let until = self.until;
+        let now = self.now.clone();
         let (send, results) = mpsc::channel();
         let outcome = Budget::shared().run(self, Work::Probe, move || {
             for (index, path) in references {
-                if Instant::now() >= until {
+                if now() >= until {
                     break;
                 }
                 let availability = probe(&path);
-                if Instant::now() >= until || send.send((index, availability)).is_err() {
+                if now() >= until || send.send((index, availability)).is_err() {
                     break;
                 }
             }
