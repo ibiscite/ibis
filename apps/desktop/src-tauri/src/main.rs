@@ -58,7 +58,7 @@ use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_global_shortcut::ShortcutState;
 
 use crate::diagnostics::{NativeIssue, application_message, checked, report};
-use crate::library::{Library, LoadRequests, PreviewRequests, SearchRequests, Source, start_open};
+use crate::library::{Library, LoadRequests, SearchRequests, Source, start_open};
 use crate::picker::{
     ChooserOpen, Pinned, ShortcutStatus, dismiss_picker, hides_on_blur, show_picker, start_shortcut, toggle_picker,
 };
@@ -169,8 +169,6 @@ fn main() {
         .manage(LoadRequests::default())
         .manage(SearchRequests::default())
         .manage(tray::SearchRequest::default())
-        .manage(PreviewRequests::default())
-        .manage(library::FormattingRequests::default())
         .manage(setup::Offered::default())
         .manage(ChooserOpen::default())
         .manage(settings_backup::PendingRestore::default())
@@ -288,7 +286,7 @@ fn main() {
             ibis_engine::identity::use_saved_key(true);
             let settings_path = app.path().app_config_dir()?.join("settings.json");
             let loaded = settings::load(&settings_path);
-            library::engine_file::warm_formatter(loaded.settings.output.clone());
+            library::engine_library::warm_formatter(loaded.settings.output.clone());
             app.manage(SettingsFile::new(settings_path.clone()));
             let remember = loaded.problem.is_none() && loaded.settings.recent_citations.unwrap_or(true);
             session_references::manage(app.handle(), &settings_path, remember);
@@ -510,3 +508,6 @@ mod offline_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod test_citations;

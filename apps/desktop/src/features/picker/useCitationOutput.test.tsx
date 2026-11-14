@@ -4,7 +4,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { initialSession } from "./session";
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { afterEach, expect, test, vi } from "vitest";
-import type { FilePreview } from "../../bindings";
+import type { Preview } from "../../bindings";
 import type { LibraryStatus } from "../../api";
 import type { CitationReference } from "./choice";
 import { say } from "../../i18n";
@@ -15,7 +15,7 @@ afterEach(cleanup);
 
 /** The hook's inputs, plus the opening it runs in and the status refresh the session asks for. */
 type Options = Omit<Parameters<typeof useCitationOutput>[0], "session" | "state"> & { sessionId?: number; opened?: number; refreshSnapshot?: () => void };
-type Preview = NonNullable<Options["previewFileCitation"]>;
+type PreviewOperation = NonNullable<Options["previewFileCitation"]>;
 
 /** The preview as the picker runs it: inside a session that may prepare and show a window again. */
 function useOutputInSession({ sessionId = 0, opened = sessionId, refreshSnapshot = () => {}, ...inputs }: Options) {
@@ -53,7 +53,7 @@ function reference(revision = "1", key = "synthetic"): CitationReference {
   };
 }
 
-function preview(text: string): FilePreview {
+function preview(text: string): Preview {
   return { effective_output: null, text, display: displayTree([{ item: 0, text }]), warnings: [], ticket: "synthetic-ticket", content_hash: "synthetic-hash" };
 }
 
@@ -61,14 +61,14 @@ function options(overrides: Partial<Options>): Options {
   return {
     chosen: [reference()], library: library(), libraryVersion: 0,
     format: "pandoc", style: null,
-    previewFileCitation: vi.fn<Preview>().mockResolvedValue(preview("[@synthetic]")),
+    previewFileCitation: vi.fn<PreviewOperation>().mockResolvedValue(preview("[@synthetic]")),
     refreshSnapshot: vi.fn(), ...overrides,
   };
 }
 
 test("switching projects with equal citation text needs a fresh preview and ignores the delayed old one", async () => {
-  const pending: ((value: FilePreview) => void)[] = [];
-  const previewFileCitation = vi.fn<Preview>(() => new Promise((resolve) => pending.push(resolve)));
+  const pending: ((value: Preview) => void)[] = [];
+  const previewFileCitation = vi.fn<PreviewOperation>(() => new Promise((resolve) => pending.push(resolve)));
   const initial = options({ previewFileCitation, projectContext: [1, 0] });
   const { result, rerender } = renderHook(useOutputInSession, { initialProps: initial });
   const firstSignal = previewFileCitation.mock.calls[0]?.[3];
@@ -83,7 +83,7 @@ test("switching projects with equal citation text needs a fresh preview and igno
 });
 
 test("an empty reconciliation cannot retire a settled ticket when no other preview ran", async () => {
-  const previewFileCitation = vi.fn<Preview>().mockResolvedValue(preview("Settled citation"));
+  const previewFileCitation = vi.fn<PreviewOperation>().mockResolvedValue(preview("Settled citation"));
   const initial = options({ previewFileCitation });
   const { result, rerender } = renderHook(useOutputInSession, { initialProps: initial });
   await waitFor(() => expect(result.current.shown).toMatchObject({ text: "Settled citation" }));
@@ -96,8 +96,8 @@ test("an empty reconciliation cannot retire a settled ticket when no other previ
 });
 
 test("reopening replaces unfinished preview work but preserves a settled canonical receipt", async () => {
-  const pending: ((value: FilePreview) => void)[] = [];
-  const previewFileCitation = vi.fn<Preview>(() => new Promise((resolve) => pending.push(resolve)));
+  const pending: ((value: Preview) => void)[] = [];
+  const previewFileCitation = vi.fn<PreviewOperation>(() => new Promise((resolve) => pending.push(resolve)));
   const initial = options({ previewFileCitation, sessionId: 0 });
   const { result, rerender, unmount } = renderHook(useOutputInSession, { initialProps: initial });
   rerender({ ...initial, sessionId: 1 });
@@ -116,13 +116,13 @@ const conflictMessage = "This reference has conflicting citation keys.";
 const conflictFailure = { code: "conflicting-key", message: { id: "problem-conflicting-key", args: {} }, recovery: { action: "choose-style" }, focus: "format-picker" };
 
 test("returning from B to A waits for a fresh ticket instead of reusing A's retired receipt", async () => {
-  const pending: ((value: FilePreview) => void)[] = [];
-  const previewFileCitation = vi.fn<Preview>(() => new Promise((resolve) => pending.push(resolve)));
+  const pending: ((value: Preview) => void)[] = [];
+  const previewFileCitation = vi.fn<PreviewOperation>(() => new Promise((resolve) => pending.push(resolve)));
   const initial = options({ previewFileCitation });
   const { result, rerender } = renderHook(useOutputInSession, { initialProps: initial });
   await act(async () => { pending[0]!(preview("Original A")); });
   expect(result.current.shown).toMatchObject({ text: "Original A" });
-  rerender({ ...initial, chosen: [{ ...initial.chosen[0]!, locator: { label: "page", value: "12", input: "editor" } }] });
+  rerender({ ...initial, chosen: [{ ...initial.chosen[0]!, locator: { term: "page", value: "12", input: "editor" } }] });
   rerender(initial);
   expect(result.current.shown).toBeNull();
   await act(async () => { pending[1]!(preview("Retired B")); });
@@ -133,7 +133,7 @@ test("returning from B to A waits for a fresh ticket instead of reusing A's reti
 
 test("replacing, clearing and unmounting a selection aborts obsolete engine previews", () => {
   const signals: AbortSignal[] = [];
-  const previewFileCitation = vi.fn<Preview>((_items, _output, _revision, signal) => {
+  const previewFileCitation = vi.fn<PreviewOperation>((_items, _output, _revision, signal) => {
     if (signal) signals.push(signal);
     return new Promise(() => {});
   });
@@ -152,14 +152,14 @@ test("replacing, clearing and unmounting a selection aborts obsolete engine prev
 });
 
 test.each([
-  { edit: "page", details: { locator: { label: "page", value: "42–45" }, form: "normal" } },
+  { edit: "page", details: { locator: { term: "page", value: "42–45" }, form: "normal" } },
   { edit: "cleared page", details: { locator: null, form: "normal" } },
-  { edit: "narrative form", details: { locator: { label: "page", value: "12" }, form: "narrative" } },
-  { edit: "suppressed author", details: { locator: { label: "page", value: "12" }, form: "year-only" } },
+  { edit: "narrative form", details: { locator: { term: "page", value: "12" }, form: "narrative" } },
+  { edit: "suppressed author", details: { locator: { term: "page", value: "12" }, form: "year-only" } },
 ] as const)("a $edit edit aborts the old preview and keeps the new receipt after a late result", async ({ details }) => {
-  const pending: ((value: FilePreview) => void)[] = [];
-  const previewFileCitation = vi.fn<Preview>(() => new Promise((resolve) => pending.push(resolve)));
-  const chosen: CitationReference = { ...reference(), locator: { label: "page", value: "12" }, form: "normal" };
+  const pending: ((value: Preview) => void)[] = [];
+  const previewFileCitation = vi.fn<PreviewOperation>(() => new Promise((resolve) => pending.push(resolve)));
+  const chosen: CitationReference = { ...reference(), locator: { term: "page", value: "12" }, form: "normal" };
   const refreshSnapshot = vi.fn();
   const initial = options({ chosen: [chosen], previewFileCitation, refreshSnapshot });
   const { result, rerender, unmount } = renderHook(useOutputInSession, { initialProps: initial });
@@ -186,18 +186,18 @@ test.each([
 });
 
 test("the same page text in the editor retires its canonical receipt and uses the raw input field", async () => {
-  const pending: ((value: FilePreview) => void)[] = [];
-  const previewFileCitation = vi.fn<Preview>(() => new Promise((resolve) => pending.push(resolve)));
-  const canonical: CitationReference = { ...reference(), locator: { label: "page", value: "S.12" } };
+  const pending: ((value: Preview) => void)[] = [];
+  const previewFileCitation = vi.fn<PreviewOperation>(() => new Promise((resolve) => pending.push(resolve)));
+  const canonical: CitationReference = { ...reference(), locator: { term: "page", value: "S.12" } };
   const initial = options({ chosen: [canonical], previewFileCitation });
   const { result, rerender } = renderHook(useOutputInSession, { initialProps: initial });
   expect(previewFileCitation.mock.calls[0]?.[0]).toEqual([
-    { id: canonical.id, cite: canonical.cite, locator: { label: "page", value: "S.12" } },
+    { id: canonical.id, cite: canonical.cite, locator: { term: "page", value: "S.12" } },
   ]);
   await act(async () => { pending[0]?.(preview("canonical S.12")); });
   expect(result.current.shown).toMatchObject({ text: "canonical S.12" });
 
-  rerender({ ...initial, chosen: [{ ...canonical, locator: { label: "page", value: "S.12", input: "editor" } }] });
+  rerender({ ...initial, chosen: [{ ...canonical, locator: { term: "page", value: "S.12", input: "editor" } }] });
   expect(result.current.shown).toBeNull();
   expect(previewFileCitation.mock.calls[1]?.[0]).toEqual([
     { id: canonical.id, cite: canonical.cite, locator: null, locator_input: { label: "page", text: "S.12" } },
@@ -212,7 +212,7 @@ test("the same page text in the editor retires its canonical receipt and uses th
 });
 
 test("a failed native preview keeps its actionable explanation without refreshing the snapshot", async () => {
-  const previewFileCitation = vi.fn<Preview>().mockRejectedValue(conflictFailure);
+  const previewFileCitation = vi.fn<PreviewOperation>().mockRejectedValue(conflictFailure);
   const refreshSnapshot = vi.fn();
   const { result } = renderHook(useOutputInSession, {
     initialProps: options({ previewFileCitation, refreshSnapshot }),
@@ -226,8 +226,8 @@ test("a failed native preview keeps its actionable explanation without refreshin
 });
 
 test("a shared citation key keeps its existing explanation ahead of a supplied message", async () => {
-  const previewFileCitation = vi.fn<Preview>().mockRejectedValue({
-    code: "shared_citation_key", message: { id: "app-command-shared-citation-key", args: { key: "synthetic" } }, recovery: { action: "choose-style" }, focus: "format-picker",
+  const previewFileCitation = vi.fn<PreviewOperation>().mockRejectedValue({
+    code: "ambiguous-key", message: { id: "app-command-shared-citation-key", args: { key: "synthetic" } }, recovery: { action: "choose-style" }, focus: "format-picker",
   });
   const { result } = renderHook(useOutputInSession, {
     initialProps: options({ previewFileCitation }),
@@ -240,9 +240,9 @@ test("a shared citation key keeps its existing explanation ahead of a supplied m
 test("a stale file preview waits for a changed source instead of retrying each unchanged status read", async () => {
   // Unexpected retries stay pending so the regression fails on a call count,
   // rather than running an unbounded rejection/status-refresh loop.
-  const previewFileCitation = vi.fn<Preview>()
+  const previewFileCitation = vi.fn<PreviewOperation>()
     .mockRejectedValueOnce({ code: "snapshot_changed" })
-    .mockReturnValue(new Promise<FilePreview>(() => undefined));
+    .mockReturnValue(new Promise<Preview>(() => undefined));
   const refreshSnapshot = vi.fn();
   const initial = options({ previewFileCitation, refreshSnapshot });
   const { result, rerender } = renderHook(useOutputInSession, { initialProps: initial });
@@ -260,7 +260,7 @@ test("a stale file preview waits for a changed source instead of retrying each u
 });
 
 test("a preview refused by a reload that began first waits instead of failing", async () => {
-  const previewFileCitation = vi.fn<Preview>().mockRejectedValueOnce({ code: "library_loading" }).mockResolvedValue(preview("[@fresh]"));
+  const previewFileCitation = vi.fn<PreviewOperation>().mockRejectedValueOnce({ code: "library_loading" }).mockResolvedValue(preview("[@fresh]"));
   const refreshSnapshot = vi.fn();
   const initial = options({ previewFileCitation, refreshSnapshot });
   const { result, rerender } = renderHook(useOutputInSession, { initialProps: initial });
@@ -274,7 +274,7 @@ test("a preview refused by a reload that began first waits instead of failing", 
 });
 
 test("a stale file preview recovers when a refreshed search has a new source revision", async () => {
-  const previewFileCitation = vi.fn<Preview>()
+  const previewFileCitation = vi.fn<PreviewOperation>()
     .mockRejectedValueOnce({ code: "snapshot_changed" })
     .mockResolvedValue(preview("[@fresh]"));
   const refreshSnapshot = vi.fn();
@@ -294,8 +294,8 @@ test.each([
   { code: "cancelled" },
 ])("a replaced file preview cannot refresh status or replace newer output after a late $code rejection", async (error) => {
   let rejectOld: (reason: unknown) => void = () => undefined;
-  const old = new Promise<FilePreview>((_resolve, reject) => { rejectOld = reject; });
-  const previewFileCitation = vi.fn<Preview>()
+  const old = new Promise<Preview>((_resolve, reject) => { rejectOld = reject; });
+  const previewFileCitation = vi.fn<PreviewOperation>()
     .mockReturnValueOnce(old)
     .mockResolvedValue(preview("[@new-choice]"));
   const refreshSnapshot = vi.fn();
@@ -314,7 +314,7 @@ const engineFault = "The citation could not be prepared. Try again.";
 const engineFailure = { code: "not-prepared", message: { id: "app-command-not-prepared", args: {} }, recovery: { action: "retry" }, focus: "recovery-action" };
 
 test("a cancelled preview whose owner still wants it is not a failure: it asks once more", async () => {
-  const previewFileCitation = vi.fn<Preview>().mockRejectedValueOnce({ code: "cancelled" }).mockResolvedValue(preview("Fresh entry"));
+  const previewFileCitation = vi.fn<PreviewOperation>().mockRejectedValueOnce({ code: "cancelled" }).mockResolvedValue(preview("Fresh entry"));
   const refreshSnapshot = vi.fn();
   const { result } = renderHook(useOutputInSession, { initialProps: options({ previewFileCitation, refreshSnapshot }) });
   await act(async () => { await Promise.resolve(); });
@@ -328,7 +328,7 @@ test("a cancelled preview whose owner still wants it is not a failure: it asks o
 test("a preview the engine keeps refusing ends in a stated failure, not Formatting… forever", async () => {
   // The engine also answers "cancelled" when it refuses the writing-project
   // context it was asked under; nothing newer is coming to replace it.
-  const previewFileCitation = vi.fn<Preview>().mockRejectedValue({ code: "cancelled" });
+  const previewFileCitation = vi.fn<PreviewOperation>().mockRejectedValue({ code: "cancelled" });
   const initial = options({ previewFileCitation, sessionId: 0 });
   const { result, rerender } = renderHook(useOutputInSession, { initialProps: initial });
   await waitFor(() => expect(result.current.shown).toBe("failed"));
@@ -344,7 +344,7 @@ test("a preview the engine keeps refusing ends in a stated failure, not Formatti
 });
 
 test("a preview refused while the destination is being read waits for that answer, then asks again", async () => {
-  const previewFileCitation = vi.fn<Preview>().mockRejectedValue({ code: "cancelled" });
+  const previewFileCitation = vi.fn<PreviewOperation>().mockRejectedValue({ code: "cancelled" });
   const initial = options({ previewFileCitation, contextReady: false });
   const { result, rerender } = renderHook(useOutputInSession, { initialProps: initial });
   await waitFor(() => expect(previewFileCitation).toHaveBeenCalledTimes(1));
@@ -361,8 +361,8 @@ test("a preview refused while the destination is being read waits for that answe
 });
 
 test("reopening drops a failure from the first frame and prepares the same citation afresh", async () => {
-  const pending: { resolve: (value: FilePreview) => void; reject: (reason: unknown) => void }[] = [];
-  const previewFileCitation = vi.fn<Preview>(() => new Promise((resolve, reject) => pending.push({ resolve, reject })));
+  const pending: { resolve: (value: Preview) => void; reject: (reason: unknown) => void }[] = [];
+  const previewFileCitation = vi.fn<PreviewOperation>(() => new Promise((resolve, reject) => pending.push({ resolve, reject })));
   const initial = options({ previewFileCitation, sessionId: 0 });
   const { result, rerender } = renderHook(useOutputInSession, { initialProps: initial });
   await act(async () => { pending[0]!.reject(engineFailure); });
@@ -378,7 +378,7 @@ test("reopening drops a failure from the first frame and prepares the same citat
 });
 
 test("a failure is gone when the reopened window prepares its first frame, before it is shown", async () => {
-  const previewFileCitation = vi.fn<Preview>().mockRejectedValueOnce(engineFailure).mockResolvedValue(preview("Shown entry"));
+  const previewFileCitation = vi.fn<PreviewOperation>().mockRejectedValueOnce(engineFailure).mockResolvedValue(preview("Shown entry"));
   const initial = options({ previewFileCitation, sessionId: 0, opened: 0 });
   const { result, rerender } = renderHook(useOutputInSession, { initialProps: initial });
   await waitFor(() => expect(result.current.previewProblem).toBe(engineFault));
@@ -390,8 +390,8 @@ test("a failure is gone when the reopened window prepares its first frame, befor
 });
 
 test("a failure that outlives reopening is shown again, and a late old failure cannot replace a newer citation", async () => {
-  const pending: { resolve: (value: FilePreview) => void; reject: (reason: unknown) => void }[] = [];
-  const previewFileCitation = vi.fn<Preview>(() => new Promise((resolve, reject) => pending.push({ resolve, reject })));
+  const pending: { resolve: (value: Preview) => void; reject: (reason: unknown) => void }[] = [];
+  const previewFileCitation = vi.fn<PreviewOperation>(() => new Promise((resolve, reject) => pending.push({ resolve, reject })));
   const initial = options({ previewFileCitation, sessionId: 0 });
   const { result, rerender } = renderHook(useOutputInSession, { initialProps: initial });
   rerender({ ...initial, sessionId: 1 });
@@ -405,7 +405,7 @@ test("a failure that outlives reopening is shown again, and a late old failure c
 });
 
 test("choosing a failed citation again prepares it again instead of reviving the failure", async () => {
-  const previewFileCitation = vi.fn<Preview>().mockRejectedValueOnce(engineFailure).mockResolvedValue(preview("Second try"));
+  const previewFileCitation = vi.fn<PreviewOperation>().mockRejectedValueOnce(engineFailure).mockResolvedValue(preview("Second try"));
   const initial = options({ previewFileCitation });
   const { result, rerender } = renderHook(useOutputInSession, { initialProps: initial });
   await waitFor(() => expect(result.current.shown).toBe("failed"));

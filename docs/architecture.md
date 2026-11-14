@@ -132,19 +132,36 @@ loads the requested style and locale. Formatting receives citable fields,
 without notes, annotations or private links. Zotero differential fixtures
 check output independently of the renderer.
 
+`engine.citations()` owns a bounded registry: one picker session and up to 64
+connection sessions. Submission reserves order before workers run. A newer
+preview retires the session's previous preview, its forms and queued
+bibliography work. Running bibliography work keeps its own cancellation owner;
+closing a session stops all its work. Connections close their registry entries.
+One-shot RPC/MCP cite calls reserve independent operations and answer every
+accepted request; interactive preview supersession does not swallow their replies.
+Session failures carry a typed `Problem` with its catalogue message, recovery and
+focus. BibTeX and DOI links use the same preview and checked commit as citations;
+record exports pass through `CitableFields`.
+
 The desktop warms its saved default style, locale and runtime in the background,
 independently of the library, and shares that formatter for the session. Warm-up
 publishes no citation; a foreground request retires it. The idle worker sleeps
 while Ibis is hidden.
 
-Detail examples and bibliography work own separate cancellation tokens; closing
-or replacing their view stops formatting and leaves the receipt usable. MCP
-sends no result after its request is cancelled.
+Desktop drafts, previews, display trees, locators and all six citation forms
+come from core through generated bindings. Output and locale resolve together
+before item formatting; the formatter receives the validated style and bundled
+locale. Human CLI record renderers receive only presentation rows made from
+`RecordSummary` and citation-key status, without lookup identities or raw JSON.
 
-A prepared citation pins its request and fingerprints. Copy re-cites it
-against current data and requires the shown content hash. Changed or removed
-items, ambiguous keys and changed Zotero generations refuse the copy.
-`copy_content(expected_items)` also requires every requested item to succeed.
+A prepared citation pins its request and fingerprints. Commit re-cites it
+against current data and requires the shown hash. Changed or removed items,
+ambiguous keys and changed Zotero generations refuse it, including a changed
+record that would produce identical text. Checked content retains its session
+identity and the citable revision checked during commit; the app holds the engine's final freshness guard while writing the
+clipboard on the main thread. Clipboard and paste proof remain native-owned.
+Bibliographies name unrenderable records in `left_out` and retain the rest;
+their shown receipt pins the selected records, including those left out.
 
 Receipts, `--strict` and caller-supplied records are specified in the
 [CLI reference](cli.md#receipts-and-strict-citations); records open no library

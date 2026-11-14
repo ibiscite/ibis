@@ -20,7 +20,7 @@ pub(crate) fn load_library(path: PathBuf, reload: bool) -> Result<Library, LoadE
 fn load_file(
     path: PathBuf,
     reload: bool,
-    previous: Option<std::sync::Arc<super::engine_file::FileLibrary>>,
+    previous: Option<std::sync::Arc<super::engine_library::FileLibrary>>,
     cancel: &ibis_engine::Cancellation,
     cancelled: &impl Fn() -> bool,
 ) -> Result<Loaded, LoadError> {
@@ -42,7 +42,7 @@ fn load_file(
             (file, unchanged)
         }
         None => (
-            std::sync::Arc::new(super::engine_file::FileLibrary::open(&path)?),
+            std::sync::Arc::new(super::engine_library::FileLibrary::open(&path)?),
             false,
         ),
     };
@@ -73,7 +73,7 @@ pub(crate) enum Loaded {
 
 pub(super) struct LibraryReload {
     pub(super) source: Source,
-    pub(super) file: std::sync::Arc<super::engine_file::FileLibrary>,
+    pub(super) file: std::sync::Arc<super::engine_library::FileLibrary>,
     pub(super) prepared: PreparedReload,
 }
 
@@ -99,7 +99,7 @@ impl LibraryReload {
 pub(super) fn load_source(
     source: Source,
     reload: bool,
-    previous_file: Option<std::sync::Arc<super::engine_file::FileLibrary>>,
+    previous_file: Option<std::sync::Arc<super::engine_library::FileLibrary>>,
     profile: Option<&str>,
     cancel: &ibis_engine::Cancellation,
     cancelled: impl Fn() -> bool,
@@ -112,7 +112,7 @@ pub(super) fn load_source(
 pub(super) fn load_source_guarded(
     source: Source,
     reload: bool,
-    previous_file: Option<std::sync::Arc<super::engine_file::FileLibrary>>,
+    previous_file: Option<std::sync::Arc<super::engine_library::FileLibrary>>,
     profile: Option<&str>,
     cancel: &ibis_engine::Cancellation,
     cancelled: impl Fn() -> bool,
@@ -129,7 +129,7 @@ pub(super) fn load_source_guarded(
         Source::Samples(path) => {
             // A separate engine, using the normal CSL-JSON file reader. The
             // bundled immutable file needs neither a watch nor a saved choice.
-            let file = super::engine_file::FileLibrary::open_samples(&path)?;
+            let file = super::engine_library::FileLibrary::open_samples(&path)?;
             check_cancelled(&cancelled)?;
             Ok(Loaded::New(Box::new(Library {
                 source: Some(Source::Samples(path)),
@@ -149,7 +149,9 @@ pub(super) fn load_source_guarded(
                     prepared: PreparedReload::Zotero(prepared),
                 })));
             }
-            let bridge = std::sync::Arc::new(super::engine_file::FileLibrary::open_zotero(&chosen, profile, cancel)?);
+            let bridge = std::sync::Arc::new(super::engine_library::FileLibrary::open_zotero(
+                &chosen, profile, cancel,
+            )?);
             check_cancelled(&cancelled)?;
             if cancel.is_cancelled() {
                 return Err(LoadError::Stopped);
