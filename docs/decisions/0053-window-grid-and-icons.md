@@ -1,7 +1,6 @@
 # 0053 One window grid, and icons by meaning
 
-2026-11-13, proposed for the maintainer's review (design/core-spec; pictures in
-`.local/design-core/`). Supersedes [0044](0044-lucide-icon-primitive.md).
+2026-11-13, accepted by the maintainer (design/core-spec). Supersedes [0044](0044-lucide-icon-primitive.md).
 
 The maintainer saw a stray clear ×, a held ⇧⌘F standing in for the format
 button, a gap before "Best matches", a small bird, a green dot before the
@@ -38,24 +37,8 @@ icons. Each came from a rule, not from one screen, so the rules change:
    close seconds, Heroicons lacked a quote, pin, keyboard and contrast glyph and
    has outlines only at 24 px.
 
-## Not done on this branch
-
-- `icon-paths.ts` (Lucide) still feeds the Copied check draw
-  (`copyFeedback.ts`), the website demo (`website/demo.js`, `build.mjs`) and
-  several tests; move them to `icon-art.ts` (draw the check with a mask, since
-  Phosphor is filled), then delete `icon-paths.ts`, `LICENSE-lucide`,
-  `scripts/check-icons.mjs` and `scripts/icons.test.mjs`, and replace the guard
-  with one that checks `brand/icons` against `SOURCES.json`.
-- `brand/settings.json` and `build.py`: regenerate `pickerMark` for 32 px (its
-  eye opening is tuned for 24 px); the README's "24 px pickerMark" line changes
-  with it.
-- `SearchField`'s unused `clearLabel`/`onClear`, `.search-clear` and the
-  `--search-clear-size` rules; the ui README and `canvas/geometry.ts`,
-  `canvas/parts.tsx` mentions.
-- Healthy footer words: drop the count in `LibraryStatusLine` rather than
-  hiding it with CSS.
-- Command rows use title type; make them body like palette rows.
-- Tests asserting withdrawn behaviour: `icons.test.tsx` (Lucide stroke),
-  `HeldKeys.test.tsx` (marks on controls), `SettingsGroup.test.tsx` (reset
-  slot), `SourceAction.test.tsx` and `App.sourceActions.test.tsx` (path data).
-- Render a changed opening shortcut in Settings › Shortcuts (not rendered here).
+The branch finishes the Phosphor migration in the app, copy feedback and website,
+regenerates the picker bird for 32 px, and removes the withdrawn clear button,
+footer count and reset slot. Settings search skips Use Default when focusing
+the setting; the reset stays reachable immediately after its name. The vendored
+icon guard checks the manifest’s names and upstream glyph fingerprints.

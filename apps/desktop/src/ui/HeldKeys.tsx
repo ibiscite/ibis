@@ -4,12 +4,8 @@ import "./HeldKeys.css";
 
 export const HOLD_MS = 1000;
 
-/** A control's key, in the control's own place while ⌘ (Ctrl elsewhere) is held:
- * it stands in for the control's words or glyph, as a numbered list's marker
- * does, so nothing moves and nothing else is covered. The control that owns the
- * shortcut declares it (Button's `keys`, a row's number); only a key that uses
- * the held key has a mark, so a token's ↓ shows none. A glyph-only button has no
- * room for words, so its key stays in its tooltip. */
+/** A row's digit alone in its lead column while ⌘ (Ctrl elsewhere) is held.
+ * Controls keep their words and glyphs; their keys are already printed. */
 export function KeyMark({ keys }: { keys?: string }) {
   if (!keys?.split("+").includes("CmdOrCtrl")) return null;
   return <span className="ui-key-mark" aria-hidden="true"><bdi dir="ltr">{keys.split("+").at(-1)}</bdi></span>;

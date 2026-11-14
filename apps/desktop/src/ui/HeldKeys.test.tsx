@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { HeldKeys, HOLD_MS, KeyMark } from "./HeldKeys";
+import { Button } from "./Button";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -40,7 +41,11 @@ test("closing mid-hold leaves no timer behind", () => {
   expect(vi.getTimerCount()).toBe(0);
 });
 
-test("only keys that use the held key have a mark: a token's ↓ does something else while ⌘ is down", () => {
-  const { container } = render(<><KeyMark keys="ArrowDown" /><KeyMark keys="CmdOrCtrl+Shift+F" /></>);
-  expect([...container.querySelectorAll(".ui-key-mark")].map((mark) => mark.textContent)).toEqual(["⇧⌘F"]);
+test("a hold marks rows with digits alone and keeps a control's words", () => {
+  const { container } = render(<><HeldKeys /><KeyMark keys="CmdOrCtrl+1" /><Button label="Format" keys="CmdOrCtrl+Shift+F" /></>);
+  fireEvent.keyDown(window, { key: "Meta" });
+  act(() => { vi.advanceTimersByTime(HOLD_MS); });
+  expect(held()).toBe(true);
+  expect([...container.querySelectorAll(".ui-key-mark")].map((mark) => mark.textContent)).toEqual(["1"]);
+  expect(container.querySelector("button")?.textContent).toContain("Format");
 });

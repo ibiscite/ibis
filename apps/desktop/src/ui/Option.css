@@ -137,3 +137,4 @@
 
 /* A command is one line: its title and its keys. Compact rows' height in either density. */
 .command-row { --row-height: var(--row-compact); }
+.command-row .result-title { font-size: var(--type-body-size); line-height: var(--type-body-line); font-weight: 400; letter-spacing: normal; }

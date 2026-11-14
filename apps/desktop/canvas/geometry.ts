@@ -9,8 +9,9 @@
  * screens centre their own group and the inspector is its own column, so
  * neither is held to the window's columns. */
 export const columns = {
-  marks: [".result-tile", ".ui-palette-row > .ui-band-icon", ".search-bar .search-mark", ".library-bar .status-dot", ".ui-notice-line .update-ring", ".ui-view-back .ui-icon"],
-  words: [".result-title", ".search-bar input", ".ui-view-field", ".library-bar .library-words", ".ui-notice-line .notice-band > span:first-child", ".ui-notice-line .update-text", ".ui-notice-line .ui-line-words", ".shelf-citation", ".ui-view-title", ".ui-palette-label", ".ui-view-status", ".ui-list-heading > :is(span:not(.ui-band-icon), h2)"],
+  marks: [".result-tile", ".ui-palette-row > .ui-band-icon", ".search-bar .search-mark", ".ui-view-back .ui-icon"],
+  words: [".result-title", ".search-bar input", ".ui-view-field", ".shelf-citation", ".ui-view-title", ".ui-palette-label"],
+  leading: [".library-bar .library-status", ".ui-notice-line .notice-band > span:first-child", ".ui-notice-line .update-text", ".ui-notice-line .ui-line-words", ".ui-view-status", ".ui-list-heading > :is(span:first-child, h2)"],
   outside: ".choice-screen, .inspector, .menu-popover, [inert], .ui-notice-line > :is(.notice-slot, .ui-line-notice) ~ .ui-line-notice",
   /** Hover plates on the window's leading edge: each starts on the window inset, as a row does. */
   plates: ["#results [role=\"option\"]", ".library-bar .library-status-trigger"],
@@ -51,8 +52,8 @@ export const stacks = [".inspector-titles", ".inspector-column", ".citation-deta
 /** [C12] A grid of choice cards: one height, and each glyph level with its title's first line. */
 export const cards = { grid: '.choice-screen[data-grid] .choice-list', card: ".choice-row", glyph: ".choice-tile", title: ".result-title" } as const;
 
-/** Every interface glyph has one of two fixed pixel sizes and the same ink weight. */
-export const glyphs = { selector: "svg.ui-icon", sizes: [16, 20], stroke: 1.5 } as const;
+/** Every interface glyph has one of two fixed pixel sizes; its filled artwork stays as vendored. */
+export const glyphs = { selector: "svg.ui-icon", sizes: [16, 20] } as const;
 
 /** [D8] A ring hugs the control it names: a sheet, a menu or anything else only
  * the app focuses (tabindex -1) never draws one around itself. */
@@ -86,14 +87,6 @@ export function geometry(root: ParentNode = document): string[] {
     const rect = glyph.getBoundingClientRect();
     if (!glyphs.sizes.some((size) => Math.abs(rect.width - size) < .02 && Math.abs(rect.height - size) < .02))
       failures.push(`[icons] ${name(glyph)}: ${rect.width.toFixed(2)} × ${rect.height.toFixed(2)}px, expected 16 or 20px square`);
-    for (const path of glyph.querySelectorAll("path")) {
-      const matrix = path.getScreenCTM();
-      if (!matrix) continue;
-      const style = getComputedStyle(path), stroke = parseFloat(style.strokeWidth);
-      const scales = style.vectorEffect === "non-scaling-stroke" ? [1] : [Math.hypot(matrix.a, matrix.b), Math.hypot(matrix.c, matrix.d)];
-      if (scales.some((scale) => !Number.isFinite(stroke) || Math.abs(stroke * scale - glyphs.stroke) >= .02))
-        failures.push(`[icons] ${name(glyph)}: stroke ${(stroke * scales[0]!).toFixed(2)}px, expected 1.5px`);
-    }
   }
 
   // The existing More, Format and shortcuts scenarios cover the shared Back
@@ -125,7 +118,7 @@ export function geometry(root: ParentNode = document): string[] {
     const plate = probe.cloneNode() as HTMLElement;
     plate.style.insetInlineStart = "var(--inset)";
     main.append(plate);
-    const tileCentre = lead(tile) + tile.width / 2, titleStart = lead(title.getBoundingClientRect()), plateStart = lead(plate.getBoundingClientRect());
+    const tileStart = lead(tile), tileCentre = tileStart + tile.width / 2, titleStart = lead(title.getBoundingClientRect()), plateStart = lead(plate.getBoundingClientRect());
     probe.remove(); title.remove(); plate.remove();
     const held = (selector: string) => [...root.querySelectorAll(selector)].filter((node) => visible(node) && !node.closest(columns.outside));
     for (const node of held(columns.marks.join(", "))) {
@@ -136,12 +129,14 @@ export function geometry(root: ParentNode = document): string[] {
       const start = lead(node.getBoundingClientRect());
       if (Math.abs(start - plateStart) > tolerance) failures.push(`[C3] ${name(node)}: plate starts ${start.toFixed(1)}, window inset ${plateStart.toFixed(1)}`);
     }
-    for (const node of held(columns.words.join(", "))) {
-      const rect = node.getBoundingClientRect(), style = getComputedStyle(node);
-      // Field and title words start inside their padding and border.
-      const inset = node.matches("input, .ui-view-title") ? parseFloat(rtl ? style.paddingRight : style.paddingLeft) + parseFloat(rtl ? style.borderRightWidth : style.borderLeftWidth) : 0;
-      const start = lead(rect) + inset;
-      if (Math.abs(start - titleStart) > tolerance) failures.push(`[C3] ${name(node)}: starts ${start.toFixed(1)}, title column ${titleStart.toFixed(1)}`);
+    for (const [selectors, edge, column] of [[columns.words, titleStart, "title column"], [columns.leading, tileStart, "leading edge"]] as const) {
+      for (const node of held(selectors.join(", "))) {
+        const rect = node.getBoundingClientRect(), style = getComputedStyle(node);
+        // Field and title words start inside their padding and border.
+        const inset = node.matches("input, .ui-view-title") ? parseFloat(rtl ? style.paddingRight : style.paddingLeft) + parseFloat(rtl ? style.borderRightWidth : style.borderLeftWidth) : 0;
+        const start = lead(rect) + inset;
+        if (Math.abs(start - edge) > tolerance) failures.push(`[C3] ${name(node)}: starts ${start.toFixed(1)}, ${column} ${edge.toFixed(1)}`);
+      }
     }
   }
 

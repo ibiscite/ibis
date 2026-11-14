@@ -72,7 +72,7 @@ test.each([true, false])("first citation: choose samples, search, Enter and rece
   fireEvent.change(input, { target: { value: "lantern" } });
   const row = await screen.findByRole("option", { name: new RegExp(`Sample · ${title}`) });
   expect(within(row).getByText("Sample")).toBeTruthy();
-  expect(screen.getByRole("status", { name: "Library status" }).textContent).toBe("Sample references · 3 references");
+  expect(screen.getByRole("status", { name: "Library status" }).textContent).toBe("Sample references");
   await waitFor(() => expect(document.querySelector(".shelf")?.textContent).toContain(text));
   fireEvent.keyDown(input, { key: "Enter" });
   if (formatted) {
@@ -184,7 +184,7 @@ test("a real source replaces samples even when selected sample references were o
   fireEvent.keyDown(input, { key: "Enter" });
   await waitFor(() => expect(copied).toHaveBeenCalledOnce());
   expect(preview.mock.lastCall?.[0].items.map((item) => item.id.library)).toEqual(["real"]);
-  expect(screen.getByRole("status", { name: "Library status" }).textContent).toBe("invented.bib · 1 reference");
+  expect(screen.getByRole("status", { name: "Library status" }).textContent).toBe("invented.bib");
 });
 
 test("leaving samples cancels an Enter waiting for its citation preview", async () => {

@@ -13,11 +13,11 @@ export function SearchBar({ hidden, title, mark, onMouseDown, onMouseUp, childre
   return <Band as="header" className="search-bar" icon={mark} hidden={hidden} data-tauri-drag-region title={title} onMouseDown={onMouseDown} onMouseUp={onMouseUp}>{children}</Band>;
 }
 
-/** The large, frameless search field: a hidden label, the input, a clear button
- * while it holds text and anything that qualifies the query after it. Keys typed
+/** The large, frameless search field: a hidden label, the input and anything
+ * that qualifies the query after it. Esc clears. Keys typed
  * while an input method composes stay with the field. */
-export function SearchField({ id, label, clearLabel, value, onClear, trailing, ...input }: Omit<ComponentPropsWithRef<"input">, "id" | "value"> & {
-  id: string; label: string; clearLabel: string; value: string; onClear: () => void; trailing?: ReactNode;
+export function SearchField({ id, label, value, trailing, ...input }: Omit<ComponentPropsWithRef<"input">, "id" | "value"> & {
+  id: string; label: string; value: string; trailing?: ReactNode;
 }) {
   return <>
     <label className="visually-hidden" htmlFor={id}>{label}</label>

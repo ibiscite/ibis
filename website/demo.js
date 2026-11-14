@@ -1,15 +1,13 @@
 import { KEY_TABLE, keysFor, keyLabel, keyCapLabels, commandKey, matchesAccelerator } from "./keys.js";
-import { typePaths, iconPaths, iconStroke, iconViewBox } from "./icon-paths.js";
+import { art } from "./icon-art.js";
 import { createDemo, references, formats } from "./demo-model.mjs";
 const el = (tag, props = {}, ...children) => { const node = Object.assign(document.createElement(tag), props); node.append(...children); return node; };
 function icon(kind, className = "", size = "control") {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", iconViewBox); svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("viewBox", art.viewBox); svg.setAttribute("aria-hidden", "true");
   svg.setAttribute("class", `ui-icon ${className}`); svg.dataset.size = size;
-  svg.setAttribute("fill", "none"); svg.setAttribute("stroke", "currentColor");
-  svg.setAttribute("stroke-width", iconStroke[size]);
-  svg.setAttribute("stroke-linecap", "round"); svg.setAttribute("stroke-linejoin", "round");
-  for (const drawing of typePaths[kind] ?? [iconPaths[kind]]) { const path = document.createElementNS(svg.namespaceURI, "path"); path.setAttribute("d", drawing); svg.append(path); }
+  svg.setAttribute("fill", "currentColor");
+  svg.innerHTML = art.body[kind];
   return svg;
 }
 export function setupDemo({ onCopy = () => {}, onPaste = () => {} } = {}) {
@@ -23,7 +21,6 @@ export function setupDemo({ onCopy = () => {}, onPaste = () => {} } = {}) {
   const sentence = result.firstChild.textContent.trim();
   result.tabIndex = -1;
   const input = el("input", { type: "search", value: state.query, placeholder: words("searchPlaceholder"), autocomplete: "off" });
-  const clear = el("button", { type: "button", className: "picker-clear" }, icon("close")); clear.setAttribute("aria-label", words("clear"));
   for (const [key, value] of Object.entries({ role: "combobox", "aria-label": words("searchLabel"), "aria-autocomplete": "list", "aria-controls": "demo-results", "aria-expanded": "true" })) input.setAttribute(key, value);
   const select = el("select", {}, ...Object.entries(formats).map(([value, label]) => el("option", { value, textContent: label })));
   select.setAttribute("aria-label", words("formatLabel"));
@@ -78,9 +75,9 @@ export function setupDemo({ onCopy = () => {}, onPaste = () => {} } = {}) {
   const actions = el("div", { className: "picker-actions" }, add, copy, more);
   actions.setAttribute("role", "group"); actions.setAttribute("aria-label", words("actionsLabel"));
   const panel = el("div", { className: "picker-panel" }, el("div", { className: "picker-search" },
-    el("div", { className: "picker-field" }, mark, input), el("div", { className: "picker-controls" }, clear, format)),
+    el("div", { className: "picker-field" }, mark, input), el("div", { className: "picker-controls" }, format)),
     el("div", { className: "picker-middle" }, heading, list), shelf,
-    el("div", { className: "picker-foot" }, el("span", { className: "picker-library", title: words("library", { count: references.length }) }, decoration("picker-dot"), el("span", {}, words("library", { count: references.length }))), actions));
+    el("div", { className: "picker-foot" }, el("span", { className: "picker-library", title: words("library", { count: references.length }) }, el("span", {}, words("libraryName"))), actions));
   panel.setAttribute("data-app-tokens", ""); panel.dataset.platform = "macos";
   // C12 source choices require an actually empty or missing library. This
   // fixed invented library stays loaded; an unmatched query keeps search
@@ -107,7 +104,6 @@ export function setupDemo({ onCopy = () => {}, onPaste = () => {} } = {}) {
     const found = model.found(); state.selected = Math.max(0, Math.min(state.selected, found.length - 1));
     const current = found[state.selected], value = model.output();
     input.value = state.query; panel.hidden = !state.open; reopen.hidden = state.open;
-    clear.hidden = !state.query;
     input.setAttribute("aria-expanded", String(state.open && found.length > 0));
     headingLabel.textContent = words(state.query.trim() ? "headingQuery" : "headingEmpty");
     list.setAttribute("aria-label", headingLabel.textContent);
@@ -144,7 +140,6 @@ export function setupDemo({ onCopy = () => {}, onPaste = () => {} } = {}) {
   }
   function performPaste() { model.paste(); render(); onPaste(); result.focus({ preventScroll: true }); }
   input.addEventListener("input", () => { model.setQuery(input.value); render(); list.scrollTop = 0; });
-  clear.addEventListener("click", () => { model.setQuery(""); render(); list.scrollTop = 0; input.focus(); });
   clearEmpty.addEventListener("click", () => { model.setQuery(""); render(); list.scrollTop = 0; input.focus(); });
   select.addEventListener("change", () => { state.format = select.value; render(); });
   copy.addEventListener("click", performCopy);

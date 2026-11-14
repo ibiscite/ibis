@@ -85,16 +85,16 @@ test("form alignment measures a combined locator's fill and still reports a misp
   } finally { boxes.mockRestore(); view.unmount(); }
 });
 
-test("footer geometry catches a short selector, a shifted dot and a menu covering its anchor", () => {
+test("footer geometry catches a short selector, status off the leading edge and a menu covering its anchor", () => {
   const view = render(<main><div className="result-tile" /><footer className="library-bar">
-    <button type="button" className="library-status-trigger"><span className="status-dot" /></button>
+    <button type="button" className="library-status-trigger"><span className="library-status">thesis.bib</span></button>
     <span className="more"><button type="button" className="ui-button more-button">More</button></span>
   </footer><div className="menu-popover"><div id="library-menu" /></div></main>);
-  let height = 24, dotX = 32, menuX = 8, menuBottom = 442;
+  let height = 24, statusX = 20, menuX = 8, menuBottom = 442;
   const boxes = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
     if (this.matches(".library-status-trigger")) return new DOMRect(8, 448, 210, height);
     if (this.matches(".more .ui-button")) return new DOMRect(640, 448, 72, 24);
-    if (this.matches(".status-dot")) return new DOMRect(dotX, 456, 8, 8);
+    if (this.matches(".library-status")) return new DOMRect(statusX, 448, 190, 24);
     if (this.matches(".menu-popover")) return new DOMRect(menuX, 200, 240, menuBottom - 200);
     if (this.style.insetInlineStart === "var(--inset)") return new DOMRect(8, 0, 32, 1);
     if (this.style.insetInlineStart.includes("--title-start")) return new DOMRect(64, 0, 32, 1);
@@ -105,9 +105,9 @@ test("footer geometry catches a short selector, a shifted dot and a menu coverin
     expect(failures()).toEqual([]);
     height = 20;
     expect(failures()).toContainEqual(expect.stringContaining("library selector 20.0px tall"));
-    height = 24; dotX = 36;
-    expect(failures()).toContainEqual(expect.stringContaining("centre 40.0, tile column 36.0"));
-    dotX = 32; menuX = 20; menuBottom = 460;
+    height = 24; statusX = 24;
+    expect(failures()).toContainEqual(expect.stringContaining("starts 24.0, leading edge 20.0"));
+    statusX = 20; menuX = 20; menuBottom = 460;
     expect(failures()).toContainEqual(expect.stringContaining("library menu starts 20.0, selector 8.0"));
     expect(failures()).toContainEqual(expect.stringContaining("must leave a gap above selector"));
   } finally { boxes.mockRestore(); view.unmount(); }

@@ -71,9 +71,10 @@ const rules: { says: string; applies?: (file: string) => boolean; breaks: (d: De
   { says: "literal type scale sizes are at least 12 px at normal text size",
     breaks: ({ property, value }) => /^--type-(base|[\w-]+-size)$/.test(property) && /^\d*\.?\d+rem$/.test(value) && parseFloat(value) < .75,
     planted: ":root { --type-label-size: .7rem; }" },
-  { says: "only Icon sizes interface glyphs", applies: (file) => app(file) && file !== "ui/Icon.css",
-    breaks: ({ property, selector }) => /^(width|height|inline-size|block-size|min-width|min-height|max-width|max-height)$/.test(property)
+  { says: "only Icon and Band's lead column size interface glyphs", applies: (file) => app(file) && file !== "ui/Icon.css",
+    breaks: ({ file, property, selector, value }) => /^(width|height|inline-size|block-size|min-width|min-height|max-width|max-height)$/.test(property)
       && /(?:\bsvg\b|\.(?:ui-icon|type-icon|add-glyph|empty-icon|popup-indicator|ui-settings-search-glyph|copy-receipt-mark)(?![\w-]))/.test(selector)
+      && !(file === "ui/Band.css" && selector === ".ui-band-icon > .ui-icon" && /^(width|height)$/.test(property) && value === "var(--icon-tile)")
       && !/search-mark|update-ring|ui-about-icon/.test(selector),
     planted: ".planted svg { width: var(--space-3); }" },
   { says: "the glyph stroke cannot be changed by a part", applies: (file) => app(file) && file !== "ui/Progress.css",
@@ -177,8 +178,6 @@ const required: [file: string, selector: string, property: string, value: string
   ["ui/ChoiceList.css", ".choice-screen .choice-row[data-focus-visible]", "box-shadow", "none"],
   ["ui/ChoiceList.css", ".choice-row[data-focused]", "background", "var(--selected)"],
   ["ui/ChoiceList.css", ".choice-screen .choice-row", "color", "var(--text)"],
-  // The Settings search clear button outranks the shared button's position.
-  ["ui/SettingsSearch.css", ".ui-settings-search > .ui-settings-search-clear.ui-button", "position", "absolute"],
   // A key cap on the primary uses the pressed fill, so its label stays readable on every accent.
   ["ui/Button.css", ".ui-button[data-variant=\"primary\"] .key-caps kbd", "background", "var(--accent-pressed)"],
   // Problems and the copied mark read in the text colour, never a status hue.

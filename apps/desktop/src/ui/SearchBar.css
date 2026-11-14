@@ -7,14 +7,13 @@
    brand scarlet; contrast modes make it CanvasText (#1293). */
 .search-bar svg.search-mark { width: var(--mark-search); height: var(--mark-search); color: var(--scarlet); pointer-events: none; }
 /* Reserve readable query space before wrapping controls, at every text size. */
-.search-field { --search-clear-size: var(--action-h); position: relative; display: flex; flex: 1; min-width: min(12rem, calc(100% + var(--inset) - var(--label-start))); }
+.search-field { position: relative; display: flex; flex: 1; min-width: min(12rem, calc(100% + var(--inset) - var(--label-start))); }
 .query-input { position: relative; display: flex; flex: 1; min-width: 0; }
 /* The search box never shows a ring: it always has focus, and the caret is the
    cue. Contrast and forced colours restore it below. */
 #search { width: 100%; min-width: 0; height: var(--field-h); font-size: var(--type-search-size); line-height: var(--type-search-line); letter-spacing: -.025em; background: transparent; border: 0; border-radius: var(--r-control); padding: 0; outline-offset: 4px; cursor: text; user-select: text; }
 #search:focus-visible { outline: none; box-shadow: none; }
 #search::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
-.search-clear.ui-button { --ring-offset: var(--ring-inside); position: absolute; inset-inline-end: var(--border-width); top: 50%; transform: translateY(-50%); }
 /* Controls fill the field's height, so their gap to the window's top and side is
    one --inset and their corners nest in the window's (docs/design/foundations.md, Corners). */
 .search-bar .pin-button { flex: none; margin-inline-start: auto; }
@@ -25,7 +24,6 @@
 .search-page-token bdi { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (pointer: coarse) {
   :root, :root[data-platform] { --field-h: var(--touch-target); }
-  .search-field { --search-clear-size: var(--touch-target); }
 }
 @media (prefers-contrast: more) {
   :root[data-platform] #search { border-color: var(--separator); }
