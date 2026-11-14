@@ -17,7 +17,7 @@ export type ToolbarMenuSection = { id: string; label?: string; note?: string; it
 /** A pick, a dismissal by Esc, Tab or a click, or a command clearing the way. */
 export type MenuCloseReason = "action" | "dismiss" | "command";
 type Props = {
-  buttonRef?: RefObject<HTMLButtonElement | null>; buttonShortcut?: string; disabled?: boolean; label: string; value: string; sections: ToolbarMenuSection[]; selectedKey: string;
+  buttonRef?: RefObject<HTMLButtonElement | null>; disabled?: boolean; label: string; value: string; sections: ToolbarMenuSection[]; selectedKey: string;
   /** Whose a pick is, as one short line at the top ("For Word"). */
   heading?: string;
   /** The full reason, read with the menu; shown only when there is no heading. */
@@ -32,7 +32,7 @@ type Props = {
 };
 
 /** A reference-independent menu. React Aria owns selection, navigation and virtual focus. */
-export function ToolbarMenu({ buttonRef, buttonShortcut, disabled, label, value, heading, note, sections, selectedKey, button: drawn, placement = "bottom end", filterLabel = label, onAction, returnFocusRef, isOpen, onOpenChange }: Props) {
+export function ToolbarMenu({ buttonRef, disabled, label, value, heading, note, sections, selectedKey, button: drawn, placement = "bottom end", filterLabel = label, onAction, returnFocusRef, isOpen, onOpenChange }: Props) {
   const [internalOpen, setOpen] = useState(false);
   const [skipExit, setSkipExit] = useState(false);
   const open = isOpen ?? internalOpen;
@@ -73,7 +73,7 @@ export function ToolbarMenu({ buttonRef, buttonShortcut, disabled, label, value,
       onAction(String(key));
     }}>
     {sections.map((section) => <MenuSection key={section.id} id={section.id} className="menu-section">
-      {section.label && <Header className="menu-heading">{section.label}</Header>}
+      {section.label && <Header className="ui-list-heading menu-heading">{section.label}</Header>}
       {section.note && <Header className="toolbar-menu-note">{section.note}</Header>}
       {section.items.map((item) => <MenuItem className="menu-item" id={item.id} key={item.id} textValue={item.keywords ? `${item.label} ${item.keywords}` : item.label} shouldCloseOnSelect={false}
         render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={item.id} aria-disabled={disabled || item.disabled || undefined}
@@ -89,11 +89,11 @@ export function ToolbarMenu({ buttonRef, buttonShortcut, disabled, label, value,
       else if (open && event.key === "Tab") { event.preventDefault(); event.stopPropagation(); changeOpen(false); }
     }}>
     <MenuTrigger isOpen={open} onOpenChange={(next) => changeOpen(next)}>
-      <PopupButton ref={button} aria-keyshortcuts={buttonShortcut} isDisabled={disabled} className={`toolbar-menu-button ${drawn?.className ?? ""}`} size={drawn ? "small" : undefined} variant={drawn?.quiet ? "quiet" : undefined} title={drawn?.title} aria-label={drawn?.label ?? `${label} ${value}`}>{drawn?.content ?? value}</PopupButton>
+      <PopupButton ref={button} isDisabled={disabled} className={`toolbar-menu-button ${drawn?.className ?? ""}`} size={drawn ? "small" : undefined} variant={drawn?.quiet ? "quiet" : undefined} title={drawn?.title} aria-label={drawn?.label ?? `${label} ${value}`}>{drawn?.content ?? value}</PopupButton>
       <Floating kind="menu" open={open} onClose={(event) => changeOpen(false, event ? "dismiss" : "command")} ref={wholeRows} className="menu-popover toolbar-menu-popover ui-overlay" data-anchor={placement === "bottom start" ? "field" : undefined} data-named={named || undefined}
         // [C21] Never narrower than its button: React Aria measures the trigger.
         style={placement === "bottom start" ? { minWidth: "min(var(--trigger-width), calc(100vw - 2 * var(--inset)))" } : undefined} placement={renderedPlacement} offset={4} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
-        {heading && <p className="menu-heading toolbar-menu-heading" aria-hidden="true">{heading}</p>}
+        {heading && <p className="ui-list-heading menu-heading toolbar-menu-heading" aria-hidden="true">{heading}</p>}
         {note && <p id={noteId} className={heading ? "visually-hidden" : "toolbar-menu-note"}>{note}</p>}
         {filtered ? <Autocomplete key={opening} filter={contains}><SearchField className="toolbar-menu-filter" aria-label={filterLabel} autoFocus><Input placeholder={filterLabel} aria-describedby={note ? noteId : undefined} /></SearchField>{menu}</Autocomplete> : menu}
       </Floating>

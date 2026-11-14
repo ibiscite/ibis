@@ -9,9 +9,8 @@
  * screens centre their own group and the inspector is its own column, so
  * neither is held to the window's columns. */
 export const columns = {
-  marks: [".result-tile", ".ui-palette-lead", ".search-bar .search-mark", ".library-bar .status-dot", ".ui-notice-line .update-ring", ".ui-view-back .ui-icon"],
-  words: [".result-title", ".search-bar input", ".ui-view-field", ".library-bar .library-words", ".ui-notice-line .notice-band > span:first-child", ".ui-notice-line .update-text", ".ui-notice-line .ui-line-words", ".shelf-citation", ".ui-view-title", ".ui-palette-label", ".ui-view-status"],
-  outside: ".choice-screen, .inspector, .menu-popover, [inert], .ui-notice-line > :is(.notice-slot, .ui-line-notice) ~ .ui-line-notice",
+  bands: "[data-band]",
+  outside: ".choice-screen, .inspector, .menu-popover, .ui-sheet-status, [inert], .ui-notice-line > :is(.notice-slot, .ui-line-notice) ~ .ui-line-notice",
   /** Hover plates on the window's leading edge: each starts on the window inset, as a row does. */
   plates: ["#results [role=\"option\"]", ".library-bar .library-status-trigger"],
 } as const;
@@ -51,8 +50,8 @@ export const stacks = [".inspector-titles", ".inspector-column", ".citation-deta
 /** [C12] A grid of choice cards: one height, and each glyph level with its title's first line. */
 export const cards = { grid: '.choice-screen[data-grid] .choice-list', card: ".choice-row", glyph: ".choice-tile", title: ".result-title" } as const;
 
-/** Every interface glyph has one of two fixed pixel sizes and the same ink weight. */
-export const glyphs = { selector: "svg.ui-icon", sizes: [16, 20], stroke: 1.5 } as const;
+/** Every interface glyph has one of two fixed pixel sizes; its filled artwork stays as vendored. */
+export const glyphs = { selector: "svg.ui-icon", sizes: [16, 20] } as const;
 
 /** [D8] A ring hugs the control it names: a sheet, a menu or anything else only
  * the app focuses (tabindex -1) never draws one around itself. */
@@ -86,14 +85,6 @@ export function geometry(root: ParentNode = document): string[] {
     const rect = glyph.getBoundingClientRect();
     if (!glyphs.sizes.some((size) => Math.abs(rect.width - size) < .02 && Math.abs(rect.height - size) < .02))
       failures.push(`[icons] ${name(glyph)}: ${rect.width.toFixed(2)} × ${rect.height.toFixed(2)}px, expected 16 or 20px square`);
-    for (const path of glyph.querySelectorAll("path")) {
-      const matrix = path.getScreenCTM();
-      if (!matrix) continue;
-      const style = getComputedStyle(path), stroke = parseFloat(style.strokeWidth);
-      const scales = style.vectorEffect === "non-scaling-stroke" ? [1] : [Math.hypot(matrix.a, matrix.b), Math.hypot(matrix.c, matrix.d)];
-      if (scales.some((scale) => !Number.isFinite(stroke) || Math.abs(stroke * scale - glyphs.stroke) >= .02))
-        failures.push(`[icons] ${name(glyph)}: stroke ${(stroke * scales[0]!).toFixed(2)}px, expected 1.5px`);
-    }
   }
 
   // The existing More, Format and shortcuts scenarios cover the shared Back
@@ -125,23 +116,27 @@ export function geometry(root: ParentNode = document): string[] {
     const plate = probe.cloneNode() as HTMLElement;
     plate.style.insetInlineStart = "var(--inset)";
     main.append(plate);
-    const tileCentre = lead(tile) + tile.width / 2, titleStart = lead(title.getBoundingClientRect()), plateStart = lead(plate.getBoundingClientRect());
+    const tileStart = lead(tile), tileCentre = tileStart + tile.width / 2, titleStart = lead(title.getBoundingClientRect()), plateStart = lead(plate.getBoundingClientRect());
     probe.remove(); title.remove(); plate.remove();
     const held = (selector: string) => [...root.querySelectorAll(selector)].filter((node) => visible(node) && !node.closest(columns.outside));
-    for (const node of held(columns.marks.join(", "))) {
-      const rect = node.getBoundingClientRect(), centre = lead(rect) + rect.width / 2;
-      if (Math.abs(centre - tileCentre) > tolerance) failures.push(`[C3] ${name(node)}: centre ${centre.toFixed(1)}, tile column ${tileCentre.toFixed(1)}`);
+    for (const band of held(columns.bands)) {
+      const slots = [...band.children];
+      const icon = slots.find((node) => node.getAttribute("data-band-slot") === "lead");
+      if (icon && visible(icon)) {
+        const rect = icon.getBoundingClientRect(), centre = lead(rect) + rect.width / 2;
+        if (Math.abs(centre - tileCentre) > tolerance) failures.push(`[C3] ${name(icon)}: centre ${centre.toFixed(1)}, tile column ${tileCentre.toFixed(1)}`);
+      }
+      const content = slots.find((node) => !node.hasAttribute("data-band-slot") && !node.matches(".visually-hidden") && visible(node));
+      if (content) {
+        const edge = band.getAttribute("data-band") === "title" ? titleStart : tileStart;
+        const column = band.getAttribute("data-band") === "title" ? "title column" : "leading edge";
+        const start = lead(content.getBoundingClientRect());
+        if (Math.abs(start - edge) > tolerance) failures.push(`[C3] ${name(content)}: starts ${start.toFixed(1)}, ${column} ${edge.toFixed(1)}`);
+      }
     }
     for (const node of held(columns.plates.join(", "))) {
       const start = lead(node.getBoundingClientRect());
       if (Math.abs(start - plateStart) > tolerance) failures.push(`[C3] ${name(node)}: plate starts ${start.toFixed(1)}, window inset ${plateStart.toFixed(1)}`);
-    }
-    for (const node of held(columns.words.join(", "))) {
-      const rect = node.getBoundingClientRect(), style = getComputedStyle(node);
-      // Field and title words start inside their padding and border.
-      const inset = node.matches("input, .ui-view-title") ? parseFloat(rtl ? style.paddingRight : style.paddingLeft) + parseFloat(rtl ? style.borderRightWidth : style.borderLeftWidth) : 0;
-      const start = lead(rect) + inset;
-      if (Math.abs(start - titleStart) > tolerance) failures.push(`[C3] ${name(node)}: starts ${start.toFixed(1)}, title column ${titleStart.toFixed(1)}`);
     }
   }
 
@@ -415,42 +410,23 @@ function wordBoxes(root: ParentNode): { node: Node; box: DOMRect }[] {
 
 const overlaps = (a: DOMRect, b: DOMRect) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;
 
-/** [C24 held] A key shown while ⌘ (Ctrl) is held covers no words and no other
- * control: it sits beside its control, or wholly inside the control it names,
- * covering only that control's own words. Held badges take no pointer, so
- * occlusion() cannot see them; this is their cover check. */
+/** [C24 held] A key shown while ⌘ (Ctrl) is held (ui/HeldKeys' KeyMark) stays in
+ * the window and covers no words and no control but the slot it stands in for.
+ * Marks take no pointer, so occlusion() cannot see them; this is their cover check. */
 export function heldKeys(root: ParentNode = document): string[] {
   const failures: string[] = [];
   const words = wordBoxes(root);
-  // Generated content has no text node or DOM box. Measure a temporary grid item
-  // with the same paint properties so the guard also sees each row's key.
-  const rowKeys = [...root.querySelectorAll<HTMLElement>(".result-tile[data-key]")].flatMap((tile) => {
-    const style = getComputedStyle(tile, "::before");
-    if (style.content === "none" || style.content === "normal") return [];
-    const marker = document.createElement("span");
-    marker.textContent = tile.dataset.key ?? "";
-    marker.setAttribute("aria-hidden", "true");
-    Object.assign(marker.style, { gridArea: "1 / 1", justifySelf: "end", whiteSpace: "nowrap", direction: "ltr", unicodeBidi: "isolate", font: style.font, fontVariantNumeric: style.fontVariantNumeric, lineHeight: style.lineHeight, marginInlineEnd: style.marginInlineEnd, visibility: "hidden" });
-    tile.append(marker);
-    const box = marker.getBoundingClientRect();
-    marker.remove();
-    return [{ node: tile, box }];
-  });
   const shown = [...root.querySelectorAll(controls)].filter(live).map((node) => ({ node, box: seen(node) })).filter((part): part is { node: Element; box: DOMRect } => !!part.box);
-  for (const badge of root.querySelectorAll(".ui-held-key")) {
-    const box = badge.getBoundingClientRect();
-    const name = `"${badge.textContent}"`;
+  const marks = [...root.querySelectorAll<HTMLElement>(".ui-key-mark")].map((mark) => ({ mark, box: (mark.firstElementChild ?? mark).getBoundingClientRect() })).filter(({ box }) => box.width > 0);
+  for (const { mark, box } of marks) {
+    const slot = mark.parentElement!, name = `"${mark.textContent}"`;
     if (box.left < 0 || box.top < 0 || box.right > innerWidth || box.bottom > innerHeight) failures.push(`[C24 held] ${name} leaves the window`);
-    // The control the badge sits inside, if any: its own words may be covered.
-    const own = shown.find(({ box: control }) => box.left >= control.left - 1 && box.right <= control.right + 1 && box.top >= control.top - 1 && box.bottom <= control.bottom + 1)?.node;
     for (const { node, box: control } of shown)
-      if (node !== own && !node.contains(own ?? null) && overlaps(box, control)) failures.push(`[C24 held] ${name} covers ${label(node)}`);
+      if (!slot.contains(node) && !node.contains(slot) && overlaps(box, control)) failures.push(`[C24 held] ${name} covers ${label(node)}`);
     for (const { node, box: text } of words)
-      if (!badge.contains(node) && !own?.contains(node) && overlaps(box, text)) failures.push(`[C24 held] ${name} covers "${node.textContent!.trim().slice(0, 30)}"`);
-    for (const { node, box: key } of rowKeys)
-      if (!own?.contains(node) && overlaps(box, key)) failures.push(`[C24 held] ${name} covers the row key "${node.dataset.key}"`);
-    for (const other of root.querySelectorAll(".ui-held-key"))
-      if (other !== badge && overlaps(box, other.getBoundingClientRect())) failures.push(`[C24 held] ${name} covers the key "${other.textContent}"`);
+      if (!slot.contains(node) && overlaps(box, text)) failures.push(`[C24 held] ${name} covers "${node.textContent!.trim().slice(0, 30)}"`);
+    for (const other of marks)
+      if (other.mark !== mark && overlaps(box, other.box)) failures.push(`[C24 held] ${name} covers the key "${other.mark.textContent}"`);
   }
   return [...new Set(failures)];
 }

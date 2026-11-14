@@ -61,7 +61,7 @@ export function FormatSettings({ settings, highlighted }: { settings: ReturnType
   const { view, problem, busy, forget, openSettingsFile, forgetFailed, openFailed, dismissForget, dismissOpen } = settings;
   return <>
     {view && view.apps.length > 0 && <Section id="remembered-formats" title={text("citations-apps")}><Group>
-      {view.apps.map((app) => <Row key={app.id} id={`format-${app.id}`} label={app.app} description={listedOutput(app.format) ? outputName(listedOutput(app.format)!) : text("citations-unlisted")} changed>
+      {view.apps.map((app) => <Row key={app.id} id={`format-${app.id}`} label={app.app} description={listedOutput(app.format) ? outputName(listedOutput(app.format)!) : text("citations-unlisted")}>
         <Button isDisabled={busy} onPress={() => forget(app.id)}>{text("citations-forget")}</Button>
       </Row>)}
     </Group></Section>}

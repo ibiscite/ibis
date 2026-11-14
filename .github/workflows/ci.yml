@@ -163,7 +163,6 @@ jobs:
           GIT_CONFIG_VALUE_0: ${{ github.workspace }}
         run: |
           bash scripts/ci-ubuntu-deps.sh web
-          node scripts/check-icons.mjs
           node --test --test-concurrency=2 scripts/*.test.mjs
           for test in scripts/test_*.py scripts/*.test.py; do python3 -B "$test"; done
 
@@ -260,7 +259,6 @@ jobs:
       - name: Test the scripts (macOS and Windows)
         if: (runner.os == 'Windows' || runner.os == 'macOS')
         run: |
-          node scripts/check-icons.mjs
           node --test --test-concurrency=2 scripts/*.test.mjs
           python=python3
           if [ "$RUNNER_OS" = Windows ]; then python=python; fi
