@@ -1,3 +1,5 @@
+import { CITATION_FORMS } from "../bindings";
+import type { Problem } from "../bindings";
 import { FluentBundle, FluentResource } from "@fluent/bundle";
 import { parse } from "@fluent/syntax";
 import { createContext, type ReactNode, useContext } from "react";
@@ -14,7 +16,7 @@ const IDS = [
   "keys-title", "keys-close", "keys-action", "keys-shortcut", "shortcuts-filter", "shortcuts-empty",
   "general-small-surprises-label", "general-small-surprises-description", "delight-name", "delight-fact-touch", "delight-fact-scarlet", "delight-fact-mummies", "delight-fact-national", "delight-fact-flight", "undo-action", "undo-remove", "undo-removed", "undo-reset-window", "undo-shortcut",
   "delight-ibis", "delight-tip", "delight-library100", "delight-library1000", "delight-library10000", "delight-empty", "delight-loading", "delight-no-library", "delight-zoom", "delight-citation", "delight-anniversary", "delight-about-words", "canvas-hovered", "canvas-pressed", "canvas-focused",
-  "form-normal", "form-narrative", "form-author-only", "form-year-only", "form-full",
+  ...CITATION_FORMS.map((form) => `form-${form}` as const),
   "settings-pages", "settings-general", "settings-shortcuts", "settings-about",
   "general-login-label", "general-login-description", "general-login-place", "general-login-when",
   "general-login-unsupported", "general-login-needs-approval", "general-login-refused", "general-login-unreadable",
@@ -38,7 +40,7 @@ const IDS = [
 ] as const;
 export type MessageId = typeof IDS[number];
 /** Messages Rust owns: engine codes and the CLI, MCP and native app's words. */
-const RUST = /^(error|reason|refusal|warning|source-warning|loss|notice|form|cause|cli|mcp|app)-/;
+const RUST = /^(error|reason|refusal|problem|warning|source-warning|loss|notice|form|cause|cli|mcp|app)-/;
 type Variables = Readonly<Record<string, string | number>>;
 export type InterfaceMessages = Readonly<{
   locale: typeof INTERFACE_LOCALE;
@@ -118,4 +120,12 @@ export function InterfaceMessagesProvider({ messages, children }: { messages: In
 }
 export function useInterfaceMessages(): InterfaceMessages {
   return useContext(InterfaceContext);
+}
+
+/** Render a native IPC diagnostic through the shared catalogue. */
+export function problemText(error: unknown, fallback: string, text = say): string {
+  const problem = typeof error === "object" && error !== null ? error as Partial<Problem> : null;
+  if (!problem?.message || typeof problem.message.id !== "string" || !problem.recovery || !problem.focus) return fallback;
+  try { return text(problem.message.id as MessageId, problem.message.args); }
+  catch { return fallback; }
 }

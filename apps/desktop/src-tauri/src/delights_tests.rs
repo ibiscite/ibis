@@ -55,7 +55,7 @@ fn each_click_says_the_next_fact_and_a_plain_read_says_none() {
 
 #[test]
 fn only_current_successful_real_loads_can_claim_library_feedback() {
-    use crate::library::engine_file::FileLibrary;
+    use crate::library::engine_library::FileLibrary;
     use crate::library::{Library, Source};
     use std::sync::Arc;
     let dir = tempfile::tempdir().unwrap();

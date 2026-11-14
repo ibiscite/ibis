@@ -165,7 +165,7 @@ Better BibTeX JSON-RPC, which Ibis does not provide.
 
 ## What the tests establish
 
-[Testing](testing.md#native-journeys) describes the current native assertions.
+[Testing](testing.md#native-journeys-and-installed-updates) describes the current native assertions.
 A completed passing run establishes only its recorded scope. Hosted X11,
 builds and protocol fakes do not prove native Wayland, screen-reader speech,
 mixed-DPI displays, cloud/network provider behaviour or every editor.

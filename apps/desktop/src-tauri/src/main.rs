@@ -15,6 +15,7 @@ mod desktop_theme;
 mod destination;
 mod diagnostics;
 mod editor_endpoint;
+mod errors;
 mod feedback;
 mod format_settings;
 mod library;
@@ -60,7 +61,7 @@ use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_global_shortcut::ShortcutState;
 
 use crate::diagnostics::{NativeIssue, application_message, checked, report};
-use crate::library::{Library, LoadRequests, PreviewRequests, SearchRequests, Source, start_open};
+use crate::library::{Library, LoadRequests, SearchRequests, Source, start_open};
 use crate::picker::{
     ChooserOpen, Pinned, ShortcutStatus, dismiss_picker, hides_on_blur, show_picker, start_shortcut, toggle_picker,
 };
@@ -171,8 +172,6 @@ fn main() {
         .manage(LoadRequests::default())
         .manage(SearchRequests::default())
         .manage(tray::SearchRequest::default())
-        .manage(PreviewRequests::default())
-        .manage(library::FormattingRequests::default())
         .manage(setup::Offered::default())
         .manage(ChooserOpen::default())
         .manage(settings_backup::PendingRestore::default())
@@ -292,7 +291,7 @@ fn main() {
             let loaded = settings::load(&settings_path);
             let interface = loaded.interface().unwrap_or_default();
             let cites = loaded.cites().ok();
-            library::engine_file::warm_formatter(cites.and_then(|settings| settings.portable.output.clone()));
+            library::engine_library::warm_formatter(cites.and_then(|settings| settings.portable.output.clone()));
             app.manage(SettingsFile::new(settings_path.clone()));
             let remember = cites.is_some_and(|settings| settings.portable.recent_citations.unwrap_or(true));
             session_references::manage(app.handle(), &settings_path, remember);
@@ -521,3 +520,6 @@ mod offline_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod test_citations;

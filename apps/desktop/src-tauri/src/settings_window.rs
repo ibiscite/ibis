@@ -21,16 +21,14 @@ const MARGIN: f64 = 32.0;
 /// file is created through the owner; unreadable existing bytes stay intact.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn open_settings_file(app: AppHandle) -> Result<(), String> {
+pub(crate) async fn open_settings_file(app: AppHandle) -> Result<(), crate::library::CommandError> {
     let file = app.state::<crate::preferences::SettingsFile>().inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        file.owner
-            .ensure_file()
-            .map_err(|error| crate::preferences::settings_message(&error))?;
+        file.owner.ensure_file().map_err(crate::library::CommandError::from)?;
         let path = file
             .path
             .canonicalize()
-            .map_err(|_| "settings.json could not be opened")?;
+            .map_err(|_| crate::errors::NativeOperation::OpenSettingsFile.failure())?;
         #[cfg(not(target_os = "windows"))]
         {
             let mut command = std::process::Command::new(if cfg!(target_os = "macos") {
@@ -49,16 +47,16 @@ pub(crate) async fn open_settings_file(app: AppHandle) -> Result<(), String> {
             if status.is_ok_and(|status| status.success()) {
                 Ok(())
             } else {
-                Err("settings.json could not be opened".into())
+                Err(crate::errors::NativeOperation::OpenSettingsFile.failure())
             }
         }
         #[cfg(target_os = "windows")]
         {
             use windows::{Storage::StorageFile, System::Launcher, core::HSTRING};
-            let fault = |_| "settings.json could not be opened".to_owned();
+            let fault = |_| crate::errors::NativeOperation::OpenSettingsFile.failure();
             let path = dunce::simplified(&path)
                 .to_str()
-                .ok_or("settings.json could not be opened")?;
+                .ok_or_else(|| crate::errors::NativeOperation::OpenSettingsFile.failure())?;
             let file = StorageFile::GetFileFromPathAsync(&HSTRING::from(path))
                 .map_err(fault)?
                 .join()
@@ -67,12 +65,12 @@ pub(crate) async fn open_settings_file(app: AppHandle) -> Result<(), String> {
             if opened {
                 Ok(())
             } else {
-                Err("settings.json could not be opened".into())
+                Err(crate::errors::NativeOperation::OpenSettingsFile.failure())
             }
         }
     })
     .await
-    .map_err(|_| "settings.json could not be opened".to_owned())?
+    .map_err(|_| crate::errors::NativeOperation::OpenSettingsFile.failure())?
 }
 
 /// Settings' size and minimum on a screen whose work area is `area` in logical

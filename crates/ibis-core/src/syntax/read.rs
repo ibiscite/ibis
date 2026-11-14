@@ -67,6 +67,8 @@ fn select<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
             | KeySyntax::MultiMarkdown
             | KeySyntax::Keys
             | KeySyntax::ScannableCite
+            | KeySyntax::Bibtex
+            | KeySyntax::DoiLinks
             | KeySyntax::CslJson
             | KeySyntax::CaywJson => None,
         };

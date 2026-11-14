@@ -174,6 +174,7 @@ fn contract() -> Value {
         "input": schemas.input.take_definitions(true),
         "output": schemas.output.take_definitions(true),
         "constants": {
+            "CITATION_FORMS": ibis_core::contract::CitationForm::ALL,
             "OUTPUTS": crate::output::choices(),
             "DEFAULT_OUTPUT": ibis_engine::outputs::DEFAULT,
             "DEFAULT_STYLE": ibis_engine::outputs::DEFAULT_STYLE,
@@ -184,6 +185,36 @@ fn contract() -> Value {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
+
+    #[test]
+    fn every_command_failure_is_data_with_required_recovery() {
+        let contract = super::contract();
+        let definitions = contract["output"].as_object().unwrap_or_else(|| panic!("definitions"));
+        for command in contract["commands"].as_array().unwrap_or_else(|| panic!("commands")) {
+            let mut error = &command["error"];
+            if error.is_null() {
+                continue;
+            }
+            if let Some(reference) = error["$ref"].as_str() {
+                error = &definitions[reference.trim_start_matches("#/$defs/")];
+            }
+            assert_ne!(
+                error["type"], "string",
+                "{} throws a plain string: {error}",
+                command["name"]
+            );
+            let required = error["required"]
+                .as_array()
+                .unwrap_or_else(|| panic!("{} needs structured error data: {error}", command["name"]));
+            for field in ["code", "message", "recovery", "focus"] {
+                assert!(
+                    required.iter().any(|name| name == field),
+                    "{} lacks {field}: {error}",
+                    command["name"]
+                );
+            }
+        }
+    }
 
     include!("../app_commands.rs");
 

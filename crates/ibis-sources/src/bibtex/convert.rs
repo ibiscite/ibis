@@ -1277,6 +1277,10 @@ fn render(pieces: &[Piece]) -> String {
 /// URL fields are verbatim, with a small set of exporter escapes. Never run
 /// general TeX typography or commands over a path (notably `--` and `~`).
 fn decode_url(value: &str) -> String {
+    // Use the same literal-symbol decoder as ordinary fields, once, without
+    // running general TeX typography over an identifier or URL.
+    let protected = super::resolve::protect_backslashes(value);
+    let value = protected.as_ref();
     let mut out = String::with_capacity(value.len());
     let mut chars = value.chars().peekable();
     while let Some(ch) = chars.next() {

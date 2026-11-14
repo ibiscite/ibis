@@ -90,8 +90,8 @@ export function PickerResults({
   return <>{emptyState && !listShown && <FrameNotices />}<div className="results-area scroll-area" ref={resultArea}>
     {/* The list's heading sits in the frame's line, where a notice can stand in for it. */}
     {library?.has_snapshot && results.length > 0 && library.state !== "loading" && showCitations && <FrameHeading>{recent
-      ? <div className="results-heading recent-heading"><h2 id={`recent-${recent}`}>{recent === "cited" ? "Cited here recently" : "Recently added"}</h2></div>
-      : <div className="results-heading" aria-hidden="true">
+      ? <div className="ui-list-heading"><h2 id={`recent-${recent}`}>{recent === "cited" ? "Cited here recently" : "Recently added"}</h2></div>
+      : <div className="ui-list-heading" aria-hidden="true">
         <span>{list ? say("picker-pasted-list") : results.some((r) => r.partial) ? say("picker-closest-matches") : query ? say("picker-best-matches") : say("picker-references")}</span><bdi>{say("picker-result-count", { count: results.length })}</bdi>
       </div>}</FrameHeading>}
     <p className="visually-hidden" role="status" aria-label={say("picker-search-results")} aria-live="polite" aria-atomic="true">

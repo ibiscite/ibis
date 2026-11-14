@@ -1,3 +1,4 @@
+import { recordId } from "../../test-fixtures";
 import { displayTree } from "../../testing/app";
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
@@ -10,7 +11,7 @@ import { useCitationInspector } from "./useCitationInspector";
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 function record(key: string, first_author = "García", year: string | null = "2021"): SearchResult {
-  return { revision: "1", id: { library: "invented.bib", key }, key, cite: "1", source: "invented.bib", title: `Invented title ${key}`, authors: first_author,
+  return { revision: "1", id: { library: "invented.bib", key: recordId(key) }, key, cite: "1", source: "invented.bib", title: `Invented title ${key}`, authors: first_author,
     year, matched: ["title"], partial: false, first_author, author_count: 1, container: null, item_type: "book" };
 }
 const chosen = (records: CitationReference[]) => new Map(records.map((r) => [r.key, r]));
@@ -95,8 +96,8 @@ test("formatted segments keep passive small caps and underline from the engine",
 });
 
 test("colliding keys from different libraries have distinct visible and screen-reader names", () => {
-  const first = { ...record("shared"), id: { library: "invented-one", key: "shared" }, source: "invented-one", title: "First invented work" };
-  const second = { ...first, id: { library: "invented-two", key: "shared" }, source: "invented-two", title: "Second invented work" };
+  const first = { ...record("shared"), id: { library: "invented-one", key: recordId("shared") }, source: "invented-one", title: "First invented work" };
+  const second = { ...first, id: { library: "invented-two", key: recordId("shared") }, source: "invented-two", title: "Second invented work" };
   const change = vi.fn();
   render(shelf({ selected: new Map([["first", first], ["second", second]]), onChangeReference: change,
     referenceLibrary: (r) => r.source === "invented-one" ? "First library" : "Second library",
@@ -105,7 +106,7 @@ test("colliding keys from different libraries have distinct visible and screen-r
   fireEvent.click(screen.getByRole("button", { name: "Edit García 2021 · shared · Second library" }));
   expect(details("Citation details for Second invented work")).toBeTruthy();
   fireEvent.change(screen.getByRole("textbox", { name: "Page" }), { target: { value: "42" } });
-  expect(change).toHaveBeenCalledWith(second, { locator: { label: "page", value: "42", input: "editor" } });
+  expect(change).toHaveBeenCalledWith(second, { locator: { term: "page", value: "42", input: "editor" } });
 });
 
 test.each(["click", "ArrowDown", " "])("a single reference is the whole citation segment; %s opens its details and focuses Page", (key) => {
@@ -183,7 +184,7 @@ test("pending retains dimmed old text for 300 ms, then Formatting without treati
   try {
     const reference = record("a");
     const { rerender } = render(shelf({ selected: chosen([reference]), shown: output("Original citation") }));
-    rerender(shelf({ selected: chosen([{ ...reference, locator: { label: "page", value: "9" } }]), shown: null }));
+    rerender(shelf({ selected: chosen([{ ...reference, locator: { term: "page", value: "9" } }]), shown: null }));
     expect(document.querySelector('.shelf-output[data-state="pending"] .preview-text')?.textContent).toBe("Original citation");
     act(() => vi.advanceTimersByTime(299));
     expect(screen.queryByText("Formatting…")).toBeNull();
@@ -223,14 +224,14 @@ test("a formatting reply cannot retire a segment while it is being activated", (
 });
 
 test("Page retains typed input, canonical pages from search, and independent reference details", () => {
-  const reference: CitationReference = { ...record("a"), locator: { label: "page", value: "S.12" }, form: "year-only" };
+  const reference: CitationReference = { ...record("a"), locator: { term: "page", value: "S.12" }, form: "year-only" };
   const change = vi.fn();
   render(shelf({ highlightedReference: reference, shown: output("(2021, S.12)"), onChangeReference: change }));
   fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
   const page = screen.getByRole<HTMLInputElement>("textbox", { name: "Page" });
   expect(page.value).toBe("S.12");
   fireEvent.change(page, { target: { value: "pp. ١٢–١٥" } });
-  expect(change).toHaveBeenCalledWith(reference, { locator: { label: "page", value: "pp. ١٢–١٥", input: "editor" } });
+  expect(change).toHaveBeenCalledWith(reference, { locator: { term: "page", value: "pp. ١٢–١٥", input: "editor" } });
   expect(document.activeElement).toBe(page);
   fireEvent.change(page, { target: { value: "" } });
   expect(change).toHaveBeenLastCalledWith(reference, { locator: null });

@@ -55,7 +55,7 @@ test.each([
   const copies: PreviewRequest[] = [];
   const calls = await openPicker({
     search: () => ({ revision: "1", results: [result("a", "First"), result("b", "Second")],
-      interpretation: { search: "Smith", locator: { label: "page", value: "12" }, typed: "p.12" } }),
+      interpretation: { search: "Smith", locator: { term: "page", value: "12" }, typed: "p.12" } }),
     copy_file_citation: (args) => {
       const citation = prepared(args);
       copies.push(citation.request);
@@ -89,8 +89,8 @@ test.each([
   expect(calls.filter((c) => c === "copy_file_citation")).toHaveLength(2);
   expectSameCitation(copies[0]!, copies[1]!);
   expect(copies[1]).toMatchObject({ items: [
-    { id: { key: "a" }, locator: { label: "page", value: "12" } },
-    { id: { key: "b" }, locator: { label: "page", value: "12" } },
+    { id: { key: "a" }, locator: { term: "page", value: "12" } },
+    { id: { key: "b" }, locator: { term: "page", value: "12" } },
   ] });
   expect(shelf()).not.toContain("@a; @b");
   await act(async () => { await emit("picker:hidden"); await vi.advanceTimersByTimeAsync(61_000); await emit("picker:shown"); });
