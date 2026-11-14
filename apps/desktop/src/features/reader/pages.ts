@@ -3,10 +3,12 @@
 // what a person reads and cites is the printed label. Pure, so every view
 // that shows pages agrees and each rule is tested once.
 
+const controls = /[\p{Cc}\p{Cf}]/u;
+
 /** A label is citable only if, after NFC, it is at most 16 characters of
  * letters, digits, "-" and "." (decision 0036). Anything else counts as unknown. */
 export function citableLabel(raw: string | null | undefined): string | null {
-  if (!raw) return null;
+  if (!raw || controls.test(raw)) return null;
   const label = raw.normalize("NFC").trim();
   return label.length > 0 && label.length <= 16 && /^[\p{L}\p{N}.-]+$/u.test(label) ? label : null;
 }
@@ -43,6 +45,7 @@ const dash = "–";
  * pages whose printed numbers follow each other join into a range; a page
  * without a citable label is left out, since it cannot be cited by number. */
 export function formatPages(labels: readonly (string | null)[], selected: ReadonlySet<number>): string {
+  labels = labels.map(citableLabel);
   const pages = [...selected].filter((index) => labels[index]).sort((a, b) => a - b);
   const runs: number[][] = [];
   for (const index of pages) {
@@ -53,20 +56,54 @@ export function formatPages(labels: readonly (string | null)[], selected: Readon
   return runs.map((run) => run.length === 1 ? labels[run[0]!]! : `${labels[run[0]!]}${dash}${labels[run.at(-1)!]}`).join(", ");
 }
 
-/** The PDF pages a typed Page value names, and the parts no page is printed as.
- * "417–419, 423", "417-419; 423" and "XII" all read; nothing is guessed. A label
- * printed on several pages names the first. */
-export function parsePages(text: string, labels: readonly (string | null)[]): { selected: Set<number>; unknown: string[] } {
-  const selected = new Set<number>(), unknown: string[] = [];
-  const find = (label: string) => labels.findIndex((candidate) => candidate !== null && candidate.toLowerCase() === label.toLowerCase());
-  for (const part of text.split(/[,;]/).map((part) => part.trim()).filter(Boolean)) {
+export type PageSelection = {
+  text: string;
+  selected: ReadonlySet<number>;
+  ambiguous: { text: string; candidates: readonly number[] }[];
+  unknown: string[];
+};
+
+/** All physical candidates for a printed label; a number is never a PDF index. */
+export function pageCandidates(labels: readonly (string | null)[]): (raw: string) => readonly number[] {
+  const byLabel = new Map<string, number[]>();
+  labels.forEach((raw, index) => {
+    const label = citableLabel(raw)?.toLowerCase();
+    if (!label) return;
+    const matches = byLabel.get(label);
+    if (matches) matches.push(index);
+    else byLabel.set(label, [index]);
+  });
+  return (raw) => byLabel.get(citableLabel(raw)?.toLowerCase() ?? "") ?? [];
+}
+
+/** An explicit physical choice keeps its identity even when its text is ambiguous. */
+export function choosePages(labels: readonly (string | null)[], selected: ReadonlySet<number>): PageSelection {
+  return { text: formatPages(labels, selected), selected: new Set(selected), ambiguous: [], unknown: [] };
+}
+
+/** Read exact labels before ranges. Only unique endpoints resolve a range;
+ * unresolved candidates stay separate from both selected pages and unknown text. */
+export function parsePages(text: string, labels: readonly (string | null)[]): PageSelection {
+  const selected = new Set<number>(), unknown: string[] = [], ambiguous: PageSelection["ambiguous"] = [];
+  const candidates = pageCandidates(labels);
+  for (const raw of text.split(/[,;]/)) {
+    if (controls.test(raw)) { unknown.push(raw); continue; }
+    const part = raw.trim();
+    if (!part) continue;
+    const exact = candidates(part);
+    if (exact.length === 1) { selected.add(exact[0]!); continue; }
+    if (exact.length > 1) { ambiguous.push({ text: part, candidates: exact }); continue; }
     const [from, to, ...rest] = part.split(/\s*[-–—]\s*/);
-    const start = from ? find(from) : -1;
-    const end = to === undefined ? start : find(to);
-    if (start < 0 || end < start || rest.length) { unknown.push(part); continue; }
-    for (let index = start; index <= end; index++) if (labels[index]) selected.add(index);
+    const starts = candidates(from ?? ""), ends = candidates(to ?? "");
+    if (!starts.length || !ends.length || rest.length) { unknown.push(part); continue; }
+    if (starts.length > 1 || ends.length > 1) {
+      ambiguous.push({ text: part, candidates: [...new Set([...starts, ...ends])] }); continue;
+    }
+    const start = starts[0]!, end = ends[0]!;
+    if (end < start) { unknown.push(part); continue; }
+    for (let index = start; index <= end; index++) if (citableLabel(labels[index])) selected.add(index);
   }
-  return { selected, unknown };
+  return { text, selected, ambiguous, unknown };
 }
 
 /** Labels for the pages without one, from a printed number the person
