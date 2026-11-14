@@ -8,8 +8,7 @@ import { composingKey, LayerParent, type LayerHandle } from "./layers";
 import { LayerScope } from "./Layer";
 import "./ViewFrame.css";
 
-/** A view of the picker window (maintainer, 2026-11-10: palette and sheets, option
- * B): the picker's content swaps out for the view, edge to edge, in the picker's own
+/** A view of the picker window: the picker's content swaps out for the view, edge to edge, in the picker's own
  * header and footer geometry. The back chevron sits where the bird does, then the
  * search field or the view's name; the body; and a footer whose status
  * says where the choice applies, with the view's actions and Back with Esc. One

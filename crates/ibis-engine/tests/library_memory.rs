@@ -189,9 +189,7 @@ fn held_after_open(name: &str, text: String) -> usize {
     change.bytes_allocated.saturating_sub(change.bytes_deallocated)
 }
 
-// Measured at 44.0 MiB (.bib) and 44.9 MiB (CSL-JSON) once names were held as
-// compact typed names (#1675), down from 86.3 and 87.8 MiB; the same in debug
-// and release. The limits leave about a tenth for ordinary changes.
+// Limits leave about a tenth above 44.0 MiB (.bib) and 44.9 MiB (CSL-JSON).
 const BIBTEX_LIMIT: usize = 48 * MIB;
 const CSL_JSON_LIMIT: usize = 49 * MIB;
 

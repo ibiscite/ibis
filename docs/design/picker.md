@@ -7,7 +7,7 @@ Search, list, shelf and footer ([design](../design.md#the-model)). The Inspector
 - Order: the bird in the lead column, the query on the title column, the format pop-up ending on the trailing edge. No clear button: Esc clears, as in Spotlight and Raycast, and every search field (the picker's and a view's) is the same frameless field. The header is its tallest control plus 2S, with a divider below [C2]. Its controls take the field's height, so the gap above and beside them is S and their corners nest in the window's (`--r-control`).
 - `#tag`, `y:2019-2022` and `a:name` plus a space become removable chips; Backspace in an empty box removes the last.
 - **Keep Window Open** [C6] (⇧⌘P, or in More): a choice for this session, so it has no button of its own in the header (control placement, maintainer 2026-11-10). While it is on, a pressed pin sits beside More in the footer, and a click on it turns it off. Esc never unpins.
-- The format pop-up names the exact output and, when the format belongs to something, whose it is (`APA · Word`, `APA · Thesis`); the default carries no suffix. One output has one name everywhere, the engine's (decision 0035). Hidden until a library is chosen. It opens the **format palette** ([decision 0042](../decisions/0042-formats-apps-and-writings.md)): the way back first when the format isn't yours, recent formats, the app's own choices, Writing Projects…, then the catalogue, also found by typing. Beside the list, key formats preview the chosen references and citation styles show a labelled example. Writings directly in the list and real style previews remain the decision's target.
+- The format pop-up names the exact output and, when the format belongs to something, whose it is (`APA · Word`, `APA · Thesis`); the default carries no suffix. One output has one name everywhere, the engine's (decision 0035). Hidden until a library is chosen. It opens the **format palette** ([decision 0042](../decisions/0042-formats-apps-and-writings.md)): the way back first when the format isn't yours, recent formats, the app's own choices, Writings…, then the catalogue, also found by typing. Beside the list, key formats preview the chosen references and citation styles show a labelled example. Writings directly in the list and real style previews remain the decision's target.
 
 ## Results
 
@@ -74,9 +74,9 @@ Built in `ibis-core` so every front end shares them (#1204).
 
 ## Keys
 
-`KEY_TABLE` and `DEFAULT_PICKER_SHORTCUT` in [`apps/desktop/src/keys.ts`](../../apps/desktop/src/keys.ts) are the source of truth for shortcut actions, platform bindings and the default summon shortcut.
+`KEY_TABLE` and `DEFAULT_PICKER_SHORTCUT` in [`apps/desktop/src/keys.ts`](../../apps/desktop/src/keys.ts) define shortcut actions, platform bindings and the default shortcut to open Ibis.
 
-- The summon shortcut follows the active layout’s letter.
+- The shortcut to open Ibis follows the active layout’s letter.
 - Double-clicking a row or the footer action pastes or copies what the shelf shows; success hides an unpinned window. The tile’s + adds to the citation, in order.
 - Numbered-result shortcuts act on the first nine rows wholly in view, renumbered on scroll. Holding the command key for one second writes each row’s key where its type icon was, as plain secondary text ending at the tile column: no cap and no plate, nothing moves, and the year stays. A cited row’s check gives way for the hold too (the shelf shows the citation) and returns when the command key is let go. They work only while the result list is shown, not over a command list, palette, sheet or empty state.
 - Escape steps back one layer from any control: sheet, menu, inspector, library chooser, then clears search (the shelf stays), then hides. A held key takes one step.

@@ -1,49 +1,31 @@
-# 0007 Formatting (with 0028)
+# 0007 Formatting
 
-Formatted citations use Zotero's maintained build of citeproc-js, pinned by
-commit and hash, running in embedded QuickJS with ICU4X collation inside
-`ibis-csl`. All official CSL styles and locales ship by 0.4. Key outputs
-(Pandoc, BibLaTeX, LaTeX, Typst and others) come from `ibis-core`, escaped per
-syntax, with a warning when a syntax cannot say something. Outside a document,
-Ibis copies only what one citation can get right: numeric styles copy the
-entry without its number, note styles the full first note (never ibid.), and
-generated author-date year suffixes wait for a document-level view. Source-supplied
-literal dates and year letters are retained as data (2026-10-30, #1519).
-Literal years retain numeric date order independently of their rendered letters.
-Ordinary ALM/LRM/RLM direction marks retain their text meaning; embedding,
-override and isolate controls are neutralized before output (2026-10-30, #1522).
-BibTeX imports retain stored title capitalization, including unprotected proper
-nouns. Styles and citeproc own presentation; APA uses the pinned processor's
-capitalization at explicit subtitle boundaries, preserving abbreviation periods
-and protected spans, and reports that titles need sentence case. Fixed-code,
-item-indexed citation warnings carry source conversion uncertainty without field
-text or paths through engine, MCP, desktop preview and copy feedback; that
-uncertainty participates in citation fingerprints. MCP omits `warnings` when
-empty, preserving clean response shapes; warned responses include the same
-codes as the engine and command line
-(2026-10-31, #1530).
+`ibis-csl` runs Zotero's maintained citeproc-js in embedded QuickJS with ICU4X
+collation. The processor is pinned by commit and hash. Official CSL styles and
+locales ship in a compressed bundle, pinned to upstream releases, byte for byte
+under their licences and with their authors. Requests unpack only the named
+1 MiB blocks; only the last style remains in memory. A dependent style uses its
+parent's rules in its own default language.
 
-2026-10-31 (#1486): The shelf consumes engine-owned reference spans. Form
-examples and support reasons are read-only alternatives against the prepared
-ticket's immutable snapshot and original output family; they never replace its
-copy ticket. Year only uses the engine's year-only form. Late previews and
-detail replies cannot publish into a newer edit or picker presentation.
-Output-only display leaves preserve passive emphasis, scientific scripts,
-small caps and underline; adding a reference or confirming Copied cannot flatten
-them. The citation request's affix vocabulary is unchanged. Full text is
-selectable in the reference menu as well as the tooltip, including for one
-long reference.
+Key output comes from `ibis-core`, escaped for each syntax, with typed losses
+for details the syntax cannot express. Outside a document, numeric styles give
+the bibliography entry without a number, note styles the full first note, and
+generated year suffixes require a document-level view. Source-supplied literal
+dates and year letters are data; numeric date ordering remains independent of
+the rendered letters.
 
-2026-11-02 (#19): every official CSL style and locale ships in the binary as one
-compressed bundle (`crates/ibis-csl/vendor/csl-bundle.bin`), built from tagged
-upstream releases pinned by commit, so styles change only with an Ibis release.
-Each file stays byte for byte upstream's, under its CC BY-SA 3.0 licence and with
-its authors. Files sit in 1 MiB zstd blocks: a request unpacks only what it names,
-and nothing stays in memory but the last style used. A dependent style runs its
-parent's rules in its own default language. What a style does comes from what it
-declares (its class, its citation number, its year suffixes, its conjunction),
-never from its id; upstream's renames keep old ids working. A result names its
-language, which is the request's, else the style's, and never the interface's or
-the operating system's. An unknown language is refused rather than approximated,
-except that a bare language means its main dialect, as upstream's `locales.json`
-defines it.
+Stored title capitalization is retained. Styles own presentation; APA reports
+that titles need sentence case. Conversion warnings use fixed codes and item
+indices, carry no field text or paths, and participate in citation fingerprints.
+Ordinary direction marks retain their meaning; embedding, override and isolate
+controls are neutralized before output.
+
+A style's declared features determine its behavior, never its ID. The output
+language is the requested language, otherwise the style's default, independent
+of interface and system language. Unknown languages refuse; a bare language
+uses the main dialect in upstream `locales.json`.
+
+The citation line uses engine-owned reference spans and display markup. Form
+examples use the prepared citation's snapshot without replacing its copy
+identity. Late replies cannot publish into a newer edit or picker opening.
+Full reference text remains selectable in its menu and tooltip.

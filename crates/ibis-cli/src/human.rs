@@ -127,7 +127,7 @@ fn summary(
                         n => format!(", {n} warnings"),
                     },
                     if library.get("refresh_error").is_some_and(|value| !value.is_null()) {
-                        " (last good snapshot; refresh failed)"
+                        " (last successful read; refresh failed)"
                     } else {
                         ""
                     },
@@ -138,23 +138,7 @@ fn summary(
                     }
                 ));
                 let shown = library.get("warnings").and_then(Value::as_array);
-                lines.extend(shown.into_iter().flatten().map(|warning| {
-                    // Zotero previously supplied no causes; retain its plain-stream
-                    // transcript while terminal diagnostics use the new detail.
-                    if library.get("kind").and_then(Value::as_str) == Some("zotero")
-                        || warning.get("cause").and_then(Value::as_str) == Some("tex-command")
-                    {
-                        let mut warning = warning.clone();
-                        if library.get("kind").and_then(Value::as_str) == Some("zotero") {
-                            warning["cause"] = Value::Null;
-                        } else {
-                            warning["field"] = Value::Null;
-                        }
-                        warning_line(&warning)
-                    } else {
-                        warning_line(warning)
-                    }
-                }));
+                lines.extend(shown.into_iter().flatten().map(warning_line));
                 let listed = shown.map_or(0, |shown| shown.len() as u64);
                 if warnings > listed {
                     lines.push(format!("  and {} more", warnings - listed));
@@ -223,7 +207,7 @@ pub(super) fn project_report(data: &Value) -> Option<String> {
             ProjectProblem::TooLarge => "the file is larger than 64 MiB",
             ProjectProblem::NotUtf8 => "the file is not UTF-8 text",
             ProjectProblem::Changing => "the file is still changing",
-            ProjectProblem::NotBibtex => "a project bibliography must be a BibTeX or BibLaTeX file",
+            ProjectProblem::NotBibtex => "a bibliography must be a BibTeX or BibLaTeX file",
         };
         report.push(format!("Couldn't read {name}: {why}."));
     }
@@ -967,7 +951,7 @@ mod terminal_tests {
     }
 
     #[test]
-    fn terminal_warnings_name_key_or_title_wrap_and_cap_without_changing_plain_output() {
+    fn terminal_warnings_name_entries_wrap_and_cap_while_pipes_include_causes() {
         let warnings: Vec<_> = (0..12)
             .map(|i| json!({"code":"field","entry":format!("vale{i}"),"field":"title","cause":"tex-command"}))
             .collect();
@@ -1015,7 +999,7 @@ mod terminal_tests {
             plain,
             format!(
                 "1 library\nZotero\t165 items, 12 warnings\n{}",
-                ["  a field could not be fully converted; check this entry"; 12].join("\n")
+                ["  a field could not be fully converted; check this entry (it uses a TeX command Ibis does not understand, kept as written)"; 12].join("\n")
             )
         );
         assert_eq!(

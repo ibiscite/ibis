@@ -1,4 +1,4 @@
-//! Prepared search data over an immutable contract snapshot; no legacy model conversion.
+//! Prepared search data over an immutable contract snapshot.
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 

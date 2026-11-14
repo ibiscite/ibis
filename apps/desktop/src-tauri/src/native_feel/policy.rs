@@ -19,7 +19,7 @@ pub(super) struct Preferences {
 }
 
 /// Only the documented DWM Acrylic path has a checked result. Unknown OS
-/// versions must not reach the library's legacy, unchecked composition call.
+/// versions must not reach the library's unchecked composition call.
 #[cfg(any(target_os = "windows", test))]
 pub(super) fn windows_material(version: Option<&str>) -> Appearance {
     let version = version

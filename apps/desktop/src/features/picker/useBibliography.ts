@@ -1,5 +1,5 @@
 import type * as nativeApi from "../../api";
-// The project bibliography as the picker shows it. Native code owns the file and
+// The bibliography as the picker shows it. Native code owns the file and
 // its generation; a row or action counts only for the generation it came from.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { EntryCopy, ProjectStatus, SearchResult } from "../../api";
@@ -7,13 +7,13 @@ import type { useOperations } from "./useOperations";
 import { type ProjectKeyState } from "../../bindings";
 import { isolate, say } from "../../i18n";
 
-export function useProjectBibliography(api: typeof nativeApi, report: ReturnType<typeof useOperations>["report"], perform: ReturnType<typeof useOperations>["perform"]) {
+export function useBibliography(api: typeof nativeApi, report: ReturnType<typeof useOperations>["report"], perform: ReturnType<typeof useOperations>["perform"]) {
   const { projectStatus, onProjectChanged, onProjectNotSaved, chooseProject, stopProject, copyProjectEntry, retryProject } = api;
   const [status, setStatus] = useState<ProjectStatus | null>(null);
   const [version, setVersion] = useState(0);
   // A status read in flight: its answer may say the file is still being read.
   const [pending, setPending] = useState(false);
-  // After a failed status read, an older "reading" answer no longer means work in progress.
+  // A failed status read ends the loading indication.
   const [statusFailed, setStatusFailed] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const reading = useRef(0);
@@ -68,18 +68,18 @@ export function useProjectBibliography(api: typeof nativeApi, report: ReturnType
 }
 
 /** A row's mark, when it belongs to the bibliography on screen and the output uses keys. */
-export function projectText(row: SearchResult, status: ProjectStatus | null): string | null {
+export function bibliographyText(row: SearchResult, status: ProjectStatus | null): string | null {
   return row.project && status && row.project.generation === status.generation
-    ? projectState(row.project.state, status.name, row.project.lines) : null;
+    ? bibliographyState(row.project.state, status.name, row.project.lines) : null;
 }
 
-function projectState(state: ProjectKeyState, name: string, lines: readonly number[]) {
+function bibliographyState(state: ProjectKeyState, name: string, lines: readonly number[]) {
   const text = say("picker-project-state", { state, name: isolate(name) });
   return lines.length ? `${text} ${say("library-where", { lines: say("picker-project-lines", { count: lines.length, lines: lines.join(", ") }) })}` : text;
 }
 
 /** The file the rows are marked against, and what is wrong with it if anything. */
-export function projectDetail({ name, state, reason, damaged_lines: lines }: ProjectStatus) {
+export function bibliographyDetail({ name, state, reason, damaged_lines: lines }: ProjectStatus) {
   const file = isolate(name);
   const where = lines.length ? ` ${say("picker-project-check-lines", { count: lines.length, lines: lines.join(", ") })}` : "";
   if (state === "reading") return say("picker-project-reading", { name: file });
