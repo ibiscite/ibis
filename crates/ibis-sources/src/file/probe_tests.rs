@@ -19,6 +19,8 @@ fn references() -> (Vec<LibraryObject>, Vec<(usize, String)>) {
     (objects, references)
 }
 
+// The subprocess watchdog is Unix-only, like the other blocked-filesystem tests.
+#[cfg(unix)]
 #[test]
 fn repeated_blocked_attachment_batches_leave_room_for_a_healthy_library() {
     const CHILD: &str = "IBIS_ATTACHMENT_CAPACITY_CHILD";
