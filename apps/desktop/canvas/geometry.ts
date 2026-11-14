@@ -79,6 +79,11 @@ export function geometry(root: ParentNode = document): string[] {
   const visible = (node: Element) => { const rect = node.getBoundingClientRect(); return rect.width > 0 && rect.height > 0 && getComputedStyle(node).visibility !== "hidden"; };
   const name = (node: Element) => `${node.tagName.toLowerCase()}.${[...node.classList].join(".")}`;
 
+  for (const cap of root.querySelectorAll(".key-caps kbd")) {
+    if (visible(cap) && (getComputedStyle(cap).whiteSpace !== "nowrap" || getComputedStyle(cap.closest(".key-caps")!).direction !== "ltr"))
+      failures.push(`[C8] ${name(cap)}: shortcut wraps or reads right to left`);
+  }
+
   for (const glyph of root.querySelectorAll<SVGSVGElement>(glyphs.selector)) {
     // A pressed control gives a little (--press-scale): a transform of its drawn size, not its size.
     if (!visible(glyph) || glyph.closest("[data-pressed]")) continue;
@@ -441,7 +446,7 @@ export const paintStates = ["data-hovered", "data-pressed", "data-focus-visible"
 export function paintOnly(root: ParentNode = document): string[] {
   const failures: string[] = [];
   const still = document.createElement("style");
-  still.textContent = "*, *::before, *::after { transition: none !important; animation: none !important; scale: none !important; }";
+  still.textContent = "@layer utilities { *, *::before, *::after { transition: none; animation: none; scale: none; } }";
   document.head.append(still);
   try {
     const parts = [...root.querySelectorAll(controls)].filter(live);

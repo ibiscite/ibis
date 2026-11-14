@@ -12,7 +12,8 @@ test.each(["(prefers-contrast: more)", "(forced-colors: active)"])("all mark siz
   const parser = document.createElement("style");
   parser.textContent = css;
   document.head.append(parser);
-  const media = [...parser.sheet!.cssRules].find((rule) => rule instanceof CSSMediaRule && rule.conditionText.includes(mode)) as CSSMediaRule | undefined;
+  const layer = parser.sheet!.cssRules[0] as CSSGroupingRule;
+  const media = [...layer.cssRules].find((rule) => rule instanceof CSSMediaRule && rule.conditionText.includes(mode)) as CSSMediaRule | undefined;
   parser.remove();
   expect(media, `Missing contrast mode ${mode}`).toBeDefined();
   // jsdom does not evaluate system media preferences. Activate the actual

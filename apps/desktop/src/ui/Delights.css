@@ -1,3 +1,4 @@
+@layer parts {
 .ui-shortcut-echo[data-echo] .ui-row { background: var(--fill-quiet-hover); }
 .ui-shortcut-echo + .ui-shortcut-echo .ui-row { border-top: var(--border-width) solid var(--separator); }
 .ui-shortcut-echo + .ui-row { border-top: var(--border-width) solid var(--separator); }
@@ -16,7 +17,7 @@
 .ui-about-check[data-highlighted] { background: var(--highlight); }
 .ui-about-mission { margin: var(--space-2) 0 0; max-width: 32rem; color: var(--text); font-size: var(--type-body-size); line-height: var(--type-body-line); }
 .ui-about-hero .ui-about-line { max-width: 32rem; color: var(--text-secondary); }
-.ui-about-icon.ui-button[data-variant] { flex: none; width: var(--mark-app); height: var(--mark-app); padding: 0; border-radius: var(--r-icon); background: transparent; }
+.ui-about-icon[data-variant] { flex: none; width: var(--mark-app); height: var(--mark-app); padding: 0; border-radius: var(--r-icon); background: transparent; }
 .ui-about-icon svg { display: block; width: var(--mark-app); height: var(--mark-app); }
 .ui-about-icon [data-icon="dark"], :root[data-appearance="dark"] .ui-about-icon [data-icon="light"] { display: none; }
 :root[data-appearance="dark"] .ui-about-icon [data-icon="dark"] { display: block; }
@@ -41,4 +42,5 @@
 @keyframes ibis-refusal { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(calc(-1 * var(--space-1))); } 75% { transform: translateX(var(--space-1)); } }
 @media (prefers-reduced-motion: reduce) {
   [data-empty-action] .footer-action { animation: none; }
+}
 }

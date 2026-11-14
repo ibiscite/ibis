@@ -1,14 +1,10 @@
-/* The palette's body (ui/Palette.tsx) inside ui/ViewFrame: a list of the picker's
-   own rows and headings (ui/Option, ui/Band), so labels start on the title
-   column, and an optional preview column beside it. */
+@layer parts {
 .ui-palette { flex: 1; display: flex; min-width: 0; min-height: 0; container-type: inline-size; }
 .ui-palette-list { --band-inset: 0px; --row-height: var(--row-compact); flex: 1; min-width: 0; margin: 0; padding: var(--inset); list-style: none; overflow-y: auto; }
 .ui-palette[data-preview] .ui-palette-list { flex: 0 1 50%; min-width: 14rem; border-inline-end: var(--border-width) solid var(--separator); }
 .ui-palette-section > ul { margin: 0; padding: 0; list-style: none; }
-.ui-palette-section + .ui-palette-section { margin-block-start: var(--space-2); }
-/* A group without a heading continues the list above at the rows' own pitch:
-   a gap no heading explains reads as one row standing taller than the rest. */
-.ui-palette-section + .ui-palette-section:not(:has(> .ui-list-heading)) { margin-block-start: var(--row-spacing); }
+.ui-palette-section + .ui-palette-section { margin-block-start: var(--row-spacing); }
+.ui-palette-section + .ui-palette-section:has(> .ui-list-heading) { margin-block-start: var(--space-2); }
 .ui-palette-row { white-space: nowrap; }
 .ui-palette-row[aria-disabled="true"] { color: var(--text-secondary); }
 .ui-palette-row > .ui-band-icon { color: var(--text-secondary); }
@@ -21,8 +17,7 @@
 .ui-palette-empty { padding: var(--space-4) var(--row-pad); color: var(--text-secondary); text-align: center; }
 /* The preview: what the highlighted row would paste, given the room it needs, with
    the note on where the choice applies at its foot. */
-.ui-palette-preview { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4); overflow-y: auto; overflow-wrap: anywhere; }
-.ui-palette-preview > div { display: flex; flex-direction: column; gap: var(--space-2); }
+.ui-palette-preview { flex: 1; min-width: 0; padding: var(--space-4); overflow-y: auto; overflow-wrap: anywhere; }
 .ui-palette-preview-text { margin: 0 0 var(--space-2); color: var(--text); font-size: var(--type-title-size); line-height: var(--type-title-line); user-select: text; }
 .ui-palette-preview-text[data-key] { font-family: var(--mono); }
 .ui-palette-preview-note { margin: auto 0 0; color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); }
@@ -32,4 +27,5 @@
   .ui-palette[data-preview] .ui-palette-list { flex: 1 1 auto; min-width: 0; border-inline-end: 0; border-block-end: var(--border-width) solid var(--separator); }
   .ui-palette-preview { flex: none; padding: var(--space-2) var(--inset) var(--space-2) var(--label-start); }
   .ui-palette-preview :is(.ui-palette-preview-heading, .ui-palette-preview-note) { display: none; }
+}
 }

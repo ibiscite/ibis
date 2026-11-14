@@ -1,5 +1,4 @@
-/* [C20] Thumbnails at the reader's leading edge, as Preview's sidebar. Chosen
-   pages are filled as any selection is; the page in view has a thin ring. */
+@layer parts {
 .page-strip { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); min-height: 0; overflow: hidden auto; padding: var(--inset) var(--space-2); outline: none; }
 .page-strip-page { flex: none; display: flex; flex-direction: column; align-items: center; gap: var(--space-1); padding: var(--space-2) var(--space-2) var(--space-1); border-radius: var(--r-control); outline: none; color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); font-variant-numeric: tabular-nums; cursor: default; }
 /* A printed number is what is cited, so it reads in the text colour; a page without one is quieter. */
@@ -15,4 +14,5 @@
 @media (forced-colors: active) {
   .page-strip-page[data-selected] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
   .page-strip-paper { background: Canvas; }
+}
 }

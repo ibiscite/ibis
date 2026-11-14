@@ -1,3 +1,4 @@
+import "../src/tokens.css";
 import { recordId } from "../src/test-fixtures";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -20,7 +21,6 @@ import { audit as runAudit } from "./audit";
 import { SettingsApp } from "../src/settings/SettingsApp";
 import { demoApi } from "../src/settings/demo";
 import type { SettingsApi } from "../src/settings/api";
-import "../src/tokens.css";
 import tokenSource from "../src/tokens.css?raw";
 import "../src/ui/Foundation.css";
 import "./board.css";
@@ -230,7 +230,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
   return () => { void subscription.then((stop) => stop()); };
 }
 
-const tokensStyle = `
+const tokensStyle = `@layer parts {
 .canvas-tokens { padding: var(--space-6); overflow: auto; height: 100%; box-sizing: border-box; color: var(--text); }
 .canvas-tokens h2 { font-size: var(--type-title-size); margin: var(--space-4) 0 var(--space-2); }
 .canvas-token-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: var(--space-2) var(--space-4); }
@@ -238,6 +238,7 @@ const tokensStyle = `
 .canvas-token-grid i { flex: none; width: var(--space-6); height: var(--space-6); box-shadow: inset 0 0 0 1px var(--separator); }
 /* A long name wraps at its hyphens onto a second line, never inside a word. */
 .canvas-token-grid code { min-width: 0; font: var(--type-label-size) / var(--type-label-line) var(--mono); color: var(--text-secondary); overflow-wrap: normal; }
+}
 `;
 
 function States({ theme }: { theme: Theme }) {

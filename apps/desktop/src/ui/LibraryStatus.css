@@ -1,4 +1,4 @@
-/* Shared library status controls use the footer's existing geometry and roles. */
+@layer parts {
 .library-status-controls { flex: 1; min-width: min(var(--status-min), 100%); display: flex; align-items: center; gap: var(--space-1); }
 /* The native button owns its visible status and a non-collapsing hit target. */
 .library-status-target { flex: 1; min-width: var(--control-h); position: relative; isolation: isolate; }
@@ -10,5 +10,6 @@
 /* In the footer's grid (ui/Footer.css): quiet notes span a row of their own,
    and the action's label truncates on one line instead of pushing More aside. */
 .library-bar > :is(.ui-quiet-status, .library-action-error) { grid-column: 1 / -1; }
-.library-bar .ui-button.footer-action { min-width: 0; }
-.library-bar .ui-button.footer-action > .key-hint { flex-wrap: nowrap; min-width: 0; }
+.library-bar .footer-action { min-width: 0; }
+.library-bar .footer-action > .key-hint { flex-wrap: nowrap; min-width: 0; }
+}

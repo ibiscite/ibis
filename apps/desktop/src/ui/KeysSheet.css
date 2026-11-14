@@ -1,5 +1,4 @@
-/* The keys sheet: two content-sized columns of groups, the action at the start
-   breaking only between words, its keys at the end on one line (#1034). */
+@layer parts {
 .keys-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: var(--space-4); }
 .keys-groups > table { min-width: 0; width: 100%; border-collapse: collapse; font-size: var(--type-body-size); }
 .keys-groups th, .keys-groups td { padding: var(--space-1) 0; vertical-align: baseline; overflow-wrap: normal; border-bottom: var(--border-width) solid var(--separator); }
@@ -16,4 +15,5 @@
 }
 @media (max-width: 460px) {
   .keys-groups td { white-space: normal; }
+}
 }

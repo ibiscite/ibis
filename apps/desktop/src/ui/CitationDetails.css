@@ -1,9 +1,8 @@
-/* Inspector rows, as Xcode's and Finder's: a trailing-aligned label, then one
-   control. Both controls draw at the same height and keep 32 px targets. */
+@layer parts {
 /* Neighbouring rows share one gap: their drawn controls sit --space-2 apart, the
    inspector column's own gap, so a focus ring (width and offset) never reaches the
    control beside it. Each row is the 32 px target around a smaller drawn control. */
-.citation-details { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: calc(var(--space-2) - (var(--control-h) - var(--action-h))) var(--space-2); }
+.citation-details { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-1) var(--space-2); }
 .citation-field { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; min-height: var(--control-h); }
 .citation-label { color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); text-align: end; }
 /* The clear border is the rest of the target; the fill lines up with the pop-up's. */
@@ -13,7 +12,7 @@
 .citation-note { grid-column: 1 / -1; margin: 0; padding-block: var(--space-1); color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); overflow-wrap: break-word; }
 .citation-field input:focus-visible { outline-offset: calc(var(--border-width) - var(--field-gap)); }
 .citation-field .toolbar-menu-control { display: flex; min-width: 0; }
-.citation-field .ui-popup-button.ui-button { flex: 1; justify-content: space-between; min-width: 0; max-width: none; }
+.citation-field .ui-popup-button { flex: 1; justify-content: space-between; min-width: 0; max-width: none; }
 @media (pointer: coarse) {
   .citation-field { min-height: var(--touch-target); }
   .citation-field input { height: var(--touch-target); }
@@ -23,9 +22,10 @@
 .citation-locator { display: flex; align-items: center; min-width: 0; border-radius: var(--r-control); background: var(--surface-field); }
 .citation-locator:focus-within { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-inside); }
 .citation-locator > .toolbar-menu-control { flex: none; }
-.citation-locator .citation-locator-type.ui-button { margin-inline-start: var(--space-1); color: var(--text-secondary); }
+.citation-locator .citation-locator-type { margin-inline-start: var(--space-1); color: var(--text-secondary); }
 .citation-locator > .react-aria-TextField { flex: 1; min-width: 0; }
 .citation-locator input { background: transparent; }
 .citation-locator input:focus-visible { outline: none; }
 .citation-reveals { display: flex; flex-wrap: wrap; gap: var(--space-1); grid-column: 2; }
-.citation-reveal.ui-button { color: var(--text-secondary); }
+.citation-reveal { color: var(--text-secondary); }
+}

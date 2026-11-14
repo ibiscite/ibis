@@ -1,4 +1,4 @@
-/* C7: one band, on the result columns, regardless of selection or open menu. */
+@layer parts {
 /* One band, one padding, corner, hover and pressed fill for every control in it:
    segments and the count. Hover and open steps are even: band, tertiary, system fill.
    At rest the count shows only its chevron, whose glyph is drawn inside its box, so
@@ -56,4 +56,4 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 .inspector-citation { display: block; margin: var(--space-2) 0 0; font-size: var(--type-body-size); line-height: var(--type-body-line); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 .inspector-citation[data-keys] { font-family: var(--mono); }
 .inspector-problem svg { margin-inline-end: var(--space-1); color: var(--status-error); }
-
+}

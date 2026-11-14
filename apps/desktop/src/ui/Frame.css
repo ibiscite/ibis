@@ -1,7 +1,4 @@
-/* [C24] The picker window's frame (ui/Frame.tsx): slots in one order at every size,
-   search, the list's heading line, content with the Inspector beside it, shelf and
-   footer. Each slot's height is its own and never depends on what another holds,
-   so nothing that appears or passes moves the list, the shelf or the footer. */
+@layer parts {
 main.ui-frame {
   height: 100dvh; container-type: inline-size; overflow: hidden; display: grid;
   grid-template: "search search" auto "notice panel" auto "middle panel" minmax(0, 1fr) "shelf shelf" auto "footer footer" auto / minmax(0, 1fr) auto;
@@ -43,3 +40,4 @@ ul.ui-line-words > li + li::before { content: " · "; }
 /* One notice shows; the rest wait their turn, out of sight and out of reach. */
 .ui-notice-line > :is(.notice-slot, .ui-line-notice) ~ .ui-line-notice { display: none; }
 .ui-line-words:focus-visible { outline-offset: var(--ring-inside); }
+}

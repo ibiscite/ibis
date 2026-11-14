@@ -1,3 +1,4 @@
+@layer parts {
 /* The canvas boards' own text and frames, on the app's tokens. */
 .bd { font: var(--type-body-size) / var(--type-body-line) var(--font); color: var(--text); background: var(--surface-grouped); box-sizing: border-box; color-scheme: light; }
 .bd h1 { margin: 0; font-size: var(--type-search-size); line-height: var(--type-search-line); font-weight: 700; }
@@ -15,3 +16,4 @@
 .canvas-part code { font: var(--type-label-size) var(--mono); color: var(--text-secondary); }
 .canvas-part .canvas-part-mark { width: var(--space-10); height: var(--space-10); }
 .canvas-band { margin: 0; }
+}

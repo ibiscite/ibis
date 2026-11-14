@@ -1,4 +1,4 @@
-/* One state table for buttons (ui/README.md, "Components and their states"), independent of the feature. */
+@layer ui {
 .ui-button[data-variant] {
   display: inline-flex; align-items: center; justify-content: center;
   gap: var(--space-2); position: relative; min-height: var(--action-h);
@@ -69,4 +69,5 @@
 @media (forced-colors: active) {
   .ui-button[data-variant="action"]:not([data-disabled], [aria-disabled="true"]) { background: Canvas; color: CanvasText; border-color: CanvasText; }
   .ui-button[data-variant="action"] .key-caps kbd { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+}
 }

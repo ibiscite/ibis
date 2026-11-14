@@ -7,7 +7,9 @@ layers (primitives → semantic roles → component values), and every part live
 once as a shared component in [`apps/desktop/src/ui/`](../apps/desktop/src/ui/);
 screens never restyle a part. The design canvas is generated from the app
 (`apps/desktop/gallery/canvas.mjs`), so this page names a token or component
-instead of repeating its pixels. [Decisions](decisions.md) win over this page.
+instead of repeating its pixels. The CSS cascade has one order, declared in
+`tokens.css`: `tokens, base, ui, parts, utilities`. Shared controls precede
+composed parts; utilities have the final word. [Decisions](decisions.md) win over this page.
 Tags such as [C12] are cited by code and tests; keep each beside its rule.
 
 This page holds the principles, the model and how the design changes. Each part

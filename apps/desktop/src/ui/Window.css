@@ -1,8 +1,6 @@
-/* The picker window (ui/Window.css): the page's base and the content slot of the
-   window's frame (ui/Frame.css), the middle scroller with the results. The
-   screens fill these slots; their spacing lives here. */
 @import "../tokens.css";
 @import "./Material.css";
+@layer base {
 
 :root { font-synthesis: none; font-family: var(--font); color: var(--text); background: var(--layer-base); }
 
@@ -38,4 +36,5 @@ button, input, select { font: inherit; color: inherit; }
    between the full-height search and footer controls. */
 @media (max-height: 400px) {
   main > .picker-content .results-area { flex: none; min-height: 0; overflow: visible; }
+}
 }

@@ -1,5 +1,4 @@
-/* The canvas's picture radios: equal columns, captions on one baseline. A 2 px
-   ring outside the picture marks the choice. */
+@layer parts {
 .ui-picture-choices { display: grid; grid-template-columns: repeat(var(--choice-columns), minmax(0, 1fr)); align-items: stretch; gap: var(--space-2); width: 100%; min-width: 0; }
 .ui-picture-choice {
   display: flex; flex-direction: column; align-items: center; gap: var(--space-2); padding: var(--space-1); min-width: 0; max-width: 100%; box-sizing: border-box;
@@ -33,3 +32,4 @@
 /* The one live picture over a group of choices: the picker as they make it. */
 .ui-picture-preview { display: grid; place-items: center; padding: var(--space-4); }
 .ui-picture-preview .ui-picker-picture { --preview: var(--preview-live); border-radius: var(--r-control); }
+}

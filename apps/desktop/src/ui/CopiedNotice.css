@@ -1,4 +1,4 @@
-/* The Copied notice (#496): its own window. */
+@layer parts {
 :root.notice-window { background: transparent; }
 :root.notice-window,
 :root.notice-window body,
@@ -49,3 +49,4 @@
    never runs must not leave it invisible (a blank toast on plain X11). */
 :root.notice-window[data-surface="opaque"] body { background: var(--surface); }
 :root.notice-window[data-surface="opaque"] .copied-notice { opacity: 1; animation: none; }
+}

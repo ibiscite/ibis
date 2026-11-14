@@ -1,6 +1,4 @@
-/* Peek (⌘Y): a readable overlay under the highlighted row, as Quick Look shows a
-   file without leaving Finder. The menu's material, corner and shadow; facts as
-   an inspector's label and value rows. */
+@layer parts {
 .peek-card { box-sizing: border-box; inline-size: min(28rem, var(--overlay-max-inline)); padding: var(--space-3) var(--space-4); border-radius: var(--r-large); font: var(--type-body-size) / var(--type-body-line) var(--font); }
 .peek-title { margin: 0; font: var(--strong) var(--type-title-size) / var(--type-title-line) var(--font); overflow-wrap: anywhere; }
 .peek-byline { margin: var(--space-1) 0 0; color: var(--text-secondary); overflow-wrap: anywhere; }
@@ -9,3 +7,4 @@
 .peek-facts dt { color: var(--text-secondary); text-align: end; }
 .peek-facts dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .peek-facts dd[data-mono] { font-family: var(--mono); }
+}

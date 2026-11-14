@@ -3,8 +3,9 @@ import { Children, createContext, isValidElement, useCallback, useContext, useEf
 import { composing as isComposing } from "../composition";
 import { flushSync } from "react-dom";
 import { mergeProps, setInteractionModality } from "react-aria";
-import { Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuStateContext, MenuTrigger, Separator, SubmenuTrigger, Text } from "react-aria-components";
+import { Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuStateContext, MenuTrigger, Separator, Text } from "react-aria-components";
 import { Button } from "./Button";
+import { Stack } from "./Stack";
 import { markScrollEdges } from "./ScrollArea";
 import { Floating } from "./Layer";
 import { useMenuLifecycle } from "./useMenuLifecycle";
@@ -179,10 +180,10 @@ const ActionFocusContext = createContext<(() => void) | null>(null);
  * Each fact of the detail ("My Library · checked 3 minutes ago, 1:54 AM") takes
  * its own line, so a menu's width never breaks a phrase such as a time apart. */
 export function MenuDetail({ title, detail }: { title: string; detail?: string | null }) {
-  return <p className="menu-detail" aria-hidden="true">
+  return <Stack as="p" gap="--space-1" className="menu-detail" aria-hidden="true">
     <span className="menu-detail-title">{title}</span>
     {detail?.split(" · ").map((fact) => <span key={fact}>{fact}</span>)}
-  </p>;
+  </Stack>;
 }
 
 type ItemProps = {
@@ -239,29 +240,6 @@ export function MenuSection({ id, label, header, children, layout, selectionMode
   </AriaMenuSection>;
 }
 
-/** A nested choice menu. React Aria owns hover, arrows, Escape and placement;
- * the parent menu still owns Tab and action focus return. */
-export function MenuSubmenu({ id, label, value, title, children }: {
-  id: string; label: string; value: string; title?: string; children: ReactNode;
-}) {
-  const list = useRef<HTMLDivElement | null>(null);
-  const wholeRows = useWholeRows(list);
-  return <SubmenuTrigger>
-    <AriaMenuItem id={id} className="menu-item" textValue={value} aria-label={value}
-      render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={id} title={title} />}>
-      <bdi className="menu-label" dir="auto">{value}</bdi>
-      <span className="menu-submenu-arrow" aria-hidden="true">›</span>
-    </AriaMenuItem>
-    {/* Part of its menu's layer, whose Esc it hands to React Aria. */}
-    <Floating ref={wholeRows} className="menu-popover ui-overlay" offset={6} containerPadding={8}>
-      <AriaMenu ref={list} className="menu scroll-area" aria-label={label}
-        render={(props) => <div {...props as ComponentPropsWithRef<"div">} aria-label={label} aria-labelledby={undefined} />}>
-        {children}
-      </AriaMenu>
-    </Floating>
-  </SubmenuTrigger>;
-}
-
 export function MenuSeparator() {
   return <Separator className="menu-separator" />;
 }
@@ -280,7 +258,7 @@ type MenuProps = {
 
 /**
  * A menu button with a popover menu. React Aria owns roles, arrow keys,
- * typeahead, submenus, outside clicks and placement; the layer stack owns
+ * typeahead, outside clicks and placement; the layer stack owns
  * Escape. A closing modal refuses focus and traps the next key, so a key or a
  * chosen item closes it at once, with no exit to wait for. Opened by a
  * pointer, nothing is highlighted until the pointer or an arrow key moves;
@@ -323,12 +301,8 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
     if (to?.isConnected && (active === previous || active === document.body || active === button.current || active === to)) to.focus();
   };
   const close = (event?: KeyboardEvent) => {
-    // Escape leaves the innermost submenu first; React Aria owns that step.
-    const inner = event?.target instanceof Element ? event.target.closest('[role="menu"]') : null;
-    if (inner && inner !== list.current) return false;
     leave(event ? button.current : tabFocusRef?.current);
   };
-  // Outside the collection builder so submenu portals inherit the action owner.
   return <ActionFocusContext.Provider value={() => leave(tabFocusRef?.current)}><MenuTrigger isOpen={isOpen} onOpenChange={(open) => { fromTrigger.current = open; onOpenChange(open); }}>
     <Button variant={triggerVariant} size={triggerSize} aria-label={label} ref={(node) => {
       button.current = node;

@@ -18,8 +18,8 @@ test.each(["light", "dark"])("the %s snapshot owns its theme at the shadow host 
   const { container } = render(<PickerPicture appearance={appearance} />);
   const host = container.querySelector<HTMLElement>(".ui-picker-picture-content > div")!;
   expect(host.style.colorScheme).toBe(appearance);
-  expect(host.shadowRoot!.querySelector("style")!.textContent).toContain(".ui-button[data-variant]");
-  expect(host.shadowRoot!.querySelector("style")!.textContent).toContain(".ui-icon-button.ui-button[data-variant]");
+  expect(host.shadowRoot!.querySelector("style")!.textContent).toContain(sources.button);
+  expect(host.shadowRoot!.querySelector("style")!.textContent).toContain(sources.iconButton);
   expect(host.shadowRoot!.querySelector("style")!.textContent).toContain(sources.icon);
   expect(host.shadowRoot!.querySelector("style")!.textContent).not.toContain("color-scheme: light dark;");
   expect(host.shadowRoot!.querySelector(".results-area > #results")).toBeTruthy();

@@ -11,6 +11,7 @@ import { useLayer } from "./layers";
 import { ViewFrame } from "./ViewFrame";
 import { say } from "../i18n";
 import "./Palette.css";
+import { Stack } from "./Stack";
 
 /** One row: a name, a quiet detail only when it tells rows apart, its keys, and
  * a check on the current choice. `back` rows undo a remembered choice (↩). A
@@ -162,10 +163,10 @@ export function Palette({ id, title, subtitle, description, placeholder, section
         </li>)}
         {!items.length && <li role="presentation" className="ui-palette-empty">{empty}</li>}
       </ul>
-      {preview && <div className="ui-palette-preview">
-        <div aria-live="polite">{current && preview(current)}</div>
+      {preview && <Stack gap="--space-2" className="ui-palette-preview">
+        <Stack gap="--space-2" aria-live="polite">{current && preview(current)}</Stack>
         {description && <p id={descriptionId} className="ui-palette-preview-note">{description}</p>}
-      </div>}
+      </Stack>}
       {!preview && description && <p id={descriptionId} className="visually-hidden">{description}</p>}
     </div>
   </ViewFrame>;

@@ -4,12 +4,8 @@ import { Icon } from "../icons";
 import { useInterfaceMessages } from "../i18n";
 import { IconButton } from "./IconButton";
 import { settingControl } from "./settingFocus";
+import { Stack } from "./Stack";
 import "./Layout.css";
-
-/** The layout parts (maintainer, 2026-11-10). Screens compose these and never set
- * their own margin, padding, gap or position, so left edges line up by
- * construction: a card's edge on the window inset, and a heading, a description
- * and a row's words on the heading offset. */
 
 /** A part of a page or sheet named by its heading: the heading and an optional
  * description on the row text's edge, then its content (usually a Group). */
@@ -25,17 +21,17 @@ export function Section({ id, title, label, level = 2, description, children }: 
 }) {
   const Heading = level === 2 ? "h2" : "h3";
   const titleId = id && title ? `${id}-title` : undefined;
-  return <section className="ui-section" id={id} aria-label={label} aria-labelledby={label ? undefined : titleId}>
+  return <Stack as="section" gap="--space-2" className="ui-section" id={id} aria-label={label} aria-labelledby={label ? undefined : titleId}>
     {title && <Heading id={titleId} className="ui-section-title" dir="auto">{title}</Heading>}
     {description && <p className="ui-section-description">{description}</p>}
     {children}
-  </section>;
+  </Stack>;
 }
 
 /** The card: grouped rows on the grouped fill, edge to edge in its section. A
  * labelled group is a list, so its rows are list items. */
 export function Group({ label, children }: { label?: string; children: ReactNode }) {
-  return label ? <ul className="ui-group" aria-label={label}>{children}</ul> : <div className="ui-group">{children}</div>;
+  return <Stack as={label ? "ul" : "div"} className="ui-group" aria-label={label}>{children}</Stack>;
 }
 
 /** One row of a Group: the label with a quiet
@@ -52,10 +48,10 @@ export function Row({ id, label, description, children, problem, highlighted, pe
   const Element = item ? "li" : "div";
   return <Element className="ui-row" aria-busy={pending || undefined} data-bare={labelHidden || undefined} data-highlighted={highlighted || undefined}>
     <span className={labelHidden ? "visually-hidden" : "ui-row-lead"}>
-      <span className="ui-row-text">
+      <Stack as="span" className="ui-row-text">
         <span className="ui-row-label"><span id={id} dir="auto">{label}</span>{children !== undefined && <ResetSlot reset={reset} />}</span>
         {description && <span id={id ? `${id}-description` : undefined} className="ui-row-description" dir="auto">{description}</span>}
-      </span>
+      </Stack>
     </span>
     {children}
     {problem && <p className="ui-row-problem" role="alert">{problem}</p>}
@@ -84,7 +80,7 @@ export function ChoiceRow({ label, description, accessibleLabel, selected, disab
 }) {
   return <li className="ui-row ui-choice-row">
     <AriaButton className="ui-choice" aria-label={accessibleLabel} aria-pressed={selected} isDisabled={disabled} onPress={onPress}>
-      <span className="ui-row-text"><span dir="auto">{label}</span>{description && <span className="ui-row-description" dir="auto">{description}</span>}</span>
+      <Stack as="span" className="ui-row-text"><span dir="auto">{label}</span>{description && <span className="ui-row-description" dir="auto">{description}</span>}</Stack>
       <span className="ui-choice-check" aria-hidden="true">{selected && <Icon name="check" />}</span>
     </AriaButton>
   </li>;

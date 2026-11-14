@@ -1,3 +1,4 @@
-/* Fixed CSS pixels: Larger Text grows labels and targets, not the glyph. */
+@layer ui {
 .ui-icon { display: inline-block; flex: none; width: var(--icon); height: var(--icon); vertical-align: middle; }
 .ui-icon[data-size="tile"] { width: var(--icon-tile); height: var(--icon-tile); }
+}

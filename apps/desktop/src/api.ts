@@ -56,7 +56,6 @@ export const {
   updateChecks,
   setUpdateChecks,
   checkForUpdates,
-  updateAvailable,
   updatePickerActivity,
   openSettings,
 } = commands;
@@ -245,16 +244,6 @@ export function newerUpdate(old: UpdateProgress | null, next: UpdateProgress): U
 
 export function onUpdateProgress(handler: (progress: UpdateProgress) => void): Promise<UnlistenFn> {
   return listen<UpdateProgress>("update:progress", (event) => handler(event.payload));
-}
-
-/** Whether update checks run on their own, sent after each change is saved. */
-export function onUpdateChecks(handler: (automatic: boolean) => void): Promise<UnlistenFn> {
-  return listen<boolean>("update:automatic", (event) => handler(event.payload));
-}
-
-/** Quiet availability only; this event never shows or focuses the picker. */
-export function onUpdateAvailable(handler: (available: boolean) => void): Promise<UnlistenFn> {
-  return listen<boolean>("update:available", (event) => handler(event.payload));
 }
 
 /** Delivery still receives the full canonical text; only the receipt is shortened. */

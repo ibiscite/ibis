@@ -1,8 +1,4 @@
-/* The list row every list of options draws: results, commands, palettes, recent
-   and sample rows. A row is a band with a fill (ui/Band), so its glyph and words
-   sit on the window's columns; rows are exactly --row-height and --row-spacing
-   apart in every list (C4), and a height is a minimum: wrapping grows the row
-   without spending its padding. A list holds the inset for its rows. */
+@layer ui {
 #results { list-style: none; padding: 0; margin: 0; }
 .ui-option { --band-gap: var(--row-gap); position: relative; min-height: var(--row-height); min-inline-size: 0; max-inline-size: 100%; padding-block: var(--space-2); }
 .ui-option + .ui-option { margin-block-start: var(--row-spacing); }
@@ -138,3 +134,4 @@
 /* A command is one line: its title and its keys. Compact rows' height in either density. */
 .command-row { --row-height: var(--row-compact); }
 .command-row .result-title { font-size: var(--type-body-size); line-height: var(--type-body-line); font-weight: 400; letter-spacing: normal; }
+}

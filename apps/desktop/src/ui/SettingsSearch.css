@@ -1,4 +1,4 @@
-/* The labelled search field of the Settings sidebar and the shortcut catalogue (ui/SettingsSearch.tsx). */
+@layer parts {
 .ui-settings-search { position: relative; margin: 0 var(--inset) var(--space-2); min-width: 0; }
 /* The glyph sits on the sidebar's icon column. */
 .ui-settings-search > .ui-settings-search-glyph { position: absolute; inset-block-start: 50%; inset-inline-start: calc(var(--space-2) + (var(--icon-tile) - var(--icon)) / 2); translate: 0 -50%; color: var(--text-tertiary); pointer-events: none; }
@@ -8,3 +8,4 @@
   .ui-settings-search input { min-height: var(--touch-target); }
 }
 .ui-settings-search input::-webkit-search-cancel-button { appearance: none; -webkit-appearance: none; display: none; }
+}

@@ -1,7 +1,4 @@
-/* [C20] As Preview: a thumbnail sidebar with its own full-height divider, the
-   pages on one canvas edge to edge between the dividers, and the page in view in
-   a small floating bar over them. The paper is drawn as the PDF draws it, white
-   in dark mode as in Preview; only the surround follows the theme. */
+@layer parts {
 .reader { display: grid; grid-template-columns: max-content minmax(0, 1fr); block-size: 100%; min-block-size: 0; }
 .reader-strip { display: flex; min-block-size: 0; border-inline-end: var(--border-width) solid var(--separator); }
 .reader-view { position: relative; display: flex; min-inline-size: 0; min-block-size: 0; }
@@ -22,3 +19,4 @@
 .invented-page h4 { margin: 0 0 0.75em; font-size: 1.05em; }
 .invented-page p { margin: 0 0 0.6em; }
 .invented-folio { display: block; margin-block-start: 1em; text-align: center; color: var(--paper-ink-secondary); }
+}

@@ -1,11 +1,10 @@
-/* [C9] [C24] Every floating part (menus, pop-overs, the peek card, held keys,
-   the reader's controls) takes the overlay layer role: --layer-overlay, its edge
-   and its material, all from tokens.css, which already answers Reduce
-   Transparency, Increase Contrast and forced colours. No part sets its own. */
+@layer ui {
 .ui-overlay {
   background: var(--layer-overlay); color: var(--text); box-shadow: var(--layer-overlay-edge);
   -webkit-backdrop-filter: var(--layer-overlay-material); backdrop-filter: var(--layer-overlay-material);
 }
+}
+@layer parts {
 /* [C24] A notice cut to its one line unfolds whole while pointed at or focused,
    over the list as an anchored overlay; its line keeps its height. */
 .ui-line-words:is(:hover, :focus-visible) {
@@ -16,6 +15,8 @@
 }
 ul.ui-line-words:is(:hover, :focus-visible) > li { display: list-item; }
 ul.ui-line-words:is(:hover, :focus-visible) > li + li::before { content: none; }
+}
+@layer ui {
 /* A popover's arrow is part of the same layer. */
 .ui-overlay .ui-popover-arrow svg { fill: var(--layer-overlay); }
 @media (prefers-contrast: more), (forced-colors: active) {
@@ -42,3 +43,4 @@ ul.ui-line-words:is(:hover, :focus-visible) > li + li::before { content: none; }
   .ui-overlay[data-placement="top"] { animation-name: ui-overlay-fade; }
 }
 @keyframes ui-overlay-fade { from { opacity: 0; } }
+}

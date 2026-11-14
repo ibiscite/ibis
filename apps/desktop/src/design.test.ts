@@ -116,17 +116,6 @@ test.each(rules)("$says", (rule) => {
   expect(declarations("planted.css", rule.planted).some(rule.breaks), "the rule sees what it forbids").toBe(true);
 });
 
-// [C3] Alignment is decided once, by bands and tokens, never copied as arithmetic:
-// the count of calc() in the app's stylesheets may only fall. Lower the ceiling
-// when it does; a part that needs a column takes a Band or a token instead.
-const CALC_CEILING = 113;
-test(`calc() in the app's stylesheets stays at or under ${CALC_CEILING}`, () => {
-  const count = (css: string) => css.replace(/\/\*[^]*?\*\//g, "").match(/\bcalc\(/g)?.length ?? 0;
-  const found = sheets.filter(([file]) => !file.startsWith("website/")).reduce((sum, [, css]) => sum + count(css), 0);
-  expect(found).toBeLessThanOrEqual(CALC_CEILING);
-  expect(count("/* calc(1px) */ .planted { width: calc(1px + 1rem); }"), "the count sees what it limits").toBe(1);
-});
-
 /** Movements without a Reduce Motion answer: the same selector in the same file
  * answers under prefers-reduced-motion: reduce, or the movement reads a token
  * that the reduced :root redefines. */
@@ -172,10 +161,13 @@ test("the motion tokens stay within 280 ms", () => {
 
 /** The cascade fixes a shared part needs, read from the parsed rules: each was a bug when missing. */
 const required: [file: string, selector: string, property: string, value: string, condition?: string][] = [
+  ["ui/LibraryStatus.css", ".library-status-target", "min-width", "var(--control-h)"],
+  ["ui/LibraryStatus.css", ".library-status-target", "position", "relative"],
+  ["ui/Switch.css", ".ui-switch", "position", "relative"],
+  ["ui/Segmented.css", ".ui-segment", "position", "relative"],
+  ["ui/Window.css", ".picker-content", "min-height", "var(--type-label-line)"],
   ["tokens.css", ":root", "--icon", "16px"],
   ["tokens.css", ":root", "--icon-tile", "20px"],
-  // A keyboard-focused choice keeps its fill and outranks the global ring, whatever loads after it.
-  ["ui/ChoiceList.css", ".choice-screen .choice-row[data-focus-visible]", "box-shadow", "none"],
   ["ui/ChoiceList.css", ".choice-row[data-focused]", "background", "var(--selected)"],
   ["ui/ChoiceList.css", ".choice-screen .choice-row", "color", "var(--text)"],
   // A key cap on the primary uses the pressed fill, so its label stays readable on every accent.

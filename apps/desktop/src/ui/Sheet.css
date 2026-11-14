@@ -1,10 +1,7 @@
-/* [C13] A sheet's body inside ui/ViewFrame: the only part that scrolls. Its content
-   is one column at most --content-max wide, centred, with the window inset on both
-   sides, so cards sit evenly in the window; its words start on the row text's edge
-   (--heading-offset), as a Section's do. */
+@layer parts {
 .ui-sheet-body { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; overflow-wrap: anywhere; padding: var(--gutter) var(--inset); }
 .ui-sheet-body:focus-visible { outline-offset: var(--ring-inside); }
-.ui-sheet-content { display: flex; flex-direction: column; gap: var(--gutter); width: min(100%, var(--content-max)); margin-inline: auto; }
+.ui-sheet-content { width: min(100%, var(--content-max)); margin-inline: auto; }
 .ui-sheet-content > p, .ui-section > p:not([class]) { margin: 0; padding-inline: var(--heading-offset); }
 .ui-sheet-lead { color: var(--text-secondary); }
 /* What will be copied or saved: kept as written and selectable, on a card. */
@@ -12,3 +9,4 @@
 /* Reserves a line for a spinner or a problem, so nothing above it moves. */
 .ui-sheet-status { min-height: var(--control-small-h); padding-inline: var(--heading-offset); }
 .ui-sheet-status > p { margin: 0; }
+}

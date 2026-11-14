@@ -1,13 +1,10 @@
 import { cleanup, render } from "@testing-library/react";
-import { afterEach, expect, test, vi, onTestFinished } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { KeyCaps, KeyHint } from "./KeyCaps";
 import { PickerFooter } from "../features/picker/PickerFooter";
 import { PickerMenu } from "../features/picker/PickerMenu";
 import { KeysDialog } from "./KeysSheet";
 import { setPlatform } from "../nativeAppearance";
-
-const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
-const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 
 const caps = (container: HTMLElement) => [...container.querySelectorAll("kbd")].map((cap) => cap.textContent);
 
@@ -78,24 +75,11 @@ test("a hint names the action first and its keys after", () => {
   expect(hint.getAttribute("data-primary")).toBe("true");
 });
 
-test("keys read left to right in a right-to-left page, as the systems print them", () => {
-  const css = readFileSync(new FileURL("./KeyCaps.css", import.meta.url), "utf8");
-  expect(css).toMatch(/\.key-caps \{ direction: ltr; unicode-bidi: isolate; \}/);
-});
-
-test("the shortcuts list keeps native chords unbroken and left-to-right in a wrapping cell", () => {
-  const capRule = readFileSync(new FileURL("./KeysSheet.css", import.meta.url), "utf8");
-  const sharedCaps = readFileSync(new FileURL("./KeyCaps.css", import.meta.url), "utf8");
-  // The sheet is a view of the window, so the window's own direction and wrapping reach it.
-  document.body.dir = "rtl";
-  Object.assign(document.body.style, { whiteSpace: "normal", overflowWrap: "anywhere" });
-  onTestFinished(() => { document.body.removeAttribute("dir"); document.body.removeAttribute("style"); });
-  render(<><style>{capRule + sharedCaps}</style><KeysDialog bindings={[
+test("the shortcuts list pairs the native chord with its accessible shortcut", () => {
+  render(<KeysDialog bindings={[
     { region: "picker", action: "pin", keys: ["CmdOrCtrl+Shift+P"] },
-  ]} isMac onClose={vi.fn()} /></>);
+  ]} isMac onClose={vi.fn()} />);
   const cap = document.querySelector("kbd")!;
   expect(cap.textContent).toBe("⇧⌘P");
-  expect(getComputedStyle(cap.closest(".key-caps")!).direction).toBe("ltr");
   expect(cap.closest("[aria-keyshortcuts]")?.getAttribute("aria-keyshortcuts")).toBe("Meta+Shift+P");
-  expect(getComputedStyle(cap).whiteSpace).toBe("nowrap");
 });

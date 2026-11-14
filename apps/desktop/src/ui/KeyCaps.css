@@ -1,5 +1,4 @@
-/* Key caps are filled, never outlined boxes (PowerToys, Raycast, GNOME): a
-   20 px cap on the button fill; contrast modes give it an edge. */
+@layer ui {
 kbd { font: inherit; font-size: var(--type-label-size); font-weight: 500; display: inline-block; min-width: var(--key); height: var(--key); line-height: calc(var(--key) - 2 * var(--border-width)); padding: 0 var(--space-1); text-align: center; background: var(--fill-control); border: var(--border-width) solid var(--stroke-field); border-radius: var(--r-small); margin-inline-start: var(--space-1); }
 @media (prefers-contrast: no-preference) and (forced-colors: none) {
   kbd { border-color: transparent; font-weight: var(--strong); }
@@ -23,3 +22,4 @@ kbd { font: inherit; font-size: var(--type-label-size); font-weight: 500; displa
    surrounding size, full ink under Increase Contrast, no box even in forced colours. */
 kbd[data-plain] { height: auto; min-width: 0; padding: 0; margin: 0; border-width: 0; background: transparent; color: var(--text-secondary); font-size: inherit; font-weight: 400; line-height: inherit; }
 @media (prefers-contrast: more) { kbd[data-plain] { color: var(--text); } }
+}

@@ -3,8 +3,9 @@ import { Button } from "./Button";
 import { flushSync } from "react-dom";
 import { useLayer } from "./layers";
 import { ViewFrame } from "./ViewFrame";
+import { Stack } from "./Stack";
+import { Group } from "./Layout";
 import { useScrollEdges } from "./ScrollArea";
-import "./Layout.css";
 import "./Sheet.css";
 
 /** One of a sheet's footer actions. The primary one runs on Enter too, unless a control in the body has the keyboard. */
@@ -87,17 +88,17 @@ export function Sheet({ title, closeLabel, description, actions, leadingActions,
       focusable[at < 0 ? event.shiftKey ? focusable.length - 1 : 0 : (at + (event.shiftKey ? -1 : 1) + focusable.length) % focusable.length]?.focus();
     }}>
     <div ref={body} className="ui-sheet-body scroll-area" tabIndex={0} role="group" aria-labelledby={titleId} aria-busy={busy || undefined}>
-      <div className="ui-sheet-content">
+      <Stack gap="--space-4" className="ui-sheet-content">
         {description && <p id={aboutId} className="ui-sheet-lead">{description}</p>}
         {children}
-      </div>
+      </Stack>
     </div>
   </ViewFrame>;
 }
 
 /** What a sheet will copy or save, kept as written and selectable, on a card. */
 export function SheetOutput({ children }: { children: ReactNode }) {
-  return <div className="ui-group"><div className="ui-sheet-output" dir="auto">{children}</div></div>;
+  return <Group><div className="ui-sheet-output" dir="auto">{children}</div></Group>;
 }
 
 /** A line reserved under a sheet's content for a spinner or a problem, so nothing above it moves. */

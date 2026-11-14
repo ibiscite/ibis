@@ -1,25 +1,22 @@
-/* Choice screens [C12]: safe centring leaves an overflowing group's start
-   reachable. The existing middle scroll area remains the only scroll owner. */
+@layer parts {
 main .picker-content .results-area:has(.choice-screen) { display: flex; flex-direction: column; flex: 1 0 auto; overflow: visible; min-height: min-content; }
 .empty-state:has(.choice-screen) { display: flex; flex: 1; min-width: 0; padding: 0; }
 .choice-screen { display: flex; flex-direction: column; flex: none; width: 100%; max-width: 25rem; margin: auto; text-align: center; }
 .choice-title, .choice-line { padding-inline: var(--row-pad); margin: 0; overflow-wrap: anywhere; }
 .choice-title { color: var(--text); font-size: var(--type-lead-size); line-height: var(--type-lead-line); font-weight: var(--strong); }
-.choice-line { margin-top: var(--space-1); color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
-.choice-list { display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-6); outline: none; text-align: start; }
+.choice-line { color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
+.choice-list { display: flex; flex-direction: column; gap: var(--space-1); outline: none; text-align: start; }
 .choice-screen .choice-row { display: flex; align-items: center; gap: var(--row-gap); min-width: 0; height: auto; padding-inline: var(--row-pad); border-radius: var(--r-control); outline: none; color: var(--text); cursor: default; }
 .choice-screen .choice-row + .choice-row { margin-top: 0; }
 .choice-screen .result-title, .choice-screen .choice-help { white-space: normal; overflow: visible; display: block; overflow-wrap: anywhere; }
 :root[data-density="compact"] .choice-screen .choice-help { display: block; }
-.choice-footnote { margin-top: var(--space-4); }
 .choice-help { margin-top: var(--space-1); }
 .choice-tag { max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.choice-line-title { justify-content: start; }
 .choice-line-title > .result-title { flex: 0 1 auto; }
-.choice-line-title > .choice-keys { margin-inline-start: 0; white-space: nowrap; }
+.choice-keys { margin-inline-start: 0; white-space: nowrap; }
 .choice-row[data-focused] .choice-keys { color: var(--selected-text-secondary); }
 .choice-row[data-suggested] .choice-tile { background: var(--accent); color: var(--text-on-accent); }
-/* The focused row is the active one, filled as a selected result row. */
-.choice-screen .choice-row[data-focus-visible] { outline: none; box-shadow: none; }
 .choice-row[data-focused] { background: var(--selected); color: var(--selected-text); }
 .choice-row[data-focused] .choice-help, .choice-row[data-focused] .choice-tag { color: var(--selected-text-secondary); }
 /* A list row's tile takes the selected row's tile fill; grid cards draw no tile behind a glyph. */
@@ -54,3 +51,4 @@ main .picker-content .results-area:has(.choice-screen) { display: flex; flex-dir
 .library-setup { display: flex; flex: 1; min-width: 0; }
 .welcome-note { display: block; }
 .welcome-note + .welcome-note { margin-top: var(--space-2); }
+}

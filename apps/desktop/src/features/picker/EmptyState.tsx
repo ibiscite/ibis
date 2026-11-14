@@ -11,6 +11,7 @@ import { IbisMark } from "../../ui/IbisMark";
 import { zoteroWaits } from "./PickerLibraryStatus";
 import { useWhileShown } from "./useWhileShown";
 import "../../ui/EmptyState.css";
+import { Stack } from "../../ui/Stack";
 import { libraryMessages } from "../../libraryWords";
 
 // The empty-state contract keeps fast library opens free of transient content.
@@ -35,16 +36,20 @@ function LibraryProgress({ library }: { library: LibraryStatus }) {
   if (!visible) return null;
   const progress = library.state === "reloading" ? libraryMessages.reloading : libraryMessages.opening;
   const name = library.name || null;
-  return <div className="empty-opening" role="status" aria-live="polite">
+  return <Stack gap="--space-4" className="empty-opening" role="status" aria-live="polite">
+    <Stack gap="--space-3">
     <IbisMark className="opening-mark" />
+    <Stack gap="--space-1">
     <p className="opening-title" aria-hidden="true" dir="auto">{progress(shortName(name))}</p>
     <p className="opening-line">{say("setup-opening-line")}</p>
+    </Stack>
+    </Stack>
     {/* LibraryStatus reports snapshot counts, never read progress: do not turn
         the retained count into a made-up percentage. */}
     <IndeterminateProgress className="opening-progress update-progress" label={progress(name)}>
       <div className="update-track" aria-hidden="true"><div /></div>
     </IndeterminateProgress>
-  </div>;
+  </Stack>;
 }
 
 /** Every choice row has a help line [C12]: what opening the source does here. */
@@ -186,14 +191,19 @@ export function EmptyState({ library, query, narrowed, unfiltered = null, missin
   const filtered = Boolean(query) && unfiltered !== null && Boolean(onRemoveFilter);
   const scoped = Boolean(query) && !filtered && narrowed;
   const absent = Boolean(query) && !filtered && !scoped && missing;
+  const greeted = peck && !query;
   const title = filtered ? say("picker-filter-obstacle") : absent ? say("picker-not-in-libraries") : query ? say("picker-no-matches") : say("picker-type-to-find");
   const description = filtered ? say("picker-filter-obstacle-hint") : scoped ? say("picker-scope-obstacle-hint") : absent ? say("picker-not-in-libraries-hint")
     : query ? say("picker-no-matches-hint") : library.sample ? say("setup-sample-search-help") : say("picker-type-to-find-hint");
   return (
-    <div className="empty-state empty-template">
-      {peck && !query ? <IbisMark className="opened-mark" size="welcome" motion="peck" /> : <Icon name="find" size="tile" className="empty-icon" />}
-      <p className="empty-title" dir="auto">{title}</p>
-      <p className="empty-description">{description}</p>
+    <Stack gap="--space-4" className="empty-state empty-template">
+      <Stack gap={greeted ? "--space-2" : "--space-3"} shortGap={greeted ? "--space-2" : "--space-1"}>
+        {greeted ? <IbisMark className="opened-mark" size="welcome" motion="peck" /> : <Icon name="find" size="tile" className="empty-icon" />}
+        <Stack gap="--space-2">
+          <p className="empty-title" dir="auto">{title}</p>
+          <p className="empty-description">{description}</p>
+        </Stack>
+      </Stack>
       {query ? <div className="empty-actions">
         {filtered ? <Button variant="primary" className="empty-primary" onPress={() => onRemoveFilter?.(unfiltered!)}>{say("picker-remove-filter")}</Button>
           : scoped ? <Button variant="primary" className="empty-primary" onPress={onSearchAll}>{say("picker-search-all-libraries")}</Button>
@@ -201,6 +211,6 @@ export function EmptyState({ library, query, narrowed, unfiltered = null, missin
         {/* Nothing matched is never a dead end: the library is one key away. */}
         {!filtered && !scoped && fallback && <Button variant="quiet" label={fallback.label} keys={fallback.keys} onPress={fallback.open} />}
       </div> : null}
-    </div>
+    </Stack>
   );
 }

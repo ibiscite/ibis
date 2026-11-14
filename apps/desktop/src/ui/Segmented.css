@@ -1,4 +1,4 @@
-/* Segmented control, as AppKit draws it: a quiet track, the chosen segment a darker fill. */
+@layer ui {
 .ui-segmented {
   display: inline-flex; gap: var(--row-spacing); padding: var(--row-spacing); border-radius: var(--r-control);
   flex-wrap: wrap; min-width: 0; max-width: 100%; box-sizing: border-box;
@@ -21,4 +21,5 @@
 @media (pointer: coarse) { .ui-segment { min-height: var(--touch-target); } }
 @media (prefers-contrast: more), (forced-colors: active) {
   .ui-segment[data-selected] { forced-color-adjust: none; background: Highlight; color: HighlightText; box-shadow: none; }
+}
 }

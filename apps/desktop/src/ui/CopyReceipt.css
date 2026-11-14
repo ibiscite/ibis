@@ -1,9 +1,4 @@
-/* The same receipt in the picker and the notice window. What was copied is
-   the hero: the citation in the text colour at body size, monospaced as it
-   was copied. Above it, a quiet line says what happened. A green check in a
-   soft green circle confirms success, centred on both lines. A long reason
-   wraps and is never clipped; the citation stays one line, ending in "…"
-   with its "+N more" in view. */
+@layer parts {
 .copy-receipt { box-sizing: border-box; display: grid; grid-template-columns: var(--icon-tile) minmax(0, 1fr); align-items: center; column-gap: var(--space-3); row-gap: 0; padding: var(--space-2) var(--space-4) var(--space-2) var(--space-3); border: var(--border-width) solid var(--separator); border-radius: var(--r-large); background: var(--surface); color: var(--text-secondary); box-shadow: var(--shadow-toast); font: 400 var(--type-label-size) / var(--type-label-line) var(--font); }
 .copy-receipt > strong { grid-column: 2; min-width: 0; font: inherit; overflow-wrap: anywhere; text-wrap: balance; }
 .copy-receipt-change { appearance: none; border: none; padding: 0; background: transparent; color: var(--accent); font: inherit; cursor: pointer; }
@@ -21,3 +16,4 @@
 .copy-receipt-note { grid-column: 2; min-width: 0; margin-top: var(--space-1); text-wrap: pretty; overflow-wrap: anywhere; }
 .copy-receipt-excerpt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .copy-receipt-more { flex: none; color: var(--text-secondary); font: 400 var(--type-label-size) / var(--type-body-line) var(--font); }
+}

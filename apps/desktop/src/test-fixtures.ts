@@ -33,5 +33,4 @@ const many = Array.from({ length: 20 }, (_, index) => reference(`example${index 
 export const testStates = [
   { id: "no-results", library: library(), query: "unmatched phrase", results: [] },
   { id: "many-results", library: library(), query: "memory", results: many },
-  { id: "tray-20", library: library({ references: 50 }), query: "selection", results: [] },
 ];

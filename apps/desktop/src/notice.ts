@@ -1,3 +1,4 @@
+import "./tokens.css";
 // The Copied or Pasted notice window. It shows the message it is sent, fades out by
 // itself and never takes focus; the app closes or hides the window.
 import { listen } from "@tauri-apps/api/event";
@@ -6,7 +7,6 @@ import { commands } from "./bindings";
 import { leaveNotice, noticePlatform, readNotice, renderNotice } from "./copyFeedback";
 import { say } from "./i18n";
 import { setPlatform } from "./nativeAppearance";
-import "./tokens.css";
 import "./ui/CopyReceipt.css";
 import "./ui/CopiedNotice.css";
 

@@ -1,3 +1,5 @@
+@layer tokens, base, ui, parts, utilities;
+@layer tokens {
 /* Ibis tokens, the same names and values as the canvas (docs/design/foundations.md, "Tokens").
    Three layers, each value declared once:
      1 Primitives  raw values, named by what they are.
@@ -394,3 +396,4 @@
   }
 }
 /* END generated website palette */
+}

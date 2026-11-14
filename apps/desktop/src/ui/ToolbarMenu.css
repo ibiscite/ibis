@@ -1,3 +1,4 @@
+@layer parts {
 .toolbar-menu-control { display: inline-flex; align-items: center; min-height: var(--control-h); }
 .search-bar .toolbar-menu-control, .search-bar .toolbar-menu-button { min-height: var(--field-h); }
 /* The 28 px macOS fill retains its 32 px target inside the toolbar. */
@@ -39,6 +40,7 @@
 }
 /* In the search bar the format pop-up is quiet like the × and pin beside it: no
    plate at rest, its chevrons say it opens; the plate shows on hover and while open. */
-.search-bar .ui-popup-button.ui-button[data-variant] { background: transparent; }
-@media (hover: hover) { .search-bar .ui-popup-button.ui-button[data-variant][data-hovered]:not([data-disabled]) { background: var(--fill-quiet-hover); } }
-.search-bar .ui-popup-button.ui-button[data-variant]:is([data-pressed], [aria-expanded="true"]) { background: var(--fill-control-hover); }
+.search-bar .ui-popup-button[data-variant] { background: transparent; }
+@media (hover: hover) { .search-bar .ui-popup-button[data-variant][data-hovered]:not([data-disabled]) { background: var(--fill-quiet-hover); } }
+.search-bar .ui-popup-button[data-variant]:is([data-pressed], [aria-expanded="true"]) { background: var(--fill-control-hover); }
+}

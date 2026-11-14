@@ -1,5 +1,4 @@
-/* The picker's search bar: the window's drag region, the large frameless search field
-   and the controls beside it. Welcome has no search yet, so the bar can be hidden. */
+@layer ui {
 .search-bar { --band-gap: var(--space-1); flex-wrap: wrap; min-height: var(--header-h); padding-block: var(--inset); border-bottom: var(--border-width) solid var(--separator); cursor: move; user-select: none; }
 .search-bar[hidden] { display: none; }
 /* The mark centres in the band's icon column and the query starts on the label
@@ -16,9 +15,7 @@
 #search::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
 /* Controls fill the field's height, so their gap to the window's top and side is
    one --inset and their corners nest in the window's (docs/design/foundations.md, Corners). */
-.search-bar .pin-button { flex: none; margin-inline-start: auto; }
 .search-bar .ui-popup-button.ui-button[data-variant] { min-height: var(--field-h); border-radius: var(--r-control); }
-.search-bar .pin-button.ui-button[data-variant] { --icon-button-size: var(--field-h); border-radius: var(--r-control); }
 .search-page-token { display: flex; flex: none; align-items: center; gap: var(--space-1); min-width: 0; max-width: 50%; font: var(--type-label-size) / var(--type-label-line) var(--font); }
 .search-page-token > .ui-button { min-width: 0; max-width: 100%; border-radius: var(--r-full); background: var(--chip); }
 .search-page-token bdi { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -40,3 +37,4 @@
   .search-bar { padding-block: 0; row-gap: 0; }
   .search-bar .toolbar-menu-control { min-width: 0; max-width: calc(100% - var(--field-h) - var(--space-1)); }
 } }
+}

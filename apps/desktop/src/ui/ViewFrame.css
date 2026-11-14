@@ -1,8 +1,4 @@
-/* A view of the window (ui/ViewFrame.tsx): the picker's content swaps out and the view
-   fills the window edge to edge, in the picker's own geometry: the search bar's
-   header (the back chevron on the tile column, the title or search
-   starting on the title column), one body, and the footer's band. No card, border,
-   corner or shadow of its own: it is the window, as the picker is. */
+@layer parts {
 :root[data-view] main { visibility: hidden; }
 .ui-view {
   position: fixed; inset: 0; z-index: var(--z-modal); display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--layer-view);
@@ -21,7 +17,7 @@
    and row tiles sit, a full 32 px square (44 px for coarse pointers); the title or
    search starts on the label column, and both share the header's centre line. */
 .ui-view-head { flex: none; min-height: var(--header-h); padding-block: var(--inset); border-block-end: var(--border-width) solid var(--separator); }
-.ui-view-head .ui-view-back.ui-button[data-variant] { --icon-button-size: var(--hit); }
+.ui-view-head .ui-view-back[data-variant] { --icon-button-size: var(--hit); }
 .ui-view-title { flex: 1; min-width: 0; margin: 0; color: var(--text); font-size: var(--type-title-size); line-height: var(--type-title-line); font-weight: var(--strong); overflow-wrap: anywhere; }
 /* A view's search is the picker's: frameless and large. */
 .ui-view-field { flex: 1; min-width: 0; height: var(--field-h); padding: 0; border: 0; background: transparent; color: var(--text); font-size: var(--type-search-size); line-height: var(--type-search-line); letter-spacing: -.025em; }
@@ -38,7 +34,8 @@
 }
 .ui-view-foot > .ui-band-trailing { flex: 0 1 auto; flex-wrap: wrap; justify-content: end; gap: var(--space-2) var(--space-3); }
 .ui-view-status { flex: 1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
-.ui-view-back-hint.ui-button[data-variant] { color: var(--text-secondary); }
-.ui-view-back-hint.ui-button[data-variant] > .key-hint { flex-wrap: nowrap; white-space: nowrap; }
+.ui-view-back-hint[data-variant] { color: var(--text-secondary); }
+.ui-view-back-hint[data-variant] > .key-hint { flex-wrap: nowrap; white-space: nowrap; }
 /* A leading text action starts its words, not its hover plate, on the title column, as the status words do. */
 .ui-view-status > .ui-button[data-size="small"]:first-child { margin-inline-start: calc(-1 * (var(--space-2) + var(--border-width))); }
+}

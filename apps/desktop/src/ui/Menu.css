@@ -1,7 +1,4 @@
-/* In-window menus (More, format, library scope): one frame and one row, with
-   the native menu's metrics on the token scales: a --r-large frame, a
-   --space-1 pad and --r-control rows, so the corners are concentric (12 - 4 = 8).
-   The surface is the shared overlay (Overlay.css). */
+@layer parts {
 .menu-popover {
   /* Labels start after the item padding, one icon/check column and the gap. */
   --menu-gutter: calc(var(--icon) + var(--space-2)); --menu-label-start: calc(var(--space-2) + var(--menu-gutter));
@@ -20,8 +17,6 @@
    outside it and rows keep equal insets on both sides (#1031). */
 .menu-popover [role="menu"] { position: static; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding-inline: var(--space-1); outline: none; }
 .menu-popover > :not([role="menu"]) { margin-inline: var(--space-1); }
-/* Outranks the global ring, which the list would clip into lines at its top and bottom. */
-.menu-popover [role="menu"]:focus-visible { outline: none; box-shadow: none; }
 .menu-section { display: flex; flex: none; flex-direction: column; }
 /* A long list scrolls inside the menu after eight rows. */
 .menu-section-list { max-height: calc(8 * var(--control-small-h)); overflow-y: auto; }
@@ -30,7 +25,8 @@
 .menu-header { padding-inline: var(--space-2); }
 /* The one section title (.ui-list-heading), as macOS menus write one: aligned with the item labels. */
 .menu-heading { padding-block: var(--space-2) var(--space-1); padding-inline: var(--menu-label-start) var(--space-2); }
-.menu-detail { width: max-content; min-width: 100%; max-width: 20rem; margin: 0; padding: var(--space-1) 0 var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); overflow-wrap: break-word; }
+.menu-detail { width: max-content; min-width: 100%; max-width: 20rem; margin: 0; padding: var(--space-1) 0 var(--space-2); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); }
+.menu-detail > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* A menu heading: small, bold and secondary like .menu-heading, never an item. */
 .menu-detail-title { font-weight: var(--strong); }
 /* The detail widens the menu to its longest fact, up to its limit, so a short
@@ -46,7 +42,7 @@
 /* Checks and icons share one leading column; plain rows and headings reserve
    it too, including menus of radio choices or source actions. */
 .menu-check { flex: 0 0 var(--icon); display: inline-flex; align-items: center; justify-content: center; }
-:root .menu:has(.menu-check) :is(.menu-item:not(:has(> .menu-check)), .menu-header) { padding-inline-start: var(--menu-label-start); }
+.menu:has(.menu-check) :is(.menu-item:not(:has(> .menu-check)), .menu-header) { padding-inline-start: var(--menu-label-start); }
 /* Grow to the intrinsic label width first; at the viewport limit full action
    labels wrap while checks and shortcut units retain their columns. */
 /* One line, as Mac menus: a label sizes the menu and ends in an ellipsis only at
@@ -55,8 +51,6 @@
 .menu-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .menu-keys { flex: none; white-space: nowrap; margin-inline-start: var(--space-4); color: var(--text-secondary); font: inherit; }
 .menu-example { flex: none; margin-inline-start: var(--space-4); color: var(--text-secondary); }
-.menu-submenu-arrow { flex: none; margin-inline-start: var(--space-2); }
-[dir="rtl"] .menu-submenu-arrow { transform: scaleX(-1); }
 .menu-item[data-focused] { background: var(--selected); color: var(--selected-text); }
 .menu-item[data-focused] :is(.menu-example, .menu-keys, .source-icon) { color: inherit; }
 .menu-item[aria-disabled="true"] { color: var(--text-secondary); }
@@ -64,4 +58,5 @@
 @media (forced-colors: active) {
   .menu-item[data-focused] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
   .menu-item[aria-disabled="true"] { color: GrayText; }
+}
 }

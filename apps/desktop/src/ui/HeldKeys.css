@@ -1,7 +1,4 @@
-/* [C24 held] A key in its control's place while ⌘ is held (ui/HeldKeys): plain
-   text, never a cap on a plate, over the control's own box while its words or
-   glyph step aside. A row's number ends where the icon column ends, so a wide
-   "Ctrl+1" grows towards the row's edge and keeps the gap before the title. */
+@layer parts {
 .ui-key-mark { display: none; color: var(--text-secondary); }
 :root[data-keys-held] .ui-key-mark {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; white-space: nowrap; pointer-events: none;
@@ -10,3 +7,4 @@
 :root[data-keys-held] :has(> .ui-key-mark) > :not(.ui-key-mark) { visibility: hidden; }
 [data-active] .ui-key-mark { color: var(--selected-text-secondary); }
 @media (prefers-contrast: more) { .ui-key-mark { color: var(--text); } }
+}

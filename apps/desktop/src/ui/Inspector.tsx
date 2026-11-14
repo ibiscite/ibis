@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, type KeyboardEventHandler, type ReactNode, type Ref } from "react";
 import { IconButton } from "./IconButton";
 import { useScrollEdges } from "./ScrollArea";
+import { Stack } from "./Stack";
 import { composingKey, useLayer } from "./layers";
 import "./Inspector.css";
 
@@ -29,13 +30,13 @@ export function Inspector({ ref, id, label, heading, byline, closeLabel, documen
     onKeyDown={(event) => { if (layer.nearest() && !composingKey(event.nativeEvent)) onKeyDown?.(event); }}>
     <div className="inspector-body">
       <div className="inspector-sidebar">
-        <div ref={column} className="inspector-column scroll-area" tabIndex={readOnly ? 0 : undefined}>
+        <Stack ref={column} gap="--space-1" className="inspector-column scroll-area" tabIndex={readOnly ? 0 : undefined}>
           {/* Title and byline are one block beside ×, so a two-line title pushes the byline down instead of covering it. */}
           <header className="inspector-heading"><div className="inspector-titles"><h2><bdi dir="auto">{heading}</bdi></h2>
             {byline && <p className="inspector-byline"><bdi dir="auto">{byline}</bdi></p>}</div><IconButton aria-label={closeLabel} onPress={onClose} /></header>
           {children}
-        </div>
-        {footer}
+        </Stack>
+        {footer && <div className="inspector-actions">{footer}</div>}
       </div>
       {page && <div className="inspector-document">{page}</div>}
     </div>

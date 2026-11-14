@@ -5,10 +5,6 @@ import { say } from "../../i18n";
 import { backend, resetApp } from "../../testing/app";
 import { dismissMenu, hasMiddleViewport, isSeatedInspector, isWholeNotice, isWholeShelf, layoutGeometry, noticeText, waitForLayout } from "./picker-layout-checks.mjs";
 
-const { readFileSync } = await vi.importActual("node:fs");
-const { URL: FileURL } = await vi.importActual("node:url");
-const pickerStyles = readFileSync(new FileURL("../../ui/Window.css", import.meta.url), "utf8") + readFileSync(new FileURL("../../ui/Footer.css", import.meta.url), "utf8");
-
 afterEach(async () => {
   await resetApp();
   vi.restoreAllMocks();
@@ -30,20 +26,6 @@ test("a collapsed middle viewport fails even when the refusal starts exactly at 
   expect(hasMiddleViewport()).toBe(true);
   height = 0;
   expect(hasMiddleViewport()).toBe(false);
-});
-
-test("shared CSS reserves a readable middle viewport before allocating spare band space", () => {
-  const style = document.createElement("style");
-  style.textContent = pickerStyles.replace(/@import[^;]+;/g, "");
-  document.head.append(style);
-  try {
-    render(<main><div className="picker-content" /></main>);
-    const middle = document.querySelector(".picker-content");
-    // jsdom cannot allocate flex geometry. Reject the actual zero minimum
-    // that allowed the enlarged fixed bands to consume the whole frame; the
-    // browser's hasMiddleViewport check verifies the resulting geometry.
-    expect(["", "auto", "0", "0px"]).not.toContain(getComputedStyle(middle).minHeight);
-  } finally { style.remove(); }
 });
 
 test.each([false, true])("the probe waits for menu exit before the next action (filter=%s)", async (filtered) => {

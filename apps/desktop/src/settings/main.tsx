@@ -1,3 +1,4 @@
+import "../tokens.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { setPlatform } from "../nativeAppearance";
@@ -5,7 +6,6 @@ import { settingsApi } from "./api";
 import { SettingsApp } from "./SettingsApp";
 import { createInterfaceMessages, englishMessages, InterfaceMessagesProvider } from "../i18n";
 import english from "../../../../locales/en-US.ftl?raw";
-import "../tokens.css";
 import "../ui/Foundation.css";
 
 setPlatform();

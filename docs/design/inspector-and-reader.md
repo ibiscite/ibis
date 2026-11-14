@@ -21,7 +21,7 @@ The regions that unfold beside the list ([the model](../design.md#the-model), de
 [C19] The Reader and a citation's warnings are never an overlay. They open in a panel beside the list, as Preview's sidebar does.
 
 - **Where**: in the middle row, on the trailing edge, `--inspector-width` wide, with the shelf running under both. Its divider runs the whole row it splits, as a Mac split view's does: it meets the search bar's divider at the top and the shelf at the bottom, and the content keeps S inside it (checked by `canvas/geometry.ts`). The window stays its one steady size. Search, list, shelf and footer stay where they are and stay live. Below 36 rem wide the panel takes the list's place instead.
-- **Warnings** list what the engine said about the citation, in words.
+- **Warnings** list what the engine said about the citation, in words. The Inspector's footer slot draws its divider and insets; actions fill that slot without margins or width arithmetic.
 - **A wider panel**: at 34 rem the column keeps its width on the trailing edge and the document sits beside it, scrolling alone.
 
 ## Reader (planned, #1252)
