@@ -138,6 +138,8 @@ windows_needed=false
 while IFS= read -r -d '' path; do
   case "$path" in
     *.ps1|apps/desktop/src-tauri/packaging/*|apps/desktop/src-tauri/tauri*.json|scripts/*package*|scripts/build-*|scripts/*install*|scripts/*windows*|scripts/*command-path*|scripts/*offline*|scripts/*update*|scripts/land*|scripts/check.mjs|.github/workflows/ci.yml|.github/workflows/preview.yml) windows_needed=true;;
+    # Rust compiles differently on Windows (cfg(windows) paths): every Rust change is checked there.
+    *.rs|Cargo.toml|*/Cargo.toml|Cargo.lock) windows_needed=true;;
   esac
 done < "$paths_file"
 root=$(git rev-parse --show-toplevel)
@@ -256,6 +258,11 @@ try {
   git checkout -q --detach $sha
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   node scripts/check.mjs windows
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  # The laptop's warm build cache; gates run one at a time.
+  $env:CARGO_TARGET_DIR = Join-Path $env:USERPROFILE 'Code\ibis\target'
+  $env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
+  node scripts/check.mjs windows-rust
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 } finally { $lock.Dispose() }
 WINDOWS
