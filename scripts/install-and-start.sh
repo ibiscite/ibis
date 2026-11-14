@@ -19,6 +19,31 @@ show() {
 }
 stays_up=scripts/stays-up.py
 
+check_command() {
+  local reference="cli/$(basename "$1")" command answer expected
+  # Preview already unpacked the standalone command from this same release.
+  for command in "$reference" "$1"; do
+    if [ ! -f "$command" ] || [ ! -x "$command" ]; then
+      echo "::error::Command is missing or not executable: $command"
+      return 1
+    fi
+    if ! answer=$("$command" --version); then
+      echo "::error::Command --version failed: $command"
+      return 1
+    fi
+    if [[ ! "$answer" =~ ^ibis\ [0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+      echo "::error::Command returned an invalid version: $command"
+      return 1
+    fi
+    if [ "$command" = "$reference" ]; then
+      expected="$answer"
+    elif [ "$answer" != "$expected" ]; then
+      echo "::error::Command version differs from $reference: $command"
+      return 1
+    fi
+  done
+}
+
 journey() {
   [ "${IBIS_INSTALLED_JOURNEY:-0}" = 1 ] || return 0
   local python=python3
@@ -66,6 +91,7 @@ macos() {
   test -f "$app"
   test -x "$app"
   echo "installed at $app"
+  check_command "$installed/Contents/MacOS/ibis"
   show python3 "$stays_up" "$app"
   journey
   rm -rf "$installed"
@@ -84,6 +110,7 @@ windows() {
   app="$dir/ibis-desktop.exe"
   test -f "$app" || { echo "::error::The setup executable installed no desktop app in $dir"; exit 1; }
   echo "installed at $app"
+  check_command "$dir/ibis.exe"
   show python "$stays_up" "$app"
   journey
   "$dir/uninstall.exe" //S
@@ -112,6 +139,7 @@ windows() {
   app="$dir/ibis-desktop.exe"
   test -f "$app" || { echo "::error::The MSI installed no desktop app in $dir"; exit 1; }
   echo "installed at $app"
+  check_command "$dir/ibis.exe"
   show python "$stays_up" "$app"
   if ! msiexec x; then
     show sh -c 'tail -n 40; exit 1' msiexec < <(msi_log x)
