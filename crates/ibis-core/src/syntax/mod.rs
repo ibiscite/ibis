@@ -754,7 +754,6 @@ fn resolve<'a>(
             || key
                 .chars()
                 .any(|c| c.is_whitespace() || c.is_control() || matches!(c, ',' | '{' | '}'))
-            || caps.exports_records && crate::citable::points_to_device(key)
             || caps.syntax == KeySyntax::Bibtex && !bibtex::valid_key(key)
             || caps.escaping == Escaping::Latex && key.contains(['%', '#', '\\', '~', '^', '$', '&'])
             || !escape::key_fits(caps.escaping, key)

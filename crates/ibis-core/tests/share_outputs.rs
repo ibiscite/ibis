@@ -158,6 +158,21 @@ fn csl_json_keeps_plain_source_tokens_but_never_url_shaped_ids() {
 }
 
 #[test]
+fn record_exports_preserve_citation_keys_that_resemble_device_paths() {
+    for format in ["csl-json", "bibtex"] {
+        let case = case(format, json!({"type":"book","title":"Invented atlas"}), Some("a:/_"));
+        let result = syntax::cite(&case.library, &case.request).unwrap();
+        assert!(result.copy_content(1).is_some(), "{format}: {:?}", result.outcomes);
+        if format == "csl-json" {
+            let records: Value = serde_json::from_str(&result.text).unwrap();
+            assert_eq!(records[0]["citation-key"], "a:/_");
+        } else {
+            assert!(result.text.starts_with("@book{a:/_,"), "{}", result.text);
+        }
+    }
+}
+
+#[test]
 fn record_sharing_removes_device_paths_after_value_delimiters() {
     for value in [
         "path=/Users/invented/secret.pdf",

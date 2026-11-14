@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc bd0f807034c17123044fa4f3a38a6170e9b0cfdb268e5c65019a5a757cdbb180 # shrinks to key = "a", fragments = []
+cc 918db1b67a5616703386489d4182a0467166e1456f6b691984c70cf2fccb4d48 # shrinks to key = "a:/_", fragments = []
