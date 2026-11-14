@@ -98,6 +98,8 @@ class CaptureTests(unittest.TestCase):
             self.assertEqual([call.args[0][0] for call in commands.call_args_list], ["cargo"] * len(state.seed))
             archive.assert_not_called()
 
+    # real-zotero.sh is a bash tool for macOS and Linux; Windows paths do not reach it intact.
+    @unittest.skipIf(sys.platform == "win32", "real-zotero.sh runs on macOS and Linux")
     def test_capture_cli_forwards_existing_and_local_selection_invocations(self):
         tools = self.root / "tools"
         tools.mkdir()
