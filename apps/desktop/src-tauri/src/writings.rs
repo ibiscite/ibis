@@ -8,38 +8,38 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use ibis_core::destination::{AppId, System};
-use ibis_core::settings::writing_projects::{self as projects, ProjectError, WritingProject};
-use ibis_core::settings::{self, Settings};
+use ibis_engine::settings::writings::{self as definitions, Writing, WritingError};
+use ibis_engine::settings::{self, Settings};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::output::OutputRef;
 use crate::preferences::SettingsFile;
 
-const CHANGED: &str = "The writing project changed. Open the project menu again.";
-const REOPEN: &str = "The destination changed. Open the project menu again.";
-const EDITOR: &str = "This editor request chooses its own output. Finish it before changing writing projects.";
+const CHANGED: &str = "The writing changed. Open the format menu again.";
+const REOPEN: &str = "The destination changed. Open the format menu again.";
+const EDITOR: &str = "This editor request chooses its own output. Finish it before changing writings.";
 
 /// The session-only project of an app Ibis cannot identify; never saved.
 #[derive(Default)]
 pub(crate) struct Runtime(Mutex<Option<String>>);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
-pub(crate) struct WritingProjectView {
+pub(crate) struct WritingView {
     pub(crate) id: String,
     pub(crate) name: String,
-    /// A CLI project can name outputs not yet available in the picker.
+    /// A writing can name outputs not yet available in the picker.
     #[schemars(with = "Option<String>")]
     pub(crate) output: Option<OutputRef>,
     pub(crate) bibliography: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
-pub(crate) struct WritingProjectsView {
-    pub(crate) projects: Vec<WritingProjectView>,
+pub(crate) struct WritingsView {
+    pub(crate) writings: Vec<WritingView>,
     pub(crate) selected: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) active: Option<WritingProjectView>,
+    pub(crate) active: Option<WritingView>,
     pub(crate) session_only: bool,
     /// Owns one picker opening and captured destination; never a path or title.
     pub(crate) context: String,
@@ -47,7 +47,7 @@ pub(crate) struct WritingProjectsView {
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
-pub(crate) enum WritingProjectEdit {
+pub(crate) enum WritingEdit {
     Create {
         name: String,
         #[schemars(with = "String")]
@@ -72,7 +72,7 @@ pub(crate) enum WritingProjectEdit {
 
 #[derive(Debug)]
 enum ChangeError {
-    Project(ProjectError),
+    Project(WritingError),
     Stale,
     Destination,
     Editor,
@@ -87,19 +87,19 @@ impl fmt::Display for ChangeError {
             Self::Destination => formatter.write_str(REOPEN),
             Self::Editor => formatter.write_str(EDITOR),
             Self::Unsupported => {
-                formatter.write_str("This project's output is not available in the picker. Choose another format.")
+                formatter.write_str("This writing's format is not available in the picker. Choose another format.")
             }
         }
     }
 }
-impl From<ProjectError> for ChangeError {
-    fn from(error: ProjectError) -> Self {
+impl From<WritingError> for ChangeError {
+    fn from(error: WritingError) -> Self {
         Self::Project(error)
     }
 }
 impl From<settings::SettingsError> for ChangeError {
     fn from(error: settings::SettingsError) -> Self {
-        Self::Project(ProjectError::Settings(error))
+        Self::Project(WritingError::Settings(error))
     }
 }
 
@@ -156,11 +156,10 @@ fn context_token_for(target: &Target, activation: u32) -> String {
 
 fn read_settings(path: &Path) -> Result<Settings, String> {
     let loaded = settings::load(path);
-    // The existing settings recovery policy treats a validated backup as the
-    // chosen settings, with its warning shown in Settings. With no valid copy,
-    // never turn an unreadable selected project into a default-format paste.
-    if loaded.problem.is_some() && !loaded.from_backup {
-        return Err("Writing projects could not be read. Check Settings and try again.".to_owned());
+    // An unreadable edit never substitutes an older backup's writing for the
+    // current one while a citation is being committed.
+    if let Some(problem) = loaded.problem {
+        return Err(crate::preferences::settings_message(&problem));
     }
     Ok(loaded.settings)
 }
@@ -181,28 +180,26 @@ fn selected<'a>(settings: &'a Settings, target: &Target, session: Option<&'a str
     target
         .binding
         .as_ref()
-        .map_or(session, |key| {
-            settings.writing_project_apps.get(key).map(String::as_str)
-        })
-        .filter(|id| projects::find(settings, id).is_ok())
+        .map_or(session, |key| settings.writing_apps.get(key).map(String::as_str))
+        .filter(|id| definitions::find(settings, id).is_ok())
 }
 
-fn saved_view(project: &WritingProject) -> WritingProjectView {
-    WritingProjectView {
-        id: project.id.clone(),
+pub(crate) fn saved_view(project: &Writing) -> WritingView {
+    WritingView {
+        id: project.name.clone(),
         name: project.name.clone(),
-        output: crate::output::of_project(&project.output).ok(),
+        output: crate::output::of_writing(&project.format).ok(),
         bibliography: project.bibliography.as_deref().map(ibis_engine::project_name),
     }
 }
 
-fn view_for(settings: &Settings, target: &Target, session: Option<&str>) -> WritingProjectsView {
+fn view_for(settings: &Settings, target: &Target, session: Option<&str>) -> WritingsView {
     let selected = selected(settings, target, session);
-    WritingProjectsView {
-        projects: settings.writing_projects.iter().map(saved_view).collect(),
+    WritingsView {
+        writings: settings.writings.iter().map(saved_view).collect(),
         selected: selected.map(str::to_owned),
         active: selected
-            .and_then(|id| projects::find(settings, id).ok())
+            .and_then(|id| definitions::find(settings, id).ok())
             .map(saved_view),
         session_only: target.binding.is_none(),
         context: target.context(),
@@ -211,7 +208,7 @@ fn view_for(settings: &Settings, target: &Target, session: Option<&str>) -> Writ
 
 /// Native-only context. The bibliography path never enters an IPC view.
 #[derive(Debug, Clone)]
-pub(crate) struct ActiveProject {
+pub(crate) struct ActiveWriting {
     pub(crate) id: String,
     pub(crate) name: String,
     pub(crate) output: OutputRef,
@@ -219,9 +216,9 @@ pub(crate) struct ActiveProject {
     pub(crate) context_key: String,
 }
 
-impl ActiveProject {
-    pub(crate) fn view(&self) -> WritingProjectView {
-        WritingProjectView {
+impl ActiveWriting {
+    pub(crate) fn view(&self) -> WritingView {
+        WritingView {
             id: self.id.clone(),
             name: self.name.clone(),
             output: Some(self.output),
@@ -230,18 +227,18 @@ impl ActiveProject {
     }
 }
 
-fn active_for(settings: &Settings, target: &Target, session: Option<&str>) -> Result<Option<ActiveProject>, String> {
+fn active_for(settings: &Settings, target: &Target, session: Option<&str>) -> Result<Option<ActiveWriting>, String> {
     let Some(id) = selected(settings, target, session) else {
         return Ok(None);
     };
-    let project = projects::find(settings, id).map_err(|error| error.to_string())?;
-    Ok(Some(ActiveProject {
-        id: project.id.clone(),
+    let project = definitions::find(settings, id).map_err(|error| error.to_string())?;
+    Ok(Some(ActiveWriting {
+        id: project.name.clone(),
         name: project.name.clone(),
-        output: crate::output::of_project(&project.output)?,
+        output: crate::output::of_writing(&project.format)?,
         bibliography: project.bibliography.clone(),
         // The bibliography and output are compared on their own.
-        context_key: format!("project:{}:{}", target.owner(), project.id),
+        context_key: format!("project:{}:{}", target.owner(), project.name),
     }))
 }
 
@@ -251,7 +248,7 @@ fn activate(
     settings: &Settings,
     target: &Target,
     session: Option<&str>,
-) -> Result<Option<ActiveProject>, String> {
+) -> Result<Option<ActiveWriting>, String> {
     if target.editor {
         return Ok(None);
     }
@@ -262,11 +259,23 @@ fn activate(
             project.bibliography.clone(),
             Some(project.output),
         ),
-        Ok(None) => (
-            format!("default:{}", target.owner()),
-            settings.project_bibliography.clone(),
-            None,
-        ),
+        Ok(None) => {
+            let app = target.binding.as_ref().and_then(|binding| {
+                let (system, id) = binding.split_once(':')?;
+                let system = match system {
+                    "macos" => System::Macos,
+                    "windows" => System::Windows,
+                    "linux" => System::Linux,
+                    _ => return None,
+                };
+                Some(AppId { system, id: id.into() })
+            });
+            let choice = ibis_engine::format::choose(settings, app.as_ref());
+            // An outside format change retires an earlier preview even before
+            // its event has reached the web view. Held choices remain explicit.
+            let format = serde_json::to_string(&choice.output).unwrap_or_default();
+            (format!("default:{}:{format}", target.owner()), None, None)
+        }
         Err(_) => (format!("unavailable:project:{}", target.owner()), None, None),
     };
     crate::project::activate_context(app, key, path, output);
@@ -279,36 +288,39 @@ fn edit(
     settings: &mut Settings,
     target: &Target,
     session: Option<&str>,
-    action: &WritingProjectEdit,
+    action: &WritingEdit,
 ) -> Result<Option<String>, ChangeError> {
     if target.editor {
         return Err(ChangeError::Editor);
     }
     let mut session = session.map(str::to_owned);
     match action {
-        WritingProjectEdit::Create { name, output } => {
-            let project = projects::create(settings, name.clone(), output.spec().clone(), None)?;
-            select(settings, target, &mut session, Some(project.id));
+        WritingEdit::Create { name, output } => {
+            let project = definitions::create(settings, name.clone(), output.spec().clone(), None)?;
+            select(settings, target, &mut session, Some(project.name));
         }
-        WritingProjectEdit::Select { id } => {
+        WritingEdit::Select { id } => {
             if let Some(id) = id {
-                let project = projects::find(settings, id)?;
-                crate::output::of_project(&project.output).map_err(|_| ChangeError::Unsupported)?;
+                let project = definitions::find(settings, id)?;
+                crate::output::of_writing(&project.format).map_err(|_| ChangeError::Unsupported)?;
             }
             select(settings, target, &mut session, id.clone());
         }
-        WritingProjectEdit::Rename { id, name } => {
-            projects::rename(settings, id, name.clone())?;
+        WritingEdit::Rename { id, name } => {
+            definitions::rename(settings, id, name.clone())?;
+            if session.as_deref() == Some(id) {
+                session = Some(name.clone());
+            }
         }
-        WritingProjectEdit::Remove { id } => {
-            projects::remove(settings, id)?;
+        WritingEdit::Remove { id } => {
+            definitions::remove(settings, id)?;
             if session.as_deref() == Some(id) {
                 session = None;
             }
         }
-        WritingProjectEdit::Output { id, output } => {
-            let bibliography = projects::find(settings, id)?.bibliography.clone();
-            projects::update(settings, id, output.spec().clone(), bibliography)?;
+        WritingEdit::Output { id, output } => {
+            let bibliography = definitions::find(settings, id)?.bibliography.clone();
+            definitions::update(settings, id, output.spec().clone(), bibliography)?;
         }
     }
     Ok(session)
@@ -317,9 +329,9 @@ fn edit(
 fn select(settings: &mut Settings, target: &Target, session: &mut Option<String>, id: Option<String>) {
     if let Some(key) = &target.binding {
         if let Some(id) = id {
-            settings.writing_project_apps.insert(key.clone(), id);
+            settings.writing_apps.insert(key.clone(), id);
         } else {
-            settings.writing_project_apps.remove(key);
+            settings.writing_apps.remove(key);
         }
     } else {
         *session = id;
@@ -328,7 +340,8 @@ fn select(settings: &mut Settings, target: &Target, session: &mut Option<String>
 
 /// Output, edit authority and preview authority from one immutable native observation.
 pub(crate) struct DestinationContext {
-    pub(crate) active: Option<ActiveProject>,
+    pub(crate) settings: Settings,
+    pub(crate) active: Option<ActiveWriting>,
     pub(crate) edit: String,
     pub(crate) version: (u32, u32),
 }
@@ -338,6 +351,7 @@ pub(crate) fn destination_context(app: &AppHandle, captured: Option<&AppId>) -> 
     if target.editor {
         let version = app.state::<crate::project::ProjectBibliography>().version();
         return Ok(DestinationContext {
+            settings: Settings::default(),
             active: None,
             edit: context_token_for(&target, version.0),
             version,
@@ -355,17 +369,18 @@ pub(crate) fn destination_context(app: &AppHandle, captured: Option<&AppId>) -> 
         return Err(REOPEN.to_owned());
     }
     Ok(DestinationContext {
+        settings,
         active,
         edit: context_token_for(&target, version.0),
         version,
     })
 }
 
-pub(crate) fn refresh(app: &AppHandle, captured: Option<&AppId>) -> Result<Option<ActiveProject>, String> {
+pub(crate) fn refresh(app: &AppHandle, captured: Option<&AppId>) -> Result<Option<ActiveWriting>, String> {
     destination_context(app, captured).map(|context| context.active)
 }
 
-fn shown(app: &AppHandle, settings: &Settings, target: &Target, session: Option<&str>) -> WritingProjectsView {
+fn shown(app: &AppHandle, settings: &Settings, target: &Target, session: Option<&str>) -> WritingsView {
     // List an unsupported selected project so its definition can be repaired.
     let _ = activate(app, settings, target, session);
     let mut view = view_for(settings, target, session);
@@ -375,7 +390,7 @@ fn shown(app: &AppHandle, settings: &Settings, target: &Target, session: Option<
 
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) fn writing_projects(app: AppHandle) -> Result<WritingProjectsView, String> {
+pub(crate) fn writings(app: AppHandle) -> Result<WritingsView, String> {
     let target = current_target(&app);
     let runtime = app.state::<Runtime>();
     let session = runtime.0.lock().map_err(|_| CHANGED.to_owned())?;
@@ -391,11 +406,7 @@ pub(crate) fn writing_projects(app: AppHandle) -> Result<WritingProjectsView, St
 
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) fn edit_writing_project(
-    app: AppHandle,
-    context: String,
-    action: WritingProjectEdit,
-) -> Result<WritingProjectsView, String> {
+pub(crate) fn edit_writing(app: AppHandle, context: String, action: WritingEdit) -> Result<WritingsView, String> {
     let target = current_target(&app);
     if context_token(&app, &target) != context {
         return Err(REOPEN.to_owned());
@@ -423,11 +434,11 @@ pub(crate) fn edit_writing_project(
     let current = current_target(&app);
     if current != target {
         let _ = activate(&app, &settings, &current, session.as_deref());
-        let _ = app.emit("writing-projects:changed", ());
+        let _ = app.emit("writings:changed", ());
         return Err(REOPEN.to_owned());
     }
     let view = shown(&app, &settings, &target, session.as_deref());
-    let _ = app.emit("writing-projects:changed", ());
+    let _ = app.emit("writings:changed", ());
     Ok(view)
 }
 
@@ -436,7 +447,7 @@ pub(crate) fn edit_writing_project(
 pub(crate) struct BibliographyOwner {
     target: Target,
     id: Option<String>,
-    default_path: Option<PathBuf>,
+    definition: Option<Writing>,
     activation: u32,
 }
 
@@ -453,11 +464,7 @@ fn owner_for(
     Ok(BibliographyOwner {
         target: target.clone(),
         id: id.map(str::to_owned),
-        default_path: if id.is_none() {
-            settings.project_bibliography.clone()
-        } else {
-            None
-        },
+        definition: id.and_then(|id| definitions::find(settings, id).ok()).cloned(),
         activation,
     })
 }
@@ -498,10 +505,10 @@ pub(crate) fn set_bibliography(
                     return Err(ChangeError::Stale);
                 }
                 if let Some(id) = &owner.id {
-                    let output = projects::find(settings, id)?.output.clone();
-                    projects::update(settings, id, output, path)?;
+                    let output = definitions::find(settings, id)?.format.clone();
+                    definitions::update(settings, id, output, path)?;
                 } else {
-                    settings.project_bibliography = path;
+                    return Err(ChangeError::Stale);
                 }
                 Ok::<_, ChangeError>(())
             })
@@ -509,7 +516,7 @@ pub(crate) fn set_bibliography(
         .map_err(|error| error.to_string())?;
     let current = current_target(app);
     let activation = activate(app, &settings, &current, session.as_deref());
-    let _ = app.emit("writing-projects:changed", ());
+    let _ = app.emit("writings:changed", ());
     if current != target {
         return Err(REOPEN.to_owned());
     }
@@ -538,13 +545,13 @@ mod tests {
             settings,
             target,
             None,
-            &WritingProjectEdit::Create {
+            &WritingEdit::Create {
                 name: name.into(),
                 output: output(),
             },
         )
         .unwrap_or_else(|error| panic!("{error}"));
-        settings.writing_project_apps[target.binding.as_ref().unwrap_or_else(|| panic!("an app"))].clone()
+        settings.writing_apps[target.binding.as_ref().unwrap_or_else(|| panic!("an app"))].clone()
     }
 
     #[test]
@@ -552,7 +559,7 @@ mod tests {
         let mut settings = Settings::default();
         let target = known("example.editor", 1);
         let first = create(&mut settings, &target, "Thesis");
-        projects::update(
+        definitions::update(
             &mut settings,
             &first,
             output().spec().clone(),
@@ -564,7 +571,7 @@ mod tests {
             &mut settings,
             &target,
             None,
-            &WritingProjectEdit::Output {
+            &WritingEdit::Output {
                 id: second.clone(),
                 output: crate::output::stored(Some("apa")),
             },
@@ -582,7 +589,7 @@ mod tests {
             &mut settings,
             &target,
             None,
-            &WritingProjectEdit::Select {
+            &WritingEdit::Select {
                 id: Some(first.clone()),
             },
         )
@@ -592,14 +599,13 @@ mod tests {
             .unwrap_or_else(|| panic!("an active project"));
         assert_eq!(active.output, output());
         assert_eq!(active.bibliography, Some(invented("thesis.bib")));
-        edit(&mut settings, &target, None, &WritingProjectEdit::Select { id: None })
-            .unwrap_or_else(|error| panic!("{error}"));
+        edit(&mut settings, &target, None, &WritingEdit::Select { id: None }).unwrap_or_else(|error| panic!("{error}"));
         assert!(
             active_for(&settings, &target, None)
                 .unwrap_or_else(|error| panic!("{error}"))
                 .is_none()
         );
-        assert_eq!(settings.writing_projects.len(), 2);
+        assert_eq!(settings.writings.len(), 2);
     }
 
     #[test]
@@ -630,7 +636,7 @@ mod tests {
             &mut settings,
             &unknown,
             None,
-            &WritingProjectEdit::Select {
+            &WritingEdit::Select {
                 id: Some(project.clone()),
             },
         )
@@ -658,11 +664,11 @@ mod tests {
                 &mut settings,
                 &editor,
                 session.as_deref(),
-                &WritingProjectEdit::Select { id: Some(project) }
+                &WritingEdit::Select { id: Some(project) }
             )
             .is_err()
         );
-        assert_eq!(settings.writing_project_apps.len(), 1);
+        assert_eq!(settings.writing_apps.len(), 1);
     }
 
     #[test]
@@ -675,7 +681,7 @@ mod tests {
                 settings,
                 &target,
                 None,
-                &WritingProjectEdit::Create {
+                &WritingEdit::Create {
                     name: "Paper".into(),
                     output: output(),
                 },
@@ -692,14 +698,14 @@ mod tests {
                 settings,
                 &target,
                 None,
-                &WritingProjectEdit::Rename {
+                &WritingEdit::Rename {
                     id,
                     name: "Unsaved".into(),
                 },
             )
         });
         assert!(changed.is_err());
-        assert_eq!(settings.writing_projects[0].name, "Paper");
+        assert_eq!(settings.writings[0].name, "Paper");
     }
 
     #[test]
@@ -707,7 +713,7 @@ mod tests {
         let mut settings = Settings::default();
         let target = known("example.editor", 1);
         let id = create(&mut settings, &target, "Paper");
-        projects::update(
+        definitions::update(
             &mut settings,
             &id,
             output().spec().clone(),
@@ -728,7 +734,7 @@ mod tests {
         let target = known("example.editor", 1);
         let (settings, ()) = settings::transaction(&path, |settings| {
             let id = create(settings, &target, "Thesis");
-            projects::update(settings, &id, output().spec().clone(), Some(invented("thesis.bib")))?;
+            definitions::update(settings, &id, output().spec().clone(), Some(invented("thesis.bib")))?;
             Ok::<_, ChangeError>(())
         })
         .unwrap_or_else(|error| panic!("{error}"));
@@ -750,16 +756,28 @@ mod tests {
         let first = create(&mut settings, &target, "Thesis");
         let earlier = owner_for(&settings, &target, None, 1).unwrap_or_else(|error| panic!("{error}"));
         create(&mut settings, &target, "Notes");
-        edit(
-            &mut settings,
-            &target,
-            None,
-            &WritingProjectEdit::Select { id: Some(first) },
-        )
-        .unwrap_or_else(|error| panic!("{error}"));
+        edit(&mut settings, &target, None, &WritingEdit::Select { id: Some(first) })
+            .unwrap_or_else(|error| panic!("{error}"));
         let current = owner_for(&settings, &target, None, 3).unwrap_or_else(|error| panic!("{error}"));
         assert_eq!(earlier.id, current.id);
         assert_ne!(earlier, current, "a matching definition never revives an old chooser");
+    }
+
+    #[test]
+    fn a_delayed_bibliography_save_refuses_a_newer_definition_of_the_same_writing() {
+        let mut settings = Settings::default();
+        let target = known("example.editor", 1);
+        let name = create(&mut settings, &target, "Thesis");
+        let earlier = owner_for(&settings, &target, None, 1).unwrap_or_else(|error| panic!("{error}"));
+        definitions::update(
+            &mut settings,
+            &name,
+            crate::output::stored(Some("apa")).spec().clone(),
+            None,
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+        let current = owner_for(&settings, &target, None, 1).unwrap_or_else(|error| panic!("{error}"));
+        assert_ne!(earlier, current, "a file edit must retire an already open chooser");
     }
 
     #[test]
@@ -768,11 +786,11 @@ mod tests {
         let mut settings = Settings::default();
         let target = known("example.editor", 1);
         let existing = create(&mut settings, &target, "Thesis");
-        let other = projects::create(
+        let other = definitions::create(
             &mut settings,
             "Other workflow".into(),
             OutputSpec::Csl {
-                style: "invented-custom-style".into(),
+                style: "elsevier-harvard".into(),
             },
             None,
         )
@@ -783,8 +801,8 @@ mod tests {
                 &mut settings,
                 &target,
                 None,
-                &WritingProjectEdit::Select {
-                    id: Some(other.id.clone())
+                &WritingEdit::Select {
+                    id: Some(other.name.clone())
                 }
             )
             .is_err()
@@ -794,9 +812,9 @@ mod tests {
         assert_eq!(shown.selected.as_deref(), Some(existing.as_str()));
         assert!(
             shown
-                .projects
+                .writings
                 .iter()
-                .any(|project| project.id == other.id && project.output.is_none())
+                .any(|project| project.name == other.name && project.output.is_none())
         );
     }
 
@@ -811,7 +829,7 @@ mod tests {
                 &mut settings,
                 &target,
                 None,
-                &WritingProjectEdit::Create {
+                &WritingEdit::Create {
                     name: "paper".into(),
                     output: output()
                 }
@@ -824,7 +842,7 @@ mod tests {
             &mut settings,
             &other,
             None,
-            &WritingProjectEdit::Select {
+            &WritingEdit::Select {
                 id: Some(project.clone()),
             },
         )
@@ -833,11 +851,11 @@ mod tests {
             &mut settings,
             &target,
             Some(&project),
-            &WritingProjectEdit::Remove { id: project.clone() },
+            &WritingEdit::Remove { id: project.clone() },
         )
         .unwrap_or_else(|error| panic!("{error}"));
-        assert!(settings.writing_projects.is_empty());
-        assert!(settings.writing_project_apps.is_empty());
+        assert!(settings.writings.is_empty());
+        assert!(settings.writing_apps.is_empty());
         assert_eq!(
             settings.paste, before.paste,
             "project selection never grants paste permission"
@@ -848,7 +866,7 @@ mod tests {
     fn every_picker_output_round_trips_through_the_shared_project_contract() {
         for listed in ibis_engine::outputs::outputs() {
             let output = crate::output::stored(Some(&listed.id));
-            assert_eq!(crate::output::of_project(&output.spec().clone()), Ok(output));
+            assert_eq!(crate::output::of_writing(&output.spec().clone()), Ok(output));
         }
     }
 
@@ -867,7 +885,7 @@ mod tests {
                 command: Some("invented-command".into()),
             },
         ] {
-            assert!(crate::output::of_project(&output).is_err());
+            assert!(crate::output::of_writing(&output).is_err());
         }
     }
 
@@ -876,17 +894,14 @@ mod tests {
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
         let path = directory.path().join("settings.json");
         std::fs::write(&path, "not settings").unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(
-            read_settings(&path),
-            Err("Writing projects could not be read. Check Settings and try again.".to_owned())
-        );
+        assert!(read_settings(&path).is_err());
         std::fs::remove_file(&path).unwrap_or_else(|error| panic!("{error}"));
         std::fs::create_dir(&path).unwrap_or_else(|error| panic!("{error}"));
         assert!(read_settings(&path).is_err());
     }
 
     #[test]
-    fn a_validated_settings_backup_keeps_its_project_instead_of_using_defaults() {
+    fn an_unreadable_edit_never_substitutes_the_backups_older_writing() {
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
         let path = directory.path().join("settings.json");
         let target = known("example.editor", 1);
@@ -895,7 +910,7 @@ mod tests {
                 settings,
                 &target,
                 None,
-                &WritingProjectEdit::Create {
+                &WritingEdit::Create {
                     name: "Paper".into(),
                     output: output(),
                 },
@@ -904,8 +919,11 @@ mod tests {
         .unwrap_or_else(|error| panic!("{error}"));
         std::fs::copy(&path, path.with_extension("json.bak")).unwrap_or_else(|error| panic!("{error}"));
         std::fs::write(&path, "not settings").unwrap_or_else(|error| panic!("{error}"));
-        let recovered = read_settings(&path).unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(recovered.writing_projects, settings.writing_projects);
-        assert_eq!(recovered.writing_project_apps, settings.writing_project_apps);
+        assert!(read_settings(&path).is_err());
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{error}")),
+            "not settings"
+        );
+        assert!(!settings.writings.is_empty());
     }
 }

@@ -31,8 +31,8 @@ download table, verification steps, signing warning and changed CSL styles;
 
 ## How a release is built
 
-Release Please maintains `chore: release X.Y.Z`. Its own updates skip CI;
-prepare the final head against main and run CI before merging. Merge updates
+Release Please maintains `chore: release X.Y.Z`. Prepare the final head against
+main and run `bash scripts/land.sh` like any other branch. Merge updates
 versions/changelog and tags through the release app token, starting
 [Preview](.github/workflows/preview.yml).
 
@@ -48,9 +48,9 @@ versions/changelog and tags through the release app token, starting
 
 A nightly verifies packages and requires passing push CI for its revision and
 current main before replacing downloads. A failure keeps the preceding nightly.
-Daily/manual CI runs the full matrix, installed nightly journeys, WebKit,
+Main CI confirms the full platform matrix. Daily/manual CI adds installed nightly journeys, WebKit,
 release-mode/MSRV checks and bounded fuzzing; failures update one issue. Run
-`ci.yml` with `workflow_dispatch` on the release candidate before cutting a release.
+`ci.yml` with `workflow_dispatch` on main for qualification before a stable release.
 Manual Preview with publication disabled retains artifacts for 14 days. The
 daily installed-update check still uses the previous nightly; see [testing](docs/testing.md#installed-update-qualification).
 

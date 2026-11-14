@@ -6,7 +6,7 @@ import { mergeProps, setInteractionModality } from "react-aria";
 import { Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuStateContext, MenuTrigger, Popover, Separator, SubmenuTrigger, Text } from "react-aria-components";
 import { Button } from "./Button";
 import { markScrollEdges } from "./ScrollArea";
-import { useLayer } from "./layers";
+import { Floating } from "./Layer";
 import { useMenuLifecycle } from "./useMenuLifecycle";
 import "./Menu.css";
 import "./Overlay.css";
@@ -252,7 +252,8 @@ export function MenuSubmenu({ id, label, value, title, children }: {
       <bdi className="menu-label" dir="auto">{value}</bdi>
       <span className="menu-submenu-arrow" aria-hidden="true">›</span>
     </AriaMenuItem>
-    <Popover ref={wholeRows} className="menu-popover ui-overlay" offset={6} containerPadding={8}>
+    {/* Part of its menu's layer, whose Esc it hands to React Aria. */}
+    <Popover ref={wholeRows} className="menu-popover ui-overlay" data-layer-within offset={6} containerPadding={8}>
       <AriaMenu ref={list} className="menu scroll-area" aria-label={label}
         render={(props) => <div {...props as ComponentPropsWithRef<"div">} aria-label={label} aria-labelledby={undefined} />}>
         {children}
@@ -321,12 +322,12 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
     const active = document.activeElement;
     if (to?.isConnected && (active === previous || active === document.body || active === button.current || active === to)) to.focus();
   };
-  useLayer("menu", isOpen, (event) => {
+  const close = (event?: KeyboardEvent) => {
     // Escape leaves the innermost submenu first; React Aria owns that step.
     const inner = event?.target instanceof Element ? event.target.closest('[role="menu"]') : null;
     if (inner && inner !== list.current) return false;
     leave(event ? button.current : tabFocusRef?.current);
-  });
+  };
   // Outside the collection builder so submenu portals inherit the action owner.
   return <ActionFocusContext.Provider value={() => leave(tabFocusRef?.current)}><MenuTrigger isOpen={isOpen} onOpenChange={(open) => { fromTrigger.current = open; onOpenChange(open); }}>
     <Button variant={triggerVariant} size={triggerSize} aria-label={label} ref={(node) => {
@@ -335,7 +336,7 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
       else if (triggerRef) triggerRef.current = node;
     }} className={triggerClassName}
       render={(props) => <button {...props as ComponentPropsWithRef<"button">} title={triggerTitle} aria-label={triggerLabel ?? label} aria-keyshortcuts={triggerKeys} />}>{trigger}</Button>
-    <Popover ref={wholeRows} className="menu-popover ui-overlay" placement={renderedPlacement} offset={6} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
+    <Floating kind="menu" open={isOpen} onClose={close} ref={wholeRows} className="menu-popover ui-overlay" placement={renderedPlacement} offset={6} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
       <div className="menu-frame" onKeyDownCapture={(event) => {
         if (isComposing(event)) { event.stopPropagation(); return; }
         // Tab leaves the entire menu, from any depth.
@@ -349,6 +350,6 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
           {children}
         </AriaMenu>
       </div>
-    </Popover>
+    </Floating>
   </MenuTrigger></ActionFocusContext.Provider>;
 }

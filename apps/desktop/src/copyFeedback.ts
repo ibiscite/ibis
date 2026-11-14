@@ -7,6 +7,7 @@ import type { CopiedReason, Delivered as WireDelivered } from "./bindings";
 import { englishMessages } from "./i18n";
 import { say } from "./i18n";
 import { currentPlatform, platformOf, type Platform } from "./platform";
+import { listedOutput, outputName } from "./format/outputs";
 
 /**
  * After a copy: hide the picker and say "Copied" in the small notice window,
@@ -92,7 +93,7 @@ export function noticeTitle({ delivered }: Pick<Notice, "delivered">, platform =
  * text arrives, so screen readers that follow other windows announce it
  * politely without the notice taking focus.
  */
-export function renderNotice(root: HTMLElement, platform: NoticePlatform): (message: Notice) => void {
+export function renderNotice(root: HTMLElement, platform: NoticePlatform, onChangeFormat?: () => void): (message: Notice) => void {
   root.replaceChildren();
   const notice = document.createElement("div");
   notice.className = "copied-notice copy-receipt";
@@ -122,7 +123,24 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform): (mess
   code.dir = "auto";
   root.append(notice);
   return (message: Notice) => {
-    title.textContent = noticeTitle(message, platform);
+    const suggested = listedOutput(message.suggested_format);
+    const pasted = message.delivered.outcome === "pasted";
+    title.textContent = suggested && pasted ? say("copied-notice-suggested", { format: outputName(suggested) }) : noticeTitle(message, platform);
+    const suggestion = suggested && !pasted ? document.createElement("span") : null;
+    if (suggestion && suggested) {
+      suggestion.className = "copy-receipt-note";
+      suggestion.textContent = say("copied-notice-suggestion", { format: outputName(suggested) });
+    }
+    if (suggested && onChangeFormat) {
+      const receipt = suggestion ?? title;
+      receipt.append(" · ");
+      const change = document.createElement("button");
+      change.type = "button";
+      change.className = "copy-receipt-change";
+      change.textContent = say("copied-notice-change");
+      change.onclick = onChangeFormat;
+      receipt.append(change);
+    }
     if (message.milestone) {
       const milestone = document.createElement("span");
       milestone.setAttribute("aria-hidden", "true");
@@ -142,6 +160,7 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform): (mess
     code.title = message.text;
     notice.dataset.outcome = message.delivered.outcome;
     notice.replaceChildren(source, mark, title, code);
+    if (suggestion) notice.append(suggestion);
     if (message.plugin_note) {
       const note = document.createElement("span");
       note.className = "copy-receipt-note";

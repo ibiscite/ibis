@@ -2,14 +2,13 @@ import { Input, Label, Text, TextField } from "react-aria-components";
 import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import type { Locator, LocatorTerm, ReferenceDetails, ReferenceForm } from "../bindings";
 import { composing } from "../composition";
-import { say, type MessageId } from "../i18n";
+import { INTERFACE_LOCALE, say, type MessageId } from "../i18n";
 import { Icon } from "../icons";
 import { Button } from "./Button";
-import { Segmented } from "./Segmented";
 import { ToolbarMenu } from "./ToolbarMenu";
 import "./CitationDetails.css";
 
-/** Each form by its one name, for before the engine has written examples. */
+/** Each form by its one name; the engine writes its example. */
 const FORMS = [
   { value: "normal", label: say("form-normal") },
   { value: "narrative", label: say("form-narrative") },
@@ -26,9 +25,10 @@ const termName = (term: LocatorTerm) => say(`locator-${term}` as MessageId);
 const termShort = (term: LocatorTerm) => say(`locator-short-${term}` as MessageId);
 
 /** One citation's details for one reference, the same wherever a citation is
- * built: how it shows, as the real outputs to choose from; its page, with the
- * type inside the field; and text before and after, shown when asked for. Only
- * the engine says a form cannot be printed, and only those it can are offered. */
+ * built: how it shows, a pop-up of the forms by name, each with the real output
+ * it would paste; its page, with the type inside the field; and text before and
+ * after, shown when asked for. Only the engine says a form cannot be printed:
+ * those are left out of the menu, and its note says why once. */
 export function CitationDetails({ locator, form, prefix, suffix, locatorRef, choices, autoFocus = false, choosePage, onLocatorChange, onFormChange, onPrefixChange, onSuffixChange, onSubmit }: {
   /** The locator as typed, or captured from search; null when there is none. */
   locator: Locator | null; form: ReferenceForm; prefix: string; suffix: string;
@@ -61,27 +61,23 @@ export function CitationDetails({ locator, form, prefix, suffix, locatorRef, cho
   // The engine answers null where no name form applies, as for Keys only.
   const current = answer ? answer.current_form : form;
   const choice = (value: ReferenceForm) => answer?.forms.find((option) => option.form === value);
-  // Only the forms this output can print, each as the text it would paste.
-  // Once the engine answers, only the forms it lists without a reason; before, every one.
-  const offered = FORMS.filter((option) => answer ? choice(option.value) && !choice(option.value)?.reason : true)
-    .map((option) => ({ value: option.value, label: choice(option.value)?.example ?? option.label }));
-  const hidden = FORMS.filter((option) => choice(option.value)?.reason);
-  const reasons = new Set(hidden.map((option) => choice(option.value)?.reason));
+  // Before the engine answers, every form can be tried.
+  const offered = FORMS.filter((option) => !answer || choice(option.value) && !choice(option.value)?.reason);
+  // Each reason once, with the forms it leaves out.
+  const reasons = new Map<string, string[]>();
+  for (const option of FORMS) { const reason = choice(option.value)?.reason; if (reason) reasons.set(reason, [...reasons.get(reason) ?? [], option.label]); }
+  const names = new Intl.ListFormat(INTERFACE_LOCALE, { type: "conjunction" });
+  const note = choices === "failed" ? say("citation-details-examples-unavailable")
+    : [...reasons].map(([reason, forms]) => `${names.format(forms)}: ${reason}`).join(" · ") || undefined;
   return <div className="citation-details">
     <div className="citation-field">
       <span className="citation-label" aria-hidden="true">{say("citation-details-form")}</span>
-      {/* Side by side while they fit at a glance; more become a pop-up of the same outputs. */}
-      {offered.length > 3 ? <ToolbarMenu buttonRef={formButton} returnFocusRef={formButton} placement="bottom start" label={say("citation-details-form")}
-        value={offered.find((option) => option.value === current)?.label ?? say("citation-details-none")} selectedKey={current ?? ""}
-        sections={[{ id: "forms", items: offered.map((option) => ({ id: option.value, label: option.label })) }]}
+      {offered.length ? <ToolbarMenu buttonRef={formButton} returnFocusRef={formButton} placement="bottom start" label={say("citation-details-form")}
+        value={FORMS.find((option) => option.value === current)?.label ?? say("citation-details-none")} selectedKey={current ?? ""} note={note}
+        sections={[{ id: "forms", items: offered.map((option) => ({ id: option.value, label: option.label, sample: choice(option.value)?.example ?? undefined, prose: true })) }]}
         onAction={(key) => { const chosen = offered.find((option) => option.value === key); if (chosen) onFormChange(chosen.value); }} />
-        : offered.length > 1 ? <Segmented label={say("citation-details-form")} value={current} options={offered} onChange={onFormChange} />
-        : <p className="citation-note">{offered.length ? offered[0]!.label : [...reasons][0] ?? say("citation-details-none")}</p>}
+        : <p className="citation-note">{[...reasons.keys()][0] ?? say("citation-details-none")}</p>}
     </div>
-    {/* What the others are, quietly, where they are looked for. */}
-    {offered.length > 1 && hidden.length > 0 && <p className="citation-note citation-field-note">
-      {hidden.map((option) => `${option.label}: ${choice(option.value)?.reason}`).join(" · ")}</p>}
-    {choices === "failed" && <p className="citation-note citation-field-note">{say("citation-details-examples-unavailable")}</p>}
     <div className="citation-field">
       <span className="citation-label" aria-hidden="true">{say("citation-details-page")}</span>
       <div className="citation-locator">

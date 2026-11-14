@@ -25,18 +25,19 @@ import tokenSource from "../src/tokens.css?raw";
 import "../src/ui/Foundation.css";
 import "./board.css";
 import { Parts } from "./parts";
-import { WritingProjectsDialog } from "../src/features/picker/WritingProjects";
+import { WritingsDialog } from "../src/features/picker/Writings";
 import { SessionReferencesDialog } from "../src/features/picker/SessionReferences";
 import { inventedSource, PageSources } from "../src/features/reader/source";
-import type { WritingProjectsView } from "../src/api";
+import type { WritingsView } from "../src/api";
 import { renderNotice } from "../src/copyFeedback";
 import { currentPlatform } from "../src/platform";
 import "../src/ui/CopyReceipt.css";
 import "../src/ui/CopiedNotice.css";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/ui/Window.css?inline";
+import { noFormatChosen } from "../src/testing/format";
 
-export const scenarios = ["notice", "results", "unknown-app", "unknown-app-empty", "first-run", "more", "format-menu", "writing-projects", "writing-projects-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-selector", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "citation-order", "citation-handles", "citation-details-larger", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
+export const scenarios = ["notice", "results", "unknown-app", "unknown-app-empty", "first-run", "more", "format-menu", "writings", "writings-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "reference-details-more", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-selector", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "citation-order", "citation-handles", "citation-details-larger", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -75,8 +76,10 @@ const fixtures: Partial<Record<Scenario, {
   "reference-details": { keys: [{ key: "Enter", shiftKey: true }], click: 'button[aria-label^="Edit "]' },
   "citation-details-larger": { preferences: { larger_text: true }, keys: [{ key: "Enter", shiftKey: true }], click: 'button[aria-label^="Edit "]' },
   reader: { keys: [{ key: "Enter", shiftKey: true }], click: ['button[aria-label^="Edit "]', 'button.citation-reveal'] },
+  // The details, then More over them: More takes their place.
+  "reference-details-more": { keys: [{ key: "Enter", shiftKey: true }], click: ['button[aria-label^="Edit "]', 'button[aria-label="More"]'] },
   "show-as-menu": { keys: [{ key: "Enter", shiftKey: true }], click: ['button[aria-label^="Edit "]', ".citation-field .ui-popup-button"] },
-  "writing-projects-pending": { click: 'button[aria-label="Use Field Notes"]' },
+  "writings-pending": { click: 'button[aria-label="Use Field Notes"]' },
   "library-selector": { library: zoteroLibrary },
   "library-menu": { library: zoteroLibrary, click: ".library-status-trigger" },
   shortcuts: { keys: [{ key: "/", [navigator.platform.startsWith("Mac") ? "metaKey" : "ctrlKey"]: true }] },
@@ -112,7 +115,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
   // The picker opens over a known app that Ibis copies into, as it usually does;
   // "unknown-app" is the one whose app could not be read, over results and over an empty search.
   const knownApp = !scenario.startsWith("unknown-app");
-  const project = writingProjects.active!;
+  const project = writings.active!;
   const refusal = scenario === "project-check-conflict" ? "A key in thesis.bib identifies a different work. Resolve the conflict before citing it." : null;
   const library: LibraryStatus = {
     source_generation: "1", source_is_requested: true,
@@ -124,7 +127,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
     stale: false, updated_at: null, checked_at: firstRun ? null : Date.now() - 3 * 60_000, ...fixed?.library,
   };
   let sequence = 0;
-  const receipts = new Map<string, { text: string; items: FileSelection[] }>();
+  const receipts = new Map<string, { text: string; items: FileSelection[]; output: OutputId; key: string }>();
   const handlers: Record<string, (request: Request) => unknown> = {
     "plugin:window|is_visible": () => true,
     library_status: () => library,
@@ -154,7 +157,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
       spans.unshift({ item: null, text: !style || numbered ? "[" : "(" });
       spans.push({ item: null, text: !style || numbered ? "]" : ")" });
       const text = spans.map((span) => span.text).join("");
-      receipts.set(ticket, { text, items });
+      receipts.set(ticket, { text, items, output, key: key(0) });
       return { ticket, content_hash: ticket, text, display: { nodes: spans.map(({ item, text }) => ({ item, blocks: [], content: [{ text, italic: false, bold: false, script: "normal" }] })) }, warnings: [], project_refusal: refusal };
     },
     copy_file_citation: ({ ticket }) => {
@@ -162,19 +165,31 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
       if (!receipt) throw new Error("Unknown synthetic preview");
       return { text: receipt.text, warnings: [] };
     },
-    citation_details: ({ ticket, item }) => ({ current_form: receipts.get(ticket)?.items[item]?.form ?? "normal", forms: [
-      { form: "normal", example: "(Aster, 2026)", reason: null },
-      { form: "narrative", example: "Aster (2026)", reason: null },
-      { form: "author-only", example: "Aster", reason: null },
-      { form: "year-only", example: "(2026)", reason: null },
-    ] } satisfies ReferenceDetails),
+    // As the engine answers: a style writes names; Pandoc writes keys and has no name-only or full form.
+    citation_details: ({ ticket, item }) => {
+      const receipt = receipts.get(ticket);
+      const current_form = receipt?.items[item]?.form ?? "normal";
+      if (receipt && !isStyle(receipt.output)) return { current_form, forms: [
+        { form: "normal", example: `[@${receipt.key}]`, reason: null },
+        { form: "narrative", example: `@${receipt.key}`, reason: null },
+        { form: "author-only", example: null, reason: "Not in this output" },
+        { form: "year-only", example: `[-@${receipt.key}]`, reason: null },
+        { form: "full", example: null, reason: "Not in this output" },
+      ] } satisfies ReferenceDetails;
+      return { current_form, forms: [
+        { form: "normal", example: "(Aster, 2026)", reason: null },
+        { form: "narrative", example: "Aster (2026)", reason: null },
+        { form: "author-only", example: "Aster", reason: null },
+        { form: "year-only", example: "(2026)", reason: null },
+      ] } satisfies ReferenceDetails;
+    },
     picker_destination: () => knownApp && !projectContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
-      automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false,
-      writing_project: null, writing_context: null, context_version: [1, 0] } : projectContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
-      automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false,
-      writing_project: project, writing_context: "invented-opening", context_version: [1, 0] } : null,
-    writing_projects: () => writingProjects,
-    edit_writing_project: () => writingProjects,
+      find_open: false, usual_format: "apa", format: noFormatChosen, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false,
+      writing: null, writing_context: null, context_version: [1, 0] } : projectContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
+      find_open: false, usual_format: "apa", format: noFormatChosen, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false,
+      writing: project, writing_context: "invented-opening", context_version: [1, 0] } : null,
+    writings: () => writings,
+    edit_writing: () => writings,
     picker_preferences: () => settings.pickerPreferences(),
     save_picker_preferences: ({ preferences }) => settings.savePickerPreferences(preferences),
     picker_preferences_saved: ({ receipt }) => settings.pickerPreferencesSaved(receipt),
@@ -200,7 +215,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
     session_bibliography: () => null,
   };
   for (const command of ["quit", "set_pinned", "picker_moving", "open_library_source", "alignment_tick", "take_search_request",
-    "project_status", "editor_request", "update_checks", "update_picker_activity", "remember_app_output", "retry_project", "choose_project",
+    "project_status", "editor_request", "forget_app_output", "update_checks", "update_picker_activity", "remember_app_output", "retry_project", "choose_project",
     "open_found_library", "reload_library", "dismiss_window_position_undo"]) handlers[command] = () => null;
   mockWindows("main");
   mockIPC((command, payload) => {
@@ -326,7 +341,7 @@ function Canvas({ host, scenario, settings, theme }: { host: HTMLElement; scenar
   if (scenario === "states") return <States theme={theme} />;
   if (scenario === "tokens") return <Tokens theme={theme} />;
   if (scenario === "parts") return <ThemedParts theme={theme} />;
-  if (scenario.startsWith("writing-projects")) return <WritingProjectsBoard variant={scenario} />;
+  if (scenario.startsWith("writings")) return <WritingsBoard variant={scenario} />;
   if (scenario === "cited-since-opening") return <CitedSinceOpeningBoard />;
   return scenario.startsWith("settings-")
     ? <SettingsApp api={settings} initialPage={scenario.slice(9)} />
@@ -334,19 +349,19 @@ function Canvas({ host, scenario, settings, theme }: { host: HTMLElement; scenar
 }
 
 const inventedProject = { id: "thesis", name: "Thesis", output: "autocite", bibliography: "thesis.bib" };
-const writingProjects: WritingProjectsView = { context: "invented-opening", session_only: false, selected: "thesis", active: inventedProject, projects: [
+const writings: WritingsView = { context: "invented-opening", session_only: false, selected: "thesis", active: inventedProject, writings: [
   inventedProject,
   { id: "notes", name: "Field Notes", output: "pandoc", bibliography: null },
 ] };
 
 /** The real project sheet over the real picker, with invented local choices. */
-function WritingProjectsBoard({ variant }: { variant: Scenario }) {
+function WritingsBoard({ variant }: { variant: Scenario }) {
   const [open, setOpen] = useState(true);
-  const view = writingProjects;
+  const view = writings;
   return <><style>{pickerStyles}</style><App preview={{ query: "invented" }} />
-    {open && <WritingProjectsDialog format="autocite" onClose={() => setOpen(false)} api={{
-      writingProjects: async () => view,
-      editWritingProject: async () => variant === "writing-projects-pending" ? new Promise<WritingProjectsView>(() => {}) : view,
+    {open && <WritingsDialog format="autocite" onClose={() => setOpen(false)} api={{
+      writings: async () => view,
+      editWriting: async () => variant === "writings-pending" ? new Promise<WritingsView>(() => {}) : view,
       chooseProject: async () => {}, stopProject: async () => {},
     }} />}
   </>;

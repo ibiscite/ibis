@@ -29,6 +29,3 @@
 .citation-locator input:focus-visible { outline: none; }
 .citation-reveals { display: flex; flex-wrap: wrap; gap: var(--space-1); grid-column: 2; }
 .citation-reveal.ui-button { color: var(--text-secondary); }
-.citation-field-note { grid-column: 2; padding-block: 0; }
-.citation-field:has(> .ui-segmented) { align-items: start; }
-.citation-field:has(> .ui-segmented) > .citation-label { padding-block-start: var(--space-1); }

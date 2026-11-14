@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
-use ibis_core::settings::{PickerWindow, Settings};
+use ibis_engine::settings::{PickerWindow, Settings};
 use owner::{Display, Event, MINIMUM, Owner, Sample, Save, content_room};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

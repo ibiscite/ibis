@@ -2,7 +2,8 @@
 //! database copies, settings recovery writes, or raw errors belong here.
 use super::{OutputMode, source_values};
 use clap::ArgMatches;
-use ibis_core::{contract::*, settings};
+use ibis_core::contract::*;
+use ibis_engine::settings;
 use ibis_engine::{Cancellation, DispatchResult, Engine, LibraryInfo, Method, health};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -232,6 +233,8 @@ fn config_report(loaded: Option<settings::Loaded>) -> Value {
 
 fn config_problem(problem: &settings::SettingsError) -> &'static str {
     match problem {
+        settings::SettingsError::Changed => "config-changed",
+        settings::SettingsError::Busy => "config-busy",
         settings::SettingsError::Invalid(_) | settings::SettingsError::InvalidZoteroLibraryEntry { .. } => {
             "config-invalid"
         }

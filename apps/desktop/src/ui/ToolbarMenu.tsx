@@ -1,10 +1,10 @@
 import { useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject, type ComponentPropsWithRef } from "react";
 import { composing as isComposing } from "../composition";
 import { flushSync } from "react-dom";
-import { Autocomplete, Header, Input, Menu, MenuItem, MenuSection, MenuTrigger, Popover, SearchField, Text, useFilter } from "react-aria-components";
+import { Autocomplete, Header, Input, Menu, MenuItem, MenuSection, MenuTrigger, SearchField, Text, useFilter } from "react-aria-components";
 import { PopupButton } from "./PopupButton";
 import { MenuCheck, useMenuBoundary, useMenuPlacement, MenuRow, useWholeRows } from "./Menu";
-import { useLayer } from "./layers";
+import { Floating } from "./Layer";
 import { useMenuLifecycle } from "./useMenuLifecycle";
 import "./ToolbarMenu.css";
 
@@ -63,7 +63,6 @@ export function ToolbarMenu({ buttonRef, buttonShortcut, disabled, label, value,
     const active = document.activeElement;
     if (target?.isConnected && (active === previous || active === document.body || active === button.current || active === target)) target.focus();
   }
-  useLayer("menu", open, (event) => changeOpen(false, event ? "dismiss" : "command"));
   // aria-disabled keeps unavailable choices in the arrow-key order (ADR 0021).
   // Controlled selection and the action guard prevent picking them.
   const menu = <Menu key={opening} ref={listRef} className="toolbar-menu scroll-area" aria-label={label} aria-describedby={note ? noteId : undefined} selectionMode="single" selectedKeys={[selectedKey]}
@@ -91,13 +90,13 @@ export function ToolbarMenu({ buttonRef, buttonShortcut, disabled, label, value,
     }}>
     <MenuTrigger isOpen={open} onOpenChange={(next) => changeOpen(next)}>
       <PopupButton ref={button} aria-keyshortcuts={buttonShortcut} isDisabled={disabled} className={`toolbar-menu-button ${drawn?.className ?? ""}`} size={drawn ? "small" : undefined} variant={drawn?.quiet ? "quiet" : undefined} title={drawn?.title} aria-label={drawn?.label ?? `${label} ${value}`}>{drawn?.content ?? value}</PopupButton>
-      <Popover ref={wholeRows} className="menu-popover toolbar-menu-popover ui-overlay" data-anchor={placement === "bottom start" ? "field" : undefined} data-named={named || undefined}
+      <Floating kind="menu" open={open} onClose={(event) => changeOpen(false, event ? "dismiss" : "command")} ref={wholeRows} className="menu-popover toolbar-menu-popover ui-overlay" data-anchor={placement === "bottom start" ? "field" : undefined} data-named={named || undefined}
         // [C21] Never narrower than its button: React Aria measures the trigger.
         style={placement === "bottom start" ? { minWidth: "min(var(--trigger-width), calc(100vw - 2 * var(--inset)))" } : undefined} placement={renderedPlacement} offset={4} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
         {heading && <p className="menu-heading toolbar-menu-heading" aria-hidden="true">{heading}</p>}
         {note && <p id={noteId} className={heading ? "visually-hidden" : "toolbar-menu-note"}>{note}</p>}
         {filtered ? <Autocomplete key={opening} filter={contains}><SearchField className="toolbar-menu-filter" aria-label={filterLabel} autoFocus><Input placeholder={filterLabel} aria-describedby={note ? noteId : undefined} /></SearchField>{menu}</Autocomplete> : menu}
-      </Popover>
+      </Floating>
     </MenuTrigger>
   </span>;
 }

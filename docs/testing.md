@@ -25,12 +25,10 @@ definition does not certify a passing run. Plans live in
 ## Local commands
 
 Setup is in [CONTRIBUTING.md](../CONTRIBUTING.md#setup). Run the focused check
-for the changed behaviour; the complete matrix runs in CI.
+for the changed behaviour; `land.sh` runs the complete local gate before merging.
 
 ```sh
-node scripts/check.mjs --plan
-node scripts/check.mjs
-node scripts/check.mjs --all
+bash scripts/land.sh
 cargo test -p ibis-engine --locked TEST_FILTER
 cargo test -p ibis-desktop --locked TEST_FILTER
 pnpm -C apps/desktop exec vitest run FILE --maxWorkers=1
@@ -38,12 +36,10 @@ node --test scripts/doc-links.test.mjs
 node scripts/gen.mjs --check
 ```
 
-Plain `cargo test` skips desktop Rust tests. `land.sh` requires a clean commit
-and runs the shared `check.mjs` gate. Each check reports passed, failed,
-unavailable (preflight reason), or infrastructure; exits 2 and 75 mean
-unavailable and infrastructure respectively, and both stop landing. `gen.mjs --check` checks generated schemas, bindings and CLI
-options without replacing them. To update a reviewed Rust snapshot, use
-`INSTA_UPDATE=always cargo test -p CRATE` and inspect the `.snap` diff.
+Plain `cargo test` skips desktop Rust tests; `cargo test --workspace --locked`
+includes them. `gen.mjs --check` checks generated files without replacing them.
+To update a reviewed Rust snapshot, use `INSTA_UPDATE=always cargo test -p CRATE`
+and inspect the `.snap` diff.
 
 ## What exists
 
@@ -155,20 +151,43 @@ library data or `.local/`. Evidence does not certify unobserved capabilities.
 
 ## Where checks run
 
-[`ci-paths.mjs`](../scripts/ci-paths.mjs) selects affected areas on PRs and
-main pushes; unknown lists select all. One required **CI result** gates squash
-auto-merge, with no merge queue or reused runs. Main checks every pushed commit;
-nightly publication requires green push CI for its revision and current main.
+[`land.sh`](../scripts/land.sh) is the merge gate ([decision 0049](decisions/0049-local-gate.md)).
+Run it on the Mac from a clean, named branch. It checks for conflicts with main,
+pushes without opening a PR, then runs these machines in parallel:
 
-PRs use fast Linux suites plus affected native/platform checks. Daily and
-manual [CI](../.github/workflows/ci.yml) add the full three-system matrix,
-WebKit, release-mode/MSRV checks, five-minute fuzzing and installed journeys
-against the latest published nightly (its revision is recorded). Failed or
-unavailable qualification updates one issue in place. Run manual CI before
-a release. An unavailable native journey exits 2 and establishes no coverage.
+| Machine | Checks |
+| --- | --- |
+| Mac | Workspace Clippy with all targets (including desktop), workspace tests, TypeScript, Biome, full Vitest, Node script tests (two workers), headless generated-file freshness, PR title, formatting, repository guards and dependency licence/bans/source policy. |
+| Ubuntu (`db-scr-ubuntu`) | Workspace Clippy and tests, full Vitest; one build at a time in `~/Code/ibis`. A detached build and SHA-bound end marker survive dropped SSH connections. |
+| Windows laptop | When packaging or PowerShell paths change (including the gate itself): packaging-script tests and every `*.tests.ps1` under Windows PowerShell 5.1; no Rust. |
 
-Licences, bans, sources and identity privacy checks remain; DCO is not enforced.
-RustSec advisories block dependency changes, release preparation and the weekly
-check; other failures warn. Ubuntu package sources retain security pockets;
-mirror/provisioning failures report infrastructure. [Preview](../.github/workflows/preview.yml)
-builds and verifies packages; publication is described in [RELEASING.md](../RELEASING.md).
+Warm dependencies must already be installed on the Mac and Ubuntu. Mac targets
+stay in this worktree's `target` (or `CARGO_TARGET_DIR`); Ubuntu reuses its one
+`target`. Neither uses sccache. Ubuntu's lock refuses competing gates or a dirty
+checkout; Windows uses a locked, reusable checkout in its temporary directory.
+Logs stay in `.local/gates/` on the Mac and Ubuntu. Failures print the first
+errors per machine and stop. Unreachable machines fail; `--skip mac|ubuntu|windows`
+is an explicit exception, recorded in both the PR gate line and status summary.
+
+On success, the script preserves an existing PR's title/body and appends one
+gate line. New PRs use `--title` or the first non-merge commit subject, and
+`--body-file` or that commit's body without trailers. It posts **Local gate**
+success on the exact SHA, then squash-merges immediately without auto-merge.
+A changed head, dirty files, missing checks or conflict stop landing. The release
+app's PR uses the same gate; no CI dispatch is needed to prepare it.
+
+[CI](../.github/workflows/ci.yml) runs after pushes to main and on daily/manual
+runs, with Linux, macOS and Windows suites on every revision. Daily/manual runs
+add WebKit, release-mode/MSRV checks, five-minute fuzzing and installed journeys
+against the published nightly; failures update one issue. **CI result** remains
+publication evidence: a red main keeps the preceding nightly. Run manual
+qualification before a stable release. [Preview](../.github/workflows/preview.yml)
+keeps full builds, signing and install/start checks before publishing.
+
+Only the read-only title workflow remains on outside PRs, to give contributors
+feedback. Trusted branches get the same check locally. Nix and syntax-tool
+workflows confirm after merge. Licences, bans, sources and identity privacy
+checks remain; DCO is not enforced. RustSec advisories block dependency changes,
+release publication and the weekly check; other failures warn. Ubuntu package
+sources retain security pockets; mirror/provisioning failures report infrastructure.
+Publication details are in [RELEASING.md](../RELEASING.md).

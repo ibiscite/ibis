@@ -37,11 +37,6 @@
   :root[data-platform="macos"] .toolbar-menu-button { min-width: var(--touch-target); min-height: var(--touch-target); }
   :root[data-platform="macos"] .toolbar-menu-button::after { inset: 0; }
 }
-/* [C21] A form-row pop-up's menu keeps its button's width, as an inspector's
-   pop-ups do on the Mac, so its example sits on a second line, whole and
-   wrapping, never cut. */
-.toolbar-menu-popover[data-anchor="field"] .menu-item:has(> .toolbar-menu-sample:not(:empty)) { flex-wrap: wrap; row-gap: 0; }
-.toolbar-menu-popover[data-anchor="field"] .toolbar-menu-sample { contain: inline-size; flex: 1 0 100%; margin: 0; padding-inline-start: var(--menu-gutter); line-height: var(--type-label-line); text-align: start; white-space: normal; overflow-wrap: anywhere; }
 /* In the search bar the format pop-up is quiet like the × and pin beside it: no
    plate at rest, its chevrons say it opens; the plate shows on hover and while open. */
 .search-bar .ui-popup-button.ui-button[data-variant] { background: transparent; }

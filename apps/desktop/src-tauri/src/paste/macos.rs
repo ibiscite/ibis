@@ -128,7 +128,7 @@ fn manual_accessibility_allowed(app: &AppHandle, front: &Front) -> bool {
     else {
         return false;
     };
-    let settings = ibis_core::settings::load(&app.state::<crate::preferences::SettingsFile>().path);
+    let settings = ibis_engine::settings::load(&app.state::<crate::preferences::SettingsFile>().path);
     if settings.problem.is_some() {
         return false;
     }

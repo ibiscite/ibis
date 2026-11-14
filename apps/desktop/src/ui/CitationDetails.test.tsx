@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import axe from "axe-core";
 import type { Locator, ReferenceForm } from "../bindings";
@@ -23,41 +23,43 @@ function Editor({ choices = answer(examples) }: { choices?: ReturnType<typeof an
   return <CitationDetails prefix={prefix} suffix="" onPrefixChange={setPrefix} onSuffixChange={vi.fn()} locator={locator} form={form}
     choices={{ ...choices, current_form: form }} onLocatorChange={setLocator} onFormChange={setForm} />;
 }
-const checked = () => screen.getAllByRole<HTMLInputElement>("radio").filter((radio) => radio.checked).map((radio) => radio.closest("label")?.textContent);
+/** Show as's menu, opened: each row's form name and the text it would paste. */
+async function forms() {
+  fireEvent.click(screen.getByRole("button", { name: /^Show as / }));
+  const rows = await screen.findAllByRole("menuitemradio");
+  return rows.map((row) => [row.querySelector(".menu-label")?.textContent, row.querySelector(".toolbar-menu-sample")?.textContent]);
+}
 
-test("Show as offers each form this output can print as the text it would paste, and a pick changes it", () => {
+test("Show as names each form this output can print, with the text it would paste, and a pick changes it", async () => {
   render(<Editor />);
-  const group = screen.getByRole("radiogroup", { name: "Show as" });
-  expect(within(group).getAllByRole("radio").map((radio) => radio.closest("label")?.textContent)).toEqual(["(Example, 2026)", "Example (2026)", "(2026)"]);
-  expect(checked()).toEqual(["(Example, 2026)"]);
-  fireEvent.click(screen.getByRole("radio", { name: "(2026)" }));
-  expect(checked()).toEqual(["(2026)"]);
+  expect(screen.getByRole("button", { name: /^Show as / }).textContent).toBe("Name in brackets");
+  expect(await forms()).toEqual([["Name in brackets", "(Example, 2026)"], ["Name in the sentence", "Example (2026)"], ["Year only", "(2026)"]]);
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "Year only" }));
+  expect(screen.getByRole("button", { name: /^Show as / }).textContent).toBe("Year only");
 });
 
-test("a form this output cannot print is not offered, and one quiet line says why", () => {
-  render(<Editor choices={answer({ ...examples, narrative: { reason: "Cite it alone or choose another output." } })} />);
-  expect(screen.queryByRole("radio", { name: "Example (2026)" })).toBeNull();
-  expect(screen.getByText(/^Name in the sentence: Cite it alone or choose another output\./)).toBeTruthy();
+test("forms this output cannot print are left out, and the menu says why once", async () => {
+  render(<Editor choices={answer({ normal: "(Example, 2026)" })} />);
+  expect(await forms()).toEqual([["Name in brackets", "(Example, 2026)"]]);
+  expect(screen.getAllByText(/Not in this output/)).toHaveLength(1);
+  expect(screen.getByText("Name in the sentence, Name only, Year only, and Full reference: Not in this output.")).toBeTruthy();
 });
 
-test("before the engine answers, every form can be tried from a pop-up of their names", async () => {
+test("before the engine answers, every form can be tried from the pop-up by name", async () => {
   const change = vi.fn();
   render(<CitationDetails prefix="" suffix="" onPrefixChange={vi.fn()} onSuffixChange={vi.fn()} locator={null} form="narrative" onLocatorChange={vi.fn()} onFormChange={change} />);
-  fireEvent.click(screen.getByRole("button", { name: "Show as Name in the sentence" }));
-  expect((await screen.findAllByRole("menuitemradio")).map((item) => item.textContent)).toHaveLength(5);
+  expect(screen.getByRole("button", { name: /^Show as / }).textContent).toBe("Name in the sentence");
+  expect(await forms()).toHaveLength(5);
   fireEvent.click(screen.getByRole("menuitemradio", { name: "Name in brackets" }));
   expect(change).toHaveBeenCalledExactlyOnceWith("normal");
 });
 
-test("one printable form is said as a quiet line, and none says the shared reason once", () => {
+test("an output with no forms says the shared reason once, in place of the pop-up", () => {
   const reason = "Reference entries have no name forms. Choose another style.";
-  const { rerender } = render(<Editor choices={answer({ normal: "(Example, 2026)" })} />);
-  expect(screen.queryByRole("radiogroup")).toBeNull();
-  expect(screen.getByText("(Example, 2026)")).toBeTruthy();
   const none = { reason };
-  rerender(<CitationDetails prefix="" suffix="" onPrefixChange={vi.fn()} onSuffixChange={vi.fn()} locator={null} form="normal" onLocatorChange={vi.fn()} onFormChange={vi.fn()}
+  render(<CitationDetails prefix="" suffix="" onPrefixChange={vi.fn()} onSuffixChange={vi.fn()} locator={null} form="normal" onLocatorChange={vi.fn()} onFormChange={vi.fn()}
     choices={answer({ normal: none, narrative: none, "author-only": none, "year-only": none, full: none }, null)} />);
-  expect(screen.queryByRole("radiogroup")).toBeNull();
+  expect(screen.queryByRole("button", { name: /^Show as / })).toBeNull();
   expect(screen.getAllByText(reason)).toHaveLength(1);
 });
 
@@ -113,4 +115,3 @@ test("the fields use role tokens and retain pointer and touch targets", () => {
   expect(css).toContain("min-height: var(--control-h)");
   expect(css).not.toMatch(/#[0-9a-f]{3,8}\b|\b\d+px\b/);
 });
-

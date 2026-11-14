@@ -63,9 +63,19 @@ fn serve(queue: Receiver<bool>, mut save: impl FnMut(bool)) {
 /// the choice is on disk, so quitting at any moment never loses a choice that
 /// was shown as made. Settings hears what applies either way.
 fn save(app: &AppHandle, on: bool) {
-    match app.state::<SettingsFile>().update(|s| s.update_checks = Some(on)) {
-        Ok(_) => {
+    let file = app.state::<SettingsFile>();
+    let saved = file
+        .exclusive(|path| {
+            let before = ibis_engine::settings::load(path).settings;
+            let saved = ibis_engine::settings::update(path, |settings| settings.update_checks = Some(on))
+                .map_err(|error| ibis_engine::settings_backup::settings_message(&error))?;
+            file.remember_native_changes(&before, &saved);
             set_automatic(app, on);
+            Ok::<_, String>(())
+        })
+        .and_then(|saved| saved);
+    match saved {
+        Ok(()) => {
             crate::library::refresh_settings_notice(app, &app.state::<SettingsFile>());
         }
         Err(problem) => tell(
@@ -73,6 +83,18 @@ fn save(app: &AppHandle, on: bool) {
             &format!("Your choice could not be saved, so nothing changed: {problem}."),
         ),
     }
+    for window in ["main", crate::settings_window::LABEL] {
+        report(
+            app.emit_to(window, "update:automatic", automatic(app)),
+            NativeIssue::UpdateSetting,
+        );
+    }
+}
+
+/// Apply an explicit live-file choice without another save or consent prompt.
+pub(crate) fn apply_file_setting(app: &AppHandle, saved: Option<bool>) {
+    app.state::<Updates>().question.store(false, Ordering::SeqCst);
+    set_automatic(app, saved.unwrap_or(false));
     for window in ["main", crate::settings_window::LABEL] {
         report(
             app.emit_to(window, "update:automatic", automatic(app)),

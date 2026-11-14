@@ -1,5 +1,5 @@
 //! Defaults stay unset when another choice is saved.
-use ibis_core::settings;
+use ibis_engine::settings;
 
 #[test]
 fn shortcut_defaults_stay_unwritten_and_explicit_choices_survive_saves() {

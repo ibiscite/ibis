@@ -2,11 +2,12 @@
 // For clipboard/document outcomes and reordered workers, use ./delivery instead.
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
-import { vi } from "vitest";
+import { expect, vi } from "vitest";
 import { emit, listen } from "@tauri-apps/api/event";
 import type * as api from "../api";
 import type { Density, DisplayRun, DisplayTree, FilePreview, FileSelection, PreviewIntent } from "../bindings";
 import { isStyle, listedOutput } from "../format/outputs";
+import { fixtureDestination, formatAnswer } from "./format";
 import { forgetRecentFormats } from "../features/picker/FormatMenu";
 
 export async function resetApp() {
@@ -106,10 +107,19 @@ export function citationDetails(): HTMLElement | null {
 /** Picks a form by its output in Show as: a segment, or with more than three, its pop-up's item. */
 export async function chooseForm(name: string) {
   const details = await waitFor(() => within(citationDetails()!));
-  const radio = details.queryByRole("radio", { name });
-  if (radio) return void fireEvent.click(radio);
   fireEvent.click(await waitFor(() => details.getByRole("button", { name: /^Show as / })));
   fireEvent.click(await screen.findByRole("menuitemradio", { name }));
+}
+
+/** The text each form in Show as would paste, read from its menu, which closes again. */
+export async function formExamples(): Promise<string[]> {
+  const details = await waitFor(() => within(citationDetails()!));
+  fireEvent.click(await waitFor(() => details.getByRole("button", { name: /^Show as / })));
+  const rows = await screen.findAllByRole("menuitemradio");
+  const examples = rows.map((row) => row.querySelector(".toolbar-menu-sample")?.textContent ?? "");
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  return examples;
 }
 
 /** The details' Text before or Text after field, asked for if it is not shown yet. */
@@ -222,7 +232,10 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     save_picker_preferences: ({ preferences: patch }) => { const receipt = ++revision; submitted.set(receipt, patch as Partial<api.PickerPreferences>); return receipt; },
     picker_preferences_saved: () => null,
     // Opened from no app Ibis knows: the default format applies.
-    picker_destination: () => ({ app: null, app_id: null, app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false }),
+    picker_destination: async () => {
+      await Promise.resolve();
+      return { app: null, app_id: null, app_identity: null, format: formatAnswer(preferences.key_output ?? preferences.output, "yours"), unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false };
+    },
     remember_app_output: () => null,
     login_item: () => ({ name: "Ibis", enabled: false, problem: null }),
     set_login_item: ({ enabled }) => ({ name: "Ibis", enabled, problem: null }),
@@ -247,7 +260,11 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
       // A test's save handler sees the choice the receipt stands for.
       const receipt = cmd === "picker_preferences_saved" ? (args as { receipt: number }).receipt : 0;
       const value = handler((receipt ? { ...args as object, preferences: submitted.get(receipt) } : args ?? {}) as Parameters<Handler>[0]);
-      if (cmd === "picker_preferences") return Promise.resolve(value).then((loaded) => { preferences = { ...preferences, ...loaded as api.PickerPreferences }; return preferences; });
+      if (cmd === "picker_destination") return Promise.resolve(value).then((destination) => fixtureDestination(destination as api.PickerDestination));
+      if (cmd === "picker_preferences") {
+        if (value && typeof value === "object" && !("then" in value)) preferences = { ...preferences, ...value as api.PickerPreferences };
+        return Promise.resolve(value).then((loaded) => { preferences = { ...preferences, ...loaded as api.PickerPreferences }; return preferences; });
+      }
       if (cmd === "picker_preferences_saved") return Promise.resolve(value).then(() => {
         // The owner applies choices in the order they were submitted: a field
         // a later choice already saved keeps that later value.

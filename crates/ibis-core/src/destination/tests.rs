@@ -1,4 +1,29 @@
 use super::*;
+
+#[test]
+fn zotero_finds_and_copies_even_when_an_old_rule_approves_paste() {
+    for (system, id) in [(System::Macos, "org.zotero.zotero"), (System::Windows, "zotero.exe")] {
+        let app = AppId { system, id: id.into() };
+        assert!(finds_in_app(&app));
+        let target = Target {
+            system,
+            app: Some(app),
+            secure_field: false,
+            elevated: false,
+        };
+        assert_eq!(
+            decide(
+                &target,
+                PastePermission {
+                    enabled: true,
+                    granted: true,
+                    app: Some(AppPaste::Paste)
+                }
+            ),
+            Decision::Copy(CopyReason::CopyOnly)
+        );
+    }
+}
 use std::collections::HashSet;
 
 fn mac(id: &str) -> AppId {
@@ -56,81 +81,6 @@ fn app_ids_match_as_the_system_reports_them() {
     // The same ID on another system is another app.
     assert!(lookup(&windows("com.microsoft.Word")).is_none());
     assert!(lookup(&mac("com.example.unknown")).is_none());
-}
-
-#[test]
-fn output_follows_the_app() {
-    let default = OutputSpec::Key {
-        syntax: KeySyntax::Typst,
-        command: None,
-    };
-    let output = |app: AppId| output_for(Some(&app), &default, "apa");
-    assert_eq!(
-        output(mac("com.microsoft.Word")),
-        OutputSpec::Csl { style: "apa".into() }
-    );
-    assert_eq!(output(windows("WINWORD.EXE")), OutputSpec::Csl { style: "apa".into() });
-    assert_eq!(
-        output(mac("md.obsidian")),
-        OutputSpec::Key {
-            syntax: KeySyntax::Pandoc,
-            command: None
-        }
-    );
-    assert_eq!(
-        output(mac("TeXShop")),
-        OutputSpec::Key {
-            syntax: KeySyntax::Biblatex,
-            command: None
-        }
-    );
-    assert_eq!(output(mac("com.example.unknown")), default);
-    assert_eq!(output(windows("notepad.exe")), default);
-    assert_eq!(output(mac("com.apple.Terminal")), default);
-    assert_eq!(output_for(None, &default, "apa"), default);
-}
-
-#[test]
-fn browsers_and_code_editors_ask_without_inferring_a_syntax() {
-    let default = OutputSpec::Key {
-        syntax: KeySyntax::Typst,
-        command: None,
-    };
-    for app in APPS.iter().filter(|app| app.output_question.is_some()) {
-        let id = AppId {
-            system: app.system,
-            id: app.id.to_uppercase(),
-        };
-        assert_eq!(lookup(&id).and_then(|app| app.output_question), app.output_question);
-        assert_eq!(app.output, None);
-        assert_eq!(app.safety, PasteSafety::Normal);
-        assert_eq!(output_for(Some(&id), &default, "apa"), default);
-    }
-    for id in [
-        mac("com.apple.Safari"),
-        mac("com.google.Chrome"),
-        windows(r"C:\Apps\FIREFOX.EXE"),
-    ] {
-        assert_eq!(
-            lookup(&id).and_then(|app| app.output_question),
-            Some(OutputQuestion::Browser)
-        );
-    }
-    for id in [mac("com.microsoft.VSCode"), windows("code.exe")] {
-        assert_eq!(
-            lookup(&id).and_then(|app| app.output_question),
-            Some(OutputQuestion::Editor)
-        );
-    }
-    for id in [
-        mac("com.microsoft.Word"),
-        mac("md.obsidian"),
-        mac("TeXShop"),
-        mac("com.apple.Terminal"),
-        mac("example.unknown"),
-    ] {
-        assert_eq!(lookup(&id).and_then(|app| app.output_question), None);
-    }
 }
 
 #[test]
@@ -405,16 +355,21 @@ fn an_id_belongs_to_the_system_whose_table_knows_it() {
 
 #[test]
 fn a_destination_says_what_the_app_gets_and_how() -> Result<(), serde_json::Error> {
-    let default = OutputSpec::Key {
-        syntax: KeySyntax::Typst,
-        command: None,
+    // The engine chooses the format (decision 0042); the destination carries it.
+    let chosen = FormatChoice {
+        output: OutputSpec::Csl { style: "ieee".into() },
+        id: Some("ieee".into()),
+        from: FormatFrom::Yours,
+        kind: FormatKind::Documents,
+        writing: None,
     };
-    let at = |id: &str, running| destination(id, running, &default, "ieee");
+    let at = |id: &str, running| destination(id, running, |_| chosen.clone());
 
     let word = at("com.microsoft.word", System::Macos);
     assert_eq!(word.name.as_deref(), Some("Microsoft Word"));
     assert_eq!(word.delivery, Decision::Paste);
     assert_eq!(word.output, OutputSpec::Csl { style: "ieee".into() });
+    assert_eq!(word.from, FormatFrom::Yours);
     let mut newer = serde_json::to_value(&word)?;
     newer["added"] = serde_json::json!(true);
     newer["app"]["added"] = serde_json::json!(true);
@@ -423,16 +378,10 @@ fn a_destination_says_what_the_app_gets_and_how() -> Result<(), serde_json::Erro
 
     let terminal = at("com.apple.Terminal", System::Windows);
     assert_eq!(terminal.delivery, Decision::Copy(CopyReason::Terminal));
-    assert_eq!(terminal.output, default);
-
-    let browser = at("com.apple.Safari", System::Macos);
-    assert_eq!(browser.output_question, Some(OutputQuestion::Browser));
-    assert_eq!(browser.output, default);
 
     for running in [System::Macos, System::Windows] {
         let unknown = at("com.example.unknown", running);
         assert_eq!(unknown.name, None);
-        assert_eq!(unknown.output, default);
         assert_eq!(unknown.delivery, Decision::Copy(CopyReason::UnknownApp));
     }
     let linux = at("com.example.unknown", System::Linux);

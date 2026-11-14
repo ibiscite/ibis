@@ -33,8 +33,7 @@ pub use prepared::{CitationCommitError, PreparedCitation};
 mod project;
 pub use ibis_sources::project::{Doubt, EntryRefusal, KeyCheck, ProjectProblem, ProjectRead};
 pub use project::{
-    EntryResult, ProjectAssessment, ProjectAssessmentState, ProjectKey, ProjectResult, WritingProjectCitation,
-    project_name,
+    EntryResult, ProjectAssessment, ProjectAssessmentState, ProjectKey, ProjectResult, WritingCitation, project_name,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

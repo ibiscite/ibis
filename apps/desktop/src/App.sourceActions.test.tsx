@@ -88,7 +88,7 @@ test("Zotero never offers library reveal, and its reveal key leaves More and foc
   expect(document.activeElement).toBe(focused);
   fireEvent.click(within(palette).getByRole("option", { name: "Show in Zotero" }));
   await waitFor(() => expect(open).toHaveBeenCalledOnce());
-  expect(open).toHaveBeenCalledWith(expect.objectContaining({ reveal: false }));
+  expect(open).toHaveBeenCalledWith(expect.objectContaining({ reveal: true }));
 });
 
 test.each([false, true])("More distinguishes source identity, reveal and Choose Library (Zotero: %s)", async (zotero) => {
@@ -154,7 +154,7 @@ test("several Zotero libraries follow the highlighted reference rather than the 
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "ArrowDown" });
   commandO();
   await waitFor(() => expect(open).toHaveBeenCalledOnce());
-  expect(open.mock.calls[0]).toEqual([{ item: group.id, expectedRevision: "1", expectedSourceGeneration: "source-1", zoteroOnly: false, reveal: false, presentation: 0 }]);
+  expect(open.mock.calls[0]).toEqual([{ item: group.id, expectedRevision: "1", expectedSourceGeneration: "source-1", zoteroOnly: false, reveal: true, presentation: 0 }]);
 });
 
 test("Choose Library offers files and Zotero, while Ctrl+O there opens the current source", async () => {
@@ -277,7 +277,7 @@ test.each(["file", "zotero-running", "zotero-closed"])("empty choices show each 
   expect(screen.getByRole("option", { name: /^Choose a Library File/ }).querySelector("svg path")?.getAttribute("d")).toBe(iconPaths["library-big"]);
   expect(footer().queryByRole("button", { name: /Open Zotero|Open .*thesis/ })).toBeNull();
   commandO();
-  await waitFor(() => expect(open).toHaveBeenCalledExactlyOnceWith({ item: null, expectedRevision: "1", expectedSourceGeneration: "source-1", zoteroOnly: false, reveal: false, presentation: 0 }));
+  await waitFor(() => expect(open).toHaveBeenCalledExactlyOnceWith({ item: null, expectedRevision: "1", expectedSourceGeneration: "source-1", zoteroOnly: false, reveal: zotero, presentation: 0 }));
 });
 
 test("an empty file's failed open leaves one file-choice goal and keeps cancellation usable", async () => {

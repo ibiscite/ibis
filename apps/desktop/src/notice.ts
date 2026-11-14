@@ -18,7 +18,7 @@ if (root) {
   if (new URLSearchParams(window.location.search).get("surface") === "opaque") {
     document.documentElement.dataset.surface = "opaque";
   }
-  const render = renderNotice(root, platform);
+  const render = renderNotice(root, platform, () => { void commands.changeSuggestedFormat().catch(() => undefined); });
   // Ibis's own Light or Dark, as the picker shows it; System follows the Mac.
   const show = (message: NoticeMessage) => {
     document.documentElement.dataset.appearance = message.appearance ?? "system";

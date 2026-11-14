@@ -1,10 +1,9 @@
 """Workflow rules that only the workflow's structure can show, read with a YAML
 parser, never with regular expressions (decision 0035).
 
-"CI result" is the one required check. GitHub counts a skipped required check as
-passing, so the job must run whatever its needs did (`if: always()`) and must
-need every validation job, or a red pull request could merge.
-The issue reporter runs after the result and is outside the PR gate.
+"CI result" confirms the merged revision before publication; Local gate owns
+merging. The result must include every platform and daily/manual qualifier,
+even after a failed prerequisite. The reporter is outside that result.
 """
 
 import sys
@@ -46,16 +45,19 @@ class CiResultTest(unittest.TestCase):
         needs = [needs] if isinstance(needs, str) else list(needs)
         self.assertEqual(sorted(needs), sorted(name for name in jobs if name not in {key, "nightly-report"}))
 
-    def test_runs_no_local_workflow_or_action(self):
-        # ci-paths.mjs treats every other workflow as documentation, which holds
-        # only while pull request CI runs nothing but ci.yml.
-        local = []
-        for name, job in self.workflow["jobs"].items():
-            uses = [job.get("uses", "")] + [step.get("uses", "") for step in job.get("steps", [])]
-            local += [f"{name}: {use}" for use in uses if str(use).startswith("./")]
-        self.assertEqual(local, [])
+    def test_main_confirmation_always_runs_the_full_platform_matrix(self):
+        events = self.workflow.get("on", self.workflow.get(True))
+        self.assertEqual(set(events), {"push", "schedule", "workflow_dispatch"})
+        self.assertEqual(events["push"], {"branches": ["main"]})
+        jobs = self.workflow["jobs"]
+        for name in ["test", "desktop"]:
+            self.assertNotIn("if", jobs[name])
+            self.assertEqual(jobs[name]["strategy"]["matrix"]["os"], ["ubuntu-24.04", "macos-15", "windows-2025"])
+        for name in ["interface", "web"]:
+            self.assertNotIn("if", jobs[name])
+        self.assertEqual(jobs["desktop"]["needs"], "interface")
 
-    def test_dependency_rules_and_identities_remain_in_the_required_job(self):
+    def test_dependency_rules_and_identities_remain_in_confirmation(self):
         jobs = self.workflow["jobs"]
         self.assertEqual(jobs["dependencies"]["name"], "Dependency policy and commit identities")
         steps = jobs["dependencies"]["steps"]
@@ -79,7 +81,6 @@ class CiResultTest(unittest.TestCase):
     def test_weekly_advisory_run_reuses_the_dependency_job(self):
         events = self.workflow.get("on", self.workflow.get(True))
         self.assertIn({"cron": "43 5 * * 1"}, events["schedule"])
-        self.assertEqual(events["push"]["tags"], ["v*"])
         jobs = self.workflow["jobs"]
         self.assertIn("dependencies", jobs["result"]["needs"])
         self.assertNotIn("if", jobs["dependencies"])
@@ -87,14 +88,12 @@ class CiResultTest(unittest.TestCase):
         reporter = next(step for step in jobs["dependencies"]["steps"] if step.get("name") == "Report advisory failure")
         self.assertEqual(reporter["env"]["SCHEDULE"], "${{ github.event.schedule }}")
 
-    def test_heavy_qualification_and_failure_report_stay_off_prs(self):
+    def test_daily_qualification_and_failure_reporting_remain_required(self):
         jobs = self.workflow["jobs"]
         for name in ["webkit", "installed", "release-checks", "bibtex-fuzz"]:
             self.assertEqual(jobs[name]["if"], "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'")
             self.assertIn(name, jobs["result"]["needs"])
         self.assertEqual(jobs["nightly-report"]["needs"], "result")
-        events = self.workflow.get("on", self.workflow.get(True))
-        self.assertNotIn("merge_group", events)
 
     def test_release_advisories_gate_publication(self):
         workflow = yaml.safe_load((ROOT / ".github/workflows/preview.yml").read_text(encoding="utf-8"))

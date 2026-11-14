@@ -222,9 +222,9 @@ cli-options-refused = Cannot cite { $reference } with { $options } in { $output 
 cli-together-refused = { $output } cannot write these references together as asked. Cite them one at a time to see which one fails.
 cli-loss-left-out = { $output } cannot show { $what }{ $target }, so it was left out.
 cli-loss-flattened = { $output } wrote { $what }{ $target } as plain text.
+cli-writing-without-bibliography = no .bib file
 cli-loss-unknown = { $output } changed { $what }{ $target } in a way this version of Ibis can’t name. Check the citation.
 cli-loss-something = part of the citation
-cli-project-without-bibliography = no .bib file
 cli-doctor-about = Check your libraries and settings offline, without writing or sending anything
 cli-doctor-summary = Ibis { $version } · contract { $contract } · { $methods } engine methods, { $outputs } key outputs, { $styles } citation styles
 cli-spelling-match = (spelling match)
@@ -624,6 +624,7 @@ backup-problem-settings-file = That’s Ibis’s own settings file, not a backup
 backup-problem-newer = That backup is from a newer version of Ibis. Update Ibis, then try again.
 backup-problem-invalid = That backup is damaged. Nothing changed.
 backup-problem-settings-unusable = Ibis can’t use its settings file as it is. Nothing changed.
+backup-problem-busy = Settings are being saved by another Ibis. Wait for it to finish, then try again. Nothing changed.
 backup-problem-changed = Settings changed after the backup was shown. Choose it again.
 backup-problem-not-saved = Ibis couldn’t save. Nothing changed.
 
@@ -819,35 +820,37 @@ session-not-read = The references could not be read. Try again.
 session-not-formatted = These references could not be written as a bibliography. Try another style.
 session-not-copied = The bibliography could not be copied. Try again.
 session-not-saved = The bibliography could not be saved. Try again.
-writing-project-title = Writing Projects
-writing-project-loading = Loading writing projects…
-writing-project-saving = Saving project…
-writing-project-menu = Writing Projects…
-writing-project-about = A writing project keeps its citation format and optional bibliography together. Your choice is remembered for this app; changes apply wherever you use this project. Ibis does not identify the document.
-writing-project-session-only = Ibis can’t identify the app, so this project applies only until Ibis quits.
-writing-project-close = Back
-writing-project-none = No Writing Project
-writing-project-empty = No writing projects yet. Your app’s format applies until you choose one.
-writing-project-use = Use { $name }
-writing-project-selected = Selected writing project
-writing-project-bibliography = Bibliography: { $name }
-writing-project-no-bibliography = No bibliography selected.
-writing-project-choose-bibliography = Choose Bibliography…
-writing-project-remove-bibliography = Remove Bibliography
-writing-project-create = New Writing Project…
-writing-project-confirm-create = Create Project
-writing-project-starts-with = Starts with { $format }. Change it in the format menu after creating the project.
-writing-project-name = Project name
-writing-project-rename = Rename Project…
-writing-project-save-name = Save Name
-writing-project-remove = Remove Project…
-writing-project-confirm-remove = Remove Project
-writing-project-cancel = Cancel
-writing-project-unsupported = This app version cannot use this project’s format.
-writing-project-not-read = The writing projects could not be read. Close this sheet, then try again.
-writing-project-not-saved = The project could not be saved. Your previous choice still applies. Try again.
-writing-project-bibliography-not-saved = The bibliography choice could not be saved. Try again.
-writing-project-pick = Your pick changes this project’s format.
+writing-title = Writings
+writing-loading = Loading writings…
+writing-saving = Saving project…
+writing-menu = New writing…
+writing-about = A writing keeps its citation format and optional bibliography together. Your choice is remembered for this app; changes apply wherever you use this writing. Ibis does not identify the document.
+writing-session-only = Ibis can’t identify the app, so this writing applies only until Ibis quits.
+writing-close = Close
+writing-none = No Writing
+writing-empty = No writings yet. Your app’s format applies until you choose one.
+writing-use = Use { $name }
+writing-selected = Selected writing
+writing-selected-label = Selected
+writing-format = Format: { $name }
+writing-bibliography = Bibliography: { $name }
+writing-no-bibliography = No bibliography selected.
+writing-choose-bibliography = Choose Bibliography…
+writing-remove-bibliography = Remove Bibliography
+writing-create = New Writing…
+writing-confirm-create = Create Writing
+writing-starts-with = Starts with { $format }. Change it in the format menu after creating the writing.
+writing-name = Writing name
+writing-rename = Rename Writing…
+writing-save-name = Save Name
+writing-remove = Remove Writing…
+writing-confirm-remove = Remove Writing
+writing-cancel = Cancel
+writing-unsupported = This app version cannot use this writing’s format.
+writing-not-read = The writings could not be read. Close this sheet, then try again.
+writing-not-saved = The project could not be saved. Your previous choice still applies. Try again.
+writing-bibliography-not-saved = The bibliography choice could not be saved. Try again.
+writing-pick = Your pick changes this writing’s format.
 project-check-retry = Retry
 project-check-locate = Locate Bibliography…
 picker-choose-project = Check Against a .bib File…
@@ -1012,8 +1015,8 @@ session-absent =
 session-left-out = Left out because this style can’t write them: { $names }.
 session-bibliography-in = Bibliography in { $style }
 session-saved = Saved { $name }.
-writing-project-remove-question = Remove { $name } from Ibis? Its bibliography file stays where it is.
-writing-project-remembered = Saved for { $name }.
+writing-remove-question = Remove { $name } from Ibis? Its bibliography file stays where it is.
+writing-remembered = Saved for { $name }.
 picker-project-state =
     { $state ->
         [in] In { $name }
@@ -1041,7 +1044,7 @@ picker-copy-project-entry = Copy Entry for { $name }
 picker-project-entry =
     { $outcome ->
         [copied] Copied the entry for { $key } as your file has it, including any file or note field. Check it, then add it to { $name }.
-        [no-original] This reference has no original BibTeX entry here. Export it from your reference manager in your project’s dialect, keeping its key.
+        [no-original] This reference has no original BibTeX entry here. Export it from your reference manager in your writing’s dialect, keeping its key.
         [changed] The library or the bibliography changed. Search again, then try again.
         [repeated] The library file repeats this key, so Ibis can’t tell which entry to copy.
        *[dependency] This entry relies on a crossref, xdata or @string that can’t come with it. Export it from your reference manager, keeping its key.
@@ -1247,6 +1250,27 @@ library-more-not-listed =
        *[other] { $count } more are not listed.
     }
 
+settings-changed = Changed
+citations-documents = In documents
+citations-keys = In Markdown, LaTeX and Typst
+citations-apps = Formats remembered for apps
+citations-forget = Forget
+citations-writings = Writings
+settings-open-file = Open Settings File
+settings-file-description = Edits to settings.json apply while Ibis is running.
+picker-use-usual = Use { $format } in { $app } again
+picker-stop-writing = Stop using { $name } in { $app }
+
+copied-notice-suggested = Pasted in { $format }
+copied-notice-suggestion = Suggested { $format }
+copied-notice-change = Change
+
+picker-find-open = Open PDF, or show item in Zotero
+shortcuts-action-find-open = Open PDF, or show item
+
+citations-unlisted = Custom format
+
+picker-format-suggestion = Suggested until you choose a format.
 ## The palette: the format chooser and More (ui/Palette).
 palette-back = Back
 palette-run = Run
