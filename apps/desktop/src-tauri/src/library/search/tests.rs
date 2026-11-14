@@ -6,7 +6,7 @@ use crate::library::engine_library::FileLibrary;
 fn library(directory: &Path, bib: &str) -> FileLibrary {
     let path = directory.join("synthetic.bib");
     std::fs::write(&path, bib).unwrap_or_else(|e| panic!("{e}"));
-    FileLibrary::open(&path).unwrap_or_else(|e| panic!("synthetic library: {e}"))
+    FileLibrary::open(&path, &ibis_engine::Cancellation::default()).unwrap_or_else(|e| panic!("synthetic library: {e}"))
 }
 
 fn query(text: &str, interpret_locators: bool) -> SearchQuery {
@@ -284,7 +284,8 @@ fn the_picker_reads_a_record_as_every_front_end_does() {
     let path = directory.path().join("invented.json");
     std::fs::write(&path, include_str!("../../../../../../fixtures/record-summary.json"))
         .unwrap_or_else(|e| panic!("{e}"));
-    let file = FileLibrary::open(&path).unwrap_or_else(|e| panic!("synthetic library: {e}"));
+    let file = FileLibrary::open(&path, &ibis_engine::Cancellation::default())
+        .unwrap_or_else(|e| panic!("synthetic library: {e}"));
     let reply = search(&file, "tide", None);
     let rows: Vec<_> = reply
         .results

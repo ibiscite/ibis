@@ -14,7 +14,7 @@ fn delayed_citations_write_only_for_their_original_picker_and_clipboard() -> Res
         &path,
         "@book{taylor,title={Synthetic signals},author={Taylor, Alex},year={2026}}",
     )?;
-    let file = FileLibrary::open(&path).map_err(|_| "open invented library")?;
+    let file = FileLibrary::open(&path, &ibis_engine::Cancellation::default()).map_err(|_| "open invented library")?;
     let query = serde_json::from_value(json!({"text":"signals","interpret_locators":false}))?;
     let rows = serde_json::to_value(file.search(&query, 10, None, &ibis_engine::Cancellation::default())?)?;
     let selection = json!({

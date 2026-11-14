@@ -576,7 +576,6 @@ impl ZoteroSource {
             duplicate_keys: parsed.duplicate_keys,
             cut_short: false,
             damaged_keys: Default::default(),
-            attachment_paths: Default::default(),
         });
         Ok(loaded)
     }
@@ -675,6 +674,7 @@ pub fn profiles() -> Result<Vec<String>, ZoteroError> {
 /// Whether a Zotero library is on this computer, Zotero running or not. Reads
 /// Zotero's profile configuration and checks that a database file exists; no
 /// library is read before a person chooses Zotero.
+#[allow(clippy::disallowed_methods)]
 pub fn installed() -> bool {
     here().is_ok_and(|found| {
         found
@@ -1972,6 +1972,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::disallowed_methods)]
     fn actual_closed_reader_matches_live_public_records_in_disposable_ci() {
         if !cfg!(target_os = "macos") || std::env::var("GITHUB_ACTIONS").as_deref() != Ok("true") {
             eprintln!("actual-reader parity requires disposable macOS CI; native local check skipped");

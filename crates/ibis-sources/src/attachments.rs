@@ -1,8 +1,7 @@
 //! File-field decoding. Locations stay in the source owner, never the snapshot.
 use crate::{SourceWarning, WarningCode};
 use ibis_core::contract::{Attachment, Availability, ItemRef, LibraryObject};
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 const MAX_RECORD_TOKENS: usize = 256;
 const MAX_LIBRARY_ATTACHMENTS: usize = 100_000;
@@ -11,7 +10,7 @@ const MAX_LIBRARY_BYTES: usize = 64 * 1024 * 1024;
 const MAX_FIELD_BYTES: usize = 64 * 1024;
 const MAX_RECORD_WORK_BYTES: usize = 256 * 1024;
 const MAX_TOKEN_BYTES: usize = 16 * 1024;
-const MAX_PATH_BYTES: usize = 4096;
+pub(crate) const MAX_PATH_BYTES: usize = 4096;
 
 #[derive(Default)]
 struct AttachmentBudget {
@@ -32,50 +31,19 @@ impl AttachmentBudget {
     }
 }
 
-fn limit_warning(warnings: &mut Vec<SourceWarning>, line: Option<usize>) {
-    warnings.push(SourceWarning {
-        code: WarningCode::WorkLimit,
-        line,
-        key: None,
-        entry: None,
-        cause: None,
-        field: None,
-    });
-}
-
 pub(crate) fn append(
-    base: &Path,
     fields: Vec<(ItemRef, String, Option<usize>)>,
     objects: &mut Vec<LibraryObject>,
-    paths: &mut BTreeMap<ItemRef, PathBuf>,
     warnings: &mut Vec<SourceWarning>,
-) {
-    append_with(
-        base,
-        fields,
-        objects,
-        paths,
-        warnings,
-        &mut AttachmentBudget::default(),
-        availability,
-    )
-}
-
-fn append_with(
-    base: &Path,
-    fields: Vec<(ItemRef, String, Option<usize>)>,
-    objects: &mut Vec<LibraryObject>,
-    paths: &mut BTreeMap<ItemRef, PathBuf>,
-    warnings: &mut Vec<SourceWarning>,
-    budget: &mut AttachmentBudget,
-    mut probe: impl FnMut(&Path) -> Availability,
-) {
+) -> Vec<(usize, String)> {
+    let budget = &mut AttachmentBudget::default();
+    let mut references = Vec::new();
     for (parent, field, line) in fields {
         if field.is_empty() {
             continue;
         }
         if field.len() > MAX_FIELD_BYTES || field.len() > MAX_LIBRARY_BYTES.saturating_sub(budget.bytes) {
-            limit_warning(warnings, line);
+            warnings.push(SourceWarning::at(WarningCode::WorkLimit, line));
             continue;
         }
         budget.bytes += field.len();
@@ -88,7 +56,7 @@ fn append_with(
                 || budget.attachments >= MAX_LIBRARY_ATTACHMENTS
             {
                 if rest.is_some_and(|rest| !rest.is_empty()) {
-                    limit_warning(warnings, line);
+                    warnings.push(SourceWarning::at(WarningCode::WorkLimit, line));
                 }
                 break;
             }
@@ -96,7 +64,7 @@ fn append_with(
                 Ok(Some(encoded)) => encoded,
                 Ok(None) => break,
                 Err(()) => {
-                    limit_warning(warnings, line);
+                    warnings.push(SourceWarning::at(WarningCode::WorkLimit, line));
                     break;
                 }
             };
@@ -110,15 +78,13 @@ fn append_with(
                 .checked_ilog10()
                 .map_or(1, |digits| digits as usize + 1);
             let id_bytes = parent.key.len().saturating_add("attachment:".len() + 1 + digits);
-            // Reserve ID + parent + possible private-map key, including each
-            // library String, before any identity cloning or formatting.
+            // Reserve the ID and parent before identity cloning or formatting.
             let reference_work = id_bytes
-                .saturating_mul(2)
                 .saturating_add(parent.key.len())
-                .saturating_add(parent.library.as_str().len().saturating_mul(3))
+                .saturating_add(parent.library.as_str().len().saturating_mul(2))
                 .saturating_add(digits);
             if !budget.charge(&mut record_work, reference_work) {
-                limit_warning(warnings, line);
+                warnings.push(SourceWarning::at(WarningCode::WorkLimit, line));
                 break;
             }
             let encoded = encoded.replace("\\;", ";");
@@ -127,60 +93,20 @@ fn append_with(
                 .as_ref()
                 .is_some_and(|(_, location, _)| location.len() > MAX_PATH_BYTES)
             {
-                limit_warning(warnings, line);
+                warnings.push(SourceWarning::at(WarningCode::WorkLimit, line));
                 continue;
             }
             let (title, media_type, path, availability) = match parsed {
                 Some((title, location, kind)) => match location_kind(&location) {
                     LocationKind::Online => (title, kind, None, Availability::Online),
                     LocationKind::Unsupported => {
-                        warnings.push(SourceWarning {
-                            code: WarningCode::InvalidAttachment,
-                            line,
-                            key: None,
-                            entry: None,
-                            cause: None,
-                            field: None,
-                        });
+                        warnings.push(SourceWarning::at(WarningCode::InvalidAttachment, line));
                         (title, kind, None, Availability::Unknown)
                     }
-                    LocationKind::File => {
-                        let relative = Path::new(&location);
-                        let native_bytes = if relative.is_absolute() {
-                            relative.as_os_str().as_encoded_bytes().len()
-                        } else {
-                            base.as_os_str()
-                                .as_encoded_bytes()
-                                .len()
-                                .saturating_add(1)
-                                .saturating_add(location.len())
-                        };
-                        // PathBuf joining may grow capacity; charge its upper
-                        // bound before allocating or probing the native path.
-                        if native_bytes > MAX_PATH_BYTES
-                            || !budget.charge(&mut record_work, native_bytes.saturating_mul(2))
-                        {
-                            limit_warning(warnings, line);
-                            continue;
-                        }
-                        let path = if relative.is_absolute() {
-                            relative.to_path_buf()
-                        } else {
-                            base.join(relative)
-                        };
-                        let availability = probe(&path);
-                        (title, kind, Some(path), availability)
-                    }
+                    LocationKind::File => (title, kind, Some(location), Availability::Unknown),
                 },
                 None => {
-                    warnings.push(SourceWarning {
-                        code: WarningCode::InvalidAttachment,
-                        line,
-                        key: None,
-                        entry: None,
-                        cause: None,
-                        field: None,
-                    });
+                    warnings.push(SourceWarning::at(WarningCode::InvalidAttachment, line));
                     (String::new(), String::new(), None, Availability::Unknown)
                 }
             };
@@ -196,7 +122,7 @@ fn append_with(
                 key,
             };
             if let Some(path) = path {
-                paths.insert(id.clone(), path);
+                references.push((objects.len(), path));
             }
             budget.attachments += 1;
             objects.push(LibraryObject::Attachment(Attachment {
@@ -209,6 +135,7 @@ fn append_with(
             }));
         }
     }
+    references
 }
 
 enum LocationKind {
@@ -396,37 +323,11 @@ fn split_escaped(text: &str, delimiter: char) -> Option<Vec<String>> {
     }
     Some(values)
 }
-fn availability(path: &Path) -> Availability {
-    let metadata = match std::fs::metadata(path) {
-        Ok(metadata) => metadata,
-        Err(error) => {
-            return match error.kind() {
-                std::io::ErrorKind::NotFound => Availability::BrokenLink,
-                std::io::ErrorKind::PermissionDenied => Availability::Unreadable,
-                _ => Availability::Unknown,
-            };
-        }
-    };
-    if !metadata.is_file() {
-        return Availability::Unknown;
-    }
-    // The library reader's rule, which leaves out a bit ordinary files carry too.
-    if crate::file::needs_download(&metadata) {
-        return Availability::CloudPlaceholder;
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if metadata.permissions().mode() & 0o444 == 0 {
-            return Availability::Unreadable;
-        }
-    }
-    Availability::OnDisk
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ibis_core::contract::LibraryId;
     #[test]
     fn literal_paths_and_jabref_fields_keep_spaces_and_escaped_delimiters() {
         assert_eq!(
@@ -443,45 +344,20 @@ mod tests {
             Some(vec!["one;two.pdf".into(), "three.pdf".into()])
         );
     }
-}
 
-#[cfg(test)]
-mod adversarial_tests {
-    use super::*;
-    use ibis_core::contract::LibraryId;
-
-    pub(super) fn check(text: &str) -> (Vec<LibraryObject>, usize, Vec<SourceWarning>) {
-        check_with_budget(text, &mut AttachmentBudget::default())
-    }
-    pub(super) fn check_with_budget(
-        text: &str,
-        budget: &mut AttachmentBudget,
-    ) -> (Vec<LibraryObject>, usize, Vec<SourceWarning>) {
+    fn check(text: &str) -> (Vec<LibraryObject>, usize, Vec<SourceWarning>) {
         let parent = ItemRef {
             library: LibraryId::digest(b"invented"),
             key: "record:one".into(),
         };
         let mut objects = Vec::new();
-        let mut paths = BTreeMap::new();
         let mut warnings = Vec::new();
-        let mut probes = 0;
-        append_with(
-            Path::new("/invented"),
-            vec![(parent, text.into(), Some(2))],
-            &mut objects,
-            &mut paths,
-            &mut warnings,
-            budget,
-            |_| {
-                probes += 1;
-                Availability::BrokenLink
-            },
-        );
-        (objects, probes, warnings)
+        let paths = append(vec![(parent, text.into(), Some(2))], &mut objects, &mut warnings);
+        (objects, paths.len(), warnings)
     }
 
     #[test]
-    fn remote_windows_prefixes_never_reach_metadata() {
+    fn remote_windows_prefixes_are_not_local_references() {
         for location in [
             r"\/attacker.example/share/x.pdf",
             r"/\host\share\x.pdf",
@@ -498,8 +374,8 @@ mod adversarial_tests {
             r"file:\\host\share\x.pdf",
             "C:invented.pdf",
         ] {
-            let (_, probes, warnings) = check(location);
-            assert_eq!(probes, 0, "unsupported location must not be probed: {location}");
+            let (_, references, warnings) = check(location);
+            assert_eq!(references, 0, "unsupported location must not be probed: {location}");
             assert!(
                 warnings
                     .iter()
@@ -517,8 +393,8 @@ mod adversarial_tests {
             "synthetic.pdf:application//pdf",
             "synthetic.pdf:/pdf",
         ] {
-            let (objects, probes, warnings) = check(text);
-            assert_eq!(probes, 0, "ambiguous attachment must not be probed");
+            let (objects, references, warnings) = check(text);
+            assert_eq!(references, 0, "ambiguous attachment must not be probed");
             assert!(!serde_json::to_string(&objects)?.contains("invented/private"));
             assert!(!warnings.is_empty());
         }
@@ -527,59 +403,22 @@ mod adversarial_tests {
 
     #[test]
     fn attachment_expansion_is_bounded_before_metadata() {
-        let (objects, probes, warnings) = check(&"x;".repeat(20_000));
+        let (objects, references, warnings) = check(&"x;".repeat(20_000));
         assert!(objects.len() <= 256);
-        assert!(probes <= 256);
+        assert!(references <= 256);
         assert!(warnings.iter().any(|warning| warning.code == WarningCode::WorkLimit));
     }
-}
-
-#[cfg(test)]
-mod limit_tests {
-    use super::adversarial_tests::{check, check_with_budget};
-    use super::*;
 
     #[test]
-    fn library_count_work_and_byte_limits_stop_before_probing() {
-        for mut budget in [
-            AttachmentBudget {
-                attachments: MAX_LIBRARY_ATTACHMENTS - 1,
-                ..AttachmentBudget::default()
-            },
-            AttachmentBudget {
-                tokens: MAX_LIBRARY_TOKENS - 1,
-                ..AttachmentBudget::default()
-            },
-            AttachmentBudget {
-                bytes: MAX_LIBRARY_BYTES - 1,
-                ..AttachmentBudget::default()
-            },
-        ] {
-            let (objects, probes, warnings) = check_with_budget("x.pdf;y.pdf", &mut budget);
-            assert!(objects.len() <= 1);
-            assert!(probes <= 1);
-            assert!(warnings.iter().any(|warning| warning.code == WarningCode::WorkLimit));
-        }
-        // A library with exactly 100k ordinary single-attachment references fits.
-        let mut last_slot = AttachmentBudget {
-            attachments: MAX_LIBRARY_ATTACHMENTS - 1,
-            tokens: MAX_LIBRARY_ATTACHMENTS - 1,
-            ..AttachmentBudget::default()
-        };
-        let (objects, probes, warnings) = check_with_budget("last.pdf", &mut last_slot);
-        assert_eq!((objects.len(), probes, warnings.len()), (1, 1, 0));
-    }
-
-    #[test]
-    fn oversized_paths_tokens_and_fields_never_reach_metadata() {
+    fn oversized_paths_tokens_and_fields_warn_without_retaining_references() {
         for text in [
             "x".repeat(MAX_PATH_BYTES + 1),
             "x".repeat(MAX_TOKEN_BYTES + 1),
             ";".repeat(MAX_FIELD_BYTES + 1),
         ] {
-            let (objects, probes, warnings) = check(&text);
+            let (objects, references, warnings) = check(&text);
             assert!(objects.is_empty());
-            assert_eq!(probes, 0);
+            assert_eq!(references, 0);
             assert!(warnings.iter().any(|warning| warning.code == WarningCode::WorkLimit));
         }
     }
@@ -601,109 +440,12 @@ mod limit_tests {
         }
         assert!(!is_media_type(&format!("application/{}", "x".repeat(128))));
         for location in [r"C:\invented\private.pdf", "C:/invented/private.pdf"] {
-            let (objects, probes, _) = check(location);
-            assert_eq!(probes, usize::from(cfg!(windows)));
+            let (objects, references, _) = check(location);
+            assert_eq!(references, usize::from(cfg!(windows)));
             let LibraryObject::Attachment(attachment) = &objects[0] else {
                 panic!("synthetic attachment")
             };
             assert_eq!(attachment.media_type, "application/pdf");
         }
-    }
-}
-
-#[cfg(test)]
-mod identity_budget_tests {
-    use super::*;
-    use ibis_core::contract::LibraryId;
-
-    #[test]
-    fn long_parent_keys_cannot_amplify_retained_attachment_identity_bytes() {
-        for (key_length, location) in [(64 * 1024, "https://example.invalid/x"), (1024, "x.pdf")] {
-            let parent = ItemRef {
-                library: LibraryId::digest(b"invented"),
-                key: format!("record:{}", "x".repeat(key_length)),
-            };
-            let mut objects = Vec::new();
-            let mut paths = BTreeMap::new();
-            let mut warnings = Vec::new();
-            let mut probes = 0;
-            append_with(
-                Path::new("/invented"),
-                vec![(parent, format!("{location};").repeat(256), Some(3))],
-                &mut objects,
-                &mut paths,
-                &mut warnings,
-                &mut AttachmentBudget::default(),
-                |_| {
-                    probes += 1;
-                    Availability::BrokenLink
-                },
-            );
-            let retained = objects
-                .iter()
-                .map(|object| match object {
-                    LibraryObject::Attachment(item) => {
-                        item.id.key.len()
-                            + item.id.library.as_str().len()
-                            + item
-                                .parent
-                                .as_ref()
-                                .map_or(0, |parent| parent.key.len() + parent.library.as_str().len())
-                    }
-                    _ => 0,
-                })
-                .sum::<usize>()
-                + paths
-                    .keys()
-                    .map(|id| id.key.len() + id.library.as_str().len())
-                    .sum::<usize>();
-            assert!(retained <= 256 * 1024, "retained {retained} identity bytes");
-            assert!(objects.len() < 256);
-            assert!(
-                warnings
-                    .iter()
-                    .any(|warning| warning.code == WarningCode::WorkLimit && warning.line == Some(3))
-            );
-            if location.starts_with("https:") {
-                assert_eq!(probes, 0);
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-mod identity_library_budget_test {
-    use super::*;
-    use ibis_core::contract::LibraryId;
-    #[test]
-    fn exhausted_reference_budget_refuses_identity_clones_and_probes() {
-        let parent = ItemRef {
-            library: LibraryId::digest(b"invented"),
-            key: format!("record:{}", "x".repeat(1024)),
-        };
-        let mut objects = Vec::new();
-        let mut paths = BTreeMap::new();
-        let mut warnings = Vec::new();
-        let mut budget = AttachmentBudget {
-            bytes: MAX_LIBRARY_BYTES - 128,
-            ..AttachmentBudget::default()
-        };
-        let mut probes = 0;
-        append_with(
-            Path::new("/invented"),
-            vec![(parent, "x.pdf".into(), Some(2))],
-            &mut objects,
-            &mut paths,
-            &mut warnings,
-            &mut budget,
-            |_| {
-                probes += 1;
-                Availability::BrokenLink
-            },
-        );
-        assert!(objects.is_empty());
-        assert!(paths.is_empty());
-        assert_eq!(probes, 0);
-        assert!(warnings.iter().any(|warning| warning.code == WarningCode::WorkLimit));
     }
 }

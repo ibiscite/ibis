@@ -957,7 +957,8 @@ mod tests {
             .begin_context(&pick, "apa", Some(writing), &AtomicBool::new(false), || {})
             .ok_or("editor request missing")?;
         let request = pending.current().ok_or("editor request missing")?;
-        let file = FileLibrary::open(&source).unwrap_or_else(|error| panic!("{error}"));
+        let file =
+            FileLibrary::open(&source, &ibis_engine::Cancellation::default()).unwrap_or_else(|error| panic!("{error}"));
         let query = serde_json::from_value(json!({"text":"demo","interpret_locators":false}))?;
         let rows = serde_json::to_value(file.search(&query, 10, None, &ibis_engine::Cancellation::default())?)?;
         let row = &rows["results"][0];
