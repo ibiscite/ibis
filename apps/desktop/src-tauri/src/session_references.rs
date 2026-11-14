@@ -5,6 +5,7 @@
 //! nowhere unless the person exports the bibliography, and it never reaches a
 //! library. Text comes from the open library each time it is shown.
 
+use ibis_engine::citations::{Operation, SessionId};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -12,11 +13,11 @@ use tauri::{AppHandle, Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::library::commands::RecentIdentity;
-use crate::library::engine_file::{FileLibrary, SessionBibliography};
+use crate::library::engine_library::FileLibrary;
 use crate::library::{CommandError, Library, SearchResult};
 use crate::picker::ChooserOpen;
+use ibis_core::contract::SessionBibliography;
 
-const FAILED: &str = "The references could not be read. Try again.";
 pub(crate) use ibis_engine::recents::SessionReferences;
 use ibis_engine::recents::{List, Undo};
 
@@ -53,7 +54,7 @@ fn open_file(library: &Mutex<Library>) -> Option<std::sync::Arc<FileLibrary>> {
     library.lock().ok()?.file.clone()
 }
 
-fn view(list: &List, file: Option<&FileLibrary>) -> Result<SessionReferencesView, String> {
+fn view(list: &List, file: Option<&FileLibrary>) -> Result<SessionReferencesView, CommandError> {
     let rows = file
         .map(|file| file.session_rows(&list.items))
         .transpose()?
@@ -81,7 +82,7 @@ fn view(list: &List, file: Option<&FileLibrary>) -> Result<SessionReferencesView
 pub(crate) fn session_references(
     session: State<'_, SessionReferences>,
     library: State<'_, Mutex<Library>>,
-) -> Result<SessionReferencesView, String> {
+) -> Result<SessionReferencesView, CommandError> {
     let file = open_file(&library);
     view(&session.lock(), file.as_deref())
 }
@@ -92,7 +93,7 @@ pub(crate) fn edit_session_references(
     edit: SessionEdit,
     session: State<'_, SessionReferences>,
     library: State<'_, Mutex<Library>>,
-) -> Result<SessionReferencesView, String> {
+) -> Result<SessionReferencesView, CommandError> {
     let file = open_file(&library);
     let mut list = session.lock();
     match edit {
@@ -111,7 +112,9 @@ pub(crate) fn edit_session_references(
 fn style_of(id: &str) -> Result<String, CommandError> {
     match crate::output::listed(id).map(crate::output::OutputRef::spec) {
         Some(ibis_core::contract::OutputSpec::Csl { style }) => Ok(style.clone()),
-        _ => Err(CommandError::from("Choose a citation style to write a bibliography.")),
+        _ => Err(CommandError::from(
+            ibis_core::contract::CitationError::UnsupportedOutput,
+        )),
     }
 }
 
@@ -122,22 +125,26 @@ fn style_of(id: &str) -> Result<String, CommandError> {
 pub(crate) async fn session_bibliography(
     style: String,
     intent: crate::library::PreviewIntent,
-    requests: State<'_, crate::library::FormattingRequests>,
     session: State<'_, SessionReferences>,
     library: State<'_, Mutex<Library>>,
 ) -> Result<Option<SessionBibliography>, CommandError> {
-    let cancel = requests.bibliography.start(intent).ok_or(CommandError::Cancelled)?;
-    cancel.check().map_err(CommandError::from)?;
     // With no library open nothing listed can be written, which is no failure.
     let Some(file) = open_file(&library) else {
         return Ok(None);
     };
-    file.begin_bibliography(&cancel)?;
+    let cancel = file
+        .engine
+        .citations()
+        .start(SessionId::PICKER, Operation::Bibliography, intent)?;
     let items = session.items();
     let style = style_of(&style)?;
-    tauri::async_runtime::spawn_blocking(move || file.session_bibliography(&items, &style, &cancel))
+    let task = file
+        .engine
+        .citations()
+        .bibliography(SessionId::PICKER, items, style, cancel, file.sample)?;
+    tauri::async_runtime::spawn_blocking(move || task.run().map_err(CommandError::from))
         .await
-        .map_err(|_| CommandError::from(FAILED))?
+        .map_err(|_| CommandError::BibliographyUnavailable)?
 }
 
 /// Copy what was shown. Prepared again from the list as it is now, and refused
@@ -148,45 +155,52 @@ pub(crate) async fn copy_session_bibliography(
     style: String,
     content_hash: String,
     intent: crate::library::PreviewIntent,
-    requests: State<'_, crate::library::FormattingRequests>,
     app: AppHandle,
     session: State<'_, SessionReferences>,
     library: State<'_, Mutex<Library>>,
 ) -> Result<(), CommandError> {
-    let cancel = requests.bibliography.start(intent).ok_or(CommandError::Cancelled)?;
-    cancel.check().map_err(CommandError::from)?;
     // Formatting can take a while: anything copied meanwhile is newer and stays.
     let began = crate::copy::clipboard_mark();
     let style = style_of(&style)?;
     let file = open_file(&library).ok_or(CommandError::SnapshotChanged)?;
-    file.begin_bibliography(&cancel)?;
+    let cancel = file
+        .engine
+        .citations()
+        .start(SessionId::PICKER, Operation::Bibliography, intent)?;
     let formatting = cancel.clone();
     let (revision, items) = {
         let list = session.lock();
         (list.revision, list.items.clone())
     };
-    let content = tauri::async_runtime::spawn_blocking(move || {
-        file.commit_session_bibliography(&items, &style, &content_hash, &formatting, |content| {
-            Ok(crate::copy::OwnedContent::of(content))
-        })
+    let checked = tauri::async_runtime::spawn_blocking(move || {
+        file.engine
+            .citations()
+            .commit_bibliography(SessionId::PICKER, &items, &style, &content_hash, &formatting)
+            .map_err(CommandError::from)
     })
     .await
-    .map_err(|_| CommandError::from(FAILED))??;
+    .map_err(|_| CommandError::BibliographyUnavailable)??;
     let (send, written) = std::sync::mpsc::sync_channel(1);
     let main = app.clone();
     app.run_on_main_thread(move || {
         let result = cancel.check().map_err(CommandError::from).and_then(|()| {
             commit_list_copy(&main.state(), revision, || {
-                crate::copy::write_copy_only_unless_written(&main, &content, began)
+                let file = open_file(&main.state()).ok_or(CommandError::SnapshotChanged)?;
+                let guard = checked.check(&file.engine)?;
+                crate::copy::write_copy_only_unless_written(
+                    &main,
+                    &crate::copy::OwnedContent::of(guard.content()),
+                    began,
+                )
             })
         });
         let _ = send.send(result);
     })
-    .map_err(|_| CommandError::from(FAILED))?;
+    .map_err(|_| CommandError::BibliographyUnavailable)?;
     tauri::async_runtime::spawn_blocking(move || written.recv())
         .await
-        .map_err(|_| CommandError::from(FAILED))?
-        .map_err(|_| CommandError::from(FAILED))?
+        .map_err(|_| CommandError::BibliographyUnavailable)?
+        .map_err(|_| CommandError::BibliographyUnavailable)?
 }
 
 /// Keep edits out until the write finishes; a superseded list never reaches
@@ -232,17 +246,16 @@ pub(crate) async fn export_session_bibliography(
     style: String,
     content_hash: String,
     intent: crate::library::PreviewIntent,
-    requests: State<'_, crate::library::FormattingRequests>,
     window: WebviewWindow,
     session: State<'_, SessionReferences>,
     library: State<'_, Mutex<Library>>,
 ) -> Result<Option<String>, CommandError> {
-    let cancel = requests.bibliography.start(intent).ok_or(CommandError::Cancelled)?;
-    cancel.check().map_err(CommandError::from)?;
-    const NOT_SAVED: &str = "The bibliography could not be saved. Try again.";
     let style = style_of(&style)?;
     let file = open_file(&library).ok_or(CommandError::SnapshotChanged)?;
-    file.begin_bibliography(&cancel)?;
+    let cancel = file
+        .engine
+        .citations()
+        .start(SessionId::PICKER, Operation::Bibliography, intent)?;
     let items = session.items();
     let app = window.app_handle().clone();
     // The dialog belongs to the picker, which hides when it loses focus unless
@@ -250,7 +263,7 @@ pub(crate) async fn export_session_bibliography(
     let owner = app
         .state::<ChooserOpen>()
         .begin()
-        .ok_or_else(|| CommandError::from(NOT_SAVED))?;
+        .ok_or(CommandError::BibliographyNotSaved)?;
     #[cfg(target_os = "macos")]
     crate::panel::activate_for_dialog(&app);
     let generation = app.state::<crate::picker::PickerGeneration>().current();
@@ -273,17 +286,13 @@ pub(crate) async fn export_session_bibliography(
         }),
         crate::diagnostics::NativeIssue::Window,
     );
-    let Some(chosen) = chosen.map_err(|_| CommandError::from(NOT_SAVED))? else {
+    let Some(chosen) = chosen.map_err(|_| CommandError::BibliographyNotSaved)? else {
         return Ok(None);
     };
     cancel.check().map_err(CommandError::from)?;
-    let path = chosen.into_path().map_err(|_| CommandError::from(NOT_SAVED))?;
+    let path = chosen.into_path().map_err(|_| CommandError::BibliographyNotSaved)?;
     // The dialog asked about the name it returned, not one Ibis completes.
-    let (path, replace) = if path.extension().is_some() {
-        (path, true)
-    } else {
-        (path.with_extension("rtf"), false)
-    };
+    let (path, replace) = export_path(path);
     let shown = path
         .file_name()
         .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
@@ -292,21 +301,36 @@ pub(crate) async fn export_session_bibliography(
             .extension()
             .and_then(|extension| extension.to_str())
             .unwrap_or_default();
-        let text = file.commit_session_bibliography(&items, &style, &content_hash, &cancel, |content| {
-            export_text(extension, &content).ok_or_else(|| "Save it as .rtf, .html or .txt.".to_owned())
-        })?;
+        let result =
+            file.engine
+                .citations()
+                .commit_bibliography(SessionId::PICKER, &items, &style, &content_hash, &cancel)?;
+        let current = open_file(&app.state()).ok_or(CommandError::SnapshotChanged)?;
+        let guard = result.check(&current.engine)?;
+        let content = guard.content();
+        let text = export_text(extension, &content).ok_or(CommandError::BibliographyFormat)?;
         cancel.check().map_err(CommandError::from)?;
-        ibis_engine::settings::backup::save(&path, &text, replace).map_err(|error| {
-            CommandError::from(if error.kind() == std::io::ErrorKind::AlreadyExists {
-                "A file with that name is already there. Choose another name."
-            } else {
-                NOT_SAVED
-            })
-        })
+        save_export(&path, &text, replace)
     })
     .await
-    .map_err(|_| CommandError::from(NOT_SAVED))??;
+    .map_err(|_| CommandError::BibliographyNotSaved)??;
     Ok(Some(shown))
+}
+
+fn export_path(path: std::path::PathBuf) -> (std::path::PathBuf, bool) {
+    if path.extension().is_some() {
+        (path, true)
+    } else {
+        (path.with_extension("rtf"), false)
+    }
+}
+
+/// Save only the name the dialog confirmed; a completed extension cannot overwrite.
+fn save_export(path: &std::path::Path, text: &str, replace: bool) -> Result<(), CommandError> {
+    ibis_engine::settings::backup::save(path, text, replace).map_err(|error| match error.kind() {
+        std::io::ErrorKind::AlreadyExists => CommandError::BibliographyNameTaken,
+        _ => CommandError::BibliographyNotSaved,
+    })
 }
 
 /// Apply every saved privacy change, including delayed off notifications.
@@ -350,6 +374,27 @@ mod tests {
     use ibis_core::contract::ClipboardContent;
 
     #[test]
+    fn an_extensionless_bibliography_collision_offers_another_name() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
+        let chosen = dir.path().join("invented-bibliography");
+        std::fs::write(chosen.with_extension("rtf"), "existing")?;
+        let (path, replace) = export_path(chosen);
+        let error = match save_export(&path, "new bibliography", replace) {
+            Err(error) => error,
+            Ok(()) => panic!("an appended extension overwrote an unconfirmed file"),
+        };
+        assert_eq!(
+            error.to_string(),
+            "A file with that name is already there. Choose another name."
+        );
+        let problem = serde_json::to_value(error)?;
+        assert_eq!(problem["recovery"]["action"], "edit-input");
+        assert_eq!(problem["message"]["id"], "app-bibliography-name-taken");
+        assert_eq!(std::fs::read_to_string(path)?, "existing");
+        Ok(())
+    }
+
+    #[test]
     fn resetting_a_list_during_formatting_preserves_the_empty_list_and_clipboard()
     -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempfile::tempdir()?;
@@ -369,20 +414,31 @@ mod tests {
             (list.revision, list.items.clone())
         };
         let shown = file
-            .session_bibliography(&items, "apa", &ibis_engine::Cancellation::default())
-            .map_err(|error| error.to_string())?
-            .ok_or("shown bibliography")?;
+            .engine
+            .citations()
+            .bibliography(
+                ibis_engine::citations::SessionId::PICKER,
+                items.clone(),
+                "apa".into(),
+                ibis_engine::Cancellation::default(),
+                file.sample,
+            )?
+            .run()?
+            .ok_or("bibliography")?;
         session.lock().reset();
-        // Let the queued formatter finish with its captured items after Reset.
         let content = file
-            .commit_session_bibliography(
+            .engine
+            .citations()
+            .commit_bibliography(
+                ibis_engine::citations::SessionId::PICKER,
                 &items,
                 "apa",
                 &shown.content_hash,
                 &ibis_engine::Cancellation::default(),
-                |content| Ok(content.text.to_owned()),
-            )
-            .map_err(|error| error.to_string())?;
+            )?
+            .result()
+            .text
+            .clone();
         let mut clipboard = "Invented original clipboard".to_owned();
         let copied = commit_list_copy(&session, revision, || {
             clipboard = content;
@@ -406,7 +462,7 @@ mod tests {
         })
         .map_err(|error| error.to_string())?;
         assert_eq!(clipboard, shown.text);
-        let failed = CommandError::from("The clipboard could not be written.");
+        let failed = CommandError::ClipboardUnavailable;
         assert_eq!(
             commit_list_copy(&session, revision, || Err::<(), _>(failed.clone())),
             Err(failed)
@@ -440,162 +496,6 @@ mod tests {
             ..content
         };
         assert_eq!(export_text("rtf", &plain), None);
-    }
-}
-
-#[cfg(test)]
-mod bibliography_tests {
-    use crate::library::CommandError;
-    use crate::library::engine_file::FileLibrary;
-    use ibis_core::contract::ItemRef;
-    use ibis_engine::Cancellation;
-
-    const LIBRARY: &str = "@book{taylor2026,title={Synthetic signals},author={Taylor, Avery},year={2026},publisher={Imaginary Press}}\n\
-                           @book{morgan2025,title={Synthetic noise},author={Morgan, Ann},year={2025},publisher={Invented Letters}}\n";
-
-    fn opened(text: &str) -> (tempfile::TempDir, FileLibrary, Vec<ItemRef>) {
-        let dir = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
-        let path = dir.path().join("refs.bib");
-        std::fs::write(&path, text).unwrap_or_else(|error| panic!("{error}"));
-        let file = FileLibrary::open(&path).unwrap_or_else(|_| panic!("a library"));
-        let query = serde_json::from_value(serde_json::json!({"text":"synthetic","interpret_locators":false}))
-            .unwrap_or_else(|error| panic!("{error}"));
-        let reply = file
-            .search(&query, 10, None, &Cancellation::default())
-            .unwrap_or_else(|error| panic!("{error}"));
-        let rows = serde_json::to_value(&reply).unwrap_or_else(|error| panic!("{error}"));
-        let ids = rows["results"]
-            .as_array()
-            .map(|rows| {
-                rows.iter()
-                    .filter_map(|row| serde_json::from_value(row["id"].clone()).ok())
-                    .collect()
-            })
-            .unwrap_or_default();
-        (dir, file, ids)
-    }
-
-    fn shown(file: &FileLibrary, ids: &[ItemRef]) -> crate::library::engine_file::SessionBibliography {
-        match file.session_bibliography(ids, "apa", &Cancellation::default()) {
-            Ok(Some(bibliography)) => bibliography,
-            _ => panic!("a bibliography"),
-        }
-    }
-
-    #[test]
-    fn the_bibliography_is_formatted_as_rich_and_plain_text_together() {
-        let (_dir, file, ids) = opened(LIBRARY);
-        let bibliography = shown(&file, &ids);
-        assert!(bibliography.text.contains("Taylor, A. (2026)"), "{}", bibliography.text);
-        assert!(bibliography.text.contains("Morgan, A. (2025)"), "{}", bibliography.text);
-        let written = file
-            .commit_session_bibliography(
-                &ids,
-                "apa",
-                &bibliography.content_hash,
-                &Cancellation::default(),
-                |content| {
-                    Ok((
-                        content.text.to_owned(),
-                        content.html.map(str::to_owned),
-                        content.rtf.map(str::to_owned),
-                    ))
-                },
-            )
-            .unwrap_or_else(|_| panic!("a commit"));
-        assert_eq!(written.0, bibliography.text, "what was shown is what is copied");
-        assert!(written.1.is_some_and(|html| html.contains("<i>Synthetic signals</i>")));
-        assert!(written.2.is_some());
-    }
-
-    #[test]
-    fn a_list_edited_since_it_was_shown_is_refused_not_copied() {
-        let (_dir, file, ids) = opened(LIBRARY);
-        let bibliography = shown(&file, &ids);
-        let mut wrote = false;
-        let refused = file.commit_session_bibliography(
-            &ids[..1],
-            "apa",
-            &bibliography.content_hash,
-            &Cancellation::default(),
-            |_| {
-                wrote = true;
-                Ok(())
-            },
-        );
-        assert!(matches!(refused, Err(CommandError::SnapshotChanged)));
-        assert!(!wrote);
-    }
-
-    #[test]
-    fn references_from_a_library_that_is_not_open_are_left_out_never_guessed() {
-        let (_dir, file, ids) = opened(LIBRARY);
-        let (_other_dir, other, _) = opened("@book{other2026,title={Synthetic other}}\n");
-        assert_eq!(other.session_rows(&ids).map(|rows| rows.len()), Ok(0));
-        assert!(matches!(
-            other.session_bibliography(&ids, "apa", &Cancellation::default()),
-            Ok(None)
-        ));
-        assert_eq!(file.session_rows(&ids).map(|rows| rows.len()), Ok(2));
-    }
-
-    #[test]
-    fn a_reference_the_style_cannot_write_is_named_and_the_rest_still_come() {
-        let (_dir, file, ids) = opened(
-            "@book{others2026,title={Synthetic signals},author={Taylor, Avery and others},year={2026}}\n\
-             @book{morgan2025,title={Synthetic noise},author={Morgan, Ann},year={2025}}\n",
-        );
-        let bibliography = shown(&file, &ids);
-        assert_eq!(bibliography.left_out, ["others2026"], "{}", bibliography.text);
-        assert!(bibliography.text.contains("Morgan, A. (2025)"), "{}", bibliography.text);
-        assert!(!bibliography.text.contains("Taylor"), "{}", bibliography.text);
-        let written = file.commit_session_bibliography(
-            &ids,
-            "apa",
-            &bibliography.content_hash,
-            &Cancellation::default(),
-            |content| Ok(content.text.to_owned()),
-        );
-        assert_eq!(
-            written.ok().as_deref(),
-            Some(bibliography.text.as_str()),
-            "what was shown is what is copied"
-        );
-    }
-
-    #[test]
-    fn a_list_the_style_cannot_write_at_all_says_which_references() {
-        let (_dir, file, ids) =
-            opened("@book{others2026,title={Synthetic signals},author={Taylor, Avery and others},year={2026}}\n");
-        match file.session_bibliography(&ids, "apa", &Cancellation::default()) {
-            Err(CommandError::Failed { message }) => assert!(message.contains("others2026"), "{message}"),
-            _ => panic!("a refusal that names the reference"),
-        }
-    }
-
-    #[test]
-    fn a_warning_names_its_reference_in_the_sheet() {
-        let (_dir, file, ids) =
-            opened("@book{taylor2026,title={Synthetic Signals In Title Case},author={Taylor, Avery},year={2026}}\n");
-        let bibliography = shown(&file, &ids);
-        assert!(
-            bibliography
-                .warnings
-                .iter()
-                .any(|warning| warning.contains("the title of taylor2026")),
-            "{:?}",
-            bibliography.warnings
-        );
-    }
-
-    #[test]
-    fn a_numeric_style_gives_its_full_entries() {
-        let (_dir, file, ids) = opened(LIBRARY);
-        let bibliography = match file.session_bibliography(&ids, "ieee", &Cancellation::default()) {
-            Ok(Some(bibliography)) => bibliography,
-            _ => panic!("a bibliography"),
-        };
-        assert!(bibliography.text.contains("Synthetic signals"), "{}", bibliography.text);
     }
 }
 

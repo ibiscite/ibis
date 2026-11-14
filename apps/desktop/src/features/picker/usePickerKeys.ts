@@ -130,6 +130,6 @@ export function usePickerKeys({
       if (!repeated) picked();
     } else if (target === input.current) searchKey(e);
   };
-  useKeyOwner({ keyDown, home: focusHome });
+  useKeyOwner({ keyDown, home: focusHome, opened: cancelCopy });
   return { run };
 }

@@ -16,7 +16,7 @@ button, input, select { font: inherit; color: inherit; }
    Something only the app focuses (a sheet, a list, tabindex -1) never shows one. */
 :focus-visible:not(.ui-button, .menu-item, [tabindex="-1"]) { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); box-shadow: none; }
 
-.results-area { flex: 1; min-height: 0; margin-block: var(--inset); padding-inline: var(--inset); }
+.results-area { --band-inset: 0px; flex: 1; min-height: 0; margin-block: var(--inset); padding-inline: var(--inset); }
 
 @media (max-width: 460px) {
   .results-area { flex: none; overflow: visible; }

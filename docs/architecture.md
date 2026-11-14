@@ -42,6 +42,57 @@ data. Search metadata can change without invalidating a citation. Citation
 keys retain their source and aliases; conflicting or ambiguous keys are
 refused for key output.
 
+Errors and citation refusals carry a stable code, a catalogue message id with
+arguments, exactly one `Recovery` action and a `FocusTarget`. Core maps every
+`ErrorCode`, `ErrorReason` and `CitationError` exhaustively; a new variant needs
+a recovery before it compiles. The JSON envelope, refusal outcomes, source-health
+refresh failures, MCP tool errors and native command errors carry these facts.
+Desktop status also carries `failure` and `retained_failure` alongside its
+rendered status text; preview refusals carry `failure`. Clients render the
+message from `locales/en-US.ftl` and dispatch the declared recovery.
+
+Generated TypeScript treats `ItemRef.key` as an opaque `RecordId`, incompatible
+with strings and React children. Display labels and citation keys are separate.
+Format previews use prepared engine text; another output shows its labeled
+example until a prepared result is available. MCP fallback refs are opaque
+digests resolved against the current snapshot, never embedded lookup IDs.
+
+| Error or refusal | Recovery | Focus |
+| --- | --- | --- |
+| Missing key; unknown style/output; unsupported output; conflicting/invalid key; record not from Zotero | ChooseStyle | FormatPicker |
+| Unsupported citation form | ChooseForm | CitationForm |
+| Missing library file, including a failed watched refresh | LocateFile | LibraryPicker |
+| Missing Zotero/profile; unsupported file format/CSV template; non-local selection | ChooseLibrary | LibraryPicker |
+| Zotero sharing off | OpenZoteroSharingHelp | ZoteroSharingHelp |
+| Zotero requires an open app | OpenZotero | RecoveryAction |
+| Duplicate key within a library | ReviewLibrary | SourceFile |
+| Ambiguous lookup key | SelectReferences | Search |
+| Ambiguous citation key | ChooseStyle | FormatPicker |
+| Strict citation or damaged entry | ReviewLibrary | LibraryPicker / SourceFile |
+| Missing/changed item, annotation mismatch, empty selection, uncitable item | SelectReferences | Results |
+| Not found | SelectReferences | Search |
+| Resource limit, too many items, oversized output, cut-short library | ReduceSelection | Search / Results |
+| Invalid locator | EditCitation | Locator |
+| Usage, bad input, rejected/duplicate caller records, tool validation | EditInput | Request |
+| Invalid rich text | EditCitation | Citation |
+| Unknown/invalid language | ChooseLocale | Language |
+| Source/formatter/internal failure; app did not answer | Retry | RecoveryAction |
+| Newer format; missing/wrong Ibis app | UpgradeIbis | RecoveryAction |
+| Zotero has no space for a private copy | FreeDiskSpace | RecoveryAction |
+| Snapshot changed | SelectReferences | Results |
+| Cancelled / library loading | None (Cancelled / InProgress) | Search |
+| Invalid/duplicate project name | RenameProject | ProjectName |
+| Missing project / project limit | ChooseProject / RemoveProject | ProjectMenu |
+| Changed project or destination | ReopenProjectMenu | ProjectMenu |
+| Pending editor request | FinishEditorRequest | Citation |
+| Invalid project definitions | ReviewSettings | Settings |
+| Invalid or read-only settings / settings from a newer Ibis | ReviewSettings / UpgradeIbis | Settings / RecoveryAction |
+
+Native command infrastructure has a closed operation enum with its own catalogue
+messages. Backup recovery chooses a backup, downloads it, retries or upgrades;
+shortcut recovery chooses a shortcut, retries or opens Ibis. The command registry
+wraps these failures at the IPC boundary and tests every generated error schema.
+
 ## Sources
 
 File formats and limits are in [compatibility](compatibility.md#library-files). Files are bounded to 64 MiB; parsers report skipped records without discarding valid neighbours.
@@ -58,6 +109,9 @@ Zotero reads use the same pinned Zotero-to-CSL mapping in both modes:
   source warning after required table, column and lookup shapes validate;
   incompatible layouts are refused.
 
+On Windows, private copies and their lock belong to the user who made them, and
+an existing lock is never deleted; a lock Ibis cannot repair reports its own
+error with the "Open Zotero, then reload" recovery.
 Missing Zotero groups fail instead of falling back; several closed profiles require a named choice. Disagreeing citation keys stay visible and block key output.
 
 Readers accept a change after two identical reads; network and unknown mounts use manual refresh and report `live-refresh-off`. Cloud placeholders are refused before reading. Filesystem probes wait two seconds with eight calls; desktop loads have a two-minute deadline, four per source family. A failed refresh keeps the previous snapshot and reports its health; stale results cannot publish.
@@ -78,19 +132,36 @@ loads the requested style and locale. Formatting receives citable fields,
 without notes, annotations or private links. Zotero differential fixtures
 check output independently of the renderer.
 
+`engine.citations()` owns a bounded registry: one picker session and up to 64
+connection sessions. Submission reserves order before workers run. A newer
+preview retires the session's previous preview, its forms and queued
+bibliography work. Running bibliography work keeps its own cancellation owner;
+closing a session stops all its work. Connections close their registry entries.
+One-shot RPC/MCP cite calls reserve independent operations and answer every
+accepted request; interactive preview supersession does not swallow their replies.
+Session failures carry a typed `Problem` with its catalogue message, recovery and
+focus. BibTeX and DOI links use the same preview and checked commit as citations;
+record exports pass through `CitableFields`.
+
 The desktop warms its saved default style, locale and runtime in the background,
 independently of the library, and shares that formatter for the session. Warm-up
 publishes no citation; a foreground request retires it. The idle worker sleeps
 while Ibis is hidden.
 
-Detail examples and bibliography work own separate cancellation tokens; closing
-or replacing their view stops formatting and leaves the receipt usable. MCP
-sends no result after its request is cancelled.
+Desktop drafts, previews, display trees, locators and all six citation forms
+come from core through generated bindings. Output and locale resolve together
+before item formatting; the formatter receives the validated style and bundled
+locale. Human CLI record renderers receive only presentation rows made from
+`RecordSummary` and citation-key status, without lookup identities or raw JSON.
 
-A prepared citation pins its request and fingerprints. Copy re-cites it
-against current data and requires the shown content hash. Changed or removed
-items, ambiguous keys and changed Zotero generations refuse the copy.
-`copy_content(expected_items)` also requires every requested item to succeed.
+A prepared citation pins its request and fingerprints. Commit re-cites it
+against current data and requires the shown hash. Changed or removed items,
+ambiguous keys and changed Zotero generations refuse it, including a changed
+record that would produce identical text. Checked content retains its session
+identity and the citable revision checked during commit; the app holds the engine's final freshness guard while writing the
+clipboard on the main thread. Clipboard and paste proof remain native-owned.
+Bibliographies name unrenderable records in `left_out` and retain the rest;
+their shown receipt pins the selected records, including those left out.
 
 Receipts, `--strict` and caller-supplied records are specified in the
 [CLI reference](cli.md#receipts-and-strict-citations); records open no library

@@ -30,6 +30,8 @@ pub fn inspect_io<T: Send + 'static>(operation: impl FnOnce() -> T + Send + 'sta
 /// Front ends add any context about their installed references.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum SourceError {
+    #[error("the library file was moved, renamed or removed")]
+    Missing,
     #[error("the library file is unavailable; download any online-only file to this computer first")]
     Unavailable,
     #[error("the library must be a regular file")]
@@ -50,6 +52,14 @@ pub enum SourceError {
     CsvTemplate,
     #[error("the file is not in a format Ibis reads")]
     UnknownFormat,
+}
+
+fn file_io_error(error: std::io::Error) -> SourceError {
+    if error.kind() == std::io::ErrorKind::NotFound {
+        SourceError::Missing
+    } else {
+        SourceError::Unavailable
+    }
 }
 
 /// What a library file holds, from its name or reference entry structure.
@@ -115,7 +125,7 @@ fn read_library_file_sync(path: &Path) -> Result<String, SourceError> {
     if io::path_needs_download(path)? {
         return Err(SourceError::Unavailable);
     }
-    let metadata = retry_io(|| std::fs::metadata(path), pause).map_err(|_| SourceError::Unavailable)?;
+    let metadata = retry_io(|| std::fs::metadata(path), pause).map_err(file_io_error)?;
     if !metadata.is_file() {
         return Err(SourceError::NotRegular);
     }
@@ -123,7 +133,7 @@ fn read_library_file_sync(path: &Path) -> Result<String, SourceError> {
         return Err(SourceError::TooLarge);
     }
     io::read_if_downloaded(io::needs_download(&metadata), || {
-        let file = retry_io(|| open_readonly(path), pause).map_err(|_| SourceError::Unavailable)?;
+        let file = retry_io(|| open_readonly(path), pause).map_err(file_io_error)?;
         read_open_file(file)
     })
 }
@@ -238,7 +248,7 @@ impl SourceSnapshot {
     }
 
     fn read_with(path: &Path, after_read: impl FnOnce()) -> Result<Self, SourceError> {
-        let source = canonical_path(path).map_err(|_| SourceError::Unavailable)?;
+        let source = canonical_path(path).map_err(file_io_error)?;
         let text = read_library_file(&source)?;
         after_read();
         if canonical_path(path).ok().as_ref() != Some(&source) {
@@ -353,6 +363,7 @@ fn parse_with_budget(
         kind: crate::LibraryKind::File,
         snapshot,
         warnings,
+        duplicate_keys: parsed.duplicate_keys,
         cut_short: parsed_cut_short,
         damaged_keys: parsed.damaged_keys,
         attachment_paths,

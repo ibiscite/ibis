@@ -72,21 +72,21 @@ pub(crate) struct ZoteroGroup {
 /// listed by the closed read of the open library. Starts no read of its own.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn zotero_groups(library: State<'_, Mutex<Library>>) -> Result<Vec<ZoteroGroup>, String> {
+pub(crate) async fn zotero_groups(library: State<'_, Mutex<Library>>) -> Result<Vec<ZoteroGroup>, super::CommandError> {
     let file = library.lock().ok().and_then(|library| library.file.clone());
     tauri::async_runtime::spawn_blocking(move || match file {
         Some(file) => file.zotero_groups(),
-        None => ibis_engine::Engine::new().and_then(|engine| super::engine_file::zotero_groups(&engine)),
+        None => ibis_engine::Engine::new().and_then(|engine| super::engine_library::zotero_groups(&engine)),
     })
     .await
-    .map_err(|_| "listing Zotero groups stopped unexpectedly".to_string())?
+    .map_err(|_| super::CommandError::NotPrepared)?
     .map(|groups| {
         groups
             .into_iter()
             .map(|g| ZoteroGroup { id: g.id, name: g.name })
             .collect()
     })
-    .map_err(|_| "Zotero could not list its group libraries".to_string())
+    .map_err(super::CommandError::from)
 }
 
 /// The Zotero profiles on this computer and the one chosen, by name.
@@ -103,16 +103,16 @@ pub(crate) struct ZoteroProfiles {
 /// locations stay native.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn zotero_profiles(app: AppHandle) -> Result<ZoteroProfiles, String> {
+pub(crate) async fn zotero_profiles(app: AppHandle) -> Result<ZoteroProfiles, super::CommandError> {
     tauri::async_runtime::spawn_blocking(move || {
         let chosen = app.state::<crate::preferences::SettingsFile>().zotero_profile();
         let running = discovery::find_zotero(InspectionPolicy::Setup, false, &Cancellation::default())?
             != discovery::ZoteroPresence::Absent;
-        super::engine_file::zotero_profiles().map(|names| ZoteroProfiles { names, chosen, running })
+        super::engine_library::zotero_profiles().map(|names| ZoteroProfiles { names, chosen, running })
     })
     .await
-    .map_err(|_| "listing Zotero profiles stopped unexpectedly".to_string())?
-    .map_err(|_| "Ibis could not list your Zotero profiles".to_string())
+    .map_err(|_| super::CommandError::NotPrepared)?
+    .map_err(super::CommandError::from)
 }
 
 /// Read this Zotero profile from now on; the result arrives as
@@ -137,14 +137,14 @@ fn zotero_answered(found: ZoteroPresence, problem: Option<LibraryProblem>) -> bo
 /// failed choice is read again and the result arrives as `library:changed`.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn check_zotero_sharing(app: AppHandle) -> Result<ZoteroPresence, String> {
+pub(crate) async fn check_zotero_sharing(app: AppHandle) -> Result<ZoteroPresence, super::CommandError> {
     let found = tauri::async_runtime::spawn_blocking(|| {
         discovery::find_zotero(InspectionPolicy::Setup, false, &Cancellation::default())
     })
     .await
-    .map_err(|_| "checking Zotero stopped unexpectedly".to_string())?
+    .map_err(|_| super::CommandError::NotPrepared)?
     .map(ZoteroPresence::from)
-    .map_err(|_| "checking Zotero stopped unexpectedly".to_string())?;
+    .map_err(super::CommandError::from)?;
     let problem = app
         .state::<Mutex<Library>>()
         .lock()
@@ -202,17 +202,21 @@ pub(crate) async fn recent_references(
     library: State<'_, Mutex<Library>>,
     project: State<'_, ProjectBibliography>,
     editor: State<'_, crate::editor_endpoint::Pending>,
-) -> Result<(SearchReply, bool, bool), String> {
+) -> Result<(SearchReply, bool, bool), super::CommandError> {
     let captured = crate::paste::last_app(&app).map(|(id, _, _)| id.normalized());
     let captured = editor.app(captured);
-    let file = library.lock().map_err(|_| "The library is unavailable.")?.file.clone();
+    let file = library
+        .lock()
+        .map_err(|_| super::CommandError::SourceNotOpened)?
+        .file
+        .clone();
     let project = project.current();
     tauri::async_runtime::spawn_blocking(move || {
         let session = app.state::<crate::session_references::SessionReferences>();
         if forget {
             session
                 .forget()
-                .map_err(|_| "Recent citations could not be forgotten. Try again.")?;
+                .map_err(|_| super::CommandError::RecentHistoryNotSaved)?;
         }
         let (ids, has_history, forget_failed) = {
             let history = session.lock();
@@ -231,7 +235,7 @@ pub(crate) async fn recent_references(
         Ok((reply, has_history, forget_failed))
     })
     .await
-    .map_err(|_| "Recent references are unavailable.".to_owned())?
+    .map_err(|_| super::CommandError::RecentReferencesFailed)?
 }
 
 /// Search the open library. An empty query returns no results. Async so it
@@ -253,17 +257,26 @@ pub(crate) async fn search(
     library: State<'_, Mutex<Library>>,
     requests: State<'_, SearchRequests>,
     project: State<'_, ProjectBibliography>,
-) -> Result<SearchReply, String> {
+) -> Result<SearchReply, super::CommandError> {
     // The library lock is held only to take the engine.
     let file = {
-        let library = library.lock().map_err(|_| "library state is unavailable".to_string())?;
+        let library = library.lock().map_err(|_| super::CommandError::SearchFailed)?;
         match (&library.source, &library.file) {
             (Some(_), Some(file)) => Arc::clone(file),
             _ => {
-                return Err(match &library.error {
-                    Some(error) => format!("the library could not be opened: {error}"),
-                    None => "no library is open".to_string(),
-                });
+                return Err(library
+                    .error
+                    .map(|error| super::CommandError::Presented(error.problem()))
+                    .unwrap_or_else(|| {
+                        super::CommandError::Presented(ibis_core::contract::Problem {
+                            code: "no-library".into(),
+                            info: ibis_core::contract::RecoveryInfo::new(
+                                "app-command-no-library",
+                                ibis_core::contract::Recovery::ChooseLibrary,
+                                ibis_core::contract::FocusTarget::LibraryPicker,
+                            ),
+                        })
+                    }));
             }
         }
     };
@@ -279,7 +292,7 @@ pub(crate) async fn search(
             .map(|reply| file.mark_project(reply, project.as_ref()))
     })
     .await
-    .map_err(|_| "searching stopped unexpectedly".to_string())?
+    .map_err(|_| super::CommandError::SearchFailed)?
 }
 
 #[cfg(test)]

@@ -1,15 +1,14 @@
-/* The picker's footer band (ui/Footer.css): the library status on the label column
-   after its dot in the icon slot, the Enter hints, then More on the last column. */
-footer { display: flex; align-items: center; padding-block: 0; padding-inline: var(--row-start) var(--inset); font-size: var(--type-label-size); line-height: var(--type-label-line); min-height: var(--footer-h); }
+/* The picker's footer band: library status on the leading edge, then the
+   actions and More, whose last cap ends on --cap-end. */
+footer { display: flex; align-items: center; padding-block: 0; padding-inline: var(--row-start) var(--cap-end); font-size: var(--type-label-size); line-height: var(--type-label-line); min-height: var(--footer-h); }
 /* The divider is outside the 24 px actions and their two 8 px gaps.
    Coarse targets grow the band instead of clipping; the grid below owns its columns. */
 .library-bar { flex: 1; min-width: 0; align-items: center; gap: var(--space-2); padding-block: var(--inset); }
-/* One line that never pushes the keys aside: the age after the source and count
+/* One line that never pushes the keys aside: the age after the problem
    is cut first, and the tooltip and More keep the whole detail. */
-/* [C3] The same tile and label columns as a row, inside the footer's small
-   control. The dot is centred in its slot; the words share the actions' line. */
-.library-status { flex: 1; min-width: min(var(--status-min), 100%); display: grid; grid-template-columns: var(--tile) minmax(0, 1fr); align-items: baseline; gap: var(--row-gap); color: var(--text-secondary); }
-.library-status > .status-dot { justify-self: center; }
+/* A problem adds its dot inline; healthy status is the library name alone. */
+.library-status { flex: 1; min-width: min(var(--status-min), 100%); display: flex; align-items: baseline; gap: var(--space-2); color: var(--text-secondary); }
+/* A healthy library is named, nothing more: no dot, no count (the library menu and More hold them). */
 /* The leading selector's plate starts on the row inset. Its inner row keeps
    the same columns at rest, on hover and while the menu is open. */
 .library-bar .ui-button.library-status-trigger[data-variant] {
@@ -31,7 +30,6 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: v
 .library-bar > p[role="status"] { width: 100%; margin: var(--space-1) 0; }
 /* The dot repeats what the words say, so colour is never the only signal. */
 .status-dot { translate: 0 calc(var(--status-dot) / 2 - .5ex); width: var(--status-dot); height: var(--status-dot); border-radius: var(--r-full); flex-shrink: 0; background: var(--text-secondary); }
-.status-dot[data-health="done"] { background: var(--status-ok); }
 .status-dot[data-health="look"] { background: var(--status-warning); }
 .status-dot[data-health="stop"] { background: var(--status-error); }
 

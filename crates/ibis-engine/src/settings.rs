@@ -659,7 +659,7 @@ pub fn save(path: &Path, settings: &Settings) -> Result<(), SettingsError> {
     if let Some(problem) = loaded.problem {
         return Err(problem);
     }
-    write_settings_checked(path, settings, false, Some(&before))
+    write_settings_checked(path, settings, false, &before)
 }
 
 /// Create an absent settings file for its editor without replacing any entry
@@ -694,7 +694,7 @@ pub fn ensure_file(path: &Path) -> Result<(), SettingsError> {
             file.write_all(&json)?;
             file.write_all(b"\n")?;
             file.sync_all()?;
-            owner::committed([json, b"\n".to_vec()].concat());
+            owner::committed(Err(io::ErrorKind::NotFound), [json, b"\n".to_vec()].concat());
             sync_directory(path);
             Ok(())
         }
@@ -802,7 +802,7 @@ fn write_settings_checked(
     path: &Path,
     settings: &Settings,
     recovering: bool,
-    expected: Option<&Snapshot>,
+    expected: &Snapshot,
 ) -> Result<(), SettingsError> {
     validate_settings(settings)?;
     if let Some(problem) = load(path).problem {
@@ -867,7 +867,7 @@ fn write_settings_checked(
     }
     file.sync_all()?;
     drop(file);
-    if expected.is_some_and(|expected| *expected != snapshot(path)) {
+    if *expected != snapshot(path) {
         let _ = fs::remove_file(&temporary);
         return Err(SettingsError::Changed);
     }
@@ -876,12 +876,12 @@ fn write_settings_checked(
         // Windows flushes only a handle opened for writing.
         fs::OpenOptions::new().write(true).open(&backup)?.sync_all()?;
     }
-    if expected.is_some_and(|expected| *expected != snapshot(path)) {
+    if *expected != snapshot(path) {
         let _ = fs::remove_file(&temporary);
         return Err(SettingsError::Changed);
     }
     fs::rename(&temporary, &target)?;
-    owner::committed(format!("{json}\n").into_bytes());
+    owner::committed(expected.clone(), format!("{json}\n").into_bytes());
     sync_directory(&target);
     Ok(())
 }
@@ -1073,7 +1073,7 @@ pub fn transaction<T, E: From<SettingsError>>(
     }
     validate_settings(&changed).map_err(E::from)?;
     if changed != current || recovering {
-        write_settings_checked(path, &changed, recovering, Some(&before)).map_err(E::from)?;
+        write_settings_checked(path, &changed, recovering, &before).map_err(E::from)?;
     }
     Ok((changed, result))
 }
@@ -1128,6 +1128,28 @@ fn read_bounded(reader: impl Read) -> io::Result<Vec<u8>> {
         return Err(settings_too_large());
     }
     Ok(bytes)
+}
+
+use ibis_core::contract::{FocusTarget, Problem, Recovery, RecoveryInfo};
+
+impl From<&crate::settings::SettingsError> for Problem {
+    fn from(error: &crate::settings::SettingsError) -> Self {
+        use crate::settings::SettingsError as S;
+        let (code, recovery, focus) = match error {
+            S::Changed => ("changed", Recovery::Retry, FocusTarget::RecoveryAction),
+            S::Busy => ("busy", Recovery::Retry, FocusTarget::RecoveryAction),
+            S::Unreadable(_) => ("unreadable", Recovery::Retry, FocusTarget::RecoveryAction),
+            S::Invalid(_) | S::InvalidZoteroLibraryEntry { .. } => {
+                ("invalid", Recovery::ReviewSettings, FocusTarget::Settings)
+            }
+            S::NewerVersion(_) => ("newer", Recovery::UpgradeIbis, FocusTarget::RecoveryAction),
+            S::Backup(inner) => return inner.as_ref().into(),
+        };
+        Self {
+            code: format!("settings-{code}"),
+            info: RecoveryInfo::new(&format!("app-settings-error-{code}"), recovery, focus),
+        }
+    }
 }
 
 #[cfg(test)]

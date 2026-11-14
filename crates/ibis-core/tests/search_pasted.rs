@@ -523,9 +523,12 @@ fn mixed_keys_and_identifiers_keep_order_and_report_every_missing_item() {
 }
 
 fn round_trip(caps: &syntax::SyntaxCapabilities, keys: &[String], form: CitationForm, noted: bool, title: &str) {
-    // Zotero's scannable markers name Zotero items, not citation keys, so
-    // there is no key to read back; Zotero's own scan reads them.
-    if caps.syntax == KeySyntax::ScannableCite {
+    // Markers name Zotero items; BibTeX and DOI links share metadata rather
+    // than a list of citation keys. Their readers have separate round trips.
+    if matches!(
+        caps.syntax,
+        KeySyntax::ScannableCite | KeySyntax::Bibtex | KeySyntax::DoiLinks
+    ) {
         return;
     }
     let case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json")).unwrap();

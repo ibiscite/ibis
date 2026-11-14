@@ -39,6 +39,8 @@ pub enum SourceFinding {
         error: ErrorCode,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<ErrorReason>,
+        #[serde(flatten)]
+        info: RecoveryInfo,
         last_successful_read_ms: u64,
     },
     /// Entries were skipped or read with problems; `ibis libraries` lists them.
@@ -58,6 +60,14 @@ impl SourceHealth {
                     library: library.id.clone(),
                     error,
                     reason: library.refresh_reason,
+                    info: EngineError {
+                        code: error,
+                        reason: library.refresh_reason,
+                        detail: None,
+                        strict_cause: None,
+                        citation_error: None,
+                    }
+                    .recovery_info(),
                     last_successful_read_ms: library.updated_at_ms,
                 });
             }

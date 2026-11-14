@@ -37,10 +37,11 @@ impl Audience {
 }
 
 /// The groups of engine codes, each a message per code.
-pub const GROUPS: [&str; 9] = [
+pub const GROUPS: [&str; 10] = [
     "error",
     "reason",
     "refusal",
+    "problem",
     "warning",
     "source-warning",
     "loss",
@@ -114,9 +115,21 @@ pub fn cause(warning: &ibis_sources::SourceWarning) -> Option<String> {
 
 /// An engine error in words: its reason when it gives one, else its code.
 pub fn error(error: &EngineError, audience: Audience) -> String {
-    match error.reason {
-        Some(reason) => sentence("reason", reason, audience, &[]),
-        None => sentence("error", error.code, audience, &[]),
+    problem(&(*error).into(), audience)
+}
+
+/// Render the engine's declared message and arguments at the last boundary.
+pub fn problem(problem: &ibis_core::contract::Problem, audience: Audience) -> String {
+    let message = &problem.info.message;
+    let args: Vec<_> = message
+        .args
+        .iter()
+        .map(|(name, value)| (name.as_str(), value.as_str()))
+        .collect();
+    let said = text(&message.id, None, &args).unwrap_or_else(|| message.id.clone());
+    match text(&message.id, Some(audience.attribute()), &args) {
+        Some(fix) => format!("{said} {fix}"),
+        None => said,
     }
 }
 
@@ -131,6 +144,27 @@ mod tests {
     use ibis_core::contract::{CitationError, CitationForm, CitationWarningCode, ErrorReason, LossField, Notice};
     use schemars::JsonSchema;
     use std::collections::BTreeSet;
+
+    #[test]
+    fn recovery_messages_resolve_without_source_text_or_missing_arguments() {
+        let mut problems: Vec<ibis_core::contract::Problem> = ErrorCode::ALL
+            .into_iter()
+            .map(|code| EngineError::new(code).into())
+            .collect();
+        problems.extend(CitationError::ALL.into_iter().map(CitationError::problem));
+        for name in names::<ErrorReason>() {
+            let reason = serde_json::from_value(serde_json::json!(name)).unwrap_or_else(|error| panic!("{error}"));
+            problems.push(EngineError::because(ErrorCode::BadInput, reason).into());
+        }
+        for problem in problems {
+            let said = super::problem(&problem, Audience::App);
+            assert!(
+                !said.is_empty() && !said.contains("{$") && !said.contains("{ $"),
+                "{problem:?}: {said}"
+            );
+            assert!(text(&problem.info.message.id, None, &[]).is_some(), "{problem:?}");
+        }
+    }
 
     /// Every value a code can take, from its own schema.
     fn names<T: JsonSchema>() -> Vec<String> {
@@ -163,6 +197,7 @@ mod tests {
             ("error", names::<ErrorCode>()),
             ("reason", names::<ErrorReason>()),
             ("refusal", names::<CitationError>()),
+            ("problem", names::<CitationError>()),
             ("warning", names::<CitationWarningCode>()),
             ("source-warning", names::<ibis_sources::WarningCode>()),
             ("loss", names::<LossField>()),

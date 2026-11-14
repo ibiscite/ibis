@@ -20,7 +20,7 @@ const zotero = (overrides: Partial<LibraryStatus> = {}) => file({
 });
 const kept = "Zotero is not running, or it is not accepting connections; keeping the last loaded references";
 const line = (status: LibraryStatus | null | undefined) =>
-  [libraryMessages.summary(status), libraryMessages.age(status, now)].filter(Boolean).join(" · ");
+  [libraryMessages.summary(status), libraryCondition(status).health === "done" ? null : libraryMessages.age(status, now)].filter(Boolean).join(" · ");
 const strip = (text: string | null) => text?.replace(/[⁨⁩]/g, "") ?? null;
 const detail = (status: LibraryStatus) =>
   libraryMessages.detail(status, now, (s) => zoteroLibraryNames(s, (id) => `Group ${id}`)).map(strip);
@@ -65,17 +65,17 @@ test.each<[string, LibraryStatus | null | undefined, string, ReturnType<typeof l
   ["status unavailable", null, "Library details unavailable", "stop"],
   ["first run", file({ state: "none", has_snapshot: false, name: null, snapshot_name: null, references: 0, checked_at: null }), "No library chosen", "idle"],
   ["opening Zotero", zotero({ state: "loading", has_snapshot: false, snapshot_name: null, references: 0 }), "Zotero · opening…", "idle"],
-  ["reloading keeps the count", file({ state: "reloading" }), "thesis.bib · 1,204 references · reloading…", "done"],
-  ["just updated", zotero({ updated_at: now - 2 * 60_000, checked_at: now }), "Zotero · 1,204 references · updated 2 minutes ago", "done"],
-  ["opened, never changed", zotero({ checked_at: now }), "Zotero · 1,204 references", "done"],
-  ["a watched file", file(), "thesis.bib · 1,204 references", "done"],
-  ["an entry to check", file({ warnings: 1, reading: [{ code: "field", line: 15, key: null }] }), "thesis.bib · 1,204 references · 1 to check", "look"],
+  ["reloading stays quiet", file({ state: "reloading" }), "thesis.bib", "done"],
+  ["just updated", zotero({ updated_at: now - 2 * 60_000, checked_at: now }), "Zotero", "done"],
+  ["opened, never changed", zotero({ checked_at: now }), "Zotero", "done"],
+  ["a watched file", file(), "thesis.bib", "done"],
+  ["an entry to check", file({ warnings: 1, reading: [{ code: "field", line: 15, key: null }] }), "thesis.bib · 1 to check", "look"],
   ["empty", zotero({ references: 0 }), "Zotero · no references", "look"],
   ["Zotero closed, copy kept", zotero({ state: "error", error: kept, stale: true, checked_at: now - 2 * hour }), "Zotero not updated · 2 h", "look"],
   ["never opened", zotero({ state: "error", has_snapshot: false, snapshot_name: null, references: 0, error: "Zotero is not running" }), "Zotero · not opened", "stop"],
-  ["failed switch between files", file({ state: "error", name: "missing.bib", error: "The library file is unavailable; keeping the last loaded references" }), "thesis.bib · 1,204 references · ⁨missing.bib⁩ not opened", "stop"],
-  ["failed switch from a file to Zotero", file({ state: "error", zotero: true, zotero_libraries: ["user"], name: "Zotero library", error: "Zotero is not running" }), "thesis.bib · 1,204 references · ⁨Zotero⁩ not opened", "stop"],
-  ["failed switch from Zotero to a file", zotero({ state: "error", zotero: false, zotero_libraries: [], name: "missing.bib", error: "The library file is unavailable" }), "Zotero · 1,204 references · ⁨missing.bib⁩ not opened", "stop"],
+  ["failed switch between files", file({ state: "error", name: "missing.bib", error: "The library file is unavailable; keeping the last loaded references" }), "thesis.bib · ⁨missing.bib⁩ not opened", "stop"],
+  ["failed switch from a file to Zotero", file({ state: "error", zotero: true, zotero_libraries: ["user"], name: "Zotero library", error: "Zotero is not running" }), "thesis.bib · ⁨Zotero⁩ not opened", "stop"],
+  ["failed switch from Zotero to a file", zotero({ state: "error", zotero: false, zotero_libraries: [], name: "missing.bib", error: "The library file is unavailable" }), "Zotero · ⁨missing.bib⁩ not opened", "stop"],
 ])("%s", (_, status, expected, health) => {
   expect(line(status)).toBe(expected);
   expect(libraryCondition(status).health).toBe(health);
@@ -90,11 +90,11 @@ const damaged = file({ name: "damaged.bib", snapshot_name: "damaged.bib", refere
   { code: "field", line: 15, key: null, why: "journal uses an abbreviation that is not defined or cannot be expanded" }] });
 
 test("a damaged library says what it skipped, why, and which field to fix", () => {
-  expect(line(damaged)).toBe("damaged.bib · 3 references · 4 entries skipped · 1 to check");
+  expect(line(damaged)).toBe("damaged.bib · 4 entries skipped · 1 to check");
   expect(detail(damaged)).toEqual(["damaged.bib · 3 references · 4 entries skipped · 1 to check",
     `checked 3 hours ago, ${clockAt(3)} · 4 entries skipped: 2 use the key good1 (lines 3 and 9), 2 could not be read (line 21: it has no citation key; line 25: it never closes). Check line 15: journal uses an abbreviation that is not defined or cannot be expanded.`]);
   // More notices than the engine details: the count stays honest.
-  expect(line(file({ ...damaged, warnings: 300 }))).toBe("damaged.bib · 3 references · 300 entries to check");
+  expect(line(file({ ...damaged, warnings: 300 }))).toBe("damaged.bib · 300 entries to check");
 });
 
 test("a missing replacement file cannot make the retained library sound moved", () => {
@@ -153,28 +153,28 @@ test("names are isolated so right-to-left names keep their place", () => {
   render(createElement(LibraryStatusLine, { library: file({ name: "مراجع.bib", snapshot_name: "مراجع.bib" }), groupName: String }));
   const status = screen.getByRole("status", { name: "Library status" });
   expect(status.querySelector("bdi")?.textContent).toBe("مراجع.bib");
-  expect(status.textContent).toBe("مراجع.bib · 1,204 references");
+  expect(status.textContent).toBe("مراجع.bib");
 });
 
 test.each(["مراجع.bib", "מקורות.bib", "研究.bib", "example.bib"])("the English status phrase keeps source, state and age order around %s", (name) => {
   const { container } = render(createElement("div", { dir: "rtl" }, createElement(LibraryStatusLine, {
-    library: file({ name, snapshot_name: name, updated_at: Date.now() }), groupName: String,
+    library: file({ name, snapshot_name: name, state: "error", stale: true, error: "Invented read failure", checked_at: Date.now() - 2 * 60_000 }), groupName: String,
   })));
   const words = container.querySelector(".library-words")!;
   expect(words.tagName).toBe("BDI");
   expect(words.getAttribute("dir")).toBe("ltr");
   const phrase = screen.getByRole("status", { name: "Library status" });
   expect(phrase.getAttribute("dir")).toBe("ltr");
-  expect(phrase.textContent).toBe(`${name} · 1,204 references`);
+  expect(phrase.textContent).toBe(`${name} not updated`);
   expect(phrase.querySelector(".library-source")?.tagName).toBe("BDI");
   const age = words.querySelector(".library-age")!;
   expect(age.tagName).toBe("BDI");
   expect(age.getAttribute("dir")).toBe("auto");
-  expect(age.textContent).toBe(" · updated just now");
+  expect(age.textContent).toBe(" · 2 min");
   expect(age.getAttribute("aria-hidden")).toBe("true");
   // The clock remains outside the live announcement and has a non-live full detail.
   expect(phrase.contains(age)).toBe(false);
-  expect(container.querySelector(".library-detail")?.textContent).toContain("updated just now");
+  expect(container.querySelector(".library-detail")?.textContent).toContain("last read 2 minutes ago");
 });
 
 test("screen readers can read the detail, including the count kept after a failed update", () => {
@@ -192,44 +192,30 @@ test("screen readers can read the detail, including the count kept after a faile
 });
 
 test("every footer text sits in an element WebKitGTK exposes, not a plain span beside one", () => {
-  // Linux screen readers lost the count and the detail when they were plain spans (#531).
-  const { container } = render(createElement(LibraryStatusLine, { library: file({ updated_at: now }), groupName: String }));
+  // Linux screen readers lost the state and detail when they were plain spans (#531).
+  const { container } = render(createElement(LibraryStatusLine, { library: file({ warnings: 1, reading: [{ code: "field", line: 15, key: null }] }), groupName: String }));
   const words = container.querySelector(".library-name");
   expect([...(words?.children ?? [])].map((child) => child.tagName)).toEqual(["BDI", "BDI", "BDI"]);
   // The separator is its own item between name and state, so a right-to-left
   // page keeps it between them instead of isolating it with the state's words.
-  expect([...(words?.children ?? [])].map((child) => child.textContent)).toEqual(["thesis.bib", " · ", "1,204 references"]);
+  expect([...(words?.children ?? [])].map((child) => child.textContent)).toEqual(["thesis.bib", " · ", "1 to check"]);
   expect(container.querySelector(".library-detail")?.tagName).toBe("P");
 });
 
 test("missing fields from an older backend show no age instead of a wrong one", () => {
   const old = { ...file(), updated_at: undefined, checked_at: undefined, stale: undefined, snapshot_zotero: undefined } as unknown as LibraryStatus;
-  expect(line(old)).toBe("thesis.bib · 1,204 references");
+  expect(line(old)).toBe("thesis.bib");
   expect(detail(old)).toEqual(["thesis.bib · 1,204 references", null]);
 });
 
-test("the footer age ticks by itself, skips hidden windows and catches up when shown", () => {
-  vi.useFakeTimers({ now });
-  let hidden = false;
-  const visibility = vi.spyOn(document, "visibilityState", "get").mockImplementation(() => (hidden ? "hidden" : "visible"));
-  try {
-    render(createElement(LibraryStatusLine, { library: zotero({ updated_at: now, checked_at: now }), groupName: (id: number) => `Group ${id}` }));
-    const item = screen.getByRole("status", { name: "Library status" }).closest(".library-status")!;
-    expect(item.textContent).toBe("Zotero · 1,204 references · updated just now");
-    act(() => { vi.advanceTimersByTime(3 * 60_000); });
-    expect(item.textContent).toBe("Zotero · 1,204 references · updated 3 minutes ago");
-    hidden = true;
-    act(() => { vi.advanceTimersByTime(3 * 60_000); });
-    expect(item.textContent).toBe("Zotero · 1,204 references · updated 3 minutes ago");
-    hidden = false;
-    act(() => { document.dispatchEvent(new Event("visibilitychange")); });
-    expect(item.textContent).toBe("Zotero · 1,204 references · updated 6 minutes ago");
-    act(() => { vi.setSystemTime(now + recentUpdate + 1); window.dispatchEvent(new Event("focus")); });
-    expect(item.textContent).toBe("Zotero · 1,204 references");
-  } finally {
-    visibility.mockRestore();
-    vi.useRealTimers();
-  }
+test("a healthy footer is just the library name; its count and update time stay in detail", () => {
+  const { container } = render(createElement(LibraryStatusLine, {
+    library: zotero({ updated_at: Date.now(), checked_at: Date.now() }), groupName: String,
+  }));
+  expect(container.querySelector(".library-status")?.textContent).toBe("Zotero");
+  expect(container.querySelector(".status-dot")).toBeNull();
+  expect(container.querySelector(".library-age")).toBeNull();
+  expect(container.querySelector(".library-detail")?.textContent).toContain("1,204 references · updated just now");
 });
 
 test("native hide removes the age timer; reopen catches up without repeating the live status", async () => {
@@ -255,10 +241,10 @@ test("native hide removes the age timer; reopen catches up without repeating the
     expect(vi.getTimerCount()).toBe(1);
     expect(changes).toHaveLength(0);
     await act(async () => { rerender(createElement(PickerShown, { value: true }, createElement(LibraryStatusLine, { library: zotero(), groupName: String }))); });
-    expect(changes).toEqual(["Zotero · 1,204 references"]);
-    expect(live.textContent).toBe("Zotero · 1,204 references");
+    expect(changes).toEqual(["Zotero"]);
+    expect(live.textContent).toBe("Zotero");
     await act(async () => { vi.advanceTimersByTime(30_000); });
-    expect(changes).toEqual(["Zotero · 1,204 references"]);
+    expect(changes).toEqual(["Zotero"]);
     observer.disconnect();
     unmount();
     expect(vi.getTimerCount()).toBe(0);
@@ -287,7 +273,7 @@ test("the non-empty Library button keeps one separate announcement, and its age 
     expect(announcements).toEqual([]);
     current = { ...current, state: "loaded", stale: false, error: null, problem: null, references: 13 };
     await act(async () => { rerender(createElement(LibraryStatusLine, { library: current, groupName: String, menu })); });
-    expect(announcements).toEqual(["thesis.bib · 13 references"]);
+    expect(announcements).toEqual(["thesis.bib"]);
     expect(names).toEqual([]);
     expect(screen.getAllByRole("status", { name: "Library status" })).toHaveLength(1);
   } finally {
@@ -330,17 +316,13 @@ test("the footer shortens the age, then the name, and only then the state words,
   }
 });
 
-test("the visible age is hidden from screen readers, which read the detail instead", () => {
-  const { container } = render(createElement(LibraryStatusLine, { library: zotero({ updated_at: Date.now(), checked_at: Date.now() }), groupName: String }));
-  expect(container.querySelector(".library-age")?.getAttribute("aria-hidden")).toBe("true");
-  expect(strip(container.querySelector(".library-detail")?.textContent ?? null)).toMatch(
-    /^Zotero · 1,204 references · updated just now\. My Library · checked just now, /);
-  // A kept copy says its age once, in the detail.
-  const kept = render(createElement(LibraryStatusLine, {
+test("a kept copy's visible age is hidden from screen readers and spoken once in detail", () => {
+  const { container } = render(createElement(LibraryStatusLine, {
     library: zotero({ state: "error", stale: true, error: "Zotero is not running; keeping the last loaded references", checked_at: Date.now() - 2 * hour }),
     groupName: String,
   }));
-  const heard = strip(kept.container.querySelector(".library-detail")?.textContent ?? null) ?? "";
+  expect(container.querySelector(".library-age")?.getAttribute("aria-hidden")).toBe("true");
+  const heard = strip(container.querySelector(".library-detail")?.textContent ?? null) ?? "";
   expect(heard.match(/last read 2 hours ago/g)).toHaveLength(1);
 });
 
@@ -413,5 +395,5 @@ test("a newer compatible Zotero library stays searchable and explains its source
   const status = zotero({ warnings: 1, reading: [{ code: "zotero-newer-than-tested", line: null, key: null }] });
   expect(libraryCondition(status).health).toBe("look");
   expect(detail(status)[1]).toContain("Zotero is newer than this version of Ibis was tested with. Results look right, but update Ibis when you can.");
-  expect(line(status)).toContain("1,204 references");
+  expect(line(status)).toBe("Zotero · 1 to check");
 });

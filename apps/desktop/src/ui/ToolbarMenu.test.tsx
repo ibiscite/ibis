@@ -1,3 +1,4 @@
+import { iconBody } from "../testing/icons";
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import axe from "axe-core";
@@ -5,7 +6,7 @@ import { createRef, StrictMode } from "react";
 import { closeOverlays } from "./layers";
 import { ToolbarMenu, type ToolbarMenuSection } from "./ToolbarMenu";
 import { setPlatform } from "../nativeAppearance";
-import { iconPaths, iconViewBox } from "../icon-paths";
+import { art } from "../icon-art";
 
 const sections: ToolbarMenuSection[] = [{ id: "keys", label: "Key formats", items: [
   { id: "pandoc", label: "Pandoc", sample: "[@key]" },
@@ -39,8 +40,8 @@ test.each(["macos", "windows", "linux"])("%s popup uses the shared decorative in
   expect(trigger.classList.contains("ui-button")).toBe(true);
   expect(trigger.getAttribute("data-variant")).toBe("secondary");
   const indicator = trigger.querySelector("svg")!;
-  expect(indicator.getAttribute("viewBox")).toBe(iconViewBox);
-  expect(indicator.querySelector("path")!.getAttribute("d")).toBe(iconPaths.chevrons);
+  expect(indicator.getAttribute("viewBox")).toBe(art.viewBox);
+  expect(indicator.innerHTML).toBe(iconBody("chevrons"));
   expect(indicator.getAttribute("aria-hidden")).toBe("true");
   expect(indicator.getAttribute("focusable")).toBe("false");
   const drawing = indicator.outerHTML;

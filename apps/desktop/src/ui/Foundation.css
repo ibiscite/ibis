@@ -14,6 +14,11 @@
 body { font-size: var(--type-body-size); line-height: var(--type-body-line); }
 ::placeholder { color: var(--text-placeholder); opacity: 1; }
 
+/* One heading over a list, a palette's group or a menu's section: small, bold and
+   secondary, so it never reads as an item. Its words start where its rows' words
+   do; in a list it is a band (ui/Band), so that holds by construction. */
+.ui-list-heading { margin: 0; color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: var(--strong); }
+
 /* An icon takes its row's colour, so hover and selection can never strand it. */
 svg { color: inherit; }
 
