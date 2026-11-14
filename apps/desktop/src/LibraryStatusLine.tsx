@@ -57,9 +57,9 @@ function useMinuteTick() {
 }
 
 /**
- * The footer's library item: a dot, the source and count, and an age only when
- * it matters (just updated, or an older copy kept after a failure). The full
- * detail is the tooltip; the live region holds no clock, so it is not repeated
+ * The footer's library item: just the source when healthy; a problem's words,
+ * dot and age when attention is needed. Counts stay in the full detail and
+ * tooltip; the live region holds no clock, so it is not repeated
  * every age tick.
  */
 export function LibraryStatusLine({ library, groupName, menu, action, failure, condition = libraryCondition(library, { failure }) }: {
@@ -78,12 +78,13 @@ export function LibraryStatusLine({ library, groupName, menu, action, failure, c
   // still chooses its own direction inside the phrase's isolation boundary.
   const separated = source !== null && summaryState.startsWith(" · ");
   const state = separated ? summaryState.slice(" · ".length) : summaryState;
-  const age = libraryMessages.age(library, now);
+  const detailAge = libraryMessages.age(library, now);
+  const age = health === "done" ? null : detailAge;
   const lines = libraryMessages.detail(library, now, (status) => zoteroLibraryNames(status, groupName));
   const detail = [...lines, problem].filter(Boolean).join("\n");
   // A kept copy's age ("checked …") is already in the second line.
-  const heard = age && !library?.stale ? `${lines[0]} · ${age}` : lines[0];
-  const spoken = age || lines[1] ? [heard, lines[1]].filter(Boolean).join(". ") : null;
+  const heard = detailAge && !library?.stale ? `${lines[0]} · ${detailAge}` : lines[0];
+  const spoken = [heard, lines[1]].filter(Boolean).join(". ");
   // Recovery and initial opening have their own single announcement in the
   // middle area. Inline operation failures use an alert beside their action.
   const announces = !failure && !(library && !library.has_snapshot && (library.state === "error" || library.state === "loading"));
@@ -94,7 +95,7 @@ export function LibraryStatusLine({ library, groupName, menu, action, failure, c
   </>;
   const liveProps = { role: "status", "aria-label": say("picker-library-status"), "aria-live": announces ? "polite" : "off", "aria-atomic": true } as const;
   const content = <>
-        <span className="status-dot" data-health={health} aria-hidden="true" />
+        {(health === "look" || health === "stop") && <span className="status-dot" data-health={health} aria-hidden="true" />}
         <bdi className="library-words" dir="ltr">
           <span className="library-name" dir="ltr" {...(!menu && liveProps)}>{words}</span>
           {age && <bdi className="library-age" dir="auto" aria-hidden="true"> · {age}</bdi>}

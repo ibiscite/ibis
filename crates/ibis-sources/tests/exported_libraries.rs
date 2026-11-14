@@ -166,11 +166,17 @@ fn the_same_reference_keeps_its_identity_across_exports_and_a_changed_one_does_n
         .filter(|id| ids(&before).contains(id))
         .collect();
     assert_eq!(kept.len(), 1, "only the unchanged reference keeps its identity");
-    // The same citation fields twice are one reference.
+    // Repeated content identities quarantine every contender.
     std::fs::write(&path, format!("{first}{first}")).unwrap();
     let doubled = ibis_sources::load_file(&path).unwrap();
-    assert_eq!(ids(&doubled), ids(&before));
-    assert_eq!(doubled.warnings, []);
+    assert!(ids(&doubled).is_empty());
+    assert_eq!(doubled.warnings.len(), 4);
+    assert!(
+        doubled
+            .warnings
+            .iter()
+            .all(|warning| warning.code == WarningCode::DuplicateKey)
+    );
 }
 
 #[test]
@@ -333,7 +339,7 @@ fn empty_and_missing_files() {
     for name in ["missing.ris", "missing.csv"] {
         assert_eq!(
             ibis_sources::load_file(&directory.path().join(name)).err(),
-            Some(SourceError::Unavailable)
+            Some(SourceError::Missing)
         );
     }
 }
@@ -464,10 +470,22 @@ fn the_record_limit_counts_every_record_the_file_holds() {
     text.push_str(&"book,Invented same\n".repeat(ibis_sources::MAX_LIBRARY_RECORDS));
     text.push_str("book,Invented past the limit\n");
     let loaded = ibis_sources::load_file(&copy(directory.path(), "many.csv", &text)).unwrap();
-    assert_eq!(records(&loaded).len(), 1);
+    assert!(records(&loaded).is_empty());
     assert_eq!(
-        loaded.warnings.iter().map(|w| w.code).collect::<Vec<_>>(),
-        [WarningCode::WorkLimit]
+        loaded
+            .warnings
+            .iter()
+            .filter(|w| w.code == WarningCode::DuplicateKey)
+            .count(),
+        ibis_sources::MAX_LIBRARY_RECORDS
+    );
+    assert_eq!(
+        loaded
+            .warnings
+            .iter()
+            .filter(|w| w.code == WarningCode::WorkLimit)
+            .count(),
+        1
     );
     // A key past the limit is said to be possibly unread.
     assert!(loaded.cut_short);

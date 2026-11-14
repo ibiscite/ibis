@@ -120,7 +120,7 @@ pub(super) fn publish_current_with(library: &Mutex<Library>, emit: impl FnOnce(L
 
 /// Apply an engine notification for `file`, accounting for each snapshot once.
 /// Returns whether `file` is still the open library.
-pub(super) fn engine_changed(library: &mut Library, file: &std::sync::Arc<super::engine_file::FileLibrary>) -> bool {
+pub(super) fn engine_changed(library: &mut Library, file: &std::sync::Arc<super::engine_library::FileLibrary>) -> bool {
     if !library
         .file
         .as_ref()
@@ -170,7 +170,7 @@ pub(super) fn watch_current(app: &AppHandle) {
 fn observe_current(
     library: &Mutex<Library>,
 ) -> Option<(
-    std::sync::Arc<super::engine_file::FileLibrary>,
+    std::sync::Arc<super::engine_library::FileLibrary>,
     ibis_engine::LibrarySubscription,
 )> {
     let mut library = library.lock().ok()?;
@@ -509,7 +509,14 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
                     if matches!(intent, OpenIntent::ReadOnly) {
                         reading_profile
                     } else {
-                        reading_profile.or_else(|| loading_app.state::<SettingsFile>().zotero_profile())
+                        match reading_profile {
+                            Some(profile) => Some(profile),
+                            None => loading_app.state::<SettingsFile>().zotero_profile().map_err(|_| {
+                                LoadError::Zotero(ibis_core::contract::EngineError::new(
+                                    ibis_core::contract::ErrorCode::SourceUnavailable,
+                                ))
+                            })?,
+                        }
                     }
                 } else {
                     None
@@ -595,11 +602,12 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
                         // then saves after this one, never before it.
                         let saved = app.state::<SettingsFile>().update(|s| {
                             if app.state::<LoadRequests>().0.load(Ordering::SeqCst) == request
-                                && (matches!(intent, OpenIntent::Remember) || s.library == refresh_source.setting())
+                                && (matches!(intent, OpenIntent::Remember)
+                                    || s.portable.library == refresh_source.setting())
                             {
-                                s.library = Some(chosen);
+                                s.portable.library = Some(chosen);
                                 if profile.is_some() {
-                                    s.zotero_profile = profile;
+                                    s.device.zotero_profile = profile;
                                 }
                             }
                         });
@@ -647,7 +655,7 @@ pub(super) fn guard_zotero_read(
     requests: &LoadRequests,
     request: u64,
     source: &Source,
-    bridge: Option<&Arc<super::engine_file::FileLibrary>>,
+    bridge: Option<&Arc<super::engine_library::FileLibrary>>,
     retire: &mut dyn FnMut() -> Result<(), ibis_core::contract::EngineError>,
 ) -> Result<(), ibis_core::contract::EngineError> {
     use ibis_core::contract::{EngineError, ErrorCode};
@@ -800,10 +808,13 @@ pub(crate) fn current_status(app: &AppHandle) -> LibraryStatus {
             references: 0,
             source_counts: BTreeMap::new(),
             warnings: 0,
+            problem_library: None,
             reading: Vec::new(),
             live_updates_off: false,
             error: Some(super::error::words("app-library-state-unavailable", &[])),
             problem: Some(LibraryProblem::Other),
+            failure: Some(super::CommandError::NotPrepared.problem()),
+            retained_failure: None,
             error_reason: None,
             kept_references: false,
             note: None,

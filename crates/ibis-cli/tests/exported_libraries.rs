@@ -121,7 +121,10 @@ fn skipped_records_are_listed_with_their_lines() {
 fn a_csv_with_a_missing_column_says_what_to_change() {
     let path = fixture("csv/missing-title.csv");
     let refused = opened(&path).err().unwrap();
-    assert_eq!(refused, json!({"code":"bad-input","reason":"csv-template"}));
+    assert_eq!(
+        refused,
+        json!({"code":"bad-input","reason":"csv-template","message":{"id":"reason-csv-template","args":{}},"recovery":{"action":"choose-library"},"focus":"library-picker"})
+    );
     let (code, _, errors) = run(&["ibis", "search", "spreadsheet", "--file", path.to_str().unwrap()]);
     assert_eq!(code, 3);
     assert!(errors.contains("does not match Ibis’s template"), "{errors}");
@@ -142,7 +145,7 @@ fn empty_and_missing_files() {
     let missing = directory.path().join("missing.ris");
     let (code, _, errors) = run(&["ibis", "search", "x", "--file", missing.to_str().unwrap()]);
     assert_eq!(code, 5, "{errors}");
-    assert!(errors.contains("there is no file at that path"), "{errors}");
+    assert!(errors.contains("was moved, renamed or removed"), "{errors}");
 }
 
 #[test]

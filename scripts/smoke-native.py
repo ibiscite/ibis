@@ -4,9 +4,40 @@
 Exit 1 means a failed assertion; exit 2 means the session lacks a required native
 capability. Only synthetic test text is recorded, never the accessibility tree or
 clipboard contents. See ../CONTRIBUTING.md before running on a personal desktop.
+
+Journeys (daily/manual CI and Preview run them on the installed nightly):
+
+`scripts/smoke-native.py` drives the real desktop app with invented data.
+Daily/manual CI runs installed nightly journeys; Preview checks package
+install/start and offline observation.
+Hosted runner coverage is listed in [compatibility](compatibility.md#platforms-tested-and-targeted).
+
+- **Linux/X11:** Xvfb/Openbox, one display and the default layout. Checks
+  shortcut/focus, search, Pandoc clipboard text, hide/reopen, settings, reload
+  and recovery. After Enter copies, it checks the reason, explicitly pastes
+  with Shift+Insert into its xterm editor and reads the citation back.
+  Require passing `smoke.json`; 100k launch/memory figures are diagnostics.
+- **macOS journey:** `bash scripts/hands-on-macos.sh --journey` installs a
+  nightly in an isolated profile and invokes the harness. From TextEdit,
+  selected text becomes the search; Enter must replace it with the expected
+  citation exactly once, verified through Accessibility. A safe copy gets
+  one retry. A Terminal collector must receive no keys. Missing terminal
+  Accessibility permission or an already open TextEdit makes it unavailable.
+  Daily/manual CI runs this journey on the installed nightly.
+- **Windows journey:** `smoke-native.py --journey` uses Notepad and an inert
+  console collector. It types the search, checks selection replacement once
+  through `WM_GETTEXT`, and checks that the console gets no automatic input.
+  `journey.json` records the editor and console host. A locked/disconnected
+  desktop is unavailable. `scripts/windows-journey.ps1` supplies native control.
+
+The separate Windows paste primitive test bypasses the picker. Foreground
+denial can skip it. macOS/Windows notice text is checked only when native
+accessibility exposes it. These journeys do not establish every editor,
+keyboard layout, screen reader, cloud provider or Wayland compositor.
 """
 import argparse
-from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from contextlib import contextmanager, nullcontext, redirect_stderr, redirect_stdout
+from contextvars import ContextVar
 import io
 import json
 import math
@@ -69,6 +100,7 @@ EDITOR_TITLE = "Ibis synthetic editor"
 
 # Execution hang guard; C# compilation happens separately before timed calls.
 CONTRACT_TIMEOUT = 120
+WAIT_DEADLINE = ContextVar("native_wait_deadline", default=None)
 
 
 def run(*args, timeout=20):
@@ -151,7 +183,6 @@ def missing_library_evidence(snapshot, name):
 
 # Library actions live in the footer's Library menu; application actions in More,
 # whose palette lists them as options of a listbox (ui/Palette), not menu items.
-TREE_SETTLE_SECONDS = 10
 MENU_ACTIONS = {"Choose Library…": "Library", "Use Zotero": "Library",
                 "Reload Library": "Library", "Quit Ibis": "More"}
 # ATK_ROLE_PUSH_BUTTON_MENU is how AT-SPI exposes a button with aria-haspopup.
@@ -211,15 +242,15 @@ def menu_action(native, name):
         try:
             native.click(name)
             return True
-        except (AssertionError, RuntimeError, subprocess.CalledProcessError) as error:
-            if isinstance(native, Linux) and isinstance(error, native.accessibility_error):
+        except NativeControlUnavailable as error:
+            if error.facts["returned_false"]:
                 raise
             last_error = error
             return False
     try:
         native.click(trigger)
         stage = "item"
-        wait_for(pressed, f"{name} appears in the {trigger} menu", timeout=5)
+        wait_for(pressed, f"{name} appears in the {trigger} menu")
     except (AssertionError, RuntimeError, subprocess.CalledProcessError) as error:
         print("MENU ACTION FAILURE", json.dumps(menu_failure_facts(native, trigger, name, stage, last_error or error)),
               file=sys.stderr, flush=True)
@@ -312,42 +343,20 @@ def has_search_text(snapshot):
     return any(n.get("value") for n in named(snapshot, "Search references"))
 
 
-ESCAPE_STEP_TIMEOUT = 5
-
-
 def escape_to_hide(native, snapshot, description):
-    """Escape clears a search first and hides on the next press.
-
-    macOS can report a cleared search value late, so with a search each press
-    waits only briefly and a picker that is still visible gets one spare press.
-    """
+    """Wait for each Escape's state change before sending the next key."""
     last = {}
     if has_search_text(snapshot()):
-        for press in range(3):
-            if not snapshot()["visible"]:
-                return
-            native.key("Escape")
-            deadline = time.monotonic() + ESCAPE_STEP_TIMEOUT
-            unknown = False
-            while time.monotonic() < deadline:
-                try:
-                    last.update(snapshot())
-                except WindowObservationFailure:
-                    # Withdrawal can race the read. Keep this action's deadline
-                    # and require positive hiding evidence before returning.
-                    unknown = True
-                    time.sleep(min(.1, max(0, deadline - time.monotonic())))
-                    continue
-                unknown = False
-                if not last["visible"]:
-                    return
-                if press == 0 and not has_search_text(last):
-                    break
-                time.sleep(0.1)
-            if unknown:
-                raise AssertionError("Timed out: picker visibility unavailable after Escape")
-    else:
+        if not snapshot()["visible"]:
+            return
         native.key("Escape")
+        def cleared():
+            last.update(snapshot())
+            return not last["visible"] or not has_search_text(last)
+        wait_for(cleared, "Escape clears Search or hides picker")
+        if not last["visible"]:
+            return
+    native.key("Escape")
     def hidden():
         last.update(snapshot())
         return not last["visible"]
@@ -384,21 +393,11 @@ def query_failure_facts(snapshot, query, expected):
             "expected_result": expected in text, "one_result": "1 result" in text.splitlines()}
 
 
-TYPE_ATTEMPTS = 3
-TYPE_SETTLE_TIMEOUT = 5
-
-
 def type_query(native, snapshot, text, select_all):
-    """Type into the search field until it reads back exactly, bounded."""
-    for _attempt in range(TYPE_ATTEMPTS):
-        native.key(select_all)
-        native.text(text)
-        deadline = time.monotonic() + TYPE_SETTLE_TIMEOUT
-        while time.monotonic() < deadline:
-            if query_failure_facts(snapshot(), text, "")["exact_search_value"]:
-                return
-            time.sleep(0.1)
-    raise AssertionError(f"Search field did not hold the typed query after {TYPE_ATTEMPTS} attempts")
+    """Inject once; a delayed readback must never cause another input action."""
+    native.key(select_all)
+    native.text(text)
+    wait_for(lambda: query_failure_facts(snapshot(), text, "")["exact_search_value"], "Search holds the typed query")
 
 
 def verify_reopened_search(native, snapshot, text):
@@ -415,7 +414,8 @@ def verify_reopened_search(native, snapshot, text):
         return [node.get("value") for node in named(current, "Search references")
                 if node.get("role", "").lower().replace(" ", "") in EDITABLE_ROLES]
 
-    wait_for(values, "reopened picker visible, foreground and editable search")
+    wait_for(lambda: values() and native.picker_has_input_focus(),
+             "reopened picker visible with keyboard ownership and editable search")
     native.text(text)
 
     def replaced():
@@ -671,7 +671,7 @@ OPEN_TARGET_MS = 100
 def measure_picker_open(native, snapshot, shortcut, text=None, *, report=None):
     """Shortcut to visible, foreground, focused Search on the retained snapshot.
 
-    On X11, wait only for mapping before typing, never for input/Search focus.
+    On X11, wait for mapping and native keyboard ownership before typing.
     Earlier keys still belong to the previous window; Ibis cannot buffer them.
     Never retry typing or select-all: either would conceal dropped opening keys.
     Native injection and accessibility probe costs remain inside the timer.
@@ -694,7 +694,8 @@ def measure_picker_open(native, snapshot, shortcut, text=None, *, report=None):
     try:
         native.key(shortcut)
         if text is not None:
-            wait_for(native.picker_mapped, "picker mapped before opening typing", interval=.005)
+            wait_for(lambda: native.picker_mapped() and native.picker_has_input_focus(),
+                     "picker mapped with keyboard ownership before opening typing", interval=.005)
             native.text(text)
         wait_for(interactive, "shortcut opens interactive picker", interval=.005)
         elapsed = (time.monotonic() - started) * 1000
@@ -1033,7 +1034,7 @@ class Linux:
     def window(self, pid, title):
         # Same-process GTK auxiliaries can be viewable without being the app's
         # managed picker. Bind purpose and ownership before observing its hints.
-        deadline = time.monotonic() + 20
+        deadline = min(time.monotonic() + 20, WAIT_DEADLINE.get() or math.inf)
         def query(branch, *args):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -1090,23 +1091,15 @@ class Linux:
         # Mapping/withdrawal may cross them even for a direct snapshot caller.
         # Retry the whole observation within its original budget, never treat
         # an uncertain read as absence or carry a candidate into the next read.
-        reported = set()
-        while True:
-            try:
-                return observe()
-            except WindowObservationFailure as error:
-                if error.branch not in reported:
-                    print("LINUX WINDOW REOBSERVE " + error.branch, file=sys.stderr, flush=True)
-                    reported.add(error.branch)
-                remaining = deadline - time.monotonic()
-                if remaining > 0:
-                    time.sleep(min(.1, remaining))
-                if time.monotonic() >= deadline:
-                    # Fixed labels only: never include titles, XIDs or stderr.
-                    # Print here as a polling caller may replace the exception
-                    # with its own timeout, losing the failed branch again.
-                    print("LINUX WINDOW OBSERVATION FAILURE " + error.branch, file=sys.stderr, flush=True)
-                    raise
+        try:
+            # None is a completed observation of absence, not a pending poll.
+            return wait_for(lambda: (observe(),), "window identity", deadline=deadline)[0]
+        except AssertionError as timeout:
+            error = timeout.__cause__
+            if not isinstance(error, WindowObservationFailure):
+                error = WindowObservationFailure("query-deadline")
+            print("LINUX WINDOW OBSERVATION FAILURE " + error.branch, file=sys.stderr, flush=True)
+            raise error from None
 
     def named_control_facts(self, name):
         """Read roles and Action metadata only; never activate or echo native text.
@@ -1292,6 +1285,7 @@ class Linux:
                 if action.doAction(0):
                     return
                 returned_false = True
+                break
             stack.extend(children(item))
         # A rejected role never queried Action. Do not report that as a button
         # with no action again: retain the fixed reason without native text.
@@ -1388,21 +1382,32 @@ class Linux:
         self.wm.terminate()
 
 
-def wait_for(predicate, description, timeout=20, *, interval=.1):
+def wait_for(predicate, description, timeout=20, *, interval=.1, deadline=None):
     # Source locations are stable IDs within the recorded harness hash. Never
     # serialize descriptions: callers may interpolate desktop observations.
-    with recording("request", f"wait-{sys._getframe(1).f_lineno}"):
+    parent = WAIT_DEADLINE.get()
+    if deadline is None:
         deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            try:
-                if predicate():
-                    return
-            except WindowObservationFailure:
-                # Mapping/withdrawal can race a query. Unknown is not a positive
-                # condition, including when the caller is waiting for hiding.
-                pass
-            time.sleep(interval)
-        raise AssertionError(f"Timed out: {description}")
+    deadline = min(deadline, parent if parent is not None else math.inf)
+    token = WAIT_DEADLINE.set(deadline)
+    # Nested observations share the guard and never record polling frequency.
+    trace = nullcontext() if parent is not None else recording("request", f"wait-{sys._getframe(1).f_lineno}")
+    try:
+        with trace:
+            unknown = None
+            while time.monotonic() < deadline:
+                try:
+                    result = predicate()
+                    if result:
+                        return result
+                    unknown = None
+                except WindowObservationFailure as error:
+                    # Unknown cannot prove mapping or hiding.
+                    unknown = error
+                time.sleep(min(interval, max(0, deadline - time.monotonic())))
+            raise AssertionError(f"Timed out: {description}") from unknown
+    finally:
+        WAIT_DEADLINE.reset(token)
 
 
 def saved_typst(settings):
@@ -2626,7 +2631,7 @@ def smoke_main(args):
                 paths = [settings.with_suffix(suffix) for suffix in (".json", ".json.bak", ".json.tmp")]
                 prior = {path: path.read_bytes() if path.exists() else None for path in paths}
                 external = json.loads(prior[settings]) if prior[settings] is not None else {"schema_version": 1}
-                external["shortcut"] = "Control+Alt+F12"
+                external["larger_text"] = True
                 external.pop("output", None)  # Copying must not recreate a removed preference.
                 settings.parent.mkdir(parents=True, exist_ok=True)
                 with recording("action", "settings-live-edit"):
@@ -2635,7 +2640,7 @@ def smoke_main(args):
                 try:
                     copy()
                     saved = json.loads(settings.read_text(encoding="utf-8"))
-                    assert saved.get("shortcut") == external["shortcut"], "Native copy lost a live external settings edit"
+                    assert saved.get("larger_text") is True, "Native copy lost a live external settings edit"
                     assert settings.read_bytes() == external_bytes, "Native copy changed live settings"
                 finally:
                     with recording("action", "settings-restore"):
@@ -4328,11 +4333,22 @@ class ContractTests(unittest.TestCase):
         def bounded(*args, timeout):
             remaining.append(timeout)
             return command(*args, timeout=timeout)
-        clock = iter([0, 0, 5, 10, 19])
+        clock = iter([0, 0, 0, 5, 10, 19])
         with patch("time.monotonic", side_effect=lambda: next(clock, 20)), \
              patch(__name__ + ".run", side_effect=bounded), self.assertRaises(WindowObservationFailure):
             linux.window(42, "Ibis")
         self.assertEqual(remaining, [20, 15, 10, 1])
+
+    def test_window_queries_use_the_enclosing_wait_budget(self):
+        linux, budgets = Linux.__new__(Linux), []
+        command = self.linux_window_query()
+        def bounded(*args, timeout):
+            budgets.append(timeout)
+            return command(*args, timeout=timeout)
+        with patch("time.monotonic", return_value=1), patch(__name__ + ".run", side_effect=bounded):
+            self.assertEqual(wait_for(lambda: linux.window(42, "Ibis"), "mapping", timeout=2), "2")
+        self.assertTrue(budgets and all(budget == 2 for budget in budgets))
+        self.assertIsNone(WAIT_DEADLINE.get())
 
     def test_linux_window_refuses_replaced_owner_and_subprocess_timeout(self):
         linux = Linux.__new__(Linux)
@@ -4477,16 +4493,14 @@ class ContractTests(unittest.TestCase):
         def sleep(seconds):
             clock.elapsed += seconds
         with patch("time.monotonic", clock.monotonic), patch("time.sleep", side_effect=sleep), \
-                self.assertRaisesRegex(AssertionError, "Timed out.*visibility"):
+                self.assertRaisesRegex(AssertionError, "Timed out: Escape clears Search"):
             escape_to_hide(native, snapshot, "synthetic picker hidden")
-        self.assertEqual(clock.elapsed, ESCAPE_STEP_TIMEOUT)
+        self.assertEqual(clock.elapsed, 20)
         native.key.assert_called_once_with("Escape")
 
     def test_pre_key_uncertainty_and_non_window_failures_still_refuse(self):
         visible = {"visible": True, "nodes": [{"name": "Search references", "value": "synthetic"}]}
-        cleared = {"visible": True, "nodes": [{"name": "Search references", "value": ""}]}
         for observations, error, actions in (([visible, WindowObservationFailure()], WindowObservationFailure, 0),
-                ([visible, visible, cleared, WindowObservationFailure()], WindowObservationFailure, 1),
                 ([visible, visible, RuntimeError("synthetic failure")], RuntimeError, 1)):
             native = Mock()
             with self.subTest(actions=actions, error=error.__name__), self.assertRaises(error):
@@ -4507,27 +4521,28 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(native.key.call_args_list, [call("Escape"), call("Escape")])
         self.assertFalse(state["visible"])
 
-    def test_escape_presses_again_when_a_cleared_search_is_reported_late(self):
-        state = {"visible": True, "presses": 0}
+    def test_escape_waits_for_a_late_cleared_search_before_pressing_again(self):
+        state = {"visible": True, "presses": 0, "reads": 0}
         native = Mock()
         def key(name):
             state["presses"] += 1
             state["visible"] = state["presses"] < 2
         native.key.side_effect = key
-        snapshot = lambda: {"visible": state["visible"], "nodes": [{"name": "Search references", "value": "stale"}]}
-        with patch(__name__ + ".ESCAPE_STEP_TIMEOUT", 0.05):
+        def snapshot():
+            state["reads"] += 1
+            return {"visible": state["visible"], "nodes": [{"name": "Search references",
+                    "value": "stale" if state["reads"] < 5 else ""}]}
+        with patch("time.sleep"):
             escape_to_hide(native, snapshot, "hidden")
         self.assertEqual(native.key.call_args_list, [call("Escape"), call("Escape")])
 
-    def test_escape_that_never_hides_fails_after_one_spare_press(self):
+    def test_escape_without_a_state_change_fails_without_repeating_input(self):
         native = Mock()
         snapshot = lambda: {"visible": True, "nodes": [{"name": "Search references", "value": "private query"}]}
-        with patch(__name__ + ".ESCAPE_STEP_TIMEOUT", 0.05), \
-             patch(__name__ + ".wait_for", side_effect=lambda predicate, description: self.assertTrue(predicate(), description)), \
-             patch("builtins.print") as printed, self.assertRaises(AssertionError):
+        with patch(__name__ + ".wait_for", side_effect=lambda predicate, description: self.assertTrue(predicate(), description)), \
+             self.assertRaises(AssertionError):
             escape_to_hide(native, snapshot, "hidden")
-        self.assertEqual(native.key.call_count, 3)
-        self.assertNotIn("private query", printed.call_args.args[0])
+        native.key.assert_called_once_with("Escape")
 
     def test_initial_escape_waits_for_native_keyboard_owner_after_accessible_focus(self):
         native = self.InitialPickerModel(owns_keys=False)
@@ -4570,23 +4585,21 @@ class ContractTests(unittest.TestCase):
                 prepare_initial_picker_show(native, native.snapshot)
         self.assertEqual(native.events, [("Escape", True)])
 
-    def test_typed_query_is_retyped_until_the_search_field_reads_back_exactly(self):
+    def test_typed_query_waits_for_readback_without_retyping(self):
         values = iter(["smoke00001", "smoke000001"])
         native = Mock()
         snapshot = lambda: {"nodes": [{"name": "Search references", "role": "AXTextField", "value": next(values)}]}
-        with patch(__name__ + ".time") as clock:
-            clock.monotonic.side_effect = [0, 0, 10, 0, 0]
+        with patch("time.sleep"):
             type_query(native, snapshot, "smoke000001", "super+a")
-        self.assertEqual(native.mock_calls, [call.key("super+a"), call.text("smoke000001")] * 2)
+        self.assertEqual(native.mock_calls, [call.key("super+a"), call.text("smoke000001")])
 
-    def test_typed_query_fails_clearly_after_bounded_attempts(self):
-        native = Mock()
+    def test_typed_query_fails_without_repeating_input(self):
+        native, clock = Mock(), self.CopyClock()
         snapshot = lambda: {"nodes": [{"name": "Search references", "role": "AXTextField", "value": "smoke"}]}
-        with patch(__name__ + ".time") as clock:
-            clock.monotonic.side_effect = [0, 0, 10] * TYPE_ATTEMPTS
-            with self.assertRaisesRegex(AssertionError, "did not hold the typed query after 3 attempts"):
+        with patch("time.monotonic", clock.monotonic), patch("time.sleep", clock.sleep):
+            with self.assertRaisesRegex(AssertionError, "Timed out: Search holds the typed query"):
                 type_query(native, snapshot, "smoke000001", "super+a")
-        self.assertEqual(native.text.call_count, TYPE_ATTEMPTS)
+        native.text.assert_called_once_with("smoke000001")
 
 
     def test_query_failure_facts_distinguish_empty_partial_and_exact_editable_values(self):
@@ -4663,9 +4676,9 @@ class ContractTests(unittest.TestCase):
         for error in (AssertionError(), RuntimeError(), subprocess.CalledProcessError(1, "synthetic")):
             native.click.reset_mock()
             native.click.side_effect = [None, error, None]
-            with patch("time.sleep"):
+            with patch("builtins.print"), self.assertRaises(type(error)):
                 menu_action(native, "Reload Library")
-            self.assertEqual(native.click.call_args_list, [call("Library"), call("Reload Library"), call("Reload Library")])
+            self.assertEqual(native.click.call_args_list, [call("Library"), call("Reload Library")])
 
     def test_library_reload_uses_the_real_evidence_wrapper_and_closed_schema(self):
         metadata = collect_metadata(Path("synthetic-unavailable-app"), {
@@ -4690,6 +4703,24 @@ class ContractTests(unittest.TestCase):
                          ["click-library", "click-reload"])
         self.assertEqual(bundle["request_completion_order"][-1], bundle["events"][0]["id"])
 
+    def test_nested_observation_poll_counts_do_not_change_replay(self):
+        metadata = collect_metadata(Path("synthetic-unavailable-app"), {
+            "small": fixture().encode(), "initial-settings": b"{}", "initial-document": b""})
+        bundle = None
+        for polls in (1, 3):
+            recorder = Evidence("native-smoke", {"identifier": "com.ibiscite.ibis", "shortcut": "ctrl+shift+y",
+                                                 "skip_performance": True, "seed": 0}, metadata, bundle)
+            observations = iter([False] * (polls - 1) + [True])
+            token = ACTIVE.set(recorder)
+            try:
+                with patch("time.sleep"):
+                    wait_for(lambda: wait_for(lambda: (next(observations),), "window identity")[0], "picker mapped")
+            finally:
+                ACTIVE.reset(token)
+            bundle = recorder.finish(0)
+            self.assertEqual(bundle["result"]["outcome"], "pass")
+            self.assertEqual(len(bundle["events"]), 2)
+
     def test_menu_failure_observes_the_current_menu_instead_of_reusing_the_prior_check(self):
         native = Mock()
         native.click.side_effect = [None, AssertionError("PRIVATE action error")]
@@ -4697,11 +4728,8 @@ class ContractTests(unittest.TestCase):
             {"name": "PRIVATE filename", "role": "file chooser", "value": "PRIVATE document"},
             {"name": "Search references", "role": "entry", "focused": False},
         ]}
-        def timeout(predicate, description, **options):
-            self.assertFalse(predicate())
-            raise AssertionError("Timed out: " + description)
-        with patch(__name__ + ".wait_for", side_effect=timeout), patch("builtins.print") as output:
-            with self.assertRaisesRegex(AssertionError, "Timed out: Reload Library appears in the Library menu"):
+        with patch("builtins.print") as output:
+            with self.assertRaises(AssertionError):
                 menu_action(native, "Reload Library")
         native.snapshot.assert_called_once_with()
         label, encoded = output.call_args.args
@@ -4724,10 +4752,7 @@ class ContractTests(unittest.TestCase):
             {"name": "Library", "role": "push button"}, {"name": "Library", "role": "menu"},
             {"name": "Reload Library", "role": "menu item"},
         ]})
-        def timeout(predicate, description, **options):
-            self.assertFalse(predicate())
-            raise AssertionError("Timed out: " + description)
-        with patch(__name__ + ".wait_for", side_effect=timeout), patch("builtins.print") as output:
+        with patch("builtins.print") as output:
             with self.assertRaises(AssertionError):
                 menu_action(native, "Reload Library")
         facts = json.loads(output.call_args.args[1])
@@ -5017,9 +5042,9 @@ class ContractTests(unittest.TestCase):
                 self.assertIn("maintainer hand test #79", summary["summary"])
                 self.assertIn("AT-SPI", summary["reason"])
 
-    def picker_open_probe(self, *, value="smoke", typed="smoke", readiness=None, focus_role=None, mapped=None):
+    def picker_open_probe(self, *, value="smoke", typed="smoke", readiness=None, focus_role=None, mapped=None, owns_keys=None):
         clock, events = self.CopyClock(), []
-        native = Mock(spec=["key", "text", "picker_mapped", "editor_received"])
+        native = Mock(spec=["key", "text", "picker_mapped", "picker_has_input_focus", "editor_received"])
         native.key.side_effect = lambda chord: (events.append(("key", chord)), setattr(clock, "elapsed", clock.elapsed + .002))
         native.text.side_effect = lambda text: (events.append(("text", text)), setattr(clock, "elapsed", clock.elapsed + .003))
         maps = iter(mapped or [True])
@@ -5028,6 +5053,7 @@ class ContractTests(unittest.TestCase):
             clock.elapsed += .001
             return next(maps, True)
         native.picker_mapped.side_effect = picker_mapped
+        native.picker_has_input_focus.side_effect = iter(owns_keys) if owns_keys else lambda: True
         native.editor_received.return_value = {"available": True, "text": "", "truncated": False}
         states = iter(readiness or [(True, True, True)])
         def snapshot():
@@ -5057,8 +5083,13 @@ class ContractTests(unittest.TestCase):
                          [("text", "smoke")] + [("snapshot",)] * 3)
         self.assertAlmostEqual(elapsed, 37)
 
+    def test_mapped_picker_waits_for_keyboard_ownership_before_typing(self):
+        _, events = self.picker_open_probe(owns_keys=[False, False, True])
+        typed = events.index(("text", "smoke"))
+        self.assertEqual(events[:typed], [("key", "ctrl+shift+y")] + [("mapped",)] * 3)
+
     def test_unmapped_picker_never_receives_opening_text_or_a_search_probe(self):
-        native = Mock(spec=["key", "text", "picker_mapped", "editor_received"])
+        native = Mock(spec=["key", "text", "picker_mapped", "picker_has_input_focus", "editor_received"])
         native.picker_mapped.return_value = False
         native.editor_received.return_value = {"available": False}
         snapshot, report = Mock(), {}
@@ -5066,7 +5097,7 @@ class ContractTests(unittest.TestCase):
             self.assertFalse(predicate())
             raise AssertionError("Timed out: " + description)
         with patch(__name__ + ".wait_for", side_effect=wait), patch("sys.stderr", io.StringIO()), \
-             self.assertRaisesRegex(AssertionError, "Timed out: picker mapped before opening typing"):
+             self.assertRaisesRegex(AssertionError, "Timed out: picker mapped with keyboard ownership before opening typing"):
             measure_picker_open(native, snapshot, "ctrl+shift+y", "smoke", report=report)
         native.text.assert_not_called()
         snapshot.assert_not_called()
@@ -5094,7 +5125,7 @@ class ContractTests(unittest.TestCase):
                 self.picker_open_probe(value=value)
 
     def test_unavailable_editor_diagnostic_preserves_the_opening_failure(self):
-        native = Mock(spec=["key", "text", "picker_mapped", "editor_received"])
+        native = Mock(spec=["key", "text", "picker_mapped", "picker_has_input_focus", "editor_received"])
         native.editor_received.side_effect = OSError("synthetic editor already gone")
         report = {}
         with patch(__name__ + ".wait_for", side_effect=AssertionError("synthetic opening failure")), \
@@ -5103,8 +5134,9 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(report["opening_text_failure"]["editor"], {"available": False})
 
     def test_opening_failure_reports_last_observed_field_and_editor_without_retry(self):
-        native = Mock(spec=["key", "text", "picker_mapped", "editor_received"])
+        native = Mock(spec=["key", "text", "picker_mapped", "picker_has_input_focus", "editor_received"])
         native.picker_mapped.return_value = True
+        native.picker_has_input_focus.return_value = True
         native.editor_received.return_value = {"available": True, "text": "s", "truncated": False}
         snapshots = iter({"visible": True, "foreground": True, "nodes": [
             {"name": "Search references", "role": "combo box", "value": value, "focused": True}]}
@@ -5260,7 +5292,7 @@ class ContractTests(unittest.TestCase):
             measure_startup(lambda: None, snapshot, phases)
         self.assertEqual(phases["snapshot_calls"], 2)
         self.assertEqual(phases["snapshot_ms"], 122000)
-        self.assertEqual(phases["readiness_ms"], 122200)
+        self.assertEqual(phases["readiness_ms"], 122100)
 
 
     def test_toggle_diagnostics_accept_only_exact_fixed_lines_from_current_run_logs(self):

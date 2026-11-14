@@ -122,6 +122,7 @@ pub fn validate(writings: &[Writing]) -> Result<(), WritingError> {
 }
 pub fn find<'a>(settings: &'a Settings, name: &str) -> Result<&'a Writing, WritingError> {
     settings
+        .device
         .writings
         .iter()
         .find(|writing| writing.name == name)
@@ -138,14 +139,14 @@ pub fn create(
         format,
         bibliography,
     };
-    let mut proposed = settings.writings.clone();
+    let mut proposed = settings.device.writings.clone();
     proposed.push(writing.clone());
     validate(&proposed)?;
-    settings.writings = proposed;
+    settings.device.writings = proposed;
     Ok(writing)
 }
 pub fn rename(settings: &mut Settings, name: &str, new_name: String) -> Result<Writing, WritingError> {
-    let mut proposed = settings.writings.clone();
+    let mut proposed = settings.device.writings.clone();
     let writing = proposed
         .iter_mut()
         .find(|writing| writing.name == name)
@@ -153,8 +154,9 @@ pub fn rename(settings: &mut Settings, name: &str, new_name: String) -> Result<W
     writing.name = new_name.clone();
     let renamed = writing.clone();
     validate(&proposed)?;
-    settings.writings = proposed;
+    settings.device.writings = proposed;
     for selected in settings
+        .device
         .writing_apps
         .values_mut()
         .filter(|selected| selected.as_str() == name)
@@ -169,7 +171,7 @@ pub fn update(
     format: OutputSpec,
     bibliography: Option<PathBuf>,
 ) -> Result<Writing, WritingError> {
-    let mut proposed = settings.writings.clone();
+    let mut proposed = settings.device.writings.clone();
     let writing = proposed
         .iter_mut()
         .find(|writing| writing.name == name)
@@ -178,25 +180,15 @@ pub fn update(
     writing.bibliography = bibliography;
     let updated = writing.clone();
     validate(&proposed)?;
-    settings.writings = proposed;
+    settings.device.writings = proposed;
     Ok(updated)
 }
 pub fn remove(settings: &mut Settings, name: &str) -> Result<Writing, WritingError> {
     let writing = find(settings, name)?.clone();
-    settings.writings.retain(|writing| writing.name != name);
-    settings.writing_apps.retain(|_, selected| selected != name);
+    settings.device.writings.retain(|writing| writing.name != name);
+    settings.device.writing_apps.retain(|_, selected| selected != name);
     Ok(writing)
 }
-/// A whole checked definition edit, serialized through the settings owner.
-pub fn change<T: Send + 'static>(
-    path: &Path,
-    change: impl FnOnce(&mut Settings) -> Result<T, WritingError>,
-) -> Result<T, WritingError> {
-    super::Owner::open(path.to_path_buf())
-        .change(change)
-        .map(|(_, result)| result)
-}
-
 /// Select only from an editor/CLI's explicit context. A document name, sibling
 /// bibliography, window title or URL never selects a writing. Only front matter
 /// explicitly naming a bibliography or CSL style can do that.
@@ -260,6 +252,7 @@ pub fn from_context(
         return Ok(None);
     }
     let matches: Vec<_> = settings
+        .device
         .writings
         .iter()
         .filter(|writing| {
@@ -316,4 +309,27 @@ fn scalar(value: &str) -> Result<String, WritingError> {
         return Err(WritingError::InvalidContext);
     }
     Ok(value.to_owned())
+}
+
+use ibis_core::contract::{Problem, Recovery, RecoveryInfo};
+
+impl From<&crate::settings::writings::WritingError> for Problem {
+    fn from(error: &crate::settings::writings::WritingError) -> Self {
+        use crate::settings::writings::WritingError as P;
+        let (code, recovery) = match error {
+            P::InvalidName => ("invalid-name", Recovery::RenameProject),
+            P::DuplicateName => ("duplicate-name", Recovery::RenameProject),
+            P::NotFound => ("not-found", Recovery::ChooseProject),
+            P::TooMany => ("too-many", Recovery::RemoveProject),
+            P::Invalid => ("invalid", Recovery::ReviewSettings),
+            P::ContextUnavailable => ("context-unavailable", Recovery::Retry),
+            P::InvalidContext => ("invalid-context", Recovery::EditInput),
+            P::AmbiguousContext => ("ambiguous-context", Recovery::ChooseProject),
+            P::Settings(error) => return error.into(),
+        };
+        Self {
+            code: format!("project-{code}"),
+            info: RecoveryInfo::new(&format!("app-project-error-{code}"), recovery),
+        }
+    }
 }

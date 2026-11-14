@@ -54,13 +54,18 @@ reason-ambiguous-key = Several references use this citation key.
 reason-missing-key = This reference has no citation key.
     .cli = Give it one in your library, or use --style.
     .agent = Use a style, or ask the person to give it one.
-    .app = Give it one in your library, or choose a style.
+    .app = Choose a citation style.
+reason-missing-file = The library file was moved, renamed or removed.
+    .cli = Choose its current location with --file.
+    .agent = Ask the user to locate the library file, then start a new session.
+    .app = Locate the library file.
 reason-app-missing = The Ibis app was not found.
     .cli = Install it, or give its location with --app <path>.
 reason-not-ibis = The program given as the Ibis app is not Ibis.
     .cli = Give the Ibis app’s location with --app <path>.
 reason-no-answer = The Ibis app started but did not answer.
     .cli = Open Ibis once by hand, then try again.
+reason-settings-read-timeout = Reading the Ibis app’s library settings timed out.
 reason-zotero-sharing-off = Zotero is open but is not sharing your library with other apps.
     .cli = In Zotero, open Settings, Advanced, and turn on Allow other applications on this computer to communicate with Zotero.
     .agent = Ask the person to turn on Allow other applications in Zotero’s Advanced settings.
@@ -82,7 +87,7 @@ reason-csv-template = The first row of this CSV file does not match Ibis’s tem
     .app = Rename the columns in its first row; the CSV template in Ibis’s compatibility guide lists them.
 reason-library-cut-short = No reference has this key in what Ibis read, but the library is too large to read in full (Ibis stops at 200,000 entries), so the key may be in the part it did not read.
     .cli = Split the library into smaller files and give each with --file.
-    .agent = Tell the person the library was cut short, so the reference may be in the part Ibis could not read.
+    .agent = Ask the person to split the source library into smaller files so Ibis can read the missing references.
     .app = Split the library into smaller files.
 reason-unknown-format = This file is not in a format Ibis reads: { -library-formats }.
     .cli = Choose another file with --file.
@@ -94,55 +99,6 @@ reason-duplicate-record = Two records sent with the request have the same id, co
 reason-rejected-record = A record sent with the request is not valid CSL-JSON, so Ibis cites none rather than leave it out.
     .cli = Each record needs an id and a CSL type; fix or remove it.
     .agent = Each record needs an id and a CSL type such as book or article-journal; fix or remove the invalid one.
-
-## A reference a citation could not include. { $reference } names it.
-
-refusal-empty-selection = There is nothing to cite.
-refusal-too-many-items = One citation can hold at most { $limit } references.
-refusal-invalid-locator = The page or location for { $reference } is empty or has control characters.
-refusal-invalid-rich-text = The text before or after { $reference } has characters Ibis cannot write.
-refusal-output-too-large = The citation is too large to write.
-refusal-unsupported-form = { $output } cannot write { $reference } in this form or with these options.
-    .cli = Cite it on its own, or choose another output.
-    .agent = Try form normal, or another format or style.
-    .app = Choose Name in brackets, cite it alone, or choose another output.
-refusal-missing-item = { $reference } changed or was removed while citing.
-    .cli = Try again.
-    .agent = Search again.
-    .app = Search again.
-refusal-changed-item = { $reference } changed while citing.
-    .cli = Try again.
-    .agent = Search again.
-    .app = Search again.
-refusal-missing-key = { $reference } has no citation key.
-refusal-missing-doi = { $reference } has no usable DOI.
-    .cli = Cite it with --style instead.
-    .agent = A key syntax cannot name it; use a style.
-    .app = Give it one in your library, or choose a style.
-refusal-ambiguous-key = Several references share the citation key of { $reference }.
-    .cli = Give each one its own key in your library.
-    .agent = Use a style, or ask the person to give each its own key.
-    .app = Give each one its own key in your library.
-refusal-conflicting-key = { $reference } has more than one citation key in its library.
-    .cli = Keep one.
-    .agent = Use a style, or ask the person to keep one key.
-    .app = Keep one in your library, or choose a style.
-refusal-invalid-key = The citation key of { $reference } has characters { $output } cannot write.
-    .agent = Use a style, or ask the person to change the key.
-refusal-unsupported-output = There is no style { $output }.
-    .cli = List the styles with: ibis styles
-    .agent = The styles tool lists them.
-refusal-invalid-locale = That citation language is not available.
-    .cli = List them with: ibis styles --locales
-    .agent = The styles tool lists the locales.
-refusal-cancelled = The citation was cancelled.
-refusal-formatter-unavailable = The citation could not be written just now. Try again.
-refusal-annotation-mismatch = The annotation given for { $reference } belongs to another reference.
-refusal-not-citable = { $reference } is not a reference, such as a note, so it cannot be cited.
-refusal-not-from-zotero = { $reference } was not read from a Zotero library, so Zotero cannot find it.
-    .cli = Read your Zotero library with --zotero, or choose another output.
-    .agent = Use another format, or ask the person to cite it from their Zotero library.
-    .app = Cite it from your Zotero library, or choose another output.
 
 ## What a citation could not say in full.
 
@@ -217,8 +173,6 @@ cause-value = a value cannot be read as written
 
 ## The command line’s own sentences about a refusal.
 
-cli-form-refused = Cannot cite { $reference } in { $output } with --form { $form }. Try --form normal.
-cli-options-refused = Cannot cite { $reference } with { $options } in { $output }. Try without them.
 cli-together-refused = { $output } cannot write these references together as asked. Cite them one at a time to see which one fails.
 cli-loss-left-out = { $output } cannot show { $what }{ $target }, so it was left out.
 cli-loss-flattened = { $output } wrote { $what }{ $target } as plain text.
@@ -251,7 +205,7 @@ app-tray-whats-new = What’s New
 app-tray-problem = Report a Problem…
 app-tray-idea = Suggest an Idea…
 app-tray-reset = Reset Window Position
-app-tray-library-settings = Library Settings…
+app-tray-fix-library = Fix in Ibis…
 app-tray-library = Library
 app-tray-no-library = No library yet
 app-tray-opening = Opening { $name }…
@@ -275,6 +229,13 @@ app-tray-zotero-work-limit = Zotero took too long to read
 app-tray-not-updated = { $name } could not be updated
 app-tray-not-opened = { $name } could not be opened
 app-tray-version-copy-failed = The version could not be copied. Try again.
+app-tray-fix-problem = Fix 1 Problem…
+app-tray-fix-problems = Fix { $count } Problems…
+app-tray-fix-failed = The library could not be opened for editing. Open it from the picker to try again.
+app-tray-spoken-reading = Ibis, reading { $name }
+app-tray-spoken-problem = Ibis, { $problem }
+app-tray-spoken-empty = Ibis, no library yet
+app-tray-spoken-ready = Ibis, ready
 app-saved-title = Save References Cited Since Opening
 app-saved-file = Cited since opening
 app-saved-page = References cited since opening
@@ -478,6 +439,8 @@ settings-results-count = { $count ->
    *[other] { $count } results
     }
 settings-read-failed = Ibis could not read your settings; reopen Settings to try again.
+settings-forget-failed = Ibis could not forget the app’s format; the saved choice is shown.
+settings-open-failed = Ibis could not open the settings file.
 settings-choice-failed = Ibis could not save this choice; the saved value is shown.
 settings-startup-words = startup launch restart login
 settings-paste-words = paste copy clipboard Enter
@@ -1209,8 +1172,7 @@ row-item-type =
 copied-notice-pasted-into = Pasted into { $app }
 copied-notice-pasted = Pasted
 # Every "copied, not pasted" sentence says why and ends with its fix, written
-# with ⌘V; other systems show Ctrl+V. The words are the Notices table in
-# docs/design/delivery.md, which a test reads.
+# with ⌘V; other systems show Ctrl+V.
 copied-notice-reason =
     { $reason ->
         [paste-off] Copied. Pasting is off in Settings. Press ⌘V to paste.
@@ -1250,7 +1212,6 @@ library-more-not-listed =
        *[other] { $count } more are not listed.
     }
 
-settings-changed = Changed
 citations-documents = In documents
 citations-keys = In Markdown, LaTeX and Typst
 citations-apps = Formats remembered for apps
@@ -1356,3 +1317,185 @@ settings-default-restored = Default restored for { $setting }
 settings-undo-default = Restore Default for { $setting }
 settings-details = Details…
 settings-shortcut-words = keyboard hotkey keybinding
+
+## Citation diagnostics carried to clients before rendering.
+cli-ambiguous-suggestion = This key is ambiguous. Choose a result’s id from this search, then use ibis show --id ID_JSON with the same libraries.
+cli-ambiguous-search-keys = note: { $count } hits have ambiguous citation keys and were omitted; search with --json and use the result’s id.
+problem-empty-selection = There is nothing to cite.
+problem-too-many-items = Choose fewer references for one citation.
+    .named = One citation can hold at most { $limit } references.
+problem-invalid-locator = Correct the page or location for this reference.
+    .named = The page or location for { $reference } is empty or has control characters.
+problem-invalid-rich-text = Correct the text before or after this reference.
+    .named = The text before or after { $reference } has characters Ibis cannot write.
+problem-output-too-large = The citation is too large to write.
+problem-unsupported-form = This output cannot write the chosen citation form.
+    .app-named = { $reference }: { $form } cannot be expressed in this output or group.
+    .cli-form = Cannot cite { $reference } in { $output } with --form { $form }. Try --form normal.
+    .cli-options = Cannot cite { $reference } with { $options } in { $output }. Try without them.
+    .named = { $output } cannot write { $reference } in this form or with these options.
+    .cli = Cite it on its own, or choose another output.
+    .agent = Try form normal, or another format or style.
+    .app = Choose Name in brackets, cite it alone, or choose another output.
+    .bibliography = Remove the references this style cannot write from this list.
+problem-missing-item = This reference was removed while citing.
+    .named = { $reference } changed or was removed while citing.
+    .cli = Try again.
+    .agent = Search again.
+    .app = Search again.
+problem-changed-item = This reference changed while citing.
+    .named = { $reference } changed while citing.
+    .cli = Try again.
+    .agent = Search again.
+    .app = Search again.
+problem-missing-key = This reference has no citation key.
+    .named = { $reference } has no citation key.
+    .cli = Cite it with --style instead.
+    .agent = A key syntax cannot name it; use a style.
+    .app = Give it one in your library, or choose a style.
+problem-ambiguous-key = Several references share this citation key.
+    .named = Several references share the citation key of { $reference }.
+    .cli = Give each one its own key in your library.
+    .agent = Use a style, or ask the person to give each its own key.
+    .app = Give each one its own key in your library.
+problem-conflicting-key = This reference has conflicting citation keys.
+    .named = { $reference } has more than one citation key in its library.
+    .cli = Keep one.
+    .agent = Use a style, or ask the person to keep one key.
+    .app = Keep one in your library, or choose a style.
+problem-invalid-key = This output cannot write the reference’s citation key.
+    .named = The citation key of { $reference } has characters { $output } cannot write.
+    .agent = Use a style, or ask the person to change the key.
+problem-unsupported-output = This citation output is unavailable.
+    .named = There is no style { $output }.
+    .cli = List the styles with: ibis styles
+    .agent = The styles tool lists them.
+problem-invalid-locale = This citation language is unavailable.
+    .named = That citation language is not available.
+    .cli = List them with: ibis styles --locales
+    .agent = The styles tool lists the locales.
+problem-cancelled = The citation was cancelled.
+problem-formatter-unavailable = The citation could not be written just now.
+    .named = The citation could not be written just now. Try again.
+problem-annotation-mismatch = This annotation belongs to another reference.
+    .named = The annotation given for { $reference } belongs to another reference.
+problem-not-citable = This item cannot be cited as a reference.
+    .named = { $reference } is not a reference, such as a note, so it cannot be cited.
+problem-not-from-zotero = This reference was not read from Zotero.
+    .named = { $reference } was not read from a Zotero library, so Zotero cannot find it.
+    .cli = Read your Zotero library with --zotero, or choose another output.
+    .agent = Use another format, or ask the person to cite it from their Zotero library.
+    .app = Cite it from your Zotero library, or choose another output.
+problem-missing-doi = A selected reference has no usable DOI.
+    .named = { $reference } has no usable DOI.
+    .cli = Share it with --format bibtex instead.
+    .agent = Use format bibtex instead.
+    .app = Choose BibTeX in the citation format menu.
+
+## Native command failures.
+app-failure-cli-status = The command line setup could not be read.
+app-failure-set-cli-installed = The command line setup could not be changed.
+app-failure-copy-cli-profile = The shell setup could not be copied.
+app-failure-hide-picker = The picker could not be closed.
+app-failure-copy-editor-endpoint = The editor address could not be copied.
+app-failure-set-window-size = The window size could not be saved.
+app-failure-undo-window-position = The window position could not be restored.
+app-failure-copy-project-entry = The reference entry could not be copied.
+app-failure-finish-paste-guide = Paste setup could not be finished.
+app-failure-row-context = The reference details could not be read.
+app-failure-find-zotero = Zotero could not be checked.
+app-failure-find-sources = Libraries could not be found.
+app-failure-open-found-library = This library could not be opened.
+app-failure-configure-shortcuts = Keyboard shortcut setup could not be opened.
+app-failure-use-sample-library = The sample references could not be opened.
+app-failure-use-zotero-libraries = Choose at least one Zotero library, without repeats.
+app-failure-recent-references = Recent references could not be read.
+app-failure-search = The search could not be completed.
+app-failure-drag-paste-app = The Ibis app could not be dragged.
+
+app-command-no-library = Choose a library to search.
+app-project-error-invalid-name = Give the writing a name of 1 to 80 characters, without control characters.
+app-project-error-duplicate-name = A writing already has that name. Choose another name.
+app-project-error-not-found = That writing is no longer available. Choose a writing again.
+app-project-error-too-many = Ibis can remember at most 64 writings. Remove one before adding another.
+app-project-error-invalid = The writing definitions are not valid. Check Settings.
+app-project-error-changed = The writing or destination changed. Open the format menu again.
+app-project-error-editor = This editor request chooses its own output. Finish it before changing writings.
+app-project-error-output = This writing’s format is not available in the picker. Choose another format.
+app-settings-error-unreadable = The settings file could not be read or saved.
+app-settings-error-invalid = The settings file is not valid. Open Settings to review it.
+app-settings-error-newer = Settings were written by a newer version of Ibis. Update Ibis before changing them.
+app-settings-error-read-only = Settings are read-only. Make the settings file writable before trying again.
+app-command-output-not-saved = The format choice could not be saved.
+app-command-delivery-not-saved = The format was saved, but the paste choice could not be saved.
+
+app-command-page-missing = Reference { $number }: { $label } needs a page or range. Enter one after the label, or clear { $label }.
+app-command-page-invalid = Reference { $number }: { $label } needs a valid page or range after its label. Correct it, or clear { $label }.
+app-command-locator-missing = Reference { $number }: { $label } needs a value. Enter one after the label, or clear the locator.
+app-command-locator-invalid = Reference { $number }: { $label } needs a valid value. Correct it, or clear the locator.
+app-reference-number = Reference { $number }
+app-command-locator-conflict = Reference { $number }: a typed locator and a captured locator cannot be combined.
+app-command-bibliography-unsupported = This style can’t write these references: { $references }. Remove them from this list to continue.
+
+## MCP validation facts.
+mcp-error-arguments = arguments must be an object.
+mcp-error-query = query must be a few words: an author surname, title words, a year or a key.
+mcp-error-shorthand = shorthand must be true or false.
+mcp-error-reference = ref must be a ref from search, as text.
+mcp-error-items = items must be a list of objects, each with a ref from search.
+mcp-error-app = for_app must be a macOS bundle ID or Windows executable name.
+mcp-error-keep-order = keep_order must be true or false.
+mcp-error-output-choice = Give either format or style, not both.
+mcp-error-style = style must be a style id, as text.
+mcp-error-locale = locale must be a language tag, as text, such as de-DE.
+mcp-error-key-locale = locale applies only to a style; a key syntax leaves language to the document’s processor.
+mcp-error-form = form must be one of the values in this tool’s input schema.
+mcp-error-records-or-items = Give records or items, not both; for_app needs items.
+mcp-error-records-order = keep_order needs items; it is not supported with records.
+mcp-error-records = records must be a list of CSL-JSON objects, each with an id and a type.
+mcp-error-item = each item must be an object with a ref from search.
+mcp-error-locator = the locator is not readable; write it like "p. 12", "ch. 3" or "12-14".
+mcp-error-omit-author = omit_author must be true or false.
+mcp-error-empty-output = This output produced no text for these items; try another form, format or style.
+mcp-error-style-query = query must be text of at most 1,024 bytes.
+mcp-error-limit = limit must be a whole number from 1 to { $limit }.
+mcp-error-unknown-argument = { $tool } has no argument '{ $name }'; it takes: { $names }.
+mcp-error-too-many-items = One citation can hold at most { $limit } items.
+mcp-error-format = format must be one of: { $formats }.
+mcp-error-text = { $name } must be text.
+mcp-error-number-range = { $name } must be a whole number from 1 to { $limit }.
+mcp-error-number-minimum = { $name } must be a whole number, 0 or more.
+mcp-error-stale-reference = This reference changed since search returned it; search again and check it is the one you meant.
+mcp-error-no-library = No library is open. Ask the user to choose a library in Ibis, or to start `ibis mcp` with --file or --zotero, and then start a new session.
+mcp-error-strict = { mcp-strict-help }
+mcp-error-hidden-citation = { mcp-citation-hidden }
+mcp-item-error = Item { $number }: { $reason }
+mcp-item-name = Item { $number }
+mcp-output-name = This output
+mcp-tool-error = error: { $code }. { $reason }
+
+cli-key-suggestions = Did you mean { $keys }?
+cli-key-not-found = no reference has the key '{ $key }'{ $choices }
+    Try: { $command }{ $route }
+
+mcp-startup-failed = The library could not be opened when this session started. { $error } Resolve the problem, then start a new MCP session.
+
+app-bibliography-unavailable = The bibliography could not be prepared. Try again.
+app-bibliography-not-saved = The bibliography could not be saved. Try again.
+app-bibliography-name-taken = A file with that name is already there. Choose another name.
+app-bibliography-format = Save it as .rtf, .html or .txt.
+app-clipboard-unavailable = The clipboard could not be written. Try again.
+
+app-recent-history-not-saved = Recent citations could not be forgotten. Try again.
+app-project-citation-conflict = Citation keys { $keys } identify different works in the project bibliography. Check the bibliography before copying.
+
+app-settings-error-changed = Settings changed while saving. Try again.
+app-settings-error-busy = Settings are being saved by another Ibis. Wait for it to finish, then try again.
+app-settings-error-document-format = Choose a style for documents.
+app-settings-error-key-format = Choose a key format for Markdown and LaTeX.
+app-project-error-context-unavailable = The document context could not be read. Try again.
+app-project-error-invalid-context = The document context must name one bibliography and CSL style as plain values.
+app-project-error-ambiguous-context = More than one writing matches this context. Choose a writing by name.
+mcp-error-citation-format = This format exports records or Zotero markers. Choose a citation format.
+
+app-failure-open-settings-file = The settings file could not be opened. Try again.

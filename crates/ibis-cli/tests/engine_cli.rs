@@ -65,7 +65,7 @@ fn file_flags_after_the_subcommand_keep_readable_errors() {
     assert!(output.stdout.is_empty());
     assert_eq!(
         output.stderr,
-        b"ibis: cannot open /invented/missing.bib: there is no file at that path; check the spelling or give the full path.\n"
+        b"ibis: cannot open /invented/missing.bib: The library file was moved, renamed or removed. Choose its current location with --file.\n"
     );
 }
 
@@ -90,7 +90,10 @@ fn every_method_is_listed_and_json_usage_errors_are_envelopes() {
         assert_eq!(output.status.code(), Some(2));
         let value: Value =
             serde_json::from_slice(&output.stdout).unwrap_or_else(|error| panic!("{error}: {:?}", output.stdout));
-        assert_eq!(value, json!({"ibis":1,"ok":false,"error":{"code":"usage"}}));
+        assert_eq!(
+            value,
+            json!({"ibis":1,"ok":false,"error":{"code":"usage","message":{"id":"error-usage","args":{}},"recovery":{"action":"edit-input"},"focus":"request"}})
+        );
         // The stable code is on stdout; the sentence that names the argument is on stderr.
         assert!(output.stderr.starts_with(b"ibis: "), "{:?}", output.stderr);
     }
@@ -125,7 +128,7 @@ fn help_and_usage_errors_respect_the_end_of_options() -> Result<(), Box<dyn std:
     assert_eq!(plain_usage.stderr, json_usage.stderr);
     assert_eq!(
         serde_json::from_slice::<Value>(&json_usage.stdout)?,
-        json!({"ibis":1,"ok":false,"error":{"code":"usage"}})
+        json!({"ibis":1,"ok":false,"error":{"code":"usage","message":{"id":"error-usage","args":{}},"recovery":{"action":"edit-input"},"focus":"request"}})
     );
 
     let plain_help = ibis(&["search", "--help", "--", "--json"]);
@@ -206,7 +209,7 @@ fn request_input_is_bounded_and_rejects_ambiguous_json_without_echoing_it() {
         assert_eq!(output.status.code(), Some(3));
         assert_eq!(
             serde_json::from_slice::<Value>(&output.stdout).unwrap_or_else(|error| panic!("{error}")),
-            json!({"ibis":1,"ok":false,"error":{"code":"bad-input"}})
+            json!({"ibis":1,"ok":false,"error":{"code":"bad-input","message":{"id":"error-bad-input","args":{}},"recovery":{"action":"edit-input"},"focus":"request"}})
         );
         assert_eq!(
             output.stderr,
@@ -438,7 +441,7 @@ fn mcp_that_cannot_open_its_library_still_starts_and_says_why() -> Result<(), Bo
     assert_eq!(replies[1]["result"]["isError"], true);
     let text = replies[1]["result"]["content"][0]["text"].as_str().ok_or("text")?;
     assert!(text.starts_with("error: source-unavailable."), "{text}");
-    assert!(text.contains("no file at that path"), "{text}");
+    assert!(text.contains("was moved, renamed or removed"), "{text}");
     assert!(text.contains("start a new session"), "{text}");
     assert!(!text.contains("private-folder-name"), "an agent sees no path: {text}");
     assert_eq!(replies[2]["result"]["structuredContent"]["styles"][0]["id"], "apa");

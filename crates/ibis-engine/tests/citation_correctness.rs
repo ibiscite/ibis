@@ -85,7 +85,9 @@ fn bibtex_url_and_doi_dashes_remain_verbatim_but_pages_use_en_dashes() {
     for (field, value, ending) in [
         ("url", "https://example.org/a--b", "https://example.org/a--b"),
         ("url", r"https\://example.org/a--b", "https://example.org/a--b"),
-        ("url", "https://example.org/{a--b}", "https://example.org/a--b"),
+        // Decision 0051: BibTeX identifiers are verbatim; braces belong to
+        // this URL, rather than protecting prose from TeX typography.
+        ("url", "https://example.org/{a--b}", "https://example.org/{a--b}"),
         (
             "doi",
             "10.1000/imagined--river",
@@ -118,7 +120,10 @@ fn bibtex_url_and_doi_dashes_remain_verbatim_but_pages_use_en_dashes() {
                 "<div class=\"csl-entry\">Okafor, A. (2026). Imagined rivers. <i>Invented Journal</i>, 12–19. {}</div>",
                 ending.replace('&', "&#38;")
             ),
-            &format!(r"Okafor, A. (2026). Imagined rivers. {{\i{{}}Invented Journal}}, 12\uc0\u8211{{}}19. {ending}"),
+            &format!(
+                r"Okafor, A. (2026). Imagined rivers. {{\i{{}}Invented Journal}}, 12\uc0\u8211{{}}19. {}",
+                ending.replace('{', r"\{").replace('}', r"\}")
+            ),
         );
     }
 }

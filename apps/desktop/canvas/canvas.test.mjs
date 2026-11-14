@@ -94,7 +94,8 @@ test("the built scenario list renders, switches and reopens without Tauri or net
           expect(dialog?.querySelector("h2")).toBeNull();
         }
         if (["library-selector", "library-menu"].includes(scenario)) {
-          expect(host.querySelector(".library-status-trigger")?.textContent).toContain("Zotero · 190 references");
+          expect(host.querySelector(".library-status-trigger")?.textContent).toBe("Zotero");
+          expect(host.querySelector(".library-status-trigger")?.getAttribute("title")).toContain("190 references");
           if (scenario === "library-menu") expect(window.document.querySelector("#library-menu")?.textContent).toContain("Field Notes");
         }
         if (scenario === "reference-details") expect(window.document.querySelector('.ui-popover [role="dialog"]')?.textContent).toContain("Page");

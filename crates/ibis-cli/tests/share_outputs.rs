@@ -112,6 +112,24 @@ fn doi_links_keep_successes_and_identify_records_without_a_doi() {
 }
 
 #[test]
+fn missing_doi_json_offers_output_selection() {
+    let path = Path::new(env!("CARGO_TARGET_TMPDIR")).join("recovery-doi.json");
+    std::fs::write(
+        &path,
+        r#"[{"id":"one","citation-key":"atlas","type":"book","title":"Invented atlas"}]"#,
+    )
+    .unwrap();
+    let (_, text, _) = run(&path, &["cite", "--format", "doi-links", "atlas", "--json"]);
+    let reply: Value = serde_json::from_str(&text).unwrap();
+    let refusal = &reply["data"]["outcomes"][0];
+    assert_eq!(refusal["error"], "missing-doi");
+    assert_eq!(refusal["recovery"]["action"], "choose-output");
+    assert_eq!(refusal["focus"], "format-picker");
+    let (_, _, advice) = run(&path, &["cite", "--format", "doi-links", "atlas"]);
+    assert!(advice.contains("--format bibtex"), "{advice}");
+}
+
+#[test]
 fn identifier_fields_are_verbatim_for_latex_and_reopen_identically() {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR"));
     let source = dir.join("share-identifiers.json");
@@ -121,8 +139,7 @@ fn identifier_fields_are_verbatim_for_latex_and_reopen_identically() {
         "URL":"https://e.org/a~b--c_d#x?y=1&z=2", "DOI":"10.1000/a~b--c_d#x?y=1&z=2",
         "ISBN":"978-0-1", "ISSN":"1234-5678", "PMID":"12345", "PMCID":"PMC12345"
     });
-    let braced =
-        json!({"id":"two","citation-key":"braced","type":"book","title":"Invented braces","URL":"https://e.org/{x}"});
+    let braced = json!({"id":"two","citation-key":"braced","type":"book","title":"Invented braces","URL":"https://e.org/{x}","ISBN":"978-0-{1}","ISSN":"1234-{5678}"});
     std::fs::write(&source, json!([record, braced]).to_string()).unwrap();
     let (code, text, errors) = run(&source, &["cite", "good", "braced", "--format", "bibtex"]);
     assert_eq!(code, 0, "{errors}");
@@ -149,6 +166,9 @@ fn identifier_fields_are_verbatim_for_latex_and_reopen_identically() {
     }
     assert_eq!(back[1]["URL"], "https://e.org/%7Bx%7D");
     assert_eq!(back[1]["citation-key"], "braced");
+    for field in ["ISBN", "ISSN"] {
+        assert_eq!(back[1][field], braced[field], "{field}");
+    }
 }
 
 #[test]

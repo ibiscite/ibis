@@ -9,6 +9,7 @@ import capability from "../src-tauri/capabilities/default.json";
 import config from "../src-tauri/tauri.conf.json";
 import { OUTPUTS } from "./bindings";
 import { outputName, type OutputId } from "./format/outputs";
+import { recordId } from "./test-fixtures";
 import { displayTree, backend, chooseFromMore, paletteRow, chooseFromLibrary, libraryButton, prepared, receipt, resetApp, result, type PreviewRequest, type SyntheticId, openCitationDetails, closeCitationDetails, inCitation, findInCitation, removeFromCitation, citationKeys } from "./testing/app";
 
 afterEach(resetApp);
@@ -160,7 +161,7 @@ test("partial results say Closest matches visibly and aloud and remain usable", 
   const box = screen.getByLabelText("Search references");
   fireEvent.change(box, { target: { value: "sleep photon" } });
   await screen.findByText("Closest matches");
-  expect(document.querySelector(".results-heading")?.textContent).toBe("Closest matches1 result");
+  expect(document.querySelector(".ui-list-heading")?.textContent).toBe("Closest matches1 result");
   expect(screen.queryByText("Best matches")).toBeNull();
   const status = screen.getByRole("status", { name: "Search results" });
   await waitFor(() => expect(status.textContent).toBe("Closest matches · 1 result"));
@@ -176,7 +177,7 @@ test("partial results say Closest matches visibly and aloud and remain usable", 
 
   fireEvent.change(box, { target: { value: "photon" } });
   await screen.findByText("No matching references");
-  expect(document.querySelector(".results-heading")).toBeNull();
+  expect(document.querySelector(".ui-list-heading")).toBeNull();
   await waitFor(() => expect(status.textContent).toBe("0 results"));
 });
 
@@ -252,7 +253,8 @@ test("a preview the engine keeps refusing says so, and Copy is gone instead of w
 });
 
 test("a duplicate-key refusal stays visible before Details and copying stays blocked", async () => {
-  const shared = { code: "shared_citation_key", key: "same" };
+  const shared = { code: "ambiguous-key", message: { id: "app-command-shared-citation-key", args: { key: "same" } },
+    recovery: { action: "choose-style" }, focus: "format-picker" };
   const calls = backend({
     search: () => [result("same", "First")],
     preview_file_citation: () => { throw shared; },
@@ -281,7 +283,7 @@ test("a duplicate-key refusal stays visible before Details and copying stays blo
   expect(calls).not.toContain("hide_picker");
 });
 
-const selections = (ids: SyntheticId[]) => ids.map((id) => ({ id, cite: `synthetic-cite-${id.key}`, locator: null }));
+const selections = (ids: (SyntheticId | { library: string; key: string })[]) => ids.map((id) => ({ id: { library: id.library, key: typeof id.key === "string" ? recordId(id.key) : id.key }, cite: `synthetic-cite-${id.key}`, locator: null }));
 
 /** A choice row (first run, setup, recovery), chosen from the keyboard as people do. */
 const choiceRow = (name: string | RegExp) => screen.getByRole("option", { name });
@@ -354,9 +356,8 @@ test("⌘1–9 (Ctrl elsewhere) does what a double-click on that numbered row do
   // Each shown row carries its number for the keys sheet and assistive technology.
   expect(screen.getAllByRole("option").map((row) => row.getAttribute("aria-keyshortcuts"))).toEqual(["Control+1", "Control+2", "Control+3"]);
   // Held, each number takes its row's leading tile; the year, citation context, stays.
-  expect(screen.getAllByRole("option").map((row) => [row.querySelector(".result-tile")?.getAttribute("data-key"), row.querySelector(".result-year")?.textContent]))
-    .toEqual([["Ctrl+1", "2020"], ["Ctrl+2", "2020"], ["Ctrl+3", "2020"]]);
-  screen.getAllByRole("option").forEach((row, i) => expect(row.textContent).not.toContain(`Ctrl+${i + 1}`));
+  expect(screen.getAllByRole("option").map((row) => [row.querySelector(".ui-key-mark")?.textContent, row.querySelector(".result-year")?.textContent]))
+    .toEqual([["1", "2020"], ["2", "2020"], ["3", "2020"]]);
   // No fourth row: the key is left alone.
   expect(fireEvent.keyDown(search, { key: "4", code: "Digit4", ctrlKey: true })).toBe(true);
   // The command list stands in for the results: no row has a number.
@@ -429,7 +430,7 @@ test.each(["", "unmatched"])("result headings only name actual rows, preserving 
     expect(screen.queryByRole("button", { name: "Search references" })).toBeNull();
     expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
   }
-  expect(document.querySelector(".results-heading")).toBeNull();
+  expect(document.querySelector(".ui-list-heading")).toBeNull();
   await waitFor(() => expect(screen.getByRole("status", { name: "Search results" }).textContent).toBe("0 results"));
 });
 
@@ -466,7 +467,7 @@ test("first-run setup has no result section heading", async () => {
     zotero: false, references: 0, warnings: 0, error: null, problem: null, note: null }) });
   render(<App />);
   await screen.findByRole("listbox", { name: "Where do your references live?" });
-  expect(document.querySelector(".results-heading")).toBeNull();
+  expect(document.querySelector(".ui-list-heading")).toBeNull();
 });
 
 test("first-run setup keeps the copy-format question out of the header", async () => {
@@ -995,7 +996,7 @@ test("the library is shown, can be chosen and reloaded, and failures are explain
   pressRow(await screen.findByRole("option", { name: FILE_ROW }));
   await waitFor(() => expect(calls).toContain("choose_library"));
   await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 3, warnings: 1, reading: [{ code: "field", line: 2, key: null }], error: null, problem: null, note: null });
-  await waitFor(() => expect(bar.textContent).toContain("refs.bib · 3 references · 1 to check"));
+  await waitFor(() => expect(bar.textContent).toContain("refs.bib · 1 to check"));
   await chooseFromLibrary("Reload Library");
   await waitFor(() => expect(calls).toContain("reload_library"));
   await emit("library:changed", { revision: "1",
@@ -1062,7 +1063,7 @@ test.each([1, 20])("the %i-result heading keeps its English word order on an RTL
   backend({ search: () => Array.from({ length: count }, (_, i) => result(`key${i}`, `Reference ${i}`)) });
   const { container } = render(<div dir="rtl"><App /></div>);
   await screen.findByText("Reference 0");
-  const heading = container.querySelector(".results-heading")!;
+  const heading = container.querySelector(".ui-list-heading")!;
   const label = heading.lastElementChild!;
   expect(label.textContent).toBe(`${count} ${count === 1 ? "result" : "results"}`);
   expect(label.tagName).toBe("BDI");
@@ -1145,7 +1146,7 @@ test.each([
 ])("%s failures are reported without rejected IPC payloads", async (command, notice) => {
   backend({ [command]: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); } });
   render(<App />);
-  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/reference/));
+  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toContain("refs.bib"));
   if (command === "choose_library") { await chooseFromLibrary("Choose Library…"); pressRow(await screen.findByRole("option", { name: FILE_ROW })); }
   else if (command === "reload_library") await chooseFromLibrary("Reload Library");
   else fireEvent.keyDown(screen.getByLabelText("Search references"), command === "quit"
@@ -1220,7 +1221,7 @@ test("opening a chosen library shows its name and searches only when ready", asy
   });
   render(<App />);
   await screen.findByText("Opening 研究 refs.bib…");
-  expect(document.querySelector(".results-heading")).toBeNull();
+  expect(document.querySelector(".ui-list-heading")).toBeNull();
   expect(screen.queryByRole("listbox", { name: "Where do your references live?" })).toBeNull();
   expect(document.body.textContent).not.toContain("No library chosen");
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
@@ -1243,7 +1244,7 @@ test("a reload keeps the previous library searchable without adding an opening s
   expect(screen.getByText("Kept reference")).toBeTruthy();
   expect(screen.queryByRole("progressbar")).toBeNull();
   // The heading stays too: rows do not move while the library reloads.
-  expect(document.querySelector(".results-heading")).not.toBeNull();
+  expect(document.querySelector(".ui-list-heading")).not.toBeNull();
 });
 
 
@@ -1267,7 +1268,7 @@ test("an unavailable initial library is named once without a duplicate search er
   });
   render(<App />);
   const notice = await screen.findByRole("alert");
-  expect(document.querySelector(".results-heading")).toBeNull();
+  expect(document.querySelector(".ui-list-heading")).toBeNull();
   expect(notice.textContent).toBe("Can’t open 研究 refs.bib. The library file is unavailable.");
   // The choice list fills its rows after the notice renders.
   expect(await screen.findByRole("option", { name: /^Try Again/ })).toBeTruthy();
@@ -1315,7 +1316,7 @@ test.each(["", "sleep"])("an empty loaded library is explained even for query %s
   if (query) fireEvent.change(screen.getByLabelText("Search references"), { target: { value: query } });
   const title = await screen.findByText("No references in empty 研究.bib");
   expect(title.compareDocumentPosition(screen.getByRole("listbox", { name: "No references in empty 研究.bib" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  expect(document.querySelector(".results-heading")).toBeNull();
+  expect(document.querySelector(".ui-list-heading")).toBeNull();
   expect(screen.getByText("Add references to it, or choose another library.")).toBeTruthy();
   expect(screen.queryByText("Type to find a reference")).toBeNull();
   expect(screen.queryByText("No matching references")).toBeNull();
@@ -1372,7 +1373,7 @@ test("moving before a waiting Enter's engine preview is ready cancels that copy"
   const copies = vi.fn(() => ({ text: "unexpected", warnings: [] }));
   backend({
     search: () => [result("a", "First"), result("b", "Second")],
-    preview_file_citation: ({ items }) => items[0]!.id.key === "a" ? receipt("(Alpha, 2021)")
+    preview_file_citation: ({ items }) => items[0]!.id.key === recordId("a") ? receipt("(Alpha, 2021)")
       : new Promise((resolve) => { finish = resolve; }),
     copy_file_citation: copies,
   });
@@ -1430,7 +1431,7 @@ test("Ctrl+K opens More's actions with their keys, Escape closes it before hidin
   const calls = backend({ hide_picker: () => null, reload_library: () => null });
   render(<App />);
   const box = screen.getByLabelText("Search references");
-  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/reference/));
+  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toContain("refs.bib"));
   fireEvent.keyDown(box, { key: "k", ctrlKey: true });
   const palette = await screen.findByRole("dialog", { name: "Actions" });
   const field = within(palette).getByRole("combobox", { name: "Search actions" });
@@ -2342,7 +2343,7 @@ test("a double-click on a row waits for its engine preview before copying its re
   backend({
     picker_preferences: () => ({ output: "apa", density: "comfortable", larger_text: false }),
     search: () => [result("a", "First"), result("b", "Second")],
-    preview_file_citation: ({ items }) => items[0]!.id.key === "b" ? new Promise((resolve) => { finish = resolve; }) : receipt("(Smith, 2020)"),
+    preview_file_citation: ({ items }) => items[0]!.id.key === recordId("b") ? new Promise((resolve) => { finish = resolve; }) : receipt("(Smith, 2020)"),
     copy_file_citation: (args) => { const { preview } = prepared(args); copies.push(preview.text); return { text: preview.text, warnings: [] }; },
   });
   render(<App />);
@@ -2375,7 +2376,7 @@ test.each([30_000, 61_000])(
     }
   });
 
-test("Search Clear preserves citations and invalidates an escaped query before reopening", async () => {
+test("Esc clearing preserves citations and invalidates an escaped query before reopening", async () => {
   const calls = backend({ search: ({ query: { text: query } }) => [result("a", query ? `First ${String(query)}` : "First")] });
   render(<App />);
   const box = screen.getByRole("combobox", { name: "Search references" }) as HTMLInputElement;
@@ -2386,7 +2387,7 @@ test("Search Clear preserves citations and invalidates an escaped query before r
   await screen.findByText("First 研究");
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
   inCitation("a");
-  fireEvent.click(screen.getByRole("button", { name: "Clear Search" }));
+  fireEvent.keyDown(box, { key: "Escape" });
   expect(box.value).toBe("");
   expect(document.activeElement).toBe(box);
   expect(inCitation("a")).toBeTruthy();
@@ -2563,7 +2564,7 @@ test.each([false, true])("Search hint layout survives pointer focus moving to Mo
   expect(searchHint.hasAttribute("aria-hidden")).toBe(false);
 });
 
-test("the footer names the source and count, the age only when it matters, and the detail in More", async () => {
+test("the footer names a healthy library alone and keeps counts and update times in detail", async () => {
   const plain = (text: string | null | undefined) => text?.replace(/[\u2068\u2069]/g, "");
   let status: Record<string, unknown> = { state: "loaded", has_snapshot: true, zotero: true, snapshot_zotero: true, stale: false,
     zotero_libraries: ["user", { group: 7 }], name: "2 Zotero libraries", snapshot_name: "2 Zotero libraries", references: 1204, warnings: 0,
@@ -2571,9 +2572,9 @@ test("the footer names the source and count, the age only when it matters, and t
   backend({ library_status: () => status, zotero_groups: () => [{ id: 7, name: "Lab group" }] });
   render(<App />);
   const live = await screen.findByRole("status", { name: "Library status" });
-  await waitFor(() => expect(live.textContent).toBe("Zotero · 1,204 references"));
+  await waitFor(() => expect(live.textContent).toBe("Zotero"));
   const item = screen.getByRole("button", { name: "Library" }).querySelector(".library-status")!;
-  expect(item.textContent).toBe("Zotero · 1,204 references");
+  expect(item.textContent).toBe("Zotero");
   expect(item.closest(".library-status-controls")?.getAttribute("data-health")).toBe("done");
   expect(plain(item.getAttribute("title"))).toMatch(/^Zotero · 1,204 references\nMy Library, (Group 7|Lab group) · checked 3 hours ago, .+$/);
   fireEvent.click(screen.getByRole("button", { name: /^More/ }));
@@ -2582,11 +2583,13 @@ test("the footer names the source and count, the age only when it matters, and t
   // The footer shows the library line right under More, so More never repeats it on screen.
   expect(group.querySelector(".menu-detail-title")).toBeNull();
 
-  // A change just arrived: the age shows, outside the live region.
+  // A healthy update changes the detail while the footer keeps just the name.
   status = { ...status, references: 1205, updated_at: Date.now(), checked_at: Date.now() };
   await emit("library:changed", status);
-  await waitFor(() => expect(live.textContent).toBe("Zotero · 1,205 references"));
-  expect(item.textContent).toBe("Zotero · 1,205 references · updated just now");
+  await waitFor(() => expect(item.getAttribute("title")).toContain("1,205 references"));
+  expect(live.textContent).toBe("Zotero");
+  expect(item.textContent).toBe("Zotero");
+  expect(document.querySelector(".library-age")).toBeNull();
 
   // Zotero closed: the copy still searched says when it was last checked.
   status = { ...status, state: "error", stale: true, checked_at: Date.now() - 2 * 3_600_000,
@@ -3343,8 +3346,10 @@ test("format toolbar menu exposes both sections and saves a choice without copyi
   await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Search references")));
 });
 
-test("the format chooser previews without asking the engine, so Enter still copies the shelf's citation", async () => {
-  const calls = backend({ search: () => [result("a", "First")], copy_file_citation: () => ({ text: "[@a]", warnings: [] }) });
+test("the format chooser shows prepared engine text without exposing lookup IDs or retiring the copy ticket", async () => {
+  const found = { ...result("a", "First"), id: { library: "synthetic", key: recordId("SENTINEL-ID-format-preview") } };
+  const text = "[see @a, p. 33]";
+  const calls = backend({ search: () => [found], preview_file_citation: () => receipt(text) });
   render(<App />);
   const box = screen.getByLabelText("Search references");
   fireEvent.change(box, { target: { value: "first" } });
@@ -3355,10 +3360,11 @@ test("the format chooser previews without asking the engine, so Enter still copi
   fireEvent.keyDown(formatButton(), { key: "ArrowDown" });
   const palette = await screen.findByRole("dialog", { name: "Format" });
   const field = within(palette).getByRole("combobox");
-  // The format in use first, then another: the reference's own key in each pattern.
-  expect(palette.querySelector(".ui-palette-preview-text")?.textContent).toBe("[@a]");
+  // Prepared text is authoritative; another key format previews the citation key.
+  expect(palette.querySelector(".ui-palette-preview-text")?.textContent).toBe(text);
   fireEvent.pointerMove(paletteRow(palette, "Pandoc without brackets"));
   expect(palette.querySelector(".ui-palette-preview-text")?.textContent).toBe("@a");
+  expect(palette.textContent).not.toContain("SENTINEL-ID");
   fireEvent.keyDown(field, { key: "ArrowDown" });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 120)); });
   fireEvent.keyDown(field, { key: "Escape" });
@@ -3530,7 +3536,7 @@ test("typed locators stay with selected references across later searches", async
   const copies: unknown[] = [];
   backend({
     search: () => ({ revision: "1", results: [result(second ? "b" : "a", second ? "Second locator" : "First locator")],
-      interpretation: { search: second ? "B" : "A", locator: { label: "page", value: second ? "9" : "12" }, typed: second ? "p.9" : "p.12" } }),
+      interpretation: { search: second ? "B" : "A", locator: { term: "page", value: second ? "9" : "12" }, typed: second ? "p.9" : "p.12" } }),
     copy_file_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request; copies.push(args); return { text: "selected pages", warnings: [] }; },
   });
   render(<App />);
@@ -3542,22 +3548,22 @@ test("typed locators stay with selected references across later searches", async
   fireEvent.click(await screen.findByText("Second locator"), { ctrlKey: true });
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copies).toMatchObject([{ items: [
-    { id: { library: "refs.bib", key: "a" }, locator: { label: "page", value: "12" } },
-    { id: { library: "refs.bib", key: "b" }, locator: { label: "page", value: "9" } },
+    { id: { library: "refs.bib", key: "a" }, locator: { term: "page", value: "12" } },
+    { id: { library: "refs.bib", key: "b" }, locator: { term: "page", value: "9" } },
   ], output: "pandoc", expectedRevision: "1" }]));
 });
 
 
-function locatorReply(value = "12", label: api.Locator["label"] = "page") {
+function locatorReply(value = "12", label: api.Locator["term"] = "page") {
   return { revision: "1", results: [result("a", "Locator reference")],
-    interpretation: { search: "Smith", locator: { label, value }, typed: `p.${value}` } };
+    interpretation: { search: "Smith", locator: { term: label, value }, typed: `p.${value}` } };
 }
 
 test("typed shorthand adds the reference with its prefix and page, and the token says what will be cited", async () => {
   const previews: PreviewRequest[] = [];
   backend({
     search: ({ query }) => ({ revision: "1", results: [result("vale", "Lanterns at the edge of the sea")],
-      interpretation: query.interpret_locators ? { search: "vale", prefix: "see", locator: { label: "page", value: "417" }, typed: "417" } : null }),
+      interpretation: query.interpret_locators ? { search: "vale", prefix: "see", locator: { term: "page", value: "417" }, typed: "417" } : null }),
     preview_file_citation: (request) => { previews.push(request); return receipt("[see @vale, p. 417]"); },
   });
   render(<App />);
@@ -3565,7 +3571,7 @@ test("typed shorthand adds the reference with its prefix and page, and the token
   fireEvent.change(box, { target: { value: "see vale 417" } });
   await screen.findByRole("group", { name: "Using see · p. 417" });
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
-  await waitFor(() => expect(previews.at(-1)?.items).toEqual([expect.objectContaining({ prefix: "see", locator: { label: "page", value: "417" } })]));
+  await waitFor(() => expect(previews.at(-1)?.items).toEqual([expect.objectContaining({ prefix: "see", locator: { term: "page", value: "417" } })]));
   // Searching as typed forgets what was read.
   fireEvent.click(screen.getByRole("button", { name: "Search as typed" }));
   expect(screen.queryByRole("group", { name: /^Using / })).toBeNull();
@@ -3669,7 +3675,7 @@ test.each(OUTPUTS.filter((output) => !output.style).map((output) => output.id))(
   render(<App />);
   await screen.findByText("Locator reference");
   await waitFor(() => expect(preview).toHaveBeenLastCalledWith({ items: [
-    { id: result("a", "").id, cite: result("a", "").cite, locator: { label: "page", value: "12" } },
+    { id: result("a", "").id, cite: result("a", "").cite, locator: { term: "page", value: "12" } },
   ], output: format, expectedRevision: "1", intent: {
     page: expect.any(Number), request: expect.any(Number), cancel: false, context: null, keep_order: false,
   } }));
@@ -3754,7 +3760,7 @@ test("a same-identity locator edit cancels a waiting style click and its engine 
   fireEvent.click(screen.getByText("Locator reference"), { detail: 2 });
   fireEvent.click(screen.getByRole("button", { name: "Apply locator to a" }));
   await waitFor(() => expect(pending["9"]).toBeTypeOf("function"));
-  expect(contexts).toEqual([[{ label: "page", value: "12" }], [{ label: "page", value: "9" }]]);
+  expect(contexts).toEqual([[{ term: "page", value: "12" }], [{ term: "page", value: "9" }]]);
   await act(async () => { pending["12"]!(); pending["9"]!(); });
   await screen.findByText("CSL page 9");
   expect(copies).toEqual([]);
@@ -3766,7 +3772,7 @@ test("the engine receives ordered locators and an empty locator for a record wit
   backend({ search: ({ query }) => {
     const key = query.text.startsWith("B") ? "b" : query.text.startsWith("C") ? "c" : "a";
     return { revision: "1", results: [{ ...result(key, `CSL reference ${key}`), key: key === "c" ? "" : key }],
-      interpretation: key === "c" ? null : { search: key, locator: { label: key === "b" ? "section" : "page", value: key === "b" ? "9" : "12" }, typed: "synthetic" } };
+      interpretation: key === "c" ? null : { search: key, locator: { term: key === "b" ? "section" : "page", value: key === "b" ? "9" : "12" }, typed: "synthetic" } };
   }, preview_file_citation: previews,
     picker_preferences: () => ({ output: "apa", density: "comfortable", larger_text: false }) });
   render(<App />);
@@ -3777,8 +3783,8 @@ test("the engine receives ordered locators and an empty locator for a record wit
   fireEvent.change(box, { target: { value: "C" } });
   fireEvent.click(await screen.findByText("CSL reference c"), { ctrlKey: true });
   await waitFor(() => expect(previews).toHaveBeenLastCalledWith(expect.objectContaining({ items: [
-    { id: result("a", "").id, cite: result("a", "").cite, locator: { label: "page", value: "12" } },
-    { id: result("b", "").id, cite: result("b", "").cite, locator: { label: "section", value: "9" } },
+    { id: result("a", "").id, cite: result("a", "").cite, locator: { term: "page", value: "12" } },
+    { id: result("b", "").id, cite: result("b", "").cite, locator: { term: "section", value: "9" } },
     { id: result("c", "").id, cite: result("c", "").cite, locator: null },
   ], output: "apa", expectedRevision: "1" })));
 });

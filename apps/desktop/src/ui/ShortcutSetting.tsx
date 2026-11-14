@@ -1,10 +1,10 @@
 import type { ShortcutStatus } from "../bindings";
 import { useInterfaceMessages } from "../i18n";
-import { SHORTCUT_ACTIONS, SHORTCUT_COMMANDS, type ShortcutProblem } from "../i18n/settings";
+import { SHORTCUT_ACTIONS, type ShortcutProblem } from "../i18n/settings";
 import { DEFAULT_PICKER_SHORTCUT, shortcutLabel } from "../keys";
 import { currentPlatform } from "../platform";
 import { Button } from "./Button";
-import { Group, Note, Row, Section } from "./Layout";
+import { Group, Note, ResetSlot, Row, Section } from "./Layout";
 import { ShortcutRecorder } from "./ShortcutRecorder";
 import { ShortcutEcho, useKeyPulse } from "./Delights";
 
@@ -22,8 +22,7 @@ export function ShortcutSetting({ id, rowId, details, status, problem, saving, h
   const defaultLabel = shortcutLabel(DEFAULT_PICKER_SHORTCUT, mac);
   const isDefault = status && /^[a-z]$/i.test(status.shortcut.split("+").at(-1)?.trim() ?? "")
     && shortcutLabel(status.shortcut, mac).split("+").sort().join("+") === defaultLabel.split("+").sort().join("+");
-  const reset = status && !status.desktop && !isDefault && <Button variant="quiet" size="small" isDisabled={saving}
-    aria-label={text("settings-use-default", { setting: details.label })} onPress={() => onRecord(null)}>{text("shortcuts-use-default")}</Button>;
+  const reset = status && !status.desktop && !isDefault ? { label: details.label, disabled: saving, onReset: () => onRecord(null) } : undefined;
   const controls = <>
       {status?.desktop ? <>
         <span role="status">{status.shortcut || text("shortcuts-not-assigned")}</span>
@@ -33,20 +32,17 @@ export function ShortcutSetting({ id, rowId, details, status, problem, saving, h
       {status?.error && <span role="status">{status.error}</span>}
 </>;
   if (table) return <>
-    <tr id={rowId} data-echo={pressed || undefined} data-highlighted={highlighted || undefined}><th scope="row">{text(SHORTCUT_ACTIONS.open)}</th><td><span className="ui-settings-keys">{controls}
-      {reset}
-    </span></td></tr>
+    <tr id={rowId} data-echo={pressed || undefined} data-highlighted={highlighted || undefined}><th scope="row"><span className="ui-row-label">{text(SHORTCUT_ACTIONS.open)}<ResetSlot reset={reset} /></span></th><td><span className="ui-settings-keys">{controls}</span></td></tr>
     {(problem || status?.desktop?.guidance) && <tr><td colSpan={2}>
       {status?.desktop?.guidance && <Note>{status.desktop.guidance}</Note>}
-      {problem && <p className="ui-row-problem" role="alert">{text(problem.id, problem.command ? { command: text(SHORTCUT_COMMANDS[problem.command]) } : undefined)}</p>}
+      {problem && <p className="ui-row-problem" role="alert">{text(problem.id, problem.args)}</p>}
     </td></tr>}
   </>;
   return <Section id={id}><Group>
-    <ShortcutEcho keys={echo && status ? [status.shortcut] : []}><Row id={rowId} label={details.label} highlighted={highlighted} changed={Boolean(reset)}
+    <ShortcutEcho keys={echo && status ? [status.shortcut] : []}><Row id={rowId} label={details.label} highlighted={highlighted} reset={reset}
       description={status?.desktop?.guidance ?? (status ? details.description : undefined)}
-      problem={problem ? text(problem.id, problem.command ? { command: text(SHORTCUT_COMMANDS[problem.command]) } : undefined) : undefined}>
+      problem={problem ? text(problem.id, problem.args) : undefined}>
       {controls}
-      {reset}
     </Row></ShortcutEcho>
 
   </Group></Section>;

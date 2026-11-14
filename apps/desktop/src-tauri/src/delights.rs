@@ -206,14 +206,14 @@ impl SettingsFile {
         (self.surprises_enabled() && [1, 100, 1000].contains(&count)).then_some(count)
     }
 
-    pub(crate) fn flush_delights(&self) -> Result<(), String> {
+    pub(crate) fn flush_delights(&self) -> Result<(), crate::library::CommandError> {
         // Snapshot INSIDE the single writer: delayed A always writes the latest B.
         let mut revision = 0;
         let saved = self.update_when(
             || self.delights.lock().is_ok_and(|owner| owner.revision > owner.flushed),
             |settings| {
                 if let Ok(owner) = self.delights.lock() {
-                    settings.delights = owner.record.clone();
+                    settings.device.delights = owner.record.clone();
                     revision = owner.revision;
                 }
             },

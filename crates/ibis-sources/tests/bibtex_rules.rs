@@ -20,8 +20,8 @@ fn approximate_dates_survive_import_export_and_reimport() {
     let request: CitationRequest = serde_json::from_value(json!({
         "items":[{"item":record(&source, "atlas").id}], "output":{"kind":"key","syntax":"bibtex"}
     }))
-    .unwrap();
-    let exported = syntax::cite(&source.snapshot, &request).unwrap();
+    .unwrap_or_else(|error| panic!("invalid invented request: {error}"));
+    let exported = syntax::cite(&source.snapshot, &request).unwrap_or_else(|error| panic!("{error:?}"));
     let reopened = load(&exported.text);
     assert_eq!(csl(&reopened, "atlas")["issued"], csl(&source, "atlas")["issued"]);
 }

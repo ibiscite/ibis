@@ -223,23 +223,20 @@ pub(crate) fn prepare(
     let OutputSpec::Csl { style } = &request.output else {
         return Err(FormatError::UnsupportedStyle);
     };
-    prepare_with_style(snapshot, request, limits, &*catalog::resolve(style)?)
+    let resolved = ResolvedOutput::new(style, request.output_locale.as_deref())?;
+    prepare_resolved(snapshot, request, limits, &resolved)
 }
 
 /// Compile only trusted formatting material, without waiting for a library.
 pub(crate) fn warm(style: &str, locale: Option<&str>) -> Result<Prepared, FormatError> {
-    let style = catalog::resolve(style)?;
-    let locale = locale
-        .map(catalog::locale_tag)
-        .transpose()?
-        .map(str::to_owned)
-        .or_else(|| style.forced_locale.clone());
+    let output = ResolvedOutput::new(style, locale)?;
+    let style = &output.style;
     Ok(Prepared {
         json: json!({"style":style.rules,"numeric":style.traits.numeric,"sentence_titles":style.sentence_titles,
-            "items":[],"cites":[],"keep_order":false,"locale":locale,"warm":true})
+            "items":[],"cites":[],"keep_order":false,"locale":output.locale,"warm":true})
         .to_string(),
         xml: style.xml.clone(),
-        language: locale.unwrap_or_else(|| style.language.clone()),
+        language: output.language,
         outcomes: vec![],
         losses: vec![],
         notices: vec![],
@@ -248,20 +245,15 @@ pub(crate) fn warm(style: &str, locale: Option<&str>) -> Result<Prepared, Format
     })
 }
 
-fn prepare_with_style(
+pub(crate) fn prepare_resolved(
     snapshot: &Snapshot,
     request: &CitationRequest,
     limits: &Limits,
-    style: &catalog::Resolved,
+    resolved: &ResolvedOutput,
 ) -> Result<Prepared, FormatError> {
+    let style = &*resolved.style;
     let traits = style.traits;
-    let locale = request
-        .output_locale
-        .as_deref()
-        .map(catalog::locale_tag)
-        .transpose()?
-        .map(str::to_owned)
-        .or_else(|| style.forced_locale.clone());
+    let locale = resolved.locale.clone();
     bounded_json(request, limits.input_bytes)?;
     if request
         .input_language
@@ -305,7 +297,7 @@ fn prepare_with_style(
             pick.suppress_author,
         ),
     })
-    .map_err(|_| FormatError::InvalidRequest)?;
+    .map_err(FormatError::Citation)?;
     let mut items = Vec::new();
     let mut cites = Vec::new();
     let mut ids = BTreeMap::<ItemRef, String>::new();
@@ -835,7 +827,7 @@ mod tests {
         );
         let request = serde_json::from_value(json!({"items":[{"item":id,"locator":{"term":"page","value":"42"}}],"form":"year-only","output":{"kind":"csl","style":"invented-no-year"}})).unwrap();
         let prepared = prepare_with_style(&snapshot, &request, &Limits::default(), &style).unwrap();
-        let refused = json!([{"outcome":"refused","item":0,"error":"unsupported-form"}]);
+        let refused = json!([{"outcome":"refused","item":0,"error":"unsupported-form","message":{"id":"problem-unsupported-form","args":{}},"recovery":{"action":"choose-form"},"focus":"citation-form"}]);
         assert_eq!(serde_json::to_value(&prepared.outcomes).unwrap(), refused);
     }
 
@@ -888,4 +880,41 @@ mod tests {
             assert_eq!(traits.citation_has_issued, expected);
         }
     }
+}
+
+/// A validated style, language tag and bundled locale, resolved once before item work.
+#[derive(Debug, Clone)]
+pub struct ResolvedOutput {
+    style: std::sync::Arc<catalog::Resolved>,
+    locale: Option<String>,
+    pub language: String,
+}
+impl ResolvedOutput {
+    pub fn new(style: &str, locale: Option<&str>) -> Result<Self, FormatError> {
+        Self::with_style(catalog::resolve(style)?, locale)
+    }
+
+    fn with_style(style: std::sync::Arc<catalog::Resolved>, locale: Option<&str>) -> Result<Self, FormatError> {
+        let locale = locale
+            .map(catalog::locale_tag)
+            .transpose()?
+            .map(str::to_owned)
+            .or_else(|| style.forced_locale.clone());
+        let language = locale.clone().unwrap_or_else(|| style.language.clone());
+        Ok(Self {
+            style,
+            locale,
+            language,
+        })
+    }
+}
+#[cfg(test)]
+fn prepare_with_style(
+    snapshot: &Snapshot,
+    request: &CitationRequest,
+    limits: &Limits,
+    style: &catalog::Resolved,
+) -> Result<Prepared, FormatError> {
+    let resolved = ResolvedOutput::with_style(std::sync::Arc::new(style.clone()), request.output_locale.as_deref())?;
+    prepare_resolved(snapshot, request, limits, &resolved)
 }

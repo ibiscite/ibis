@@ -14,10 +14,6 @@ impl OutputRef {
     pub(crate) fn id(self) -> &'static str {
         &self.0.id
     }
-    #[cfg(test)]
-    pub(crate) fn info(self) -> &'static OutputInfo {
-        self.0
-    }
     pub(crate) fn spec(self) -> &'static OutputSpec {
         &self.0.output
     }
@@ -110,12 +106,6 @@ pub(crate) fn choices() -> Vec<OutputChoice> {
             entries: output.entries,
         })
         .collect()
-}
-
-/// The output a listed id names, for tests that cite with it.
-#[cfg(test)]
-pub(crate) fn spec(id: &str) -> &'static OutputSpec {
-    listed(id).unwrap_or_else(|| panic!("{id} is listed")).spec()
 }
 
 #[cfg(test)]

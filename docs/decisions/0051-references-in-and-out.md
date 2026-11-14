@@ -39,8 +39,8 @@ key, preserve identifier spelling and URL-encode reserved characters; a missing
 or unusable DOI is a named per-record refusal. The CLI prints usable records
 with a findings exit status and names refusals on stderr. Repeated selections
 export each record once. MCP continues to exclude record-sharing formats.
-The shared public-URL check rejects ambiguous numeric, encoded and non-ASCII
-hosts; internationalized public domains can use their ASCII punycode form.
+The shared public-URL constructor parses hosts before checking them, so numeric,
+encoded and internationalized spellings cannot bypass local-address checks.
 CSL-JSON preserves only plain source-id tokens (letters, digits, `_`, `-`);
 other source ids use the citation key. Device paths after value delimiters stay
 private too. BibTeX identifier fields are verbatim, with URL braces percent-encoded.

@@ -1,7 +1,8 @@
 // Real built picker + invented IPC. Browser layout evidence, not native input/engine proof.
 // Serve `pnpm build` with `pnpm exec vite preview`; reuse an installed Playwright.
 import assert from "node:assert/strict";
-import { dismissMenu, hasMiddleViewport, isSeatedInspector, isWholeNotice, isWholeShelf, noticeText, shelfControl, waitForLayout } from "./picker-layout-checks.mjs";
+import { citationPreview } from "../../test-fixtures.ts";
+import { dismissMenu, hasMiddleViewport, isSeatedInspector, isWholeNotice, isWholeShelf, noticeText, refusalGeometry, refusalPresentation, shelfControl, waitForLayout } from "./picker-layout-checks.mjs";
 const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
 const base = new URL(process.argv[2] || "http://127.0.0.1:4173");
 assert.ok(["127.0.0.1", "localhost"].includes(base.hostname), "Use a loopback fixture server");
@@ -32,6 +33,7 @@ try {
     const keysDialog = page.getByRole("dialog", { name: "Keyboard Shortcuts", exact: true });
     page.setDefaultTimeout(5000);
     page.on("pageerror", (error) => errors.push(error.message));
+    await page.exposeFunction("fixturePreview", citationPreview);
     await page.exposeFunction("fixtureSizing", (command) => { resizes.push(command); });
     await page.addInitScript(({ larger, scale, startupNotice, largeNotice, pointerNotice, viewState, shortcutNotice, shelfDetails, formatFailure, entryWarning }) => {
       if (scale !== 1) document.addEventListener("DOMContentLoaded", () => { document.documentElement.style.fontSize = `${scale * 100}%`; });
@@ -91,26 +93,27 @@ try {
             return [{ revision: "1", results: recentHistory ? Array.from({ length: 6 }, (_, i) => row(i, i < 3 ? "cited" : "added")) : [] }, recentHistory, false];
           }
           if (command === "search") return { revision: "1", results: args.query.text && args.query.text !== "no-match" ? Array.from({ length: 14 }, (_, i) => row(i)) : [],
-            ...(args.query.interpret_locators && / p12$/.test(args.query.text) ? { interpretation: { search: "invented", locator: { label: "page", value: "12" }, typed: "p12" } } : {}) };
+            ...(args.query.interpret_locators && / p12$/.test(args.query.text) ? { interpretation: { search: "invented", locator: { term: "page", value: "12" }, typed: "p12" } } : {}) };
           if (command === "preview_file_citation" && args.intent.cancel) throw { code: "cancelled" };
           if (command === "preview_file_citation" && shelfDetails === "failed") throw { code: "failed", message: formatFailure };
           if (command === "preview_file_citation") {
             const ticket = `synthetic-ticket-${++previewNumber}`;
-            const spans = [{ item: null, text: "[" }];
+            const style = ["ieee", "apa"].includes(args.output) ? args.output : null;
+            const segments = [{ item: null, text: "[" }];
             args.items.forEach((item, index) => {
-              if (index) spans.push({ item: null, text: "; " });
+              if (index) segments.push({ item: null, text: "; " });
               const page = item.locator_input?.text || item.locator?.value;
               const key = shelfDetails === "rtl" ? `${"مثال-".repeat(48)}${index}` : ["single", "receipt"].includes(shelfDetails) ? `${"invented-long-key-".repeat(16)}${index}` : item.id.key;
-              const text = args.style === "ieee" ? "Aster, Invented reference, 2026."
-                : args.style === "apa" ? item.form === "year-only" ? `(2026${page ? `, p. ${page}` : ""})` : item.form === "narrative" ? `Aster (2026${page ? `, p. ${page}` : ""})` : `(Aster, 2026${page ? `, p. ${page}` : ""})`
+              const text = style === "ieee" ? "Aster, Invented reference, 2026."
+                : style === "apa" ? item.form === "year-only" ? `(2026${page ? `, p. ${page}` : ""})` : item.form === "narrative" ? `Aster (2026${page ? `, p. ${page}` : ""})` : `(Aster, 2026${page ? `, p. ${page}` : ""})`
                 : `${item.form === "year-only" ? "-" : ""}@${key}${page ? `, p. ${page}` : ""}`;
-              spans.push({ item: index, text });
+              segments.push({ item: index, text });
             });
-            spans.push({ item: null, text: "]" });
-            if (args.style) { spans.shift(); spans.pop(); }
-            const text = spans.map((span) => span.text).join("");
-            prepared.set(ticket, { text, items: args.items, style: args.style });
-            return { ticket, content_hash: "synthetic-hash", text, spans, html: null, warnings: shelfDetails === "warnings" ? [entryWarning] : [] };
+            segments.push({ item: null, text: "]" });
+            if (style) { segments.shift(); segments.pop(); }
+            const preview = await window.fixturePreview(segments, { ticket, content_hash: "synthetic-hash", warnings: shelfDetails === "warnings" ? [entryWarning] : [] });
+            prepared.set(ticket, { text: preview.text, items: args.items, style });
+            return preview;
           }
           if (command === "citation_details") {
             const saved = prepared.get(args.ticket), item = saved.items[args.item];

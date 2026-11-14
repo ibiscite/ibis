@@ -13,10 +13,10 @@ export const COMMAND_PREFIX = ">";
 
 export type PickerCommandEntry = { id: PickerCommand; title: string; about: string; keys: string; icon: IconName };
 
-/** The glyph each command shows on the tile column, from the one icon set. */
-const ICONS: Record<PickerCommand, IconName> = {
-  format: "swap", source: "file", revealSource: "find", chooseSource: "library", changeLast: "write",
-  pin: "pin", keys: "shortcuts", settings: "general", quit: "close", more: "chevrons",
+/** The glyph each command shows on the tile column, here and in More, from the one icon set. */
+export const COMMAND_ICONS: Record<PickerCommand, IconName> = {
+  format: "format", source: "file", revealSource: "folder-search", chooseSource: "library-big", changeLast: "write",
+  pin: "pin", keys: "keyboard", settings: "settings", quit: "quit", more: "chevrons",
 };
 
 /** The commands available now. `source` names the library's own action
@@ -33,7 +33,7 @@ export function pickerCommands({ source, changeLast }: { source: string | null; 
     ["settings", say("picker-settings")],
     ["quit", say("picker-quit-label")],
   ];
-  return titled.flatMap(([id, title]) => title ? [{ id, title, about: say(SHORTCUT_ACTIONS[id]), keys: keysFor(id), icon: ICONS[id] }] : []);
+  return titled.flatMap(([id, title]) => title ? [{ id, title, about: say(SHORTCUT_ACTIONS[id]), keys: keysFor(id), icon: COMMAND_ICONS[id] }] : []);
 }
 
 /** Commands whose title or description holds every typed word, in table order. */

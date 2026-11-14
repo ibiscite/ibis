@@ -56,6 +56,50 @@ fn refusal(result: &Value) -> &str {
 }
 
 #[test]
+fn sentinel_record_ids_never_enter_mcp_text_and_keyless_refusals_keep_recovery() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("invented.json");
+    std::fs::write(&path, json!([
+        {"id":"SENTINEL-ID-keyless", "type":"book", "title":"Invented lantern without a key"},
+        {"id":"SENTINEL-ID-keyed", "citation-key":"lantern2026", "type":"book", "title":"Invented lantern with a key"}
+    ]).to_string()).unwrap();
+    let engine = Engine::new().unwrap().without_file_watches();
+    open(&engine, &path);
+    let found = tool(&engine, "search", json!({"query":"lantern"}));
+    assert!(!found["content"].to_string().contains("SENTINEL-ID"), "{found}");
+    for hit in answer(&found)["hits"].as_array().unwrap() {
+        let shown = tool(&engine, "show", json!({"ref":hit["ref"]}));
+        assert!(!shown["content"].to_string().contains("SENTINEL-ID"), "{shown}");
+        let cited = tool(
+            &engine,
+            "cite",
+            json!({"items":[{"ref":hit["ref"]}], "format":"pandoc"}),
+        );
+        assert!(!cited["content"].to_string().contains("SENTINEL-ID"), "{cited}");
+        if hit["title"] == "Invented lantern without a key" {
+            assert_eq!(cited["structuredContent"]["error"]["code"], "missing-key");
+            assert_eq!(
+                cited["structuredContent"]["error"]["recovery"]["action"],
+                "choose-style"
+            );
+        } else {
+            assert_eq!(answer(&cited)["text"], "[@lantern2026]");
+        }
+    }
+}
+
+#[test]
+fn tool_validation_keeps_the_specific_catalogue_message_and_arguments() {
+    let result = tool(&Engine::new().unwrap(), "styles", json!({"limit":0}));
+    assert!(refusal(&result).contains("limit must be a whole number"));
+    let problem = &result["structuredContent"]["error"];
+    assert_eq!(problem["message"]["id"], "mcp-error-number-range");
+    assert_eq!(problem["message"]["args"], json!({"name":"limit", "limit":"200"}));
+    assert_eq!(problem["recovery"]["action"], "edit-input");
+    assert_eq!(problem["focus"], "request");
+}
+
+#[test]
 fn no_open_library_is_an_error_and_never_an_empty_result() {
     let engine = Engine::new().unwrap();
     for (name, arguments) in [
@@ -365,7 +409,7 @@ fn refs_work_for_keyless_and_shared_records_and_read_as_plain_text() {
     let second = write("second.bib", "@book{shared, title={Tide tables two}, year=2002}\n");
     let third = write(
         "third.json",
-        "[{\"id\":\"odd key\u{202e}\",\"citation-key\":\"odd key\u{202e}\",\"type\":\"book\",\"title\":\"Tide tables three\"}]",
+        "[{\"id\":\"odd key\u{202e}\",\"citation-key\":\"odd key\u{202e}\",\"type\":\"book\",\"title\":\"Tide tables three\"}, {\"id\":\"SENTINEL-ID-reserved\",\"citation-key\":\"id:alpha\",\"type\":\"book\",\"title\":\"Tide tables reserved\"}]",
     );
     let engine = Engine::new().unwrap().without_file_watches();
     for path in [&first, &second, &third] {
@@ -373,7 +417,7 @@ fn refs_work_for_keyless_and_shared_records_and_read_as_plain_text() {
     }
     let found = tool(&engine, "search", json!({"query":"tide tables"}));
     let hits = answer(&found)["hits"].as_array().unwrap();
-    assert_eq!(hits.len(), 3, "{found}");
+    assert_eq!(hits.len(), 4, "{found}");
     for hit in hits {
         let reference = hit["ref"].as_str().unwrap();
         assert!(reference.starts_with("id:"), "{reference}");

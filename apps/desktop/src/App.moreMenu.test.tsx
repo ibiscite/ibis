@@ -16,7 +16,7 @@ test.each(["welcome", "empty", "loaded"])("%s: the native smoke's More and Quit 
   });
   render(<App />);
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent)
-    .toBe(state === "welcome" ? "No library chosen" : `refs.bib · ${state === "empty" ? "no references" : "3 references"}`));
+    .toBe(state === "welcome" ? "No library chosen" : state === "empty" ? "refs.bib · no references" : "refs.bib"));
   const button = screen.getByRole<HTMLButtonElement>("button", { name: "More" });
   expect(button.tagName).toBe("BUTTON");
   expect(button.type).toBe("button");

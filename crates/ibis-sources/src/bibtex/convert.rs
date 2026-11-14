@@ -208,14 +208,19 @@ pub(crate) fn convert(
     set("publisher-place", &["location", "address"]);
     set("edition", &["edition"]);
     set("version", &["version"]);
-    set("ISBN", &["isbn"]);
-    set("PMID", &["pmid"]);
-    set("PMCID", &["pmcid"]);
-    set("ISSN", &["issn"]);
     set("collection-title", &["series"]);
     set("genre", &["type"]);
     set("note", &["note"]);
     set("event-title", &["eventtitle"]);
+    for field in ["isbn", "issn", "pmid", "pmcid"] {
+        if let Some(value) = own_fields
+            .get(field)
+            .map(|value| decode_identifier(value))
+            .filter(|s| !s.is_empty())
+        {
+            variables.insert(field.to_ascii_uppercase(), value);
+        }
+    }
     // BibLaTeX keeps arXiv and PubMed IDs in `eprint`. A PubMed ID is the CSL
     // `PMID`; an arXiv ID has no CSL variable and is kept for search only.
     let mut eprints = Vec::new();
@@ -257,19 +262,19 @@ pub(crate) fn convert(
     let dates = other_dates(entry, problems);
     // Identifiers and URLs share one limited verbatim decoder over resolved
     // text, before any parser can consume a backslash or apply typography.
-    let doi = own_fields.get("doi").map(|doi| decode_url(doi));
+    let doi = own_fields.get("doi").map(|doi| decode_identifier(doi));
     if doi.as_deref().is_some_and(|doi| doi.contains('\\')) {
         problems.push(Problem::new(WarningCause::Identifier, Some("doi")));
     }
     let url = own_fields
         .get("url")
-        .map(|url| decode_url(url))
+        .map(|url| decode_identifier(url))
         .filter(|url| !url.is_empty())
         .or_else(|| {
             own_fields
                 .get("howpublished")
                 .and_then(|raw| command_url(raw))
-                .map(decode_url)
+                .map(decode_identifier)
         });
     if url.is_none()
         && own_fields
@@ -1274,9 +1279,9 @@ fn render(pieces: &[Piece]) -> String {
 
 // ---------- Small helpers ----------
 
-/// URL fields are verbatim, with a small set of exporter escapes. Never run
+/// Identifiers are verbatim, with a small set of exporter escapes. Never run
 /// general TeX typography or commands over a path (notably `--` and `~`).
-fn decode_url(value: &str) -> String {
+fn decode_identifier(value: &str) -> String {
     // Use the same literal-symbol decoder as ordinary fields, once, without
     // running general TeX typography over an identifier or URL.
     let protected = super::resolve::protect_backslashes(value);

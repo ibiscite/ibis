@@ -3,6 +3,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use super::CitationError;
 use super::model::{Fingerprint, ItemRef};
 
 /// CSL 1.0.2 input locator vocabulary, including the disambiguating `-locator` names.
@@ -242,65 +243,8 @@ pub struct CitationRequest {
     pub output_locale: Option<String>,
 }
 
-/// Fixed citation diagnostics contain no source data, paths, keys or request text.
-/// A front-end boundary maps a wholly invalid/cancelled request to its envelope error.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case")]
-pub enum CitationError {
-    EmptySelection,
-    TooManyItems,
-    InvalidLocator,
-    InvalidRichText,
-    OutputTooLarge,
-    UnsupportedForm,
-    MissingItem,
-    ChangedItem,
-    MissingKey,
-    MissingDoi,
-    AmbiguousKey,
-    ConflictingKey,
-    InvalidKey,
-    UnsupportedOutput,
-    InvalidLocale,
-    Cancelled,
-    FormatterUnavailable,
-    AnnotationMismatch,
-    NotCitable,
-    // A Zotero marker names a Zotero item, and Ibis did not read this one from Zotero.
-    NotFromZotero,
-    /// A code from a newer engine. It reads as needing review, never as success.
-    #[serde(other)]
-    #[schemars(skip)]
-    Unknown,
-}
-
-impl CitationError {
-    pub const ALL: [Self; 20] = [
-        Self::EmptySelection,
-        Self::TooManyItems,
-        Self::InvalidLocator,
-        Self::InvalidRichText,
-        Self::OutputTooLarge,
-        Self::UnsupportedForm,
-        Self::MissingItem,
-        Self::ChangedItem,
-        Self::MissingKey,
-        Self::MissingDoi,
-        Self::AmbiguousKey,
-        Self::ConflictingKey,
-        Self::InvalidKey,
-        Self::UnsupportedOutput,
-        Self::InvalidLocale,
-        Self::Cancelled,
-        Self::FormatterUnavailable,
-        Self::AnnotationMismatch,
-        Self::NotCitable,
-        Self::NotFromZotero,
-    ];
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "outcome", rename_all = "kebab-case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "outcome", rename_all = "kebab-case", into = "PresentedOutcome")]
 pub enum ItemOutcome {
     Rendered {
         item: usize,
@@ -311,8 +255,44 @@ pub enum ItemOutcome {
     },
     /// An outcome from a newer engine: never rendered, so never copied.
     #[serde(other)]
+    Unknown,
+}
+
+#[derive(Serialize, JsonSchema)]
+#[serde(tag = "outcome", rename_all = "kebab-case")]
+enum PresentedOutcome {
+    Rendered {
+        item: usize,
+    },
+    Refused {
+        item: usize,
+        error: CitationError,
+        #[serde(flatten)]
+        info: super::RecoveryInfo,
+    },
     #[schemars(skip)]
     Unknown,
+}
+impl From<ItemOutcome> for PresentedOutcome {
+    fn from(value: ItemOutcome) -> Self {
+        match value {
+            ItemOutcome::Rendered { item } => Self::Rendered { item },
+            ItemOutcome::Refused { item, error } => Self::Refused {
+                item,
+                error,
+                info: error.problem().info,
+            },
+            ItemOutcome::Unknown => Self::Unknown,
+        }
+    }
+}
+impl JsonSchema for ItemOutcome {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "ItemOutcome".into()
+    }
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        PresentedOutcome::json_schema(generator)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

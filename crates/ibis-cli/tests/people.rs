@@ -60,7 +60,13 @@ fn ibis_alone_shows_what_it_can_do() {
     assert!(stderr.contains("export"), "{stderr}");
     let (code, stdout, _) = lab.run(&["--json"]);
     assert_eq!(code, 2);
-    assert_eq!(stdout, "{\"error\":{\"code\":\"usage\"},\"ibis\":1,\"ok\":false}\n");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&stdout).unwrap(),
+        serde_json::json!({
+            "ibis":1,"ok":false,"error":{"code":"usage", "message":{"id":"error-usage","args":{}},
+            "recovery":{"action":"edit-input"},"focus":"request"}
+        })
+    );
 }
 
 #[test]
@@ -239,7 +245,7 @@ fn a_link_to_nothing_is_missing_rather_than_busy() {
     std::os::unix::fs::symlink(lab.0.join("gone.bib"), &link).unwrap();
     let (code, _, stderr) = lab.run(&["search", "x", "--file", link.to_str().unwrap()]);
     assert_eq!(code, 5);
-    assert!(stderr.contains("there is no file at that path"), "{stderr}");
+    assert!(stderr.contains("was moved, renamed or removed"), "{stderr}");
 }
 
 #[test]
@@ -378,5 +384,32 @@ fn a_library_read_whole_is_not_called_cut_short_by_another_limit() {
         assert_eq!(code, 4, "{stderr}");
         assert!(stderr.contains("no reference has the key"), "{stderr}");
         assert!(!stderr.contains("too large"), "{stderr}");
+    }
+}
+
+#[test]
+fn attachment_results_name_available_missing_and_unchecked_references() {
+    let lab = Lab::new("attachment-probing");
+    lab.file("available.pdf", "invented attachment");
+    let records: Vec<_> = (0..500)
+        .map(|index| {
+            serde_json::json!({
+                "id": format!("item{index:03}"), "type": "book",
+                "file": if index == 1 { "missing.pdf" } else { "available.pdf" }
+            })
+        })
+        .collect();
+    let file = lab.file("invented.json", &serde_json::to_string(&records).unwrap());
+    let (code, stdout, stderr) = lab.run(&["libraries", "--file", &file, "--json"]);
+    assert_eq!(code, 0, "{stderr}");
+    let library = serde_json::from_str::<serde_json::Value>(&stdout).unwrap()["data"]["libraries"][0]["id"].clone();
+    for (index, expected) in [(0, "on-disk"), (1, "broken-link"), (499, "unknown")] {
+        let id =
+            serde_json::json!({"library": library, "key": format!("attachment:record:item{index:03}:0")}).to_string();
+        let (code, stdout, stderr) = lab.run(&["show", "--id", &id, "--file", &file, "--json"]);
+        assert_eq!(code, 0, "{stderr}");
+        let result: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+        assert_eq!(result["data"]["object"]["data"]["availability"], expected, "{stdout}");
+        assert!(!stdout.contains("available.pdf"));
     }
 }

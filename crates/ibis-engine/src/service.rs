@@ -25,7 +25,7 @@ pub mod health;
 mod sources;
 pub use sources::{PreparedFileReload, PreparedZoteroReload};
 
-mod formatting;
+pub(crate) mod formatting;
 pub use formatting::{Cancellation, Formatting};
 mod prepared;
 mod receipt;
@@ -65,7 +65,7 @@ pub struct LibraryInfo {
     /// say why the key selects nothing.
     #[serde(skip)]
     #[schemars(skip)]
-    pub duplicate_keys: std::collections::BTreeSet<String>,
+    pub duplicate_keys: std::collections::BTreeMap<String, Vec<ibis_sources::SourceWarning>>,
     /// Each skipped entry whose header names its key, with why it was skipped.
     #[serde(skip)]
     #[schemars(skip)]
@@ -276,7 +276,8 @@ struct State {
     index: Arc<SnapshotIndex>,
     libraries: BTreeMap<LibraryId, LibraryInfo>,
 }
-struct Shared {
+pub(crate) struct Shared {
+    pub(crate) citations: crate::citations::Registry,
     state: RwLock<Arc<State>>,
     /// Serializes publications without blocking readers during index building.
     publication: Mutex<()>,
@@ -287,6 +288,7 @@ struct Shared {
 impl Shared {
     fn new(state: Arc<State>) -> Self {
         Self {
+            citations: crate::citations::Registry::default(),
             state: RwLock::new(state),
             publication: Mutex::new(()),
             subscribers: Mutex::new(BTreeMap::new()),
@@ -297,7 +299,7 @@ impl Shared {
 }
 #[derive(Clone)]
 pub struct Engine {
-    shared: Arc<Shared>,
+    pub(crate) shared: Arc<Shared>,
     formatting: Formatting,
     resources: Arc<sources::Owners>,
     watch_files: bool,
@@ -677,6 +679,7 @@ impl Engine {
         };
         self.cite_snapshot(
             &receipt::CitationContext {
+                source_failure: None,
                 snapshot,
                 sources: Vec::new(),
                 zotero: BTreeMap::new(),
@@ -703,27 +706,20 @@ impl Engine {
         request: &CitationRequest,
         cancel: &Cancellation,
     ) -> Result<CitationResult, EngineError> {
+        let resolved = crate::outputs::resolve_request(request)?;
+        self.cite_resolved(context, &resolved, cancel)
+    }
+    fn cite_resolved(
+        &self,
+        context: &receipt::CitationContext,
+        resolved: &crate::outputs::ResolvedRequest,
+        cancel: &Cancellation,
+    ) -> Result<CitationResult, EngineError> {
+        let request = &resolved.request;
         let snapshot = &context.snapshot;
         crate::wire::serialized_size(request, crate::protocol::MAX_REQUEST_BYTES)
             .map_err(|_| error(ErrorCode::ResourceLimit))?;
-        let resolved;
-        let request = match &request.output {
-            OutputSpec::Preset { .. } => {
-                resolved = CitationRequest {
-                    output: crate::outputs::resolve(&request.output)?,
-                    ..request.clone()
-                };
-                &resolved
-            }
-            _ => request,
-        };
-        let key_error = |failure| {
-            error(if failure == CitationError::OutputTooLarge {
-                ErrorCode::ResourceLimit
-            } else {
-                ErrorCode::BadInput
-            })
-        };
+        let key_error = EngineError::citation;
         let mut result = match &request.output {
             OutputSpec::Key {
                 syntax: KeySyntax::ScannableCite,
@@ -741,7 +737,12 @@ impl Engine {
                 .map_err(key_error)?
             }
             OutputSpec::Key { .. } => ibis_core::syntax::cite(snapshot, request).map_err(key_error)?,
-            OutputSpec::Csl { .. } => self.formatted(snapshot, request, cancel)?,
+            OutputSpec::Csl { .. } => self.formatted(
+                snapshot,
+                request,
+                cancel,
+                resolved.formatted.as_ref().ok_or_else(|| error(ErrorCode::Internal))?,
+            )?,
             OutputSpec::Preset { .. } => return Err(error(ErrorCode::Internal)),
         };
         cancel.check()?;
@@ -1083,7 +1084,10 @@ fn select<'a>(
                 record.answers_to(key)
             });
             let found = matches.next().ok_or_else(|| {
-                if libraries.values().any(|library| library.duplicate_keys.contains(key)) {
+                if libraries
+                    .values()
+                    .any(|library| library.duplicate_keys.contains_key(key))
+                {
                     EngineError::because(ErrorCode::NotFound, ErrorReason::DuplicateKey)
                 } else if libraries.values().any(|library| library.damaged_keys.contains_key(key)) {
                     EngineError::because(ErrorCode::NotFound, ErrorReason::DamagedEntry)

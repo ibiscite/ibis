@@ -23,9 +23,8 @@
 /* Native select semantics, with one local chevron (including on iOS). */
 .picker-format { position: relative; display: inline-flex; flex: none; min-width: 0; max-width: 100%; }
 .picker-format select { appearance: none; min-width: 0; width: 100%; padding-inline-end: calc(var(--space-2) + 1.1em); }
-.picker-format svg { position: absolute; inset-inline-end: var(--space-2); inset-block-start: 50%; translate: 0 -50%; fill: none; stroke: var(--text-secondary); stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.picker-format svg { position: absolute; inset-inline-end: var(--space-2); inset-block-start: 50%; translate: 0 -50%; color: var(--text-secondary); pointer-events: none; }
 .picker input::-webkit-search-cancel-button { appearance: none; }
-.picker .picker-clear { display: grid; place-items: center; flex: none; width: var(--control-h); padding: 0; border: 0; background: none; box-shadow: none; color: var(--text-secondary); font-size: var(--type-heading-size); }
 .picker button:disabled { color: var(--text-disabled); background: var(--fill-control); cursor: default; }
 .picker-middle { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-block: var(--inset); }
 .picker-meta { flex: none; margin: 0; display: flex; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) var(--row-pad) var(--space-1); margin-inline: var(--inset); color: var(--text-secondary); font-size: var(--type-label-size); }
@@ -79,25 +78,25 @@
 .picker-empty { flex: 1; min-height: 0; overflow-y: auto; display: grid; align-content: center; justify-items: center; text-align: center; padding: 2rem 1rem; color: var(--text-secondary); font-size: var(--type-body-size); }
 .picker-empty strong { color: var(--text); font-size: var(--type-title-size); }
 .picker-empty p { margin: var(--space-2) 0 var(--space-4); }
-.picker-empty svg { margin-bottom: var(--space-3); fill: none; stroke: var(--text-tertiary); }
+.picker-empty .ui-icon { margin-bottom: var(--space-3); color: var(--text-tertiary); }
 .draft code { display: inline; white-space: normal; overflow-wrap: anywhere; }
 .paste-gap { display: inline-block; min-width: 7rem; line-height: 1; border-bottom: var(--ring-width) dashed var(--scarlet); }
 .draft .paste-slot { position: relative; display: inline-flex; align-items: center; gap: var(--space-1); vertical-align: .1em; min-height: 0; padding: .1em .5em; border: var(--border-width) dashed var(--scarlet); border-radius: var(--website-chip-radius); background: var(--website-accent-soft); color: var(--scarlet); font: var(--type-body-size)/1.4 var(--font); }
 .picker button, .draft button { position: relative; }
 /* A label overlay steals native select pointer activation: enlarge buttons only. */
 :is(.picker button, .draft button)::after { content: ""; position: absolute; inset-block: min(0px, calc((100% - var(--touch-target)) / 2)); inset-inline: 0; }
-.picker :is(.tile, .picker-clear)::after { inset-inline: min(0px, calc((100% - var(--touch-target)) / 2)); }
+.picker .tile::after { inset-inline: min(0px, calc((100% - var(--touch-target)) / 2)); }
 .draft .paste-slot kbd { background: none; box-shadow: none; padding: 0; }
 @media (hover: hover) {
   .pick:not(.is-selected):hover { background: var(--fill-quiet-hover); }
   .pick:not(.is-selected):hover .tile:not(.is-added) { background: var(--fill-control); }
   .pick:hover .tile:not(.is-added) .tile-kind { display: none; }
   .pick:hover .tile:not(.is-added) .tile-add { display: block; }
-  .picker button:not(.tile):not(.picker-clear):not(.picker-primary):not(:disabled):hover, .draft button:hover { background: var(--fill-control-hover); }
+  .picker button:not(.tile):not(.picker-primary):not(:disabled):hover, .draft button:hover { background: var(--fill-control-hover); }
   .picker .picker-primary:not(:disabled):hover { background: var(--accent-hover); }
   .draft .paste-slot:hover { background: var(--website-accent-soft); border-style: solid; }
 }
-.picker button:not(.tile):not(.picker-clear):not(:disabled):active, .draft button:active { background: var(--fill-control-pressed); }
+.picker button:not(.tile):not(:disabled):active, .draft button:active { background: var(--fill-control-pressed); }
 .picker .picker-primary:not(:disabled):active { background: var(--accent-pressed); }
 @container picker (max-width: 28.75em) {
   .picker-shelf { padding-inline: var(--space-1); gap: var(--space-1); }

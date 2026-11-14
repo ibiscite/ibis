@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import type { WritingEdit, WritingsView } from "../../api";
-import { isolate, say } from "../../i18n";
+import { isolate, problemText, say } from "../../i18n";
 import { Button } from "../../ui/Button";
 import { TextField } from "../../ui/TextField";
 import { Progress } from "../../ui/Progress";
@@ -21,8 +21,6 @@ type Form = { kind: "new"; name: string } | { kind: "rename"; id: string; name: 
   | { kind: "remove"; id: string; name: string };
 export type WritingDraft = { form: Form | null; place: RefObject<SheetMemory | null> };
 
-// Native project refusals are fixed sentences and never include file paths or source text.
-const failure = (error: unknown, fallback: string) => typeof error === "string" && error ? error : fallback;
 
 /** An explicit project switch for the captured app. Native code saves the
  * project, its format and its bibliography together; the sheet never guesses
@@ -57,7 +55,7 @@ export function WritingsDialog({ api, format, onClose, draft }: { api: WritingsA
     const request = ++reads.current;
     void writings().then((next) => {
       if (alive.current && request === reads.current) { setView(next); setProblem(null); }
-    }, (error) => { if (alive.current && request === reads.current) setProblem(failure(error, say("writing-not-read"))); });
+    }, (error) => { if (alive.current && request === reads.current) setProblem(problemText(error, say("writing-not-read"))); });
   }, [writings]);
   useEffect(() => {
     alive.current = true;
@@ -89,7 +87,7 @@ export function WritingsDialog({ api, format, onClose, draft }: { api: WritingsA
       if (leave) close();
     }, (error) => {
       if (!alive.current || mutation.current !== owner) return;
-      setProblem(failure(error, say("writing-not-saved")));
+      setProblem(problemText(error, say("writing-not-saved")));
     })
       .finally(() => {
         if (!alive.current || mutation.current !== owner) return;
@@ -100,7 +98,7 @@ export function WritingsDialog({ api, format, onClose, draft }: { api: WritingsA
   const bibliography = (action: (() => Promise<unknown>) | undefined) => {
     if (!action || busy) return;
     setProblem(null);
-    void action().then(read, (error) => { if (alive.current) setProblem(failure(error, say("writing-bibliography-not-saved"))); });
+    void action().then(read, (error) => { if (alive.current) setProblem(problemText(error, say("writing-bibliography-not-saved"))); });
   };
   const selected = view?.active;
   const saveName = () => {

@@ -13,6 +13,7 @@ use ibis_engine::settings::{self, Settings};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::library::CommandError;
 use crate::output::OutputRef;
 use crate::preferences::SettingsFile;
 
@@ -103,6 +104,24 @@ impl From<settings::SettingsError> for ChangeError {
     }
 }
 
+impl From<ChangeError> for CommandError {
+    fn from(error: ChangeError) -> Self {
+        use ibis_core::contract::{Problem, Recovery as R, RecoveryInfo};
+        let (code, id, recovery) = match error {
+            ChangeError::Project(error) => return Self::Presented((&error).into()),
+            ChangeError::Stale | ChangeError::Destination => {
+                ("project-changed", "app-project-error-changed", R::ReopenProjectMenu)
+            }
+            ChangeError::Editor => ("editor-pending", "app-project-error-editor", R::FinishEditorRequest),
+            ChangeError::Unsupported => ("project-output-unavailable", "app-project-error-output", R::ChooseStyle),
+        };
+        Self::Presented(Problem {
+            code: code.into(),
+            info: RecoveryInfo::new(id, recovery),
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Target {
     binding: Option<String>,
@@ -154,19 +173,13 @@ fn context_token_for(target: &Target, activation: u32) -> String {
     serde_json::to_string(&(target.context(), activation)).unwrap_or_default()
 }
 
-fn read_settings(path: &Path) -> Result<Settings, String> {
-    let loaded = settings::load(path);
-    // An unreadable edit never substitutes an older backup's writing for the
-    // current one while a citation is being committed.
-    if let Some(problem) = loaded.problem {
-        return Err(crate::preferences::settings_message(&problem));
-    }
-    Ok(loaded.settings)
+fn read_settings(path: &Path) -> Result<Settings, CommandError> {
+    settings::load(path).cites().cloned().map_err(CommandError::from)
 }
 
 /// The saved settings, or no project at all: an unreadable file never lets
 /// an earlier project or the default output stand in for the saved one.
-fn saved_settings(app: &AppHandle, target: &Target) -> Result<Settings, String> {
+fn saved_settings(app: &AppHandle, target: &Target) -> Result<Settings, CommandError> {
     read_settings(&app.state::<SettingsFile>().path).inspect_err(|_| {
         crate::project::activate_context(app, format!("unavailable:settings:{}", target.owner()), None, None);
     })
@@ -180,7 +193,7 @@ fn selected<'a>(settings: &'a Settings, target: &Target, session: Option<&'a str
     target
         .binding
         .as_ref()
-        .map_or(session, |key| settings.writing_apps.get(key).map(String::as_str))
+        .map_or(session, |key| settings.device.writing_apps.get(key).map(String::as_str))
         .filter(|id| definitions::find(settings, id).is_ok())
 }
 
@@ -196,7 +209,7 @@ pub(crate) fn saved_view(project: &Writing) -> WritingView {
 fn view_for(settings: &Settings, target: &Target, session: Option<&str>) -> WritingsView {
     let selected = selected(settings, target, session);
     WritingsView {
-        writings: settings.writings.iter().map(saved_view).collect(),
+        writings: settings.device.writings.iter().map(saved_view).collect(),
         selected: selected.map(str::to_owned),
         active: selected
             .and_then(|id| definitions::find(settings, id).ok())
@@ -227,15 +240,19 @@ impl ActiveWriting {
     }
 }
 
-fn active_for(settings: &Settings, target: &Target, session: Option<&str>) -> Result<Option<ActiveWriting>, String> {
+fn active_for(
+    settings: &Settings,
+    target: &Target,
+    session: Option<&str>,
+) -> Result<Option<ActiveWriting>, CommandError> {
     let Some(id) = selected(settings, target, session) else {
         return Ok(None);
     };
-    let project = definitions::find(settings, id).map_err(|error| error.to_string())?;
+    let project = definitions::find(settings, id).map_err(ChangeError::from)?;
     Ok(Some(ActiveWriting {
         id: project.name.clone(),
         name: project.name.clone(),
-        output: crate::output::of_writing(&project.format)?,
+        output: crate::output::of_writing(&project.format).map_err(|_| ChangeError::Unsupported)?,
         bibliography: project.bibliography.clone(),
         // The bibliography and output are compared on their own.
         context_key: format!("project:{}:{}", target.owner(), project.name),
@@ -248,7 +265,7 @@ fn activate(
     settings: &Settings,
     target: &Target,
     session: Option<&str>,
-) -> Result<Option<ActiveWriting>, String> {
+) -> Result<Option<ActiveWriting>, CommandError> {
     if target.editor {
         return Ok(None);
     }
@@ -329,9 +346,9 @@ fn edit(
 fn select(settings: &mut Settings, target: &Target, session: &mut Option<String>, id: Option<String>) {
     if let Some(key) = &target.binding {
         if let Some(id) = id {
-            settings.writing_apps.insert(key.clone(), id);
+            settings.device.writing_apps.insert(key.clone(), id);
         } else {
-            settings.writing_apps.remove(key);
+            settings.device.writing_apps.remove(key);
         }
     } else {
         *session = id;
@@ -346,7 +363,10 @@ pub(crate) struct DestinationContext {
     pub(crate) version: (u32, u32),
 }
 
-pub(crate) fn destination_context(app: &AppHandle, captured: Option<&AppId>) -> Result<DestinationContext, String> {
+pub(crate) fn destination_context(
+    app: &AppHandle,
+    captured: Option<&AppId>,
+) -> Result<DestinationContext, CommandError> {
     let target = target(app, captured);
     if target.editor {
         let version = app.state::<crate::project::ProjectBibliography>().version();
@@ -358,15 +378,15 @@ pub(crate) fn destination_context(app: &AppHandle, captured: Option<&AppId>) -> 
         });
     }
     let runtime = app.state::<Runtime>();
-    let session = runtime.0.lock().map_err(|_| CHANGED.to_owned())?;
+    let session = runtime.0.lock().map_err(|_| CommandError::from(ChangeError::Stale))?;
     if current_target(app) != target {
-        return Err(REOPEN.to_owned());
+        return Err(ChangeError::Destination.into());
     }
     let settings = saved_settings(app, &target)?;
     let active = activate(app, &settings, &target, session.as_deref())?;
     let version = app.state::<crate::project::ProjectBibliography>().version();
     if current_target(app) != target {
-        return Err(REOPEN.to_owned());
+        return Err(ChangeError::Destination.into());
     }
     Ok(DestinationContext {
         settings,
@@ -376,7 +396,7 @@ pub(crate) fn destination_context(app: &AppHandle, captured: Option<&AppId>) -> 
     })
 }
 
-pub(crate) fn refresh(app: &AppHandle, captured: Option<&AppId>) -> Result<Option<ActiveWriting>, String> {
+pub(crate) fn refresh(app: &AppHandle, captured: Option<&AppId>) -> Result<Option<ActiveWriting>, CommandError> {
     destination_context(app, captured).map(|context| context.active)
 }
 
@@ -390,15 +410,15 @@ fn shown(app: &AppHandle, settings: &Settings, target: &Target, session: Option<
 
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) fn writings(app: AppHandle) -> Result<WritingsView, String> {
+pub(crate) fn writings(app: AppHandle) -> Result<WritingsView, CommandError> {
     let target = current_target(&app);
     let runtime = app.state::<Runtime>();
-    let session = runtime.0.lock().map_err(|_| CHANGED.to_owned())?;
+    let session = runtime.0.lock().map_err(|_| CommandError::from(ChangeError::Stale))?;
     if current_target(&app) != target {
-        return Err(REOPEN.to_owned());
+        return Err(CommandError::from(ChangeError::Destination));
     }
     if target.editor {
-        return Err(EDITOR.to_owned());
+        return Err(CommandError::from(ChangeError::Editor));
     }
     let settings = saved_settings(&app, &target)?;
     Ok(shown(&app, &settings, &target, session.as_deref()))
@@ -406,27 +426,26 @@ pub(crate) fn writings(app: AppHandle) -> Result<WritingsView, String> {
 
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) fn edit_writing(app: AppHandle, context: String, action: WritingEdit) -> Result<WritingsView, String> {
+pub(crate) fn edit_writing(app: AppHandle, context: String, action: WritingEdit) -> Result<WritingsView, CommandError> {
     let target = current_target(&app);
     if context_token(&app, &target) != context {
-        return Err(REOPEN.to_owned());
+        return Err(CommandError::from(ChangeError::Destination));
     }
     if target.editor {
-        return Err(EDITOR.to_owned());
+        return Err(CommandError::from(ChangeError::Editor));
     }
     let runtime = app.state::<Runtime>();
-    let mut session = runtime.0.lock().map_err(|_| CHANGED.to_owned())?;
+    let mut session = runtime.0.lock().map_err(|_| CommandError::from(ChangeError::Stale))?;
     let (settings, replacement) = app
         .state::<SettingsFile>()
-        .exclusive(|path| {
-            settings::transaction(path, |settings| {
-                if current_target(&app) != target || context_token(&app, &target) != context {
-                    return Err(ChangeError::Destination);
-                }
-                edit(settings, &target, session.as_deref(), &action)
-            })
-        })?
-        .map_err(|error| error.to_string())?;
+        .owner
+        .change(|settings| {
+            if current_target(&app) != target || context_token(&app, &target) != context {
+                return Err(ChangeError::Destination);
+            }
+            edit(settings, &target, session.as_deref(), &action)
+        })
+        .map_err(CommandError::from)?;
     // Only a save changes the session-only choice.
     if target.binding.is_none() {
         *session = replacement;
@@ -435,7 +454,7 @@ pub(crate) fn edit_writing(app: AppHandle, context: String, action: WritingEdit)
     if current != target {
         let _ = activate(&app, &settings, &current, session.as_deref());
         let _ = app.emit("writings:changed", ());
-        return Err(REOPEN.to_owned());
+        return Err(CommandError::from(ChangeError::Destination));
     }
     let view = shown(&app, &settings, &target, session.as_deref());
     let _ = app.emit("writings:changed", ());
@@ -469,56 +488,52 @@ fn owner_for(
     })
 }
 
-pub(crate) fn bibliography_owner(app: &AppHandle) -> Result<BibliographyOwner, String> {
+pub(crate) fn bibliography_owner(app: &AppHandle) -> Result<BibliographyOwner, CommandError> {
     let target = current_target(app);
     let runtime = app.state::<Runtime>();
-    let session = runtime.0.lock().map_err(|_| CHANGED.to_owned())?;
+    let session = runtime.0.lock().map_err(|_| CommandError::from(ChangeError::Stale))?;
     if current_target(app) != target {
-        return Err(REOPEN.to_owned());
+        return Err(ChangeError::Destination.into());
     }
-    let settings = read_settings(&app.state::<SettingsFile>().path).map_err(|_| {
-        "Saved project settings could not be read. Check Settings before editing the bibliography.".to_owned()
-    })?;
+    let settings = read_settings(&app.state::<SettingsFile>().path)?;
     let activation = app.state::<crate::project::ProjectBibliography>().version().0;
-    owner_for(&settings, &target, session.as_deref(), activation).map_err(|error| error.to_string())
+    owner_for(&settings, &target, session.as_deref(), activation).map_err(CommandError::from)
 }
 
 pub(crate) fn set_bibliography(
     app: &AppHandle,
     owner: &BibliographyOwner,
     path: Option<PathBuf>,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let target = current_target(app);
     if target != owner.target {
-        return Err(REOPEN.to_owned());
+        return Err(ChangeError::Destination.into());
     }
     let runtime = app.state::<Runtime>();
-    let session = runtime.0.lock().map_err(|_| CHANGED.to_owned())?;
+    let session = runtime.0.lock().map_err(|_| CommandError::from(ChangeError::Stale))?;
     let (settings, ()) = app
         .state::<SettingsFile>()
-        .exclusive(|settings_path| {
-            settings::transaction(settings_path, |settings| {
-                let activation = app.state::<crate::project::ProjectBibliography>().version().0;
-                if current_target(app) != target
-                    || owner_for(settings, &target, session.as_deref(), activation)? != *owner
-                {
-                    return Err(ChangeError::Stale);
-                }
-                if let Some(id) = &owner.id {
-                    let output = definitions::find(settings, id)?.format.clone();
-                    definitions::update(settings, id, output, path)?;
-                } else {
-                    return Err(ChangeError::Stale);
-                }
-                Ok::<_, ChangeError>(())
-            })
-        })?
-        .map_err(|error| error.to_string())?;
+        .owner
+        .change(|settings| {
+            let activation = app.state::<crate::project::ProjectBibliography>().version().0;
+            if current_target(app) != target || owner_for(settings, &target, session.as_deref(), activation)? != *owner
+            {
+                return Err(ChangeError::Stale);
+            }
+            if let Some(id) = &owner.id {
+                let output = definitions::find(settings, id)?.format.clone();
+                definitions::update(settings, id, output, path)?;
+            } else {
+                return Err(ChangeError::Stale);
+            }
+            Ok::<_, ChangeError>(())
+        })
+        .map_err(CommandError::from)?;
     let current = current_target(app);
     let activation = activate(app, &settings, &current, session.as_deref());
     let _ = app.emit("writings:changed", ());
     if current != target {
-        return Err(REOPEN.to_owned());
+        return Err(ChangeError::Destination.into());
     }
     activation.map(|_| ())
 }
@@ -551,7 +566,7 @@ mod tests {
             },
         )
         .unwrap_or_else(|error| panic!("{error}"));
-        settings.writing_apps[target.binding.as_ref().unwrap_or_else(|| panic!("an app"))].clone()
+        settings.device.writing_apps[target.binding.as_ref().unwrap_or_else(|| panic!("an app"))].clone()
     }
 
     #[test]
@@ -605,7 +620,7 @@ mod tests {
                 .unwrap_or_else(|error| panic!("{error}"))
                 .is_none()
         );
-        assert_eq!(settings.writings.len(), 2);
+        assert_eq!(settings.device.writings.len(), 2);
     }
 
     #[test]
@@ -668,7 +683,7 @@ mod tests {
             )
             .is_err()
         );
-        assert_eq!(settings.writing_apps.len(), 1);
+        assert_eq!(settings.device.writing_apps.len(), 1);
     }
 
     #[test]
@@ -676,24 +691,25 @@ mod tests {
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
         let path = directory.path().join("settings.json");
         let target = known("example.editor", 1);
-        let (settings, _) = settings::transaction(&path, |settings| {
-            edit(
-                settings,
-                &target,
-                None,
-                &WritingEdit::Create {
-                    name: "Paper".into(),
-                    output: output(),
-                },
-            )
-        })
-        .unwrap_or_else(|error| panic!("{error}"));
+        let (settings, _) = ibis_engine::settings::Owner::open(path.clone())
+            .change(|settings| {
+                edit(
+                    settings,
+                    &target,
+                    None,
+                    &WritingEdit::Create {
+                        name: "Paper".into(),
+                        output: output(),
+                    },
+                )
+            })
+            .unwrap_or_else(|error| panic!("{error}"));
         let id = selected(&settings, &target, None)
             .unwrap_or_else(|| panic!("a selected project"))
             .to_owned();
         std::fs::remove_file(&path).unwrap_or_else(|error| panic!("{error}"));
         std::fs::create_dir(&path).unwrap_or_else(|error| panic!("{error}"));
-        let changed = settings::transaction(&path, |settings| {
+        let changed = ibis_engine::settings::Owner::open(path.clone()).change(|settings| {
             edit(
                 settings,
                 &target,
@@ -705,7 +721,7 @@ mod tests {
             )
         });
         assert!(changed.is_err());
-        assert_eq!(settings.writings[0].name, "Paper");
+        assert_eq!(settings.device.writings[0].name, "Paper");
     }
 
     #[test]
@@ -732,17 +748,16 @@ mod tests {
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
         let path = directory.path().join("settings.json");
         let target = known("example.editor", 1);
-        let (settings, ()) = settings::transaction(&path, |settings| {
-            let id = create(settings, &target, "Thesis");
-            definitions::update(settings, &id, output().spec().clone(), Some(invented("thesis.bib")))?;
-            Ok::<_, ChangeError>(())
-        })
-        .unwrap_or_else(|error| panic!("{error}"));
-        let reopened = settings::load(&path);
-        assert!(reopened.problem.is_none());
+        let (settings, ()) = ibis_engine::settings::Owner::open(path.clone())
+            .change(|settings| {
+                let id = create(settings, &target, "Thesis");
+                definitions::update(settings, &id, output().spec().clone(), Some(invented("thesis.bib")))?;
+                Ok::<_, ChangeError>(())
+            })
+            .unwrap_or_else(|error| panic!("{error}"));
+        let reopened = crate::settings_fixture::read(&path);
         let before = active_for(&settings, &target, None).unwrap_or_else(|error| panic!("{error}"));
-        let after =
-            active_for(&reopened.settings, &known("example.editor", 2), None).unwrap_or_else(|error| panic!("{error}"));
+        let after = active_for(&reopened, &known("example.editor", 2), None).unwrap_or_else(|error| panic!("{error}"));
         assert_eq!(
             before.map(|project| project.view()),
             after.map(|project| project.view())
@@ -854,10 +869,10 @@ mod tests {
             &WritingEdit::Remove { id: project.clone() },
         )
         .unwrap_or_else(|error| panic!("{error}"));
-        assert!(settings.writings.is_empty());
-        assert!(settings.writing_apps.is_empty());
+        assert!(settings.device.writings.is_empty());
+        assert!(settings.device.writing_apps.is_empty());
         assert_eq!(
-            settings.paste, before.paste,
+            settings.portable.paste, before.portable.paste,
             "project selection never grants paste permission"
         );
     }
@@ -894,7 +909,12 @@ mod tests {
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
         let path = directory.path().join("settings.json");
         std::fs::write(&path, "not settings").unwrap_or_else(|error| panic!("{error}"));
-        assert!(read_settings(&path).is_err());
+        assert_eq!(
+            read_settings(&path),
+            Err(CommandError::Presented(
+                (&settings::SettingsError::Invalid(String::new())).into()
+            ))
+        );
         std::fs::remove_file(&path).unwrap_or_else(|error| panic!("{error}"));
         std::fs::create_dir(&path).unwrap_or_else(|error| panic!("{error}"));
         assert!(read_settings(&path).is_err());
@@ -905,18 +925,19 @@ mod tests {
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
         let path = directory.path().join("settings.json");
         let target = known("example.editor", 1);
-        let (settings, _) = settings::transaction(&path, |settings| {
-            edit(
-                settings,
-                &target,
-                None,
-                &WritingEdit::Create {
-                    name: "Paper".into(),
-                    output: output(),
-                },
-            )
-        })
-        .unwrap_or_else(|error| panic!("{error}"));
+        let (settings, _) = ibis_engine::settings::Owner::open(path.clone())
+            .change(|settings| {
+                edit(
+                    settings,
+                    &target,
+                    None,
+                    &WritingEdit::Create {
+                        name: "Paper".into(),
+                        output: output(),
+                    },
+                )
+            })
+            .unwrap_or_else(|error| panic!("{error}"));
         std::fs::copy(&path, path.with_extension("json.bak")).unwrap_or_else(|error| panic!("{error}"));
         std::fs::write(&path, "not settings").unwrap_or_else(|error| panic!("{error}"));
         assert!(read_settings(&path).is_err());
@@ -924,6 +945,6 @@ mod tests {
             std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{error}")),
             "not settings"
         );
-        assert!(!settings.writings.is_empty());
+        assert!(!settings.device.writings.is_empty());
     }
 }

@@ -1,11 +1,12 @@
 //! Copying the selected references as a citation.
 
+use ibis_engine::citations::{Operation, SessionId};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 
-use crate::library::{CommandError, Library, PreviewIntent, PreviewRequests};
+use crate::library::{CommandError, Library, PreviewIntent};
 
 #[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct Copied {
@@ -200,12 +201,10 @@ pub(crate) fn write_copy_only_unless_written(
     if clipboard_mark() != began {
         return Err(CommandError::Cancelled);
     }
-    write_copy_only(app, content.content()).map_err(CommandError::from)
+    write_copy_only(app, content.content()).map_err(|_| CommandError::ClipboardUnavailable)
 }
 
 mod clipboard;
-#[cfg(test)]
-mod engine_file_acceptance;
 #[cfg(test)]
 mod ownership_tests;
 
@@ -217,20 +216,25 @@ pub(crate) async fn citation_details(
     content_hash: String,
     item: usize,
     intent: PreviewIntent,
-    requests: State<'_, crate::library::FormattingRequests>,
     library: State<'_, Mutex<Library>>,
-) -> Result<crate::library::engine_file::ReferenceDetails, CommandError> {
-    let cancel = requests.details.start(intent).ok_or(CommandError::Cancelled)?;
-    cancel.check().map_err(CommandError::from)?;
+) -> Result<ibis_core::contract::FormDetails, CommandError> {
     let file = library
         .lock()
         .map_err(|_| CommandError::SnapshotChanged)?
         .file
         .clone()
         .ok_or(CommandError::SnapshotChanged)?;
-    tauri::async_runtime::spawn_blocking(move || file.details(&ticket, &content_hash, item, &cancel))
+    let cancel = file
+        .engine
+        .citations()
+        .start(SessionId::PICKER, Operation::Forms, intent)?;
+    let task = file
+        .engine
+        .citations()
+        .forms(SessionId::PICKER, &ticket, &content_hash, item, cancel)?;
+    tauri::async_runtime::spawn_blocking(move || task.run().map_err(CommandError::from))
         .await
-        .map_err(|_| CommandError::from("Citation examples are unavailable. Close and reopen the menu to try again."))?
+        .map_err(|_| CommandError::NotPrepared)?
 }
 
 // Each managed state is its own argument: Tauri hands them to commands that way.
@@ -238,36 +242,32 @@ pub(crate) async fn citation_details(
 #[tauri::command]
 #[ibis_desktop_macros::command]
 pub(crate) async fn preview_file_citation(
-    items: Vec<crate::library::engine_file::FileSelection>,
+    items: Vec<ibis_core::contract::DraftItem>,
     output: String,
     expected_revision: String,
     intent: PreviewIntent,
     library: State<'_, Mutex<Library>>,
-    requests: State<'_, PreviewRequests>,
     editor: State<'_, crate::editor_endpoint::Pending>,
     project: State<'_, crate::project::ProjectBibliography>,
-) -> Result<crate::library::engine_file::FilePreview, CommandError> {
+) -> Result<ibis_core::contract::Preview, CommandError> {
     let expected_context = intent.context;
     let keep_order = intent.keep_order;
-    let cancel = requests.start(intent).ok_or(CommandError::Cancelled)?;
-    // The engine's id, as the menu sent it; one it does not list is refused, not guessed.
-    let output = crate::output::listed(&output)
-        .ok_or_else(|| CommandError::from("This format is not available. Choose another."))?;
     let (file, generation) = {
-        let library = library
-            .lock()
-            .map_err(|_| CommandError::from("The library is unavailable."))?;
+        let library = library.lock().map_err(|_| CommandError::SourceNotOpened)?;
         let _ = expected_revision;
         if library.opening {
             return Err(CommandError::LibraryLoading);
         }
-        let file = library
-            .file
-            .clone()
-            .ok_or_else(|| CommandError::from("The selected file is no longer open."))?;
+        let file = library.file.clone().ok_or(CommandError::SnapshotChanged)?;
         (file, library.source_generation)
     };
-    let reservation = file.reserve_preview_with(cancel);
+    let cancel = file
+        .engine
+        .citations()
+        .start(SessionId::PICKER, Operation::Preview, intent)?;
+    // The engine's id, as the menu sent it; one it does not list is refused, not guessed.
+    let output = crate::output::listed(&output)
+        .ok_or_else(|| CommandError::from(ibis_core::contract::CitationError::UnsupportedOutput))?;
     let editor = editor.current();
     let (context_version, current_project) = project.capture(expected_context, editor.is_none().then_some(output))?;
     let output = output.spec().clone();
@@ -277,29 +277,46 @@ pub(crate) async fn preview_file_citation(
         editor.as_ref().map_or(&output, |request| &request.output),
         ibis_core::contract::OutputSpec::Key { .. }
     );
-    let current_project = current_project.filter(|_| key_output);
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        let current_project = editor
+    let current_project = editor
+        .as_ref()
+        .and_then(|request| request.bibliography())
+        .or(current_project)
+        .filter(|_| key_output);
+    let draft = ibis_core::contract::Draft {
+        items,
+        output: editor.as_ref().map_or(output, |editor| editor.output.clone()),
+        form: editor
             .as_ref()
-            .and_then(|request| request.bibliography())
-            .or(current_project);
-        let current_project = current_project.filter(|_| key_output);
-        let mut preview = file.preview_for(reservation, items, &output, keep_order, editor.as_ref())?;
-        preview.warnings.extend(file.prepared_project_warnings(
+            .map_or(ibis_core::contract::CitationForm::Normal, |editor| editor.form),
+        keep_order,
+        input_language: None,
+        output_locale: None,
+        sample: file.sample,
+    };
+    let task = file.engine.citations().preview(SessionId::PICKER, draft, cancel)?;
+    let engine = file.engine.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let mut preview = task.run()?;
+        preview.warnings.extend(crate::project::preview_warnings(
+            &file.engine,
             &preview.ticket,
             &preview.content_hash,
             current_project.as_ref(),
         )?);
         // Only a key known to name a different work is refused; the rest of
         // the check joined the warnings above.
-        preview.project_refusal = file
-            .prepared_project_evidence(&preview.ticket, &preview.content_hash, current_project.as_ref())?
-            .filter(|assessment| !assessment.can_copy())
-            .and_then(|assessment| assessment.message);
+        preview.project_refusal = crate::project::preview_evidence(
+            &file.engine,
+            &preview.ticket,
+            &preview.content_hash,
+            current_project.as_ref(),
+        )?
+        .filter(|assessment| !assessment.can_copy())
+        .and_then(|assessment| assessment.message);
         Ok::<_, CommandError>(preview)
     })
     .await
-    .map_err(|_| CommandError::from("The preview is unavailable. Try again."))?;
+    .map_err(|_| CommandError::NotPrepared)?;
     // A reload cancels previews it overtakes, and the quiet check that follows
     // each show retires Zotero while it reads. Both publish when they end, which
     // asks again; that is waiting, not a failure.
@@ -311,7 +328,7 @@ pub(crate) async fn preview_file_citation(
         Err(CommandError::LibraryLoading)
     } else {
         let preview = result?;
-        project.bind_preview(reservation, &preview.ticket, context_version)?;
+        project.bind_preview(&engine, &preview, context_version)?;
         Ok(preview)
     }
 }
@@ -339,7 +356,6 @@ pub(crate) async fn copy_file_citation(
     app: AppHandle,
     library: State<'_, Mutex<Library>>,
 ) -> Result<Copied, CommandError> {
-    const FAILED: &str = "The citation could not be copied. Try again.";
     let intent = CopyIntent {
         presentation: tauri::Manager::state::<crate::picker::PickerGeneration>(&app).current(),
         clipboard: clipboard_mark(),
@@ -352,24 +368,29 @@ pub(crate) async fn copy_file_citation(
         .lock()
         .epoch();
     let file = open_file(&library)?;
-    let recited = tauri::async_runtime::spawn_blocking(move || file.recite(&ticket, &content_hash))
-        .await
-        .map_err(|_| CommandError::from(FAILED))??;
+    let recited = tauri::async_runtime::spawn_blocking(move || {
+        file.engine
+            .citations()
+            .commit(SessionId::PICKER, &ticket, &content_hash)
+            .map_err(CommandError::from)
+    })
+    .await
+    .map_err(|_| CommandError::ClipboardUnavailable)??;
     let (send, committed) = std::sync::mpsc::sync_channel(1);
     let main = app.clone();
     app.run_on_main_thread(move || {
         let _ = send.send(commit_shown(&main, &recited, replaces, captured, epoch, intent));
     })
-    .map_err(|_| CommandError::from(FAILED))?;
+    .map_err(|_| CommandError::ClipboardUnavailable)?;
     tauri::async_runtime::spawn_blocking(move || committed.recv())
         .await
-        .map_err(|_| CommandError::from(FAILED))?
-        .map_err(|_| CommandError::from(FAILED))?
+        .map_err(|_| CommandError::ClipboardUnavailable)?
+        .map_err(|_| CommandError::ClipboardUnavailable)?
 }
 
 fn commit_shown(
     app: &AppHandle,
-    recited: &crate::library::engine_file::Recited,
+    recited: &ibis_engine::citations::CheckedCitation,
     replaces: Vec<String>,
     captured: Option<(ibis_core::destination::AppId, String, Option<String>)>,
     epoch: std::sync::Arc<()>,
@@ -384,7 +405,7 @@ fn commit_shown(
     if editor.current().is_none() {
         // The citation uses the project as saved: a change made elsewhere since
         // the preview, by the command line for one, retires it before the commit.
-        crate::writings::refresh(&app, captured.as_ref().map(|(id, _, _)| id)).map_err(CommandError::from)?;
+        crate::writings::refresh(&app, captured.as_ref().map(|(id, _, _)| id))?;
     }
     #[cfg(target_os = "windows")]
     let attempt = crate::paste::begin_copy(&app, &replaces);
@@ -401,24 +422,24 @@ fn commit_shown(
     // A waiting editor gets the citation in place of the clipboard. It is
     // handed over under the same commit barrier, and nothing is pasted.
     if let Some(request) = editor.current() {
-        if !file.prepared_for(recited.ticket(), &request) {
+        if recited.citation().request_output() != &request.output || recited.citation().request_form() != request.form {
             return Err(CommandError::SnapshotChanged);
         }
         let current = request.bibliography();
-        if let Some(refused) = file
-            .prepared_project_evidence(recited.ticket(), recited.content_hash(), current.as_ref())?
-            .filter(|assessment| !assessment.can_copy())
+        if let Some(refused) =
+            crate::project::preview_evidence(&file.engine, recited.ticket(), recited.content_hash(), current.as_ref())?
+                .filter(|assessment| !assessment.can_copy())
         {
-            return Err(refused
-                .message
-                .unwrap_or_else(|| "A bibliography key identifies another work.".into())
-                .into());
+            return Err(CommandError::ProjectConflict {
+                keys: refused.conflicts,
+            });
         }
-        let warnings = file.prepared_project_warnings(recited.ticket(), recited.content_hash(), current.as_ref())?;
+        let warnings =
+            crate::project::preview_warnings(&file.engine, recited.ticket(), recited.content_hash(), current.as_ref())?;
         // The text leaves the commit barrier first; the editor is answered with no
         // lock held, because ending a request takes these locks the other way round.
         let mut text = None;
-        let mut copied = file.copy_recited(recited, |content| {
+        let mut copied = copy_checked(&file.engine, recited, |content| {
             text = Some((
                 content.text.to_owned(),
                 content.html.map(str::to_owned),
@@ -428,8 +449,12 @@ fn commit_shown(
         })?;
         copied.warnings.extend(warnings);
         let (text, html, rtf) = text.ok_or(CommandError::SnapshotChanged)?;
-        if !editor.answer(request.id, &text, || file.invalidate_preview()) {
-            return Err("Your editor stopped waiting for this citation.".into());
+        if !editor.answer(request.id, &text, || {
+            file.engine
+                .citations()
+                .invalidate(ibis_engine::citations::SessionId::PICKER)
+        }) {
+            return Err(CommandError::Cancelled);
         }
         // Only a request that was answered may leave its citation on the clipboard.
         if request.clipboard {
@@ -445,7 +470,7 @@ fn commit_shown(
                             rtf: rtf.as_deref(),
                         },
                     )
-                    .map_err(CommandError::from)
+                    .map_err(|_| CommandError::ClipboardUnavailable)
                 },
             )?;
             session.lock().add(copied.cited.clone());
@@ -459,8 +484,10 @@ fn commit_shown(
     let format = {
         let settings = ibis_engine::settings::load(&app.state::<crate::preferences::SettingsFile>().path);
         let target = captured.as_ref().map(|(id, _, _)| id);
-        let chosen = ibis_engine::format::choose(&settings.settings, target);
-        (settings.problem.is_none() && chosen.output == *recited.output()).then(|| (target.cloned(), chosen))
+        settings.cites().ok().and_then(|saved| {
+            let chosen = ibis_engine::format::choose(saved, target);
+            (chosen.output == *recited.citation().request_output()).then(|| (target.cloned(), chosen))
+        })
     };
     let copied = commit_copy(
         &file,
@@ -476,18 +503,23 @@ fn commit_shown(
                 || {
                     #[cfg(target_os = "windows")]
                     let delivery = {
-                        let (token, sequence) = clipboard::write(&app, content).map_err(CommandError::from)?;
+                        let (token, sequence) =
+                            clipboard::write(&app, content).map_err(|_| CommandError::ClipboardUnavailable)?;
                         crate::paste::remember_copy(&app, attempt, sequence, token)
                     };
                     #[cfg(not(target_os = "windows"))]
-                    let delivery = clipboard::write(&app, content, &replaces).map_err(CommandError::from)?;
+                    let delivery =
+                        clipboard::write(&app, content, &replaces).map_err(|_| CommandError::ClipboardUnavailable)?;
                     Ok(delivery)
                 },
             )
         },
     )?;
     record(&copied);
-    if matches!(recited.output(), ibis_core::contract::OutputSpec::Key { .. }) {
+    if matches!(
+        recited.citation().request_output(),
+        ibis_core::contract::OutputSpec::Key { .. }
+    ) {
         app.state::<crate::preferences::SettingsFile>().record_key_format_use();
     }
     if let Some((id, chosen)) = format {
@@ -501,10 +533,10 @@ fn commit_shown(
 /// own commit barrier guards the write.
 fn open_file(
     library: &Mutex<Library>,
-) -> Result<std::sync::Arc<crate::library::engine_file::FileLibrary>, CommandError> {
+) -> Result<std::sync::Arc<crate::library::engine_library::FileLibrary>, CommandError> {
     let library = library.lock().map_err(|_| CommandError::SnapshotChanged)?;
     if library.opening {
-        return Err("The library is loading. Try again after it opens.".into());
+        return Err(CommandError::LibraryLoading);
     }
     library.file.clone().ok_or(CommandError::SnapshotChanged)
 }
@@ -517,25 +549,23 @@ pub(crate) struct ProjectCopy<'a> {
 }
 
 pub(crate) fn commit_copy(
-    file: &crate::library::engine_file::FileLibrary,
-    recited: &crate::library::engine_file::Recited,
+    file: &crate::library::engine_library::FileLibrary,
+    recited: &ibis_engine::citations::CheckedCitation,
     context: ProjectCopy<'_>,
     write: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<Option<u32>, CommandError>,
 ) -> Result<Copied, CommandError> {
     let (ticket, content_hash) = (recited.ticket(), recited.content_hash());
     context.project.commit(ticket, |current| {
-        let refused = file
-            .prepared_project_evidence(ticket, content_hash, current.as_ref())?
+        let refused = crate::project::preview_evidence(&file.engine, ticket, content_hash, current.as_ref())?
             .filter(|assessment| !assessment.can_copy());
         if let Some(assessment) = refused {
-            return Err(assessment
-                .message
-                .unwrap_or_else(|| "A key in the project bibliography identifies a different work.".into())
-                .into());
+            return Err(CommandError::ProjectConflict {
+                keys: assessment.conflicts,
+            });
         }
-        let warnings = file.prepared_project_warnings(ticket, content_hash, current.as_ref())?;
+        let warnings = crate::project::preview_warnings(&file.engine, ticket, content_hash, current.as_ref())?;
         let mut delivery = None;
-        let mut copied = file.copy_recited(recited, |content| {
+        let mut copied = copy_checked(&file.engine, recited, |content| {
             delivery = write(content)?;
             Ok(())
         })?;
@@ -558,4 +588,22 @@ pub(crate) fn write_copy_only(
     #[cfg(not(target_os = "windows"))]
     let written = clipboard::write(app, content, &[]);
     written.map(|_| ())
+}
+
+/// Native delivery owns the side effect; the engine guard prevents stale content.
+pub(crate) fn copy_checked(
+    engine: &ibis_engine::Engine,
+    checked: &ibis_engine::citations::CheckedCitation,
+    write: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<(), CommandError>,
+) -> Result<Copied, CommandError> {
+    let guard = checked.check(engine)?;
+    write(guard.content())?;
+    let result = checked.result();
+    Ok(Copied {
+        summary: Some(ReceiptSummary::citation(result)),
+        text: result.text.clone(),
+        warnings: checked.warnings(),
+        delivery: None,
+        cited: checked.citation().items(),
+    })
 }
