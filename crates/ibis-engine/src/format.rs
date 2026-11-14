@@ -28,19 +28,23 @@ fn key_id(syntax: KeySyntax) -> &'static str {
     outputs::named(&output).map_or(outputs::DEFAULT, |entry| entry.id.as_str())
 }
 
-/// A listed output of the right kind, by id; anything else reads as no choice.
-fn listed(id: Option<&str>, kind: FormatKind) -> Option<&'static outputs::OutputInfo> {
-    outputs::find(id?).filter(|entry| kind_of(&entry.output) == kind)
-}
-
-fn choice(entry: &outputs::OutputInfo, from: FormatFrom, kind: FormatKind) -> FormatChoice {
-    FormatChoice {
-        output: entry.output.clone(),
-        id: Some(entry.id.clone()),
+/// A saved key preset or bundled style; an unknown id reads as no choice.
+fn resolve(id: &str, from: FormatFrom, kind: FormatKind) -> Option<FormatChoice> {
+    let output = match ibis_core::syntax::CAPABILITIES.iter().find(|preset| preset.id == id) {
+        Some(preset) => preset.output(),
+        None => {
+            let output = OutputSpec::Csl { style: id.to_owned() };
+            ibis_csl::Formatter::check_output(&output, None).ok()?;
+            output
+        }
+    };
+    Some(FormatChoice {
+        output,
+        id: Some(id.to_owned()),
         from,
         kind,
         writing: None,
-    }
+    })
 }
 
 /// The format for a citation into `app` (none when no app was captured).
@@ -54,8 +58,11 @@ pub fn choose(settings: &Settings, app: Option<&AppId>) -> FormatChoice {
         return for_writing(&writing.format, name, app);
     }
     // This app's format was chosen in it, so it holds whatever its kind.
-    if let Some(entry) = app.and_then(|app| settings.app_output(app)).and_then(outputs::find) {
-        return choice(entry, FormatFrom::App, kind);
+    if let Some(chosen) = app
+        .and_then(|app| settings.app_output(app))
+        .and_then(|id| resolve(id, FormatFrom::App, kind))
+    {
+        return chosen;
     }
     usual(settings, app)
 }
@@ -67,11 +74,13 @@ pub fn usual(settings: &Settings, app: Option<&AppId>) -> FormatChoice {
         FormatKind::Documents => settings.portable.output.as_deref(),
         FormatKind::Keys => settings.portable.key_output.as_deref(),
     };
-    if let Some(entry) = listed(yours, kind) {
-        return choice(entry, FormatFrom::Yours, kind);
+    if let Some(chosen) = yours
+        .and_then(|id| resolve(id, FormatFrom::Yours, kind))
+        .filter(|chosen| kind_of(&chosen.output) == kind)
+    {
+        return chosen;
     }
-    let entry = outputs::find(suggestion).unwrap_or_else(|| outputs::or_default(None));
-    choice(entry, FormatFrom::Suggestion, kind)
+    resolve(suggestion, FormatFrom::Suggestion, kind).expect("suggestions name existing key presets or bundled styles")
 }
 
 /// The answer when a writing is chosen, also one that holds only for this
