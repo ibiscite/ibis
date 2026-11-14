@@ -23,6 +23,7 @@ fn labels(status: &LibraryStatus, choices: &LibraryChoices) -> Vec<String> {
 fn expected(library: &[&str]) -> Vec<String> {
     ["Open Ibis", "—"]
         .into_iter()
+        .chain(["Library"])
         .chain(library.iter().copied())
         .chain(["—", "Settings…", "Check for Updates…", "Help", "—", "Quit Ibis Nightly"])
         .map(String::from)
@@ -64,7 +65,7 @@ fn a_loaded_file_is_named_and_checked_without_settings_toggles_or_reload() {
         labels(&status, &choices),
         expected(&["thesis.bib · 165 references", "thesis.bib", "Choose File…"])
     );
-    assert!(choices.checked(Row::File));
+    assert!(choices.checked(Row::File(0)));
 }
 
 #[test]
@@ -82,6 +83,7 @@ fn a_newer_zotero_library_moves_the_single_update_action_under_the_problem() {
         vec![
             "Open Ibis",
             "—",
+            "Library",
             "Zotero needs a newer Ibis",
             "Check for Updates…",
             "Zotero",
@@ -108,7 +110,7 @@ fn a_missing_file_moves_the_single_file_chooser_under_the_problem() {
         labels(&status, &choices),
         expected(&["thesis.bib was moved or is unavailable", "Choose File…", "thesis.bib"])
     );
-    assert!(!choices.checked(Row::File));
+    assert!(!choices.checked(Row::File(0)));
 }
 
 #[test]
@@ -129,7 +131,7 @@ fn a_failed_refresh_keeps_the_loaded_choice_and_offers_try_again() {
             "Choose File…"
         ])
     );
-    assert!(choices.checked(Row::File));
+    assert!(choices.checked(Row::File(0)));
 }
 
 #[test]
@@ -172,17 +174,20 @@ fn switching_choices_moves_the_check_only_after_the_library_opens_and_retains_th
     choices.observe(Some(&file), Some(&file));
     choices.observe(Some(&zotero), Some(&file));
     assert!(
-        choices.checked(Row::File),
+        choices.checked(Row::File(0)),
         "pending or refused Zotero keeps the file checked"
     );
     assert!(!choices.checked(Row::Zotero));
     choices.observe(Some(&zotero), Some(&zotero));
     assert!(choices.checked(Row::Zotero));
-    assert!(!choices.checked(Row::File));
-    assert_eq!(choices.file, Some("thesis.bib".into()));
-    assert_eq!(choices.target(Row::File), Some(file.clone()));
+    assert!(!choices.checked(Row::File(0)));
+    assert_eq!(
+        labels(&loaded("Zotero library", true), &choices),
+        expected(&["Zotero · 165 references", "Zotero", "thesis.bib", "Choose File…"])
+    );
+    assert_eq!(choices.target(Row::File(0)), Some(file.clone()));
     choices.observe(Some(&file), Some(&file));
-    assert!(choices.checked(Row::File));
+    assert!(choices.checked(Row::File(0)));
     assert!(!choices.checked(Row::Zotero));
 }
 
@@ -193,8 +198,8 @@ fn try_again_targets_the_refused_file_instead_of_the_retained_library() {
     let requested = Source::File("thesis.bib".into());
     choices.observe(Some(&requested), Some(&old));
     assert_eq!(choices.target(Row::Retry), Some(requested));
-    assert!(choices.checked(Row::File));
-    assert_eq!(choices.target(Row::File), Some(old));
+    assert!(choices.checked(Row::File(0)));
+    assert_eq!(choices.target(Row::File(0)), Some(old));
 }
 
 #[test]
@@ -216,11 +221,11 @@ fn a_failed_file_switch_keeps_the_loaded_file_checked_and_its_own_fix_despite_a_
             "old.bib"
         ])
     );
-    assert!(choices.checked(Row::File));
-    assert_eq!(choices.target(Row::File), Some(old));
+    assert!(choices.checked(Row::File(0)));
+    assert_eq!(choices.target(Row::File(0)), Some(old));
     choices.observe(Some(&requested), Some(&requested));
-    assert!(choices.checked(Row::File));
-    assert_eq!(choices.target(Row::File), Some(requested));
+    assert!(choices.checked(Row::File(0)));
+    assert_eq!(choices.target(Row::File(0)), Some(requested));
 }
 
 #[test]
@@ -259,12 +264,15 @@ fn a_file_radio_event_opens_its_exact_file_and_a_retired_event_cannot_open_the_r
     let chosen = Source::File(path);
     let id: tauri::menu::MenuId = "file-current".into();
     let retired: tauri::menu::MenuId = "file-retired".into();
-    let targets = [(&id, &chosen)];
+    let action = LibraryAction::Open(chosen);
+    let targets = [(&id, &action)];
     assert!(
         library_target(&retired, targets).is_none(),
         "a queued click must not consume the new file choice"
     );
-    let opened = library_target(&id, targets).ok_or("radio choice")?;
+    let LibraryAction::Open(opened) = library_target(&id, targets).ok_or("radio choice")? else {
+        return Err("radio choice must open the named library".into());
+    };
     let Source::File(path) = &opened else {
         return Err("file choice".into());
     };
@@ -274,7 +282,7 @@ fn a_file_radio_event_opens_its_exact_file_and_a_retired_event_cannot_open_the_r
     library.source = Some(opened);
     let mut choices = LibraryChoices::default();
     choices.observe(library.requested.as_ref(), library.source.as_ref());
-    assert!(choices.checked(Row::File));
+    assert!(choices.checked(Row::File(0)));
     assert!(!choices.checked(Row::Zotero));
     assert_eq!(
         library_line(&crate::library::snapshot_status(&library)),
@@ -307,4 +315,79 @@ fn windows_left_click_opens_once_and_right_click_is_left_to_the_native_menu() {
     assert_eq!(opened, 1, "macOS left click only opens its menu");
     assert!(!menu_on_left_click(false));
     assert!(menu_on_left_click(true));
+}
+
+#[test]
+fn recent_files_remain_one_click_choices_with_only_the_open_file_checked() {
+    let mut choices = LibraryChoices::default();
+    let old = Source::File("old.bib".into());
+    let current = Source::File("thesis.bib".into());
+    choices.observe(Some(&old), Some(&old));
+    choices.observe(Some(&current), Some(&current));
+    let status = loaded("thesis.bib", false);
+    assert_eq!(
+        labels(&status, &choices),
+        expected(&["thesis.bib · 165 references", "thesis.bib", "old.bib", "Choose File…"])
+    );
+    assert!(choices.checked(Row::File(0)));
+    assert!(!choices.checked(Row::File(1)));
+    assert_eq!(choices.target(Row::File(1)), Some(old));
+}
+
+#[test]
+fn reading_problems_offer_their_fix_instead_of_a_dead_count() {
+    let mut status = loaded("thesis.bib", false);
+    status.warnings = 2;
+    assert_eq!(
+        labels(&status, &LibraryChoices::default()),
+        expected(&["thesis.bib · 165 references", "Fix 2 Problems…", "Choose File…"])
+    );
+    status.warnings = 1;
+    assert_eq!(
+        labels(&status, &LibraryChoices::default()),
+        expected(&["thesis.bib · 165 references", "Fix 1 Problem…", "Choose File…"])
+    );
+}
+
+#[test]
+fn spoken_state_names_reading_failure_and_readiness_without_reference_counts() {
+    let mut status = crate::library::snapshot_status(&Library::default());
+    assert_eq!(spoken_title(&status), "Ibis, no library yet");
+    status = loaded("thesis.bib", false);
+    assert_eq!(spoken_title(&status), "Ibis, ready");
+    for state in [LibraryState::Loading, LibraryState::Reloading] {
+        status.state = state;
+        assert_eq!(spoken_title(&status), "Ibis, reading thesis.bib");
+    }
+    status.state = LibraryState::Error;
+    status.error = Some("unreadable".into());
+    status.error_reason = Some(LoadError::NotLocal);
+    assert_eq!(spoken_title(&status), "Ibis, thesis.bib could not be read");
+    status = loaded("Zotero library", true);
+    status.state = LibraryState::Loading;
+    assert_eq!(spoken_title(&status), "Ibis, reading Zotero");
+}
+
+#[test]
+fn zotero_profile_and_sharing_problems_lead_to_the_picker_controls() {
+    use ibis_core::contract::ErrorReason;
+    let mut status = loaded("Zotero library", true);
+    let mut choices = LibraryChoices::default();
+    let source = Source::Zotero(ibis_engine::settings::ZoteroLibrary::User.into());
+    choices.observe(Some(&source), Some(&source));
+    for (reason, sentence) in [
+        (ErrorReason::ZoteroProfileNeeded, "Choose which Zotero profile to read"),
+        (ErrorReason::ZoteroSharingOff, "Zotero is not sharing your library"),
+    ] {
+        status.state = LibraryState::Error;
+        status.error = Some("wording is not a code".into());
+        status.error_reason = Some(LoadError::Zotero(EngineError::because(
+            ErrorCode::SourceUnavailable,
+            reason,
+        )));
+        assert_eq!(
+            labels(&status, &choices),
+            expected(&[sentence, "Fix in Ibis…", "Zotero", "Choose File…"])
+        );
+    }
 }

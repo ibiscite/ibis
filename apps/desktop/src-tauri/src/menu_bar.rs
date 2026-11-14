@@ -1,4 +1,4 @@
-//! The bird in the Mac menu bar: its poses, a library dropped on it, Search
+//! The bird in the Mac menu bar: its poses, text or a library dropped on it, Search
 //! with Ibis from the Services menu, and the trackpad's alignment tick.
 #![allow(unsafe_code)]
 
@@ -7,9 +7,9 @@ use std::sync::{Once, OnceLock};
 use std::time::Duration;
 
 use objc2_app_kit::{
-    NSDragOperation, NSDraggingDestination, NSDraggingInfo, NSHapticFeedbackManager, NSHapticFeedbackPattern,
-    NSHapticFeedbackPerformanceTime, NSHapticFeedbackPerformer, NSPasteboard, NSPasteboardTypeFileURL,
-    NSPasteboardTypeString, NSRegisterServicesProvider, NSWindowDelegate, NSWorkspace,
+    NSAccessibility, NSDragOperation, NSDraggingDestination, NSDraggingInfo, NSHapticFeedbackManager,
+    NSHapticFeedbackPattern, NSHapticFeedbackPerformanceTime, NSHapticFeedbackPerformer, NSPasteboard,
+    NSPasteboardTypeFileURL, NSPasteboardTypeString, NSRegisterServicesProvider, NSWindowDelegate, NSWorkspace,
 };
 use objc2_foundation::{MainThreadMarker, NSArray, NSObject, NSObjectProtocol, NSString, NSURL};
 use tauri::image::Image;
@@ -23,6 +23,7 @@ use crate::tray::SearchRequest;
 
 /// The bird the system tints, from `brand/`.
 pub(crate) const BIRD: Image<'static> = tauri::include_image!("../../../brand/exports/png/ibis-menu-bar.png");
+const RAISED: Image<'static> = tauri::include_image!("../../../brand/exports/png/ibis-menu-bar-raised.png");
 const LOWERING: Image<'static> = tauri::include_image!("../../../brand/exports/png/ibis-menu-bar-dip-1.png");
 const LOWERED: Image<'static> = tauri::include_image!("../../../brand/exports/png/ibis-menu-bar-dip-2.png");
 
@@ -30,6 +31,7 @@ const DIP_FRAME: Duration = Duration::from_millis(50);
 /// The selection is a search box's worth of text, not a document.
 const SEARCH_LIMIT: usize = 200;
 
+static HOVERING: AtomicBool = AtomicBool::new(false);
 static DIPPING: AtomicBool = AtomicBool::new(false);
 static READING: AtomicBool = AtomicBool::new(false);
 static APP: OnceLock<AppHandle> = OnceLock::new();
@@ -41,7 +43,10 @@ fn pose(app: &AppHandle, bird: Image<'static>) {
         app.run_on_main_thread(move || {
             if let Some(tray) = handle.tray_by_id("ibis") {
                 report(
-                    tray.set_icon_with_as_template(Some(bird), true),
+                    tray.set_icon_with_as_template(
+                        Some(if HOVERING.load(Ordering::SeqCst) { RAISED } else { bird }),
+                        true,
+                    ),
                     NativeIssue::TrayCreation,
                 );
             }
@@ -95,14 +100,83 @@ pub(crate) fn tick() {
     );
 }
 
-/// The file a drag carries, when it is one Ibis can read.
-fn dragged_library(sender: &ProtocolObject<dyn NSDraggingInfo>) -> Option<std::path::PathBuf> {
-    // SAFETY: A shared AppKit constant, read on the main thread.
-    let kind = unsafe { NSPasteboardTypeFileURL };
-    let url = sender.draggingPasteboard().stringForType(kind)?;
-    let path = NSURL::URLWithString(&url)?.filePathURL()?.path()?.to_string();
-    let path = std::path::PathBuf::from(path);
-    accepts_library_file(&path).then_some(path)
+#[derive(Debug, PartialEq, Eq)]
+enum Drop {
+    Library(std::path::PathBuf),
+    Search(String),
+}
+
+/// File representations take precedence: an unsupported or malformed file URL
+/// must never become a search for its pasteboard's incidental string.
+fn read_drop(file: bool, path: Option<std::path::PathBuf>, text: Option<&str>) -> Option<Drop> {
+    if file {
+        return path.filter(|path| accepts_library_file(path)).map(Drop::Library);
+    }
+    let query = search_query(text?);
+    (!query.is_empty()).then_some(Drop::Search(query))
+}
+
+fn search_query(text: &str) -> String {
+    text.trim()
+        .replace(['\r', '\n'], "\t")
+        .chars()
+        .take(SEARCH_LIMIT)
+        .collect()
+}
+
+fn dragged(sender: &ProtocolObject<dyn NSDraggingInfo>) -> Option<Drop> {
+    let pasteboard = sender.draggingPasteboard();
+    // SAFETY: Shared AppKit constants, read only on AppKit's main-thread callbacks.
+    let (file_kind, text_kind) = unsafe { (NSPasteboardTypeFileURL, NSPasteboardTypeString) };
+    let file = pasteboard.types().is_some_and(|types| types.containsObject(file_kind));
+    let path = pasteboard
+        .stringForType(file_kind)
+        .and_then(|url| NSURL::URLWithString(&url)?.filePathURL()?.path())
+        .map(|path| std::path::PathBuf::from(path.to_string()));
+    let text = if file {
+        None
+    } else {
+        pasteboard.stringForType(text_kind).map(|text| text.to_string())
+    };
+    read_drop(file, path, text.as_deref())
+}
+
+fn hover(readable: bool) -> NSDragOperation {
+    if HOVERING.swap(readable, Ordering::SeqCst) != readable
+        && let Some(app) = APP.get()
+    {
+        pose(app, resting());
+    }
+    if readable {
+        NSDragOperation::Copy
+    } else {
+        NSDragOperation::None
+    }
+}
+
+/// Services and drops share the picker's existing queued search delivery.
+fn search(app: &AppHandle, query: String) {
+    if let Ok(mut waiting) = app.state::<SearchRequest>().0.lock() {
+        *waiting = Some(query);
+    }
+    crate::picker::show_picker(app);
+    report(app.emit_to("main", "picker:search-requested", ()), NativeIssue::Notice);
+}
+
+/// The button is recreated after hiding. Set its spoken title without changing
+/// its visible title (which would put words in the menu bar).
+pub(crate) fn spoken_state<R: Runtime>(tray: &TrayIcon<R>, title: String) {
+    report(
+        tray.with_inner_tray_icon(move |inner| {
+            let Some(main_thread) = MainThreadMarker::new() else {
+                return;
+            };
+            if let Some(button) = inner.ns_status_item().and_then(|item| item.button(main_thread)) {
+                button.setAccessibilityTitle(Some(&NSString::from_str(&title)));
+            }
+        }),
+        NativeIssue::TrayCreation,
+    );
 }
 
 define_class!(
@@ -117,20 +191,43 @@ define_class!(
     // SAFETY: Every method is optional and none is implemented.
     unsafe impl NSWindowDelegate for MenuBarTarget {}
 
-    // SAFETY: The generated signatures are preserved, on the main thread.
+    // SAFETY: All drag selectors match NSDraggingDestination exactly, including
+    // nullable exit senders. AppKit calls this MainThreadOnly object on the main
+    // thread; no sender, pasteboard or borrowed Objective-C value escapes.
     unsafe impl NSDraggingDestination for MenuBarTarget {
         #[unsafe(method(draggingEntered:))]
         fn entered(&self, sender: &ProtocolObject<dyn NSDraggingInfo>) -> NSDragOperation {
-            if dragged_library(sender).is_some() { NSDragOperation::Copy } else { NSDragOperation::None }
+            hover(dragged(sender).is_some())
+        }
+
+        #[unsafe(method(draggingUpdated:))]
+        fn updated(&self, sender: &ProtocolObject<dyn NSDraggingInfo>) -> NSDragOperation {
+            hover(dragged(sender).is_some())
+        }
+
+        #[unsafe(method(draggingExited:))]
+        fn exited(&self, _sender: Option<&ProtocolObject<dyn NSDraggingInfo>>) {
+            hover(false);
+        }
+
+        #[unsafe(method(draggingEnded:))]
+        fn ended(&self, _sender: &ProtocolObject<dyn NSDraggingInfo>) {
+            hover(false);
         }
 
         #[unsafe(method(performDragOperation:))]
         fn perform(&self, sender: &ProtocolObject<dyn NSDraggingInfo>) -> bool {
-            let dropped = dragged_library(sender).zip(APP.get());
+            let dropped = dragged(sender).zip(APP.get());
+            hover(false);
             let accepted = dropped.is_some();
-            if let Some((path, app)) = dropped {
-                start_open(app, Source::File(path), true);
-                crate::picker::reveal_picker(app);
+            if let Some((drop, app)) = dropped {
+                match drop {
+                    Drop::Library(path) => {
+                        start_open(app, Source::File(path), true);
+                        crate::picker::reveal_picker(app);
+                    }
+                    Drop::Search(query) => search(app, query),
+                }
             }
             accepted
         }
@@ -144,13 +241,7 @@ define_class!(
             let text = pasteboard.stringForType(unsafe { NSPasteboardTypeString });
             let Some(app) = APP.get() else { return };
             if let Some(text) = text.map(|text| text.to_string()) {
-                // A search box holds one line; the picker's own paste does the same.
-                let query: String = text.trim().replace(['\r', '\n'], "\t").chars().take(SEARCH_LIMIT).collect();
-                if let Ok(mut waiting) = app.state::<SearchRequest>().0.lock() {
-                    *waiting = Some(query);
-                }
-                crate::picker::show_picker(app);
-                report(app.emit_to("main", "picker:search-requested", ()), NativeIssue::Notice);
+                search(app, search_query(&text));
             }
         }
     }
@@ -169,6 +260,10 @@ pub(crate) fn accept_drops(app: &AppHandle, tray: &TrayIcon) {
 }
 
 pub(crate) fn watch<R: Runtime>(tray: &TrayIcon<R>) {
+    HOVERING.store(false, Ordering::SeqCst);
+    if let Some(app) = APP.get() {
+        pose(app, resting());
+    }
     report(
         tray.with_inner_tray_icon(|inner| {
             let Some(main_thread) = MainThreadMarker::new() else {
@@ -191,10 +286,39 @@ pub(crate) fn watch<R: Runtime>(tray: &TrayIcon<R>) {
                 .and_then(|button| button.window());
             if let Some(window) = window {
                 // SAFETY: A shared AppKit constant, read on the main thread.
-                window.registerForDraggedTypes(&NSArray::from_slice(&[unsafe { NSPasteboardTypeFileURL }]));
+                window.registerForDraggedTypes(&NSArray::from_slice(&unsafe {
+                    [NSPasteboardTypeFileURL, NSPasteboardTypeString]
+                }));
                 window.setDelegate(Some(ProtocolObject::from_ref(&*target)));
             }
         }),
         NativeIssue::TrayCreation,
     );
+    if let Some(app) = APP.get() {
+        spoken_state(tray, crate::tray::spoken_title(&crate::library::current_status(app)));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn menu_bar_text_searches_but_an_unreadable_file_never_becomes_a_text_search() {
+        assert_eq!(
+            read_drop(false, None, Some("  invented\nquery  ")),
+            Some(Drop::Search("invented\tquery".into()))
+        );
+        assert_eq!(
+            read_drop(true, Some("paper.pdf".into()), Some("file:///paper.pdf")),
+            None
+        );
+        assert_eq!(read_drop(true, None, Some("unreadable file URL")), None);
+        assert_eq!(
+            read_drop(true, Some("thesis.bib".into()), None),
+            Some(Drop::Library("thesis.bib".into()))
+        );
+        assert_eq!(read_drop(false, None, Some(" \n ")), None);
+        assert_eq!(read_drop(false, None, None), None);
+    }
 }
