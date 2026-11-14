@@ -6,6 +6,7 @@ import { expect, vi } from "vitest";
 import { emit, listen } from "@tauri-apps/api/event";
 import type * as api from "../api";
 import type { Density, DisplayRun, DisplayTree, FilePreview, FileSelection, PreviewIntent } from "../bindings";
+import { recordId } from "../test-fixtures";
 import { isStyle, listedOutput } from "../format/outputs";
 import { fixtureDestination, formatAnswer } from "./format";
 import { forgetRecentFormats } from "../features/picker/FormatMenu";
@@ -135,14 +136,19 @@ export function closeCitationDetails() {
   if (details) fireEvent.keyDown(details.contains(document.activeElement) ? document.activeElement! : details, { key: "Escape" });
 }
 
+const fixtureKeys = new Map<string, string>();
+export const fixtureCitationKey = (id: FileSelection["id"]) => fixtureKeys.get(JSON.stringify(id)) ?? "";
+
 export function result(key: string, title: string, source = "refs.bib") {
+  const id = { library: source, key: recordId(key) };
+  fixtureKeys.set(JSON.stringify(id), key);
   return {
-    revision: "1", id: { library: source, key }, cite: `synthetic-cite-${key}`, source, key, title, authors: "Smith", year: "2020", matched: ["title" as const],
+    revision: "1", id, cite: `synthetic-cite-${key}`, source, key, title, authors: "Smith", year: "2020", matched: ["title" as const],
     first_author: "Smith", author_count: 1, container: null as string | null, item_type: "article-journal", partial: false,
   };
 }
 
-export type SyntheticId = { library: string; key: string };
+export type SyntheticId = FileSelection["id"];
 export type PreviewRequest = {
   items: (Omit<FileSelection, "id"> & { id: SyntheticId })[];
   /** The engine output id the picker asked for. */
@@ -162,7 +168,7 @@ export function displayTree(spans: { item: number | null; text: string; runs?: D
 /** A synthetic engine result. Tests choose output; no renderer runs in the browser. */
 export function receipt(text: string, display: DisplayTree | null = null, warnings: string[] = []): FilePreview {
   const number = ++receiptNumber;
-  return { ticket: `synthetic-ticket-${number}`, content_hash: `synthetic-hash-${number}`, text, display: display ?? displayTree([{ item: 0, text }]), warnings };
+  return { effective_output: null, ticket: `synthetic-ticket-${number}`, content_hash: `synthetic-hash-${number}`, text, display: display ?? displayTree([{ item: 0, text }]), warnings };
 }
 
 /** A synthetic result with each reference's own words as its own token, joined by "; ". */
@@ -189,6 +195,7 @@ export type Handler = (args: Record<string, unknown> & PreviewRequest & { query:
 /** Mock the Rust commands; returns the list of commands called. */
 export function backend(overrides: Record<string, Handler> = {}): string[] {
   const calls: string[] = [];
+  const citationKeys = new Map<string, string>();
   let lastLibrary: Partial<api.LibraryStatus> = {};
   let activityTicket = 0;
   let preferences = { output: "pandoc", density: "comfortable", larger_text: false, paste: true, menu_bar: true } as api.PickerPreferences;
@@ -216,7 +223,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     dismiss_window_position_undo: () => null,
     preview_file_citation: ({ items, output }) => {
       const style = isStyle(listedOutput(output as string) ?? "pandoc");
-      return lineReceipt(items.map(({ id }) => style ? "(Smith, 2020)" : `@${id.key}`));
+      return lineReceipt(items.map(({ id }) => style ? "(Smith, 2020)" : `@${citationKeys.get(JSON.stringify(id)) ?? ""}`));
     },
     recent_references: (args) => overrides.search?.({ ...args, query: { text: "", interpret_locators: true } }) ?? [],
     citation_details: (args) => ({ current_form: prepared(args).request.items[Number(args.item)]?.form ?? "normal", forms: [
@@ -278,11 +285,15 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
       });
       if (cmd === "preview_file_citation") return Promise.resolve(value).then((preview) => {
         const result = preview as FilePreview;
+        result.effective_output ??= (args as PreviewRequest).output;
         receipts.set(result.ticket, { request: args as PreviewRequest, preview: result });
         return result;
       });
       if (cmd === "library_status") return Promise.resolve(value).then((status) => { lastLibrary = status as api.LibraryStatus; return { revision: "1", source_generation: "1", source_is_requested: true, ...status as object }; });
       if (cmd === "search" || cmd === "recent_references") return Promise.resolve(value).then((reply) => {
+        const found = cmd === "recent_references" && Array.isArray(reply) && typeof reply[1] === "boolean" ? reply[0] : reply;
+        const records: api.SearchResult[] = Array.isArray(found) ? found : (found as { results?: api.SearchResult[] })?.results ?? [];
+        for (const record of records) citationKeys.set(JSON.stringify(record.id), record.key);
         if (cmd === "recent_references" && Array.isArray(reply) && typeof reply[1] === "boolean") return reply;
         const rows = Array.isArray(reply) ? { revision: reply[0]?.revision ?? "1", results: reply } : reply;
         return cmd === "recent_references" ? [rows, Boolean((rows as { results?: unknown[] }).results?.length), false] : rows;

@@ -164,7 +164,7 @@ fn call(front_end: FrontEnd, engine: &Engine, method: Method, params: &Value) ->
             engine
                 .dispatch(method, params, &Cancellation::default())
                 .map(|result| result.data)
-                .map_err(|error| json!({"code": error.code})),
+                .map_err(|error| json!(error)),
         ),
         FrontEnd::Human => match human(method, params) {
             Some(args) => run(engine, args, vec![])?,

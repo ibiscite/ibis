@@ -77,7 +77,9 @@ fn search_health_follows_the_consulted_snapshots_across_a_failed_refresh() {
     let clean = json!({"status":"ok","findings":[]});
     let stale = json!({"status":"findings","findings":[{
         "code":"refresh-failed", "library":second.id, "error":"source-unavailable",
-        "last_successful_read_ms":second.updated_at_ms
+        "last_successful_read_ms":second.updated_at_ms, "reason":"missing-file",
+        "message":{"id":"reason-missing-file","args":{}},
+        "recovery":{"action":"locate-file"},"focus":"library-picker"
     }]});
     assert_eq!(earlier.data["source_health"], clean);
     assert_eq!(earlier.exit_code, ExitCode::Ok);

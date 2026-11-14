@@ -42,6 +42,57 @@ data. Search metadata can change without invalidating a citation. Citation
 keys retain their source and aliases; conflicting or ambiguous keys are
 refused for key output.
 
+Errors and citation refusals carry a stable code, a catalogue message id with
+arguments, exactly one `Recovery` action and a `FocusTarget`. Core maps every
+`ErrorCode`, `ErrorReason` and `CitationError` exhaustively; a new variant needs
+a recovery before it compiles. The JSON envelope, refusal outcomes, source-health
+refresh failures, MCP tool errors and native command errors carry these facts.
+Desktop status also carries `failure` and `retained_failure` alongside its
+rendered status text; preview refusals carry `failure`. Clients render the
+message from `locales/en-US.ftl` and dispatch the declared recovery.
+
+Generated TypeScript treats `ItemRef.key` as an opaque `RecordId`, incompatible
+with strings and React children. Display labels and citation keys are separate.
+Format previews use prepared engine text; another output shows its labeled
+example until a prepared result is available. MCP fallback refs are opaque
+digests resolved against the current snapshot, never embedded lookup IDs.
+
+| Error or refusal | Recovery | Focus |
+| --- | --- | --- |
+| Missing key; unknown style/output; unsupported output; conflicting/invalid key; record not from Zotero | ChooseStyle | FormatPicker |
+| Unsupported citation form | ChooseForm | CitationForm |
+| Missing library file, including a failed watched refresh | LocateFile | LibraryPicker |
+| Missing Zotero/profile; unsupported file format/CSV template; non-local selection | ChooseLibrary | LibraryPicker |
+| Zotero sharing off | OpenZoteroSharingHelp | ZoteroSharingHelp |
+| Zotero requires an open app | OpenZotero | RecoveryAction |
+| Duplicate key within a library | ReviewLibrary | SourceFile |
+| Ambiguous lookup key | SelectReferences | Search |
+| Ambiguous citation key | ChooseStyle | FormatPicker |
+| Strict citation or damaged entry | ReviewLibrary | LibraryPicker / SourceFile |
+| Missing/changed item, annotation mismatch, empty selection, uncitable item | SelectReferences | Results |
+| Not found | SelectReferences | Search |
+| Resource limit, too many items, oversized output, cut-short library | ReduceSelection | Search / Results |
+| Invalid locator | EditCitation | Locator |
+| Usage, bad input, rejected/duplicate caller records, tool validation | EditInput | Request |
+| Invalid rich text | EditCitation | Citation |
+| Unknown/invalid language | ChooseLocale | Language |
+| Source/formatter/internal failure; app did not answer | Retry | RecoveryAction |
+| Newer format; missing/wrong Ibis app | UpgradeIbis | RecoveryAction |
+| Zotero has no space for a private copy | FreeDiskSpace | RecoveryAction |
+| Snapshot changed | SelectReferences | Results |
+| Cancelled / library loading | None (Cancelled / InProgress) | Search |
+| Invalid/duplicate project name | RenameProject | ProjectName |
+| Missing project / project limit | ChooseProject / RemoveProject | ProjectMenu |
+| Changed project or destination | ReopenProjectMenu | ProjectMenu |
+| Pending editor request | FinishEditorRequest | Citation |
+| Invalid project definitions | ReviewSettings | Settings |
+| Invalid or read-only settings / settings from a newer Ibis | ReviewSettings / UpgradeIbis | Settings / RecoveryAction |
+
+Native command infrastructure has a closed operation enum with its own catalogue
+messages. Backup recovery chooses a backup, downloads it, retries or upgrades;
+shortcut recovery chooses a shortcut, retries or opens Ibis. The command registry
+wraps these failures at the IPC boundary and tests every generated error schema.
+
 ## Sources
 
 File formats and limits are in [compatibility](compatibility.md#library-files). Files are bounded to 64 MiB; parsers report skipped records without discarding valid neighbours.
