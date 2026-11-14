@@ -1,4 +1,7 @@
-//! Pure citation eligibility, shared by renderers and delivery rechecks.
+//! Pure citation eligibility and presentation, shared by engine clients.
+mod markdown;
+pub use markdown::copy_markdown;
+
 use crate::contract::*;
 use crate::syntax::{MAX_CITATION_BYTES, MAX_CITATION_ITEMS};
 
