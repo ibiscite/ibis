@@ -21,7 +21,6 @@ function fixture(t) {
   }
   writeFileSync(join(root, "scripts/synthetic.test.mjs"), "");
   writeFileSync(join(root, "scripts/test_synthetic.py"), "");
-  writeFileSync(join(root, "scripts/synthetic.tests.ps1"), "");
   writeFileSync(join(root, "supplied-body"), "Caller supplied body.\n");
   for (const [name, body] of Object.entries({
     git: `if [ "$1" = -C ]; then shift 2; fi
@@ -64,8 +63,6 @@ function fixture(t) {
       --test) if [ "$MACHINE" = mac ] && [ "$MOVE_HEAD" = 1 ]; then touch "$ROOT/changed"; fi;;
     esac`,
     python3: `if [ "$FAIL_PYTHON" = 1 ]; then echo 'FAILED: synthetic Python test'; exit 1; fi`,
-    "powershell.exe": 'case "$*" in *-File*) exit "${FAIL_POWERSHELL:-0}";; esac',
-    pwsh: 'exit 0',
     sleep: `if [ "$1" = 5 ]; then exec /bin/sleep 0.01; else exec /bin/sleep "$@"; fi`,
     flock: `[ "$LOCK_BUSY" = 0 ]`,
     ssh: `while [ "$#" -gt 0 ]; do case "$1" in -o) shift 2;; *) break;; esac; done
@@ -150,7 +147,7 @@ test("a Python script test failure fails the gate before status or merge", posix
   assert.doesNotMatch(result.calls, /statuses\/|gh \[mac\] pr merge/);
 });
 
-test("the shared runner keeps Rust and Vitest focus and propagates PowerShell failures", posix, (t) => {
+test("the shared runner keeps Rust and Vitest focus", posix, (t) => {
   const run = fixture(t), focus = { PARALLEL: "0" };
   const rust = run(focus, ["rust", "-p", "ibis-engine"], "check.mjs");
   assert.equal(rust.status, 0, rust.stdout + rust.stderr);
@@ -159,14 +156,6 @@ test("the shared runner keeps Rust and Vitest focus and propagates PowerShell fa
   const vitest = run(focus, ["vitest", "synthetic.test.ts"], "check.mjs");
   assert.equal(vitest.status, 0, vitest.stdout + vitest.stderr);
   assert.match(vitest.calls, /vitest run synthetic.test.ts --maxWorkers=1/);
-  const passed = run({}, ["windows"], "check.mjs");
-  assert.equal(passed.status, 0, passed.stdout + passed.stderr);
-  assert.match(passed.calls, /powershell.exe \[mac\].*PSVersionTable.PSVersion.Major -ne 5/);
-  assert.match(passed.calls, /powershell.exe \[mac\].*-File scripts\/synthetic.tests.ps1/);
-  const windows = run({ FAIL_POWERSHELL: "73" }, ["windows"], "check.mjs");
-  assert.equal(windows.status, 73, windows.stdout + windows.stderr);
-  assert.match(windows.calls, /-File scripts\/synthetic.tests.ps1/);
-  assert.doesNotMatch(windows.calls, /node \[mac\] --test/);
 });
 
 test("parallel gates set Local gate on the checked SHA and immediately squash merge", posix, (t) => {

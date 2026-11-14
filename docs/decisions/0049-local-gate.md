@@ -47,3 +47,6 @@ before testing, and refuse landing if main moved. Gate and CI use
 Squash merging matches the tested head. Closing the final API race also requires
 main's required **Local gate** status check to require branches to be up to date
 before merging (ruleset `strict_required_status_checks_policy: true`).
+
+2026-11-14 (maintainer): main requires branches to be up to date with main for
+Local gate, so GitHub refuses a merge if main moved after the gate checked it.

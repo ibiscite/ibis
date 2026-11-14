@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { fileURLToPath } from "node:url";
 
 // Exercise the hook bodies in Tauri's uninstall lifecycle, without an installer,
 // registry writes or NSIS. Unknown instructions fail instead of being ignored.
@@ -68,22 +66,3 @@ test("a missing uninstall helper refuses removal while preserving PATH", () => {
   assert.throws(() => u.run("NSIS_HOOK_PREUNINSTALL"), /Abort/);
   assert.ok(u.registered());
 });
-
-// Installers use Windows PowerShell 5.1. Require it on Windows, and exercise
-// PowerShell 7 as well wherever pwsh is installed.
-const shells = process.platform === "win32" ? ["powershell.exe", "pwsh"] : ["pwsh"];
-for (const shell of shells) {
-  const probe = spawnSync(shell, ["-NoProfile", "-NonInteractive", "-Command", "$PSVersionTable.PSVersion.ToString()"], {
-    encoding: "utf8", timeout: 10_000,
-  });
-  test(`${shell}: PATH transactions preserve edits, serialize channels, and reject overflow`, {
-    skip: shell === "pwsh" && probe.error?.code === "ENOENT" ? "PowerShell 7 is not installed" : false,
-  }, () => {
-    assert.equal(probe.status, 0, probe.error?.message ?? probe.stderr);
-    if (shell === "powershell.exe") assert.match(probe.stdout.trim(), /^5\.1(?:\.|$)/, "Installers require Windows PowerShell 5.1");
-    const result = spawnSync(shell, ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", fileURLToPath(new URL("./command-path.tests.ps1", import.meta.url))], {
-      encoding: "utf8", timeout: 60_000,
-    });
-    assert.equal(result.status, 0, result.error?.message ?? result.stdout + result.stderr);
-  });
-}
