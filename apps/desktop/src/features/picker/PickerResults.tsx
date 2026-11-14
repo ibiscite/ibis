@@ -4,6 +4,7 @@ import { LibrarySetup, SampleLibraryExit } from "../../LibrarySetup";
 import { say } from "../../i18n";
 import { keysFor } from "../../keys";
 import { FrameHeading, FrameNotices } from "../../ui/Frame";
+import { ResultsArea } from "../../ui/ResultsArea";
 import { ResultList } from "./ResultList";
 import { EmptyState, useZoteroRecovery } from "./EmptyState";
 import { CommandList } from "./CommandList";
@@ -81,13 +82,13 @@ export function PickerResults({
       } />
   ) : null);
 
-  if (commands) return <div className="results-area scroll-area" ref={resultArea}>
+  if (commands) return <ResultsArea options={commands.list.length > 0} ref={resultArea}>
     <CommandList commands={commands.list} active={commands.active} hoverAllowed={pointer.hoverAllowed} onRun={commands.run} />
-  </div>;
+  </ResultsArea>;
   const recent = results[0]?.recent;
   // A reloading library keeps its list and heading line: its notices stay in that line.
   const listShown = showCitations && results.length > 0;
-  return <>{emptyState && !listShown && <FrameNotices />}<div className="results-area scroll-area" ref={resultArea}>
+  return <>{emptyState && !listShown && <FrameNotices />}<ResultsArea options={listShown} ref={resultArea}>
     {/* The list's heading sits in the frame's line, where a notice can stand in for it. */}
     {library?.has_snapshot && results.length > 0 && library.state !== "loading" && showCitations && <FrameHeading>{recent
       ? <div className="ui-list-heading"><h2 id={`recent-${recent}`}>{recent === "cited" ? "Cited here recently" : "Recently added"}</h2></div>
@@ -103,5 +104,5 @@ export function PickerResults({
       onChoose={rows.onChoose} onContext={rows.onContext} onToggle={rows.onToggle} />}
     {!busy && emptyState}
     {library?.sample && !choosingLibrary && <SampleLibraryExit useSampleLibrary={api.useSampleLibrary} perform={perform} />}
-  </div></>;
+  </ResultsArea></>;
 }
