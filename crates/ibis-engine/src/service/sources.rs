@@ -147,12 +147,7 @@ fn info(loaded: &LoadedLibrary) -> LibraryInfo {
         updated_at_ms: now_ms(),
         watch_warning: None,
         zotero: None,
-        duplicate_keys: loaded
-            .warnings
-            .iter()
-            .filter(|warning| warning.code == ibis_sources::WarningCode::DuplicateKey)
-            .filter_map(|warning| warning.key.clone())
-            .collect(),
+        duplicate_keys: loaded.duplicate_keys.clone(),
         damaged_keys: loaded.damaged_keys.clone(),
         cut_short: loaded.cut_short,
     }
@@ -1480,7 +1475,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(
-            DispatchResult::citation(cited.value, 1)
+            DispatchResult::citation(cited.value, 1, &OutputSpec::Preset { name: "pandoc".into() })
                 .unwrap()
                 .with_health(&cited.source_health)
                 .unwrap()

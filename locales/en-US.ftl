@@ -120,6 +120,7 @@ refusal-changed-item = { $reference } changed while citing.
     .agent = Search again.
     .app = Search again.
 refusal-missing-key = { $reference } has no citation key.
+refusal-missing-doi = { $reference } has no usable DOI.
     .cli = Cite it with --style instead.
     .agent = A key syntax cannot name it; use a style.
     .app = Give it one in your library, or choose a style.
@@ -489,6 +490,8 @@ settings-results-count = { $count ->
    *[other] { $count } results
     }
 settings-read-failed = Ibis could not read your settings; reopen Settings to try again.
+settings-forget-failed = Ibis could not forget the app’s format; the saved choice is shown.
+settings-open-failed = Ibis could not open the settings file.
 settings-choice-failed = Ibis could not save this choice; the saved value is shown.
 settings-startup-words = startup launch restart login
 settings-paste-words = paste copy clipboard Enter
@@ -1261,7 +1264,6 @@ library-more-not-listed =
        *[other] { $count } more are not listed.
     }
 
-settings-changed = Changed
 citations-documents = In documents
 citations-keys = In Markdown, LaTeX and Typst
 citations-apps = Formats remembered for apps
@@ -1390,6 +1392,7 @@ problem-formatter-unavailable = The citation could not be written just now.
 problem-annotation-mismatch = This annotation belongs to another reference.
 problem-not-citable = This item cannot be cited as a reference.
 problem-not-from-zotero = This reference was not read from Zotero.
+problem-missing-doi = A selected reference has no DOI. Share it as BibTeX instead.
 
 ## Native command failures.
 app-failure-cli-status = The command line setup could not be read.

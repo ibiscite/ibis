@@ -79,9 +79,9 @@ export const commands = {
 	search: (query: SearchQuery, limit: number, page: number, request: number, scope: string[] | null) => __TAURI_INVOKE<SearchReply>("search", { query, limit, page, request, scope }),
 	/** Current destination's recents; Forget retires in-flight recording. */
 	recentReferences: (forget: boolean) => __TAURI_INVOKE<[SearchReply, boolean, boolean]>("recent_references", { forget }),
-	previewFileCitation: (items: FileSelection[], output: string, expectedRevision: string, intent: PreviewIntent) => __TAURI_INVOKE<FilePreview>("preview_file_citation", { items, output, expectedRevision, intent }),
+	previewFileCitation: (items: DraftItem[], output: string, expectedRevision: string, intent: CitationIntent) => __TAURI_INVOKE<Preview>("preview_file_citation", { items, output, expectedRevision, intent }),
 	/** Read-only examples owned by a prepared preview; never publishes a new ticket. */
-	citationDetails: (ticket: string, contentHash: string, item: number, intent: PreviewIntent) => __TAURI_INVOKE<ReferenceDetails>("citation_details", { ticket, contentHash, item, intent }),
+	citationDetails: (ticket: string, contentHash: string, item: number, intent: CitationIntent) => __TAURI_INVOKE<FormDetails>("citation_details", { ticket, contentHash, item, intent }),
 	/**
 	 * Copy the shown citation. Citing it again can wait for the formatter, so
 	 * that runs on a worker with no lock held; the short commit that writes the
@@ -118,18 +118,18 @@ export const commands = {
 	 * The list as a formatted bibliography, for the person to look at before
 	 * copying it. `None` when nothing listed is in the open library.
 	 */
-	sessionBibliography: (style: string, intent: PreviewIntent) => __TAURI_INVOKE<SessionBibliography | null>("session_bibliography", { style, intent }),
+	sessionBibliography: (style: string, intent: CitationIntent) => __TAURI_INVOKE<SessionBibliography | null>("session_bibliography", { style, intent }),
 	/**
 	 * Copy what was shown. Prepared again from the list as it is now, and refused
 	 * unless that is exactly what the person saw.
 	 */
-	copySessionBibliography: (style: string, contentHash: string, intent: PreviewIntent) => __TAURI_INVOKE<null>("copy_session_bibliography", { style, contentHash, intent }),
+	copySessionBibliography: (style: string, contentHash: string, intent: CitationIntent) => __TAURI_INVOKE<null>("copy_session_bibliography", { style, contentHash, intent }),
 	/**
 	 * Save what was shown, as rich text, a web page or plain text. This is the one
 	 * way the list leaves memory, and only because the person asked. `None` when
 	 * the dialog was cancelled; otherwise the file's name.
 	 */
-	exportSessionBibliography: (style: string, contentHash: string, intent: PreviewIntent) => __TAURI_INVOKE<string | null>("export_session_bibliography", { style, contentHash, intent }),
+	exportSessionBibliography: (style: string, contentHash: string, intent: CitationIntent) => __TAURI_INVOKE<string | null>("export_session_bibliography", { style, contentHash, intent }),
 	/** The preferences the picker starts with. */
 	pickerPreferences: () => __TAURI_INVOKE<PickerPreferences>("picker_preferences"),
 	/**
@@ -284,11 +284,13 @@ export const commands = {
 	dismissWindowPositionUndo: (revision: number) => __TAURI_INVOKE<void>("dismiss_window_position_undo", { revision }),
 };
 
+export const CITATION_FORMS = ["normal","narrative","author-only","year-only","full","bibliography-only"] as const;
+
 export const DEFAULT_OUTPUT = "pandoc" as const;
 
 export const DEFAULT_STYLE = "apa" as const;
 
-export const OUTPUTS = [{"description":null,"entries":false,"example":"[@key]","id":"pandoc","name":"Pandoc","style":false},{"description":null,"entries":false,"example":"@key","id":"pandoc-bare","name":"Pandoc without brackets","style":false},{"description":null,"entries":false,"example":"\\autocite{key}","id":"autocite","name":"BibLaTeX \\autocite","style":false},{"description":null,"entries":false,"example":"\\parencite{key}","id":"parencite","name":"BibLaTeX \\parencite","style":false},{"description":null,"entries":false,"example":"\\textcite{key}","id":"textcite","name":"BibLaTeX \\textcite","style":false},{"description":null,"entries":false,"example":"\\citep{key}","id":"natbib","name":"natbib","style":false},{"description":null,"entries":false,"example":"\\cite{key}","id":"cite","name":"LaTeX \\cite","style":false},{"description":null,"entries":false,"example":"\\cite[key]","id":"context","name":"ConTeXt","style":false},{"description":null,"entries":false,"example":"@key","id":"typst","name":"Typst","style":false},{"description":null,"entries":false,"example":"[cite:@key]","id":"org-cite","name":"Org mode","style":false},{"description":null,"entries":false,"example":"{cite:p}`key`","id":"myst","name":"MyST","style":false},{"description":null,"entries":false,"example":"[#key][]","id":"multi-markdown","name":"MultiMarkdown","style":false},{"description":null,"entries":false,"example":"cite:[key]","id":"ascii-doc","name":"AsciiDoc","style":false},{"description":null,"entries":false,"example":"<cite data-cite=\"key\">key</cite>","id":"jupyter","name":"Jupyter","style":false},{"description":null,"entries":false,"example":"{% cite key %}","id":"jekyll-scholar","name":"Jekyll Scholar","style":false},{"description":null,"entries":false,"example":"[{\"citationKey\":\"key\"}]","id":"cayw-json","name":"CAYW JSON","style":false},{"description":null,"entries":false,"example":"key","id":"keys","name":"Keys only","style":false},{"description":null,"entries":false,"example":null,"id":"csl-json","name":"CSL-JSON","style":false},{"description":null,"entries":false,"example":"{ | Example, 2026 | | | zu:0:ABCD2345 }","id":"scannable-cite","name":"Zotero RTF/ODF Scan","style":false},{"description":"APA (7th edition)","entries":false,"example":"(García, 2021)","id":"apa","name":"APA","style":true},{"description":null,"entries":false,"example":"(García 2021)","id":"chicago-author-date","name":"Chicago (author-date)","style":true},{"description":"Chicago (notes and bibliography)","entries":false,"example":"Ana García, “Synthetic Sleep Study,” Journal of Tests 4 (2021).","id":"chicago-notes-bibliography","name":"Chicago (notes)","style":true},{"description":"MLA (9th edition)","entries":false,"example":"(García)","id":"modern-language-association","name":"MLA","style":true},{"description":"Harvard (Cite Them Right)","entries":false,"example":"(García, 2021)","id":"harvard-cite-them-right","name":"Harvard","style":true},{"description":null,"entries":true,"example":"A. García, “Synthetic sleep study,” Journal of Tests, vol. 4, 2021.","id":"ieee","name":"IEEE","style":true},{"description":null,"entries":true,"example":"García A. Synthetic sleep study. Journal of Tests. 2021;4.","id":"vancouver-nlm","name":"Vancouver","style":true},{"description":null,"entries":true,"example":"García, A. Synthetic sleep study. Journal of Tests 4, (2021).","id":"nature","name":"Nature","style":true},{"description":null,"entries":true,"example":"García A. Synthetic sleep study. Journal of Tests. 2021;4.","id":"american-medical-association","name":"AMA","style":true},{"description":null,"entries":true,"example":"García, A. Synthetic Sleep Study. Journal of Tests 2021, 4.","id":"american-chemical-society","name":"ACS","style":true},{"description":"GB/T 7714-2025 (numeric)","entries":true,"example":"García A. Synthetic sleep study[J]. Journal of Tests，2021，4.","id":"china-national-standard-gb-t-7714-2025-numeric","name":"GB/T 7714 (numeric)","style":true},{"description":"GB/T 7714-2025 (author-date)","entries":false,"example":"（García，2021）","id":"china-national-standard-gb-t-7714-2025-author-date","name":"GB/T 7714 (author-date)","style":true},{"description":"GB/T 7714-2025 (notes)","entries":false,"example":"García A. Synthetic sleep study[J]. Journal of Tests，2021，4.","id":"china-national-standard-gb-t-7714-2025-note","name":"GB/T 7714 (notes)","style":true}] as const;
+export const OUTPUTS = [{"description":null,"entries":false,"example":"[@key]","id":"pandoc","name":"Pandoc","style":false},{"description":null,"entries":false,"example":"@key","id":"pandoc-bare","name":"Pandoc without brackets","style":false},{"description":null,"entries":false,"example":"\\autocite{key}","id":"autocite","name":"BibLaTeX \\autocite","style":false},{"description":null,"entries":false,"example":"\\parencite{key}","id":"parencite","name":"BibLaTeX \\parencite","style":false},{"description":null,"entries":false,"example":"\\textcite{key}","id":"textcite","name":"BibLaTeX \\textcite","style":false},{"description":null,"entries":false,"example":"\\citep{key}","id":"natbib","name":"natbib","style":false},{"description":null,"entries":false,"example":"\\cite{key}","id":"cite","name":"LaTeX \\cite","style":false},{"description":null,"entries":false,"example":"\\cite[key]","id":"context","name":"ConTeXt","style":false},{"description":null,"entries":false,"example":"@key","id":"typst","name":"Typst","style":false},{"description":null,"entries":false,"example":"[cite:@key]","id":"org-cite","name":"Org mode","style":false},{"description":null,"entries":false,"example":"{cite:p}`key`","id":"myst","name":"MyST","style":false},{"description":null,"entries":false,"example":"[#key][]","id":"multi-markdown","name":"MultiMarkdown","style":false},{"description":null,"entries":false,"example":"cite:[key]","id":"ascii-doc","name":"AsciiDoc","style":false},{"description":null,"entries":false,"example":"<cite data-cite=\"key\">key</cite>","id":"jupyter","name":"Jupyter","style":false},{"description":null,"entries":false,"example":"{% cite key %}","id":"jekyll-scholar","name":"Jekyll Scholar","style":false},{"description":null,"entries":false,"example":"[{\"citationKey\":\"key\"}]","id":"cayw-json","name":"CAYW JSON","style":false},{"description":null,"entries":false,"example":"key","id":"keys","name":"Keys only","style":false},{"description":null,"entries":false,"example":null,"id":"csl-json","name":"CSL-JSON","style":false},{"description":null,"entries":false,"example":null,"id":"bibtex","name":"BibTeX","style":false},{"description":null,"entries":false,"example":null,"id":"doi-links","name":"DOI links","style":false},{"description":null,"entries":false,"example":"{ | Example, 2026 | | | zu:0:ABCD2345 }","id":"scannable-cite","name":"Zotero RTF/ODF Scan","style":false},{"description":"APA (7th edition)","entries":false,"example":"(García, 2021)","id":"apa","name":"APA","style":true},{"description":null,"entries":false,"example":"(García 2021)","id":"chicago-author-date","name":"Chicago (author-date)","style":true},{"description":"Chicago (notes and bibliography)","entries":false,"example":"Ana García, “Synthetic Sleep Study,” Journal of Tests 4 (2021).","id":"chicago-notes-bibliography","name":"Chicago (notes)","style":true},{"description":"MLA (9th edition)","entries":false,"example":"(García)","id":"modern-language-association","name":"MLA","style":true},{"description":"Harvard (Cite Them Right)","entries":false,"example":"(García, 2021)","id":"harvard-cite-them-right","name":"Harvard","style":true},{"description":null,"entries":true,"example":"A. García, “Synthetic sleep study,” Journal of Tests, vol. 4, 2021.","id":"ieee","name":"IEEE","style":true},{"description":null,"entries":true,"example":"García A. Synthetic sleep study. Journal of Tests. 2021;4.","id":"vancouver-nlm","name":"Vancouver","style":true},{"description":null,"entries":true,"example":"García, A. Synthetic sleep study. Journal of Tests 4, (2021).","id":"nature","name":"Nature","style":true},{"description":null,"entries":true,"example":"García A. Synthetic sleep study. Journal of Tests. 2021;4.","id":"american-medical-association","name":"AMA","style":true},{"description":null,"entries":true,"example":"García, A. Synthetic Sleep Study. Journal of Tests 2021, 4.","id":"american-chemical-society","name":"ACS","style":true},{"description":"GB/T 7714-2025 (numeric)","entries":true,"example":"García A. Synthetic sleep study[J]. Journal of Tests，2021，4.","id":"china-national-standard-gb-t-7714-2025-numeric","name":"GB/T 7714 (numeric)","style":true},{"description":"GB/T 7714-2025 (author-date)","entries":false,"example":"（García，2021）","id":"china-national-standard-gb-t-7714-2025-author-date","name":"GB/T 7714 (author-date)","style":true},{"description":"GB/T 7714-2025 (notes)","entries":false,"example":"García A. Synthetic sleep study[J]. Journal of Tests，2021，4.","id":"china-national-standard-gb-t-7714-2025-note","name":"GB/T 7714 (notes)","style":true}] as const;
 
 /** A fixed page linked from About. The web page never chooses the address. */
 export type AboutLink = "website" | "source" | "problem" | "licences";
@@ -312,6 +314,17 @@ export type BackupProblem = "not-downloaded" | "unreadable" | "not-a-backup" | "
 
 /** How a check ended. Whoever asked says so in its own place. */
 export type CheckResult = "failed" | "newest" | "offered" | "not_run";
+
+export type CitationForm = "normal" | "narrative" | "author-only" | "year-only" | "full" | "bibliography-only";
+
+/** A transport operation's identity, including an abort that can arrive first. */
+export type CitationIntent = {
+	cancel: boolean;
+	context?: [number, number] | null;
+	keep_order?: boolean;
+	page: number;
+	request: number;
+};
 
 /** The desktop and MCP receive this same shape, without pre-rendered English. */
 export type CommandError = {
@@ -427,6 +440,22 @@ export type DisplayTree = {
 	nodes: DisplayNode[];
 };
 
+export type DraftItem = {
+	cite: string;
+	form?: CitationForm | null;
+	id: ItemRef;
+	/** A canonical locator captured from search; its value is never parsed again. */
+	locator?: Locator | null;
+	/**
+	 * Raw locator field text and its chosen type, mutually exclusive with a
+	 * captured locator.
+	 */
+	locator_input?: LocatorInput | null;
+	/** Literal text; only the engine escapes and formats it. */
+	prefix?: string | null;
+	suffix?: string | null;
+};
+
 /**
  * A waiting editor, for the picker to name. Each request has its own number,
  * so two in the same format are still two.
@@ -454,49 +483,16 @@ export type EndpointStatus = {
 /** How an entry copy ended; a refusal says how to get the entry another way. */
 export type EntryCopy = "copied" | "no-original" | "repeated" | "dependency" | "changed";
 
-export type FilePreview = {
-	content_hash: string;
-	display: DisplayTree;
-	/** The effective output after an editor request overrides the picker. */
-	effective_output: string | null;
-	failure?: Problem | null;
-	/**
-	 * What the engine says about this citation that is no warning, such as a
-	 * full first note; the web view words each from the catalogue.
-	 */
-	notices?: Notice[];
-	problem?: string | null;
-	/**
-	 * Why this key citation is refused: a key in the project bibliography
-	 * names a different work.
-	 */
-	project_refusal?: string | null;
-	text: string;
-	ticket: string;
-	warnings: string[];
-};
-
-export type FileSelection = {
-	cite: string;
-	form?: ReferenceForm | null;
-	id: ItemRef;
-	/** A canonical locator captured from search; its value is never parsed again. */
-	locator?: Locator | null;
-	/**
-	 * Raw locator field text and its chosen type, mutually exclusive with a
-	 * captured locator.
-	 */
-	locator_input?: LocatorInput | null;
-	/** Literal text; only the engine escapes and formats it. */
-	prefix?: string | null;
-	suffix?: string | null;
-};
-
 export type FocusTarget = "format-picker" | "library-picker" | "source-file" | "zotero-sharing-help" | "search" | "results" | "locator" | "citation" | "citation-form" | "language" | "recovery-action" | "project-name" | "project-menu" | "settings" | "request";
+
+export type FormDetails = {
+	current_form: CitationForm | null;
+	forms: FormOption[];
+};
 
 export type FormOption = {
 	example: string | null;
-	form: ReferenceForm;
+	form: CitationForm;
 	reason: string | null;
 };
 
@@ -541,7 +537,7 @@ export type ItemRef = {
 	library: LibraryId;
 };
 
-export type KeySyntax = "pandoc" | "biblatex" | "natbib" | "latex" | "context" | "typst" | "org-cite" | "myst" | "multi-markdown" | "ascii-doc" | "jupyter" | "jekyll-scholar" | "scannable-cite" | "keys" | "csl-json" | "cayw-json";
+export type KeySyntax = "pandoc" | "biblatex" | "natbib" | "latex" | "context" | "typst" | "org-cite" | "myst" | "multi-markdown" | "ascii-doc" | "jupyter" | "jekyll-scholar" | "scannable-cite" | "keys" | "csl-json" | "bibtex" | "doi-links" | "cayw-json";
 
 /**
  * A library's opaque token. It says nothing about the library: its kind and
@@ -625,10 +621,9 @@ export type LocalMoment = {
 	year: number;
 };
 
-/** Picker wire names over the engine's canonical locator vocabulary. */
 export type Locator = {
-	label: LocatorTerm;
-	/** Canonical value, including literal text preserved by the engine. */
+	term: LocatorTerm;
+	/** Literal range or pinpointer, never interpreted as markup. */
 	value: string;
 };
 
@@ -840,12 +835,26 @@ export type PreferenceChange = {
 	small_surprises?: boolean | null;
 };
 
-export type PreviewIntent = {
-	cancel: boolean;
-	context?: [number, number] | null;
-	keep_order?: boolean;
-	page: number;
-	request: number;
+export type Preview = {
+	content_hash: string;
+	display: DisplayTree;
+	/** The effective output after an editor request overrides the picker. */
+	effective_output: string | null;
+	failure?: Problem | null;
+	/**
+	 * What the engine says about this citation that is no warning, such as a
+	 * full first note; the web view words each from the catalogue.
+	 */
+	notices?: Notice[];
+	problem?: string | null;
+	/**
+	 * Why this key citation is refused: a key in the project bibliography
+	 * names a different work.
+	 */
+	project_refusal?: string | null;
+	text: string;
+	ticket: string;
+	warnings: string[];
 };
 
 /** The desktop and MCP receive this same shape, without pre-rendered English. */
@@ -963,13 +972,6 @@ export type Recovery = {
 	action: "none";
 	reason: NoRecoveryReason;
 };
-
-export type ReferenceDetails = {
-	current_form: ReferenceForm | null;
-	forms: FormOption[];
-};
-
-export type ReferenceForm = "normal" | "narrative" | "author-only" | "year-only" | "full";
 
 /**
  * One setting a restore changes. Values are as the settings file writes

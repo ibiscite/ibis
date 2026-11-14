@@ -217,6 +217,8 @@ impl CitationError {
             ),
             Self::FormatterUnavailable | Self::Unknown => (R::Retry, F::RecoveryAction),
             Self::NotCitable => (R::SelectReferences, F::Results),
+            // DOI links need a DOI on every reference; another form (BibTeX) has no such need.
+            Self::MissingDoi => (R::ChooseForm, F::CitationForm),
         };
         let code = name(self);
         let id = if self == Self::Unknown {

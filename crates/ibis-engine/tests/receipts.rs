@@ -1,6 +1,6 @@
 //! A receipt describes the citation a client received, even after newer work.
 #![allow(clippy::unwrap_used)]
-use ibis_core::contract::{CitationResult, CitationWarningCode, ErrorCode, LibraryObject, Snapshot};
+use ibis_core::contract::{CitationResult, CitationWarningCode, ErrorCode, LibraryObject, OutputSpec, Snapshot};
 use ibis_engine::{Cancellation, DispatchResult, Engine, Method, mcp};
 use serde_json::{Value, json};
 
@@ -432,7 +432,7 @@ fn an_older_prepared_result_keeps_its_own_records_and_checks_after_a_newer_resul
             .is_err()
     );
     let earlier = earlier.into_checked();
-    let delayed = DispatchResult::citation(earlier.value, 1)
+    let delayed = DispatchResult::citation(earlier.value, 1, &OutputSpec::Preset { name: "pandoc".into() })
         .unwrap()
         .with_health(&earlier.source_health)
         .unwrap();

@@ -48,7 +48,7 @@ pub(crate) fn load(library: &LibraryId, text: &str, previous: Option<&Snapshot>)
                     records.skip(start, (WarningCause::NotClosed, None));
                 }
                 if !records.start(number) {
-                    return Ok(records.parsed);
+                    return Ok(records.finish());
                 }
                 open = Some((number, vec![(tag, value.to_owned())]));
             }
@@ -80,7 +80,7 @@ pub(crate) fn load(library: &LibraryId, text: &str, previous: Option<&Snapshot>)
     if !found && !text.trim().is_empty() {
         return Err(SourceError::InvalidData);
     }
-    Ok(records.parsed)
+    Ok(records.finish())
 }
 
 /// Lines split at `\r\n`, `\n` or `\r`, numbered from 1.

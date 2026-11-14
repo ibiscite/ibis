@@ -1,3 +1,4 @@
+import type { Problem } from "./bindings";
 import { fixtureCitationKey } from "./testing/app";
 import { recordId } from "./test-fixtures";
 import { afterEach, expect, test, vi } from "vitest";
@@ -7,6 +8,9 @@ import { App } from "./App";
 import { oneSurface } from "../canvas/geometry";
 import { inventedSource, PageSources } from "./features/reader/source";
 import { displayTree, backend, chooseForm, chooseFromMore, paletteRow, prepared, receipt, resetApp, result, openCitationDetails, textField, formExamples, closeCitationDetails, type PreviewRequest, inCitation, findInCitation, citationDetails, citationKeys, lineReceipt, removeFromCitation } from "./testing/app";
+
+
+const pageMessage = "Reference 1: Page needs a page or range. Enter one after the label, or clear Page.";
 
 afterEach(resetApp);
 
@@ -37,6 +41,17 @@ test("the surface guard ignores the reader HUD but catches a second registered s
     expect(oneSurface()).toEqual([expect.stringContaining("2 surfaces at once")]);
     retained.remove();
   } finally { boxes.mockRestore(); }
+});
+
+test("a token's details float over the picker: ⌘1–9 leaves the list alone under them, and a hide closes them", async () => {
+  const calls = backend({ search: () => [result("a", "First work"), result("b", "Second work")] });
+  render(<App />);
+  fireEvent.click(await screen.findByText("First work"), { ctrlKey: true });
+  await openCitationDetails();
+  expect(fireEvent.keyDown(document.body, { key: "2", code: "Digit2", ctrlKey: true })).toBe(true);
+  expect(calls).not.toContain("copy_file_citation");
+  await act(async () => { await emit("picker:hidden"); });
+  expect(citationDetails()).toBeNull();
 });
 
 test("closing slow inspector formatting lets citation B finish before the abandoned examples", async () => {
@@ -217,7 +232,7 @@ test("source and sentence-case warnings stay visible in preview and copy feedbac
 
 test.each(["S.12", "pages of notes"])("a form edit preserves the captured page %s as canonical text", async (value) => {
   const previews: PreviewRequest[] = [];
-  const locator = { label: "page", value };
+  const locator = { term: "page", value };
   backend({ search: () => ({ revision: "1", results: [result("a", "Synthetic work")],
     interpretation: { search: "Example", locator, typed: `pp. "${value}"` } }),
     preview_file_citation: (request) => { previews.push(request); return receipt("Canonical output"); } });
@@ -232,7 +247,7 @@ test.each(["S.12", "pages of notes"])("a form edit preserves the captured page %
 });
 
 test("a label-only Page refuses copy until corrected", async () => {
-  const message = "Reference 1: Page needs a page or range. Enter one after the label, or clear Page.";
+  const message = pageMessage;
   const copied: string[] = [];
   const calls = backend({ search: () => [result("a", "Synthetic work")],
     preview_file_citation: ({ items }) => {
@@ -410,7 +425,7 @@ test("a form edit cancels queued Enter and ignores the retired preview", async (
 
 test("changing only the form does not offer to reapply an unchanged search page", async () => {
   backend({ search: () => ({ revision: "1", results: [result("a", "Synthetic work")],
-    interpretation: { search: "Synthetic", locator: { label: "page", value: "12" }, language: "en-US" } }) });
+    interpretation: { search: "Synthetic", locator: { term: "page", value: "12" }, language: "en-US" } }) });
   render(<App />);
   await openCitationDetails();
   await chooseForm("Name in the sentence");
@@ -614,7 +629,7 @@ test("a refused page stays visible in place, and Enter in Page copies nothing", 
 
 test("failed examples leave every form usable and say so once, quietly", async () => {
   const previews: PreviewRequest[] = [];
-  backend({ search: () => [result("a", "Invented work")], citation_details: () => { throw { code: "failed", message: "Invented failure" }; },
+  backend({ search: () => [result("a", "Invented work")], citation_details: () => { throw { code: "internal", message: { id: "error-internal", args: {} }, recovery: { action: "retry" }, focus: "recovery-action" } satisfies Problem; },
     preview_file_citation: (request) => { previews.push(request); return receipt("Output"); } });
   render(<App />);
   await openCitationDetails();

@@ -1,9 +1,9 @@
 //! The bundled data uses the production CSL-JSON reader and citation receipts.
-use super::engine_file::FileSelection;
 use super::load::{Loaded, load_source};
 use super::state::{begin_open, install_loaded, leave_samples};
 use super::status::status;
 use super::*;
+use ibis_core::contract::DraftItem;
 use ibis_engine::Cancellation;
 use serde_json::json;
 use std::path::PathBuf;
@@ -20,11 +20,11 @@ fn loaded(source: Source) -> Library {
     }
 }
 
-fn preview(file: &engine_file::FileLibrary, term: &str) -> engine_file::FilePreview {
+fn preview(file: &engine_library::FileLibrary, term: &str) -> ibis_core::contract::Preview {
     preview_output(file, term, "apa")
 }
 
-fn preview_output(file: &engine_file::FileLibrary, term: &str, output: &str) -> engine_file::FilePreview {
+fn preview_output(file: &engine_library::FileLibrary, term: &str, output: &str) -> ibis_core::contract::Preview {
     let query =
         serde_json::from_value(json!({"text":term,"interpret_locators":false})).unwrap_or_else(|e| panic!("{e}"));
     let found = file
@@ -32,9 +32,10 @@ fn preview_output(file: &engine_file::FileLibrary, term: &str, output: &str) -> 
         .unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(found.results.len(), 1);
     let row = &found.results[0];
-    file.preview(
-        file.reserve_preview(),
-        vec![FileSelection {
+    crate::test_citations::preview(
+        &file.engine,
+        file.sample,
+        vec![DraftItem {
             prefix: None,
             suffix: None,
             id: row.id.clone(),
@@ -109,16 +110,15 @@ fn bundled_samples_load_through_csl_json_and_copy_marked_apa() {
     ] {
         let receipt = preview(&file, term);
         assert_eq!(receipt.text, text);
-        let copied = file
-            .copy(&receipt.ticket, &receipt.content_hash, |content| {
-                assert_eq!(content.text, text);
-                assert!(content.html.is_some() && content.rtf.is_some());
-                for representation in [Some(content.text), content.html, content.rtf].into_iter().flatten() {
-                    assert!(representation.contains("[Sample]"));
-                }
-                Ok(())
-            })
-            .unwrap_or_else(|_| panic!("copy"));
+        let copied = crate::test_citations::copy(&file.engine, &receipt.ticket, &receipt.content_hash, |content| {
+            assert_eq!(content.text, text);
+            assert!(content.html.is_some() && content.rtf.is_some());
+            for representation in [Some(content.text), content.html, content.rtf].into_iter().flatten() {
+                assert!(representation.contains("[Sample]"));
+            }
+            Ok(())
+        })
+        .unwrap_or_else(|_| panic!("copy"));
         assert_eq!(copied.text, text);
         assert_eq!(copied.warnings, receipt.warnings);
     }
@@ -136,7 +136,7 @@ fn every_sample_style_and_key_output_keeps_its_marker_on_the_clipboard() {
     ] {
         let receipt = preview_output(&file, "lantern", style);
         assert!(receipt.text.ends_with(" [Sample]"), "{style:?}");
-        file.copy(&receipt.ticket, &receipt.content_hash, |content| {
+        crate::test_citations::copy(&file.engine, &receipt.ticket, &receipt.content_hash, |content| {
             assert_eq!(content.text, receipt.text);
             assert!(content.html.is_some() && content.rtf.is_some(), "{style:?}");
             for representation in [Some(content.text), content.html, content.rtf].into_iter().flatten() {
@@ -157,7 +157,7 @@ fn every_sample_style_and_key_output_keeps_its_marker_on_the_clipboard() {
     ] {
         let receipt = preview_output(&file, "lantern", format);
         assert_eq!(receipt.text, expected, "{format:?}");
-        file.copy(&receipt.ticket, &receipt.content_hash, |content| {
+        crate::test_citations::copy(&file.engine, &receipt.ticket, &receipt.content_hash, |content| {
             assert_eq!(content.text, expected);
             for representation in [Some(content.text), content.html, content.rtf].into_iter().flatten() {
                 assert!(representation.contains("[Sample]"), "{format:?}");
@@ -173,24 +173,24 @@ fn sample_provenance_changes_the_prepared_hash_and_normal_library_copies_stay_un
     let Source::Samples(path) = source() else {
         panic!("sample source")
     };
-    let normal = engine_file::FileLibrary::open(&path).unwrap_or_else(|e| panic!("{e}"));
+    let normal = engine_library::FileLibrary::open(&path).unwrap_or_else(|e| panic!("{e}"));
     let original = preview(&normal, "lantern");
     assert_eq!(original.text, "(Vale, 2024)");
-    normal
-        .copy(&original.ticket, &original.content_hash, |content| {
-            for representation in [Some(content.text), content.html, content.rtf].into_iter().flatten() {
-                assert!(!representation.contains("[Sample]"));
-            }
-            Ok(())
-        })
-        .unwrap_or_else(|_| panic!("normal copy"));
+    crate::test_citations::copy(&normal.engine, &original.ticket, &original.content_hash, |content| {
+        for representation in [Some(content.text), content.html, content.rtf].into_iter().flatten() {
+            assert!(!representation.contains("[Sample]"));
+        }
+        Ok(())
+    })
+    .unwrap_or_else(|_| panic!("normal copy"));
     let samples = loaded(source()).file.unwrap_or_else(|| panic!("sample engine"));
     let marked = preview(&samples, "lantern");
     assert_ne!(marked.content_hash, original.content_hash);
     assert!(
-        samples
-            .copy(&marked.ticket, &original.content_hash, |_| panic!("unmarked preview"))
-            .is_err()
+        crate::test_citations::copy(&samples.engine, &marked.ticket, &original.content_hash, |_| panic!(
+            "unmarked preview"
+        ))
+        .is_err()
     );
 }
 
@@ -210,8 +210,10 @@ fn leaving_samples_clears_the_snapshot_and_retires_pending_loads_and_copy_receip
     assert_eq!(status.references, 0);
     assert_eq!(status.settings_notice.as_deref(), Some("Settings recovered"));
     assert!(
-        file.copy(&receipt.ticket, &receipt.content_hash, |_| panic!("retired copy"))
-            .is_err()
+        crate::test_citations::copy(&file.engine, &receipt.ticket, &receipt.content_hash, |_| panic!(
+            "retired copy"
+        ))
+        .is_err()
     );
     let (pending, _, _) = begin_open(&library, &requests, source()).unwrap_or_else(|| panic!("open"));
     leave_samples(&library, &requests);

@@ -1,20 +1,35 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
+import { emit } from "@tauri-apps/api/event";
 import type { FormatSettingsView } from "../bindings";
 import { FormatSettings as FormatRows, useFormatSettings } from "./FormatSettings";
-import type { SettingsApi } from "./api";
+import { settingsApi, type SettingsApi } from "./api";
+
+vi.mock("@tauri-apps/api/event", () => {
+  const listeners = new Map<string, Set<(event: { payload: unknown }) => void>>();
+  return {
+    listen: async (name: string, handler: (event: { payload: unknown }) => void) => {
+      if (!listeners.has(name)) listeners.set(name, new Set());
+      listeners.get(name)!.add(handler);
+      return () => { listeners.get(name)!.delete(handler); };
+    },
+    emit: async (name: string, payload: unknown) => {
+      for (const handler of listeners.get(name) ?? []) handler({ payload });
+    },
+  };
+});
 
 afterEach(cleanup);
 const empty: FormatSettingsView = { apps: [], writings: [], key_output_visible: false };
 const remembered: FormatSettingsView = { ...empty, apps: [{ id: "macos:example.word", app: "Word", format: "apa" }] };
 const pending = <T,>() => {
-  let resolve!: (next: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
-  return { promise, resolve };
+  let resolve!: (next: T) => void, reject!: (reason: Error) => void;
+  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
 };
 function api() {
-  return { formatSettings: vi.fn(async () => remembered), forgetAppFormat: vi.fn(async () => null),
-    openSettingsFile: vi.fn(async () => null), onPreferencesChanged: async () => () => {} } as unknown as SettingsApi;
+  return { ...settingsApi, formatSettings: vi.fn(async () => remembered), forgetAppFormat: vi.fn(async () => null),
+    openSettingsFile: vi.fn(async () => null) } as SettingsApi;
 }
 
 function FormatSettings({ api }: { api: SettingsApi }) {
@@ -32,6 +47,35 @@ test("forgetting an app restores its usual format and hides the empty group", as
   expect(screen.queryByText("Writings")).toBeNull();
 });
 
+test.each(["before", "after"])("a focus read finishing %s Forget cannot leave a forgotten app shown", async (order) => {
+  const native = api(), save = pending<void>(), focused = pending<FormatSettingsView>();
+  let saved = remembered;
+  vi.mocked(native.formatSettings!).mockResolvedValueOnce(remembered).mockReturnValueOnce(focused.promise).mockImplementation(async () => saved);
+  vi.mocked(native.forgetAppFormat!).mockImplementation(async () => { await save.promise; saved = empty; return null; });
+  render(<FormatSettings api={native} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Forget" }));
+  await act(async () => { fireEvent.focus(window); });
+  if (order === "before") await act(async () => focused.resolve(remembered));
+  expect(screen.getByText("Word")).toBeTruthy();
+  await act(async () => save.resolve());
+  if (order === "after") await act(async () => focused.resolve(remembered));
+  expect(saved.apps).toHaveLength(0);
+  expect(screen.queryByText("Word")).toBeNull();
+  expect(screen.queryAllByRole("button", { name: "Forget" })).toHaveLength(0);
+});
+
+test.each(["preferences:changed", "writings:changed"])("a live edit reported by %s refreshes Settings without refocusing", async (event) => {
+  const native = api();
+  let saved: FormatSettingsView = { ...empty, writings: [{ id: "draft", name: "Draft", output: "apa", bibliography: null }] };
+  vi.mocked(native.formatSettings!).mockImplementation(async () => saved);
+  render(<FormatSettings api={native} />);
+  await screen.findByText("Draft");
+  saved = { ...empty, writings: [{ id: "draft", name: "Revised draft", output: "apa", bibliography: null }] };
+  await act(async () => { await emit(event, { revision: 1, fields: [] }); });
+  expect(screen.queryByText("Draft")).toBeNull();
+  expect(screen.getByText("Revised draft")).toBeTruthy();
+});
+
 test.each(["refused", "failed I/O"])("a forget that is %s keeps the saved app and reports the failure", async () => {
   const native = api();
   vi.mocked(native.forgetAppFormat!).mockRejectedValueOnce(new Error("synthetic refusal"));
@@ -40,6 +84,40 @@ test.each(["refused", "failed I/O"])("a forget that is %s keeps the saved app an
   await screen.findByRole("alert");
   expect(screen.getByText("Word")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Forget" }).hasAttribute("disabled")).toBe(false);
+});
+
+test("a successful focus read after Forget fails keeps the failure visible until a successful retry", async () => {
+  const native = api(), save = pending<null>(), focused = pending<FormatSettingsView>();
+  vi.mocked(native.forgetAppFormat!).mockReturnValueOnce(save.promise);
+  vi.mocked(native.formatSettings!).mockResolvedValueOnce(remembered).mockReturnValueOnce(focused.promise);
+  render(<FormatSettings api={native} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Forget" }));
+  fireEvent.focus(window);
+  await act(async () => save.reject(new Error("synthetic failure")));
+  await act(async () => focused.resolve(remembered));
+  expect(screen.getByText("Word")).toBeTruthy();
+  expect(screen.getByRole("alert").textContent).toContain("could not forget");
+  fireEvent.click(screen.getByRole("button", { name: "Forget" }));
+  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+});
+
+test("opening the settings file has its own failure, cleared by dismissal or a successful retry", async () => {
+  const native = api();
+  vi.mocked(native.openSettingsFile!).mockRejectedValueOnce(new Error("synthetic failure")).mockResolvedValueOnce(null)
+    .mockRejectedValueOnce(new Error("synthetic failure"));
+  render(<FormatSettings api={native} />);
+  const open = await screen.findByRole("button", { name: "Open Settings File" });
+  fireEvent.click(open);
+  expect((await screen.findByRole("alert")).textContent).toContain("could not open");
+  fireEvent.focus(window);
+  await act(async () => {});
+  expect(screen.getByRole("alert")).toBeTruthy();
+  fireEvent.click(open);
+  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  fireEvent.click(open);
+  await screen.findByRole("alert");
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+  expect(screen.queryByRole("alert")).toBeNull();
 });
 
 test("an older file snapshot cannot restore an app after a newer read or close and reopen", async () => {

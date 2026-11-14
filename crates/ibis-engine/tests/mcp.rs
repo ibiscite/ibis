@@ -142,7 +142,7 @@ fn agents_never_see_private_notes_and_long_text_is_cut() {
     assert_eq!(summary.chars().count(), mcp::MAX_TEXT + 1);
     assert!(summary.ends_with('…'));
 
-    // CSL-JSON output would carry the whole record, notes included.
+    // Record sharing stays outside MCP, even with share-safe metadata.
     let exported = tool(
         &engine,
         "cite",

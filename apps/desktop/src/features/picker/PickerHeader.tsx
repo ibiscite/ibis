@@ -59,8 +59,6 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
       <SearchField
         id="search"
         label={say("picker-search-label")}
-        clearLabel={say("picker-clear-search")}
-        onClear={() => { onQueryChange(""); inputRef.current?.focus(); }}
         trailing={pageToken}
         placeholder={say("picker-search-placeholder")}
         role="combobox"
