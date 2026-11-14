@@ -5,6 +5,79 @@ use std::time::Duration;
 
 const LIMIT: Duration = Duration::from_secs(2);
 
+#[test]
+fn break_foundation_blocked_stdout_does_not_block_cancellation() {
+    struct BlockedOutput {
+        entered: mpsc::Sender<()>,
+        release: mpsc::Receiver<()>,
+        first: bool,
+    }
+    impl Write for BlockedOutput {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            if self.first {
+                self.first = false;
+                self.entered.send(()).unwrap();
+                self.release.recv_timeout(Duration::from_secs(5)).unwrap();
+            }
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    let (send, input) = mpsc::channel();
+    let (entered, blocked) = mpsc::channel();
+    let (release, gate) = mpsc::channel();
+    let (started, running) = mpsc::channel();
+    let (finish, done) = mpsc::channel();
+    let done = Mutex::new(done);
+    let server = std::thread::spawn(move || {
+        serve_with(
+            &Engine::new().unwrap(),
+            Session::default(),
+            io::BufReader::new(Input::new(input)),
+            BlockedOutput {
+                entered,
+                release: gate,
+                first: true,
+            },
+            |_, _, message, cancel| {
+                started.send(cancel.clone()).unwrap();
+                done.lock().unwrap().recv_timeout(Duration::from_secs(5)).unwrap();
+                Some(json!({"jsonrpc":"2.0","id":message["id"],"result":{}}))
+            },
+        )
+    });
+    let send_message = |message: Value| send.send(format!("{message}\n").into_bytes()).unwrap();
+    send_message(json!({"jsonrpc":"2.0","id":1,"method":"tools/call"}));
+    let cancel = running.recv_timeout(LIMIT).unwrap();
+    // A small ping reply fills the simulated client's stdout while a tool runs.
+    send_message(json!({"jsonrpc":"2.0","id":2,"method":"ping"}));
+    blocked.recv_timeout(LIMIT).unwrap();
+    send_message(json!({"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1}}));
+    let deadline = std::time::Instant::now() + Duration::from_millis(250);
+    while !cancel.is_cancelled() && std::time::Instant::now() < deadline {
+        std::thread::yield_now();
+    }
+    let cancelled_while_blocked = cancel.is_cancelled();
+    release.send(()).unwrap();
+    let deadline = std::time::Instant::now() + LIMIT;
+    while !cancel.is_cancelled() && std::time::Instant::now() < deadline {
+        std::thread::yield_now();
+    }
+    finish.send(()).unwrap();
+    drop(send);
+    server.join().unwrap().unwrap();
+    assert!(
+        cancel.is_cancelled(),
+        "control: cancellation works after stdout resumes"
+    );
+    assert!(
+        cancelled_while_blocked,
+        "blocked stdout held the transport lock and prevented cancellation"
+    );
+}
+
 struct Input {
     receiver: mpsc::Receiver<Vec<u8>>,
     current: io::Cursor<Vec<u8>>,

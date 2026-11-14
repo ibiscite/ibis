@@ -166,6 +166,110 @@ mod tests {
         io::{self, BufReader, Cursor, Read},
         time::{Duration, Instant},
     };
+
+    #[test]
+    fn break_foundation_cancellation_after_commit_cannot_report_rollback() {
+        let committed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let effect = committed.clone();
+        let dispatch = Arc::new(move |_: Method, _: &Value, cancel: &Cancellation| {
+            // Deterministic seam: the operation committed, then cancellation arrived
+            // before the transport inspected its successful return value.
+            effect.store(true, std::sync::atomic::Ordering::SeqCst);
+            cancel.cancel();
+            Ok(DispatchResult {
+                data: json!({"committed":true}),
+                exit_code: ibis_core::contract::ExitCode::Ok,
+                text: None,
+                source_findings: false,
+            })
+        });
+        let mut input = vec![];
+        protocol::write_frame(&mut input, &json!({"jsonrpc":"2.0","id":1,"method":"libraries"})).unwrap();
+        let mut output = vec![];
+        run(dispatch, Cursor::new(input), &mut output).unwrap();
+        let response = protocol::read_frame(&mut Cursor::new(output)).unwrap().unwrap();
+        assert!(committed.load(std::sync::atomic::Ordering::SeqCst));
+        assert_eq!(
+            response["result"]["committed"], true,
+            "committed operation reported as: {response}"
+        );
+    }
+
+    #[test]
+    fn break_foundation_full_reply_queue_does_not_block_cancellation() {
+        struct BlockedOutput(mpsc::Sender<()>, mpsc::Receiver<()>, bool);
+        impl Write for BlockedOutput {
+            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+                if self.2 {
+                    self.2 = false;
+                    self.0.send(()).unwrap();
+                    self.1.recv_timeout(Duration::from_secs(5)).unwrap();
+                }
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+        let (input, chunks) = mpsc::channel();
+        let (entered, blocked) = mpsc::channel();
+        let (release, gate) = mpsc::channel();
+        let (started, running) = mpsc::channel();
+        let (finish, done) = mpsc::channel();
+        let done = std::sync::Mutex::new(done);
+        let dispatch = Arc::new(move |_: Method, _: &Value, cancel: &Cancellation| {
+            started.send(cancel.clone()).unwrap();
+            done.lock().unwrap().recv_timeout(Duration::from_secs(5)).unwrap();
+            Ok(DispatchResult {
+                data: json!({}),
+                exit_code: ibis_core::contract::ExitCode::Ok,
+                text: None,
+                source_findings: false,
+            })
+        });
+        let server = thread::spawn(move || {
+            run(
+                dispatch,
+                BufReader::new(Input {
+                    chunks,
+                    current: Cursor::new(vec![]),
+                }),
+                BlockedOutput(entered, gate, true),
+            )
+        });
+        send(&input, json!({"jsonrpc":"2.0","id":1,"method":"search"}));
+        let cancel = running.recv_timeout(Duration::from_secs(2)).unwrap();
+        send(&input, json!({"jsonrpc":"2.0","id":100,"method":"invented-unknown"}));
+        blocked.recv_timeout(Duration::from_secs(2)).unwrap();
+        for id in 101..=109 {
+            send(&input, json!({"jsonrpc":"2.0","id":id,"method":"invented-unknown"}));
+        }
+        send(
+            &input,
+            json!({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":1}}),
+        );
+        let deadline = Instant::now() + Duration::from_millis(250);
+        while !cancel.is_cancelled() && Instant::now() < deadline {
+            thread::yield_now();
+        }
+        let cancelled_while_blocked = cancel.is_cancelled();
+        release.send(()).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !cancel.is_cancelled() && Instant::now() < deadline {
+            thread::yield_now();
+        }
+        finish.send(()).unwrap();
+        drop(input);
+        server.join().unwrap().unwrap();
+        assert!(
+            cancel.is_cancelled(),
+            "control: cancellation works after stdout resumes"
+        );
+        assert!(
+            cancelled_while_blocked,
+            "full reply queue blocked the only cancellation reader"
+        );
+    }
     struct Input {
         chunks: mpsc::Receiver<Vec<u8>>,
         current: Cursor<Vec<u8>>,
