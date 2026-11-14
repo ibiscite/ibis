@@ -13,7 +13,7 @@ fn app_outputs_and_remembered_key_workflows_copy_the_exact_preview() -> Result<(
         &path,
         "@article{demo,title={Synthetic research},author={Researcher, Synthetic},year={2026}}\n",
     )?;
-    let file = FileLibrary::open(&path).map_err(|_| "open invented library")?;
+    let file = FileLibrary::open(&path, &ibis_engine::Cancellation::default()).map_err(|_| "open invented library")?;
     let rows = serde_json::to_value(
         file.search(
             &serde_json::from_value(json!({"text":"research","interpret_locators":false}))?,
@@ -63,7 +63,7 @@ fn app_outputs_and_remembered_key_workflows_copy_the_exact_preview() -> Result<(
             .update(|settings| settings.remember_app_output(&browser, output.id().to_owned()))
             .map_err(|error| format!("remember {}: {error}", output.id()))?;
         // What a restart reads for the app.
-        let reopened = ibis_engine::settings::load(&settings_path).settings;
+        let reopened = crate::settings_fixture::read(&settings_path);
         let remembered = reopened
             .app_output(&browser)
             .and_then(crate::output::listed)

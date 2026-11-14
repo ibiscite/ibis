@@ -141,12 +141,39 @@ fn header_line(reader: &mut impl BufRead, remaining: &mut usize) -> Result<Optio
 }
 
 pub fn write_frame(writer: &mut impl Write, message: &Value) -> Result<(), FrameError> {
-    let body = crate::wire::encode(message, MAX_RESPONSE_BYTES)?;
+    let reply = crate::wire::EncodedReply::new(message, MAX_RESPONSE_BYTES)?;
+    write_encoded_frame(writer, &reply)
+}
+
+pub(crate) fn write_encoded_frame(
+    writer: &mut impl Write,
+    reply: &crate::wire::EncodedReply,
+) -> Result<(), FrameError> {
+    let body = reply.as_bytes();
     write!(writer, "Content-Length: {}\r\n\r\n", body.len()).map_err(|_| FrameError::Io)?;
     writer
-        .write_all(&body)
+        .write_all(body)
         .and_then(|()| writer.flush())
         .map_err(|_| FrameError::Io)
+}
+
+#[cfg(test)]
+#[test]
+#[allow(clippy::unwrap_used)]
+fn retained_reply_rpc_encoding_errors_emit_no_header_or_partial_body() {
+    use crate::wire::retained_reply_tests::{RecordingWriter, payload};
+    let mut message = payload();
+    for _ in 0..130 {
+        message = Value::Array(vec![message]);
+    }
+    let mut writer = RecordingWriter::default();
+    assert_eq!(write_frame(&mut writer, &message), Err(FrameError::TooLarge));
+    assert!(writer.bytes.is_empty());
+    assert!(writer.events.lock().unwrap().is_empty());
+    write_frame(&mut writer, &payload()).unwrap();
+    let mut reader = io::Cursor::new(writer.bytes);
+    assert_eq!(read_response_frame(&mut reader).unwrap(), Some(payload()));
+    assert_eq!(read_response_frame(&mut reader).unwrap(), None);
 }
 
 pub(crate) fn validate_shape(message: &Value) -> Result<(), FrameError> {

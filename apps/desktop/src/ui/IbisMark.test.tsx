@@ -73,12 +73,12 @@ test("welcome, opening and search marks keep distinct, resolvable gradient and e
   }
 });
 
-test("the 24 px picker export opens its eye to two pixels without changing the silhouette", () => {
+test("the 32 px picker export opens its eye to two pixels without changing the silhouette", () => {
   const { container } = render(<><IbisMark /><IbisMark size="search" /></>);
   const [large, small] = [...container.querySelectorAll("svg")];
   const side = Number(small!.getAttribute("viewBox")!.split(" ")[2]);
   const eye = Number(small!.querySelector("mask circle")!.getAttribute("r"));
-  expect(eye * 2 * 24 / side).toBeGreaterThanOrEqual(2);
+  expect(eye * 2 * 32 / side).toBeCloseTo(2, 4);
   expect([...small!.querySelectorAll("g path")].map((node) => node.getAttribute("d")))
     .toEqual([...large!.querySelectorAll("g path")].map((node) => node.getAttribute("d")));
   expect(Number(large!.querySelector("mask circle")!.getAttribute("r"))).toBe(2.1);

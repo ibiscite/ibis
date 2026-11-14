@@ -135,6 +135,7 @@ fn refused_records_say_which_and_print_nothing_on_stdout() -> Result {
     let (code, output, errors) = run(&["ibis", "cite", "--records", "--format", "pandoc"], keyless)?;
     assert_eq!((code, output.is_empty()), (1, true), "{errors}");
     assert!(errors.contains("no citation key"), "{errors}");
+    assert!(errors.contains("Cite it with --style instead."), "{errors}");
     let (code, _, errors) = run(&["ibis", "cite", "--records", "--file", "invented.bib"], keyless)?;
     assert_eq!(code, 2, "{errors}");
     let (code, _, _) = run(&["ibis", "cite", "--records"], br#"{"id":"r1"}"#)?;

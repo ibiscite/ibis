@@ -484,9 +484,16 @@ fn commit_shown(
     let format = {
         let settings = ibis_engine::settings::load(&app.state::<crate::preferences::SettingsFile>().path);
         let target = captured.as_ref().map(|(id, _, _)| id);
+<<<<<<< HEAD
         let chosen = ibis_engine::format::choose(&settings.settings, target);
         (settings.problem.is_none() && chosen.output == *recited.citation().request_output())
             .then(|| (target.cloned(), chosen))
+=======
+        settings.cites().ok().and_then(|saved| {
+            let chosen = ibis_engine::format::choose(saved, target);
+            (chosen.output == *recited.citation().request_output()).then(|| (target.cloned(), chosen))
+        })
+>>>>>>> origin/main
     };
     let copied = commit_copy(
         &file,
@@ -502,7 +509,8 @@ fn commit_shown(
                 || {
                     #[cfg(target_os = "windows")]
                     let delivery = {
-                        let (token, sequence) = clipboard::write(&app, content).map_err(CommandError::from)?;
+                        let (token, sequence) =
+                            clipboard::write(&app, content).map_err(|_| CommandError::ClipboardUnavailable)?;
                         crate::paste::remember_copy(&app, attempt, sequence, token)
                     };
                     #[cfg(not(target_os = "windows"))]

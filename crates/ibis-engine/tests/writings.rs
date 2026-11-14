@@ -349,8 +349,8 @@ fn settings_contention_and_outside_edits_have_distinct_retryable_diagnostics() {
     ] {
         let problem = Problem::from(&error);
         assert_eq!(problem.code, code);
-        assert_eq!(problem.info.recovery, Recovery::Retry);
-        assert_eq!(problem.info.focus, FocusTarget::RecoveryAction);
+        assert_eq!(problem.info.recovery(), Recovery::Retry);
+        assert_eq!(problem.info.recovery().focus(), FocusTarget::RecoveryAction);
         let text = ibis_engine::catalogue::problem(&problem, ibis_engine::catalogue::Audience::App);
         assert!(!text.is_empty() && !text.contains("app-settings-error"), "{text}");
     }

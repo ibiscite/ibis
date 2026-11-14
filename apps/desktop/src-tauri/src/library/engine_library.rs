@@ -84,27 +84,48 @@ impl FileLibrary {
             .collect())
     }
 
+<<<<<<< HEAD
     pub(crate) fn open(path: &Path) -> Result<Self, super::LoadError> {
         Self::open_file(
+=======
+    pub(crate) fn open(path: &Path, cancel: &Cancellation) -> Result<Self, super::LoadError> {
+        Self::open_file_with(
+>>>>>>> origin/main
             path,
             Engine::new()
                 .map(|engine| engine.with_formatting(FORMATTING.clone()))
                 .map_err(|_| super::LoadError::Stopped)?,
+<<<<<<< HEAD
         )
     }
 
     pub(super) fn open_samples(path: &Path) -> Result<Self, super::LoadError> {
         let mut file = Self::open_file(
+=======
+            cancel,
+            || {},
+        )
+    }
+
+    pub(super) fn open_samples(path: &Path, cancel: &Cancellation) -> Result<Self, super::LoadError> {
+        let mut file = Self::open_file_with(
+>>>>>>> origin/main
             path,
             Engine::new()
                 .map(|engine| engine.with_formatting(FORMATTING.clone()))
                 .map_err(|_| super::LoadError::Stopped)?
                 .without_file_watches(),
+<<<<<<< HEAD
+=======
+            cancel,
+            || {},
+>>>>>>> origin/main
         )?;
         file.sample = true;
         Ok(file)
     }
 
+<<<<<<< HEAD
     fn open_file(path: &Path, engine: Engine) -> Result<Self, super::LoadError> {
         Self::open_file_with(path, engine, || {})
     }
@@ -113,6 +134,17 @@ impl FileLibrary {
         before_read();
         let source_path = engine
             .open_file_observed(path, &Cancellation::default())
+=======
+    fn open_file_with(
+        path: &Path,
+        engine: Engine,
+        cancel: &Cancellation,
+        before_read: impl FnOnce(),
+    ) -> Result<Self, super::LoadError> {
+        before_read();
+        let source_path = engine
+            .open_file_observed(path, cancel)
+>>>>>>> origin/main
             .map_err(super::LoadError::file)?;
         let mut file = Self::from_engine(engine);
         file.source_path = Some(source_path);

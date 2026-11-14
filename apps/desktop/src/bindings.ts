@@ -65,9 +65,9 @@ export const commands = {
 	/** The library as it is now, for the interface when it starts. */
 	libraryStatus: () => __TAURI_INVOKE<LibraryStatus>("library_status"),
 	/** Open the searched source or launch Zotero for a reported Zotero problem. */
-	openLibrarySource: (item: ItemRef | null, expectedRevision: string, expectedSourceGeneration: string, zoteroOnly: boolean, reveal: boolean, presentation: number | null) => __TAURI_INVOKE<null>("open_library_source", { item, expectedRevision, expectedSourceGeneration, zoteroOnly, reveal, presentation }),
+	openLibrarySource: (item: SourceItem | null, expectedRevision: string, expectedSourceGeneration: string, zoteroOnly: boolean, reveal: boolean, presentation: number | null) => __TAURI_INVOKE<null>("open_library_source", { item, expectedRevision, expectedSourceGeneration, zoteroOnly, reveal, presentation }),
 	/** Resolve the selected source and its system icon, never exposing its path. */
-	librarySource: (item: ItemRef | null, expectedRevision: string, expectedSourceGeneration: string, zoteroOnly: boolean, withStatusIcon: boolean) => __TAURI_INVOKE<SourcePresentation>("library_source", { item, expectedRevision, expectedSourceGeneration, zoteroOnly, withStatusIcon }),
+	librarySource: (item: SourceItem | null, expectedRevision: string, expectedSourceGeneration: string, zoteroOnly: boolean, withStatusIcon: boolean) => __TAURI_INVOKE<SourcePresentation>("library_source", { item, expectedRevision, expectedSourceGeneration, zoteroOnly, withStatusIcon }),
 	/**
 	 * Search the open library. An empty query returns no results. Async so it
 	 * runs off the main thread. `page` identifies the interface page and
@@ -326,6 +326,12 @@ export type CitationIntent = {
 	request: number;
 };
 
+<<<<<<< HEAD
+=======
+/** Wording context only; operations choose their recovery before presentation. */
+export type CitationSurface = "bibliography";
+
+>>>>>>> origin/main
 /** The desktop and MCP receive this same shape, without pre-rendered English. */
 export type CommandError = {
 	code: string;
@@ -483,7 +489,11 @@ export type EndpointStatus = {
 /** How an entry copy ended; a refusal says how to get the entry another way. */
 export type EntryCopy = "copied" | "no-original" | "repeated" | "dependency" | "changed";
 
+<<<<<<< HEAD
 export type FocusTarget = "format-picker" | "library-picker" | "source-file" | "zotero-sharing-help" | "search" | "results" | "locator" | "citation" | "citation-form" | "language" | "recovery-action" | "project-name" | "project-menu" | "settings" | "request";
+=======
+export type FocusTarget = "format-picker" | "library-picker" | "source-file" | "zotero-sharing-help" | "search" | "results" | "locator" | "citation" | "citation-form" | "session-references" | "language" | "recovery-action" | "project-name" | "project-menu" | "settings" | "request";
+>>>>>>> origin/main
 
 export type FormDetails = {
 	current_form: CitationForm | null;
@@ -672,6 +682,7 @@ export type MatchField = "citekey" | "title" | "author" | "year" | "doi" | "keyw
 
 export type Message = {
 	args: { [key: string]: string };
+	context?: CitationSurface | null;
 	id: string;
 };
 
@@ -917,6 +928,8 @@ export type RecordId = { readonly __RecordId: unique symbol };
 
 /** Exactly one next action; absence must have an explicit, machine-readable reason. */
 export type Recovery = {
+	action: "choose-output";
+} | {
 	action: "choose-style";
 } | {
 	action: "choose-form";
@@ -945,11 +958,19 @@ export type Recovery = {
 } | {
 	action: "edit-citation";
 } | {
+	action: "edit-locator";
+} | {
 	action: "edit-input";
+} | {
+	action: "search-references";
 } | {
 	action: "select-references";
 } | {
 	action: "reduce-selection";
+} | {
+	action: "remove-references";
+} | {
+	action: "close";
 } | {
 	action: "choose-locale";
 } | {
@@ -1104,6 +1125,8 @@ export type ShortcutStatus = {
 	registered: boolean;
 	shortcut: string;
 };
+
+export type SourceItem = ItemRef;
 
 export type SourceKind = "zotero" | "file";
 

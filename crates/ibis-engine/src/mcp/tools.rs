@@ -142,17 +142,14 @@ impl Refusal {
     /// Opening is attempted only at startup; a failed session cannot retry it.
     pub fn startup(error: EngineError) -> Self {
         let mut refusal = Self::from(error);
-        let cause = if refusal.problem.info.recovery == ibis_core::contract::Recovery::Retry {
+        let cause = if refusal.problem.info.recovery() == ibis_core::contract::Recovery::Retry {
             crate::catalogue::text(&refusal.problem.info.message.id, None, &[]).unwrap_or_default()
         } else {
             refusal.advice.to_string()
         };
-        refusal.problem.info = ibis_core::contract::RecoveryInfo::new(
-            "mcp-startup-failed",
-            ibis_core::contract::Recovery::RestartSession,
-            ibis_core::contract::FocusTarget::Request,
-        )
-        .argument("error", cause);
+        refusal.problem.info =
+            ibis_core::contract::RecoveryInfo::new("mcp-startup-failed", ibis_core::contract::Recovery::RestartSession)
+                .argument("error", cause);
         refusal.advice = crate::catalogue::problem(&refusal.problem, Audience::Agent).into();
         refusal
     }
@@ -663,13 +660,12 @@ fn cite_submitted(
             let settings = match formats {
                 Formats::File(path) => {
                     let loaded = crate::settings::load(path);
-                    if let Some(problem) = loaded.problem {
-                        return Err(Refusal::from_problem(
-                            crate::settings_backup::settings_code(&problem),
-                            (&problem).into(),
-                        ));
-                    }
-                    loaded.settings
+                    loaded
+                        .cites()
+                        .map_err(|problem| {
+                            Refusal::from_problem(crate::settings_backup::settings_code(problem), problem.into())
+                        })?
+                        .clone()
                 }
                 Formats::Unavailable(problem) => return Err(problem.clone()),
                 Formats::Defaults => crate::settings::Settings::default(),
@@ -924,7 +920,7 @@ fn refusal(result: &CitationResult) -> Refusal {
                     ("output", output.as_str()),
                     ("limit", &limit),
                 ];
-                Some(crate::catalogue::sentence("refusal", *error, Audience::Agent, &args))
+                Some(crate::catalogue::citation(*error, Audience::Agent, &args))
             }
             ItemOutcome::Rendered { .. } | ItemOutcome::Unknown => None,
         })

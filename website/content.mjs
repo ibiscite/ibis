@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { sharedKeys } from "./shared.mjs";
+import { sharedArt, sharedKeys } from "./shared.mjs";
 const keys = await sharedKeys();
+const art = await sharedArt();
 const text = path => readFile(new URL(path, import.meta.url), "utf8");
 export const escape = value => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 export const pages = [
@@ -42,6 +43,8 @@ export async function content(html, page = pages[0], input = new URL(".", import
   const order = sections.filter((item, index) => sections.findIndex(other => other.href.split("#")[0] === item.href.split("#")[0]) === index);
   const next = order[(order.findIndex(item => item.href.split("#")[0] === page.path) + 1) % order.length];
   const values = { body: "", title: page.title, description: page.description, path: page.path, headline, version,
+    ...Object.fromEntries(["plus", "book", "article", "check"].map(name => [`picker-icon-${name}`,
+      `<svg class="ui-icon" data-size="${name === "check" ? "control" : "tile"}" viewBox="${art.viewBox}" fill="currentColor" aria-hidden="true">${art.body[name]}</svg>`])),
     "next-page": page === notFound ? "" : `<nav class="row next-page" aria-label="Next page"><div class="text"><a href="${next.href}"><span class="next-label">Next</span><span class="next-name">${escape(next.label)} <span class="key">@${next.key}</span></span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M8.5 3.5 13 8l-4.5 4.5"/></svg></a></div></nav>`,
     robots: page === notFound ? '<meta name="robots" content="noindex">' : "",
     navigation: sections.map(item => { const href = page.path === "/" && item.href.startsWith("/#") ? item.href.slice(1) : item.href; return `<li${item.group ? ' class="group"' : ""}><a href="${href}"${page.path === item.href ? ' aria-current="page"' : ""}><span class="label">${escape(item.label)}</span> <span class="key">@${item.key}</span></a></li>`; }).join(""),

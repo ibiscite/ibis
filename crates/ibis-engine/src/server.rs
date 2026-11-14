@@ -3,6 +3,7 @@ use crate::{
     Cancellation, DispatchResult, Engine, LibrarySubscription, Method,
     protocol::{self, FrameError},
     rpc::{self, Message, RequestId},
+    wire::EncodedReply,
 };
 use ibis_core::contract::{EngineError, ErrorCode};
 use serde_json::{Value, json};
@@ -20,6 +21,18 @@ struct Job {
     params: Value,
     cancel: Cancellation,
     citation: Option<crate::citations::SubmittedCitation>,
+}
+
+fn write_replies(writer: &mut impl Write, frames: mpsc::Receiver<EncodedReply>) -> Result<(), FrameError> {
+    for reply in frames {
+        protocol::write_encoded_frame(writer, &reply)?;
+    }
+    Ok(())
+}
+
+fn send_reply(output: &mpsc::SyncSender<EncodedReply>, reply: &Value) -> Result<(), FrameError> {
+    let encoded = EncodedReply::new(reply, protocol::MAX_RESPONSE_BYTES)?;
+    output.send(encoded).map_err(|_| FrameError::Io)
 }
 
 pub fn serve<R: BufRead, W: Write + Send>(engine: Engine, reader: R, writer: W) -> Result<(), FrameError> {
@@ -49,22 +62,21 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
     connection: Option<(Engine, crate::citations::SessionId)>,
 ) -> Result<(), FrameError> {
     thread::scope(|scope| {
-        let (output, frames) = mpsc::sync_channel::<Value>(8);
+        let (output, frames) = mpsc::sync_channel::<EncodedReply>(8);
         let writing = scope.spawn(move || {
             let mut writer = writer;
-            for message in frames {
-                protocol::write_frame(&mut writer, &message)?;
-            }
-            Ok(())
+            write_replies(&mut writer, frames)
         });
         let close_changes = changes.as_ref().map(LibrarySubscription::close_handle);
         let forwarding = changes.map(|changes| {
             let output = output.clone();
             scope.spawn(move || {
                 while changes.recv().is_ok() {
-                    if output
-                        .send(json!({"jsonrpc":"2.0","method":"ibis/libraryChanged","params":{}}))
-                        .is_err()
+                    if send_reply(
+                        &output,
+                        &json!({"jsonrpc":"2.0","method":"ibis/libraryChanged","params":{}}),
+                    )
+                    .is_err()
                     {
                         break;
                     }
@@ -92,20 +104,32 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
                 })
                 .unwrap_or(Err(EngineError::new(ErrorCode::Internal)));
                 if let Some(id) = job.id {
-                    let mut reply = match result {
+                    let reply = match result {
                         Ok(result) => rpc::success(&id, result.data),
                         Err(error) => rpc::failure(Some(&id), error),
                     };
-                    if crate::wire::encode(&reply, protocol::MAX_RESPONSE_BYTES).is_err() {
-                        reply = rpc::failure(Some(&id), EngineError::new(ErrorCode::ResourceLimit));
+                    let mut reply = EncodedReply::new(&reply, protocol::MAX_RESPONSE_BYTES).or_else(|_| {
+                        EncodedReply::new(
+                            &rpc::failure(Some(&id), EngineError::new(ErrorCode::ResourceLimit)),
+                            protocol::MAX_RESPONSE_BYTES,
+                        )
+                    })?;
+                    if job.cancel.is_cancelled() {
+                        reply = EncodedReply::new(
+                            &rpc::failure(Some(&id), EngineError::new(ErrorCode::Cancelled)),
+                            protocol::MAX_RESPONSE_BYTES,
+                        )?;
                     }
                     // Retire this token before exposing its reply, so ID reuse is fresh.
                     let _ = completed.send(id);
+                    // Engine authority must revalidate immediately before queue
+                    // admission; this byte boundary alone does not establish revocation safety.
                     if worker_output.send(reply).is_err() {
                         break;
                     }
                 }
             }
+            Ok(())
         });
         let mut active = HashMap::<RequestId, Cancellation>::new();
         let transport = (|| {
@@ -114,7 +138,7 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
                     Ok(Some(frame)) => frame,
                     Ok(None) => return Ok(()),
                     Err(error) => {
-                        output.send(rpc::parse_error()).map_err(|_| FrameError::Io)?;
+                        send_reply(&output, &rpc::parse_error())?;
                         if error == FrameError::InvalidJson {
                             continue;
                         }
@@ -167,13 +191,13 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
                     }
                 };
                 if let Some(reply) = reply {
-                    output.send(reply).map_err(|_| FrameError::Io)?;
+                    send_reply(&output, &reply)?;
                 }
             }
         })();
         // EOF drains accepted work. Only the reader owns the active-token map.
         drop(requests);
-        let worked = working.join().map_err(|_| FrameError::Io);
+        let worked = working.join().map_err(|_| FrameError::Io).and_then(|result| result);
         drop(close_changes);
         if let Some(forwarding) = forwarding {
             forwarding.join().map_err(|_| FrameError::Io)?;
@@ -233,6 +257,84 @@ mod tests {
         let bytes = output.recv_timeout(Duration::from_secs(5)).unwrap();
         protocol::read_frame(&mut Cursor::new(bytes)).unwrap().unwrap()
     }
+    #[test]
+    fn retained_reply_queue_preserves_accepted_bytes_through_rpc_framing() {
+        use crate::wire::retained_reply_tests::{RecordingWriter, payload};
+        let mut writer = RecordingWriter::default();
+        let events = writer.events.clone();
+        let (output, frames) = mpsc::sync_channel(1);
+        let mut value = rpc::success(&RequestId::Number(7.into()), payload());
+        events.lock().unwrap().push("prepared");
+        let encoded = EncodedReply::new(&value, protocol::MAX_RESPONSE_BYTES).unwrap();
+        let accepted = encoded.as_bytes().to_vec();
+        events.lock().unwrap().push("encoded");
+        output.send(encoded).unwrap();
+        events.lock().unwrap().push("admitted");
+        value["result"][0]["text"] = json!("changed after admission");
+        drop(output);
+        write_replies(&mut writer, frames).unwrap();
+        let header = format!("Content-Length: {}\r\n\r\n", accepted.len());
+        assert_eq!(writer.bytes, [header.as_bytes(), &accepted].concat());
+        let mut input = Cursor::new(writer.bytes);
+        assert_eq!(
+            protocol::read_response_frame(&mut input).unwrap().unwrap()["result"],
+            payload()
+        );
+        assert_eq!(protocol::read_response_frame(&mut input).unwrap(), None);
+        assert_eq!(*events.lock().unwrap(), ["prepared", "encoded", "admitted", "emitted"]);
+    }
+
+    #[test]
+    fn retained_reply_rpc_cancellation_refuses_a_late_preparation() {
+        use crate::wire::retained_reply_tests::payload;
+        let (input, chunks) = mpsc::channel();
+        let (frames, output) = mpsc::channel();
+        let (prepared, ready) = mpsc::channel();
+        let release = Arc::new(std::sync::Barrier::new(2));
+        let worker_release = release.clone();
+        let dispatch = Arc::new(move |_: Method, _: &Value, _: &Cancellation| {
+            let data = payload();
+            prepared.send(()).unwrap();
+            worker_release.wait();
+            Ok(DispatchResult {
+                data,
+                exit_code: ibis_core::contract::ExitCode::Ok,
+                text: None,
+                source_findings: false,
+            })
+        });
+        let server = thread::spawn(move || {
+            run(
+                dispatch,
+                BufReader::new(Input {
+                    chunks,
+                    current: Cursor::new(vec![]),
+                }),
+                Output {
+                    frames,
+                    current: vec![],
+                },
+            )
+        });
+        send(&input, json!({"jsonrpc":"2.0","id":7,"method":"show"}));
+        ready.recv_timeout(Duration::from_secs(5)).unwrap();
+        send(
+            &input,
+            json!({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":7}}),
+        );
+        // A reader-produced error acknowledges that cancellation was processed.
+        send(&input, json!({"jsonrpc":"2.0","id":8,"method":"invented-unknown"}));
+        assert_eq!(reply(&output)["id"], 8);
+        release.wait();
+        let cancelled = reply(&output);
+        assert_eq!(cancelled["id"], 7);
+        assert_eq!(cancelled["error"]["data"]["code"], "cancelled");
+        assert!(cancelled.get("result").is_none());
+        drop(input);
+        server.join().unwrap().unwrap();
+        assert!(output.try_recv().is_err());
+    }
+
     #[test]
     fn cancelled_ids_are_fresh_on_reuse_and_duplicates_do_not_replace_active_work() {
         let (input, chunks) = mpsc::channel();
@@ -295,11 +397,13 @@ mod tests {
         assert!(server.join().unwrap().is_ok());
     }
     #[test]
-    fn replies_use_actual_frame_capacity_and_report_resource_limits() {
+    fn retained_reply_rpc_bounds_encoding_before_emitting_a_whole_refusal() {
         for (size, overflow) in [(600_000, false), (protocol::MAX_RESPONSE_BYTES, true)] {
             let dispatch = Arc::new(move |_: Method, _: &Value, _: &Cancellation| {
+                let mut data = crate::wire::retained_reply_tests::payload();
+                data[0]["text"] = json!("x".repeat(size));
                 Ok(DispatchResult {
-                    data: json!("x".repeat(size)),
+                    data,
                     text: None,
                     source_findings: false,
                     exit_code: ibis_core::contract::ExitCode::Ok,
@@ -315,7 +419,7 @@ mod tests {
             if overflow {
                 assert_eq!(reply["error"]["data"]["code"], "resource-limit");
             } else {
-                assert_eq!(reply["result"].as_str().map(str::len), Some(size));
+                assert_eq!(reply["result"][0]["text"].as_str().map(str::len), Some(size));
             }
             assert_eq!(protocol::read_response_frame(&mut reader).unwrap(), None);
         }

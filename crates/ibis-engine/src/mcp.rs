@@ -10,7 +10,7 @@
 //! private links or other libraries' data. Long values are cut short and every
 //! answer has a size bound. Nothing here opens a network connection.
 
-use crate::{Cancellation, Engine, protocol};
+use crate::{Cancellation, Engine, protocol, wire::EncodedReply};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::io::{self, BufRead, Read, Write};
@@ -37,7 +37,7 @@ const INSTRUCTIONS: &str = "Search the user's reference libraries and format cit
 
 /// Serves until the client closes stdin.
 pub fn serve<R: BufRead, W: Write + Send>(engine: &Engine, session: Session, reader: R, writer: W) -> io::Result<()> {
-    serve_with(engine, session, reader, writer, handle_with_cancellation)
+    serve_with(engine, session, reader, writer, handle_message)
 }
 
 struct Transport<W> {
@@ -57,8 +57,18 @@ fn request_key(id: &Value) -> Option<String> {
     (id.as_str().is_some_and(|id| id.len() <= 1024) || id.is_i64() || id.is_u64()).then(|| id.to_string())
 }
 
-fn write_reply(writer: &mut impl Write, reply: &Value) -> io::Result<()> {
-    let mut bytes = serde_json::to_vec(reply).map_err(io::Error::other)?;
+fn encode_reply(mut reply: Value) -> io::Result<EncodedReply> {
+    match EncodedReply::new(&reply, MAX_ANSWER - 1) {
+        Ok(encoded) => Ok(encoded),
+        Err(_) => {
+            refuse_oversized(&mut reply);
+            EncodedReply::new(&reply, MAX_ANSWER - 1).map_err(io::Error::other)
+        }
+    }
+}
+
+fn write_reply(writer: &mut impl Write, reply: &EncodedReply) -> io::Result<()> {
+    let mut bytes = reply.as_bytes().to_vec();
     bytes.push(b'\n');
     writer.write_all(&bytes)?;
     writer.flush()
@@ -92,7 +102,9 @@ fn serve_with<R: BufRead, W: Write + Send>(
                         None
                     } else {
                         execute(engine, &mut job.session, &job.message, &job.cancel)
-                    };
+                    }
+                    .map(encode_reply)
+                    .transpose();
                     let mut transport = shared
                         .lock()
                         .map_err(|_| io::Error::other("MCP transport unavailable"))?;
@@ -104,10 +116,16 @@ fn serve_with<R: BufRead, W: Write + Send>(
                         .is_some_and(|current| Arc::ptr_eq(current, &job.cancel))
                     {
                         transport.requests.remove(&job.key);
-                        if !job.cancel.is_cancelled()
-                            && let Some(reply) = reply
-                            && let Err(error) = write_reply(&mut transport.writer, &reply)
-                        {
+                        // Engine authority must revalidate here, under its admission
+                        // ordering with revocation, before the first transport write.
+                        let result = if job.cancel.is_cancelled() {
+                            Ok(())
+                        } else {
+                            reply.and_then(|reply| {
+                                reply.map_or(Ok(()), |reply| write_reply(&mut transport.writer, &reply))
+                            })
+                        };
+                        if let Err(error) = result {
                             transport.failure = Some(error);
                             for cancel in transport.requests.values() {
                                 cancel.cancel();
@@ -218,13 +236,14 @@ fn serve_with<R: BufRead, W: Write + Send>(
                                     }
                                 }
                             } else {
-                                handle(engine, &mut session, &message)
+                                handle_message(engine, &mut session, &message, &Cancellation::default())
                             }
                         }
                         Err(_) => Some(error(Value::Null, -32700, "Parse error")),
                     }
                 };
                 if let Some(reply) = reply {
+                    let reply = encode_reply(reply)?;
                     let mut transport = transport
                         .lock()
                         .map_err(|_| io::Error::other("MCP transport unavailable"))?;
@@ -367,25 +386,28 @@ fn handle_with_cancellation(
     cancel: &Cancellation,
 ) -> Option<Value> {
     let mut reply = handle_message(engine, session, message, cancel)?;
-    // Every reply, including early protocol errors, shares the transport limit.
-    // Count the terminating newline without allocating an oversized serialization.
+    // The in-process Value API has no transport to retain an encoding for.
     if crate::wire::serialized_size(&reply, MAX_ANSWER - 1).is_err() {
-        if let Some(result) = reply.get_mut("result").filter(|result| result.get("isError").is_some()) {
-            let mut refused = tools::tool_error(
-                ibis_core::contract::EngineError::new(ibis_core::contract::ErrorCode::ResourceLimit).into(),
-            );
-            for field in ["resultType", "_meta"] {
-                if let Some(value) = result.get_mut(field) {
-                    refused[field] = value.take();
-                }
-            }
-            *result = refused;
-        } else {
-            let id = reply.get_mut("id").map(Value::take).unwrap_or(Value::Null);
-            reply = error(id, -32603, "Reply too large");
-        }
+        refuse_oversized(&mut reply);
     }
     Some(reply)
+}
+
+fn refuse_oversized(reply: &mut Value) {
+    if let Some(result) = reply.get_mut("result").filter(|result| result.get("isError").is_some()) {
+        let mut refused = tools::tool_error(
+            ibis_core::contract::EngineError::new(ibis_core::contract::ErrorCode::ResourceLimit).into(),
+        );
+        for field in ["resultType", "_meta"] {
+            if let Some(value) = result.get_mut(field) {
+                refused[field] = value.take();
+            }
+        }
+        *result = refused;
+    } else {
+        let id = reply.get_mut("id").map(Value::take).unwrap_or(Value::Null);
+        *reply = error(id, -32603, "Reply too large");
+    }
 }
 
 fn handle_message(engine: &Engine, session: &mut Session, message: &Value, cancel: &Cancellation) -> Option<Value> {
@@ -528,4 +550,124 @@ fn server_info() -> Value {
 
 fn error(id: Value, code: i64, message: &str) -> Value {
     json!({"jsonrpc": "2.0", "id": id, "error": {"code": code, "message": message}})
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod retained_reply_tests {
+    use super::*;
+    use crate::wire::retained_reply_tests::{RecordingWriter, payload};
+    use std::{sync::Barrier, thread, time::Duration};
+
+    #[test]
+    fn retained_reply_mcp_emits_accepted_bytes_and_one_newline() {
+        let mut writer = RecordingWriter::default();
+        let mut value = json!({"jsonrpc":"2.0", "id":7, "result":payload()});
+        writer.events.lock().unwrap().push("prepared");
+        let encoded = encode_reply(value.clone()).unwrap();
+        let accepted = encoded.as_bytes().to_vec();
+        writer.events.lock().unwrap().push("encoded");
+        let (send, replies) = mpsc::sync_channel(1);
+        send.send(encoded).unwrap();
+        writer.events.lock().unwrap().push("admitted");
+        value["result"][1]["text"] = json!("changed after admission");
+        write_reply(&mut writer, &replies.recv().unwrap()).unwrap();
+        assert_eq!(writer.bytes, [accepted.as_slice(), b"\n"].concat());
+        assert_eq!(
+            serde_json::from_slice::<Value>(&writer.bytes).unwrap()["result"],
+            payload()
+        );
+        assert_eq!(
+            *writer.events.lock().unwrap(),
+            ["prepared", "encoded", "admitted", "emitted"]
+        );
+    }
+
+    #[test]
+    fn retained_reply_mcp_bounds_encoding_before_emitting_a_whole_refusal() {
+        let mut value = json!({"jsonrpc":"2.0", "id":7, "result":{
+            "isError":false, "structuredContent":payload(), "content":[],
+            "resultType":"complete", "_meta":{SERVER_INFO_KEY:server_info()}
+        }});
+        value["result"]["structuredContent"][0]["text"] = json!("\n".repeat(MAX_ANSWER / 2));
+        let mut writer = RecordingWriter::default();
+        serve_with(
+            &Engine::new().unwrap(),
+            Session::default(),
+            b"{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\"}\n".as_slice(),
+            &mut writer,
+            |_, _, _, _| Some(value.clone()),
+        )
+        .unwrap();
+        assert!(writer.bytes.len() <= MAX_ANSWER);
+        assert_eq!(*writer.events.lock().unwrap(), ["emitted"]);
+        assert_eq!(writer.bytes.iter().filter(|&&byte| byte == b'\n').count(), 1);
+        let refused: Value = serde_json::from_slice(&writer.bytes).unwrap();
+        assert_eq!(refused["id"], 7);
+        assert_eq!(refused["result"]["isError"], true);
+        assert_eq!(refused["result"]["resultType"], "complete");
+        assert_eq!(refused["result"]["_meta"][SERVER_INFO_KEY], server_info());
+        assert!(refused["result"]["structuredContent"].get(0).is_none());
+    }
+
+    #[test]
+    fn retained_reply_mcp_cancellation_cannot_emit_a_late_completion() {
+        let (send, input) = mpsc::channel();
+        let (frames, output) = mpsc::channel();
+        let (prepared, ready) = mpsc::channel();
+        let release = Arc::new(Barrier::new(2));
+        let worker_release = release.clone();
+        struct Input(mpsc::Receiver<Vec<u8>>, io::Cursor<Vec<u8>>);
+        impl Read for Input {
+            fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
+                let read = self.1.read(bytes)?;
+                if read != 0 {
+                    return Ok(read);
+                }
+                match self.0.recv() {
+                    Ok(chunk) => {
+                        self.1 = io::Cursor::new(chunk);
+                        self.1.read(bytes)
+                    }
+                    Err(_) => Ok(0),
+                }
+            }
+        }
+        struct Output(mpsc::Sender<Vec<u8>>, RecordingWriter);
+        impl Write for Output {
+            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+                self.1.write(bytes)
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                self.1.flush()?;
+                self.0.send(std::mem::take(&mut self.1.bytes)).unwrap();
+                Ok(())
+            }
+        }
+        let server = thread::spawn(move || {
+            serve_with(
+                &Engine::new().unwrap(),
+                Session::default(),
+                io::BufReader::new(Input(input, io::Cursor::new(vec![]))),
+                Output(frames, RecordingWriter::default()),
+                |_, _, message, _| {
+                    let reply = json!({"jsonrpc":"2.0", "id":message["id"], "result":payload()});
+                    prepared.send(()).unwrap();
+                    worker_release.wait();
+                    Some(reply)
+                },
+            )
+        });
+        let request = |message: Value| send.send(format!("{message}\n").into_bytes()).unwrap();
+        request(json!({"jsonrpc":"2.0", "id":7, "method":"tools/call"}));
+        ready.recv_timeout(Duration::from_secs(5)).unwrap();
+        request(json!({"jsonrpc":"2.0", "method":"notifications/cancelled", "params":{"requestId":7}}));
+        request(json!({"jsonrpc":"2.0", "id":8, "method":"ping"}));
+        let bytes = output.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_eq!(serde_json::from_slice::<Value>(&bytes).unwrap()["id"], 8);
+        release.wait();
+        drop(send);
+        server.join().unwrap().unwrap();
+        assert!(output.try_recv().is_err());
+    }
 }

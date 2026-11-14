@@ -2,7 +2,7 @@ import { renderDisplay } from "../../format/display";
 import type * as nativeApi from "../../api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SessionBibliography, SessionEdit, SessionReferencesView } from "../../api";
-import { isCancelled } from "../../api";
+import { isCancelled, isSnapshotChanged } from "../../api";
 import { outputName, type OutputId } from "../../format/outputs";
 import { isolate, problemText, say } from "../../i18n";
 import { Button } from "../../ui/Button";
@@ -13,8 +13,6 @@ import { abbreviatedAuthors, tileName } from "./rows";
 
 type Api = Pick<typeof nativeApi, "sessionReferences" | "editSessionReferences" | "sessionBibliography" | "copySessionBibliography" | "exportSessionBibliography">;
 
-const changed = (error: unknown) => typeof error === "object" && error !== null && (error as { code?: string }).code === "snapshot_changed";
-
 /** The references copied this session, editable, and their bibliography. Native
     code owns the list; each answer counts only if it is still the newest asked. */
 export function SessionReferencesDialog({ api, style, onClose }: { api: Api; style: OutputId; onClose: () => void }) {
@@ -22,7 +20,7 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
   const [view, setView] = useState<SessionReferencesView | null>(null);
   const [bibliography, setBibliography] = useState<SessionBibliography | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<{ text: string; retry: () => void } | null>(null);
   const listing = useRef(0);
   const formatting = useRef(0);
   const activeFormatting = useRef<AbortController | null>(null);
@@ -30,28 +28,27 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
   const activeDelivery = useRef<AbortController | null>(null);
   const pendingDelivery = useRef(false);
 
-  const show = useCallback((next: SessionReferencesView) => {
-    setView(next);
-    const request = ++formatting.current;
-    activeFormatting.current?.abort();
-    const controller = new AbortController();
-    activeFormatting.current = controller;
-    setBibliography(null);
-    sessionBibliography(style, controller.signal).then(
-      (formatted) => { if (request === formatting.current) setBibliography(formatted); },
-      (error) => { if (request === formatting.current) setProblem(problemText(error, say("session-not-formatted"))); });
-  }, [sessionBibliography, style]);
-  const load = useCallback((read: () => Promise<SessionReferencesView>, problem: string | null = null) => {
+  const load = useCallback(function load(read: () => Promise<SessionReferencesView>, message: string | null = null) {
     formatting.current += 1;
     activeFormatting.current?.abort();
     delivery.current += 1;
     activeDelivery.current?.abort();
     pendingDelivery.current = false;
     const request = ++listing.current;
-    setProblem(problem);
-    read().then((next) => { if (request === listing.current) show(next); },
-      (error) => { if (request === listing.current) setProblem(problemText(error, say("session-not-read"))); });
-  }, [show]);
+    const retry = () => load(sessionReferences);
+    setProblem(message ? { text: message, retry } : null);
+    read().then((next) => {
+      if (request !== listing.current) return;
+      setView(next);
+      const format = ++formatting.current;
+      const controller = new AbortController();
+      activeFormatting.current = controller;
+      setBibliography(null);
+      sessionBibliography(style, controller.signal).then(
+        (formatted) => { if (format === formatting.current) setBibliography(formatted); },
+        (error) => { if (format === formatting.current) setProblem({ text: problemText(error, say("session-not-formatted")), retry }); });
+    }, (error) => { if (request === listing.current) setProblem({ text: problemText(error, say("session-not-read")), retry }); });
+  }, [sessionBibliography, sessionReferences, style]);
   useEffect(() => {
     load(sessionReferences);
     return () => {
@@ -82,7 +79,7 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
     pendingDelivery.current = true;
     act(controller.signal).then((done) => { if (owns() && done) setStatus(done); }, (error) => {
       if (!owns() || isCancelled(error)) return;
-      if (changed(error)) load(sessionReferences, say("session-changed")); else setProblem(problemText(error, failure));
+      if (isSnapshotChanged(error)) load(sessionReferences, say("session-changed")); else setProblem({ text: problemText(error, failure), retry: () => deliver(act, failure) });
     });
   };
   const hash = bibliography?.content_hash;
@@ -92,6 +89,7 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
   const name = outputName(style);
   return <Sheet title={say("session-title")} closeLabel={say("session-close")} description={say("session-about")} onClose={onClose}
     leadingActions={[
+      ...problem ? [{ label: say("setup-try-again"), onPress: problem.retry }] : [],
       ...undoLabel ? [{ label: undoLabel, onPress: () => edit({ kind: "undo" }) }] : [],
       ...view && view.rows.length + view.absent > 0 ? [{ label: say("session-reset"), onPress: () => edit({ kind: "reset" }) }] : [],
     ]}
@@ -119,7 +117,7 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
       {bibliography.warnings.map((warning) => <p key={warning} role="status">{warning}</p>)}
       {bibliography.left_out.length > 0 && <p role="status">{say("session-left-out", { names: bibliography.left_out.map(isolate).join(", ") })}</p>}
     </Section>}
-    {problem && <p role="alert">{problem}</p>}
+    {problem && <p role="alert">{problem.text}</p>}
     {status && <p role="status">{status}</p>}
   </Sheet>;
 }

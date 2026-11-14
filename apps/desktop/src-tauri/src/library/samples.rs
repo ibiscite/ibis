@@ -173,7 +173,12 @@ fn sample_provenance_changes_the_prepared_hash_and_normal_library_copies_stay_un
     let Source::Samples(path) = source() else {
         panic!("sample source")
     };
+<<<<<<< HEAD
     let normal = engine_library::FileLibrary::open(&path).unwrap_or_else(|e| panic!("{e}"));
+=======
+    let normal = engine_library::FileLibrary::open(&path, &ibis_engine::Cancellation::default())
+        .unwrap_or_else(|e| panic!("{e}"));
+>>>>>>> origin/main
     let original = preview(&normal, "lantern");
     assert_eq!(original.text, "(Vale, 2024)");
     crate::test_citations::copy(&normal.engine, &original.ticket, &original.content_hash, |content| {
