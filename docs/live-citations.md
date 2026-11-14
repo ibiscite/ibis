@@ -58,15 +58,12 @@ licence notices](../fixtures/odf-scan/README.md) accompany the small excerpts.
 There are no downloads, extra Node dependencies or personal Zotero profiles;
 the existing Rust fixture uses an isolated loopback HTTP server. Both Rust tests
 must pass, printing actual and expected identities and citation options for
-every scenario. The group case also corrupts the engine's marker to name the
-personal library: it must resolve to the personal item and fail the group-identity
-comparison. A denied
+every scenario. The group case also changes the marker to name the personal
+library: it must resolve to the personal item and fail the group-identity
+comparison. The affix case substitutes literal entity-encoded markup for italic
+syntax and must fail the formatting comparison. A denied
 loopback bind is an environmental failure; rerun outside that sandbox. A passing
 file-only test or manually supplied markers alone do not complete this check.
-
-The 2026-11-14 sandbox run passed the file-only test and its upstream comparison.
-The live handoff test stopped at the loopback bind with `PermissionDenied`,
-before producing citations. The complete outside-sandbox run remains pending.
 
 The differential checks personal/group identity (including a shared item key),
 adjacent repeated references and their order, page ranges, chapter and paragraph

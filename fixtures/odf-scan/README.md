@@ -25,10 +25,11 @@ citation grouping. Personal and group records deliberately share an item key;
 the wrong-key decoy shares the title. Defaults mean no locator/affix/suppression.
 These expectations specify the intended result, independently of Ibis output.
 The Rust test supplies all citation strings through `Engine`.
-The shared-key group case also substitutes a personal-library identifier in the
-engine output and requires the comparison to reject that resolved identity.
+The shared-key group case substitutes a personal-library identifier and requires
+the comparison to reject that resolved identity. The styled-affix case replaces
+italic syntax with literal entity-encoded markup and requires its rejection.
 Run the verify command in [the guide](../../docs/live-citations.md#evidence-and-remaining-native-checks)
-to execute both Rust tests, their oracle comparisons and this negative control.
+to execute both Rust tests, the oracle comparisons and both negative controls.
 
 Upstream distribution notice (from `COPYING.txt`):
 

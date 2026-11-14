@@ -68,7 +68,7 @@ async function convert(scenario) {
       const resolved = await utils.getItemByURI(item.uris[0]);
       assert.ok(resolved, `${scenario.name}: unresolved ${item.uris[0]}`);
       items.push(normalize({ item: resolved.identity, locator: item.locator.trim(),
-        prefix: decode(item.prefix).trim(), suffix: decode(item.suffix).trim(),
+        prefix: item.prefix, suffix: item.suffix,
         suppress_author: item["suppress-author"] === true }));
     }
     actual.push(items);
@@ -82,6 +82,15 @@ for (const scenario of JSON.parse(readFileSync(0, "utf8"))) {
   console.log(`${scenario.name}: actual=${JSON.stringify(actual)} expected=${JSON.stringify(expected)}`);
   assert.deepEqual(actual, expected, scenario.name);
   console.log(`${scenario.name}: upstream differential passed`);
+  if (scenario.markup_control) {
+    assert.ok(scenario.text.includes("*see*"), "italic marker present");
+    const actual = await convert({ ...scenario,
+      text: scenario.text.replace("*see*", "&lt;i&gt;see&lt;/i&gt;") });
+    assert.equal(actual[0][0].prefix, "&lt;i&gt;see&lt;/i&gt; and <b>compare</b> ");
+    assert.throws(() => assert.deepEqual(actual, expected),
+      { code: "ERR_ASSERTION", actual, expected });
+    console.log(`${scenario.name}: literal entity-encoded markup=${JSON.stringify(actual[0][0].prefix)}; formatting comparison rejected`);
+  }
   if (scenario.identity_control) {
     const actual = await convert({ ...scenario,
       text: scenario.text.replace("zg:7:SYNTH234", "zu:0:SYNTH234") });

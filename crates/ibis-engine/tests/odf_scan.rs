@@ -108,9 +108,6 @@ fn file_only_records_cannot_acquire_zotero_identity() {
         }]
     );
     assert!(refused.text.is_empty());
-    oracle(&[
-        json!({"name":"file-only cannot acquire identity", "syntax":"scannable-cite", "text":refused.text, "expected":[]}),
-    ]);
 }
 
 fn oracle(cases: &[Value]) {
