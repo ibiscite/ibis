@@ -340,6 +340,36 @@ fn selection(snapshot: &Snapshot, style: &str, bibliography: bool) -> CitationRe
 }
 
 #[test]
+fn apa_prints_rich_text_titles_with_whitespace_before_closing_tags() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    let snapshot = library(&[json!({
+        "type":"article-journal", "title":"Invented <span class=\"nocase\">DNA </span> study",
+        "author":[{"family":"Taylor"}], "issued":{"date-parts":[[2026]]}
+    })]);
+    let result = formatter.format(&snapshot, &selection(&snapshot, "apa", true)).unwrap();
+    assert_eq!(result.text, "Taylor. (2026). Invented DNA  study.");
+    assert!(result.copy_content(1).is_some());
+}
+
+#[test]
+fn apa_prints_years_from_whitespace_padded_numeric_date_parts() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    for year in [" 2026 ", "2026\n"] {
+        let snapshot = library(&[json!({
+            "type":"article-journal", "title":"Invented study",
+            "author":[{"family":"Taylor"}], "issued":{"date-parts":[[year, " 5 ", "1\n"]]}
+        })]);
+        let mut request = selection(&snapshot, "apa", false);
+        request.form = CitationForm::YearOnly;
+        let result = formatter.format(&snapshot, &request).unwrap();
+        assert_eq!(result.text, "(2026)", "{year:?}");
+        assert!(result.copy_content(1).is_some());
+    }
+}
+
+#[test]
 fn all_styles_match_node_for_multilingual_text_html_and_rtf() {
     let _guard = FORMAT_TESTS.lock().unwrap();
     use std::io::Write;

@@ -103,7 +103,9 @@ impl CitableFields {
                             dates.iter_mut().all(|date| {
                                 date.as_array_mut().is_some_and(|parts| {
                                     parts.iter_mut().all(|part| {
-                                        if let Some(number) = part.as_str().and_then(|part| part.parse::<i64>().ok()) {
+                                        if let Some(number) =
+                                            part.as_str().and_then(|part| part.trim().parse::<i64>().ok())
+                                        {
                                             *part = json!(number);
                                         }
                                         part.is_number()
@@ -332,9 +334,19 @@ fn private_address(address: std::net::IpAddr) -> bool {
     }
 }
 
-/// Whether text from a note points at this device anywhere in it. Notes can hold
-/// anything, and such a line is not something the person wrote to be printed.
+/// Check the shared plain-text projection of rich fields and note overrides,
+/// leaving their original rich-text payload intact for output.
 pub(crate) fn points_to_device(value: &str) -> bool {
+    let mut plain = crate::model::strip_markup(value);
+    // The original rich text also reaches record exports. Check attributes
+    // removed by the projection without breaking up paths across inline tags.
+    for (start, _) in value.match_indices("<span") {
+        let tag = &value[start..];
+        if let Some(length) = crate::model::rich_text_tag_len(tag) {
+            plain.push(' ');
+            plain.push_str(&tag["<span".len()..length - 1]);
+        }
+    }
     let path = |word: &str| {
         let bytes = word.as_bytes();
         (word.starts_with('/') || word.starts_with("~/")) && word.len() > 2
@@ -347,25 +359,22 @@ pub(crate) fn points_to_device(value: &str) -> bool {
                 .get(..8)
                 .is_some_and(|prefix| prefix.eq_ignore_ascii_case("zotero:/"))
     };
-    value.split_whitespace().any(|word| {
-        let word = word.trim_matches(|c: char| "<>()[]{},.\"'".contains(c));
+    plain.split_whitespace().any(|word| {
+        let word = word.trim_matches(|c: char| "()[]{},.\"'".contains(c));
         path(word)
             || word.char_indices().any(|(index, c)| {
                 let rest = &word[index + c.len_utf8()..];
-                // An escaped closing tag is printable text, not a device path.
-                let closing_tag = c == ';'
-                    && word[..index].ends_with("&lt")
-                    && rest.strip_prefix('/').is_some_and(|tag| {
-                        let end = tag.bytes().take_while(u8::is_ascii_alphabetic).count();
-                        end > 0 && tag[end..].starts_with("&gt;")
-                    });
                 // A scheme separator is not the beginning of a device path.
-                matches!(c, '=' | ':' | '\"' | '\'' | '(' | '[' | '{' | ',' | ';')
+                matches!(c, '=' | ':' | '\"' | '\'' | '(' | '[' | '{' | ',' | ';' | '<' | '>')
                     && !(c == ':' && rest.starts_with("//"))
-                    && !closing_tag
+                    // Escaped tags remain literal text in this projection.
+                    // Reuse the markup grammar to distinguish them from paths
+                    // in angle brackets; attributes are still checked below.
+                    && !(c == '<'
+                        && crate::model::markup_tag(&word[index..]).is_some_and(|(_, tail)| tail.starts_with('>')))
                     && path(rest)
             })
-            || (word.contains("://") && !public_url(word))
+            || (word.contains("://") && !public_url(word.trim_matches(['<', '>'])))
     })
 }
 

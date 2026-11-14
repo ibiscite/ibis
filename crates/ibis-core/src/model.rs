@@ -178,15 +178,30 @@ pub fn strip_markup(rich: &str) -> String {
 /// How far a span's attributes are searched for its `>`, so hostile text stays linear.
 const MAX_TAG_ATTRIBUTES: usize = 256;
 
+/// Split a literal tag's name (including any leading slash) from its tail.
+/// Recognizing its syntax does not make it supported rich-text formatting.
+pub(crate) fn markup_tag(text: &str) -> Option<(&str, &str)> {
+    let body = text.strip_prefix('<')?;
+    let name = body.strip_prefix('/').unwrap_or(body);
+    let length = name.bytes().take_while(u8::is_ascii_alphabetic).count();
+    if length == 0 {
+        return None;
+    }
+    Some(body.split_at(body.len() - name.len() + length))
+}
+
 /// The length of the rich-text tag `text` starts with, if it starts with one.
-fn rich_text_tag_len(text: &str) -> Option<usize> {
+pub(crate) fn rich_text_tag_len(text: &str) -> Option<usize> {
     const PLAIN: [&str; 11] = [
         "<i>", "</i>", "<b>", "</b>", "<sc>", "</sc>", "<sub>", "</sub>", "<sup>", "</sup>", "</span>",
     ];
     if let Some(tag) = PLAIN.iter().find(|tag| text.starts_with(**tag)) {
         return Some(tag.len());
     }
-    let after_name = text.strip_prefix("<span")?;
+    let (name, after_name) = markup_tag(text)?;
+    if name != "span" {
+        return None;
+    }
     let attribute = after_name.trim_start();
     if attribute.len() == after_name.len() {
         return None;

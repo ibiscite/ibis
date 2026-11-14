@@ -193,6 +193,10 @@ fn record_sharing_removes_device_paths_after_value_delimiters() {
         "path;/Users/invented/secret.pdf",
         "&lt;/i&gt;/Users/invented/secret.pdf",
         "&lt;/home/invented/secret.pdf&gt;",
+        "<i>/home/</i>invented/secret.pdf",
+        "<span class=\"nocase\">file:</span>///home/invented/secret.pdf",
+        "&lt;span class=&quot;nocase&quot; title=&quot;/home/invented/secret.pdf&quot;&gt;DNA&lt;/span&gt;",
+        "Invented <span class=\"nocase\" data-private=\"/home/invented/secret.pdf\">DNA</span>",
     ] {
         let case = case(
             "csl-json",
@@ -202,6 +206,32 @@ fn record_sharing_removes_device_paths_after_value_delimiters() {
         let records: Value = serde_json::from_str(&syntax::cite(&case.library, &case.request).unwrap().text).unwrap();
         assert!(records[0].get("archive_location").is_none(), "{value}: {records}");
         assert_eq!(records[0]["title"], "Invented &lt;i&gt;atlas&lt;/i&gt;");
+    }
+}
+
+#[test]
+fn record_sharing_keeps_rich_text_and_normalizes_padded_date_parts() {
+    let title = "Invented <span class=\"nocase\">DNA </span> study";
+    for fields in [
+        json!({"title":title, "issued":{"date-parts":[[" 2026 ", "5\n", 1]]}}),
+        json!({"note":format!("title: {title}"), "issued":{"date-parts":[["2026\n", 5, " 1 "]]}}),
+    ] {
+        let case = case("csl-json", fields, Some("good"));
+        let result = syntax::cite(&case.library, &case.request).unwrap();
+        let records: Value = serde_json::from_str(&result.text).unwrap();
+        assert_eq!(records[0]["title"], title);
+        assert_eq!(records[0]["issued"], json!({"date-parts":[[2026, 5, 1]]}));
+    }
+    for title in [
+        "Invented &lt;span class=&quot;nocase&quot;&gt;DNA &lt;/span&gt; study",
+        "Invented &lt;em&gt;DNA &lt;/em&gt; study",
+        "Invented <https://example.invalid/work>",
+        "Invented &lt;https://example.invalid/work&gt;",
+    ] {
+        let case = case("csl-json", json!({"title":title}), Some("good"));
+        let result = syntax::cite(&case.library, &case.request).unwrap();
+        let records: Value = serde_json::from_str(&result.text).unwrap();
+        assert_eq!(records[0]["title"], title);
     }
 }
 
