@@ -25,9 +25,8 @@ name: Preview builds
 #
 # Builds from a v tag are the app "Ibis". Every other build is "Ibis Nightly",
 # a separate app with its own settings, a version such as
-# 0.1.1-nightly.20261019223000 and its own update feed. It has no MSI (Windows
-# Installer versions cannot carry "nightly") and no .rpm (RPM versions cannot
-# contain "-").
+# 0.1.1-nightly.20261019223000 and its own update feed. It has no .rpm (RPM
+# versions cannot contain "-").
 
 on:
   push:

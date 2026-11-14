@@ -55,8 +55,10 @@ Release builds apply `tauri.bundle.conf.json`, plus
 `tauri.linux.bundle.conf.json` on Linux, after staging the CLI with
 `scripts/build-cli.sh`. These packaging overlays keep native development/tests
 independent of a release sidecar. CI must inspect the installed command in
-.app/.dmg, MSI/NSIS, deb/rpm and AppImage; check versions against the app;
+.app/.dmg, NSIS, deb/rpm and AppImage; check versions against the app;
 verify the nested macOS signature; and exercise per-user Settings install/removal
 and Windows PATH install/upgrade/uninstall (including preexisting PATH entries,
 Stable/Nightly coexistence and AppImage exit). No installer builds are needed
 for the config and outcome tests.
+
+2026-11-14 (maintainer): Windows ships one installer, NSIS.

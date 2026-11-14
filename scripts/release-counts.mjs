@@ -1,5 +1,5 @@
 // Weekly, aggregate GitHub counters only; no app data or identifiers.
-// .dmg/.msi/.deb/.rpm suggest new downloads; .app.tar.gz suggests updates.
+// .dmg/.deb/.rpm suggest new downloads; .app.tar.gz suggests updates.
 // Windows setup .exe and Linux AppImage mix both; keep raw names for readers.
 import { fileURLToPath } from "node:url";
 

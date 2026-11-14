@@ -90,33 +90,6 @@ windows() {
   # The uninstaller copies itself and returns early; wait for removal.
   for _ in $(seq 30); do [ -e "$app" ] || break; sleep 2; done
   test ! -e "$app" || { echo "::error::The uninstaller left $app behind"; exit 1; }
-  # Builds without an MSI skip the rest.
-  [ -e dist/Ibis-Windows.msi ] || return 0
-  # The MSI installs for all users; the runner has administrator rights.
-  # The install folder is read from the installer's own log.
-  msiexec() {
-    MSI="$(cygpath -w "$PWD/dist/Ibis-Windows.msi")" LOG="$(cygpath -w "$RUNNER_TEMP/msi-$1.log")" MODE="$1" pwsh -NoProfile -Command '
-      $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList "/$env:MODE", "`"$env:MSI`"", "/qn", "/norestart", "/l*v", "`"$env:LOG`""
-      exit $p.ExitCode'
-  }
-  msi_log() { tr -d '\000\r' < "$RUNNER_TEMP/msi-$1.log"; }
-  if ! msiexec i; then
-    show sh -c 'tail -n 40; exit 1' msiexec < <(msi_log i)
-  fi
-  installdir=$(msi_log i | sed -n 's/^.*Property(S): INSTALLDIR = //p')
-  installdir=${installdir%%$'\n'*}
-  if [ -z "$installdir" ]; then
-    show sh -c 'grep -a "Property(S): .*\(DIR\|FOLDER\) = " | tail -n 40; exit 1' msiexec < <(msi_log i)
-  fi
-  dir=$(cygpath -u "$installdir")
-  app="$dir/ibis-desktop.exe"
-  test -f "$app" || { echo "::error::The MSI installed no desktop app in $dir"; exit 1; }
-  echo "installed at $app"
-  show python "$stays_up" "$app"
-  if ! msiexec x; then
-    show sh -c 'tail -n 40; exit 1' msiexec < <(msi_log x)
-  fi
-  test ! -e "$app"
 }
 
 case "$RUNNER_OS" in

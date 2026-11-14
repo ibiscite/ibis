@@ -8,17 +8,6 @@
 * search every setting and restore any change with Use Default ([#1887](https://github.com/ibiscite/ibis/issues/1887)) ([a3c18d6](https://github.com/ibiscite/ibis/commit/a3c18d69ce449b671d78b0f801df8de1ded089c7))
 
 
-### Bug Fixes
-
-* **windows:** the MSI installs and uninstalls with its PATH steps ([#1889](https://github.com/ibiscite/ibis/issues/1889)) ([f5d16a8](https://github.com/ibiscite/ibis/commit/f5d16a8d3f51a67d52c9ba207aca5d95e44fd348))
-
-## [0.3.5](https://github.com/ibiscite/ibis/compare/v0.3.4...v0.3.5) (2026-11-13)
-
-
-### Bug Fixes
-
-* **windows:** the MSI declares the system folder for its PATH steps ([#1885](https://github.com/ibiscite/ibis/issues/1885)) ([14cf46d](https://github.com/ibiscite/ibis/commit/14cf46d9ff8617fc4be6a6eeaa59aa85ea81fa2d))
-
 ## [0.3.4](https://github.com/ibiscite/ibis/compare/v0.3.3...v0.3.4) (2026-11-12)
 
 

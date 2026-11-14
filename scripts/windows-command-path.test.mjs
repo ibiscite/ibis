@@ -76,7 +76,7 @@ for (const shell of shells) {
   const probe = spawnSync(shell, ["-NoProfile", "-NonInteractive", "-Command", "$PSVersionTable.PSVersion.ToString()"], {
     encoding: "utf8", timeout: 10_000,
   });
-  test(`${shell}: PATH transactions preserve edits, serialize channels, and reject overflow`, {
+  test(`${shell}: PATH updates preserve edits, serialize channels, and reject overflow`, {
     skip: shell === "pwsh" && probe.error?.code === "ENOENT" ? "PowerShell 7 is not installed" : false,
   }, () => {
     assert.equal(probe.status, 0, probe.error?.message ?? probe.stderr);

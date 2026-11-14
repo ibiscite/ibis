@@ -224,7 +224,7 @@ test("Ibis Nightly is a separate app that reads only the nightly feed", () => {
   assert.equal(config.identifier, "com.ibiscite.ibis.nightly");
   assert.equal(config.productName, "Ibis Nightly");
   assert.deepEqual(config.plugins.updater.endpoints, ["https://github.com/ibiscite/ibis/releases/download/nightly/latest.json"]);
-  assert.ok(!config.bundle.targets.includes("msi") && !config.bundle.targets.includes("rpm"));
+  assert.ok(!config.bundle.targets.includes("rpm"));
   const stable = JSON.parse(readFileSync(new URL("../apps/desktop/src-tauri/tauri.conf.json", import.meta.url), "utf8"));
   assert.equal(config.plugins.updater.pubkey, NIGHTLY_PUBKEY, "Ibis Nightly trusts only the nightly key");
   assert.notEqual(NIGHTLY_PUBKEY, stable.plugins.updater.pubkey, "nightly and stable updates use separate keys");

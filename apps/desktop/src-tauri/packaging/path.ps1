@@ -1,4 +1,4 @@
-param([ValidateSet('Add', 'Remove', 'Rollback')][string]$Action, [string]$Directory = '', [string]$Transaction = '')
+param([ValidateSet('Add', 'Remove')][string]$Action, [string]$Directory = '')
 $ErrorActionPreference = 'Stop'
 
 function Get-IbisPathLockName {
@@ -7,17 +7,14 @@ function Get-IbisPathLockName {
 }
 
 function Invoke-IbisPathUpdate {
-  param([ValidateSet('Add', 'Remove', 'Rollback')][string]$Action, [string]$Directory, [string]$Transaction = '',
+  param([ValidateSet('Add', 'Remove')][string]$Action, [string]$Directory,
         $Registry, [string]$MutexName, [string]$MachinePath = '')
   $Directory = [IO.Path]::GetFullPath($Directory)
   if ($Directory.Length -gt 3) { $Directory = $Directory.TrimEnd('\') }
-  if ($Transaction -ne '' -and $Transaction -notmatch '^\{[0-9a-fA-F-]{36}\}$') { throw 'Invalid installer transaction.' }
-  if ($Action -eq 'Rollback' -and $Transaction -eq '') { throw 'Rollback needs an installer transaction.' }
   $receiptsKey = 'Software\ibiscite\Ibis\CommandPath'
-  $transactionsKey = 'Software\ibiscite\Ibis\CommandPathTransactions'
   $mutex = [Threading.Mutex]::new($false, $MutexName)
   $locked = $false
-  $key = $receipts = $transactions = $null
+  $key = $receipts = $null
   try {
     try { $locked = $mutex.WaitOne(60000) }
     catch [Threading.AbandonedMutexException] { $locked = $true }
@@ -41,31 +38,7 @@ function Invoke-IbisPathUpdate {
     $value = $raw
     $valueKind = $kind
     $nextReceipt = $saved
-    if ($Transaction -ne '') { $transactions = $Registry.CreateSubKey($transactionsKey) }
-    if ($Action -eq 'Rollback') {
-      $snapshot = $transactions.GetValue($Transaction, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
-      if ($null -ne $snapshot) {
-        $snapshot = $snapshot | ConvertFrom-Json
-        if ($snapshot.Directory -cne $Directory) { throw 'The PATH transaction belongs to another installation.' }
-        # A newer receipt owns its own change. Do not consume it on rollback.
-        if ($saved -ceq $snapshot.AfterReceipt) {
-          if ($snapshot.Path -cne $snapshot.After) {
-            if ($raw -ceq $snapshot.After -and $kind.ToString() -ceq $snapshot.AfterKind) {
-              $value = $snapshot.Path
-              $valueKind = [Microsoft.Win32.RegistryValueKind]$snapshot.Kind
-            } elseif ($snapshot.Action -eq 'Add' -and $index -ge 0) {
-              # Another installer/user edited PATH after us: undo only our entry.
-              $parts.RemoveAt($index)
-              $value = $parts -join ';'
-            } elseif ($snapshot.Action -eq 'Remove' -and $index -lt 0 -and $snapshot.RemovedIndex -ge 0) {
-              $parts.Insert([Math]::Min([int]$snapshot.RemovedIndex, $parts.Count), [string]$snapshot.RemovedEntry)
-              $value = $parts -join ';'
-            }
-          }
-          $nextReceipt = $snapshot.Receipt
-        }
-      }
-    } elseif ($Action -eq 'Add' -and $index -lt 0) {
+    if ($Action -eq 'Add' -and $index -lt 0) {
       $value = if ($null -eq $raw -or $raw -eq '') { $Directory } else { $raw + ';' + $Directory }
       $record = @{ Directory=$Directory; Before=$raw; Kind=$kind.ToString(); After=$value }
       $nextReceipt = $record | ConvertTo-Json -Compress
@@ -81,21 +54,12 @@ function Invoke-IbisPathUpdate {
       }
       $nextReceipt = $null
     }
-    # Keep registry data unexpanded. Before adding/restoring an entry, validate
+    # Keep registry data unexpanded. Before adding an entry, validate
     # machine + user PATH and reserve one UTF-16 character for its null. Removal
     # must still be able to shorten a PATH another installer made oversized.
-    $adding = $Action -eq 'Add' -or ($Action -eq 'Rollback' -and $snapshot.Action -eq 'Remove')
-    if ($adding -and $value -cne $raw -and $null -ne $value) {
+    if ($Action -eq 'Add' -and $value -cne $raw -and $null -ne $value) {
       $effective = if ($MachinePath -and $value) { $MachinePath + ';' + $value } else { $MachinePath + $value }
       if ([Environment]::ExpandEnvironmentVariables($effective).Length -ge 32767) { throw 'The expanded PATH is too long to add the ibis command.' }
-    }
-    if ($null -ne $transactions -and $Action -ne 'Rollback') {
-      # Record both sides before publishing anything. Rollback restores the
-      # exact snapshot only while this transaction's result is still current.
-      $snapshot = @{ Directory=$Directory; Action=$Action; Path=$raw; Kind=$kind.ToString(); Receipt=$saved;
-                     After=$value; AfterKind=$valueKind.ToString(); AfterReceipt=$nextReceipt; RemovedIndex=$index;
-                     RemovedEntry=$(if ($index -ge 0) { $raw.Split(';')[$index] } else { $null }) }
-      $transactions.SetValue($Transaction, ($snapshot | ConvertTo-Json -Compress), [Microsoft.Win32.RegistryValueKind]::String)
     }
     try {
       if ($nextReceipt -cne $saved) {
@@ -114,14 +78,8 @@ function Invoke-IbisPathUpdate {
       }
       throw
     }
-    if ($Action -eq 'Rollback') { $transactions.DeleteValue($Transaction, $false) }
   } finally {
     try {
-      if ($null -ne $transactions) {
-        $empty = $transactions.GetValueNames().Count -eq 0
-        $transactions.Dispose()
-        if ($empty) { $Registry.DeleteSubKey($transactionsKey, $false) }
-      }
       if ($null -ne $receipts) {
         $empty = $receipts.GetValueNames().Count -eq 0
         $receipts.Dispose()
@@ -139,7 +97,7 @@ function Invoke-IbisPathUpdate {
 if ($MyInvocation.InvocationName -ne '.') {
   if ($Directory -eq '' -or $Action -eq '') { throw 'An action and installation directory are required.' }
   $machine = [Environment]::GetEnvironmentVariable('Path', [EnvironmentVariableTarget]::Machine)
-  Invoke-IbisPathUpdate -Action $Action -Directory $Directory -Transaction $Transaction -Registry ([Microsoft.Win32.Registry]::CurrentUser) -MutexName (Get-IbisPathLockName) -MachinePath $machine
+  Invoke-IbisPathUpdate -Action $Action -Directory $Directory -Registry ([Microsoft.Win32.Registry]::CurrentUser) -MutexName (Get-IbisPathLockName) -MachinePath $machine
   # Notify apps without changing this process or requiring elevation.
   Add-Type @'
 using System;

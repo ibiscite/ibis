@@ -25,8 +25,7 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
-/** Update entries name their package type, so an app installed from a .deb,
- * .rpm or .msi is never offered another kind of package. */
+/** Update entries name their package type so the updater uses the matching installer. */
 export const PACKAGES = {
   "darwin-aarch64-app": "Ibis-macOS-Apple-silicon.app.tar.gz",
   "darwin-x86_64-app": "Ibis-macOS-Intel.app.tar.gz",
@@ -58,9 +57,8 @@ export function feedKeyId(feed) {
   return [...ids][0];
 }
 
-/** Ibis Nightly: a separate app with its own settings and update feed. No MSI
- * (Windows Installer versions cannot carry "nightly") and no .rpm (RPM
- * versions cannot contain "-"). */
+/** Ibis Nightly: a separate app with its own settings and update feed.
+ * No .rpm (RPM versions cannot contain "-"). */
 export function nightlyConfig(version, platform = process.platform) {
   const stable = JSON.parse(readFileSync(join(root, "apps/desktop/src-tauri/tauri.conf.json"), "utf8"));
   const identifier = "com.ibiscite.ibis.nightly";
