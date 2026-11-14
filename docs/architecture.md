@@ -172,7 +172,7 @@ One locator parser serves search, the Page field and the CLI (all 29 CSL terms, 
 A writing is an optional name, format and read-only `.bib` in `settings.json` ([decision 0042](decisions/0042-formats-apps-and-writings.md)); the picker remembers one per app, and CLI/editor clients select one explicitly. Writings grant no paste authority and receipts never carry paths. Bibliography checks, `--strict` and stale-identity rules are in [writing commands](cli.md#writings).
 
 <a id="task-contexts-planned"></a>
-Cross-client task-context plans are in [the roadmap](../ROADMAP.md#consolidation-now-alongside-finishing-03).
+Cross-client task-context plans are in [the roadmap](../ROADMAP.md#next).
 
 ## Desktop app
 

@@ -1,13 +1,17 @@
-"""Settings files owned by native tests in a disposable account."""
+"""Settings directories owned by native tests in a disposable account."""
+
+import shutil
 
 
-def settings_exist(settings):
-    directory = settings.parent
-    return (directory.is_symlink() or directory.exists()
-            and (not directory.is_dir() or any(directory.iterdir())))
+class SettingsDirectory:
+    def __init__(self, settings):
+        self.settings = settings
+        directory = settings.parent
+        if directory.is_symlink() or (directory.exists()
+                and (not directory.is_dir() or any(directory.iterdir()))):
+            raise FileExistsError("settings directory is not empty")
+        directory.mkdir(parents=True, exist_ok=True)
 
-
-def clean_settings(settings):
-    """Only after preflight claimed an empty channel and all owned processes stopped."""
-    for suffix in (".json", ".json.bak", ".json.tmp"):
-        settings.with_suffix(suffix).unlink(missing_ok=True)
+    def close(self):
+        """Remove the claimed directory after all owned processes have stopped."""
+        shutil.rmtree(self.settings.parent)

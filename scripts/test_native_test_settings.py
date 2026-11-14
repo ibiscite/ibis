@@ -1,42 +1,57 @@
-"""Native tests claim only an empty settings directory for their channel."""
+"""Native tests own a whole empty settings directory for their channel."""
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from native_test_settings import clean_settings, settings_exist
+from native_test_settings import SettingsDirectory
 
 
 class SettingsTests(unittest.TestCase):
     def test_existing_channel_data_is_preserved(self):
-        for name in ("settings.json", "settings.json.bak", "settings.json.tmp", "apps.json", "recents.json"):
+        for name in ("settings.json", "settings.json.lock", "apps.json", "recents.json"):
             with TemporaryDirectory() as temporary:
                 settings = Path(temporary) / "com.ibiscite.ibis/settings.json"
-                self.assertFalse(settings_exist(settings))
                 settings.parent.mkdir()
-                self.assertFalse(settings_exist(settings))
                 existing = settings.parent / name
                 existing.write_bytes(b"synthetic existing data")
-                self.assertTrue(settings_exist(settings))
+                with self.assertRaises(FileExistsError):
+                    SettingsDirectory(settings)
                 self.assertEqual(existing.read_bytes(), b"synthetic existing data")
 
-    def test_claim_does_not_borrow_another_channel(self):
+    def test_save_cleanup_and_reclaim(self):
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
-            stable = root / "com.ibiscite.ibis/settings.json"
-            stable.parent.mkdir()
-            stable.write_bytes(b"synthetic stable settings")
-            for identifier in ("com.ibiscite.ibis.nightly", "com.ibiscite.ibis.development", "other"):
-                self.assertFalse(settings_exist(root / identifier / "settings.json"))
+            settings = root / "nightly/settings.json"
+            other = root / "stable/settings.json"
+            other.parent.mkdir()
+            other.write_bytes(b"other channel")
+            for _ in range(2):
+                owned = SettingsDirectory(settings)
+                settings.write_bytes(b"synthetic settings")
+                (settings.parent / "settings.json.lock").touch()
+                (settings.parent / "nested").mkdir()
+                with self.assertRaises(FileExistsError):
+                    SettingsDirectory(settings)
+                owned.close()
+                self.assertFalse(settings.parent.exists())
+            self.assertEqual(other.read_bytes(), b"other channel")
 
-    def test_cleanup_removes_only_owned_settings_files(self):
+    def test_empty_directory_can_be_claimed(self):
         with TemporaryDirectory() as temporary:
-            settings = Path(temporary) / "settings.json"
-            for name in ("settings.json", "settings.json.bak", "settings.json.tmp"):
-                settings.with_name(name).write_bytes(b"owned synthetic settings")
-            preserved = settings.with_name("other.json")
-            preserved.write_bytes(b"other data")
-            clean_settings(settings)
-            self.assertEqual(list(settings.parent.iterdir()), [preserved])
+            settings = Path(temporary) / "channel/settings.json"
+            settings.parent.mkdir()
+            SettingsDirectory(settings).close()
+            self.assertFalse(settings.parent.exists())
+
+    @unittest.skipIf(os.name == "nt", "creating symlinks needs extra rights on Windows")
+    def test_channel_symlink_is_refused(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "channel").symlink_to(root / "missing", target_is_directory=True)
+            with self.assertRaises(FileExistsError):
+                SettingsDirectory(root / "channel/settings.json")
+            self.assertTrue((root / "channel").is_symlink())
 
 
 if __name__ == "__main__":

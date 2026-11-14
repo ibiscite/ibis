@@ -63,7 +63,7 @@ import urllib.request
 from pathlib import Path
 # Keep sibling helpers available to direct execution and importlib/runpy callers.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from native_test_settings import clean_settings, settings_exist
+from native_test_settings import SettingsDirectory
 
 # Use the passing Linux smoke's EWMH parser, including its refusal of an
 # unavailable client list. A same-process GTK auxiliary is not the picker.
@@ -467,10 +467,16 @@ def seed_settings(config, library):
 def claim_settings(config, library):
     """This harness uses Windows/macOS's account settings folder and must
     never overwrite someone's real settings."""
-    folder = config / IDENTIFIER
-    if settings_exist(folder / "settings.json"):
-        raise SystemExit("Ibis Nightly settings already exist; use a disposable account")
-    return seed_settings(config, library)
+    try:
+        owned = SettingsDirectory(config / IDENTIFIER / "settings.json")
+    except FileExistsError:
+        raise SystemExit("Ibis Nightly settings already exist; use a disposable account") from None
+    try:
+        seed_settings(config, library)
+    except BaseException:
+        owned.close()
+        raise
+    return owned
 
 
 def environment(inherited, config):
@@ -956,7 +962,8 @@ class MacOS:
         # Resolved, because LaunchServices reopens /private/var/..., not /var/...
         folder = folder.resolve()
         self.config = None
-        self.settings = claim_settings(Path.home() / "Library/Application Support", library)
+        self.owned_settings = claim_settings(Path.home() / "Library/Application Support", library)
+        self.settings = self.owned_settings.settings
         applications, expected = folder / "Applications", folder / "expected"
         for target, archive in ((applications, args.previous), (expected, args.expected)):
             target.mkdir()
@@ -1032,7 +1039,7 @@ class MacOS:
             raise MacOSActivationFailure(probe) from None
 
     def close(self):
-        clean_settings(self.settings)
+        self.owned_settings.close()
 
 
 class MacOSActivationFailure(AssertionError):
@@ -1061,7 +1068,8 @@ class Windows:
         self.version = args.version
         self.config = None
         roaming = powershell("[Environment]::GetFolderPath('ApplicationData')").strip()
-        self.settings = claim_settings(Path(roaming), library)
+        self.owned_settings = claim_settings(Path(roaming), library)
+        self.settings = self.owned_settings.settings
         if digest(args.previous) == digest(args.expected):
             raise AssertionError("the previous and the new setup executable are identical")
         before = uninstall_entries()
@@ -1160,7 +1168,7 @@ class Windows:
         uninstaller = self.folder / "uninstall.exe"
         if uninstaller.exists():
             subprocess.run([str(uninstaller), "/S"], timeout=120)
-        clean_settings(self.settings)
+        self.owned_settings.close()
 
 
 class HelperProcessFailure(RuntimeError):
@@ -2750,17 +2758,6 @@ function Contract-Result($pressed,$how) {
                     with self.assertRaisesRegex(AssertionError, "synthetic settings could not be read"):
                         preserved_settings(settings, library)
                     opened.assert_not_called()
-
-    def test_claim_never_overwrites_existing_settings_and_clean_removes_only_its_files(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            settings = claim_settings(root, root / "synthetic.bib")
-            (settings.parent / "settings.json.bak").write_text("{}", encoding="utf-8")
-            (settings.parent / "other.json").write_text("{}", encoding="utf-8")
-            with self.assertRaises(SystemExit):
-                claim_settings(root, root / "synthetic.bib")
-            clean_settings(settings)
-            self.assertEqual([entry.name for entry in settings.parent.iterdir()], ["other.json"])
 
     @unittest.skipIf(os.name == "nt", "creating symlinks needs extra rights on Windows")
     def test_claim_refuses_a_dangling_link_and_leaves_it_and_its_target_alone(self):
