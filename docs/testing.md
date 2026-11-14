@@ -24,9 +24,9 @@ for the changed behaviour; `land.sh` runs the complete local gate before merging
 
 ```sh
 bash scripts/land.sh
-cargo test -p ibis-engine --locked TEST_FILTER
-cargo test -p ibis-desktop --locked TEST_FILTER
-pnpm -C apps/desktop exec vitest run FILE --maxWorkers=1
+node scripts/check.mjs test -p ibis-engine TEST_FILTER
+node scripts/check.mjs rust -p ibis-desktop
+node scripts/check.mjs vitest FILE
 node --test scripts/doc-links.test.mjs
 node scripts/gen.mjs --check
 ```
@@ -95,14 +95,16 @@ at the layer that owns the cause.
 ## Where checks run
 
 [`land.sh`](../scripts/land.sh) is the merge gate ([decision 0049](decisions/0049-local-gate.md)).
-Run it on the Mac from a clean, named branch. It checks for conflicts with main,
-pushes without opening a PR, then runs these machines in parallel:
+Run it on the Mac from a clean, named branch. It pins main, merges that commit
+into the branch if needed, pushes the integrated head, then runs these machines
+in parallel. [`check.mjs`](../scripts/check.mjs) owns the blocking suite commands
+for both this gate and CI; callers prepare dependencies and select suites.
 
 | Machine | Checks |
 | --- | --- |
-| Mac | Workspace Clippy with all targets (including desktop), workspace tests, TypeScript, Biome, full Vitest, Node script tests (two workers), headless generated-file freshness, PR title, formatting, repository guards and dependency licence/bans/source policy. |
+| Mac | Workspace Clippy with all targets (including desktop), workspace tests, TypeScript, Biome, full Vitest, web build/budget, Node and Python script tests, full generated-file freshness, PR title, formatting, repository guards and dependency licence/bans/source policy. |
 | Ubuntu (`db-scr-ubuntu`) | Workspace Clippy and tests, full Vitest; one build at a time in `~/Code/ibis`. A detached build and SHA-bound end marker survive dropped SSH connections. |
-| Windows laptop | When packaging or PowerShell paths change (including the gate itself): packaging-script tests and every `*.tests.ps1` under Windows PowerShell 5.1; no Rust. |
+| Windows laptop | When packaging or PowerShell paths change (including the gate itself): Node and Python script tests and every `*.tests.ps1` under Windows PowerShell 5.1; no Rust. |
 
 Changes matching the independent-review path table in `land.sh` need an existing
 PR with a maintainer-authored comment containing this exact line:
@@ -110,7 +112,7 @@ PR with a maintainer-authored comment containing this exact line:
 change reviews the final head, fixes every P1/P2, then posts the record; SESSION
 must differ from the writing session's branch name. The gate prints the affected
 paths and the command to add a missing record. It checks before running machines
-and again before merging, against the current main. New commits need a new review.
+and again before merging, against pinned main. An integrated head needs its own review.
 
 Mac and Ubuntu gate tests use the same fixed `PROPTEST_RNG_SEED`, defined in
 `land.sh`, and failures print it. To reproduce a property failure, run
@@ -131,8 +133,9 @@ On success, the script preserves an existing PR's title/body and appends one
 gate line. New PRs use `--title` or the first non-merge commit subject, and
 `--body-file` or that commit's body without trailers. It posts **Local gate**
 success on the exact SHA, then squash-merges immediately without auto-merge.
-A changed head, dirty files, missing checks or conflict stop landing. The release
-app's PR uses the same gate; no CI dispatch is needed to prepare it.
+A changed head, dirty files, missing checks or a moved main stop landing. Main
+must still equal the pin immediately before the status and squash merge; otherwise
+the gate says `main moved; rerun`. The release app's PR uses the same gate.
 
 [CI](../.github/workflows/ci.yml) runs after pushes to main and on daily/manual
 runs, with Linux, macOS and Windows suites on every revision. Daily/manual runs

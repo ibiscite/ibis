@@ -40,3 +40,10 @@ changes require a maintainer-authored PR comment naming the reviewing session
 and exact head SHA, checked before builds and before merge. A commit trailer
 cannot name its own commit. Gate property tests use one fixed seed on both
 Rust machines and report it on failure; daily/manual fuzzing keeps fresh seeds.
+
+2026-11-14 (maintainer, decision 0054 stage 1): pin main, merge it into the head
+before testing, and refuse landing if main moved. Gate and CI use
+`scripts/check.mjs` for blocking suites, including full generation and Python.
+Squash merging matches the tested head. Closing the final API race also requires
+main's required **Local gate** status check to require branches to be up to date
+before merging (ruleset `strict_required_status_checks_policy: true`).

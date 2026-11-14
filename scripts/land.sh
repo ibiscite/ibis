@@ -64,14 +64,17 @@ clean() {
   [ -z "$status" ]
 }
 clean || { echo 'A clean HEAD is required: commit or remove outstanding work, then rerun.'; exit 2; }
+git fetch -q origin main
+main=$(git rev-parse origin/main)
+if ! git merge-base --is-ancestor "$main" HEAD; then
+  git merge --no-edit "$main" ||
+    { echo 'Merge conflict with main: resolve it, commit, and rerun.'; exit 1; }
+fi
 sha=$(git rev-parse HEAD)
 unchanged() {
   if [ "$(git rev-parse HEAD)" = "$sha" ] && [ "$(git rev-parse --abbrev-ref HEAD)" = "$branch" ] && clean; then return; fi
   echo 'HEAD or working files changed during landing. Rerun on a clean commit.'; return 1
 }
-git fetch -q origin main
-git merge-tree --write-tree origin/main "$sha" >/dev/null ||
-  { echo 'Merge conflict with main: merge origin/main, resolve it, commit, and rerun.'; exit 1; }
 [ "$(gh api user --jq .login)" = diyanko ] || { echo "Landing requires the maintainer's GitHub account."; exit 1; }
 repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 find_pr() {
@@ -90,7 +93,7 @@ find_pr
 # One checked, NUL-separated list of changed paths drives every path decision; a failed diff stops landing.
 paths_file=$(mktemp)
 collect_paths() {
-  git diff -z --name-only --no-renames "origin/main...$sha" > "$paths_file" || { echo 'Could not list the changed paths; nothing landed.'; exit 1; }
+  git diff -z --name-only --no-renames "$main...$sha" > "$paths_file" || { echo 'Could not list the changed paths; nothing landed.'; exit 1; }
 }
 require_review() {
   local path sensitive= comments line
@@ -99,7 +102,7 @@ require_review() {
   while IFS= read -r -d '' path; do
     # Independent-review path table (AGENTS.md). Globs include new files and deletions.
     case "$path" in
-      .github/*|scripts/land.sh|scripts/ci-main.mjs|scripts/ci-result.sh) ;; # CI permissions, what authorizes publication, and the merge boundary
+      .github/*|scripts/land.sh|scripts/check.mjs|scripts/ci-main.mjs|scripts/ci-result.sh) ;; # CI permissions, what authorizes publication, and the merge boundary
       apps/desktop/src-tauri/src/updater*|scripts/update-feed.mjs) ;;
       scripts/*sign*.sh|scripts/publish-*|scripts/publication-guard.mjs|scripts/keep-previous-nightly.sh) ;;
       apps/desktop/src-tauri/tauri*.json|apps/desktop/src-tauri/capabilities/*|apps/desktop/src-tauri/permissions/*) ;; # Window permissions
@@ -125,7 +128,7 @@ require_review() {
   printf "  gh pr comment %q --repo %q --body 'Reviewed-by-session: <reviewer-session> %s'\n" "${number:-$branch}" "$repo" "$sha"
   return 1
 }
-commit=$(git rev-list --reverse --no-merges "origin/main..$sha" | sed -n '1p')
+commit=$(git rev-list --reverse --no-merges "$main..$sha" | sed -n '1p')
 [ -n "$commit" ] || { echo 'No non-merge commits to land.'; exit 2; }
 title=${title_arg:-$(git show -s --format=%s "$commit")}
 if [ -n "$number" ]; then title=$(gh pr view "$number" --repo "$repo" --json title --jq .title); fi
@@ -134,7 +137,7 @@ require_review
 windows_needed=false
 while IFS= read -r -d '' path; do
   case "$path" in
-    *.ps1|apps/desktop/src-tauri/packaging/*|apps/desktop/src-tauri/tauri*.json|scripts/*package*|scripts/build-*|scripts/*install*|scripts/*windows*|scripts/*command-path*|scripts/*offline*|scripts/*update*|scripts/land*|.github/workflows/preview.yml) windows_needed=true;;
+    *.ps1|apps/desktop/src-tauri/packaging/*|apps/desktop/src-tauri/tauri*.json|scripts/*package*|scripts/build-*|scripts/*install*|scripts/*windows*|scripts/*command-path*|scripts/*offline*|scripts/*update*|scripts/land*|scripts/check.mjs|.github/workflows/ci.yml|.github/workflows/preview.yml) windows_needed=true;;
   esac
 done < "$paths_file"
 root=$(git rev-parse --show-toplevel)
@@ -154,17 +157,8 @@ mac_gate() {
   # Development Python is Miniconda's on every machine, never the system's.
   export PATH="$HOME/miniconda3/bin:$PATH"
   trap 'printf "FAILED (%s): %s\n" "$?" "$BASH_COMMAND"' ERR
-  cargo fmt --all --check
-  cargo clippy --workspace --all-targets --locked -- -D warnings -D clippy::unused_result_ok
-  cargo test --workspace --locked
   pnpm -C apps/desktop install --frozen-lockfile --prefer-offline
-  pnpm -C apps/desktop exec tsc --noEmit
-  pnpm -C apps/desktop lint
-  pnpm -C apps/desktop exec vitest run --maxWorkers=2
-  node --test --test-concurrency=2 scripts/*.test.mjs
-  node scripts/gen.mjs --headless --check
-  for guard in scripts/check-*.mjs; do node "$guard"; done
-  cargo deny --locked check licenses bans sources
+  node scripts/check.mjs
 }
 
 ubuntu_gate() {
@@ -199,10 +193,9 @@ export CARGO_TARGET_DIR="$HOME/Code/ibis/target"
 export CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=1 CARGO_BUILD_JOBS=4  # 8 cores but 7 GB RAM
 # Empty, not unset: an empty value also overrides a wrapper set in Cargo's config.
 export RUSTC_WRAPPER= RUSTC_WORKSPACE_WRAPPER=
-cargo clippy --workspace --all-targets --locked -- -D warnings -D clippy::unused_result_ok
-cargo test --workspace --locked
 pnpm -C apps/desktop install --frozen-lockfile --prefer-offline
-pnpm -C apps/desktop exec vitest run --maxWorkers=2
+node scripts/check.mjs rust
+node scripts/check.mjs vitest
 BUILD
 nohup bash "$gate.sh" "$sha" "$branch" > "$gate.log" 2>&1 < /dev/null &
 echo "Ubuntu started: $!"
@@ -246,7 +239,6 @@ windows_gate() {
 $ErrorActionPreference = 'Stop'
 # Over ssh the laptop's PATH lacks Windows PowerShell; tests and scripts expect it there.
 $env:Path = "$env:USERPROFILE\miniconda3;$env:USERPROFILE\miniconda3\Scripts;$env:SystemRoot\System32\WindowsPowerShell\v1.0;$env:Path"
-if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { throw 'Windows PowerShell 5.1 is required' }
 $checkout = Join-Path $env:TEMP 'ibis-local-gate'
 $lock = [IO.File]::Open("$checkout.lock", 'OpenOrCreate', 'ReadWrite', 'None')
 try {
@@ -263,11 +255,7 @@ try {
   if ($LASTEXITCODE -ne 0 -or $fetched -ne $sha) { throw 'Fetched branch moved' }
   git checkout -q --detach $sha
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-  foreach ($test in Get-ChildItem scripts/*.tests.ps1) {
-    & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $test.FullName
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-  }
-  node --test --test-concurrency=2 scripts/preview-packages.test.mjs scripts/windows-command-path.test.mjs
+  node scripts/check.mjs windows
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 } finally { $lock.Dispose() }
 WINDOWS
@@ -299,9 +287,6 @@ for i in "${!pids[@]}"; do
 done
 "$failed" && { echo "Gate failed. Full logs: $logs"; exit 1; }
 unchanged
-# Main may have advanced while the machines were busy.
-git fetch -q origin main
-git merge-tree --write-tree origin/main "$sha" >/dev/null || { echo 'Merge conflict with main; resolve and rerun.'; exit 1; }
 find_pr
 require_review
 if [ -n "$number" ]; then
@@ -322,7 +307,7 @@ summary="mac $mac; ubuntu $ubuntu; windows $windows"
 # Markdown's backticks are literal.
 # shellcheck disable=SC2016
 printf '\nLocal gate `%s`: %s.\n' "$sha" "$summary" >> "$logs/body.md"
-trailers=$(git log --format='%(trailers:key=Signed-off-by,key=Assisted-by,only,unfold)' "origin/main..$sha" | awk 'NF && !seen[$0]++')
+trailers=$(git log --format='%(trailers:key=Signed-off-by,key=Assisted-by,only,unfold)' "$main..$sha" | awk 'NF && !seen[$0]++')
 if [ -n "$trailers" ]; then printf '\n%s\n' "$trailers" >> "$logs/body.md"; fi
 unchanged
 if [ -n "$number" ]; then
@@ -331,6 +316,9 @@ if [ -n "$number" ]; then
 else
   url=$(gh pr create --repo "$repo" --base main --head "$branch" --title "$title" --body-file "$logs/body.md")
 fi
+git fetch -q origin main
+[ "$(git rev-parse origin/main)" = "$main" ] || { echo 'main moved; rerun'; exit 1; }
+unchanged
 gh api "repos/$repo/statuses/$sha" -f 'context=Local gate' -f state=success -f "description=$summary" > /dev/null
 gh pr merge "$url" --repo "$repo" --squash --body-file "$logs/body.md" --match-head-commit "$sha" --delete-branch
 printf 'Merged %s (%s).\n' "$url" "$summary"
