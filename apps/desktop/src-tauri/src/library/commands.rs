@@ -76,7 +76,7 @@ pub(crate) async fn zotero_groups(library: State<'_, Mutex<Library>>) -> Result<
     let file = library.lock().ok().and_then(|library| library.file.clone());
     tauri::async_runtime::spawn_blocking(move || match file {
         Some(file) => file.zotero_groups(),
-        None => ibis_engine::Engine::new().and_then(|engine| super::engine_file::zotero_groups(&engine)),
+        None => ibis_engine::Engine::new().and_then(|engine| super::engine_library::zotero_groups(&engine)),
     })
     .await
     .map_err(|_| super::CommandError::NotPrepared)?
@@ -105,10 +105,13 @@ pub(crate) struct ZoteroProfiles {
 #[ibis_desktop_macros::command]
 pub(crate) async fn zotero_profiles(app: AppHandle) -> Result<ZoteroProfiles, super::CommandError> {
     tauri::async_runtime::spawn_blocking(move || {
-        let chosen = app.state::<crate::preferences::SettingsFile>().zotero_profile();
+        let chosen = app
+            .state::<crate::preferences::SettingsFile>()
+            .zotero_profile()
+            .map_err(|_| ibis_core::contract::EngineError::new(ibis_core::contract::ErrorCode::SourceUnavailable))?;
         let running = discovery::find_zotero(InspectionPolicy::Setup, false, &Cancellation::default())?
             != discovery::ZoteroPresence::Absent;
-        super::engine_file::zotero_profiles().map(|names| ZoteroProfiles { names, chosen, running })
+        super::engine_library::zotero_profiles().map(|names| ZoteroProfiles { names, chosen, running })
     })
     .await
     .map_err(|_| super::CommandError::NotPrepared)?
@@ -273,7 +276,6 @@ pub(crate) async fn search(
                             info: ibis_core::contract::RecoveryInfo::new(
                                 "app-command-no-library",
                                 ibis_core::contract::Recovery::ChooseLibrary,
-                                ibis_core::contract::FocusTarget::LibraryPicker,
                             ),
                         })
                     }));

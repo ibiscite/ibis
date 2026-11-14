@@ -24,12 +24,10 @@ pub(crate) struct FormatSettingsView {
 #[ibis_desktop_macros::command]
 pub(crate) fn format_settings(app: AppHandle) -> Result<FormatSettingsView, CommandError> {
     let loaded = ibis_engine::settings::load(&app.state::<SettingsFile>().path);
-    if let Some(problem) = loaded.problem {
-        return Err(CommandError::from(problem));
-    }
-    let settings = loaded.settings;
+    let settings = loaded.cites().map_err(CommandError::from)?;
     Ok(FormatSettingsView {
         apps: settings
+            .device
             .app_outputs
             .iter()
             .map(|entry| AppFormat {
@@ -39,16 +37,22 @@ pub(crate) fn format_settings(app: AppHandle) -> Result<FormatSettingsView, Comm
                 format: entry.output.clone(),
             })
             .collect(),
-        writings: settings.writings.iter().map(crate::writings::saved_view).collect(),
-        key_output_visible: settings.key_formats_used
-            || settings.key_output.is_some()
+        writings: settings
+            .device
+            .writings
+            .iter()
+            .map(crate::writings::saved_view)
+            .collect(),
+        key_output_visible: settings.device.key_formats_used
+            || settings.portable.key_output.is_some()
             || settings
+                .device
                 .suggestion_reports
                 .contains(&ibis_engine::format::FormatKind::Keys)
-            || settings.app_outputs.iter().any(|entry| {
-                ibis_engine::format::choose(&settings, Some(&entry.app)).kind == ibis_engine::format::FormatKind::Keys
+            || settings.device.app_outputs.iter().any(|entry| {
+                ibis_engine::format::choose(settings, Some(&entry.app)).kind == ibis_engine::format::FormatKind::Keys
             }),
-        unknown: (!settings.unknown.is_empty()).then_some(settings.unknown),
+        unknown: (!settings.unknown.is_empty()).then(|| settings.unknown.clone()),
     })
 }
 
@@ -57,6 +61,7 @@ pub(crate) fn format_settings(app: AppHandle) -> Result<FormatSettingsView, Comm
 pub(crate) fn forget_app_format(app: AppHandle, id: String) -> Result<(), CommandError> {
     app.state::<SettingsFile>().update(|settings| {
         settings
+            .device
             .app_outputs
             .retain(|entry| crate::writings::app_key(&entry.app) != id);
     })?;

@@ -129,10 +129,10 @@ fn manual_accessibility_allowed(app: &AppHandle, front: &Front) -> bool {
         return false;
     };
     let settings = ibis_engine::settings::load(&app.state::<crate::preferences::SettingsFile>().path);
-    if settings.problem.is_some() {
+    let Ok(settings) = settings.cites() else {
         return false;
-    }
-    manual_accessibility_policy(front, id, preference, settings.settings.paste.unwrap_or(true))
+    };
+    manual_accessibility_policy(front, id, preference, settings.portable.paste.unwrap_or(true))
 }
 
 fn manual_accessibility_policy(

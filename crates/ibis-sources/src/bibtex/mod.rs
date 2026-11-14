@@ -23,10 +23,10 @@ pub(crate) mod project;
 mod resolve;
 
 use std::cell::Cell;
-use std::collections::{HashMap, HashSet};
 
 use biblatex::Bibliography;
 
+use crate::candidates::Candidates;
 use crate::{ParsedLibrary, SourceWarning, WarningCause, WarningCode};
 use ibis_core::contract::{LibraryId, Record, Snapshot};
 use ibis_core::panic_guard;
@@ -246,23 +246,24 @@ pub(crate) fn load_with_budget(
     let mut macros = Vec::new();
     let mut entries: Vec<RawEntry<'_>> = Vec::new();
     let mut raw_texts: Vec<&str> = Vec::new();
-    // Each key's first line, so a repeat can name it without searching.
-    let mut seen = HashMap::new();
-    let mut duplicates = HashSet::new();
-    let duplicate = |line, key: &str| SourceWarning {
-        code: WarningCode::DuplicateKey,
-        line: Some(line),
-        key: Some(key.to_owned()),
-        entry: None,
-        cause: None,
-        field: None,
-    };
+    let candidates = Candidates::collect(blocks, |block| {
+        let claims = (!matches!(block.kind.as_str(), "comment" | "preamble" | "string"))
+            .then(|| header_key(block.body))
+            .flatten()
+            .map(|key| (format!("record:{key}"), Some(block.line)))
+            .into_iter()
+            .collect();
+        (claims, block)
+    });
+    let mut duplicates = Vec::new();
+    let blocks = candidates.finish(&mut result.duplicate_keys, &mut duplicates);
     for block in &blocks {
         let warn = |code| SourceWarning::at(code, Some(block.line));
         let skip = |problem: Problem| warn(WarningCode::Syntax).because(problem.cause, problem.field);
         if !budget.charge(block.text.len().saturating_mul(4).saturating_add(2048)) {
             result.warnings.push(warn(WarningCode::WorkLimit));
             result.cut_short = true;
+            result.warnings.extend(duplicates);
             return result;
         }
         match block.kind.as_str() {
@@ -287,16 +288,7 @@ pub(crate) fn load_with_budget(
         }
         match parse_entry(block) {
             Err(problem) => result.skip(header_key(block.body), skip(problem)),
-            Ok(entry) if seen.contains_key(&entry.key) => {
-                // Every entry under a repeated key is skipped, so each one is
-                // named, the first included, and the person can find them all.
-                if duplicates.insert(entry.key.clone()) {
-                    result.warnings.push(duplicate(seen[&entry.key], &entry.key));
-                }
-                result.warnings.push(duplicate(block.line, &entry.key));
-            }
             Ok(mut entry) => {
-                seen.insert(entry.key.clone(), block.line);
                 entry.macro_epoch = macros.len();
                 entries.push(entry);
                 raw_texts.push(block.text);
@@ -304,16 +296,7 @@ pub(crate) fn load_with_budget(
         }
     }
 
-    // These are needed only while parsing and deduplicating entry headers.
     drop(blocks);
-    drop(seen);
-    // Neither a citation nor inheritance can choose between repeated keys.
-    // Remove every contender before building the resolver's ownership map.
-    let (entries, raw_texts): (Vec<_>, Vec<_>) = entries
-        .into_iter()
-        .zip(raw_texts)
-        .filter(|(entry, _)| !duplicates.contains(&entry.key))
-        .unzip();
     let resolver = Resolver::new(macros, &entries, &budget);
     // `@xdata` entries only supply fields to other entries; they are not
     // references themselves and are never shown or exported.
@@ -361,6 +344,7 @@ pub(crate) fn load_with_budget(
             ),
         }
     }
+    result.warnings.extend(duplicates);
     result
 }
 
@@ -521,6 +505,40 @@ mod tests {
                 .any(|warning| warning.code == WarningCode::WorkLimit)
         );
     }
+    #[test]
+    fn damaged_identity_claims_also_quarantine_reused_records() {
+        use ibis_core::contract::LibraryObject;
+        let library = LibraryId::digest(b"invented duplicate headers");
+        let prefix = "@book{same,title={Invented first}}\n@book{other,title={Invented neighbor}}\n";
+        let previous = Snapshot::new(
+            load_str(&library, prefix)
+                .records
+                .into_iter()
+                .map(LibraryObject::Record)
+                .collect(),
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+        for contender in [
+            "@book{same,title=}",
+            "@book{same,title={Unclosed}",
+            "@unknown{same,title={Invented second}}",
+        ] {
+            let text = format!("{prefix}{contender}");
+            let parsed = load_with_budget(&library, &text, Budget::for_input(text.len()), Some(&previous));
+            assert!(parsed.records.is_empty());
+            assert_eq!(parsed.reused.len(), 1);
+            assert_eq!(previous.objects()[parsed.reused[0]].object.id().key, "record:other");
+            assert_eq!(
+                parsed
+                    .warnings
+                    .iter()
+                    .filter(|warning| warning.code == WarningCode::DuplicateKey)
+                    .count(),
+                2
+            );
+        }
+    }
+
     #[test]
     fn damaged_and_duplicate_entries_keep_good_records() {
         let result = load_str(

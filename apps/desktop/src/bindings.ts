@@ -65,9 +65,9 @@ export const commands = {
 	/** The library as it is now, for the interface when it starts. */
 	libraryStatus: () => __TAURI_INVOKE<LibraryStatus>("library_status"),
 	/** Open the searched source or launch Zotero for a reported Zotero problem. */
-	openLibrarySource: (item: ItemRef | null, expectedRevision: string, expectedSourceGeneration: string, zoteroOnly: boolean, reveal: boolean, presentation: number | null) => __TAURI_INVOKE<null>("open_library_source", { item, expectedRevision, expectedSourceGeneration, zoteroOnly, reveal, presentation }),
+	openLibrarySource: (item: SourceItem | null, expectedRevision: string, expectedSourceGeneration: string, zoteroOnly: boolean, reveal: boolean, presentation: number | null) => __TAURI_INVOKE<null>("open_library_source", { item, expectedRevision, expectedSourceGeneration, zoteroOnly, reveal, presentation }),
 	/** Resolve the selected source and its system icon, never exposing its path. */
-	librarySource: (item: ItemRef | null, expectedRevision: string, expectedSourceGeneration: string, zoteroOnly: boolean, withStatusIcon: boolean) => __TAURI_INVOKE<SourcePresentation>("library_source", { item, expectedRevision, expectedSourceGeneration, zoteroOnly, withStatusIcon }),
+	librarySource: (item: SourceItem | null, expectedRevision: string, expectedSourceGeneration: string, zoteroOnly: boolean, withStatusIcon: boolean) => __TAURI_INVOKE<SourcePresentation>("library_source", { item, expectedRevision, expectedSourceGeneration, zoteroOnly, withStatusIcon }),
 	/**
 	 * Search the open library. An empty query returns no results. Async so it
 	 * runs off the main thread. `page` identifies the interface page and
@@ -79,9 +79,9 @@ export const commands = {
 	search: (query: SearchQuery, limit: number, page: number, request: number, scope: string[] | null) => __TAURI_INVOKE<SearchReply>("search", { query, limit, page, request, scope }),
 	/** Current destination's recents; Forget retires in-flight recording. */
 	recentReferences: (forget: boolean) => __TAURI_INVOKE<[SearchReply, boolean, boolean]>("recent_references", { forget }),
-	previewFileCitation: (items: FileSelection[], output: string, expectedRevision: string, intent: PreviewIntent) => __TAURI_INVOKE<FilePreview>("preview_file_citation", { items, output, expectedRevision, intent }),
+	previewFileCitation: (items: DraftItem[], output: string, expectedRevision: string, intent: CitationIntent) => __TAURI_INVOKE<Preview>("preview_file_citation", { items, output, expectedRevision, intent }),
 	/** Read-only examples owned by a prepared preview; never publishes a new ticket. */
-	citationDetails: (ticket: string, contentHash: string, item: number, intent: PreviewIntent) => __TAURI_INVOKE<ReferenceDetails>("citation_details", { ticket, contentHash, item, intent }),
+	citationDetails: (ticket: string, contentHash: string, item: number, intent: CitationIntent) => __TAURI_INVOKE<FormDetails>("citation_details", { ticket, contentHash, item, intent }),
 	/**
 	 * Copy the shown citation. Citing it again can wait for the formatter, so
 	 * that runs on a worker with no lock held; the short commit that writes the
@@ -118,18 +118,18 @@ export const commands = {
 	 * The list as a formatted bibliography, for the person to look at before
 	 * copying it. `None` when nothing listed is in the open library.
 	 */
-	sessionBibliography: (style: string, intent: PreviewIntent) => __TAURI_INVOKE<SessionBibliography | null>("session_bibliography", { style, intent }),
+	sessionBibliography: (style: string, intent: CitationIntent) => __TAURI_INVOKE<SessionBibliography | null>("session_bibliography", { style, intent }),
 	/**
 	 * Copy what was shown. Prepared again from the list as it is now, and refused
 	 * unless that is exactly what the person saw.
 	 */
-	copySessionBibliography: (style: string, contentHash: string, intent: PreviewIntent) => __TAURI_INVOKE<null>("copy_session_bibliography", { style, contentHash, intent }),
+	copySessionBibliography: (style: string, contentHash: string, intent: CitationIntent) => __TAURI_INVOKE<null>("copy_session_bibliography", { style, contentHash, intent }),
 	/**
 	 * Save what was shown, as rich text, a web page or plain text. This is the one
 	 * way the list leaves memory, and only because the person asked. `None` when
 	 * the dialog was cancelled; otherwise the file's name.
 	 */
-	exportSessionBibliography: (style: string, contentHash: string, intent: PreviewIntent) => __TAURI_INVOKE<string | null>("export_session_bibliography", { style, contentHash, intent }),
+	exportSessionBibliography: (style: string, contentHash: string, intent: CitationIntent) => __TAURI_INVOKE<string | null>("export_session_bibliography", { style, contentHash, intent }),
 	/** The preferences the picker starts with. */
 	pickerPreferences: () => __TAURI_INVOKE<PickerPreferences>("picker_preferences"),
 	/**
@@ -284,6 +284,8 @@ export const commands = {
 	dismissWindowPositionUndo: (revision: number) => __TAURI_INVOKE<void>("dismiss_window_position_undo", { revision }),
 };
 
+export const CITATION_FORMS = ["normal","narrative","author-only","year-only","full","bibliography-only"] as const;
+
 export const DEFAULT_OUTPUT = "pandoc" as const;
 
 export const DEFAULT_STYLE = "apa" as const;
@@ -312,6 +314,20 @@ export type BackupProblem = "not-downloaded" | "unreadable" | "not-a-backup" | "
 
 /** How a check ended. Whoever asked says so in its own place. */
 export type CheckResult = "failed" | "newest" | "offered" | "not_run";
+
+export type CitationForm = "normal" | "narrative" | "author-only" | "year-only" | "full" | "bibliography-only";
+
+/** A transport operation's identity, including an abort that can arrive first. */
+export type CitationIntent = {
+	cancel: boolean;
+	context?: [number, number] | null;
+	keep_order?: boolean;
+	page: number;
+	request: number;
+};
+
+/** Wording context only; operations choose their recovery before presentation. */
+export type CitationSurface = "bibliography";
 
 /** The desktop and MCP receive this same shape, without pre-rendered English. */
 export type CommandError = {
@@ -427,6 +443,22 @@ export type DisplayTree = {
 	nodes: DisplayNode[];
 };
 
+export type DraftItem = {
+	cite: string;
+	form?: CitationForm | null;
+	id: ItemRef;
+	/** A canonical locator captured from search; its value is never parsed again. */
+	locator?: Locator | null;
+	/**
+	 * Raw locator field text and its chosen type, mutually exclusive with a
+	 * captured locator.
+	 */
+	locator_input?: LocatorInput | null;
+	/** Literal text; only the engine escapes and formats it. */
+	prefix?: string | null;
+	suffix?: string | null;
+};
+
 /**
  * A waiting editor, for the picker to name. Each request has its own number,
  * so two in the same format are still two.
@@ -454,49 +486,16 @@ export type EndpointStatus = {
 /** How an entry copy ended; a refusal says how to get the entry another way. */
 export type EntryCopy = "copied" | "no-original" | "repeated" | "dependency" | "changed";
 
-export type FilePreview = {
-	content_hash: string;
-	display: DisplayTree;
-	/** The effective output after an editor request overrides the picker. */
-	effective_output: string | null;
-	failure?: Problem | null;
-	/**
-	 * What the engine says about this citation that is no warning, such as a
-	 * full first note; the web view words each from the catalogue.
-	 */
-	notices?: Notice[];
-	problem?: string | null;
-	/**
-	 * Why this key citation is refused: a key in the project bibliography
-	 * names a different work.
-	 */
-	project_refusal?: string | null;
-	text: string;
-	ticket: string;
-	warnings: string[];
-};
+export type FocusTarget = "format-picker" | "library-picker" | "source-file" | "zotero-sharing-help" | "search" | "results" | "locator" | "citation" | "citation-form" | "session-references" | "language" | "recovery-action" | "project-name" | "project-menu" | "settings" | "request";
 
-export type FileSelection = {
-	cite: string;
-	form?: ReferenceForm | null;
-	id: ItemRef;
-	/** A canonical locator captured from search; its value is never parsed again. */
-	locator?: Locator | null;
-	/**
-	 * Raw locator field text and its chosen type, mutually exclusive with a
-	 * captured locator.
-	 */
-	locator_input?: LocatorInput | null;
-	/** Literal text; only the engine escapes and formats it. */
-	prefix?: string | null;
-	suffix?: string | null;
+export type FormDetails = {
+	current_form: CitationForm | null;
+	forms: FormOption[];
 };
-
-export type FocusTarget = "format-picker" | "library-picker" | "source-file" | "zotero-sharing-help" | "search" | "results" | "locator" | "citation" | "citation-form" | "language" | "recovery-action" | "project-name" | "project-menu" | "settings" | "request";
 
 export type FormOption = {
 	example: string | null;
-	form: ReferenceForm;
+	form: CitationForm;
 	reason: string | null;
 };
 
@@ -626,10 +625,9 @@ export type LocalMoment = {
 	year: number;
 };
 
-/** Picker wire names over the engine's canonical locator vocabulary. */
 export type Locator = {
-	label: LocatorTerm;
-	/** Canonical value, including literal text preserved by the engine. */
+	term: LocatorTerm;
+	/** Literal range or pinpointer, never interpreted as markup. */
 	value: string;
 };
 
@@ -678,6 +676,7 @@ export type MatchField = "citekey" | "title" | "author" | "year" | "doi" | "keyw
 
 export type Message = {
 	args: { [key: string]: string };
+	context?: CitationSurface | null;
 	id: string;
 };
 
@@ -841,12 +840,26 @@ export type PreferenceChange = {
 	small_surprises?: boolean | null;
 };
 
-export type PreviewIntent = {
-	cancel: boolean;
-	context?: [number, number] | null;
-	keep_order?: boolean;
-	page: number;
-	request: number;
+export type Preview = {
+	content_hash: string;
+	display: DisplayTree;
+	/** The effective output after an editor request overrides the picker. */
+	effective_output: string | null;
+	failure?: Problem | null;
+	/**
+	 * What the engine says about this citation that is no warning, such as a
+	 * full first note; the web view words each from the catalogue.
+	 */
+	notices?: Notice[];
+	problem?: string | null;
+	/**
+	 * Why this key citation is refused: a key in the project bibliography
+	 * names a different work.
+	 */
+	project_refusal?: string | null;
+	text: string;
+	ticket: string;
+	warnings: string[];
 };
 
 /** The desktop and MCP receive this same shape, without pre-rendered English. */
@@ -909,6 +922,8 @@ export type RecordId = { readonly __RecordId: unique symbol };
 
 /** Exactly one next action; absence must have an explicit, machine-readable reason. */
 export type Recovery = {
+	action: "choose-output";
+} | {
 	action: "choose-style";
 } | {
 	action: "choose-form";
@@ -937,11 +952,19 @@ export type Recovery = {
 } | {
 	action: "edit-citation";
 } | {
+	action: "edit-locator";
+} | {
 	action: "edit-input";
+} | {
+	action: "search-references";
 } | {
 	action: "select-references";
 } | {
 	action: "reduce-selection";
+} | {
+	action: "remove-references";
+} | {
+	action: "close";
 } | {
 	action: "choose-locale";
 } | {
@@ -964,13 +987,6 @@ export type Recovery = {
 	action: "none";
 	reason: NoRecoveryReason;
 };
-
-export type ReferenceDetails = {
-	current_form: ReferenceForm | null;
-	forms: FormOption[];
-};
-
-export type ReferenceForm = "normal" | "narrative" | "author-only" | "year-only" | "full";
 
 /**
  * One setting a restore changes. Values are as the settings file writes
@@ -1103,6 +1119,8 @@ export type ShortcutStatus = {
 	registered: boolean;
 	shortcut: string;
 };
+
+export type SourceItem = ItemRef;
 
 export type SourceKind = "zotero" | "file";
 
