@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { test } from "node:test";
@@ -10,19 +10,25 @@ const sha = "a".repeat(40), posix = { skip: process.platform === "win32" };
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), "ibis-land-")), bin = join(root, "bin"), calls = join(root, "calls");
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  for (const path of ["bin", "scripts", "ubuntu/Code/ibis/.git", "ubuntu/.cargo", "ubuntu/.nvm"]) mkdirSync(join(root, path), { recursive: true });
+  for (const path of ["bin", "scripts", "checkout/scripts", "ubuntu/Code/ibis/.git", "ubuntu/.cargo", "ubuntu/.nvm"]) mkdirSync(join(root, path), { recursive: true });
   writeFileSync(join(root, "ubuntu/.cargo/env"), "");
   writeFileSync(join(root, "ubuntu/.nvm/nvm.sh"), "nvm() { return 0; }\n");
   writeFileSync(join(root, "scripts/check-synthetic.mjs"), "");
+  copyFileSync(fileURLToPath(new URL("./pr-lint.mjs", import.meta.url)), join(root, "scripts/pr-lint.mjs"));
+  copyFileSync(fileURLToPath(new URL("./pr-lint.mjs", import.meta.url)), join(root, "checkout/scripts/pr-lint.mjs"));
   writeFileSync(join(root, "scripts/synthetic.test.mjs"), "");
   writeFileSync(join(root, "supplied-body"), "Caller supplied body.\n");
   for (const [name, body] of Object.entries({
-    git: `case "$1" in
-      rev-parse) case "$2" in --abbrev-ref) echo "$BRANCH";; --show-toplevel) pwd;; FETCH_HEAD) echo "$FETCHED_SHA";; *) if [ "$MACHINE" = mac ] && [ -f "$ROOT/changed" ]; then echo bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb; else echo "$SHA"; fi;; esac;;
+    git: `if [ "$1" = -C ]; then shift 2; fi
+    case "$1" in
+      rev-parse) case "$2" in --abbrev-ref) echo "$BRANCH";; --show-toplevel) echo "$ROOT/checkout";; FETCH_HEAD) echo "$FETCHED_SHA";; *) if [ "$MACHINE" = mac ] && [ -f "$ROOT/changed" ]; then echo bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb; else echo "$SHA"; fi;; esac;;
       status) [ "$STATUS_ERROR" = 0 ] || exit "$STATUS_ERROR"; if [ "$DIRTY" = 1 ]; then echo ' M synthetic'; fi;;
       merge-tree) exit "$CONFLICT";;
       rev-list) echo "$SHA";;
       show) if [ "$3" = --format=%s ]; then echo 'ci: simplify the pipeline'; else printf 'Synthetic change.\\n\\nCloses #7\\n\\nSigned-off-by: Synthetic <synthetic@example.org>\\nAssisted-by: Codex\\n'; fi;;
+      log) printf 'Signed-off-by: Synthetic <synthetic@example.org>\\nAssisted-by: Codex\\n';;
+      show-ref) [ "$BRANCH_EXISTS" = 1 ];;
+      worktree) if [ "$2" = add ]; then mkdir -p "$5"; else rm -rf "$3"; fi;;
       diff) printf '%s\\n' "$FILES";;
       push) exit "$PUSH_STATUS";;
     esac`,
@@ -38,6 +44,7 @@ function fixture(t) {
     pnpm: `exit 0`,
     node: `case "$1" in
       --input-type=module) exec "$REAL_NODE" "$@";;
+      *pr-lint.mjs) exec "$REAL_NODE" "$@";;
       --test) if [ "$MACHINE" = mac ] && [ "$MOVE_HEAD" = 1 ]; then touch "$ROOT/changed"; fi;;
     esac`,
     sleep: `if [ "$1" = 5 ]; then exec /bin/sleep 0.01; else exec /bin/sleep "$@"; fi`,
@@ -60,8 +67,8 @@ function fixture(t) {
     gh: `case "$1 $2" in
       'api user') echo "$GH_ACTOR";;
       'repo view') echo example/ibis;;
-      'pr list') if [ "$HAS_PR" = 1 ]; then printf '42\\t%s\\t%s\\n' "$AUTHOR" "$FORK"; fi;;
-      'pr view') case "$*" in *--json\\ title*) echo 'fix: preserve the reviewed title';; *--json\\ body*) printf 'Reviewed body.\\n\\n## Handoff\\nExisting instructions.\\n';; *--json\\ headRefOid*) echo "$PR_SHA";; *) echo https://example.invalid/pull/42;; esac;;
+      'pr list') if [[ "$*" == *'--state merged'* ]]; then [ "$MERGED" = 0 ] || echo "$SHA"; elif [ "$HAS_PR" = 1 ]; then printf '42\\t%s\\t%s\\n' "$AUTHOR" "$FORK"; fi;;
+      'pr view') case "$*" in *--json\\ title*) echo "$PR_TITLE";; *--json\\ body*) printf 'Reviewed body.\\n\\n## Handoff\\nExisting instructions.\\n';; *--json\\ headRefOid*) echo "$PR_SHA";; *) echo https://example.invalid/pull/42;; esac;;
       'pr create'|'pr edit') while [ "$#" -gt 0 ]; do if [ "$1" = --body-file ]; then cp "$2" "$ROOT/body"; fi; shift; done; echo https://example.invalid/pull/42;;
       'api repos/'*) exit "$STATUS_STATUS";;
       'pr merge') exit "$MERGE_STATUS";;
@@ -71,7 +78,7 @@ function fixture(t) {
     for (const path of ["changed", "body", "mac-started", "ubuntu-started", "launched", "dropped", "dropped-log"]) rmSync(join(root, path), { force: true });
     writeFileSync(calls, "");
     const result = spawnSync("bash", [fileURLToPath(new URL("./land.sh", import.meta.url)), ...args], { cwd: root, encoding: "utf8", timeout: 15000,
-      env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, ROOT: root, CALLS: calls, REAL_NODE: process.execPath, MACHINE: "mac", BRANCH: "ci/synthetic", SHA: sha, PR_SHA: sha, FETCHED_SHA: sha, DIRTY: "0", MOVE_HEAD: "0", STATUS_ERROR: "0", GH_ACTOR: "diyanko", CONFLICT: "0", PUSH_STATUS: "0", HAS_PR: "1", AUTHOR: "diyanko", FORK: "false", MERGE_STATUS: "0", STATUS_STATUS: "0", FAIL_MACHINE: "", UNREACHABLE: "", LOCK_BUSY: "0", DROP_POLL: "0", DROP_LAUNCH: "0", DROP_LOG: "0", FILES: "docs/testing.md", PARALLEL: "1", ...overrides } });
+      env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, ROOT: root, CALLS: calls, REAL_NODE: process.execPath, MACHINE: "mac", BRANCH: "ci/synthetic", BRANCH_EXISTS: "1", SHA: sha, PR_SHA: sha, PR_TITLE: "fix: preserve the reviewed title", FETCHED_SHA: sha, DIRTY: "0", MOVE_HEAD: "0", STATUS_ERROR: "0", GH_ACTOR: "diyanko", CONFLICT: "0", PUSH_STATUS: "0", HAS_PR: "1", MERGED: "1", AUTHOR: "diyanko", FORK: "false", MERGE_STATUS: "0", STATUS_STATUS: "0", FAIL_MACHINE: "", UNREACHABLE: "", LOCK_BUSY: "0", DROP_POLL: "0", DROP_LAUNCH: "0", DROP_LOG: "0", FILES: "docs/testing.md", PARALLEL: "1", ...overrides } });
     let body = ""; try { body = readFileSync(join(root, "body"), "utf8"); } catch {}
     return { ...result, calls: readFileSync(calls, "utf8"), body };
   };
@@ -86,16 +93,51 @@ test("parallel gates set Local gate on the checked SHA and immediately squash me
   assert.match(result.calls, /node \[mac\] --test --test-concurrency=2 scripts\/synthetic.test.mjs/);
   assert.match(result.calls, /node \[mac\] scripts\/gen.mjs --headless --check/);
   assert.match(result.calls, new RegExp(`gh \\[mac\\] api repos/example/ibis/statuses/${sha} .*context=Local gate.*state=success`));
-  assert.match(result.calls, new RegExp(`gh \\[mac\\] pr merge .*--squash --match-head-commit ${sha}`));
+  assert.match(result.calls, new RegExp(`gh \\[mac\\] pr merge .*--squash --body-file .* --match-head-commit ${sha}`));
   assert.doesNotMatch(result.calls, /--auto|--admin|target_url/);
   assert.ok(result.calls.indexOf("git [mac] push") < result.calls.indexOf("cargo [mac] clippy"));
   assert.ok(result.calls.indexOf("cargo [ubuntu] test") < result.calls.indexOf("gh [mac] pr create"));
   assert.match(result.body, /Synthetic change\.[\s\S]*Closes #7[\s\S]*Local gate.*mac passed; ubuntu passed/);
-  assert.doesNotMatch(result.body, /Signed-off-by:|Assisted-by:/);
+  assert.match(result.body, /Signed-off-by: Synthetic <synthetic@example.org>\nAssisted-by: Codex/);
+  assert.match(result.calls, /pr merge .*--delete-branch/);
   const windows = Buffer.from(result.calls.match(/-EncodedCommand ([A-Za-z0-9+/=]+)/)[1], "base64").toString("utf16le");
   assert.match(windows, /PSVersionTable\.PSVersion\.Major -ne 5/);
   assert.match(windows, /powershell\.exe .* -File \$test.FullName/);
   assert.match(result.body, /windows passed/);
+});
+
+test("invalid titles fail before any machine or push starts", posix, (t) => {
+  const run = fixture(t);
+  for (const [env, args] of [[{ PR_TITLE: `fix: ${"a".repeat(68)}` }, []], [{ HAS_PR: "0" }, ["--title", `fix: ${"a".repeat(68)}`]]]) {
+    const result = run(env, args);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stdout, /73 characters/);
+    assert.doesNotMatch(result.calls, /ssh \[|cargo \[|git \[mac\] push/);
+  }
+});
+
+test("start claims a branch in a worktree and end removes only a clean merged head", posix, (t) => {
+  const run = fixture(t);
+  const started = run({}, ["start", "fix-shelf", "7"]);
+  assert.equal(started.status, 0, started.stdout + started.stderr);
+  assert.match(started.calls, /worktree add -b fix-shelf .*\/ibis-work\/fix-shelf origin\/main/);
+  assert.match(started.calls, /pnpm \[mac\] -C apps\/desktop install --frozen-lockfile --offline/);
+  assert.match(started.calls, /commit --allow-empty -s -m chore: fix shelf/);
+  assert.match(started.calls, /pr create --draft .*--title chore: fix shelf --body Refs #7/);
+  for (const env of [{ DIRTY: "1" }, { MERGED: "0" }, { BRANCH: "other" }]) {
+    const result = run({ BRANCH: "fix-shelf", ...env }, ["end", "fix-shelf"]);
+    assert.notEqual(result.status, 0);
+    assert.doesNotMatch(result.calls, /worktree remove|branch -D/);
+  }
+  const ended = run({ BRANCH: "fix-shelf" }, ["end", "fix-shelf"]);
+  assert.equal(ended.status, 0, ended.stdout + ended.stderr);
+  assert.match(ended.calls, /worktree remove .*\/ibis-work\/fix-shelf/);
+  assert.match(ended.calls, /branch -D fix-shelf/);
+  assert.equal(run({}, ["start", "fix-shelf"]).status, 0);
+  const alreadyDeleted = run({ BRANCH: "main", BRANCH_EXISTS: "0" }, ["end", "fix-shelf"]);
+  assert.equal(alreadyDeleted.status, 0, alreadyDeleted.stdout + alreadyDeleted.stderr);
+  assert.doesNotMatch(alreadyDeleted.calls, /branch -D/);
+  assert.notEqual(run({}, ["start", "../bad"]).status, 0);
 });
 
 test("each machine failure stops before status or merge and reports its first error", posix, (t) => {

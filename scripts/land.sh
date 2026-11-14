@@ -3,6 +3,44 @@
 # SSH command arguments are deliberately quoted/encoded on the Mac.
 # shellcheck disable=SC2029
 set -euo pipefail
+if [ "${1:-}" = start ] || [ "${1:-}" = end ]; then
+  action=$1 name=${2:-} issue=${3:-}
+  if [ "$#" -lt 2 ] || { [ "$action" = start ] && [ "$#" -gt 3 ]; } || { [ "$action" = end ] && [ "$#" -ne 2 ]; }; then
+    echo 'Usage: land.sh start NAME [ISSUE] | end NAME'; exit 2
+  fi
+  [[ "$name" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] && [ "$name" != main ] || { echo 'NAME must be lowercase letters or digits separated by hyphens, and not main.'; exit 2; }
+  [[ -z "$issue" || "$issue" =~ ^[0-9]+$ ]] || { echo 'ISSUE must be a number.'; exit 2; }
+  root=$(git rev-parse --show-toplevel)
+  worktree="$root/../ibis-work/$name"
+  if [ "$action" = start ]; then
+    title="chore: ${name//-/ }"
+    node "$root/scripts/pr-lint.mjs" --title "$title" --branch "$name"
+    git fetch -q origin main
+    git worktree add -b "$name" "$worktree" origin/main
+    (cd "$worktree"; pnpm -C apps/desktop install --frozen-lockfile --offline; git commit --allow-empty -s -m "$title"; git push -u origin "$name")
+    body='Handoff: implement the change; next run the focused check; blockers: none.'
+    [ -z "$issue" ] || body=$(printf 'Refs #%s\n\n%s' "$issue" "$body")
+    gh pr create --draft --base main --head "$name" --title "$title" --body "$body"
+  else
+    [ -d "$worktree" ] || { echo 'Worktree not found.'; exit 1; }
+    status=$(git -C "$worktree" status --porcelain --untracked-files=all)
+    [ -z "$status" ] || { echo 'Worktree has uncommitted changes.'; exit 1; }
+    current=$(git -C "$worktree" rev-parse --abbrev-ref HEAD)
+    head=$(git -C "$worktree" rev-parse HEAD)
+    if [ "$current" = "$name" ]; then
+      filter=".[] | select(.headRefOid == \"$head\") | .headRefOid"
+    elif [ "$current" = main ] && ! git show-ref --verify --quiet "refs/heads/$name"; then
+      # gh --delete-branch may already have checked out main and deleted the branch.
+      filter='.[0].headRefOid // empty'
+    else
+      echo 'Worktree branch does not match NAME.'; exit 1
+    fi
+    [ -n "$(gh pr list --head "$name" --base main --state merged --json headRefOid --jq "$filter")" ] || { echo 'No merged PR for this worktree head.'; exit 1; }
+    git worktree remove "$worktree"
+    if git show-ref --verify --quiet "refs/heads/$name"; then git branch -D "$name"; fi
+  fi
+  exit
+fi
 skip_mac=false skip_ubuntu=false skip_windows=false
 title_arg='' body_file=''
 while [ "$#" -gt 0 ]; do
@@ -53,6 +91,7 @@ commit=$(git rev-list --reverse --no-merges "origin/main..$sha" | sed -n '1p')
 [ -n "$commit" ] || { echo 'No non-merge commits to land.'; exit 2; }
 title=${title_arg:-$(git show -s --format=%s "$commit")}
 if [ -n "$number" ]; then title=$(gh pr view "$number" --repo "$repo" --json title --jq .title); fi
+node scripts/pr-lint.mjs --title "$title" --branch "$branch"
 windows_needed=false
 files=$(git diff --name-only --no-renames "origin/main...$sha")
 while IFS= read -r path; do
@@ -64,17 +103,16 @@ root=$(git rev-parse --show-toplevel)
 run_id="${sha:0:12}-$(date +%s)-$$"
 logs="$root/.local/gates/$run_id"
 mkdir -p "$logs"
-export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$root/target}
+export CARGO_TARGET_DIR="$root/target"
 export CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=1
 export CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-4}
 # Empty, not unset: an empty value also overrides a wrapper set in Cargo's config.
-export RUSTC_WRAPPER= RUSTC_WORKSPACE_WRAPPER=
+export RUSTC_WRAPPER='' RUSTC_WORKSPACE_WRAPPER=''
 ssh_options=(-o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=2)
 
 mac_gate() {
   set -Ee
   trap 'printf "FAILED (%s): %s\n" "$?" "$BASH_COMMAND"' ERR
-  node scripts/pr-lint.mjs --title "$title" --branch "$branch"
   cargo fmt --all --check
   cargo clippy --workspace --all-targets --locked -- -D warnings -D clippy::unused_result_ok
   cargo test --workspace --locked
@@ -240,6 +278,8 @@ summary="mac $mac; ubuntu $ubuntu; windows $windows"
 # Markdown's backticks are literal.
 # shellcheck disable=SC2016
 printf '\nLocal gate `%s`: %s.\n' "$sha" "$summary" >> "$logs/body.md"
+trailers=$(git log --format='%(trailers:key=Signed-off-by,key=Assisted-by,only,unfold)' "origin/main..$sha" | awk 'NF && !seen[$0]++')
+if [ -n "$trailers" ]; then printf '\n%s\n' "$trailers" >> "$logs/body.md"; fi
 unchanged
 if [ -n "$number" ]; then
   gh pr edit "$number" --repo "$repo" --body-file "$logs/body.md"
@@ -248,5 +288,5 @@ else
   url=$(gh pr create --repo "$repo" --base main --head "$branch" --title "$title" --body-file "$logs/body.md")
 fi
 gh api "repos/$repo/statuses/$sha" -f 'context=Local gate' -f state=success -f "description=$summary" > /dev/null
-gh pr merge "$url" --repo "$repo" --squash --match-head-commit "$sha"
+gh pr merge "$url" --repo "$repo" --squash --body-file "$logs/body.md" --match-head-commit "$sha" --delete-branch
 printf 'Merged %s (%s).\n' "$url" "$summary"
