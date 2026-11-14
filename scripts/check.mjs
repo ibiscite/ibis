@@ -46,7 +46,7 @@ export function check(suite = "all", args = [], { platform = process.platform, s
     licenses: () => [["cargo", "deny", "--locked", "check", "licenses", "bans", "sources"]],
     powershell7: () => files.filter((f) => f.endsWith(".tests.ps1")).map((f) => ["powershell7", "-File", `scripts/${f}`]),
     // cfg(windows) code compiles only here.
-    "windows-rust": () => [["cargo", "check", "-p", "ibis-desktop", "--all-targets", "--locked"]],
+    "windows-rust": () => [["cargo", "check", "--workspace", "--all-targets", "--locked"]],
     windows: () => [
       ["powershell", "-Command", "if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { throw 'Windows PowerShell 5.1 is required' }"],
       ...files.filter((f) => f.endsWith(".tests.ps1")).map((f) => ["powershell", "-File", `scripts/${f}`]),
