@@ -42,6 +42,11 @@ pub(crate) struct LibraryStatus {
     pub(crate) error: Option<String>,
     /// What kind of failure `error` is, so the picker can offer the fix.
     pub(crate) problem: Option<LibraryProblem>,
+    /// Canonical engine failure. Rendering and recovery use these facts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) failure: Option<ibis_core::contract::Problem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) retained_failure: Option<ibis_core::contract::Problem>,
     // Native presentation facts do not alter the serialized picker contract.
     #[serde(skip)]
     pub(crate) error_reason: Option<LoadError>,
@@ -102,21 +107,25 @@ pub(crate) enum LibraryProblem {
 
 impl From<LoadError> for LibraryProblem {
     fn from(error: LoadError) -> Self {
-        use ibis_core::contract::{ErrorCode, ErrorReason};
-        match error {
-            LoadError::Zotero(error) => match error.reason {
-                Some(ErrorReason::ZoteroSharingOff) => Self::ZoteroAccessOff,
-                Some(ErrorReason::ZoteroProfileNeeded) => Self::ZoteroProfiles,
-                Some(ErrorReason::ZoteroNeedsOpening) => Self::ZoteroClosed,
-                Some(ErrorReason::ZoteroNotFound) => Self::ZoteroMissing,
+        use ibis_core::contract::Recovery;
+        match error.problem().info.recovery {
+            Recovery::LocateFile => Self::Missing,
+            Recovery::OpenZoteroSharingHelp => Self::ZoteroAccessOff,
+            Recovery::OpenZotero => Self::ZoteroClosed,
+            Recovery::ChooseLibrary => match error {
+                LoadError::Zotero(error)
+                    if error.reason == Some(ibis_core::contract::ErrorReason::ZoteroProfileNeeded) =>
+                {
+                    Self::ZoteroProfiles
+                }
+                LoadError::Zotero(error) if error.reason == Some(ibis_core::contract::ErrorReason::ZoteroNotFound) => {
+                    Self::ZoteroMissing
+                }
+                LoadError::File(_) | LoadError::FileRefresh(_) => Self::Unreadable,
                 _ => Self::Other,
             },
-            LoadError::File(error) | LoadError::FileRefresh(error) if error.code == ErrorCode::SourceUnavailable => {
-                Self::Missing
-            }
-            LoadError::FileRefresh(error) if error.code == ErrorCode::ResourceLimit => Self::Other,
-            LoadError::File(_) | LoadError::FileRefresh(_) => Self::Unreadable,
-            LoadError::NotLocal | LoadError::Stopped => Self::Other,
+            Recovery::ReviewLibrary => Self::Unreadable,
+            _ => Self::Other,
         }
     }
 }
@@ -202,6 +211,8 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
             .error
             .map(|error| error.with_snapshot_context(references > 0, zotero)),
         problem: library.error.map(LibraryProblem::from),
+        failure: library.error.map(LoadError::problem),
+        retained_failure: library.retained_error.map(LoadError::problem),
         error_reason: library.error,
         kept_references,
         note: match &library.retained_error {
@@ -232,6 +243,8 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
                 result.kept_references = references > 0;
                 result.error = Some(refresh_failure(info.kind, info.refresh_error, info.refresh_reason));
                 result.error_reason = refresh_error(info.kind, info.refresh_error, info.refresh_reason);
+                result.failure = result.error_reason.map(LoadError::problem);
+                result.problem = result.error_reason.map(LibraryProblem::from);
             }
         }
     }
@@ -272,6 +285,8 @@ fn refresh_error(
         code,
         reason,
         detail: None,
+        strict_cause: None,
+        citation_error: None,
     };
     Some(match kind {
         LibraryKind::File => LoadError::file_refresh(error),
@@ -297,6 +312,27 @@ mod tests {
     use crate::library::load::load_library;
     use crate::library::state::{LoadRequests, begin_open, candidate, install};
     use crate::tray::library_line;
+
+    #[test]
+    fn transient_file_failures_offer_retry_instead_of_find_file() {
+        use ibis_core::contract::{EngineError, ErrorCode, ErrorReason, Recovery};
+        for cause in [LoadError::File as fn(EngineError) -> LoadError, LoadError::FileRefresh] {
+            let library = Library {
+                error: Some(cause(EngineError::new(ErrorCode::SourceUnavailable))),
+                ..Library::default()
+            };
+            let shown = status(&library);
+            assert_eq!(shown.failure.as_ref().map(|p| &p.info.recovery), Some(&Recovery::Retry));
+            assert_eq!(shown.problem, Some(LibraryProblem::Other));
+            assert_eq!(
+                LibraryProblem::from(cause(EngineError::because(
+                    ErrorCode::SourceUnavailable,
+                    ErrorReason::MissingFile
+                ))),
+                LibraryProblem::Missing
+            );
+        }
+    }
 
     #[test]
     fn a_watched_refresh_that_fails_says_why_and_keeps_the_references() {
@@ -513,11 +549,16 @@ mod tests {
         assert!(missing.stale);
         assert_eq!(missing.references, 1);
         assert_eq!(missing.revision, loaded.revision);
+        let failure = serde_json::to_value(&missing.failure)?;
+        assert_eq!(failure["code"], "missing-file");
+        assert_eq!(failure["recovery"]["action"], "locate-file");
+        assert_eq!(failure["focus"], "library-picker");
         assert_eq!(library_line(&missing), "invented.bib was moved or is unavailable");
         assert_eq!(
             missing.error_reason,
-            Some(LoadError::FileRefresh(ibis_core::contract::EngineError::new(
-                ibis_core::contract::ErrorCode::SourceUnavailable
+            Some(LoadError::FileRefresh(ibis_core::contract::EngineError::because(
+                ibis_core::contract::ErrorCode::SourceUnavailable,
+                ibis_core::contract::ErrorReason::MissingFile
             )))
         );
 
@@ -544,7 +585,13 @@ mod tests {
         let replacement = directory.path().join("missing.bib");
         let (request, _, _) = begin_open(&library, &requests, replacement.clone()).ok_or("open")?;
         let rejected = install(&library, &requests, request, load_library(replacement, false)).ok_or("install")?;
-        assert_eq!(rejected.error_reason, Some(LoadError::FILE_UNAVAILABLE));
+        assert_eq!(
+            rejected.error_reason,
+            Some(LoadError::File(ibis_core::contract::EngineError::because(
+                ibis_core::contract::ErrorCode::SourceUnavailable,
+                ibis_core::contract::ErrorReason::MissingFile
+            )))
+        );
         let file = library.lock().map_err(|_| "library")?.file.clone().ok_or("file")?;
         std::fs::write(&path, "[{")?;
         assert_eq!(file.reload(), Err(crate::library::error::REFRESH_INCOMPLETE));
@@ -590,6 +637,7 @@ mod tests {
             "live_updates_off",
             "error",
             "problem",
+            "failure",
             "note",
             "settings_notice",
             "snapshot_zotero",
@@ -606,7 +654,7 @@ mod tests {
             "the library file is unavailable; download any online-only file to this computer first; keeping the last loaded references"
         );
         assert_eq!(payload["note"], "the choice could not be saved");
-        assert_eq!(payload["problem"], "missing");
+        assert_eq!(payload["problem"], "other");
         assert!(payload.get("sample").is_none(), "only the bundled samples say so");
     }
 
@@ -615,8 +663,8 @@ mod tests {
         use ibis_core::contract::{EngineError, ErrorCode, ErrorReason};
         let engine = |reason| LoadError::Zotero(EngineError::because(ErrorCode::SourceUnavailable, reason));
         let cases: [(LoadError, LibraryProblem); 11] = [
-            (LoadError::FILE_UNAVAILABLE, LibraryProblem::Missing),
-            (crate::library::error::FILE_UNREADABLE, LibraryProblem::Unreadable),
+            (LoadError::FILE_UNAVAILABLE, LibraryProblem::Other),
+            (crate::library::error::FILE_UNREADABLE, LibraryProblem::Other),
             (crate::library::error::FILE_TOO_LARGE, LibraryProblem::Unreadable),
             (ZOTERO_OFFLINE, LibraryProblem::ZoteroClosed),
             (engine(ErrorReason::ZoteroSharingOff), LibraryProblem::ZoteroAccessOff),
@@ -624,7 +672,7 @@ mod tests {
             (engine(ErrorReason::ZoteroNeedsOpening), LibraryProblem::ZoteroClosed),
             (engine(ErrorReason::ZoteroNotFound), LibraryProblem::ZoteroMissing),
             (engine(ErrorReason::ZoteroNoSpace), LibraryProblem::Other),
-            (crate::library::error::REFRESH_LIMIT, LibraryProblem::Other),
+            (crate::library::error::REFRESH_LIMIT, LibraryProblem::Unreadable),
             (LoadError::Stopped, LibraryProblem::Other),
         ];
         for (error, problem) in cases {

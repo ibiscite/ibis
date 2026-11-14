@@ -51,6 +51,21 @@ fn annotate(pick: &mut CitationItem, objects: &[LibraryObject]) {
 }
 
 #[test]
+fn whole_request_refusals_keep_their_diagnostic_for_each_output() {
+    for output in ["pandoc", "apa"] {
+        let (mut request, objects) = case();
+        request.output = OutputSpec::Preset { name: output.into() };
+        request.items.clear();
+        let engine = Engine::from_snapshot(Arc::new(Snapshot::new(objects).unwrap()));
+        let error = engine.cite(&request, &Cancellation::default()).unwrap_err();
+        let presented = serde_json::to_value(error).unwrap();
+        assert_eq!(presented["citation_error"], "empty-selection", "{output}");
+        assert_eq!(presented["message"]["id"], "problem-empty-selection", "{output}");
+        assert_eq!(presented["recovery"]["action"], "select-references", "{output}");
+    }
+}
+
+#[test]
 fn each_fault_has_the_same_refusal_and_precedence_in_pandoc_and_apa() {
     for output in ["pandoc", "apa"] {
         for (fault, expected) in [

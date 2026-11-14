@@ -88,7 +88,10 @@ test.each([
   ["busy", /Settings are being saved by another Ibis\. Wait for it to finish, then try again/],
   [new Error("private synthetic detail"), /couldn’t save\. Nothing changed/],
 ])("a refused backup (%s) is explained and nothing is restored", async (refusal, words) => {
-  const api = fakeApi({ chooseSettingsBackup: vi.fn().mockRejectedValueOnce(refusal) });
+  const api = fakeApi({ chooseSettingsBackup: vi.fn().mockRejectedValueOnce(typeof refusal === "string" ? {
+    code: refusal, message: { id: `backup-problem-${refusal}`, args: {} },
+    recovery: { action: refusal === "newer" ? "upgrade-ibis" : refusal === "not-downloaded" ? "download-file" : "choose-backup" }, focus: "recovery-action",
+  } : refusal) });
   render(<BackupRows api={api} />);
   fireEvent.click(screen.getByRole("button", { name: "Restore…" }));
   await act(async () => undefined);
@@ -98,7 +101,7 @@ test.each([
 });
 
 test("settings that changed after the preview refuse the restore and show why", async () => {
-  const api = fakeApi({ restoreSettingsBackup: vi.fn().mockRejectedValueOnce("changed") });
+  const api = fakeApi({ restoreSettingsBackup: vi.fn().mockRejectedValueOnce({ code: "changed", message: { id: "backup-problem-changed", args: {} }, recovery: { action: "choose-backup" }, focus: "recovery-action" }) });
   render(<BackupRows api={api} />);
   fireEvent.click(screen.getByRole("button", { name: "Restore…" }));
   await act(async () => undefined);

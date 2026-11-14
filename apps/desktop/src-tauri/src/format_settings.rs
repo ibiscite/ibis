@@ -2,7 +2,7 @@
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
-use crate::preferences::SettingsFile;
+use crate::{library::CommandError, preferences::SettingsFile};
 
 #[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct AppFormat {
@@ -20,10 +20,10 @@ pub(crate) struct FormatSettingsView {
 
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) fn format_settings(app: AppHandle) -> Result<FormatSettingsView, String> {
+pub(crate) fn format_settings(app: AppHandle) -> Result<FormatSettingsView, CommandError> {
     let loaded = ibis_engine::settings::load(&app.state::<SettingsFile>().path);
     if let Some(problem) = loaded.problem {
-        return Err(ibis_engine::settings_backup::settings_message(&problem));
+        return Err(CommandError::from(problem));
     }
     let settings = loaded.settings;
     Ok(FormatSettingsView {
@@ -51,7 +51,7 @@ pub(crate) fn format_settings(app: AppHandle) -> Result<FormatSettingsView, Stri
 
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) fn forget_app_format(app: AppHandle, id: String) -> Result<(), String> {
+pub(crate) fn forget_app_format(app: AppHandle, id: String) -> Result<(), CommandError> {
     app.state::<SettingsFile>().update(|settings| {
         settings
             .app_outputs

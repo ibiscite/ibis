@@ -468,6 +468,10 @@ fn unsupported_group_forms_refuse_and_field_losses_name_the_reference() -> Resul
                 .as_deref()
                 .is_some_and(|reason| reason.contains("Reference 2:"))
         );
+        assert!(preview.failure.as_ref().is_some_and(|failure| {
+            failure.info.recovery == ibis_core::contract::Recovery::ChooseForm
+                && failure.info.focus == ibis_core::contract::FocusTarget::CitationForm
+        }));
         assert!(file.copy(&preview.ticket, &preview.content_hash, |_| Ok(())).is_err());
     }
     let refused = file

@@ -13,6 +13,7 @@ pub(super) fn source_findings(receipt: &CitationReceipt) -> bool {
 pub(super) struct CitationContext {
     pub snapshot: Arc<Snapshot>,
     pub sources: Vec<CitationSourceCheck>,
+    pub source_failure: Option<EngineError>,
     pub zotero: BTreeMap<LibraryId, ZoteroLibrary>,
 }
 
@@ -42,7 +43,7 @@ impl CitationContext {
                     .map(|origin| (id.clone(), origin))
             })
             .collect();
-        let sources = libraries
+        let sources: Vec<_> = libraries
             .into_iter()
             .filter_map(|id| {
                 let source = state.libraries.get(&id)?;
@@ -56,6 +57,13 @@ impl CitationContext {
             .collect();
         Self {
             snapshot: state.index.snapshot().clone(),
+            source_failure: sources.iter().find_map(|source| {
+                let library = state.libraries.get(&source.library)?;
+                Some(EngineError {
+                    reason: library.refresh_reason,
+                    ..EngineError::new(library.refresh_error?)
+                })
+            }),
             sources,
             zotero,
         }
@@ -69,24 +77,49 @@ pub(super) fn attach(
 ) -> Result<(), EngineError> {
     let sources = &context.sources;
     if request.strict {
-        let source_failure = sources.iter().any(|source| source.refresh_error.is_some());
-        if source_failure
-            || sources.iter().any(|source| source.warnings > 0)
-            || result
-                .warnings
-                .iter()
-                .any(|warning| warning.code == CitationWarningCode::SourceField)
-            || !result.losses.is_empty()
-            || result.copy_content(request.items.len()).is_none()
-        {
-            return Err(EngineError::because(
-                if source_failure {
-                    ErrorCode::SourceUnavailable
-                } else {
-                    ErrorCode::BadInput
-                },
-                ErrorReason::StrictCitation,
-            ));
+        let cause = context
+            .source_failure
+            .map(|error| StrictCause::Source {
+                code: error.code,
+                reason: error.reason,
+            })
+            .or_else(|| {
+                (sources.iter().any(|source| source.warnings > 0)
+                    || result
+                        .warnings
+                        .iter()
+                        .any(|warning| warning.code == CitationWarningCode::SourceField))
+                .then_some(StrictCause::SourceWarning)
+            })
+            .or_else(|| {
+                result.outcomes.iter().find_map(|outcome| match outcome {
+                    ItemOutcome::Refused { error, .. } => Some(StrictCause::Refused { error: *error }),
+                    ItemOutcome::Unknown => Some(StrictCause::Refused {
+                        error: CitationError::Unknown,
+                    }),
+                    ItemOutcome::Rendered { .. } => None,
+                })
+            })
+            .or_else(|| result.losses.first().map(|loss| StrictCause::Loss { loss: *loss }))
+            .or_else(|| {
+                result
+                    .copy_content(request.items.len())
+                    .is_none()
+                    .then_some(StrictCause::Refused {
+                        error: CitationError::Unknown,
+                    })
+            });
+        if let Some(cause) = cause {
+            return Err(EngineError {
+                strict_cause: Some(cause),
+                ..EngineError::because(
+                    match cause {
+                        StrictCause::Source { code, .. } => code,
+                        _ => ErrorCode::BadInput,
+                    },
+                    ErrorReason::StrictCitation,
+                )
+            });
         }
     }
     // A partial result cannot attest to the requested citation.

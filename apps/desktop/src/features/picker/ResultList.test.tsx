@@ -1,3 +1,4 @@
+import { recordId } from "../../test-fixtures";
 import { afterEach, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import type { Density, SearchResult } from "../../api";
@@ -6,7 +7,7 @@ import { ResultList, rowWords } from "./ResultList";
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 const rows: SearchResult[] = Array.from({ length: 10 }, (_, i) => ({
-  revision: "1", id: { library: "refs.bib", key: `k${i}` }, key: `k${i}`, cite: "1", source: "refs.bib", title: `Title ${i}`, authors: "Author", year: "2020",
+  revision: "1", id: { library: "refs.bib", key: recordId(`k${i}`) }, key: `k${i}`, cite: "1", source: "refs.bib", title: `Title ${i}`, authors: "Author", year: "2020",
   matched: ["title"], partial: false, first_author: "Author", author_count: 1, container: null, item_type: "book",
 }));
 

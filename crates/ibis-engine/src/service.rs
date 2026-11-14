@@ -148,7 +148,7 @@ pub struct SearchResult {
 pub struct DispatchResult {
     pub data: Value,
     pub exit_code: ExitCode,
-    /// Literal terminal citation only after the canonical completeness/hash gate.
+    /// Checked terminal content; record exports may report refused records beside it.
     pub text: Option<String>,
     pub source_findings: bool,
 }
@@ -172,12 +172,37 @@ impl DispatchResult {
             .map_err(|_| error(ErrorCode::ResourceLimit))?;
         Ok(self)
     }
-    pub fn citation(result: CitationResult, expected_items: usize) -> Result<Self, EngineError> {
+    pub fn citation(result: CitationResult, expected_items: usize, output: &OutputSpec) -> Result<Self, EngineError> {
         let source_findings = result.receipt.as_ref().is_some_and(receipt::source_findings);
         let text = result
             .copy_content(expected_items)
-            .map(|content| content.text.to_owned());
-        let exit_code = if result.losses.is_empty() && text.is_some() && !source_findings {
+            .map(|content| content.text.to_owned())
+            .or_else(|| {
+                // Sharing can keep usable records while naming those refused.
+                // A citation still requires the canonical completeness gate.
+                (crate::outputs::named(output).is_some_and(|output| output.exports_records)
+                    && result.outcomes.len() == expected_items
+                    && result
+                        .outcomes
+                        .iter()
+                        .enumerate()
+                        .all(|(index, outcome)| match outcome {
+                            ItemOutcome::Rendered { item } => *item == index,
+                            ItemOutcome::Refused { item, error } => *item == index && *error != CitationError::Unknown,
+                            ItemOutcome::Unknown => false,
+                        })
+                    && result
+                        .outcomes
+                        .iter()
+                        .any(|outcome| matches!(outcome, ItemOutcome::Rendered { .. }))
+                    && result.html.is_none()
+                    && result.rtf.is_none()
+                    && !result.text.trim().is_empty()
+                    && !result.text.contains('\0')
+                    && result.content_matches_hash())
+                .then(|| result.text.clone())
+            });
+        let exit_code = if result.is_complete() && result.losses.is_empty() && text.is_some() && !source_findings {
             ExitCode::Ok
         } else {
             ExitCode::Findings
@@ -652,6 +677,7 @@ impl Engine {
         };
         self.cite_snapshot(
             &receipt::CitationContext {
+                source_failure: None,
                 snapshot,
                 sources: Vec::new(),
                 zotero: BTreeMap::new(),
@@ -692,13 +718,7 @@ impl Engine {
             }
             _ => request,
         };
-        let key_error = |failure| {
-            error(if failure == CitationError::OutputTooLarge {
-                ErrorCode::ResourceLimit
-            } else {
-                ErrorCode::BadInput
-            })
-        };
+        let key_error = EngineError::citation;
         let mut result = match &request.output {
             OutputSpec::Key {
                 syntax: KeySyntax::ScannableCite,
@@ -782,7 +802,7 @@ impl Engine {
             Method::Cite => {
                 let request: CitationRequest = parameters(params)?;
                 let checked = self.prepare_citation(&request, cancel)?.into_checked();
-                return DispatchResult::citation(checked.value, request.items.len())?
+                return DispatchResult::citation(checked.value, request.items.len(), &request.output)?
                     .with_health(&checked.source_health);
             }
             Method::Records => {
@@ -796,7 +816,7 @@ impl Engine {
                     .warnings
                     .iter()
                     .any(|warning| warning.code == CitationWarningCode::SourceField);
-                let mut dispatched = DispatchResult::citation(result, count)?;
+                let mut dispatched = DispatchResult::citation(result, count, &request.output)?;
                 if unread {
                     dispatched.exit_code = ExitCode::Findings;
                 }

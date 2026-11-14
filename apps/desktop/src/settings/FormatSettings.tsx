@@ -12,38 +12,53 @@ import { rowDetails } from "./rows";
 export function useFormatSettings(api: SettingsApi) {
   const [view, setView] = useState<FormatSettingsView | null>(null);
   const [problem, setProblem] = useState(false);
+  const [forgetFailed, setForgetFailed] = useState(false);
+  const [openFailed, setOpenFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const request = useRef(0);
+  const openRequest = useRef(0);
+  const refresh = useRef<(() => Promise<void>) | null>(null);
+  useEffect(() => () => { openRequest.current += 1; }, []);
   useEffect(() => {
     if (!api.formatSettings) return;
+    setBusy(false);
     let alive = true;
     const read = () => {
       const ticket = ++request.current;
-      void api.formatSettings!().then((next) => {
+      return api.formatSettings!().then((next) => {
         if (!alive || ticket !== request.current) return;
         setView(next); setProblem(false);
       }, () => { if (alive && ticket === request.current) setProblem(true); });
     };
-    const events = api.onPreferencesChanged(read);
+    refresh.current = read;
+    const events = api.onSettingsChanged(read);
     void events.then(read, read);
     window.addEventListener("focus", read);
-    return () => { alive = false; request.current += 1; window.removeEventListener("focus", read); void events.then((stop) => stop()); };
+    return () => { alive = false; refresh.current = null; request.current += 1; window.removeEventListener("focus", read); void events.then((stop) => stop(), () => {}); };
   }, [api]);
   const forget = (id: string) => {
     if (!api.forgetAppFormat || !api.formatSettings || busy) return;
-    const ticket = ++request.current;
-    setBusy(true); setProblem(false);
-    void api.forgetAppFormat(id).then(() => api.formatSettings!()).then((next) => {
-      if (ticket === request.current) setView(next);
-    }, () => { if (ticket === request.current) setProblem(true); }).finally(() => setBusy(false));
+    const read = refresh.current;
+    ++request.current;
+    setBusy(true);
+    void api.forgetAppFormat(id).then(() => {
+      if (refresh.current === read) { setForgetFailed(false); return read?.(); }
+    }, () => { if (refresh.current === read) setForgetFailed(true); }).finally(() => {
+      if (refresh.current === read) setBusy(false);
+    });
   };
-  const openSettingsFile = api.openSettingsFile ? () => { void api.openSettingsFile!().catch(() => setProblem(true)); } : undefined;
-  return { view, problem, busy, forget, openSettingsFile };
+  const openSettingsFile = api.openSettingsFile ? () => {
+    const ticket = ++openRequest.current;
+    void api.openSettingsFile!().then(() => { if (ticket === openRequest.current) setOpenFailed(false); },
+      () => { if (ticket === openRequest.current) setOpenFailed(true); });
+  } : undefined;
+  return { view, problem, busy, forget, openSettingsFile, forgetFailed, openFailed,
+    dismissForget: () => setForgetFailed(false), dismissOpen: () => setOpenFailed(false) };
 }
 
 export function FormatSettings({ settings, highlighted }: { settings: ReturnType<typeof useFormatSettings>; highlighted: string | null }) {
   const { text } = useInterfaceMessages();
-  const { view, problem, busy, forget, openSettingsFile } = settings;
+  const { view, problem, busy, forget, openSettingsFile, forgetFailed, openFailed, dismissForget, dismissOpen } = settings;
   return <>
     {view && view.apps.length > 0 && <Section id="remembered-formats" title={text("citations-apps")}><Group>
       {view.apps.map((app) => <Row key={app.id} id={`format-${app.id}`} label={app.app} description={listedOutput(app.format) ? outputName(listedOutput(app.format)!) : text("citations-unlisted")} changed>
@@ -58,5 +73,7 @@ export function FormatSettings({ settings, highlighted }: { settings: ReturnType
       <Button onPress={openSettingsFile}>{text("settings-open-file")}</Button>
     </Row></Group></Section>}
     {problem && <p role="alert">{text("settings-read-failed")}</p>}
+    {forgetFailed && <p role="alert">{text("settings-forget-failed")} <Button size="small" onPress={dismissForget}>{text("picker-dismiss")}</Button></p>}
+    {openFailed && <p role="alert">{text("settings-open-failed")} <Button size="small" onPress={dismissOpen}>{text("picker-dismiss")}</Button></p>}
   </>;
 }

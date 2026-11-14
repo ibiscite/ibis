@@ -19,6 +19,7 @@ use std::sync::{Arc, Mutex, mpsc};
 #[cfg(test)]
 mod cancellation_tests;
 
+mod errors;
 mod tools;
 mod view;
 pub use tools::{MAX_ANSWER, MAX_HITS, MAX_LIST, MAX_STYLES, Refusal};
