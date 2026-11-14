@@ -646,8 +646,8 @@ pub(crate) async fn picker_preferences_saved(
     tauri::async_runtime::spawn_blocking(move || {
         let saved = submitted
             .outcome
-            .recv()
-            .unwrap_or_else(|_| Err("settings are unavailable".to_string()))?;
+            .wait()
+            .unwrap_or_else(|| Err("settings are unavailable".to_string()))?;
         Ok(PickerSave {
             preferences: PickerPreferences::from_settings(&saved),
         })
@@ -667,7 +667,7 @@ struct Receipts {
 const MAX_RECEIPTS: usize = 256;
 
 struct Submitted {
-    outcome: std::sync::mpsc::Receiver<Result<settings::Settings, String>>,
+    outcome: settings::Pending<Result<settings::Settings, String>>,
 }
 
 impl SettingsFile {
@@ -686,18 +686,19 @@ impl SettingsFile {
             .map_err(|_| "settings are unavailable".to_string())?;
         let surprises = Arc::clone(&self.surprises);
         let last_valid = Arc::clone(&self.last_valid);
-        let (reply, outcome) = std::sync::mpsc::channel();
-        let (receipt, _) = self.owner.submit_on_file_with_receipt(move |receipt, path| {
-            let saved = save_preferences_at(path, preferences);
-            if let Ok(saved) = &saved {
-                surprises.store(saved.small_surprises.unwrap_or(true), Ordering::SeqCst);
-                if let Ok(mut previous) = last_valid.lock() {
-                    *previous = PickerPreferences::from_settings(saved);
+        let (receipt, outcome) = self.owner.submit_on_file_with_receipt(
+            move |path| save_preferences_at(path, preferences),
+            move |receipt, saved| {
+                if let Ok(saved) = &saved {
+                    surprises.store(saved.small_surprises.unwrap_or(true), Ordering::SeqCst);
+                    if let Ok(mut previous) = last_valid.lock() {
+                        *previous = PickerPreferences::from_settings(saved);
+                    }
                 }
-            }
-            after(receipt, &saved);
-            let _ = reply.send(saved);
-        });
+                after(receipt, &saved);
+                saved
+            },
+        );
         let receipt = receipt.ok_or_else(|| "settings are unavailable".to_string())?;
         receipts.submitted.insert(receipt, Submitted { outcome });
         while receipts.submitted.len() > MAX_RECEIPTS {
@@ -727,8 +728,8 @@ impl SettingsFile {
         let receipt = self.submit_preferences(preferences, |_, _| ())?;
         self.take_receipt(receipt)?
             .outcome
-            .recv()
-            .unwrap_or_else(|_| Err("settings are unavailable".to_string()))
+            .wait()
+            .unwrap_or_else(|| Err("settings are unavailable".to_string()))
     }
 }
 
@@ -1215,7 +1216,7 @@ mod tests {
         let last = file
             .take_receipt(receipts[MAX_RECEIPTS])
             .unwrap_or_else(|e| panic!("{e}"));
-        assert!(last.outcome.recv().is_ok_and(|saved| saved.is_ok()));
+        assert!(last.outcome.wait().is_some_and(|saved| saved.is_ok()));
         assert_eq!(
             read_preferences(&file.path).unwrap_or_else(|e| panic!("{e}")).density,
             Density::Compact

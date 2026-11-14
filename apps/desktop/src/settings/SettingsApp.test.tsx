@@ -221,6 +221,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     onShortcutStatus: async (handler) => { state.shortcuts.push(handler); return () => { state.shortcuts = state.shortcuts.filter((each) => each !== handler); }; },
     version: async () => "0.3.0",
     onPreferencesChanged: async (changed) => { state.preferenceEvents.push(changed); return () => { state.preferenceEvents = state.preferenceEvents.filter((each) => each !== changed); }; },
+    onSettingsChanged: async (changed) => { state.preferenceEvents.push(changed); return () => { state.preferenceEvents = state.preferenceEvents.filter((each) => each !== changed); }; },
     onPage: async (handler) => { state.pages.push(handler); return () => undefined; },
     onUpdateChecks: async (handler) => { state.automatic.push(handler); return () => { state.automatic = state.automatic.filter((each) => each !== handler); }; },
     onCloseRequested: async (handler) => { state.closes.push(handler); return () => undefined; },

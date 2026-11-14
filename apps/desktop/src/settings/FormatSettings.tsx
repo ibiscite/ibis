@@ -14,28 +14,34 @@ export function useFormatSettings(api: SettingsApi) {
   const [problem, setProblem] = useState(false);
   const [busy, setBusy] = useState(false);
   const request = useRef(0);
+  const refresh = useRef<(() => Promise<void>) | null>(null);
   useEffect(() => {
     if (!api.formatSettings) return;
+    setBusy(false);
     let alive = true;
     const read = () => {
       const ticket = ++request.current;
-      void api.formatSettings!().then((next) => {
+      return api.formatSettings!().then((next) => {
         if (!alive || ticket !== request.current) return;
         setView(next); setProblem(false);
       }, () => { if (alive && ticket === request.current) setProblem(true); });
     };
-    const events = api.onPreferencesChanged(read);
+    refresh.current = read;
+    const events = api.onSettingsChanged(read);
     void events.then(read, read);
     window.addEventListener("focus", read);
-    return () => { alive = false; request.current += 1; window.removeEventListener("focus", read); void events.then((stop) => stop()); };
+    return () => { alive = false; refresh.current = null; request.current += 1; window.removeEventListener("focus", read); void events.then((stop) => stop(), () => {}); };
   }, [api]);
   const forget = (id: string) => {
     if (!api.forgetAppFormat || !api.formatSettings || busy) return;
-    const ticket = ++request.current;
+    const read = refresh.current;
+    ++request.current;
     setBusy(true); setProblem(false);
-    void api.forgetAppFormat(id).then(() => api.formatSettings!()).then((next) => {
-      if (ticket === request.current) setView(next);
-    }, () => { if (ticket === request.current) setProblem(true); }).finally(() => setBusy(false));
+    void api.forgetAppFormat(id).then(() => {
+      if (refresh.current === read) return read?.();
+    }, () => { if (refresh.current === read) setProblem(true); }).finally(() => {
+      if (refresh.current === read) setBusy(false);
+    });
   };
   const openSettingsFile = api.openSettingsFile ? () => { void api.openSettingsFile!().catch(() => setProblem(true)); } : undefined;
   return { view, problem, busy, forget, openSettingsFile };
