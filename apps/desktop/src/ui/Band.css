@@ -10,5 +10,9 @@
 /* A band that spaces its controls (--band-gap) still starts its label on the column. */
 .ui-band-icon { position: relative; flex: none; display: flex; align-items: center; justify-content: center; inline-size: var(--tile); margin-inline: var(--row-pad) calc(var(--row-gap) - var(--band-gap, 0px)); }
 .ui-band-label { flex: 1 1 auto; min-width: 0; }
+/* Every glyph in the lead column is a tile glyph (20 px), whichever list holds it. */
+.ui-band-icon > .ui-icon { width: var(--icon-tile); height: var(--icon-tile); }
+/* No lead column: the words start on the leading edge, where the lead column starts. */
+.ui-band:not(:has(> .ui-band-icon)):not([data-fill]) { padding-inline-start: calc(var(--band-inset, var(--inset)) + var(--row-pad)); }
 .ui-band-trailing { flex: none; display: flex; align-items: center; gap: var(--space-2); min-width: 0; margin-inline-start: var(--space-2); }
 .ui-band-trailing:empty { display: none; }

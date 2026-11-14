@@ -53,27 +53,27 @@ export function Row({ id, label, description, children, problem, highlighted, pe
   return <Element className="ui-row" aria-busy={pending || undefined} data-bare={labelHidden || undefined} data-highlighted={highlighted || undefined}>
     <span className={labelHidden ? "visually-hidden" : "ui-row-lead"}>
       <span className="ui-row-text">
-        <span id={id} dir="auto">{label}</span>
+        <span className="ui-row-label"><span id={id} dir="auto">{label}</span>{children !== undefined && <ResetSlot reset={reset} />}</span>
         {description && <span id={id ? `${id}-description` : undefined} className="ui-row-description" dir="auto">{description}</span>}
       </span>
     </span>
     {children}
-    {children !== undefined && <ResetSlot reset={reset} />}
     {problem && <p className="ui-row-problem" role="alert">{problem}</p>}
   </Element>;
 }
 
 type Reset = { label: string; onReset: () => void; disabled?: boolean };
-/** [C24] Use Default, the only way back to a default, in a slot a row with a
- * control keeps either way, so the control never moves when it appears. */
+/** [C24] Use Default, the only way back to a default: it follows the setting's
+ * name, so it appears beside what it restores and every control keeps the
+ * row's one trailing edge. Nothing is reserved while the setting is default. */
 export function ResetSlot({ reset }: { reset?: Reset }) {
   const { text } = useInterfaceMessages();
-  return <span className="ui-row-reset">{reset && <IconButton icon="retry" data-setting-reset isDisabled={reset.disabled}
+  return reset ? <span className="ui-row-reset"><IconButton icon="reset" data-setting-reset isDisabled={reset.disabled}
     aria-label={text("settings-use-default", { setting: reset.label })} title={text("shortcuts-use-default")} onPress={(event) => {
       const row = event.target.closest<HTMLElement>(".ui-row, tr");
       if (row) settingControl(row)?.focus({ preventScroll: true });
       reset.onReset();
-    }} />}</span>;
+    }} /></span> : null;
 }
 
 /** A row to choose from a list, as System Settings lists choices: the whole row is

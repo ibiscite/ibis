@@ -155,6 +155,8 @@
   --preview-window: .21; --preview-thumb: .09; --preview-live: .6;
   /* The bird: the app icon names Ibis; the depth mark greets. */
   --mark-app: 6rem; --mark-greeting: 3.5rem;
+  /* The search bar's bird fills the lead column, so its ink is the query's line height. */
+  --mark-search: var(--tile);
 
 }
 
@@ -286,6 +288,9 @@
 /* Layer 3: components, derived from the layers above. */
 :root {
   --key-gap: calc((var(--control-small-h) - var(--key)) / 2);
+  /* A band that ends in a key cap's button ends here, so the cap's fill lands on the
+     trailing edge (--row-start from the window), where years and counts end. */
+  --cap-end: calc(var(--row-start) - var(--key-gap));
   /* Layout: the header (the search field's band) and the footer band, and where a
      section's heading and words start: on the text of the rows in its card. */
   --header-h: calc(var(--field-h) + 2 * var(--inset) + var(--border-width));
@@ -306,7 +311,7 @@
   /* What floats stays --inset inside the window on every side ([D15]). */
   --overlay-max-inline: calc(100vw - 2 * var(--inset)); --overlay-max-block: calc(100vh - 2 * var(--inset));
   /* Where a row's icon column starts: the window inset, then the row's own padding. */
-  --row-start: calc(var(--inset) + var(--row-pad)); --row-end: calc(var(--row-pad) + var(--hit)); /* the end keeps Use Default's slot */
+  --row-start: calc(var(--inset) + var(--row-pad));
   --heading-offset: calc(var(--row-pad) + var(--border-width));
   --inspector-width: 18rem; --inspector-column: 15rem;
   /* Measured from NSSegmentedControl: the chosen fill lands at 19% of the text colour. */

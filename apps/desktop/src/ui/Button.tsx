@@ -4,7 +4,6 @@ import { Button as AriaButton, ToggleButton as AriaToggleButton, type ButtonProp
 import "./Button.css";
 import { ariaKeys } from "../keys";
 import { currentPlatform } from "../platform";
-import { KeyMark } from "./HeldKeys";
 import { KeyHint } from "./KeyCaps";
 
 type Look = Pick<ComponentPropsWithRef<"button">, "ref" | "title" | "aria-busy" | "aria-keyshortcuts" | "aria-hidden" | "inert"> & {
@@ -20,7 +19,7 @@ export function Button({ variant = "secondary", size = "default", className = ""
     render={props.render ?? ((native) => <button {...native as ComponentPropsWithRef<"button">} title={props.title} aria-busy={props["aria-busy"]} aria-keyshortcuts={shortcut} aria-hidden={props["aria-hidden"]} tabIndex={props.excludeFromTabOrder ? -1 : native.tabIndex} />)}>
     {(values) => <>{icon && <span className="ui-button-icon">{icon}</span>}
       {label ? keys ? <KeyHint label={label} keys={keys} primary={variant === "primary" || variant === "action"} hidden echo /> : <bdi>{label}</bdi> : typeof children === "function" ? children(values) : children}
-      {!label && variant !== "icon" && <KeyMark keys={keys} />}</>}
+</>}
   </AriaButton>;
 }
 
@@ -28,7 +27,7 @@ export function ToggleButton({ variant = "secondary", size = "default", classNam
   const shortcut = keys ? ariaKeys(keys, currentPlatform() === "macos") : props["aria-keyshortcuts"];
   return <AriaToggleButton {...props} className={`ui-button ${className}`} data-variant={variant} data-size={size}
     render={props.render ?? ((native) => <button {...native as ComponentPropsWithRef<"button">} title={props.title} aria-busy={props["aria-busy"]} aria-keyshortcuts={shortcut} aria-hidden={props["aria-hidden"]} tabIndex={props.excludeFromTabOrder ? -1 : native.tabIndex} />)}>
-    {(values) => <>{typeof children === "function" ? children(values) : children}{variant !== "icon" && <KeyMark keys={keys} />}</>}
+    {(values) => <>{typeof children === "function" ? children(values) : children}</>}
   </AriaToggleButton>;
 }
 

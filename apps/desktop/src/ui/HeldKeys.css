@@ -8,6 +8,5 @@
   font-size: var(--type-body-size); font-weight: 400; line-height: var(--type-body-line); font-variant-numeric: tabular-nums;
 }
 :root[data-keys-held] :has(> .ui-key-mark) > :not(.ui-key-mark) { visibility: hidden; }
-:root[data-keys-held] .ui-band-icon > .ui-key-mark { justify-content: end; }
 [data-active] .ui-key-mark { color: var(--selected-text-secondary); }
 @media (prefers-contrast: more) { .ui-key-mark { color: var(--text); } }

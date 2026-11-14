@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import { keyLabel } from "../keys";
 import { currentPlatform } from "../platform";
 import "./HeldKeys.css";
 
@@ -13,7 +12,7 @@ export const HOLD_MS = 1000;
  * room for words, so its key stays in its tooltip. */
 export function KeyMark({ keys }: { keys?: string }) {
   if (!keys?.split("+").includes("CmdOrCtrl")) return null;
-  return <span className="ui-key-mark" aria-hidden="true"><bdi dir="ltr">{keyLabel(keys, currentPlatform() === "macos")}</bdi></span>;
+  return <span className="ui-key-mark" aria-hidden="true"><bdi dir="ltr">{keys.split("+").at(-1)}</bdi></span>;
 }
 
 /** Holding ⌘ (Ctrl elsewhere) alone for a second shows every KeyMark. Any other

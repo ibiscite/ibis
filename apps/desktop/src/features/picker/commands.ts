@@ -15,8 +15,8 @@ export type PickerCommandEntry = { id: PickerCommand; title: string; about: stri
 
 /** The glyph each command shows on the tile column, here and in More, from the one icon set. */
 export const COMMAND_ICONS: Record<PickerCommand, IconName> = {
-  format: "swap", source: "file", revealSource: "folder-search", chooseSource: "library-big", changeLast: "write",
-  pin: "pin", keys: "shortcuts", settings: "general", quit: "close", more: "chevrons",
+  format: "format", source: "file", revealSource: "folder-search", chooseSource: "library-big", changeLast: "write",
+  pin: "pin", keys: "keyboard", settings: "settings", quit: "quit", more: "chevrons",
 };
 
 /** The commands available now. `source` names the library's own action

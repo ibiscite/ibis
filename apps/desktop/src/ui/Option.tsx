@@ -7,6 +7,6 @@ import "./Option.css";
  * Virtual-focus options keep their caller's real-motion hover policy. */
 export function Option({ hoverAllowed = false, className, icon, ...props }: ComponentPropsWithRef<"li"> & { hoverAllowed?: boolean; icon: ReactNode }) {
   const { hoverProps, isHovered } = useHover({});
-  return <Band as="li" fill icon={icon} {...mergeProps(hoverProps, props) as ComponentPropsWithRef<"div">}
+  return <Band as="li" fill icon={icon ?? null} {...mergeProps(hoverProps, props) as ComponentPropsWithRef<"div">}
     className={className ? `ui-option ${className}` : "ui-option"} data-hovered={hoverAllowed && isHovered || undefined} />;
 }

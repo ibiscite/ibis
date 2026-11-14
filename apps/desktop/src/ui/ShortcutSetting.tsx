@@ -32,9 +32,7 @@ export function ShortcutSetting({ id, rowId, details, status, problem, saving, h
       {status?.error && <span role="status">{status.error}</span>}
 </>;
   if (table) return <>
-    <tr id={rowId} data-echo={pressed || undefined} data-highlighted={highlighted || undefined}><th scope="row">{text(SHORTCUT_ACTIONS.open)}</th><td><span className="ui-settings-keys">{controls}
-      <ResetSlot reset={reset} />
-    </span></td></tr>
+    <tr id={rowId} data-echo={pressed || undefined} data-highlighted={highlighted || undefined}><th scope="row"><span className="ui-row-label">{text(SHORTCUT_ACTIONS.open)}<ResetSlot reset={reset} /></span></th><td><span className="ui-settings-keys">{controls}</span></td></tr>
     {(problem || status?.desktop?.guidance) && <tr><td colSpan={2}>
       {status?.desktop?.guidance && <Note>{status.desktop.guidance}</Note>}
       {problem && <p className="ui-row-problem" role="alert">{text(problem.id, problem.command ? { command: text(SHORTCUT_COMMANDS[problem.command]) } : undefined)}</p>}

@@ -5,14 +5,13 @@
 /* The mark centres in the band's icon column and the query starts on the label
    column, where row titles start (ui/Band). The Ibis mark is the logo, so it keeps
    brand scarlet; contrast modes make it CanvasText (#1293). */
-.search-bar svg.search-mark { width: var(--control-small-h); height: var(--control-small-h); color: var(--scarlet); pointer-events: none; }
+.search-bar svg.search-mark { width: var(--mark-search); height: var(--mark-search); color: var(--scarlet); pointer-events: none; }
 /* Reserve readable query space before wrapping controls, at every text size. */
 .search-field { --search-clear-size: var(--action-h); position: relative; display: flex; flex: 1; min-width: min(12rem, calc(100% + var(--inset) - var(--label-start))); }
 .query-input { position: relative; display: flex; flex: 1; min-width: 0; }
 /* The search box never shows a ring: it always has focus, and the caret is the
    cue. Contrast and forced colours restore it below. */
 #search { width: 100%; min-width: 0; height: var(--field-h); font-size: var(--type-search-size); line-height: var(--type-search-line); letter-spacing: -.025em; background: transparent; border: 0; border-radius: var(--r-control); padding: 0; outline-offset: 4px; cursor: text; user-select: text; }
-:root[data-platform] #search { padding-inline-end: calc(var(--search-clear-size) + var(--space-1)); }
 #search:focus-visible { outline: none; box-shadow: none; }
 #search::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
 .search-clear.ui-button { --ring-offset: var(--ring-inside); position: absolute; inset-inline-end: var(--border-width); top: 50%; transform: translateY(-50%); }

@@ -1,7 +1,6 @@
 import type { ComponentPropsWithRef, MouseEventHandler, ReactNode } from "react";
 import { composing } from "../composition";
 import { Band } from "./Band";
-import { IconButton } from "./IconButton";
 import "./SearchBar.css";
 
 /** The picker's top band (ui/Band): the window's drag region, holding the mark in
@@ -27,7 +26,6 @@ export function SearchField({ id, label, clearLabel, value, onClear, trailing, .
       onKeyUpCapture={(e) => { if (composing(e)) e.stopPropagation(); }}>
       <div className="query-input">
         <input id={id} type="search" value={value} {...input} />
-        {value !== "" && <IconButton size="large" className="search-clear" aria-label={clearLabel} onPress={onClear} />}
       </div>
       {trailing}
     </div>

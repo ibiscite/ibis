@@ -40,9 +40,9 @@
 .ui-row > :not(.ui-row-lead, .ui-row-problem, .visually-hidden) { max-inline-size: 100%; }
 .ui-row .ui-button { padding-block: var(--space-1); }
 /* [C24] Use Default keeps its place at a row's end, so nothing moves when it shows. */
-.ui-row-reset { display: flex; flex: none; align-items: center; justify-content: center; inline-size: var(--hit); }
-.ui-row:has(> .ui-row-reset) { padding-inline-end: var(--row-end); }
-.ui-row > .ui-row-reset { position: absolute; inset-block: 0; inset-inline-end: var(--row-pad); }
+.ui-row-label { display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0; }
+.ui-row-reset { display: inline-flex; flex: none; block-size: var(--type-body-line); align-items: center; }
+.ui-row-reset .ui-icon-button.ui-button[data-variant] { color: var(--text-secondary); }
 .ui-row-description { color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-body-line); }
 .ui-row-problem { flex-basis: 100%; margin: 0; color: var(--text); overflow-wrap: anywhere; }
 @media (prefers-contrast: more), (forced-colors: active) {

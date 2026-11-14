@@ -1,6 +1,6 @@
 /* The picker's footer band (ui/Footer.css): the library status on the label column
    after its dot in the icon slot, the Enter hints, then More on the last column. */
-footer { display: flex; align-items: center; padding-block: 0; padding-inline: var(--row-start) var(--inset); font-size: var(--type-label-size); line-height: var(--type-label-line); min-height: var(--footer-h); }
+footer { display: flex; align-items: center; padding-block: 0; padding-inline: var(--row-start) var(--cap-end); font-size: var(--type-label-size); line-height: var(--type-label-line); min-height: var(--footer-h); }
 /* The divider is outside the 24 px actions and their two 8 px gaps.
    Coarse targets grow the band instead of clipping; the grid below owns its columns. */
 .library-bar { flex: 1; min-width: 0; align-items: center; gap: var(--space-2); padding-block: var(--inset); }
@@ -8,8 +8,10 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: v
    is cut first, and the tooltip and More keep the whole detail. */
 /* [C3] The same tile and label columns as a row, inside the footer's small
    control. The dot is centred in its slot; the words share the actions' line. */
-.library-status { flex: 1; min-width: min(var(--status-min), 100%); display: grid; grid-template-columns: var(--tile) minmax(0, 1fr); align-items: baseline; gap: var(--row-gap); color: var(--text-secondary); }
-.library-status > .status-dot { justify-self: center; }
+.library-status { flex: 1; min-width: min(var(--status-min), 100%); display: flex; align-items: baseline; gap: var(--space-2); color: var(--text-secondary); }
+/* A healthy library is named, nothing more: no dot, no count (the library menu and More hold them). */
+.library-status[data-health="done"] > .status-dot, .library-status[data-health="idle"] > .status-dot { display: none; }
+.library-status[data-health="done"] :is(.library-separator, .library-state) { display: none; }
 /* The leading selector's plate starts on the row inset. Its inner row keeps
    the same columns at rest, on hover and while the menu is open. */
 .library-bar .ui-button.library-status-trigger[data-variant] {

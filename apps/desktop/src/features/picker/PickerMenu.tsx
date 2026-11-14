@@ -61,12 +61,12 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
     // The bibliography keys are checked against, named by its state.
     { id: "project", label: project?.status ? projectDetail(project.status) : undefined, items: [
       ...project?.choose && project.copyEntry && project.status ? action("project-entry", say("picker-copy-project-entry", { name: isolate(project.status.name) }), "file", project.copyEntry) : [],
-      ...project?.choose ? action("project-choose", project.status ? say("picker-choose-other-project") : say("picker-choose-project"), "book", project.choose) : [],
+      ...project?.choose ? action("project-choose", project.status ? say("picker-choose-other-project") : say("picker-choose-project"), "check-file", project.choose) : [],
       ...project?.status && project.stop ? action("project-stop", say("picker-stop-project", { name: isolate(project.status.name) }), "close", project.stop) : [],
     ] },
     { id: "citation", label: say("palette-citation"), items: [
       ...action("format", say("picker-change-format"), COMMAND_ICONS.format, actions.format, keyed("format")),
-      ...action("peek", say("palette-peek"), "look", actions.peek, keyed("peek")),
+      ...action("peek", say("palette-peek"), "peek", actions.peek, keyed("peek")),
       ...action("change-last", say("picker-change-last-citation"), COMMAND_ICONS.changeLast, actions.changeLast, keyed("changeLast")),
       ...citation?.tokens ? [
         ...action("citation-focus", say("key-go-to-citation"), "arrow-down", citation.focus, keyed("citationFocus")),
@@ -77,9 +77,9 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
         ...action("citation-move-right", say("key-move-right"), "arrow-right", () => citation.move(1), { keys: "Shift+ArrowRight" }),
       ] : [],
       ...citation && citation.selected > 0 ? action("citation-remove", say("key-remove-from-citation"), "minus", citation.remove, { keys: "Backspace" }) : [],
-      ...keepOrder ? action("keep-order", say("picker-keep-my-order"), "chevrons", keepOrder.toggle, { checked: keepOrder.checked }) : [],
-      ...action("session-references", say("session-menu"), "citations", actions.sessionReferences),
-      ...action("forget-recent", say("picker-forget-recent"), "retry", actions.forgetRecent),
+      ...keepOrder ? action("keep-order", say("picker-keep-my-order"), "order", keepOrder.toggle, { checked: keepOrder.checked }) : [],
+      ...action("session-references", say("session-menu"), "history", actions.sessionReferences),
+      ...action("forget-recent", say("picker-forget-recent"), "forget", actions.forgetRecent),
     ] },
     { id: "ibis", label: say("palette-ibis"), items: [
       ...action("pin", say("picker-keep-open-menu"), COMMAND_ICONS.pin, actions.pin, { ...keyed("pin"), checked: pinned }),

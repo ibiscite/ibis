@@ -4,7 +4,7 @@ Search, list, shelf and footer ([design](../design.md#the-model)). The Inspector
 
 ## Search bar
 
-- Order: search glyph, query, clear ×, format pop-up. The header is its tallest control plus 2S, with a divider below [C2]. Its controls take the field's height, so the gap above and beside them is S and their corners nest in the window's (`--r-control`).
+- Order: the bird in the lead column, the query on the title column, the format pop-up ending on the trailing edge. No clear button: Esc clears, as in Spotlight and Raycast, and every search field (the picker's and a view's) is the same frameless field. The header is its tallest control plus 2S, with a divider below [C2]. Its controls take the field's height, so the gap above and beside them is S and their corners nest in the window's (`--r-control`).
 - `#tag`, `y:2019-2022` and `a:name` plus a space become removable chips; Backspace in an empty box removes the last.
 - **Keep Window Open** [C6] (⇧⌘P, or in More): a choice for this session, so it has no button of its own in the header (control placement, maintainer 2026-11-10). While it is on, a pressed pin sits beside More in the footer, and a click on it turns it off. Esc never unpins.
 - The format pop-up names the exact output and, when the format belongs to something, whose it is (`APA · Word`, `APA · Thesis`); the default carries no suffix. One output has one name everywhere, the engine's (decision 0035). Hidden until a library is chosen. It opens the **format palette** ([decision 0042](../decisions/0042-formats-apps-and-writings.md)): the way back first when the format isn't yours, recent formats, the app's own choices, Writing Projects…, then the catalogue, also found by typing. Beside the list, key formats preview the chosen references and citation styles show a labelled example. Writings directly in the list and real style previews remain the decision's target.
@@ -48,7 +48,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 
 ## Footer
 
-- **Footer** [C8]: the library selector at the leading edge, drawn as a row is: its plate on the window inset, the dot centred in the tile column and the name on the label column, with the row's gap and the other footer controls' height and baseline, still while its menu is open; the source action, the one primary action ("Paste into Word · APA ↵" or "Copy N as <format> ↵"), and last, on the rows' trailing edge, "More ⌘K".
+- **Footer** [C8]: the library selector, its words on the leading edge: the library's name alone while it is healthy (no dot, no count; the library menu and More hold both), and a status dot in its colour before the words only when it needs you (look, stop); the source action, the one primary action ("Paste into Word · APA ↵" or "Copy N as <format> ↵"), and last, on the rows' trailing edge, "More ⌘K".
 - **Going back** ([decision 0047](../decisions/0047-opening-references-placement-and-back.md)): Esc goes back from palettes and sheets, and closes the Inspector. Empty Backspace goes back only in palettes, after the key is released and pressed again; in sheets and the Inspector it only edits. ⌘[ on macOS, Alt+Left elsewhere and mouse Back return from all three, keeping sheet drafts. IME composition and pop-ups take precedence. Every return restores the parent's search, selection, scroll and focus; reopening a form restores its draft and place. Tab keeps its existing palette and sheet behaviour.
 - **More** (⌘K) opens the **actions palette**: every action in the picker, grouped by what it acts on (the library, this citation, Ibis), each with its key, and found by its name or a common word for it ("preferences" finds Settings). It is the third door to every action (control placement).
 - **More never moves**: it has the last column of its own, so nothing about the action moves it: not a longer label, not Alt, not the action being absent. A click aimed at More can never land on Copy. The action sits against it and grows toward the status. The leading slot always keeps room for its fix ("Find thesis.bib…"), so the fix never wraps onto the action; a failure line under them spans the footer.
@@ -61,7 +61,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 | Case | Footer |
 | --- | --- |
 | Starting, first run | "Checking library…", "No library chosen" |
-| Loaded | "Zotero · 1,204 references" or "thesis.bib · 1,204 references" |
+| Loaded | "Zotero" or "thesis.bib"; the count is in the library menu's heading |
 | Changed while open | "… · updated 2 minutes ago" (only when references changed) |
 | Reloading | "… · reloading…", count kept; rows and the citation stay until it ends |
 | Entries skipped or to check | "damaged.bib · 3 references · 4 entries skipped · 1 to check", look dot; the hover text and the library menu's heading say why and where: "4 entries skipped: 2 use the key good1 (lines 3 and 9), 2 could not be read (lines 21 and 25). Check line 15." |
@@ -80,7 +80,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 | --- | --- |
 | ⇧⌘Y (Ctrl+Shift+Y elsewhere) | Opens Ibis from any app (the default; follows the active layout's letter) |
 | Click / double-click a row | Selects [C5] / pastes or copies what the shelf shows |
-| ⌘1–⌘9 (Ctrl elsewhere) | Does what a double-click on the row with that number does. The first nine rows wholly in view are numbered from the top, so scrolling renumbers them; holding ⌘ (the same one-second hold) writes each row's key where its type icon was, as plain secondary text like a menu's key equivalent (⌘1; Ctrl+1 elsewhere), ending where the tile column ends, like a numbered list's marker: no cap and no plate, nothing moves, and the year stays. A cited row's check gives way for the hold too (the shelf shows the citation) and returns when ⌘ is let go. Only while the result list is shown: not over the command list, a palette, a sheet or an empty state |
+| ⌘1–⌘9 (Ctrl elsewhere) | Does what a double-click on the row with that number does. The first nine rows wholly in view are numbered from the top, so scrolling renumbers them; holding ⌘ (Ctrl elsewhere; the same one-second hold) writes each row's digit alone in its lead column, centred where its glyph was, as plain secondary text: the modifier is already in the hand, so "1" reads the same on every system and fits the column. No cap and no plate, nothing moves, and the year stays. The hold marks rows only: every other control's key is printed beside it already (footer caps, More, tooltips). A cited row's check gives way for the hold too (the shelf shows the citation) and returns when ⌘ is let go. Only while the result list is shown: not over the command list, a palette, a sheet or an empty state |
 | Enter, or the footer action | Pastes or copies what the shelf shows; success hides an unpinned window |
 | ⌘-click, the tile’s +, ⇧Enter | Adds to the citation, in order |
 | ⌘↓ in Search | Goes to the citation's last token |
