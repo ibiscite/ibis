@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Runs the real-Zotero test (crates/ibis-zotero-local/tests/real_zotero.rs)
-# against an actual Zotero: downloads the current Linux release, starts it
+# against an actual Zotero: normally downloads the current Linux release, starts it
 # with a fresh, throwaway profile and data directory and the local API
 # turned on, then runs the test. Linux only; needs xvfb-run and network
 # access to zotero.org. Zotero listens on a port of its own (not 23119), so a
 # Zotero you have open is never touched. The ordinary run writes only to a
 # temporary directory; --capture retains a synthetic bundle in fresh output.
+# An explicit --executable captures an installed release without downloading it.
 #
 #   scripts/real-zotero.sh
 set -euo pipefail
@@ -13,11 +14,13 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 # Capture is deliberately opt-in; the ordinary live-API check below is unchanged.
 #   scripts/real-zotero.sh --capture 10.0.6 /fresh/private/output
+#   scripts/real-zotero.sh --capture 7.0 /fresh/private/output --executable /opt/zotero/zotero
 if [ "$#" -ne 0 ]; then
-  if [ "$#" -ne 3 ] || [ "$1" != --capture ]; then
-    echo "usage: real-zotero.sh [--capture EXACT_VERSION FRESH_OUTPUT]" >&2; exit 1
+  if [ "$1" != --capture ] || { [ "$#" -ne 3 ] && [ "$#" -ne 5 ]; } ||
+     { [ "$#" -eq 5 ] && [ "$4" != --executable ]; }; then
+    echo "usage: real-zotero.sh [--capture EXACT_VERSION FRESH_OUTPUT [--executable ABSOLUTE_LAUNCHER]]" >&2; exit 1
   fi
-  xvfb-run -a python3 - "$root" "$2" "$3" <<'PY_CAPTURE'
+  xvfb-run -a python3 - "$root" "${@:2}" <<'PY_CAPTURE'
 import configparser
 import ctypes as C
 import hashlib
@@ -44,7 +47,7 @@ API_PATH = "users/0/items/top?format=json&include=data,csljson&sort=dateAdded&di
 
 
 def prepare_output(version, output):
-    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)?", version):
+    if not re.fullmatch(r"[0-9]+(?:\.[0-9]+)+", version):
         raise RuntimeError("capture requires an exact release version")
     try:
         output.mkdir(mode=0o700)
@@ -63,7 +66,7 @@ def application_info(directory, version):
             raise ValueError()
         return {"version": actual, "build_id": build}
     except (StopIteration, OSError, KeyError, ValueError, configparser.Error):
-        raise RuntimeError("downloaded application build does not match the requested release") from None
+        raise RuntimeError("selected application build does not match the requested release") from None
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -149,6 +152,42 @@ def file_info(path):
         for block in iter(lambda: source.read(65536), b""):
             digest.update(block)
     return {"sha256": digest.hexdigest(), "bytes": path.stat().st_size}
+
+
+def resolve_application(work, version, executable):
+    if executable is not None:
+        program = Path(executable)
+        if not program.is_absolute() or not program.is_file() or not os.access(program, os.X_OK):
+            raise RuntimeError("capture executable must be an absolute executable file")
+        program = program.resolve(strict=True)
+        provenance = application_info(program.parent, version)
+        return program, {"application": dict(provenance, launcher=file_info(program))}
+
+    archive = work / "zotero.tar"
+    url = "https://www.zotero.org/download/client/dl?channel=release&platform=linux-x86_64&version=" + version
+    downloaded = subprocess.run(["curl", "-fsSL", "--retry", "3", "--max-time", "180", "--max-filesize", str(MAX_ARCHIVE_BYTES), "-o", str(archive), "-w", "%{url_effective}", url],
+                                check=True, capture_output=True, text=True, timeout=200)
+    resolved = downloaded.stdout
+    parsed = urlparse(resolved)
+    if parsed.scheme != "https" or parsed.hostname != "download.zotero.org" or not parsed.path.startswith("/client/release/" + version + "/"):
+        raise RuntimeError("download did not resolve to the pinned official release")
+    if archive.stat().st_size > MAX_ARCHIVE_BYTES:
+        raise RuntimeError("application archive exceeds the capture limit")
+    archive_info = file_info(archive)
+    with tarfile.open(archive) as bundle:
+        members, expanded = [], 0
+        for member in bundle:
+            members.append(member)
+            expanded += max(0, member.size)
+            if len(members) > 20000 or expanded > 2 * 1024 * 1024 * 1024:
+                raise RuntimeError("application archive exceeds extraction limits")
+        bundle.extractall(work, members=members, filter="data")
+    programs = [path for path in work.glob("*/zotero") if path.is_file() and os.access(path, os.X_OK)]
+    if len(programs) != 1:
+        raise RuntimeError("download does not contain one Zotero launcher")
+    program = programs[0]
+    return program, {"application": application_info(program.parent, version),
+                     "archive": dict(archive_info, url=resolved)}
 
 
 # Linux subreaper plus bounded xdotool on the private display; no custom Xlib ABI.
@@ -296,7 +335,7 @@ def abort_owned(app, timeout=5):
     return False
 
 
-def run_capture(root, version, output):
+def run_capture(root, version, output, executable=None):
     if platform.system() != "Linux" or platform.machine() != "x86_64":
         raise RuntimeError("capture requires the isolated Linux x86-64 entrypoint")
     prepare_output(version, output)
@@ -304,34 +343,11 @@ def run_capture(root, version, output):
     work, quiet, phase = None, True, "generator provenance"
     try:
         revision = generator_revision(root)
-        enable_subreaper()
         port = 23129
         work = Path(tempfile.mkdtemp())
-        phase = "pinned archive"
-        archive = work / "zotero.tar"
-        url = "https://www.zotero.org/download/client/dl?channel=release&platform=linux-x86_64&version=" + version
-        downloaded = subprocess.run(["curl", "-fsSL", "--retry", "3", "--max-time", "180", "--max-filesize", str(MAX_ARCHIVE_BYTES), "-o", str(archive), "-w", "%{url_effective}", url],
-                                    check=True, capture_output=True, text=True, timeout=200)
-        resolved = downloaded.stdout
-        parsed = urlparse(resolved)
-        if parsed.scheme != "https" or parsed.hostname != "download.zotero.org" or not parsed.path.startswith("/client/release/" + version + "/"):
-            raise RuntimeError("download did not resolve to the pinned official release")
-        if archive.stat().st_size > MAX_ARCHIVE_BYTES:
-            raise RuntimeError("application archive exceeds the capture limit")
-        archive_info = file_info(archive)
-        with tarfile.open(archive) as bundle:
-            members, expanded = [], 0
-            for member in bundle:
-                members.append(member)
-                expanded += max(0, member.size)
-                if len(members) > 20000 or expanded > 2 * 1024 * 1024 * 1024:
-                    raise RuntimeError("application archive exceeds extraction limits")
-            bundle.extractall(work, members=members, filter="data")
-        programs = [path for path in work.glob("*/zotero") if path.is_file() and os.access(path, os.X_OK)]
-        if len(programs) != 1:
-            raise RuntimeError("download does not contain one Zotero launcher")
-        program = programs[0]
-        provenance = application_info(program.parent, version)
+        phase = "application selection"
+        program, provenance = resolve_application(work, version, executable)
+        enable_subreaper()
         phase = "synthetic profile"
         profile, data = work / "profile", work / "data"
         profile.mkdir(mode=0o700)
@@ -367,9 +383,10 @@ def run_capture(root, version, output):
             phase = "owned synthetic seeding"
             environment = dict(os.environ, IBIS_ZOTERO_PORT=str(port), IBIS_THROWAWAY_ZOTERO="1",
                                IBIS_ZOTERO_CAPTURE_PID=str(app.pid), IBIS_ZOTERO_CAPTURE_START=str(_process(app.pid)[1]),
-                               CARGO_TARGET_DIR=str(work / "cargo-target"), CARGO_INCREMENTAL="0")
+                               RUSTC_WRAPPER="", CARGO_TARGET_DIR=os.environ.get("CARGO_TARGET_DIR", str(root / "target")),
+                               CARGO_INCREMENTAL="0")
             with (work / "seed.log").open("wb") as seed_log:
-                subprocess.run(["cargo", "test", "-p", "ibis-zotero-local", "--locked", "--test", "real_zotero", "--", "--ignored"],
+                subprocess.run(["cargo", "test", "-p", "ibis-zotero-local", "--locked", "--offline", "--test", "real_zotero", "--", "--ignored"],
                                cwd=root, env=environment, stdout=seed_log, stderr=seed_log, check=True, timeout=600)
             phase = "paired API pages"
             keys, pages = capture_api(port, output, opener)
@@ -378,8 +395,8 @@ def run_capture(root, version, output):
             app = None
         phase = "capture manifest"
         manifest = {"coverage": "partial: personal library, two articles, one book and one report; not a supported-version declaration",
-                    "generator_commit": revision, "application": provenance,
-                    "platform": "linux-x86_64", "archive": dict(archive_info, url=resolved),
+                    "generator_commit": revision, **provenance,
+                    "platform": "linux-x86_64",
                     "shutdown": "owned Ctrl+Q, normal exit and helpers reaped", "api_pages": pages,
                     **metadata}
         manifest["files"] = {path.name: file_info(path) for path in output.iterdir()}
@@ -396,7 +413,8 @@ def run_capture(root, version, output):
 
 if __name__ == "__main__":
     try:
-        run_capture(Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3]))
+        run_capture(Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3]),
+                    sys.argv[5] if len(sys.argv) == 6 else None)
     except RuntimeError as error:
         print(str(error), file=sys.stderr)  # Only fixed/allowlisted capture phases reach here.
         sys.exit(1)
@@ -463,6 +481,6 @@ curl -fsS -m 5 -o /dev/null "http://127.0.0.1:$port/connector/ping" \
 sleep 10
 
 cd "$root"
-if ! IBIS_ZOTERO_PORT=$port IBIS_THROWAWAY_ZOTERO=1 cargo test -p ibis-zotero-local --locked --test real_zotero -- --ignored --nocapture; then
+if ! RUSTC_WRAPPER= CARGO_TARGET_DIR="${CARGO_TARGET_DIR-$root/target}" IBIS_ZOTERO_PORT=$port IBIS_THROWAWAY_ZOTERO=1 cargo test -p ibis-zotero-local --locked --test real_zotero -- --ignored --nocapture; then
   echo "Zotero log:" >&2; tail -n 80 "$work/zotero.log" >&2; exit 1
 fi

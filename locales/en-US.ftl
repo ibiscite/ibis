@@ -490,6 +490,8 @@ citations-editor-not-saved = The endpoint could not be changed. Try again.
 settings-shortcut-restored = Default shortcut restored
 
 
+settings-newer-title = From a newer Ibis
+settings-newer-description = This setting is read-only in this version of Ibis.
 settings-read-only = The settings file is read-only; the saved value is shown.
 
 citations-key-formats = Citation keys

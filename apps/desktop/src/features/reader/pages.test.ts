@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { citableLabel, confirmOffset, formatPages, parsePages, roman } from "./pages";
+import { choosePages, citableLabel, confirmOffset, formatPages, parsePages, roman } from "./pages";
 
 // An invented book: Roman front matter, two pages with no printed number, then 417 onwards.
 const labels = ["xi", "xii", null, null, "417", "418", "419", "420", "421", "422", "423"];
@@ -7,6 +7,8 @@ const labels = ["xi", "xii", null, null, "417", "418", "419", "420", "421", "422
 test("only short labels of letters, digits, '-' and '.' can be cited", () => {
   expect(["417", "xii", "A-3", "S1.2"].map(citableLabel)).toEqual(["417", "xii", "A-3", "S1.2"]);
   expect(["", "   ", "page 4", "4​", "a".repeat(17), null].map(citableLabel)).toEqual([null, null, null, null, null, null]);
+  expect(citableLabel("  A-3  ")).toBe("A-3");
+  expect(citableLabel("e\u0301")).toBe("é");
 });
 
 test("Roman numerals count, so front matter forms ranges too", () => {
@@ -27,7 +29,46 @@ test("typed pages select the same thumbnails, and nothing unknown is guessed", (
   expect([...parsePages("417–419, 423", labels).selected]).toEqual([4, 5, 6, 10]);
   expect([...parsePages("417-419; 423", labels).selected]).toEqual([4, 5, 6, 10]);
   expect([...parsePages("XI", labels).selected]).toEqual([0]);
-  expect(parsePages("12, 419–417, 5-6-7", labels)).toEqual({ selected: new Set(), unknown: ["12", "419–417", "5-6-7"] });
+  expect(parsePages("12, 419–417, 5-6-7", labels)).toEqual({ text: "12, 419–417, 5-6-7", selected: new Set(), ambiguous: [], unknown: ["12", "419–417", "5-6-7"] });
+});
+
+test.each(["\txii", "xii\n", "\rxii", "xii\u0085", "xii\u200b", "\u0000xii", "xii\u202e"])("control characters in %j are rejected before trimming", (text) => {
+  expect(citableLabel(text)).toBeNull();
+  expect(parsePages(text, ["xii", text])).toEqual({ text, selected: new Set(), ambiguous: [], unknown: [text] });
+  expect(formatPages([text], new Set([0]))).toBe("");
+  expect(confirmOffset([null], 0, text)).toEqual([null]);
+});
+
+test("unknown numeric labels cannot fall back to physical PDF positions", () => {
+  const numbered = Array.from({ length: 20 }, (_, index) => String(index + 417));
+  expect(parsePages("12", numbered)).toEqual({ text: "12", selected: new Set(), ambiguous: [], unknown: ["12"] });
+});
+
+test("exact labels containing hyphens win over ranges, with NFC and case folding", () => {
+  const printed = ["A", "3", "A-3", "é"];
+  expect([...parsePages("a-3, e\u0301", printed).selected]).toEqual([2, 3]);
+  expect([...parsePages("A–3", printed).selected]).toEqual([0, 1]);
+});
+
+test("ambiguity stays separate from known pages and unknown text", () => {
+  expect(parsePages("XII, 417, 12", ["xi", "xii", "XII", "417"])).toEqual({
+    text: "XII, 417, 12", selected: new Set([3]),
+    ambiguous: [{ text: "XII", candidates: [1, 2] }], unknown: ["12"],
+  });
+});
+
+test.each(["xi–xii", "xii–xiv", "xii–xii"])("ambiguous endpoints in %s never resolve a range", (text) => {
+  const result = parsePages(text, ["xi", "xii", "XII", "xiv"]);
+  expect(result.selected.size).toBe(0);
+  expect(result.ambiguous).toHaveLength(1);
+  expect(result.unknown).toEqual([]);
+});
+
+test("an explicit second physical choice preserves identity separately from its printed text", () => {
+  const printed = ["xi", "xii", "xii"];
+  const choice = choosePages(printed, new Set([2]));
+  expect(choice).toEqual({ text: "xii", selected: new Set([2]), ambiguous: [], unknown: [] });
+  expect(parsePages(choice.text, printed).selected.size).toBe(0);
 });
 
 test("a confirmed printed number numbers only the unlabelled run around it", () => {
