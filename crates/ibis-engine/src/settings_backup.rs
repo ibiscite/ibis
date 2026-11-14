@@ -26,8 +26,14 @@ pub fn export_file(path: PathBuf, version: &str) -> Result<String, BackupError> 
 
 /// Prepare without writing. The caller retains this exact plan until commit.
 pub fn prepare(path: PathBuf, source: PathBuf) -> Result<(Backup, Plan), BackupError> {
-    let backup = within(move || backup::read(&source))
-        .ok_or_else(|| BackupError::Unreadable(io::ErrorKind::TimedOut.into()))??;
+    let automatic = path.with_extension("json.bak");
+    let backup = within(move || {
+        let recovery = source == automatic
+            || std::fs::canonicalize(&source)
+                .is_ok_and(|source| std::fs::canonicalize(&automatic).is_ok_and(|automatic| source == automatic));
+        backup::read(&source, recovery)
+    })
+    .ok_or_else(|| BackupError::Unreadable(io::ErrorKind::TimedOut.into()))??;
     let mut loaded = within(move || settings::load(&path)).ok_or_else(settings_timeout)?;
     if let Some(problem) = loaded
         .problem
@@ -41,14 +47,6 @@ pub fn prepare(path: PathBuf, source: PathBuf) -> Result<(Backup, Plan), BackupE
     })
     .repairing(backup::needs_repair(&loaded));
     Ok((backup, plan))
-}
-
-/// Core holds the cross-process writer lock through revalidation and commit.
-pub fn restore(path: &Path, plan: &Plan) -> Result<settings::Settings, BackupError> {
-    backup::restore(path, plan).map_err(|error| match error {
-        BackupError::Settings(problem) => BackupError::Current(problem),
-        other => other,
-    })
 }
 
 pub fn save(path: &Path, text: &str, replace: bool) -> Result<(), BackupError> {
