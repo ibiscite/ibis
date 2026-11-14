@@ -13,6 +13,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use ibis_core::contract::{ItemRef, LibraryId, Record, Snapshot};
+use ibis_core::source::IdentityClaims;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -260,6 +261,25 @@ struct ParsedLibrary {
 }
 
 impl ParsedLibrary {
+    fn quarantine(&mut self, claims: &IdentityClaims<String, Option<usize>>, previous: Option<&Snapshot>) {
+        self.records.retain(|record| claims.is_unique(&record.id.key));
+        self.reused.retain(|&position| {
+            previous
+                .and_then(|snapshot| snapshot.objects().get(position))
+                .is_some_and(|item| claims.is_unique(&item.object.id().key))
+        });
+        self.attachments.retain(|(item, ..)| claims.is_unique(&item.key));
+        let mut warnings: Vec<_> = claims
+            .duplicates()
+            .map(|(key, line)| SourceWarning {
+                key: Some(key.strip_prefix("record:").unwrap_or(key).to_owned()),
+                ..SourceWarning::at(WarningCode::DuplicateKey, *line)
+            })
+            .collect();
+        warnings.sort_by(|a, b| (&a.line, &a.key).cmp(&(&b.line, &b.key)));
+        self.warnings.extend(warnings);
+    }
+
     /// Warn that an entry was skipped, remembering the key its header names.
     fn skip(&mut self, key: Option<&str>, warning: SourceWarning) {
         // A header without its comma can run on; real keys are short.

@@ -485,11 +485,13 @@ impl ZoteroSource {
         let keys_unknown = warnings
             .iter()
             .any(|warning| warning.code == WarningCode::CitationKeysUnavailable);
-        let mut objects = Vec::new();
+        let mut parsed = crate::ParsedLibrary::default();
+        let mut claims = ibis_core::source::IdentityClaims::default();
         for item in items {
             if cancelled() {
                 return Err(LiveError::Cancelled.into());
             }
+            claims.claim(item.key.clone(), None);
             match zotero::map_item(library.clone(), &item) {
                 Ok(mut mapped) => {
                     if keys_unknown
@@ -537,7 +539,7 @@ impl ZoteroSource {
                             .because(cause, field)
                             .for_entry(label.as_deref())
                     }));
-                    objects.push(LibraryObject::Record(mapped.record));
+                    parsed.records.push(mapped.record);
                 }
                 Err(MappingError::UnsupportedType) => warnings.push(
                     SourceWarning::at(WarningCode::Field, None)
@@ -560,7 +562,10 @@ impl ZoteroSource {
                 Err(_) => return Err(ZoteroError::InvalidData),
             }
         }
-        let snapshot = Snapshot::new(objects).map_err(|_| ZoteroError::InvalidData)?;
+        parsed.quarantine(&claims, None);
+        warnings.extend(parsed.warnings);
+        let snapshot = Snapshot::new(parsed.records.into_iter().map(LibraryObject::Record).collect())
+            .map_err(|_| ZoteroError::InvalidData)?;
         if cancelled() {
             return Err(LiveError::Cancelled.into());
         }

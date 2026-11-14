@@ -4,6 +4,7 @@
 use std::collections::{BTreeMap, HashSet};
 
 use ibis_core::contract::{CitationWarningCode, Fingerprint, ItemRef, LibraryId, Record, Snapshot};
+use ibis_core::source::IdentityClaims;
 use serde_json::{Value, json};
 
 use crate::{ParsedLibrary, SourceWarning, WarningCause, WarningCode};
@@ -133,13 +134,12 @@ impl Serial {
     }
 }
 
-/// Collects records, keeping one of each identity, in the shape the file
-/// loader expects.
+/// Collects content-addressed records in the shape the file loader expects.
 pub(crate) struct Records<'a> {
     library: &'a LibraryId,
     previous: Option<&'a Snapshot>,
     prefix: &'static str,
-    seen: HashSet<String>,
+    claims: IdentityClaims<String, Option<usize>>,
     /// Records the file holds, read or not: the record limit counts these.
     started: usize,
     pub(crate) parsed: ParsedLibrary,
@@ -151,10 +151,15 @@ impl<'a> Records<'a> {
             library,
             previous,
             prefix,
-            seen: HashSet::new(),
+            claims: IdentityClaims::default(),
             started: 0,
             parsed: ParsedLibrary::default(),
         }
+    }
+
+    pub(crate) fn finish(mut self) -> ParsedLibrary {
+        self.parsed.quarantine(&self.claims, self.previous);
+        self.parsed
     }
 
     /// Counts a record that starts at `line`; past the record limit it warns
@@ -179,8 +184,8 @@ impl<'a> Records<'a> {
             .push(SourceWarning::at(WarningCode::Syntax, Some(line)).because(cause, field));
     }
 
-    /// Adds the record that starts at `line` unless one with the same citation
-    /// fields is already here. `uncertain` marks one that lost a field on the way.
+    /// Claims the content identity before building its record. These formats
+    /// have no independent native ID. `uncertain` marks a lost field.
     pub(crate) fn push(&mut self, mut csl: BTreeMap<String, Value>, line: usize, mut uncertain: bool) {
         if crate::urls::remove_private_urls(&mut csl) {
             self.warn(WarningCode::Field, line);
@@ -202,7 +207,8 @@ impl<'a> Records<'a> {
         let fields = serde_json::to_vec(&csl).unwrap_or_default();
         let digest = Fingerprint::of_bytes(&[self.prefix.as_bytes(), b":v1\0", &fields].concat());
         let key = format!("{}:{}", self.prefix, &digest.as_str()[..32]);
-        if !self.seen.insert(key.clone()) {
+        self.claims.claim(key.clone(), Some(line));
+        if !self.claims.is_unique(&key) {
             return;
         }
         csl.insert("id".into(), Value::String(key.clone()));

@@ -2,8 +2,9 @@
 //! Field vocabulary: citation-style-language/schema v1.0.2, schemas/input/csl-data.json.
 use crate::{ParsedLibrary, SourceError, SourceWarning, WarningCause, WarningCode};
 use ibis_core::contract::{CitationKey, CitationKeySource, ItemRef, LibraryId, Record};
+use ibis_core::source::IdentityClaims;
 use serde_json::Value;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::BTreeMap;
 
 /// CSL-JSON records a caller sent, requiring an `id` before applying the file
 /// reader's rules without touching a file. A `file` field is dropped unread:
@@ -88,17 +89,11 @@ fn read_str(library: &LibraryId, text: &str, input: Input) -> Result<ParsedLibra
     let nonempty = !items.is_empty();
     let spans = item_spans(text);
     let mut result = ParsedLibrary::default();
-    // Each `id` with the line of its first record, and those seen again.
-    let mut seen = HashMap::<String, Option<usize>>::new();
-    let mut repeated = HashSet::new();
+    let mut claims = IdentityClaims::default();
     for (index, raw) in items.into_iter().take(crate::MAX_LIBRARY_RECORDS).enumerate() {
         let warnings_before = result.warnings.len();
         let line = spans.get(index).map(|(_, _, line)| *line);
         let warning = |code| SourceWarning::at(code, line);
-        if raw.get().len() > 1024 * 1024 {
-            result.warnings.push(warning(WarningCode::WorkLimit));
-            continue;
-        }
         let Ok(mut fields) = object_fields(raw.get()) else {
             result
                 .warnings
@@ -164,6 +159,15 @@ fn read_str(library: &LibraryId, text: &str, input: Input) -> Result<ParsedLibra
                 .push(because(WarningCode::Syntax, WarningCause::MissingField, "id"));
             continue;
         };
+        let item = ItemRef {
+            library: library.clone(),
+            key: format!("record:{native}"),
+        };
+        claims.claim(item.key.clone(), line);
+        if raw.get().len() > 1024 * 1024 {
+            result.warnings.push(warning(WarningCode::WorkLimit));
+            continue;
+        }
         let kind = scalar("type");
         if native.trim().is_empty()
             || native.chars().any(char::is_control)
@@ -183,25 +187,6 @@ fn read_str(library: &LibraryId, text: &str, input: Input) -> Result<ParsedLibra
             result.warnings.push(warning(WarningCode::WorkLimit));
             continue;
         }
-        // Ibis cannot know which record a repeated `id` means, whether written
-        // `1` or `"1"`, so none is kept. The first has its warning added below.
-        if seen.contains_key(&native) {
-            result.warnings.push(SourceWarning {
-                code: WarningCode::DuplicateKey,
-                line,
-                key: Some(native.clone()),
-                entry: None,
-                cause: None,
-                field: None,
-            });
-            repeated.insert(format!("record:{native}"));
-            continue;
-        }
-        seen.insert(native.clone(), line);
-        let item = ItemRef {
-            library: library.clone(),
-            key: format!("record:{native}"),
-        };
         if let Some(file) = fields.remove("file") {
             if let Ok(file) = serde_json::from_str::<String>(file.get()) {
                 result.attachments.push((item.clone(), file, line));
@@ -266,25 +251,11 @@ fn read_str(library: &LibraryId, text: &str, input: Input) -> Result<ParsedLibra
             identifiers: vec![],
         });
     }
-    if !repeated.is_empty() {
-        result.records.retain(|record| !repeated.contains(&record.id.key));
-        result.attachments.retain(|(item, ..)| !repeated.contains(&item.key));
-        for (native, line) in seen {
-            if repeated.contains(&format!("record:{native}")) {
-                result.warnings.push(SourceWarning {
-                    code: WarningCode::DuplicateKey,
-                    line,
-                    key: Some(native),
-                    entry: None,
-                    cause: None,
-                    field: None,
-                });
-            }
-        }
-    }
+    result.quarantine(&claims, None);
     // A file in which no record could be read is not a library; requests keep
     // their diagnostics so the engine can explain why it refuses every record.
-    if matches!(input, Input::Library) && nonempty && result.records.is_empty() && repeated.is_empty() {
+    if matches!(input, Input::Library) && nonempty && result.records.is_empty() && claims.duplicates().next().is_none()
+    {
         return Err(SourceError::InvalidData);
     }
     if limited {
