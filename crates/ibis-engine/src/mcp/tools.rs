@@ -660,13 +660,12 @@ fn cite_submitted(
             let settings = match formats {
                 Formats::File(path) => {
                     let loaded = crate::settings::load(path);
-                    if let Some(problem) = loaded.problem {
-                        return Err(Refusal::from_problem(
-                            crate::settings_backup::settings_code(&problem),
-                            (&problem).into(),
-                        ));
-                    }
-                    loaded.settings
+                    loaded
+                        .cites()
+                        .map_err(|problem| {
+                            Refusal::from_problem(crate::settings_backup::settings_code(problem), problem.into())
+                        })?
+                        .clone()
                 }
                 Formats::Unavailable(problem) => return Err(problem.clone()),
                 Formats::Defaults => crate::settings::Settings::default(),

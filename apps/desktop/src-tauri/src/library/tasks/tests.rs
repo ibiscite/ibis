@@ -67,7 +67,7 @@ fn bib_choices_are_searchable_and_saved_before_superseded_zotero_reads_finish() 
                     {
                         if let Some(choice) = choice {
                             saved_worker
-                                .update(|settings| settings.library = Some(choice))
+                                .update(|settings| settings.portable.library = Some(choice))
                                 .unwrap_or_else(|e| panic!("{e}"));
                         }
                         let _ = visible.send(open.request);
@@ -133,7 +133,10 @@ fn bib_choices_are_searchable_and_saved_before_superseded_zotero_reads_finish() 
         drop(current);
         let persisted: ibis_engine::settings::Settings =
             serde_json::from_slice(&std::fs::read(directory.path().join("settings.json"))?)?;
-        assert_eq!(persisted.library, Some(LibrarySetting::Bibtex(path.canonicalize()?)));
+        assert_eq!(
+            persisted.portable.library,
+            Some(LibrarySetting::Bibtex(path.canonicalize()?))
+        );
         abandoned.push((release, finished, started));
     }
     let before = serde_json::to_value(current_status_for_test(&library))?;
@@ -147,7 +150,7 @@ fn bib_choices_are_searchable_and_saved_before_superseded_zotero_reads_finish() 
     let persisted: ibis_engine::settings::Settings =
         serde_json::from_slice(&std::fs::read(directory.path().join("settings.json"))?)?;
     assert_eq!(
-        persisted.library,
+        persisted.portable.library,
         Some(LibrarySetting::Bibtex(directory.path().join("B-5.bib").canonicalize()?)),
         "late Zotero success and failure cannot replace the saved file choice"
     );
@@ -159,7 +162,7 @@ fn visible_zotero_recovery_over_a_retained_file_saves_the_recovered_choice() -> 
     let directory = tempfile::tempdir()?;
     let settings = SettingsFile::new(directory.path().join("settings.json"));
     let file = Source::File(directory.path().join("retained.bib"));
-    settings.update(|settings| settings.library = file.setting())?;
+    settings.update(|settings| settings.portable.library = file.setting())?;
     let library = Mutex::new(candidate(file.clone(), "@book{retained,title={Retained atlas}}"));
     let requests = LoadRequests::default();
     let zotero = Source::Zotero(ZoteroLibrary::User.into());
@@ -184,10 +187,10 @@ fn visible_zotero_recovery_over_a_retained_file_saves_the_recovered_choice() -> 
         intent.saves_choice(&source, &chosen),
         "recovery must save the requested Zotero choice"
     );
-    settings.update(|settings| settings.library = Some(chosen))?;
+    settings.update(|settings| settings.portable.library = Some(chosen))?;
     let persisted: ibis_engine::settings::Settings =
         serde_json::from_slice(&std::fs::read(directory.path().join("settings.json"))?)?;
-    assert_eq!(persisted.library, zotero.setting());
+    assert_eq!(persisted.portable.library, zotero.setting());
     let current = library.lock().map_err(|_| "library")?;
     let query = super::super::search::SearchQuery {
         text: "recovered".into(),

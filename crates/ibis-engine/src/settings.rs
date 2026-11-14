@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
+use ibis_core::atomic_file::{AtomicFile, sync_directory};
 use ibis_core::destination::System;
 
 /// Version of the settings format this build reads and writes.
@@ -293,12 +294,47 @@ pub struct Delights {
     pub shorthand_hints: u8,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// Settings owns these choices until the picker consumes the same event fields.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum Appearance {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum Accent {
+    #[default]
+    System,
+    Ibis,
+}
+
+impl Appearance {
+    pub fn is_system(&self) -> bool {
+        *self == Self::System
+    }
+}
+
+/// Settings retain unknown fields locally, without carrying them in backups.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
+    #[serde(flatten)]
+    pub portable: Portable,
+    #[serde(flatten)]
+    pub device: Device,
+    #[serde(flatten)]
+    pub unknown: serde_json::Map<String, Value>,
+}
+
+/// Choices that may travel to another computer in a backup.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Portable {
     pub schema_version: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub delights: Option<Delights>,
     /// Quiet bird facts and milestones; absent means enabled.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub small_surprises: Option<bool>,
@@ -308,6 +344,43 @@ pub struct Settings {
     /// Library to open at start.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub library: Option<LibrarySetting>,
+    /// The default output: an id from the engine's `outputs` list, written
+    /// once chosen. An id this Ibis does not list means the engine's default;
+    /// anything but text reads as no choice, so the rest of the file is kept.
+    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "text_or_none")]
+    pub output: Option<String>,
+    /// Your format in Markdown, LaTeX and Typst apps: a key output's id
+    /// (decision 0042). `output` is your format everywhere else.
+    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "text_or_none")]
+    pub key_output: Option<String>,
+    /// Result row density. `None` means comfortable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub density: Option<Density>,
+    /// Larger text in the picker. `None` means the normal size.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub larger_text: Option<bool>,
+    /// Whether Enter pastes into the app the picker was opened from. `None`
+    /// means on; `false` only copies.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paste: Option<bool>,
+    /// The menu bar item; absent means shown.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub menu_bar: Option<bool>,
+    /// Whether the picker remembers what was cited in each app; absent means on.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recent_citations: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub appearance: Option<Appearance>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accent: Option<Accent>,
+}
+
+/// Choices and capabilities that belong to this computer.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Device {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delights: Option<Delights>,
     /// Explicit writing contexts; bibliography locations stay on this computer.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub writings: Vec<writings::Writing>,
@@ -328,15 +401,6 @@ pub struct Settings {
     /// The editor endpoint; absent means off (decision 0008).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub editor_endpoint: Option<EditorEndpoint>,
-    /// The default output: an id from the engine's `outputs` list, written
-    /// once chosen. An id this Ibis does not list means the engine's default;
-    /// anything but text reads as no choice, so the rest of the file is kept.
-    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "text_or_none")]
-    pub output: Option<String>,
-    /// Your format in Markdown, LaTeX and Typst apps: a key output's id
-    /// (decision 0042). `output` is your format everywhere else.
-    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "text_or_none")]
-    pub key_output: Option<String>,
     /// Keep the key-format row visible after a key citation, including copy-only use.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub key_formats_used: bool,
@@ -344,36 +408,17 @@ pub struct Settings {
     /// person has not been asked yet; nothing is checked until they say yes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub update_checks: Option<bool>,
-    /// Result row density. `None` means comfortable.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub density: Option<Density>,
-    /// Larger text in the picker. `None` means the normal size.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub larger_text: Option<bool>,
     /// Frames explicitly dragged by the person, indexed by display.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub picker_windows: BTreeMap<String, PickerWindow>,
-    /// Whether Enter pastes into the app the picker was opened from. `None`
-    /// means on; `false` only copies.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub paste: Option<bool>,
-    /// The menu bar item; absent means shown.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub menu_bar: Option<bool>,
-    /// Whether the picker remembers what was cited in each app; absent means on.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub recent_citations: Option<bool>,
-    /// Fields this build does not know, written by another version of Ibis
-    /// or by hand. Kept as they are and written back on save.
-    #[serde(flatten)]
-    pub unknown: serde_json::Map<String, Value>,
 }
 
 impl Settings {
     /// The format chosen for `app`, compared as the platform compares app ids.
     pub fn app_output(&self, app: &ibis_core::destination::AppId) -> Option<&str> {
         let key = app.normalized();
-        self.app_outputs
+        self.device
+            .app_outputs
             .iter()
             .find(|entry| entry.app.system == app.system && entry.app.id == key)
             .map(|entry| entry.output.as_str())
@@ -385,45 +430,37 @@ impl Settings {
             system: app.system,
             id: app.normalized(),
         };
-        self.app_outputs.retain(|entry| entry.app != app);
-        self.app_outputs.push(AppOutput { app, output });
-        let excess = self.app_outputs.len().saturating_sub(MAX_APP_OUTPUTS);
-        self.app_outputs.drain(..excess);
+        self.device.app_outputs.retain(|entry| entry.app != app);
+        self.device.app_outputs.push(AppOutput { app, output });
+        let excess = self.device.app_outputs.len().saturating_sub(MAX_APP_OUTPUTS);
+        self.device.app_outputs.drain(..excess);
     }
 
     /// Forget the normalized app identity, just as it was remembered.
     pub fn forget_app_output(&mut self, app: &ibis_core::destination::AppId) {
         let key = app.normalized();
-        self.app_outputs
+        self.device
+            .app_outputs
             .retain(|entry| entry.app.system != app.system || entry.app.normalized() != key);
     }
 }
 
-impl Default for Settings {
+impl Default for Portable {
     fn default() -> Self {
-        Settings {
+        Self {
             schema_version: SCHEMA_VERSION,
-            delights: None,
+            appearance: None,
+            accent: None,
             small_surprises: None,
             shortcut: Shortcuts::default(),
             library: None,
-            writings: Vec::new(),
-            writing_apps: BTreeMap::new(),
-            app_outputs: Vec::new(),
-            suggestion_reports: Vec::new(),
-            zotero_profile: None,
-            editor_endpoint: None,
             output: None,
             key_output: None,
-            key_formats_used: false,
-            update_checks: None,
             density: None,
             larger_text: None,
-            picker_windows: BTreeMap::new(),
             paste: None,
             menu_bar: None,
             recent_citations: None,
-            unknown: serde_json::Map::new(),
         }
     }
 }
@@ -465,7 +502,7 @@ pub enum PrimaryRead {
 /// Result of loading: the settings to use, and a problem to show the user, if any.
 #[derive(Debug)]
 pub struct Loaded {
-    pub settings: Settings,
+    pub(crate) settings: Settings,
     pub problem: Option<SettingsError>,
     /// Captured by the primary read, not inferred from the returned settings.
     pub primary_read: PrimaryRead,
@@ -473,17 +510,62 @@ pub struct Loaded {
     pub from_backup: bool,
 }
 
+/// Interface preferences can be recovered without granting citation choices.
+#[derive(Debug, Clone, Default)]
+pub struct Interface {
+    pub shortcut: Option<String>,
+    pub update_checks: Option<bool>,
+    pub output: Option<String>,
+    pub key_output: Option<String>,
+    pub appearance: Option<Appearance>,
+    pub accent: Option<Accent>,
+    pub density: Option<Density>,
+    pub larger_text: Option<bool>,
+    pub paste: Option<bool>,
+    pub menu_bar: Option<bool>,
+    pub recent_citations: Option<bool>,
+    pub small_surprises: Option<bool>,
+    pub delights: Option<Delights>,
+    pub picker_windows: BTreeMap<String, PickerWindow>,
+}
+impl From<&Settings> for Interface {
+    fn from(settings: &Settings) -> Self {
+        let portable = &settings.portable;
+        Self {
+            shortcut: portable.shortcut.here().map(str::to_owned),
+            update_checks: settings.device.update_checks,
+            output: crate::format::usual(settings, None).id,
+            key_output: portable.key_output.clone(),
+            appearance: portable.appearance,
+            accent: portable.accent,
+            density: portable.density,
+            larger_text: portable.larger_text,
+            paste: portable.paste,
+            menu_bar: portable.menu_bar,
+            recent_citations: portable.recent_citations,
+            small_surprises: portable.small_surprises,
+            delights: settings.device.delights.clone(),
+            picker_windows: settings.device.picker_windows.clone(),
+        }
+    }
+}
 impl Loaded {
-    /// A valid recovery copy permits an explicit restore or recreating a missing primary.
-    pub fn recovering(&self) -> bool {
-        self.from_backup
-            && match &self.problem {
-                Some(SettingsError::Invalid(_) | SettingsError::InvalidZoteroLibraryEntry { .. }) => true,
-                Some(SettingsError::Unreadable(error)) => {
-                    matches!(error.kind(), io::ErrorKind::InvalidData | io::ErrorKind::NotFound)
-                }
-                _ => false,
-            }
+    /// Only a primary read may supply settings to citation and native effects.
+    pub fn cites(&self) -> Result<&Settings, &SettingsError> {
+        self.problem.as_ref().map_or(Ok(&self.settings), Err)
+    }
+
+    /// Recovery supplies presentation only; it cannot be passed to format selection.
+    /// ```compile_fail
+    /// let loaded = ibis_engine::settings::load(std::path::Path::new("settings.json"));
+    /// ibis_engine::format::choose(&loaded.interface().unwrap(), None);
+    /// ```
+    pub fn interface(&self) -> Result<Interface, &SettingsError> {
+        if self.from_backup {
+            Ok((&self.settings).into())
+        } else {
+            self.cites().map(Interface::from)
+        }
     }
 }
 
@@ -500,7 +582,7 @@ fn text_or_none<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Opt
     })
 }
 
-fn parse(text: &str) -> Result<Settings, SettingsError> {
+pub(crate) fn parse(text: &str) -> Result<Settings, SettingsError> {
     parse_value(serde_json::from_str(text).map_err(|e| SettingsError::Invalid(e.to_string()))?)
 }
 
@@ -518,7 +600,13 @@ const REMOVED_CHOICES: [(&str, &str); 9] = [
     ("accent", "graphite"),
 ];
 
-fn parse_value(mut value: Value) -> Result<Settings, SettingsError> {
+fn parse_value(value: Value) -> Result<Settings, SettingsError> {
+    let settings = parse_fields(value)?;
+    validate_settings(&settings)?;
+    Ok(settings)
+}
+
+fn parse_fields<T: serde::de::DeserializeOwned>(mut value: Value) -> Result<T, SettingsError> {
     let invalid = |e: serde_json::Error| SettingsError::Invalid(e.to_string());
     if let Value::Object(fields) = &mut value {
         for (key, choice) in REMOVED_CHOICES {
@@ -541,7 +629,7 @@ fn parse_value(mut value: Value) -> Result<Settings, SettingsError> {
     if version < u64::from(SCHEMA_VERSION) {
         return Err(SettingsError::Invalid(format!("unsupported settings format {version}")));
     }
-    let settings = Settings::deserialize(&value).map_err(|error| {
+    let settings = T::deserialize(&value).map_err(|error| {
         // Untagged enums discard the failing member's context. Inspect the
         // existing JSON only after failure; never include that value in text.
         if let Some(libraries) = value.pointer("/library/zotero").and_then(Value::as_array) {
@@ -553,28 +641,13 @@ fn parse_value(mut value: Value) -> Result<Settings, SettingsError> {
         }
         invalid(error)
     })?;
-    validate_settings(&settings)?;
     Ok(settings)
 }
 
 fn validate_settings(settings: &Settings) -> Result<(), SettingsError> {
-    // The engine owns validation even for desktop-only preference fields.
-    // No CLI, writing edit or backup can silently rewrite an unusable choice.
-    for (field, choices) in [
-        ("appearance", ["system", "light", "dark"].as_slice()),
-        ("accent", ["system", "ibis"].as_slice()),
-    ] {
-        if settings
-            .unknown
-            .get(field)
-            .is_some_and(|value| !value.as_str().is_some_and(|value| choices.contains(&value)))
-        {
-            return Err(SettingsError::Invalid(format!("invalid {field}")));
-        }
-    }
-    writings::validate(&settings.writings).map_err(|error| SettingsError::Invalid(error.to_string()))?;
-    if settings.writing_apps.len() > 200
-        || settings.writing_apps.iter().any(|(key, name)| {
+    writings::validate(&settings.device.writings).map_err(|error| SettingsError::Invalid(error.to_string()))?;
+    if settings.device.writing_apps.len() > 200
+        || settings.device.writing_apps.iter().any(|(key, name)| {
             let Some((system, id)) = key.split_once(':') else {
                 return true;
             };
@@ -650,22 +723,10 @@ fn load_bytes(path: &Path, primary: io::Result<Vec<u8>>) -> Loaded {
     }
 }
 
-/// Save settings atomically, keeping the previous file as a backup. Refuses to
-/// replace a file written by a newer version.
-pub fn save(path: &Path, settings: &Settings) -> Result<(), SettingsError> {
-    let _writer = writer_lock(path)?;
-    let before = snapshot(path);
-    let loaded = load(path);
-    if let Some(problem) = loaded.problem {
-        return Err(problem);
-    }
-    write_settings_checked(path, settings, false, &before)
-}
-
 /// Create an absent settings file for its editor without replacing any entry
 /// another writer created meanwhile. Existing regular files remain editable,
 /// including half-written JSON; this operation never repairs their contents.
-pub fn ensure_file(path: &Path) -> Result<(), SettingsError> {
+fn ensure_file(path: &Path) -> Result<(), SettingsError> {
     match fs::symlink_metadata(path) {
         Ok(_) => return require_regular(path).map_err(Into::into),
         Err(error) if error.kind() == io::ErrorKind::NotFound => {}
@@ -675,9 +736,7 @@ pub fn ensure_file(path: &Path) -> Result<(), SettingsError> {
         fs::create_dir_all(folder)?;
     }
     let loaded = load(path);
-    if let Some(problem) = loaded.problem
-        && !(loaded.primary_read == PrimaryRead::Missing && loaded.from_backup)
-    {
+    if let Some(problem) = loaded.problem {
         return Err(problem);
     }
     let json =
@@ -835,11 +894,6 @@ fn write_settings_checked(
     if json.len() as u64 >= MAX_SETTINGS_BYTES {
         return Err(settings_too_large().into());
     }
-    let permissions = match fs::metadata(path) {
-        Ok(metadata) => Some(metadata.permissions()),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
-        Err(error) => return Err(error.into()),
-    };
     if recovering {
         preserve_invalid(path)?;
     }
@@ -857,32 +911,18 @@ fn write_settings_checked(
         }
         _ => path.to_path_buf(),
     };
-    // The new contents reach the disk before they replace the old file, so a
-    // power cut leaves either file whole, never an empty one.
-    // Never remove an interrupted write: the primary or backup may point to it.
-    let (temporary, mut file) = create_temporary(&target)?;
-    file.write_all(format!("{json}\n").as_bytes())?;
-    if let Some(permissions) = permissions {
-        file.set_permissions(permissions)?;
-    }
-    file.sync_all()?;
-    drop(file);
+    let replacement = AtomicFile::new(&target, format!("{json}\n").as_bytes())?;
     if *expected != snapshot(path) {
-        let _ = fs::remove_file(&temporary);
         return Err(SettingsError::Changed);
     }
     if !recovering && path.exists() {
-        fs::copy(path, &backup)?;
-        // Windows flushes only a handle opened for writing.
-        fs::OpenOptions::new().write(true).open(&backup)?.sync_all()?;
+        AtomicFile::new(&backup, &read_regular_bytes(path)?)?.replace()?;
     }
     if *expected != snapshot(path) {
-        let _ = fs::remove_file(&temporary);
         return Err(SettingsError::Changed);
     }
-    fs::rename(&temporary, &target)?;
+    replacement.replace()?;
     owner::committed(expected.clone(), format!("{json}\n").into_bytes());
-    sync_directory(&target);
     Ok(())
 }
 
@@ -967,25 +1007,6 @@ fn is_sync_conflict(stem: &str, name: &str) -> bool {
         || middle.starts_with(".sync-conflict-")
 }
 
-fn create_temporary(path: &Path) -> io::Result<(PathBuf, fs::File)> {
-    for number in 1..=1000 {
-        let temporary = path.with_extension(format!("json.tmp-{number}"));
-        let mut options = fs::OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-        match options.open(&temporary) {
-            Ok(file) => return Ok((temporary, file)),
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error),
-        }
-    }
-    Err(io::Error::new(
-        io::ErrorKind::AlreadyExists,
-        "settings temporary names are exhausted",
-    ))
-}
-
 /// Copy and flush the damaged bytes before opening the temporary output.
 /// Exclusive creation never overwrites an occupied name and works on
 /// filesystems without hard links.
@@ -1025,24 +1046,11 @@ fn preserve_invalid(path: &Path) -> io::Result<()> {
     ))
 }
 
-/// Flush the folder holding `path`, so the rename itself survives a power
-/// cut. Unix only: Windows cannot open a folder as a file, and NTFS journals
-/// the rename. Best effort: the file is already in place, and some file
-/// systems refuse to flush a folder.
-fn sync_directory(path: &Path) {
-    #[cfg(unix)]
-    if let Some(directory) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
-        let _ = fs::File::open(directory).and_then(|d| d.sync_all());
-    }
-    #[cfg(not(unix))]
-    let _ = path;
-}
-
 /// Change settings on disk: read the file as it is now, apply `change` and
-/// save the result. Edits made to the file since it was loaded are kept. A
-/// missing primary may be restored from its backup; an unreadable or invalid
-/// primary is never overwritten by an ordinary change, even with a good backup.
-pub fn update(path: &Path, change: impl FnOnce(&mut Settings)) -> Result<Settings, SettingsError> {
+/// save the result. Edits made since loading are kept. Recovery always needs
+/// an explicit restore, so an ordinary edit cannot promote older cited choices.
+#[cfg(test)]
+fn update(path: &Path, change: impl FnOnce(&mut Settings)) -> Result<Settings, SettingsError> {
     transaction(path, |settings| {
         change(settings);
         Ok::<_, SettingsError>(())
@@ -1052,17 +1060,14 @@ pub fn update(path: &Path, change: impl FnOnce(&mut Settings)) -> Result<Setting
 
 /// One checked read/change/write transaction, shared by CLI and app commands.
 /// Refused edits publish nothing, and concurrent Ibis processes cannot lose edits.
-pub fn transaction<T, E: From<SettingsError>>(
+fn transaction<T, E: From<SettingsError>>(
     path: &Path,
     change: impl FnOnce(&mut Settings) -> Result<T, E>,
 ) -> Result<(Settings, T), E> {
     let _writer = writer_lock(path).map_err(E::from)?;
     let before = snapshot(path);
     let loaded = load(path);
-    let recovering = loaded.primary_read == PrimaryRead::Missing && loaded.recovering();
-    if let Some(problem) = loaded.problem
-        && !recovering
-    {
+    if let Some(problem) = loaded.problem {
         return Err(problem.into());
     }
     let current = loaded.settings;
@@ -1072,8 +1077,8 @@ pub fn transaction<T, E: From<SettingsError>>(
         return Err(SettingsError::Changed.into());
     }
     validate_settings(&changed).map_err(E::from)?;
-    if changed != current || recovering {
-        write_settings_checked(path, &changed, recovering, &before).map_err(E::from)?;
+    if changed != current {
+        write_settings_checked(path, &changed, false, &before).map_err(E::from)?;
     }
     Ok((changed, result))
 }
@@ -1094,7 +1099,7 @@ fn read_regular(path: &Path) -> io::Result<String> {
     String::from_utf8(read_regular_bytes(path)?).map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
 }
 
-fn read_regular_bytes(path: &Path) -> io::Result<Vec<u8>> {
+pub(crate) fn read_regular_bytes(path: &Path) -> io::Result<Vec<u8>> {
     require_regular(path)?;
     let mut options = fs::OpenOptions::new();
     options.read(true);
@@ -1138,6 +1143,9 @@ impl From<&crate::settings::SettingsError> for Problem {
         let (code, recovery) = match error {
             S::Changed => ("changed", Recovery::Retry),
             S::Busy => ("busy", Recovery::Retry),
+            S::Unreadable(error) if error.kind() == io::ErrorKind::PermissionDenied => {
+                ("read-only", Recovery::ReviewSettings)
+            }
             S::Unreadable(_) => ("unreadable", Recovery::Retry),
             S::Invalid(_) | S::InvalidZoteroLibraryEntry { .. } => ("invalid", Recovery::ReviewSettings),
             S::NewerVersion(_) => ("newer", Recovery::UpgradeIbis),
@@ -1161,7 +1169,7 @@ mod tests {
         let path = directory.path().join("settings.json");
         let inner = path.clone();
         let nested = update(&path, move |_| {
-            assert!(matches!(save(&inner, &Settings::default()), Err(SettingsError::Busy)));
+            assert!(matches!(update(&inner, |_| {}), Err(SettingsError::Busy)));
         });
         assert!(nested.is_ok());
     }
@@ -1180,20 +1188,23 @@ mod tests {
                 started.send(()).unwrap_or_else(|error| panic!("{error}"));
                 held.recv_timeout(Duration::from_secs(5))
                     .unwrap_or_else(|error| panic!("{error}"));
-                settings.menu_bar = Some(false);
+                settings.portable.menu_bar = Some(false);
             })
         });
         holding.recv_timeout(Duration::from_secs(5))?;
         let (attempt, attempted) = mpsc::channel();
         let last_path = path.clone();
         let last_settings = Settings {
-            larger_text: Some(true),
-            ..Settings::default()
+            portable: crate::settings::Portable {
+                larger_text: Some(true),
+                ..Default::default()
+            },
+            ..Default::default()
         };
         let expected = last_settings.clone();
         let last = std::thread::spawn(move || {
             WRITER_ATTEMPT.with(|slot| slot.replace(Some(attempt)));
-            save(&last_path, &last_settings)
+            update(&last_path, |s| *s = last_settings.clone())
         });
         // The second save has reached the contended writer while the first
         // still holds it. No scheduling delay or sleep creates the overlap.
@@ -1207,7 +1218,7 @@ mod tests {
         let reopened = load(&path);
         assert!(reopened.problem.is_none(), "{:?}", reopened.problem);
         assert_eq!(reopened.settings, expected);
-        assert_eq!(load(&backup_path(&path)).settings.menu_bar, Some(false));
+        assert_eq!(load(&backup_path(&path)).settings.portable.menu_bar, Some(false));
         Ok(())
     }
 
@@ -1263,10 +1274,10 @@ mod tests {
             .recv_timeout(std::time::Duration::from_secs(5))
             .unwrap_or_else(|error| panic!("{error}"));
         drop(locked);
-        let saved =
-            update(&path, |settings| settings.larger_text = Some(true)).unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(saved.larger_text, Some(true));
-        assert_eq!(load(&path).settings.larger_text, Some(true));
+        let saved = update(&path, |settings| settings.portable.larger_text = Some(true))
+            .unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(saved.portable.larger_text, Some(true));
+        assert_eq!(load(&path).settings.portable.larger_text, Some(true));
     }
 
     #[test]
@@ -1280,8 +1291,9 @@ mod tests {
         assert_eq!(std::fs::read(&path).unwrap_or_default(), b"{ still editing");
         std::fs::remove_file(&path).unwrap_or_else(|error| panic!("{error}"));
         std::fs::write(backup_path(&path), br#"{"larger_text":true}"#).unwrap_or_else(|error| panic!("{error}"));
-        ensure_file(&path).unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(load(&path).settings.larger_text, Some(true));
+        assert!(ensure_file(&path).is_err());
+        assert!(!path.exists(), "opening the editor cannot promote a recovery copy");
+        assert_eq!(load(&path).settings.portable.larger_text, Some(true));
     }
 
     #[test]
@@ -1291,8 +1303,8 @@ mod tests {
         for contents in [br#"{"appearance":"invented"}"#.as_slice(), br#"{"accent":42}"#] {
             fs::write(&path, contents).unwrap_or_else(|error| panic!("{error}"));
             assert!(load(&path).problem.is_some());
-            assert!(update(&path, |settings| settings.menu_bar = Some(false)).is_err());
-            assert!(save(&path, &Settings::default()).is_err());
+            assert!(update(&path, |settings| settings.portable.menu_bar = Some(false)).is_err());
+            assert!(update(&path, |_| {}).is_err());
             assert_eq!(fs::read(&path).unwrap_or_default(), contents);
         }
     }
@@ -1315,7 +1327,7 @@ mod tests {
             }),
             Some("typst")
         );
-        assert_eq!(settings.app_outputs.len(), 1);
+        assert_eq!(settings.device.app_outputs.len(), 1);
         let other = |n: usize| AppId {
             system: System::Macos,
             id: format!("org.example.app{n}"),
@@ -1323,7 +1335,7 @@ mod tests {
         for n in 0..MAX_APP_OUTPUTS {
             settings.remember_app_output(&other(n), "pandoc".into());
         }
-        assert_eq!(settings.app_outputs.len(), MAX_APP_OUTPUTS);
+        assert_eq!(settings.device.app_outputs.len(), MAX_APP_OUTPUTS);
         assert_eq!(
             settings.app_output(&word),
             None,
@@ -1360,7 +1372,11 @@ mod tests {
         let mut text = String::from(r#"{"paste":false}"#);
         text.extend(std::iter::repeat_n(' ', 1024 * 1024 - text.len()));
         fs::write(&path, &text).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(load(&path).settings.paste, Some(false), "the limit is inclusive");
+        assert_eq!(
+            load(&path).settings.portable.paste,
+            Some(false),
+            "the limit is inclusive"
+        );
         text.push(' ');
         fs::write(&path, &text).unwrap_or_else(|e| panic!("{e}"));
         for _ in 0..2 {
@@ -1369,7 +1385,7 @@ mod tests {
             assert!(
                 matches!(loaded.problem, Some(SettingsError::Unreadable(e)) if e.kind() == io::ErrorKind::FileTooLarge)
             );
-            assert!(update(&path, |s| s.paste = Some(true)).is_err());
+            assert!(update(&path, |s| s.portable.paste = Some(true)).is_err());
             assert_eq!(fs::read_to_string(&path).unwrap_or_default(), text);
         }
         fs::rename(&path, backup_path(&path)).unwrap_or_else(|e| panic!("{e}"));
@@ -1403,7 +1419,7 @@ mod tests {
         assert!(matches!(result, Err(SettingsError::Unreadable(e)) if e.kind() == io::ErrorKind::FileTooLarge));
         assert_eq!(fs::read_to_string(&path).unwrap_or_default(), original);
         assert!(!backup_path(&path).exists());
-        assert_eq!(load(&path).settings.paste, Some(false));
+        assert_eq!(load(&path).settings.portable.paste, Some(false));
     }
 
     #[test]
@@ -1423,7 +1439,7 @@ mod tests {
                 if recovering && load(&path).problem.is_some() {
                     restore_backup(&path).map(|_| ()).map_err(|error| error.to_string())
                 } else {
-                    update(&path, |s| s.larger_text = Some(larger))
+                    update(&path, |s| s.portable.larger_text = Some(larger))
                         .map(|_| ())
                         .map_err(|error| error.to_string())
                 }
@@ -1436,111 +1452,115 @@ mod tests {
                         & 0o777,
                     0o640
                 );
-                assert_eq!(load(&path).settings.paste, Some(false), "reopening keeps copy only");
+                assert_eq!(
+                    load(&path).settings.portable.paste,
+                    Some(false),
+                    "reopening keeps copy only"
+                );
             }
         }
     }
 
+    fn restore_backup(path: &Path) -> Result<Settings, backup::BackupError> {
+        let (_, plan) = crate::settings_backup::prepare(path.to_path_buf(), backup_path(path))?;
+        Owner::open(path.to_path_buf()).restore(&plan)
+    }
+
     #[test]
-    fn primary_read_distinguishes_missing_from_present_default_and_shortcut_choices() {
-        let directory = dir("primary-read");
-        let path = directory.path().join("settings.json");
-        let missing = load(&path);
-        assert_eq!(missing.primary_read, PrimaryRead::Missing);
-        assert_eq!(missing.settings, Settings::default());
-        assert!(missing.problem.is_none());
-        assert!(!missing.from_backup);
-        for (text, shortcut) in [
-            ("{}", None),
-            (r#"{"schema_version":2}"#, None),
-            (r#"{"shortcut":null}"#, None),
-            (r#"{"shortcut":"Control+Command+R"}"#, Some("Control+Command+R")),
-            (r#"{"shortcut":"Control+Nonsense"}"#, Some("Control+Nonsense")),
-            (r#"{"shortcut":""}"#, Some("")),
+    fn primary_provenance_orders_interface_recovery_and_refuses_citation_edits() {
+        for (primary, provenance, valid, shortcut) in [
+            (None, PrimaryRead::Missing, false, None),
+            (Some(b"{}".as_slice()), PrimaryRead::Present, true, None),
+            (Some(br#"{"schema_version":2}"#), PrimaryRead::Present, true, None),
+            (Some(br#"{"shortcut":null}"#), PrimaryRead::Present, true, None),
+            (
+                Some(br#"{"shortcut":"Control+Command+R"}"#),
+                PrimaryRead::Present,
+                true,
+                Some("Control+Command+R"),
+            ),
+            (
+                Some(br#"{"shortcut":"Control+Nonsense"}"#),
+                PrimaryRead::Present,
+                true,
+                Some("Control+Nonsense"),
+            ),
+            (Some(br#"{"shortcut":""}"#), PrimaryRead::Present, true, Some("")),
+            (Some(b"{ invalid"), PrimaryRead::Present, false, None),
+            (Some(br#"{"schema_version":999}"#), PrimaryRead::Present, false, None),
+            (Some(b"\xff"), PrimaryRead::Unreadable, false, None),
+            (Some(b"directory"), PrimaryRead::Unreadable, false, None),
         ] {
-            fs::write(&path, text).unwrap_or_else(|e| panic!("{e}"));
-            let present = load(&path);
-            assert_eq!(present.primary_read, PrimaryRead::Present);
-            assert_eq!(present.settings.shortcut.here(), shortcut);
-            assert!(present.problem.is_none());
-            assert!(!present.from_backup);
-            assert_eq!(fs::read_to_string(&path).unwrap_or_default(), text);
-        }
-        // Provenance is captured by that load, not recalculated from the current file.
-        assert_eq!(missing.primary_read, PrimaryRead::Missing);
-    }
-
-    #[test]
-    fn a_missing_primary_loads_an_existing_backup_and_reports_recovery() {
-        let directory = dir("missing-with-backup");
-        let path = directory.path().join("settings.json");
-        let backup = r#"{"shortcut":"Alt+Space"}"#;
-        fs::write(backup_path(&path), backup).unwrap_or_else(|e| panic!("{e}"));
-        let loaded = load(&path);
-        assert_eq!(loaded.primary_read, PrimaryRead::Missing);
-        assert_eq!(loaded.settings.shortcut.here(), Some("Alt+Space"));
-        assert!(matches!(loaded.problem, Some(SettingsError::Unreadable(e)) if e.kind() == io::ErrorKind::NotFound));
-        assert!(loaded.from_backup);
-        assert!(!path.exists());
-        assert_eq!(fs::read_to_string(backup_path(&path)).unwrap_or_default(), backup);
-    }
-
-    #[test]
-    fn missing_primary_refuses_a_newer_backup_on_two_save_attempts() {
-        for direct_save in [false, true] {
-            let directory = dir("missing-newer-backup");
-            let path = directory.path().join("settings.json");
-            let bytes = r#"{"schema_version":99,"shortcut":{"future":"参考"}}"#.as_bytes();
-            fs::write(backup_path(&path), bytes).unwrap_or_else(|e| panic!("{e}"));
-            let attempts: Vec<_> = (0..2)
-                .map(|attempt| {
-                    if direct_save {
-                        save(&path, &Settings::default())
-                    } else {
-                        update(&path, |s| {
-                            s.output = Some(if attempt == 0 { "keys" } else { "typst" }.into())
-                        })
-                        .map(|_| ())
-                    }
-                })
-                .collect();
-            assert_eq!(fs::read(backup_path(&path)).unwrap_or_else(|e| panic!("{e}")), bytes);
-            assert!(!path.exists());
-            for result in &attempts {
-                let error = result
-                    .as_ref()
-                    .err()
-                    .unwrap_or_else(|| panic!("expected a refused backup"));
-                assert!(error.to_string().contains("settings.json.bak"));
+            for (backup, recovered) in [
+                (None, false),
+                (
+                    Some(br#"{"shortcut":"Alt+Space","density":"compact"}"#.as_slice()),
+                    true,
+                ),
+                (Some(b"{}"), true),
+                (Some(b"{"), false),
+                (Some(b"\xff"), false),
+                (Some(br#"{"schema_version":1}"#), false),
+                (Some(br#"{"schema_version":999}"#), false),
+            ] {
+                let directory = dir("provenance");
+                let path = directory.path().join("settings.json");
+                match primary {
+                    Some(b"directory") => fs::create_dir(&path),
+                    Some(bytes) => fs::write(&path, bytes),
+                    None => Ok(()),
+                }
+                .unwrap_or_else(|error| panic!("{error}"));
+                if let Some(bytes) = backup {
+                    fs::write(backup_path(&path), bytes).unwrap_or_else(|error| panic!("{error}"));
+                }
+                let before = (snapshot(&path), snapshot(&backup_path(&path)));
+                let loaded = load(&path);
+                let usable = valid || primary.is_none() && backup.is_none();
+                let recovery = !valid && recovered;
+                assert_eq!(loaded.primary_read, provenance);
+                assert_eq!(loaded.problem.is_none(), usable);
+                assert_eq!(loaded.from_backup, recovery);
+                assert_eq!(loaded.cites().is_ok(), usable);
+                assert_eq!(loaded.interface().is_ok(), usable || recovery);
+                let compact = recovery && backup.is_some_and(|bytes| bytes != b"{}");
+                if let Ok(interface) = loaded.interface() {
+                    assert_eq!(interface.density, compact.then_some(Density::Compact));
+                    assert_eq!(
+                        loaded.settings.portable.shortcut.here(),
+                        if compact { Some("Alt+Space") } else { shortcut }
+                    );
+                }
+                if primary.is_none() && backup.is_some() && !recovered {
+                    assert!(matches!(&loaded.problem, Some(SettingsError::Backup(_))));
+                    assert!(
+                        loaded
+                            .problem
+                            .as_ref()
+                            .is_some_and(|error| error.to_string().contains("settings.json.bak"))
+                    );
+                }
+                let owner = Owner::open(path.clone());
+                for _ in 0..2 {
+                    let mut applied = false;
+                    assert_eq!(
+                        owner
+                            .change(|_| {
+                                applied = true;
+                                Ok::<_, SettingsError>(())
+                            })
+                            .is_ok(),
+                        usable
+                    );
+                    assert_eq!(applied, usable);
+                }
+                if !usable && primary.is_none() {
+                    assert!(owner.ensure_file().is_err());
+                }
+                assert_eq!((snapshot(&path), snapshot(&backup_path(&path))), before);
+                assert!(!path.with_extension("json.invalid-1").exists());
+                assert!(!path.with_extension("json.tmp").exists());
             }
-            assert!(
-                attempts
-                    .into_iter()
-                    .all(|result| matches!(result, Err(SettingsError::Backup(error)) if matches!(*error, SettingsError::NewerVersion(99))))
-            );
-            assert!(
-                matches!(load(&path).problem, Some(SettingsError::Backup(error)) if matches!(*error, SettingsError::NewerVersion(99)))
-            );
-        }
-    }
-
-    #[test]
-    fn missing_primary_distinguishes_absent_backups_from_refused_backups() {
-        for bytes in [b"{".as_slice(), b"\xff"] {
-            let directory = dir("missing-refused-backup");
-            let path = directory.path().join("settings.json");
-            assert!(load(&path).problem.is_none());
-            fs::write(backup_path(&path), bytes).unwrap_or_else(|e| panic!("{e}"));
-            let problem = load(&path)
-                .problem
-                .unwrap_or_else(|| panic!("expected a refused backup"));
-            assert!(problem.to_string().contains("settings.json.bak"));
-            let error = update(&path, |s| s.output = Some("keys".into()))
-                .err()
-                .unwrap_or_else(|| panic!("expected a failed save"));
-            assert!(error.to_string().contains("settings.json.bak"));
-            assert!(!path.exists());
-            assert_eq!(fs::read(backup_path(&path)).unwrap_or_default(), bytes);
         }
     }
 
@@ -1557,7 +1577,7 @@ mod tests {
         let occupied = path.with_extension("json.tmp-1");
         std::os::unix::fs::symlink(&temporary, &occupied).unwrap_or_else(|e| panic!("{e}"));
         assert!(load(&path).from_backup);
-        let saved = update(&path, |s| s.output = Some("keys".into())).unwrap_or_else(|e| panic!("{e}"));
+        let saved = restore_backup(&path).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(fs::read(backup_path(&path)).unwrap_or_else(|e| panic!("{e}")), bytes);
         assert_eq!(fs::read(&temporary).unwrap_or_else(|e| panic!("{e}")), bytes);
         assert_eq!(fs::read_link(&occupied).unwrap_or_else(|e| panic!("{e}")), temporary);
@@ -1575,7 +1595,7 @@ mod tests {
         let temporary = path.with_extension("json.tmp-1");
         fs::write(&path, b"{}").unwrap_or_else(|e| panic!("{e}"));
         std::os::unix::fs::symlink(&temporary, backup_path(&path)).unwrap_or_else(|e| panic!("{e}"));
-        assert!(update(&path, |s| s.output = Some("keys".into())).is_err());
+        assert!(update(&path, |s| s.portable.output = Some("keys".into())).is_err());
         assert_eq!(fs::read(&path).unwrap_or_default(), b"{}");
         assert_eq!(
             fs::read_link(backup_path(&path)).unwrap_or_else(|e| panic!("{e}")),
@@ -1597,7 +1617,7 @@ mod tests {
                 fs::write(path.with_extension(format!("json.tmp-{number}")), b"occupied")
                     .unwrap_or_else(|e| panic!("{e}"));
             }
-            assert_eq!(update(&path, |_| {}).is_err(), exhausted);
+            assert_eq!(restore_backup(&path).is_err(), exhausted);
             assert_eq!(path.exists(), !exhausted);
             assert_eq!(fs::read(&temporary).unwrap_or_default(), b"{}");
             assert_eq!(fs::read(backup_path(&path)).unwrap_or_default(), b"{}");
@@ -1611,51 +1631,13 @@ mod tests {
     }
 
     #[test]
-    fn missing_primary_recovery_keeps_real_settings_after_two_saves() {
-        for backup in [
-            "{}",
-            r#"{"library":{"bibtex":"参考.bib"},"shortcut":"Alt+Space","future_choice":{"kept":[true,null,"参考"]}}"#,
-        ] {
-            for change_first in [false, true] {
-                let directory = dir("missing-recover-save");
-                let path = directory.path().join("settings.json");
-                fs::write(backup_path(&path), backup).unwrap_or_else(|e| panic!("{e}"));
-                let mut expected = parse(backup).unwrap_or_else(|e| panic!("{e}"));
-                if change_first {
-                    expected.output = Some("typst".into());
-                }
-                let first = update(&path, |s| {
-                    if change_first {
-                        s.output = Some("typst".into());
-                    }
-                })
-                .unwrap_or_else(|e| panic!("{e}"));
-                assert_eq!(first, expected);
-                let restored = load(&path);
-                assert_eq!(restored.primary_read, PrimaryRead::Present);
-                assert!(!restored.from_backup);
-                assert!(restored.problem.is_none());
-                assert_eq!(restored.settings, expected);
-                assert_eq!(fs::read_to_string(backup_path(&path)).unwrap_or_default(), backup);
-                assert!(!path.with_extension("json.invalid-1").exists());
-                expected.output = Some("keys".into());
-                let second = update(&path, |s| s.output = Some("keys".into())).unwrap_or_else(|e| panic!("{e}"));
-                assert_eq!(second, expected);
-                assert_eq!(load(&path).settings, expected);
-                let saved_backup = fs::read_to_string(backup_path(&path)).unwrap_or_else(|e| panic!("{e}"));
-                assert_eq!(parse(&saved_backup).unwrap_or_else(|e| panic!("{e}")), first);
-            }
-        }
-    }
-
-    #[test]
     fn missing_primary_recovery_refuses_a_blocked_temporary_without_touching_the_backup() {
         let directory = dir("missing-blocked-save");
         let path = directory.path().join("settings.json");
         let backup = r#"{"shortcut":"Alt+Space"}"#;
         fs::write(backup_path(&path), backup).unwrap_or_else(|e| panic!("{e}"));
         fs::create_dir(path.with_extension("json.tmp")).unwrap_or_else(|e| panic!("{e}"));
-        assert!(update(&path, |s| s.larger_text = Some(true)).is_err());
+        assert!(restore_backup(&path).is_err());
         assert!(!path.exists());
         assert!(path.with_extension("json.tmp").is_dir());
         assert_eq!(fs::read_to_string(backup_path(&path)).unwrap_or_default(), backup);
@@ -1682,62 +1664,28 @@ mod tests {
     }
 
     #[test]
-    fn unreadable_primary_provenance_keeps_problem_and_default_backup_recovery() {
-        for invalid_utf8 in [false, true] {
-            let directory = dir("unreadable-primary");
-            let path = directory.path().join("settings.json");
-            if invalid_utf8 {
-                fs::write(&path, [0xff, 0xfe]).unwrap_or_else(|e| panic!("{e}"));
-            } else {
-                fs::create_dir(&path).unwrap_or_else(|e| panic!("{e}"));
-            }
-            for with_backup in [false, true] {
-                if with_backup {
-                    fs::write(backup_path(&path), "{}").unwrap_or_else(|e| panic!("{e}"));
-                }
-                let loaded = load(&path);
-                assert_eq!(loaded.primary_read, PrimaryRead::Unreadable);
-                assert!(matches!(loaded.problem, Some(SettingsError::Unreadable(_))));
-                assert_eq!(loaded.settings, Settings::default());
-                assert_eq!(loaded.from_backup, with_backup);
-            }
-        }
-    }
-
-    #[test]
-    fn save_and_load_round_trip() {
-        let directory = dir("roundtrip");
-        let path = directory.path().join("nested/settings.json");
-        let settings = Settings {
-            shortcut: Shortcuts::only_here("Control+Command+R"),
-            output: Some("typst".into()),
-            update_checks: Some(false),
-            ..Settings::default()
-        };
-        save(&path, &settings).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(load(&path).settings, settings);
-    }
-
-    #[test]
     fn picker_preferences_round_trip_and_stay_optional() {
         for text in ["{}", r#"{"larger_text":null}"#] {
-            assert_eq!(parse(text).map(|settings| settings.larger_text).ok(), Some(None));
+            assert_eq!(
+                parse(text).map(|settings| settings.portable.larger_text).ok(),
+                Some(None)
+            );
         }
         let saved = serde_json::to_string(&Settings::default()).unwrap_or_default();
         for field in ["output", "density", "larger_text", "paste"] {
             assert!(!saved.contains(field), "{field} is written only once chosen");
         }
         let settings = parse(
-            r#"{"schema_version": 2, "output": "chicago-author-date", "density": "compact", "larger_text": true, "paste": false}"#,
+            r#"{"schema_version": 2, "output": "chicago-author-date", "density": "compact", "larger_text": true, "paste": false, "shortcut":"Control+Command+R", "update_checks":false}"#,
         )
         .unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(settings.paste, Some(false));
-        assert_eq!(settings.output.as_deref(), Some("chicago-author-date"));
-        assert_eq!(settings.density, Some(Density::Compact));
-        assert_eq!(settings.larger_text, Some(true));
+        assert_eq!(settings.portable.paste, Some(false));
+        assert_eq!(settings.portable.output.as_deref(), Some("chicago-author-date"));
+        assert_eq!(settings.portable.density, Some(Density::Compact));
+        assert_eq!(settings.portable.larger_text, Some(true));
         let directory = dir("preferences");
-        let path = directory.path().join("settings.json");
-        save(&path, &settings).unwrap_or_else(|e| panic!("{e}"));
+        let path = directory.path().join("nested/settings.json");
+        update(&path, |s| *s = settings.clone()).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(load(&path).settings, settings);
     }
 
@@ -1746,9 +1694,9 @@ mod tests {
         let settings =
             parse(r#"{"density": "spacious", "accent": "purple", "larger_text": true, "search_icon": "none"}"#)
                 .unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(settings.density, None);
+        assert_eq!(settings.portable.density, None);
         assert!(!settings.unknown.contains_key("accent"));
-        assert_eq!(settings.larger_text, Some(true));
+        assert_eq!(settings.portable.larger_text, Some(true));
     }
 
     #[test]
@@ -1759,53 +1707,29 @@ mod tests {
         // An output id is the engine's to read: one this Ibis does not list
         // keeps the file valid and means the default where it is used.
         let later = parse(r#"{"output": "a-later-output"}"#).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(later.output.as_deref(), Some("a-later-output"));
+        assert_eq!(later.portable.output.as_deref(), Some("a-later-output"));
         // An output in another shape is no choice, and the settings beside it stay.
         for shape in [r#"7"#, r#"{"key": "typst"}"#, "null"] {
             let text = format!(r#"{{"output": {shape}, "larger_text": true}}"#);
             let kept = parse(&text).unwrap_or_else(|e| panic!("{shape}: {e}"));
-            assert_eq!(kept.output, None, "{shape}");
-            assert_eq!(kept.larger_text, Some(true), "{shape}");
+            assert_eq!(kept.portable.output, None, "{shape}");
+            assert_eq!(kept.portable.larger_text, Some(true), "{shape}");
         }
     }
 
     #[test]
     fn update_checks_stay_unasked_until_the_person_answers() {
-        assert_eq!(Settings::default().update_checks, None);
-        assert_eq!(parse("{}").map(|s| s.update_checks).ok(), Some(None));
+        assert_eq!(Settings::default().device.update_checks, None);
+        assert_eq!(parse("{}").map(|s| s.device.update_checks).ok(), Some(None));
         let saved = serde_json::to_string(&Settings::default()).unwrap_or_default();
         assert!(!saved.contains("update_checks"));
         assert_eq!(
             parse(r#"{"schema_version": 2, "update_checks": true}"#)
-                .map(|s| s.update_checks)
+                .map(|s| s.device.update_checks)
                 .ok(),
             Some(Some(true))
         );
         assert!(parse(r#"{"schema_version": 2, "update_checks": "yes"}"#).is_err());
-    }
-
-    #[test]
-    fn corrupt_file_falls_back_to_the_backup_and_reports_it() {
-        let directory = dir("corrupt");
-        let path = directory.path().join("settings.json");
-        let good = Settings {
-            shortcut: Shortcuts::only_here("Alt+Space"),
-            ..Settings::default()
-        };
-        save(&path, &good).unwrap_or_else(|e| panic!("{e}"));
-        save(&path, &good).unwrap_or_else(|e| panic!("{e}"));
-        fs::write(&path, "{ not json").unwrap_or_else(|e| panic!("{e}"));
-        let loaded = load(&path);
-        assert_eq!(loaded.settings, good);
-        assert!(matches!(loaded.problem, Some(SettingsError::Invalid(_))));
-        assert!(loaded.from_backup);
-    }
-
-    fn restore_backup(path: &Path) -> Result<Settings, backup::BackupError> {
-        let loaded = load(path);
-        let saved = backup::parse(&backup::export(&loaded.settings, "0.3.0")?)?;
-        let plan = backup::plan(&loaded.settings, &saved, |_| true).repairing(backup::needs_repair(&loaded));
-        backup::restore(path, &plan)
     }
 
     #[test]
@@ -1969,68 +1893,6 @@ mod tests {
     }
 
     #[test]
-    fn an_invalid_backup_cannot_authorize_recovery() {
-        for backup in [
-            b"{".as_slice(),
-            br#"{"schema_version":1}"#,
-            br#"{"schema_version":99}"#,
-            b"\xff",
-        ] {
-            let directory = dir("invalid-backup");
-            let path = directory.path().join("settings.json");
-            fs::write(&path, "{ damaged").unwrap_or_else(|e| panic!("{e}"));
-            fs::write(backup_path(&path), backup).unwrap_or_else(|e| panic!("{e}"));
-            assert!(!load(&path).from_backup);
-            let mut changed = false;
-            assert!(update(&path, |_| changed = true).is_err());
-            assert!(!changed);
-            assert_eq!(fs::read_to_string(&path).unwrap_or_default(), "{ damaged");
-            assert_eq!(fs::read(backup_path(&path)).unwrap_or_default(), backup);
-            assert!(!path.with_extension("json.invalid-1").exists());
-            assert!(!path.with_extension("json.tmp").exists());
-        }
-    }
-
-    #[test]
-    fn settings_recovery_reports_backup_or_defaults_from_the_same_read() {
-        let directory = dir("recovery-source");
-        let path = directory.path().join("settings.json");
-        fs::create_dir_all(
-            path.parent()
-                .unwrap_or_else(|| panic!("expected a synthetic settings directory")),
-        )
-        .unwrap_or_else(|e| panic!("{e}"));
-        for primary in ["{ invalid", r#"{"schema_version":3}"#] {
-            fs::write(&path, primary).unwrap_or_else(|e| panic!("{e}"));
-            let fallback = load(&path);
-            assert_eq!(fallback.primary_read, PrimaryRead::Present);
-            assert!(fallback.problem.is_some());
-            assert!(!fallback.from_backup);
-            fs::write(backup_path(&path), "{}").unwrap_or_else(|e| panic!("{e}"));
-            let recovered = load(&path);
-            assert_eq!(recovered.primary_read, PrimaryRead::Present);
-            assert!(recovered.problem.is_some());
-            assert!(recovered.from_backup);
-            assert_eq!(recovered.settings, Settings::default());
-            fs::remove_file(backup_path(&path)).unwrap_or_else(|e| panic!("{e}"));
-        }
-    }
-
-    #[test]
-    fn a_newer_settings_file_is_never_overwritten() {
-        let directory = dir("newer");
-        let path = directory.path().join("settings.json");
-        fs::create_dir_all(path.parent().unwrap_or(Path::new("."))).unwrap_or_else(|e| panic!("{e}"));
-        fs::write(&path, r#"{"schema_version": 99, "shortcut": "Alt+X"}"#).unwrap_or_else(|e| panic!("{e}"));
-        assert!(matches!(load(&path).problem, Some(SettingsError::NewerVersion(99))));
-        assert!(matches!(
-            save(&path, &Settings::default()),
-            Err(SettingsError::NewerVersion(99))
-        ));
-        assert!(fs::read_to_string(&path).unwrap_or_default().contains("99"));
-    }
-
-    #[test]
     fn newer_files_are_refused_even_when_their_fields_changed_type() {
         let directory = dir("newer-types");
         let path = directory.path().join("settings.json");
@@ -2038,10 +1900,7 @@ mod tests {
         let newer = r#"{"schema_version": 99, "shortcut": {"key": "Space"}}"#;
         fs::write(&path, newer).unwrap_or_else(|e| panic!("{e}"));
         assert!(matches!(load(&path).problem, Some(SettingsError::NewerVersion(99))));
-        assert!(matches!(
-            save(&path, &Settings::default()),
-            Err(SettingsError::NewerVersion(99))
-        ));
+        assert!(matches!(update(&path, |_| {}), Err(SettingsError::NewerVersion(99))));
         assert_eq!(fs::read_to_string(&path).unwrap_or_default(), newer);
         for with_backup in [false, true] {
             if with_backup {
@@ -2067,17 +1926,17 @@ mod tests {
     fn updates_keep_edits_made_since_loading_and_refuse_invalid_files_without_a_backup() {
         let directory = dir("update");
         let path = directory.path().join("settings.json");
-        update(&path, |s| s.output = Some("typst".into())).unwrap_or_else(|e| panic!("{e}"));
+        update(&path, |s| s.portable.output = Some("typst".into())).unwrap_or_else(|e| panic!("{e}"));
         // The user edits the file while the app runs.
         let edited = r#"{"schema_version": 2, "shortcut": "Alt+Space", "output": "typst"}"#;
         fs::write(&path, edited).unwrap_or_else(|e| panic!("{e}"));
-        let after = update(&path, |s| s.output = Some("keys".into())).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(after.shortcut.here(), Some("Alt+Space"));
+        let after = update(&path, |s| s.portable.output = Some("keys".into())).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(after.portable.shortcut.here(), Some("Alt+Space"));
         assert_eq!(load(&path).settings, after);
         fs::remove_file(backup_path(&path)).unwrap_or_else(|e| panic!("{e}"));
         fs::write(&path, "{ not json").unwrap_or_else(|e| panic!("{e}"));
         assert!(matches!(
-            update(&path, |s| s.output = Some("pandoc".into())),
+            update(&path, |s| s.portable.output = Some("pandoc".into())),
             Err(SettingsError::Invalid(_))
         ));
         assert_eq!(fs::read_to_string(&path).unwrap_or_default(), "{ not json");
@@ -2094,7 +1953,7 @@ mod tests {
             "later_flag": [true, null, 1.5],
         });
         fs::write(&path, newer_build.to_string()).unwrap_or_else(|e| panic!("{e}"));
-        update(&path, |s| s.shortcut.set_here(Some("Alt+Space".into()))).unwrap_or_else(|e| panic!("{e}"));
+        update(&path, |s| s.portable.shortcut.set_here(Some("Alt+Space".into()))).unwrap_or_else(|e| panic!("{e}"));
         let saved: Value =
             serde_json::from_str(&fs::read_to_string(&path).unwrap_or_default()).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(
@@ -2115,7 +1974,7 @@ mod tests {
         let path = directory.path().join("settings.json");
         let stale = format!("{{\"schema_version\": 2, \"shortcut\": \"{}\"}}", "x".repeat(4096));
         fs::write(path.with_extension("json.tmp"), &stale).unwrap_or_else(|e| panic!("{e}"));
-        save(&path, &Settings::default()).unwrap_or_else(|e| panic!("{e}"));
+        update(&path, |_| {}).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(load(&path).settings, Settings::default());
         assert!(load(&path).problem.is_none());
         assert_eq!(
@@ -2150,9 +2009,9 @@ mod tests {
             let loaded = load(&path);
             assert!(matches!(loaded.problem, Some(SettingsError::Invalid(_))));
             assert!(loaded.from_backup);
-            assert_eq!(loaded.settings.shortcut.here(), Some("Alt+Space"));
-            assert_eq!(loaded.settings.output, None);
-            assert_eq!(loaded.settings.library, None);
+            assert_eq!(loaded.settings.portable.shortcut.here(), Some("Alt+Space"));
+            assert_eq!(loaded.settings.portable.output, None);
+            assert_eq!(loaded.settings.portable.library, None);
             assert_eq!(fs::read_to_string(&path).unwrap_or_default(), old);
 
             assert!(update(&path, |_| {}).is_err());
@@ -2204,7 +2063,10 @@ mod tests {
         for (setting, json) in cases {
             assert_eq!(serde_json::to_value(&setting).unwrap_or_else(|e| panic!("{e}")), json);
             let text = serde_json::json!({ "schema_version": 2, "library": json }).to_string();
-            assert_eq!(parse(&text).unwrap_or_else(|e| panic!("{e}")).library, Some(setting));
+            assert_eq!(
+                parse(&text).unwrap_or_else(|e| panic!("{e}")).portable.library,
+                Some(setting)
+            );
         }
         for bad in [
             r#"{"zotero": "everyone"}"#,
@@ -2271,11 +2133,14 @@ mod tests {
         let directory = dir("zotero-member");
         let path = directory.path().join("settings.json");
         let good = Settings {
-            library: Some(LibrarySetting::Zotero(ZoteroLibrary::User.into())),
-            ..Settings::default()
+            portable: crate::settings::Portable {
+                library: Some(LibrarySetting::Zotero(ZoteroLibrary::User.into())),
+                ..Default::default()
+            },
+            ..Default::default()
         };
-        save(&path, &good).unwrap_or_else(|e| panic!("{e}"));
-        save(&path, &good).unwrap_or_else(|e| panic!("{e}"));
+        update(&path, |s| *s = good.clone()).unwrap_or_else(|e| panic!("{e}"));
+        update(&path, |s| s.portable.larger_text = Some(true)).unwrap_or_else(|e| panic!("{e}"));
         let backup = fs::read(backup_path(&path)).unwrap_or_else(|e| panic!("{e}"));
         let bad = r#"{"schema_version":2,"library":{"zotero":["user",{"group":"synthetic-private-value"}]}}"#;
         fs::write(&path, bad).unwrap_or_else(|e| panic!("{e}"));
@@ -2291,10 +2156,10 @@ mod tests {
             "the settings file is not valid: Zotero library entry 2 must be \"user\" or {\"group\": <non-negative integer ID>}"
         );
         assert_eq!(fs::read_to_string(&path).unwrap_or_default(), bad);
-        assert!(update(&path, |s| s.output = Some("keys".into())).is_err());
+        assert!(update(&path, |s| s.portable.output = Some("keys".into())).is_err());
         let saved = restore_backup(&path).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(saved.library, good.library);
-        assert_eq!(saved.output, None);
+        assert_eq!(saved.portable.library, good.portable.library);
+        assert_eq!(saved.portable.output, None);
         assert_eq!(load(&path).settings, saved);
         assert!(load(&path).problem.is_none());
         assert_eq!(

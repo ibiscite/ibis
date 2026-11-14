@@ -20,8 +20,11 @@ fn explicit_markdown_frontmatter_selects_the_named_writing_and_other_documents_d
     }))
     .unwrap();
     let settings = Settings {
-        writings: vec![writing.clone()],
-        ..Settings::default()
+        device: ibis_engine::settings::Device {
+            writings: vec![writing.clone()],
+            ..Default::default()
+        },
+        ..Default::default()
     };
     assert_eq!(
         writings::from_context(&settings, Some(&document), None, None).unwrap(),
