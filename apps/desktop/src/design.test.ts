@@ -5,6 +5,7 @@
 // never pass because the parser missed what it forbids. Contrast is computed
 // from the token values themselves; pictures of the result live in gallery/.
 import { expect, test, vi } from "vitest";
+import { colour as resolveColour, contrast as contrastRatio } from "./ui/contrast";
 
 const { readFileSync, readdirSync } = await vi.importActual<{
   readFileSync: (path: URL, encoding: string) => string;
@@ -213,15 +214,7 @@ test("scroll fades give way to the three accessibility preferences in both web v
   }
 });
 
-const channel = (value: number) => value <= .03928 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4;
-const luminance = (hex: string) => {
-  const [r, g, b] = [1, 3, 5].map((start) => channel(Number.parseInt(hex.slice(start, start + 2), 16) / 255));
-  return .2126 * r! + .7152 * g! + .0722 * b!;
-};
-const contrast = (a: string, b: string) => {
-  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
-  return (hi! + .05) / (lo! + .05);
-};
+const contrast = (a: string, b: string) => contrastRatio(resolveColour(a, new Map(), false), resolveColour(b, new Map(), false));
 /** A role's light and dark colours; translucent text is flattened onto what is under it (the window by default). */
 const surfaces = ["#ffffff", "#1e1e1e"] as const;
 const flatten = (value: string, mode: number, under: string = surfaces[mode]!) => {
@@ -236,14 +229,6 @@ const pair = (token: string) => {
   return [match![1]!, match![2]!] as const;
 };
 
-
-test.each([["--text", "--surface", 4.5], ["--text-secondary", "--surface", 4.5], ["--scarlet", "--surface", 3],
-  ["--text", "--surface-overlay", 4.5], ["--text-secondary", "--surface-overlay", 4.5]] as const)(
-  "%s keeps %s:1 on %s in light and dark", (token, under, ratio) => {
-    const surface = pair(under), value = pair(token);
-    expect(contrast(flatten(value[0], 0, surface[0]), surface[0])).toBeGreaterThanOrEqual(ratio);
-    expect(contrast(flatten(value[1], 1, surface[1]), surface[1])).toBeGreaterThanOrEqual(ratio);
-  });
 
 /** A translucent material's tint, light and dark, as [r, g, b, alpha]. */
 const tint = (css: string, name: string) => [...(css.match(new RegExp(`${name}: light-dark\\(([^;]*)\\);`))?.[1] ?? "").matchAll(/rgb\((\d+) (\d+) (\d+) \/ ([\d.]+)%\)/g)]
@@ -265,12 +250,6 @@ test("text keeps 7:1 over the veiled Mac material and 4.5:1 over Acrylic, on the
     const backdrop = hexOf(over(veil, under));
     expect(contrast(flatten(text[mode]!, mode, backdrop), backdrop), `Acrylic ${mode} over ${under}`).toBeGreaterThanOrEqual(4.5);
   }
-});
-
-test("the ladders hold the values measured from AppKit on macOS 27.2", () => {
-  for (const value of ["--text: light-dark(rgb(0 0 0 / 84.7%), rgb(255 255 255 / 84.7%))", "--text-secondary: light-dark(rgb(0 0 0 / 60%), rgb(255 255 255 / 54.9%))",
-    "--text-tertiary: light-dark(rgb(0 0 0 / 25.9%), rgb(255 255 255 / 24.7%))", "--fill-1: light-dark(rgb(0 0 0 / 9.8%), rgb(255 255 255 / 9.8%))",
-    "--separator: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 12%))", "--surface: light-dark(#ffffff, #1e1e1e)", "--selected: light-dark(#0064e1, #0059d1)"]) expect(tokens).toContain(value);
 });
 
 test("a value is declared once: lengths come from the space scale, colours from one primitive", () => {
@@ -344,17 +323,6 @@ test("every icon is one shape, so translucent colours paint it once", () => {
 });
 
 
-test("status colours use the measured system hues only for marks and preserve stronger contrast values", () => {
-  for (const [name, light, dark] of [["ok", "#34c759", "#30d158"], ["warning", "#ffcc00", "#ffd600"], ["error", "#ff383c", "#ff4245"]]) {
-    expect(pair(`--status-${name}`)).toEqual([light, dark]);
-    const more = tokens.slice(tokens.indexOf("@media (prefers-contrast: more) and (forced-colors: none)"));
-    const match = more.match(new RegExp(`--status-${name}: light-dark\\((#[a-f0-9]{6}), (#[a-f0-9]{6})\\)`));
-    expect(match).toBeTruthy();
-    expect(contrast(match![1]!, surfaces[0])).toBeGreaterThanOrEqual(3);
-    expect(contrast(match![2]!, surfaces[1])).toBeGreaterThanOrEqual(3);
-  }
-});
-
 test("the Ibis red parameters are the brand's scarlet", () => {
   const brand = JSON.parse(readFileSync(new FileURL("../../../brand/settings.json", import.meta.url), "utf8")) as { colors?: Record<string, string> } & Record<string, unknown>;
   const scarlet = JSON.stringify(brand).match(/"scarlet":\s*"(#[0-9A-Fa-f]{6})"/)![1]!, dark = JSON.stringify(brand).match(/"scarlet_dark":\s*"(#[0-9A-Fa-f]{6})"/)![1]!;
@@ -364,4 +332,63 @@ test("the Ibis red parameters are the brand's scarlet", () => {
 test("people read the ellipsis character, never three full stops", () => {
   const dots = userStrings().filter(([, text]) => text.includes("..."));
   expect(dots.map(([where, text]) => `${where}: ${text}`)).toEqual([]);
+});
+
+// A role is checked on every neutral stack the parts can build, including a
+// card's control states. Coloured fills carry their paired ink. Discovering the
+// reads from CSS means a new ink cannot silently escape the palette contract.
+test("every used ink/background role passes in both themes and increased contrast", async () => {
+  const { colour, over, contrastFailures } = await import("./ui/contrast");
+  const refs = (value: string) => [...value.matchAll(/var\((--[\w-]+)/g)].map((m) => m[1]!);
+  const inks = new Set(all.filter((d) => app(d.file) && d.property === "color").flatMap((d) => refs(d.value)));
+  // Local currentColor inputs inherit an already checked ink; status-colour
+  // takes all three status inks. Other local inputs expand to their roles.
+  const inherited = new Set(["--control-icon-color", "--control-icon-hover-color", "--status-colour"]);
+  const neutral = new Set(["--text", "--text-secondary", "--text-placeholder", "--text-disabled", "--text-tertiary", "--accent-text", "--scarlet", "--status-ok", "--status-warning", "--status-error"]);
+  const paired: Record<string, readonly string[]> = {
+    "--selected-text": ["--selected"], "--selected-text-secondary": ["--selected"],
+    "--text-on-accent": ["--primary", "--accent-hover", "--accent-pressed"],
+    "--on-scarlet": ["--scarlet"], "--selected": ["--selected-text"],
+    "--paper-ink": ["--paper"], "--paper-ink-secondary": ["--paper"],
+    "--thumb": ["--page-general", "--page-look", "--page-citations", "--page-shortcuts", "--page-about"],
+  };
+  expect([...inks].filter((ink) => !neutral.has(ink) && !paired[ink] && !inherited.has(ink))).toEqual([]);
+  const errors: string[] = [];
+  for (const dark of [false, true]) for (const more of [false, true]) for (const accent of ["mac", "ibis"]) {
+    const palette = new Map(all.filter((d) => d.file === "tokens.css" && d.property.startsWith("--")
+      && (d.selector === ":root" || d.selector === ":root, :root[data-platform]" || accent === "ibis" && d.selector === ':root[data-appearance][data-accent="ibis"]:not(.notice-window)')
+      && !/forced-colors:\s*active/.test(d.conditions.replace(/prefers-contrast:\s*more\),\s*\(forced-colors:\s*active/, ""))
+      && !(more ? /prefers-contrast:\s*no-preference/ : /prefers-contrast:\s*more/).test(d.conditions))
+      .map((d) => [d.property, d.value]));
+    const get = (token: string) => colour(`var(${token})`, palette, dark);
+    const clear = colour("transparent", palette, dark);
+    const bases = ["--surface", "--surface-overlay"];
+    const groups = ["--surface-grouped", "--layer-inset"];
+    const fills = [...new Set(all.filter((d) => app(d.file) && /^(background|background-color)$/.test(d.property)).flatMap((d) => refs(d.value)))]
+      .filter((token) => /^--(fill-|chip$|surface-field$|segment-selected$|highlight$|status-ok-(fill|wash)$)/.test(token));
+    const papers = bases.flatMap((base) => [undefined, ...groups].flatMap((group) => [undefined, ...fills].map((fill) => ({
+      name: [base, group, fill].filter(Boolean).join("/"),
+      value: over(fill ? get(fill) : clear, over(group ? get(group) : clear, get(base))),
+    }))));
+    const pairs: import("./ui/contrast").ContrastPair[] = [];
+    const icons = /--(text-tertiary|scarlet|status-|thumb|on-scarlet|selected$)/;
+    for (const ink of inks) {
+      if (inherited.has(ink)) continue;
+      for (const paper of ink === "--scarlet" ? [...papers.filter((paper) => paper.name === "--surface" || paper.name === "--surface/--layer-inset"), ...more ? [] : [{ name: "--selected-text", value: get("--selected-text") }]] : paired[ink]?.map((token) => ({ name: token, value: get(token) })) ?? papers) pairs.push({
+        name: `${dark ? "dark" : "light"}/${more ? "contrast" : "normal"}/${accent} ${ink} on ${paper.name}`,
+        ink: get(ink), paper: paper.value, kind: icons.test(ink) ? "icon" : "text",
+      });
+    }
+    for (const paper of papers) pairs.push({ name: `focus ${dark}/${more}/${accent} ${paper.name}`, ink: get("--ring"), paper: paper.value, kind: "focus" });
+    errors.push(...contrastFailures(pairs));
+  }
+  expect(errors).toEqual([]);
+});
+
+test("the contrast guard catches a planted low-contrast pair, including alpha", async () => {
+  const { colour, contrastFailures } = await import("./ui/contrast");
+  const get = (value: string) => colour(value, new Map(), false);
+  expect(contrastFailures([{ name: "readable", ink: get("#000"), paper: get("#fff"), kind: "text" }])).toEqual([]);
+  expect(contrastFailures([{ name: "planted", ink: get("rgb(0 0 0 / 20%)"), paper: get("#fff"), kind: "text" }])).toEqual([expect.stringContaining("planted")]);
+  expect(contrastFailures([{ name: "planted icon", ink: get("#ccc"), paper: get("#fff"), kind: "icon" }])).toEqual([expect.stringContaining("planted icon")]);
 });

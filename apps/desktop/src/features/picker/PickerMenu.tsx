@@ -101,7 +101,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
     {isOpen && <Palette id="actions-palette" title={say("palette-actions-title")} invoker={buttonRef}
       placeholder={say("palette-search-actions")} sections={sections} empty={say("palette-no-actions")}
       onAction={(id) => { onOpenChange(false); searchRef.current?.focus({ preventScroll: true }); run(id); }}
-      onClose={(reason) => { onOpenChange(false); if (reason === "tab") searchRef.current?.focus({ preventScroll: true }); }}
+      onClose={() => onOpenChange(false)}
       actionLabel={() => say("palette-run")} />}
   </>;
 }

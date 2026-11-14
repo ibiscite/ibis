@@ -7,6 +7,7 @@ import { KeyHint } from "./KeyCaps";
 import { composingKey, LayerParent, type LayerHandle } from "./layers";
 import { LayerScope } from "./Layer";
 import "./ViewFrame.css";
+import { tabStops } from "./focus";
 
 /** A view of the picker window (maintainer, 2026-11-10: palette and sheets, option
  * B): the picker's content swaps out for the view, edge to edge, in the picker's own
@@ -31,8 +32,16 @@ export function ViewFrame({ title, titleId, search, back, layer, status, actions
   frameRef?: RefObject<HTMLDivElement | null>;
 } & Omit<HTMLAttributes<HTMLDivElement>, "title">) {
   const within = useContext(LayerParent) !== null;
-  return createPortal(<LayerScope layer={layer}><div ref={frameRef} className="ui-view" aria-labelledby={titleId} {...dialog} data-layer-surface data-layer-within={within || undefined}
-    onKeyDown={(event) => { if (layer.nearest() && !composingKey(event.nativeEvent)) onKeyDown?.(event); }}>
+  return createPortal(<LayerScope layer={layer}><div ref={frameRef} className="ui-view" aria-labelledby={titleId} {...dialog} data-layer-surface data-focus-surface={layer.kind} data-layer-within={within || undefined}
+    onKeyDown={(event) => {
+      if (!layer.nearest() || composingKey(event.nativeEvent)) return;
+      onKeyDown?.(event);
+      if (event.defaultPrevented || event.key !== "Tab") return;
+      const stops = tabStops(event.currentTarget);
+      const at = stops.indexOf(document.activeElement as HTMLElement);
+      event.preventDefault();
+      stops[at < 0 ? event.shiftKey ? stops.length - 1 : 0 : (at + (event.shiftKey ? -1 : 1) + stops.length) % stops.length]?.focus();
+    }}>
     {/* The pointer's Back, in the icon column; the footer's Back is the one keys and screen readers reach. */}
     <Band className="ui-view-head" icon={<IconButton icon="back" className="ui-view-back" aria-label={back.label} aria-hidden excludeFromTabOrder onPress={back.onBack} />}>
       {search ? <span id={titleId} className="visually-hidden">{title}</span>
@@ -42,7 +51,7 @@ export function ViewFrame({ title, titleId, search, back, layer, status, actions
     <div className="ui-view-body">{children}</div>
     <Band className="ui-view-foot" trailing={<>
       {actions}
-      <Button variant="quiet" size="small" className="ui-view-back-hint" aria-keyshortcuts="Escape" onPress={back.onBack}>
+      <Button variant="quiet" size="small" className="ui-view-back-hint" aria-label={back.label} aria-keyshortcuts="Escape" onPress={back.onBack}>
         <KeyHint label={back.label} keys="Escape" hidden />
       </Button>
     </>}>

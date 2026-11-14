@@ -4,6 +4,8 @@ The rules for each shared part, beside its code. The principles are in [design](
 
 Each component in `apps/desktop/src/ui/` wraps one React Aria component (decision 0021), owns one stylesheet that reads tokens only, and is the only way a screen draws that part. A screen needing a new control adds it to `ui/` with its line here first. Shared rules every window uses live in `ui/Foundation.css`.
 
+Controls require an accessible name in their props (`AccessibleName`); string button children count as a visible name. `layers` owns focus return, `ViewFrame` owns the Tab cycle for sheets and palettes, and `Status` supplies every atomic live announcement. Callers supply catalogue words and actions.
+
 **States change paint, never size** [C24]. Hover (`@media (hover: hover)` only), press, keyboard focus, selection and an open menu never move or resize anything: a part reserves the room for every state it can take (a chip's ×, a ring drawn inside), and `canvas/geometry.ts` sets each state on every control and fails any box that moves. A press gives a little (`--press-scale`, a transform, not layout) and springs back, as in [Motion](../../../../docs/design/foundations.md#motion). Disabled uses `--text-disabled` and stays focusable in menus. Busy shows a spinner after 400 ms with `aria-busy`. Invalid fields show words and an icon, never a red ring.
 
 | | Pointer over it | Chosen or current | Keyboard focus |

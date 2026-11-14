@@ -3416,7 +3416,7 @@ test("format filter IME and Escape preserve the query, and Ctrl+K switches layer
   expect(screen.queryByRole("dialog", { name: "Format" })).toBeNull();
 });
 
-test.each(["Tab", "Reload"])("Format hands off to More so %s returns to Search", async (action) => {
+test.each(["Escape", "Reload"])("Format hands off to More; %s returns to its owning control", async (action) => {
   backend();
   render(<App />);
   const search = screen.getByLabelText("Search references") as HTMLInputElement;
@@ -3428,10 +3428,10 @@ test.each(["Tab", "Reload"])("Format hands off to More so %s returns to Search",
   fireEvent.keyDown(filter, { key: "k", ctrlKey: true });
   const more = await screen.findByRole("dialog", { name: "Actions" });
   expect(trigger.getAttribute("aria-expanded")).toBe("false");
-  if (action === "Tab") fireEvent.keyDown(within(more).getByRole("combobox"), { key: "Tab" });
+  if (action === "Escape") fireEvent.keyDown(within(more).getByRole("combobox"), { key: "Escape" });
   else await chooseFromLibrary("Reload Library");
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  await waitFor(() => expect(document.activeElement).toBe(search));
+  await waitFor(() => expect(document.activeElement).toBe(action === "Escape" ? screen.getByRole("button", { name: "More" }) : search));
   expect(search.value).toBe("sleep");
 });
 

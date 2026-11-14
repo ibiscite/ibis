@@ -1,3 +1,4 @@
+import { Status } from "../../ui/Status";
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import type { WritingEdit, WritingsView } from "../../api";
 import { isolate, problemText, say } from "../../i18n";
@@ -111,7 +112,7 @@ export function WritingsDialog({ api, format, onClose, draft }: { api: WritingsA
   return <Sheet title={say("writing-title")} closeLabel={say("writing-close")} description={say("writing-about")} busy={busy} onClose={close}
     leadingActions={creating} memory={draft?.current.place}>
         {view?.session_only && <p>{say("writing-session-only")}</p>}
-        {!view && !problem && <p role="status">{say("writing-loading")}</p>}
+        {!view && !problem && <Status as="p">{say("writing-loading")}</Status>}
         {view && <>
           {view.writings.length === 0 && <p>{say("writing-empty")}</p>}
           <Group label={say("writing-title")}>
@@ -155,7 +156,7 @@ export function WritingsDialog({ api, format, onClose, draft }: { api: WritingsA
         </Section>}
         <SheetStatus>
           {busyVisible && <Progress label={say("writing-saving")} />}
-          {problem && <p role="alert">{problem}</p>}
+          {problem && <Status as="p" role="alert">{problem}</Status>}
         </SheetStatus>
   </Sheet>;
 }

@@ -11,7 +11,7 @@ main.ui-frame > .shelf { grid-area: shelf; }
 main.ui-frame > footer { grid-area: footer; }
 
 /* The heading line: the list's heading, or a notice standing in for it at the same
-   height. With neither (an empty state, the commands) the line is not drawn, so
+   height. With neither (an empty state) the line is not drawn, so
    no empty band is ever reserved. The list then starts right under it. */
 .ui-notice-line { grid-area: notice; block-size: var(--notice-line-h); }
 .ui-notice-line:not(:has(> .ui-line-notice, > .notice-slot, > .ui-heading-slot:not(:empty))) { display: none; }

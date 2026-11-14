@@ -1,3 +1,4 @@
+import { Status } from "./Status";
 import type { RefObject } from "react";
 import { Floating } from "./Layer";
 import "./PeekCard.css";
@@ -12,12 +13,12 @@ export function PeekCard({ triggerRef, open, label, title, byline, facts, onClos
 }) {
   return <Floating kind="menu" open={open} onClose={() => { onClose(); }} triggerRef={triggerRef} isOpen={open} isNonModal placement="bottom start" offset={4} containerPadding={8}
     className="peek-card ui-overlay" onOpenChange={(next) => { if (!next) onClose(); }}>
-    <section aria-label={label} aria-live="polite">
+    <Status as="section" role="region" label={label}>
       <h3 className="peek-title"><bdi dir="auto">{title}</bdi></h3>
       {byline && <p className="peek-byline"><bdi dir="auto">{byline}</bdi></p>}
       <dl className="peek-facts">
         {facts.map((fact) => <div key={fact.label}><dt>{fact.label}</dt><dd data-mono={fact.mono || undefined}><bdi dir={fact.mono ? "ltr" : "auto"}>{fact.value}</bdi></dd></div>)}
       </dl>
-    </section>
+    </Status>
   </Floating>;
 }

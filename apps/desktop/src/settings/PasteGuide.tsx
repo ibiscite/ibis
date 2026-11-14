@@ -1,3 +1,4 @@
+import { Status } from "../ui/Status";
 import { useEffect, useState } from "react";
 import { Button } from "../ui/Button";
 import { FileDrag } from "../ui/FileDrag";
@@ -81,12 +82,12 @@ export function PasteGuide({ name, permission, onOpen, onDrag }: {
             <FileDrag icon={appIcon} label={text("general-paste-drag", { name, list: permission.list })} description={text("general-paste-drag-keyboard")} onPress={open}
               onDrag={() => { setDragFailed(false); void onDrag().catch(() => setDragFailed(true)); }} />
           </>}
-          <p className="ui-paste-guide-status" role="status" aria-live="polite" data-done={permission.granted || undefined}>
+          <Status as="p" className="ui-paste-guide-status" data-done={permission.granted || undefined}>
             {permission.granted ? text("general-paste-granted") : permission.unreadable ? text("general-paste-unreadable") : opened ? text("general-paste-waiting") : ""}
-          </p>
+          </Status>
         </div>
         {!permission.granted && <p className="ui-paste-guide-note">{text("general-paste-drag-fallback")}</p>}
-        {dragFailed && !permission.granted && <p className="ui-paste-guide-note" data-problem role="alert">{text("general-paste-drag-failed")}</p>}
+        {dragFailed && !permission.granted && <Status as="p" className="ui-paste-guide-note" data-problem role="alert">{text("general-paste-drag-failed")}</Status>}
         {slow && !permission.granted && <p className="ui-paste-guide-note">{text("general-paste-stale", { name })}</p>}
       </div>
     </div>

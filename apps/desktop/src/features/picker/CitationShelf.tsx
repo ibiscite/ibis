@@ -1,3 +1,4 @@
+import { Status } from "../../ui/Status";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Icon } from "../../icons";
 import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type Ref, type RefObject } from "react";
@@ -173,24 +174,6 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
       close();
     }
   });
-  const opened = useRef(panel);
-  if (panel) opened.current = panel;
-  // Esc and the close button hand focus back to the reference. Anything else that
-  // retires the inspector has already moved focus, and is left alone. Focus moves
-  // after the commit: React drops focus events during one, and the ring with them.
-  const heldFocus = useRef(false);
-  const returnFocus = useCallback((node: HTMLElement | null) => {
-    if (!node) return;
-    return () => { heldFocus.current = node.contains(document.activeElement); };
-  }, []);
-  useLayoutEffect(() => {
-    if (!heldFocus.current || panel) return;
-    heldFocus.current = false;
-    const { reference, origin } = opened.current ?? {};
-    const segment = reference ? [...output.current?.querySelectorAll<HTMLElement>(".citation-token") ?? []].find((part) => part.dataset.reference === reference) : undefined;
-    const target = segment?.querySelector("button") ?? (origin?.isConnected ? origin : output.current?.querySelector<HTMLElement>(".shelf-actions button")) ?? fallbackFocusRef?.current;
-    target?.focus({ preventScroll: true });
-  }, [panel, fallbackFocusRef]);
   // The details grow from their reference's token, or from the control that opened them.
   const anchor = useRef<Element | null>(null);
   useLayoutEffect(() => {
@@ -320,11 +303,11 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
     ? token(single, labels[0]!, singleWords, <bdi id={text !== undefined ? citationId : undefined} dir="auto" className={text !== undefined ? "preview-text" : "shelf-reference-name"}>{text !== undefined ? visible ? renderDisplay(visible.display, keyText) : keyText(text) : labels[0]}</bdi>, text !== undefined ? citationId : undefined)
     : null;
   return <>
-    <p className="visually-hidden" role="status" aria-label={say("picker-citation-selection")} aria-live="polite" aria-atomic="true">
+    <Status as="p" className="visually-hidden" label={say("picker-citation-selection")}>
       {announce ? [say("picker-selection-count", { count: selected.size }), ...partialWarnings].join(" ") : ""}
-    </p>
-    <p className="visually-hidden" role="status" aria-live="polite">{keepOrder ? orderNote : ""}</p>
-    {panel && hasShelf && <CitationInspector key={panel.reference ?? panel.kind} ref={returnFocus} id={inspectorId} panel={panel} anchor={anchor} heading={labels[editedIndex] ?? say("picker-citation-details")}
+    </Status>
+    <Status as="p" className="visually-hidden">{keepOrder ? orderNote : ""}</Status>
+    {panel && hasShelf && <CitationInspector key={panel.reference ?? panel.kind} id={inspectorId} panel={panel} anchor={anchor} heading={labels[editedIndex] ?? say("picker-citation-details")}
       keepOrder={style && onKeepOrder && references.length > 1 && edited && isSelected(edited) ? { checked: keepOrder, onChange: onKeepOrder } : null}
       reference={panel.kind === "warnings" ? undefined : edited} index={editedIndex} selected={Boolean(edited && isSelected(edited))} previewReceipt={previewReceipt} output={`${style}:${keys}`}
       failure={shown === "failed" ? fullProblem : copyProblem ?? null} notes={{ entry: entryNotice, output: currentWarnings, closest: partialWarnings }}
@@ -354,12 +337,12 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
           {previous && !retainedSegments ? <bdi className="preview-text shelf-retained" dir="auto">{renderDisplay(previous.display, keyText)}</bdi> : shown !== "failed" && shown !== "stale" && singleSegment}
           {text !== undefined ? singleSegment ? null : manySegments ? <span className="shelf-fragments" dir={keys ? "ltr" : "auto"}>{manySegments}</span> : <bdi id={citationId} dir="auto" className="preview-text">
             {ready && !keys ? renderDisplay(ready.display, keyText) : keyText(text)}
-          </bdi> : shown === "failed" ? <><span className="shelf-state-icon" data-state="failed" aria-hidden="true">!</span><p role={panel ? undefined : "alert"} title={fullProblem}>{fullProblem}</p></> : shown === "stale" ? <><span className="shelf-state-icon" data-state="stale" aria-hidden="true">!</span><p role="status">{say("picker-shelf-stale")}</p></>
-            : shown === undefined && !previous && manySegments ? <span className="shelf-fragments">{manySegments}</span> : shown === null && !previous ? <p role="status">{say("picker-preview-pending")}</p> : null}
+          </bdi> : shown === "failed" ? <><span className="shelf-state-icon" data-state="failed" aria-hidden="true">!</span><Status role={panel ? null : "alert"} title={fullProblem}>{fullProblem}</Status></> : shown === "stale" ? <><span className="shelf-state-icon" data-state="stale" aria-hidden="true">!</span><Status as="p">{say("picker-shelf-stale")}</Status></>
+            : shown === undefined && !previous && manySegments ? <span className="shelf-fragments">{manySegments}</span> : shown === null && !previous ? <Status as="p">{say("picker-preview-pending")}</Status> : null}
           {copied && <Beak closing />}
         </div>
         <div className="shelf-actions">
-          {copied && <span role="status" aria-label={say("picker-copied")} className="shelf-copied"><Icon name="check" />{say("picker-copied")}</span>}
+          {copied && <Status as="span" label={say("picker-copied")} className="shelf-copied"><Icon name="check" />{say("picker-copied")}</Status>}
           {statusLabel && !detailsOpen && <Button variant="quiet" className="shelf-warnings" aria-label={statusLabel} title={statusLabel}
             aria-expanded={panel?.kind === "warnings"} aria-controls={panel?.kind === "warnings" ? inspectorId : undefined}
             onPress={(event) => toggle("warnings", event.target as HTMLElement)}>{compact ? warnings.length > 0 ? `! ${warnings.length}` : "i" : <>

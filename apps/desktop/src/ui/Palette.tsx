@@ -1,3 +1,4 @@
+import { Status } from "./Status";
 import { useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import { composing } from "../composition";
 import { Icon } from "../icons";
@@ -22,7 +23,7 @@ export type PaletteItem = {
 /** A titled group. `browsing` groups show only before typing (your few formats);
  * `searching` ones only while typing (the whole catalogue). */
 export type PaletteSection = { id: string; label?: string; /** The group's spoken name, when it says more than the heading. */ name?: string; items: readonly PaletteItem[]; only?: "browsing" | "searching" };
-export type PaletteClose = "action" | "dismiss" | "command" | "tab";
+export type PaletteClose = "action" | "dismiss" | "command";
 
 const fold = (text: string) => text.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase();
 
@@ -78,22 +79,19 @@ export function Palette({ id, title, subtitle, description, placeholder, section
   const pointer = useRef<{ x: number; y: number } | null>(null);
   const mac = currentPlatform() === "macos";
   // Esc, a click outside or Back hands the keyboard back to whatever had it.
-  const opener = useRef<Element | null>(null);
   // Once a row runs, the palette is done: an action clearing the way (a sheet
   // opening) closes it without handing focus back.
   const acted = useRef(false);
   // Esc, Back and an empty Backspace go back (ui/layers). A command can open
   // native UI next, so the palette is already gone then.
-  const layer = useLayer("palette", true, () => { flushSync(dismiss); });
+  const layer = useLayer("palette", true, () => { flushSync(dismiss); }, invoker);
   const leave = layer.leave;
   function dismiss() {
     if (acted.current) return;
     leave();
-    const back = invoker?.current ?? opener.current;
-    if (back instanceof HTMLElement && back.isConnected && !back.closest("[hidden], [inert]")) back.focus({ preventScroll: true });
     onClose("dismiss");
   }
-  useLayoutEffect(() => { opener.current = document.activeElement; field.current?.focus({ preventScroll: true }); }, []);
+  useLayoutEffect(() => { field.current?.focus({ preventScroll: true }); }, []);
   // Reveal after the new highlight and its preview have laid out. Each key
   // owns one reveal, including at a list boundary; hover and later preview
   // renders never scroll a different row beneath a resting pointer.
@@ -104,7 +102,7 @@ export function Palette({ id, title, subtitle, description, placeholder, section
   const run = (item: PaletteItem | undefined) => {
     if (!item || item.disabled || acted.current) return;
     acted.current = true;
-    leave();
+    leave(false);
     onAction(item.id);
   };
   const move = (step: number) => {
@@ -119,9 +117,7 @@ export function Palette({ id, title, subtitle, description, placeholder, section
     if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); move(event.key === "ArrowDown" ? 1 : -1); }
     else if (event.key === "Home" && !query) { event.preventDefault(); move(-items.length); }
     else if (event.key === "End" && !query) { event.preventDefault(); move(items.length); }
-    else if (event.key === "Enter") { event.preventDefault(); if (!event.repeat) run(current); }
-    // Tab leaves the palette for Search, as Tab leaves a menu.
-    else if (event.key === "Tab") { event.preventDefault(); acted.current = true; leave(); onClose("tab"); }
+    else if (event.key === "Enter" && !(event.target instanceof Element && event.target.closest("button"))) { event.preventDefault(); if (!event.repeat) run(current); }
   };
   return <ViewFrame title={title} titleId={titleId} role="dialog" aria-modal="true" aria-describedby={description ? descriptionId : undefined}
     back={{ label: say("palette-back"), onBack: dismiss }} layer={layer} status={subtitle}
@@ -138,19 +134,19 @@ export function Palette({ id, title, subtitle, description, placeholder, section
     // The first wheel gesture can start before a pointermove in this view.
     onWheel={(event) => { pointer.current = { x: event.clientX, y: event.clientY }; }}
     // A press anywhere but the field leaves the keyboard in the field; clicks still act.
-    onMouseDown={(event) => { if (event.target !== field.current) event.preventDefault(); }}
+    onMouseDown={(event) => { if (!(event.target instanceof Element) || !event.target.closest("input, button")) event.preventDefault(); }}
     search={<input ref={field} className="ui-view-field" type="text" role="combobox" aria-label={placeholder} placeholder={placeholder}
       aria-expanded="true" aria-controls={listId} aria-autocomplete="list" aria-activedescendant={current ? optionId(current) : undefined}
       autoComplete="off" spellCheck={false} value={query}
       onChange={(event) => { setQuery(event.target.value); setHighlight({ id: undefined, keyboard: false }); }} />}
-    actions={current && !current.disabled ? <Button variant="action" size="small" className="ui-palette-action" excludeFromTabOrder onPress={() => run(current)}
+    actions={current && !current.disabled ? <Button variant="action" size="small" className="ui-palette-action" onPress={() => run(current)}
       label={actionLabel(current)} keys="Enter" /> : undefined}>
     <div className="ui-palette" data-preview={preview ? "" : undefined}>
       <ul id={listId} role="listbox" aria-label={title} className="ui-palette-list scroll-area">
         {shown.map((section) => <li key={section.id} role="presentation" className="ui-palette-section">
           {section.label && <Band className="ui-list-heading" aria-hidden="true"><span>{section.label}</span></Band>}
           <ul role="group" aria-label={section.name ?? section.label ?? title}>
-            {section.items.map((item) => <Option key={item.id} id={optionId(item)} role="option" className="ui-palette-row"
+            {section.items.map((item) => <Option key={item.id} id={optionId(item)} aria-label={[item.label, item.detail].filter(Boolean).join(" ")} role="option" className="ui-palette-row"
               aria-selected={item === current} aria-current={item.checked || undefined} aria-disabled={item.disabled || undefined}
               aria-keyshortcuts={item.keys ? ariaKeys(item.keys, mac) : undefined} data-active={item === current || undefined}
               onClick={() => run(item)} icon={item.back ? <Icon name="back" /> : item.checked ? <Icon name="check" /> : item.icon}>
@@ -163,7 +159,7 @@ export function Palette({ id, title, subtitle, description, placeholder, section
         {!items.length && <li role="presentation" className="ui-palette-empty">{empty}</li>}
       </ul>
       {preview && <div className="ui-palette-preview">
-        <div aria-live="polite">{current && preview(current)}</div>
+        <Status as="div" label={title}>{current && preview(current)}</Status>
         {description && <p id={descriptionId} className="ui-palette-preview-note">{description}</p>}
       </div>}
       {!preview && description && <p id={descriptionId} className="visually-hidden">{description}</p>}

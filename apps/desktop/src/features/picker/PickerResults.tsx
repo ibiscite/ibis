@@ -1,3 +1,4 @@
+import { Status } from "../../ui/Status";
 import type * as nativeApi from "../../api";
 import type { RefObject } from "react";
 import { LibrarySetup, SampleLibraryExit } from "../../LibrarySetup";
@@ -94,9 +95,9 @@ export function PickerResults({
       : <div className="ui-list-heading" aria-hidden="true">
         <span>{list ? say("picker-pasted-list") : results.some((r) => r.partial) ? say("picker-closest-matches") : query ? say("picker-best-matches") : say("picker-references")}</span><bdi>{say("picker-result-count", { count: results.length })}</bdi>
       </div>}</FrameHeading>}
-    <p className="visually-hidden" role="status" aria-label={say("picker-search-results")} aria-live="polite" aria-atomic="true">
+    <Status as="p" className="visually-hidden" label={say("picker-search-results")}>
       {showCitations ? announcement : ""}
-    </p>
+    </Status>
     {busy && emptyState}
     {showCitations && <ResultList results={results} active={active} selected={selected} density={density} hoverAllowed={pointer.hoverAllowed}
       libraryOf={severalLibraries ? libraryOf : noLibrary} project={project} numbered={numbered} onMouseMove={pointer.onMouseMove}

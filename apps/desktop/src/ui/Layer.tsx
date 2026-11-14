@@ -17,9 +17,9 @@ export function LayerScope({ layer, children }: { layer: LayerHandle; children: 
 export function Floating({ kind, open = false, onClose = () => false, children, ...popover }: Omit<ComponentProps<typeof Popover>, "children"> & {
   kind?: "menu" | "popover"; open?: boolean; onClose?: LayerClose; children: ReactNode;
 }) {
-  const layer = useLayer(kind ?? "menu", open && kind !== undefined, onClose);
+  const layer = useLayer(kind ?? "menu", open && kind !== undefined, onClose, popover.triggerRef);
   // Marked when it opened inside another layer, which stays open under it.
-  return <Popover {...popover} data-layer-surface data-layer={kind} data-layer-within={useContext(LayerParent) !== null || undefined}>
+  return <Popover {...popover} data-layer-surface data-layer={kind} data-focus-surface={kind} data-layer-within={useContext(LayerParent) !== null || undefined}>
     {kind ? <LayerScope layer={layer}>{children}</LayerScope> : children}
   </Popover>;
 }

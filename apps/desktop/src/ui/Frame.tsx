@@ -1,7 +1,9 @@
 import { createContext, useCallback, useContext, useLayoutEffect, useState, type HTMLAttributes, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Band } from "./Band";
+import { say } from "../i18n";
 import "./Frame.css";
+import { Status } from "./Status";
 
 type FrameSlots = { heading: HTMLElement | null; host: (on: boolean) => void };
 const Slots = createContext<FrameSlots | null>(null);
@@ -25,7 +27,7 @@ export function Frame({ search, notice, children, ...main }: {
   const [hosts, setHosts] = useState(0);
   const host = useCallback((on: boolean) => setHosts((count) => count + (on ? 1 : -1)), []);
   return <Slots.Provider value={{ heading, host }}>
-    <main className="ui-frame" data-notice-room={hosts ? "" : undefined} {...main}>
+    <main className="ui-frame" aria-label={say("delight-ibis")} data-notice-room={hosts ? "" : undefined} {...main}>
       {search}
       <Band className="ui-notice-line">{notice}<div className="ui-heading-slot" ref={setHeading} /></Band>
       {children}
@@ -59,7 +61,7 @@ export function LineNotice({ role = "status", children, actions, className }: {
 }) {
   const words = typeof children === "string" ? children : undefined;
   return <div className={className ? `ui-line-notice ${className}` : "ui-line-notice"} data-role={role}>
-    <p className="ui-line-words" role={role} dir="auto" title={words} tabIndex={0}>{children}</p>
+    <Status className="ui-line-words" role={role} dir="auto" title={words} tabIndex={0}>{children}</Status>
     {actions}
   </div>;
 }

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type KeyboardEventHandler, type ReactNode, type Ref } from "react";
+import { useLayoutEffect, useRef, type KeyboardEventHandler, type ReactNode, type Ref, type RefObject } from "react";
 import { IconButton } from "./IconButton";
 import { useScrollEdges } from "./ScrollArea";
 import { composingKey, useLayer } from "./layers";
@@ -8,7 +8,7 @@ import "./Inspector.css";
  * live, so it is a region and never a dialog. The column keeps its controls in
  * place; whatever grows with the output, and later a source's pages, belongs in
  * `document`, under it or, in a panel wide enough, beside it. */
-export function Inspector({ ref, id, label, heading, byline, closeLabel, document: page, readOnly = false, reading = false, children, footer, onClose, onKeyDown }: {
+export function Inspector({ ref, id, label, heading, byline, closeLabel, document: page, readOnly = false, reading = false, children, footer, onClose, onKeyDown, invoker }: {
   ref?: Ref<HTMLElement>; id?: string; label: string; heading: string; closeLabel: string;
   /** One quiet line under the heading: who and when, said once. */
   byline?: string;
@@ -18,21 +18,22 @@ export function Inspector({ ref, id, label, heading, byline, closeLabel, documen
   reading?: boolean;
   document?: ReactNode; children: ReactNode; footer?: ReactNode; onClose: () => void;
   onKeyDown?: KeyboardEventHandler<HTMLElement>;
+  invoker?: RefObject<Element | null>;
 }) {
   const column = useRef<HTMLDivElement>(null);
-  const layer = useLayer("panel", true, onClose);
+  const layer = useLayer("panel", true, onClose, invoker);
   useScrollEdges(column);
   // With nothing to edit, the column itself takes the keys, so they can scroll it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: focus is taken once, on opening.
   useLayoutEffect(() => { if (readOnly) column.current?.focus({ preventScroll: true }); }, []);
-  return <section ref={ref} id={id} className="inspector" data-reading={reading || undefined} aria-label={label}
+  return <section ref={ref} id={id} className="inspector" data-focus-surface="panel" data-reading={reading || undefined} aria-label={label}
     onKeyDown={(event) => { if (layer.nearest() && !composingKey(event.nativeEvent)) onKeyDown?.(event); }}>
     <div className="inspector-body">
       <div className="inspector-sidebar">
         <div ref={column} className="inspector-column scroll-area" tabIndex={readOnly ? 0 : undefined}>
           {/* Title and byline are one block beside ×, so a two-line title pushes the byline down instead of covering it. */}
           <header className="inspector-heading"><div className="inspector-titles"><h2><bdi dir="auto">{heading}</bdi></h2>
-            {byline && <p className="inspector-byline"><bdi dir="auto">{byline}</bdi></p>}</div><IconButton aria-label={closeLabel} onPress={onClose} /></header>
+            {byline && <p className="inspector-byline"><bdi dir="auto">{byline}</bdi></p>}</div><IconButton aria-label={closeLabel} onPress={() => { layer.leave(); onClose(); }} /></header>
           {children}
         </div>
         {footer}

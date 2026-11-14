@@ -35,8 +35,6 @@ export function usePickerMenus(api: typeof nativeApi, { perform }: Pick<ReturnTy
   const windowUndo = useWindowResetUndo(api);
   // A commit cannot flush the closes it causes, so they follow it.
   useEffect(() => { if (windowUndo.ticket !== null) queueMicrotask(closeOverlays); }, [windowUndo.ticket]);
-  // Where focus goes back to when a sheet closes.
-  const sheetReturn = useRef<HTMLElement | null>(null);
   // Opening one closes any other: ui/layers displaces what it is not inside.
   // Opening anything over the picker ends a pending copy (usePickerKeys' key owner).
   const openMore = () => {
@@ -57,15 +55,10 @@ export function usePickerMenus(api: typeof nativeApi, { perform }: Pick<ReturnTy
     void perform(operation, action);
   };
   const openSheet = (sheet: "keys" | "session" | "projects") => {
-    const focused = document.activeElement;
-    sheetReturn.current = focused instanceof HTMLElement && !focusLost() ? focused : null;
     setOverlay(sheet);
   };
   const closeSheet = (sheet: "keys" | "session" | "projects") => {
     closed(sheet);
-    const back = sheetReturn.current;
-    if (back?.isConnected && !back.closest("[hidden]")) back.focus({ preventScroll: true });
-    else focusHome();
   };
   return { input, formatButtonRef, moreButton, overlay, menuOpen: overlay === "more", libraryMenuOpen: overlay === "library", formatOpen: overlay === "format", keysOpen: overlay === "keys", sessionOpen: overlay === "session", projectsOpen: overlay === "projects",
     setFormatOpen: (open: boolean) => { if (open) setOverlay("format"); else closed("format"); },

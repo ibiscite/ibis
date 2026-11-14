@@ -25,6 +25,8 @@
 - A notice's words start on the label column, as row titles do: its line is a band (`ui/Band`); an update's ring sits in the icon column. In Settings they start on `--heading-offset`.
 - A notice is one line, written to fit it at the narrowest window (`canvas/geometry.ts` measures every catalogue message in its slot); words that must still be cut, such as the engine's own, unfold whole over the list while pointed at or reached with Tab. Names are short ("Removed Vale 2021", first author and year as on the tile). An Undo offer has a quiet **Undo ⌘Z** right beside its words; it lasts 8 s, pauses on hover and focus, and ⌘Z does the same while it shows. A remark needing nothing (tip, milestone, the size after ⌘+, why Enter did nothing) is words alone, and leaves when you type. Screen readers hear both through the status role.
 
+The frame keeps the same notice node when the list gives way to the empty room, including the command list's heading. `Status` supplies its single atomic announcement; the Undo owner keeps its registration and remaining time.
+
 Every "copied, not pasted" sentence says why, then ends with its fix, with full stops; the fix is usually "Press ⌘V to paste." (Ctrl+V on Windows and Linux). Every copy has a reason: none is a bare "Copied." These are the exact words; a test compares them with the catalogue's `copied-notice-reason`.
 
 | Reason | Code | Words |

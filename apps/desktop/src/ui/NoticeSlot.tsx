@@ -1,6 +1,7 @@
 import { Children, useEffect, useRef, type ReactNode } from "react";
 import { say } from "../i18n";
 import "./NoticeSlot.css";
+import { Status } from "./Status";
 
 /** A window's one place for what passes; nothing is drawn while it is empty. */
 export function NoticeSlot({ children }: { children: ReactNode }) {
@@ -21,5 +22,5 @@ export function QuietNotice({ children, passive = false, role = "status", onExpi
     const timer = window.setTimeout(() => expire.current?.(), 8000);
     return () => window.clearTimeout(timer);
   }, [children, expires, paused]);
-  return <div className="notice-band"><span role={passive ? undefined : role}>{children}</span></div>;
+  return <div className="notice-band"><Status as="span" role={passive ? null : role}>{children}</Status></div>;
 }

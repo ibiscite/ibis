@@ -1,3 +1,4 @@
+import { Status } from "../../ui/Status";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Input, Label, TextField } from "react-aria-components";
 import { isolate, say } from "../../i18n";
@@ -97,7 +98,7 @@ export function Reader({ source, title, page, onPageChange }: {
       </div>
       <div className="reader-hud ui-overlay" role="group" aria-label={say("reader-page-in-view")}>
         {ask || <>
-          <span className="reader-indicator" aria-live="polite">{label ? say("reader-indicator", { printed: isolate(label), index: String(current + 1), count: String(labels.length) }) : say("reader-unknown", { index: String(current + 1), count: String(labels.length) })}</span>
+          <Status as="span" className="reader-indicator">{label ? say("reader-indicator", { printed: isolate(label), index: String(current + 1), count: String(labels.length) }) : say("reader-unknown", { index: String(current + 1), count: String(labels.length) })}</Status>
           <Button size="small" onPress={() => cite(false)}>{say("reader-cite")}</Button>
         </>}
       </div>

@@ -1,3 +1,4 @@
+import { Status } from "../../ui/Status";
 import type { ReactNode } from "react";
 import type { Copied, LibraryStatus, UpdateProgress } from "../../api";
 import { LineNotice } from "../../ui/Frame";
@@ -67,12 +68,12 @@ export function notices({ library, failures, error, copyError, copied, confirmat
       </ul>
       <Button size="small" aria-label={say("picker-dismiss-warnings")} onPress={onDismissCopied}>{say("picker-dismiss")}</Button>
     </div>,
-    copied && confirmation && <div key="copied" className="ui-line-notice copy-notice" role="status">
+    copied && confirmation && <Status as="div" key="copied" label={say("picker-copied")} className="ui-line-notice copy-notice">
       <p className="ui-line-words" data-outcome="copied"><strong>{say("picker-copied")}</strong> <code dir="auto" title={confirmation.text}>
         {confirmation.summary?.text ?? confirmation.text}
         {Boolean(confirmation.summary?.more) && <span> +{confirmation.summary!.more} more</span>}
       </code></p>
-    </div>,
+    </Status>,
     ...(Object.keys(failures) as Operation[]).filter((operation) => failures[operation] && !libraryOperations.has(operation)).map((operation) => (
       <LineNotice role="alert" key={operation}>{say(OPERATION_FAILURES[operation])}</LineNotice>
     )),

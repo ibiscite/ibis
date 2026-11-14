@@ -414,7 +414,7 @@ test("a command clears every layer in its way, and the keys for an open layer cl
   await screen.findByRole("dialog", { name: "Format" });
   press("f", { ctrlKey: true, shiftKey: true });
   expect(screen.queryByRole("dialog", { name: "Format" })).toBeNull();
-  expect(document.activeElement).toBe(search());
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: /^Citation format/ }));
 });
 
 test("a command opened over the details closes them, and Settings returns to Search", async () => {

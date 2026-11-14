@@ -101,7 +101,7 @@ test.each(["Escape", "Tab"])("%s closes just the menu and returns focus", async 
   const menu = await screen.findByRole("menu");
   fireEvent.keyDown(menu, { key });
   await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
-  await waitFor(() => expect(document.activeElement).toBe(search));
+  await waitFor(() => expect(document.activeElement).toBe(key === "Escape" ? trigger : search));
   expect(parentKeys).not.toHaveBeenCalled();
 });
 
@@ -229,14 +229,14 @@ test("Space on an unavailable choice neither selects nor closes", async () => {
 });
 
 test("an empty filter keeps the menu open and Escape still contains the layer", async () => {
-  const { trigger, search } = mount([{ id: "many", label: "Formats", items: Array.from({ length: 8 }, (_, i) => ({ id: `f${i}`, label: `Format ${i}` })) }]);
+  const { trigger } = mount([{ id: "many", label: "Formats", items: Array.from({ length: 8 }, (_, i) => ({ id: `f${i}`, label: `Format ${i}` })) }]);
   fireEvent.click(trigger);
   const filter = await screen.findByRole("searchbox");
   fireEvent.change(filter, { target: { value: "no matches 研究" } });
   await waitFor(() => expect(screen.queryAllByRole("menuitemradio")).toHaveLength(0));
   expect(screen.getByRole("menu")).toBeTruthy();
   fireEvent.keyDown(filter, { key: "Escape" });
-  await waitFor(() => expect(document.activeElement).toBe(search));
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
   expect(screen.queryByRole("menu")).toBeNull();
 });
 

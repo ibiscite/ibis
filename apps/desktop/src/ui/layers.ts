@@ -1,7 +1,7 @@
 // The view stack: what is open in a window, nearest first, and the one key
 // listener that walks back through it. Screens and controls register what they
 // open and never handle a going-back key themselves (decision 0047).
-import { createContext, useContext, useLayoutEffect, useRef, useSyncExternalStore } from "react";
+import { createContext, useContext, useLayoutEffect, useRef, useSyncExternalStore, type RefObject } from "react";
 import { flushSync } from "react-dom";
 import { composing } from "../composition";
 import { isBackShortcut } from "../keys";
@@ -26,11 +26,10 @@ const of = (layer: Layer): Kind => KINDS[layer.kind];
 /** Over the window: what a command or a hide clears, and what keeps ⌘1–9 from the list. */
 const over = (layer: Layer) => of(layer).opens === "floats" || of(layer).opens === "view";
 
-/** A layer closes itself. Given the key that asked, it returns focus to what
- * opened it, or returns false to hand that key on (a menu with a submenu open).
- * Without a key a command is clearing the way: it closes at once and goes home. */
+/** A layer closes itself, or returns false to leave a key to a submenu. The
+ * stack restores its opener after a key; a command decides where to go next. */
 export type LayerClose = (event?: KeyboardEvent) => boolean | void;
-type Layer = { kind: LayerKind; close: LayerClose; parent: Scope | null };
+type Layer = { kind: LayerKind; close: LayerClose; parent: Scope | null; back: boolean; returning: () => (() => void) | undefined };
 // Read when asked: a surface that mounts open registers before the layer around it.
 const within = (layer: Layer, outer: Layer) => { for (let at = layer.parent?.current; at; at = at.parent?.current) if (at === outer) return true; return false; };
 
@@ -76,8 +75,12 @@ export function goBack(gesture: Gesture = "escape", event?: KeyboardEvent): bool
   const layer = nearest();
   if (!layer || !of(layer).back.includes(gesture)) return false;
   let closed = true;
+  const restore = layer.returning();
+  layer.back = true;
   // Commit now: the layer returns focus itself, then the screen it left is checked.
   flushSync(() => { closed = layer.close(event) !== false; });
+  layer.back = false;
+  if (closed) restore?.();
   settle();
   return closed;
 }
@@ -153,7 +156,7 @@ function settle() {
 /** A layer's handle: whether it is nearest, so its own keys act only then, and
  * `leave`, which takes it off the stack at once, before it unmounts, so what is
  * under it shows before focus returns there. */
-export type LayerHandle = { nearest: () => boolean; leave: () => void; scope: Scope };
+export type LayerHandle = { kind: LayerKind; nearest: () => boolean; leave: (restore?: boolean) => void; scope: Scope };
 type Scope = { readonly current: Layer | null };
 /** The layer whatever renders inside it belongs to (ui/Layer). It crosses portals. */
 export const LayerParent = createContext<Scope | null>(null);
@@ -175,34 +178,58 @@ function displace(layer: Layer) {
 }
 
 /** Keep a layer on the stack while `open`. `close` may change every render. */
-export function useLayer(kind: LayerKind, open: boolean, close: LayerClose): LayerHandle {
+export function useLayer(kind: LayerKind, open: boolean, close: LayerClose, invoker?: RefObject<Element | null>): LayerHandle {
   const latest = useRef(close);
   const registered = useRef<Layer | null>(null);
+  const opener = useRef<Element | null>(null);
+  const invokerRef = useRef(invoker);
+  invokerRef.current = invoker;
+  const shown = useRef(open);
+  shown.current = open;
+  const restore = useRef(true);
+  // Capture before descendants take focus in their layout effects.
+  if (open && !registered.current) { opener.current = document.activeElement; restore.current = true; }
+  const returnFocus = (target = invoker?.current ?? opener.current) => {
+    if (restore.current && target instanceof HTMLElement && target.isConnected && !target.closest("[hidden], [inert]")) target.focus({ preventScroll: true });
+  };
+  const returning = useRef(returnFocus);
+  useLayoutEffect(() => { returning.current = returnFocus; });
   const parent = useContext(LayerParent);
   useLayoutEffect(() => { latest.current = close; });
   useLayoutEffect(() => {
     if (!open) return;
-    const layer: Layer = { kind, close: (event) => latest.current(event), parent };
+    const layer: Layer = { kind, close: (event) => latest.current(event), parent, back: false, returning: () => {
+      const target = invokerRef.current?.current ?? opener.current;
+      const hadFocus = document.activeElement?.closest("[data-focus-surface]")?.getAttribute("data-focus-surface") === kind;
+      return of(layer).opens && (hadFocus || focusLost()) ? () => returning.current(target) : undefined;
+    } };
     registered.current = layer;
     layers.push(layer);
     changed();
     if (of(layer).opens) displace(layer);
     if (over(layer)) owner?.opened?.();
     return () => {
+      const target = invokerRef.current?.current ?? opener.current;
+      // Pointer closes return immediately; Back restores after its commit so
+      // React Aria sees the focus event and draws the keyboard ring.
+      if (!layer.back && shown.current) layer.returning()?.();
       registered.current = null;
       const at = layers.indexOf(layer);
       if (at >= 0) { layers.splice(at, 1); changed(); }
       settling = true;
-      queueMicrotask(settle);
+      queueMicrotask(() => { if (of(layer).opens && focusLost()) returning.current(target); settle(); });
     };
   }, [kind, open, parent]);
   const handle = useRef<LayerHandle>(null);
   handle.current ??= {
+    kind,
     scope: registered,
     nearest: () => registered.current !== null && nearest() === registered.current,
-    leave: () => {
+    leave: (restoreFocus = true) => {
+      restore.current = restoreFocus;
       const at = registered.current ? layers.indexOf(registered.current) : -1;
       if (at >= 0) { layers.splice(at, 1); changed(); }
+      if (restoreFocus) returning.current();
     },
   };
   return handle.current;

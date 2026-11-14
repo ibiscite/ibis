@@ -1,3 +1,4 @@
+import { Status } from "../ui/Status";
 import { composing } from "../composition";
 import { filterPalette } from "../ui/Palette";
 import { Details } from "../ui/Details";
@@ -578,12 +579,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         : <SideNavigation label={text("settings-pages")} value={page} options={PAGES.map((value) => ({ value, label: text(`settings-${value}`), tile: PAGE_TILES[value], gapBefore: value === "about" }))}
           onChange={selectPage} />}
       </nav>
-      <NoticeSlot>
-        {settingUndo.notice}
-        {shortcutUndo && <UndoNotice key={undoTicket} action={text("undo-shortcut")} message={text("settings-shortcut-restored")} paused={!focused}
-          onUndo={() => changeShortcut(shortcutUndo, true, undoTicket)}
-          onExpire={() => { if (undoTicket === shortcutUndoTicket.current) clearShortcutUndo(); }} />}
-      </NoticeSlot>
+
       <main ref={pageRef} className="settings-page" aria-labelledby="settings-page-title">
         <h1 id="settings-page-title" className={page === "about" ? "visually-hidden" : "ui-settings-page-title"}>{text(`settings-${page}`)}</h1>
         {preference.status === "unknown" && preference.message && <Note problem role="alert">{text(preference.message)}</Note>}
@@ -659,7 +655,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
               {/* Under the version, as Mac apps place it (decision 0038); its outcome follows it. */}
               {(updates !== null || readProblems.has("automatic")) && <div id="check-updates" className="ui-about-check" data-highlighted={highlighted === "check-updates" || undefined}>
                 <Button aria-disabled={checking || undefined} onPress={checkNow}>{text(checking ? "about-checking" : "about-check")}</Button>
-                <p className="ui-quiet-status" role="status">{checking ? text("about-checking") : checkSaid && text(checkSaid)}</p>
+                <Status as="p" className="ui-quiet-status">{checking ? text("about-checking") : checkSaid && text(checkSaid)}</Status>
                 {checkResult === "failed" && <Note problem role="alert">{text("about-check-failed")}</Note>}
               </div>}
               <p className="ui-about-mission">{text("about-mission")}</p>
@@ -678,6 +674,12 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
           </>
         )}
       </main>
+      <NoticeSlot>
+        {settingUndo.notice}
+        {shortcutUndo && <UndoNotice key={undoTicket} action={text("undo-shortcut")} message={text("settings-shortcut-restored")} paused={!focused}
+          onUndo={() => changeShortcut(shortcutUndo, true, undoTicket)}
+          onExpire={() => { if (undoTicket === shortcutUndoTicket.current) clearShortcutUndo(); }} />}
+      </NoticeSlot>
     </div>
   );
 }

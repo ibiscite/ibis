@@ -5,7 +5,7 @@ import { isMac } from "../../platform";
 import type { CitationLineActions } from "./CitationShelf";
 import { currentPlatform } from "../../platform";
 import { focusChoices } from "../../ui/ChoiceList";
-import { closeOverlays, goBack, composingKey, consumeKey, focusLost, overlayOpen, useKeyOwner } from "../../ui/layers";
+import { goBack, composingKey, consumeKey, focusLost, overlayOpen, useKeyOwner } from "../../ui/layers";
 import { commandFor, type PickerCommand } from "./shortcuts";
 import type { usePickerSession } from "./usePickerSession";
 import type { usePickerMenus } from "./usePickerMenus";
@@ -42,7 +42,7 @@ export function usePickerKeys({
   findOpen?: boolean;
 }) {
   const { session, cancelCopy, setActive } = pickerSession;
-  const { input, moreButton, menuOpen, keysOpen, formatOpen, togglePin, openKeys, openMore, openFormat, focusHome, runFromMenu } = menus;
+  const { input, menuOpen, keysOpen, formatOpen, togglePin, openKeys, openMore, openFormat, focusHome, runFromMenu } = menus;
   const { chooseSources, openSource } = source;
   const { toggleHighlighted, changeLast } = actions;
   const { openSettings } = api;
@@ -51,7 +51,7 @@ export function usePickerKeys({
   const run = (command: PickerCommand, event?: KeyboardEvent) => {
     if (command === "pin") togglePin();
     else if (command === "more") {
-      if (menuOpen) { closeOverlays(); moreButton.current?.focus(); } else openMore();
+      if (menuOpen) goBack("escape", event); else openMore();
     } else if (command === "keys") {
       if (keysOpen) goBack("escape", event); else openKeys();
     } else if (command === "format") {

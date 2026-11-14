@@ -5,6 +5,7 @@ import "./Button.css";
 import { ariaKeys } from "../keys";
 import { currentPlatform } from "../platform";
 import { KeyHint } from "./KeyCaps";
+import type { ButtonName } from "./AccessibleName";
 
 type Look = Pick<ComponentPropsWithRef<"button">, "ref" | "title" | "aria-busy" | "aria-keyshortcuts" | "aria-hidden" | "inert"> & {
   /** `action`: a launcher's main action, quiet words with the accent on its key cap. */
@@ -13,7 +14,7 @@ type Look = Pick<ComponentPropsWithRef<"button">, "ref" | "title" | "aria-busy" 
 };
 
 /** Shared pointer, keyboard, touch and disabled states; callers own the action. */
-export function Button({ variant = "secondary", size = "default", className = "", label, keys, icon, children, ...props }: Omit<ButtonProps, "className"> & Look) {
+export function Button({ variant = "secondary", size = "default", className = "", label, keys, icon, children, ...props }: Omit<ButtonProps, "className"> & Look & ButtonName) {
   const shortcut = keys ? ariaKeys(keys, currentPlatform() === "macos") : props["aria-keyshortcuts"];
   return <AriaButton {...props} aria-label={props["aria-label"] ?? label} className={`ui-button ${className}`} data-variant={variant} data-size={size}
     render={props.render ?? ((native) => <button {...native as ComponentPropsWithRef<"button">} title={props.title} aria-busy={props["aria-busy"]} aria-keyshortcuts={shortcut} aria-hidden={props["aria-hidden"]} tabIndex={props.excludeFromTabOrder ? -1 : native.tabIndex} />)}>
@@ -23,9 +24,9 @@ export function Button({ variant = "secondary", size = "default", className = ""
   </AriaButton>;
 }
 
-export function ToggleButton({ variant = "secondary", size = "default", className = "", keys, children, ...props }: Omit<ToggleButtonProps, "className"> & Look) {
+export function ToggleButton({ variant = "secondary", size = "default", className = "", label, keys, children, ...props }: Omit<ToggleButtonProps, "className"> & Look & ButtonName) {
   const shortcut = keys ? ariaKeys(keys, currentPlatform() === "macos") : props["aria-keyshortcuts"];
-  return <AriaToggleButton {...props} className={`ui-button ${className}`} data-variant={variant} data-size={size}
+  return <AriaToggleButton {...props} aria-label={props["aria-label"] ?? label} className={`ui-button ${className}`} data-variant={variant} data-size={size}
     render={props.render ?? ((native) => <button {...native as ComponentPropsWithRef<"button">} title={props.title} aria-busy={props["aria-busy"]} aria-keyshortcuts={shortcut} aria-hidden={props["aria-hidden"]} tabIndex={props.excludeFromTabOrder ? -1 : native.tabIndex} />)}>
     {(values) => <>{typeof children === "function" ? children(values) : children}</>}
   </AriaToggleButton>;

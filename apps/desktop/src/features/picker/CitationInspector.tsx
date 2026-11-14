@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Ref, type RefObject } from "react";
+import { Status } from "../../ui/Status";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { Reader } from "../reader/Reader";
 import { usePageSource } from "../reader/source";
 import { citationDetails, isCancelled } from "../../api";
@@ -19,8 +20,8 @@ export type CitationNotes = { entry: { short: string; text: string } | null; out
 
 /** The details of one reference, or the notes on its citation. The column's
  * controls never move: everything that grows with the output sits beside them. */
-export function CitationInspector({ ref, id, panel, anchor, keepOrder, heading, reference, index, selected, previewReceipt, output, failure, notes, onChange, onSubmit, onRemove, onClose }: {
-  ref: Ref<HTMLElement>; id: string; panel: InspectorPanel; heading: string;
+export function CitationInspector({ id, panel, anchor, keepOrder, heading, reference, index, selected, previewReceipt, output, failure, notes, onChange, onSubmit, onRemove, onClose }: {
+  id: string; panel: InspectorPanel; heading: string;
   /** What the details grow from: the reference's token, or the control that opened them. */
   anchor: RefObject<Element | null>;
   /** Keep My Order, at the foot only where the style may sort. */
@@ -48,13 +49,7 @@ export function CitationInspector({ ref, id, panel, anchor, keepOrder, heading, 
     );
     return () => { live = false; controller.abort(); };
   }, [editing, previewReceipt, index, output]);
-  // One stable ref, so the shelf's own keeps its cleanup, which returns focus to the token.
   const body = useRef<HTMLElement | null>(null);
-  const attach = useCallback((node: HTMLElement | null) => {
-    body.current = node;
-    if (typeof ref === "function") return ref(node);
-    if (ref) ref.current = node;
-  }, [ref]);
   // The highlighted result stays in view above the details when the list can scroll it there.
   useLayoutEffect(() => {
     const popover = body.current?.closest(".ui-popover")?.getBoundingClientRect();
@@ -65,10 +60,10 @@ export function CitationInspector({ ref, id, panel, anchor, keepOrder, heading, 
     const room = row.getBoundingClientRect().top - list.getBoundingClientRect().top;
     if (overlap > 0 && room >= overlap) list.scrollTop += overlap;
   }, []);
-  const problem = failure && <p role="alert" tabIndex={0} className="inspector-citation inspector-problem"><Icon name="warning" />{failure}</p>;
+  const problem = failure && <Status as="p" role="alert" tabIndex={0} className="inspector-citation inspector-problem"><Icon name="warning" />{failure}</Status>;
   if (!editing) {
     const { entry, output, closest } = notes;
-    return <Inspector ref={ref} id={id} label={say("picker-citation-warnings")} heading={say("picker-citation-warnings")} closeLabel={say("key-close")} readOnly onClose={onClose}>
+    return <Inspector ref={body} invoker={anchor} id={id} label={say("picker-citation-warnings")} heading={say("picker-citation-warnings")} closeLabel={say("key-close")} readOnly onClose={onClose}>
       {entry && <><h3>{entry.short}</h3><p>{entry.text}</p></>}
       {output.map((warning, i) => <p key={`output-${i}`}>{warning}</p>)}
       {closest.length > 0 && <h3>{say("picker-closest-matches")}</h3>}
@@ -98,16 +93,16 @@ export function CitationInspector({ ref, id, panel, anchor, keepOrder, heading, 
   };
   // The Reader keeps the side panel: a source's pages need its room.
   if (reading && pdf && reference && onChange) {
-    return <Inspector ref={ref} id={id} label={say("citation-details-details", { reference: reference.title || reference.key })}
+    return <Inspector ref={body} invoker={anchor} id={id} label={say("citation-details-details", { reference: reference.title || reference.key })}
       heading={reference.title || heading} byline={byline || undefined} closeLabel={say("key-close")} onClose={onClose} reading
-      footer={<div className="inspector-actions"><hr /><Button variant="quiet" className="inspector-action" aria-expanded onPress={() => setReading(false)}><span>{say("reader-hide")}</span></Button></div>}
+      footer={<div className="inspector-actions"><hr /><Button variant="quiet" className="inspector-action" label={say("reader-hide")} aria-expanded onPress={() => setReading(false)} /></div>}
       document={<Reader key={pdf.id} source={pdf} title={reference.title || reference.key} page={reference.locator?.label === "page" ? reference.locator.value : ""}
         onPageChange={(value) => onChange(reference, { locator: value ? { label: "page", value, input: "editor" } : null })} />}
       onKeyDown={removeKeys}>{fields}</Inspector>;
   }
   return <Popover triggerRef={anchor} label={reference ? say("citation-details-details", { reference: reference.title || reference.key }) : say("picker-citation-details")}
     className="citation-popover" onClose={onClose}>
-    <section ref={attach} id={id} className="ui-popover-body" onKeyDown={removeKeys}>
+    <section ref={body} id={id} className="ui-popover-body" onKeyDown={removeKeys}>
       <header className="ui-popover-heading">
         <h2><bdi dir="auto">{reference ? reference.title || heading : heading}</bdi></h2>
         {byline && <p><bdi dir="auto">{byline}</bdi></p>}

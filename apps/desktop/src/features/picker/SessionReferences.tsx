@@ -1,3 +1,4 @@
+import { Status } from "../../ui/Status";
 import { renderDisplay } from "../../format/display";
 import type * as nativeApi from "../../api";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -112,14 +113,14 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
         <Button size="small" label={say("session-remove")} aria-label={say("session-remove-named", { name: isolate(tileName(row)) })} onPress={() => edit({ kind: "remove", id: row.id })} />
       </Row>)}
     </Group>}
-    {view && view.absent > 0 && <p role="status">{say("session-absent", { count: view.absent })}</p>}
-    {view?.overflowed && <p role="status">{say("session-full")}</p>}
+    {view && view.absent > 0 && <Status as="p">{say("session-absent", { count: view.absent })}</Status>}
+    {view?.overflowed && <Status as="p">{say("session-full")}</Status>}
     {bibliography && <Section title={say("session-bibliography-in", { style: isolate(name) })} id="session-bibliography" level={3}>
       <SheetOutput>{renderDisplay(bibliography.display)}</SheetOutput>
-      {bibliography.warnings.map((warning) => <p key={warning} role="status">{warning}</p>)}
-      {bibliography.left_out.length > 0 && <p role="status">{say("session-left-out", { names: bibliography.left_out.map(isolate).join(", ") })}</p>}
+      {bibliography.warnings.map((warning) => <Status as="p" key={warning}>{warning}</Status>)}
+      {bibliography.left_out.length > 0 && <Status as="p">{say("session-left-out", { names: bibliography.left_out.map(isolate).join(", ") })}</Status>}
     </Section>}
-    {problem && <p role="alert">{problem}</p>}
-    {status && <p role="status">{status}</p>}
+    {problem && <Status as="p" role="alert">{problem}</Status>}
+    {status && <Status as="p">{status}</Status>}
   </Sheet>;
 }

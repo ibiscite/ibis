@@ -38,7 +38,7 @@ const modes = [{ suffix: "", media: {} }, { suffix: "-forced", media: { forcedCo
 const failures = [];
 let pictures = 0;
 for (const scenario of scenarios) for (const mode of modes) for (const theme of ["light", "dark"]) {
-  if (mode.suffix && !contrastScenarios.has(scenario)) continue;
+  if (mode.suffix === "-forced" && !contrastScenarios.has(scenario)) continue;
   const page = await load(size(scenario));
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -56,6 +56,7 @@ for (const scenario of scenarios) for (const mode of modes) for (const theme of 
   await page.screenshot({ path: `${out}/${scenario}-${theme}${mode.suffix}.png` });
   // The layout rules (canvas/geometry.ts) hold in every mode and theme.
   for (const broken of await page.evaluate(() => window.IbisCanvas.geometry())) errors.push(`layout ${broken}`);
+  for (const broken of await page.evaluate(() => window.IbisCanvas.contrast())) errors.push(`contrast ${broken}`);
   pictures++;
   if (errors.length) failures.push(`${scenario}/${theme}${mode.suffix}: ${errors[0]}`);
   await page.close();

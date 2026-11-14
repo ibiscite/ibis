@@ -15,7 +15,7 @@ test.each(["Enter", " "])("warning dismissal uses shared states and activates on
   const button = screen.getByRole("button", { name: "Dismiss copy warnings" });
   expect(button.getAttribute("data-variant")).toBe("secondary");
   expect(button.getAttribute("data-size")).toBe("small");
-  expect(screen.getByRole("status", { name: "" }).textContent).toContain(copied.text);
+  expect(screen.getByRole("status", { name: "Copied" }).textContent).toContain(copied.text);
   expect(screen.getByLabelText("Copy warnings").textContent).toBe(copied.warnings[0]);
   button.focus();
   const code = key === " " ? "Space" : "Enter";
@@ -27,16 +27,16 @@ test.each(["Enter", " "])("warning dismissal uses shared states and activates on
 
 test("clean confirmations have no dismissal action or warning list", () => {
   render(<Notices {...props} copied={{ ...copied, warnings: [] }} />);
-  expect(screen.getByRole("status", { name: "" })).toBeTruthy();
+  expect(screen.getByRole("status", { name: "Copied" })).toBeTruthy();
   expect(screen.queryByRole("button")).toBeNull();
   expect(screen.queryByLabelText("Copy warnings")).toBeNull();
 });
 
 test("retiring a confirmation leaves its warnings without announcing Copied again", () => {
   const { rerender } = render(<Notices {...props} />);
-  expect(screen.getByRole("status", { name: "" }).textContent).toContain("Copied");
+  expect(screen.getByRole("status", { name: "Copied" }).textContent).toContain("Copied");
   rerender(<Notices {...props} confirmation={null} />);
-  expect(screen.queryByRole("status", { name: "" })).toBeNull();
+  expect(screen.queryByRole("status", { name: "Copied" })).toBeNull();
   expect(screen.getByLabelText("Copy warnings").textContent).toBe(copied.warnings[0]);
   expect(screen.queryByText("Copied")).toBeNull();
 });

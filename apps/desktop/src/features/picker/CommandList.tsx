@@ -1,3 +1,4 @@
+import { Status } from "../../ui/Status";
 import { Icon } from "../../icons";
 import { keyLabel } from "../../keys";
 import { say } from "../../i18n";
@@ -16,11 +17,11 @@ export function CommandList({ commands, active, hoverAllowed, onRun }: {
 }) {
   const mac = currentPlatform() === "macos";
   // The heading sits in the frame's line, as the results' does, where a notice can stand in for it.
-  if (!commands.length) return <FrameHeading><div className="ui-list-heading" role="status"><span>{say("picker-no-commands")}</span></div></FrameHeading>;
+  if (!commands.length) return <FrameHeading><Status as="div" className="ui-list-heading"><span>{say("picker-no-commands")}</span></Status></FrameHeading>;
   return <>
     <FrameHeading><div className="ui-list-heading" aria-hidden="true"><span>{say("picker-commands")}</span></div></FrameHeading>
     <ul id="results" role="listbox" aria-label={say("picker-commands")}>
-      {commands.map((command, i) => <Option key={command.id} id={`command-${i}`} className="command-row" role="option" aria-selected={i === active}
+      {commands.map((command, i) => <Option key={command.id} id={`command-${i}`} aria-label={command.title} className="command-row" role="option" aria-selected={i === active}
         aria-keyshortcuts={command.keys || undefined} aria-description={command.about} data-density="compact" data-active={i === active || undefined}
         hoverAllowed={hoverAllowed} onClick={() => onRun(command)} icon={<span className="result-tile"><Icon name={command.icon} size="tile" /></span>}>
         <span className="result-body">

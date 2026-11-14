@@ -50,7 +50,7 @@ test("typing searches names and their synonyms, reaching rows kept for searching
   expect(screen.getByText("No matching formats")).toBeTruthy();
 });
 
-test("Esc returns the keyboard to what opened it; Tab leaves for the caller to place", () => {
+test("Esc returns to its opener; Tab and Shift+Tab visit the footer in visual order", () => {
   const { onClose, field } = open();
   fireEvent.keyDown(window, { key: "Escape" });
   expect(onClose).toHaveBeenCalledWith("dismiss");
@@ -58,7 +58,14 @@ test("Esc returns the keyboard to what opened it; Tab leaves for the caller to p
   cleanup();
   const second = open();
   fireEvent.keyDown(second.field, { key: "Tab" });
-  expect(second.onClose).toHaveBeenCalledWith("tab");
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Use" }));
+  fireEvent.keyDown(document.activeElement!, { key: "Tab" });
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Back" }));
+  fireEvent.keyDown(document.activeElement!, { key: "Tab" });
+  expect(document.activeElement).toBe(second.field);
+  fireEvent.keyDown(second.field, { key: "Tab", shiftKey: true });
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Back" }));
+  expect(second.onClose).not.toHaveBeenCalled();
   void field;
 });
 

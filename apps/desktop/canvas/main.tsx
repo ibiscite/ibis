@@ -16,6 +16,7 @@ import { isStyle } from "../src/format/outputs";
 import { setPlatform } from "../src/nativeAppearance";
 export { setNativeAccent } from "../src/nativeAccent";
 export { geometry } from "./geometry";
+export { contrast } from "./contrast";
 import { audit as runAudit } from "./audit";
 import { SettingsApp } from "../src/settings/SettingsApp";
 import { demoApi } from "../src/settings/demo";
@@ -246,7 +247,7 @@ function States({ theme }: { theme: Theme }) {
   // render prop, so the picture is the real rule.
   const labels = ["canvas-hovered", "canvas-pressed", "canvas-focused"] as const;
   return <div className="canvas-parts"><Section id="canvas-states"><Group>{(["hovered", "pressed", "focus-visible"] as const).map((state, index) => <Row key={state} id={`canvas-${state}`} label={englishMessages.text(labels[index]!)}>
-    <Button variant="secondary" render={(native) => <button {...native} {...{ [`data-${state}`]: true }} />}>Check Now<KeyCaps accelerator="CmdOrCtrl+K" /></Button>
+    <Button variant="secondary" aria-label={englishMessages.text("about-check")} render={(native) => <button {...native} {...{ [`data-${state}`]: true }} />}>{englishMessages.text("about-check")}<KeyCaps accelerator="CmdOrCtrl+K" /></Button>
   </Row>)}</Group></Section></div>;
 }
 

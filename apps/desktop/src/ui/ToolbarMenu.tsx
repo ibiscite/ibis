@@ -90,7 +90,7 @@ export function ToolbarMenu({ buttonRef, disabled, label, value, heading, note, 
     }}>
     <MenuTrigger isOpen={open} onOpenChange={(next) => changeOpen(next)}>
       <PopupButton ref={button} isDisabled={disabled} className={`toolbar-menu-button ${drawn?.className ?? ""}`} size={drawn ? "small" : undefined} variant={drawn?.quiet ? "quiet" : undefined} title={drawn?.title} aria-label={drawn?.label ?? `${label} ${value}`}>{drawn?.content ?? value}</PopupButton>
-      <Floating kind="menu" open={open} onClose={(event) => changeOpen(false, event ? "dismiss" : "command")} ref={wholeRows} className="menu-popover toolbar-menu-popover ui-overlay" data-anchor={placement === "bottom start" ? "field" : undefined} data-named={named || undefined}
+      <Floating kind="menu" open={open} triggerRef={button} onClose={(event) => changeOpen(false, event ? "dismiss" : "command")} ref={wholeRows} className="menu-popover toolbar-menu-popover ui-overlay" data-anchor={placement === "bottom start" ? "field" : undefined} data-named={named || undefined}
         // [C21] Never narrower than its button: React Aria measures the trigger.
         style={placement === "bottom start" ? { minWidth: "min(var(--trigger-width), calc(100vw - 2 * var(--inset)))" } : undefined} placement={renderedPlacement} offset={4} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
         {heading && <p className="ui-list-heading menu-heading toolbar-menu-heading" aria-hidden="true">{heading}</p>}

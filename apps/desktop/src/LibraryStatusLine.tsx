@@ -1,3 +1,4 @@
+import { Status } from "./ui/Status";
 import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 import type { LibraryStatus, ZoteroLibrary } from "./bindings";
 import { isolate, say } from "./i18n";
@@ -93,11 +94,10 @@ export function LibraryStatusLine({ library, groupName, menu, action, failure, c
     {separated && state && <bdi className="library-separator">{" · "}</bdi>}
     {state && <bdi className="library-state">{state}</bdi>}
   </>;
-  const liveProps = { role: "status", "aria-label": say("picker-library-status"), "aria-live": announces ? "polite" : "off", "aria-atomic": true } as const;
   const content = <>
         {(health === "look" || health === "stop") && <span className="status-dot" data-health={health} aria-hidden="true" />}
         <bdi className="library-words" dir="ltr">
-          <span className="library-name" dir="ltr" {...(!menu && liveProps)}>{words}</span>
+          {menu ? <span className="library-name" dir="ltr">{words}</span> : <Status as="span" className="library-name" dir="ltr" label={say("picker-library-status")} muted={!announces}>{words}</Status>}
           {age && <bdi className="library-age" dir="auto" aria-hidden="true"> · {age}</bdi>}
         </bdi>
     </>;
@@ -115,12 +115,12 @@ export function LibraryStatusLine({ library, groupName, menu, action, failure, c
       {/* Button descendants can become presentational in native trees. Keep
           exactly one live announcement beside it, with a stable button name
           and no ticking age. A paragraph keeps its text in WebKitGTK. */}
-      {menu && <div className="visually-hidden library-announcement"><p className="library-name" dir="ltr" {...liveProps}>{words}</p></div>}
+      {menu && <div className="visually-hidden library-announcement"><Status className="library-name" dir="ltr" label={say("picker-library-status")} muted={!announces}>{words}</Status></div>}
       {/* The visible age and the hover detail, read once by screen readers; not live.
           A <p>, like the state's <bdi>: WebKitGTK drops the text of a plain span
           that sits beside other exposed elements, so Orca would not hear it. */}
       {spoken && <p className="visually-hidden library-detail">{spoken}</p>}
-      {failure && <p className="library-action-error" role="alert">{failure}</p>}
+      {failure && <Status as="p" className="library-action-error" role="alert">{failure}</Status>}
     </>
   );
 }

@@ -12,7 +12,6 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 .shelf-leading { flex: 0 0 var(--tile); display: flex; justify-content: end; margin-inline-end: var(--row-gap); }
 .shelf-leading[draggable] { cursor: grab; -webkit-user-drag: element; }
 .shelf-mark { display: block; flex: none; height: var(--space-5); width: auto; color: var(--scarlet); }
-.shelf-output[data-state="pending"] .shelf-mark { opacity: .45; }
 [dir="rtl"] .shelf-mark { transform: scaleX(-1); }
 .shelf-mark-close { transform: rotate(180deg); }
 [dir="rtl"] .shelf-mark-close { transform: scaleX(-1) rotate(180deg); }

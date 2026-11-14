@@ -1,3 +1,4 @@
+import { Status } from "../ui/Status";
 import { useEffect, useRef, useState } from "react";
 import type { FormatSettingsView } from "../bindings";
 import { outputName, listedOutput } from "../format/outputs";
@@ -72,8 +73,8 @@ export function FormatSettings({ settings, highlighted }: { settings: ReturnType
     {openSettingsFile && <Section id="settings-file"><Group><Row id="open-settings-file" {...rowDetails("open-settings-file", text)} highlighted={highlighted === "open-settings-file"}>
       <Button onPress={openSettingsFile}>{text("settings-open-file")}</Button>
     </Row></Group></Section>}
-    {problem && <p role="alert">{text("settings-read-failed")}</p>}
-    {forgetFailed && <p role="alert">{text("settings-forget-failed")} <Button size="small" onPress={dismissForget}>{text("picker-dismiss")}</Button></p>}
-    {openFailed && <p role="alert">{text("settings-open-failed")} <Button size="small" onPress={dismissOpen}>{text("picker-dismiss")}</Button></p>}
+    {problem && <Status as="p" role="alert">{text("settings-read-failed")}</Status>}
+    {forgetFailed && <Status as="p" role="alert">{text("settings-forget-failed")} <Button size="small" onPress={dismissForget}>{text("picker-dismiss")}</Button></Status>}
+    {openFailed && <Status as="p" role="alert">{text("settings-open-failed")} <Button size="small" onPress={dismissOpen}>{text("picker-dismiss")}</Button></Status>}
   </>;
 }

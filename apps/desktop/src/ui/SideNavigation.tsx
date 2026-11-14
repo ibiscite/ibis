@@ -1,3 +1,4 @@
+import { Status } from "./Status";
 import type { ComponentPropsWithRef, ReactNode, RefObject } from "react";
 import { Header, ListBox, ListBoxItem, ListBoxSection } from "react-aria-components";
 import "./SideNavigation.css";
@@ -45,9 +46,9 @@ export function SideResults({ label, status, empty, results, onChoose, listRef }
   onChoose: (id: string) => void;
   listRef?: RefObject<HTMLDivElement | null>;
 }) {
-  if (!results.length) return <p className="ui-side-navigation-empty" role="status">{empty}</p>;
+  if (!results.length) return <Status as="p" className="ui-side-navigation-empty">{empty}</Status>;
   return <>
-    <p className="visually-hidden" role="status">{status}</p>
+    <Status as="p" className="visually-hidden">{status}</Status>
     <ListBox ref={listRef} className="ui-side-navigation" aria-label={label} selectionMode="none" onAction={(key) => onChoose(String(key))}>
       {[...new Set(results.map((result) => result.page))].map((page) => <ListBoxSection key={page} id={page} className="ui-side-results-group">
         <Header className="ui-list-heading ui-side-results-heading">{results.find((result) => result.page === page)!.pageLabel}</Header>

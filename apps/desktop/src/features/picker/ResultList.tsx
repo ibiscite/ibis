@@ -122,6 +122,7 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
     <Option hoverAllowed={hoverAllowed}
       id={`result-${i}`}
       role="option"
+      aria-labelledby={`result-label-${i}`}
       aria-selected={active}
       aria-describedby={r.recent ? `recent-${r.recent}` : undefined}
       aria-keyshortcuts={pickKeys && ariaKeys(pickKeys, isMac)}
@@ -150,7 +151,7 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
         </PointerButton>
       </span><KeyMark keys={pickKeys} /></>}
     >
-      <span className="result-body" title={r.key || undefined}>
+      <span id={`result-label-${i}`} className="result-body" title={r.key || undefined}>
         <span className="result-line">
           <strong className="result-title">{r.sample && <><bdi>{say("setup-sample-label")}</bdi>{" · "}</>}{r.title}</strong>
           {/* Spoken pauses: the parts are separate on screen but one accessible name. */}

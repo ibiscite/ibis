@@ -1,4 +1,5 @@
-import { useState, type RefObject } from "react";
+import { Status } from "../../ui/Status";
+import { useRef, useState, type RefObject } from "react";
 import { keysFor } from "../../keys";
 import type { AppPaste } from "../../api";
 import { isStyle, keyOutputs, listedOutput, outputName, outputOf, previewOf, styleOutputs, type OutputChoice, type OutputId } from "../../format/outputs";
@@ -83,11 +84,12 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
     { id: "key-formats-all", label: say("picker-key-formats"), items: keyOutputs.map(row), only: "searching" },
     { id: "citation-styles-all", label: say("picker-formatted-styles"), items: styleOutputs.map(row), only: "searching" },
   ];
+  const localButton = useRef<HTMLButtonElement>(null);
+  const opener = buttonRef ?? localButton;
   const close = (reason: PaletteClose) => {
     setOpen(false);
     onOpenChange?.(false, reason);
-    // A pick, Esc or Tab returns to Search, as a pop-up does; a command clearing the way decides itself.
-    if (reason !== "command") searchRef.current?.focus({ preventScroll: true });
+    if (reason === "action") searchRef.current?.focus({ preventScroll: true });
   };
   const choose = (key: string) => {
     close("action");
@@ -100,13 +102,13 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
     }
   };
   return <>
-    <span role="status" aria-label={say("picker-format-label")} className="visually-hidden">{`${name}. ${why}`}</span>
-    <PopupButton ref={buttonRef} keys={keysFor("format")} isDisabled={disabled} className="toolbar-menu-button"
+    <Status as="span" label={say("picker-format-label")} className="visually-hidden">{`${name}. ${why}`}</Status>
+    <PopupButton ref={opener} keys={keysFor("format")} isDisabled={disabled} className="toolbar-menu-button"
       aria-label={`${say("picker-format-label")} ${value}`} aria-expanded={open} aria-haspopup="dialog"
       onPress={() => { if (open) close("dismiss"); else { setOpen(true); onOpenChange?.(true); } }}
       // ↓ opens it too, as on every pop-up button.
       onKeyDown={(event) => { if (event.key === "ArrowDown" && !open && !disabled) { setOpen(true); onOpenChange?.(true); } else event.continuePropagation(); }}>{value}</PopupButton>
-    {open && <Palette id="format-palette" title={say("picker-format-title")} subtitle={whose} placeholder={say("palette-search-formats")}
+    {open && <Palette id="format-palette" invoker={opener} title={say("picker-format-title")} subtitle={whose} placeholder={say("palette-search-formats")}
       sections={sections} initial={back ? "back" : format} onAction={choose} onClose={close} empty={say("palette-no-formats")}
       actionLabel={(item) => item.back || listedOutput(item.id) ? say(pick === "paste" ? "palette-use-this-paste" : pick === "default" || !app ? "palette-use-default" : "palette-use-for-app", { app: writing?.name ?? app ?? "" }) : say("palette-run")}
       description={`${why} ${next}`.trim()} preview={(item) => <FormatPreviewPane output={listedOutput(item.back ? back : item.id)} preview={preview ?? null} />} />}

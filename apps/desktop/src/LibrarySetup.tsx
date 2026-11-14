@@ -1,3 +1,4 @@
+import { Status } from "./ui/Status";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { commands, ShortcutStatus, Sources, SystemIcon, ZoteroPresence } from "./bindings";
 import { ChoiceIcon } from "./icons";
@@ -166,7 +167,7 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty, shortcut,
             {shortcutNote && <span className="welcome-note">{shortcutNote}</span>}
           </> : undefined} />}
       {/* Search progress and outcome, announced once; the row shows the same words. */}
-      {findSources && search > 0 && <p className="visually-hidden" role="status">{outcome}</p>}
+      {findSources && search > 0 && <Status as="p" className="visually-hidden">{outcome}</Status>}
     </div>
   );
 }

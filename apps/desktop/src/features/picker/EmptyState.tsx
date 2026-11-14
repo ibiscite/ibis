@@ -1,3 +1,4 @@
+import { Status } from "../../ui/Status";
 import { useEffect, useState, type ReactNode } from "react";
 import type { EmptyLibraryChoices, SourceChoice } from "../../LibrarySetup";
 import type { LibraryStatus, ZoteroProfiles } from "../../api";
@@ -35,7 +36,7 @@ function LibraryProgress({ library }: { library: LibraryStatus }) {
   if (!visible) return null;
   const progress = library.state === "reloading" ? libraryMessages.reloading : libraryMessages.opening;
   const name = library.name || null;
-  return <div className="empty-opening" role="status" aria-live="polite">
+  return <Status as="div" className="empty-opening">
     <IbisMark className="opening-mark" />
     <p className="opening-title" aria-hidden="true" dir="auto">{progress(shortName(name))}</p>
     <p className="opening-line">{say("setup-opening-line")}</p>
@@ -44,7 +45,7 @@ function LibraryProgress({ library }: { library: LibraryStatus }) {
     <IndeterminateProgress className="opening-progress update-progress" label={progress(name)}>
       <div className="update-track" aria-hidden="true"><div /></div>
     </IndeterminateProgress>
-  </div>;
+  </Status>;
 }
 
 /** Every choice row has a help line [C12]: what opening the source does here. */
@@ -124,7 +125,7 @@ function Recovery({ library, onFind, onReload, setup, source, zotero }: {
   return (
     <div className="empty-state">
       {/* Announced once, as the footer's live region does for other states. */}
-      <p className="visually-hidden" role="alert">{line ? `${title}. ${line}` : title}</p>
+      <Status as="p" className="visually-hidden" role="alert">{line ? `${title}. ${line}` : title}</Status>
       <ChoiceList title={title} line={line} choices={choices}
         onChoose={(id) => {
           const profile = id.startsWith("profile-") ? profiles?.[Number(id.slice("profile-".length))] : undefined;

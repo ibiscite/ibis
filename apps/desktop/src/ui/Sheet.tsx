@@ -6,13 +6,12 @@ import { ViewFrame } from "./ViewFrame";
 import { useScrollEdges } from "./ScrollArea";
 import "./Layout.css";
 import "./Sheet.css";
+import { tabStops } from "./focus";
 
 /** One of a sheet's footer actions. The primary one runs on Enter too, unless a control in the body has the keyboard. */
 export type SheetAction = { label: string; onPress: () => void; disabled?: boolean; primary?: boolean };
 const footerAction = (action: SheetAction) => <Button key={action.label} variant={action.primary ? "action" : "quiet"} size="small"
   label={action.label} keys={action.primary ? "Enter" : undefined} isDisabled={action.disabled} onPress={action.onPress} />;
-
-const FOCUSABLE = "button:not([disabled]):not([tabindex='-1']), input:not([disabled]), [tabindex='0']";
 
 /** A sheet's owner can retain its place alongside its draft, without keeping I/O mounted. */
 export type SheetMemory = { focus: string | null; selection?: [number | null, number | null]; scroll: number };
@@ -62,7 +61,7 @@ export function Sheet({ title, closeLabel, description, actions, leadingActions,
     if (!dialog.current?.contains(focused) || (focused as HTMLButtonElement).disabled) dialog.current?.focus();
     const saved = memory?.current;
     if (saved) {
-      const target = [...dialog.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []].find((node) => focusName(node) === saved.focus);
+      const target = (dialog.current ? tabStops(dialog.current) : []).find((node) => focusName(node) === saved.focus);
       if (saved.focus !== null && !target) return; // The draft's controls may follow an asynchronous read.
       target?.focus({ preventScroll: true });
       if (target instanceof HTMLInputElement && saved.selection && saved.selection[0] !== null && saved.selection[1] !== null) target.setSelectionRange(saved.selection[0], saved.selection[1]);
@@ -80,11 +79,6 @@ export function Sheet({ title, closeLabel, description, actions, leadingActions,
         if (primary && !primary.disabled && !event.repeat) { event.preventDefault(); primary.onPress(); }
         return;
       }
-      if (event.key !== "Tab") return;
-      const focusable = [...(dialog.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])];
-      const at = focusable.indexOf(document.activeElement as HTMLElement);
-      event.preventDefault();
-      focusable[at < 0 ? event.shiftKey ? focusable.length - 1 : 0 : (at + (event.shiftKey ? -1 : 1) + focusable.length) % focusable.length]?.focus();
     }}>
     <div ref={body} className="ui-sheet-body scroll-area" tabIndex={0} role="group" aria-labelledby={titleId} aria-busy={busy || undefined}>
       <div className="ui-sheet-content">

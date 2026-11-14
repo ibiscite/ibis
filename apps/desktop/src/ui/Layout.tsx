@@ -1,3 +1,4 @@
+import { Status } from "./Status";
 import type { ReactNode } from "react";
 import { Button as AriaButton } from "react-aria-components";
 import { Icon } from "../icons";
@@ -58,7 +59,7 @@ export function Row({ id, label, description, children, problem, highlighted, pe
       </span>
     </span>
     {children}
-    {problem && <p className="ui-row-problem" role="alert">{problem}</p>}
+    {problem && <Status as="p" className="ui-row-problem" role="alert">{problem}</Status>}
   </Element>;
 }
 
@@ -97,5 +98,6 @@ export function Buttons({ children, end = false }: { children: ReactNode; end?: 
 
 /** Quiet words under a row or a section: a note, a status, a problem. */
 export function Note({ children, role, problem = false, list = false }: { children: ReactNode; role?: "status" | "alert"; problem?: boolean; list?: boolean }) {
-  return list ? <ul className="ui-note">{children}</ul> : <p className="ui-note" role={role} data-problem={problem || undefined}>{children}</p>;
+  return list ? <ul className="ui-note">{children}</ul> : role ? <Status className="ui-note" role={role} data-problem={problem || undefined}>{children}</Status>
+    : <p className="ui-note" data-problem={problem || undefined}>{children}</p>;
 }

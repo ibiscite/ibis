@@ -115,12 +115,12 @@
      (docs/design/foundations.md, "Exact macOS values"), raised only where Ibis's floors need it.
      System colours sit underneath for webviews without light-dark(). */
   --surface: Canvas; --surface-overlay: Canvas;
-  --text: CanvasText; --text-secondary: CanvasText; --text-tertiary: CanvasText; --text-disabled: GrayText;
+  --text: CanvasText; --text-secondary: CanvasText; --text-tertiary: CanvasText; --text-disabled: var(--text-secondary);
   --separator: GrayText; --stroke-field: transparent;
   --accent: Highlight; --accent-text: var(--accent); --text-on-accent: HighlightText;
   /* Rings and marks drawn in the accent, with no text on them: they need 3:1, never 4.5:1 under white. */
   --accent-mark: var(--accent);
-  --selected: Highlight; --selected-text: HighlightText; --selected-text-secondary: currentColor;
+  --selected: Highlight; --selected-text: HighlightText; --selected-text-secondary: var(--selected-text);
   --text-placeholder: var(--text-secondary);
   --ring: var(--accent-text);
   --scarlet: CanvasText; --on-scarlet: var(--white);
@@ -148,7 +148,7 @@
   /* Only macOS draws its window buttons over the content (settings_window.rs). */
   --titlebar-height: 0px;
   --sidebar-width: min(12.5rem, 26%);
-  --page-general: #8e8e93; --page-look: #ff9f0a; --page-citations: #0a84ff; --page-shortcuts: #5e5ce6; --page-about: var(--page-general);
+  --page-general: #8e8e93; --page-look: #9b6500; --page-citations: #0a84ff; --page-shortcuts: #5e5ce6; --page-about: var(--page-general);
   --highlight: var(--accent-wash);
   /* Previews: the real part at one size each. The window picture keeps Medium's shape. */
   --preview-window-w: 45rem; --preview-window-h: 30rem;
@@ -169,8 +169,8 @@
 @supports (color: light-dark(white, black)) {
   :root {
     --scarlet: light-dark(var(--ibis), var(--ibis-dark));
-    --status-ok: light-dark(#34c759, #30d158); --status-warning: light-dark(#ffcc00, #ffd600); --status-error: light-dark(#ff383c, #ff4245);
-    --accent: #007aff; --accent-text: light-dark(#0068da, #419cff);
+    --status-ok: light-dark(#1a7f37, #5bdf7d); --status-warning: light-dark(#8a6400, #ffe14c); --status-error: light-dark(#b91c35, #ff8b85);
+    --accent: #007aff; --accent-text: light-dark(#004fa8, #96ccff);
     --selected: light-dark(#0064e1, #0059d1); --selected-text: #fff; --text-on-accent: var(--selected-text);
     --selected-text-secondary: var(--selected-text);
   }
@@ -184,10 +184,10 @@
       --surface-overlay: light-dark(#f6f6f7, #2c2c2e);
       --text: light-dark(rgb(0 0 0 / 84.7%), rgb(255 255 255 / 84.7%));
       /* Darker than Apple's 50% in light: without vibrancy behind text it fell to 3.8:1 on the glass. */
-      --text-secondary: light-dark(rgb(0 0 0 / 60%), rgb(255 255 255 / 54.9%));
-      --text-tertiary: light-dark(rgb(0 0 0 / 25.9%), rgb(255 255 255 / 24.7%));
+      --text-secondary: light-dark(rgb(0 0 0 / 60%), rgb(255 255 255 / 66%));
+      --text-tertiary: var(--text-secondary);
 
-      --text-disabled: light-dark(rgb(0 0 0 / 24.7%), rgb(255 255 255 / 24.7%));
+      --text-disabled: var(--text-secondary);
       --separator: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 12%));
       --fill-1: light-dark(rgb(0 0 0 / 9.8%), rgb(255 255 255 / 9.8%));
       --fill-2: light-dark(rgb(0 0 0 / 7.8%), rgb(255 255 255 / 7.8%));
@@ -241,7 +241,7 @@
     --shadow-card: none; --shadow-overlay: none; --shadow-toast: none; --shadow-thumb: none;
     --surface: Canvas; --surface-overlay: Canvas; --surface-grouped: Canvas;
     --text: CanvasText; --text-secondary: CanvasText; --text-tertiary: CanvasText; --separator: CanvasText; --stroke-field: CanvasText;
-    --selected: Highlight; --selected-text: HighlightText; --selected-text-secondary: currentColor;
+    --selected: Highlight; --selected-text: HighlightText; --selected-text-secondary: var(--selected-text);
     --ring: CanvasText; --ring-offset: 2px; --scrollbar-thumb: CanvasText;
     --scarlet: CanvasText; --on-scarlet: Canvas;
     --status-ok: CanvasText; --status-warning: CanvasText; --status-error: CanvasText;
@@ -260,7 +260,7 @@
     :root, :root[data-platform] {
       --status-ok: light-dark(#1a7f37, #5bdf7d);
       --status-warning: light-dark(#8a6400, #ffe14c);
-      --status-error: light-dark(#b91c35, #ff6961);
+      --status-error: light-dark(#b91c35, #ff8b85);
     }
   }
 }
@@ -274,7 +274,7 @@
 @supports (color: light-dark(white, black)) {
   @media (prefers-contrast: no-preference) and (forced-colors: none) {
     :root[data-appearance][data-accent="ibis"]:not(.notice-window) {
-      --accent: light-dark(var(--ibis), var(--ibis-dark)); --accent-text: var(--accent);
+      --accent: light-dark(var(--ibis), var(--ibis-dark)); --accent-text: light-dark(color-mix(in srgb, var(--ibis) 85%, black), color-mix(in srgb, var(--ibis-dark) 45%, white));
       --selected: var(--ibis); --primary: var(--selected); --selected-text: #fff; --text-on-accent: var(--selected-text);
     }
   }
@@ -316,7 +316,7 @@
   --inspector-width: 18rem; --inspector-column: 15rem;
   /* Measured from NSSegmentedControl: the chosen fill lands at 19% of the text colour. */
   --segment-selected: color-mix(in srgb, var(--text) 12%, transparent);
-  --primary: var(--accent);
+  --primary: var(--selected);
   --accent-hover: color-mix(in srgb, var(--primary) 90%, black);
   --accent-pressed: color-mix(in srgb, var(--primary) 80%, black);
 }
