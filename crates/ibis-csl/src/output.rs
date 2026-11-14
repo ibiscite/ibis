@@ -3,6 +3,20 @@ use ibis_core::contract::*;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
+pub(crate) fn document(json: &str, clusters: usize) -> Result<crate::DocumentResult, FormatError> {
+    let result: crate::DocumentResult = serde_json::from_str(json).map_err(|_| FormatError::InvalidRequest)?;
+    if result.clusters.len() != clusters
+        || result
+            .clusters
+            .iter()
+            .chain([&result.bibliography])
+            .any(|text| text.trim().is_empty() || unsupported_controls(text))
+    {
+        return Err(FormatError::InvalidRequest);
+    }
+    Ok(result)
+}
+
 #[derive(Deserialize)]
 #[serde(tag = "status", rename_all = "kebab-case", deny_unknown_fields)]
 enum Outputs {

@@ -272,6 +272,28 @@
     const converted = processorItems(request);
     if (!converted) return JSON.stringify({ status: "refused" });
     activeItems = new Map(converted.map((item) => [item.id, item]));
+    if (request.clusters) {
+      // A document owns one fresh registry. Isolated previews keep their warm,
+      // context-free engine, with no document numbering or disambiguation state.
+      const engine = new CSL.Engine({ retrieveLocale: __ibisLocaleXml, retrieveItem: (id) => activeItems.get(id), uppercase_subtitles: request.sentence_titles }, source, request.locale ?? undefined, request.locale !== null);
+      engine.opt.development_extensions.throw_on_empty = true;
+      engine.setOutputFormat("text");
+      try {
+        const clusters = [], previous = [];
+        for (const citation of request.clusters) {
+          const [report, updates] = engine.processCitationCluster(citation, previous, []);
+          if (report.citation_errors.length) return JSON.stringify({ status: "refused" });
+          for (const [index, text] of updates) clusters[index] = text;
+          previous.push([citation.citationID, citation.properties.noteIndex]);
+        }
+        const bibliography = engine.makeBibliography();
+        if (!bibliography || bibliography[0].bibliography_errors.length) return JSON.stringify({ status: "refused" });
+        return JSON.stringify({ clusters, bibliography: bibliography[1].map(oneLine).join("\n") });
+      } finally {
+        activeItems.clear();
+        literalLessThan = null;
+      }
+    }
     const key = JSON.stringify([request.style, request.locale, request.keep_order, request.sentence_titles]);
     let engine = engines.get(key);
     if (!engine) {

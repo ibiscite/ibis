@@ -9,29 +9,23 @@ pub(crate) struct Session {
     superscripts: BTreeMap<char, String>,
 }
 impl Session {
-    pub(crate) fn format(
+    pub(crate) fn format<T>(
         session: &mut Option<Self>,
-        prepared: &Prepared,
         limits: &Limits,
         control: &Control,
-    ) -> Result<ibis_core::contract::CitationResult, FormatError> {
+        run: impl Fn(&mut Self) -> Result<T, FormatError>,
+    ) -> Result<T, FormatError> {
         let reused = session.is_some();
         if session.is_none() {
             *session = Some(Self::new(limits, control)?);
         }
-        let result = session
-            .as_mut()
-            .ok_or(FormatError::Runtime)?
-            .run(prepared, limits, control);
+        let result = run(session.as_mut().ok_or(FormatError::Runtime)?);
         if reused && matches!(result, Err(FormatError::ResourceLimit)) && control.error().is_none() {
             // A warm session may have less headroom than a fresh one. Retry once
             // within the original cancellation/deadline and the same hard limits.
             *session = None;
             *session = Some(Self::new(limits, control)?);
-            return session
-                .as_mut()
-                .ok_or(FormatError::Runtime)?
-                .run(prepared, limits, control);
+            return run(session.as_mut().ok_or(FormatError::Runtime)?);
         }
         result
     }
@@ -79,9 +73,25 @@ impl Session {
         if prepared.empty {
             return Ok(output::refused(prepared));
         }
+        let json = self.render_bounded(&prepared.json, &prepared.xml, limits, control)?;
+        output::result(&json, prepared, &self.superscripts).inspect_err(|_| {
+            #[cfg(test)]
+            eprintln!("CSL failure phase=output class=validation");
+        })
+    }
+    pub(crate) fn document(
+        &mut self,
+        prepared: &crate::input::PreparedDocument,
+        limits: &Limits,
+        control: &Control,
+    ) -> Result<crate::DocumentResult, FormatError> {
+        let json = self.render_bounded(&prepared.json, &prepared.xml, limits, control)?;
+        output::document(&json, prepared.clusters)
+    }
+    fn render_bounded(&self, json: &str, xml: &str, limits: &Limits, control: &Control) -> Result<String, FormatError> {
         install_interrupt(&self.runtime, control);
         let json = self
-            .render(&prepared.json, &prepared.xml)
+            .render(json, xml)
             .map_err(|error| control.error().unwrap_or(error.public()))?;
         if let Some(error) = control.error() {
             return Err(error);
@@ -89,10 +99,7 @@ impl Session {
         if json.len() > limits.output_bytes {
             return Err(FormatError::ResourceLimit);
         }
-        output::result(&json, prepared, &self.superscripts).inspect_err(|_| {
-            #[cfg(test)]
-            eprintln!("CSL failure phase=output class=validation");
-        })
+        Ok(json)
     }
     fn render(&self, json: &str, xml: &str) -> Result<String, JsFailure> {
         self.context.with(|ctx| {
@@ -471,10 +478,14 @@ mod tests {
             });
             let mut session = Some(warm);
             assert!(
-                Session::format(&mut session, &synthetic(1, false), &limits, &control)
-                    .unwrap()
-                    .copy_content(1)
-                    .is_some()
+                Session::format(&mut session, &limits, &control, |session| session.run(
+                    &synthetic(1, false),
+                    &limits,
+                    &control
+                ))
+                .unwrap()
+                .copy_content(1)
+                .is_some()
             );
 
             // The fresh attempt keeps the same finite output budget; it cannot
@@ -484,7 +495,11 @@ mod tests {
                 ..limits
             };
             assert!(matches!(
-                Session::format(&mut session, &synthetic(1, false), &tiny, &control),
+                Session::format(&mut session, &tiny, &control, |session| session.run(
+                    &synthetic(1, false),
+                    &tiny,
+                    &control
+                )),
                 Err(FormatError::ResourceLimit)
             ));
         });

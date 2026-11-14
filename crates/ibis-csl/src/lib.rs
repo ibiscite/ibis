@@ -2,6 +2,7 @@
 //! The pinned Zotero processor has no filesystem, network or native-input API.
 
 mod catalog;
+mod document;
 mod input;
 mod locale;
 mod output;
@@ -9,6 +10,7 @@ mod runtime;
 mod service;
 
 pub use catalog::{Curated, LocaleEntry, Release, StyleEntry, StylePage, curated, files, styles};
+pub use document::{DocumentCluster, DocumentRequest, DocumentResult};
 use ibis_core::contract::{CitationForm, CitationRequest, CitationResult, OutputSpec, Snapshot};
 pub use service::{CancellationToken, FormatTask};
 use std::sync::Arc;
@@ -136,6 +138,24 @@ impl Formatter {
     pub fn submit(&self, snapshot: Arc<Snapshot>, request: CitationRequest) -> Result<FormatTask, FormatError> {
         self.service
             .submit(input::prepare(&snapshot, &request, self.service.limits())?)
+    }
+    /// Format every cluster and one bibliography atomically on the shared worker.
+    pub fn format_document(
+        &self,
+        snapshot: &Snapshot,
+        request: &DocumentRequest,
+    ) -> Result<DocumentResult, FormatError> {
+        self.service
+            .submit_document(input::prepare_document(snapshot, request, self.service.limits())?)?
+            .wait()
+    }
+    pub fn submit_document(
+        &self,
+        snapshot: Arc<Snapshot>,
+        request: DocumentRequest,
+    ) -> Result<FormatTask<DocumentResult>, FormatError> {
+        self.service
+            .submit_document(input::prepare_document(&snapshot, &request, self.service.limits())?)
     }
     /// Best-effort startup work. Call off the UI thread; no library is read and
     /// no citation is published. A foreground request retires late warm-ups.

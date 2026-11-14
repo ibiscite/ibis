@@ -1,4 +1,8 @@
-use crate::{FormatError, Limits, input::Prepared, runtime::Session};
+use crate::{
+    DocumentResult, FormatError, Limits,
+    input::{Prepared, PreparedDocument},
+    runtime::Session,
+};
 use ibis_core::contract::CitationResult;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -45,36 +49,61 @@ impl CancellationToken {
     }
 }
 
-pub struct FormatTask {
+pub struct FormatTask<T = CitationResult> {
     cancellation: CancellationToken,
-    receiver: Option<mpsc::Receiver<Result<CitationResult, FormatError>>>,
+    receiver: Option<mpsc::Receiver<Result<Formatted, FormatError>>>,
+    decode: fn(Formatted) -> Result<T, FormatError>,
 }
-impl FormatTask {
+impl<T> FormatTask<T> {
     pub fn cancel(&self) {
         self.cancellation.cancel();
     }
     pub fn cancellation(&self) -> CancellationToken {
         self.cancellation.clone()
     }
-    pub fn wait(mut self) -> Result<CitationResult, FormatError> {
-        self.receiver
+    pub fn wait(mut self) -> Result<T, FormatError> {
+        let output = self
+            .receiver
             .take()
             .ok_or(FormatError::Runtime)?
             .recv()
-            .map_err(|_| FormatError::Runtime)?
+            .map_err(|_| FormatError::Runtime)??;
+        (self.decode)(output)
     }
 }
-impl Drop for FormatTask {
+impl<T> Drop for FormatTask<T> {
     fn drop(&mut self) {
         self.cancel();
     }
 }
 
+enum Operation {
+    Citation(Prepared),
+    Document(PreparedDocument),
+}
+#[derive(Debug, PartialEq, Eq)]
+enum Formatted {
+    Citation(Box<CitationResult>),
+    Document(DocumentResult),
+}
+fn citation(output: Formatted) -> Result<CitationResult, FormatError> {
+    match output {
+        Formatted::Citation(result) => Ok(*result),
+        _ => Err(FormatError::Runtime),
+    }
+}
+fn document(output: Formatted) -> Result<DocumentResult, FormatError> {
+    match output {
+        Formatted::Document(result) => Ok(result),
+        _ => Err(FormatError::Runtime),
+    }
+}
+
 pub(crate) struct Job {
-    prepared: Prepared,
+    operation: Operation,
     cancellation: CancellationToken,
     deadline: Instant,
-    reply: mpsc::Sender<Result<CitationResult, FormatError>>,
+    reply: mpsc::Sender<Result<Formatted, FormatError>>,
 }
 #[derive(Default)]
 struct State {
@@ -85,7 +114,7 @@ struct State {
 }
 struct Active {
     cancelled: Arc<AtomicBool>,
-    reply: mpsc::Sender<Result<CitationResult, FormatError>>,
+    reply: mpsc::Sender<Result<Formatted, FormatError>>,
 }
 #[derive(Default)]
 struct Shared {
@@ -142,7 +171,13 @@ impl Service {
         &self.limits
     }
     pub(crate) fn submit(&self, prepared: Prepared) -> Result<FormatTask, FormatError> {
-        self.submit_with_clock(prepared, Instant::now)
+        self.submit_with_clock(Operation::Citation(prepared), citation, Instant::now)
+    }
+    pub(crate) fn submit_document(
+        &self,
+        prepared: PreparedDocument,
+    ) -> Result<FormatTask<DocumentResult>, FormatError> {
+        self.submit_with_clock(Operation::Document(prepared), document, Instant::now)
     }
     pub(crate) fn warm(&self, prepared: Prepared) -> Result<Option<FormatTask>, FormatError> {
         let mut state = self.shared.state.lock().map_err(|_| FormatError::Runtime)?;
@@ -151,15 +186,27 @@ impl Service {
         if state.foreground_seen {
             return Ok(None);
         }
-        self.enqueue(&mut state, prepared, Instant::now()).map(Some)
+        self.enqueue(&mut state, Operation::Citation(prepared), citation, Instant::now())
+            .map(Some)
     }
-    fn submit_with_clock(&self, prepared: Prepared, now: impl FnOnce() -> Instant) -> Result<FormatTask, FormatError> {
+    fn submit_with_clock<T>(
+        &self,
+        operation: Operation,
+        decode: fn(Formatted) -> Result<T, FormatError>,
+        now: impl FnOnce() -> Instant,
+    ) -> Result<FormatTask<T>, FormatError> {
         let mut state = self.shared.state.lock().map_err(|_| FormatError::Runtime)?;
-        let task = self.enqueue(&mut state, prepared, now())?;
+        let task = self.enqueue(&mut state, operation, decode, now())?;
         state.foreground_seen = true;
         Ok(task)
     }
-    fn enqueue(&self, state: &mut State, prepared: Prepared, now: Instant) -> Result<FormatTask, FormatError> {
+    fn enqueue<T>(
+        &self,
+        state: &mut State,
+        operation: Operation,
+        decode: fn(Formatted) -> Result<T, FormatError>,
+        now: Instant,
+    ) -> Result<FormatTask<T>, FormatError> {
         if self.shared.stopping.load(Ordering::Acquire) {
             return Err(FormatError::Runtime);
         }
@@ -172,7 +219,7 @@ impl Service {
         };
         let (reply, receiver) = mpsc::channel();
         state.queue.push_back(Job {
-            prepared,
+            operation,
             cancellation: cancellation.clone(),
             deadline: now + self.limits.timeout,
             reply,
@@ -182,6 +229,7 @@ impl Service {
         Ok(FormatTask {
             cancellation,
             receiver: Some(receiver),
+            decode,
         })
     }
 }
@@ -250,14 +298,20 @@ fn worker(shared: &Shared, limits: &Limits) {
         };
         let result = match control.error() {
             Some(error) => Err(error),
-            None if job.prepared.empty => Ok(crate::output::refused(&job.prepared)),
             None => {
                 #[cfg(test)]
                 if let Some((entered, release)) = shared.format_gate.lock().ok().and_then(|mut gate| gate.take()) {
                     let _ = entered.send(());
                     let _ = release.recv_timeout(TEST_GATE_LIMIT);
                 }
-                Session::format(&mut session, &job.prepared, limits, &control)
+                Session::format(&mut session, limits, &control, |session| match &job.operation {
+                    Operation::Citation(prepared) => session
+                        .run(prepared, limits, &control)
+                        .map(|result| Formatted::Citation(Box::new(result))),
+                    Operation::Document(prepared) => {
+                        session.document(prepared, limits, &control).map(Formatted::Document)
+                    }
+                })
             }
         };
         if result.is_err() {
@@ -428,7 +482,7 @@ mod waiting_tests {
             ..Limits::default()
         });
         let mut task = service
-            .submit_with_clock(empty_job(), || Instant::now() - timeout)
+            .submit_with_clock(Operation::Citation(empty_job()), citation, || Instant::now() - timeout)
             .unwrap();
         service.start_worker().unwrap();
         assert_eq!(

@@ -162,6 +162,52 @@ pub(crate) struct Prepared {
     pub empty: bool,
 }
 
+pub(crate) struct PreparedDocument {
+    pub json: String,
+    pub xml: Arc<str>,
+    pub clusters: usize,
+}
+
+pub(crate) fn prepare_document(
+    snapshot: &Snapshot,
+    document: &crate::DocumentRequest,
+    limits: &Limits,
+) -> Result<PreparedDocument, FormatError> {
+    let style = catalog::resolve(&document.style)?;
+    bounded_json(document, limits.input_bytes)?;
+    if document.clusters.iter().any(|cluster| {
+        cluster.items.is_empty()
+            || cluster.items.iter().any(|pick| {
+                pick.form.is_some_and(|form| form != CitationForm::Normal)
+                    || !pick.prefix.is_empty()
+                    || !pick.suffix.is_empty()
+            })
+    }) {
+        return Err(FormatError::InvalidRequest);
+    }
+    let request = CitationRequest {
+        items: document
+            .clusters
+            .iter()
+            .flat_map(|cluster| cluster.items.iter().cloned())
+            .collect(),
+        form: CitationForm::Normal,
+        keep_order: false,
+        strict: true,
+        output: OutputSpec::Csl {
+            style: document.style.clone(),
+        },
+        input_language: None,
+        output_locale: document.locale.clone(),
+    };
+    let prepared = prepare_with_style(snapshot, &request, limits, &style, Some(&document.clusters))?;
+    Ok(PreparedDocument {
+        json: prepared.json,
+        xml: prepared.xml,
+        clusters: document.clusters.len(),
+    })
+}
+
 /// Whether the requested style and locale exist, before any item is looked at.
 pub(crate) fn check_output(output: &OutputSpec, locale: Option<&str>) -> Result<(), FormatError> {
     let OutputSpec::Csl { style } = output else {
@@ -223,7 +269,7 @@ pub(crate) fn prepare(
     let OutputSpec::Csl { style } = &request.output else {
         return Err(FormatError::UnsupportedStyle);
     };
-    prepare_with_style(snapshot, request, limits, &*catalog::resolve(style)?)
+    prepare_with_style(snapshot, request, limits, &*catalog::resolve(style)?, None)
 }
 
 /// Compile only trusted formatting material, without waiting for a library.
@@ -253,6 +299,7 @@ fn prepare_with_style(
     request: &CitationRequest,
     limits: &Limits,
     style: &catalog::Resolved,
+    document: Option<&[crate::DocumentCluster]>,
 ) -> Result<Prepared, FormatError> {
     let traits = style.traits;
     let locale = request
@@ -286,7 +333,7 @@ fn prepare_with_style(
     // Reference entries when the style numbers them, or when every reference
     // asks for its entry, through the request's form or its own.
     let entry = |form: CitationForm| matches!(form, CitationForm::BibliographyOnly | CitationForm::Full);
-    let bibliography = traits.numeric
+    let bibliography = (document.is_none() && traits.numeric)
         || if request.items.is_empty() {
             entry(request.form)
         } else {
@@ -521,7 +568,28 @@ fn prepare_with_style(
         });
     }
     let language = locale.clone().unwrap_or_else(|| style.language.clone());
-    let json=String::from_utf8(bounded_json(&json!({"style":style.rules,"numeric":traits.numeric,"sentence_titles":style.sentence_titles,"items":items,"cites":cites,"affixes":affixes,"bibliography":bibliography,"keep_order":request.keep_order,"locale":locale}),limits.input_bytes)?).map_err(|_|FormatError::InvalidRequest)?;
+    if document.is_some()
+        && outcomes
+            .iter()
+            .any(|outcome| matches!(outcome, ItemOutcome::Refused { .. }))
+    {
+        return Err(FormatError::InvalidRequest);
+    }
+    let clusters = document.map(|clusters| {
+        let mut cites = cites.iter();
+        clusters
+            .iter()
+            .enumerate()
+            .map(|(index, cluster)| {
+                json!({
+                    "citationID":format!("ibis-cluster-{index}"),
+                    "citationItems":cites.by_ref().take(cluster.items.len()).collect::<Vec<_>>(),
+                    "properties":{"noteIndex":cluster.note_index},
+                })
+            })
+            .collect::<Vec<_>>()
+    });
+    let json=String::from_utf8(bounded_json(&json!({"style":style.rules,"numeric":traits.numeric,"sentence_titles":style.sentence_titles,"items":items,"cites":document.is_none().then_some(&cites),"clusters":clusters,"affixes":affixes,"bibliography":bibliography,"keep_order":request.keep_order,"locale":locale}),limits.input_bytes)?).map_err(|_|FormatError::InvalidRequest)?;
     // Each placeholder (in its cite and in the affix list) must be the only
     // place its sentinel occurs, or the bridge could write an affix into a
     // record's own text.
@@ -811,7 +879,7 @@ mod tests {
                 serde_json::from_value(json!({"items":[{"item":id}],"output":{"kind":"csl","style":name}})).unwrap();
             for form in [Normal, Full, AuthorOnly, YearOnly, Narrative] {
                 request.form = form;
-                let prepared = prepare_with_style(&snapshot, &request, &Limits::default(), &style).unwrap();
+                let prepared = prepare_with_style(&snapshot, &request, &Limits::default(), &style, None).unwrap();
                 let json: Value = serde_json::from_str(&prepared.json).unwrap();
                 assert_eq!(json["numeric"], numeric);
                 assert_eq!(json["bibliography"], numeric || form == Full);
@@ -834,7 +902,7 @@ mod tests {
             "<style><macro name='unused'><date variable='issued'/></macro><citation><sort><key macro='unused'/></sort><layout><text variable='locator'/></layout></citation><bibliography><layout><date variable='issued'/></layout></bibliography></style>",
         );
         let request = serde_json::from_value(json!({"items":[{"item":id,"locator":{"term":"page","value":"42"}}],"form":"year-only","output":{"kind":"csl","style":"invented-no-year"}})).unwrap();
-        let prepared = prepare_with_style(&snapshot, &request, &Limits::default(), &style).unwrap();
+        let prepared = prepare_with_style(&snapshot, &request, &Limits::default(), &style, None).unwrap();
         let refused = json!([{"outcome":"refused","item":0,"error":"unsupported-form"}]);
         assert_eq!(serde_json::to_value(&prepared.outcomes).unwrap(), refused);
     }
