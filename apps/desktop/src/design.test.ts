@@ -118,7 +118,7 @@ test.each(rules)("$says", (rule) => {
 // [C3] Alignment is decided once, by bands and tokens, never copied as arithmetic:
 // the count of calc() in the app's stylesheets may only fall. Lower the ceiling
 // when it does; a part that needs a column takes a Band or a token instead.
-const CALC_CEILING = 121;
+const CALC_CEILING = 113;
 test(`calc() in the app's stylesheets stays at or under ${CALC_CEILING}`, () => {
   const count = (css: string) => css.replace(/\/\*[^]*?\*\//g, "").match(/\bcalc\(/g)?.length ?? 0;
   const found = sheets.filter(([file]) => !file.startsWith("website/")).reduce((sum, [, css]) => sum + count(css), 0);
@@ -203,7 +203,7 @@ test.each(required)("%s: %s keeps %s: %s", (file, selector, property, value, con
 });
 
 test("scroll fades give way to the three accessibility preferences in both web views", () => {
-  const edge = ".scroll-area[data-more-above][data-more-below]";
+  const edge = ".scroll-area[data-more-below]";
   for (const property of ["mask-image", "-webkit-mask-image"]) {
     const fades = all.filter((d) => d.file === "ui/ScrollArea.css" && d.property === property
       && d.selector.split(",").some((selector) => selector.trim() === edge));
