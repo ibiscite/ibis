@@ -119,3 +119,6 @@ the anchor older links use.
 
 ## 0052 The engine owns the library and citations
 [0052](decisions/0052-engine-owns-library-and-citations.md): one engine per process with a library owner and citation sessions by id; one validator, one display contract and one vocabulary; front ends keep platform effects. Lands in six slices.
+
+## 0054 Owners and boundaries
+[0054](decisions/0054-owners-and-boundaries.md): three exclusive engine owners that accept intents and publish observations, one native delivery owner, and typed boundaries (checked artifacts, `Problem`, executable actions); ten stages, the gate first.
