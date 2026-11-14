@@ -50,3 +50,5 @@ before merging (ruleset `strict_required_status_checks_policy: true`).
 
 2026-11-14 (maintainer): main requires branches to be up to date with main for
 Local gate, so GitHub refuses a merge if main moved after the gate checked it.
+
+2026-11-14 (maintainer): several green branches may land together as one batch: they are merged into one branch, gated once as the combined tree and squashed once. Its pull request body lists each change's title between BEGIN_COMMIT_OVERRIDE and END_COMMIT_OVERRIDE, so release notes keep every change.
