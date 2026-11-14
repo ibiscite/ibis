@@ -46,6 +46,11 @@ other source ids use the citation key. Device paths after value delimiters stay
 private too. BibTeX identifier fields are verbatim, with URL braces percent-encoded.
 For articles, issue takes precedence over number; malformed structured dates
 are omitted rather than exported as empty or partial dates.
+Core decodes entities and normalizes inline text before privacy checks, keeping
+literal text separate from supported rich-text tags. Writers and the formatter
+consume that checked projection; CSL-JSON uses its canonical entity encoding.
+Span attributes are checked and discarded. Approximate structured dates keep
+their BibLaTeX EDTF `~` marker; the date model has no uncertainty flag.
 
 ## Writes
 

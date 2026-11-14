@@ -340,6 +340,68 @@ fn selection(snapshot: &Snapshot, style: &str, bibliography: bool) -> CitationRe
 }
 
 #[test]
+fn formatted_outputs_drop_entity_encoded_device_paths() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    let mut leaks = Vec::new();
+    for title in [
+        "&#x66;ile:&#x2f;&#x2f;&#x2f;home/invented/secret.pdf",
+        "&#67;&#58;&#92;invented&#92;secret.pdf",
+        "&#102;ile:&#47;&#x2f;&#47;home/invented/secret.pdf",
+    ] {
+        let snapshot = library(&[json!({
+            "type":"book", "title":title, "publisher":"Invented Press",
+            "author":[{"family":"Taylor"}], "issued":{"date-parts":[[2026]]}
+        })]);
+        let result = formatter.format(&snapshot, &selection(&snapshot, "apa", true)).unwrap();
+        assert!(
+            result.text.contains("Taylor") && result.text.contains("Invented Press"),
+            "{}",
+            result.text
+        );
+        assert!(result.copy_content(1).is_some());
+        for text in [Some(result.text), result.html, result.rtf].into_iter().flatten() {
+            if text.contains("secret") {
+                leaks.push(text);
+            }
+        }
+    }
+    assert!(leaks.is_empty(), "{leaks:?}");
+}
+
+#[test]
+fn formatted_outputs_keep_decoded_literal_text_and_rich_markup() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let snapshot = library(&[json!({
+        "type":"book", "title":"<i>Invented</i>&#10;atlas &lt;b&gt;e&#x301;&lt;/b&gt; &amp;lt;i&amp;gt;",
+        "author":[{"family":"D&#111;e"}], "issued":{"date-parts":[[2026]]},
+        "publisher":r"C:&lt;i&gt;&lt;/i&gt;\invented\literal.pdf"
+    })]);
+    let result = Formatter::new()
+        .unwrap()
+        .format(&snapshot, &selection(&snapshot, "apa", true))
+        .unwrap();
+    assert!(result.text.contains("Doe."), "{}", result.text);
+    assert!(
+        result.text.contains("Invented atlas <b>é</b> &lt;i&gt;"),
+        "{}",
+        result.text
+    );
+    assert!(
+        result.text.contains(r"C:<i></i>\invented\literal.pdf"),
+        "{}",
+        result.text
+    );
+    assert!(!result.text.contains(r"C:\invented"), "{}", result.text);
+    assert!(
+        result.html.as_deref().unwrap().contains("&#60;b&#62;é&#60;/b&#62;"),
+        "{:?}",
+        result.html
+    );
+    assert!(result.copy_content(1).is_some());
+}
+
+#[test]
 fn apa_prints_rich_text_titles_with_whitespace_before_closing_tags() {
     let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
@@ -427,7 +489,11 @@ fn all_styles_match_node_for_multilingual_text_html_and_rtf() {
         .write_all(&serde_json::to_vec(&oracle_inputs).unwrap())
         .unwrap();
     let expected = node.wait_with_output().unwrap();
-    assert!(expected.status.success(), "Node oracle failed");
+    assert!(
+        expected.status.success(),
+        "Node oracle failed: {}",
+        String::from_utf8_lossy(&expected.stderr)
+    );
     let expected: Vec<serde_json::Value> = serde_json::from_slice(&expected.stdout).unwrap();
     for (index, (actual, expected)) in actual.iter().zip(&expected).enumerate() {
         assert_eq!(actual.text, expected["text"].as_str().unwrap(), "text case {index}");

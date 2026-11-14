@@ -12,6 +12,20 @@ use ibis_sources::WarningCode;
 use serde_json::{Value, json};
 use unicode_normalization::UnicodeNormalization;
 
+#[test]
+fn approximate_dates_survive_import_export_and_reimport() {
+    use ibis_core::{contract::*, syntax};
+    let source = load("@book{atlas,title={Invented atlas},date={2020-03~}}");
+    assert_eq!(csl(&source, "atlas")["issued"]["circa"], true);
+    let request: CitationRequest = serde_json::from_value(json!({
+        "items":[{"item":record(&source, "atlas").id}], "output":{"kind":"key","syntax":"bibtex"}
+    }))
+    .unwrap();
+    let exported = syntax::cite(&source.snapshot, &request).unwrap();
+    let reopened = load(&exported.text);
+    assert_eq!(csl(&reopened, "atlas")["issued"], csl(&source, "atlas")["issued"]);
+}
+
 // --- language tags and stored title case (#331, #1530) --------------------
 
 #[test]

@@ -2,7 +2,7 @@
 //! only this writer supplies entry syntax and TeX commands.
 use std::io::{self, Write};
 
-use crate::citable::CitableFields;
+use crate::citable::{CitableFields, TextPart};
 use serde_json::Value;
 
 pub(super) fn valid_key(key: &str) -> bool {
@@ -12,6 +12,8 @@ pub(super) fn valid_key(key: &str) -> bool {
 /// `key` was checked by the catalogue resolver.
 /// Stream to the caller's bounded destination, including while escaping.
 pub(super) fn write(out: &mut impl Write, key: &str, fields: &CitableFields) -> io::Result<()> {
+    let rich_fields = fields.rich_text();
+    let fields = fields.plain();
     let kind = match fields.get("type").and_then(Value::as_str).unwrap_or_default() {
         "article-journal" | "article-magazine" | "article-newspaper" => "article",
         "book" => "book",
@@ -76,7 +78,11 @@ pub(super) fn write(out: &mut impl Write, key: &str, fields: &CitableFields) -> 
                     ) =>
                 {
                     write!(out, "  {bib} = {{")?;
-                    rich(out, text)?;
+                    if let Some(parts) = rich_fields.get(csl) {
+                        rich(out, parts)?;
+                    } else {
+                        escape(out, text)?;
+                    }
                     out.write_all(b"},\n")?;
                 }
                 Value::String(text) => field(out, bib, text)?,
@@ -190,6 +196,9 @@ pub(super) fn write(out: &mut impl Write, key: &str, fields: &CitableFields) -> 
                         }
                     }
                 }
+                if date.get("circa").and_then(Value::as_bool) == Some(true) {
+                    out.write_all(b"~")?;
+                }
                 out.write_all(b"},\n")?;
             } else if let Some(text) = date.get("literal").or_else(|| date.get("raw")).and_then(Value::as_str) {
                 field(out, if csl == "issued" { "year" } else { bib }, text)?;
@@ -244,7 +253,7 @@ fn escape(out: &mut impl Write, text: &str) -> io::Result<()> {
 /// Recognize only CSL's trusted formatting. Everything else, including TeX
 /// commands and unknown tags, goes through literal escaping. A stack supplies
 /// balanced writer-owned groups even for malformed source markup.
-fn rich(out: &mut impl Write, text: &str) -> io::Result<()> {
+fn rich(out: &mut impl Write, parts: &[TextPart]) -> io::Result<()> {
     const TAGS: [(&str, &str, &str); 7] = [
         ("<i>", "</i>", "\\textit{"),
         ("<b>", "</b>", "\\textbf{"),
@@ -254,38 +263,28 @@ fn rich(out: &mut impl Write, text: &str) -> io::Result<()> {
         ("<span class=\"nocase\">", "</span>", "{"),
         ("<span style=\"font-variant:small-caps;\">", "</span>", "\\textsc{"),
     ];
-    let mut rest = text;
     let mut closes: Vec<&str> = Vec::new();
-    while !rest.is_empty() {
-        if let Some(close) = closes.last().copied().filter(|close| rest.starts_with(close)) {
-            out.write_all(b"}")?;
-            closes.pop();
-            rest = &rest[close.len()..];
-        } else if let Some((open, close, tex)) = TAGS
-            .iter()
-            .find(|(open, _, _)| closes.len() < 64 && rest.starts_with(open))
-        {
-            out.write_all(tex.as_bytes())?;
-            closes.push(*close);
-            rest = &rest[open.len()..];
-        } else {
-            // Decode entities once, after recognizing actual markup. Encoded
-            // tags stay literal, and decoded backslashes still get escaped.
-            let first = rest.chars().next().map_or(0, char::len_utf8);
-            let end = rest[first..].find('<').map_or(rest.len(), |offset| offset + first);
-            let plain = rest[..end]
-                .replace("&lt;", "<")
-                .replace("&gt;", ">")
-                .replace("&quot;", "\"")
-                .replace("&amp;", "&");
-            for c in plain.chars() {
-                if c == '-' {
-                    out.write_all(b"\\mbox{-}")?;
-                } else {
-                    escape(out, c.encode_utf8(&mut [0; 4]))?;
+    for part in parts {
+        let TextPart::Markup(tag) = part else {
+            if let TextPart::Text(text) = part {
+                for c in text.chars() {
+                    if c == '-' {
+                        out.write_all(b"\\mbox{-}")?;
+                    } else {
+                        escape(out, c.encode_utf8(&mut [0; 4]))?;
+                    }
                 }
             }
-            rest = &rest[end..];
+            continue;
+        };
+        if closes.last().is_some_and(|close| tag == close) {
+            out.write_all(b"}")?;
+            closes.pop();
+        } else if let Some((_, close, tex)) = TAGS.iter().find(|(open, _, _)| closes.len() < 64 && tag == open) {
+            out.write_all(tex.as_bytes())?;
+            closes.push(*close);
+        } else {
+            escape(out, tag)?;
         }
     }
     for _ in closes {

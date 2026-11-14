@@ -21,13 +21,13 @@ const SUMMARIZED: [&str; 5] = ["type", "title", "author", "container-title", "DO
 
 /// What an agent needs to recognise and cite a record. Fields the record lacks are left out.
 pub(super) fn summary(csl: &CitableFields, reference: String) -> Map<String, Value> {
-    let summary = RecordSummary::of(|name| csl.get(name));
-    let text = |text: Option<&String>| text.map(|text| Value::String(clean(text)));
+    let summary = RecordSummary::citable(csl);
+    let text = |text: Option<&String>| text.map(|text| Value::String(clean_plain(text)));
     let authors: Vec<Value> = summary
         .authors
         .iter()
         .take(MAX_LIST)
-        .map(|author| Value::String(clean(&author.name)))
+        .map(|author| Value::String(clean_plain(&author.name)))
         .collect();
     let mut data = Map::new();
     data.insert("ref".into(), Value::String(reference));
@@ -59,7 +59,7 @@ pub(super) fn details(csl: &CitableFields) -> Value {
 
 fn shorten(value: &Value) -> Value {
     match value {
-        Value::String(text) => Value::String(clean(text)),
+        Value::String(text) => Value::String(clean_plain(text)),
         Value::Array(values) => Value::Array(values.iter().take(MAX_LIST).map(shorten).collect()),
         Value::Object(fields) => Value::Object(
             fields
@@ -73,8 +73,12 @@ fn shorten(value: &Value) -> Value {
 
 /// One value's readable text on one line: no markup, nothing hidden, cut short.
 pub(super) fn clean(text: &str) -> String {
-    let plain = strip_markup(text);
-    let visible = scrub(&plain);
+    clean_plain(&strip_markup(text))
+}
+
+/// Summaries have already consumed the checked plain-text projection.
+fn clean_plain(text: &str) -> String {
+    let visible = scrub(text);
     let line = visible.split_whitespace().collect::<Vec<_>>().join(" ");
     match line.char_indices().nth(MAX_TEXT) {
         Some((end, _)) => format!("{}…", &line[..end]),

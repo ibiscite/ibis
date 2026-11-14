@@ -614,15 +614,17 @@ fn year(issued: Option<&Value>) -> Option<String> {
 
 /// Only the filtered projection enters the processor's mutable envelope.
 fn processor_fields(fields: &CitableFields) -> Result<serde_json::Map<String, Value>, FormatError> {
-    let mut fields = fields
-        .iter()
-        .map(|(key, value)| (key.clone(), value.clone()))
-        .collect::<serde_json::Map<_, _>>();
-    normalize_strings(fields.values_mut())?;
-    if record_controls(fields.values()) {
+    if record_controls(fields.plain().values()) {
         return Err(FormatError::InvalidRequest);
     }
-    Ok(fields)
+    let mut value = fields.plain().clone();
+    if !fields.rich_text().is_empty() {
+        value.insert(
+            "ibis-rich-text".into(),
+            serde_json::to_value(fields.rich_text()).map_err(|_| FormatError::InvalidRequest)?,
+        );
+    }
+    Ok(value)
 }
 
 fn record_controls<'a>(values: impl Iterator<Item = &'a Value>) -> bool {
@@ -636,58 +638,6 @@ fn record_controls<'a>(values: impl Iterator<Item = &'a Value>) -> bool {
         }
     }
     false
-}
-
-// citeproc's title casing can silently discard words at line boundaries. CSL
-// fields are inline content: preserve their words before the processor sees them.
-fn normalize_strings<'a>(values: impl Iterator<Item = &'a mut Value>) -> Result<(), FormatError> {
-    let mut pending: Vec<_> = values.collect();
-    while let Some(value) = pending.pop() {
-        match value {
-            Value::String(text) => {
-                let mut normalized = String::with_capacity(text.len());
-                let mut line_break = false;
-                let mut inside_tag = false;
-                for ch in text.chars() {
-                    // Directional formatting must not escape a field and
-                    // reorder the citation around it. Keep RTL letters and
-                    // shaping characters (including ZWJ/ZWNJ) unchanged.
-                    if bidi_control(ch) {
-                        // Removing a control inside tag-looking text could
-                        // create markup that the source never contained.
-                        if inside_tag {
-                            return Err(FormatError::InvalidRequest);
-                        }
-                        continue;
-                    }
-                    match ch {
-                        '<' => inside_tag = true,
-                        '>' => inside_tag = false,
-                        _ => {}
-                    }
-                    let is_break = matches!(ch, '\r' | '\n' | '\u{85}' | '\u{2028}' | '\u{2029}');
-                    if is_break {
-                        // A break between words is a space; one at either
-                        // end is nothing, or the processor prints it.
-                        if !line_break && !normalized.is_empty() {
-                            normalized.push(' ');
-                        }
-                    } else {
-                        normalized.push(if ch.is_control() && ch != '\t' { ' ' } else { ch });
-                    }
-                    line_break = is_break;
-                }
-                if line_break && normalized.ends_with(' ') {
-                    normalized.pop();
-                }
-                *text = normalized;
-            }
-            Value::Object(map) => pending.extend(map.values_mut()),
-            Value::Array(values) => pending.extend(values),
-            _ => {}
-        }
-    }
-    Ok(())
 }
 
 fn bidi_control(ch: char) -> bool {
@@ -813,8 +763,10 @@ mod tests {
             }))
             .unwrap(),
         );
+        let mut processor = processor_fields(&fields).unwrap();
+        processor.remove("ibis-rich-text");
         assert_eq!(
-            serde_json::to_value(processor_fields(&fields).unwrap()).unwrap(),
+            serde_json::to_value(processor).unwrap(),
             json!({
                 "title": "Invented title", "publisher": "Invented Press",
                 "author": [{"family": "Doe"}], "issued": {"date-parts": [[2026]]},

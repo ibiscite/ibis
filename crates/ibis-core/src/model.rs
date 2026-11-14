@@ -169,10 +169,7 @@ pub fn strip_markup(rich: &str) -> String {
         }
     }
     out.push_str(rest);
-    out.replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&amp;", "&")
+    crate::citable::text::decode_entities(&out)
 }
 
 /// How far a span's attributes are searched for its `>`, so hostile text stays linear.

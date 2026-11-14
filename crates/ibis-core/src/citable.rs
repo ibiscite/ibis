@@ -9,18 +9,29 @@
 //! data the user wrote to be printed, so they become ordinary fields first,
 //! filling only fields the record lacks, as Zotero's citations do.
 use serde_json::{Map, Value, json};
+use std::collections::BTreeMap;
+
+pub(crate) mod text;
+use text::Projection;
+pub use text::TextPart;
 
 /// Bibliographic metadata allowed to leave a record. Construction applies the
 /// privacy filter once; callers can read or serialize it, never mutate it.
 #[derive(Debug, serde::Serialize)]
 #[serde(transparent)]
-pub struct CitableFields(Map<String, Value>);
+pub struct CitableFields {
+    fields: Map<String, Value>,
+    #[serde(skip)]
+    plain: Map<String, Value>,
+    #[serde(skip)]
+    rich: BTreeMap<String, Vec<TextPart>>,
+}
 
 impl std::ops::Deref for CitableFields {
     type Target = Map<String, Value>;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.plain
     }
 }
 
@@ -37,33 +48,11 @@ impl CitableFields {
                 fields.remove("URL");
             }
         };
-        private_url(&mut fields);
+        // Preserve source precedence, with a note fallback for a private URL.
+        // Both candidates enter the projection exactly once.
+        let source_url = fields.remove("URL");
         if let Some(Value::String(note)) = fields.remove("note") {
             apply_overrides(&mut fields, &note);
-            private_url(&mut fields);
-        }
-        if let Some(Value::String(doi)) = fields.get_mut("DOI") {
-            // CSL styles supply their own resolver prefix. Strip only recognized
-            // wrappers, retaining the identifier's spelling, punctuation and case.
-            let value = doi.trim();
-            let prefixes = [
-                "https://doi.org/",
-                "http://doi.org/",
-                "https://dx.doi.org/",
-                "http://dx.doi.org/",
-                "doi.org/",
-                "dx.doi.org/",
-                "doi:",
-            ];
-            let bare = prefixes.iter().find_map(|prefix| {
-                value
-                    .get(..prefix.len())
-                    .filter(|head| head.eq_ignore_ascii_case(prefix))
-                    .map(|_| value[prefix.len()..].trim())
-            });
-            if let Some(bare) = bare {
-                *doi = bare.to_owned();
-            }
         }
         // Zotero's names for the short titles, which citeproc copies in when the
         // CSL ones are missing.
@@ -77,11 +66,8 @@ impl CitableFields {
                 fields.insert(canonical.into(), value);
             }
         }
-        let scalar = |value: &Value| match value {
-            Value::String(text) => !points_to_device(text),
-            Value::Number(_) | Value::Bool(_) => true,
-            _ => false,
-        };
+        let mut rich = BTreeMap::new();
+        let scalar = |value: &mut Value| project_scalar(value, false).is_some();
         fields.retain(|name, value| {
             if !is_variable(name) {
                 false
@@ -118,11 +104,102 @@ impl CitableFields {
                     }
                 });
                 !parts.is_empty()
+            } else if matches!(value, Value::String(_) | Value::Number(_)) {
+                let Some(projected) = project_scalar(value, true) else {
+                    return false;
+                };
+                if value.is_string() && RICH_TEXT.contains(&name.as_str()) {
+                    rich.insert(name.to_owned(), projected);
+                }
+                true
             } else {
-                matches!(value, Value::String(_) | Value::Number(_)) && scalar(value)
+                false
             }
         });
-        Self(fields)
+        // URL and DOI rules see the same decoded, normalized text as writers.
+        if let Some(mut url) = source_url
+            && project_scalar(&mut url, false).is_some()
+            && url.as_str().is_some_and(public_url)
+        {
+            fields.insert("URL".into(), url);
+        }
+        private_url(&mut fields);
+        if let Some(Value::String(doi)) = fields.get_mut("DOI") {
+            // CSL styles supply their own resolver prefix. Strip only recognized
+            // wrappers, retaining the identifier's spelling, punctuation and case.
+            let value = doi.trim();
+            let prefixes = [
+                "https://doi.org/",
+                "http://doi.org/",
+                "https://dx.doi.org/",
+                "http://dx.doi.org/",
+                "doi.org/",
+                "dx.doi.org/",
+                "doi:",
+            ];
+            let bare = prefixes.iter().find_map(|prefix| {
+                value
+                    .get(..prefix.len())
+                    .filter(|head| head.eq_ignore_ascii_case(prefix))
+                    .map(|_| value[prefix.len()..].trim())
+            });
+            if let Some(bare) = bare {
+                *doi = bare.to_owned();
+            }
+        }
+        let plain = fields;
+        let mut fields = plain.clone();
+        encode_values(fields.values_mut());
+        for (name, parts) in &rich {
+            fields.insert(name.clone(), json!(text::encode(parts)));
+        }
+        Self { fields, plain, rich }
+    }
+
+    /// Decoded inline text already checked by the privacy projection. Consumers
+    /// must escape it for their representation, never interpret entities again.
+    pub fn plain(&self) -> &Map<String, Value> {
+        &self.plain
+    }
+
+    /// Checked literal text and supported markup, without downstream decoding.
+    pub fn rich_text(&self) -> &BTreeMap<String, Vec<TextPart>> {
+        &self.rich
+    }
+}
+
+const RICH_TEXT: [&str; 6] = [
+    "title",
+    "title-short",
+    "container-title",
+    "container-title-short",
+    "volume-title",
+    "volume-title-short",
+];
+
+fn project_scalar(value: &mut Value, keep_markup: bool) -> Option<Vec<TextPart>> {
+    match value {
+        Value::String(source) => {
+            let projected = Projection::new(source);
+            if points_to_device(&projected.plain) || points_to_device(&projected.attributes) {
+                return None;
+            }
+            *source = projected.plain;
+            Some(if keep_markup { projected.parts } else { Vec::new() })
+        }
+        Value::Number(_) | Value::Bool(_) => Some(Vec::new()),
+        _ => None,
+    }
+}
+
+fn encode_values<'a>(values: impl Iterator<Item = &'a mut Value>) {
+    for value in values {
+        match value {
+            Value::String(text) => *text = text::encode_plain(text),
+            Value::Object(fields) => encode_values(fields.values_mut()),
+            Value::Array(values) => encode_values(values.iter_mut()),
+            _ => {}
+        }
     }
 }
 
@@ -334,19 +411,8 @@ fn private_address(address: std::net::IpAddr) -> bool {
     }
 }
 
-/// Check the shared plain-text projection of rich fields and note overrides,
-/// leaving their original rich-text payload intact for output.
+/// Inspect only the decoded, normalized projection that consumers receive.
 pub(crate) fn points_to_device(value: &str) -> bool {
-    let mut plain = crate::model::strip_markup(value);
-    // The original rich text also reaches record exports. Check attributes
-    // removed by the projection without breaking up paths across inline tags.
-    for (start, _) in value.match_indices("<span") {
-        let tag = &value[start..];
-        if let Some(length) = crate::model::rich_text_tag_len(tag) {
-            plain.push(' ');
-            plain.push_str(&tag["<span".len()..length - 1]);
-        }
-    }
     let path = |word: &str| {
         let bytes = word.as_bytes();
         (word.starts_with('/') || word.starts_with("~/")) && word.len() > 2
@@ -359,7 +425,7 @@ pub(crate) fn points_to_device(value: &str) -> bool {
                 .get(..8)
                 .is_some_and(|prefix| prefix.eq_ignore_ascii_case("zotero:/"))
     };
-    plain.split_whitespace().any(|word| {
+    value.split_whitespace().any(|word| {
         let word = word.trim_matches(|c: char| "()[]{},.\"'".contains(c));
         path(word)
             || word.char_indices().any(|(index, c)| {
@@ -515,7 +581,7 @@ fn apply_overrides(fields: &mut Map<String, Value>, note: &str) {
             break;
         };
         let value = js_trim(value);
-        if value.is_empty() || points_to_device(value) {
+        if value.is_empty() {
             continue;
         }
         if key == "type" {
@@ -655,7 +721,7 @@ mod tests {
 
     fn citable(fields: Value) -> Value {
         let Value::Object(fields) = fields else { unreachable!() };
-        Value::Object(CitableFields::new(fields).0)
+        serde_json::to_value(CitableFields::new(fields)).unwrap()
     }
 
     #[test]

@@ -524,6 +524,29 @@ fn item_id(engine: &Engine) -> Value {
 }
 
 #[test]
+fn agent_views_do_not_decode_or_join_text_after_the_privacy_check() {
+    let literal = "Invented &amp;#67;&amp;#58;&amp;#92;invented&amp;#92;secret.pdf";
+    let (_dir, engine) = library("synthetic.json", &json!([
+        {"id":"literal", "type":"book", "title":literal},
+        {"id":"hidden", "type":"book", "title":"Invented C\u{2060}:\\invented\\secret.pdf", "publisher":"Invented Press"}
+    ]).to_string());
+    let search = tool(&engine, "search", json!({"query":"invented"}));
+    let hits = search["structuredContent"]["hits"].as_array().unwrap();
+    assert_eq!(hits.len(), 2, "{search}");
+    for hit in hits {
+        let shown = tool(&engine, "show", json!({"ref":hit["ref"]}));
+        if hit.get("title").is_some() {
+            let expected = "Invented &#67;&#58;&#92;invented&#92;secret.pdf";
+            assert_eq!(hit["title"], expected);
+            assert_eq!(shown["structuredContent"]["title"], expected);
+        } else {
+            assert!(shown["structuredContent"].get("title").is_none(), "{shown}");
+        }
+        assert!(!shown.to_string().contains(r"C:\\invented"), "{shown}");
+    }
+}
+
+#[test]
 fn every_answer_is_bounded() {
     let records: Vec<Value> = (0..mcp::MAX_HITS)
         .map(|index| {

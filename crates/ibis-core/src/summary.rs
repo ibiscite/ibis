@@ -40,10 +40,20 @@ pub struct Author {
 impl RecordSummary {
     /// The summary of a record's CSL fields, read through `field`.
     pub fn of<'a>(field: impl Fn(&str) -> Option<&'a Value>) -> Self {
+        Self::with_text(field, strip_markup)
+    }
+
+    /// The summary of already checked, decoded text. No further entity or
+    /// markup interpretation may change a citable field after its privacy check.
+    pub fn citable(fields: &crate::citable::CitableFields) -> Self {
+        Self::with_text(|name| fields.get(name), str::to_owned)
+    }
+
+    fn with_text<'a>(field: impl Fn(&str) -> Option<&'a Value>, plain: fn(&str) -> String) -> Self {
         let text = |name: &str| {
             field(name)
                 .and_then(Value::as_str)
-                .map(strip_markup)
+                .map(plain)
                 .map(|text| text.trim().to_owned())
                 .filter(|text| !text.is_empty())
         };
@@ -51,12 +61,12 @@ impl RecordSummary {
             .and_then(Value::as_array)
             .into_iter()
             .flatten()
-            .filter_map(author)
+            .filter_map(|value| author_named(Name::from_csl(value), plain))
             .collect();
         Self {
             title: text("title"),
             authors,
-            year: date_text(field("issued")),
+            year: date_text(field("issued"), plain),
             container: text("container-title")
                 .or_else(|| text("publisher"))
                 .map(|text| capped(&text, CONTAINER_LIMIT)),
@@ -65,19 +75,15 @@ impl RecordSummary {
     }
 }
 
-fn author(value: &Value) -> Option<Author> {
-    author_named(Name::from_csl(value))
-}
-
-fn author_named(name: Name) -> Option<Author> {
-    let display = strip_markup(&name.display()).trim().to_owned();
+fn author_named(name: Name, plain: fn(&str) -> String) -> Option<Author> {
+    let display = plain(&name.display()).trim().to_owned();
     if display.is_empty() {
         return None;
     }
     let short = if name.is_others() {
         None
     } else {
-        name.literal.as_deref().or(name.family.as_deref()).map(strip_markup)
+        name.literal.as_deref().or(name.family.as_deref()).map(plain)
     }
     .map(|short| short.trim().to_owned())
     .filter(|short| !short.is_empty())
@@ -104,7 +110,7 @@ pub fn issued_year(issued: Option<&Value>) -> Option<i32> {
 }
 
 /// What a summary says for a date: its year, else its own text.
-fn date_text(issued: Option<&Value>) -> Option<String> {
+fn date_text(issued: Option<&Value>, plain: fn(&str) -> String) -> Option<String> {
     if let Some(year) = issued_year(issued) {
         return Some(year.to_string());
     }
@@ -112,7 +118,7 @@ fn date_text(issued: Option<&Value>) -> Option<String> {
     ["literal", "raw"]
         .into_iter()
         .filter_map(|part| issued.get(part).and_then(Value::as_str))
-        .map(|text| strip_markup(text).split_whitespace().collect::<Vec<_>>().join(" "))
+        .map(|text| plain(text).split_whitespace().collect::<Vec<_>>().join(" "))
         .find(|text| !text.is_empty())
         .map(|text| capped(&text, DATE_TEXT_LIMIT))
 }
@@ -162,7 +168,7 @@ impl crate::contract::Record {
             summary.authors = names
                 .iter()
                 .map(|name| name.to_name())
-                .filter_map(author_named)
+                .filter_map(|name| author_named(name, strip_markup))
                 .collect();
         }
         summary

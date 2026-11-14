@@ -658,7 +658,7 @@ fn share(syntax: KeySyntax, picks: &[Pick<'_>]) -> Result<String, CitationError>
 /// bytes, encoding reserved URL characters rather than letting them change the
 /// resolver's path, query or fragment. Missing/invalid values refuse the item.
 pub(super) fn doi_link(fields: &CitableFields) -> Option<String> {
-    let doi = fields.get("DOI")?.as_str()?.trim();
+    let doi = fields.plain().get("DOI")?.as_str()?.trim();
     let (prefix, suffix) = doi.split_once('/')?;
     let registrant = prefix.strip_prefix("10.")?;
     if doi.len() > 64 * 1024

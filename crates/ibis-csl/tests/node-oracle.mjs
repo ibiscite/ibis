@@ -41,8 +41,20 @@ try {
 } finally { CSL.Engine = Engine; }
 // CSL inline strings use the same documented whitespace contract before either
 // processor. Keep this independent regex oracle separate from Rust's traversal.
-const requests = JSON.parse(fs.readFileSync(0, "utf8"), (_, value) => typeof value === "string" ? value.replace(/[\r\n\u0085\u2028\u2029]+/gu, " ").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u0084\u0086-\u009f]/gu, " ") : value);
+const requests = JSON.parse(fs.readFileSync(0, "utf8"), (_, value) => typeof value === "string" ? value.normalize("NFC").replace(/[\r\n\u0085\u2028\u2029]+/gu, " ").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u0084\u0086-\u009f]/gu, " ") : value);
 const pristine = structuredClone(requests);
+// These oracle fixtures contain decoded text and literal CSL markup. Supply the
+// adapter's typed-run interface independently of Rust; the direct processor below
+// still receives the original rich strings and verifies the adapter's output.
+const richFields = ["title", "title-short", "container-title", "container-title-short", "volume-title", "volume-title-short"];
+const markup = /(<\/?(?:i|b|sc|sub|sup)>|<span\s+class="no(?:case|decor)"[^>]*>|<span\s+style="font-variant:\s*small-caps;?"[^>]*>|<\/span>)/g;
+for (const request of requests) {
+  for (const item of request.items) {
+    item["ibis-rich-text"] = Object.fromEntries(richFields.filter((field) => typeof item[field] === "string").map((field) => [field,
+      item[field].split(markup).map((part, index) => index % 2 ? { markup: part } : { text: part })
+    ]));
+  }
+}
 const updateItems = CSL.Engine.prototype.updateItems;
 let registrations = 0;
 CSL.Engine.prototype.updateItems = function (ids, ...args) {
