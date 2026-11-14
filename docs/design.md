@@ -77,8 +77,8 @@ side of the same window, one region at a time, and folds back with Esc:
 | --- | --- | --- |
 | Search | Types | The list, the shelf with what Enter pastes, the footer's one action |
 | Several references | ⇧↵, ⌘-click or a row's + | One shelf segment each, in order; the count names them |
-| Details | Clicks a segment, or ⌘I | The **Inspector** beside the list: title, Show as, Page, what will be pasted, the source actions |
-| Pages | **Show PDF** (⌘D) in the Inspector | The window takes a reading shape once, taller and wider; the list folds away and the **Reader**'s thumbnails and pages take its place beside the column |
+| Details | Clicks a segment, or ⌘I | The segment's token popover ([inspector-and-reader](design/inspector-and-reader.md), decision 0045) |
+| Pages | **Show PDF** (⌘D) | The window takes a reading shape once, taller and wider; the list folds away and the **Reader**'s thumbnails and pages take its place beside the column |
 | Choose a page | Clicks a thumbnail (⇧-click a range, ⌘-click another), or ⌘↵ on the page in view | The Page field and the shelf segment show it, "p. 417–419, 423" |
 | Deliver | Enter, as the footer says | Pasted or copied, then the window hides |
 
@@ -90,11 +90,6 @@ side of the same window, one region at a time, and folds back with Esc:
   shelf or footer. Reading is the one change of shape, because a portrait page
   needs height: the list folds away while the PDF is open, and typing in Search
   or Esc brings it back with the steady size.
-- **Planned jobs have their place already.** Passages are results with their
-  quotation under the title, and choosing one fills its reference and page;
-  collections and tags are a search scope pop-up before the query (as Finder's
-  search scope); a manuscript check is a sheet from More listing each citation
-  with its state. None of these adds a window or a mode.
 
 ## Small delights
 
@@ -111,19 +106,7 @@ The approved, final list; no new delights until the next design pass. Each lives
 
 ## Coming features
 
-How each user-visible item planned before 1.0 in ROADMAP.md fits the pages above.
-
-| Feature (release) | Fits as |
-|---|---|
-| Output per app, self-finishing setup (0.3) | [First run](design/choice-screens.md) |
-| Paste into the app you came from (0.3) | Enter pastes; the footer says "Paste into Word"; a refusal copies and says why |
-| Citation forms, 29 locator types, prefix and suffix, reorder, any style, presets (0.4) | The shelf, more label and control rows in the **Inspector**, the format pop-up and Settings › Citations |
-| `ibis://` links, Show in Zotero, Open PDF in Zotero (0.4) | A link opens the picker filled in; the Zotero actions sit in More and the row's menu |
-| Settings window (0.4, #776) | [Settings](design/settings.md) |
-| Browse, "Selected in Zotero", passages (0.5) | Collections and tags as search filters; a reference's highlights unfold under its row and fill in its page |
-| Bibliography, "Cited since opening", project `.bib` (0.4) | A sheet from More; rows say "In refs.bib" or "Missing from refs.bib" |
-| `ibis check`, DOI lookup (0.6) | Command line first; DOI lookup as an opt-in no-results fallback |
-| A source's PDF, choosing the page there (#1252) | [Reader](design/inspector-and-reader.md#reader-planned-1252): the window widens once, the one planned exception to [C10]; thumbnails and pages sit between the list and the column, and a page is cited by choosing it ([M1]) |
+How planned features fit these pages is in [ROADMAP.md](../ROADMAP.md).
 
 ## How the design changes
 
