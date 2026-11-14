@@ -1432,7 +1432,7 @@ def saved_typst(settings):
         raise AssertionError("Native preference JSON is malformed") from None
     assert (isinstance(value, dict) and type(value.get("schema_version")) is int
             and value["schema_version"] == 2), "Native preferences must use settings format 2"
-    return value.get("output") == "typst"
+    return value.get("key_output") == "typst"
 
 
 def quit_normally(native, app):
@@ -3461,19 +3461,19 @@ class ContractTests(unittest.TestCase):
         def choose(name):
             if name == "Typst":
                 settings = Path(launches[0]["XDG_CONFIG_HOME"]) / "com.ibiscite.ibis/settings.json"
-                value = '{"schema_version":2,"output":"typst"}'
+                value = '{"schema_version":2,"key_output":"typst"}'
                 if failure == "wrong-format":
-                    value = '{"schema_version":2,"output":"pandoc"}'
+                    value = '{"schema_version":2,"key_output":"pandoc"}'
                 elif failure == "duplicate":
-                    value = '{"schema_version":2,"output":"pandoc","output":"typst"}'
+                    value = '{"schema_version":2,"key_output":"pandoc","key_output":"typst"}'
                 elif failure == "malformed":
                     value = '{invalid'
                 elif failure == "wrong-schema":
-                    value = '{"schema_version":true,"output":"typst"}'
+                    value = '{"schema_version":true,"key_output":"typst"}'
                 elif failure == "non-json":
-                    value = '{"schema_version":2,"output":"typst","invalid":NaN}'
+                    value = '{"schema_version":2,"key_output":"typst","invalid":NaN}'
                 elif failure == "oversized":
-                    value = json.dumps({"schema_version": 2, "output": "typst", "padding": "x" * 65536})
+                    value = json.dumps({"schema_version": 2, "key_output": "typst", "padding": "x" * 65536})
                 settings.write_text(value, encoding="utf-8")
 
         def click(name):

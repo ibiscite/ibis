@@ -5,6 +5,8 @@ import type { CommandStatus, PickerPreferences, PickerSave, ShortcutStatus, Wind
 import { bindingKeys, DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
 import { currentPlatform } from "../platform";
 import { pageOf, SettingsApp } from "./SettingsApp";
+import { ROWS } from "./rows";
+import { settingControl } from "../ui/settingFocus";
 import { RECHECK_MS, STALE_HINT_MS } from "./PasteGuide";
 import type { PastePermission, SettingsApi } from "./api";
 
@@ -2076,6 +2078,48 @@ test("a native save newer than a delayed size reply retires the reset without wa
   await screen.findByRole("alert");
   expect(screen.getByRole("radio", { name: "Custom" })).toHaveProperty("checked", true);
   expect(screen.queryByRole("button", { name: "Undo Restore Default for Window size" })).toBeNull();
+});
+
+test.each(["general", "look", "citations", "about"])("%s renders every declared setting once with its control in visual keyboard order", async (page) => {
+  const previous = document.documentElement.dataset.system;
+  document.documentElement.dataset.system = "macos";
+  onTestFinished(() => { if (previous === undefined) delete document.documentElement.dataset.system; else document.documentElement.dataset.system = previous; });
+  const { api } = fakeApi({}, { key_output: "pandoc" });
+  api.editorEndpoint = vi.fn(async () => ({ on: false, url: null, problem: null }));
+  api.setEditorEndpoint = vi.fn(); api.copyEditorEndpoint = vi.fn();
+  render(<SettingsApp api={api} initialPage={page} />);
+  const declared = ROWS.filter((row) => row.page === page && (row.preference || row.native));
+  await waitFor(() => {
+    let before: HTMLElement | null = null;
+    for (const row of declared) {
+      const id = row.id === "open-shortcut" ? "general-open-shortcut" : row.id;
+      const labels = document.querySelectorAll<HTMLElement>(`[id="${id}"]`);
+      expect(labels, row.id).toHaveLength(1);
+      expect(labels[0]!.textContent).toBe(say(row.label, { platform: "macos" }));
+      const rendered = labels[0]!.closest<HTMLElement>(".ui-row")!;
+      const control = settingControl(rendered);
+      expect(control, row.id).not.toBeNull();
+      expect(control).toHaveProperty("disabled", false);
+      if (before) expect(before.compareDocumentPosition(control!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      before = control;
+    }
+  });
+  expect(screen.getByRole("main").querySelector('[tabindex]:not([tabindex="0"]):not([tabindex="-1"])')).toBeNull();
+});
+
+test("a newer saved setting stays visible and read-only after changing another row", async () => {
+  const { api, state } = fakeApi();
+  const submit = vi.spyOn(api, "savePickerPreferences");
+  api.formatSettings = vi.fn(async () => ({ apps: [], writings: [], key_output_visible: false, unknown: { future_choice: { enabled: true } } }));
+  render(<SettingsApp api={api} initialPage="general" />);
+  const value = await screen.findByLabelText("future_choice");
+  expect(value.textContent).toBe('{"enabled":true}');
+  expect(value.closest(".ui-row")?.textContent).toContain("read-only");
+  expect(value.closest(".ui-row")?.querySelector("button, input")).toBeNull();
+  fireEvent.click(await screen.findByRole("switch", { name: "Bird facts and milestones" }));
+  await waitFor(() => expect(state.preferences.small_surprises).toBe(false));
+  expect(screen.getByLabelText("future_choice").textContent).toBe('{"enabled":true}');
+  expect(submit).toHaveBeenLastCalledWith({ small_surprises: false });
 });
 
 function shortcutFailure(code: string) {
