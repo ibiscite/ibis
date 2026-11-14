@@ -47,7 +47,7 @@ export const SETTINGS_IDS = [
   "backup-problem-newer", "backup-problem-invalid", "backup-problem-settings-unusable", "backup-problem-busy", "backup-problem-changed", "backup-problem-not-saved",
   "citations-key-formats", "citations-style-formats", "citations-filter-formats",
   "look-sample-title-2", "look-sample-title-3",
-  "settings-read-only",
+  "settings-read-only", "settings-newer-title", "settings-newer-description",
   "settings-shortcut-restored",
   "citations-default-description",
   "citations-recent", "citations-recent-description", "citations-recent-words",
