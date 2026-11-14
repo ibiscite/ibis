@@ -2,6 +2,10 @@ import { keyCapLabels } from "../keys";
 import { currentPlatform, type Platform } from "../platform";
 import "./KeyCaps.css";
 import { useKeyPulse } from "./Delights";
+import { createContext, useContext } from "react";
+import { usePresenceSlot } from "./presence";
+
+export const ButtonKeys = createContext<((slot: "keys", on: boolean) => void) | undefined>(undefined);
 
 /** One cap per shortcut on every system (docs/design/picker.md, Footer), written as
  * that system's menus write it: ⌘K on macOS, Ctrl+K on Windows and Linux. */
@@ -11,6 +15,7 @@ export function KeyCaps({ accelerator, platform = currentPlatform(), hidden, ech
   hidden?: boolean;
   echo?: boolean;
 }) {
+  usePresenceSlot(useContext(ButtonKeys), "keys");
   const pressed = useKeyPulse(accelerator, echo);
   const parts = keyCapLabels(accelerator, platform === "macos");
   return <span className="key-caps" data-echo={pressed || undefined} aria-hidden={hidden || undefined}>

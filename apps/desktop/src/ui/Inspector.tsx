@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, type KeyboardEventHandler, type ReactNode, type Ref, type RefObject } from "react";
 import { IconButton } from "./IconButton";
+import { useFrameSlot } from "./Frame";
 import { useScrollEdges } from "./ScrollArea";
 import { composingKey, useLayer } from "./layers";
 import "./Inspector.css";
@@ -21,6 +22,8 @@ export function Inspector({ ref, id, label, heading, byline, closeLabel, documen
   invoker?: RefObject<Element | null>;
 }) {
   const column = useRef<HTMLDivElement>(null);
+  useFrameSlot("inspector");
+  useFrameSlot("reading", reading);
   const layer = useLayer("panel", true, onClose, invoker);
   useScrollEdges(column);
   // With nothing to edit, the column itself takes the keys, so they can scroll it.

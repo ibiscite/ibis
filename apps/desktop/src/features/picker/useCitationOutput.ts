@@ -1,6 +1,6 @@
 // What Enter would paste for the chosen references: the formatted or key preview,
 // tagged with the choice, style and library it was made for. The picker session
-// owns the preview (decision 0035); this hook tells it what to prepare and
+// owns the preview; this hook tells it what to prepare and
 // reads its answer.
 import { useEffect, useLayoutEffect } from "react";
 import type * as nativeApi from "../../api";
@@ -12,7 +12,7 @@ import { ownedPreview, previewKey, type PreviewInputs } from "./preview";
 import type { SessionState } from "./session";
 import type { createSessionController } from "./sessionController";
 
-export function useCitationOutput({ session, state, chosen, library, libraryVersion, format, style, previewFileCitation, projectContext, contextReady = true }: {
+export function useCitationOutput({ session, state, chosen, library, libraryVersion, format, style, previewFileCitation, writingContext, contextReady = true }: {
   session: ReturnType<typeof createSessionController>;
   state: SessionState;
   /** The selection, or the highlighted result when nothing is selected. */
@@ -23,7 +23,7 @@ export function useCitationOutput({ session, state, chosen, library, libraryVers
   /** The format, when it is a style and formatting is available. */
   style: OutputId | null;
   previewFileCitation: typeof nativeApi.previewFileCitation;
-  projectContext?: [number, number] | null;
+  writingContext?: [number, number] | null;
   /** False while the destination, and with it the project context, is being read. */
   contextReady?: boolean;
 }) {
@@ -32,12 +32,12 @@ export function useCitationOutput({ session, state, chosen, library, libraryVers
   // A style the engine cannot format now is not previewed as anything else.
   const output = style ?? format;
   // Reading unchanged status must not retry the same stale citation forever.
-  const retryKey = JSON.stringify([output, library?.revision, chosenKey, projectContext, state.keepOrder]);
-  const key = previewKey(output, libraryVersion, chosenKey, projectContext, state.keepOrder);
+  const retryKey = JSON.stringify([output, library?.revision, chosenKey, writingContext, state.keepOrder]);
+  const key = previewKey(output, libraryVersion, chosenKey, writingContext, state.keepOrder);
   const inputs: PreviewInputs = {
     key, retryKey, contextReady,
     ask: chosen.length === 0 || !chosenRevision ? null : {
-      output, revision: chosenRevision, projectContext, keepOrder: state.keepOrder,
+      output, revision: chosenRevision, writingContext, keepOrder: state.keepOrder,
       selection: chosen.map((r) => ({
         id: r.id, cite: r.cite ?? "",
         locator: r.locator?.input === "editor" ? null : r.locator ?? null,

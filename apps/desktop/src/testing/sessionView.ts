@@ -31,7 +31,7 @@ export function arrangeView(state: SessionState, v: SessionView): [SessionState,
     settled: { inputs: v.searchPending ? { ...heard, version: -1 } : heard, session: state.session },
     results: rows, interpretation: locator ? { locator, search: "", typed: "" } : null, list: chosen.length > 1 ? { missing: [] } : null,
     resultsQuery: queryKey, resultsRevision: library.revision };
-  const version = v.projectVersion ? v.projectVersion.split(":").map(Number) as [number, number] : null;
+  const version = v.writingVersion ? v.writingVersion.split(":").map(Number) as [number, number] : null;
   const app = v.appId ?? null;
   const destination: PickerDestination | null = app === null && !v.writingId && !version ? null : {
     app, app_id: app, app_identity: null, find_open: false, usual_format: "apa", format: formatAnswer(v.format, v.writingId ? "writing" : "yours"), unreadable: false, can_paste: false,

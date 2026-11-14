@@ -50,10 +50,10 @@ test("a restore shows every change in words first, then restores that preview an
   expect(screen.getByText("Backup from Windows, made by Ibis 0.2.8")).toBeTruthy();
   const items = screen.getAllByRole("listitem").map((item) => item.textContent);
   expect(items).toEqual([
-    "Default format: APA → IEEE",
+    "In documents: APA → IEEE",
     "Library: Default → thesis.bib",
     "Rows: Comfortable → Compact",
-    "Larger text: Default → On",
+    "Text size: Default → On",
     "Opening shortcut on Windows: Default → Alt+Space",
   ]);
   expect(screen.getByText(/bibliography is not on this computer/)).toBeTruthy();

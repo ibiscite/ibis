@@ -1,7 +1,4 @@
-//! Legacy key-output examples replayed through the shared citation contract.
-//! Each case is what a writer would paste into a document.
-//! The cases come from the old `cite::render` tests; current contract spelling,
-//! typed losses and refusals are asserted explicitly.
+//! Key output through the shared citation contract: pasted text, losses and refusals.
 #![allow(clippy::unwrap_used)]
 use ibis_core::contract::*;
 use ibis_core::contract::{GoldenCase, OutputSpec};
@@ -23,7 +20,7 @@ const TYPST: Format = (KeySyntax::Typst, None);
 const KEYS: Format = (KeySyntax::Keys, None);
 const ALL: [Format; 7] = [PANDOC, AUTOCITE, PARENCITE, TEXTCITE, CITE, TYPST, KEYS];
 
-/// One cited reference, spelled as the old `CiteItem`.
+/// One reference with its citation details.
 #[derive(Debug, Clone, Default)]
 struct Cite {
     key: String,

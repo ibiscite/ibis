@@ -19,9 +19,9 @@ const writingDestination = (name: string, format: "cite" | "typst", context: [nu
   writing: { id: name, name, output: format, bibliography: "refs.bib" },
   writing_context: `opening-${context[0]}`, context_version: context, format: formatAnswer(format, "writing") }));
 
-test("Enter pressed during reopening waits for the newly captured project and copies its fresh preview once", async () => {
-  const first = writingDestination("Project A", "cite", [1, 0]);
-  const second = writingDestination("Project B", "typst", [2, 0]);
+test("Enter pressed during reopening waits for the newly captured writing and copies its fresh preview once", async () => {
+  const first = writingDestination("Writing A", "cite", [1, 0]);
+  const second = writingDestination("Writing B", "typst", [2, 0]);
   const reopening = pending<PickerDestination>(), settled = pending<PickerDestination>(), preview = pending<Preview>();
   const copied: string[] = [];
   let reads = 0, initialPreviewStarted = false, newPreviewStarted = false;
@@ -50,13 +50,13 @@ test("Enter pressed during reopening waits for the newly captured project and co
   await act(async () => { preview.resolve(receipt("typst:[2,0]")); });
   await waitFor(() => expect(copied).toEqual(["typst:[2,0]"]));
   // The slower destination worker belongs to the earlier read, even though it
-  // completes after the new project's receipt has already been copied.
+  // completes after the new writing's receipt has already been copied.
   await act(async () => { reopening.resolve(first); });
   expect(copied).toEqual(["typst:[2,0]"]);
 });
 
-test("a bibliography read finishing for the same project refreshes a waiting Enter without cancelling it", async () => {
-  let destination = writingDestination("Project A", "cite", [1, 0]);
+test("a bibliography read finishing for the same writing refreshes a waiting Enter without cancelling it", async () => {
+  let destination = writingDestination("Writing A", "cite", [1, 0]);
   const earlier = pending<Preview>(), checked = pending<Preview>();
   const copied: string[] = [];
   let delayedPreviewStarted = false, checkedPreviewStarted = false;
@@ -74,7 +74,7 @@ test("a bibliography read finishing for the same project refreshes a waiting Ent
   await waitFor(() => expect(delayedPreviewStarted).toBe(true));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   expect(copied).toEqual([]);
-  destination = writingDestination("Project A", "cite", [1, 1]);
+  destination = writingDestination("Writing A", "cite", [1, 1]);
   await act(async () => { await emit("project:changed", [1, 1]); });
   await waitFor(() => expect(checkedPreviewStarted).toBe(true));
   await act(async () => { checked.resolve(receipt("cite:[1,1] checked against refs.bib")); });
@@ -84,12 +84,12 @@ test("a bibliography read finishing for the same project refreshes a waiting Ent
 });
 
 test("leaving a writing restores the app's output and copies a fresh preview", async () => {
-  const project = { id: "synthetic-project", name: "Field Guide", output: "cite", bibliography: null };
+  const writing = { id: "synthetic-project", name: "Field Guide", output: "cite", bibliography: null };
   let generation = 1;
-  let selected: string | null = project.id;
-  const view = (): WritingsView => ({ writings: [project], selected, context: `opening-${generation}`, session_only: false });
-  const destination = (): PickerDestination => (fixtureDestination({ app: "Example Editor", app_id: "example.editor", app_identity: null,     unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false, writing: selected ? project : null,
-    writing_context: `opening-${generation}`, context_version: [generation, 0], format: formatAnswer(selected ? project.output : "typst", selected ? "writing" : "app") }));
+  let selected: string | null = writing.id;
+  const view = (): WritingsView => ({ writings: [writing], selected, context: `opening-${generation}`, session_only: false });
+  const destination = (): PickerDestination => (fixtureDestination({ app: "Example Editor", app_id: "example.editor", app_identity: null,     unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false, writing: selected ? writing : null,
+    writing_context: `opening-${generation}`, context_version: [generation, 0], format: formatAnswer(selected ? writing.output : "typst", selected ? "writing" : "app") }));
   const copied: string[] = [];
   backend({
     search: () => [result("a", "Synthetic source")], picker_destination: destination, writings: view,
@@ -149,21 +149,21 @@ test("Back and return keep a sheet's typed draft, selection, scroll and focus", 
   expect(document.querySelector<HTMLElement>(".ui-sheet-body")!.scrollTop).toBe(120);
 });
 
-test("a fresh Enter after selecting a project waits for its delayed destination and copies the new format once", async () => {
-  const first = writingDestination("Project A", "cite", [1, 0]);
-  const second = writingDestination("Project B", "typst", [2, 0]);
-  const projects = [first.writing!, second.writing!];
+test("a fresh Enter after selecting a writing waits for its delayed destination and copies the new format once", async () => {
+  const first = writingDestination("Writing A", "cite", [1, 0]);
+  const second = writingDestination("Writing B", "typst", [2, 0]);
+  const writings = [first.writing!, second.writing!];
   const save = pending<WritingsView>(), destinationRead = pending<PickerDestination>();
   let saved = false, destinationReadStarted = false;
   const copied: string[] = [];
-  const view = (): WritingsView => ({ writings: projects, selected: saved ? "Project B" : "Project A", context: saved ? "opening-2" : "opening-1", session_only: false });
+  const view = (): WritingsView => ({ writings: writings, selected: saved ? "Writing B" : "Writing A", context: saved ? "opening-2" : "opening-1", session_only: false });
   backend({
     search: () => [result("a", "Synthetic source")],
     picker_destination: () => { if (!saved) return first; destinationReadStarted = true; return destinationRead.promise; },
     writings: view,
     edit_writing: async ({ context, action }) => {
       expect(context).toBe("opening-1");
-      expect(action).toEqual({ kind: "select", id: "Project B" });
+      expect(action).toEqual({ kind: "select", id: "Writing B" });
       const next = await save.promise;
       saved = true;
       await emit("project:changed", [2, 0]);
@@ -175,9 +175,9 @@ test("a fresh Enter after selecting a project waits for its delayed destination 
   render(<App />);
   await screen.findByText("Synthetic source");
   const dialog = await openWritings();
-  fireEvent.click(await within(dialog).findByRole("button", { name: "Use Project B" }));
+  fireEvent.click(await within(dialog).findByRole("button", { name: "Use Writing B" }));
   expect(screen.getByRole("dialog", { name: "Writings" })).toBeTruthy();
-  await act(async () => { save.resolve({ ...view(), selected: "Project B", context: "opening-2" }); });
+  await act(async () => { save.resolve({ ...view(), selected: "Writing B", context: "opening-2" }); });
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Writings" })).toBeNull());
   await waitFor(() => expect(destinationReadStarted).toBe(true));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
@@ -186,51 +186,51 @@ test("a fresh Enter after selecting a project waits for its delayed destination 
   await waitFor(() => expect(copied).toEqual(["typst:[2,0]"]));
 });
 
-test("a same-format project switch starts a new copy and an older copy cannot deliver its proof or replace the receipt", async () => {
-  const first = writingDestination("Project A", "cite", [1, 0]);
-  const second = writingDestination("Project B", "cite", [2, 0]);
-  const projects = [first.writing!, second.writing!];
+test("a same-format writing switch starts a new copy and an older copy cannot deliver its proof or replace the receipt", async () => {
+  const first = writingDestination("Writing A", "cite", [1, 0]);
+  const second = writingDestination("Writing B", "cite", [2, 0]);
+  const writings = [first.writing!, second.writing!];
   const oldCopy = pending<{ text: string; warnings: string[]; delivery: number }>();
-  let selected = "Project A";
+  let selected = "Writing A";
   const invoked: string[] = [], delivered: { text: unknown; delivery: unknown }[] = [];
   let hidden = 0;
-  const view = (): WritingsView => ({ writings: projects, selected, context: selected === "Project A" ? "opening-1" : "opening-2", session_only: false });
+  const view = (): WritingsView => ({ writings: writings, selected, context: selected === "Writing A" ? "opening-1" : "opening-2", session_only: false });
   backend({
     search: () => [result("a", "Synthetic source")],
-    picker_destination: () => selected === "Project A" ? first : second,
+    picker_destination: () => selected === "Writing A" ? first : second,
     writings: view,
-    edit_writing: async () => { selected = "Project B"; await emit("project:changed", [2, 0]); return view(); },
-    preview_file_citation: (request) => receipt(request.intent.context?.[0] === 2 ? "cite:Project B" : "cite:Project A"),
+    edit_writing: async () => { selected = "Writing B"; await emit("project:changed", [2, 0]); return view(); },
+    preview_file_citation: (request) => receipt(request.intent.context?.[0] === 2 ? "cite:Writing B" : "cite:Writing A"),
     copy_file_citation: (args) => {
       const text = prepared(args).preview.text;
       invoked.push(text);
-      return text === "cite:Project A" ? oldCopy.promise : { text, warnings: [], delivery: 29 };
+      return text === "cite:Writing A" ? oldCopy.promise : { text, warnings: [], delivery: 29 };
     },
     hide_picker: () => { hidden += 1; return true; },
     show_copied_notice: ({ text, delivery }) => { delivered.push({ text, delivery }); return null; },
   });
   render(<App />);
   await screen.findByText("Synthetic source");
-  await waitFor(() => expect(document.querySelector(".shelf")?.textContent).toContain("cite:Project A"));
+  await waitFor(() => expect(document.querySelector(".shelf")?.textContent).toContain("cite:Writing A"));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
-  await waitFor(() => expect(invoked).toEqual(["cite:Project A"]));
+  await waitFor(() => expect(invoked).toEqual(["cite:Writing A"]));
   const dialog = await openWritings();
-  fireEvent.click(await within(dialog).findByRole("button", { name: "Use Project B" }));
+  fireEvent.click(await within(dialog).findByRole("button", { name: "Use Writing B" }));
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Writings" })).toBeNull());
-  await waitFor(() => expect(document.querySelector(".shelf")?.textContent).toContain("cite:Project B"));
+  await waitFor(() => expect(document.querySelector(".shelf")?.textContent).toContain("cite:Writing B"));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
-  await waitFor(() => expect(invoked).toEqual(["cite:Project A", "cite:Project B"]));
-  await waitFor(() => expect(delivered).toEqual([{ text: "cite:Project B", delivery: 29 }]));
+  await waitFor(() => expect(invoked).toEqual(["cite:Writing A", "cite:Writing B"]));
+  await waitFor(() => expect(delivered).toEqual([{ text: "cite:Writing B", delivery: 29 }]));
   expect(hidden).toBe(1);
-  await act(async () => { oldCopy.resolve({ text: "cite:Project A", warnings: [], delivery: 17 }); });
+  await act(async () => { oldCopy.resolve({ text: "cite:Writing A", warnings: [], delivery: 17 }); });
   expect(hidden).toBe(1);
-  expect(delivered).toEqual([{ text: "cite:Project B", delivery: 29 }]);
-  expect(document.querySelector(".shelf")?.textContent).toContain("cite:Project B");
-  expect(document.querySelector(".shelf")?.textContent).not.toContain("cite:Project A");
+  expect(delivered).toEqual([{ text: "cite:Writing B", delivery: 29 }]);
+  expect(document.querySelector(".shelf")?.textContent).toContain("cite:Writing B");
+  expect(document.querySelector(".shelf")?.textContent).not.toContain("cite:Writing A");
 });
 
 test("a checked bibliography warning still copies the waiting citation once and keeps the picker open", async () => {
-  let destination = writingDestination("Project A", "cite", [1, 0]);
+  let destination = writingDestination("Writing A", "cite", [1, 0]);
   const earlier = pending<Preview>(), checked = pending<Preview>();
   const warning = "synthetic2026 is missing from refs.bib.";
   const copied: { text: string; warnings: string[] }[] = [];
@@ -254,7 +254,7 @@ test("a checked bibliography warning still copies the waiting citation once and 
   await screen.findByText("Synthetic source");
   await waitFor(() => expect(earlierStarted).toBe(true));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
-  destination = writingDestination("Project A", "cite", [1, 1]);
+  destination = writingDestination("Writing A", "cite", [1, 1]);
   await act(async () => { await emit("project:changed", [1, 1]); });
   await waitFor(() => expect(checkedStarted).toBe(true));
   await act(async () => { checked.resolve(receipt("cite:checked warning", null, [warning])); });
@@ -268,8 +268,8 @@ test("a checked bibliography warning still copies the waiting citation once and 
 });
 
 test("a bibliography event retires an old copy proof before its delayed destination read settles", async () => {
-  const first = writingDestination("Project A", "cite", [1, 0]);
-  const refreshed = writingDestination("Project A", "cite", [1, 1]);
+  const first = writingDestination("Writing A", "cite", [1, 0]);
+  const refreshed = writingDestination("Writing A", "cite", [1, 1]);
   const destination = pending<PickerDestination>(), checked = pending<Preview>();
   const oldCopy = pending<{ text: string; warnings: string[]; delivery: number }>();
   const invoked: string[] = [], delivered: { text: unknown; delivery: unknown }[] = [];

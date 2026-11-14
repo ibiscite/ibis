@@ -38,7 +38,7 @@ import "../src/ui/CopiedNotice.css";
 import pickerStyles from "../src/ui/Window.css?inline";
 import { noFormatChosen } from "../src/testing/format";
 
-export const scenarios = ["notice", "results", "unknown-app", "unknown-app-empty", "first-run", "more", "format-menu", "writings", "writings-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "reference-details-more", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-selector", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "citation-order", "citation-handles", "citation-details-larger", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
+export const scenarios = ["notice", "results", "unknown-app", "unknown-app-empty", "first-run", "more", "format-menu", "writings", "writings-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "reference-details-more", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-selector", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "citation-order", "citation-handles", "citation-details-larger", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about", "settings-details", "settings-newer"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -66,6 +66,7 @@ const fixtures: Partial<Record<Scenario, {
   /** Clicked in order, each once the one before has drawn what it opens. */
   click?: string | string[]; keys?: KeyboardEventInit[];
 }>> = {
+  "settings-details": { click: "button.ui-details-toggle" },
   more: { library: zoteroLibrary },
   "format-menu": { library: zoteroLibrary },
   "empty-search": { query: "" },
@@ -112,7 +113,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
   const fixture = ["empty", "file-drag", "error", "loading"].includes(scenario);
   const fixed = fixtures[scenario];
   const shown = fixed?.rows ?? rows;
-  const projectContext = scenario.startsWith("project-");
+  const writingContext = scenario.startsWith("project-");
   // The picker opens over a known app that Ibis copies into, as it usually does;
   // "unknown-app" is the one whose app could not be read, over results and over an empty search.
   const knownApp = !scenario.startsWith("unknown-app");
@@ -184,9 +185,9 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
         { form: "year-only", example: "(2026)", reason: null },
       ] } satisfies FormDetails;
     },
-    picker_destination: () => knownApp && !projectContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
+    picker_destination: () => knownApp && !writingContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
       find_open: false, usual_format: "apa", format: noFormatChosen, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false,
-      writing: null, writing_context: null, context_version: [1, 0] } : projectContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
+      writing: null, writing_context: null, context_version: [1, 0] } : writingContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
       find_open: false, usual_format: "apa", format: noFormatChosen, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false,
       writing: project, writing_context: "invented-opening", context_version: [1, 0] } : null,
     writings: () => writings,
@@ -404,6 +405,7 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
     else document.documentElement.style.removeProperty(name);
   }
   const settings = demoApi();
+  if (scenario === "settings-newer") settings.formatSettings = async () => ({ apps: [], writings: [], key_output_visible: false, unknown: { future_choice: "Enabled" } });
   void settings.savePickerPreferences({ ...fixtures[scenario as Scenario]?.preferences, appearance: theme as Theme, paste: false }).then(settings.pickerPreferencesSaved);
   // The states and tokens pages use the Settings window's base styles.
   const settingsWindow = scenario.startsWith("settings-") || scenario === "states" || scenario === "tokens" || scenario === "parts";

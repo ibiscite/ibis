@@ -15,11 +15,11 @@ export function ShortcutKeys({ binding, isMac, plain = false }: { binding: KeyBi
   const { text } = useInterfaceMessages();
   if (binding.run) {
     const first = binding.keys[0]!, last = binding.keys[binding.keys.length - 1]!;
-    return <span className="ui-settings-keys"><span className="keys-binding key-caps" aria-keyshortcuts={binding.keys.map((keys) => ariaKeys(keys, isMac)).join(" ")}>
+    return <span className="ui-settings-keys" data-plain={plain || undefined}><span className="keys-binding key-caps" aria-keyshortcuts={binding.keys.map((keys) => ariaKeys(keys, isMac)).join(" ")}>
       <kbd data-plain={plain || undefined} dir="ltr">{`${keyLabel(first, isMac)}–${keyLabel(last, isMac).slice(-1)}`}</kbd>
     </span></span>;
   }
-  return <span className="ui-settings-keys">{binding.keys.map((keys, i) => <span className="keys-binding key-caps" key={keys} aria-keyshortcuts={binding.displayLabel ? undefined : ariaKeys(keys, isMac) || undefined}>
+  return <span className="ui-settings-keys" data-plain={plain || undefined}>{binding.keys.map((keys, i) => <span className="keys-binding key-caps" key={keys} aria-keyshortcuts={binding.displayLabel ? undefined : ariaKeys(keys, isMac) || undefined}>
     {i > 0 && <>{" "}<span>{text("shortcuts-or")}</span>{" "}</>}
     <kbd data-plain={plain || undefined} dir="ltr">{binding.displayLabel ?? keyLabel(keys, isMac)}</kbd>
   </span>)}</span>;

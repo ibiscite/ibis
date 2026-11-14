@@ -519,6 +519,7 @@ export type FormatKind = "documents" | "keys";
 export type FormatSettingsView = {
 	apps: AppFormat[];
 	key_output_visible: boolean;
+	unknown?: { [key: string]: unknown } | null;
 	writings: WritingView[];
 };
 

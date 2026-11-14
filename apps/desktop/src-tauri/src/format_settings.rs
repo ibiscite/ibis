@@ -16,6 +16,8 @@ pub(crate) struct FormatSettingsView {
     apps: Vec<AppFormat>,
     writings: Vec<crate::writings::WritingView>,
     key_output_visible: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    unknown: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 #[tauri::command]
@@ -50,6 +52,7 @@ pub(crate) fn format_settings(app: AppHandle) -> Result<FormatSettingsView, Comm
             || settings.device.app_outputs.iter().any(|entry| {
                 ibis_engine::format::choose(settings, Some(&entry.app)).kind == ibis_engine::format::FormatKind::Keys
             }),
+        unknown: (!settings.unknown.is_empty()).then(|| settings.unknown.clone()),
     })
 }
 

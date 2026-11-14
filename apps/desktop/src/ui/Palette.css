@@ -8,7 +8,7 @@
 .ui-palette-section + .ui-palette-section { margin-block-start: var(--space-2); }
 /* A group without a heading continues the list above at the rows' own pitch:
    a gap no heading explains reads as one row standing taller than the rest. */
-.ui-palette-section + .ui-palette-section:not(:has(> .ui-list-heading)) { margin-block-start: var(--row-spacing); }
+.ui-palette-section + .ui-palette-section:not([data-heading]) { margin-block-start: var(--row-spacing); }
 .ui-palette-row { white-space: nowrap; }
 .ui-palette-row[aria-disabled="true"] { color: var(--text-secondary); }
 .ui-palette-row > .ui-band-icon { color: var(--text-secondary); }

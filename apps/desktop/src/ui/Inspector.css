@@ -6,7 +6,7 @@
    content keeps S from both inside it. */
 @container (max-width: 36rem) {
   .inspector { --inspector-pad: var(--row-start); grid-area: middle; width: auto; margin-block: 0; border: 0; }
-  .picker-content:has(~ .inspector) { visibility: hidden; }
+  main[data-inspector] > .picker-content { visibility: hidden; }
 }
 .inspector-body { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 .inspector-sidebar { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
@@ -44,7 +44,7 @@
 .inspector[data-reading] { grid-row: middle; grid-column: 1 / -1; width: auto; border-inline-start: 0; }
 /* The reader draws its own canvas edge to edge, between the dividers. */
 .inspector[data-reading] .inspector-document { padding: 0; }
-main:has(> .inspector[data-reading]) > .picker-content { display: none; }
+main[data-reading] > .picker-content { display: none; }
 /* A panel wide enough for a document keeps its column on the trailing edge,
    and only the document scrolls. */
 @container inspector (min-width: 34rem) and (min-height: 11rem) {

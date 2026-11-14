@@ -46,7 +46,7 @@
 /* Checks and icons share one leading column; plain rows and headings reserve
    it too, including menus of radio choices or source actions. */
 .menu-check { flex: 0 0 var(--icon); display: inline-flex; align-items: center; justify-content: center; }
-:root .menu:has(.menu-check) :is(.menu-item:not(:has(> .menu-check)), .menu-header) { padding-inline-start: var(--menu-label-start); }
+:root .menu[data-icons] :is(.menu-item:not([data-icon]), .menu-header) { padding-inline-start: var(--menu-label-start); }
 /* Grow to the intrinsic label width first; at the viewport limit full action
    labels wrap while checks and shortcut units retain their columns. */
 /* One line, as Mac menus: a label sizes the menu and ends in an ellipsis only at

@@ -5,7 +5,7 @@ import type { ShelfCopied } from "./session";
  * opened under, so a later window or copy retires it. */
 export type InspectorPanel = {
   kind: "reference" | "failure" | "warnings";
-  /** The control that opened it, for Esc when the reference has no segment. */
+  /** The control that opened it, for Esc when the reference has no token. */
   origin: HTMLElement;
   presentation: number | undefined;
   reference?: string;

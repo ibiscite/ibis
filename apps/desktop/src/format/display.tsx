@@ -1,4 +1,4 @@
-import { Fragment, createElement, type ReactNode } from "react";
+import { Fragment, createElement, isValidElement, type ReactNode } from "react";
 import type { DisplayNode, DisplayRun, DisplayTree } from "../bindings";
 import "../ui/Display.css";
 
@@ -23,7 +23,9 @@ export function renderNode(node: DisplayNode, text: (value: string) => ReactNode
       const block = node.blocks[blockIndex];
       if (block && block.start === run && block.end <= end) {
         const key = blockIndex++;
-        children.push(createElement("div", { key: `block-${key}`, className: `csl-${block.kind}` }, ...content(block.start, block.end)));
+        const nested = content(block.start, block.end);
+        const margin = block.kind === "entry" && nested.some((child) => isValidElement<{ className: string }>(child) && child.props.className === "csl-margin");
+        children.push(createElement("div", { key: `block-${key}`, className: `csl-${block.kind}`, "data-margin": margin || undefined }, ...nested));
         run = block.end;
       } else {
         children.push(renderRun(node.content[run]!, run, text(node.content[run]!.text)));
