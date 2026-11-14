@@ -2,7 +2,7 @@
 // session (decision 0035): one numbered preview request at a time, and only the
 // newest started one may answer.
 import type * as nativeApi from "../../api";
-import type { FilePreview } from "../../bindings";
+import type { FilePreview, Problem } from "../../bindings";
 import type { FormattedCitation, OutputId } from "../../format/outputs";
 import { say } from "../../i18n";
 
@@ -26,6 +26,7 @@ export type PreviewInputs = {
 export type PreviewResult = {
   key: string; request: number; session: number; opened: number;
   preview?: FilePreview; value: Prepared | "failed" | "stale"; problem?: string;
+  failure?: Problem;
 };
 
 export type PreviewState = {
@@ -49,7 +50,7 @@ export const initialPreview: PreviewState = {
   inputs: null, session: -1, request: 0, key: null, started: null, lastStarted: -1, result: null, staleKey: null, askedAgain: null, waiting: null,
 };
 
-export type PreviewFailure = { kind: "loading" | "cancelled" | "stale" | "failed"; problem?: string };
+export type PreviewFailure = { kind: "loading" | "cancelled" | "stale" | "failed"; problem?: string; failure?: Problem };
 
 export type PreviewEvent =
   | { type: "preview-inputs"; inputs: PreviewInputs }
@@ -122,7 +123,7 @@ export function reducePreview(s: PreviewState, event: PreviewEvent, session: num
       const started = s.started;
       if (!started || started.request !== event.request || started.session !== session) return null;
       return { preview: { ...s, started: null, askedAgain: null, result: { key: started.key, request: started.request, session, opened, preview: event.preview,
-        value: event.preview.problem ? "failed" : event.value, problem: event.preview.problem ?? undefined } }, effects: [] };
+        value: event.preview.problem ? "failed" : event.value, problem: event.preview.problem ?? undefined, failure: event.preview.failure ?? undefined } }, effects: [] };
     }
     case "preview-failed": {
       const started = s.started;
@@ -131,7 +132,7 @@ export function reducePreview(s: PreviewState, event: PreviewEvent, session: num
       // The library is opening: its own update brings a fresh request.
       if (failure.kind === "loading") return { preview: { ...s, started: null }, effects: [] };
       const result = (value: PreviewResult["value"], problem?: string): PreviewResult =>
-        ({ key: started.key, request: started.request, session, opened, value, ...problem ? { problem } : {} });
+        ({ key: started.key, request: started.request, session, opened, value, ...problem ? { problem } : {}, ...failure.failure ? { failure: failure.failure } : {} });
       if (failure.kind === "cancelled") {
         // The engine also says "cancelled" when it refuses the project context
         // it was asked under. While that context is being read, its answer asks

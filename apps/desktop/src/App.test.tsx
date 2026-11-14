@@ -9,6 +9,7 @@ import capability from "../src-tauri/capabilities/default.json";
 import config from "../src-tauri/tauri.conf.json";
 import { OUTPUTS } from "./bindings";
 import { outputName, type OutputId } from "./format/outputs";
+import { recordId } from "./test-fixtures";
 import { displayTree, backend, chooseFromMore, paletteRow, chooseFromLibrary, libraryButton, prepared, receipt, resetApp, result, type PreviewRequest, type SyntheticId, openCitationDetails, closeCitationDetails, inCitation, findInCitation, removeFromCitation, citationKeys } from "./testing/app";
 
 afterEach(resetApp);
@@ -252,7 +253,8 @@ test("a preview the engine keeps refusing says so, and Copy is gone instead of w
 });
 
 test("a duplicate-key refusal stays visible before Details and copying stays blocked", async () => {
-  const shared = { code: "shared_citation_key", key: "same" };
+  const shared = { code: "shared_citation_key", message: { id: "app-command-shared-citation-key", args: { key: "same" } },
+    recovery: { action: "choose-style" }, focus: "format-picker" };
   const calls = backend({
     search: () => [result("same", "First")],
     preview_file_citation: () => { throw shared; },
@@ -281,7 +283,7 @@ test("a duplicate-key refusal stays visible before Details and copying stays blo
   expect(calls).not.toContain("hide_picker");
 });
 
-const selections = (ids: SyntheticId[]) => ids.map((id) => ({ id, cite: `synthetic-cite-${id.key}`, locator: null }));
+const selections = (ids: (SyntheticId | { library: string; key: string })[]) => ids.map((id) => ({ id: { library: id.library, key: typeof id.key === "string" ? recordId(id.key) : id.key }, cite: `synthetic-cite-${id.key}`, locator: null }));
 
 /** A choice row (first run, setup, recovery), chosen from the keyboard as people do. */
 const choiceRow = (name: string | RegExp) => screen.getByRole("option", { name });
@@ -1371,7 +1373,7 @@ test("moving before a waiting Enter's engine preview is ready cancels that copy"
   const copies = vi.fn(() => ({ text: "unexpected", warnings: [] }));
   backend({
     search: () => [result("a", "First"), result("b", "Second")],
-    preview_file_citation: ({ items }) => items[0]!.id.key === "a" ? receipt("(Alpha, 2021)")
+    preview_file_citation: ({ items }) => items[0]!.id.key === recordId("a") ? receipt("(Alpha, 2021)")
       : new Promise((resolve) => { finish = resolve; }),
     copy_file_citation: copies,
   });
@@ -2341,7 +2343,7 @@ test("a double-click on a row waits for its engine preview before copying its re
   backend({
     picker_preferences: () => ({ output: "apa", density: "comfortable", larger_text: false }),
     search: () => [result("a", "First"), result("b", "Second")],
-    preview_file_citation: ({ items }) => items[0]!.id.key === "b" ? new Promise((resolve) => { finish = resolve; }) : receipt("(Smith, 2020)"),
+    preview_file_citation: ({ items }) => items[0]!.id.key === recordId("b") ? new Promise((resolve) => { finish = resolve; }) : receipt("(Smith, 2020)"),
     copy_file_citation: (args) => { const { preview } = prepared(args); copies.push(preview.text); return { text: preview.text, warnings: [] }; },
   });
   render(<App />);
@@ -3344,8 +3346,10 @@ test("format toolbar menu exposes both sections and saves a choice without copyi
   await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Search references")));
 });
 
-test("the format chooser previews without asking the engine, so Enter still copies the shelf's citation", async () => {
-  const calls = backend({ search: () => [result("a", "First")], copy_file_citation: () => ({ text: "[@a]", warnings: [] }) });
+test("the format chooser shows prepared engine text without exposing lookup IDs or retiring the copy ticket", async () => {
+  const found = { ...result("a", "First"), id: { library: "synthetic", key: recordId("SENTINEL-ID-format-preview") } };
+  const text = "[see @a, p. 33]";
+  const calls = backend({ search: () => [found], preview_file_citation: () => receipt(text) });
   render(<App />);
   const box = screen.getByLabelText("Search references");
   fireEvent.change(box, { target: { value: "first" } });
@@ -3356,10 +3360,11 @@ test("the format chooser previews without asking the engine, so Enter still copi
   fireEvent.keyDown(formatButton(), { key: "ArrowDown" });
   const palette = await screen.findByRole("dialog", { name: "Format" });
   const field = within(palette).getByRole("combobox");
-  // The format in use first, then another: the reference's own key in each pattern.
-  expect(palette.querySelector(".ui-palette-preview-text")?.textContent).toBe("[@a]");
+  // Prepared text is authoritative; another key format previews the citation key.
+  expect(palette.querySelector(".ui-palette-preview-text")?.textContent).toBe(text);
   fireEvent.pointerMove(paletteRow(palette, "Pandoc without brackets"));
   expect(palette.querySelector(".ui-palette-preview-text")?.textContent).toBe("@a");
+  expect(palette.textContent).not.toContain("SENTINEL-ID");
   fireEvent.keyDown(field, { key: "ArrowDown" });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 120)); });
   fireEvent.keyDown(field, { key: "Escape" });

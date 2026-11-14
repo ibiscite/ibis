@@ -644,6 +644,7 @@ def main(root=HERE.parent):
         "ibis-app-icon-dark.svg": app_icon(True, "ad"),
         "ibis-avatar.svg": square_tile("av"),
         "ibis-menu-bar.svg": menu_bar(0, "mbr"),
+        "ibis-menu-bar-raised.svg": menu_bar(-8, "mbup"),
         "ibis-menu-bar-dip-1.svg": menu_bar(6, "mb1"),
         "ibis-menu-bar-dip-2.svg": menu_bar(12, "mb2"),
         "ibis-quote-beak.svg": beak(),
@@ -675,7 +676,7 @@ def main(root=HERE.parent):
     plugin_icon.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(OUT / "png" / "ibis-app-icon-512.png", plugin_icon)
     png("ibis-avatar.svg", "ibis-avatar-512.png", 512)
-    for name in ("ibis-menu-bar", "ibis-menu-bar-dip-1", "ibis-menu-bar-dip-2"):
+    for name in ("ibis-menu-bar", "ibis-menu-bar-raised", "ibis-menu-bar-dip-1", "ibis-menu-bar-dip-2"):
         png(f"{name}.svg", f"{name}.png", 36)
     png("ibis-mark.svg", "ibis-mark-512.png", 512)
     png("ibis-mark-on-dark.svg", "ibis-mark-on-dark-512.png", 512)

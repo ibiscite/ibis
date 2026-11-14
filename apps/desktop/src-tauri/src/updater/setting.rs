@@ -68,10 +68,10 @@ fn save(app: &AppHandle, on: bool) {
         .exclusive(|path| {
             let before = ibis_engine::settings::load(path).settings;
             let saved = ibis_engine::settings::update(path, |settings| settings.update_checks = Some(on))
-                .map_err(|error| ibis_engine::settings_backup::settings_message(&error))?;
+                .map_err(crate::library::CommandError::from)?;
             file.remember_native_changes(&before, &saved);
             set_automatic(app, on);
-            Ok::<_, String>(())
+            Ok::<_, crate::library::CommandError>(())
         })
         .and_then(|saved| saved);
     match saved {

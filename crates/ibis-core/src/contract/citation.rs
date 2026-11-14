@@ -174,11 +174,13 @@ pub enum KeySyntax {
     ScannableCite,
     Keys,
     CslJson,
+    Bibtex,
+    DoiLinks,
     CaywJson,
 }
 
 impl KeySyntax {
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 18] = [
         Self::Pandoc,
         Self::Biblatex,
         Self::Natbib,
@@ -194,6 +196,8 @@ impl KeySyntax {
         Self::ScannableCite,
         Self::Keys,
         Self::CslJson,
+        Self::Bibtex,
+        Self::DoiLinks,
         Self::CaywJson,
     ];
 }
@@ -252,6 +256,7 @@ pub enum CitationError {
     MissingItem,
     ChangedItem,
     MissingKey,
+    MissingDoi,
     AmbiguousKey,
     ConflictingKey,
     InvalidKey,
@@ -270,7 +275,7 @@ pub enum CitationError {
 }
 
 impl CitationError {
-    pub const ALL: [Self; 19] = [
+    pub const ALL: [Self; 20] = [
         Self::EmptySelection,
         Self::TooManyItems,
         Self::InvalidLocator,
@@ -280,6 +285,7 @@ impl CitationError {
         Self::MissingItem,
         Self::ChangedItem,
         Self::MissingKey,
+        Self::MissingDoi,
         Self::AmbiguousKey,
         Self::ConflictingKey,
         Self::InvalidKey,
@@ -293,8 +299,8 @@ impl CitationError {
     ];
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "outcome", rename_all = "kebab-case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "outcome", rename_all = "kebab-case", into = "PresentedOutcome")]
 pub enum ItemOutcome {
     Rendered {
         item: usize,
@@ -305,8 +311,44 @@ pub enum ItemOutcome {
     },
     /// An outcome from a newer engine: never rendered, so never copied.
     #[serde(other)]
+    Unknown,
+}
+
+#[derive(Serialize, JsonSchema)]
+#[serde(tag = "outcome", rename_all = "kebab-case")]
+enum PresentedOutcome {
+    Rendered {
+        item: usize,
+    },
+    Refused {
+        item: usize,
+        error: CitationError,
+        #[serde(flatten)]
+        info: super::RecoveryInfo,
+    },
     #[schemars(skip)]
     Unknown,
+}
+impl From<ItemOutcome> for PresentedOutcome {
+    fn from(value: ItemOutcome) -> Self {
+        match value {
+            ItemOutcome::Rendered { item } => Self::Rendered { item },
+            ItemOutcome::Refused { item, error } => Self::Refused {
+                item,
+                error,
+                info: error.problem().info,
+            },
+            ItemOutcome::Unknown => Self::Unknown,
+        }
+    }
+}
+impl JsonSchema for ItemOutcome {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "ItemOutcome".into()
+    }
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        PresentedOutcome::json_schema(generator)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

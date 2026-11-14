@@ -59,6 +59,11 @@ fn format_takes_every_listed_id_and_writes_its_output() -> Result {
             assert!(text.contains("\"not-from-zotero\""), "{text}");
             continue;
         }
+        if output.id == "doi-links" {
+            assert_eq!(code, 1, "{errors}");
+            assert!(text.contains("\"missing-doi\""), "{text}");
+            continue;
+        }
         assert_eq!(code, 0, "{}: {errors}", output.id);
         let envelope: Value = serde_json::from_str(&text)?;
         if let Some(example) = &output.example {
@@ -93,7 +98,7 @@ fn format_refuses_any_other_name_with_the_listed_ones() -> Result {
         assert_eq!(code, 2, "{wrong}");
         assert_eq!(
             serde_json::from_str::<Value>(&text)?,
-            json!({"ibis":1,"ok":false,"error":{"code":"usage"}})
+            json!({"ibis":1,"ok":false,"error":{"code":"usage","message":{"id":"error-usage","args":{}},"recovery":{"action":"edit-input"},"focus":"request"}})
         );
         assert!(
             errors.contains("pandoc") && errors.contains("textcite") && errors.contains("apa"),

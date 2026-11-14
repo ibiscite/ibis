@@ -1,3 +1,4 @@
+import { recordId } from "../src/test-fixtures";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "../src/App";
@@ -15,7 +16,6 @@ import { isStyle } from "../src/format/outputs";
 import { setPlatform } from "../src/nativeAppearance";
 export { setNativeAccent } from "../src/nativeAccent";
 export { geometry } from "./geometry";
-import { identities } from "./geometry";
 import { audit as runAudit } from "./audit";
 import { SettingsApp } from "../src/settings/SettingsApp";
 import { demoApi } from "../src/settings/demo";
@@ -44,7 +44,7 @@ type Theme = "light" | "dark";
 // Same invented records as picker-layout.browser.mjs; that executable browser
 // probe cannot be imported without launching Playwright and a local server.
 const rows: SearchResult[] = Array.from({ length: 14 }, (_, i) => ({
-  revision: "1", id: { library: "invented.bib", key: `${identities.sentinel}${i}` }, cite: `synthetic-cite-${i}`,
+  revision: "1", id: { library: "invented.bib", key: recordId(`SENTINEL-ID-canvas-${i}`) }, cite: `synthetic-cite-${i}`,
   source: "invented.bib", key: `synthetic${i}`, title: `Invented reference ${i}`,
   authors: "Aster", first_author: "Aster", author_count: 1, year: "2026", container: null,
   item_type: "article-journal", partial: false, matched: ["title"],
@@ -143,7 +143,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
       const style = isStyle(output), numbered = output === "ieee";
       const ticket = `synthetic-ticket-${++sequence}`;
       // The engine writes a reference's citation key, found by its record ID, never the ID itself.
-      const key = (index: number) => { const id = (items[index]!.id as { key: string }).key; return rows.find((row) => row.id.key === id)?.key ?? id; };
+      const key = (index: number) => { const id = items[index]!.id.key; return rows.find((row) => row.id.key === id)?.key ?? ""; };
       const page = (index: number) => items[index]!.locator?.value ?? items[index]!.locator_input?.text;
       const order = items.map((_, index) => index);
       if (style && !intent.keep_order) order.sort((a, b) => key(a).localeCompare(key(b)));

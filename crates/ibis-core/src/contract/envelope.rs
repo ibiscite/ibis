@@ -172,12 +172,16 @@ pub enum ErrorReason {
     AmbiguousKey,
     /// A key output needs a citation key this reference does not have.
     MissingKey,
+    /// The selected library file was moved, renamed or removed.
+    MissingFile,
     /// The program started as the Ibis app does not exist.
     AppMissing,
     /// The program started as the Ibis app is not Ibis.
     NotIbis,
     /// The Ibis app started but did not confirm the request in time.
     NoAnswer,
+    /// The app's library settings did not finish loading in time.
+    SettingsReadTimeout,
     /// Zotero is running but does not let other applications read it.
     ZoteroSharingOff,
     /// Zotero is closed and which profile to read is not settled; name one.
@@ -245,14 +249,70 @@ pub struct ErrorDetail {
     pub table: ZoteroTable,
 }
 
-/// Like every result, an error accepts fields it does not know (decision 0028).
+/// The fact that prevents a strict citation, retained for every client.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum StrictCause {
+    Loss {
+        loss: super::Loss,
+    },
+    Refused {
+        error: super::CitationError,
+    },
+    Source {
+        code: ErrorCode,
+        reason: Option<ErrorReason>,
+    },
+    SourceWarning,
+}
+
+/// Like every result, an error accepts fields it does not know (decision 0028).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(into = "PresentedError")]
 pub struct EngineError {
     pub code: ErrorCode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<ErrorReason>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<ErrorDetail>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strict_cause: Option<StrictCause>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub citation_error: Option<super::CitationError>,
+}
+#[derive(Serialize, JsonSchema)]
+struct PresentedError {
+    code: ErrorCode,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<ErrorReason>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    detail: Option<ErrorDetail>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    strict_cause: Option<StrictCause>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    citation_error: Option<super::CitationError>,
+    #[serde(flatten)]
+    info: super::RecoveryInfo,
+}
+impl From<EngineError> for PresentedError {
+    fn from(error: EngineError) -> Self {
+        Self {
+            code: error.code,
+            reason: error.reason,
+            detail: error.detail,
+            strict_cause: error.strict_cause,
+            citation_error: error.citation_error,
+            info: error.recovery_info(),
+        }
+    }
+}
+impl JsonSchema for EngineError {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "EngineError".into()
+    }
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        PresentedError::json_schema(generator)
+    }
 }
 impl EngineError {
     pub const fn new(code: ErrorCode) -> Self {
@@ -260,6 +320,8 @@ impl EngineError {
             code,
             reason: None,
             detail: None,
+            strict_cause: None,
+            citation_error: None,
         }
     }
     pub const fn because(code: ErrorCode, reason: ErrorReason) -> Self {
@@ -267,6 +329,22 @@ impl EngineError {
             code,
             reason: Some(reason),
             detail: None,
+            strict_cause: None,
+            citation_error: None,
+        }
+    }
+    pub const fn citation(error: super::CitationError) -> Self {
+        Self {
+            code: if matches!(
+                error,
+                super::CitationError::OutputTooLarge | super::CitationError::TooManyItems
+            ) {
+                ErrorCode::ResourceLimit
+            } else {
+                ErrorCode::BadInput
+            },
+            citation_error: Some(error),
+            ..Self::new(ErrorCode::BadInput)
         }
     }
 }

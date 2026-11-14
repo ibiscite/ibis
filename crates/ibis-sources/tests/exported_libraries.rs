@@ -333,7 +333,7 @@ fn empty_and_missing_files() {
     for name in ["missing.ris", "missing.csv"] {
         assert_eq!(
             ibis_sources::load_file(&directory.path().join(name)).err(),
-            Some(SourceError::Unavailable)
+            Some(SourceError::Missing)
         );
     }
 }

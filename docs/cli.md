@@ -122,6 +122,9 @@ fields keep their meanings.
 `ibis search lantern --file refs.bib --keys` prints only citation keys, one
 per line in rank order, including at a terminal. Keyless hits are skipped
 and counted in one stderr note pointing to the same search with `--json`.
+Keys that do not identify exactly one record across all open libraries are
+also omitted, with an ambiguity count and the `--json`/`--id` route. A duplicate
+beyond the requested search page still makes a bare key ambiguous.
 An empty selection prints no bytes. `--keys` conflicts with `--json`;
 both machine forms always omit decoration.
 
@@ -140,6 +143,9 @@ might say `Did you mean 'vale2024lanterns'?` and
 next command searches that library. JSON errors retain `code` and `reason`
 and add `suggestions` (keys) and `next` (an argument array beginning with
 `"ibis"`). `show`, `cite` and `entry` never substitute a suggested key.
+The suggested `show KEY` must select one record in the whole open scope.
+Otherwise `next` searches that key with `--json`; choose a result and use
+`show --id ID_JSON` with the same library arguments.
 
 ### Citation keys from a list
 
@@ -366,6 +372,15 @@ Older contracts stay supported for at least two minor releases.
 `reason`, not wording. Exit 1 has `ok: true` with findings; inspect outcomes
 before using citation text. Empty search is success.
 
+Errors also require `message: {id, args}`, one `recovery: {action, ...}` and
+`focus`. Citation refusal outcomes and failed-refresh findings carry the same
+presentation fields. Message ids resolve through `locales/en-US.ftl`; arguments
+are data, never pre-rendered explanations. A recovery of `none` must give its
+reason (`cancelled` or `in-progress`). Missing citation keys request
+`choose-style` / `format-picker`; a moved or removed library requests
+`locate-file` / `library-picker`. MCP tool errors expose these facts under
+`structuredContent.error` in addition to their text explanation.
+
 Library results (`libraries`, `search`, `show`, `cite`, `entry`, `project`)
 carry `source_health` in JSON, RPC and MCP: `{"status":"ok","findings":[]}`
 or status `findings` with one entry per problem. It describes the same
@@ -582,6 +597,8 @@ read-only tools over stdio:
 | `styles` | Optional `query`, `limit` and `offset`; matching styles, total and locales. |
 
 Refs contain identity and a short content check; changed records are refused.
+When a key is missing or shared, the ref uses an opaque digest. It contains no
+native record key and remains usable with `show` and `cite` in the open snapshot.
 Unknown arguments fail. Failed library startup leaves MCP running with an
 explanation on each library-dependent tool. Library text carries provenance
 marking it as data, and source-health notes report incomplete/stale results.

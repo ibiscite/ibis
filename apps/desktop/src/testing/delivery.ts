@@ -64,6 +64,7 @@ type AppChoice = { output: string | null; paste: AppPaste | null };
 
 export function deliveryHarness(text = "Draft: [citation].", selection: [number, number] = [7, 17]) {
   const search = new Work<SearchQuery, SearchReply, SearchReply>();
+  const citationKeys = new Map<string, string>();
   const preview = new Work<PreviewRequest, PreviewContent, FilePreview>();
   const copy = new Work<{ ticket: string; contentHash: string; replaces: string[] }, void, Copied>();
   const copyReplies = new Work<Copied, void, Copied>();
@@ -163,13 +164,16 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
       if (!holdAppSaves) appSaves.pending.at(-1)!.complete();
       return saving;
     },
-    search: ({ query }) => search.enqueue(query, (reply) => reply),
+    search: ({ query }) => search.enqueue(query, (reply) => {
+      for (const record of reply.results) citationKeys.set(JSON.stringify(record.id), record.key);
+      return reply;
+    }),
     preview_file_citation: (args) => {
       const request = ++latestPreview;
       return preview.enqueue(args, (content) => {
         const value = receipt(content.text, content.display ?? null, content.warnings ?? []);
         clipboardHtml.set(value.ticket, content.clipboardHtml ?? null);
-        const bodies = args.items.map((item) => `@${item.id.key}`);
+        const bodies = args.items.map((item) => `@${citationKeys.get(JSON.stringify(item.id)) ?? ""}`);
         if (!content.display && content.text === `[${bodies.join("; ")}]`) value.display = displayTree([
           { item: null, text: "[" },
           ...bodies.flatMap((text, item) => [...(item ? [{ item: null, text: "; " }] : []), { item, text }]),
