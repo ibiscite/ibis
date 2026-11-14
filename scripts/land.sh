@@ -87,9 +87,14 @@ find_pr() {
   fi
 }
 find_pr
+# One checked, NUL-separated list of changed paths drives every path decision; a failed diff stops landing.
+paths_file=$(mktemp)
+collect_paths() {
+  git diff -z --name-only --no-renames "origin/main...$sha" > "$paths_file" || { echo 'Could not list the changed paths; nothing landed.'; exit 1; }
+}
 require_review() {
   local path sensitive= comments line
-  files=$(git diff -z --name-only --no-renames "origin/main...$sha" | tr '\0' '\n')
+  collect_paths
   # NUL-separated, so no filename is quoted out of a glob.
   while IFS= read -r -d '' path; do
     # Independent-review path table (AGENTS.md). Globs include new files and deletions.
@@ -98,12 +103,14 @@ require_review() {
       apps/desktop/src-tauri/src/updater*|scripts/update-feed.mjs) ;;
       scripts/*sign*.sh|scripts/publish-*|scripts/publication-guard.mjs|scripts/keep-previous-nightly.sh) ;;
       apps/desktop/src-tauri/tauri*.json|apps/desktop/src-tauri/capabilities/*|apps/desktop/src-tauri/permissions/*) ;; # Window permissions
+      apps/desktop/src-tauri/build.rs|apps/desktop/src-tauri/src/bindings.rs) ;; # IPC permission generation and command registration
+      apps/desktop/src/features/picker/updateOfferInput*) ;; # The updater's input-readiness guard
       apps/desktop/src-tauri/src/paste/*|apps/desktop/src-tauri/src/picker/portal.rs) ;; # Native input and the shortcut portal
       apps/desktop/src-tauri/src/editor_endpoint.rs) ;; # Network access
       *) continue;;
     esac
     sensitive+=$'\n'"  $path"
-  done < <(git diff -z --name-only --no-renames "origin/main...$sha")
+  done < "$paths_file"
   [ -n "$sensitive" ] || return 0
   if [ -n "$number" ]; then
     comments=$(gh api --paginate "repos/$repo/issues/$number/comments" --jq '.[] | select(.user.login == "diyanko") | .body') || comments=
@@ -125,11 +132,11 @@ if [ -n "$number" ]; then title=$(gh pr view "$number" --repo "$repo" --json tit
 node scripts/pr-lint.mjs --title "$title" --branch "$branch"
 require_review
 windows_needed=false
-while IFS= read -r path; do
+while IFS= read -r -d '' path; do
   case "$path" in
     *.ps1|apps/desktop/src-tauri/packaging/*|apps/desktop/src-tauri/tauri*.json|scripts/*package*|scripts/build-*|scripts/*install*|scripts/*windows*|scripts/*command-path*|scripts/*offline*|scripts/*update*|scripts/land*|.github/workflows/preview.yml) windows_needed=true;;
   esac
-done <<< "$files"
+done < "$paths_file"
 root=$(git rev-parse --show-toplevel)
 run_id="${sha:0:12}-$(date +%s)-$$"
 logs="$root/.local/gates/$run_id"

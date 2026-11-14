@@ -29,7 +29,7 @@ function fixture(t) {
       log) printf 'Signed-off-by: Synthetic <synthetic@example.org>\\nAssisted-by: Codex\\n';;
       show-ref) [ "$BRANCH_EXISTS" = 1 ];;
       worktree) if [ "$2" = add ]; then mkdir -p "$5"; else rm -rf "$3"; fi;;
-      diff) case " $* " in *" -z "*) printf '%s\\0' "$FILES";; *) printf '%s\\n' "$FILES";; esac;;
+      diff) [ "$DIFF_FAIL" = 1 ] && { echo 'fatal: synthetic diff failure' >&2; exit 128; }; case " $* " in *" -z "*) printf '%s\\0' "$FILES";; *) printf '%s\\n' "$FILES";; esac;;
       push) exit "$PUSH_STATUS";;
     esac`,
     cargo: `if [ "$1" = clippy ]; then
@@ -87,7 +87,7 @@ function fixture(t) {
     for (const path of ["changed", "body", "mac-started", "ubuntu-started", "launched", "dropped", "dropped-log"]) rmSync(join(root, path), { force: true });
     writeFileSync(calls, "");
     const result = spawnSync("bash", [fileURLToPath(new URL("./land.sh", import.meta.url)), ...args], { cwd: root, encoding: "utf8", timeout: 15000,
-      env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, ROOT: root, CALLS: calls, REAL_NODE: process.execPath, MACHINE: "mac", BRANCH: "ci/synthetic", BRANCH_EXISTS: "1", SHA: sha, PR_SHA: sha, PR_TITLE: "fix: preserve the reviewed title", FETCHED_SHA: sha, DIRTY: "0", MOVE_HEAD: "0", STATUS_ERROR: "0", GH_ACTOR: "diyanko", CONFLICT: "0", PUSH_STATUS: "0", HAS_PR: "1", MERGED: "1", AUTHOR: "diyanko", FORK: "false", MERGE_STATUS: "0", STATUS_STATUS: "0", FAIL_MACHINE: "", FAIL_TEST_MACHINE: "", UNREACHABLE: "", LOCK_BUSY: "0", DROP_POLL: "0", DROP_LAUNCH: "0", DROP_LOG: "0", REVIEW: `Reviewed-by-session: independent ${sha}`, REVIEW_AUTHOR: "diyanko", REVIEW_ERROR: "0", DROP_REVIEW: "0", FILES: "docs/testing.md", PARALLEL: "1", ...overrides } });
+      env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, ROOT: root, CALLS: calls, REAL_NODE: process.execPath, MACHINE: "mac", BRANCH: "ci/synthetic", BRANCH_EXISTS: "1", SHA: sha, PR_SHA: sha, PR_TITLE: "fix: preserve the reviewed title", FETCHED_SHA: sha, DIRTY: "0", MOVE_HEAD: "0", STATUS_ERROR: "0", GH_ACTOR: "diyanko", CONFLICT: "0", PUSH_STATUS: "0", HAS_PR: "1", MERGED: "1", AUTHOR: "diyanko", FORK: "false", MERGE_STATUS: "0", STATUS_STATUS: "0", FAIL_MACHINE: "", FAIL_TEST_MACHINE: "", UNREACHABLE: "", LOCK_BUSY: "0", DROP_POLL: "0", DROP_LAUNCH: "0", DROP_LOG: "0", REVIEW: `Reviewed-by-session: independent ${sha}`, REVIEW_AUTHOR: "diyanko", REVIEW_ERROR: "0", DROP_REVIEW: "0", DIFF_FAIL: "0", FILES: "docs/testing.md", PARALLEL: "1", ...overrides } });
     let body = ""; try { body = readFileSync(join(root, "body"), "utf8"); } catch {}
     return { ...result, calls: readFileSync(calls, "utf8"), body };
   };
@@ -140,12 +140,19 @@ test("the review table covers release, CI, native, window, portal and network bo
   for (const path of ["scripts/sign-update-packages.sh", "scripts/publish-nightly.sh", ".github/workflows/ci.yml",
     "apps/desktop/src-tauri/src/paste/macos.rs", "apps/desktop/src-tauri/capabilities/default.json",
     "apps/desktop/src-tauri/src/picker/portal.rs", "apps/desktop/src-tauri/src/editor_endpoint.rs",
-    "scripts/ci-main.mjs", "scripts/ci-result.sh", ".github/workflows/\u00e9 \"quoted\".yml"]) {
+    "scripts/ci-main.mjs", "scripts/ci-result.sh", "apps/desktop/src-tauri/build.rs", "apps/desktop/src-tauri/src/bindings.rs",
+    "apps/desktop/src/features/picker/updateOfferInput.ts", ".github/workflows/\u00e9 \"quoted\".yml"]) {
     const result = run({ FILES: path, REVIEW: "" });
     assert.notEqual(result.status, 0, path);
     assert.ok(result.stdout.includes(path), result.stdout + result.stderr);
     assert.doesNotMatch(result.calls, /git \[mac\] push|cargo \[|ssh \[|gh \[mac\] pr merge/);
   }
+});
+
+test("a failed diff stops landing before any machine starts", posix, (t) => {
+  const result = fixture(t)({ FILES: "scripts/land.sh", DIFF_FAIL: "1" });
+  assert.notEqual(result.status, 0, result.stdout + result.stderr);
+  assert.doesNotMatch(result.calls, /git \[mac\] push|cargo \[|ssh \[|gh \[mac\] pr merge/);
 });
 
 test("a review record in a CRLF comment is accepted", posix, (t) => {
