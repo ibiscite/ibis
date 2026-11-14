@@ -146,7 +146,7 @@ root=$(git rev-parse --show-toplevel)
 run_id="${sha:0:12}-$(date +%s)-$$"
 logs="$root/.local/gates/$run_id"
 mkdir -p "$logs"
-export CARGO_TARGET_DIR="$root/target"
+export CARGO_TARGET_DIR="${IBIS_GATE_TARGET:-$root/target}"  # one warm build dir when the caller provides it
 export CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=1
 export CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-4}
 export PROPTEST_RNG_SEED=20261114
