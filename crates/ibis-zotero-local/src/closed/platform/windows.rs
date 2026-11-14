@@ -340,7 +340,7 @@ pub(super) fn private_file(path: &Path, create_new: bool, control: &Control) -> 
     })();
     if let Err(error) = result {
         if create_new {
-            let mut disposition = FILE_DISPOSITION_INFO { DeleteFile: 1 };
+            let mut disposition = FILE_DISPOSITION_INFO { DeleteFile: true };
             // SAFETY: DELETE was requested on this live handle. Mark only our
             // newly created file for deletion, never a raced-in path or a lock.
             // This also leaves a cancelled root-tag creation retryable.
