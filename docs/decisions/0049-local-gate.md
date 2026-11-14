@@ -34,3 +34,9 @@ A cold Rust target can take 15–30 minutes. These are estimates, pending one
 real run; hosted confirmation and release builds are outside merge latency.
 
 Applied on 2026-11-13: the required check on main is Local gate; the previous ruleset is kept privately.
+
+2026-11-14 (maintainer): `land.sh` owns one independent-review path table. Those
+changes require a maintainer-authored PR comment naming the reviewing session
+and exact head SHA, checked before builds and before merge. A commit trailer
+cannot name its own commit. Gate property tests use one fixed seed on both
+Rust machines and report it on failure; daily/manual fuzzing keeps fresh seeds.

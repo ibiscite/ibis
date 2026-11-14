@@ -104,6 +104,21 @@ pushes without opening a PR, then runs these machines in parallel:
 | Ubuntu (`db-scr-ubuntu`) | Workspace Clippy and tests, full Vitest; one build at a time in `~/Code/ibis`. A detached build and SHA-bound end marker survive dropped SSH connections. |
 | Windows laptop | When packaging or PowerShell paths change (including the gate itself): packaging-script tests and every `*.tests.ps1` under Windows PowerShell 5.1; no Rust. |
 
+Changes matching the independent-review path table in `land.sh` need an existing
+PR with a maintainer-authored comment containing this exact line:
+`Reviewed-by-session: SESSION FULL_HEAD_SHA`. A session that did not write the
+change reviews the final head, fixes every P1/P2, then posts the record; SESSION
+must differ from the writing session's branch name. The gate prints the affected
+paths and the command to add a missing record. It checks before running machines
+and again before merging, against the current main. New commits need a new review.
+
+Mac and Ubuntu gate tests use the same fixed `PROPTEST_RNG_SEED`, defined in
+`land.sh`, and failures print it. To reproduce a property failure, run
+`PROPTEST_RNG_SEED=20261114 cargo test -p CRATE --locked TEST_FILTER`.
+Proptest 1.12 reads this decimal `u64` from the environment, including with
+`Config::with_cases`; no global Cargo configuration fixes seeds for other runs.
+Daily/manual CI fuzzing keeps fresh seeds.
+
 Warm dependencies must already be installed on the Mac and Ubuntu. Mac targets
 stay in this worktree's `target` (or `CARGO_TARGET_DIR`); Ubuntu reuses its one
 `target`. Neither uses sccache. Ubuntu's lock refuses competing gates or a dirty

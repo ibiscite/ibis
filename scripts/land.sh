@@ -87,18 +87,56 @@ find_pr() {
   fi
 }
 find_pr
+# One checked, NUL-separated list of changed paths drives every path decision; a failed diff stops landing.
+paths_file=$(mktemp)
+collect_paths() {
+  git diff -z --name-only --no-renames "origin/main...$sha" > "$paths_file" || { echo 'Could not list the changed paths; nothing landed.'; exit 1; }
+}
+require_review() {
+  local path sensitive= comments line
+  collect_paths
+  # NUL-separated, so no filename is quoted out of a glob.
+  while IFS= read -r -d '' path; do
+    # Independent-review path table (AGENTS.md). Globs include new files and deletions.
+    case "$path" in
+      .github/*|scripts/land.sh|scripts/ci-main.mjs|scripts/ci-result.sh) ;; # CI permissions, what authorizes publication, and the merge boundary
+      apps/desktop/src-tauri/src/updater*|scripts/update-feed.mjs) ;;
+      scripts/*sign*.sh|scripts/publish-*|scripts/publication-guard.mjs|scripts/keep-previous-nightly.sh) ;;
+      apps/desktop/src-tauri/tauri*.json|apps/desktop/src-tauri/capabilities/*|apps/desktop/src-tauri/permissions/*) ;; # Window permissions
+      apps/desktop/src-tauri/build.rs|apps/desktop/src-tauri/src/bindings.rs) ;; # IPC permission generation and command registration
+      apps/desktop/src/features/picker/updateOfferInput*) ;; # The updater's input-readiness guard
+      apps/desktop/src-tauri/src/paste/*|apps/desktop/src-tauri/src/picker/portal.rs) ;; # Native input and the shortcut portal
+      apps/desktop/src-tauri/src/editor_endpoint.rs) ;; # Network access
+      *) continue;;
+    esac
+    sensitive+=$'\n'"  $path"
+  done < "$paths_file"
+  [ -n "$sensitive" ] || return 0
+  if [ -n "$number" ]; then
+    comments=$(gh api --paginate "repos/$repo/issues/$number/comments" --jq '.[] | select(.user.login == "diyanko") | .body') || comments=
+    comments=${comments//$'\r'/}
+    while IFS= read -r line; do
+      if [[ "$line" =~ ^Reviewed-by-session:\ ([a-zA-Z0-9][a-zA-Z0-9._-]*)\ $sha$ ]] && [ "${BASH_REMATCH[1]}" != "$branch" ]; then return 0; fi
+    done <<< "$comments"
+  fi
+  printf 'Missing independent session review for HEAD %s. Paths:%s\n' "$sha" "$sensitive"
+  echo "A session other than '$branch' must review this head and fix every P1/P2, then record:"
+  if [ -z "$number" ]; then printf '  gh pr create --draft --repo %q --base main --head %q\n' "$repo" "$branch"; fi
+  printf "  gh pr comment %q --repo %q --body 'Reviewed-by-session: <reviewer-session> %s'\n" "${number:-$branch}" "$repo" "$sha"
+  return 1
+}
 commit=$(git rev-list --reverse --no-merges "origin/main..$sha" | sed -n '1p')
 [ -n "$commit" ] || { echo 'No non-merge commits to land.'; exit 2; }
 title=${title_arg:-$(git show -s --format=%s "$commit")}
 if [ -n "$number" ]; then title=$(gh pr view "$number" --repo "$repo" --json title --jq .title); fi
 node scripts/pr-lint.mjs --title "$title" --branch "$branch"
+require_review
 windows_needed=false
-files=$(git diff --name-only --no-renames "origin/main...$sha")
-while IFS= read -r path; do
+while IFS= read -r -d '' path; do
   case "$path" in
     *.ps1|apps/desktop/src-tauri/packaging/*|apps/desktop/src-tauri/tauri*.json|scripts/*package*|scripts/build-*|scripts/*install*|scripts/*windows*|scripts/*command-path*|scripts/*offline*|scripts/*update*|scripts/land*|.github/workflows/preview.yml) windows_needed=true;;
   esac
-done <<< "$files"
+done < "$paths_file"
 root=$(git rev-parse --show-toplevel)
 run_id="${sha:0:12}-$(date +%s)-$$"
 logs="$root/.local/gates/$run_id"
@@ -106,6 +144,7 @@ mkdir -p "$logs"
 export CARGO_TARGET_DIR="$root/target"
 export CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=1
 export CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-4}
+export PROPTEST_RNG_SEED=20261114
 # Empty, not unset: an empty value also overrides a wrapper set in Cargo's config.
 export RUSTC_WRAPPER='' RUSTC_WORKSPACE_WRAPPER=''
 ssh_options=(-o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=2)
@@ -130,11 +169,12 @@ mac_gate() {
 
 ubuntu_gate() {
   local launch marker attempt misses=0 deadline=$((SECONDS + 3600))
-  printf -v launch 'bash -s -- %q %q %q' "$sha" "$branch" "$run_id"
+  printf -v launch 'bash -s -- %q %q %q %q' "$sha" "$branch" "$run_id" "$PROPTEST_RNG_SEED"
   # nohup owns the build. Losing this SSH connection cannot lose its result.
   if ! ssh "${ssh_options[@]}" db-scr-ubuntu "$launch" <<'UBUNTU'
 set -eu
 sha=$1 branch=$2 run_id=$3
+export PROPTEST_RNG_SEED=$4
 gate="$HOME/Code/ibis/.local/gates/$run_id"
 mkdir -p "$(dirname "$gate")"
 cat > "$gate.sh" <<'BUILD'
@@ -253,7 +293,7 @@ for i in "${!pids[@]}"; do
     echo "$machine passed."
   else
     failed=true
-    echo "$machine failed:"
+    echo "$machine failed (PROPTEST_RNG_SEED=$PROPTEST_RNG_SEED):"
     grep -m 8 -A 3 -Ei 'FAILED|FAIL |error([ :\[]|$)|unreachable|fatal:|Permission denied|not found|Exception' "$logs/$machine.log" || head -n 12 "$logs/$machine.log"
   fi
 done
@@ -263,6 +303,7 @@ unchanged
 git fetch -q origin main
 git merge-tree --write-tree origin/main "$sha" >/dev/null || { echo 'Merge conflict with main; resolve and rerun.'; exit 1; }
 find_pr
+require_review
 if [ -n "$number" ]; then
   current_title=$(gh pr view "$number" --repo "$repo" --json title --jq .title)
   node scripts/pr-lint.mjs --title "$current_title" --branch "$branch"
