@@ -583,7 +583,8 @@ fn the_chooser_accepts_each_library_file_format_the_engine_reads() {
         // A dropped `.txt` is too likely to be notes to replace the library.
         assert_eq!(accepts_library_file(&path), extension != "txt", "drop and .{extension}");
         std::fs::write(&path, contents).unwrap_or_else(|e| panic!("{e}"));
-        let file = super::super::engine_library::FileLibrary::open(&path).unwrap_or_else(|e| panic!("{e}"));
+        let file = super::super::engine_library::FileLibrary::open(&path, &ibis_engine::Cancellation::default())
+            .unwrap_or_else(|e| panic!("{e}"));
         let reply = file
             .search(
                 &super::super::search::SearchQuery {

@@ -325,7 +325,8 @@ pub(crate) fn candidate(source: impl Into<Source>, bib: &str) -> Library {
         checked_at: Some(SystemTime::now()),
         source: Some(source.into()),
         file: Some(Arc::new(
-            FileLibrary::open(&path).unwrap_or_else(|e| panic!("synthetic library: {e}")),
+            FileLibrary::open(&path, &ibis_engine::Cancellation::default())
+                .unwrap_or_else(|e| panic!("synthetic library: {e}")),
         )),
         ..Library::default()
     };

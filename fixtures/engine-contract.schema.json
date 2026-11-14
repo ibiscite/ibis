@@ -129,7 +129,7 @@
       ]
     },
     "CitationError": {
-      "description": "Fixed citation diagnostics contain no source data, paths, keys or request text.\nA front-end boundary maps a wholly invalid/cancelled request to its envelope error.",
+      "description": "Fixed diagnostics never contain source data, paths or request text.",
       "oneOf": [
         {
           "type": "string",
@@ -550,6 +550,13 @@
       "required": [
         "library",
         "warnings"
+      ]
+    },
+    "CitationSurface": {
+      "description": "Wording context only; operations choose their recovery before presentation.",
+      "type": "string",
+      "enum": [
+        "bibliography"
       ]
     },
     "CitationWarning": {
@@ -1142,6 +1149,7 @@
         "locator",
         "citation",
         "citation-form",
+        "session-references",
         "language",
         "recovery-action",
         "project-name",
@@ -1617,6 +1625,16 @@
             "type": "string"
           }
         },
+        "context": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CitationSurface"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "id": {
           "type": "string"
         }
@@ -1802,6 +1820,18 @@
           "properties": {
             "action": {
               "type": "string",
+              "const": "choose-output"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
               "const": "choose-style"
             }
           },
@@ -1970,7 +2000,31 @@
           "properties": {
             "action": {
               "type": "string",
+              "const": "edit-locator"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
               "const": "edit-input"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "search-references"
             }
           },
           "required": [
@@ -1995,6 +2049,30 @@
             "action": {
               "type": "string",
               "const": "reduce-selection"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "remove-references"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "close"
             }
           },
           "required": [

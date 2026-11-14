@@ -34,6 +34,8 @@ pub(crate) struct LibraryStatus {
     /// Counts in the searchable snapshot by exact source ID; includes empty loaded Zotero libraries.
     pub(crate) source_counts: BTreeMap<String, usize>,
     pub(crate) warnings: usize,
+    #[serde(skip)]
+    pub(crate) problem_library: Option<ibis_core::contract::LibraryId>,
     /// What reading found, at most the engine's detail limit, so the footer
     /// can say which entries were skipped and where to look.
     pub(crate) reading: Vec<ReadingNotice>,
@@ -108,7 +110,7 @@ pub(crate) enum LibraryProblem {
 impl From<LoadError> for LibraryProblem {
     fn from(error: LoadError) -> Self {
         use ibis_core::contract::Recovery;
-        match error.problem().info.recovery {
+        match error.problem().info.recovery() {
             Recovery::LocateFile => Self::Missing,
             Recovery::OpenZoteroSharingHelp => Self::ZoteroAccessOff,
             Recovery::OpenZotero => Self::ZoteroClosed,
@@ -194,6 +196,10 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
             })
             .collect(),
         warnings: sources.iter().map(|info| info.warnings_total).sum(),
+        problem_library: sources
+            .iter()
+            .find(|info| info.warnings_total > 0)
+            .map(|info| info.id.clone()),
         reading: sources
             .iter()
             .flat_map(|info| &info.warnings)
@@ -322,7 +328,7 @@ mod tests {
                 ..Library::default()
             };
             let shown = status(&library);
-            assert_eq!(shown.failure.as_ref().map(|p| &p.info.recovery), Some(&Recovery::Retry));
+            assert_eq!(shown.failure.as_ref().map(|p| p.info.recovery()), Some(Recovery::Retry));
             assert_eq!(shown.problem, Some(LibraryProblem::Other));
             assert_eq!(
                 LibraryProblem::from(cause(EngineError::because(

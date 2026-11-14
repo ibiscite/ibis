@@ -62,7 +62,9 @@ fn only_current_successful_real_loads_can_claim_library_feedback() {
     let path = dir.path().join("invented.bib");
     std::fs::write(&path, "@book{invented,title={Invented Research},year={2026}}").unwrap();
     let mut library = Library::default();
-    library.file = Some(Arc::new(FileLibrary::open(&path).unwrap()));
+    library.file = Some(Arc::new(
+        FileLibrary::open(&path, &ibis_engine::Cancellation::default()).unwrap(),
+    ));
     library.source = Some(Source::File(path));
     let loaded = crate::library::snapshot_status(&library);
     assert!(library_claim(&loaded, Some(&loaded.revision)).is_some());
