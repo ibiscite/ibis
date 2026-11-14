@@ -763,6 +763,15 @@ mod tests {
         loaded.cites().unwrap_or_else(|error| panic!("{error}"))
     }
 
+    /// Save as an editor does: replace the file in one step. A plain write
+    /// truncates and refills it, and the watcher can read the old and new
+    /// bytes mixed (seen on Windows), which is not an edit anyone made.
+    fn save_atomically(path: &std::path::Path, contents: &[u8]) {
+        let temporary = path.with_extension("json.saving");
+        std::fs::write(&temporary, contents).unwrap_or_else(|error| panic!("{error}"));
+        std::fs::rename(&temporary, path).unwrap_or_else(|error| panic!("{error}"));
+    }
+
     #[test]
     fn key_format_bookkeeping_returns_while_settings_are_busy_and_preserves_live_edits()
     -> Result<(), Box<dyn std::error::Error>> {
@@ -1006,8 +1015,7 @@ mod tests {
                 *applied.lock().unwrap_or_else(|error| panic!("{error}")) = Some(saved.device.update_checks);
             })
             .unwrap_or_else(|| panic!("temporary settings folder is watchable"));
-        std::fs::write(&path, br#"{"larger_text":true,"update_checks":false}"#)
-            .unwrap_or_else(|error| panic!("{error}"));
+        save_atomically(&path, br#"{"larger_text":true,"update_checks":false}"#);
         // Drain in the owner's turn, without relying on native event timing.
         file.settle().unwrap_or_else(|error| panic!("{error}"));
         let event = events
@@ -1020,11 +1028,10 @@ mod tests {
             *native.lock().unwrap_or_else(|error| panic!("{error}")),
             Some(Some(false))
         );
-        std::fs::write(
+        save_atomically(
             &path,
             br#"{"appearance":"invented","larger_text":false,"update_checks":true}"#,
-        )
-        .unwrap_or_else(|error| panic!("{error}"));
+        );
         file.settle().unwrap_or_else(|error| panic!("{error}"));
         let unexpected = events.try_recv();
         assert!(unexpected.is_err(), "unexpected event: {unexpected:?}");
@@ -1041,8 +1048,7 @@ mod tests {
         );
         assert!(file.update(|saved| saved.portable.menu_bar = Some(false)).is_err());
         assert!(std::fs::read_to_string(&path).unwrap_or_default().contains("invented"));
-        std::fs::write(&path, br#"{"larger_text":false,"update_checks":true}"#)
-            .unwrap_or_else(|error| panic!("{error}"));
+        save_atomically(&path, br#"{"larger_text":false,"update_checks":true}"#);
         file.settle().unwrap_or_else(|error| panic!("{error}"));
         let event = events
             .recv_timeout(std::time::Duration::from_secs(5))
