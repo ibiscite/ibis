@@ -172,9 +172,9 @@ fn chosen(saved: Option<Frame>, size: (u32, u32), larger: bool, room: (f64, f64)
 impl Sizing {
     pub(crate) fn load(&self, settings: &Settings) {
         if let Ok(mut state) = self.shared.state.lock() {
-            state.windows = settings.picker_windows.clone();
+            state.windows = settings.device.picker_windows.clone();
         }
-        self.set_larger_text(settings.larger_text.unwrap_or(false));
+        self.set_larger_text(settings.portable.larger_text.unwrap_or(false));
     }
 
     /// An accepted text choice applies until quit even if its flush fails.
@@ -211,7 +211,7 @@ impl Shared {
         // A late A cannot write over B, including B from another display: every
         // snapshot contains all accepted drags. Never hold sizing across I/O.
         let current = || self.state.lock().is_ok_and(|state| state.revision == save.revision);
-        let result = file.update_when(current, |settings| settings.picker_windows = save.windows);
+        let result = file.update_when(current, |settings| settings.device.picker_windows = save.windows);
         if !current() || matches!(result, Ok(None)) {
             return None;
         }

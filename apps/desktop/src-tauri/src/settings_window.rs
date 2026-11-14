@@ -24,7 +24,8 @@ const MARGIN: f64 = 32.0;
 pub(crate) async fn open_settings_file(app: AppHandle) -> Result<(), String> {
     let file = app.state::<crate::preferences::SettingsFile>().inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        file.exclusive(ibis_engine::settings::ensure_file)?
+        file.owner
+            .ensure_file()
             .map_err(|error| crate::preferences::settings_message(&error))?;
         let path = file
             .path

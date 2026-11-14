@@ -227,9 +227,8 @@ pub(crate) async fn restore_settings_backup(app: AppHandle, ticket: u32) -> Resu
     let file = app.state::<SettingsFile>().inner().clone();
     // The locked read, write and flush run off the interface thread and are
     // waited for to the end, so the result shown is the one on disk.
-    tauri::async_runtime::spawn_blocking(move || file.exclusive(|path| backup::restore(path, &plan)))
+    tauri::async_runtime::spawn_blocking(move || file.owner.restore(&plan))
         .await
-        .map_err(|_| BackupProblem::NotSaved)?
         .map_err(|_| BackupProblem::NotSaved)?
         .map_err(|error| backup::problem(&error))?;
     app.request_restart();
@@ -329,9 +328,12 @@ mod tests {
     #[test]
     fn a_preview_shows_a_bibliography_by_its_name_and_values_as_text() {
         let settings = Settings {
-            library: Some(LibrarySetting::Bibtex(PathBuf::from("/invented/private/thesis.bib"))),
-            larger_text: Some(true),
-            ..Settings::default()
+            portable: ibis_engine::settings::Portable {
+                library: Some(LibrarySetting::Bibtex(PathBuf::from("/invented/private/thesis.bib"))),
+                larger_text: Some(true),
+                ..Default::default()
+            },
+            ..Default::default()
         };
         let text = rules::export(&settings, "0.0.0").unwrap_or_else(|error| panic!("{error}"));
         let backup = rules::parse(&text).unwrap_or_else(|error| panic!("{error}"));

@@ -1,6 +1,7 @@
 //! The same backup operation serves the command line and native Settings.
 #![allow(clippy::unwrap_used)]
 
+use ibis_engine::settings::Purpose;
 use std::fs;
 
 use ibis_core::contract::ErrorCode;
@@ -42,12 +43,34 @@ fn export_preview_and_restore_agree_and_dry_run_changes_nothing() {
             .collect::<Vec<_>>(),
         ["density", "output", "paste"]
     );
-    backup::restore(&target, &plan).unwrap();
+    ibis_engine::settings::Owner::open(target.clone())
+        .restore(&plan)
+        .unwrap();
     let reopened = settings::load(&target);
     assert!(reopened.problem.is_none());
-    assert_eq!(reopened.settings.density, Some(Density::Compact));
-    assert_eq!(reopened.settings.output.as_deref(), Some("ieee"));
-    assert_eq!(reopened.settings.update_checks, Some(false));
+    assert_eq!(
+        reopened.usable(Purpose::Interface).unwrap().clone().portable.density,
+        Some(Density::Compact)
+    );
+    assert_eq!(
+        reopened
+            .usable(Purpose::Interface)
+            .unwrap()
+            .clone()
+            .portable
+            .output
+            .as_deref(),
+        Some("ieee")
+    );
+    assert_eq!(
+        reopened
+            .usable(Purpose::Interface)
+            .unwrap()
+            .clone()
+            .device
+            .update_checks,
+        Some(false)
+    );
     assert_eq!(
         fs::read_to_string(&approvals).unwrap(),
         r#"{"invented.editor":{"paste":false}}"#
@@ -118,9 +141,17 @@ fn a_change_after_preview_refuses_commit_and_keeps_the_newer_choice() {
     fs::write(&source, backup::export_file(target.clone(), "0.2.8").unwrap()).unwrap();
     fs::write(&target, "{}").unwrap();
     let (_, plan) = backup::prepare(target.clone(), source).unwrap();
-    settings::update(&target, |settings| settings.larger_text = Some(true)).unwrap();
+    ibis_engine::settings::Owner::open(target.clone())
+        .change(|settings| {
+            settings.portable.larger_text = Some(true);
+            Ok::<_, ibis_engine::settings::SettingsError>(())
+        })
+        .map(|(settings, ())| settings)
+        .unwrap();
     let before = fs::read(&target).unwrap();
-    let error = backup::restore(&target, &plan).unwrap_err();
+    let error = ibis_engine::settings::Owner::open(target.clone())
+        .restore(&plan)
+        .unwrap_err();
     assert_eq!(backup::problem(&error), BackupProblem::Changed);
     assert_eq!(fs::read(&target).unwrap(), before);
 }
@@ -139,7 +170,11 @@ fn failed_write_preserves_existing_settings_and_approvals() {
     let (_, plan) = backup::prepare(target.clone(), source).unwrap();
     // The predecessor cannot be preserved, so the transaction must not replace it.
     fs::create_dir(target.with_extension("json.bak")).unwrap();
-    assert!(backup::restore(&target, &plan).is_err());
+    assert!(
+        ibis_engine::settings::Owner::open(target.clone())
+            .restore(&plan)
+            .is_err()
+    );
     assert_eq!(fs::read_to_string(&target).unwrap(), "{}");
     assert_eq!(fs::read_to_string(&approvals).unwrap(), denied);
 }
@@ -149,10 +184,15 @@ fn only_a_library_file_name_reaches_the_preview() {
     let directory = tempfile::tempdir().unwrap();
     let target = directory.path().join("settings.json");
     let source = directory.path().join("backup.json");
-    settings::update(&target, |settings| {
-        settings.library = Some(LibrarySetting::Bibtex("/invented/private/thesis.bib".into()));
-    })
-    .unwrap();
+    ibis_engine::settings::Owner::open(target.clone())
+        .change(|settings| {
+            {
+                settings.portable.library = Some(LibrarySetting::Bibtex("/invented/private/thesis.bib".into()));
+            };
+            Ok::<_, ibis_engine::settings::SettingsError>(())
+        })
+        .map(|(settings, ())| settings)
+        .unwrap();
     fs::write(&source, backup::export_file(target.clone(), "0.2.8").unwrap()).unwrap();
     fs::write(&target, "{}").unwrap();
     let (_, plan) = backup::prepare(target, source).unwrap();

@@ -43,14 +43,6 @@ pub fn prepare(path: PathBuf, source: PathBuf) -> Result<(Backup, Plan), BackupE
     Ok((backup, plan))
 }
 
-/// Core holds the cross-process writer lock through revalidation and commit.
-pub fn restore(path: &Path, plan: &Plan) -> Result<settings::Settings, BackupError> {
-    backup::restore(path, plan).map_err(|error| match error {
-        BackupError::Settings(problem) => BackupError::Current(problem),
-        other => other,
-    })
-}
-
 pub fn save(path: &Path, text: &str, replace: bool) -> Result<(), BackupError> {
     backup::save(path, text, replace).map_err(BackupError::NotSaved)
 }

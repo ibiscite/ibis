@@ -585,13 +585,12 @@ fn cite(
             let settings = match formats {
                 Formats::File(path) => {
                     let loaded = crate::settings::load(path);
-                    if let Some(problem) = loaded.problem {
-                        return Err(Refusal::new(
-                            crate::settings_backup::settings_code(&problem),
-                            UNREADABLE_FORMATS,
-                        ));
-                    }
-                    loaded.settings
+                    loaded
+                        .usable(crate::settings::Purpose::Cites)
+                        .map_err(|problem| {
+                            Refusal::new(crate::settings_backup::settings_code(problem), UNREADABLE_FORMATS)
+                        })?
+                        .clone()
                 }
                 Formats::Unavailable(problem) => return Err(problem.clone()),
                 Formats::Defaults => crate::settings::Settings::default(),

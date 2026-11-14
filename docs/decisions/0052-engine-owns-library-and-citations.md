@@ -34,6 +34,20 @@ layers, split ownership and phase-ordered modules.
 - **Settings usability**: `Loaded::usable(Purpose::Interface | Purpose::Cites)`.
   The app may run on a validated backup with a notice; nothing that changes cited
   output falls back silently; the command line refuses.
+  An absent file with no backup uses defaults for either purpose. Interface
+  reads may use any validated backup, including with a newer or unreadable
+  primary; the retained primary problem supplies the notice. Library, writing
+  and format reads use `Cites` and refuse every primary problem. Reads never
+  authorize repair or overwrite a newer or unreadable file.
+  Ordinary edits also require `Cites` usability. A missing primary with a backup
+  needs an explicit restore; neither an edit nor opening the settings file in
+  an editor promotes the recovery copy. The app restarts after a restore so all
+  native owners start from the restored choices.
+  Persistence is private to the settings owner: callers submit edits or restore
+  a previewed plan, and ordered reads cannot save or repair a file. Portable
+  and device choices are separate types in the same flat local JSON file;
+  backups contain only the portable type. Unknown fields stay local and survive
+  edits and restores. Appearance and accent are known portable choices.
 
 ## Stays in front ends
 

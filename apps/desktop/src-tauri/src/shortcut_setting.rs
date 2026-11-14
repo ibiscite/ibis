@@ -1,5 +1,6 @@
 //! Changing the shortcut that opens Ibis, from Settings › Shortcuts (#776).
 
+use ibis_engine::settings::Purpose;
 use std::sync::Mutex;
 
 use serde::Serialize;
@@ -41,7 +42,9 @@ pub(crate) fn apply_file_shortcut<R: tauri::Runtime>(app: &AppHandle<R>, shortcu
         let expected = shortcut.clone();
         let current = tauri::async_runtime::spawn_blocking(move || {
             let loaded = ibis_engine::settings::load(&path);
-            loaded.problem.is_none() && loaded.settings.shortcut.here() == expected.as_deref()
+            loaded
+                .usable(Purpose::Cites)
+                .is_ok_and(|settings| settings.portable.shortcut.here() == expected.as_deref())
         })
         .await
         .unwrap_or(false);
@@ -383,7 +386,7 @@ pub(crate) async fn set_shortcut(
 }
 
 fn save_shortcut(file: &SettingsFile, shortcut: Option<String>) -> Result<(), ShortcutRefusal> {
-    file.update(|settings| settings.shortcut.set_here(shortcut))
+    file.update(|settings| settings.portable.shortcut.set_here(shortcut))
         .map(|_| ())
         .map_err(|_| ShortcutRefusal::NotSaved)
 }
@@ -489,8 +492,16 @@ mod tests {
             let file = SettingsFile::new(directory.path().join("settings.json"));
             assert_eq!(save_shortcut(&file, Some(case.shortcut)), Ok(()));
             let saved = ibis_engine::settings::load(&file.path);
-            let (shortcut, label, error) =
-                crate::picker::configured_shortcut_with(saved.settings.shortcut.here(), validate);
+            let (shortcut, label, error) = crate::picker::configured_shortcut_with(
+                saved
+                    .usable(Purpose::Interface)
+                    .unwrap_or_else(|error| panic!("{error}"))
+                    .clone()
+                    .portable
+                    .shortcut
+                    .here(),
+                validate,
+            );
             assert_eq!(shortcut, default_shortcut(), "{}", case.name);
             assert_eq!(label, shortcut_label());
             assert!(error.is_some_and(|error| error.contains(&case.label)), "{}", case.name);
@@ -563,15 +574,30 @@ mod tests {
             assert_eq!(save_shortcut(&file, Some(case.shortcut.clone())), Ok(()));
             let saved = ibis_engine::settings::load(&file.path);
             assert!(saved.problem.is_none());
-            let (restarted, label, error) =
-                crate::picker::configured_shortcut_with(saved.settings.shortcut.here(), |text| {
-                    check_shortcut_for(text, Modifiers::SUPER, false)
-                });
+            let (restarted, label, error) = crate::picker::configured_shortcut_with(
+                saved
+                    .usable(Purpose::Interface)
+                    .unwrap_or_else(|error| panic!("{error}"))
+                    .clone()
+                    .portable
+                    .shortcut
+                    .here(),
+                |text| check_shortcut_for(text, Modifiers::SUPER, false),
+            );
             assert_eq!(error, None, "{}", case.name);
             assert_eq!(label, case.shortcut);
             assert_eq!(restarted, requested, "{}", case.name);
             if case.windows_refusal.is_some() {
-                let (safe, label, error) = crate::picker::configured_shortcut_for(saved.settings.shortcut.here(), true);
+                let (safe, label, error) = crate::picker::configured_shortcut_for(
+                    saved
+                        .usable(Purpose::Interface)
+                        .unwrap_or_else(|error| panic!("{error}"))
+                        .clone()
+                        .portable
+                        .shortcut
+                        .here(),
+                    true,
+                );
                 assert_eq!(safe, default_shortcut(), "{}", case.name);
                 assert_eq!(label, shortcut_label());
                 assert!(error.is_some());
@@ -659,20 +685,20 @@ mod tests {
     fn saving_and_resetting_the_shortcut_keeps_other_settings() {
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("fixture failed: {error}"));
         let file = SettingsFile::new(directory.path().join("settings.json"));
-        file.update(|settings| settings.paste = Some(false))
+        file.update(|settings| settings.portable.paste = Some(false))
             .unwrap_or_else(|error| panic!("fixture failed: {error}"));
         assert_eq!(save_shortcut(&file, Some("Alt+K".into())), Ok(()));
         let saved = file
             .update(|_| {})
             .unwrap_or_else(|error| panic!("fixture failed: {error}"));
-        assert_eq!(saved.shortcut.here(), Some("Alt+K"));
-        assert_eq!(saved.paste, Some(false));
+        assert_eq!(saved.portable.shortcut.here(), Some("Alt+K"));
+        assert_eq!(saved.portable.paste, Some(false));
         assert_eq!(save_shortcut(&file, None), Ok(()));
         let saved = file
             .update(|_| {})
             .unwrap_or_else(|error| panic!("fixture failed: {error}"));
-        assert_eq!(saved.shortcut.here(), None);
-        assert_eq!(saved.paste, Some(false));
+        assert_eq!(saved.portable.shortcut.here(), None);
+        assert_eq!(saved.portable.paste, Some(false));
     }
 
     #[test]

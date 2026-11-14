@@ -3,6 +3,8 @@
 //! opening reads the projects as saved, so a change made in another app is
 //! used by the next citation.
 
+#[cfg(test)]
+use ibis_engine::settings::Purpose;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -155,13 +157,10 @@ fn context_token_for(target: &Target, activation: u32) -> String {
 }
 
 fn read_settings(path: &Path) -> Result<Settings, String> {
-    let loaded = settings::load(path);
-    // An unreadable edit never substitutes an older backup's writing for the
-    // current one while a citation is being committed.
-    if let Some(problem) = loaded.problem {
-        return Err(crate::preferences::settings_message(&problem));
-    }
-    Ok(loaded.settings)
+    settings::load(path)
+        .usable(settings::Purpose::Cites)
+        .cloned()
+        .map_err(crate::preferences::settings_message)
 }
 
 /// The saved settings, or no project at all: an unreadable file never lets
@@ -180,7 +179,7 @@ fn selected<'a>(settings: &'a Settings, target: &Target, session: Option<&'a str
     target
         .binding
         .as_ref()
-        .map_or(session, |key| settings.writing_apps.get(key).map(String::as_str))
+        .map_or(session, |key| settings.device.writing_apps.get(key).map(String::as_str))
         .filter(|id| definitions::find(settings, id).is_ok())
 }
 
@@ -196,7 +195,7 @@ pub(crate) fn saved_view(project: &Writing) -> WritingView {
 fn view_for(settings: &Settings, target: &Target, session: Option<&str>) -> WritingsView {
     let selected = selected(settings, target, session);
     WritingsView {
-        writings: settings.writings.iter().map(saved_view).collect(),
+        writings: settings.device.writings.iter().map(saved_view).collect(),
         selected: selected.map(str::to_owned),
         active: selected
             .and_then(|id| definitions::find(settings, id).ok())
@@ -329,9 +328,9 @@ fn edit(
 fn select(settings: &mut Settings, target: &Target, session: &mut Option<String>, id: Option<String>) {
     if let Some(key) = &target.binding {
         if let Some(id) = id {
-            settings.writing_apps.insert(key.clone(), id);
+            settings.device.writing_apps.insert(key.clone(), id);
         } else {
-            settings.writing_apps.remove(key);
+            settings.device.writing_apps.remove(key);
         }
     } else {
         *session = id;
@@ -418,14 +417,13 @@ pub(crate) fn edit_writing(app: AppHandle, context: String, action: WritingEdit)
     let mut session = runtime.0.lock().map_err(|_| CHANGED.to_owned())?;
     let (settings, replacement) = app
         .state::<SettingsFile>()
-        .exclusive(|path| {
-            settings::transaction(path, |settings| {
-                if current_target(&app) != target || context_token(&app, &target) != context {
-                    return Err(ChangeError::Destination);
-                }
-                edit(settings, &target, session.as_deref(), &action)
-            })
-        })?
+        .owner
+        .change(|settings| {
+            if current_target(&app) != target || context_token(&app, &target) != context {
+                return Err(ChangeError::Destination);
+            }
+            edit(settings, &target, session.as_deref(), &action)
+        })
         .map_err(|error| error.to_string())?;
     // Only a save changes the session-only choice.
     if target.binding.is_none() {
@@ -496,23 +494,21 @@ pub(crate) fn set_bibliography(
     let session = runtime.0.lock().map_err(|_| CHANGED.to_owned())?;
     let (settings, ()) = app
         .state::<SettingsFile>()
-        .exclusive(|settings_path| {
-            settings::transaction(settings_path, |settings| {
-                let activation = app.state::<crate::project::ProjectBibliography>().version().0;
-                if current_target(app) != target
-                    || owner_for(settings, &target, session.as_deref(), activation)? != *owner
-                {
-                    return Err(ChangeError::Stale);
-                }
-                if let Some(id) = &owner.id {
-                    let output = definitions::find(settings, id)?.format.clone();
-                    definitions::update(settings, id, output, path)?;
-                } else {
-                    return Err(ChangeError::Stale);
-                }
-                Ok::<_, ChangeError>(())
-            })
-        })?
+        .owner
+        .change(|settings| {
+            let activation = app.state::<crate::project::ProjectBibliography>().version().0;
+            if current_target(app) != target || owner_for(settings, &target, session.as_deref(), activation)? != *owner
+            {
+                return Err(ChangeError::Stale);
+            }
+            if let Some(id) = &owner.id {
+                let output = definitions::find(settings, id)?.format.clone();
+                definitions::update(settings, id, output, path)?;
+            } else {
+                return Err(ChangeError::Stale);
+            }
+            Ok::<_, ChangeError>(())
+        })
         .map_err(|error| error.to_string())?;
     let current = current_target(app);
     let activation = activate(app, &settings, &current, session.as_deref());
@@ -551,7 +547,7 @@ mod tests {
             },
         )
         .unwrap_or_else(|error| panic!("{error}"));
-        settings.writing_apps[target.binding.as_ref().unwrap_or_else(|| panic!("an app"))].clone()
+        settings.device.writing_apps[target.binding.as_ref().unwrap_or_else(|| panic!("an app"))].clone()
     }
 
     #[test]
@@ -605,7 +601,7 @@ mod tests {
                 .unwrap_or_else(|error| panic!("{error}"))
                 .is_none()
         );
-        assert_eq!(settings.writings.len(), 2);
+        assert_eq!(settings.device.writings.len(), 2);
     }
 
     #[test]
@@ -668,7 +664,7 @@ mod tests {
             )
             .is_err()
         );
-        assert_eq!(settings.writing_apps.len(), 1);
+        assert_eq!(settings.device.writing_apps.len(), 1);
     }
 
     #[test]
@@ -676,24 +672,25 @@ mod tests {
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
         let path = directory.path().join("settings.json");
         let target = known("example.editor", 1);
-        let (settings, _) = settings::transaction(&path, |settings| {
-            edit(
-                settings,
-                &target,
-                None,
-                &WritingEdit::Create {
-                    name: "Paper".into(),
-                    output: output(),
-                },
-            )
-        })
-        .unwrap_or_else(|error| panic!("{error}"));
+        let (settings, _) = ibis_engine::settings::Owner::open(path.clone())
+            .change(|settings| {
+                edit(
+                    settings,
+                    &target,
+                    None,
+                    &WritingEdit::Create {
+                        name: "Paper".into(),
+                        output: output(),
+                    },
+                )
+            })
+            .unwrap_or_else(|error| panic!("{error}"));
         let id = selected(&settings, &target, None)
             .unwrap_or_else(|| panic!("a selected project"))
             .to_owned();
         std::fs::remove_file(&path).unwrap_or_else(|error| panic!("{error}"));
         std::fs::create_dir(&path).unwrap_or_else(|error| panic!("{error}"));
-        let changed = settings::transaction(&path, |settings| {
+        let changed = ibis_engine::settings::Owner::open(path.clone()).change(|settings| {
             edit(
                 settings,
                 &target,
@@ -705,7 +702,7 @@ mod tests {
             )
         });
         assert!(changed.is_err());
-        assert_eq!(settings.writings[0].name, "Paper");
+        assert_eq!(settings.device.writings[0].name, "Paper");
     }
 
     #[test]
@@ -732,17 +729,25 @@ mod tests {
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
         let path = directory.path().join("settings.json");
         let target = known("example.editor", 1);
-        let (settings, ()) = settings::transaction(&path, |settings| {
-            let id = create(settings, &target, "Thesis");
-            definitions::update(settings, &id, output().spec().clone(), Some(invented("thesis.bib")))?;
-            Ok::<_, ChangeError>(())
-        })
-        .unwrap_or_else(|error| panic!("{error}"));
+        let (settings, ()) = ibis_engine::settings::Owner::open(path.clone())
+            .change(|settings| {
+                let id = create(settings, &target, "Thesis");
+                definitions::update(settings, &id, output().spec().clone(), Some(invented("thesis.bib")))?;
+                Ok::<_, ChangeError>(())
+            })
+            .unwrap_or_else(|error| panic!("{error}"));
         let reopened = settings::load(&path);
         assert!(reopened.problem.is_none());
         let before = active_for(&settings, &target, None).unwrap_or_else(|error| panic!("{error}"));
-        let after =
-            active_for(&reopened.settings, &known("example.editor", 2), None).unwrap_or_else(|error| panic!("{error}"));
+        let after = active_for(
+            &reopened
+                .usable(Purpose::Interface)
+                .unwrap_or_else(|error| panic!("{error}"))
+                .clone(),
+            &known("example.editor", 2),
+            None,
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
         assert_eq!(
             before.map(|project| project.view()),
             after.map(|project| project.view())
@@ -854,10 +859,10 @@ mod tests {
             &WritingEdit::Remove { id: project.clone() },
         )
         .unwrap_or_else(|error| panic!("{error}"));
-        assert!(settings.writings.is_empty());
-        assert!(settings.writing_apps.is_empty());
+        assert!(settings.device.writings.is_empty());
+        assert!(settings.device.writing_apps.is_empty());
         assert_eq!(
-            settings.paste, before.paste,
+            settings.portable.paste, before.portable.paste,
             "project selection never grants paste permission"
         );
     }
@@ -905,18 +910,19 @@ mod tests {
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
         let path = directory.path().join("settings.json");
         let target = known("example.editor", 1);
-        let (settings, _) = settings::transaction(&path, |settings| {
-            edit(
-                settings,
-                &target,
-                None,
-                &WritingEdit::Create {
-                    name: "Paper".into(),
-                    output: output(),
-                },
-            )
-        })
-        .unwrap_or_else(|error| panic!("{error}"));
+        let (settings, _) = ibis_engine::settings::Owner::open(path.clone())
+            .change(|settings| {
+                edit(
+                    settings,
+                    &target,
+                    None,
+                    &WritingEdit::Create {
+                        name: "Paper".into(),
+                        output: output(),
+                    },
+                )
+            })
+            .unwrap_or_else(|error| panic!("{error}"));
         std::fs::copy(&path, path.with_extension("json.bak")).unwrap_or_else(|error| panic!("{error}"));
         std::fs::write(&path, "not settings").unwrap_or_else(|error| panic!("{error}"));
         assert!(read_settings(&path).is_err());
@@ -924,6 +930,6 @@ mod tests {
             std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{error}")),
             "not settings"
         );
-        assert!(!settings.writings.is_empty());
+        assert!(!settings.device.writings.is_empty());
     }
 }

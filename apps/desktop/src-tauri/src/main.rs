@@ -287,11 +287,13 @@ fn main() {
             ibis_engine::identity::use_saved_key(true);
             let settings_path = app.path().app_config_dir()?.join("settings.json");
             let loaded = settings::load(&settings_path);
-            library::engine_file::warm_formatter(loaded.settings.output.clone());
+            let interface = loaded.usable(settings::Purpose::Interface).cloned().unwrap_or_default();
+            let cites = loaded.usable(settings::Purpose::Cites).ok();
+            library::engine_file::warm_formatter(cites.and_then(|settings| settings.portable.output.clone()));
             app.manage(SettingsFile::new(settings_path.clone()));
-            let remember = loaded.problem.is_none() && loaded.settings.recent_citations.unwrap_or(true);
+            let remember = cites.is_some_and(|settings| settings.portable.recent_citations.unwrap_or(true));
             session_references::manage(app.handle(), &settings_path, remember);
-            app.state::<sizing::Sizing>().load(&loaded.settings);
+            app.state::<sizing::Sizing>().load(&interface);
             if !sizing::start(app.handle()) {
                 return Err("the picker settings worker could not start".into());
             }
@@ -350,23 +352,30 @@ fn main() {
                 Ok(Err(error)) => report(Err::<(), _>(error), NativeIssue::TrayCreation),
                 Err(_) => application_message("the menu bar item is not available on this system"),
             }
-            tray::show_in_menu_bar(app.handle(), loaded.settings.menu_bar.unwrap_or(true), 0);
-            start_shortcut(app.handle(), loaded.settings.shortcut.here());
+            tray::show_in_menu_bar(app.handle(), interface.portable.menu_bar.unwrap_or(true), 0);
+            start_shortcut(app.handle(), interface.portable.shortcut.here());
             // After the tray, so the menu item shows the saved choice.
-            updater::start(app.handle(), loaded.settings.update_checks, loaded.problem.is_none());
+            updater::start(app.handle(), interface.device.update_checks, loaded.problem.is_none());
             // The library from settings; IBIS_LIBRARY overrides it for development.
             project::watch_openings(app.handle());
-            editor_endpoint::start(app.handle(), loaded.settings.editor_endpoint.clone());
+            editor_endpoint::start(
+                app.handle(),
+                cites.and_then(|settings| settings.device.editor_endpoint.clone()),
+            );
             let library = std::env::var_os("IBIS_LIBRARY")
                 .map(|path| Source::File(PathBuf::from(path)))
-                .or_else(|| loaded.settings.library.clone().map(Source::from));
+                .or_else(|| {
+                    cites
+                        .and_then(|settings| settings.portable.library.clone())
+                        .map(Source::from)
+                });
             if let Some(source) = library {
                 // Opened in the background so the window appears at once.
                 start_open(app.handle(), source, false);
             }
             // With no menu bar item, opening Ibis opens Settings, as reopening does.
             #[cfg(target_os = "macos")]
-            if loaded.settings.menu_bar == Some(false) && !login_item::launched_at_login(std::env::args_os()) {
+            if interface.portable.menu_bar == Some(false) && !login_item::launched_at_login(std::env::args_os()) {
                 panel::cancel_initial_presentation(app.handle());
                 settings_window::open(app.handle(), None);
             }

@@ -26,32 +26,14 @@ use std::path::Path;
 use serde_json::{Map, Value};
 use thiserror::Error;
 
-use super::{LibrarySetting, MAX_SETTINGS_BYTES, PrimaryRead, SCHEMA_VERSION, Settings, SettingsError, Shortcuts};
+use super::{
+    LibrarySetting, MAX_SETTINGS_BYTES, Portable, PrimaryRead, SCHEMA_VERSION, Settings, SettingsError, Shortcuts,
+};
 use ibis_core::destination::System;
 
 /// Version of the backup format this build reads and writes.
 pub const FORMAT: u64 = 1;
 const MARKER: &str = "ibis_settings_backup";
-
-/// Settings that belong to one computer and never travel: window places, quiet
-/// device-local feedback, the project bibliography being checked, which names
-/// a working folder, the editor endpoint, whose token opens the picker, the
-/// update question, which each computer answers for itself because it allows
-/// network use (decision 0008), and the Zotero profile, a name that means
-/// nothing elsewhere. Formats per app stay too, like the apps Ibis may paste
-/// into. A restore keeps this computer's values for them.
-pub const LOCAL: [&str; 10] = [
-    "app_outputs",
-    "suggestion_reports",
-    "key_formats_used",
-    "picker_windows",
-    "delights",
-    "editor_endpoint",
-    "update_checks",
-    "zotero_profile",
-    "writings",
-    "writing_apps",
-];
 
 /// A backup read and checked whole.
 #[derive(Debug, Clone, PartialEq)]
@@ -60,8 +42,8 @@ pub struct Backup {
     pub made_on: System,
     /// The version of Ibis that made it, as it wrote it.
     pub made_by: String,
-    /// The settings it holds, without [`LOCAL`] settings.
-    pub settings: Settings,
+    /// Only choices that travel; device settings and unknown fields stay local.
+    pub settings: Portable,
 }
 
 /// Why a backup or restore did not happen; the Settings window words it.
@@ -116,25 +98,11 @@ pub enum BackupError {
 
 /// The backup text for `settings`, made by Ibis `version` on this system.
 pub fn export(settings: &Settings, version: &str) -> Result<String, BackupError> {
-    let mut written = match serde_json::to_value(settings) {
-        Ok(Value::Object(written)) => written,
-        _ => return Err(BackupError::Invalid("the settings could not be written")),
-    };
-    for local in LOCAL {
-        written.remove(local);
-    }
-    // Every shortcut names its system, so the backup means the same anywhere.
-    if !settings.shortcut.is_empty() {
-        written.insert(
-            "shortcut".into(),
-            serde_json::to_value(settings.shortcut.by_system()).unwrap_or_default(),
-        );
-    }
     let backup = serde_json::json!({
         MARKER: FORMAT,
         "made_by": version,
         "made_on": System::HERE,
-        "settings": written,
+        "settings": settings.portable,
     });
     let text =
         serde_json::to_string_pretty(&backup).map_err(|_| BackupError::Invalid("the backup could not be written"))?;
@@ -299,15 +267,14 @@ pub fn parse(text: &str) -> Result<Backup, BackupError> {
     if !backup.is_empty() {
         return Err(BackupError::Invalid("it has entries Ibis does not know"));
     }
-    for local in LOCAL {
-        settings.remove(local);
-    }
     // A shortcut written as plain text belongs to the system that made the backup.
     if let Some(Value::String(shortcut)) = settings.get("shortcut") {
         let by_system = Map::from_iter([(system_name(made_on), Value::String(shortcut.clone()))]);
         settings.insert("shortcut".into(), Value::Object(by_system));
     }
-    let settings = super::parse_value(Value::Object(settings))?;
+    // Deserialize only the portable type: local and unknown entries in an
+    // imported backup cannot replace this computer's values.
+    let settings = super::parse_fields(Value::Object(settings))?;
     Ok(Backup {
         made_on,
         made_by,
@@ -376,27 +343,20 @@ impl Plan {
 /// What restoring `backup` over `current` changes. `exists` says whether a
 /// file is on this computer; the caller bounds how long that may take.
 pub fn plan(current: &Settings, backup: &Backup, exists: impl FnOnce(&Path) -> bool) -> Plan {
-    let mut restored = backup.settings.clone();
-    restored.schema_version = SCHEMA_VERSION;
-    restored.picker_windows = current.picker_windows.clone();
-    restored.delights = current.delights.clone();
-    restored.writings = current.writings.clone();
-    restored.writing_apps = current.writing_apps.clone();
-    restored.app_outputs = current.app_outputs.clone();
-    restored.suggestion_reports = current.suggestion_reports.clone();
-    restored.key_formats_used = current.key_formats_used;
-    restored.editor_endpoint = current.editor_endpoint.clone();
-    restored.update_checks = current.update_checks;
-    restored.zotero_profile = current.zotero_profile.clone();
+    let mut restored = Settings {
+        portable: backup.settings.clone(),
+        ..current.clone()
+    };
+    restored.portable.schema_version = SCHEMA_VERSION;
     let mut notes = Vec::new();
     // Each system keeps its own shortcut unless the backup has one for it.
-    let mut shortcuts: BTreeMap<System, String> = current.shortcut.by_system().clone();
-    if !backup.settings.shortcut.by_system().contains_key(&System::HERE) && current.shortcut.here().is_some() {
+    let mut shortcuts: BTreeMap<System, String> = current.portable.shortcut.by_system().clone();
+    if !backup.settings.shortcut.by_system().contains_key(&System::HERE) && current.portable.shortcut.here().is_some() {
         notes.push(Note::ShortcutKept);
     }
     shortcuts.extend(backup.settings.shortcut.by_system().clone());
-    restored.shortcut = Shortcuts::from(shortcuts);
-    if let Some(LibrarySetting::Bibtex(file)) = &restored.library
+    restored.portable.shortcut = Shortcuts::from(shortcuts);
+    if let Some(LibrarySetting::Bibtex(file)) = &restored.portable.library
         && !exists(file)
     {
         notes.push(Note::LibraryNotFound);
@@ -412,13 +372,13 @@ pub fn plan(current: &Settings, backup: &Backup, exists: impl FnOnce(&Path) -> b
 
 fn changes(current: &Settings, restored: &Settings) -> Vec<Change> {
     let fields = |settings: &Settings| {
-        let mut fields = match serde_json::to_value(settings) {
+        let mut fields = match serde_json::to_value(&settings.portable) {
             Ok(Value::Object(fields)) => fields,
             _ => Map::new(),
         };
         fields.remove("schema_version");
         fields.remove("shortcut");
-        for (system, shortcut) in settings.shortcut.by_system() {
+        for (system, shortcut) in settings.portable.shortcut.by_system() {
             fields.insert(
                 format!("shortcut.{}", system_name(*system)),
                 Value::String(shortcut.clone()),
@@ -459,7 +419,7 @@ fn is_damaged(problem: Option<&SettingsError>) -> bool {
 /// kept as `settings.json.invalid-N` and replaced, since a backup is how people
 /// recover from one; a file from a newer Ibis or one that cannot be read is
 /// left alone.
-pub fn restore(path: &Path, plan: &Plan) -> Result<Settings, BackupError> {
+pub(super) fn restore(path: &Path, plan: &Plan) -> Result<Settings, BackupError> {
     let _writer = super::writer_lock(path)?;
     let before = super::snapshot(path);
     let mut loaded = super::load(path);

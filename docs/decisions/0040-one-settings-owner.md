@@ -22,13 +22,15 @@ through one owner per settings file, `ibis_engine::settings::Owner`.
   newer one replaced, a window size from an older drag. Such an edit compares
   its identity and changes nothing when it is stale.
 - **A backup restore keeps its own commit.** It compares the file with the
-  settings shown in its preview, replaces them whole, and runs through the same
-  owner.
+  settings shown in its preview, replaces the portable choices while keeping
+  this device's settings and unknown fields, and runs through the same owner.
+  Ordinary edits require usable citation settings (decision 0052); a recovered
+  baseline needs this explicit restore, including when the primary is missing.
 - **Other processes (the command line) are ordered by the file lock.** A busy
   lock refuses at once: "settings are being saved by another Ibis; wait for it
   to finish, then try again". Within one process, one writer guard serializes
-  the complete locked read/change/write section, including direct saves and
-  separate owners; they never refuse each other (maintainer, 2026-11-13).
+  the complete locked read/change/write section, including separate owners;
+  they never refuse each other (maintainer, 2026-11-13).
   The owner's queue still orders app choices. Edits patch only the fields they
   mean to change, so a command-line change made between two app edits is kept.
 - **Outside edits are detected by content.** Watch the canonical settings

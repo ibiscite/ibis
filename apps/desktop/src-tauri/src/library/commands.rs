@@ -105,7 +105,10 @@ pub(crate) struct ZoteroProfiles {
 #[ibis_desktop_macros::command]
 pub(crate) async fn zotero_profiles(app: AppHandle) -> Result<ZoteroProfiles, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let chosen = app.state::<crate::preferences::SettingsFile>().zotero_profile();
+        let chosen = app
+            .state::<crate::preferences::SettingsFile>()
+            .zotero_profile()
+            .map_err(|_| ibis_core::contract::EngineError::new(ibis_core::contract::ErrorCode::SourceUnavailable))?;
         let running = discovery::find_zotero(InspectionPolicy::Setup, false, &Cancellation::default())?
             != discovery::ZoteroPresence::Absent;
         super::engine_file::zotero_profiles().map(|names| ZoteroProfiles { names, chosen, running })

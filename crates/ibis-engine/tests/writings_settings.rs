@@ -1,5 +1,6 @@
 #![allow(clippy::unwrap_used)]
 use ibis_core::contract::{KeySyntax, OutputSpec};
+use ibis_engine::settings::Purpose;
 use ibis_engine::settings::{self, Settings, writings};
 
 fn output() -> OutputSpec {
@@ -25,16 +26,33 @@ fn handwritten_writings_need_only_name_format_and_optional_bibliography() {
     .unwrap();
     let loaded = settings::load(&path);
     assert!(loaded.problem.is_none(), "{:?}", loaded.problem);
-    let writing = writings::find(&loaded.settings, "Atlas").unwrap();
+    let writing = writings::find(loaded.usable(Purpose::Interface).unwrap(), "Atlas").unwrap();
     assert_eq!(writing.format, output());
     assert!(writing.bibliography.is_none());
-    let renamed = writings::change(&path, |s| writings::rename(s, "Atlas", "Revised Atlas".into())).unwrap();
+    let renamed = settings::Owner::open(path.clone())
+        .change(|s| writings::rename(s, "Atlas", "Revised Atlas".into()))
+        .map(|(_, writing)| writing)
+        .unwrap();
     assert_eq!(renamed.name, "Revised Atlas");
-    let reopened = settings::load(&path).settings;
-    assert_eq!(reopened.writing_apps["macos:com.microsoft.word"], "Revised Atlas");
+    let reopened = settings::load(&path).usable(Purpose::Interface).unwrap().clone();
+    assert_eq!(
+        reopened.device.writing_apps["macos:com.microsoft.word"],
+        "Revised Atlas"
+    );
     assert_eq!(writings::find(&reopened, "Revised Atlas").unwrap(), &renamed);
-    writings::change(&path, |s| writings::remove(s, "Revised Atlas")).unwrap();
-    assert!(settings::load(&path).settings.writing_apps.is_empty());
+    settings::Owner::open(path.clone())
+        .change(|s| writings::remove(s, "Revised Atlas"))
+        .map(|(_, writing)| writing)
+        .unwrap();
+    assert!(
+        settings::load(&path)
+            .usable(Purpose::Interface)
+            .unwrap()
+            .clone()
+            .device
+            .writing_apps
+            .is_empty()
+    );
 }
 
 #[test]
@@ -64,38 +82,27 @@ fn invalid_or_duplicate_names_leave_all_definitions_unchanged() {
 fn failed_transaction_and_failed_io_keep_the_old_writing() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("settings.json");
-    let first = writings::change(&path, |s| writings::create(s, "Atlas".into(), output(), None)).unwrap();
+    let first = settings::Owner::open(path.clone())
+        .change(|s| writings::create(s, "Atlas".into(), output(), None))
+        .map(|(_, writing)| writing)
+        .unwrap();
     let before = std::fs::read(&path).unwrap();
-    assert!(writings::change(&path, |s| writings::rename(s, &first.name, "".into())).is_err());
+    assert!(
+        settings::Owner::open(path.clone())
+            .change(|s| writings::rename(s, &first.name, "".into()))
+            .map(|(_, writing)| writing)
+            .is_err()
+    );
     assert_eq!(std::fs::read(&path).unwrap(), before);
     let blocked = directory.path().join("blocked");
     std::fs::write(&blocked, "a regular file").unwrap();
     assert!(
-        writings::change(&blocked.join("settings.json"), |s| writings::create(
-            s,
-            "Other".into(),
-            output(),
-            None
-        ))
-        .is_err()
+        settings::Owner::open(blocked.join("settings.json"))
+            .change(|s| writings::create(s, "Other".into(), output(), None))
+            .map(|(_, writing)| writing)
+            .is_err()
     );
     assert_eq!(std::fs::read(&path).unwrap(), before);
-}
-
-#[test]
-fn reopen_and_backup_keep_definitions_on_their_computer() {
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("settings.json");
-    let writing = writings::change(&path, |s| {
-        writings::create(s, "Atlas".into(), output(), Some(directory.path().join("refs.bib")))
-    })
-    .unwrap();
-    let saved = settings::load(&path).settings;
-    assert_eq!(writings::find(&saved, &writing.name).unwrap(), &writing);
-    let backup = settings::backup::parse(&settings::backup::export(&saved, "0.0.0").unwrap()).unwrap();
-    assert!(backup.settings.writings.is_empty());
-    let plan = settings::backup::plan(&saved, &backup, |_| false);
-    assert_eq!(plan.restored.writings, saved.writings);
 }
 
 #[test]
@@ -121,7 +128,13 @@ fn another_process_refuses_immediately_with_recovery_and_retry_preserves_its_cha
     }
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("settings.json");
-    settings::update(&path, |s| s.recent_citations = Some(false)).unwrap();
+    ibis_engine::settings::Owner::open(path.clone())
+        .change(|s| {
+            s.portable.recent_citations = Some(false);
+            Ok::<_, ibis_engine::settings::SettingsError>(())
+        })
+        .map(|(settings, ())| settings)
+        .unwrap();
     let before = std::fs::read(&path).unwrap();
     let mut child = Running(
         Command::new(std::env::current_exe().unwrap())
@@ -149,7 +162,16 @@ fn another_process_refuses_immediately_with_recovery_and_retry_preserves_its_cha
     let (finished, result) = std::sync::mpsc::channel();
     let saving = path.clone();
     let save = std::thread::spawn(move || {
-        finished.send(settings::save(&saving, &Settings::default())).unwrap();
+        finished
+            .send(
+                ibis_engine::settings::Owner::open(saving.clone())
+                    .change(|current| {
+                        *current = Settings::default();
+                        Ok::<_, ibis_engine::settings::SettingsError>(())
+                    })
+                    .map(|_| ()),
+            )
+            .unwrap();
     });
     // The child still holds the lock: a blocking cross-process lock cannot pass.
     let error = result.recv_timeout(Duration::from_secs(5)).unwrap().unwrap_err();
@@ -165,8 +187,14 @@ fn another_process_refuses_immediately_with_recovery_and_retry_preserves_its_cha
     );
     assert_eq!(std::fs::read(&path).unwrap(), before);
     let backup = settings::backup::parse(&settings::backup::export(&Settings::default(), "0.0.0").unwrap()).unwrap();
-    let plan = settings::backup::plan(&settings::load(&path).settings, &backup, |_| true);
-    let refused = ibis_engine::settings_backup::restore(&path, &plan).unwrap_err();
+    let plan = settings::backup::plan(
+        &settings::load(&path).usable(Purpose::Interface).unwrap().clone(),
+        &backup,
+        |_| true,
+    );
+    let refused = ibis_engine::settings::Owner::open(path.clone())
+        .restore(&plan)
+        .unwrap_err();
     assert_eq!(
         ibis_engine::settings_backup::problem(&refused),
         settings::backup::BackupProblem::Busy
@@ -175,29 +203,48 @@ fn another_process_refuses_immediately_with_recovery_and_retry_preserves_its_cha
         ibis_engine::settings_backup::message(&refused),
         "settings are being saved by another Ibis; wait for it to finish, then try again. Nothing was changed."
     );
-    assert!(writings::change(&path, |s| writings::create(s, "Atlas".into(), output(), None)).is_err());
+    assert!(
+        settings::Owner::open(path.clone())
+            .change(|s| writings::create(s, "Atlas".into(), output(), None))
+            .map(|(_, writing)| writing)
+            .is_err()
+    );
     drop(child.0.stdin.take());
     assert!(child.0.wait().unwrap().success());
     // Once the external writer finishes, the same caller can save normally.
-    writings::change(&path, |s| writings::create(s, "Atlas".into(), output(), None)).unwrap();
-    let saved = settings::load(&path).settings;
-    assert_eq!(saved.recent_citations, Some(false));
-    assert_eq!(saved.writings.len(), 1);
+    settings::Owner::open(path.clone())
+        .change(|s| writings::create(s, "Atlas".into(), output(), None))
+        .map(|(_, writing)| writing)
+        .unwrap();
+    let saved = settings::load(&path).usable(Purpose::Interface).unwrap().clone();
+    assert_eq!(saved.portable.recent_citations, Some(false));
+    assert_eq!(saved.device.writings.len(), 1);
 }
 
 #[test]
 fn an_app_binding_limit_cannot_publish_settings_that_the_next_launch_refuses() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("settings.json");
-    settings::update(&path, |settings| settings.density = Some(settings::Density::Compact)).unwrap();
+    ibis_engine::settings::Owner::open(path.clone())
+        .change(|settings| {
+            settings.portable.density = Some(settings::Density::Compact);
+            Ok::<_, ibis_engine::settings::SettingsError>(())
+        })
+        .map(|(settings, ())| settings)
+        .unwrap();
     let before = std::fs::read(&path).unwrap();
     assert!(
-        settings::update(&path, |settings| {
-            settings.writing_apps = (0..201)
-                .map(|index| (format!("macos:org.example.writer{index}"), "a".repeat(32)))
-                .collect();
-        })
-        .is_err()
+        ibis_engine::settings::Owner::open(path.clone())
+            .change(|settings| {
+                {
+                    settings.device.writing_apps = (0..201)
+                        .map(|index| (format!("macos:org.example.writer{index}"), "a".repeat(32)))
+                        .collect();
+                };
+                Ok::<_, ibis_engine::settings::SettingsError>(())
+            })
+            .map(|(settings, ())| settings)
+            .is_err()
     );
     assert_eq!(std::fs::read(&path).unwrap(), before);
     assert!(settings::load(&path).problem.is_none());
@@ -220,6 +267,14 @@ fn a_dangling_writing_binding_is_reported_and_never_silently_saved_as_another_fo
     .unwrap();
     let before = std::fs::read(&path).unwrap();
     assert!(settings::load(&path).problem.is_some());
-    assert!(settings::update(&path, |settings| settings.larger_text = Some(true)).is_err());
+    assert!(
+        ibis_engine::settings::Owner::open(path.clone())
+            .change(|settings| {
+                settings.portable.larger_text = Some(true);
+                Ok::<_, ibis_engine::settings::SettingsError>(())
+            })
+            .map(|(settings, ())| settings)
+            .is_err()
+    );
     assert_eq!(std::fs::read(&path).unwrap(), before);
 }

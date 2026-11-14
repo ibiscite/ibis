@@ -281,7 +281,12 @@ impl Owner {
         &self.path
     }
     pub fn read(&self) -> Loaded {
-        settings::load(&self.path)
+        self.in_turn(settings::load)
+            .unwrap_or_else(|| settings::load(&self.path))
+    }
+    /// Read and apply read effects in order, without saving or repairing a file.
+    pub fn read_with<T>(&self, read: impl FnOnce(Loaded) -> T) -> Option<T> {
+        self.in_turn(|path| read(settings::load(path)))
     }
     pub fn submit<T, E>(
         &self,
@@ -291,30 +296,25 @@ impl Owner {
         T: Send + 'static,
         E: From<SettingsError> + Send + 'static,
     {
-        self.submit_on_file(move |path| settings::transaction(path, change))
-    }
-    pub fn submit_on_file<T: Send + 'static>(&self, work: impl FnOnce(&Path) -> T + Send + 'static) -> Pending<T> {
-        self.submit_on_file_receipt(work).1
-    }
-    /// The receipt is assigned while enqueuing, never when a delayed save finishes.
-    pub fn submit_on_file_receipt<T: Send + 'static>(
-        &self,
-        work: impl FnOnce(&Path) -> T + Send + 'static,
-    ) -> (Option<u64>, Pending<T>) {
-        self.submit_on_file_with_receipt(work, |_, result| result)
+        self.submit_with_receipt(change, |_, result| result).1
     }
     /// Publish a save's effects after its input edits and before its final
     /// observation; return the outcome only once the whole turn is finished.
-    pub fn submit_on_file_with_receipt<T: Send + 'static, U: Send + 'static>(
+    pub fn submit_with_receipt<T, E, U>(
         &self,
-        work: impl FnOnce(&Path) -> T + Send + 'static,
-        after: impl FnOnce(u64, T) -> U + Send + 'static,
-    ) -> (Option<u64>, Pending<U>) {
+        change: impl FnOnce(&mut Settings) -> Result<T, E> + Send + 'static,
+        after: impl FnOnce(u64, Result<(Settings, T), E>) -> U + Send + 'static,
+    ) -> (Option<u64>, Pending<U>)
+    where
+        T: Send + 'static,
+        E: From<SettingsError> + Send + 'static,
+        U: Send + 'static,
+    {
         let (reply, outcome) = mpsc::channel();
         let receipt = enqueue(
             &self.jobs,
             Box::new(move |path, receipt| {
-                let (result, written) = tracking(|| work(path));
+                let (result, written) = tracking(|| settings::transaction(path, change));
                 Completion {
                     written,
                     publish: Some(Box::new(move || {
@@ -332,10 +332,36 @@ impl Owner {
         &self,
         change: impl FnOnce(&mut Settings) -> Result<T, E>,
     ) -> Result<(Settings, T), E> {
-        self.in_turn(|path| settings::transaction(path, change))
-            .unwrap_or_else(|| Err(closed().into()))
+        self.change_with(change, |result| result)
     }
-    pub fn in_turn<T>(&self, work: impl FnOnce(&Path) -> T) -> Option<T> {
+    /// Run effects of a completed edit before observing later outside changes.
+    pub fn change_with<T, E: From<SettingsError>, U>(
+        &self,
+        change: impl FnOnce(&mut Settings) -> Result<T, E>,
+        after: impl FnOnce(Result<(Settings, T), E>) -> U,
+    ) -> U {
+        let mut after = Some(after);
+        self.in_turn(|path| {
+            after.take().unwrap_or_else(|| unreachable!("one settings turn"))(settings::transaction(path, change))
+        })
+        .unwrap_or_else(|| after.take().unwrap_or_else(|| unreachable!("no settings turn"))(Err(closed().into())))
+    }
+    /// Prepare a file for the external editor, leaving existing contents alone.
+    pub fn ensure_file(&self) -> Result<(), SettingsError> {
+        self.in_turn(settings::ensure_file).unwrap_or_else(|| Err(closed()))
+    }
+
+    /// Restores exactly the previewed settings, preserving this device's state.
+    pub fn restore(&self, plan: &super::backup::Plan) -> Result<Settings, super::backup::BackupError> {
+        self.in_turn(|path| super::backup::restore(path, plan))
+            .unwrap_or_else(|| Err(closed().into()))
+            .map_err(|error| match error {
+                super::backup::BackupError::Settings(problem) => super::backup::BackupError::Current(problem),
+                other => other,
+            })
+    }
+
+    fn in_turn<T>(&self, work: impl FnOnce(&Path) -> T) -> Option<T> {
         let (start, turn) = mpsc::channel::<()>();
         let (finished, done) = mpsc::channel::<Vec<Commit>>();
         let (settled, completion) = mpsc::channel::<()>();
@@ -427,7 +453,7 @@ mod tests {
 
     fn density(owner: &Owner, density: settings::Density) -> Result<(Settings, ()), SettingsError> {
         owner.change(move |s| {
-            s.density = Some(density);
+            s.portable.density = Some(density);
             Ok(())
         })
     }
@@ -450,7 +476,7 @@ mod tests {
     fn a_quick_external_shortcut_revert_applies_before_the_next_keypress() -> Result<(), Box<dyn std::error::Error>> {
         let (directory, owner) = owner();
         owner.change(|settings| {
-            settings.shortcut.set_here(Some("Control+Shift+Y".into()));
+            settings.portable.shortcut.set_here(Some("Control+Shift+Y".into()));
             Ok::<_, SettingsError>(())
         })?;
         let path = directory.path().join("settings.json");
@@ -460,12 +486,15 @@ mod tests {
         owner.watch.lock().map_err(|_| "watch poisoned")?.edited = Some(Arc::new(move |_, loaded| {
             if loaded.problem.is_none() {
                 *observed.lock().unwrap_or_else(|error| panic!("{error}")) =
-                    loaded.settings.shortcut.here().unwrap_or_default().to_owned();
+                    loaded.settings.portable.shortcut.here().unwrap_or_default().to_owned();
             }
         }));
         std::fs::write(&path, br#"{"shortcut":"Control+Alt+F12"}"#)?;
         // A citation's settings turn can apply A before the native watcher runs.
-        assert_eq!(owner.submit_on_file(|_| ()).wait(), Some(()));
+        assert_eq!(
+            owner.submit(|_| Ok::<_, SettingsError>(())).wait().map(|_| ()),
+            Some(())
+        );
         assert_eq!(*applied.lock().map_err(|_| "shortcut poisoned")?, "Control+Alt+F12");
 
         // Fake time, no native watcher or sleeps: restore primary, backup and
@@ -501,12 +530,15 @@ mod tests {
                 false
             },
             || {
-                assert_eq!(owner.submit_on_file(|_| ()).wait(), Some(()));
+                assert_eq!(
+                    owner.submit(|_| Ok::<_, SettingsError>(())).wait().map(|_| ()),
+                    Some(())
+                );
                 true
             },
         );
         assert_eq!(*applied.lock().map_err(|_| "shortcut poisoned")?, "Control+Shift+Y");
-        assert_eq!(owner.read().settings.shortcut.here(), Some("Control+Shift+Y"));
+        assert_eq!(owner.read().settings.portable.shortcut.here(), Some("Control+Shift+Y"));
         Ok(())
     }
 
@@ -538,8 +570,8 @@ mod tests {
         report(&path, 5, &watch, valid);
         let reported = next(&edits);
         assert!(reported.problem.is_none());
-        assert_eq!(reported.settings.larger_text, Some(true));
-        assert_eq!(reported.settings.update_checks, Some(false));
+        assert_eq!(reported.settings.portable.larger_text, Some(true));
+        assert_eq!(reported.settings.device.update_checks, Some(false));
         assert!(!reported.settings.unknown.contains_key("appearance"));
     }
 
@@ -633,17 +665,20 @@ mod tests {
         // A write here is followed by an outside edit; only the edit is reported.
         density(&owner, settings::Density::Comfortable).unwrap_or_else(|error| panic!("{error}"));
         let mut edited = owner.read().settings;
-        edited.larger_text = Some(true);
+        edited.portable.larger_text = Some(true);
         replace(&path, &serde_json::to_vec(&edited).unwrap_or_default());
         let reported = next(&edits);
         assert!(reported.problem.is_none());
         assert_eq!(
-            (reported.settings.larger_text, reported.settings.density),
+            (
+                reported.settings.portable.larger_text,
+                reported.settings.portable.density
+            ),
             (Some(true), Some(settings::Density::Comfortable))
         );
         // A later change here starts from the edit, so neither is lost.
         density(&owner, settings::Density::Compact).unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(owner.read().settings.larger_text, Some(true));
+        assert_eq!(owner.read().settings.portable.larger_text, Some(true));
     }
 
     #[test]
@@ -658,20 +693,26 @@ mod tests {
             })
             .unwrap_or_else(|| panic!("the temporary folder can be watched"));
         // Finish the opening comparison before simulating an editor's save.
-        assert_eq!(owner.submit_on_file(|_| ()).wait(), Some(()));
+        assert_eq!(
+            owner.submit(|_| Ok::<_, SettingsError>(())).wait().map(|_| ()),
+            Some(())
+        );
         replace(&path, b"{ invented half-typed");
         assert!(next(&edits).problem.is_some());
         assert!(density(&owner, settings::Density::Comfortable).is_err());
         assert_eq!(std::fs::read(&path).unwrap_or_default(), b"{ invented half-typed");
         // Fixing the file is reported too, and changes work again.
         let fixed = Settings {
-            density: Some(settings::Density::Comfortable),
-            ..Settings::default()
+            portable: crate::settings::Portable {
+                density: Some(settings::Density::Comfortable),
+                ..Default::default()
+            },
+            ..Default::default()
         };
         replace(&path, &serde_json::to_vec(&fixed).unwrap_or_default());
         let reported = next(&edits);
         assert!(reported.problem.is_none());
-        assert_eq!(reported.settings.density, Some(settings::Density::Comfortable));
+        assert_eq!(reported.settings.portable.density, Some(settings::Density::Comfortable));
         owner.close();
     }
 
@@ -679,10 +720,13 @@ mod tests {
     fn a_change_is_saved_and_reopening_reads_it() {
         let (directory, owner) = owner();
         let (saved, ()) = density(&owner, settings::Density::Compact).unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(saved.density, Some(settings::Density::Compact));
+        assert_eq!(saved.portable.density, Some(settings::Density::Compact));
         owner.close();
         let reopened = Owner::open(directory.path().join("settings.json"));
-        assert_eq!(reopened.read().settings.density, Some(settings::Density::Compact));
+        assert_eq!(
+            reopened.read().settings.portable.density,
+            Some(settings::Density::Compact)
+        );
     }
 
     #[test]
@@ -697,63 +741,55 @@ mod tests {
         std::fs::write(&path, br#"{"larger_text":true}"#).unwrap_or_else(|error| panic!("{error}"));
         density(&owner, settings::Density::Comfortable).unwrap_or_else(|error| panic!("{error}"));
         let reported = next(&edits);
-        assert_eq!(reported.settings.larger_text, Some(true));
-        assert_eq!(owner.read().settings.larger_text, Some(true));
+        assert_eq!(reported.settings.portable.larger_text, Some(true));
+        assert_eq!(owner.read().settings.portable.larger_text, Some(true));
     }
 
     #[test]
-    fn an_edit_after_observe_is_reported_once_before_an_unrelated_save_is_adopted()
+    fn an_edit_after_observe_is_reported_before_the_unrelated_save_is_published()
     -> Result<(), Box<dyn std::error::Error>> {
         let (_directory, owner) = owner();
-        owner.change(|settings| {
-            settings.shortcut.set_here(Some("Control+Shift+Y".into()));
-            settings.density = Some(settings::Density::Compact);
-            Ok::<_, SettingsError>(())
-        })?;
+        density(&owner, settings::Density::Compact)?;
+        let path = owner.path().to_path_buf();
         let (sender, edits) = mpsc::channel();
         let published = sender.clone();
         owner.watch.lock().map_err(|_| "watch poisoned")?.edited = Some(Arc::new(move |receipt, loaded| {
+            if loaded.settings.portable.shortcut.here() == Some("Control+Shift+Y") {
+                replace(&path, br#"{"shortcut":"Control+Alt+F12"}"#);
+            }
             let _ = sender.send((receipt, Some(loaded)));
         }));
-        let (started, paused) = mpsc::channel();
-        let (release, held) = mpsc::channel();
-        // The file-work closure is the hook between the turn's initial
-        // observation and the transaction's checked read; no native watcher.
-        let (receipt, saved) = owner.submit_on_file_with_receipt(
-            move |path| {
-                started.send(()).unwrap_or_else(|error| panic!("{error}"));
-                held.recv_timeout(CHANNEL_LIMIT)
-                    .unwrap_or_else(|error| panic!("{error}"));
-                settings::update(path, |settings| settings.density = Some(settings::Density::Comfortable))
+        replace(owner.path(), br#"{"shortcut":"Control+Shift+Y"}"#);
+        let (receipt, saved) = owner.submit_with_receipt(
+            |settings| {
+                settings.portable.density = Some(settings::Density::Comfortable);
+                Ok::<_, SettingsError>(())
             },
             move |receipt, saved| {
                 let _ = published.send((receipt, None));
                 saved
             },
         );
-        paused.recv_timeout(CHANNEL_LIMIT)?;
-        let mut outside = owner.read().settings;
-        outside.shortcut.set_here(Some("Control+Alt+F12".into()));
-        replace(owner.path(), &serde_json::to_vec(&outside)?);
-        release.send(())?;
-        let saved = saved.wait().ok_or("save closed")??;
-        assert_eq!(saved.density, Some(settings::Density::Comfortable));
-        assert_eq!(saved.shortcut.here(), Some("Control+Alt+F12"));
-        let (reported_receipt, Some(reported)) = edits.try_recv()? else {
-            panic!("outside fields must be reported before publishing the save");
-        };
-        assert!(Some(reported_receipt) < receipt);
-        assert!(reported.problem.is_none());
-        assert_eq!(
-            reported.settings, outside,
-            "report the outside fields, before our density change"
-        );
+        let (saved, ()) = saved.wait().ok_or("save closed")??;
+        assert_eq!(saved.portable.shortcut.here(), Some("Control+Alt+F12"));
+        assert_eq!(saved.portable.density, Some(settings::Density::Comfortable));
+        for shortcut in ["Control+Shift+Y", "Control+Alt+F12"] {
+            let (reported_receipt, Some(reported)) = edits.try_recv()? else {
+                panic!("outside edit missing")
+            };
+            assert!(Some(reported_receipt) < receipt);
+            assert_eq!(
+                reported
+                    .usable(super::super::Purpose::Cites)
+                    .map_err(|error| error.to_string())?
+                    .portable
+                    .shortcut
+                    .here(),
+                Some(shortcut)
+            );
+        }
         assert!(matches!(edits.try_recv()?, (saved_receipt, None) if Some(saved_receipt) == receipt));
-        assert_eq!(owner.submit_on_file(|_| ()).wait(), Some(()));
-        assert!(
-            matches!(edits.try_recv(), Err(mpsc::TryRecvError::Empty)),
-            "report the edit exactly once"
-        );
+        assert!(matches!(edits.try_recv(), Err(mpsc::TryRecvError::Empty)));
         assert_eq!(owner.read().settings, saved);
         Ok(())
     }
@@ -768,15 +804,20 @@ mod tests {
         }));
         let path = directory.path().join("settings.json");
         owner.in_turn(|_| std::fs::write(&path, br#"{"larger_text":true}"#).unwrap_or_else(|error| panic!("{error}")));
-        let (receipt, saved) =
-            owner.submit_on_file_receipt(|path| settings::update(path, |s| s.menu_bar = Some(false)));
+        let (receipt, saved) = owner.submit_with_receipt(
+            |settings| {
+                settings.portable.menu_bar = Some(false);
+                Ok::<_, SettingsError>(())
+            },
+            |_, saved| saved,
+        );
         assert!(saved.wait().is_some_and(|saved| saved.is_ok()));
         let (reported_receipt, loaded) = edits
             .recv_timeout(CHANNEL_LIMIT)
             .unwrap_or_else(|error| panic!("{error}"));
         assert!(Some(reported_receipt) < receipt);
-        assert_eq!(loaded.settings.larger_text, Some(true));
-        assert_eq!(owner.read().settings.menu_bar, Some(false));
+        assert_eq!(loaded.settings.portable.larger_text, Some(true));
+        assert_eq!(owner.read().settings.portable.menu_bar, Some(false));
     }
 
     #[test]
@@ -799,7 +840,7 @@ mod tests {
             let path = directory.path().join("settings.json");
             let saved: Result<(Settings, ()), SettingsError> = owner.change(|settings| {
                 std::fs::write(&path, outside).unwrap_or_else(|error| panic!("{error}"));
-                settings.menu_bar = Some(false);
+                settings.portable.menu_bar = Some(false);
                 Ok(())
             });
             assert!(saved.is_err());
@@ -827,16 +868,19 @@ mod tests {
                 let _ = sender.send(loaded);
             })
             .unwrap_or_else(|| panic!("watch"));
-        assert_eq!(owner.submit_on_file(|_| ()).wait(), Some(()));
+        assert_eq!(
+            owner.submit(|_| Ok::<_, SettingsError>(())).wait().map(|_| ()),
+            Some(())
+        );
         // Replacing the inode must keep observing this filename.
         replace(&first, br#"{"larger_text":true}"#);
-        assert_eq!(next(&edits).settings.larger_text, Some(true));
+        assert_eq!(next(&edits).settings.portable.larger_text, Some(true));
         let replacement = directory.path().join("replacement");
         std::os::unix::fs::symlink(&second, &replacement).unwrap_or_else(|error| panic!("{error}"));
         std::fs::rename(&replacement, &path).unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(next(&edits).settings.larger_text, None);
+        assert_eq!(next(&edits).settings.portable.larger_text, None);
         replace(&second, br#"{"menu_bar":false}"#);
-        assert_eq!(next(&edits).settings.menu_bar, Some(false));
+        assert_eq!(next(&edits).settings.portable.menu_bar, Some(false));
         owner.close();
         assert!(density(&owner, settings::Density::Compact).is_err());
     }
@@ -869,11 +913,11 @@ mod tests {
         let (_directory, owner) = owner();
         density(&owner, settings::Density::Compact).unwrap_or_else(|error| panic!("{error}"));
         let failed: Result<(Settings, ()), SettingsError> = owner.change(|s| {
-            s.density = Some(settings::Density::Comfortable);
+            s.portable.density = Some(settings::Density::Comfortable);
             Err(SettingsError::Invalid("refused by its own check".into()))
         });
         assert!(failed.is_err());
-        assert_eq!(owner.read().settings.density, Some(settings::Density::Compact));
+        assert_eq!(owner.read().settings.portable.density, Some(settings::Density::Compact));
         let panicked = owner.submit(|_: &mut Settings| -> Result<(), SettingsError> { panic!("a broken change") });
         assert!(panicked.wait().is_none(), "a change that panics fails alone");
         assert!(density(&owner, settings::Density::Comfortable).is_ok());
@@ -891,14 +935,14 @@ mod tests {
                 .unwrap_or_else(|error| panic!("the test is waiting for the earlier choice: {error}"));
             held.recv_timeout(CHANNEL_LIMIT)
                 .unwrap_or_else(|error| panic!("the test releases the earlier choice: {error}"));
-            s.density = Some(settings::Density::Compact);
+            s.portable.density = Some(settings::Density::Compact);
             Ok(())
         });
         running
             .recv_timeout(CHANNEL_LIMIT)
             .unwrap_or_else(|error| panic!("the earlier choice starts: {error}"));
         let later = owner.submit(|s: &mut Settings| -> Result<(), SettingsError> {
-            s.density = Some(settings::Density::Comfortable);
+            s.portable.density = Some(settings::Density::Comfortable);
             Ok(())
         });
         release
@@ -907,7 +951,7 @@ mod tests {
         assert!(earlier.wait().is_some_and(|saved| saved.is_ok()));
         assert!(later.wait().is_some_and(|saved| saved.is_ok()));
         assert_eq!(
-            owner.read().settings.density,
+            owner.read().settings.portable.density,
             Some(settings::Density::Comfortable),
             "the stale choice never wins"
         );
@@ -924,9 +968,9 @@ mod tests {
                 std::thread::spawn(move || {
                     owner.change(move |s| {
                         if larger {
-                            s.larger_text = Some(true);
+                            s.portable.larger_text = Some(true);
                         } else {
-                            s.menu_bar = Some(false);
+                            s.portable.menu_bar = Some(false);
                         }
                         Ok::<_, SettingsError>(())
                     })
@@ -937,7 +981,10 @@ mod tests {
             assert!(thread.join().is_ok_and(|saved| saved.is_ok()));
         }
         let saved = owner.read().settings;
-        assert_eq!((saved.larger_text, saved.menu_bar), (Some(true), Some(false)));
+        assert_eq!(
+            (saved.portable.larger_text, saved.portable.menu_bar),
+            (Some(true), Some(false))
+        );
     }
 
     #[test]
@@ -948,7 +995,7 @@ mod tests {
             earlier_held
                 .recv_timeout(CHANNEL_LIMIT)
                 .unwrap_or_else(|error| panic!("the test releases the earlier choice: {error}"));
-            s.density = Some(settings::Density::Compact);
+            s.portable.density = Some(settings::Density::Compact);
             Ok(())
         });
         std::thread::scope(|scope| {
@@ -960,18 +1007,18 @@ mod tests {
                 let seen = std::cell::Cell::new(None);
                 let (saved, ()) = owner
                     .change(|s| {
-                        seen.set(s.density);
+                        seen.set(s.portable.density);
                         entered
                             .send(())
                             .unwrap_or_else(|error| panic!("the test is waiting for the turn: {error}"));
                         turn_held
                             .recv_timeout(CHANNEL_LIMIT)
                             .unwrap_or_else(|error| panic!("the test releases the turn: {error}"));
-                        s.density = Some(settings::Density::Comfortable);
+                        s.portable.density = Some(settings::Density::Comfortable);
                         Ok::<_, SettingsError>(())
                     })
                     .unwrap_or_else(|error| panic!("{error}"));
-                (seen.get(), saved.density)
+                (seen.get(), saved.portable.density)
             });
             release_earlier
                 .send(())
@@ -979,7 +1026,7 @@ mod tests {
             in_turn
                 .recv_timeout(CHANNEL_LIMIT)
                 .unwrap_or_else(|error| panic!("the next turn starts: {error}"));
-            let later = owner.submit_on_file(|path| settings::load(path).settings.density);
+            let later = owner.submit(|settings| Ok::<_, SettingsError>(settings.portable.density));
             release_turn
                 .send(())
                 .unwrap_or_else(|error| panic!("the turn is held: {error}"));
@@ -987,7 +1034,10 @@ mod tests {
                 turn.join().unwrap_or_else(|_| panic!("the turn panicked")),
                 (Some(settings::Density::Compact), Some(settings::Density::Comfortable))
             );
-            assert_eq!(later.wait().flatten(), Some(settings::Density::Comfortable));
+            assert_eq!(
+                later.wait().and_then(Result::ok).and_then(|(_, density)| density),
+                Some(settings::Density::Comfortable)
+            );
         });
         assert!(earlier.wait().is_some_and(|saved| saved.is_ok()));
         // A turn that panics releases the queue.
@@ -1000,7 +1050,7 @@ mod tests {
     fn closing_finishes_what_was_asked_and_refuses_the_rest() {
         let (directory, owner) = owner();
         let pending = owner.submit(|s: &mut Settings| -> Result<(), SettingsError> {
-            s.density = Some(settings::Density::Compact);
+            s.portable.density = Some(settings::Density::Compact);
             Ok(())
         });
         owner.close();
@@ -1016,6 +1066,7 @@ mod tests {
             Owner::open(directory.path().join("settings.json"))
                 .read()
                 .settings
+                .portable
                 .density,
             Some(settings::Density::Compact)
         );

@@ -9,17 +9,7 @@ use ibis_engine::settings::{
 };
 use ibis_engine::{DispatchResult, Engine, ProjectAssessmentState, WritingCitation, request::StylesRequest};
 use serde_json::{Value, json};
-use std::path::{Path, PathBuf};
-
-/// A whole definition edit, through the one settings owner (decision 0040).
-fn change<T: Send + 'static>(
-    path: &Path,
-    edit: impl FnOnce(&mut ibis_engine::settings::Settings) -> Result<T, writings::WritingError>,
-) -> Result<T, writings::WritingError> {
-    ibis_engine::settings::Owner::open(path.to_path_buf())
-        .change(edit)
-        .map(|(_, result)| result)
-}
+use std::path::PathBuf;
 
 pub(crate) fn command() -> Command {
     let id = || {
@@ -87,10 +77,13 @@ fn failure(error: WritingError) -> Failure {
 fn load(nightly: bool) -> Result<(PathBuf, settings::Settings), Failure> {
     let (_, path) = settings_backup::settings_file(nightly)?;
     let loaded = settings::load(&path);
-    if let Some(problem) = loaded.problem {
-        return Err(failure(WritingError::Settings(problem)));
-    }
-    Ok((path, loaded.settings))
+    let settings = loaded.usable(settings::Purpose::Cites).map_err(|problem| {
+        Failure::new(
+            ibis_engine::settings_backup::settings_code(problem),
+            ibis_engine::settings_backup::settings_message(problem),
+        )
+    })?;
+    Ok((path, settings.clone()))
 }
 
 pub(crate) struct Context {
@@ -215,11 +208,12 @@ pub(crate) fn run(engine: &Engine, args: &ArgMatches) -> Result<DispatchResult, 
     }
     let (path, settings) = load(nightly)?;
     let result = if action == "list" {
-        let rows: Vec<_> = settings.writings.iter().map(view).collect();
+        let rows: Vec<_> = settings.device.writings.iter().map(view).collect();
         let text = if rows.is_empty() {
             "No writings yet. Create one with: ibis writings create NAME --format pandoc".into()
         } else {
             settings
+                .device
                 .writings
                 .iter()
                 .map(|writing| {
@@ -248,6 +242,7 @@ pub(crate) fn run(engine: &Engine, args: &ArgMatches) -> Result<DispatchResult, 
             exit_code: ExitCode::Ok,
         });
     } else {
+        let owner = settings::Owner::open(path);
         let id = args
             .try_get_one::<String>("id")
             .ok()
@@ -260,18 +255,18 @@ pub(crate) fn run(engine: &Engine, args: &ArgMatches) -> Result<DispatchResult, 
                     .ok_or_else(|| Failure::new(ErrorCode::Usage, "Choose --format or --style."))?;
                 let bibliography = bibliography(args)?;
                 let name = args.get_one::<String>("name").cloned().unwrap_or_default();
-                change(&path, |settings| writings::create(settings, name, output, bibliography))
+                owner.change(|settings| writings::create(settings, name, output, bibliography))
             }
             "rename" => {
                 let name = args.get_one::<String>("name").cloned().unwrap_or_default();
-                change(&path, |settings| writings::rename(settings, id, name))
+                owner.change(|settings| writings::rename(settings, id, name))
             }
-            "remove" => change(&path, |settings| writings::remove(settings, id)),
+            "remove" => owner.change(|settings| writings::remove(settings, id)),
             "update" => {
                 let output = output(engine, args)?;
                 let bibliography = bibliography(args)?;
                 let clear = args.get_flag("no-bibliography");
-                change(&path, |settings| {
+                owner.change(|settings| {
                     let old = writings::find(settings, id)?.clone();
                     writings::update(
                         settings,
@@ -288,6 +283,7 @@ pub(crate) fn run(engine: &Engine, args: &ArgMatches) -> Result<DispatchResult, 
                 ));
             }
         }
+        .map(|(_, writing)| writing)
         .map_err(failure)?
     };
     Ok(DispatchResult {

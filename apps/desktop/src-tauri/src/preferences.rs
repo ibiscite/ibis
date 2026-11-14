@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
-use ibis_engine::settings::{self, Density};
+use ibis_engine::settings::{self, Density, Purpose};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -15,11 +15,6 @@ pub(crate) use ibis_engine::settings_backup::{settings_message, settings_problem
 
 /// This notice is for the interface only: its settings path must not be logged.
 pub(crate) fn settings_notice(path: &Path, loaded: &settings::Loaded) -> Option<String> {
-    if loaded.problem.is_none()
-        && let Err(problem) = look_from_settings(&loaded.settings)
-    {
-        return Some(problem);
-    }
     let Some(problem) = loaded.problem.as_ref() else {
         // A sync service's copy is named, never merged (#1561). The scan is an
         // optional warning: a stalled synced folder only skips it, after at
@@ -35,21 +30,23 @@ pub(crate) fn settings_notice(path: &Path, loaded: &settings::Loaded) -> Option<
         });
     };
     Some({
-        if loaded.primary_read == settings::PrimaryRead::Missing && loaded.from_backup {
-            return Some(format!(
-                "settings.json is missing; using the backup. The next save will restore settings.json and keep the backup unchanged. Settings file: {}",
-                path.display()
-            ));
-        }
-        let recovery = if loaded.from_backup { "the backup" } else { "defaults" };
+        let description = if loaded.primary_read == settings::PrimaryRead::Missing && loaded.from_backup {
+            "settings.json is missing".to_string()
+        } else {
+            settings_message(problem)
+        };
+        let recovery = if loaded.usable(Purpose::Interface).is_ok() {
+            "the backup"
+        } else {
+            "defaults"
+        };
         let saving = "Changes are not being saved while this problem remains.";
         let problem_path = match problem {
             settings::SettingsError::Backup(_) => path.with_extension("json.bak"),
             _ => path.to_path_buf(),
         };
         format!(
-            "{}; using {recovery}. {saving} Settings file: {}",
-            settings_message(problem),
+            "{description}; using {recovery} for the interface. {saving} Restore a settings backup or repair settings.json before saving. Settings file: {}",
             problem_path.display()
         )
     })
@@ -60,7 +57,7 @@ pub(crate) fn settings_notice(path: &Path, loaded: &settings::Loaded) -> Option<
 pub(crate) struct SettingsFile {
     pub(crate) path: PathBuf,
     /// Orders every save of this file by when it was asked for (decision 0040).
-    owner: Arc<ibis_engine::settings::Owner>,
+    pub(crate) owner: Arc<ibis_engine::settings::Owner>,
     /// Whether bird facts and milestones are on, as last saved or read.
     surprises: Arc<std::sync::atomic::AtomicBool>,
     receipts: Arc<Mutex<Receipts>>,
@@ -72,7 +69,7 @@ pub(crate) struct SettingsFile {
     pub(crate) delights: Arc<Mutex<crate::delights::DelightOwner>>,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq, Eq)]
 struct NativeSettings {
     library: Option<settings::LibrarySetting>,
     profile: Option<String>,
@@ -82,10 +79,10 @@ struct NativeSettings {
 impl From<&settings::Settings> for NativeSettings {
     fn from(settings: &settings::Settings) -> Self {
         Self {
-            library: settings.library.clone(),
-            profile: settings.zotero_profile.clone(),
-            updates: settings.update_checks,
-            endpoint: settings.editor_endpoint.clone(),
+            library: settings.portable.library.clone(),
+            profile: settings.device.zotero_profile.clone(),
+            updates: settings.device.update_checks,
+            endpoint: settings.device.editor_endpoint.clone(),
         }
     }
 }
@@ -105,11 +102,15 @@ impl SettingsFile {
     }
 
     pub(crate) fn new(path: PathBuf) -> Self {
-        let loaded = settings::load(&path).settings;
-        let surprises = loaded.small_surprises.unwrap_or(true);
+        let read = settings::load(&path);
+        let loaded = read.usable(Purpose::Interface).cloned().unwrap_or_default();
+        let surprises = loaded.portable.small_surprises.unwrap_or(true);
         let last_valid = PickerPreferences::from_settings(&loaded);
-        let native = NativeSettings::from(&loaded);
-        let delights = crate::delights::DelightOwner::new(loaded.delights);
+        let native = read
+            .usable(Purpose::Cites)
+            .map(NativeSettings::from)
+            .unwrap_or_default();
+        let delights = crate::delights::DelightOwner::new(loaded.device.delights);
         SettingsFile {
             owner: Arc::new(ibis_engine::settings::Owner::open(path.clone())),
             path,
@@ -134,17 +135,9 @@ impl SettingsFile {
     /// picker) must never wait for disk or the owner's outside-edit callbacks.
     pub(crate) fn record_key_format_use(&self) {
         let _ = self.owner.submit(|settings| {
-            settings.key_formats_used = true;
+            settings.device.key_formats_used = true;
             Ok::<_, settings::SettingsError>(())
         });
-    }
-
-    /// Run `work` on the settings file while no save can interleave, such as a
-    /// restore that must find the settings it was shown.
-    pub(crate) fn exclusive<T>(&self, work: impl FnOnce(&Path) -> T) -> Result<T, String> {
-        self.owner
-            .in_turn(work)
-            .ok_or_else(|| "settings are unavailable".to_string())
     }
 
     /// Conditional writes test their immutable owner after acquiring the writer.
@@ -153,16 +146,33 @@ impl SettingsFile {
         current: impl FnOnce() -> bool,
         change: impl FnOnce(&mut settings::Settings),
     ) -> Result<Option<settings::Settings>, String> {
-        self.exclusive(|path| {
-            if !current() {
-                return Ok(None);
-            }
-            let before = settings::load(path).settings;
-            settings::update(path, change)
-                .inspect(|saved| self.remember_native_changes(&before, saved))
-                .map(Some)
-                .map_err(|error| settings_message(&error))
-        })?
+        self.owner.change_with(
+            |settings| {
+                if !current() {
+                    return Ok(None);
+                }
+                let before = settings.clone();
+                change(settings);
+                Ok::<_, settings::SettingsError>(Some(before))
+            },
+            |result| {
+                result
+                    .map(|(saved, before)| {
+                        before.map(|before| {
+                            self.remember_native_changes(&before, &saved);
+                            saved
+                        })
+                    })
+                    .map_err(|error| settings_message(&error))
+            },
+        )
+    }
+
+    #[cfg(test)]
+    fn settle(&self) -> Result<(), String> {
+        self.owner
+            .read_with(|_| ())
+            .ok_or_else(|| "settings are unavailable".to_string())
     }
 
     /// Hold the owner's queue until the returned sender is dropped.
@@ -172,7 +182,7 @@ impl SettingsFile {
         let (held, holding) = std::sync::mpsc::channel();
         let file = self.clone();
         std::thread::spawn(move || {
-            let _ = file.exclusive(|_| {
+            let _ = file.owner.read_with(|_| {
                 let _ = held.send(());
                 let _ = released.recv();
             });
@@ -209,13 +219,10 @@ impl SettingsFile {
         native: &impl Fn(&Self, &AppHandle<R>, u64, &settings::Settings),
     ) {
         crate::library::refresh_settings_notice(app, self);
-        if loaded.problem.is_some() {
+        let Ok(saved) = loaded.usable(Purpose::Cites) else {
             return;
-        }
-        if look_from_settings(&loaded.settings).is_err() {
-            return;
-        }
-        let preferences = PickerPreferences::from_settings(&loaded.settings);
+        };
+        let preferences = PickerPreferences::from_settings(saved);
         let fields = match self.last_valid.lock() {
             Ok(mut previous) => {
                 let fields = changed_fields(*previous, preferences);
@@ -225,14 +232,14 @@ impl SettingsFile {
             Err(_) => return,
         };
         self.surprises
-            .store(loaded.settings.small_surprises.unwrap_or(true), Ordering::SeqCst);
+            .store(saved.portable.small_surprises.unwrap_or(true), Ordering::SeqCst);
         self.apply_text_size(app, preferences.larger_text, revision);
         if let Some(history) = app.try_state::<crate::session_references::SessionReferences>() {
-            let _ = history.set_enabled(loaded.settings.recent_citations.unwrap_or(true));
+            let _ = history.set_enabled(saved.portable.recent_citations.unwrap_or(true));
         }
-        crate::shortcut_setting::apply_file_shortcut(app, loaded.settings.shortcut.here().map(str::to_owned), revision);
+        crate::shortcut_setting::apply_file_shortcut(app, saved.portable.shortcut.here().map(str::to_owned), revision);
         crate::tray::show_in_menu_bar(app, preferences.menu_bar, revision);
-        native(self, app, revision, &loaded.settings);
+        native(self, app, revision, saved);
         crate::diagnostics::report(
             app.emit("writings:changed", ()),
             crate::diagnostics::NativeIssue::PickerEvent,
@@ -258,17 +265,17 @@ impl SettingsFile {
     /// Call in the settings turn after an app-owned native choice was saved.
     pub(crate) fn remember_native_changes(&self, before: &settings::Settings, after: &settings::Settings) {
         if let Ok(mut native) = self.native.lock() {
-            if before.library != after.library {
-                native.library = after.library.clone();
+            if before.portable.library != after.portable.library {
+                native.library = after.portable.library.clone();
             }
-            if before.zotero_profile != after.zotero_profile {
-                native.profile = after.zotero_profile.clone();
+            if before.device.zotero_profile != after.device.zotero_profile {
+                native.profile = after.device.zotero_profile.clone();
             }
-            if before.update_checks != after.update_checks {
-                native.updates = after.update_checks;
+            if before.device.update_checks != after.device.update_checks {
+                native.updates = after.device.update_checks;
             }
-            if before.editor_endpoint != after.editor_endpoint {
-                native.endpoint = after.editor_endpoint.clone();
+            if before.device.editor_endpoint != after.device.editor_endpoint {
+                native.endpoint = after.device.editor_endpoint.clone();
             }
         }
     }
@@ -288,15 +295,15 @@ impl SettingsFile {
                 return;
             };
             let endpoint = file
-                .exclusive(|path| {
+                .owner
+                .read_with(|loaded| {
+                    let Ok(saved) = loaded.usable(Purpose::Cites) else {
+                        return None;
+                    };
                     if file.native_revision.load(Ordering::SeqCst) != revision {
                         return None;
                     }
-                    let loaded = settings::load(path);
-                    if loaded.problem.is_some() {
-                        return None;
-                    }
-                    let current = NativeSettings::from(&loaded.settings);
+                    let current = NativeSettings::from(saved);
                     let Ok(mut previous) = file.native.lock() else {
                         return None;
                     };
@@ -324,7 +331,6 @@ impl SettingsFile {
                     }
                     endpoint
                 })
-                .ok()
                 .flatten();
             // Endpoint replacement shares the UI's native lock, whose order
             // is native -> settings. It must run after the queue turn ends.
@@ -335,8 +341,11 @@ impl SettingsFile {
     }
 
     /// The Zotero profile chosen for reading while Zotero is closed.
-    pub(crate) fn zotero_profile(&self) -> Option<String> {
-        settings::load(&self.path).settings.zotero_profile
+    pub(crate) fn zotero_profile(&self) -> Result<Option<String>, String> {
+        settings::load(&self.path)
+            .usable(Purpose::Cites)
+            .map(|settings| settings.device.zotero_profile.clone())
+            .map_err(settings_message)
     }
 
     /// Refresh under the library lock so a reload cannot carry forward a stale
@@ -346,36 +355,7 @@ impl SettingsFile {
     }
 }
 
-/// Settings owns these choices until the picker consumes the same event fields.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(rename_all = "kebab-case")]
-pub(crate) enum Appearance {
-    #[default]
-    System,
-    Light,
-    Dark,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(rename_all = "kebab-case")]
-pub(crate) enum Accent {
-    #[default]
-    System,
-    Ibis,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct LookPreferences {
-    pub(crate) appearance: Appearance,
-    pub(crate) accent: Accent,
-}
-
-impl Appearance {
-    pub(crate) fn is_system(&self) -> bool {
-        *self == Self::System
-    }
-}
+pub(crate) use settings::{Accent, Appearance};
 
 impl SettingsFile {
     /// The saved Appearance, for a window that shows without the picker's
@@ -387,21 +367,6 @@ impl SettingsFile {
             .and_then(|preferences| preferences.appearance)
             .unwrap_or_default()
     }
-}
-
-fn look_from_settings(settings: &settings::Settings) -> Result<LookPreferences, String> {
-    let read = |key: &str| {
-        settings
-            .unknown
-            .get(key)
-            .cloned()
-            .unwrap_or(serde_json::Value::String("system".into()))
-    };
-    Ok(LookPreferences {
-        appearance: serde_json::from_value(read("appearance"))
-            .map_err(|_| "The appearance setting is not valid.".to_string())?,
-        accent: serde_json::from_value(read("accent")).map_err(|_| "The accent setting is not valid.".to_string())?,
-    })
 }
 
 /// How the picker looks and what it formats with, remembered across restarts
@@ -434,22 +399,22 @@ pub(crate) struct PickerPreferences {
 
 impl PickerPreferences {
     fn from_settings(settings: &settings::Settings) -> Self {
-        let look = look_from_settings(settings).unwrap_or_default();
         PickerPreferences {
             output: crate::output::stored(ibis_engine::format::usual(settings, None).id.as_deref()),
             key_output: settings
+                .portable
                 .key_output
                 .as_deref()
                 .and_then(crate::output::listed)
                 .filter(|output| matches!(output.spec(), ibis_core::contract::OutputSpec::Key { .. })),
-            appearance: Some(look.appearance),
-            accent: Some(look.accent),
-            density: settings.density.unwrap_or(Density::Comfortable),
-            larger_text: settings.larger_text.unwrap_or(false),
-            paste: settings.paste.unwrap_or(true),
-            menu_bar: settings.menu_bar.unwrap_or(true),
-            recent_citations: Some(settings.recent_citations.unwrap_or(true)),
-            small_surprises: Some(settings.small_surprises.unwrap_or(true)),
+            appearance: Some(settings.portable.appearance.unwrap_or_default()),
+            accent: Some(settings.portable.accent.unwrap_or_default()),
+            density: settings.portable.density.unwrap_or(Density::Comfortable),
+            larger_text: settings.portable.larger_text.unwrap_or(false),
+            paste: settings.portable.paste.unwrap_or(true),
+            menu_bar: settings.portable.menu_bar.unwrap_or(true),
+            recent_citations: Some(settings.portable.recent_citations.unwrap_or(true)),
+            small_surprises: Some(settings.portable.small_surprises.unwrap_or(true)),
         }
     }
 }
@@ -551,33 +516,22 @@ pub(crate) async fn picker_preferences(settings_file: State<'_, SettingsFile>) -
     // Off the main thread: a settings write in progress must never stall a paste.
     let settings_file = settings_file.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        // In turn, so it reads every change asked for before it, and publishes
-        // what it read before any later change can.
-        settings_file.exclusive(|path| {
-            let preferences = read_preferences(path)?;
-            settings_file
-                .surprises
-                .store(preferences.small_surprises.unwrap_or(true), Ordering::SeqCst);
-            Ok(preferences)
-        })?
+        let loaded = settings_file.owner.read();
+        loaded
+            .usable(Purpose::Interface)
+            .map(PickerPreferences::from_settings)
+            .map_err(settings_message)
     })
     .await
     .map_err(|_| "settings are unavailable".to_string())?
 }
 
+#[cfg(test)]
 fn read_preferences(path: &Path) -> Result<PickerPreferences, String> {
-    read_preference_settings(path).map(|saved| PickerPreferences::from_settings(&saved))
-}
-
-fn read_preference_settings(path: &Path) -> Result<settings::Settings, String> {
-    let loaded = settings::load(path);
-    if let Some(problem) = &loaded.problem
-        && !loaded.recovering()
-    {
-        return Err(settings_message(problem));
-    }
-    look_from_settings(&loaded.settings)?;
-    Ok(loaded.settings)
+    settings::load(path)
+        .usable(Purpose::Interface)
+        .map(PickerPreferences::from_settings)
+        .map_err(settings_message)
 }
 
 /// Remember picker preferences in the order they were chosen (decision 0040).
@@ -607,7 +561,7 @@ pub(crate) fn save_picker_preferences<R: tauri::Runtime>(
         if fields.iter().any(|field| field == "recent_citations")
             && let Some(history) = app.try_state::<crate::session_references::SessionReferences>()
         {
-            let _ = history.set_enabled(saved.recent_citations.unwrap_or(true));
+            let _ = history.set_enabled(saved.portable.recent_citations.unwrap_or(true));
         }
         if changes_menu_bar {
             crate::tray::show_in_menu_bar(app.app_handle(), preferences.menu_bar, receipt);
@@ -686,11 +640,14 @@ impl SettingsFile {
             .map_err(|_| "settings are unavailable".to_string())?;
         let surprises = Arc::clone(&self.surprises);
         let last_valid = Arc::clone(&self.last_valid);
-        let (receipt, outcome) = self.owner.submit_on_file_with_receipt(
-            move |path| save_preferences_at(path, preferences),
+        let (receipt, outcome) = self.owner.submit_with_receipt(
+            move |settings| apply_preferences(settings, preferences),
             move |receipt, saved| {
+                let saved = saved
+                    .map(|(settings, ())| settings)
+                    .map_err(|error: PreferenceError| error.0);
                 if let Ok(saved) = &saved {
-                    surprises.store(saved.small_surprises.unwrap_or(true), Ordering::SeqCst);
+                    surprises.store(saved.portable.small_surprises.unwrap_or(true), Ordering::SeqCst);
                     if let Ok(mut previous) = last_valid.lock() {
                         *previous = PickerPreferences::from_settings(saved);
                     }
@@ -734,65 +691,74 @@ impl SettingsFile {
 }
 
 /// One preference change, as the owner runs it: only the fields it names.
-fn save_preferences_at(path: &Path, preferences: PickerPreferencesPatch) -> Result<settings::Settings, String> {
-    read_preference_settings(path)?;
+struct PreferenceError(String);
+impl From<settings::SettingsError> for PreferenceError {
+    fn from(error: settings::SettingsError) -> Self {
+        Self(match error {
+            settings::SettingsError::Unreadable(ref problem)
+                if problem.kind() == std::io::ErrorKind::PermissionDenied =>
+            {
+                "settings-read-only".into()
+            }
+            _ => settings_message(&error),
+        })
+    }
+}
+
+fn apply_preferences(s: &mut settings::Settings, preferences: PickerPreferencesPatch) -> Result<(), PreferenceError> {
     if preferences
         .output
         .is_some_and(|output| !matches!(output.spec(), ibis_core::contract::OutputSpec::Csl { .. }))
     {
-        return Err("Choose a style for documents.".into());
+        return Err(PreferenceError("Choose a style for documents.".into()));
     }
     if preferences
         .key_output
         .is_some_and(|output| !matches!(output.spec(), ibis_core::contract::OutputSpec::Key { .. }))
     {
-        return Err("Choose a key format for Markdown and LaTeX.".into());
+        return Err(PreferenceError("Choose a key format for Markdown and LaTeX.".into()));
     }
-    if std::fs::metadata(path).is_ok_and(|metadata| metadata.permissions().readonly()) {
-        return Err("settings-read-only".into());
+
+    if let Some(appearance) = preferences.appearance {
+        if appearance == Appearance::System {
+            s.portable.appearance = None;
+        } else {
+            s.portable.appearance = Some(appearance);
+        }
     }
-    settings::update(path, |s| {
-        if let Some(appearance) = preferences.appearance {
-            if appearance == Appearance::System {
-                s.unknown.remove("appearance");
-            } else if let Ok(value) = serde_json::to_value(appearance) {
-                s.unknown.insert("appearance".into(), value);
-            }
+    if let Some(accent) = preferences.accent {
+        if accent == Accent::System {
+            s.portable.accent = None;
+        } else {
+            s.portable.accent = Some(accent);
         }
-        if let Some(accent) = preferences.accent {
-            if accent == Accent::System {
-                s.unknown.remove("accent");
-            } else if let Ok(value) = serde_json::to_value(accent) {
-                s.unknown.insert("accent".into(), value);
-            }
-        }
-        if let Some(output) = preferences.output {
-            s.output = Some(output.id().to_owned());
-        }
-        if let Some(output) = preferences.key_output {
-            s.key_output = Some(output.id().to_owned());
-        }
-        // Defaults stay unwritten, so the file only names real choices.
-        if let Some(density) = preferences.density {
-            s.density = Some(density).filter(|d| *d != Density::Comfortable);
-        }
-        if let Some(larger) = preferences.larger_text {
-            s.larger_text = Some(larger).filter(|larger| *larger);
-        }
-        if let Some(paste) = preferences.paste {
-            s.paste = Some(paste).filter(|paste| !paste);
-        }
-        if let Some(enabled) = preferences.small_surprises {
-            s.small_surprises = Some(enabled).filter(|on| !on);
-        }
-        if let Some(shown) = preferences.menu_bar {
-            s.menu_bar = Some(shown).filter(|shown| !shown);
-        }
-        if let Some(on) = preferences.recent_citations {
-            s.recent_citations = Some(on).filter(|on| !on);
-        }
-    })
-    .map_err(|error| settings_message(&error))
+    }
+    if let Some(output) = preferences.output {
+        s.portable.output = Some(output.id().to_owned());
+    }
+    if let Some(output) = preferences.key_output {
+        s.portable.key_output = Some(output.id().to_owned());
+    }
+    // Defaults stay unwritten, so the file only names real choices.
+    if let Some(density) = preferences.density {
+        s.portable.density = Some(density).filter(|d| *d != Density::Comfortable);
+    }
+    if let Some(larger) = preferences.larger_text {
+        s.portable.larger_text = Some(larger).filter(|larger| *larger);
+    }
+    if let Some(paste) = preferences.paste {
+        s.portable.paste = Some(paste).filter(|paste| !paste);
+    }
+    if let Some(enabled) = preferences.small_surprises {
+        s.portable.small_surprises = Some(enabled).filter(|on| !on);
+    }
+    if let Some(shown) = preferences.menu_bar {
+        s.portable.menu_bar = Some(shown).filter(|shown| !shown);
+    }
+    if let Some(on) = preferences.recent_citations {
+        s.portable.recent_citations = Some(on).filter(|on| !on);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -800,6 +766,12 @@ mod tests {
     use super::*;
     use ibis_engine::settings::LibrarySetting;
     use tauri::Manager;
+
+    fn interface(loaded: &settings::Loaded) -> &settings::Settings {
+        loaded
+            .usable(Purpose::Interface)
+            .unwrap_or_else(|error| panic!("{error}"))
+    }
 
     #[test]
     fn key_format_bookkeeping_returns_while_settings_are_busy_and_preserves_live_edits()
@@ -823,18 +795,22 @@ mod tests {
         drop(writing);
         copy.join().map_err(|_| "copy bookkeeping panicked")?;
         edited?;
-        file.exclusive(|_| ())?;
+        file.settle()?;
         assert!(completed.is_ok(), "copy completion waited for settings I/O");
         let loaded = settings::load(&path);
         assert!(loaded.problem.is_none());
-        assert!(loaded.settings.key_formats_used);
-        assert_eq!(loaded.settings.shortcut.here(), Some("Control+Alt+F12"));
+        assert!(interface(&loaded).clone().device.key_formats_used);
         assert_eq!(
-            loaded.settings.output, None,
+            interface(&loaded).clone().portable.shortcut.here(),
+            Some("Control+Alt+F12")
+        );
+        assert_eq!(
+            interface(&loaded).clone().portable.output,
+            None,
             "copy must not recreate a removed preference"
         );
         assert_eq!(
-            loaded.settings.unknown["future_choice"],
+            interface(&loaded).clone().unknown["future_choice"],
             serde_json::json!({"kept": true})
         );
         Ok(())
@@ -849,14 +825,28 @@ mod tests {
         std::fs::write(&path, b"{ still editing")?;
         let file = SettingsFile::new(path.clone());
         file.record_key_format_use();
-        file.exclusive(|_| ())?;
+        file.settle()?;
         assert_eq!(std::fs::read(&path)?, b"{ still editing");
         std::fs::write(&path, b"{}")?;
-        file.exclusive(|_| ())?;
-        assert!(!settings::load(&path).settings.key_formats_used);
+        file.settle()?;
+        assert!(
+            !settings::load(&path)
+                .usable(Purpose::Interface)
+                .unwrap_or_else(|error| panic!("{error}"))
+                .clone()
+                .device
+                .key_formats_used
+        );
         file.record_key_format_use();
-        file.exclusive(|_| ())?;
-        assert!(settings::load(&path).settings.key_formats_used);
+        file.settle()?;
+        assert!(
+            settings::load(&path)
+                .usable(Purpose::Interface)
+                .unwrap_or_else(|error| panic!("{error}"))
+                .clone()
+                .device
+                .key_formats_used
+        );
         Ok(())
     }
 
@@ -869,7 +859,7 @@ mod tests {
             let directory = tempfile::tempdir()?;
             let path = directory.path().join("settings.json");
             let file = SettingsFile::new(path.clone());
-            file.update(|settings| settings.shortcut.set_here(Some("Control+Shift+Y".into())))?;
+            file.update(|settings| settings.portable.shortcut.set_here(Some("Control+Shift+Y".into())))?;
             let original: Shortcut = "Control+Shift+Y".parse()?;
             let edited: Shortcut = "Control+Alt+F12".parse()?;
             if side_files_present {
@@ -894,6 +884,7 @@ mod tests {
             let _watching = file
                 .watch_with(app.handle().clone(), move |_, _, _, settings| {
                     let key: Shortcut = settings
+                        .portable
                         .shortcut
                         .here()
                         .unwrap_or_default()
@@ -922,7 +913,7 @@ mod tests {
                 .ok_or("settings folder could not be watched")?;
             std::fs::write(&path, br#"{"shortcut":"Control+Alt+F12"}"#)?;
             // Queue barriers control observation, independently of OS timing.
-            file.exclusive(|_| ())?;
+            file.settle()?;
             assert_eq!(*registered.lock().map_err(|_| "registration poisoned")?, [edited]);
             for (path, bytes) in prior {
                 if let Some(bytes) = bytes {
@@ -931,8 +922,17 @@ mod tests {
                     std::fs::remove_file(path)?;
                 }
             }
-            file.exclusive(|_| ())?;
-            assert_eq!(settings::load(&path).settings.shortcut.here(), Some("Control+Shift+Y"));
+            file.settle()?;
+            assert_eq!(
+                settings::load(&path)
+                    .usable(Purpose::Interface)
+                    .unwrap_or_else(|error| panic!("{error}"))
+                    .clone()
+                    .portable
+                    .shortcut
+                    .here(),
+                Some("Control+Shift+Y")
+            );
             assert_eq!(*registered.lock().map_err(|_| "registration poisoned")?, [original]);
         }
         Ok(())
@@ -943,7 +943,9 @@ mod tests {
         use tauri::Listener;
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
         let path = directory.path().join("settings.json");
-        settings::ensure_file(&path).unwrap_or_else(|error| panic!("{error}"));
+        settings::Owner::open(path.clone())
+            .ensure_file()
+            .unwrap_or_else(|error| panic!("{error}"));
         let app = tauri::test::mock_builder()
             .manage(SettingsFile::new(path.clone()))
             .manage(Mutex::new(crate::library::Library::default()))
@@ -958,7 +960,7 @@ mod tests {
         });
         let native = std::cell::Cell::new(None);
         let apply_native = |_: &SettingsFile, _: &AppHandle<_>, _, saved: &settings::Settings| {
-            native.set(Some(saved.update_checks));
+            native.set(Some(saved.device.update_checks));
         };
         let file = app.state::<SettingsFile>();
         let apply = |revision, text| {
@@ -1014,7 +1016,9 @@ mod tests {
         use tauri::Listener;
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
         let path = directory.path().join("settings.json");
-        settings::ensure_file(&path).unwrap_or_else(|error| panic!("{error}"));
+        settings::Owner::open(path.clone())
+            .ensure_file()
+            .unwrap_or_else(|error| panic!("{error}"));
         let app = tauri::test::mock_builder()
             .manage(SettingsFile::new(path.clone()))
             .manage(Mutex::new(crate::library::Library::default()))
@@ -1032,13 +1036,13 @@ mod tests {
         let file = app.state::<SettingsFile>();
         let _watching = file
             .watch_with(app.handle().clone(), move |_, _, _, saved| {
-                *applied.lock().unwrap_or_else(|error| panic!("{error}")) = Some(saved.update_checks);
+                *applied.lock().unwrap_or_else(|error| panic!("{error}")) = Some(saved.device.update_checks);
             })
             .unwrap_or_else(|| panic!("temporary settings folder is watchable"));
         std::fs::write(&path, br#"{"larger_text":true,"update_checks":false}"#)
             .unwrap_or_else(|error| panic!("{error}"));
         // Drain in the owner's turn, without relying on native event timing.
-        file.exclusive(|_| ()).unwrap_or_else(|error| panic!("{error}"));
+        file.settle().unwrap_or_else(|error| panic!("{error}"));
         let event = events
             .recv_timeout(std::time::Duration::from_secs(5))
             .unwrap_or_else(|error| panic!("{error}"));
@@ -1054,7 +1058,7 @@ mod tests {
             br#"{"appearance":"invented","larger_text":false,"update_checks":true}"#,
         )
         .unwrap_or_else(|error| panic!("{error}"));
-        file.exclusive(|_| ()).unwrap_or_else(|error| panic!("{error}"));
+        file.settle().unwrap_or_else(|error| panic!("{error}"));
         let unexpected = events.try_recv();
         assert!(unexpected.is_err(), "unexpected event: {unexpected:?}");
         assert_eq!(
@@ -1068,11 +1072,11 @@ mod tests {
                 .settings_notice
                 .is_some()
         );
-        assert!(file.update(|saved| saved.menu_bar = Some(false)).is_err());
+        assert!(file.update(|saved| saved.portable.menu_bar = Some(false)).is_err());
         assert!(std::fs::read_to_string(&path).unwrap_or_default().contains("invented"));
         std::fs::write(&path, br#"{"larger_text":false,"update_checks":true}"#)
             .unwrap_or_else(|error| panic!("{error}"));
-        file.exclusive(|_| ()).unwrap_or_else(|error| panic!("{error}"));
+        file.settle().unwrap_or_else(|error| panic!("{error}"));
         let event = events
             .recv_timeout(std::time::Duration::from_secs(5))
             .unwrap_or_else(|error| panic!("{error}"));
@@ -1089,27 +1093,22 @@ mod tests {
     #[test]
     fn a_file_edit_names_only_changed_fields_and_bad_look_values_are_reported() {
         let before = PickerPreferences::from_settings(&settings::Settings::default());
-        let mut saved = settings::Settings {
-            larger_text: Some(true),
+        let saved = settings::Settings {
+            portable: ibis_engine::settings::Portable {
+                larger_text: Some(true),
+                ..Default::default()
+            },
             ..Default::default()
         };
         let after = PickerPreferences::from_settings(&saved);
         assert_eq!(changed_fields(before, after), ["larger_text"]);
         assert!(changed_fields(after, after).is_empty());
-        saved
-            .unknown
-            .insert("appearance".into(), serde_json::json!("invented-invalid"));
-        let loaded = settings::Loaded {
-            settings: saved,
-            problem: None,
-            primary_read: settings::PrimaryRead::Present,
-            from_backup: false,
-        };
-        assert_eq!(
-            settings_notice(Path::new("settings.json"), &loaded).as_deref(),
-            Some("The appearance setting is not valid.")
-        );
-        assert!(look_from_settings(&loaded.settings).is_err());
+        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+        let path = directory.path().join("settings.json");
+        std::fs::write(&path, r#"{"appearance":"invented-invalid"}"#).unwrap_or_else(|error| panic!("{error}"));
+        let loaded = settings::load(&path);
+        assert!(loaded.usable(Purpose::Interface).is_err());
+        assert!(settings_notice(&path, &loaded).is_some_and(|notice| notice.contains("not valid")));
     }
 
     #[test]
@@ -1288,7 +1287,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let path = directory.path().join("settings.json");
         let file = SettingsFile::new(path.clone());
-        file.update(|s| s.output = Some("modern-language-association".into()))
+        file.update(|s| s.portable.output = Some("modern-language-association".into()))
             .unwrap_or_else(|e| panic!("{e}"));
         file.save_preferences(
             PickerPreferencesPatch {
@@ -1318,10 +1317,13 @@ mod tests {
             None,
         )
         .unwrap_or_else(|e| panic!("{e}"));
-        let saved = settings::load(&path).settings;
+        let saved = settings::load(&path)
+            .usable(Purpose::Interface)
+            .unwrap_or_else(|error| panic!("{error}"))
+            .clone();
         assert!(!saved.unknown.contains_key("appearance"));
         assert!(!saved.unknown.contains_key("accent"));
-        assert_eq!(saved.output.as_deref(), Some("modern-language-association"));
+        assert_eq!(saved.portable.output.as_deref(), Some("modern-language-association"));
     }
 
     #[test]
@@ -1564,13 +1566,16 @@ mod tests {
         let loaded = settings::load(&path);
         assert!(loaded.problem.is_none());
         assert_eq!(
-            PickerPreferences::from_settings(&loaded.settings),
+            PickerPreferences::from_settings(interface(&loaded)),
             PickerPreferences {
-                output: out(loaded.settings.output.as_deref().unwrap_or("apa")),
+                output: out(interface(&loaded).clone().portable.output.as_deref().unwrap_or("apa")),
                 ..chosen
             }
         );
-        assert_eq!(loaded.settings.output.as_deref(), Some("modern-language-association"));
+        assert_eq!(
+            interface(&loaded).clone().portable.output.as_deref(),
+            Some("modern-language-association")
+        );
         let saved: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap_or_default()).unwrap_or_else(|e| panic!("{e}"));
         for field in [
@@ -1594,9 +1599,8 @@ mod tests {
                 std::fs::write(path.with_extension("json.bak"), "{}").unwrap_or_else(|e| panic!("{e}"));
             }
             let file = SettingsFile::new(path.clone());
-            let loaded = settings::load(&path);
             assert!(
-                file.save_preferences(PickerPreferences::from_settings(&loaded.settings), None)
+                file.save_preferences(PickerPreferences::from_settings(&settings::Settings::default()), None)
                     .is_err()
             );
             assert_eq!(std::fs::read(&path).unwrap_or_default(), b"{ damaged");
@@ -1651,7 +1655,7 @@ mod tests {
         assert!(!notice.contains("The next save"));
         assert!(!notice.contains("synthetic-private-target"));
         assert_eq!(
-            file.save_preferences(PickerPreferences::from_settings(&loaded.settings), None)
+            file.save_preferences(PickerPreferences::from_settings(interface(&loaded)), None)
                 .err(),
             Some("settings.json could not be read".to_string())
         );
@@ -1693,8 +1697,11 @@ mod tests {
             assert!(notice.ends_with(backup.to_string_lossy().as_ref()));
             for _ in 0..2 {
                 assert_eq!(
-                    file.save_preferences(PickerPreferences::from_settings(&loaded.settings), Some("nature"))
-                        .err(),
+                    file.save_preferences(
+                        PickerPreferences::from_settings(&settings::Settings::default()),
+                        Some("nature")
+                    )
+                    .err(),
                     Some(expected.to_string())
                 );
             }
@@ -1704,24 +1711,35 @@ mod tests {
     }
 
     #[test]
-    fn missing_primary_notice_explains_restoration_and_clears_after_a_successful_save() {
-        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+    fn missing_primary_keeps_recovery_visible_until_an_explicit_restore() {
+        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
         let file = SettingsFile::new(directory.path().join("settings.json"));
-        let backup = br#"{"output":"modern-language-association","future_choice":[true,null]}"#;
-        std::fs::write(file.path.with_extension("json.bak"), backup).unwrap_or_else(|e| panic!("{e}"));
-        let loaded = settings::load(&file.path);
-        let notice = settings_notice(&file.path, &loaded).unwrap_or_else(|| panic!("expected a recovery notice"));
-        assert!(notice.contains("settings.json is missing; using the backup"));
-        assert!(notice.contains("The next save will restore settings.json and keep the backup unchanged."));
-        assert!(!notice.contains("not being saved"));
-        assert!(!notice.contains("invalid-N"));
-        let saved = file
-            .save_preferences(PickerPreferences::from_settings(&loaded.settings), None)
-            .unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(saved, loaded.settings);
-        let restarted = settings::load(&file.path);
-        assert_eq!(restarted.settings, saved);
-        assert!(settings_notice(&file.path, &restarted).is_none());
+        let backup = br#"{"output":"ieee","future_choice":[true,null]}"#;
+        std::fs::write(file.path.with_extension("json.bak"), backup).unwrap_or_else(|error| panic!("{error}"));
+        let loaded = file.owner.read();
+        let notice = settings_notice(&file.path, &loaded).unwrap_or_else(|| panic!("recovery notice"));
+        assert!(notice.contains("settings.json is missing; using the backup for the interface"));
+        assert!(notice.contains("not being saved"));
+        assert!(
+            file.save_preferences(PickerPreferences::from_settings(interface(&loaded)), None)
+                .is_err()
+        );
+        assert!(!file.path.exists());
+        let recovered = interface(&loaded);
+        let portable = settings::backup::parse(
+            &settings::backup::export(recovered, "0.3.0").unwrap_or_else(|error| panic!("{error}")),
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+        let plan = settings::backup::plan(recovered, &portable, |_| true).repairing(true);
+        file.owner.restore(&plan).unwrap_or_else(|error| panic!("{error}"));
+        let reopened = file.owner.read();
+        assert_eq!(
+            reopened
+                .usable(Purpose::Cites)
+                .unwrap_or_else(|error| panic!("{error}")),
+            recovered
+        );
+        assert!(settings_notice(&file.path, &reopened).is_none());
         assert_eq!(
             std::fs::read(file.path.with_extension("json.bak")).unwrap_or_default(),
             backup
@@ -1730,14 +1748,12 @@ mod tests {
 
     #[test]
     fn unreadable_settings_report_no_operating_system_payload() {
-        let loaded = settings::Loaded {
-            settings: settings::Settings::default(),
-            problem: Some(settings::SettingsError::Unreadable(std::io::Error::other(
-                "synthetic-private-detail",
-            ))),
-            primary_read: settings::PrimaryRead::Unreadable,
-            from_backup: false,
-        };
+        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+        let mut loaded = settings::load(&directory.path().join("settings.json"));
+        loaded.problem = Some(settings::SettingsError::Unreadable(std::io::Error::other(
+            "synthetic-private-detail",
+        )));
+        loaded.primary_read = settings::PrimaryRead::Unreadable;
         let notice = settings_notice(Path::new("synthetic/settings.json"), &loaded)
             .unwrap_or_else(|| panic!("expected a settings recovery notice"));
         assert!(notice.contains("could not be read"));
@@ -1766,7 +1782,8 @@ mod tests {
             assert!(notice.contains("not being saved"));
             assert!(notice.contains(path.to_string_lossy().as_ref()));
             assert!(!notice.contains(private));
-            let Err(failed) = SettingsFile::new(path.clone()).update(|s| s.output = Some("nature".into())) else {
+            let Err(failed) = SettingsFile::new(path.clone()).update(|s| s.portable.output = Some("nature".into()))
+            else {
                 panic!("expected the invalid settings save to fail");
             };
             assert!(failed.contains(problem));
@@ -1812,12 +1829,16 @@ mod tests {
                 let loaded = settings::load(&file.path);
                 assert!(loaded.problem.is_some());
                 assert_eq!(loaded.from_backup, has_backup);
-                assert_eq!(
-                    loaded.settings.output.as_deref(),
-                    has_backup.then_some("modern-language-association")
-                );
+                if has_backup {
+                    assert_eq!(
+                        interface(&loaded).portable.output.as_deref(),
+                        Some("modern-language-association")
+                    );
+                } else {
+                    assert!(loaded.usable(Purpose::Interface).is_err());
+                }
                 assert_eq!(std::fs::read(&file.path).unwrap_or_else(|e| panic!("{e}")), contents);
-                let chosen = PickerPreferences::from_settings(&loaded.settings);
+                let chosen = PickerPreferences::from_settings(&settings::Settings::default());
                 let saved = file.save_preferences(chosen, Some("chicago-author-date"));
                 assert!(saved.is_err());
                 assert!(!file.path.with_extension("json.invalid-1").exists());
@@ -1852,9 +1873,11 @@ mod tests {
                 std::thread::spawn(move || {
                     for _ in 0..20 {
                         let saved = if i % 2 == 0 {
-                            file.update(|s| s.library = Some(LibrarySetting::Bibtex(PathBuf::from("refs.bib"))))
+                            file.update(|s| {
+                                s.portable.library = Some(LibrarySetting::Bibtex(PathBuf::from("refs.bib")))
+                            })
                         } else {
-                            file.update(|s| s.output = Some("modern-language-association".into()))
+                            file.update(|s| s.portable.output = Some("modern-language-association".into()))
                         };
                         saved.unwrap_or_else(|e| panic!("{e}"));
                     }
@@ -1867,10 +1890,13 @@ mod tests {
         let loaded = settings::load(&file.path);
         assert!(loaded.problem.is_none());
         assert_eq!(
-            loaded.settings.library,
+            interface(&loaded).clone().portable.library,
             Some(LibrarySetting::Bibtex(PathBuf::from("refs.bib")))
         );
-        assert_eq!(loaded.settings.output.as_deref(), Some("modern-language-association"));
+        assert_eq!(
+            interface(&loaded).clone().portable.output.as_deref(),
+            Some("modern-language-association")
+        );
         assert!(!file.path.with_extension("json.invalid-1").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1879,7 +1905,7 @@ mod tests {
     fn picker_preferences_save_only_real_choices_and_keep_other_settings() {
         let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let file = SettingsFile::new(directory.path().join("settings.json"));
-        file.update(|s| s.output = Some("modern-language-association".into()))
+        file.update(|s| s.portable.output = Some("modern-language-association".into()))
             .unwrap_or_else(|e| panic!("{e}"));
         let chosen = PickerPreferences {
             output: out("chicago-author-date"),
@@ -1894,12 +1920,12 @@ mod tests {
             small_surprises: Some(true),
         };
         let saved = file.save_preferences(chosen, None).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(saved.paste, Some(false));
-        assert_eq!(saved.output.as_deref(), Some("chicago-author-date"));
+        assert_eq!(saved.portable.paste, Some(false));
+        assert_eq!(saved.portable.output.as_deref(), Some("chicago-author-date"));
         assert_eq!(
             PickerPreferences::from_settings(&saved),
             PickerPreferences {
-                output: out(saved.output.as_deref().unwrap_or("apa")),
+                output: out(saved.portable.output.as_deref().unwrap_or("apa")),
                 ..chosen
             }
         );
@@ -1919,7 +1945,7 @@ mod tests {
         assert_eq!(
             PickerPreferences::from_settings(&saved),
             PickerPreferences {
-                output: out(saved.output.as_deref().unwrap_or("apa")),
+                output: out(saved.portable.output.as_deref().unwrap_or("apa")),
                 ..defaults
             }
         );
@@ -1951,16 +1977,21 @@ mod tests {
             "density": "compact", "larger_text": true, "future_choice": { "kept": [true, null] },
         });
         std::fs::write(&file.path, original.to_string()).unwrap_or_else(|e| panic!("{e}"));
-        let mut chosen = PickerPreferences::from_settings(&settings::load(&file.path).settings);
+        let mut chosen = PickerPreferences::from_settings(
+            &settings::load(&file.path)
+                .usable(Purpose::Interface)
+                .unwrap_or_else(|error| panic!("{error}"))
+                .clone(),
+        );
         chosen.paste = false;
         file.save_preferences(chosen, None).unwrap_or_else(|e| panic!("{e}"));
         let restarted = SettingsFile::new(file.path.clone());
         let loaded = settings::load(&restarted.path);
         assert!(loaded.problem.is_none());
         assert_eq!(
-            PickerPreferences::from_settings(&loaded.settings),
+            PickerPreferences::from_settings(interface(&loaded)),
             PickerPreferences {
-                output: out(loaded.settings.output.as_deref().unwrap_or("apa")),
+                output: out(interface(&loaded).clone().portable.output.as_deref().unwrap_or("apa")),
                 ..chosen
             }
         );
@@ -1992,8 +2023,11 @@ mod tests {
         };
         file.save_preferences(patch, None).unwrap_or_else(|e| panic!("{e}"));
         let loaded = settings::load(&file.path);
-        assert_eq!(loaded.settings.output.as_deref(), Some("modern-language-association"));
-        assert_eq!(loaded.settings.key_output.as_deref(), Some("typst"));
+        assert_eq!(
+            interface(&loaded).clone().portable.output.as_deref(),
+            Some("modern-language-association")
+        );
+        assert_eq!(interface(&loaded).clone().portable.key_output.as_deref(), Some("typst"));
         let patch = PickerPreferencesPatch {
             output: Some(out("apa")),
             key_output: Some(out("pandoc")),
@@ -2001,10 +2035,13 @@ mod tests {
         };
         file.save_preferences(patch, None).unwrap_or_else(|e| panic!("{e}"));
         let loaded = settings::load(&file.path);
-        assert_eq!(loaded.settings.output.as_deref(), Some("apa"));
-        assert_eq!(loaded.settings.key_output.as_deref(), Some("pandoc"));
+        assert_eq!(interface(&loaded).clone().portable.output.as_deref(), Some("apa"));
         assert_eq!(
-            ibis_engine::format::usual(&loaded.settings, None).from,
+            interface(&loaded).clone().portable.key_output.as_deref(),
+            Some("pandoc")
+        );
+        assert_eq!(
+            ibis_engine::format::usual(&interface(&loaded).clone(), None).from,
             ibis_engine::format::FormatFrom::Yours
         );
         let tex = ibis_core::destination::AppId {
@@ -2012,10 +2049,10 @@ mod tests {
             id: "TeXShop".into(),
         };
         assert_eq!(
-            ibis_engine::format::usual(&loaded.settings, Some(&tex)).from,
+            ibis_engine::format::usual(&interface(&loaded).clone(), Some(&tex)).from,
             ibis_engine::format::FormatFrom::Yours
         );
-        assert_eq!(PickerPreferences::from_settings(&loaded.settings).output.id(), "apa");
+        assert_eq!(PickerPreferences::from_settings(interface(&loaded)).output.id(), "apa");
         assert!(
             file.save_preferences(
                 PickerPreferencesPatch {
@@ -2086,9 +2123,14 @@ mod tests {
         for first in [0, 1] {
             let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
             let file = SettingsFile::new(directory.path().join("settings.json"));
-            file.update(|s| s.output = Some("apa".into()))
+            file.update(|s| s.portable.output = Some("apa".into()))
                 .unwrap_or_else(|e| panic!("{e}"));
-            let baseline = PickerPreferences::from_settings(&settings::load(&file.path).settings);
+            let baseline = PickerPreferences::from_settings(
+                &settings::load(&file.path)
+                    .usable(Purpose::Interface)
+                    .unwrap_or_else(|error| panic!("{error}"))
+                    .clone(),
+            );
             let mut view = baseline;
             view.density = Density::Compact;
             // Each client sends only the field its user changed from the same baseline.
@@ -2117,8 +2159,8 @@ mod tests {
                 assert_eq!(index, first);
                 starts[1 - first].send(()).unwrap_or_else(|e| panic!("{e}"));
                 let (_, saved) = results.recv().unwrap_or_else(|e| panic!("{e}"));
-                assert_eq!(saved.output.as_deref(), Some("chicago-author-date"));
-                assert_eq!(saved.density, Some(Density::Compact));
+                assert_eq!(saved.portable.output.as_deref(), Some("chicago-author-date"));
+                assert_eq!(saved.portable.density, Some(Density::Compact));
             });
         }
     }
@@ -2127,13 +2169,14 @@ mod tests {
     fn an_absent_output_keeps_the_saved_one_and_an_unlisted_one_is_refused() {
         let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let file = SettingsFile::new(directory.path().join("settings.json"));
-        file.update(|s| s.output = Some("apa".into()))
+        file.update(|s| s.portable.output = Some("apa".into()))
             .unwrap_or_else(|e| panic!("{e}"));
         let patch: PickerPreferencesPatch =
             serde_json::from_value(serde_json::json!({"larger_text":true})).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(
             file.save_preferences(patch, None)
                 .unwrap_or_else(|e| panic!("{e}"))
+                .portable
                 .output
                 .as_deref(),
             Some("apa")
@@ -2143,6 +2186,7 @@ mod tests {
         assert_eq!(
             file.save_preferences(patch, None)
                 .unwrap_or_else(|e| panic!("{e}"))
+                .portable
                 .output
                 .as_deref(),
             Some("chicago-author-date")

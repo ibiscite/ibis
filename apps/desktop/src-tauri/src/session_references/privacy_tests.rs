@@ -8,7 +8,7 @@ fn native_disable_retires_delayed_recording_and_uncertain_settings_cannot_enable
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("settings.json");
     let mut settings = ibis_engine::settings::Settings::default();
-    ibis_engine::settings::save(&path, &settings)?;
+    ibis_engine::settings::Owner::open(path.clone()).ensure_file()?;
     let app = tauri::test::mock_builder()
         .manage(SessionReferences::default())
         .build(tauri::test::mock_context(tauri::test::noop_assets()))?;
@@ -25,8 +25,13 @@ fn native_disable_retires_delayed_recording_and_uncertain_settings_cannot_enable
     let recent_path = dir.path().join("recents.json");
     std::fs::remove_file(&recent_path)?;
     std::fs::create_dir(&recent_path)?;
-    settings.recent_citations = Some(false);
-    ibis_engine::settings::save(&path, &settings)?;
+    settings.portable.recent_citations = Some(false);
+    ibis_engine::settings::Owner::open(path.clone())
+        .change(|current| {
+            *current = settings.clone();
+            Ok::<_, ibis_engine::settings::SettingsError>(())
+        })
+        .map(|_| ())?;
     window.emit(
         "preferences:changed",
         serde_json::json!({"fields":["recent_citations"],"recent_citations":false}),
@@ -47,8 +52,13 @@ fn native_disable_retires_delayed_recording_and_uncertain_settings_cannot_enable
     history.flush()?;
     assert!(!history.lock().has_history());
     std::fs::remove_file(&path)?;
-    settings.recent_citations = Some(true);
-    ibis_engine::settings::save(&path, &settings)?;
+    settings.portable.recent_citations = Some(true);
+    ibis_engine::settings::Owner::open(path.clone())
+        .change(|current| {
+            *current = settings.clone();
+            Ok::<_, ibis_engine::settings::SettingsError>(())
+        })
+        .map(|_| ())?;
     window.emit(
         "preferences:changed",
         serde_json::json!({"fields":["recent_citations"],"recent_citations":true}),

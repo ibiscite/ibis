@@ -1,5 +1,6 @@
 //! Defaults stay unset when another choice is saved.
 use ibis_engine::settings;
+use ibis_engine::settings::Purpose;
 
 #[test]
 fn shortcut_defaults_stay_unwritten_and_explicit_choices_survive_saves() {
@@ -19,8 +20,22 @@ fn shortcut_defaults_stay_unwritten_and_explicit_choices_survive_saves() {
         std::fs::write(&path, original.to_string()).unwrap_or_else(|error| panic!("{error}"));
         let loaded = settings::load(&path);
         assert!(loaded.problem.is_none());
-        assert_eq!(loaded.settings.shortcut.here(), shortcut);
-        settings::update(&path, |current| current.output = Some("typst".into()))
+        assert_eq!(
+            loaded
+                .usable(Purpose::Interface)
+                .unwrap_or_else(|error| panic!("{error}"))
+                .clone()
+                .portable
+                .shortcut
+                .here(),
+            shortcut
+        );
+        settings::Owner::open(path.clone())
+            .change(|current| {
+                current.portable.output = Some("typst".into());
+                Ok::<_, settings::SettingsError>(())
+            })
+            .map(|(settings, ())| settings)
             .unwrap_or_else(|error| panic!("{error}"));
         let saved: serde_json::Value =
             serde_json::from_slice(&std::fs::read(&path).unwrap_or_default()).unwrap_or_else(|error| panic!("{error}"));

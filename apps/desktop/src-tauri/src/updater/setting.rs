@@ -64,16 +64,21 @@ fn serve(queue: Receiver<bool>, mut save: impl FnMut(bool)) {
 /// was shown as made. Settings hears what applies either way.
 fn save(app: &AppHandle, on: bool) {
     let file = app.state::<SettingsFile>();
-    let saved = file
-        .exclusive(|path| {
-            let before = ibis_engine::settings::load(path).settings;
-            let saved = ibis_engine::settings::update(path, |settings| settings.update_checks = Some(on))
-                .map_err(|error| ibis_engine::settings_backup::settings_message(&error))?;
-            file.remember_native_changes(&before, &saved);
-            set_automatic(app, on);
-            Ok::<_, String>(())
-        })
-        .and_then(|saved| saved);
+    let saved = file.owner.change_with(
+        |settings| {
+            let before = settings.clone();
+            settings.device.update_checks = Some(on);
+            Ok::<_, ibis_engine::settings::SettingsError>(before)
+        },
+        |result| {
+            result
+                .map(|(saved, before)| {
+                    file.remember_native_changes(&before, &saved);
+                    set_automatic(app, on);
+                })
+                .map_err(|error| ibis_engine::settings_backup::settings_message(&error))
+        },
+    );
     match saved {
         Ok(()) => {
             crate::library::refresh_settings_notice(app, &app.state::<SettingsFile>());

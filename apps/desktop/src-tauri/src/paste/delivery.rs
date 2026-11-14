@@ -1,3 +1,4 @@
+use ibis_engine::settings::Purpose;
 use std::time::{Duration, Instant};
 
 use ibis_core::destination::{CopyReason, Decision, PastePermission};
@@ -235,10 +236,10 @@ pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool
 
 pub(super) fn with_paste_settings(path: &std::path::Path, deliver: impl FnOnce(bool) -> Delivered) -> Delivered {
     let loaded = ibis_engine::settings::load(path);
-    if loaded.problem.is_some() {
+    let Ok(settings) = loaded.usable(Purpose::Cites) else {
         return Delivered::copied(CopyReason::PasteUnavailable);
-    }
-    deliver(loaded.settings.paste.unwrap_or(true))
+    };
+    deliver(settings.portable.paste.unwrap_or(true))
 }
 
 pub(super) fn key_release_failed() -> Delivered {
