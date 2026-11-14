@@ -509,7 +509,14 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
                     if matches!(intent, OpenIntent::ReadOnly) {
                         reading_profile
                     } else {
-                        reading_profile.or_else(|| loading_app.state::<SettingsFile>().zotero_profile())
+                        match reading_profile {
+                            Some(profile) => Some(profile),
+                            None => loading_app.state::<SettingsFile>().zotero_profile().map_err(|_| {
+                                LoadError::Zotero(ibis_core::contract::EngineError::new(
+                                    ibis_core::contract::ErrorCode::SourceUnavailable,
+                                ))
+                            })?,
+                        }
                     }
                 } else {
                     None
@@ -595,11 +602,12 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
                         // then saves after this one, never before it.
                         let saved = app.state::<SettingsFile>().update(|s| {
                             if app.state::<LoadRequests>().0.load(Ordering::SeqCst) == request
-                                && (matches!(intent, OpenIntent::Remember) || s.library == refresh_source.setting())
+                                && (matches!(intent, OpenIntent::Remember)
+                                    || s.portable.library == refresh_source.setting())
                             {
-                                s.library = Some(chosen);
+                                s.portable.library = Some(chosen);
                                 if profile.is_some() {
-                                    s.zotero_profile = profile;
+                                    s.device.zotero_profile = profile;
                                 }
                             }
                         });
@@ -800,6 +808,7 @@ pub(crate) fn current_status(app: &AppHandle) -> LibraryStatus {
             references: 0,
             source_counts: BTreeMap::new(),
             warnings: 0,
+            problem_library: None,
             reading: Vec::new(),
             live_updates_off: false,
             error: Some(super::error::words("app-library-state-unavailable", &[])),

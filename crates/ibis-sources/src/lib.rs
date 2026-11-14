@@ -1,6 +1,7 @@
 //! Read-only library sources producing the shared engine snapshot contract.
 mod attachments;
 mod bibtex;
+mod candidates;
 mod csl_json;
 mod exported;
 mod file;
@@ -10,7 +11,6 @@ mod urls;
 pub mod zotero;
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 
 use ibis_core::contract::{ItemRef, LibraryId, Record, Snapshot};
 use schemars::JsonSchema;
@@ -19,8 +19,7 @@ use serde::{Deserialize, Serialize};
 pub use csl_json::{RequestRecords, request_records};
 pub use file::{
     MAX_LIBRARY_BYTES, SourceError, SourceSnapshot, SourceWatch, inspect_io, library_file_extensions, load_file,
-    load_file_snapshot, names_a_library, original_entry, reload_file, reload_file_reusing,
-    reload_file_snapshot_reusing,
+    load_file_snapshot, names_a_library, original_entry, reload_file, reload_file_reusing, reload_file_snapshot,
 };
 
 // Real bibliographies reach 100,000 entries (#1251). Memory follows file size
@@ -61,7 +60,8 @@ pub struct SourceWarning {
     pub code: WarningCode,
     pub line: Option<usize>,
     /// The repeated citation key or CSL `id`, for `duplicate-key` only. It is the person's
-    /// own data and is shown only in their library diagnostics.
+    /// own data and is shown only in their library diagnostics. Display text
+    /// is bounded to 256 characters plus a truncation marker.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
     /// The entry's citation key, or its title when no key is available. Like
@@ -90,12 +90,7 @@ impl SourceWarning {
     }
 
     pub fn for_entry(mut self, label: Option<&str>) -> Self {
-        self.entry = label
-            .filter(|label| !label.trim().is_empty())
-            .map(|label| match label.char_indices().nth(256) {
-                Some((end, _)) => format!("{}…", &label[..end]),
-                None => label.into(),
-            });
+        self.entry = label.filter(|label| !label.trim().is_empty()).map(diagnostic_label);
         self
     }
 
@@ -114,6 +109,13 @@ impl SourceWarning {
             })
             .map(str::to_ascii_lowercase);
         self
+    }
+}
+
+fn diagnostic_label(label: &str) -> String {
+    match label.char_indices().nth(256) {
+        Some((end, _)) => format!("{}…", &label[..end]),
+        None => label.into(),
     }
 }
 
@@ -225,11 +227,12 @@ pub struct LoadedLibrary {
     /// that is not found may be among them. A limit that only skipped one
     /// record or its attachments does not count.
     pub cut_short: bool,
+    /// Full repeated identities with their bounded diagnostics, for lookup.
+    pub duplicate_keys: BTreeMap<String, Vec<SourceWarning>>,
     /// Each skipped entry whose header names a citation key, with its warning,
     /// so a lookup can say why the key selects nothing. Warnings themselves
     /// carry no source text beyond duplicate keys; this never serializes.
     pub damaged_keys: BTreeMap<String, SourceWarning>,
-    attachment_paths: BTreeMap<ItemRef, PathBuf>,
 }
 impl std::fmt::Debug for LoadedLibrary {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -240,13 +243,6 @@ impl std::fmt::Debug for LoadedLibrary {
             .finish_non_exhaustive()
     }
 }
-impl LoadedLibrary {
-    /// Number of privately resolved attachment locations, without exporting them.
-    pub fn local_attachment_count(&self) -> usize {
-        self.attachment_paths.len()
-    }
-}
-
 #[derive(Default)]
 struct ParsedLibrary {
     records: Vec<Record>,
@@ -255,6 +251,7 @@ struct ParsedLibrary {
     attachments: Vec<(ItemRef, String, Option<usize>)>,
     /// Records after a limit were left unread: `LoadedLibrary::cut_short`.
     cut_short: bool,
+    duplicate_keys: BTreeMap<String, Vec<SourceWarning>>,
     /// `LoadedLibrary::damaged_keys`.
     damaged_keys: BTreeMap<String, SourceWarning>,
 }

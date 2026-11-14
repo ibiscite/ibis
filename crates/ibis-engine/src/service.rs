@@ -22,6 +22,8 @@ use std::{
 
 #[path = "health.rs"]
 pub mod health;
+mod passage_access;
+pub use passage_access::ExternalReads;
 mod sources;
 pub use sources::{PreparedFileReload, PreparedZoteroReload};
 
@@ -65,7 +67,7 @@ pub struct LibraryInfo {
     /// say why the key selects nothing.
     #[serde(skip)]
     #[schemars(skip)]
-    pub duplicate_keys: std::collections::BTreeSet<String>,
+    pub duplicate_keys: std::collections::BTreeMap<String, Vec<ibis_sources::SourceWarning>>,
     /// Each skipped entry whose header names its key, with why it was skipped.
     #[serde(skip)]
     #[schemars(skip)]
@@ -356,6 +358,10 @@ impl Engine {
         self.shared.state_view()
     }
     pub fn snapshot(&self) -> Result<Arc<Snapshot>, EngineError> {
+        self.external_reads(None).snapshot()
+    }
+    /// Full source view for trusted in-process desktop code; never a wire option.
+    pub fn desktop_snapshot(&self) -> Result<Arc<Snapshot>, EngineError> {
         Ok(self.state()?.index.snapshot().clone())
     }
     pub fn subscribe(&self) -> Result<LibrarySubscription, EngineError> {
@@ -407,6 +413,10 @@ impl Engine {
         })
     }
     pub fn search(&self, request: &SearchRequest, cancel: &Cancellation) -> Result<SearchResult, EngineError> {
+        self.external_reads(None).search(request, cancel)
+    }
+    /// Trusted desktop search retains source objects. External clients use `search`.
+    pub fn desktop_search(&self, request: &SearchRequest, cancel: &Cancellation) -> Result<SearchResult, EngineError> {
         cancel.check()?;
         if request.query.len() > 64 * 1024
             || request.limit > 1000
@@ -520,6 +530,10 @@ impl Engine {
     }
     /// The object, with the health of the libraries the lookup read.
     pub fn show_checked(&self, request: &ShowRequest) -> Result<health::Checked<SnapshotObject>, EngineError> {
+        self.external_reads(None).show(request)
+    }
+    /// Full source object for trusted desktop code only.
+    pub fn desktop_show_checked(&self, request: &ShowRequest) -> Result<health::Checked<SnapshotObject>, EngineError> {
         let state = self.state()?;
         let selected = select(state.index.snapshot(), &state.libraries, &request.item)?;
         ensure_budget(selected)?;
@@ -1084,7 +1098,10 @@ fn select<'a>(
                 record.answers_to(key)
             });
             let found = matches.next().ok_or_else(|| {
-                if libraries.values().any(|library| library.duplicate_keys.contains(key)) {
+                if libraries
+                    .values()
+                    .any(|library| library.duplicate_keys.contains_key(key))
+                {
                     EngineError::because(ErrorCode::NotFound, ErrorReason::DuplicateKey)
                 } else if libraries.values().any(|library| library.damaged_keys.contains_key(key)) {
                     EngineError::because(ErrorCode::NotFound, ErrorReason::DamagedEntry)

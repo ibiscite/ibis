@@ -112,8 +112,11 @@ pub(crate) fn edit_session_references(
 fn style_of(id: &str) -> Result<String, CommandError> {
     match crate::output::listed(id).map(crate::output::OutputRef::spec) {
         Some(ibis_core::contract::OutputSpec::Csl { style }) => Ok(style.clone()),
-        _ => Err(CommandError::from(
-            ibis_core::contract::CitationError::UnsupportedOutput,
+        _ => Err(CommandError::Presented(
+            ibis_core::contract::CitationError::UnsupportedOutput
+                .problem()
+                .recover_with(ibis_core::contract::Recovery::Close)
+                .on(ibis_core::contract::CitationSurface::Bibliography),
         )),
     }
 }
@@ -223,7 +226,7 @@ fn words(id: &str) -> String {
 }
 
 /// The kinds of file a bibliography can be saved as, by its extension.
-fn export_text(extension: &str, content: &ibis_core::contract::ClipboardContent<'_>) -> Option<String> {
+fn export_text(extension: &str, content: &ibis_core::contract::ClipboardContent<'_>) -> Result<String, CommandError> {
     match extension.to_ascii_lowercase().as_str() {
         "rtf" => content.rtf.map(str::to_owned),
         "html" | "htm" => content.html.map(|html| {
@@ -234,7 +237,7 @@ fn export_text(extension: &str, content: &ibis_core::contract::ClipboardContent<
         }),
         "txt" => Some(format!("{}\n", content.text.trim_end())),
         _ => None,
-    }
+    }.ok_or(CommandError::BibliographyFormat)
 }
 
 /// Save what was shown, as rich text, a web page or plain text. This is the one
@@ -308,7 +311,7 @@ pub(crate) async fn export_session_bibliography(
         let current = open_file(&app.state()).ok_or(CommandError::SnapshotChanged)?;
         let guard = result.check(&current.engine)?;
         let content = guard.content();
-        let text = export_text(extension, &content).ok_or(CommandError::BibliographyFormat)?;
+        let text = export_text(extension, &content)?;
         cancel.check().map_err(CommandError::from)?;
         save_export(&path, &text, replace)
     })
@@ -358,7 +361,9 @@ pub(crate) fn manage<R: tauri::Runtime>(app: &AppHandle<R>, settings_path: &std:
             {
                 let history = app.state::<SessionReferences>();
                 let loaded = ibis_engine::settings::load(&settings_path);
-                let saved = loaded.problem.is_none() && loaded.settings.recent_citations.unwrap_or(true);
+                let saved = loaded
+                    .cites()
+                    .is_ok_and(|settings| settings.portable.recent_citations.unwrap_or(true));
                 if !on && saved {
                     let _ = history.forget();
                 }
@@ -388,7 +393,7 @@ mod tests {
             "A file with that name is already there. Choose another name."
         );
         let problem = serde_json::to_value(error)?;
-        assert_eq!(problem["recovery"]["action"], "edit-input");
+        assert_eq!(problem["recovery"]["action"], "retry");
         assert_eq!(problem["message"]["id"], "app-bibliography-name-taken");
         assert_eq!(std::fs::read_to_string(path)?, "existing");
         Ok(())
@@ -403,7 +408,8 @@ mod tests {
             &path,
             "@book{taylor,title={Synthetic signals},author={Taylor, Alex},year={2026}}",
         )?;
-        let file = FileLibrary::open(&path).map_err(|_| "open invented library")?;
+        let file =
+            FileLibrary::open(&path, &ibis_engine::Cancellation::default()).map_err(|_| "open invented library")?;
         let query = serde_json::from_value(serde_json::json!({"text":"signals","interpret_locators":false}))?;
         let rows = serde_json::to_value(file.search(&query, 10, None, &ibis_engine::Cancellation::default())?)?;
         let id = serde_json::from_value(rows["results"][0]["id"].clone())?;
@@ -478,10 +484,10 @@ mod tests {
             html: Some("<p>Taylor</p>"),
             rtf: Some("{\\rtf1 Taylor}"),
         };
-        assert_eq!(export_text("RTF", &content).as_deref(), Some("{\\rtf1 Taylor}"));
+        assert_eq!(export_text("RTF", &content).as_deref(), Ok("{\\rtf1 Taylor}"));
         assert_eq!(
             export_text("txt", &content).as_deref(),
-            Some("Taylor, A. (2026). Synthetic signals.\n")
+            Ok("Taylor, A. (2026). Synthetic signals.\n")
         );
         let page = export_text("html", &content).unwrap_or_default();
         assert!(page.contains("<p>Taylor</p>") && page.contains("charset=\"utf-8\""));
@@ -489,13 +495,19 @@ mod tests {
             page.contains("References cited since opening"),
             "never titled as a document's bibliography"
         );
-        assert_eq!(export_text("pdf", &content), None);
+        let error = export_text("pdf", &content)
+            .err()
+            .unwrap_or_else(|| panic!("unsupported format"));
+        let problem = serde_json::to_value(error).unwrap_or_default();
+        assert_eq!(problem["code"], "bibliography-format");
+        assert_eq!(problem["recovery"]["action"], "retry");
+        assert_eq!(problem["focus"], "recovery-action");
         let plain = ClipboardContent {
             html: None,
             rtf: None,
             ..content
         };
-        assert_eq!(export_text("rtf", &plain), None);
+        assert_eq!(export_text("rtf", &plain), Err(CommandError::BibliographyFormat));
     }
 }
 

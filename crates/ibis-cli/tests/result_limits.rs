@@ -94,7 +94,7 @@ fn single_results_match_byte_for_byte_and_overflow_is_a_resource_error() {
     assert_eq!(code, 5);
     assert_eq!(
         serde_json::from_slice::<Value>(&output).unwrap(),
-        json!({"ibis":1,"ok":false,"error":{"code":"resource-limit","message":{"id":"error-resource-limit","args":{}},"recovery":{"action":"reduce-selection"},"focus":"search"}})
+        json!({"ibis":1,"ok":false,"error":{"code":"resource-limit","message":{"id":"error-resource-limit","args":{}},"recovery":{"action":"reduce-selection"},"focus":"results"}})
     );
     let response = rpc(engine);
     assert_eq!(response["error"]["code"], -32000);
@@ -207,7 +207,7 @@ fn renderer_and_transport_quotas_are_resource_errors_on_real_cli_and_stdio() {
             let expected = if count == 84 {
                 json!({"code":"resource-limit","citation_error":"output-too-large","message":{"id":"problem-output-too-large","args":{}},"recovery":{"action":"reduce-selection"},"focus":"results"})
             } else {
-                json!({"code":"resource-limit","message":{"id":"error-resource-limit","args":{}},"recovery":{"action":"reduce-selection"},"focus":"search"})
+                json!({"code":"resource-limit","message":{"id":"error-resource-limit","args":{}},"recovery":{"action":"reduce-selection"},"focus":"results"})
             };
             assert_eq!(
                 serde_json::from_slice::<Value>(&output.stdout).unwrap(),

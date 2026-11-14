@@ -274,3 +274,24 @@ test("the first citation copies its suggested preview without asking", async () 
   expect(screen.queryByRole("menu")).toBeNull();
   expect(remembered).toEqual([]);
 });
+
+test("a missing DOI offers the format menu and BibTeX can recover the citation", async () => {
+  const previews: string[] = [];
+  backend({ search: () => [result("atlas", "Invented atlas")],
+    preview_file_citation: ({ output }) => {
+      previews.push(output);
+      if (output === "doi-links") throw { code: "missing-doi", message: { id: "problem-missing-doi", args: {} },
+        recovery: { action: "choose-output" }, focus: "format-picker" };
+      return receipt(output === "bibtex" ? "@book{atlas}" : "[@atlas]");
+    },
+  });
+  render(<App />);
+  await pick("DOI links");
+  const alert = await screen.findByRole("alert");
+  expect(alert.textContent).toContain("Choose BibTeX in the citation format menu.");
+  expect(formatButton().hasAttribute("disabled")).toBe(false);
+  await pick("BibTeX");
+  await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("@book{atlas}"));
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(previews).toContain("bibtex");
+});

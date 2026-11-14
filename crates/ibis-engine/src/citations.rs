@@ -45,7 +45,11 @@ impl SessionError {
             }
             Self::SnapshotChanged | Self::NotPrepared => CitationError::ChangedItem.problem(),
             Self::Cancelled => EngineError::new(ErrorCode::Cancelled).into(),
-            Self::CitationTooLarge => CitationError::TooManyItems.problem(),
+            Self::CitationTooLarge => {
+                let mut problem = CitationError::TooManyItems.problem();
+                problem.info.message.id = "app-command-citation-too-large".into();
+                problem
+            }
         }
     }
 }
@@ -550,11 +554,18 @@ impl Worker {
                 let mut problem = CitationError::UnsupportedForm.problem();
                 problem.info.message.id = "app-command-bibliography-unsupported".into();
                 problem.info = problem.info.argument("references", left_out.join(", "));
-                return Err(SessionError::Presented(problem));
+                return Err(SessionError::Presented(
+                    problem.recover_with(Recovery::RemoveReferences),
+                ));
             }
             let (citation, whole) = self.bibliography_of(kept, style, cancel)?;
             if !whole {
-                return Err(CitationError::UnsupportedForm.into());
+                return Err(SessionError::Presented(
+                    CitationError::UnsupportedForm
+                        .problem()
+                        .recover_with(Recovery::RemoveReferences)
+                        .on(CitationSurface::Bibliography),
+                ));
             }
             (citation, left_out)
         };
@@ -748,13 +759,23 @@ impl Worker {
             }
             if let Some(item) = refused(CitationError::UnsupportedForm) {
                 let mut failure = CitationError::UnsupportedForm.problem();
-                failure.info.message.id = "app-command-unsupported-form".into();
                 let form = request.items[item].form.unwrap_or(request.form);
                 let label = crate::catalogue::text(&crate::catalogue::id("form", form), None, &[]).unwrap_or_default();
                 failure.info = failure
                     .info
-                    .argument("number", (item + 1).to_string())
-                    .argument("form", label);
+                    .argument("form", label)
+                    .argument(
+                        "reference",
+                        crate::catalogue::text("app-reference-number", None, &[("number", &(item + 1).to_string())])
+                            .unwrap_or_default(),
+                    )
+                    .argument(
+                        "output",
+                        crate::outputs::named(&request.output).map_or_else(
+                            || crate::catalogue::text("mcp-output-name", None, &[]).unwrap_or_default(),
+                            |output| output.name.clone(),
+                        ),
+                    );
                 let problem = crate::catalogue::problem(&failure, crate::catalogue::Audience::App);
                 let mut preview = self.publish_preview(reservation, citation, original_output)?;
                 preview.problem = Some(problem);

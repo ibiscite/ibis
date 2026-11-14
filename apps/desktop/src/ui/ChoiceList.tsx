@@ -54,7 +54,7 @@ export function ChoiceList({ title, line, choices, onChoose, footnote, autoFocus
       <ListBox ref={list} className="choice-list" layout={grid ? "grid" : "stack"} aria-labelledby={heading} selectionMode="none" autoFocus={autoFocus && !focusId ? "first" : undefined}
         onAction={(id) => onChoose(String(id))}>
         {choices.map((choice) => (
-          <ListBoxItem key={choice.id} id={choice.id} textValue={choice.title} className="choice-row"
+          <ListBoxItem key={choice.id} id={choice.id} textValue={choice.title} className="ui-option choice-row"
             render={(props) => <div {...props as ComponentPropsWithRef<"div">} aria-keyshortcuts={choice.keys ? ariaKeys(choice.keys, mac) : undefined} />}
             data-suggested={choice.suggested || undefined}>
             <span className="result-tile choice-tile" aria-hidden="true">{choice.icon}</span>
