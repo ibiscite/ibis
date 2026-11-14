@@ -122,54 +122,8 @@ pub fn save(path: &Path, text: &str, replace: bool) -> io::Result<()> {
     if !replace && fs::symlink_metadata(path).is_ok() {
         return Err(io::ErrorKind::AlreadyExists.into());
     }
-    let name = path.file_name().ok_or(io::ErrorKind::InvalidInput)?;
-    // A fresh temporary name each time: one left by an interrupted write never
-    // blocks a later backup under the same name.
-    let (partial, mut file) = (0..100u32)
-        .find_map(|attempt| {
-            let partial = path.with_file_name(format!(
-                ".{}.{}-{attempt}.partial",
-                name.to_string_lossy(),
-                std::process::id()
-            ));
-            match create_private(&partial) {
-                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => None,
-                opened => Some(opened.map(|file| (partial, file))),
-            }
-        })
-        .unwrap_or_else(|| Err(io::ErrorKind::AlreadyExists.into()))?;
-    let written = io::Write::write_all(&mut file, text.as_bytes()).and_then(|()| file.sync_all());
-    drop(file);
-    let placed = written.and_then(|()| {
-        if replace {
-            return fs::rename(&partial, path);
-        }
-        // A link takes the name only if it is free. Some drives and cloud
-        // folders have no links; there the name is created only if it is free.
-        match fs::hard_link(&partial, path) {
-            Err(error) if error.kind() != io::ErrorKind::AlreadyExists => {
-                let mut file = create_private(path)?;
-                io::Write::write_all(&mut file, text.as_bytes())
-                    .and_then(|()| file.sync_all())
-                    .inspect_err(|_| {
-                        let _ = fs::remove_file(path);
-                    })
-            }
-            other => other,
-        }
-    });
-    let _ = fs::remove_file(&partial);
-    placed
-}
-
-/// Create a new file that only its owner can read: a backup names a private
-/// bibliography path, like the settings file.
-fn create_private(path: &Path) -> io::Result<fs::File> {
-    let mut options = fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-    options.open(path)
+    let file = ibis_core::atomic_file::AtomicFile::new(path, text.as_bytes())?;
+    if replace { file.replace() } else { file.create() }
 }
 
 /// A change as previews show it: a bibliography by its file name only, so
@@ -193,7 +147,8 @@ pub fn shown(change: &Change) -> Change {
 }
 
 /// Read and check a whole backup file, without waiting for a cloud download.
-pub fn read(path: &Path) -> Result<Backup, BackupError> {
+/// Recovery also accepts raw settings, after checking for an exported envelope.
+pub fn read(path: &Path, recovery: bool) -> Result<Backup, BackupError> {
     if path.extension().is_some_and(|extension| extension == "icloud") {
         return Err(BackupError::NotDownloaded);
     }
@@ -203,7 +158,7 @@ pub fn read(path: &Path) -> Result<Backup, BackupError> {
     }
     let bytes = super::read_regular_bytes(path).map_err(BackupError::Unreadable)?;
     let text = String::from_utf8(bytes).map_err(|_| BackupError::Invalid("the backup is not UTF-8 text"))?;
-    parse(&text)
+    classify(&text, recovery)
 }
 
 /// A file a sync service shows but has not downloaded: macOS marks it dataless,
@@ -230,8 +185,12 @@ fn placeholder(metadata: &fs::Metadata) -> bool {
     }
 }
 
-/// Check a whole backup's text.
+/// Check a whole exported backup's text.
 pub fn parse(text: &str) -> Result<Backup, BackupError> {
+    classify(text, false)
+}
+
+fn classify(text: &str, recovery: bool) -> Result<Backup, BackupError> {
     if text.len() as u64 > MAX_SETTINGS_BYTES {
         return Err(BackupError::Invalid("it is larger than 1 MiB"));
     }
@@ -243,6 +202,13 @@ pub fn parse(text: &str) -> Result<Backup, BackupError> {
         // file is one that holds at least one setting this build knows.
         let fields = backup.len();
         let settings = super::parse_value(Value::Object(backup));
+        if recovery {
+            return Ok(Backup {
+                made_on: System::HERE,
+                made_by: "unknown".into(),
+                settings: settings?.portable,
+            });
+        }
         return Err(match settings {
             Ok(settings) if settings.unknown.len() < fields => BackupError::SettingsFile,
             _ => BackupError::NotABackup,

@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
+use ibis_core::atomic_file::{AtomicFile, sync_directory};
 use ibis_core::destination::System;
 
 /// Version of the settings format this build reads and writes.
@@ -893,11 +894,6 @@ fn write_settings_checked(
     if json.len() as u64 >= MAX_SETTINGS_BYTES {
         return Err(settings_too_large().into());
     }
-    let permissions = match fs::metadata(path) {
-        Ok(metadata) => Some(metadata.permissions()),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
-        Err(error) => return Err(error.into()),
-    };
     if recovering {
         preserve_invalid(path)?;
     }
@@ -915,32 +911,18 @@ fn write_settings_checked(
         }
         _ => path.to_path_buf(),
     };
-    // The new contents reach the disk before they replace the old file, so a
-    // power cut leaves either file whole, never an empty one.
-    // Never remove an interrupted write: the primary or backup may point to it.
-    let (temporary, mut file) = create_temporary(&target)?;
-    file.write_all(format!("{json}\n").as_bytes())?;
-    if let Some(permissions) = permissions {
-        file.set_permissions(permissions)?;
-    }
-    file.sync_all()?;
-    drop(file);
+    let replacement = AtomicFile::new(&target, format!("{json}\n").as_bytes())?;
     if *expected != snapshot(path) {
-        let _ = fs::remove_file(&temporary);
         return Err(SettingsError::Changed);
     }
     if !recovering && path.exists() {
-        fs::copy(path, &backup)?;
-        // Windows flushes only a handle opened for writing.
-        fs::OpenOptions::new().write(true).open(&backup)?.sync_all()?;
+        AtomicFile::new(&backup, &read_regular_bytes(path)?)?.replace()?;
     }
     if *expected != snapshot(path) {
-        let _ = fs::remove_file(&temporary);
         return Err(SettingsError::Changed);
     }
-    fs::rename(&temporary, &target)?;
+    replacement.replace()?;
     owner::committed(expected.clone(), format!("{json}\n").into_bytes());
-    sync_directory(&target);
     Ok(())
 }
 
@@ -1025,25 +1007,6 @@ fn is_sync_conflict(stem: &str, name: &str) -> bool {
         || middle.starts_with(".sync-conflict-")
 }
 
-fn create_temporary(path: &Path) -> io::Result<(PathBuf, fs::File)> {
-    for number in 1..=1000 {
-        let temporary = path.with_extension(format!("json.tmp-{number}"));
-        let mut options = fs::OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-        match options.open(&temporary) {
-            Ok(file) => return Ok((temporary, file)),
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error),
-        }
-    }
-    Err(io::Error::new(
-        io::ErrorKind::AlreadyExists,
-        "settings temporary names are exhausted",
-    ))
-}
-
 /// Copy and flush the damaged bytes before opening the temporary output.
 /// Exclusive creation never overwrites an occupied name and works on
 /// filesystems without hard links.
@@ -1083,19 +1046,6 @@ fn preserve_invalid(path: &Path) -> io::Result<()> {
     ))
 }
 
-/// Flush the folder holding `path`, so the rename itself survives a power
-/// cut. Unix only: Windows cannot open a folder as a file, and NTFS journals
-/// the rename. Best effort: the file is already in place, and some file
-/// systems refuse to flush a folder.
-fn sync_directory(path: &Path) {
-    #[cfg(unix)]
-    if let Some(directory) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
-        let _ = fs::File::open(directory).and_then(|d| d.sync_all());
-    }
-    #[cfg(not(unix))]
-    let _ = path;
-}
-
 /// Change settings on disk: read the file as it is now, apply `change` and
 /// save the result. Edits made since loading are kept. Recovery always needs
 /// an explicit restore, so an ordinary edit cannot promote older cited choices.
@@ -1115,9 +1065,6 @@ fn transaction<T, E: From<SettingsError>>(
     change: impl FnOnce(&mut Settings) -> Result<T, E>,
 ) -> Result<(Settings, T), E> {
     let _writer = writer_lock(path).map_err(E::from)?;
-    if fs::metadata(path).is_ok_and(|metadata| metadata.permissions().readonly()) {
-        return Err(SettingsError::Unreadable(io::ErrorKind::PermissionDenied.into()).into());
-    }
     let before = snapshot(path);
     let loaded = load(path);
     if let Some(problem) = loaded.problem {

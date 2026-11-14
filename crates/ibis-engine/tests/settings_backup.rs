@@ -60,6 +60,25 @@ fn export_preview_and_restore_agree_and_dry_run_changes_nothing() {
 }
 
 #[test]
+fn an_export_at_the_automatic_backup_path_restores_its_library_and_format() {
+    let (_directory, target) = fixture::file();
+    let library = LibrarySetting::Bibtex("/invented/atlas.bib".into());
+    fixture::edit(&target, |settings| {
+        settings.portable.library = Some(library.clone());
+        settings.portable.output = Some("ieee".into());
+    })
+    .unwrap();
+    let source = target.with_extension("json.bak");
+    backup::save(&source, &backup::export_file(target.clone(), "0.3.6").unwrap(), true).unwrap();
+    fs::write(&target, "{}").unwrap();
+    let (_, plan) = backup::prepare(target.clone(), source).unwrap();
+    settings::Owner::open(target.clone()).restore(&plan).unwrap();
+    let restored = fixture::read(&target);
+    assert_eq!(restored.portable.library, Some(library));
+    assert_eq!(restored.portable.output.as_deref(), Some("ieee"));
+}
+
+#[test]
 fn malformed_newer_and_unreadable_backups_refuse_without_echoing_private_input() {
     let (directory, target) = fixture::file();
     fs::write(&target, "{}").unwrap();
@@ -77,12 +96,14 @@ fn malformed_newer_and_unreadable_backups_refuse_without_echoing_private_input()
             ErrorCode::BadInput,
         ),
     ] {
-        fs::write(&source, text).unwrap();
-        let error = backup::prepare(target.clone(), source.clone()).unwrap_err();
-        assert_eq!(backup::problem(&error), problem);
-        assert_eq!(backup::code(&error), code);
-        assert!(!backup::message(&error).contains("private"));
-        assert_eq!(fs::read_to_string(&target).unwrap(), "{}");
+        for source in [&source, &target.with_extension("json.bak")] {
+            fs::write(source, text).unwrap();
+            let error = backup::prepare(target.clone(), source.clone()).unwrap_err();
+            assert_eq!(backup::problem(&error), problem);
+            assert_eq!(backup::code(&error), code);
+            assert!(!backup::message(&error).contains("private"));
+            assert_eq!(fs::read_to_string(&target).unwrap(), "{}");
+        }
     }
     fs::remove_file(&source).unwrap();
     let error = backup::prepare(target, source).unwrap_err();

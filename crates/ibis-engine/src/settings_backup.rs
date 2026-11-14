@@ -31,18 +31,7 @@ pub fn prepare(path: PathBuf, source: PathBuf) -> Result<(Backup, Plan), BackupE
         let recovery = source == automatic
             || std::fs::canonicalize(&source)
                 .is_ok_and(|source| std::fs::canonicalize(&automatic).is_ok_and(|automatic| source == automatic));
-        if recovery {
-            let bytes = settings::read_regular_bytes(&source).map_err(BackupError::Unreadable)?;
-            let text = std::str::from_utf8(&bytes).map_err(|_| BackupError::Invalid("the backup is not UTF-8 text"))?;
-            let settings = settings::parse(text)?;
-            Ok(Backup {
-                made_on: ibis_core::destination::System::HERE,
-                made_by: "unknown".into(),
-                settings: settings.portable,
-            })
-        } else {
-            backup::read(&source)
-        }
+        backup::read(&source, recovery)
     })
     .ok_or_else(|| BackupError::Unreadable(io::ErrorKind::TimedOut.into()))??;
     let mut loaded = within(move || settings::load(&path)).ok_or_else(settings_timeout)?;

@@ -376,20 +376,23 @@ fn damaged_foreign_and_newer_backups_are_refused_with_their_reason() {
 #[test]
 fn a_backup_file_that_is_missing_or_not_downloaded_is_reported_and_read_whole_otherwise() {
     let directory = folder();
-    let missing = backup::read(&directory.path().join("Ibis settings.json"));
+    let missing = backup::read(&directory.path().join("Ibis settings.json"), false);
     assert!(matches!(missing, Err(BackupError::Unreadable(error)) if error.kind() == std::io::ErrorKind::NotFound));
     let placeholder = directory.path().join(".Ibis settings.json.icloud");
     write(&placeholder, "bplist00");
-    assert!(matches!(backup::read(&placeholder), Err(BackupError::NotDownloaded)));
     assert!(matches!(
-        backup::read(directory.path()),
+        backup::read(&placeholder, false),
+        Err(BackupError::NotDownloaded)
+    ));
+    assert!(matches!(
+        backup::read(directory.path(), false),
         Err(BackupError::Unreadable(_))
     ));
     let file = directory.path().join("Ibis settings.json");
     write(&file, &backup::export(&chosen(), "0.2.8").unwrap_or_default());
-    assert!(backup::read(&file).is_ok());
+    assert!(backup::read(&file, false).is_ok());
     fs::write(&file, [0xff, 0xfe]).unwrap_or_else(|error| panic!("{error}"));
-    assert!(matches!(backup::read(&file), Err(BackupError::Invalid(_))));
+    assert!(matches!(backup::read(&file, false), Err(BackupError::Invalid(_))));
 }
 
 #[test]
@@ -566,13 +569,7 @@ fn restore_replaces_damaged_settings_but_never_newer_or_unreadable_ones() {
 fn an_interrupted_backup_never_blocks_the_next_one() {
     let directory = folder();
     let path = directory.path().join("Ibis settings.json");
-    write(&directory.path().join(".Ibis settings.json.partial"), "half");
-    write(
-        &directory
-            .path()
-            .join(format!(".Ibis settings.json.{}-0.partial", std::process::id())),
-        "half",
-    );
+    write(&path.with_file_name("Ibis settings.json.tmp-1"), "half");
     backup::save(&path, "{}\n", false).unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(read(&path), "{}\n");
     backup::save(&path, "{ }\n", true).unwrap_or_else(|error| panic!("{error}"));

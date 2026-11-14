@@ -9,7 +9,7 @@
 //! delivery-recovery refusal until each app gets an explicit delivery choice.
 
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -276,36 +276,7 @@ fn write(path: &Path, apps: &[Remembered], recovery: bool) -> io::Result<()> {
     if let Some(directory) = path.parent() {
         fs::create_dir_all(directory)?;
     }
-    // Exclusive creation never follows a leftover temporary symlink or truncates it.
-    let (partial, mut file) = (1..=1000)
-        .find_map(|n| {
-            let partial = path.with_extension(format!("json.tmp-{n}"));
-            match fs::OpenOptions::new().write(true).create_new(true).open(&partial) {
-                Ok(file) => Some(Ok((partial, file))),
-                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => None,
-                Err(error) => Some(Err(error)),
-            }
-        })
-        .unwrap_or_else(|| {
-            Err(io::Error::new(
-                io::ErrorKind::AlreadyExists,
-                "temporary names exhausted",
-            ))
-        })?;
-    let written = file
-        .write_all(format!("{json}\n").as_bytes())
-        .and_then(|()| file.sync_all());
-    drop(file);
-    let replaced = written.and_then(|()| fs::rename(&partial, path));
-    if replaced.is_err() {
-        let _ = fs::remove_file(&partial);
-    }
-    replaced?;
-    #[cfg(unix)]
-    if let Some(directory) = path.parent() {
-        let _ = fs::File::open(directory).and_then(|d| d.sync_all());
-    }
-    Ok(())
+    ibis_core::atomic_file::AtomicFile::new(path, format!("{json}\n").as_bytes())?.replace()
 }
 
 /// The per-app file beside the settings file.
@@ -613,9 +584,7 @@ mod tests {
             let mut captured = crate::paste::Captured::unknown(app.system);
             captured.target.app = Some(app.clone());
             captured.app_identity = identity.clone();
-            self.app
-                .state::<crate::paste::LastTarget>()
-                .begin_presentation(Some(captured));
+            self.app.state::<crate::paste::LastTarget>().capture_fixture(captured);
             remember_app_output(
                 self.app.handle().clone(),
                 self.app.state(),
@@ -1071,6 +1040,60 @@ mod tests {
         assert_eq!(choices.reopened().paste(&id), Ok(Some(AppPaste::CopyOnly)));
         assert_eq!(fs::read(&path)?, before);
         assert!(!path.with_extension("json.bak").exists());
+        Ok(())
+    }
+
+    #[test]
+    fn always_copy_refuses_read_only_app_choices_and_keeps_the_policy_and_permissions()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let choices = Choices::new()?;
+        let id = word();
+        choices.choose(&id, Some("ieee"), Some(AppPaste::Paste))?;
+        let paths = ["settings.json", "apps.json"].map(|name| choices.directory.path().join(name));
+        for path in &paths {
+            let mut permissions = fs::metadata(path)?.permissions();
+            permissions.set_readonly(true);
+            fs::set_permissions(path, permissions)?;
+        }
+        let before = paths.each_ref().map(|path| {
+            (
+                fs::read(path).unwrap_or_default(),
+                fs::metadata(path).map(|m| m.permissions()),
+            )
+        });
+        assert!(matches!(
+            choices.choose(&id, None, Some(AppPaste::CopyOnly)),
+            Err(AppChoiceError::NotSaved { .. })
+        ));
+        assert_eq!(
+            choices
+                .app
+                .state::<AppMemory>()
+                .set_choice(&id, AppPaste::CopyOnly)
+                .err()
+                .map(|error| error.kind()),
+            Some(io::ErrorKind::PermissionDenied)
+        );
+        assert_eq!(choices.app.state::<AppMemory>().paste(&id), Ok(Some(AppPaste::Paste)));
+        assert_eq!(choices.reopened().paste(&id), Ok(Some(AppPaste::Paste)));
+        for (path, (bytes, permissions)) in paths.iter().zip(before) {
+            assert_eq!(fs::read(path)?, bytes);
+            assert_eq!(fs::metadata(path)?.permissions(), permissions?);
+        }
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn replacing_app_choices_preserves_their_mode() -> io::Result<()> {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = tempfile::tempdir()?;
+        let memory = memory_in(&directory);
+        memory.set_choice(&word(), AppPaste::Paste)?;
+        let path = directory.path().join("apps.json");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o640))?;
+        memory.set_choice(&word(), AppPaste::CopyOnly)?;
+        assert_eq!(fs::metadata(path)?.permissions().mode() & 0o777, 0o640);
         Ok(())
     }
 }

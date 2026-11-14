@@ -171,6 +171,20 @@ pub(crate) struct LastTarget(Mutex<TargetState>);
 
 #[cfg(any(target_os = "windows", test))]
 impl LastTarget {
+    #[cfg(test)]
+    pub(crate) fn capture_fixture(&self, captured: Captured) {
+        #[cfg(not(target_os = "windows"))]
+        self.begin_presentation(Some(captured));
+        #[cfg(target_os = "windows")]
+        if let Ok(mut last) = self.0.lock() {
+            last.target = Some(CopyTarget {
+                captured: Some(captured),
+                window: None,
+                generation: 0,
+            });
+        }
+    }
+
     /// Final native checks must never dispatch to the UI thread while this
     /// guard is held. Contention refuses instead of queuing input behind IPC.
     fn post_if_ready(&self, post: impl FnOnce() -> bool) -> bool {
