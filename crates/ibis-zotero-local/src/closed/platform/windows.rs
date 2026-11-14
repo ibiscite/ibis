@@ -3,12 +3,15 @@
 
 use super::{ClosedError, Control, drive_path};
 use std::ffi::{OsString, c_void};
+use std::fs::File;
 use std::mem::{offset_of, size_of, size_of_val};
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
+use std::os::windows::io::FromRawHandle;
 use std::path::{Path, PathBuf};
 use std::ptr::{addr_of_mut, null, null_mut};
 use windows_sys::Win32::Foundation::{
-    CloseHandle, ERROR_FILE_NOT_FOUND, ERROR_NO_MORE_FILES, GetLastError, HANDLE, INVALID_HANDLE_VALUE, LocalFree,
+    CloseHandle, ERROR_FILE_NOT_FOUND, ERROR_NO_MORE_FILES, GENERIC_READ, GENERIC_WRITE, GetLastError, HANDLE,
+    INVALID_HANDLE_VALUE, LocalFree,
 };
 use windows_sys::Win32::Globalization::{CSTR_EQUAL, CompareStringOrdinal};
 use windows_sys::Win32::Security::Authorization::{GetSecurityInfo, SE_FILE_OBJECT};
@@ -22,11 +25,12 @@ use windows_sys::Win32::Security::{
     TokenUser,
 };
 use windows_sys::Win32::Storage::FileSystem::{
-    BY_HANDLE_FILE_INFORMATION, CreateDirectoryW, CreateFileW, FILE_ALL_ACCESS, FILE_ATTRIBUTE_NOT_CONTENT_INDEXED,
-    FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ,
-    FILE_SHARE_WRITE, GetDiskFreeSpaceExW, GetDriveTypeW, GetFileAttributesW, GetFileInformationByHandle,
-    GetFullPathNameW, GetLongPathNameW, GetTempPathW, INVALID_FILE_ATTRIBUTES, MoveFileExW, OPEN_EXISTING,
-    READ_CONTROL, RemoveDirectoryW, SetFileAttributesW,
+    BY_HANDLE_FILE_INFORMATION, CREATE_NEW, CreateDirectoryW, CreateFileW, DELETE, FILE_ALL_ACCESS,
+    FILE_ATTRIBUTE_NOT_CONTENT_INDEXED, FILE_DISPOSITION_INFO, FILE_FLAG_BACKUP_SEMANTICS,
+    FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
+    FileDispositionInfo, GetDiskFreeSpaceExW, GetDriveTypeW, GetFileAttributesW, GetFileInformationByHandle,
+    GetFullPathNameW, GetLongPathNameW, GetTempPathW, INVALID_FILE_ATTRIBUTES, MoveFileExW, OPEN_ALWAYS, OPEN_EXISTING,
+    READ_CONTROL, RemoveDirectoryW, SetFileAttributesW, SetFileInformationByHandle,
 };
 use windows_sys::Win32::System::Com::CoTaskMemFree;
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
@@ -37,18 +41,21 @@ use windows_sys::Win32::UI::Shell::{FOLDERID_LocalAppData, KF_FLAG_DONT_VERIFY, 
 
 // Reparse points, offline files and both kinds of cloud recall placeholder.
 const NONLOCAL: u32 = 0x0044_1400;
-const NATIVE: ClosedError = ClosedError::ProcessCheck;
 const PATH_CAPACITY: usize = 32_768;
 
 fn succeeded(value: i32) -> Result<(), ClosedError> {
-    if value == 0 { Err(NATIVE) } else { Ok(()) }
+    if value == 0 {
+        Err(ClosedError::PrivateStorage)
+    } else {
+        Ok(())
+    }
 }
 
 struct Handle(HANDLE);
 impl Handle {
     fn new(raw: HANDLE) -> Result<Self, ClosedError> {
         if raw.is_null() || raw == INVALID_HANDLE_VALUE {
-            Err(NATIVE)
+            Err(ClosedError::PrivateStorage)
         } else {
             Ok(Self(raw))
         }
@@ -78,7 +85,7 @@ impl Drop for Descriptor {
 fn wide(path: &Path) -> Result<Vec<u16>, ClosedError> {
     let mut value: Vec<_> = path.as_os_str().encode_wide().collect();
     if value.is_empty() || value.len() >= PATH_CAPACITY || value.contains(&0) {
-        return Err(NATIVE);
+        return Err(ClosedError::UnsafeSource);
     }
     value.push(0);
     Ok(value)
@@ -88,7 +95,7 @@ fn wide(path: &Path) -> Result<Vec<u16>, ClosedError> {
 fn checked_path(path: &Path) -> Result<Vec<u16>, ClosedError> {
     let value = wide(path)?;
     if !drive_path(path) {
-        return Err(NATIVE);
+        return Err(ClosedError::UnsafeSource);
     }
     for part in value[3..value.len() - 1]
         .split(|c| matches!(*c, 47 | 92))
@@ -99,7 +106,7 @@ fn checked_path(path: &Path) -> Result<Vec<u16>, ClosedError> {
             || part.iter().any(|c| *c == 58 || *c < 32 || (127..=159).contains(c))
             || matches!(part.last(), Some(46 | 32))
         {
-            return Err(NATIVE);
+            return Err(ClosedError::UnsafeSource);
         }
     }
     Ok(value)
@@ -110,7 +117,7 @@ fn attributes(path: &[u16], control: &Control) -> Result<u32, ClosedError> {
     // SAFETY: all callers provide a live, NUL-terminated UTF-16 path.
     let attributes = unsafe { GetFileAttributesW(path.as_ptr()) };
     if attributes == INVALID_FILE_ATTRIBUTES || attributes & NONLOCAL != 0 {
-        return Err(NATIVE);
+        return Err(ClosedError::UnsafeSource);
     }
     Ok(attributes)
 }
@@ -126,7 +133,7 @@ pub(super) fn local(path: &Path, control: &Control) -> Result<(), ClosedError> {
     // DRIVE_REMOVABLE, DRIVE_FIXED, DRIVE_CDROM, DRIVE_RAMDISK. Numeric
     // constants avoid enabling System_WindowsProgramming just for names.
     if !matches!(kind, 2 | 3 | 5 | 6) {
-        return Err(NATIVE);
+        return Err(ClosedError::UnsafeSource);
     }
     attributes(&current, control)?;
     for part in value[3..value.len() - 1]
@@ -158,34 +165,41 @@ fn zotero_image(name: &[u16]) -> bool {
 pub(super) fn closed(control: &Control) -> Result<(), ClosedError> {
     control.check()?;
     // SAFETY: process snapshots require no pointers or process access rights.
-    let snapshot = Handle::new(unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) })?;
+    let snapshot = Handle::new(unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) })
+        .map_err(|_| ClosedError::ProcessCheck)?;
     let mut entry = PROCESSENTRY32W {
         dwSize: size_of::<PROCESSENTRY32W>() as u32,
         ..Default::default()
     };
     control.check()?;
     // SAFETY: entry is initialized and advertises the exact structure size.
-    succeeded(unsafe { Process32FirstW(snapshot.0, &mut entry) })?;
+    if unsafe { Process32FirstW(snapshot.0, &mut entry) } == 0 {
+        return Err(ClosedError::ProcessCheck);
+    }
     let mut seen_self = false;
     let mut running = false;
     loop {
         control.check()?;
         seen_self |= entry.th32ProcessID == std::process::id();
-        let len = entry.szExeFile.iter().position(|c| *c == 0).ok_or(NATIVE)?;
+        let len = entry
+            .szExeFile
+            .iter()
+            .position(|c| *c == 0)
+            .ok_or(ClosedError::ProcessCheck)?;
         running |= zotero_image(&entry.szExeFile[..len]);
         control.check()?;
         // SAFETY: snapshot is live and entry still has its required size.
         if unsafe { Process32NextW(snapshot.0, &mut entry) } == 0 {
             // SAFETY: read immediately after the failed enumeration call.
             if unsafe { GetLastError() } != ERROR_NO_MORE_FILES {
-                return Err(NATIVE);
+                return Err(ClosedError::ProcessCheck);
             }
             break;
         }
     }
     control.check()?;
     if !seen_self {
-        Err(NATIVE)
+        Err(ClosedError::ProcessCheck)
     } else if running {
         Err(ClosedError::Running)
     } else {
@@ -199,7 +213,9 @@ pub(super) fn space(path: &Path, needed: u64, control: &Control) -> Result<(), C
     let mut available = 0;
     control.check()?;
     // SAFETY: value is terminated; available is writable; unused outputs may be null.
-    succeeded(unsafe { GetDiskFreeSpaceExW(value.as_ptr(), &mut available, null_mut(), null_mut()) })?;
+    if unsafe { GetDiskFreeSpaceExW(value.as_ptr(), &mut available, null_mut(), null_mut()) } == 0 {
+        return Err(ClosedError::NoSpace);
+    }
     control.check()?;
     if available < needed {
         Err(ClosedError::NoSpace)
@@ -245,7 +261,7 @@ fn user(control: &Control) -> Result<User, ClosedError> {
         )
     })?;
     if (required as usize) < size_of::<TOKEN_USER>() || required as usize > size_of_val(user.storage.as_slice()) {
-        return Err(NATIVE);
+        return Err(ClosedError::PrivateStorage);
     }
     control.check()?;
     // SAFETY: the SID came from successful TokenUser information and its
@@ -272,6 +288,79 @@ fn open(path: &Path, access: u32, control: &Control) -> Result<Handle, ClosedErr
     })
 }
 
+/// All private files, including the reusable lock, are created here. The
+/// default TokenOwner may be Administrators under elevation: use TokenUser
+/// explicitly and inherit the verified parent's user-only DACL.
+pub(super) fn private_file(path: &Path, create_new: bool, control: &Control) -> Result<File, ClosedError> {
+    control.check()?;
+    let value = checked_path(path).map_err(|error| error.context(ClosedError::PrivateStorage))?;
+    let parent = path.parent().ok_or(ClosedError::PrivateStorage)?;
+    verify(parent, true, control).map_err(|error| error.context(ClosedError::PrivateStorage))?;
+    let user = user(control)?;
+    let mut descriptor = SECURITY_DESCRIPTOR::default();
+    let sd = addr_of_mut!(descriptor).cast::<c_void>();
+    control.check()?;
+    // SAFETY: sd points to writable, aligned SECURITY_DESCRIPTOR storage.
+    succeeded(unsafe { InitializeSecurityDescriptor(sd, 1) })?;
+    control.check()?;
+    // SAFETY: sd is initialized and user owns the live, validated TokenUser SID.
+    succeeded(unsafe { SetSecurityDescriptorOwner(sd, user.sid(), 0) })?;
+    // Leave SE_DACL_PRESENT unset, so Windows inherits the parent's DACL.
+    // A present NULL DACL would instead grant unrestricted access.
+    let attributes = SECURITY_ATTRIBUTES {
+        nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
+        lpSecurityDescriptor: sd,
+        bInheritHandle: 0,
+    };
+    control.check()?;
+    // SAFETY: path, descriptor and SID remain live throughout creation. A new
+    // file never replaces an entry; the lock opens without truncating. Open
+    // reparse points themselves so existing locks can be refused below.
+    let handle = Handle::new(unsafe {
+        CreateFileW(
+            value.as_ptr(),
+            GENERIC_READ | GENERIC_WRITE | DELETE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            &attributes,
+            if create_new { CREATE_NEW } else { OPEN_ALWAYS },
+            FILE_FLAG_OPEN_REPARSE_POINT,
+            null_mut(),
+        )
+    })?;
+    let result = (|| {
+        let mut info = BY_HANDLE_FILE_INFORMATION::default();
+        control.check()?;
+        // SAFETY: handle grants attribute reads and info is a writable output.
+        succeeded(unsafe { GetFileInformationByHandle(handle.0, &mut info) })?;
+        // FILE_ATTRIBUTE_DIRECTORY = 0x10; only ordinary resident files belong here.
+        if info.dwFileAttributes & (NONLOCAL | 0x10) != 0 {
+            return Err(ClosedError::PrivateStorage);
+        }
+        verify_acl(&handle, &user, false, control)
+    })();
+    if let Err(error) = result {
+        if create_new {
+            let mut disposition = FILE_DISPOSITION_INFO { DeleteFile: 1 };
+            // SAFETY: DELETE was requested on this live handle. Mark only our
+            // newly created file for deletion, never a raced-in path or a lock.
+            // This also leaves a cancelled root-tag creation retryable.
+            unsafe {
+                SetFileInformationByHandle(
+                    handle.0,
+                    FileDispositionInfo,
+                    addr_of_mut!(disposition).cast(),
+                    size_of::<FILE_DISPOSITION_INFO>() as u32,
+                )
+            };
+        }
+        return Err(error);
+    }
+    let handle = std::mem::ManuallyDrop::new(handle);
+    // SAFETY: creation returned an owned file handle. ManuallyDrop transfers
+    // its sole close responsibility to File, including on later errors.
+    Ok(unsafe { File::from_raw_handle(handle.0) })
+}
+
 pub(super) fn verify(path: &Path, protected: bool, control: &Control) -> Result<(), ClosedError> {
     local(path, control)?;
     let user = user(control)?;
@@ -281,7 +370,7 @@ pub(super) fn verify(path: &Path, protected: bool, control: &Control) -> Result<
     // SAFETY: handle permits attribute reads and info is a writable output.
     succeeded(unsafe { GetFileInformationByHandle(handle.0, &mut info) })?;
     if info.dwFileAttributes & NONLOCAL != 0 {
-        return Err(NATIVE);
+        return Err(ClosedError::PrivateStorage);
     }
     verify_acl(&handle, &user, protected, control)
 }
@@ -312,7 +401,7 @@ impl Descriptor {
         };
         let descriptor = Self { raw, owner, acl };
         if status != 0 || descriptor.raw.is_null() || owner.is_null() || acl.is_null() {
-            return Err(NATIVE);
+            return Err(ClosedError::PrivateStorage);
         }
         Ok(descriptor)
     }
@@ -331,21 +420,21 @@ impl Descriptor {
         // SAFETY: descriptor is live; flags and revision are writable outputs.
         succeeded(unsafe { GetSecurityDescriptorControl(raw, &mut flags, &mut revision) })?;
         if protected && flags & SE_DACL_PROTECTED == 0 {
-            return Err(NATIVE);
+            return Err(ClosedError::PrivateStorage);
         }
         control.check()?;
         // SAFETY: acl points into the live OS-returned descriptor.
         succeeded(unsafe { IsValidAcl(acl) })?;
         // SAFETY: the ACL header was validated and is backed by descriptor.
         if unsafe { (*acl).AceCount } != 1 {
-            return Err(NATIVE);
+            return Err(ClosedError::PrivateStorage);
         }
         let mut raw_ace = null_mut();
         control.check()?;
         // SAFETY: the valid ACL contains exactly one ACE and raw_ace is writable.
         succeeded(unsafe { GetAce(acl, 0, &mut raw_ace) })?;
         if raw_ace.is_null() {
-            return Err(NATIVE);
+            return Err(ClosedError::PrivateStorage);
         }
         // SAFETY: GetAce on a valid ACL returns an aligned, bounded ACE header.
         let header = unsafe { &*raw_ace.cast::<ACE_HEADER>() };
@@ -353,12 +442,12 @@ impl Descriptor {
         // ACCESS_ALLOWED_ACE_TYPE = 0. Include inherited and explicit ACEs alike;
         // .NET FullControl is exactly FILE_ALL_ACCESS, including SYNCHRONIZE.
         if header.AceType != 0 || (header.AceSize as usize) < sid_offset + 8 {
-            return Err(NATIVE);
+            return Err(ClosedError::PrivateStorage);
         }
         // SAFETY: the allow-ACE type and size above cover ACCESS_ALLOWED_ACE.
         let ace = unsafe { &*raw_ace.cast::<ACCESS_ALLOWED_ACE>() };
         if ace.Mask != FILE_ALL_ACCESS {
-            return Err(NATIVE);
+            return Err(ClosedError::PrivateStorage);
         }
         // SAFETY: the validated ACL bounds this ACE; the check above ensures a
         // complete SID header. Check subauthority length before calling SID APIs.
@@ -369,7 +458,7 @@ impl Descriptor {
             )
         };
         if 8 + usize::from(sid_bytes[1]) * 4 > sid_bytes.len() {
-            return Err(NATIVE);
+            return Err(ClosedError::PrivateStorage);
         }
         let sid = sid_bytes.as_ptr().cast_mut().cast();
         control.check()?;
@@ -441,17 +530,17 @@ impl Drop for Staging {
 pub(super) fn create(path: &Path, control: &Control) -> Result<(), ClosedError> {
     control.check()?;
     let target = checked_path(path)?;
-    let parent = path.parent().ok_or(NATIVE)?;
+    let parent = path.parent().ok_or(ClosedError::PrivateStorage)?;
     local(parent, control)?;
     control.check()?;
     // SAFETY: target is terminated; parent passed the locality gate first.
     if unsafe { GetFileAttributesW(target.as_ptr()) } != INVALID_FILE_ATTRIBUTES {
-        return Err(NATIVE);
+        return Err(ClosedError::PrivateStorage);
     }
     // SAFETY: read immediately after the failed attribute query. Other
     // failures (access denied, missing parent, etc.) do not prove absence.
     if unsafe { GetLastError() } != ERROR_FILE_NOT_FOUND {
-        return Err(NATIVE);
+        return Err(ClosedError::PrivateStorage);
     }
     let user = user(control)?;
     let mut random = [0; 16];
@@ -466,7 +555,7 @@ pub(super) fn create(path: &Path, control: &Control) -> Result<(), ClosedError> 
         )
     } < 0
     {
-        return Err(NATIVE);
+        return Err(ClosedError::PrivateStorage);
     }
     let staging_path = parent.join(format!("ibis-zotero-private-{:032x}", u128::from_le_bytes(random)));
     let staging_name = wide(&staging_path)?;
@@ -490,7 +579,7 @@ fn normalized(path: &Path, control: &Control) -> Result<Vec<u16>, ClosedError> {
     // the optional filename output is unused. This call is lexical only.
     let len = unsafe { GetFullPathNameW(value.as_ptr(), full.len() as u32, full.as_mut_ptr(), null_mut()) } as usize;
     if len == 0 || len >= full.len() {
-        return Err(NATIVE);
+        return Err(ClosedError::PrivateStorage);
     }
     full.truncate(len + 1);
     // Long-name expansion touches the filesystem, so gate all ancestors first.
@@ -500,7 +589,7 @@ fn normalized(path: &Path, control: &Control) -> Result<Vec<u16>, ClosedError> {
     // SAFETY: full is terminated and long's advertised capacity is writable.
     let len = unsafe { GetLongPathNameW(full.as_ptr(), long.as_mut_ptr(), long.len() as u32) } as usize;
     if len == 0 || len >= long.len() {
-        return Err(NATIVE);
+        return Err(ClosedError::PrivateStorage);
     }
     long.truncate(len);
     while long.len() > 3 && matches!(long.last(), Some(47 | 92)) {
@@ -515,7 +604,7 @@ fn ordinal_equal(a: &[u16], b: &[u16], control: &Control) -> Result<bool, Closed
     // i32. Explicit counts exclude terminators. TRUE requests ordinal folding.
     let result = unsafe { CompareStringOrdinal(a.as_ptr(), a.len() as i32, b.as_ptr(), b.len() as i32, 1) };
     if result == 0 {
-        Err(NATIVE)
+        Err(ClosedError::PrivateStorage)
     } else {
         Ok(result == CSTR_EQUAL)
     }
@@ -539,7 +628,7 @@ fn real_temp(control: &Control) -> Result<PathBuf, ClosedError> {
         unsafe { SHGetKnownFolderPath(&FOLDERID_LocalAppData, KF_FLAG_DONT_VERIFY as u32, null_mut(), &mut raw) };
     let path = KnownPath(raw);
     if status < 0 || path.0.is_null() {
-        return Err(NATIVE);
+        return Err(ClosedError::PrivateStorage);
     }
     let mut len = 0;
     // SAFETY: a successful SHGetKnownFolderPath returns a NUL-terminated,
@@ -559,7 +648,7 @@ fn configured_temp(control: &Control) -> Result<PathBuf, ClosedError> {
     // a configured string without checking whether its directory exists.
     let len = unsafe { GetTempPathW(value.len() as u32, value.as_mut_ptr()) } as usize;
     if len == 0 || len >= value.len() {
-        return Err(NATIVE);
+        return Err(ClosedError::PrivateStorage);
     }
     Ok(PathBuf::from(OsString::from_wide(&value[..len])))
 }
@@ -570,12 +659,12 @@ pub(super) fn backup(path: &Path, control: &Control) -> Result<(), ClosedError> 
     let configured = normalized(&configured_temp(control)?, control)?;
     let expanded = normalized(path, control)?;
     if !ordinal_equal(&temp, &configured, control)? {
-        return Err(NATIVE);
+        return Err(ClosedError::PrivateStorage);
     }
     let mut prefix = temp;
     prefix.push(92);
     if expanded.len() <= prefix.len() || !ordinal_equal(&prefix, &expanded[..prefix.len()], control)? {
-        return Err(NATIVE);
+        return Err(ClosedError::PrivateStorage);
     }
     let value = wide(path)?;
     let attributes = attributes(&value, control)?;
@@ -588,6 +677,14 @@ pub(super) fn backup(path: &Path, control: &Control) -> Result<(), ClosedError> 
 mod tests {
     use super::*;
     use crate::closed::tests::control;
+    use std::io::Write;
+
+    fn write_private(path: &Path, bytes: &[u8]) {
+        let mut file = super::super::private_file(path, &control())
+            .unwrap_or_else(|error| panic!("synthetic private file: {error}"));
+        file.write_all(bytes)
+            .unwrap_or_else(|_| panic!("synthetic private bytes"));
+    }
 
     fn scratch() -> tempfile::TempDir {
         tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic native directory"))
@@ -641,7 +738,7 @@ mod tests {
         let path = parent.path().join("private");
         assert_eq!(super::super::create_private(&path, &control()), Ok(()));
         assert_eq!(super::super::secure(&path, &control()), Ok(()));
-        std::fs::write(path.join("sentinel"), b"invented").unwrap_or_else(|_| panic!("synthetic sentinel"));
+        write_private(&path.join("sentinel"), b"invented");
         assert_eq!(
             super::super::create_private(&path, &control()),
             Err(ClosedError::PrivateStorage)
@@ -704,17 +801,108 @@ mod tests {
     }
 
     #[test]
-    fn inherited_full_control_is_verified_but_is_not_protected() {
+    fn private_file_has_token_user_owner_and_inherited_full_control() {
         let parent = scratch();
         let path = parent.path().join("private");
         assert_eq!(super::super::create_private(&path, &control()), Ok(()));
         let file = path.join("invented-file");
-        std::fs::write(&file, b"invented").unwrap_or_else(|_| panic!("synthetic file"));
+        write_private(&file, b"invented");
         assert_eq!(verify(&file, false, &control()), Ok(()));
+        assert_eq!(
+            super::super::private_file(&file, &control()).err(),
+            Some(ClosedError::PrivateStorage)
+        );
+        assert_eq!(std::fs::read(&file).unwrap_or_default(), b"invented");
         assert_eq!(
             super::super::secure(&file, &control()),
             Err(ClosedError::PrivateStorage)
         );
+    }
+
+    #[test]
+    fn private_lock_reopens_without_truncation_and_refuses_a_broader_acl() {
+        use windows_sys::Win32::Storage::FileSystem::WRITE_DAC;
+        let parent = scratch();
+        let path = parent.path().join("private");
+        assert_eq!(super::super::create_private(&path, &control()), Ok(()));
+        let lock = path.join(".lock");
+        let mut file =
+            super::super::private_lock(&lock, &control()).unwrap_or_else(|error| panic!("synthetic lock: {error}"));
+        file.write_all(b"invented")
+            .unwrap_or_else(|_| panic!("synthetic lock bytes"));
+        drop(file);
+        let file = super::super::private_lock(&lock, &control())
+            .unwrap_or_else(|error| panic!("synthetic reopened lock: {error}"));
+        assert_eq!(verify(&lock, false, &control()), Ok(()));
+        assert_eq!(std::fs::read(&lock).unwrap_or_default(), b"invented");
+        let editor =
+            open(&lock, READ_CONTROL | WRITE_DAC, &control()).unwrap_or_else(|_| panic!("synthetic lock ACL handle"));
+        replace_acl(&editor, FILE_ALL_ACCESS, 2);
+        assert_eq!(
+            super::super::private_lock(&lock, &control()).err(),
+            Some(ClosedError::PrivateStorage)
+        );
+        replace_acl(&editor, FILE_ALL_ACCESS, 1);
+        drop(file);
+    }
+
+    #[test]
+    fn cancelled_new_private_file_is_removed_and_can_be_created_again() {
+        let parent = scratch();
+        let path = parent.path().join("private");
+        assert_eq!(super::super::create_private(&path, &control()), Ok(()));
+        let file = path.join("CACHEDIR.TAG");
+        let created = file.clone();
+        let cancelled = Control::new(std::sync::Arc::new(move || created.exists()));
+        assert_eq!(
+            super::super::private_file(&file, &cancelled).err(),
+            Some(ClosedError::Cancelled)
+        );
+        assert!(!file.exists());
+        write_private(&file, b"invented");
+        assert_eq!(verify(&file, false, &control()), Ok(()));
+    }
+
+    #[test]
+    fn reading_clean_wal_mode_keeps_sqlite_sidecars_owned_by_token_user() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let source = crate::closed::tests::fixture(10);
+        let database = source.path().join("zotero.sqlite");
+        let db = rusqlite::Connection::open(&database).unwrap_or_else(|_| panic!("synthetic WAL database"));
+        db.execute_batch("PRAGMA journal_mode=WAL;")
+            .unwrap_or_else(|_| panic!("synthetic WAL mode"));
+        drop(db);
+        assert!(!source.path().join("zotero.sqlite-wal").exists());
+        let cache = scratch();
+        let store = crate::closed::private_copy::Store::open(cache.path(), &control())
+            .unwrap_or_else(|error| panic!("synthetic store: {error}"));
+        let seen = Arc::new(AtomicBool::new(false));
+        let observed = seen.clone();
+        let root = cache.path().join("ibis-zotero-closed");
+        let audited = Control::new(Arc::new(move || {
+            if !observed.load(Ordering::SeqCst) {
+                for entry in std::fs::read_dir(&root)
+                    .unwrap_or_else(|_| panic!("synthetic private root"))
+                    .filter_map(Result::ok)
+                {
+                    let path = entry.path();
+                    if path.join("zotero.sqlite-shm").exists() {
+                        for name in ["zotero.sqlite", "zotero.sqlite-wal", "zotero.sqlite-shm"] {
+                            assert_eq!(verify(&path.join(name), false, &control()), Ok(()));
+                        }
+                        observed.store(true, Ordering::SeqCst);
+                    }
+                }
+            }
+            false
+        }));
+        let snapshot = store
+            .read_with(source.path(), &audited, &mut || Ok(()), &mut || Ok(()))
+            .unwrap_or_else(|error| panic!("synthetic WAL read: {error}"));
+        assert!(!snapshot.libraries[0].items.is_empty());
+        assert!(seen.load(Ordering::SeqCst));
+        assert!(!source.path().join("zotero.sqlite-wal").exists());
     }
 
     fn replace_acl(handle: &Handle, mask: u32, count: usize) {
@@ -801,7 +989,7 @@ mod tests {
             replace_acl(&handle, mask, count);
             assert_eq!(
                 verify_acl(&handle, &user, true, &control()),
-                Err(NATIVE),
+                Err(ClosedError::PrivateStorage),
                 "synthetic ACL mask={mask:#x} rules={count}"
             );
             assert_eq!(
@@ -830,7 +1018,10 @@ mod tests {
         // Moving the owner also leaves its interior owner/ACL/ACE pointers valid.
         let snapshot = Box::new(snapshot);
         assert_eq!(snapshot.verify(&user, true, &control()), Ok(()));
-        assert_eq!(verify_acl(&editor, &user, true, &control()), Err(NATIVE));
+        assert_eq!(
+            verify_acl(&editor, &user, true, &control()),
+            Err(ClosedError::PrivateStorage)
+        );
         replace_acl(&editor, FILE_ALL_ACCESS, 1);
         assert_eq!(super::super::secure(&path, &control()), Ok(()));
     }
@@ -910,9 +1101,9 @@ mod tests {
             observed.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             false
         }));
-        assert_eq!(local(&link, &counted), Err(NATIVE));
+        assert_eq!(local(&link, &counted), Err(ClosedError::UnsafeSource));
         let at_ancestor = polls.swap(0, std::sync::atomic::Ordering::SeqCst);
-        assert_eq!(local(&below, &counted), Err(NATIVE));
+        assert_eq!(local(&below, &counted), Err(ClosedError::UnsafeSource));
         assert_eq!(polls.load(std::sync::atomic::Ordering::SeqCst), at_ancestor);
         assert_eq!(
             super::super::directory(&below, &control).err(),
@@ -940,6 +1131,7 @@ mod tests {
             assert_eq!(super::super::space(parent.path(), 0, &stopped), Err(error));
             assert_eq!(super::super::secure(parent.path(), &stopped), Err(error));
             assert_eq!(super::super::create_private(&child, &stopped), Err(error));
+            assert_eq!(super::super::private_file(&child, &stopped).err(), Some(error));
             assert_eq!(backup(parent.path(), &stopped), Err(error));
             assert!(!child.exists());
         }
@@ -954,13 +1146,13 @@ mod tests {
             Err(ClosedError::NoSpace)
         );
         let actual = real_temp(&control()).unwrap_or_else(|_| panic!("synthetic real temp"));
-        let root = tempfile::tempdir_in(&actual).unwrap_or_else(|_| panic!("synthetic real temp directory"));
-        assert_eq!(super::super::exclude_backups(root.path(), &control()), Ok(()));
-        let attrs = attributes(
-            &wide(root.path()).unwrap_or_else(|_| panic!("synthetic path")),
-            &control(),
-        )
-        .unwrap_or_else(|_| panic!("synthetic attributes"));
+        let parent = tempfile::tempdir_in(&actual).unwrap_or_else(|_| panic!("synthetic real temp directory"));
+        let root = parent.path().join("private");
+        assert_eq!(super::super::create_private(&root, &control()), Ok(()));
+        assert_eq!(super::super::exclude_backups(&root, &control()), Ok(()));
+        assert_eq!(verify(&root.join("CACHEDIR.TAG"), false, &control()), Ok(()));
+        let attrs = attributes(&wide(&root).unwrap_or_else(|_| panic!("synthetic path")), &control())
+            .unwrap_or_else(|_| panic!("synthetic attributes"));
         assert_ne!(attrs & FILE_ATTRIBUTE_NOT_CONTENT_INDEXED, 0);
         let outside = tempfile::Builder::new()
             .prefix("Temp-invented-")

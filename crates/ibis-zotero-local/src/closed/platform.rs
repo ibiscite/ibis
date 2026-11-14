@@ -260,6 +260,47 @@ pub(super) fn create_private(path: &Path, control: &Control) -> Result<(), Close
     Ok(())
 }
 
+/// Create a new private file without replacing an existing entry.
+pub(super) fn private_file(path: &Path, control: &Control) -> Result<File, ClosedError> {
+    control.check()?;
+    #[cfg(windows)]
+    {
+        windows::private_file(path, true, control)
+    }
+    #[cfg(not(windows))]
+    {
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        options.open(path).map_err(|_| ClosedError::PrivateStorage)
+    }
+}
+
+pub(super) fn private_lock(path: &Path, control: &Control) -> Result<File, ClosedError> {
+    control.check()?;
+    #[cfg(windows)]
+    {
+        windows::private_file(path, false, control)
+    }
+    #[cfg(not(windows))]
+    {
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true).write(true).create(true).truncate(false);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options
+                .mode(0o600)
+                .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK);
+        }
+        options.open(path).map_err(|_| ClosedError::PrivateStorage)
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn clear_inherited_acl(path: &Path, control: &Control) -> Result<(), ClosedError> {
     output(Command::new("/bin/chmod").args(["-h", "-N"]).arg(path), control)
@@ -306,20 +347,14 @@ pub(super) fn exclude_backups(path: &Path, control: &Control) -> Result<(), Clos
     use std::io::Write;
     const TAG: &[u8] = b"Signature: 8a477f597d28d172789f06886806bc55\n# Disposable Ibis Zotero copies.\n";
     let tag = path.join("CACHEDIR.TAG");
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    match options.open(&tag) {
-        Ok(mut file) => {
+    match std::fs::symlink_metadata(&tag) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let mut file = private_file(&tag, control)?;
             file.write_all(TAG)
                 .and_then(|_| file.sync_all())
                 .map_err(|_| ClosedError::PrivateStorage)?;
         }
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+        Ok(_) => {
             // Never overwrite or follow a pre-existing tag, including a link
             // inserted before inherited ACLs were removed from a new directory.
             let file = open_source(&tag).map_err(|_| ClosedError::PrivateStorage)?;
