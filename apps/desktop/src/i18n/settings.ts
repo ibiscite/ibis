@@ -73,6 +73,7 @@ export const SETTINGS_IDS = [
   "settings-results-count",
   "settings-surprises-words",
   "settings-read-failed",
+  "settings-forget-failed", "settings-open-failed",
   "settings-choice-failed",
   "settings-startup-words",
   "settings-paste-words",

@@ -23,9 +23,9 @@ afterEach(cleanup);
 const empty: FormatSettingsView = { apps: [], writings: [], key_output_visible: false };
 const remembered: FormatSettingsView = { ...empty, apps: [{ id: "macos:example.word", app: "Word", format: "apa" }] };
 const pending = <T,>() => {
-  let resolve!: (next: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
-  return { promise, resolve };
+  let resolve!: (next: T) => void, reject!: (reason: Error) => void;
+  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
 };
 function api() {
   return { ...settingsApi, formatSettings: vi.fn(async () => remembered), forgetAppFormat: vi.fn(async () => null),
@@ -84,6 +84,40 @@ test.each(["refused", "failed I/O"])("a forget that is %s keeps the saved app an
   await screen.findByRole("alert");
   expect(screen.getByText("Word")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Forget" }).hasAttribute("disabled")).toBe(false);
+});
+
+test("a successful focus read after Forget fails keeps the failure visible until a successful retry", async () => {
+  const native = api(), save = pending<null>(), focused = pending<FormatSettingsView>();
+  vi.mocked(native.forgetAppFormat!).mockReturnValueOnce(save.promise);
+  vi.mocked(native.formatSettings!).mockResolvedValueOnce(remembered).mockReturnValueOnce(focused.promise);
+  render(<FormatSettings api={native} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Forget" }));
+  fireEvent.focus(window);
+  await act(async () => save.reject(new Error("synthetic failure")));
+  await act(async () => focused.resolve(remembered));
+  expect(screen.getByText("Word")).toBeTruthy();
+  expect(screen.getByRole("alert").textContent).toContain("could not forget");
+  fireEvent.click(screen.getByRole("button", { name: "Forget" }));
+  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+});
+
+test("opening the settings file has its own failure, cleared by dismissal or a successful retry", async () => {
+  const native = api();
+  vi.mocked(native.openSettingsFile!).mockRejectedValueOnce(new Error("synthetic failure")).mockResolvedValueOnce(null)
+    .mockRejectedValueOnce(new Error("synthetic failure"));
+  render(<FormatSettings api={native} />);
+  const open = await screen.findByRole("button", { name: "Open Settings File" });
+  fireEvent.click(open);
+  expect((await screen.findByRole("alert")).textContent).toContain("could not open");
+  fireEvent.focus(window);
+  await act(async () => {});
+  expect(screen.getByRole("alert")).toBeTruthy();
+  fireEvent.click(open);
+  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  fireEvent.click(open);
+  await screen.findByRole("alert");
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+  expect(screen.queryByRole("alert")).toBeNull();
 });
 
 test("an older file snapshot cannot restore an app after a newer read or close and reopen", async () => {
