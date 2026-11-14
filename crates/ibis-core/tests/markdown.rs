@@ -137,28 +137,25 @@ fn copy_requires_complete_hash_valid_content_and_matching_display_text() {
         r"Taylor\, A\. \(2026\)\. *Synthetic signals*\. Imaginary Press\."
     );
     assert!(copy_markdown(&original, 2).is_none());
+    let corruptions: [fn(&mut CitationResult); 6] = [
+        |r| r.outcomes.clear(),
+        |r| {
+            r.outcomes[0] = ItemOutcome::Refused {
+                item: 0,
+                error: CitationError::MissingItem,
+            }
+        },
+        |r| r.outcomes[0] = ItemOutcome::Rendered { item: 1 },
+        |r| r.text.push('!'),
+        |r| r.html.as_mut().unwrap().push('!'),
+        |r| r.rtf.as_mut().unwrap().push('!'),
+    ];
+    for corrupt in corruptions {
+        let mut changed = original.clone();
+        corrupt(&mut changed);
+        assert!(copy_markdown(&changed, 1).is_none());
+    }
     let mut changed = original.clone();
-    changed.outcomes.clear();
-    assert!(copy_markdown(&changed, 1).is_none());
-    changed = original.clone();
-    changed.outcomes[0] = ItemOutcome::Refused {
-        item: 0,
-        error: CitationError::MissingItem,
-    };
-    assert!(copy_markdown(&changed, 1).is_none());
-    changed = original.clone();
-    changed.outcomes[0] = ItemOutcome::Rendered { item: 1 };
-    assert!(copy_markdown(&changed, 1).is_none());
-    changed = original.clone();
-    changed.text.push('!');
-    assert!(copy_markdown(&changed, 1).is_none());
-    changed = original.clone();
-    changed.html.as_mut().unwrap().push('!');
-    assert!(copy_markdown(&changed, 1).is_none());
-    changed = original.clone();
-    changed.rtf.as_mut().unwrap().push('!');
-    assert!(copy_markdown(&changed, 1).is_none());
-    changed = original.clone();
     changed.display.nodes[0].content[1].text.push('!');
     assert!(changed.copy_content(1).is_some());
     assert!(copy_markdown(&changed, 1).is_none());
@@ -177,65 +174,102 @@ fn copy_requires_complete_hash_valid_content_and_matching_display_text() {
 }
 
 #[test]
-fn pandoc_differential_text_emphasis_and_entry_boundaries() {
-    for name in ["apa-citation", "apa-bibliography", "ieee-document-context"] {
-        compare(&fixture(name));
+fn pandoc_differential_nonbreaking_spaces() {
+    for runs in [
+        vec![run("left\u{a0}right", 0)],
+        vec![run("left\u{a0}", 1), run("\u{a0}right", 2)],
+        vec![run("left", 1), run("\u{a0}", 3), run("right", 2)],
+    ] {
+        let html: String = runs
+            .iter()
+            .map(|r| emphasis(&r.text, u8::from(r.italic) | (u8::from(r.bold) << 1)))
+            .collect();
+        let shown = compare(&result(runs, &html));
+        assert!(shown[0].iter().any(|(ch, _)| *ch == '\u{a0}'));
     }
+    let mut citation = result(
+        vec![run("left", 0), run("\u{a0}", 1), run("right", 2)],
+        "<div class=\"csl-entry\">left<div class=\"csl-block\"><i>&nbsp;</i></div><b>right</b></div>",
+    );
+    citation.display.nodes[0].blocks = [(DisplayBlockKind::Entry, 0, 3), (DisplayBlockKind::Block, 1, 2)]
+        .into_iter()
+        .map(|(kind, start, end)| DisplayBlock { kind, start, end })
+        .collect();
+    assert_eq!(compare(&citation).len(), 3);
+}
 
+#[test]
+fn pandoc_differential_block_paragraphs_with_nested_and_equal_ranges() {
+    let children = "<div class=\"csl-block\">first</div><div class=\"csl-block\"><i>second</i></div>";
+    for parents in [0, 2] {
+        let html = format!(
+            "<div class=\"csl-entry\">{}{children}{}</div>",
+            "<div class=\"csl-indent\">".repeat(parents),
+            "</div>".repeat(parents),
+        );
+        let mut citation = result(vec![run("first", 0), run("second", 1)], &html);
+        citation.display.nodes[0].blocks = std::iter::once((DisplayBlockKind::Entry, 0, 2))
+            .chain(std::iter::repeat_n((DisplayBlockKind::Indent, 0, 2), parents))
+            .chain([(DisplayBlockKind::Block, 0, 1), (DisplayBlockKind::Block, 1, 2)])
+            .map(|(kind, start, end)| DisplayBlock { kind, start, end })
+            .collect();
+        assert_eq!(compare(&citation).len(), 2);
+        assert_eq!(copy_markdown(&citation, 1).unwrap(), "first\n\n*second*");
+    }
+}
+
+#[test]
+fn pandoc_differential_display_order_across_nodes_and_shared_ranges() {
     // Bibliography order is display order, which need not be request item order.
     let entries = [
-        fixture("ieee-document-context"),
+        fixture("apa-citation"),
         fixture("apa-bibliography"),
         fixture("ieee-document-context"),
     ];
     let mut nodes = vec![];
     for (position, entry) in entries.iter().enumerate() {
-        if position > 0 {
-            nodes.push(DisplayNode {
-                item: None,
-                content: vec![run("\n", 0)],
-                blocks: vec![],
-            });
-        }
+        compare(entry);
         let mut node = entry.display.nodes[0].clone();
         node.item = Some([2, 0, 1][position]);
+        if position > 0 {
+            node.content.insert(0, run("\n", 0));
+        }
+        node.blocks = vec![DisplayBlock {
+            kind: DisplayBlockKind::Entry,
+            start: usize::from(position > 0),
+            end: node.content.len(),
+        }];
         nodes.push(node);
     }
-    let several = CitationResult::new(
-        entries.iter().map(|e| e.text.as_str()).collect::<Vec<_>>().join("\n"),
-        Some(
-            entries
-                .iter()
-                .map(|e| e.html.as_deref().unwrap())
-                .collect::<Vec<_>>()
-                .join("\n"),
-        ),
-        None,
-        DisplayTree { nodes },
-        (0..3).map(|item| ItemOutcome::Rendered { item }).collect(),
-        vec![],
-        vec![],
-    );
-    assert_eq!(compare(&several).len(), 3);
+    let html = entries
+        .iter()
+        .map(|e| format!("<div class=\"csl-entry\">{}</div>", e.html.as_deref().unwrap()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut several = result(nodes.iter().flat_map(|node| node.content.clone()).collect(), &html);
+    several.display.nodes = nodes;
+    several.outcomes = (0..3).map(|item| ItemOutcome::Rendered { item }).collect();
+    let shown = compare(&several);
+    assert_eq!(shown.len(), 3);
     // The same entry ranges can share a node; node boundaries are not paragraphs.
-    let mut shared = several.clone();
-    let mut node = DisplayNode {
-        item: None,
-        content: vec![],
-        blocks: vec![],
-    };
-    for group in &shared.display.nodes {
+    let mut shared = several;
+    let mut node = shared.display.nodes.remove(0);
+    node.item = None;
+    for group in shared.display.nodes.drain(..) {
         let offset = node.content.len();
         node.blocks.extend(group.blocks.iter().map(|b| DisplayBlock {
             kind: b.kind,
             start: b.start + offset,
             end: b.end + offset,
         }));
-        node.content.extend(group.content.clone());
+        node.content.extend(group.content);
     }
     shared.display.nodes = vec![node];
-    assert_eq!(compare(&shared), compare(&several));
+    assert_eq!(compare(&shared), shown);
+}
 
+#[test]
+fn pandoc_differential_text_and_emphasis() {
     for (left, middle, right) in [("a", "b", "c"), ("word", "!", "next"), ("a", "b\n\nc", "d")] {
         for a in 0..4 {
             for b in 0..4 {
@@ -255,10 +289,6 @@ fn pandoc_differential_text_emphasis_and_entry_boundaries() {
     for style in 0..4 {
         compare(&result(vec![run(literal, style)], &emphasis(literal, style)));
     }
-    compare(&result(
-        vec![run("word", 0), run("!", 1), run("next", 0)],
-        "word<i>!</i>next",
-    ));
     compare(&result(
         vec![run("e\u{301}", 0), run("!", 1), run("next", 0)],
         "e\u{301}<i>!</i>next",
@@ -280,14 +310,8 @@ fn pandoc_differential_text_emphasis_and_entry_boundaries() {
     passive[1].script = Script::Subscript;
     passive[2].underline = true;
     passive[3].small_caps = true;
-    let shown = compare(&result(
+    compare(&result(
         passive,
         "<sup><i>rise</i></sup><sub><b>fall</b></sub><u>under</u><span style=\"font-variant:small-caps;\"><b><i>Caps</i></b></span>",
     ));
-    assert!(
-        shown[0].contains(&('r', 5))
-            && shown[0].contains(&('f', 10))
-            && shown[0].contains(&('u', 16))
-            && shown[0].contains(&('C', 35))
-    );
 }

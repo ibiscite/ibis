@@ -19,11 +19,12 @@ pub fn copy_markdown(result: &CitationResult, expected_items: usize) -> Option<S
     let mut runs = vec![];
     for node in &result.display.nodes {
         for index in 0..=node.content.len() {
-            if node
-                .blocks
-                .iter()
-                .any(|b| b.kind == DisplayBlockKind::Entry && (b.start == index || b.end == index))
-            {
+            if node.blocks.iter().any(|b| {
+                matches!(
+                    b.kind,
+                    DisplayBlockKind::Entry | DisplayBlockKind::Block | DisplayBlockKind::Indent
+                ) && (b.start == index || b.end == index)
+            }) {
                 flush(&mut runs, &mut paragraphs);
             }
             if let Some(run) = node.content.get(index) {
@@ -36,7 +37,8 @@ pub fn copy_markdown(result: &CitationResult, expected_items: usize) -> Option<S
 }
 
 fn flush(runs: &mut Vec<&DisplayRun>, paragraphs: &mut Vec<String>) {
-    if runs.iter().any(|r| !r.text.trim().is_empty()) {
+    // Only collapsible whitespace can disappear between paragraphs, never NBSP.
+    if runs.iter().any(|r| r.text.chars().any(|c| !c.is_ascii_whitespace())) {
         runs.retain(|r| !r.text.is_empty());
         let mut out = String::new();
         for (index, run) in runs.iter().enumerate() {
