@@ -18,6 +18,8 @@ from unittest.mock import Mock, patch
 SOURCE = Path(__file__).with_name("real-zotero.sh").read_text()
 
 
+# real-zotero.sh is a bash tool for macOS and Linux (POSIX paths, permissions and symlinks).
+@unittest.skipIf(sys.platform == "win32", "real-zotero.sh runs on macOS and Linux")
 class CaptureTests(unittest.TestCase):
     def setUp(self):
         self.assertTrue("<<'PY_CAPTURE'\n" in SOURCE, "the existing harness has no capture mode")
@@ -98,8 +100,6 @@ class CaptureTests(unittest.TestCase):
             self.assertEqual([call.args[0][0] for call in commands.call_args_list], ["cargo"] * len(state.seed))
             archive.assert_not_called()
 
-    # real-zotero.sh is a bash tool for macOS and Linux; Windows paths do not reach it intact.
-    @unittest.skipIf(sys.platform == "win32", "real-zotero.sh runs on macOS and Linux")
     def test_capture_cli_forwards_existing_and_local_selection_invocations(self):
         tools = self.root / "tools"
         tools.mkdir()
