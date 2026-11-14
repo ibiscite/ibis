@@ -1130,6 +1130,28 @@ fn read_bounded(reader: impl Read) -> io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
+use ibis_core::contract::{FocusTarget, Problem, Recovery, RecoveryInfo};
+
+impl From<&crate::settings::SettingsError> for Problem {
+    fn from(error: &crate::settings::SettingsError) -> Self {
+        use crate::settings::SettingsError as S;
+        let (code, recovery, focus) = match error {
+            S::Changed => ("changed", Recovery::Retry, FocusTarget::RecoveryAction),
+            S::Busy => ("busy", Recovery::Retry, FocusTarget::RecoveryAction),
+            S::Unreadable(_) => ("unreadable", Recovery::Retry, FocusTarget::RecoveryAction),
+            S::Invalid(_) | S::InvalidZoteroLibraryEntry { .. } => {
+                ("invalid", Recovery::ReviewSettings, FocusTarget::Settings)
+            }
+            S::NewerVersion(_) => ("newer", Recovery::UpgradeIbis, FocusTarget::RecoveryAction),
+            S::Backup(inner) => return inner.as_ref().into(),
+        };
+        Self {
+            code: format!("settings-{code}"),
+            info: RecoveryInfo::new(&format!("app-settings-error-{code}"), recovery, focus),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

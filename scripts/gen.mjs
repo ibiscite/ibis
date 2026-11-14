@@ -68,6 +68,7 @@ function reference(ref) {
 export function type(schema, indent = "") {
   if (schema === true || schema === undefined || schema === null) return "unknown";
   if (schema === false) return "never";
+  if (schema["x-ibis-opaque"]) return `{ readonly __${schema["x-ibis-opaque"]}: unique symbol }`;
   if (schema.$ref) return reference(schema.$ref);
   if ("const" in schema) return JSON.stringify(schema.const);
   if (schema.enum) return union(schema.enum.map((value) => JSON.stringify(value)));

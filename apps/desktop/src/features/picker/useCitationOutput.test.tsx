@@ -1,3 +1,4 @@
+import { recordId } from "../../test-fixtures";
 import { displayTree } from "../../testing/app";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { initialSession } from "./session";
@@ -45,7 +46,7 @@ function library(revision = "1"): LibraryStatus {
 
 function reference(revision = "1", key = "synthetic"): CitationReference {
   return {
-    revision, id: { library: "file:synthetic", key }, cite: `synthetic-cite-${revision}-${key}`,
+    revision, id: { library: "file:synthetic", key: recordId(key) }, cite: `synthetic-cite-${revision}-${key}`,
     source: "file:synthetic", key, title: "Synthetic reference", authors: "Example",
     year: "2026", matched: ["title"], partial: false, first_author: "Example", author_count: 1,
     container: null, item_type: "book",
@@ -53,7 +54,7 @@ function reference(revision = "1", key = "synthetic"): CitationReference {
 }
 
 function preview(text: string): FilePreview {
-  return { text, display: displayTree([{ item: 0, text }]), warnings: [], ticket: "synthetic-ticket", content_hash: "synthetic-hash" };
+  return { effective_output: null, text, display: displayTree([{ item: 0, text }]), warnings: [], ticket: "synthetic-ticket", content_hash: "synthetic-hash" };
 }
 
 function options(overrides: Partial<Options>): Options {
@@ -111,7 +112,8 @@ test("reopening replaces unfinished preview work but preserves a settled canonic
   unmount();
 });
 
-const conflictMessage = "These references have conflicting citation keys. Resolve them in your library or choose a formatted style.";
+const conflictMessage = "This reference has conflicting citation keys.";
+const conflictFailure = { code: "conflicting-key", message: { id: "problem-conflicting-key", args: {} }, recovery: { action: "choose-style" }, focus: "format-picker" };
 
 test("returning from B to A waits for a fresh ticket instead of reusing A's retired receipt", async () => {
   const pending: ((value: FilePreview) => void)[] = [];
@@ -210,7 +212,7 @@ test("the same page text in the editor retires its canonical receipt and uses th
 });
 
 test("a failed native preview keeps its actionable explanation without refreshing the snapshot", async () => {
-  const previewFileCitation = vi.fn<Preview>().mockRejectedValue({ code: "failed", message: conflictMessage });
+  const previewFileCitation = vi.fn<Preview>().mockRejectedValue(conflictFailure);
   const refreshSnapshot = vi.fn();
   const { result } = renderHook(useOutputInSession, {
     initialProps: options({ previewFileCitation, refreshSnapshot }),
@@ -225,7 +227,7 @@ test("a failed native preview keeps its actionable explanation without refreshin
 
 test("a shared citation key keeps its existing explanation ahead of a supplied message", async () => {
   const previewFileCitation = vi.fn<Preview>().mockRejectedValue({
-    code: "shared_citation_key", key: "synthetic", message: conflictMessage,
+    code: "shared_citation_key", message: { id: "app-command-shared-citation-key", args: { key: "synthetic" } }, recovery: { action: "choose-style" }, focus: "format-picker",
   });
   const { result } = renderHook(useOutputInSession, {
     initialProps: options({ previewFileCitation }),
@@ -288,7 +290,7 @@ test("a stale file preview recovers when a refreshed search has a new source rev
 
 test.each([
   { code: "snapshot_changed" },
-  { code: "failed", message: conflictMessage },
+  conflictFailure,
   { code: "cancelled" },
 ])("a replaced file preview cannot refresh status or replace newer output after a late $code rejection", async (error) => {
   let rejectOld: (reason: unknown) => void = () => undefined;
@@ -309,6 +311,7 @@ test.each([
 });
 
 const engineFault = "The citation could not be prepared. Try again.";
+const engineFailure = { code: "not-prepared", message: { id: "app-command-not-prepared", args: {} }, recovery: { action: "retry" }, focus: "recovery-action" };
 
 test("a cancelled preview whose owner still wants it is not a failure: it asks once more", async () => {
   const previewFileCitation = vi.fn<Preview>().mockRejectedValueOnce({ code: "cancelled" }).mockResolvedValue(preview("Fresh entry"));
@@ -362,7 +365,7 @@ test("reopening drops a failure from the first frame and prepares the same citat
   const previewFileCitation = vi.fn<Preview>(() => new Promise((resolve, reject) => pending.push({ resolve, reject })));
   const initial = options({ previewFileCitation, sessionId: 0 });
   const { result, rerender } = renderHook(useOutputInSession, { initialProps: initial });
-  await act(async () => { pending[0]!.reject({ code: "failed", message: engineFault }); });
+  await act(async () => { pending[0]!.reject(engineFailure); });
   expect(result.current.previewProblem).toBe(engineFault);
 
   rerender({ ...initial, sessionId: 1 });
@@ -375,7 +378,7 @@ test("reopening drops a failure from the first frame and prepares the same citat
 });
 
 test("a failure is gone when the reopened window prepares its first frame, before it is shown", async () => {
-  const previewFileCitation = vi.fn<Preview>().mockRejectedValueOnce({ code: "failed", message: engineFault }).mockResolvedValue(preview("Shown entry"));
+  const previewFileCitation = vi.fn<Preview>().mockRejectedValueOnce(engineFailure).mockResolvedValue(preview("Shown entry"));
   const initial = options({ previewFileCitation, sessionId: 0, opened: 0 });
   const { result, rerender } = renderHook(useOutputInSession, { initialProps: initial });
   await waitFor(() => expect(result.current.previewProblem).toBe(engineFault));
@@ -392,17 +395,17 @@ test("a failure that outlives reopening is shown again, and a late old failure c
   const initial = options({ previewFileCitation, sessionId: 0 });
   const { result, rerender } = renderHook(useOutputInSession, { initialProps: initial });
   rerender({ ...initial, sessionId: 1 });
-  await act(async () => { pending[1]!.reject({ code: "failed", message: engineFault }); });
+  await act(async () => { pending[1]!.reject(engineFailure); });
   expect(result.current.previewProblem).toBe(engineFault);
   rerender({ ...initial, sessionId: 2 });
   await act(async () => { pending[2]!.resolve(preview("Newest entry")); });
-  await act(async () => { pending[0]!.reject({ code: "failed", message: engineFault }); });
+  await act(async () => { pending[0]!.reject(engineFailure); });
   expect(result.current.shown).toMatchObject({ text: "Newest entry" });
   expect(result.current.previewProblem).toBeUndefined();
 });
 
 test("choosing a failed citation again prepares it again instead of reviving the failure", async () => {
-  const previewFileCitation = vi.fn<Preview>().mockRejectedValueOnce({ code: "failed", message: engineFault }).mockResolvedValue(preview("Second try"));
+  const previewFileCitation = vi.fn<Preview>().mockRejectedValueOnce(engineFailure).mockResolvedValue(preview("Second try"));
   const initial = options({ previewFileCitation });
   const { result, rerender } = renderHook(useOutputInSession, { initialProps: initial });
   await waitFor(() => expect(result.current.shown).toBe("failed"));

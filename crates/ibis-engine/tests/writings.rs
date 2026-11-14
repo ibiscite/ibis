@@ -328,3 +328,30 @@ fn ordinary_and_strict_requests_refuse_a_doi_conflict_in_a_damaged_file() {
         assert!(!assessment.can_copy());
     }
 }
+
+#[test]
+fn a_duplicate_writing_name_requests_a_new_name_instead_of_retrying_the_same_save() {
+    let problem = ibis_core::contract::Problem::from(&ibis_engine::settings::writings::WritingError::DuplicateName);
+    let problem = serde_json::to_value(problem).unwrap_or_default();
+    assert_eq!(problem["code"], "project-duplicate-name");
+    assert_eq!(problem["message"]["id"], "app-project-error-duplicate-name");
+    assert_eq!(problem["recovery"]["action"], "rename-project");
+    assert_eq!(problem["focus"], "project-name");
+}
+
+#[test]
+fn settings_contention_and_outside_edits_have_distinct_retryable_diagnostics() {
+    use ibis_core::contract::{FocusTarget, Problem, Recovery};
+    use ibis_engine::settings::SettingsError;
+    for (error, code) in [
+        (SettingsError::Busy, "settings-busy"),
+        (SettingsError::Changed, "settings-changed"),
+    ] {
+        let problem = Problem::from(&error);
+        assert_eq!(problem.code, code);
+        assert_eq!(problem.info.recovery, Recovery::Retry);
+        assert_eq!(problem.info.focus, FocusTarget::RecoveryAction);
+        let text = ibis_engine::catalogue::problem(&problem, ibis_engine::catalogue::Audience::App);
+        assert!(!text.is_empty() && !text.contains("app-settings-error"), "{text}");
+    }
+}

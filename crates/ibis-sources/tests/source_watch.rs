@@ -159,7 +159,7 @@ fn interrupted_writes_replacements_deletion_and_empty_files() {
     assert_eq!(records(&loaded)[0].citation_keys[0].value, "new");
     assert_eq!(records(&loaded)[0].id.library, records(&initial)[0].id.library);
     std::fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
-    assert!(matches!(next(&rx), Err(SourceError::Unavailable)));
+    assert!(matches!(next(&rx), Err(SourceError::Missing)));
     std::fs::write(&path, "").unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(next(&rx).map(|l| records(&l).len()), Ok(0));
     std::fs::write(&path, [0xff]).unwrap_or_else(|e| panic!("{e}"));
@@ -268,7 +268,7 @@ fn symlink_target_changes_and_retargeting_keep_reloading() {
         Ok("second_updated".into())
     );
     std::fs::remove_file(&second).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(next(&rx).err(), Some(SourceError::Unavailable));
+    assert_eq!(next(&rx).err(), Some(SourceError::Missing));
     std::fs::write(&second, "@misc{restored}").unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(
         next(&rx).map(|l| records(&l)[0].citation_keys[0].value.clone()),
@@ -299,7 +299,7 @@ fn a_symlink_retargeted_to_a_missing_file_recovers_when_the_file_appears() {
     std::fs::remove_file(&selected).unwrap_or_else(|e| panic!("{e}"));
     // Relative targets resolve from the symlink's parent, rather than the process cwd.
     symlink("../second/target.bib", &selected).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(next(&rx).err(), Some(SourceError::Unavailable));
+    assert_eq!(next(&rx).err(), Some(SourceError::Missing));
     assert_eq!(records(&last_good)[0].citation_keys[0].value, "first");
     std::fs::write(&first, "@misc{obsolete}").unwrap_or_else(|e| panic!("{e}"));
     // Retrying the missing target is allowed; the obsolete target must never
@@ -409,7 +409,7 @@ fn unchanged_contents_after_a_gap_error_publish_recovery() {
             let _ = tx.send(result);
         })
         .unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(next(&rx).err(), Some(SourceError::Unavailable));
+        assert_eq!(next(&rx).err(), Some(SourceError::Missing));
         // No timed retries while hidden. The next native event must preserve
         // the initial observation, including its tolerant damaged-data policy.
         assert!(rx.recv_timeout(Duration::from_millis(800)).is_err());
@@ -457,7 +457,7 @@ fn unavailable_reads_wait_for_events_instead_of_polling() {
     .unwrap_or_else(|e| panic!("{e}"));
     let last_good = next(&rx).unwrap_or_else(|e| panic!("{e}"));
     std::fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(next(&rx).err(), Some(SourceError::Unavailable));
+    assert_eq!(next(&rx).err(), Some(SourceError::Missing));
     assert!(rx.recv_timeout(Duration::from_millis(800)).is_err());
     assert_eq!(records(&last_good)[0].citation_keys[0].value, "old");
     std::fs::write(&path, "@misc{new}").unwrap_or_else(|e| panic!("{e}"));
@@ -467,7 +467,7 @@ fn unavailable_reads_wait_for_events_instead_of_polling() {
     );
     assert!(rx.recv_timeout(Duration::from_millis(800)).is_err());
     std::fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(next(&rx).err(), Some(SourceError::Unavailable));
+    assert_eq!(next(&rx).err(), Some(SourceError::Missing));
     drop(watch);
     assert!(matches!(
         rx.recv_timeout(Duration::from_secs(10)),
@@ -636,7 +636,7 @@ fn a_library_opened_with_one_damaged_entry_keeps_refreshing() {
 
     // Failed I/O keeps reporting, and the damaged library recovers after it.
     std::fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(next(&rx).err(), Some(SourceError::Unavailable));
+    assert_eq!(next(&rx).err(), Some(SourceError::Missing));
     save(&library("Synthetic Recovered"));
     let recovered = next(&rx).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(titles(&recovered), ["Synthetic Recovered", "Other Synthetic Work"]);

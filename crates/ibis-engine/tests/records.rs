@@ -221,10 +221,10 @@ fn a_cancelled_request_leaves_the_next_one_unaffected() {
     assert!(records(&engine, apa(two())).unwrap().text.is_some());
 }
 
-/// Every CSL field a style can print reaches the formatter: the export gives
-/// back each one sent, and APA prints those its reference list uses.
+/// Bibliographic fields survive record sharing and APA formatting; notes stay
+/// private through the caller-supplied records path too.
 #[test]
-fn every_style_field_survives_into_rendering() {
+fn bibliographic_fields_survive_rendering_and_notes_stay_private() {
     let engine = Engine::new().unwrap();
     let record = json!({
         "id": "r1", "type": "article-journal", "citation-key": "vale2024",
@@ -243,9 +243,10 @@ fn every_style_field_survives_into_rendering() {
     )
     .unwrap();
     let back: Value = serde_json::from_str(exported.text.as_deref().unwrap()).unwrap();
-    for (field, value) in record.as_object().unwrap() {
+    for (field, value) in record.as_object().unwrap().iter().filter(|(field, _)| *field != "note") {
         assert_eq!(&back[0][field], value, "{field}");
     }
+    assert!(back[0].get("note").is_none());
     let entry = records(
         &engine,
         json!({"records": [record], "output": {"kind": "preset", "name": "apa"},

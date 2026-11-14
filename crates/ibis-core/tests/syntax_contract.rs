@@ -13,7 +13,11 @@ use proptest::prelude::*;
 use serde_json::{Value, json};
 
 fn seed() -> GoldenCase {
-    serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json")).unwrap()
+    let mut case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json")).unwrap();
+    case.library = changed(&case, |record| {
+        record.csl.insert("DOI".into(), json!("10.1000/invented"));
+    });
+    case
 }
 
 fn output(caps: &syntax::SyntaxCapabilities) -> OutputSpec {
@@ -302,14 +306,13 @@ fn hostile_empty_and_large_inputs_have_bounded_fixed_diagnostics() {
             .csl
             .insert("abstract".into(), json!("x".repeat(20 * 1024 * 1024)));
     });
-    case.request.output = OutputSpec::Key {
-        syntax: KeySyntax::CslJson,
-        command: None,
-    };
-    assert_eq!(
-        syntax::cite(&snapshot, &case.request),
-        Err(CitationError::OutputTooLarge)
-    );
+    for syntax in [KeySyntax::CslJson, KeySyntax::Bibtex] {
+        case.request.output = OutputSpec::Key { syntax, command: None };
+        assert_eq!(
+            syntax::cite(&snapshot, &case.request),
+            Err(CitationError::OutputTooLarge)
+        );
+    }
 }
 
 #[test]
@@ -451,6 +454,8 @@ fn prefix_support_matches_every_supported_output_and_form() {
                 (KeySyntax::Natbib | KeySyntax::Context, _) => SingleItem,
                 (
                     KeySyntax::Keys
+                    | KeySyntax::Bibtex
+                    | KeySyntax::DoiLinks
                     | KeySyntax::CslJson
                     | KeySyntax::Myst
                     | KeySyntax::MultiMarkdown

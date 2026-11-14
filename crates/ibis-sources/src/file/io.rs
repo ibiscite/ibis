@@ -95,14 +95,19 @@ pub(super) fn path_needs_download(path: &Path) -> Result<bool, SourceError> {
     #[cfg(windows)]
     {
         use winsafe::co::FILE_ATTRIBUTE;
-        let attributes = winsafe::GetFileAttributes(path.to_str().ok_or(SourceError::Unavailable)?)
-            .map_err(|_| SourceError::Unavailable)?;
+        let attributes =
+            winsafe::GetFileAttributes(path.to_str().ok_or(SourceError::Unavailable)?).map_err(|error| {
+                if error == winsafe::co::ERROR::FILE_NOT_FOUND || error == winsafe::co::ERROR::PATH_NOT_FOUND {
+                    SourceError::Missing
+                } else {
+                    SourceError::Unavailable
+                }
+            })?;
         Ok(attributes.has(FILE_ATTRIBUTE::OFFLINE | FILE_ATTRIBUTE::RECALL_ON_DATA_ACCESS))
     }
     #[cfg(target_os = "macos")]
     {
-        Ok(legacy_icloud_placeholder(path)
-            || needs_download(&std::fs::metadata(path).map_err(|_| SourceError::Unavailable)?))
+        Ok(legacy_icloud_placeholder(path) || needs_download(&std::fs::metadata(path).map_err(file_io_error)?))
     }
     #[cfg(not(any(windows, target_os = "macos")))]
     {

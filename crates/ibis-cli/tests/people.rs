@@ -60,7 +60,13 @@ fn ibis_alone_shows_what_it_can_do() {
     assert!(stderr.contains("export"), "{stderr}");
     let (code, stdout, _) = lab.run(&["--json"]);
     assert_eq!(code, 2);
-    assert_eq!(stdout, "{\"error\":{\"code\":\"usage\"},\"ibis\":1,\"ok\":false}\n");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&stdout).unwrap(),
+        serde_json::json!({
+            "ibis":1,"ok":false,"error":{"code":"usage", "message":{"id":"error-usage","args":{}},
+            "recovery":{"action":"edit-input"},"focus":"request"}
+        })
+    );
 }
 
 #[test]
@@ -239,7 +245,7 @@ fn a_link_to_nothing_is_missing_rather_than_busy() {
     std::os::unix::fs::symlink(lab.0.join("gone.bib"), &link).unwrap();
     let (code, _, stderr) = lab.run(&["search", "x", "--file", link.to_str().unwrap()]);
     assert_eq!(code, 5);
-    assert!(stderr.contains("there is no file at that path"), "{stderr}");
+    assert!(stderr.contains("was moved, renamed or removed"), "{stderr}");
 }
 
 #[test]

@@ -859,8 +859,6 @@ fn bounded_for<T: Send + 'static>(timeout: Duration, operation: impl FnOnce() ->
 struct Failure {
     error: EngineError,
     message: Option<String>,
-    /// The sentence for readers who must not see the file it names, when `message` names one.
-    unnamed: Option<String>,
     recovery: Option<(Vec<String>, Vec<String>)>,
 }
 impl Failure {
@@ -871,7 +869,6 @@ impl Failure {
         Self {
             error,
             message: Some(message.into()),
-            unnamed: None,
             recovery: None,
         }
     }
@@ -882,21 +879,21 @@ impl Failure {
     }
     /// What an agent reads when its libraries did not open. Agents never see paths.
     fn refusal(&self) -> ibis_engine::mcp::Refusal {
-        let reason = self.unnamed.clone().unwrap_or_else(|| self.sentence());
-        ibis_engine::mcp::Refusal::new(
-            self.error.code,
-            format!(
-                "The library could not be opened: {reason} Pass this on to the user; once it is fixed, start a new session."
-            ),
-        )
+        ibis_engine::mcp::Refusal::startup(self.error)
     }
 }
 impl From<EngineError> for Failure {
     fn from(error: EngineError) -> Self {
         Self {
             error,
-            message: error.reason.map(human::reason_sentence),
-            unnamed: None,
+            message: if error.citation_error.is_some() {
+                Some(ibis_engine::catalogue::error(
+                    &error,
+                    ibis_engine::catalogue::Audience::Cli,
+                ))
+            } else {
+                error.reason.map(human::reason_sentence)
+            },
             recovery: None,
         }
     }
@@ -904,9 +901,7 @@ impl From<EngineError> for Failure {
 /// Why Zotero did not open. Profile names are the person's own choosing, so
 /// an agent reads the sentence without them, as it reads none of their paths.
 fn zotero_open_failure(error: EngineError, profiles: &[String]) -> Failure {
-    let mut failure = Failure::explained(error, human::zotero_failure(error, profiles));
-    failure.unnamed = Some(human::zotero_failure(error, &[]));
-    failure
+    Failure::explained(error, human::zotero_failure(error, profiles))
 }
 /// Why a citation key selected no single reference, with every line that
 /// repeats it or the damaged entry that names it.
@@ -929,11 +924,21 @@ fn key_failure(engine: &Engine, matches: &ArgMatches, key: &str, error: EngineEr
     let mut failure = Failure::explained(error, human::key_failure(key, error, libraries_open, &warnings));
     if error.code == ErrorCode::NotFound && error.reason.is_none() && libraries_open {
         let suggestions = keys::suggestions(engine, key);
-        let (command, argument) = match suggestions.first() {
+        let unique = suggestions.first().filter(|key| {
+            engine
+                .show(&ShowRequest {
+                    item: ItemSelector::Key((*key).clone()),
+                })
+                .is_ok()
+        });
+        let (command, argument) = match unique {
             Some(key) => ("show", key.as_str()),
-            None => ("search", key),
+            None => ("search", suggestions.first().map_or(key, String::as_str)),
         };
         let mut next = vec!["ibis".into(), command.into()];
+        if unique.is_none() && !suggestions.is_empty() {
+            next.push("--json".into());
+        }
         if argument.starts_with('-') {
             next.extend(library_arguments(matches));
             next.extend(["--".into(), argument.into()]);
@@ -944,20 +949,33 @@ fn key_failure(engine: &Engine, matches: &ArgMatches, key: &str, error: EngineEr
         let choices = if suggestions.is_empty() {
             String::new()
         } else {
-            format!(
-                "\nDid you mean {}?",
-                suggestions
-                    .iter()
-                    .map(|key| format!("'{}'", human::field(key)))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
+            let keys = suggestions
+                .iter()
+                .map(|key| format!("'{}'", human::field(key)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            ibis_engine::catalogue::text("cli-key-suggestions", None, &[("keys", &keys)])
+                .map(|text| format!("\n{text}"))
+                .unwrap_or_default()
         };
         let command = next.iter().map(|arg| human::quoted(arg)).collect::<Vec<_>>().join(" ");
-        failure.message = Some(format!(
-            "no reference has the key '{}'{choices}\nTry: {command}",
-            human::field(key)
-        ));
+        let route = if unique.is_none() && !suggestions.is_empty() {
+            ibis_engine::catalogue::text("cli-ambiguous-suggestion", None, &[])
+                .map(|text| format!("\n{text}"))
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        failure.message = ibis_engine::catalogue::text(
+            "cli-key-not-found",
+            None,
+            &[
+                ("key", &human::field(key)),
+                ("choices", &choices),
+                ("command", &command),
+                ("route", &route),
+            ],
+        );
         failure.recovery = Some((suggestions, next));
     }
     failure
@@ -1133,8 +1151,8 @@ fn open_libraries(
         || called.is_some_and(|called| matches!(called.as_str(), "search" | "show" | "cite"));
     let app = if asked || (defaults == Defaults::App && !named && reads_app) {
         Some(bounded(app_libraries::load).unwrap_or_else(|| {
-            Err(Failure::new(
-                ErrorCode::SourceUnavailable,
+            Err(Failure::explained(
+                EngineError::because(ErrorCode::SourceUnavailable, ErrorReason::SettingsReadTimeout),
                 format!(
                     "the Ibis app's settings could not be read in time; try again, or {}.",
                     app_libraries::NAME_ONE
@@ -1186,13 +1204,7 @@ fn open_libraries(
         };
         engine
             .dispatch(Method::Libraries, &params, &cancel)
-            .map_err(|error| Failure::explained(error, message(error)))
-            .map_err(|mut failure| {
-                if chosen.is_none() {
-                    failure.unnamed = Some(human::file_reason(&path, failure.error));
-                }
-                failure
-            })?;
+            .map_err(|error| Failure::explained(error, message(error)))?;
         // Library ids are digests, never locations; people see the path they gave.
         for library in engine.libraries()?.libraries {
             if !before.iter().any(|old| old.id == library.id) {
@@ -1325,6 +1337,34 @@ fn run_method<R: BufRead>(
                     })
                     .collect();
                 let missing = hits.len() - keys.len();
+                let mut ambiguous = 0;
+                let mut emitted = std::collections::BTreeSet::new();
+                let keys: Vec<_> = keys
+                    .into_iter()
+                    .filter(|key| {
+                        if engine
+                            .show(&ShowRequest {
+                                item: ItemSelector::Key((*key).to_owned()),
+                            })
+                            .is_err()
+                        {
+                            ambiguous += 1;
+                            false
+                        } else {
+                            emitted.insert(*key)
+                        }
+                    })
+                    .collect();
+                if ambiguous > 0 {
+                    notes.push(
+                        ibis_engine::catalogue::text(
+                            "cli-ambiguous-search-keys",
+                            None,
+                            &[("count", &ambiguous.to_string())],
+                        )
+                        .unwrap_or_default(),
+                    );
+                }
                 if missing > 0 {
                     notes.push(format!(
                         "note: {missing} {} no citation key; see ibis search {}{} --json",
@@ -1543,7 +1583,7 @@ fn run_method<R: BufRead>(
                 engine.cite_keys_checked(
                     &KeyCitationRequest {
                         keys: keys.clone(),
-                        output,
+                        output: output.clone(),
                         form,
                         strict: args.get_flag("strict"),
                         output_locale: args.get_one::<String>("locale").cloned(),
@@ -1571,7 +1611,8 @@ fn run_method<R: BufRead>(
                 _ => failed_citation_key(engine, matches, &keys, error),
             })?;
             result.value.destination = destination;
-            let result = DispatchResult::citation(result.value, keys.len())?.with_health(&result.source_health)?;
+            let result =
+                DispatchResult::citation(result.value, keys.len(), &output)?.with_health(&result.source_health)?;
             let result = writings::with_check(result, writing_result)?;
             return Ok(Execution::Result(result, Some(citing)));
         }
@@ -2066,6 +2107,30 @@ mod tests {
     }
 
     #[test]
+    fn a_startup_timeout_keeps_its_context_and_requires_a_new_session() {
+        let failure = Failure::from(EngineError::because(
+            ErrorCode::SourceUnavailable,
+            ErrorReason::SettingsReadTimeout,
+        ));
+        let mut session = ibis_engine::mcp::Session::without_libraries(failure.refusal());
+        let engine = Engine::new().unwrap_or_else(|error| panic!("{error:?}"));
+        let reply = ibis_engine::mcp::handle(&engine, &mut session, &json!({
+            "jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{
+                "name":"show", "arguments":{"ref":"invented"},
+                "_meta":{"io.modelcontextprotocol/protocolVersion":ibis_engine::mcp::PROTOCOL_VERSION, "io.modelcontextprotocol/clientCapabilities":{}}
+            }
+        })).unwrap_or_default();
+        let problem = &reply["result"]["structuredContent"]["error"];
+        assert_eq!(problem["code"], "settings-read-timeout");
+        assert_eq!(problem["recovery"]["action"], "restart-session");
+        let words = reply["result"]["content"][0]["text"].as_str().unwrap_or_default();
+        assert!(words.contains("when this session started"), "{reply}");
+        assert!(words.contains("start a new MCP session"), "{reply}");
+        assert!(words.contains("timed out"), "{reply}");
+        assert!(!words.contains("Try again shortly"), "{reply}");
+    }
+
+    #[test]
     fn an_agent_never_reads_the_zotero_profile_names_a_person_does() {
         let error = EngineError::because(ErrorCode::SourceUnavailable, ErrorReason::ZoteroProfileNeeded);
         let failure = zotero_open_failure(error, &["Invented Home".into(), "Invented Work".into()]);
@@ -2074,9 +2139,9 @@ mod tests {
         assert!(!refusal.contains("Invented"), "{refusal}");
         assert!(!refusal.contains("Profiles"), "{refusal}");
         assert!(refusal.contains("--zotero-profile"), "{refusal}");
-        // Without names to hide, both readers get the same sentence.
+        // Without profile names, the agent still receives the engine diagnostic.
         let plain = zotero_open_failure(EngineError::new(ErrorCode::SourceUnavailable), &[]);
-        assert!(format!("{:?}", plain.refusal()).contains(&plain.sentence()));
+        assert!(format!("{:?}", plain.refusal()).contains("source-unavailable"));
     }
 
     #[test]

@@ -33,46 +33,4 @@ With warm dependencies and targets, budget about 4–8 minutes from push to merg
 A cold Rust target can take 15–30 minutes. These are estimates, pending one
 real run; hosted confirmation and release builds are outside merge latency.
 
-## Applying
-
-The orchestrator applies the repository ruleset change **before this change
-lands**, once no pull request is waiting on `CI result`, then lands this change
-with its own `land.sh`: pull requests no longer run CI, so nothing would post
-`CI result` for it. The commands below preserve other rules, replace `CI result` with
-`Local gate`, remove its Actions integration binding (a user posts the commit
-status), and remove any `merge_queue` rule. They back up each changed ruleset
-under ignored `.local/`; review that backup before restoring any settings.
-No settings were changed while implementing this decision.
-
-```sh
-repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
-mkdir -p .local/rulesets
-while IFS= read -r id; do
-  gh api "repos/$repo/rulesets/$id" > ".local/rulesets/$id.before.json"
-  if ! jq -e '.rules | any(.type == "merge_queue" or
-    (.type == "required_status_checks" and
-     any(.parameters.required_status_checks[]; .context == "CI result")))' \
-    ".local/rulesets/$id.before.json" > /dev/null; then
-    continue
-  fi
-  jq '{name, target, enforcement, bypass_actors, conditions,
-    rules: [.rules[] | select(.type != "merge_queue") |
-      if .type == "required_status_checks" then
-        .parameters.required_status_checks |= map(
-          if .context == "CI result" then
-            .context = "Local gate" | del(.integration_id)
-          else . end)
-      else . end]}' ".local/rulesets/$id.before.json" \
-    > ".local/rulesets/$id.local-gate.json"
-  gh api --method PUT "repos/$repo/rulesets/$id" \
-    --input ".local/rulesets/$id.local-gate.json"
-done < <(gh api --paginate "repos/$repo/rulesets" \
-  --jq '.[] | select(.source_type == "Repository") | .id')
-gh api "repos/$repo/rules/branches/main" \
-  --jq '.[] | select(.type == "required_status_checks" or .type == "merge_queue")'
-```
-
-Then run `land.sh` on one small branch and verify the SHA-bound status and
-immediate squash merge, a detached Ubuntu run through an SSH interruption,
-and the Windows 5.1 tests. Check that main push CI confirms all three systems
-and that Preview still waits for passing main CI before publishing a nightly.
+Applied on 2026-11-13: the required check on main is Local gate; the previous ruleset is kept privately.
