@@ -8,7 +8,7 @@ import { StatusMark } from "../ui/StatusMark";
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { PageIcon } from "../icons";
 import type { CheckResult, LoginItem, LoginItemProblem, PickerPreferences, ShortcutStatus, WindowSize } from "../bindings";
-import { type MessageId, useInterfaceMessages } from "../i18n";
+import { type MessageId, useInterfaceMessages, problemText } from "../i18n";
 import { type ShortcutProblem, shortcutRefusalMessage } from "../i18n/settings";
 import { PreferencePatchQueue } from "../preferencePatchQueue";
 import { currentPlatform } from "../platform";
@@ -220,11 +220,11 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       void event.promise.catch((reason: unknown) => {
         if (live.current && operation === edits.current) {
           dispatchPreference({ type: "refused", saved: queue.savedPreferences,
-            problem: { row, message: reason === "settings-read-only" ? "settings-read-only" : "settings-choice-failed" } });
+            problem: { row, message: problemText(reason, text("settings-choice-failed"), text) } });
         }
       });
     }
-  }), [queue, clearSettingUndo]);
+  }), [queue, clearSettingUndo, text]);
   useAppearance(preferences);
   useEffect(() => {
     const root = document.documentElement;
@@ -463,7 +463,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     } };
   };
   const feedback = (id: string) => ({ reset: resetPreference(id), highlighted: highlighted === id, problem: readProblems.has(id) ? text("settings-read-failed")
-    : preference.status === "refused" && preference.problem.row === id ? text(preference.problem.message)
+    : preference.status === "refused" && preference.problem.row === id ? preference.problem.message
     : problemRow?.id === id ? text(problemRow.message) : undefined });
   const checkSaid = checkResult === "newest" ? "about-check-newest" : checkResult === "not_run" ? "about-check-busy" : null;
   const selectPage = (next: Page) => { setRevealTarget(null); highlightOperation.current += 1; setHighlighted(null); setDetour(false); setPage(next); setFocus("top"); setDip(0); };

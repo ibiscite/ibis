@@ -1,3 +1,4 @@
+import { recordId } from "./test-fixtures";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
@@ -433,7 +434,7 @@ test("reopening during a pending copy keeps the new query and selection without 
   // Reopening can leave the old single-reference preview queued. Complete the
   // request for the current selection, independently of worker arrival order.
   const previews = harness.preview.pending.filter(({ args }) =>
-    args.items.length === 2 && args.items[0]!.id.key === "a" && args.items[1]!.id.key === "b");
+    args.items.length === 2 && args.items[0]!.id.key === recordId("a") && args.items[1]!.id.key === recordId("b"));
   expect(previews).toHaveLength(1);
   await act(async () => { previews[0]!.complete({ text: "[@a; @b]" }); });
   expect(inCitation("a")).toBeTruthy();

@@ -2,6 +2,47 @@ use super::*;
 use std::sync::{Arc, Barrier};
 
 #[test]
+fn keyless_preview_carries_choose_style_and_no_visible_preview_contains_a_lookup_id() {
+    let dir = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+    let path = dir.path().join("invented.json");
+    std::fs::write(
+        &path,
+        json!([
+            {"id":"SENTINEL-ID-keyless", "type":"book", "title":"Invented keyless lantern"},
+            {"id":"SENTINEL-ID-keyed", "citation-key":"lantern2026", "type":"book", "title":"Invented keyed lantern"}
+        ])
+        .to_string(),
+    )
+    .unwrap_or_else(|error| panic!("{error}"));
+    let file = FileLibrary::open(&path).unwrap_or_else(|error| panic!("{error}"));
+    let snapshot = file.engine.snapshot().unwrap_or_else(|error| panic!("{error:?}"));
+    for object in snapshot.objects() {
+        let selection = || {
+            serde_json::from_value::<Vec<FileSelection>>(json!([{
+                "id":object.object.id(), "cite":object.fingerprints.cite,
+                "locator":null, "locator_input":null, "form":null, "prefix":null, "suffix":null
+            }]))
+            .unwrap_or_else(|error| panic!("{error}"))
+        };
+        let preview = file.preview(file.reserve_preview(), selection(), "pandoc");
+        if object.object.id().key.contains("keyless") {
+            let failed = serde_json::to_value(preview.err()).unwrap_or_default();
+            assert_eq!(failed["code"], "missing-key");
+            assert_eq!(failed["recovery"]["action"], "choose-style");
+            assert_eq!(failed["focus"], "format-picker");
+        } else {
+            let preview = preview.unwrap_or_else(|error| panic!("{error}"));
+            assert_eq!(preview.text, "[@lantern2026]");
+            assert!(
+                !serde_json::to_string(&preview)
+                    .unwrap_or_default()
+                    .contains("SENTINEL-ID")
+            );
+        }
+    }
+}
+
+#[test]
 fn a_delayed_bibliography_stops_after_a_new_citation_without_a_style_error_or_delivery()
 -> Result<(), Box<dyn std::error::Error>> {
     let file = FileLibrary::from_engine(Engine::new().map_err(|_| "engine")?);
@@ -429,11 +470,9 @@ fn conflicting_keys_explain_refusal_without_a_copy_receipt() -> Result<(), Box<d
         Ok(_) => return Err("conflicting keys produced a preview receipt".into()),
     };
     let error = serde_json::to_value(error)?;
-    assert_eq!(error["code"], "failed");
-    assert_eq!(
-        error["message"],
-        "These references have conflicting citation keys. Resolve them in your library or choose a formatted style."
-    );
+    assert_eq!(error["code"], "conflicting-key");
+    assert_eq!(error["message"]["id"], "problem-conflicting-key");
+    assert_eq!(error["recovery"]["action"], "choose-style");
     let writes = std::cell::Cell::new(0);
     assert!(
         file.copy("refused", "refused", |_| {

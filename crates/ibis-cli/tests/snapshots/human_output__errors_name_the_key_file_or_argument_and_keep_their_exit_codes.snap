@@ -18,7 +18,7 @@ stderr| ibis: several references use the citation key 'same'; give each one its 
 
 $ ibis --file /invented/missing.bib search x
 exit 5
-stderr| ibis: cannot open /invented/missing.bib: there is no file at that path; check the spelling or give the full path.
+stderr| ibis: cannot open /invented/missing.bib: The library file was moved, renamed or removed. Choose its current location with --file.
 
 $ ibis --file <tmp> search x
 exit 3
@@ -61,6 +61,6 @@ stderr| ibis: --id must be a reference's id, the JSON that ibis search --json pr
 
 $ ibis show absent --json
 exit 4
-stdout| {"error":{"code":"not-found","next":["ibis","search","absent"],"suggestions":[]},"ibis":1,"ok":false}
+stdout| {"error":{"code":"not-found","focus":"search","message":{"args":{},"id":"error-not-found"},"next":["ibis","search","absent"],"recovery":{"action":"select-references"},"suggestions":[]},"ibis":1,"ok":false}
 stderr| ibis: no reference has the key 'absent'
 stderr|   Try: ibis search absent

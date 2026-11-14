@@ -1,3 +1,4 @@
+import type { Problem } from "../bindings";
 import { FluentBundle, FluentResource } from "@fluent/bundle";
 import { parse } from "@fluent/syntax";
 import { createContext, type ReactNode, useContext } from "react";
@@ -38,7 +39,7 @@ const IDS = [
 ] as const;
 export type MessageId = typeof IDS[number];
 /** Messages Rust owns: engine codes and the CLI, MCP and native app's words. */
-const RUST = /^(error|reason|refusal|warning|source-warning|loss|notice|form|cause|cli|mcp|app)-/;
+const RUST = /^(error|reason|refusal|problem|warning|source-warning|loss|notice|form|cause|cli|mcp|app)-/;
 type Variables = Readonly<Record<string, string | number>>;
 export type InterfaceMessages = Readonly<{
   locale: typeof INTERFACE_LOCALE;
@@ -118,4 +119,12 @@ export function InterfaceMessagesProvider({ messages, children }: { messages: In
 }
 export function useInterfaceMessages(): InterfaceMessages {
   return useContext(InterfaceContext);
+}
+
+/** Render a native IPC diagnostic through the shared catalogue. */
+export function problemText(error: unknown, fallback: string, text = say): string {
+  const problem = typeof error === "object" && error !== null ? error as Partial<Problem> : null;
+  if (!problem?.message || typeof problem.message.id !== "string" || !problem.recovery || !problem.focus) return fallback;
+  try { return text(problem.message.id as MessageId, problem.message.args); }
+  catch { return fallback; }
 }

@@ -804,6 +804,8 @@ pub(crate) fn current_status(app: &AppHandle) -> LibraryStatus {
             live_updates_off: false,
             error: Some(super::error::words("app-library-state-unavailable", &[])),
             problem: Some(LibraryProblem::Other),
+            failure: Some(super::CommandError::NotPrepared.problem()),
+            retained_failure: None,
             error_reason: None,
             kept_references: false,
             note: None,

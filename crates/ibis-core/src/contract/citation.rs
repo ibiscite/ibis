@@ -299,8 +299,8 @@ impl CitationError {
     ];
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "outcome", rename_all = "kebab-case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "outcome", rename_all = "kebab-case", into = "PresentedOutcome")]
 pub enum ItemOutcome {
     Rendered {
         item: usize,
@@ -311,8 +311,44 @@ pub enum ItemOutcome {
     },
     /// An outcome from a newer engine: never rendered, so never copied.
     #[serde(other)]
+    Unknown,
+}
+
+#[derive(Serialize, JsonSchema)]
+#[serde(tag = "outcome", rename_all = "kebab-case")]
+enum PresentedOutcome {
+    Rendered {
+        item: usize,
+    },
+    Refused {
+        item: usize,
+        error: CitationError,
+        #[serde(flatten)]
+        info: super::RecoveryInfo,
+    },
     #[schemars(skip)]
     Unknown,
+}
+impl From<ItemOutcome> for PresentedOutcome {
+    fn from(value: ItemOutcome) -> Self {
+        match value {
+            ItemOutcome::Rendered { item } => Self::Rendered { item },
+            ItemOutcome::Refused { item, error } => Self::Refused {
+                item,
+                error,
+                info: error.problem().info,
+            },
+            ItemOutcome::Unknown => Self::Unknown,
+        }
+    }
+}
+impl JsonSchema for ItemOutcome {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "ItemOutcome".into()
+    }
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        PresentedOutcome::json_schema(generator)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

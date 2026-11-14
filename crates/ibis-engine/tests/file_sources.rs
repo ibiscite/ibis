@@ -65,6 +65,33 @@ fn open(engine: &Engine, path: &std::path::Path) -> LibraryId {
 fn write_record(path: &std::path::Path, key: &str, title: &str) {
     std::fs::write(path, format!("@article{{{key},title={{{title}}},year={{2026}}}}\n")).unwrap();
 }
+
+#[test]
+fn a_moved_file_keeps_the_cached_reference_and_tells_clients_to_locate_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("invented.bib");
+    write_record(&path, "lantern2026", "Invented lantern");
+    let engine = Engine::new().unwrap().without_file_watches();
+    let id = open(&engine, &path);
+    std::fs::rename(&path, dir.path().join("renamed.bib")).unwrap();
+    let error = engine
+        .dispatch(
+            Method::Libraries,
+            &json!({"action":"reload","library":id}),
+            &Cancellation::default(),
+        )
+        .unwrap_err();
+    assert_eq!(error.reason, Some(ErrorReason::MissingFile));
+    let shown = engine
+        .show_checked(&ShowRequest {
+            item: ItemSelector::Key("lantern2026".into()),
+        })
+        .unwrap();
+    let health = serde_json::to_value(shown.source_health).unwrap();
+    assert_eq!(health["findings"][0]["reason"], "missing-file");
+    assert_eq!(health["findings"][0]["recovery"]["action"], "locate-file");
+    assert_eq!(health["findings"][0]["focus"], "library-picker");
+}
 fn wait_for(mut predicate: impl FnMut() -> bool) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while !predicate() {

@@ -84,7 +84,7 @@ test.each(["general", "shortcuts"])("localized %s records directly, refuses regi
   const keys = [...document.querySelectorAll(".ui-settings-keys kbd")].map((key) => key.textContent?.replaceAll("+", ""));
   if (page === "shortcuts") expect(keys).toContain(currentPlatform() === "macos" ? "⌘K" : "CtrlK");
   for (const row of document.querySelectorAll("#picker-shortcuts .ui-row-text")) expect(row.textContent).toContain("⟦");
-  vi.spyOn(api, "setShortcut").mockRejectedValueOnce("in-use");
+  vi.spyOn(api, "setShortcut").mockRejectedValueOnce(shortcutFailure("in-use"));
   fireEvent.click(recorder);
   expect(recorder.textContent).toBe(pseudo.text("shortcuts-record"));
   expect(recorder.getAttribute("aria-label")).toBe(`${pseudo.text("shortcuts-open")}: ${recorder.textContent}`);
@@ -948,7 +948,7 @@ test("Shortcuts records a change, restores the default, and lists every picker k
 
 test.each(pickerConflicts)("a recorded $name refusal names its command and keeps the working shortcut", async ({ event, shortcut, command, label }) => {
   const { api } = fakeApi({ granted: true });
-  vi.spyOn(api, "setShortcut").mockRejectedValueOnce({ "picker-shortcut": command });
+  vi.spyOn(api, "setShortcut").mockRejectedValueOnce({ code: "picker-shortcut", message: { id: "shortcuts-picker-conflict", args: { command: englishMessages.text(`shortcuts-command-${command}` as Parameters<typeof englishMessages.text>[0]) } }, recovery: { action: "choose-shortcut" }, focus: "recovery-action" });
   render(<SettingsApp api={api} initialPage="shortcuts" />);
   const recorder = await screen.findByRole("button", { name: /^Open Ibis:/ });
   const original = recorder.textContent;
@@ -974,7 +974,7 @@ test.each([
       state.shortcut = { shortcut: "Alt+K", registered: true, error: null };
       for (const handler of state.shortcuts) handler(state.shortcut);
     }
-    throw code;
+    throw shortcutFailure(code ?? "unknown");
   });
   render(<SettingsApp api={api} initialPage={page} />);
   const recorder = await screen.findByRole("button", { name: /^Open Ibis:/ });
@@ -1035,7 +1035,7 @@ test.each(["general", "shortcuts"])("%s explains a failed shortcut read", async 
 
 test.each(["general", "shortcuts"])("%s has no axe violations while idle, recording, or showing a refusal", async (page) => {
   const { api } = fakeApi({ granted: true });
-  vi.spyOn(api, "setShortcut").mockRejectedValueOnce("app-shortcut");
+  vi.spyOn(api, "setShortcut").mockRejectedValueOnce(shortcutFailure("app-shortcut"));
   const { container } = render(<SettingsApp api={api} initialPage={page} />);
   const recorder = await screen.findByRole("button", { name: /^Open Ibis:/ });
   expect((await axe.run(container)).violations.map((v) => v.id)).toEqual([]);
@@ -1256,14 +1256,14 @@ test("a failed queued edit restores the preceding acknowledged save when rereadi
   const pending = deferred<void>();
   vi.spyOn(api, "setPickerPreferences")
     .mockImplementationOnce(async (patch) => { await pending.promise; return commit(patch); })
-    .mockRejectedValueOnce("settings-read-only");
+    .mockRejectedValueOnce({ code: "settings-read-only", message: { id: "app-settings-error-read-only", args: {} }, recovery: { action: "review-settings" }, focus: "settings" });
   render(<SettingsApp api={api} initialPage="look" />);
   await screen.findByRole("radio", { name: "Compact" });
   vi.spyOn(api, "pickerPreferences").mockRejectedValueOnce(new Error("synthetic failed read"));
   fireEvent.click(screen.getByRole("radio", { name: "Compact" }));
   fireEvent.click(screen.getByRole("radio", { name: "Larger" }));
   await act(async () => pending.resolve());
-  expect(screen.getByRole("alert").textContent).toBe("The settings file is read-only; the saved value is shown.");
+  expect(screen.getByRole("alert").textContent).toBe("Settings are read-only. Make the settings file writable before trying again.");
   expect(screen.getByRole("radio", { name: "Compact" })).toHaveProperty("checked", true);
   expect(screen.getByRole("radio", { name: "Default" })).toHaveProperty("checked", true);
   expect(state.preferences).toMatchObject({ density: "compact", larger_text: false });
@@ -1280,14 +1280,14 @@ test("a self-notification before reply preserves the saved row choice when the n
       for (const changed of state.preferenceEvents) changed(revision);
       return saved;
     })
-    .mockRejectedValueOnce("settings-read-only");
+    .mockRejectedValueOnce({ code: "settings-read-only", message: { id: "app-settings-error-read-only", args: {} }, recovery: { action: "review-settings" }, focus: "settings" });
   render(<SettingsApp api={api} initialPage="look" />);
   await screen.findByRole("radio", { name: "Compact" });
   vi.spyOn(api, "pickerPreferences").mockRejectedValue(new Error("synthetic read failure"));
   fireEvent.click(screen.getByRole("radio", { name: "Compact" }));
   fireEvent.click(screen.getByRole("radio", { name: "Larger" }));
   await act(async () => first.resolve());
-  expect(screen.getByRole("alert").textContent).toBe("The settings file is read-only; the saved value is shown.");
+  expect(screen.getByRole("alert").textContent).toBe("Settings are read-only. Make the settings file writable before trying again.");
   expect(screen.getByRole("radio", { name: "Compact" })).toHaveProperty("checked", true);
   expect(screen.getByRole("radio", { name: "Default" })).toHaveProperty("checked", true);
   expect(state.preferences).toMatchObject({ density: "compact", larger_text: false });
@@ -1295,7 +1295,7 @@ test("a self-notification before reply preserves the saved row choice when the n
 
 test("a picker notification after a recovered refusal retires the saved-value claim until a real read succeeds", async () => {
   const { api, state, commit } = fakeApi({ granted: true });
-  vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce("settings-read-only");
+  vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce({ code: "settings-read-only", message: { id: "app-settings-error-read-only", args: {} }, recovery: { action: "review-settings" }, focus: "settings" });
   render(<SettingsApp api={api} initialPage="look" />);
   await screen.findByRole("radio", { name: "Compact" });
   const read = vi.spyOn(api, "pickerPreferences");
@@ -1303,7 +1303,7 @@ test("a picker notification after a recovered refusal retires the saved-value cl
   await act(async () => state.closes[0]!());
   expect(read).toHaveBeenCalledOnce();
   expect(screen.getByRole("radio", { name: "Comfortable" })).toHaveProperty("checked", true);
-  expect(screen.getByRole("alert")).toHaveProperty("textContent", "The settings file is read-only; the saved value is shown.");
+  expect(screen.getByRole("alert")).toHaveProperty("textContent", "Settings are read-only. Make the settings file writable before trying again.");
 
   const refreshing = deferred<PickerPreferences>();
   read.mockRejectedValue(new Error("synthetic failed read")).mockReturnValueOnce(refreshing.promise);
@@ -1335,7 +1335,7 @@ test("a picker notification before a queued save fails stays uncertain until the
       await reply.promise;
       return saved;
     })
-    .mockRejectedValueOnce("settings-read-only");
+    .mockRejectedValueOnce({ code: "settings-read-only", message: { id: "app-settings-error-read-only", args: {} }, recovery: { action: "review-settings" }, focus: "settings" });
   render(<SettingsApp api={api} initialPage="look" />);
   await screen.findByRole("radio", { name: "Compact" });
   const read = vi.spyOn(api, "pickerPreferences").mockRejectedValue(new Error("synthetic read failure"));
@@ -1511,10 +1511,10 @@ test("a read-only refusal names the file constraint beside the restored control"
   const { api } = fakeApi({ granted: true });
   render(<SettingsApp api={api} initialPage="look" />);
   const choice = await screen.findByRole("radio", { name: "Compact" });
-  vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce("settings-read-only");
+  vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce({ code: "settings-read-only", message: { id: "app-settings-error-read-only", args: {} }, recovery: { action: "review-settings" }, focus: "settings" });
   fireEvent.click(choice);
   const problem = await screen.findByRole("alert");
-  expect(problem).toHaveProperty("textContent", "The settings file is read-only; the saved value is shown.");
+  expect(problem).toHaveProperty("textContent", "Settings are read-only. Make the settings file writable before trying again.");
   expect(problem.closest(".ui-row")?.querySelector("#rows")).toBeTruthy();
   expect(screen.getByRole("radio", { name: "Comfortable" })).toHaveProperty("checked", true);
 });
@@ -1612,10 +1612,10 @@ test("an Ibis accent refusal restores the saved accent beside its localized caus
   const { api } = fakeApi();
   const pseudo = createInterfaceMessages(english, true);
   render(<InterfaceMessagesProvider messages={pseudo}><SettingsApp api={api} initialPage="look" /></InterfaceMessagesProvider>);
-  vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce("settings-read-only");
+  vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce({ code: "settings-read-only", message: { id: "app-settings-error-read-only", args: {} }, recovery: { action: "review-settings" }, focus: "settings" });
   fireEvent.click(await screen.findByRole("radio", { name: pseudo.text("look-accent-ibis") }));
   const problem = await screen.findByRole("alert");
-  expect(problem.textContent).toBe(pseudo.text("settings-read-only"));
+  expect(problem.textContent).toBe(pseudo.text("app-settings-error-read-only" as Parameters<typeof pseudo.text>[0]));
   expect(problem.closest(".ui-row")?.querySelector("#accent")).toBeTruthy();
   expect(screen.getByRole("radio", { name: pseudo.text("look-accent-system", { platform: "other" }) })).toHaveProperty("checked", true);
   expect(document.documentElement.dataset.accent).toBe("system");
@@ -1919,7 +1919,7 @@ test("a refused setting default keeps its saved choice and offers no Undo", asyn
   const { api } = fakeApi({}, { appearance: "dark" });
   render(<SettingsApp api={api} initialPage="look" />);
   const reset = await screen.findByRole("button", { name: "Use Default for Appearance" });
-  vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce("settings-read-only");
+  vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce({ code: "settings-read-only", message: { id: "app-settings-error-read-only", args: {} }, recovery: { action: "review-settings" }, focus: "settings" });
   fireEvent.click(reset);
   await screen.findByRole("alert");
   expect(screen.getByRole("radio", { name: "Dark" })).toHaveProperty("checked", true);
@@ -2076,3 +2076,8 @@ test("a native save newer than a delayed size reply retires the reset without wa
   expect(screen.getByRole("radio", { name: "Custom" })).toHaveProperty("checked", true);
   expect(screen.queryByRole("button", { name: "Undo Restore Default for Window size" })).toBeNull();
 });
+
+function shortcutFailure(code: string) {
+  return { code, message: { id: `shortcuts-refusal-${code}`, args: {} },
+    recovery: { action: code === "unavailable" ? "open-ibis" : code === "not-saved" ? "retry" : "choose-shortcut" }, focus: "recovery-action" };
+}
