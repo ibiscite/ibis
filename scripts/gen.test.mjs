@@ -22,6 +22,12 @@ test("schemas become the TypeScript the app reads", () => {
   assert.equal(type({ type: "object", properties: { note: { type: "string" } } }), "{\n\tnote?: string;\n}");
 });
 
+test("engine record identifiers are opaque to display code", () => {
+  const opaque = type({ type: "string", "x-ibis-opaque": "RecordId" });
+  assert.match(opaque, /readonly/);
+  assert.doesNotMatch(opaque, /\bstring\b/);
+});
+
 test("commands keep their wire names and throw their errors", () => {
   const text = bindings({
     commands: [

@@ -477,7 +477,7 @@ pub fn restore(path: &Path, plan: &Plan) -> Result<Settings, BackupError> {
         return Err(BackupError::Changed);
     }
     if plan.restored != loaded.settings || repair {
-        super::write_settings_checked(path, &plan.restored, damaged, Some(&before)).map_err(|error| match error {
+        super::write_settings_checked(path, &plan.restored, damaged, &before).map_err(|error| match error {
             SettingsError::Changed => BackupError::Changed,
             other => BackupError::Settings(other),
         })?;

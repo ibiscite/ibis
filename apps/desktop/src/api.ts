@@ -216,8 +216,9 @@ export function onEditorRequest(handler: () => void): Promise<UnlistenFn> {
 
 /** The citation key another record also has, when that is why citing by key failed. */
 export function sharedCitationKey(error: unknown): string | null {
-  const failed = typeof error === "object" && error !== null ? error as { code?: unknown; key?: unknown } : null;
-  return failed?.code === "shared_citation_key" && typeof failed.key === "string" ? failed.key : null;
+  const failed = typeof error === "object" && error !== null ? error as { code?: unknown; message?: { args?: { key?: unknown } } } : null;
+  const key = failed?.message?.args?.key;
+  return failed?.code === "ambiguous-key" && typeof key === "string" ? key : null;
 }
 
 /** Only the backend's snapshot rejection code becomes a recovery explanation. */
@@ -231,7 +232,7 @@ export function isCancelled(error: unknown): boolean {
 }
 
 export function isSnapshotChanged(error: unknown): boolean {
-  return typeof error === "object" && error !== null && (error as Partial<CommandError>).code === "snapshot_changed";
+  return typeof error === "object" && error !== null && ["snapshot_changed", "changed-item", "missing-item"].includes(String((error as Partial<CommandError>).code));
 }
 
 export type UpdateProgress = { attempt: number; revision: number; received: number; total: number | null; phase: "downloading" | "installing" | "failed" };

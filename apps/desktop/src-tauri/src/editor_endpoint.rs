@@ -392,7 +392,9 @@ impl Host for AppHost {
             .ok()
             .and_then(|library| library.file.clone());
         if let Some(file) = file {
-            file.invalidate_preview();
+            file.engine
+                .citations()
+                .invalidate(ibis_engine::citations::SessionId::PICKER);
         }
     }
     fn present(&self, id: u64) {
@@ -929,7 +931,8 @@ mod tests {
     #[test]
     fn an_editors_preset_writing_previews_checks_and_copies_the_selected_format()
     -> Result<(), Box<dyn std::error::Error>> {
-        use crate::library::engine_file::{FileLibrary, FileSelection};
+        use crate::library::engine_library::FileLibrary;
+        use ibis_core::contract::DraftItem;
         use serde_json::json;
         let directory = tempfile::tempdir()?;
         let source = directory.path().join("library.bib");
@@ -958,33 +961,27 @@ mod tests {
         let query = serde_json::from_value(json!({"text":"demo","interpret_locators":false}))?;
         let rows = serde_json::to_value(file.search(&query, 10, None, &ibis_engine::Cancellation::default())?)?;
         let row = &rows["results"][0];
-        let selection: FileSelection =
-            serde_json::from_value(json!({"id":row["id"],"cite":row["cite"],"locator":null}))?;
-        let preview = file
-            .preview_for(
-                file.reserve_preview(),
-                vec![selection],
-                &request.output,
-                false,
-                Some(&request),
-            )
-            .unwrap_or_else(|error| panic!("{error}"));
+        let selection: DraftItem = serde_json::from_value(json!({"id":row["id"],"cite":row["cite"],"locator":null}))?;
+        let preview = crate::test_citations::preview(&file.engine, false, vec![selection], "pandoc")?;
         assert!(
-            file.prepared_for(&preview.ticket, &request),
-            "Enter accepts the preview prepared for this request"
+            file.engine
+                .citations()
+                .prepared(
+                    ibis_engine::citations::SessionId::PICKER,
+                    &preview.ticket,
+                    &preview.content_hash
+                )
+                .is_ok_and(|citation| citation.request_output() == &request.output)
         );
         let check = request.bibliography();
         assert_eq!(
-            file.prepared_project_warnings(&preview.ticket, &preview.content_hash, check.as_ref())
-                .unwrap_or_else(|error| panic!("{error}")),
+            crate::project::preview_warnings(&file.engine, &preview.ticket, &preview.content_hash, check.as_ref())?,
             ["demo is missing from thesis.bib."]
         );
-        let copied = file
-            .copy(&preview.ticket, &preview.content_hash, |content| {
-                assert_eq!(content.text, "[@demo]");
-                Ok(())
-            })
-            .unwrap_or_else(|error| panic!("{error}"));
+        let copied = crate::test_citations::copy(&file.engine, &preview.ticket, &preview.content_hash, |content| {
+            assert_eq!(content.text, "[@demo]");
+            Ok(())
+        })?;
         assert!(pending.answer(id, &copied.text, || {}));
         assert_eq!(answer.recv()?.as_deref(), Some("[@demo]"));
         Ok(())

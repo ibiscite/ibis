@@ -428,7 +428,8 @@ fn help_and_version_are_envelopes_under_json() -> Result<(), Box<dyn std::error:
         let (code, text, _) = run(engine()?, args)?;
         assert_eq!(code, 2, "{args:?}");
         assert_eq!(
-            text, "{\"error\":{\"code\":\"usage\"},\"ibis\":1,\"ok\":false}\n",
+            text,
+            "{\"error\":{\"code\":\"usage\",\"focus\":\"request\",\"message\":{\"args\":{},\"id\":\"error-usage\"},\"recovery\":{\"action\":\"edit-input\"}},\"ibis\":1,\"ok\":false}\n",
             "{args:?}"
         );
     }
@@ -568,7 +569,10 @@ fn a_preloaded_engine_never_reads_the_app_settings() -> Result<(), Box<dyn std::
     // Asked for the app's libraries, it refuses instead of reading or ignoring them.
     let (code, text, errors) = run(engine()?, &["ibis", "search", "x", "--app-libraries", "--json"])?;
     assert_eq!(code, 2);
-    assert_eq!(text, "{\"error\":{\"code\":\"usage\"},\"ibis\":1,\"ok\":false}\n");
+    assert_eq!(
+        text,
+        "{\"error\":{\"code\":\"usage\",\"focus\":\"request\",\"message\":{\"args\":{},\"id\":\"error-usage\"},\"recovery\":{\"action\":\"edit-input\"}},\"ibis\":1,\"ok\":false}\n"
+    );
     assert!(errors.contains("--app-libraries is not available here"), "{errors}");
     // The server starts and says the same, so an agent can tell the person.
     let (code, _, errors) = run(engine()?, &["ibis", "mcp", "--app-libraries", "--json"])?;

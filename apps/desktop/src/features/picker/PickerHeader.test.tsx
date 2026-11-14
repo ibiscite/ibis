@@ -31,45 +31,11 @@ test.each([
   expect(input.value).toBe(`before ${expected} after`);
 });
 
-test.each(["pointer", "Enter", "Space"])("clear acts once with %s and immediately returns editing to Search", (activation) => {
-  const changed = vi.fn();
-  render(<Header changed={changed} />);
+test("a filled search keeps its query and offers no clear button", () => {
+  render(<Header changed={vi.fn()} />);
   const input = screen.getByRole("combobox", { name: "Search references" }) as HTMLInputElement;
-  expect(input.type).toBe("search");
-  expect(screen.queryByRole("button", { name: "Clear Search" })).toBeNull();
   fireEvent.change(input, { target: { value: "研究 العربية" } });
-  const clear = screen.getByRole("button", { name: "Clear Search" });
-  expect(clear.getAttribute("data-variant")).toBe("icon");
-  expect(clear.hasAttribute("data-tauri-drag-region")).toBe(false);
-  clear.focus();
-  changed.mockClear();
-  if (activation === "pointer") fireEvent.click(clear);
-  else {
-    const key = activation === "Space" ? " " : "Enter";
-    const code = activation === "Space" ? "Space" : "Enter";
-    fireEvent.keyDown(clear, { key, code });
-    fireEvent.keyDown(clear, { key, code, repeat: true });
-    fireEvent.keyUp(clear, { key, code });
-  }
-  expect(changed.mock.calls).toEqual([[""]]);
-  expect(input.value).toBe("");
-  expect(document.activeElement).toBe(input);
-  expect(screen.queryByRole("button", { name: "Clear Search" })).toBeNull();
-  fireEvent.change(input, { target: { value: "next" } });
-  expect(input.value).toBe("next");
+  expect(input.value).toBe("研究 العربية");
   expect(input.getAttribute("aria-activedescendant")).toBe("result-0");
-});
-
-test.each([{ isComposing: true }, { keyCode: 229 }])("composition confirmation cannot activate Clear (%j)", (composition) => {
-  const changed = vi.fn();
-  render(<Header changed={changed} />);
-  const input = screen.getByRole("combobox", { name: "Search references" });
-  fireEvent.change(input, { target: { value: "研究" } });
-  const clear = screen.getByRole("button", { name: "Clear Search" });
-  clear.focus();
-  changed.mockClear();
-  fireEvent.keyDown(clear, { key: "Enter", code: "Enter", ...composition });
-  fireEvent.keyUp(clear, { key: "Enter", code: "Enter", ...composition });
-  expect(changed).not.toHaveBeenCalled();
-  expect((input as HTMLInputElement).value).toBe("研究");
+  expect(screen.queryByRole("button", { name: "Clear Search" })).toBeNull();
 });

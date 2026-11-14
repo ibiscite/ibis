@@ -1,15 +1,16 @@
+import { recordId } from "../../test-fixtures";
 import { displayTree } from "../../testing/app";
 import { expect, test } from "vitest";
-import type { FilePreview } from "../../bindings";
+import type { Preview } from "../../bindings";
 import { initialSession, reduceSession, type SessionEffect, type SessionEvent, type SessionState } from "./session";
 import type { Prepared, PreviewInputs } from "./preview";
 
 const inputs = (key: string, overrides: Partial<PreviewInputs> = {}): PreviewInputs => ({
   key, retryKey: `retry-${key}`, contextReady: true,
-  ask: { selection: [{ id: { library: "synthetic", key }, cite: key, locator: null }], output: "pandoc", revision: "1" },
+  ask: { selection: [{ id: { library: "synthetic", key: recordId(key) }, cite: key, locator: null }], output: "pandoc", revision: "1" },
   ...overrides,
 });
-const filePreview = (text: string, problem: string | null = null) => ({ text, ticket: `ticket-${text}`, content_hash: "hash", problem } as unknown as FilePreview);
+const filePreview = (text: string, problem: string | null = null) => ({ text, ticket: `ticket-${text}`, content_hash: "hash", problem } as unknown as Preview);
 const prepared = (text: string): Prepared => ({ text, warnings: [], display: displayTree([]), fileTicket: `ticket-${text}`, fileHash: "hash" } as unknown as Prepared);
 const previewed = (request: number, text: string): SessionEvent => ({ type: "previewed", request, preview: filePreview(text), value: prepared(text) });
 const shown = { type: "shown", now: 1, presentation: 1 } as const;

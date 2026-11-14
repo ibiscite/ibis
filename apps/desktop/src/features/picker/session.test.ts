@@ -1,12 +1,12 @@
 import { expect, test } from "vitest";
-import { testStates } from "../../test-fixtures";
+import { testStates, recordId } from "../../test-fixtures";
 import { enterLabel } from "./enterLabel";
 import { choiceKey, idKey, type CitationReference } from "./choice";
 import { arrangeView } from "../../testing/sessionView";
 import { initialSession, reduceSession, sessionQueryKey, type SessionEvent, type SessionView } from "./session";
 import type { CopiedReason } from "../../bindings";
 
-const a: CitationReference = { ...testStates[1]!.results[0]!, locator: { label: "page", value: "١٢–١٤" } };
+const a: CitationReference = { ...testStates[1]!.results[0]!, locator: { term: "page", value: "١٢–١٤" } };
 const b = testStates[1]!.results[1]!;
 const prepared = { display: { nodes: [] }, text: "canonical engine text", warnings: [], fileTicket: "ticket-b", fileHash: "hash-b" };
 function scenario() {
@@ -162,7 +162,7 @@ test("a minute away abandons the citation's fields and order choice", () => {
 
 test("removing a reference offers an owned Undo that restores its position and complete details", () => {
   const s = scenario();
-  const c = { ...b, id: { library: "synthetic", key: "third" }, key: "third" };
+  const c = { ...b, id: { library: "synthetic", key: recordId("third") }, key: "third" };
   s.send({ type: "toggle", result: a, locator: a.locator });
   s.send({ type: "reference", reference: s.state.selected.get(idKey(a.id))!, change: { form: "year-only" } });
   s.send({ type: "toggle", result: b });
@@ -188,7 +188,7 @@ test("Undo never overwrites a reference added again or crosses a cleared session
   s.send({ type: "toggle", result: a, locator: a.locator });
   s.send({ type: "toggle", result: a });
   const undo = s.state.removed!;
-  s.send({ type: "toggle", result: a, locator: { label: "page", value: "42" } });
+  s.send({ type: "toggle", result: a, locator: { term: "page", value: "42" } });
   s.send({ type: "undo-reference", removal: undo });
   expect(s.state.selected.get(idKey(a.id))?.locator?.value).toBe("42");
   s.send({ type: "toggle", result: a });
@@ -202,7 +202,7 @@ test("a retired segment cannot remove a newly edited reference or add a removed 
   const s = scenario();
   s.send({ type: "toggle", result: a });
   const retired = s.state.selected.get(idKey(a.id))!;
-  s.send({ type: "reference", reference: retired, change: { locator: { label: "page", value: "42" } } });
+  s.send({ type: "reference", reference: retired, change: { locator: { term: "page", value: "42" } } });
   s.send({ type: "remove-reference", reference: retired });
   const current = s.state.selected.get(idKey(a.id))!;
   expect(current.locator?.value).toBe("42");

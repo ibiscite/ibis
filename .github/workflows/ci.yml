@@ -238,8 +238,8 @@ jobs:
         if: runner.os == 'Windows'
         run: cargo test -p ibis-desktop --locked one_ctrl_v_pastes_the_clipboard_into_the_app_in_front -- --ignored --nocapture
 
-      - name: Test the scripts (macOS)
-        if: runner.os == 'macOS'
+      - name: Test the scripts (macOS and Windows)
+        if: (runner.os == 'Windows' || runner.os == 'macOS')
         run: node scripts/check.mjs scripts
 
       - name: Exercise the native picker (Linux)

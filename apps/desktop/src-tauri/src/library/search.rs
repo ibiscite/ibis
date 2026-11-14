@@ -3,7 +3,6 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use ibis_core::contract::LocatorTerm;
 use ibis_core::search::MatchField;
 use ibis_engine::Cancellation;
 use serde::{Deserialize, Serialize};
@@ -70,41 +69,7 @@ impl SearchRequests {
     }
 }
 
-/// Preview requests have their own counter; late aborts name the exact request.
-#[derive(Default)]
-pub(crate) struct PreviewRequests(SearchRequests);
-
-/// These operations may end while their citation receipt remains usable.
-#[derive(Default)]
-pub(crate) struct FormattingRequests {
-    pub(crate) details: PreviewRequests,
-    pub(crate) bibliography: PreviewRequests,
-}
-
-#[derive(Deserialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct PreviewIntent {
-    #[serde(default)]
-    pub(crate) keep_order: bool,
-    pub(crate) page: u32,
-    pub(crate) request: u32,
-    pub(crate) cancel: bool,
-    #[serde(default)]
-    pub(crate) context: Option<(u32, u32)>,
-}
-
-impl PreviewRequests {
-    pub(crate) fn start(&self, intent: PreviewIntent) -> Option<Cancellation> {
-        let token = self.0.start(intent.page, intent.request)?;
-        if intent.cancel {
-            // Also remembers an abort received before the worker's start message.
-            token.cancel();
-            None
-        } else {
-            Some(token)
-        }
-    }
-}
+pub(crate) use ibis_core::contract::CitationIntent as PreviewIntent;
 
 #[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct SearchResult {
@@ -213,32 +178,7 @@ pub(crate) struct PastedList {
     pub(super) missing: Vec<String>,
 }
 
-/// Picker wire names over the engine's canonical locator vocabulary.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct Locator {
-    pub(crate) label: LocatorTerm,
-    /// Canonical value, including literal text preserved by the engine.
-    pub(crate) value: String,
-}
-
-impl From<ibis_core::contract::Locator> for Locator {
-    fn from(locator: ibis_core::contract::Locator) -> Self {
-        Self {
-            label: locator.term,
-            value: locator.value,
-        }
-    }
-}
-
-impl From<Locator> for ibis_core::contract::Locator {
-    fn from(locator: Locator) -> Self {
-        Self {
-            term: locator.label,
-            value: locator.value,
-        }
-    }
-}
+pub(crate) use ibis_core::contract::Locator;
 
 /// The engine's interpretation, shown so the person can search as typed: a
 /// signal read off the start (`see`) and a locator read off the end (`417`).
@@ -261,7 +201,7 @@ impl From<ibis_core::shorthand::Shorthand> for LocatorQuery {
         Self {
             search: read.search,
             typed: read.locator.as_ref().map(|locator| locator.typed.clone()),
-            locator: read.locator.map(|locator| locator.locator.into()),
+            locator: read.locator.map(|locator| locator.locator),
             prefix: read.prefix,
         }
     }

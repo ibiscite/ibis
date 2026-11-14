@@ -44,6 +44,17 @@ export const settingsApi = {
   version: getVersion,
   /** Settings is asked to show a page, such as the paste guide after a refused paste. */
   onPreferencesChanged: (handler: (revision: number, fields?: string[]) => void): Promise<UnlistenFn> => listen<PreferenceChange>("preferences:changed", (event) => handler(event.payload.revision, event.payload.fields)),
+  /** The format snapshot includes app choices and writings as well as preferences. */
+  onSettingsChanged: async (handler: () => void): Promise<UnlistenFn> => {
+    const stopPreferences = await listen("preferences:changed", handler);
+    try {
+      const stopWritings = await listen("writings:changed", handler);
+      return () => { stopPreferences(); stopWritings(); };
+    } catch (error) {
+      stopPreferences();
+      throw error;
+    }
+  },
   /** The window size writer's outcome; a refused write is the only news here. */
   onWindowSaved: (handler: (saved: boolean, revision: number) => void): Promise<UnlistenFn> => listen<{ saved: boolean; revision: number }>("picker:window-saved", (event) => handler(event.payload.saved, event.payload.revision)),
   onPage: (handler: (page: string) => void): Promise<UnlistenFn> => listen<string>("settings:page", (event) => handler(event.payload)),

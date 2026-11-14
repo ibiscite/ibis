@@ -3,7 +3,7 @@ import { Children, createContext, isValidElement, useCallback, useContext, useEf
 import { composing as isComposing } from "../composition";
 import { flushSync } from "react-dom";
 import { mergeProps, setInteractionModality } from "react-aria";
-import { Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuStateContext, MenuTrigger, Popover, Separator, SubmenuTrigger, Text } from "react-aria-components";
+import { Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuStateContext, MenuTrigger, Separator, SubmenuTrigger, Text } from "react-aria-components";
 import { Button } from "./Button";
 import { markScrollEdges } from "./ScrollArea";
 import { Floating } from "./Layer";
@@ -234,7 +234,7 @@ export function MenuSection({ id, label, header, children, layout, selectionMode
   return <AriaMenuSection id={id} aria-label={label} className={`menu-section${layout === "list" ? " menu-section-list" : ""}`}
     selectionMode={checkable ? selectionMode : undefined}
     selectedKeys={checkable ? items.filter((item) => item.props.checked).map((item) => item.props.id) : undefined}>
-    {header && <Header className={typeof header === "string" ? "menu-header menu-heading" : "menu-header"}>{label && <span className="visually-hidden">{label}</span>}<div aria-hidden="true">{header}</div></Header>}
+    {header && <Header className={typeof header === "string" ? "menu-header ui-list-heading menu-heading" : "menu-header"}>{label && <span className="visually-hidden">{label}</span>}<div aria-hidden="true">{header}</div></Header>}
     {children}
   </AriaMenuSection>;
 }
@@ -253,12 +253,12 @@ export function MenuSubmenu({ id, label, value, title, children }: {
       <span className="menu-submenu-arrow" aria-hidden="true">›</span>
     </AriaMenuItem>
     {/* Part of its menu's layer, whose Esc it hands to React Aria. */}
-    <Popover ref={wholeRows} className="menu-popover ui-overlay" data-layer-within offset={6} containerPadding={8}>
+    <Floating ref={wholeRows} className="menu-popover ui-overlay" offset={6} containerPadding={8}>
       <AriaMenu ref={list} className="menu scroll-area" aria-label={label}
         render={(props) => <div {...props as ComponentPropsWithRef<"div">} aria-label={label} aria-labelledby={undefined} />}>
         {children}
       </AriaMenu>
-    </Popover>
+    </Floating>
   </SubmenuTrigger>;
 }
 
@@ -270,7 +270,7 @@ type MenuProps = {
   /** The menu's accessible name. */
   label: string; id?: string;
   /** The trigger button's content and attributes. */
-  trigger: ReactNode; triggerRef?: Ref<HTMLButtonElement>; triggerClassName?: string; triggerVariant?: "secondary" | "quiet"; triggerSize?: "default" | "small"; triggerTitle?: string; triggerKeys?: string; triggerLabel?: string;
+  trigger: ReactNode; triggerRef?: Ref<HTMLButtonElement>; triggerClassName?: string; triggerVariant?: "secondary" | "quiet"; triggerSize?: "default" | "small"; triggerTitle?: string; triggerLabel?: string;
   isOpen: boolean; onOpenChange: (open: boolean) => void;
   /** Where Tab goes: leaving the menu returns there so keys keep working. */
   tabFocusRef?: RefObject<HTMLElement | null>;
@@ -287,7 +287,7 @@ type MenuProps = {
  * opened from the keyboard, including a shortcut that sets `isOpen`, the first
  * item is highlighted, as in native menus.
  */
-export function Menu({ label, id, trigger, triggerRef, triggerClassName, triggerVariant = "secondary", triggerSize = "default", triggerTitle, triggerKeys, triggerLabel, isOpen, onOpenChange, tabFocusRef, placement = "bottom end", children }: MenuProps) {
+export function Menu({ label, id, trigger, triggerRef, triggerClassName, triggerVariant = "secondary", triggerSize = "default", triggerTitle, triggerLabel, isOpen, onOpenChange, tabFocusRef, placement = "bottom end", children }: MenuProps) {
   const fromTrigger = useRef(false);
   const button = useRef<HTMLButtonElement | null>(null);
   const boundary = useMenuBoundary(isOpen, tabFocusRef, button);
@@ -335,7 +335,7 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
       if (typeof triggerRef === "function") triggerRef(node);
       else if (triggerRef) triggerRef.current = node;
     }} className={triggerClassName}
-      render={(props) => <button {...props as ComponentPropsWithRef<"button">} title={triggerTitle} aria-label={triggerLabel ?? label} aria-keyshortcuts={triggerKeys} />}>{trigger}</Button>
+      render={(props) => <button {...props as ComponentPropsWithRef<"button">} title={triggerTitle} aria-label={triggerLabel ?? label} />}>{trigger}</Button>
     <Floating kind="menu" open={isOpen} onClose={close} ref={wholeRows} className="menu-popover ui-overlay" placement={renderedPlacement} offset={6} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
       <div className="menu-frame" onKeyDownCapture={(event) => {
         if (isComposing(event)) { event.stopPropagation(); return; }

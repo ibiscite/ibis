@@ -3,7 +3,7 @@ import { Icon, type IconName } from "../icons";
 import { Button, ToggleButton } from "./Button";
 import "./IconButton.css";
 
-type Props = Omit<ComponentProps<typeof Button>, "variant" | "children" | "icon" | "label" | "keys" | "size"> & {
+type Props = Omit<ComponentProps<typeof Button>, "variant" | "children" | "icon" | "label" | "size"> & {
   icon?: IconName; size?: "regular" | "large"; isSelected?: boolean; onChange?: (selected: boolean) => void;
 };
 

@@ -69,7 +69,7 @@ struct Slot {
     read: Option<ProjectRead>,
     reading: bool,
     context: Option<String>,
-    prepared: Option<(u64, String, (u32, u32))>,
+    prepared: Option<(String, (u32, u32))>,
     output: Option<crate::output::OutputRef>,
     worker_running: bool,
     pending_read: Option<Ticket>,
@@ -159,17 +159,22 @@ impl ProjectBibliography {
     /// the state with no bibliography. Equal output after A → B → A is new work.
     pub(crate) fn bind_preview(
         &self,
-        reservation: u64,
-        ticket: &str,
+        engine: &ibis_engine::Engine,
+        preview: &ibis_core::contract::Preview,
         version: (u32, u32),
     ) -> Result<(), crate::library::CommandError> {
         let mut slot = self.lock();
-        if (slot.generation, slot.revision) != version
-            || slot.prepared.as_ref().is_some_and(|(newer, _, _)| *newer > reservation)
-        {
+        if (slot.generation, slot.revision) != version {
             return Err(crate::library::CommandError::SnapshotChanged);
         }
-        slot.prepared = Some((reservation, ticket.to_owned(), version));
+        // The engine validates its own identity while the project binding is locked.
+        // A late native completion cannot replace a newer receipt's context.
+        engine.citations().prepared(
+            ibis_engine::citations::SessionId::PICKER,
+            &preview.ticket,
+            &preview.content_hash,
+        )?;
+        slot.prepared = Some((preview.ticket.clone(), version));
         Ok(())
     }
 
@@ -184,7 +189,7 @@ impl ProjectBibliography {
         let valid = slot
             .prepared
             .as_ref()
-            .is_some_and(|(_, prepared, version)| prepared == ticket && *version == (slot.generation, slot.revision));
+            .is_some_and(|(prepared, version)| prepared == ticket && *version == (slot.generation, slot.revision));
         if !valid {
             return Err(crate::library::CommandError::SnapshotChanged);
         }
@@ -388,7 +393,7 @@ pub(crate) fn watch_openings(app: &AppHandle) {
     });
 }
 
-fn apply(app: &AppHandle, path: Option<PathBuf>) -> Result<(), String> {
+fn apply(app: &AppHandle, path: Option<PathBuf>) -> Result<(), crate::library::CommandError> {
     let owner = crate::writings::bibliography_owner(app)?;
     crate::writings::set_bibliography(app, &owner, path)
 }
@@ -457,7 +462,7 @@ pub(crate) fn choose_project(app: AppHandle) {
 /// Stop checking. The file itself is untouched.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) fn stop_project(app: AppHandle) -> Result<(), String> {
+pub(crate) fn stop_project(app: AppHandle) -> Result<(), crate::library::CommandError> {
     apply(&app, None)
 }
 
@@ -493,22 +498,20 @@ pub(crate) async fn copy_project_entry(
     generation: u32,
     app: AppHandle,
     library: State<'_, Mutex<Library>>,
-) -> Result<EntryCopy, String> {
-    const FAILED: &str = "The entry could not be copied.";
+) -> Result<EntryCopy, crate::library::CommandError> {
     let file = library
         .lock()
-        .map_err(|_| FAILED)?
+        .map_err(|_| crate::errors::NativeOperation::CopyProjectEntry.failure())?
         .file
         .clone()
-        .ok_or("No library is open.")?;
+        .ok_or(crate::library::CommandError::SnapshotChanged)?;
     // An identity from before the library changed names nothing now.
     let Some(id) = id.0 else {
         return Ok(EntryCopy::Changed);
     };
     let result = tauri::async_runtime::spawn_blocking(move || file.original_entry(&id))
         .await
-        .map_err(|_| FAILED)?
-        .map_err(|_| FAILED)?;
+        .map_err(|_| crate::errors::NativeOperation::CopyProjectEntry.failure())??;
     let text = match result {
         EntryResult::Entry { text, .. } => text,
         EntryResult::Refused { reason } => return Ok(reason.into()),
@@ -518,10 +521,44 @@ pub(crate) async fn copy_project_entry(
     crate::writings::refresh(&app, captured.as_ref().map(|(id, _, _)| id))?;
     app.state::<ProjectBibliography>()
         .commit_generation(generation, || {
-            crate::copy::write_plain(&app, &text)?;
+            crate::copy::write_plain(&app, &text).map_err(|_| crate::library::CommandError::ClipboardUnavailable)?;
             Ok(EntryCopy::Copied)
         })
         .unwrap_or(Ok(EntryCopy::Changed))
+}
+
+pub(crate) fn preview_warnings(
+    engine: &ibis_engine::Engine,
+    id: &str,
+    hash: &str,
+    project: Option<&Current>,
+) -> Result<Vec<String>, crate::library::CommandError> {
+    let citation = engine
+        .citations()
+        .prepared(ibis_engine::citations::SessionId::PICKER, id, hash)?;
+    Ok(project
+        .filter(|_| citation.uses_citation_keys())
+        .map(|project| {
+            citation
+                .project_checks(&project.read)
+                .into_iter()
+                .filter_map(|key| project.warning(&key.key, &key.check))
+                .collect()
+        })
+        .unwrap_or_default())
+}
+pub(crate) fn preview_evidence(
+    engine: &ibis_engine::Engine,
+    id: &str,
+    hash: &str,
+    project: Option<&Current>,
+) -> Result<Option<ibis_engine::ProjectAssessment>, crate::library::CommandError> {
+    let citation = engine
+        .citations()
+        .prepared(ibis_engine::citations::SessionId::PICKER, id, hash)?;
+    Ok(project
+        .filter(|_| citation.uses_citation_keys())
+        .map(|project| citation.project_evidence(&project.read)))
 }
 
 #[cfg(test)]
@@ -541,6 +578,28 @@ mod tests {
         ProjectRead::read(&ticket.path, ticket.previous.as_ref())
     }
 
+    fn binding(engine: Option<ibis_engine::Engine>) -> (ibis_engine::Engine, ibis_core::contract::Preview) {
+        let engine = engine.unwrap_or_else(|| {
+            let case: ibis_core::contract::GoldenCase =
+                serde_json::from_str(include_str!("../../../../fixtures/cases/02-pandoc.json")).unwrap();
+            ibis_engine::Engine::from_snapshot(std::sync::Arc::new(case.library))
+        });
+        let snapshot = engine.snapshot().unwrap();
+        let row = &snapshot.objects()[0];
+        let draft=serde_json::from_value(serde_json::json!({"items":[{"id":row.object.id(),"cite":row.fingerprints.cite}],"output":{"kind":"preset","name":"pandoc"}})).unwrap();
+        let preview = engine
+            .citations()
+            .preview(
+                ibis_engine::citations::SessionId::PICKER,
+                draft,
+                ibis_engine::Cancellation::default(),
+            )
+            .unwrap()
+            .run()
+            .unwrap();
+        (engine, preview)
+    }
+
     const A: &str = "@book{a2026,title={A}}\n";
     const B: &str = "@book{b2026,title={B}}\n";
 
@@ -549,9 +608,10 @@ mod tests {
         let slot = ProjectBibliography::default();
         slot.choose(None);
         let a = slot.version();
-        slot.bind_preview(1, "preview-a", a).unwrap();
+        let (engine, preview) = binding(None);
+        slot.bind_preview(&engine, &preview, a).unwrap();
         let mut written = String::new();
-        slot.commit("preview-a", |_| {
+        slot.commit(&preview.ticket, |_| {
             written.push_str("citation A");
             Ok(())
         })
@@ -559,24 +619,25 @@ mod tests {
         assert_eq!(written, "citation A");
         slot.choose(None);
         assert!(
-            slot.commit("preview-a", |_| {
+            slot.commit(&preview.ticket, |_| {
                 written.push_str("wrong");
                 Ok(())
             })
             .is_err()
         );
         slot.choose(None);
-        assert!(slot.bind_preview(1, "late-a", a).is_err());
+        assert!(slot.bind_preview(&engine, &preview, a).is_err());
         assert!(
-            slot.commit("preview-a", |_| {
+            slot.commit(&preview.ticket, |_| {
                 written.push_str("wrong");
                 Ok(())
             })
             .is_err()
         );
         assert_eq!(written, "citation A");
-        slot.bind_preview(3, "fresh-a", slot.version()).unwrap();
-        slot.commit("fresh-a", |_| {
+        let (engine, fresh) = binding(Some(engine));
+        slot.bind_preview(&engine, &fresh, slot.version()).unwrap();
+        slot.commit(&fresh.ticket, |_| {
             written.push_str(" fresh A");
             Ok(())
         })
@@ -588,9 +649,11 @@ mod tests {
     fn a_delayed_preview_cannot_replace_a_newer_receipt() {
         let slot = ProjectBibliography::default();
         let version = slot.version();
-        slot.bind_preview(2, "newer", version).unwrap();
-        assert!(slot.bind_preview(1, "older", version).is_err());
-        slot.commit("newer", |_| Ok(())).unwrap();
+        let (engine, older) = binding(None);
+        let (engine, newer) = binding(Some(engine));
+        slot.bind_preview(&engine, &newer, version).unwrap();
+        assert!(slot.bind_preview(&engine, &older, version).is_err());
+        slot.commit(&newer.ticket, |_| Ok(())).unwrap();
     }
 
     #[test]
@@ -632,7 +695,8 @@ mod tests {
             slot.capture(Some(slot.version()), Some(crate::output::stored(Some("cite"))))
                 .is_err()
         );
-        assert!(slot.bind_preview(1, "old-format", a).is_err());
+        let (engine, preview) = binding(None);
+        assert!(slot.bind_preview(&engine, &preview, a).is_err());
         assert!(
             slot.commit::<()>("old-format", |_| panic!("old format cannot write in new project"))
                 .is_err()
@@ -674,8 +738,9 @@ mod tests {
         );
         slot.finish(ticket.generation, read(&ticket));
         assert!(slot.capture(Some(slot.version()), output).is_ok());
-        slot.bind_preview(1, "checked", slot.version()).unwrap();
-        slot.commit("checked", |current| {
+        let (engine, preview) = binding(None);
+        slot.bind_preview(&engine, &preview, slot.version()).unwrap();
+        slot.commit(&preview.ticket, |current| {
             assert_eq!(current.unwrap().name, "paper.bib");
             Ok(())
         })
@@ -684,7 +749,7 @@ mod tests {
 
     #[test]
     fn rows_and_warnings_use_the_key_a_citation_would_emit() {
-        use crate::library::engine_file::FileLibrary;
+        use crate::library::engine_library::FileLibrary;
         use ibis_engine::Cancellation;
         let (_library_dir, library) = written(
             "refs.bib",
@@ -728,14 +793,16 @@ mod tests {
             .as_array()
             .map(|rows| {
                 rows.iter()
-                    .filter_map(|row| serde_json::from_value(row.clone()).ok())
+                    .filter_map(|row| {
+                        serde_json::from_value(serde_json::json!({"id":row["id"],"cite":row["cite"]})).ok()
+                    })
                     .collect()
             })
             .unwrap_or_default();
-        let preview = file.preview(file.reserve_preview(), selections, "pandoc").unwrap();
-        let mut warnings = file
-            .prepared_project_warnings(&preview.ticket, &preview.content_hash, Some(&current))
-            .unwrap();
+        let preview = crate::test_citations::preview(&file.engine, file.sample, selections, "pandoc").unwrap();
+        let mut warnings =
+            crate::project::preview_warnings(&file.engine, &preview.ticket, &preview.content_hash, Some(&current))
+                .unwrap();
         warnings.sort();
         assert_eq!(
             warnings,
@@ -749,7 +816,7 @@ mod tests {
 
     #[test]
     fn copying_reports_what_the_preview_warned_about_for_key_outputs_only() {
-        use crate::library::engine_file::FileLibrary;
+        use crate::library::engine_library::FileLibrary;
         use ibis_engine::Cancellation;
         let (_library_dir, library) = written(
             "refs.bib",
@@ -773,15 +840,19 @@ mod tests {
                 "id": rows["results"][0]["id"], "cite": rows["results"][0]["cite"], "locator": null
             }))
             .unwrap_or_else(|error| panic!("{error}"));
-            let preview = file
-                .preview(file.reserve_preview(), vec![selection], style.unwrap_or("pandoc"))
-                .unwrap_or_else(|_| panic!("a preview"));
-            let mut copied = file
-                .copy(&preview.ticket, &preview.content_hash, |_| Ok(()))
-                .unwrap_or_else(|_| panic!("a copy"));
-            let warnings = file
-                .prepared_project_warnings(&preview.ticket, &preview.content_hash, current.as_ref())
-                .unwrap();
+            let preview =
+                crate::test_citations::preview(&file.engine, file.sample, vec![selection], style.unwrap_or("pandoc"))
+                    .unwrap_or_else(|_| panic!("a preview"));
+            let mut copied =
+                crate::test_citations::copy(&file.engine, &preview.ticket, &preview.content_hash, |_| Ok(()))
+                    .unwrap_or_else(|_| panic!("a copy"));
+            let warnings = crate::project::preview_warnings(
+                &file.engine,
+                &preview.ticket,
+                &preview.content_hash,
+                current.as_ref(),
+            )
+            .unwrap();
             copied.warnings.extend(warnings);
             copied.warnings
         };
@@ -798,14 +869,13 @@ mod tests {
 
     impl Picker {
         fn new(library: &str, project: &std::path::Path) -> Self {
-            use crate::library::engine_file::FileLibrary;
+            use crate::library::engine_library::FileLibrary;
             let (library_dir, path) = written("refs.bib", library);
             let file = FileLibrary::open(&path).unwrap_or_else(|_| panic!("a library"));
             let mut open = Library::default();
             open.file = Some(std::sync::Arc::new(file));
             let app = tauri::test::mock_builder()
                 .manage(Mutex::new(open))
-                .manage(crate::library::PreviewRequests::default())
                 .manage(crate::editor_endpoint::Pending::default())
                 .manage(ProjectBibliography::default())
                 .manage(crate::session_references::SessionReferences::default())
@@ -833,8 +903,8 @@ mod tests {
             text: &str,
             request: u32,
         ) -> (
-            std::sync::Arc<crate::library::engine_file::FileLibrary>,
-            crate::library::engine_file::FilePreview,
+            std::sync::Arc<crate::library::engine_library::FileLibrary>,
+            ibis_core::contract::Preview,
         ) {
             use ibis_engine::Cancellation;
             let file = self
@@ -868,7 +938,6 @@ mod tests {
                 self.app.state(),
                 self.app.state(),
                 self.app.state(),
-                self.app.state(),
             ))
             .unwrap_or_else(|_| panic!("a preview"));
             (file, preview)
@@ -880,7 +949,13 @@ mod tests {
             let copied = crate::copy::commit_copy(
                 &file,
                 &file
-                    .recite(&preview.ticket, &preview.content_hash)
+                    .engine
+                    .citations()
+                    .commit(
+                        ibis_engine::citations::SessionId::PICKER,
+                        &preview.ticket,
+                        &preview.content_hash,
+                    )
                     .unwrap_or_else(|_| panic!("recited")),
                 crate::copy::ProjectCopy {
                     project: &self.app.state::<ProjectBibliography>(),
@@ -920,7 +995,13 @@ mod tests {
         let copied = crate::copy::commit_copy(
             &file,
             &file
-                .recite(&preview.ticket, &preview.content_hash)
+                .engine
+                .citations()
+                .commit(
+                    ibis_engine::citations::SessionId::PICKER,
+                    &preview.ticket,
+                    &preview.content_hash,
+                )
                 .unwrap_or_else(|_| panic!("recited")),
             crate::copy::ProjectCopy {
                 project: &picker.app.state::<ProjectBibliography>(),
@@ -954,7 +1035,13 @@ mod tests {
         let copied = crate::copy::commit_copy(
             &file,
             &file
-                .recite(&preview.ticket, &preview.content_hash)
+                .engine
+                .citations()
+                .commit(
+                    ibis_engine::citations::SessionId::PICKER,
+                    &preview.ticket,
+                    &preview.content_hash,
+                )
                 .unwrap_or_else(|_| panic!("recited")),
             crate::copy::ProjectCopy {
                 project: &picker.app.state::<ProjectBibliography>(),
