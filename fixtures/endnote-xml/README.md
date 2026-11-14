@@ -3,20 +3,20 @@
 Invented journal article (type 17), book (6) and book section (5), read through
 `load_file`. Only bibliographic records are supported: no annotations,
 attachment import or claim to other EndNote types. Styled text becomes plain
-text; comma-separated people use the shared exported-record name handling.
+text; EndNote corporate-name commas are decoded before shared name handling.
 Dates support years and numeric `YYYY/MM/DD` or `YYYY-MM-DD` parts; unparsed
 publication dates warn and retain a valid year. DTDs are rejected outright;
 the decoder accepts text only and has no file or network resolver.
 
 The fidelity test runs the installed Pandoc `endnotexml` reader on
 `library.xml`. Observed with Pandoc 3.13: common fields agree after these
-explicit differences (asserted in the test):
+explicit differences (Ibis fields are checked in the parser fixture):
 
 | Field | Ibis | Pandoc 3.13 |
 | --- | --- | --- |
 | Identity | Shared `Records` content hash; duplicate identities quarantined; no citation key | `rec-number` as `id` |
 | Edition | CSL `edition` | Omitted |
-| Secondary authors | Separate CSL `editor` | Omitted |
+| Editors | Book editors and series editors have distinct CSL roles | Omitted |
 | Electronic resource number | Validated CSL `DOI` | Omitted |
 | Publication date | Given year, month and day | Year only |
 | Pages | CSL `page`, book `number-of-pages` | `pages` |

@@ -46,7 +46,8 @@ fn supported_fields() {
             "container-title":"The Invented Atlas", "issued":{"date-parts":[[2024,7,9]]},
             "page":"41-59", "publisher":"Example Press"}),
         json!({"type":"book", "title":"Invented forêt handbook",
-            "author":[{"family":"Roe","given":"Rafael"}], "editor":[{"family":"Page","given":"Pia"}],
+            "author":[{"family":"Roe","given":"Rafael"}], "editor":[{"family":"Stone","given":"Sam"}],
+            "collection-editor":[{"family":"Page","given":"Pia"}],
             "collection-title":"Invented Series", "issued":{"date-parts":[[2025]]},
             "number-of-pages":"320", "edition":"2", "publisher":"Example Press", "publisher-place":"Exampleville"}),
         json!({"type":"article-journal", "title":"Invented marées & 星",
@@ -56,6 +57,20 @@ fn supported_fields() {
             "DOI":"10.0000/invented.tides"}),
     ];
     assert_eq!(fields(&loaded), expected);
+}
+
+#[test]
+fn corporate_contributors_lose_endnote_control_commas() {
+    let xml = "<xml><records><record><ref-type>6</ref-type><titles><title>Invented book</title></titles><contributors><authors><author>Invented Institute,</author><author>Invented Institute,, Research Division</author><author>Roe, Rafael</author></authors></contributors></record></records></xml>";
+    let loaded = open(xml, "corporate.xml").unwrap();
+    assert_eq!(
+        fields(&loaded)[0]["author"],
+        json!([
+            {"literal":"Invented Institute"},
+            {"literal":"Invented Institute, Research Division"},
+            {"family":"Roe", "given":"Rafael"}
+        ])
+    );
 }
 
 #[test]

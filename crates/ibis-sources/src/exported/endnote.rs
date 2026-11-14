@@ -189,18 +189,26 @@ fn csl(fields: &Fields) -> Result<(BTreeMap<String, Value>, bool), RecordProblem
     };
     let title = one(&["titles/title"])?.ok_or((WarningCause::MissingField, Some("title")))?;
     let mut csl = BTreeMap::from([("type".into(), json!(kind)), ("title".into(), json!(title))]);
-    for (source, target) in [
-        ("contributors/authors/author", "author"),
-        ("contributors/secondary-authors/author", "editor"),
-    ] {
+    let contributors = match kind {
+        "book" => &[
+            ("contributors/authors/author", "author"),
+            ("contributors/secondary-authors/author", "collection-editor"),
+            ("contributors/tertiary-authors/author", "editor"),
+        ][..],
+        _ => &[
+            ("contributors/authors/author", "author"),
+            ("contributors/secondary-authors/author", "editor"),
+        ][..],
+    };
+    for (source, target) in contributors {
         let people: Vec<_> = fields
-            .get(source)
+            .get(*source)
             .into_iter()
             .flatten()
-            .filter_map(|name| person(name))
+            .filter_map(|name| endnote_person(name))
             .collect();
         if !people.is_empty() {
-            csl.insert(target.into(), json!(people));
+            csl.insert((*target).into(), json!(people));
         }
     }
     for (source, target) in [
@@ -253,4 +261,16 @@ fn csl(fields: &Fields) -> Result<(BTreeMap<String, Value>, bool), RecordProblem
         csl.insert("issued".into(), issued);
     }
     Ok((csl, uncertain))
+}
+
+fn endnote_person(name: &str) -> Option<Value> {
+    let name = name.trim();
+    if let Some((first, rest)) = name.split_once(",,") {
+        Some(json!({"literal": format!("{first},{rest}")}))
+    } else if let Some(corporate) = name.strip_suffix(',') {
+        let corporate = corporate.trim();
+        (!corporate.is_empty()).then(|| json!({"literal": corporate}))
+    } else {
+        person(name)
+    }
 }

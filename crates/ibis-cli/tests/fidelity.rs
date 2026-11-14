@@ -236,7 +236,7 @@ fn endnote_fields_match_pandoc_with_explicit_differences() {
         return;
     }
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/endnote-xml/library.xml");
-    let loaded = ibis_sources::load_file(&fixture).unwrap();
+    let loaded = ibis_sources::load_file(&fixture).unwrap_or_else(|e| panic!("{e}"));
     assert!(loaded.warnings.is_empty());
     let mut expected: Vec<Value> = loaded
         .snapshot
@@ -246,8 +246,10 @@ fn endnote_fields_match_pandoc_with_explicit_differences() {
             let LibraryObject::Record(record) = &entry.object else {
                 panic!("record")
             };
-            let mut csl = serde_json::to_value(&record.csl).unwrap();
-            csl.as_object_mut().unwrap().remove("id");
+            let mut csl = serde_json::to_value(&record.csl).unwrap_or_else(|e| panic!("{e}"));
+            csl.as_object_mut()
+                .unwrap_or_else(|| panic!("missing expected field"))
+                .remove("id");
             csl
         })
         .collect();
@@ -256,38 +258,39 @@ fn endnote_fields_match_pandoc_with_explicit_differences() {
         .args(["--from=endnotexml", "--to=csljson"])
         .arg(fixture)
         .output()
-        .expect("Pandoc is required for the EndNote XML comparison");
+        .unwrap_or_else(|e| panic!("cannot run Pandoc: {e}"));
     assert!(output.status.success(), "Pandoc must read the same fixture");
-    let mut pandoc: Vec<Value> = serde_json::from_slice(&output.stdout).unwrap();
+    let mut pandoc: Vec<Value> = serde_json::from_slice(&output.stdout).unwrap_or_else(|e| panic!("{e}"));
     pandoc.sort_by_key(|record| record["title"].to_string());
     assert_eq!(pandoc.len(), expected.len());
-    for (mut theirs, ours) in pandoc.into_iter().zip(expected) {
-        let record = theirs.as_object_mut().unwrap();
-        let number = match ours["title"].as_str().unwrap() {
+    for (mut theirs, mut ours) in pandoc.into_iter().zip(expected) {
+        let record = theirs
+            .as_object_mut()
+            .unwrap_or_else(|| panic!("missing expected field"));
+        let number = match ours["title"]
+            .as_str()
+            .unwrap_or_else(|| panic!("missing expected field"))
+        {
             "Invented capítulo β" => "3",
             "Invented forêt handbook" => "2",
             "Invented marées & 星" => "1",
             title => panic!("unexpected title: {title}"),
         };
         assert_eq!(record.remove("id"), Some(json!(number))); // Pandoc uses rec-number.
-        if number == "2" {
-            assert_eq!(ours["edition"], "2");
-            assert!(!record.contains_key("edition")); // Pandoc 3.13 omits it.
-            record.insert("edition".into(), json!("2"));
+        for field in ["edition", "editor", "collection-editor", "DOI"] {
+            // Pandoc 3.13 omits these fields; the parser fixture checks them.
+            ours.as_object_mut()
+                .unwrap_or_else(|| panic!("missing expected field"))
+                .remove(field);
         }
-        for field in ["editor", "DOI"] {
-            // Pandoc 3.13 omits these source fields.
-            assert!(!record.contains_key(field));
-            if let Some(value) = ours.get(field) {
-                record.insert(field.into(), value.clone());
-            }
-        }
-        assert_eq!(
-            record["issued"],
-            json!({"date-parts":[[ours["issued"]["date-parts"][0][0]]]})
-        );
-        record.insert("issued".into(), ours["issued"].clone()); // Pandoc retains only year.
-        let pages = record.remove("pages").unwrap(); // Pandoc emits the non-CSL spelling.
+        // Pandoc retains only the year.
+        ours["issued"]["date-parts"][0]
+            .as_array_mut()
+            .unwrap_or_else(|| panic!("missing expected field"))
+            .truncate(1);
+        let pages = record
+            .remove("pages")
+            .unwrap_or_else(|| panic!("missing expected field")); // Pandoc emits the non-CSL spelling.
         record.insert(
             if ours["type"] == "book" {
                 "number-of-pages"
@@ -298,11 +301,15 @@ fn endnote_fields_match_pandoc_with_explicit_differences() {
             pages,
         );
         if ours["type"] == "article-journal" {
-            let issue = record.remove("number").unwrap();
+            let issue = record
+                .remove("number")
+                .unwrap_or_else(|| panic!("missing expected field"));
             record.insert("issue".into(), issue);
         }
         if ours["type"] == "book" {
-            let series = record.remove("container-title").unwrap();
+            let series = record
+                .remove("container-title")
+                .unwrap_or_else(|| panic!("missing expected field"));
             record.insert("collection-title".into(), series);
         }
         assert_eq!(theirs, ours);

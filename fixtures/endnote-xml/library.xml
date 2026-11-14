@@ -14,7 +14,8 @@
 <record>
   <rec-number>2</rec-number><ref-type name="Book">6</ref-type>
   <contributors><authors><author>Roe, Rafael</author></authors>
-    <secondary-authors><author>Page, Pia</author></secondary-authors></contributors>
+    <secondary-authors><author>Page, Pia</author></secondary-authors>
+    <tertiary-authors><author>Stone, Sam</author></tertiary-authors></contributors>
   <titles><title>Invented forêt handbook</title><secondary-title>Invented Series</secondary-title></titles>
   <dates><year>2025</year></dates><edition>2</edition><pages>320</pages>
   <publisher>Example Press</publisher><pub-location>Exampleville</pub-location>

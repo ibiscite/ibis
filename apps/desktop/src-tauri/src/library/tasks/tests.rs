@@ -580,6 +580,9 @@ fn the_chooser_accepts_each_library_file_format_the_engine_reads() {
             "json" | "csljson" => csl,
             "ris" | "txt" => ris,
             "csv" => "type,title\nbook,Example reference\n",
+            "xml" => {
+                "<xml><records><record><ref-type>6</ref-type><titles><title>Example reference</title></titles></record></records></xml>"
+            }
             other => panic!("give .{other} a sample library here"),
         };
         let path = directory.path().join(format!("synthetic.{extension}"));
