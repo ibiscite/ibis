@@ -636,40 +636,13 @@ fn share(syntax: KeySyntax, picks: &[Pick<'_>]) -> Result<String, CitationError>
             let fields = CitableFields::new(pick.record.csl.to_map());
             super::bibtex::write(&mut output, pick.key, &fields).map_err(|_| CitationError::OutputTooLarge)?;
         } else {
-            let link = pick.doi_link.as_deref().ok_or(CitationError::MissingDoi)?;
+            let link = pick.doi_link.as_ref().ok_or(CitationError::MissingDoi)?;
             output
-                .write_all(link.as_bytes())
+                .write_all(link.as_str().as_bytes())
                 .map_err(|_| CitationError::OutputTooLarge)?;
         }
     }
     String::from_utf8(output.0).map_err(|_| CitationError::InvalidRichText)
-}
-
-/// A DOI is an identifier, not an arbitrary URL. Keep its spelling and percent
-/// bytes, encoding reserved URL characters rather than letting them change the
-/// resolver's path, query or fragment. Missing/invalid values refuse the item.
-pub(super) fn doi_link(fields: &CitableFields) -> Option<String> {
-    let doi = fields.plain().get("DOI")?.as_str()?;
-    let (prefix, suffix) = doi.split_once('/')?;
-    let registrant = prefix.strip_prefix("10.")?;
-    if doi.len() > 64 * 1024
-        || registrant.len() < 4
-        || !registrant.bytes().all(|b| b.is_ascii_digit() || b == b'.')
-        || suffix.is_empty()
-        || doi.chars().any(|c| c.is_whitespace() || c.is_control() || c == '\\')
-    {
-        return None;
-    }
-    let mut link = String::from("https://doi.org/");
-    for byte in doi.bytes() {
-        if byte.is_ascii_alphanumeric() || b"-._~/".contains(&byte) {
-            link.push(char::from(byte));
-        } else {
-            use std::fmt::Write;
-            let _ = write!(link, "%{byte:02X}");
-        }
-    }
-    Some(link)
 }
 
 fn keys(picks: &[Pick<'_>], separator: &str) -> String {

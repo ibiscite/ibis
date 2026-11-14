@@ -541,7 +541,7 @@ struct Pick<'a> {
     key: &'a str,
     form: CitationForm,
     suppress: bool,
-    doi_link: Option<String>,
+    doi_link: Option<crate::citable::DoiLink>,
 }
 
 /// The immutable snapshot is the complete resolution boundary. Engine callers
@@ -599,7 +599,7 @@ pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationRe
             Ok((record, key, form, mut doi_link)) => {
                 if let Some(link) = &doi_link {
                     if linked.insert(&record.id) {
-                        link_bytes += link.len() + usize::from(link_bytes != 0);
+                        link_bytes += link.as_str().len() + usize::from(link_bytes != 0);
                     } else {
                         doi_link = None;
                     }
@@ -749,13 +749,15 @@ fn resolve<'a>(
     default_form: CitationForm,
     caps: &SyntaxCapabilities,
     owners: &HashMap<&str, Option<&ItemRef>>,
-) -> Result<(&'a Record, &'a str, CitationForm, Option<String>), CitationError> {
+) -> Result<(&'a Record, &'a str, CitationForm, Option<crate::citable::DoiLink>), CitationError> {
     let form = item.form.unwrap_or(default_form);
     let mut doi_link = None;
     let key = if caps.syntax == KeySyntax::DoiLinks {
         // DOI links identify the work without needing a citation key.
         doi_link = Some(
-            render::doi_link(&crate::citable::CitableFields::new(record.csl.to_map()))
+            crate::citable::CitableFields::new(record.csl.to_map())
+                .doi()
+                .cloned()
                 .ok_or(CitationError::MissingDoi)?,
         );
         record.id.key.as_str()

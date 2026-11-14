@@ -100,6 +100,18 @@ filter: no notes, annotations, private links or device paths in values. Source
 identities and citation keys stay separate from metadata. Zotero differential fixtures
 check output independently of the renderer.
 
+The decoded projection checks visible text and markup attributes before keeping
+any rich-text runs. `PublicUrl` owns URL parsing and refuses local names and
+special-purpose literal addresses (IPv6 requires native global unicast).
+`DoiLink` owns DOI identity and resolver links; dot path segments are refused
+before any serializer, including citeproc. BibTeX identifiers and keys use
+verbatim values, with balanced literal braces and no TeX commands; prose keeps
+TeX escaping. Names are normalized once with both particles retained. When
+both occupy one name, BibLaTeX's single prefix holds the dropping particle and
+the protected family includes the non-dropping particle, keeping particles
+out of given-name initialization. This keeps every name word; CSL-JSON is
+required to preserve both explicit particle roles on reimport.
+
 The desktop warms its saved default style (APA for a key default), locale and
 runtime in the background after reading startup settings, independently of the
 library. Libraries share that formatter for the session. Warm-up publishes no

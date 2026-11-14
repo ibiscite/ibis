@@ -2,16 +2,19 @@
 //! only this writer supplies entry syntax and TeX commands.
 use std::io::{self, Write};
 
-use crate::citable::{CitableFields, TextPart};
+use crate::citable::{CitableFields, TextPart, Verbatim};
 use serde_json::Value;
 
 pub(super) fn valid_key(key: &str) -> bool {
-    !key.is_empty() && key.chars().all(|c| c.is_alphanumeric() || "-_.:+/".contains(c))
+    Verbatim::key(key).is_some()
 }
 
 /// `key` was checked by the catalogue resolver.
 /// Stream to the caller's bounded destination, including while escaping.
 pub(super) fn write(out: &mut impl Write, key: &str, fields: &CitableFields) -> io::Result<()> {
+    let key = Verbatim::key(key).ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid BibTeX key"))?;
+    let identifiers = fields.identifiers();
+    let names = fields;
     let rich_fields = fields.rich_text();
     let fields = fields.plain();
     let kind = match fields.get("type").and_then(Value::as_str).unwrap_or_default() {
@@ -28,7 +31,9 @@ pub(super) fn write(out: &mut impl Write, key: &str, fields: &CitableFields) -> 
         "manuscript" => "unpublished",
         _ => "misc",
     };
-    writeln!(out, "@{kind}{{{key},")?;
+    write!(out, "@{kind}{{")?;
+    verbatim(out, &key)?;
+    out.write_all(b",\n")?;
     for (csl, bib) in [
         ("title", "title"),
         ("title-short", "shorttitle"),
@@ -49,12 +54,6 @@ pub(super) fn write(out: &mut impl Write, key: &str, fields: &CitableFields) -> 
         ("number", "number"),
         ("page", "pages"),
         ("edition", "edition"),
-        ("DOI", "doi"),
-        ("URL", "url"),
-        ("ISBN", "isbn"),
-        ("ISSN", "issn"),
-        ("PMID", "pmid"),
-        ("PMCID", "pmcid"),
         ("abstract", "abstract"),
         ("keyword", "keywords"),
         ("language", "langid"),
@@ -68,9 +67,6 @@ pub(super) fn write(out: &mut impl Write, key: &str, fields: &CitableFields) -> 
         }
         if let Some(value) = fields.get(csl) {
             match value {
-                Value::String(text) if matches!(csl, "URL" | "DOI" | "ISBN" | "ISSN" | "PMID" | "PMCID") => {
-                    verbatim_field(out, bib, text)?;
-                }
                 Value::String(text)
                     if matches!(
                         csl,
@@ -91,6 +87,20 @@ pub(super) fn write(out: &mut impl Write, key: &str, fields: &CitableFields) -> 
             }
         }
     }
+    for (csl, bib) in [
+        ("DOI", "doi"),
+        ("URL", "url"),
+        ("ISBN", "isbn"),
+        ("ISSN", "issn"),
+        ("PMID", "pmid"),
+        ("PMCID", "pmcid"),
+    ] {
+        if let Some(value) = identifiers.get(csl) {
+            write!(out, "  {bib} = {{")?;
+            verbatim(out, value)?;
+            out.write_all(b"},\n")?;
+        }
+    }
     if let Some(subtype) = fields.get("type").and_then(Value::as_str).and_then(|kind| match kind {
         "article-newspaper" => Some("newspaper"),
         "article-magazine" => Some("magazine"),
@@ -104,54 +114,48 @@ pub(super) fn write(out: &mut impl Write, key: &str, fields: &CitableFields) -> 
         ("translator", "translator"),
         ("container-author", "bookauthor"),
     ] {
-        if let Some(names) = fields.get(csl).and_then(Value::as_array) {
+        if !names.names(csl).is_empty() {
             write!(out, "  {bib} = {{")?;
-            for (index, name) in names.iter().enumerate() {
+            for (index, name) in names.names(csl).iter().enumerate() {
                 if index > 0 {
                     out.write_all(b" and ")?;
                 }
-                let part = |key| name.get(key).and_then(Value::as_str).unwrap_or_default();
-                if !part("literal").is_empty() {
+                let suffix = name.suffix.as_deref().unwrap_or_default();
+                let (family, given, prefix) = name.bibtex_parts();
+                if let Some(literal) = name.literal.as_deref().filter(|s| !s.is_empty()) {
                     // Organizations stay one name even when they contain `and`.
                     out.write_all(b"{")?;
-                    escape(out, part("literal"))?;
+                    escape(out, literal)?;
                     out.write_all(b"}")?;
                 } else {
-                    let prefix = if !part("non-dropping-particle").is_empty() {
-                        Some((part("non-dropping-particle"), true))
-                    } else if !part("dropping-particle").is_empty() {
-                        Some((part("dropping-particle"), false))
-                    } else {
-                        None
-                    };
                     if let Some((prefix, use_prefix)) = prefix {
                         // Extended names retain whether the prefix belongs
                         // to the family name, without trusting delimiters.
                         out.write_all(b"family={")?;
-                        escape(out, part("family"))?;
+                        escape(out, &family)?;
                         out.write_all(b"}, given={")?;
-                        escape(out, part("given"))?;
+                        escape(out, given)?;
                         out.write_all(b"}, prefix={")?;
                         escape(out, prefix)?;
                         write!(out, "}}, useprefix={use_prefix}")?;
-                        if !part("suffix").is_empty() {
+                        if !suffix.is_empty() {
                             out.write_all(b", suffix={")?;
-                            escape(out, part("suffix"))?;
+                            escape(out, suffix)?;
                             out.write_all(b"}")?;
                         }
                     } else {
                         // Protected components cannot introduce another
                         // author or comma-delimited name part.
                         out.write_all(b"{")?;
-                        escape(out, part("family"))?;
+                        escape(out, &family)?;
                         out.write_all(b"}, ")?;
-                        if !part("suffix").is_empty() {
+                        if !suffix.is_empty() {
                             out.write_all(b"{")?;
-                            escape(out, part("suffix"))?;
+                            escape(out, suffix)?;
                             out.write_all(b"}, ")?;
                         }
                         out.write_all(b"{")?;
-                        escape(out, part("given"))?;
+                        escape(out, given)?;
                         out.write_all(b"}")?;
                     }
                 }
@@ -214,19 +218,8 @@ fn field(out: &mut impl Write, name: &str, text: &str) -> io::Result<()> {
     out.write_all(b"},\n")
 }
 
-/// These fields are read verbatim by biber, not as LaTeX prose. Preserve their
-/// punctuation; only field delimiters, backslashes and controls need quoting.
-fn verbatim_field(out: &mut impl Write, name: &str, text: &str) -> io::Result<()> {
-    write!(out, "  {name} = {{")?;
-    for c in text.chars() {
-        match c {
-            '{' if name == "url" => out.write_all(b"%7B")?,
-            '}' if name == "url" => out.write_all(b"%7D")?,
-            c if matches!(c, '{' | '}' | '\\') || c.is_control() => escape(out, c.encode_utf8(&mut [0; 4]))?,
-            c => out.write_all(c.encode_utf8(&mut [0; 4]).as_bytes())?,
-        }
-    }
-    out.write_all(b"},\n")
+fn verbatim(out: &mut impl Write, value: &Verbatim) -> io::Result<()> {
+    out.write_all(value.as_str().as_bytes())
 }
 
 fn escape(out: &mut impl Write, text: &str) -> io::Result<()> {

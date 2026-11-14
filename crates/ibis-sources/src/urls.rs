@@ -1,5 +1,5 @@
 //! One public URL boundary for every source adapter.
-use ibis_core::citable::public_url;
+use ibis_core::citable::PublicUrl;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -36,7 +36,7 @@ impl UrlFields for ibis_core::contract::Csl {
 }
 
 pub(crate) fn remove_private_urls(csl: &mut impl UrlFields) -> bool {
-    let mut removed = csl.text("URL").is_some_and(|url| !public_url(url));
+    let mut removed = csl.text("URL").is_some_and(|url| PublicUrl::new(url).is_none());
     if removed {
         csl.drop_field("URL");
     }
@@ -86,7 +86,7 @@ fn without_private_urls(note: &str) -> (String, bool) {
                     .find(['}', '\n'])
                     .unwrap_or(rest.len() - value_start);
             let value = rest[value_start..value_end].trim();
-            if !value.is_empty() && (value.contains('{') || !public_url(value)) {
+            if !value.is_empty() && (value.contains('{') || PublicUrl::new(value).is_none()) {
                 removed = true;
                 // Braces, CR and Unicode separators can be part of a private
                 // path. Remove through the end of citeproc's line, including

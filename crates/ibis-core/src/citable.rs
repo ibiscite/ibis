@@ -12,8 +12,10 @@ use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 
 pub(crate) mod text;
+mod values;
 use text::Projection;
 pub use text::TextPart;
+pub use values::{DoiLink, ExportName, PublicUrl, Verbatim};
 
 /// Bibliographic metadata allowed to leave a record. Construction applies the
 /// privacy filter once; callers can read or serialize it, never mutate it.
@@ -27,6 +29,12 @@ pub struct CitableFields {
     rich: BTreeMap<String, Vec<TextPart>>,
     #[serde(skip)]
     source_id: Option<String>,
+    #[serde(skip)]
+    doi: Option<DoiLink>,
+    #[serde(skip)]
+    identifiers: BTreeMap<String, Verbatim>,
+    #[serde(skip)]
+    names: BTreeMap<String, Vec<ExportName>>,
 }
 
 impl CitableFields {
@@ -46,6 +54,7 @@ impl CitableFields {
         if let Some(Value::String(note)) = fields.remove("note") {
             apply_overrides(&mut fields, &note);
         }
+        let fallback_url = fields.remove("URL");
         // Zotero's names for the short titles, which citeproc copies in when the
         // CSL ones are missing.
         for (alias, canonical) in [
@@ -59,6 +68,7 @@ impl CitableFields {
             }
         }
         let mut rich = BTreeMap::new();
+        let mut export_names = BTreeMap::new();
         let scalar = |value: &mut Value| project_scalar(value, false).is_some();
         fields.retain(|name, value| {
             if !is_variable(name) {
@@ -70,6 +80,14 @@ impl CitableFields {
                     parts.retain(|name, value| NAME_PARTS.contains(&name.as_str()) && scalar(value));
                     !parts.is_empty()
                 });
+                export_names.insert(
+                    name.to_owned(),
+                    names
+                        .iter()
+                        .filter_map(|name| Some(ExportName::new(name.as_object()?.clone())))
+                        .collect::<Vec<_>>(),
+                );
+                *names = export_names[name].iter().map(|name| json!(name)).collect();
                 !names.is_empty()
             } else if DATES.contains(&name.as_str()) {
                 let Value::Object(parts) = value else { return false };
@@ -118,41 +136,32 @@ impl CitableFields {
                 false
             }
         });
-        // URL and DOI rules see the same decoded, normalized text as writers.
-        if let Some(mut url) = source_url
-            && project_scalar(&mut url, false).is_some()
-            && retain_public(&mut url)
-            && url.as_str().is_some_and(public_url)
+        let checked_url = |mut value: Value| {
+            project_scalar(&mut value, false)?;
+            PublicUrl::new(value.as_str()?)
+        };
+        if let Some(url) = source_url
+            .and_then(checked_url)
+            .or_else(|| fallback_url.and_then(checked_url))
         {
-            fields.insert("URL".into(), url);
+            fields.insert("URL".into(), json!(url.as_str()));
         }
-        if let Some(Value::String(doi)) = fields.get_mut("DOI") {
-            // CSL styles supply their own resolver prefix. Strip only recognized
-            // wrappers, retaining the identifier's spelling, punctuation and case.
-            let mut value = doi.trim();
-            let prefixes = [
-                "https://doi.org/",
-                "http://doi.org/",
-                "https://dx.doi.org/",
-                "http://dx.doi.org/",
-                "doi.org/",
-                "dx.doi.org/",
-                "doi:",
-            ];
-            while let Some(bare) = prefixes.iter().find_map(|prefix| {
-                value
-                    .get(..prefix.len())
-                    .filter(|head| head.eq_ignore_ascii_case(prefix))
-                    .map(|_| value[prefix.len()..].trim())
-            }) {
-                value = bare;
-            }
-            *doi = value.to_owned();
+        let doi = fields.remove("DOI").and_then(|value| DoiLink::new(value.as_str()?));
+        if let Some(doi) = &doi {
+            fields.insert("DOI".into(), json!(doi.identifier()));
         }
-        // No source interpretation follows this pass. Writers receive only
-        // these final values or their checked rich-text runs.
-        fields.retain(|name, value| retain_public(value) && (name != "URL" || value.as_str().is_some_and(public_url)));
-        rich.retain(|name, _| fields.contains_key(name));
+        let identifiers = ["URL", "DOI", "ISBN", "ISSN", "PMID", "PMCID"]
+            .into_iter()
+            .filter_map(|name| {
+                let text = fields.get(name)?.as_str()?;
+                let text = if name == "URL" {
+                    text.replace('{', "%7B").replace('}', "%7D")
+                } else {
+                    text.into()
+                };
+                Some((name.into(), Verbatim::new(&text)?))
+            })
+            .collect();
         let plain = fields;
         let mut fields = plain.clone();
         encode_values(fields.values_mut());
@@ -164,6 +173,9 @@ impl CitableFields {
             plain,
             rich,
             source_id,
+            doi,
+            identifiers,
+            names: export_names,
         }
     }
 
@@ -182,6 +194,18 @@ impl CitableFields {
     pub fn source_id(&self) -> Option<&str> {
         self.source_id.as_deref()
     }
+
+    pub fn doi(&self) -> Option<&DoiLink> {
+        self.doi.as_ref()
+    }
+
+    pub fn identifiers(&self) -> &BTreeMap<String, Verbatim> {
+        &self.identifiers
+    }
+
+    pub fn names(&self, role: &str) -> &[ExportName] {
+        self.names.get(role).map_or(&[], Vec::as_slice)
+    }
 }
 
 const RICH_TEXT: [&str; 6] = [
@@ -197,7 +221,7 @@ fn project_scalar(value: &mut Value, keep_markup: bool) -> Option<Vec<TextPart>>
     match value {
         Value::String(source) => {
             let projected = Projection::new(source);
-            if points_to_device(&projected.attributes) {
+            if points_to_device(&projected.plain) || points_to_device(&projected.attributes) {
                 return None;
             }
             *source = projected.plain;
@@ -205,23 +229,6 @@ fn project_scalar(value: &mut Value, keep_markup: bool) -> Option<Vec<TextPart>>
         }
         Value::Number(_) | Value::Bool(_) => Some(Vec::new()),
         _ => None,
-    }
-}
-
-fn retain_public(value: &mut Value) -> bool {
-    match value {
-        Value::String(text) => !points_to_device(text),
-        Value::Object(fields) => {
-            fields.retain(|_, value| retain_public(value));
-            !fields.is_empty()
-        }
-        Value::Array(values) => {
-            let was_empty = values.is_empty();
-            values.retain_mut(retain_public);
-            was_empty || !values.is_empty()
-        }
-        Value::Number(_) | Value::Bool(_) => true,
-        Value::Null => false,
     }
 }
 
@@ -352,96 +359,6 @@ fn is_variable(name: &str) -> bool {
     name == "type" || TEXT.contains(&name) || NAMES.contains(&name) || DATES.contains(&name)
 }
 
-/// A URL a reader can open from a printed reference. Local files, network
-/// shares and application links (`zotero://`, …) are private to this device.
-pub fn public_url(url: &str) -> bool {
-    let url = url.trim();
-    if url.is_empty()
-        || url.contains('\\')
-        || url.chars().any(|c| c.is_control() || c.is_whitespace())
-        || private_host(url)
-    {
-        return false;
-    }
-    match url.split_once(':') {
-        Some((scheme, rest)) => {
-            ["http", "https", "ftp", "mailto", "doi", "hdl", "urn"]
-                .iter()
-                .any(|public| scheme.eq_ignore_ascii_case(public))
-                && !rest.is_empty()
-                && (!["http", "https", "ftp"]
-                    .iter()
-                    .any(|web| scheme.eq_ignore_ascii_case(web))
-                    || rest.starts_with("//"))
-        }
-        // Zotero accepts a domain without a scheme. Require a domain-shaped
-        // host so relative paths and file names stay private.
-        None => {
-            let host = url.split('/').next().unwrap_or_default();
-            let labels: Vec<_> = host.split('.').collect();
-            let top = labels.last().copied().unwrap_or_default();
-            labels.len() >= 2
-                && !DOCUMENT_SUFFIXES.contains(&top.to_ascii_lowercase().as_str())
-                && labels
-                    .iter()
-                    .all(|label| !label.is_empty() && label.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'))
-                && top.len() >= 2
-                && top.bytes().all(|b| b.is_ascii_alphabetic())
-        }
-    }
-}
-
-/// Whether a web address carries a login or names this computer or its network.
-/// A reader elsewhere could not open it, and it says where the person keeps files.
-fn private_host(url: &str) -> bool {
-    let address = url.split_once("://").map_or(url, |(_, rest)| rest);
-    let authority = address.split(['/', '?', '#']).next().unwrap_or_default();
-    if url.contains("://") && authority.contains('@') {
-        return true;
-    }
-    let bracketed = authority.strip_prefix('[').and_then(|rest| rest.split_once(']'));
-    let host = bracketed.map_or_else(|| authority.split(':').next().unwrap_or_default(), |(host, _)| host);
-    let host = host.trim_end_matches('.').to_ascii_lowercase();
-    let local_name = ["localhost", "local", "internal", "lan", "home"]
-        .iter()
-        .any(|name| host == *name || host.ends_with(&format!(".{name}")));
-    let address = host.parse::<std::net::IpAddr>();
-    let numeric_host = host.rsplit('.').next().is_some_and(|last| {
-        !last.is_empty()
-            && (last.bytes().all(|b| b.is_ascii_digit())
-                || last
-                    .strip_prefix("0x")
-                    .is_some_and(|hex| !hex.is_empty() && hex.bytes().all(|b| b.is_ascii_hexdigit())))
-    });
-    local_name
-        // Ambiguous encoded or IDNA spellings can resolve to local hosts.
-        // Public internationalized domains can use their ASCII punycode form.
-        || !host.is_ascii()
-        || host.contains('%')
-        || url.contains("://") && !host.contains(['.', ':'])
-        // Browsers accept legacy numeric IPv4 spellings that IpAddr rejects.
-        // Refuse those instead of treating them as public DNS names.
-        || numeric_host && address.is_err()
-        || address.is_ok_and(private_address)
-}
-
-fn private_address(address: std::net::IpAddr) -> bool {
-    match address {
-        std::net::IpAddr::V4(address) => {
-            address.is_loopback() || address.is_private() || address.is_link_local() || address.is_unspecified()
-        }
-        std::net::IpAddr::V6(address) => {
-            address.is_loopback()
-                || address.is_unspecified()
-                || address.is_unique_local()
-                || address.is_unicast_link_local()
-                || address
-                    .to_ipv4_mapped()
-                    .is_some_and(|address| private_address(address.into()))
-        }
-    }
-}
-
 /// Inspect only the decoded, normalized projection that consumers receive.
 pub(crate) fn points_to_device(value: &str) -> bool {
     let path = |word: &str| {
@@ -471,7 +388,7 @@ pub(crate) fn points_to_device(value: &str) -> bool {
                         && crate::model::markup_tag(&word[index..]).is_some_and(|(_, tail)| tail.starts_with('>')))
                     && path(rest)
             })
-            || (word.contains("://") && !public_url(word.trim_matches(['<', '>'])))
+            || (word.contains("://") && PublicUrl::new(word.trim_matches(['<', '>'])).is_none())
     })
 }
 
@@ -827,14 +744,14 @@ mod tests {
             "papers.zip",
             "https://example.invalid /home/invented",
         ] {
-            assert!(!public_url(url), "{url}");
+            assert!(PublicUrl::new(url).is_none(), "{url}");
         }
         for url in [
             "https://example.invalid/work",
             "example.invalid/work",
             "doi:10.1000/invented",
         ] {
-            assert!(public_url(url), "{url}");
+            assert!(PublicUrl::new(url).is_some(), "{url}");
         }
     }
 

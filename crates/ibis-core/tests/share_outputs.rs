@@ -437,7 +437,7 @@ fn malformed_dates_are_omitted_instead_of_writing_empty_or_partial_dates() {
 }
 
 #[test]
-fn verbatim_identifiers_still_cannot_break_fields_or_activate_tex() {
+fn unrepresentable_verbatim_identifiers_are_omitted() {
     let case = case(
         "bibtex",
         json!({"type":"book","ISBN":"} @misc{ \\input{x}\nnext"}),
@@ -447,5 +447,5 @@ fn verbatim_identifiers_still_cannot_break_fields_or_activate_tex() {
     assert!(!text.contains("} @misc{"), "{text}");
     assert!(!text.contains("\\input"), "{text}");
     assert!(!text.contains("\nnext"), "{text}");
-    assert!(text.contains("input"));
+    assert!(!text.contains("  isbn ="), "{text}");
 }

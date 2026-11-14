@@ -1295,7 +1295,6 @@ fn decode_url(value: &str) -> String {
             {
                 out.extend(chars.next())
             }
-            '{' | '}' => {}
             _ => out.push(ch),
         }
     }
