@@ -355,6 +355,12 @@ fn recent_files_remain_one_click_choices_with_only_the_open_file_checked() {
 fn reading_problems_offer_their_fix_instead_of_a_dead_count() {
     let mut status = loaded("thesis.bib", false);
     status.warnings = 2;
+    let affected = ibis_core::contract::LibraryId::digest(b"invented warning library");
+    status.problem_library = Some(affected.clone());
+    assert!(matches!(
+        library_action(Row::FixProblems, &status, &LibraryChoices::default()),
+        Some(LibraryAction::FixProblems { library, .. }) if library == affected
+    ));
     assert_eq!(
         labels(&status, &LibraryChoices::default()),
         expected(&["thesis.bib · 165 references", "Fix 2 Problems…", "Choose File…"])

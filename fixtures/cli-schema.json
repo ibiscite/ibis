@@ -165,6 +165,13 @@
       },
       "result": {
         "$defs": {
+          "CitationSurface": {
+            "description": "Wording context only; operations choose their recovery before presentation.",
+            "enum": [
+              "bibliography"
+            ],
+            "type": "string"
+          },
           "ErrorCode": {
             "enum": [
               "usage",
@@ -309,6 +316,7 @@
               "locator",
               "citation",
               "citation-form",
+              "session-references",
               "language",
               "recovery-action",
               "project-name",
@@ -453,6 +461,16 @@
                 },
                 "type": "object"
               },
+              "context": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CitationSurface"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "id": {
                 "type": "string"
               }
@@ -473,6 +491,18 @@
           "Recovery": {
             "description": "Exactly one next action; absence must have an explicit, machine-readable reason.",
             "oneOf": [
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-output",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
               {
                 "properties": {
                   "action": {
@@ -644,7 +674,31 @@
               {
                 "properties": {
                   "action": {
+                    "const": "edit-locator",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
                     "const": "edit-input",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "search-references",
                     "type": "string"
                   }
                 },
@@ -669,6 +723,30 @@
                 "properties": {
                   "action": {
                     "const": "reduce-selection",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "close",
                     "type": "string"
                   }
                 },
@@ -1387,6 +1465,13 @@
             ],
             "type": "string"
           },
+          "CitationSurface": {
+            "description": "Wording context only; operations choose their recovery before presentation.",
+            "enum": [
+              "bibliography"
+            ],
+            "type": "string"
+          },
           "CitationWarningCode": {
             "description": "Fixed codes only; source diagnostics never include field text or locations.",
             "oneOf": [
@@ -1595,6 +1680,7 @@
               "locator",
               "citation",
               "citation-form",
+              "session-references",
               "language",
               "recovery-action",
               "project-name",
@@ -1909,6 +1995,16 @@
                 },
                 "type": "object"
               },
+              "context": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CitationSurface"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "id": {
                 "type": "string"
               }
@@ -2026,6 +2122,18 @@
           "Recovery": {
             "description": "Exactly one next action; absence must have an explicit, machine-readable reason.",
             "oneOf": [
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-output",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
               {
                 "properties": {
                   "action": {
@@ -2197,7 +2305,31 @@
               {
                 "properties": {
                   "action": {
+                    "const": "edit-locator",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
                     "const": "edit-input",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "search-references",
                     "type": "string"
                   }
                 },
@@ -2222,6 +2354,30 @@
                 "properties": {
                   "action": {
                     "const": "reduce-selection",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "close",
                     "type": "string"
                   }
                 },
@@ -2878,6 +3034,13 @@
             ],
             "type": "string"
           },
+          "CitationSurface": {
+            "description": "Wording context only; operations choose their recovery before presentation.",
+            "enum": [
+              "bibliography"
+            ],
+            "type": "string"
+          },
           "CitationWarningCode": {
             "description": "Fixed codes only; source diagnostics never include field text or locations.",
             "oneOf": [
@@ -3086,6 +3249,7 @@
               "locator",
               "citation",
               "citation-form",
+              "session-references",
               "language",
               "recovery-action",
               "project-name",
@@ -3325,6 +3489,16 @@
                 },
                 "type": "object"
               },
+              "context": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CitationSurface"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "id": {
                 "type": "string"
               }
@@ -3428,6 +3602,18 @@
           "Recovery": {
             "description": "Exactly one next action; absence must have an explicit, machine-readable reason.",
             "oneOf": [
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-output",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
               {
                 "properties": {
                   "action": {
@@ -3599,7 +3785,31 @@
               {
                 "properties": {
                   "action": {
+                    "const": "edit-locator",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
                     "const": "edit-input",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "search-references",
                     "type": "string"
                   }
                 },
@@ -3624,6 +3834,30 @@
                 "properties": {
                   "action": {
                     "const": "reduce-selection",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "close",
                     "type": "string"
                   }
                 },
@@ -4318,7 +4552,7 @@
             "type": "object"
           },
           "CitationError": {
-            "description": "Fixed citation diagnostics contain no source data, paths, keys or request text.\nA front-end boundary maps a wholly invalid/cancelled request to its envelope error.",
+            "description": "Fixed diagnostics never contain source data, paths or request text.",
             "oneOf": [
               {
                 "enum": [
@@ -4625,6 +4859,13 @@
               "warnings"
             ],
             "type": "object"
+          },
+          "CitationSurface": {
+            "description": "Wording context only; operations choose their recovery before presentation.",
+            "enum": [
+              "bibliography"
+            ],
+            "type": "string"
           },
           "CitationWarning": {
             "properties": {
@@ -5042,6 +5283,7 @@
               "locator",
               "citation",
               "citation-form",
+              "session-references",
               "language",
               "recovery-action",
               "project-name",
@@ -5314,6 +5556,16 @@
                 },
                 "type": "object"
               },
+              "context": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CitationSurface"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "id": {
                 "type": "string"
               }
@@ -5416,6 +5668,18 @@
           "Recovery": {
             "description": "Exactly one next action; absence must have an explicit, machine-readable reason.",
             "oneOf": [
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-output",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
               {
                 "properties": {
                   "action": {
@@ -5587,7 +5851,31 @@
               {
                 "properties": {
                   "action": {
+                    "const": "edit-locator",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
                     "const": "edit-input",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "search-references",
                     "type": "string"
                   }
                 },
@@ -5612,6 +5900,30 @@
                 "properties": {
                   "action": {
                     "const": "reduce-selection",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "close",
                     "type": "string"
                   }
                 },
@@ -6298,7 +6610,7 @@
             "type": "object"
           },
           "CitationError": {
-            "description": "Fixed citation diagnostics contain no source data, paths, keys or request text.\nA front-end boundary maps a wholly invalid/cancelled request to its envelope error.",
+            "description": "Fixed diagnostics never contain source data, paths or request text.",
             "oneOf": [
               {
                 "enum": [
@@ -6605,6 +6917,13 @@
               "warnings"
             ],
             "type": "object"
+          },
+          "CitationSurface": {
+            "description": "Wording context only; operations choose their recovery before presentation.",
+            "enum": [
+              "bibliography"
+            ],
+            "type": "string"
           },
           "CitationWarning": {
             "properties": {
@@ -7022,6 +7341,7 @@
               "locator",
               "citation",
               "citation-form",
+              "session-references",
               "language",
               "recovery-action",
               "project-name",
@@ -7294,6 +7614,16 @@
                 },
                 "type": "object"
               },
+              "context": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CitationSurface"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "id": {
                 "type": "string"
               }
@@ -7396,6 +7726,18 @@
           "Recovery": {
             "description": "Exactly one next action; absence must have an explicit, machine-readable reason.",
             "oneOf": [
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-output",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
               {
                 "properties": {
                   "action": {
@@ -7567,7 +7909,31 @@
               {
                 "properties": {
                   "action": {
+                    "const": "edit-locator",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
                     "const": "edit-input",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "search-references",
                     "type": "string"
                   }
                 },
@@ -7592,6 +7958,30 @@
                 "properties": {
                   "action": {
                     "const": "reduce-selection",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "close",
                     "type": "string"
                   }
                 },
@@ -8006,6 +8396,13 @@
       },
       "result": {
         "$defs": {
+          "CitationSurface": {
+            "description": "Wording context only; operations choose their recovery before presentation.",
+            "enum": [
+              "bibliography"
+            ],
+            "type": "string"
+          },
           "Doubt": {
             "description": "Why a key that is written in the file may not be the intended reference.",
             "oneOf": [
@@ -8180,6 +8577,7 @@
               "locator",
               "citation",
               "citation-form",
+              "session-references",
               "language",
               "recovery-action",
               "project-name",
@@ -8304,6 +8702,16 @@
                 },
                 "type": "object"
               },
+              "context": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CitationSurface"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "id": {
                 "type": "string"
               }
@@ -8364,6 +8772,18 @@
           "Recovery": {
             "description": "Exactly one next action; absence must have an explicit, machine-readable reason.",
             "oneOf": [
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-output",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
               {
                 "properties": {
                   "action": {
@@ -8535,7 +8955,31 @@
               {
                 "properties": {
                   "action": {
+                    "const": "edit-locator",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
                     "const": "edit-input",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "search-references",
                     "type": "string"
                   }
                 },
@@ -8560,6 +9004,30 @@
                 "properties": {
                   "action": {
                     "const": "reduce-selection",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "close",
                     "type": "string"
                   }
                 },
@@ -8925,6 +9393,13 @@
       },
       "result": {
         "$defs": {
+          "CitationSurface": {
+            "description": "Wording context only; operations choose their recovery before presentation.",
+            "enum": [
+              "bibliography"
+            ],
+            "type": "string"
+          },
           "EntryRefusal": {
             "description": "Why an entry's original text cannot be copied, so a person can re-export it.",
             "oneOf": [
@@ -9095,6 +9570,7 @@
               "locator",
               "citation",
               "citation-form",
+              "session-references",
               "language",
               "recovery-action",
               "project-name",
@@ -9128,6 +9604,16 @@
                 },
                 "type": "object"
               },
+              "context": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CitationSurface"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "id": {
                 "type": "string"
               }
@@ -9148,6 +9634,18 @@
           "Recovery": {
             "description": "Exactly one next action; absence must have an explicit, machine-readable reason.",
             "oneOf": [
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-output",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
               {
                 "properties": {
                   "action": {
@@ -9319,7 +9817,31 @@
               {
                 "properties": {
                   "action": {
+                    "const": "edit-locator",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
                     "const": "edit-input",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "search-references",
                     "type": "string"
                   }
                 },
@@ -9344,6 +9866,30 @@
                 "properties": {
                   "action": {
                     "const": "reduce-selection",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "close",
                     "type": "string"
                   }
                 },
