@@ -20,7 +20,7 @@
  * deadlines, engine formatting or hashing. Their Rust tests remain necessary.
  */
 import { emit } from "@tauri-apps/api/event";
-import type { AppPaste, CopiedReason, Copied, Delivered, FilePreview, NoticeMessage, SearchQuery, SearchReply } from "../bindings";
+import type { AppPaste, CopiedReason, Copied, Delivered, Preview, NoticeMessage, SearchQuery, SearchReply } from "../bindings";
 import { readNotice, renderNotice } from "../copyFeedback";
 import { backend, prepared, receipt, displayTree, type PreviewRequest } from "./app";
 import { formatAnswer } from "./format";
@@ -56,7 +56,7 @@ class Work<Args, Input = void, Output = void> {
   }
 }
 
-type PreviewContent = Pick<FilePreview, "text"> & Partial<Pick<FilePreview, "display" | "warnings">> & { clipboardHtml?: string };
+type PreviewContent = Pick<Preview, "text"> & Partial<Pick<Preview, "display" | "warnings">> & { clipboardHtml?: string };
 type DeliveryRequest = { text: string; delivery: number | null };
 type Capture = { window: number | null; surface: number | null; reason: CopiedReason | null; selection: string | null; unread: boolean };
 type Proof = DeliveryRequest & Capture & { replaces: string[] | null; delivery: number; sequence: number; presentation: number; app: string; epoch: number; written: number; paste: AppPaste | null };
@@ -64,7 +64,8 @@ type AppChoice = { output: string | null; paste: AppPaste | null };
 
 export function deliveryHarness(text = "Draft: [citation].", selection: [number, number] = [7, 17]) {
   const search = new Work<SearchQuery, SearchReply, SearchReply>();
-  const preview = new Work<PreviewRequest, PreviewContent, FilePreview>();
+  const citationKeys = new Map<string, string>();
+  const preview = new Work<PreviewRequest, PreviewContent, Preview>();
   const copy = new Work<{ ticket: string; contentHash: string; replaces: string[] }, void, Copied>();
   const copyReplies = new Work<Copied, void, Copied>();
   let holdCopyReplies = false;
@@ -163,13 +164,16 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
       if (!holdAppSaves) appSaves.pending.at(-1)!.complete();
       return saving;
     },
-    search: ({ query }) => search.enqueue(query, (reply) => reply),
+    search: ({ query }) => search.enqueue(query, (reply) => {
+      for (const record of reply.results) citationKeys.set(JSON.stringify(record.id), record.key);
+      return reply;
+    }),
     preview_file_citation: (args) => {
       const request = ++latestPreview;
       return preview.enqueue(args, (content) => {
         const value = receipt(content.text, content.display ?? null, content.warnings ?? []);
         clipboardHtml.set(value.ticket, content.clipboardHtml ?? null);
-        const bodies = args.items.map((item) => `@${item.id.key}`);
+        const bodies = args.items.map((item) => `@${citationKeys.get(JSON.stringify(item.id)) ?? ""}`);
         if (!content.display && content.text === `[${bodies.join("; ")}]`) value.display = displayTree([
           { item: null, text: "[" },
           ...bodies.flatMap((text, item) => [...(item ? [{ item: null, text: "; " }] : []), { item, text }]),

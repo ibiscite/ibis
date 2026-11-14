@@ -310,3 +310,26 @@ fn scalar(value: &str) -> Result<String, WritingError> {
     }
     Ok(value.to_owned())
 }
+
+use ibis_core::contract::{Problem, Recovery, RecoveryInfo};
+
+impl From<&crate::settings::writings::WritingError> for Problem {
+    fn from(error: &crate::settings::writings::WritingError) -> Self {
+        use crate::settings::writings::WritingError as P;
+        let (code, recovery) = match error {
+            P::InvalidName => ("invalid-name", Recovery::RenameProject),
+            P::DuplicateName => ("duplicate-name", Recovery::RenameProject),
+            P::NotFound => ("not-found", Recovery::ChooseProject),
+            P::TooMany => ("too-many", Recovery::RemoveProject),
+            P::Invalid => ("invalid", Recovery::ReviewSettings),
+            P::ContextUnavailable => ("context-unavailable", Recovery::Retry),
+            P::InvalidContext => ("invalid-context", Recovery::EditInput),
+            P::AmbiguousContext => ("ambiguous-context", Recovery::ChooseProject),
+            P::Settings(error) => return error.into(),
+        };
+        Self {
+            code: format!("project-{code}"),
+            info: RecoveryInfo::new(&format!("app-project-error-{code}"), recovery),
+        }
+    }
+}

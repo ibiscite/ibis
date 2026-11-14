@@ -3,7 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { App } from "./App";
 import { backend, resetApp, result } from "./testing/app";
-import type { FilePreview } from "./bindings";
+import type { Preview } from "./bindings";
 
 afterEach(resetApp);
 
@@ -11,8 +11,8 @@ for (const [style, text] of [[null, "[@demo]"], ["apa", "(Researcher, 2026)"]] a
   test(`engine file ${style ?? "Pandoc"} waits for native preview and copies only its receipt`, async () => {
     const id = { library: "opaque-library", key: "opaque-record" };
     const cite = "a".repeat(64);
-    let finish: (preview: FilePreview) => void = () => {};
-    const prepared = new Promise<FilePreview>((resolve) => { finish = resolve; });
+    let finish: (preview: Preview) => void = () => {};
+    const prepared = new Promise<Preview>((resolve) => { finish = resolve; });
     const preview = vi.fn((_args: unknown) => prepared);
     const copy = vi.fn(() => ({ text, warnings: [] }));
     const calls = backend({
@@ -29,7 +29,7 @@ for (const [style, text] of [[null, "[@demo]"], ["apa", "(Researcher, 2026)"]] a
     await waitFor(() => expect(preview).toHaveBeenCalled());
     fireEvent.keyDown(input, { key: "Enter" });
     expect(copy).not.toHaveBeenCalled();
-    await act(async () => { finish({ display: displayTree([]), ticket: "native-receipt", content_hash: "b".repeat(64), text, warnings: [] }); });
+    await act(async () => { finish({ effective_output: style ?? "pandoc", display: displayTree([]), ticket: "native-receipt", content_hash: "b".repeat(64), text, warnings: [] }); });
     await waitFor(() => expect(copy).toHaveBeenCalledWith({ ticket: "native-receipt", contentHash: "b".repeat(64), replaces: [] }));
     expect(preview).toHaveBeenCalledWith(expect.objectContaining({ items: [{ id, cite, locator: null }], output: style ?? "pandoc" }));
     expect(calls.filter((command) => command === "copy_file_citation")).toHaveLength(1);

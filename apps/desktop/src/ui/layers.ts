@@ -6,41 +6,38 @@ import { flushSync } from "react-dom";
 import { composing } from "../composition";
 import { isBackShortcut } from "../keys";
 
-/** What is open, nearest first. A menu and a popover are transient: they float
- * over the window, one at a time. A palette and a sheet are views: they take the
- * window's place. A panel sits in the window, beside the list. */
-export const LAYER_ORDER = ["menu", "popover", "palette", "sheet", "panel", "chooser", "search", "window"] as const;
-export type LayerKind = (typeof LAYER_ORDER)[number];
-
 /** The ways back: Esc; the platform's Back (⌘[, Alt+Left, the mouse's Back
  * button); Backspace in an empty field. */
 export type Gesture = "escape" | "back" | "erase";
-/** Decision 0047's table: which ways back each layer answers. The nearest layer
- * decides alone, so an open pop-up keeps Back and Backspace from the view under it. */
-export const GOING_BACK: Record<LayerKind, readonly Gesture[]> = {
-  menu: ["escape"], popover: ["escape", "back"], palette: ["escape", "back", "erase"], sheet: ["escape", "back"], panel: ["escape", "back"],
-  chooser: ["escape"], search: ["escape"], window: ["escape"],
-};
+type Kind = { back: readonly Gesture[]; opens?: "floats" | "view" | "beside" };
+/** Every kind of layer, nearest first, in one table: which ways back it answers
+ * (decision 0047's table; the nearest layer decides alone, so an open pop-up
+ * keeps Back and Backspace from the view under it), and what opening it is. A
+ * menu and a popover float over the window, one at a time; a palette and a sheet
+ * are views, taking the window's place; a panel sits beside the list. Search and
+ * the window register too, but typing is not opening anything. */
+export const KINDS = {
+  menu: { back: ["escape"], opens: "floats" }, popover: { back: ["escape", "back"], opens: "floats" },
+  palette: { back: ["escape", "back", "erase"], opens: "view" }, sheet: { back: ["escape", "back"], opens: "view" },
+  panel: { back: ["escape", "back"], opens: "beside" }, chooser: { back: ["escape"] }, search: { back: ["escape"] }, window: { back: ["escape"] },
+} as const satisfies Record<string, Kind>;
+export type LayerKind = keyof typeof KINDS;
+const of = (layer: Layer): Kind => KINDS[layer.kind];
+/** Over the window: what a command or a hide clears, and what keeps ⌘1–9 from the list. */
+const over = (layer: Layer) => of(layer).opens === "floats" || of(layer).opens === "view";
 
 /** A layer closes itself. Given the key that asked, it returns focus to what
  * opened it, or returns false to hand that key on (a menu with a submenu open).
  * Without a key a command is clearing the way: it closes at once and goes home. */
 export type LayerClose = (event?: KeyboardEvent) => boolean | void;
 type Layer = { kind: LayerKind; close: LayerClose; parent: Scope | null };
-const TRANSIENT: readonly LayerKind[] = ["menu", "popover"];
-const VIEWS: readonly LayerKind[] = ["palette", "sheet"];
-// What opens over the picker or Settings. Search and the window register too, but
-// typing is not opening anything, so they close nothing.
-const SURFACES: readonly LayerKind[] = [...TRANSIENT, ...VIEWS, "panel"];
 // Read when asked: a surface that mounts open registers before the layer around it.
 const within = (layer: Layer, outer: Layer) => { for (let at = layer.parent?.current; at; at = at.parent?.current) if (at === outer) return true; return false; };
 
-/** The window's own keys and where its keyboard rests. Without an owner the
- * listener still closes layers, so Settings' menus follow the same rule. */
-export type KeyOwner = { keyDown: (event: KeyboardEvent) => void; home: () => void };
-
-// What floats over the window. A panel sits in it and stays live beside the list.
-const OVERLAYS: readonly LayerKind[] = ["sheet", "palette", "menu"];
+/** The window's own keys, where its keyboard rests, and what anything opening
+ * over it ends (a pending copy). Without an owner the listener still closes
+ * layers, so Settings' menus follow the same rule. */
+export type KeyOwner = { keyDown: (event: KeyboardEvent) => void; home: () => void; opened?: () => void };
 const layers: Layer[] = [];
 const watchers = new Set<() => void>();
 let owner: KeyOwner | null = null;
@@ -48,7 +45,8 @@ let composition: EventTarget | null = null;
 let settling = false;
 let listening = false;
 
-const rank = (layer: Layer) => LAYER_ORDER.indexOf(layer.kind);
+const ORDER = Object.keys(KINDS);
+const rank = (layer: Layer) => ORDER.indexOf(layer.kind);
 const nearest = () => layers.filter((layer) => !layers.some((other) => within(other, layer)))
   .reduce<Layer | undefined>((best, layer) => !best || rank(layer) <= rank(best) ? layer : best, undefined);
 
@@ -76,7 +74,7 @@ export function consumeKey(event: Event) {
  * when nothing answered or the layer handed the key on. */
 export function goBack(gesture: Gesture = "escape", event?: KeyboardEvent): boolean {
   const layer = nearest();
-  if (!layer || !GOING_BACK[layer.kind].includes(gesture)) return false;
+  if (!layer || !of(layer).back.includes(gesture)) return false;
   let closed = true;
   // Commit now: the layer returns focus itself, then the screen it left is checked.
   flushSync(() => { closed = layer.close(event) !== false; });
@@ -84,14 +82,14 @@ export function goBack(gesture: Gesture = "escape", event?: KeyboardEvent): bool
   return closed;
 }
 
-export const overlayOpen = () => layers.some((layer) => OVERLAYS.includes(layer.kind));
+export const overlayOpen = () => layers.some(over);
 
 /** Clear everything floating above the window, for a command or a hide. */
 export function closeOverlays() {
-  for (const layer of [...layers].filter((candidate) => OVERLAYS.includes(candidate.kind)).sort((a, b) => rank(a) - rank(b))) layer.close();
+  for (const layer of layers.filter(over).sort((a, b) => rank(a) - rank(b))) layer.close();
 }
 
-const answered = (gesture: Gesture) => { const layer = nearest(); return layer !== undefined && GOING_BACK[layer.kind].includes(gesture); };
+const answered = (gesture: Gesture) => { const layer = nearest(); return layer !== undefined && of(layer).back.includes(gesture); };
 const emptyField = (target: EventTarget | null) => (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) && target.value === "";
 
 // Runs before anything in the page, so no control can swallow Escape or a
@@ -139,7 +137,7 @@ function listen() {
 function changed() {
   listen();
   // While a view is open the window shows only it.
-  if (layers.some((layer) => VIEWS.includes(layer.kind))) document.documentElement.dataset.view = "";
+  if (layers.some((layer) => of(layer).opens === "view")) document.documentElement.dataset.view = "";
   else delete document.documentElement.dataset.view;
   for (const watcher of watchers) watcher();
 }
@@ -166,7 +164,7 @@ export const LayerParent = createContext<Scope | null>(null);
 // focus stays where the new surface put it.
 function displace(layer: Layer) {
   const rivals = layers.filter((other) => other !== layer && !within(layer, other) && !within(other, layer)
-    && (TRANSIENT.includes(other.kind) || VIEWS.includes(layer.kind) && VIEWS.includes(other.kind))).reverse();
+    && (of(other).opens === "floats" || of(layer).opens === "view" && of(other).opens === "view")).reverse();
   if (!rivals.length) return;
   queueMicrotask(() => {
     if (!layers.includes(layer)) return;
@@ -188,7 +186,8 @@ export function useLayer(kind: LayerKind, open: boolean, close: LayerClose): Lay
     registered.current = layer;
     layers.push(layer);
     changed();
-    if (SURFACES.includes(kind)) displace(layer);
+    if (of(layer).opens) displace(layer);
+    if (over(layer)) owner?.opened?.();
     return () => {
       registered.current = null;
       const at = layers.indexOf(layer);
@@ -214,7 +213,7 @@ export function useKeyOwner(keys: KeyOwner) {
   const latest = useRef(keys);
   useLayoutEffect(() => { latest.current = keys; });
   useLayoutEffect(() => {
-    owner = { keyDown: (event) => latest.current.keyDown(event), home: () => latest.current.home() };
+    owner = { keyDown: (event) => latest.current.keyDown(event), home: () => latest.current.home(), opened: () => latest.current.opened?.() };
     listen();
     return () => {
       owner = null;

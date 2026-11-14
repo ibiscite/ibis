@@ -34,20 +34,232 @@ fn said(settings: &Settings, target: Option<&AppId>) -> (String, FormatFrom) {
     (chosen.id.unwrap_or_default(), chosen.from)
 }
 
-fn cite(chosen: &FormatChoice) -> Result<String, Box<dyn std::error::Error>> {
+fn render(chosen: &FormatChoice) -> Result<ibis_core::contract::CitationResult, ibis_core::contract::EngineError> {
     let mut case: ibis_core::contract::GoldenCase =
-        serde_json::from_str(include_str!("../../../../fixtures/cases/02-pandoc.json"))?;
+        serde_json::from_str(include_str!("../../../../fixtures/cases/02-pandoc.json"))
+            .unwrap_or_else(|error| panic!("{error}"));
     case.request.output = chosen.output.clone();
     let engine = crate::Engine::from_snapshot(std::sync::Arc::new(case.library));
-    let result = engine
-        .cite(&case.request, &crate::Cancellation::default())
-        .map_err(|error| format!("{error:?}"))?;
+    engine.cite(&case.request, &crate::Cancellation::default())
+}
+
+fn cite(chosen: &FormatChoice) -> Result<String, Box<dyn std::error::Error>> {
+    let result = render(chosen).map_err(|error| format!("{error:?}"))?;
     assert_eq!(
         result.outcomes,
         [ibis_core::contract::ItemOutcome::Rendered { item: 0 }]
     );
     assert!(result.copy_content(1).is_some());
     Ok(result.text)
+}
+
+#[test]
+fn a_bundled_writing_keeps_its_identity_and_beats_app_and_request_choices() -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let path = directory.path().join("settings.json");
+    let markdown = app(Macos, "md.obsidian");
+    let output = OutputSpec::Csl {
+        style: "abi-technik".into(),
+    };
+    let writing = WritingName {
+        id: "Synthetic notes".into(),
+        name: "Synthetic notes".into(),
+    };
+    crate::settings::Owner::open(path.clone()).change(|settings| {
+        settings.remember_app_output(&markdown, "apa".into());
+        settings.device.writings.push(Writing {
+            name: writing.name.clone(),
+            format: output.clone(),
+            bibliography: None,
+        });
+        settings
+            .device
+            .writing_apps
+            .insert("macos:md.obsidian".into(), writing.id.clone());
+        Ok::<_, crate::settings::SettingsError>(())
+    })?;
+    let loaded = crate::settings::load(&path);
+    let settings = loaded.cites().map_err(|error| error.to_string())?;
+    let requested = OutputSpec::Key {
+        syntax: KeySyntax::Typst,
+        command: None,
+    };
+    for (chosen, kind) in [
+        (
+            choose_with(settings, Some(&markdown), Some(&requested)),
+            FormatKind::Keys,
+        ),
+        (for_writing(&output, writing.clone(), None), FormatKind::Documents),
+    ] {
+        assert_eq!(chosen.output, output);
+        assert_eq!(chosen.id.as_deref(), Some("abi-technik"));
+        assert_eq!(chosen.from, FormatFrom::Writing);
+        assert_eq!(chosen.kind, kind);
+        assert_eq!(chosen.writing, Some(writing.clone()));
+        assert_eq!(
+            cite(&chosen)?,
+            "Avery Taylor, Synthetic Signals (Imaginary Press, 2026)."
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn an_explicit_bundled_style_keeps_its_identity_where_document_formats_apply() -> Result<(), Box<dyn std::error::Error>>
+{
+    let mut settings = Settings::default();
+    settings.portable.key_output = Some("typst".into());
+    let output = OutputSpec::Csl {
+        style: "abi-technik".into(),
+    };
+    for target in [
+        None,
+        Some(app(Macos, "com.microsoft.word")),
+        Some(app(Macos, "org.example.invented")),
+    ] {
+        let chosen = choose_with(&settings, target.as_ref(), Some(&output));
+        assert_eq!(chosen.output, output);
+        assert_eq!(
+            (chosen.id.as_deref(), chosen.from, chosen.kind),
+            (Some("abi-technik"), FormatFrom::Yours, FormatKind::Documents)
+        );
+        assert_eq!(
+            cite(&chosen)?,
+            "Avery Taylor, Synthetic Signals (Imaginary Press, 2026)."
+        );
+    }
+    let markdown = app(Macos, "md.obsidian");
+    assert_eq!(
+        choose_with(&settings, Some(&markdown), Some(&output)),
+        choose(&settings, Some(&markdown))
+    );
+    Ok(())
+}
+
+#[test]
+fn explicit_invalid_outputs_keep_their_request_and_reach_normal_refusal() {
+    use ibis_core::contract::{EngineError, ErrorCode, ErrorReason};
+    for (output, reason) in [
+        (
+            OutputSpec::Csl {
+                style: "invented-unavailable-style".into(),
+            },
+            ErrorReason::UnknownStyle,
+        ),
+        (
+            OutputSpec::Preset {
+                name: "invented-unavailable-preset".into(),
+            },
+            ErrorReason::UnknownOutput,
+        ),
+        (
+            OutputSpec::Key {
+                syntax: KeySyntax::Biblatex,
+                command: Some("invented-command".into()),
+            },
+            ErrorReason::UnknownOutput,
+        ),
+    ] {
+        let writing = WritingName {
+            id: "session".into(),
+            name: "Synthetic notes".into(),
+        };
+        for chosen in [
+            choose_with(&Settings::default(), None, Some(&output)),
+            for_writing(&output, writing, None),
+        ] {
+            assert_eq!(chosen.output, output);
+            assert_eq!(chosen.id, None);
+            assert_eq!(render(&chosen), Err(EngineError::because(ErrorCode::BadInput, reason)));
+        }
+    }
+}
+
+#[test]
+fn key_commands_and_presets_keep_their_exact_outputs_and_identities() -> Result<(), Box<dyn std::error::Error>> {
+    let settings = Settings::default();
+    let autocite = OutputSpec::Key {
+        syntax: KeySyntax::Biblatex,
+        command: Some("autocite".into()),
+    };
+    let chosen = choose(&settings, Some(&app(Windows, "texstudio.exe")));
+    assert_eq!(chosen.output, autocite);
+    assert_eq!(cite(&chosen)?, "\\autocite{Example2026}");
+    for output in [
+        autocite,
+        OutputSpec::Key {
+            syntax: KeySyntax::Biblatex,
+            command: None,
+        },
+        OutputSpec::Preset {
+            name: "autocite".into(),
+        },
+    ] {
+        let writing = WritingName {
+            id: "session".into(),
+            name: "Synthetic notes".into(),
+        };
+        for chosen in [
+            choose_with(&settings, None, Some(&output)),
+            for_writing(&output, writing, None),
+        ] {
+            assert_eq!(chosen.output, output);
+            assert_eq!(chosen.id.as_deref(), Some("autocite"));
+            assert_eq!(cite(&chosen)?, "\\autocite{Example2026}");
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn explicit_styles_match_the_pinned_node_oracle() -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let mut item: serde_json::Value = serde_json::from_str(include_str!("../../../../fixtures/cases/02-pandoc.json"))?;
+    item = item["library"]["objects"][0]["object"]["data"]["csl"].clone();
+    item["id"] = serde_json::json!("ibis-0");
+    // The existing oracle supports these styles; the noncurated style above
+    // exercises the same selection routes with its exact standalone output.
+    let styles = ["apa", "chicago-author-date", "modern-language-association"];
+    let requests: Vec<_> = styles
+        .iter()
+        .map(|style| {
+            serde_json::json!({
+                "style": style, "items": [item], "cites": [{"id": "ibis-0"}],
+                "bibliography": false, "keep_order": false, "locale": "en-US"
+            })
+        })
+        .collect();
+    let mut node = Command::new(std::env::var("IBIS_NODE").unwrap_or_else(|_| "node".into()))
+        .arg(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ibis-csl/tests/node-oracle.mjs"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    node.stdin
+        .take()
+        .ok_or("oracle stdin")?
+        .write_all(&serde_json::to_vec(&requests)?)?;
+    let expected = node.wait_with_output()?;
+    assert!(
+        expected.status.success(),
+        "{}",
+        String::from_utf8_lossy(&expected.stderr)
+    );
+    let expected: Vec<serde_json::Value> = serde_json::from_slice(&expected.stdout)?;
+    assert_eq!(expected.len(), styles.len());
+    for (style, expected) in styles.into_iter().zip(expected) {
+        let chosen = choose_with(
+            &Settings::default(),
+            None,
+            Some(&OutputSpec::Csl { style: style.into() }),
+        );
+        let actual = render(&chosen).map_err(|error| format!("{error:?}"))?;
+        assert_eq!(actual.text, expected["text"].as_str().ok_or("oracle text")?);
+        assert_eq!(actual.html.as_deref(), expected["html"].as_str());
+        assert_eq!(actual.rtf.as_deref(), expected["rtf"].as_str());
+    }
+    Ok(())
 }
 
 #[test]
@@ -60,13 +272,13 @@ fn a_saved_bundled_style_remains_your_document_default_after_reopen() -> Result<
         Ok::<_, crate::settings::SettingsError>(())
     })?;
     let loaded = crate::settings::load(&path);
-    assert!(loaded.problem.is_none());
+    let mut settings = loaded.cites().map_err(|error| error.to_string())?.clone();
     for target in [
         None,
         Some(app(Macos, "com.microsoft.word")),
         Some(app(Macos, "org.example.invented")),
     ] {
-        let chosen = choose(&loaded.settings, target.as_ref());
+        let chosen = choose(&settings, target.as_ref());
         assert_eq!(
             chosen,
             FormatChoice {
@@ -85,37 +297,18 @@ fn a_saved_bundled_style_remains_your_document_default_after_reopen() -> Result<
         );
     }
     let markdown = app(Macos, "md.obsidian");
-    let chosen = choose(&loaded.settings, Some(&markdown));
+    let chosen = choose(&settings, Some(&markdown));
     assert_eq!(
-        chosen,
-        FormatChoice {
-            output: OutputSpec::Key {
-                syntax: KeySyntax::Typst,
-                command: None
-            },
-            id: Some("typst".into()),
-            from: FormatFrom::Yours,
-            kind: FormatKind::Keys,
-            writing: None,
-        }
+        (chosen.id.as_deref(), chosen.from, chosen.kind),
+        (Some("typst"), FormatFrom::Yours, FormatKind::Keys)
     );
     assert_eq!(cite(&chosen)?, "@Example2026");
-    let mut settings = loaded.settings;
     // A bundled style in the key setting is still no key choice.
     settings.portable.key_output = Some("abi-technik".into());
     let chosen = choose(&settings, Some(&markdown));
     assert_eq!(
-        chosen,
-        FormatChoice {
-            output: OutputSpec::Key {
-                syntax: KeySyntax::Pandoc,
-                command: None
-            },
-            id: Some("pandoc".into()),
-            from: FormatFrom::Suggestion,
-            kind: FormatKind::Keys,
-            writing: None,
-        }
+        (chosen.id.as_deref(), chosen.from, chosen.kind),
+        (Some("pandoc"), FormatFrom::Suggestion, FormatKind::Keys)
     );
     assert_eq!(cite(&chosen)?, "[@Example2026]");
     Ok(())
@@ -132,12 +325,12 @@ fn a_saved_bundled_app_override_wins_and_keeps_its_id_and_output() -> Result<(),
         Ok::<_, crate::settings::SettingsError>(())
     })?;
     let loaded = crate::settings::load(&path);
-    assert!(loaded.problem.is_none());
+    let settings = loaded.cites().map_err(|error| error.to_string())?;
     let pandoc = OutputSpec::Key {
         syntax: KeySyntax::Pandoc,
         command: None,
     };
-    let chosen = choose_with(&loaded.settings, Some(&markdown), Some(&pandoc));
+    let chosen = choose_with(settings, Some(&markdown), Some(&pandoc));
     assert_eq!(
         chosen,
         FormatChoice {
@@ -290,10 +483,10 @@ fn an_apps_own_format_beats_yours_whatever_its_kind() {
 }
 
 #[test]
-fn a_writing_chosen_for_the_app_beats_the_apps_format_and_says_its_name() -> Result<(), Box<dyn std::error::Error>> {
+fn a_writing_chosen_for_the_app_beats_the_apps_format_and_says_its_name() {
     let word = app(Macos, "com.microsoft.word");
     let mut settings = Settings::default();
-    settings.remember_app_output(&word, "abi-technik".into());
+    settings.remember_app_output(&word, "apa".into());
     let thesis: Writing = serde_json::from_value(serde_json::json!({
         "name": "Thesis",
         "format": {"kind": "csl", "style": "chicago-notes-bibliography"},
@@ -305,29 +498,18 @@ fn a_writing_chosen_for_the_app_beats_the_apps_format_and_says_its_name() -> Res
         .writing_apps
         .insert("macos:com.microsoft.word".into(), "Thesis".into());
     let chosen = choose(&settings, Some(&word));
+    assert_eq!(chosen.from, FormatFrom::Writing);
+    assert_eq!(chosen.id.as_deref(), Some("chicago-notes-bibliography"));
     assert_eq!(
-        chosen,
-        FormatChoice {
-            output: OutputSpec::Csl {
-                style: "chicago-notes-bibliography".into()
-            },
-            id: Some("chicago-notes-bibliography".into()),
-            from: FormatFrom::Writing,
-            kind: FormatKind::Documents,
-            writing: Some(WritingName {
-                id: "Thesis".into(),
-                name: "Thesis".into()
-            }),
-        }
-    );
-    assert_eq!(
-        cite(&chosen)?,
-        "Avery Taylor, Synthetic Signals (Imaginary Press, 2026)."
+        chosen.writing,
+        Some(WritingName {
+            id: "Thesis".into(),
+            name: "Thesis".into()
+        })
     );
     // Another app keeps its own answer.
     let pages = app(Macos, "com.apple.iwork.pages");
     assert_eq!(said(&settings, Some(&pages)), ("apa".into(), FormatFrom::Suggestion));
-    Ok(())
 }
 
 #[test]

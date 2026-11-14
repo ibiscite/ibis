@@ -1,9 +1,10 @@
+import { recordId } from "../src/test-fixtures";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "../src/App";
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
-import type { FileSelection, PickerPreferences, PreviewIntent, ReferenceDetails, SearchQuery } from "../src/bindings";
+import type { DraftItem, PickerPreferences, CitationIntent, FormDetails, SearchQuery } from "../src/bindings";
 import type { OutputId } from "../src/format/outputs";
 import { Button } from "../src/ui/Button";
 import { KeyCaps } from "../src/ui/KeyCaps";
@@ -15,7 +16,6 @@ import { isStyle } from "../src/format/outputs";
 import { setPlatform } from "../src/nativeAppearance";
 export { setNativeAccent } from "../src/nativeAccent";
 export { geometry } from "./geometry";
-import { identities } from "./geometry";
 import { audit as runAudit } from "./audit";
 import { SettingsApp } from "../src/settings/SettingsApp";
 import { demoApi } from "../src/settings/demo";
@@ -44,7 +44,7 @@ type Theme = "light" | "dark";
 // Same invented records as picker-layout.browser.mjs; that executable browser
 // probe cannot be imported without launching Playwright and a local server.
 const rows: SearchResult[] = Array.from({ length: 14 }, (_, i) => ({
-  revision: "1", id: { library: "invented.bib", key: `${identities.sentinel}${i}` }, cite: `synthetic-cite-${i}`,
+  revision: "1", id: { library: "invented.bib", key: recordId(`SENTINEL-ID-canvas-${i}`) }, cite: `synthetic-cite-${i}`,
   source: "invented.bib", key: `synthetic${i}`, title: `Invented reference ${i}`,
   authors: "Aster", first_author: "Aster", author_count: 1, year: "2026", container: null,
   item_type: "article-journal", partial: false, matched: ["title"],
@@ -104,7 +104,7 @@ const fixtures: Partial<Record<Scenario, {
 // the same boundary as interface tests; App needs no alternate API or feature flags.
 function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (page: string | null) => Promise<void>) {
   type Request = {
-    query: SearchQuery; items: FileSelection[]; output: OutputId; intent: PreviewIntent;
+    query: SearchQuery; items: DraftItem[]; output: OutputId; intent: CitationIntent;
     ticket: string; item: number; preferences: Partial<PickerPreferences>; receipt: number; page: string | null;
   };
   const firstRun = scenario === "first-run";
@@ -127,7 +127,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
     stale: false, updated_at: null, checked_at: firstRun ? null : Date.now() - 3 * 60_000, ...fixed?.library,
   };
   let sequence = 0;
-  const receipts = new Map<string, { text: string; items: FileSelection[]; output: OutputId; key: string }>();
+  const receipts = new Map<string, { text: string; items: DraftItem[]; output: OutputId; key: string }>();
   const handlers: Record<string, (request: Request) => unknown> = {
     "plugin:window|is_visible": () => true,
     library_status: () => library,
@@ -135,7 +135,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
     search: ({ query }) => {
       const page = query.interpret_locators ? /^(.*\S)\s+(?:pp?\.\s*)?(\d+(?:[-–]\d+)?)$/.exec(query.text) : null;
       return { revision: "1", results: query.text && !fixture ? shown : [],
-        ...page ? { interpretation: { search: page[1]!, locator: { label: "page", value: page[2]!.replace("-", "–") }, typed: page[2]! } } : {} };
+        ...page ? { interpretation: { search: page[1]!, locator: { term: "page", value: page[2]!.replace("-", "–") }, typed: page[2]! } } : {} };
     },
     recent_references: () => [{ revision: "1", results: [] }, false, false],
     preview_file_citation: ({ items, output, intent }) => {
@@ -143,7 +143,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
       const style = isStyle(output), numbered = output === "ieee";
       const ticket = `synthetic-ticket-${++sequence}`;
       // The engine writes a reference's citation key, found by its record ID, never the ID itself.
-      const key = (index: number) => { const id = (items[index]!.id as { key: string }).key; return rows.find((row) => row.id.key === id)?.key ?? id; };
+      const key = (index: number) => { const id = items[index]!.id.key; return rows.find((row) => row.id.key === id)?.key ?? ""; };
       const page = (index: number) => items[index]!.locator?.value ?? items[index]!.locator_input?.text;
       const order = items.map((_, index) => index);
       if (style && !intent.keep_order) order.sort((a, b) => key(a).localeCompare(key(b)));
@@ -175,13 +175,13 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
         { form: "author-only", example: null, reason: "Not in this output" },
         { form: "year-only", example: `[-@${receipt.key}]`, reason: null },
         { form: "full", example: null, reason: "Not in this output" },
-      ] } satisfies ReferenceDetails;
+      ] } satisfies FormDetails;
       return { current_form, forms: [
         { form: "normal", example: "(Aster, 2026)", reason: null },
         { form: "narrative", example: "Aster (2026)", reason: null },
         { form: "author-only", example: "Aster", reason: null },
         { form: "year-only", example: "(2026)", reason: null },
-      ] } satisfies ReferenceDetails;
+      ] } satisfies FormDetails;
     },
     picker_destination: () => knownApp && !projectContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
       find_open: false, usual_format: "apa", format: noFormatChosen, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false,

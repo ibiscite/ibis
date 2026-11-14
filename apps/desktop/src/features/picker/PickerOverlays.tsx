@@ -6,7 +6,7 @@ import { say } from "../../i18n";
 import { currentPlatform } from "../../platform";
 import { NoticeSlot, QuietNotice } from "../../ui/NoticeSlot";
 import { UndoNotice } from "../../ui/UndoNotice";
-import { KeysDialog } from "./KeysDialog";
+import { KeysDialog } from "../../ui/KeysSheet";
 import { UpdateNotice } from "./Notices";
 import { tileName } from "./rows";
 import { SessionReferencesDialog } from "./SessionReferences";

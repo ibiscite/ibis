@@ -1,6 +1,6 @@
 //! Engine-owned library objects and immutable, fingerprinted snapshots.
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize, de};
@@ -45,6 +45,17 @@ impl<'de> Deserialize<'de> for LibraryId {
     }
 }
 
+/// Wire-string identity. TypeScript deliberately cannot render it as text.
+pub struct RecordId;
+impl JsonSchema for RecordId {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "RecordId".into()
+    }
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({"type":"string", "x-ibis-opaque":"RecordId"})
+    }
+}
+
 /// Identity inside one library; citation keys are intentionally separate.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -52,7 +63,16 @@ impl<'de> Deserialize<'de> for LibraryId {
 /// source tags and collections cannot collide with native item keys.
 pub struct ItemRef {
     pub library: LibraryId,
+    #[schemars(with = "RecordId")]
     pub key: String,
+}
+
+impl ItemRef {
+    /// A digest selector that exposes neither the source nor its lookup key.
+    pub fn opaque_reference(&self) -> String {
+        let identity = serde_json::to_vec(self).unwrap_or_default();
+        format!("id:{}", Fingerprint::of_bytes(&identity).as_str())
+    }
 }
 
 /// Lowercase hexadecimal, the form every fingerprint has always used.
@@ -335,6 +355,9 @@ impl SnapshotObject {
 pub struct Snapshot {
     objects: Arc<[Arc<SnapshotObject>]>,
     fingerprints: Fingerprints,
+    #[serde(skip)]
+    #[schemars(skip)]
+    opaque_refs: Arc<HashMap<String, usize>>,
 }
 
 impl Snapshot {
@@ -489,9 +512,15 @@ impl Snapshot {
             )?
         };
         let fingerprints = Fingerprints { cite, full };
+        let opaque_refs = objects
+            .iter()
+            .enumerate()
+            .map(|(position, object)| (object.object.id().opaque_reference(), position))
+            .collect();
         Ok(Self {
             objects: objects.into(),
             fingerprints,
+            opaque_refs: Arc::new(opaque_refs),
         })
     }
 
@@ -513,6 +542,12 @@ impl Snapshot {
                 Arc::make_mut(&mut self.objects)[position] = old;
             }
         }
+    }
+
+    /// Resolve an agent's opaque selector without rescanning or hashing the snapshot.
+    pub fn resolve_opaque(&self, reference: &str) -> Option<&ItemRef> {
+        let position = *self.opaque_refs.get(reference)?;
+        Some(self.objects[position].object.id())
     }
 
     pub fn objects(&self) -> &[Arc<SnapshotObject>] {

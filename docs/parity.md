@@ -37,7 +37,7 @@ disambiguation.
 
 Contract evidence lives in `citation.rs`, `syntax_rules.rs`, `key_syntaxes.rs`
 and the formatted fixtures. Picker/engine agreement is checked in desktop
-`engine_file/parity_tests.rs`; CLI flags in `cite_options.rs`; MCP in its
+`ibis-engine/tests/citations.rs`; CLI flags in `cite_options.rs`; MCP in its
 citation tool tests.
 
 ## Better BibTeX Cite as You Write

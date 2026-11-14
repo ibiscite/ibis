@@ -65,6 +65,33 @@ fn open(engine: &Engine, path: &std::path::Path) -> LibraryId {
 fn write_record(path: &std::path::Path, key: &str, title: &str) {
     std::fs::write(path, format!("@article{{{key},title={{{title}}},year={{2026}}}}\n")).unwrap();
 }
+
+#[test]
+fn a_moved_file_keeps_the_cached_reference_and_tells_clients_to_locate_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("invented.bib");
+    write_record(&path, "lantern2026", "Invented lantern");
+    let engine = Engine::new().unwrap().without_file_watches();
+    let id = open(&engine, &path);
+    std::fs::rename(&path, dir.path().join("renamed.bib")).unwrap();
+    let error = engine
+        .dispatch(
+            Method::Libraries,
+            &json!({"action":"reload","library":id}),
+            &Cancellation::default(),
+        )
+        .unwrap_err();
+    assert_eq!(error.reason, Some(ErrorReason::MissingFile));
+    let shown = engine
+        .show_checked(&ShowRequest {
+            item: ItemSelector::Key("lantern2026".into()),
+        })
+        .unwrap();
+    let health = serde_json::to_value(shown.source_health).unwrap();
+    assert_eq!(health["findings"][0]["reason"], "missing-file");
+    assert_eq!(health["findings"][0]["recovery"]["action"], "locate-file");
+    assert_eq!(health["findings"][0]["focus"], "library-picker");
+}
 fn wait_for(mut predicate: impl FnMut() -> bool) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while !predicate() {
@@ -311,9 +338,15 @@ fn a_repeated_key_is_named_and_selects_nothing_until_it_is_fixed() {
     };
     let repeated = EngineError::because(ErrorCode::NotFound, ErrorReason::DuplicateKey);
     for copies in [2, 3] {
+        let key = if copies == 2 { "twin".into() } else { "twin".repeat(80) };
+        let label = if copies == 2 {
+            key.clone()
+        } else {
+            format!("{}…", &key[..256])
+        };
         let mut text = "@article{kept,title={Kept synthetic}}\n".to_owned();
         for copy in 0..copies {
-            text.push_str(&format!("@article{{twin,title={{Synthetic copy {copy}}}}}\n"));
+            text.push_str(&format!("@article{{{key},title={{Synthetic copy {copy}}}}}\n"));
         }
         std::fs::write(&path, text).unwrap();
         let action = if copies == 2 {
@@ -326,13 +359,13 @@ fn a_repeated_key_is_named_and_selects_nothing_until_it_is_fixed() {
         let warnings = &engine.libraries().unwrap().libraries[0].warnings;
         let lines: Vec<_> = warnings
             .iter()
-            .filter(|warning| warning.key.as_deref() == Some("twin"))
+            .filter(|warning| warning.key.as_deref() == Some(&label))
             .filter_map(|warning| warning.line)
             .collect();
         // Every entry under the key is named, the first included.
         assert_eq!(lines, (2..2 + copies).collect::<Vec<_>>(), "{copies} copies");
-        assert_eq!(show("twin").unwrap_err(), repeated);
-        assert_eq!(cite("twin").unwrap_err(), repeated);
+        assert_eq!(show(&key).unwrap_err(), repeated);
+        assert_eq!(cite(&key).unwrap_err(), repeated);
         assert!(show("kept").is_ok());
         // A key nobody wrote is still simply missing.
         assert_eq!(show("absent").unwrap_err(), EngineError::new(ErrorCode::NotFound));
@@ -377,4 +410,40 @@ fn a_repeated_csl_json_id_refuses_every_record_and_lookup_says_why() {
         show("x").unwrap_err(),
         EngineError::because(ErrorCode::NotFound, ErrorReason::DuplicateKey)
     );
+}
+
+#[test]
+fn clients_can_identify_available_missing_and_unchecked_attachments() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("available.pdf"), b"invented attachment").unwrap();
+    let path = dir.path().join("invented.json");
+    let records: Vec<_> = (0..500)
+        .map(|index| {
+            json!({
+                "id": format!("item{index:03}"), "type": "book",
+                "file": if index == 1 { "missing.pdf" } else { "available.pdf" }
+            })
+        })
+        .collect();
+    std::fs::write(&path, serde_json::to_vec(&records).unwrap()).unwrap();
+    let engine = Engine::new().unwrap().without_file_watches();
+    let library = open(&engine, &path);
+    for (index, expected) in [
+        (0, Availability::OnDisk),
+        (1, Availability::BrokenLink),
+        (499, Availability::Unknown),
+    ] {
+        let shown = engine
+            .show(&ShowRequest {
+                item: ItemSelector::Id(ItemRef {
+                    library: library.clone(),
+                    key: format!("attachment:record:item{index:03}:0"),
+                }),
+            })
+            .unwrap();
+        let LibraryObject::Attachment(attachment) = shown.object else {
+            panic!("attachment")
+        };
+        assert_eq!(attachment.availability, expected);
+    }
 }

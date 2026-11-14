@@ -18,6 +18,7 @@ use ibis_engine::settings;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
+use crate::library::CommandError;
 use crate::preferences::SettingsFile;
 
 /// Apps remembered; the least recently chosen goes first.
@@ -292,7 +293,7 @@ pub(crate) fn picker_destination(
     memory: State<'_, AppMemory>,
     _settings_file: State<'_, SettingsFile>,
     editor: State<'_, crate::editor_endpoint::Pending>,
-) -> Result<PickerDestination, String> {
+) -> Result<PickerDestination, crate::library::CommandError> {
     // The editor already said what it wants and takes the citation itself.
     let request = editor.current();
     let last = if request.is_some() {
@@ -334,7 +335,7 @@ pub(crate) fn picker_destination(
     let writing = context.active.map(|project| project.view());
     let writing_context = editor.current().is_none().then_some(context.edit);
     if editor.current() != request {
-        return Err("The editor request changed. Open the format menu again.".into());
+        return Err(CommandError::SnapshotChanged);
     }
     let Some((id, name, app_identity)) = last else {
         return Ok(PickerDestination {
@@ -399,9 +400,9 @@ pub(crate) fn remember_app_output<R: tauri::Runtime>(
     let output = output
         .map(|id| crate::output::listed(&id).ok_or("this format is not available; choose another"))
         .transpose()
-        .map_err(AppChoiceError::not_saved)?;
+        .map_err(|_| AppChoiceError::not_saved())?;
     if output.is_none() && paste.is_none() {
-        return Err(AppChoiceError::not_saved("there is no choice to remember"));
+        return Err(AppChoiceError::not_saved());
     }
     let target = |captured: Option<&crate::paste::Captured>| -> Result<AppId, String> {
         let captured = captured.ok_or("no app to remember a choice for")?;
@@ -418,11 +419,11 @@ pub(crate) fn remember_app_output<R: tauri::Runtime>(
                     .set_bound_choice(&target(captured)?, paste, identity.clone())
                     .map_err(|_| "the choice for this app could not be saved".into())
             })
-            .map_err(|message| {
+            .map_err(|_| {
                 if output.is_some() {
                     AppChoiceError::DeliveryNotSaved
                 } else {
-                    AppChoiceError::not_saved(message)
+                    AppChoiceError::not_saved()
                 }
             })?;
         }
@@ -435,7 +436,7 @@ pub(crate) fn remember_app_output<R: tauri::Runtime>(
                 settings.remember_app_output(&target(captured)?, output.id().to_owned());
                 Ok(())
             })
-            .map_err(AppChoiceError::not_saved)
+            .map_err(|_| AppChoiceError::not_saved())
         },
         |saved| {
             saved?;
@@ -452,7 +453,7 @@ pub(crate) fn forget_app_output(
     settings_file: State<'_, SettingsFile>,
     app_id: String,
     identity: Option<String>,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     settings_file
         .owner
         .change(|settings| {
@@ -465,10 +466,9 @@ pub(crate) fn forget_app_output(
                 settings.forget_app_output(id);
                 Ok(())
             })
-            .map_err(AppChoiceError::not_saved)
+            .map_err(|_| CommandError::SnapshotChanged)
         })
         .map(|_| ())
-        .map_err(|error| error.to_string())
 }
 
 /// Why a choice for an app was not saved, so the picker can say which part
@@ -477,32 +477,46 @@ pub(crate) fn forget_app_output(
 #[serde(tag = "code", rename_all = "snake_case")]
 pub(crate) enum AppChoiceError {
     NotSaved {
-        message: String,
+        problem: ibis_core::contract::Problem,
     },
     /// The format was saved; whether to paste into the app was not.
     DeliveryNotSaved,
 }
 
 impl AppChoiceError {
-    fn not_saved(message: impl Into<String>) -> Self {
-        Self::NotSaved {
-            message: message.into(),
-        }
+    fn not_saved() -> Self {
+        Self::from(CommandError::Presented(ibis_core::contract::Problem {
+            code: "not-saved".into(),
+            info: ibis_core::contract::RecoveryInfo::new(
+                "app-command-output-not-saved",
+                ibis_core::contract::Recovery::Retry,
+            ),
+        }))
     }
 }
 
 impl From<settings::SettingsError> for AppChoiceError {
     fn from(error: settings::SettingsError) -> Self {
-        Self::not_saved(crate::preferences::settings_message(&error))
+        Self::from(CommandError::from(error))
     }
 }
 
 impl std::error::Error for AppChoiceError {}
+impl From<CommandError> for AppChoiceError {
+    fn from(error: CommandError) -> Self {
+        Self::NotSaved {
+            problem: error.problem(),
+        }
+    }
+}
 
 impl std::fmt::Display for AppChoiceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NotSaved { message } => f.write_str(message),
+            Self::NotSaved { problem } => f.write_str(&ibis_engine::catalogue::problem(
+                problem,
+                ibis_engine::catalogue::Audience::App,
+            )),
             Self::DeliveryNotSaved => f.write_str("the format was saved, but the paste choice could not be"),
         }
     }
@@ -569,7 +583,7 @@ mod tests {
             Ok(Self { directory, app })
         }
 
-        fn choose(&self, app: &AppId, output: Option<&str>, paste: Option<AppPaste>) -> Result<(), AppChoiceError> {
+        fn choose(&self, app: &AppId, output: Option<&str>, paste: Option<AppPaste>) -> Result<(), CommandError> {
             self.choose_for(app, &app.normalized(), output, paste, test_identity(app))
         }
 
@@ -580,7 +594,7 @@ mod tests {
             output: Option<&str>,
             paste: Option<AppPaste>,
             identity: Option<String>,
-        ) -> Result<(), AppChoiceError> {
+        ) -> Result<(), CommandError> {
             let mut captured = crate::paste::Captured::unknown(app.system);
             captured.target.app = Some(app.clone());
             captured.app_identity = identity.clone();
@@ -785,7 +799,7 @@ mod tests {
         let refused = choices.choose(&app, Some("typst"), Some(AppPaste::CopyOnly));
         assert_eq!(
             refused,
-            Err(AppChoiceError::DeliveryNotSaved),
+            Err(CommandError::from(AppChoiceError::DeliveryNotSaved)),
             "the picker says which choice was kept"
         );
         assert_eq!(choices.format(&app), listed("typst"), "the format half stays saved");
@@ -1063,7 +1077,7 @@ mod tests {
         });
         assert!(matches!(
             choices.choose(&id, None, Some(AppPaste::CopyOnly)),
-            Err(AppChoiceError::NotSaved { .. })
+            Err(CommandError::Presented(_))
         ));
         assert_eq!(
             choices

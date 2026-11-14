@@ -140,10 +140,9 @@ fn encode_literals(text: &str) -> Cow<'_, str> {
     Cow::Owned(out)
 }
 
-/// `biblatex` decodes this symbol before our TeX conversion; protect it until
-/// final cleaning. Apply only to parser input, retaining resolved source text
-/// for the unchanged fallback used when a field has an unknown command.
-fn protect_backslashes(text: &str) -> Cow<'_, str> {
+/// Protect literal symbol commands until final cleaning, before upstream TeX
+/// parsing or verbatim identifier decoding. Unknown commands stay unchanged.
+pub(super) fn protect_backslashes(text: &str) -> Cow<'_, str> {
     if !text.as_bytes().contains(&b'\\') {
         return Cow::Borrowed(text);
     }
@@ -169,7 +168,10 @@ fn protect_backslashes(text: &str) -> Cow<'_, str> {
             .then(|| {
                 [
                     ("textbackslash", BACKSLASH),
+                    ("textbraceleft", LEFT_BRACE),
+                    ("textbraceright", RIGHT_BRACE),
                     ("textasciitilde", '~'),
+                    ("textasciicircum", '^'),
                     ("textasciigrave", '`'),
                     ("textquotesingle", '\''),
                 ]
@@ -181,7 +183,7 @@ fn protect_backslashes(text: &str) -> Cow<'_, str> {
             })
             .flatten();
         if let Some((name, symbol)) = symbol {
-            if symbol != BACKSLASH {
+            if !matches!(symbol, BACKSLASH | LEFT_BRACE | RIGHT_BRACE) {
                 out.push(ESCAPE);
             }
             out.push(symbol);

@@ -1,7 +1,7 @@
 // Thin effect runner. It never decides which interaction owns a completion.
 import * as nativeApi from "../../api";
-import type { Delivered } from "../../bindings";
-import { say } from "../../i18n";
+import type { Delivered, Problem } from "../../bindings";
+import { problemText, say } from "../../i18n";
 import type { OutputId } from "../../format/outputs";
 import type { ProjectEdit } from "./destination";
 import type { Operation } from "./Notices";
@@ -121,7 +121,7 @@ export function createSessionController(initial = initialSession()) {
         const { request, ask } = effect;
         try {
           const preview = await ports.previewFileCitation(ask.selection, ask.output, ask.revision, abort.signal, ask.projectContext, ask.keepOrder);
-          dispatch({ type: "previewed", request, preview, value: { display: preview.display, text: preview.text,
+          dispatch({ type: "previewed", request, preview, value: { effective_output: preview.effective_output, display: preview.display, text: preview.text,
             warnings: preview.warnings, project_refusal: preview.project_refusal, notices: preview.notices, fileTicket: preview.ticket, fileHash: preview.content_hash } });
         } catch (error) {
           dispatch({ type: "preview-failed", request, failure: previewFailure(error) });
@@ -168,7 +168,11 @@ function previewFailure(error: unknown): PreviewFailure {
   if (nativeApi.isCancelled(error)) return { kind: "cancelled" };
   if (nativeApi.isSnapshotChanged(error)) return { kind: "stale" };
   const shared = nativeApi.sharedCitationKey(error);
-  if (shared) return { kind: "failed", problem: say("picker-shared-key", { key: shared }) };
-  const failure = typeof error === "object" && error !== null ? error as { code?: unknown; message?: unknown } : null;
-  return { kind: "failed", ...failure?.code === "failed" && typeof failure.message === "string" ? { problem: failure.message } : {} };
+  if (shared) return { kind: "failed", problem: say("picker-shared-key", { key: shared }), failure: error as Problem };
+  const failure = typeof error === "object" && error !== null ? error as Partial<Problem> : null;
+  if (failure?.message && typeof failure.message.id === "string" && failure.recovery && failure.focus) {
+    return { kind: "failed", failure: failure as Problem,
+      problem: problemText(failure, say("picker-preview-error")) };
+  }
+  return { kind: "failed" };
 }

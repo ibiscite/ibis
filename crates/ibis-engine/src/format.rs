@@ -9,42 +9,56 @@
 //! level won, for the picker's header ("MLA · for Word", "Thesis").
 use crate::outputs;
 use crate::settings::Settings;
-use ibis_core::contract::{KeySyntax, OutputSpec};
+use ibis_core::contract::OutputSpec;
 use ibis_core::destination::{AppId, OutputClass, lookup};
 pub use ibis_core::destination::{FormatChoice, FormatFrom, FormatKind, WritingName};
 
 /// The kind of `app`, what is suggested for it when nothing is chosen, and
 /// whether Ibis knows its kind; an app it does not counts as documents.
-fn kind(app: Option<&AppId>) -> (FormatKind, &'static str, bool) {
-    match app.and_then(lookup).and_then(|entry| entry.output) {
-        Some(OutputClass::Key(syntax)) => (FormatKind::Keys, key_id(syntax), true),
-        Some(OutputClass::Formatted) => (FormatKind::Documents, outputs::DEFAULT_STYLE, true),
-        None => (FormatKind::Documents, outputs::DEFAULT_STYLE, false),
-    }
-}
-
-fn key_id(syntax: KeySyntax) -> &'static str {
-    let output = OutputSpec::Key { syntax, command: None };
-    outputs::named(&output).map_or(outputs::DEFAULT, |entry| entry.id.as_str())
-}
-
-/// A saved key preset or bundled style; an unknown id reads as no choice.
-fn resolve(id: &str, from: FormatFrom, kind: FormatKind) -> Option<FormatChoice> {
-    let output = match ibis_core::syntax::CAPABILITIES.iter().find(|preset| preset.id == id) {
-        Some(preset) => preset.output(),
-        None => {
-            let output = OutputSpec::Csl { style: id.to_owned() };
-            ibis_csl::Formatter::check_output(&output, None).ok()?;
-            output
+fn kind(app: Option<&AppId>) -> (FormatKind, OutputSpec, bool) {
+    let known = app.and_then(lookup).and_then(|entry| entry.output);
+    let suggestion = match known {
+        Some(OutputClass::Key(syntax)) => {
+            let output = OutputSpec::Key { syntax, command: None };
+            ibis_core::syntax::capabilities(&output).map_or(output, |caps| caps.output())
         }
+        _ => OutputSpec::Csl {
+            style: outputs::DEFAULT_STYLE.into(),
+        },
     };
-    Some(FormatChoice {
-        output,
-        id: Some(id.to_owned()),
+    (kind_of(&suggestion), suggestion, known.is_some())
+}
+
+/// Identity comes from the syntax or style owner, independently of the menu.
+/// Keep the exact output even when invalid: explicit requests must reach the
+/// engine's normal refusal rather than become a different citation.
+fn choice(output: &OutputSpec, from: FormatFrom, kind: FormatKind) -> FormatChoice {
+    let id = outputs::resolve(output).ok().and_then(|resolved| match &resolved {
+        OutputSpec::Key { .. } => ibis_core::syntax::capabilities(&resolved)
+            .ok()
+            .map(|caps| caps.id.to_owned()),
+        OutputSpec::Csl { style } => ibis_csl::Formatter::check_output(&resolved, None)
+            .ok()
+            .map(|()| style.clone()),
+        OutputSpec::Preset { .. } => None,
+    });
+    FormatChoice {
+        output: output.clone(),
+        id,
         from,
         kind,
         writing: None,
-    })
+    }
+}
+
+/// Unknown saved ids read as no choice; key ids take precedence over styles.
+fn saved(id: &str, from: FormatFrom, kind: FormatKind) -> Option<FormatChoice> {
+    let output = ibis_core::syntax::CAPABILITIES
+        .iter()
+        .find(|preset| preset.id == id)
+        .map_or_else(|| OutputSpec::Csl { style: id.to_owned() }, |preset| preset.output());
+    let chosen = choice(&output, from, kind);
+    chosen.id.is_some().then_some(chosen)
 }
 
 /// The format for a citation into `app` (none when no app was captured).
@@ -60,7 +74,7 @@ pub fn choose(settings: &Settings, app: Option<&AppId>) -> FormatChoice {
     // This app's format was chosen in it, so it holds whatever its kind.
     if let Some(chosen) = app
         .and_then(|app| settings.app_output(app))
-        .and_then(|id| resolve(id, FormatFrom::App, kind))
+        .and_then(|id| saved(id, FormatFrom::App, kind))
     {
         return chosen;
     }
@@ -75,23 +89,20 @@ pub fn usual(settings: &Settings, app: Option<&AppId>) -> FormatChoice {
         FormatKind::Keys => settings.portable.key_output.as_deref(),
     };
     if let Some(chosen) = yours
-        .and_then(|id| resolve(id, FormatFrom::Yours, kind))
+        .and_then(|id| saved(id, FormatFrom::Yours, kind))
         .filter(|chosen| kind_of(&chosen.output) == kind)
     {
         return chosen;
     }
-    resolve(suggestion, FormatFrom::Suggestion, kind).expect("suggestions name existing key presets or bundled styles")
+    choice(&suggestion, FormatFrom::Suggestion, kind)
 }
 
 /// The answer when a writing is chosen, also one that holds only for this
 /// session: its format, in any kind of app, since the person chose it there.
 pub fn for_writing(output: &OutputSpec, writing: WritingName, app: Option<&AppId>) -> FormatChoice {
     FormatChoice {
-        id: outputs::named(output).map(|entry| entry.id.clone()),
-        output: output.clone(),
-        from: FormatFrom::Writing,
-        kind: kind(app).0,
         writing: Some(writing),
+        ..choice(output, FormatFrom::Writing, kind(app).0)
     }
 }
 
@@ -108,13 +119,7 @@ pub fn choose_with(settings: &Settings, app: Option<&AppId>, yours: Option<&Outp
             if matches!(chosen.from, FormatFrom::Yours | FormatFrom::Suggestion)
                 && (!known || kind_of(output) == chosen.kind) =>
         {
-            FormatChoice {
-                id: outputs::named(output).map(|entry| entry.id.clone()),
-                output: output.clone(),
-                from: FormatFrom::Yours,
-                kind: kind_of(output),
-                writing: None,
-            }
+            choice(output, FormatFrom::Yours, kind_of(output))
         }
         _ => chosen,
     }

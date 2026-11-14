@@ -28,17 +28,24 @@ const END = "<!-- End of generated options. -->";
 /** What each derived file should hold, from the folder the writers filled. */
 export function derived(folder, read = (path) => readFileSync(join(root, path), "utf8"), headless = false) {
   const made = (name) => readFileSync(join(folder, name), "utf8");
-  const cli = read("docs/cli.md");
-  const start = cli.indexOf(BEGIN);
-  const end = cli.indexOf(END);
-  if (start < 0 || end < start) throw new Error(`docs/cli.md needs the lines\n${BEGIN}\n${END}`);
+  const cli = section(read("docs/cli.md"), BEGIN, END, made("cli-options.md"));
+  const errors = JSON.parse(made("cli-errors.json")).map(({ code, exit }) => `| ${exit} | \`${code}\` |\n`).join("");
   return {
     "fixtures/engine-contract.schema.json": made("engine-contract.schema.json"),
     "fixtures/mcp-tools.json": made("mcp-tools.json"),
     "fixtures/cli-schema.json": made("cli-schema.json"),
-    "docs/cli.md": `${cli.slice(0, start)}${BEGIN}\n${made("cli-options.md")}${cli.slice(end)}`,
+    "docs/cli.md": section(cli, "<!-- gen:errors -->", "<!-- /gen:errors -->", `\n| Exit | Error code |\n| --- | --- |\n${errors}\n`),
     ...(headless ? {} : { "apps/desktop/src/bindings.ts": bindings(JSON.parse(made("desktop-contract.json"))) }),
   };
+}
+
+/** Replace exactly one marked section, refusing missing or repeated markers. */
+function section(source, begin, end, content) {
+  if (source.split(begin).length !== 2 || source.split(end).length !== 2 || source.indexOf(end) < source.indexOf(begin)) {
+    throw new Error(`needs exactly one ordered pair of ${begin} and ${end}`);
+  }
+  const start = source.indexOf(begin) + begin.length;
+  return `${source.slice(0, start)}\n${content}${source.slice(source.indexOf(end))}`;
 }
 
 // --- JSON Schema, as schemars writes it, to TypeScript ---------------------
@@ -68,6 +75,7 @@ function reference(ref) {
 export function type(schema, indent = "") {
   if (schema === true || schema === undefined || schema === null) return "unknown";
   if (schema === false) return "never";
+  if (schema["x-ibis-opaque"]) return `{ readonly __${schema["x-ibis-opaque"]}: unique symbol }`;
   if (schema.$ref) return reference(schema.$ref);
   if ("const" in schema) return JSON.stringify(schema.const);
   if (schema.enum) return union(schema.enum.map((value) => JSON.stringify(value)));

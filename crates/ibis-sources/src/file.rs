@@ -12,10 +12,8 @@ use thiserror::Error;
 
 use crate::{LoadedLibrary, attachments, bibtex, csl_json, exported};
 use ibis_core::contract::{Fingerprint, LibraryObject, Snapshot};
-use std::collections::BTreeMap;
 
 mod io;
-pub(crate) use io::needs_download;
 mod watch;
 
 pub const MAX_LIBRARY_BYTES: u64 = 64 * 1024 * 1024;
@@ -30,6 +28,10 @@ pub fn inspect_io<T: Send + 'static>(operation: impl FnOnce() -> T + Send + 'sta
 /// Front ends add any context about their installed references.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum SourceError {
+    #[error("the library load was cancelled")]
+    Cancelled,
+    #[error("the library file was moved, renamed or removed")]
+    Missing,
     #[error("the library file is unavailable; download any online-only file to this computer first")]
     Unavailable,
     #[error("the library must be a regular file")]
@@ -50,6 +52,14 @@ pub enum SourceError {
     CsvTemplate,
     #[error("the file is not in a format Ibis reads")]
     UnknownFormat,
+}
+
+fn file_io_error(error: std::io::Error) -> SourceError {
+    if error.kind() == std::io::ErrorKind::NotFound {
+        SourceError::Missing
+    } else {
+        SourceError::Unavailable
+    }
 }
 
 /// What a library file holds, from its name or reference entry structure.
@@ -105,27 +115,9 @@ pub fn names_a_library(path: &Path) -> bool {
     })
 }
 
-pub fn read_library_file(path: &Path) -> Result<String, SourceError> {
+fn read_library_file(path: &Path, scope: &io::Scope<'_>) -> Result<String, SourceError> {
     let path = path.to_path_buf();
-    io::bounded(move || read_library_file_sync(&path))
-}
-
-fn read_library_file_sync(path: &Path) -> Result<String, SourceError> {
-    let pause = || std::thread::sleep(Duration::from_millis(50));
-    if io::path_needs_download(path)? {
-        return Err(SourceError::Unavailable);
-    }
-    let metadata = retry_io(|| std::fs::metadata(path), pause).map_err(|_| SourceError::Unavailable)?;
-    if !metadata.is_file() {
-        return Err(SourceError::NotRegular);
-    }
-    if metadata.len() > MAX_LIBRARY_BYTES {
-        return Err(SourceError::TooLarge);
-    }
-    io::read_if_downloaded(io::needs_download(&metadata), || {
-        let file = retry_io(|| open_readonly(path), pause).map_err(|_| SourceError::Unavailable)?;
-        read_open_file(file)
-    })
+    scope.run(move || io::read_library_file_sync(&path))
 }
 
 fn retry_io<T>(mut operation: impl FnMut() -> std::io::Result<T>, mut pause: impl FnMut()) -> std::io::Result<T> {
@@ -159,10 +151,9 @@ fn read_text(file: impl Read, expected: u64) -> Result<String, SourceError> {
     String::from_utf8(bytes).map_err(|_| SourceError::Unreadable)
 }
 
-fn canonical_path(path: &Path) -> std::io::Result<PathBuf> {
+fn canonical_path(path: &Path, scope: &io::Scope<'_>) -> Result<PathBuf, SourceError> {
     let path = path.to_path_buf();
-    io::bounded(move || Ok(canonical_path_sync(&path)))
-        .map_err(|_| std::io::Error::from(std::io::ErrorKind::TimedOut))?
+    scope.run(move || canonical_path_sync(&path).map_err(file_io_error))
 }
 
 // Only call directly from a job already protected by the filesystem deadline.
@@ -176,7 +167,7 @@ fn canonical_path_sync(path: &Path) -> std::io::Result<PathBuf> {
 fn watched_path(path: &Path) -> std::io::Result<PathBuf> {
     let path = std::path::absolute(path)?;
     let parent = path.parent().ok_or(std::io::ErrorKind::InvalidInput)?;
-    let parent = canonical_path(parent).or_else(|_| std::path::absolute(parent))?;
+    let parent = canonical_path(parent, &io::Scope::new(&|| false)).or_else(|_| std::path::absolute(parent))?;
     #[cfg(windows)]
     if matches!(path.components().next(), Some(std::path::Component::Prefix(prefix)) if prefix.kind().is_verbatim()) {
         return Ok(parent.join(path.file_name().ok_or(std::io::ErrorKind::InvalidInput)?));
@@ -218,16 +209,20 @@ struct Seen {
 /// Load once and retain an observation for the watch-registration gap check.
 /// This compares contents, so same-size edits with preserved timestamps remain
 /// visible. Clones share the bounded source text rather than copying it.
-pub fn load_file_snapshot(path: &Path) -> Result<(LoadedLibrary, SourceSnapshot), SourceError> {
-    load_file_snapshot_with(path, || {})
+pub fn load_file_snapshot(
+    path: &Path,
+    cancelled: &impl Fn() -> bool,
+) -> Result<(LoadedLibrary, SourceSnapshot), SourceError> {
+    load_file_snapshot_with(path, || {}, &io::Scope::new(cancelled))
 }
 
 fn load_file_snapshot_with(
     path: &Path,
     after_read: impl FnOnce(),
+    scope: &io::Scope<'_>,
 ) -> Result<(LoadedLibrary, SourceSnapshot), SourceError> {
-    let observation = SourceSnapshot::read_with(path, after_read)?;
-    let loaded = parse(&observation.source, &observation.text, None)?;
+    let observation = SourceSnapshot::read_with(path, after_read, scope)?;
+    let loaded = parse(&observation.source, &observation.text, None, scope)?;
     Ok((loaded, observation))
 }
 
@@ -237,11 +232,15 @@ impl SourceSnapshot {
         &self.source
     }
 
-    fn read_with(path: &Path, after_read: impl FnOnce()) -> Result<Self, SourceError> {
-        let source = canonical_path(path).map_err(|_| SourceError::Unavailable)?;
-        let text = read_library_file(&source)?;
+    fn read_with(path: &Path, after_read: impl FnOnce(), scope: &io::Scope<'_>) -> Result<Self, SourceError> {
+        let source = canonical_path(path, scope)?;
+        let text = read_library_file(&source, scope)?;
         after_read();
-        if canonical_path(path).ok().as_ref() != Some(&source) {
+        let current = canonical_path(path, scope);
+        if current == Err(SourceError::Cancelled) {
+            return Err(SourceError::Cancelled);
+        }
+        if current.ok().as_ref() != Some(&source) {
             return Err(SourceError::Changing);
         }
         Ok(Self {
@@ -252,23 +251,25 @@ impl SourceSnapshot {
 }
 
 /// Strict Reload carries the second of two identical source observations.
-pub fn reload_file_snapshot_reusing(
+pub fn reload_file_snapshot(
     path: &Path,
-    previous: &Snapshot,
+    previous: Option<&Snapshot>,
+    cancelled: &impl Fn() -> bool,
 ) -> Result<(LoadedLibrary, SourceSnapshot), SourceError> {
-    let observation = stable_observation_with(path, || std::thread::sleep(SETTLE))?;
-    let loaded = parse(&observation.source, &observation.text, Some(previous))?;
+    let scope = io::Scope::new(cancelled);
+    let observation = stable_observation_with(path, || std::thread::sleep(SETTLE), &scope)?;
+    let loaded = parse(&observation.source, &observation.text, previous, &scope)?;
     Ok((loaded, observation))
 }
 
 /// Two identical reads, so a file an editor is still writing is never trusted.
 pub(crate) fn stable_observation(path: &Path) -> Result<SourceSnapshot, SourceError> {
-    stable_observation_with(path, || std::thread::sleep(SETTLE))
+    stable_observation_with(path, || std::thread::sleep(SETTLE), &io::Scope::new(&|| false))
 }
 
 /// A file read as a library without becoming one, tolerating damaged entries.
 pub(crate) fn parse_for_project(path: &Path, text: &str) -> Result<LoadedLibrary, SourceError> {
-    parse(path, text, None)
+    parse_with_budget(path, text, bibtex::Budget::for_input(text.len()), None, None)
 }
 
 /// `key`'s original entry in the file `item` came from, when the file still
@@ -289,7 +290,7 @@ pub fn original_entry(
         return Err(EntryRefusal::NoOriginal);
     }
     // Parsed from the canonical path, as the library was, so the item's ID matches.
-    let loaded = parse(&observation.source, &observation.text, None).map_err(|_| EntryRefusal::Changed)?;
+    let loaded = parse_for_project(&observation.source, &observation.text).map_err(|_| EntryRefusal::Changed)?;
     let current = loaded.snapshot.get(item).ok_or(EntryRefusal::Changed)?;
     if current.fingerprints.cite != *cite {
         return Err(EntryRefusal::Changed);
@@ -297,10 +298,14 @@ pub fn original_entry(
     crate::project::entry_in(&observation.text, key)
 }
 
-fn stable_observation_with(path: &Path, settle: impl FnOnce()) -> Result<SourceSnapshot, SourceError> {
-    let before = SourceSnapshot::read_with(path, || {})?.seen();
+fn stable_observation_with(
+    path: &Path,
+    settle: impl FnOnce(),
+    scope: &io::Scope<'_>,
+) -> Result<SourceSnapshot, SourceError> {
+    let before = SourceSnapshot::read_with(path, || {}, scope)?.seen();
     settle();
-    let after = SourceSnapshot::read_with(path, || {})?;
+    let after = SourceSnapshot::read_with(path, || {}, scope)?;
     if before != after.clone().seen() {
         return Err(SourceError::Changing);
     }
@@ -310,8 +315,13 @@ fn stable_observation_with(path: &Path, settle: impl FnOnce()) -> Result<SourceS
 /// One read policy: the same bytes give the same library whether opened or
 /// reloaded. Damaged entries and work limits warn while the rest loads; a
 /// stable read has already ruled out a file still being written.
-fn parse(path: &Path, text: &str, previous: Option<&Snapshot>) -> Result<LoadedLibrary, SourceError> {
-    parse_with_budget(path, text, bibtex::Budget::for_input(text.len()), previous)
+fn parse(
+    path: &Path,
+    text: &str,
+    previous: Option<&Snapshot>,
+    scope: &io::Scope<'_>,
+) -> Result<LoadedLibrary, SourceError> {
+    parse_with_budget(path, text, bibtex::Budget::for_input(text.len()), previous, Some(scope))
 }
 
 fn parse_with_budget(
@@ -319,6 +329,7 @@ fn parse_with_budget(
     text: &str,
     budget: bibtex::Budget,
     previous: Option<&Snapshot>,
+    scope: Option<&io::Scope<'_>>,
 ) -> Result<LoadedLibrary, SourceError> {
     let source = std::path::absolute(path).map_err(|_| SourceError::Unavailable)?;
     let library = crate::identity::library_id(crate::LibraryKind::File, &[source.as_os_str().as_encoded_bytes()]);
@@ -332,14 +343,14 @@ fn parse_with_budget(
     let parsed_cut_short = parsed.cut_short;
     let mut objects: Vec<_> = parsed.records.into_iter().map(LibraryObject::Record).collect();
     let mut warnings = parsed.warnings;
-    let mut attachment_paths = BTreeMap::new();
-    attachments::append(
-        source.parent().ok_or(SourceError::Unavailable)?,
-        parsed.attachments,
-        &mut objects,
-        &mut attachment_paths,
-        &mut warnings,
-    );
+    if let Some(scope) = scope {
+        let references = attachments::append(parsed.attachments, &mut objects, &mut warnings);
+        scope.attachments(
+            &mut objects,
+            source.parent().ok_or(SourceError::Unavailable)?,
+            references,
+        )?;
+    }
     let mut snapshot = match previous {
         Some(previous) => Snapshot::new_reusing(objects, previous, &parsed.reused),
         None => Snapshot::new(objects),
@@ -353,35 +364,25 @@ fn parse_with_budget(
         kind: crate::LibraryKind::File,
         snapshot,
         warnings,
+        duplicate_keys: parsed.duplicate_keys,
         cut_short: parsed_cut_short,
         damaged_keys: parsed.damaged_keys,
-        attachment_paths,
     })
 }
 
 /// One read: damaged entries warn while complete entries load.
 pub fn load_file(path: &Path) -> Result<LoadedLibrary, SourceError> {
-    let observation = SourceSnapshot::read_with(path, || {})?;
-    parse(&observation.source, &observation.text, None)
+    load_file_snapshot(path, &|| false).map(|(loaded, _)| loaded)
 }
 
 /// Explicit refresh obeys the same two-identical-observations rule as watches.
 pub fn reload_file(path: &Path) -> Result<LoadedLibrary, SourceError> {
-    reload(path, None)
+    reload_file_snapshot(path, None, &|| false).map(|(loaded, _)| loaded)
 }
 
 /// Reuse unchanged records while parsing, before a second CSL library accumulates.
 pub fn reload_file_reusing(path: &Path, previous: &Snapshot) -> Result<LoadedLibrary, SourceError> {
-    reload(path, Some(previous))
-}
-
-fn reload(path: &Path, previous: Option<&Snapshot>) -> Result<LoadedLibrary, SourceError> {
-    let (sender, events) = mpsc::sync_channel(1);
-    let stopped = AtomicBool::new(false);
-    let mut snapshot = None;
-    let result = stable_read(path, &events, &stopped, &mut snapshot, false, previous)?.ok_or(SourceError::Changing);
-    drop(sender);
-    result
+    reload_file_snapshot(path, Some(previous), &|| false).map(|(loaded, _)| loaded)
 }
 
 /// Watches the containing directory so editor rename-replacements keep working.
@@ -584,7 +585,9 @@ fn stable_read(
     error_reported: bool,
     previous: Option<&Snapshot>,
 ) -> Result<Option<LoadedLibrary>, SourceError> {
-    let before = SourceSnapshot::read_with(path, || {})?.seen();
+    let cancelled = || stopped.load(Ordering::SeqCst);
+    let scope = &io::Scope::new(&cancelled);
+    let before = SourceSnapshot::read_with(path, || {}, scope)?.seen();
     // A zero-length file and a valid prefix can both occur during a save.
     // Require identical observations separated by another quiet interval.
     match events.recv_timeout(SETTLE) {
@@ -595,7 +598,7 @@ fn stable_read(
     if stopped.load(Ordering::SeqCst) {
         return Err(SourceError::Changing);
     }
-    let after = SourceSnapshot::read_with(path, || {})?;
+    let after = SourceSnapshot::read_with(path, || {}, scope)?;
     let seen = after.clone().seen();
     if before != seen {
         return Err(SourceError::Changing);
@@ -604,7 +607,7 @@ fn stable_read(
     if snapshot.take().is_some_and(|previous| previous == seen) && !error_reported {
         return Ok(None);
     }
-    parse(&after.source, &after.text, previous).map(Some)
+    parse(&after.source, &after.text, previous, scope).map(Some)
 }
 
 impl Drop for SourceWatch {
@@ -633,6 +636,7 @@ fn open_readonly(path: &Path) -> std::io::Result<std::fs::File> {
     }
     options.open(path)
 }
+#[allow(clippy::disallowed_methods)]
 fn read_open_file(file: std::fs::File) -> Result<String, SourceError> {
     let metadata = file.metadata().map_err(|_| SourceError::Unavailable)?;
     if !metadata.is_file() {
@@ -649,6 +653,7 @@ fn read_open_file(file: std::fs::File) -> Result<String, SourceError> {
 mod subprocess_watchdog;
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     #[test]
@@ -686,7 +691,7 @@ mod tests {
         let path = directory.path().join("synthetic.bib");
         let text = "@book{a,title={Invented 日本}}\n".repeat(5_000);
         std::fs::write(&path, &text).unwrap_or_else(|e| panic!("{e}"));
-        let (_, observation) = load_file_snapshot(&path).unwrap_or_else(|e| panic!("{e}"));
+        let (_, observation) = load_file_snapshot(&path, &|| false).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(*observation.text, text);
         // Reading without the file's size doubles the buffer as it fills.
         assert_eq!(observation.text.capacity(), text.len());
@@ -704,10 +709,14 @@ mod tests {
         std::fs::write(&a, "@book{a}").unwrap_or_else(|e| panic!("{e}"));
         std::fs::write(&b, "@book{b}").unwrap_or_else(|e| panic!("{e}"));
         std::os::unix::fs::symlink(&a, &selected).unwrap_or_else(|e| panic!("{e}"));
-        let result = load_file_snapshot_with(&selected, || {
-            std::fs::remove_file(&selected).unwrap_or_else(|e| panic!("{e}"));
-            std::os::unix::fs::symlink(&b, &selected).unwrap_or_else(|e| panic!("{e}"));
-        });
+        let result = load_file_snapshot_with(
+            &selected,
+            || {
+                std::fs::remove_file(&selected).unwrap_or_else(|e| panic!("{e}"));
+                std::os::unix::fs::symlink(&b, &selected).unwrap_or_else(|e| panic!("{e}"));
+            },
+            &io::Scope::new(&|| false),
+        );
         assert!(
             matches!(result, Err(SourceError::Changing)),
             "retargeted bytes must never acquire the other source identity"
@@ -725,10 +734,14 @@ mod tests {
             std::fs::write(path, "@book{same}").unwrap_or_else(|e| panic!("{e}"));
         }
         std::os::unix::fs::symlink(&a, &selected).unwrap_or_else(|e| panic!("{e}"));
-        let result = stable_observation_with(&selected, || {
-            std::fs::remove_file(&selected).unwrap_or_else(|e| panic!("{e}"));
-            std::os::unix::fs::symlink(&b, &selected).unwrap_or_else(|e| panic!("{e}"));
-        });
+        let result = stable_observation_with(
+            &selected,
+            || {
+                std::fs::remove_file(&selected).unwrap_or_else(|e| panic!("{e}"));
+                std::os::unix::fs::symlink(&b, &selected).unwrap_or_else(|e| panic!("{e}"));
+            },
+            &io::Scope::new(&|| false),
+        );
         assert!(matches!(result, Err(SourceError::Changing)));
     }
 
@@ -738,9 +751,14 @@ mod tests {
         let path = dir.path().join("synthetic.bib");
         std::fs::write(&path, "@misc{done}\n@misc{half, title={Half").unwrap_or_else(|e| panic!("{e}"));
         // A save still being written: the second read sees different bytes.
-        let result = stable_observation_with(&path, || {
-            std::fs::write(&path, "@misc{done}\n@misc{half, title={Half written}}").unwrap_or_else(|e| panic!("{e}"));
-        });
+        let result = stable_observation_with(
+            &path,
+            || {
+                std::fs::write(&path, "@misc{done}\n@misc{half, title={Half written}}")
+                    .unwrap_or_else(|e| panic!("{e}"));
+            },
+            &io::Scope::new(&|| false),
+        );
         assert!(matches!(result, Err(SourceError::Changing)));
         // Once it settles, the finished save loads whole.
         let settled = reload_file(&path).unwrap_or_else(|e| panic!("{e}"));
@@ -819,6 +837,7 @@ mod tests {
                 &text,
                 bibtex::Budget::new(32 * 1024),
                 previous,
+                Some(&io::Scope::new(&|| false)),
             )
         };
         let keys = |loaded: &LoadedLibrary| -> Vec<String> {

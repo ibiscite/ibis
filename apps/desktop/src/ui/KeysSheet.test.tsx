@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
-import { KeysDialog } from "../features/picker/KeysDialog";
+import { KeysDialog } from "./KeysSheet";
 import { KEY_TABLE } from "../keys";
 import { say } from "../i18n";
 

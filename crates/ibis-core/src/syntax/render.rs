@@ -24,6 +24,7 @@ pub(super) fn render(
         KeySyntax::Typst => flatten(&typst(picks)),
         KeySyntax::Keys => picks.iter().map(|pick| pick.key).collect::<Vec<_>>().join(", "),
         KeySyntax::CslJson => return csl_json(picks),
+        KeySyntax::Bibtex | KeySyntax::DoiLinks => return share(caps.syntax, picks),
         KeySyntax::OrgCite => org(picks),
         KeySyntax::Myst => format!(
             "{{cite:{}}}`{}`",
@@ -563,39 +564,30 @@ fn locator_label(term: LocatorTerm, plural: bool) -> &'static str {
 }
 
 pub(super) fn source_id(record: &Record) -> Option<&str> {
-    record.csl.get("id").and_then(serde_json::Value::as_str)
+    record
+        .csl
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        // Source URLs can identify a person's library even on public hosts.
+        // Preserve only plain tokens; every other id uses the citation key.
+        .filter(|id| !id.is_empty() && id.chars().all(|c| c.is_alphanumeric() || matches!(c, '-' | '_')))
 }
 
-/// Serialize borrowed CSL fields directly into a bounded writer. Large repeated
-/// records cannot create an unbounded series of cloned maps before the limit.
+/// Serialize one share-safe record at a time into a bounded writer. Repeated
+/// records are deduplicated and each filtered map is dropped immediately.
 fn csl_json(picks: &[Pick<'_>]) -> Result<String, CitationError> {
     struct Export<'a>(&'a Pick<'a>);
     impl Serialize for Export<'_> {
         fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
             let mut map = serializer.serialize_map(None)?;
-            // The key has its own field; a source `id` stays what it was, so
-            // the export still matches the file it came from.
+            // Preserve a plain source token; URL-shaped or private source
+            // identities never leave through the export's id field.
             map.serialize_entry("id", source_id(self.0.record).unwrap_or(self.0.key))?;
             map.serialize_entry("citation-key", self.0.key)?;
-            for (key, value) in self.0.record.csl.entries() {
-                if key != "id" && key != "citation-key" {
-                    map.serialize_entry(key, &value)?;
-                }
+            for (key, value) in crate::citable::share_fields(self.0.record.csl.to_map()) {
+                map.serialize_entry(&key, &value)?;
             }
             map.end()
-        }
-    }
-    struct Bounded(Vec<u8>);
-    impl Write for Bounded {
-        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            if bytes.len() > MAX_OUTPUT_BYTES.saturating_sub(self.0.len()) {
-                return Err(std::io::ErrorKind::FileTooLarge.into());
-            }
-            self.0.extend_from_slice(bytes);
-            Ok(bytes.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
         }
     }
     let mut output = Bounded(Vec::new());
@@ -615,6 +607,71 @@ fn csl_json(picks: &[Pick<'_>]) -> Result<String, CitationError> {
         }
     })?;
     String::from_utf8(output.0).map_err(|_| CitationError::InvalidRichText)
+}
+
+/// All record exports stream into this limit, including escaping expansion.
+struct Bounded(Vec<u8>);
+impl Write for Bounded {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if bytes.len() > MAX_OUTPUT_BYTES.saturating_sub(self.0.len()) {
+            return Err(std::io::ErrorKind::FileTooLarge.into());
+        }
+        self.0.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+fn share(syntax: KeySyntax, picks: &[Pick<'_>]) -> Result<String, CitationError> {
+    let mut output = Bounded(Vec::new());
+    let mut seen = HashSet::new();
+    for pick in picks.iter().filter(|pick| seen.insert(&pick.record.id)) {
+        if !output.0.is_empty() {
+            output
+                .write_all(if syntax == KeySyntax::Bibtex { b"\n\n" } else { b"\n" })
+                .map_err(|_| CitationError::OutputTooLarge)?;
+        }
+        if syntax == KeySyntax::Bibtex {
+            let fields = crate::citable::share_fields(pick.record.csl.to_map());
+            super::bibtex::write(&mut output, pick.key, &fields).map_err(|_| CitationError::OutputTooLarge)?;
+        } else {
+            let link = doi_link(pick.record).ok_or(CitationError::MissingDoi)?;
+            output
+                .write_all(link.as_bytes())
+                .map_err(|_| CitationError::OutputTooLarge)?;
+        }
+    }
+    String::from_utf8(output.0).map_err(|_| CitationError::InvalidRichText)
+}
+
+/// A DOI is an identifier, not an arbitrary URL. Keep its spelling and percent
+/// bytes, encoding reserved URL characters rather than letting them change the
+/// resolver's path, query or fragment. Missing/invalid values refuse the item.
+pub(super) fn doi_link(record: &Record) -> Option<String> {
+    let fields = crate::citable::share_fields(record.csl.to_map());
+    let doi = fields.get("DOI")?.as_str()?.trim();
+    let (prefix, suffix) = doi.split_once('/')?;
+    let registrant = prefix.strip_prefix("10.")?;
+    if doi.len() > 64 * 1024
+        || registrant.len() < 4
+        || !registrant.bytes().all(|b| b.is_ascii_digit() || b == b'.')
+        || suffix.is_empty()
+        || doi.chars().any(|c| c.is_whitespace() || c.is_control() || c == '\\')
+    {
+        return None;
+    }
+    let mut link = String::from("https://doi.org/");
+    for byte in doi.bytes() {
+        if byte.is_ascii_alphanumeric() || b"-._~/".contains(&byte) {
+            link.push(char::from(byte));
+        } else {
+            use std::fmt::Write;
+            let _ = write!(link, "%{byte:02X}");
+        }
+    }
+    Some(link)
 }
 
 fn keys(picks: &[Pick<'_>], separator: &str) -> String {
