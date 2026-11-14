@@ -90,7 +90,7 @@ impl Format {
         match Self::named(path) {
             Some(format) => Ok(format),
             None if crate::exported::ris::looks_like_ris(text) => Ok(Self::Ris),
-            None if text.trim_start().starts_with('<') => Ok(Self::Endnote),
+            None if crate::exported::endnote::looks_like_endnote(text) => Ok(Self::Endnote),
             None if bibtex::has_entry_block(text) => Ok(Self::Bibtex),
             None => Err(SourceError::UnknownFormat),
         }

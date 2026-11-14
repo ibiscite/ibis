@@ -223,3 +223,88 @@ fn pandoc_reads_back_keys_prefixes_and_suffixes_exactly() {
         );
     }
 }
+
+#[test]
+fn endnote_fields_match_pandoc_with_explicit_differences() {
+    use ibis_core::contract::LibraryObject;
+    use serde_json::{Value, json};
+    if !pandoc_available() {
+        assert!(
+            std::env::var("IBIS_REQUIRE_PANDOC").is_err(),
+            "pandoc is required but not installed"
+        );
+        return;
+    }
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/endnote-xml/library.xml");
+    let loaded = ibis_sources::load_file(&fixture).unwrap();
+    assert!(loaded.warnings.is_empty());
+    let mut expected: Vec<Value> = loaded
+        .snapshot
+        .objects()
+        .iter()
+        .map(|entry| {
+            let LibraryObject::Record(record) = &entry.object else {
+                panic!("record")
+            };
+            let mut csl = serde_json::to_value(&record.csl).unwrap();
+            csl.as_object_mut().unwrap().remove("id");
+            csl
+        })
+        .collect();
+    expected.sort_by_key(|record| record["title"].to_string());
+    let output = Command::new("pandoc")
+        .args(["--from=endnotexml", "--to=csljson"])
+        .arg(fixture)
+        .output()
+        .expect("Pandoc is required for the EndNote XML comparison");
+    assert!(output.status.success(), "Pandoc must read the same fixture");
+    let mut pandoc: Vec<Value> = serde_json::from_slice(&output.stdout).unwrap();
+    pandoc.sort_by_key(|record| record["title"].to_string());
+    assert_eq!(pandoc.len(), expected.len());
+    for (mut theirs, ours) in pandoc.into_iter().zip(expected) {
+        let record = theirs.as_object_mut().unwrap();
+        let number = match ours["title"].as_str().unwrap() {
+            "Invented capítulo β" => "3",
+            "Invented forêt handbook" => "2",
+            "Invented marées & 星" => "1",
+            title => panic!("unexpected title: {title}"),
+        };
+        assert_eq!(record.remove("id"), Some(json!(number))); // Pandoc uses rec-number.
+        if number == "2" {
+            assert_eq!(ours["edition"], "2");
+            assert!(!record.contains_key("edition")); // Pandoc 3.13 omits it.
+            record.insert("edition".into(), json!("2"));
+        }
+        for field in ["editor", "DOI"] {
+            // Pandoc 3.13 omits these source fields.
+            assert!(!record.contains_key(field));
+            if let Some(value) = ours.get(field) {
+                record.insert(field.into(), value.clone());
+            }
+        }
+        assert_eq!(
+            record["issued"],
+            json!({"date-parts":[[ours["issued"]["date-parts"][0][0]]]})
+        );
+        record.insert("issued".into(), ours["issued"].clone()); // Pandoc retains only year.
+        let pages = record.remove("pages").unwrap(); // Pandoc emits the non-CSL spelling.
+        record.insert(
+            if ours["type"] == "book" {
+                "number-of-pages"
+            } else {
+                "page"
+            }
+            .into(),
+            pages,
+        );
+        if ours["type"] == "article-journal" {
+            let issue = record.remove("number").unwrap();
+            record.insert("issue".into(), issue);
+        }
+        if ours["type"] == "book" {
+            let series = record.remove("container-title").unwrap();
+            record.insert("collection-title".into(), series);
+        }
+        assert_eq!(theirs, ours);
+    }
+}

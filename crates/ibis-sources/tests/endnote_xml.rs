@@ -1,7 +1,7 @@
-//! Invented exports through the public file lifecycle; Pandoc is required.
+//! Invented exports through the public file lifecycle.
 #![allow(clippy::unwrap_used)]
 
-use std::{path::Path, process::Command};
+use std::path::Path;
 
 use ibis_core::contract::LibraryObject;
 use ibis_sources::{LoadedLibrary, SourceError, WarningCause, WarningCode, load_file};
@@ -36,7 +36,7 @@ fn open(text: &str, name: &str) -> Result<LoadedLibrary, SourceError> {
 }
 
 #[test]
-fn supported_fields_and_explicit_pandoc_differences() {
+fn supported_fields() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/endnote-xml/library.xml");
     let loaded = load_file(&fixture).unwrap();
     assert!(loaded.warnings.is_empty());
@@ -48,7 +48,7 @@ fn supported_fields_and_explicit_pandoc_differences() {
         json!({"type":"book", "title":"Invented forêt handbook",
             "author":[{"family":"Roe","given":"Rafael"}], "editor":[{"family":"Page","given":"Pia"}],
             "collection-title":"Invented Series", "issued":{"date-parts":[[2025]]},
-            "number-of-pages":"320", "publisher":"Example Press", "publisher-place":"Exampleville"}),
+            "number-of-pages":"320", "edition":"2", "publisher":"Example Press", "publisher-place":"Exampleville"}),
         json!({"type":"article-journal", "title":"Invented marées & 星",
             "author":[{"family":"Vale","given":"Ivo"},{"family":"Quill","given":"Ada"}],
             "editor":[{"family":"Editor","given":"Ena"}], "container-title":"Journal of Invented Tides",
@@ -56,50 +56,6 @@ fn supported_fields_and_explicit_pandoc_differences() {
             "DOI":"10.0000/invented.tides"}),
     ];
     assert_eq!(fields(&loaded), expected);
-    let output = Command::new("pandoc")
-        .args(["--from=endnotexml", "--to=csljson"])
-        .arg(fixture)
-        .output()
-        .expect("Pandoc is required for the EndNote XML comparison");
-    assert!(output.status.success(), "Pandoc must read the same fixture");
-    let mut pandoc: Vec<Value> = serde_json::from_slice(&output.stdout).unwrap();
-    pandoc.sort_by_key(|record| record["title"].to_string());
-    assert_eq!(pandoc.len(), expected.len());
-    for (mut theirs, ours) in pandoc.into_iter().zip(expected) {
-        let record = theirs.as_object_mut().unwrap();
-        assert!(record.remove("id").is_some()); // Pandoc uses rec-number; Ibis hashes CSL.
-        for field in ["editor", "DOI"] {
-            // Pandoc 3.13 omits these source fields.
-            assert!(!record.contains_key(field));
-            if let Some(value) = ours.get(field) {
-                record.insert(field.into(), value.clone());
-            }
-        }
-        assert_eq!(
-            record["issued"],
-            json!({"date-parts":[[ours["issued"]["date-parts"][0][0]]]})
-        );
-        record.insert("issued".into(), ours["issued"].clone()); // Pandoc retains only year.
-        let pages = record.remove("pages").unwrap(); // Pandoc emits the non-CSL spelling.
-        record.insert(
-            if ours["type"] == "book" {
-                "number-of-pages"
-            } else {
-                "page"
-            }
-            .into(),
-            pages,
-        );
-        if ours["type"] == "article-journal" {
-            let issue = record.remove("number").unwrap();
-            record.insert("issue".into(), issue);
-        }
-        if ours["type"] == "book" {
-            let series = record.remove("container-title").unwrap();
-            record.insert("collection-title".into(), series);
-        }
-        assert_eq!(theirs, ours);
-    }
 }
 
 #[test]
@@ -110,6 +66,9 @@ fn recognition_and_malformed_xml_are_distinct() {
             assert_eq!(open(unrelated, name).err(), Some(SourceError::UnknownFormat));
         }
     }
+    let bib = "<!-- XML-looking comment -->\n@book{invented, title={A book}}";
+    let loaded = open(bib, "export.unknown").unwrap();
+    assert_eq!(loaded.snapshot.objects().len(), 1);
     assert!(fields(&open("<xml><records/></xml>", "empty.xml").unwrap()).is_empty());
     for bad in [
         XML.replace("</records>", ""),
@@ -124,7 +83,9 @@ fn recognition_and_malformed_xml_are_distinct() {
         format!("{XML}<?xml version=\"1.0\"?>"),
         format!("{XML}stray"),
     ] {
-        assert_eq!(open(&bad, "damaged.xml").err(), Some(SourceError::InvalidData));
+        for name in ["damaged.xml", "damaged.refs"] {
+            assert_eq!(open(&bad, name).err(), Some(SourceError::InvalidData));
+        }
     }
 }
 
@@ -170,6 +131,25 @@ fn export_identity_ignores_database_numbers_and_quarantines_duplicates() {
             .iter()
             .all(|warning| warning.code == WarningCode::DuplicateKey)
     );
+}
+
+#[test]
+fn editions_have_distinct_content_identities() {
+    let second =
+        "<record><ref-type>6</ref-type><titles><title>Invented book</title></titles><edition>2</edition></record>";
+    let first = second.replace("<edition>2</edition>", "<edition>1</edition>");
+    let loaded = open(
+        &format!("<xml><records>{first}{second}</records></xml>"),
+        "editions.xml",
+    )
+    .unwrap();
+    let mut editions: Vec<_> = fields(&loaded)
+        .into_iter()
+        .map(|record| record["edition"].clone())
+        .collect();
+    editions.sort_by_key(Value::to_string);
+    assert_eq!(editions, [json!("1"), json!("2")]);
+    assert!(loaded.duplicate_keys.is_empty());
 }
 
 #[test]

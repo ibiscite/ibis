@@ -10,6 +10,36 @@ use crate::{ParsedLibrary, SourceError, WarningCause, WarningCode};
 
 type Fields = BTreeMap<String, Vec<String>>;
 
+pub(crate) fn looks_like_endnote(text: &str) -> bool {
+    let mut reader = Reader::from_str(text);
+    let mut depth = 0;
+    let mut root = false;
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(tag)) => {
+                if depth == 0 {
+                    root = tag.name().as_ref() == "xml";
+                    if !root {
+                        return false;
+                    }
+                } else if depth == 1 && root && tag.name().as_ref() == "records" {
+                    return true;
+                }
+                depth += 1;
+            }
+            Ok(Event::Empty(tag)) if depth == 1 && root && tag.name().as_ref() == "records" => return true,
+            Ok(Event::End(_)) => {
+                if depth <= 1 {
+                    return false;
+                }
+                depth -= 1;
+            }
+            Ok(Event::Eof) | Err(_) => return false,
+            _ => {}
+        }
+    }
+}
+
 pub(crate) fn load(library: &LibraryId, text: &str, previous: Option<&Snapshot>) -> Result<ParsedLibrary, SourceError> {
     if !text.chars().all(xml_char) {
         return Err(SourceError::InvalidData);
@@ -176,6 +206,7 @@ fn csl(fields: &Fields) -> Result<(BTreeMap<String, Value>, bool), RecordProblem
     for (source, target) in [
         ("pages", if kind == "book" { "number-of-pages" } else { "page" }),
         ("volume", "volume"),
+        ("edition", "edition"),
         ("number", if kind == "article-journal" { "issue" } else { "number" }),
         ("publisher", "publisher"),
         ("pub-location", "publisher-place"),
