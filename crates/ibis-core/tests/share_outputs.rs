@@ -26,10 +26,18 @@ fn case(format: &str, fields: Value, key: Option<&str>) -> GoldenCase {
     case
 }
 
-const ENCODED_PATHS: [&str; 3] = [
+const ENCODED_PATHS: &[&str] = &[
     "&#x66;ile:&#x2f;&#x2f;&#x2f;home/invented/secret.pdf",
     "&#67;&#58;&#92;invented&#92;secret.pdf",
     "&#102;ile:&#47;&#x2f;&#47;home/invented/secret.pdf",
+    "%2FUsers%2Finvented%2Fsecret.pdf",
+    "%252fUsers%252finvented%252fsecret.pdf",
+    "&#37;2FUsers&#37;2Finvented&#37;2Fsecret.pdf",
+    "%26%2347%3BUsers%26%2347%3Binvented%26%2347%3Bsecret.pdf",
+    "&amp;#47;Users/invented/secret.pdf",
+    "%43%3A%5Cinvented%5Csecret.pdf",
+    "<i>%2FUsers%2F</i><b>invented%2Fsecret.pdf</b>",
+    "<span class=\"nocase\" data-path=\"%2FUsers%2Finvented%2Fsecret.pdf\">secret</span>",
 ];
 
 fn encoded_paths_are_private(format: &str) {
@@ -108,11 +116,56 @@ fn exports_check_dois_after_decoding_and_removing_resolver_wrappers() {
 }
 
 #[test]
+fn doi_shaped_paths_are_refused_by_the_identity_constructors_and_exports() {
+    use ibis_core::citable::{DoiLink, PublicUrl};
+    for doi in [
+        "10.1000//Users/invented/secret.pdf",
+        "10.1000/%2FUsers/invented/secret.pdf",
+        "10.1000/a//secret.pdf",
+        "10.1000/Users/invented/secret.pdf/",
+        "10.1000/C:/invented/secret.pdf",
+        "10.1000/~/invented/secret.pdf",
+    ] {
+        assert!(DoiLink::new(doi).is_none(), "{doi}");
+        assert!(PublicUrl::new(&format!("https://doi.org/{doi}")).is_none(), "{doi}");
+        let case = case("doi-links", json!({"type":"book", "DOI":doi}), Some("atlas"));
+        let result = syntax::cite(&case.library, &case.request).unwrap();
+        assert_eq!(result.text, "");
+        assert_eq!(
+            result.outcomes,
+            [ItemOutcome::Refused {
+                item: 0,
+                error: CitationError::MissingDoi
+            }]
+        );
+    }
+    for url in [
+        "https://doi.org/&#47;Users/invented/secret.pdf",
+        "https://dx.doi.org/%252FUsers/invented/secret.pdf",
+    ] {
+        assert!(PublicUrl::new(url).is_none(), "{url}");
+    }
+}
+
+#[test]
+fn decoding_that_exceeds_the_privacy_bound_is_refused() {
+    let mut path = "%2FUsers%2Finvented%2Fsecret.pdf".to_owned();
+    for _ in 0..32 {
+        path = path.replace('%', "%25");
+    }
+    let case = case("csl-json", json!({"type":"book", "title":path}), Some("atlas"));
+    let result = syntax::cite(&case.library, &case.request).unwrap();
+    assert!(!result.text.contains("secret"), "{}", result.text);
+}
+
+#[test]
 fn scannable_markers_only_show_checked_authorless_titles() {
     for title in [
         "&#67;&#58;&#92;invented&#92;secret.pdf",
         "-/home/invented/secret.pdf",
         "|/home/invented/secret.pdf",
+        "%2FUsers%2Finvented%2Fsecret.pdf",
+        "%252FUsers%252Finvented%252Fsecret.pdf",
         "Invented <i>atlas</i> &amp; tides",
     ] {
         let mut case = case("scannable-cite", json!({"type":"book", "title":title}), None);

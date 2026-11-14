@@ -134,6 +134,38 @@ fn removed(ch: char) -> bool {
     bidi_control(ch) || (!ch.is_control() && crate::model::is_hidden(ch))
 }
 
+/// Inspect every encoding layer without changing the text an exporter prints.
+/// Refuse values that do not stabilize within the bound, including invalid UTF-8.
+pub(super) fn decode_for_privacy(source: &str) -> Option<String> {
+    let mut value = source.to_owned();
+    for _ in 0..8 {
+        let entities = decode_entities(&value);
+        let mut rest = entities.as_bytes();
+        let mut bytes = Vec::with_capacity(rest.len());
+        while let Some((&byte, tail)) = rest.split_first() {
+            if let [b'%', high, low, ..] = rest
+                && let Some((high, low)) = char::from(*high).to_digit(16).zip(char::from(*low).to_digit(16))
+            {
+                bytes.push((high * 16 + low) as u8);
+                rest = &rest[3..];
+            } else {
+                bytes.push(byte);
+                rest = tail;
+            }
+        }
+        let decoded: String = String::from_utf8(bytes)
+            .ok()?
+            .nfc()
+            .filter(|ch| !removed(*ch))
+            .collect();
+        if decoded == value {
+            return Some(value);
+        }
+        value = decoded;
+    }
+    None
+}
+
 /// The source entity grammar, shared by projections and plain record summaries.
 /// Decoded ampersands are never scanned again.
 pub(crate) fn decode_entities(source: &str) -> String {

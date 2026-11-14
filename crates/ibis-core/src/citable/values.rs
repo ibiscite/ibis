@@ -34,6 +34,12 @@ impl PublicUrl {
             }
             parsed
         };
+        if matches!(
+            parsed.host_str().map(|host| host.trim_end_matches('.')),
+            Some("doi.org" | "dx.doi.org")
+        ) {
+            DoiLink::new(value)?;
+        }
         public_host(&parsed).then(|| Self(value.into()))
     }
 
@@ -115,13 +121,15 @@ impl DoiLink {
         }
         let (prefix, suffix) = doi.split_once('/')?;
         let registrant = prefix.strip_prefix("10.")?;
+        let suffix = super::text::decode_for_privacy(suffix)?;
         if doi.len() > 64 * 1024
             || registrant.len() < 4
-            || !registrant.bytes().all(|c| c.is_ascii_digit() || c == b'.')
-            || suffix.is_empty()
-            || doi.chars().any(|c| c.is_whitespace() || c.is_control() || c == '\\')
-            || doi.split('/').any(|segment| matches!(segment, "." | ".."))
-            || super::points_to_device(doi)
+            || !registrant
+                .split('.')
+                .all(|part| !part.is_empty() && part.bytes().all(|c| c.is_ascii_digit()))
+            || suffix.chars().any(|c| c.is_whitespace() || c.is_control() || c == '\\')
+            || suffix.split('/').any(|segment| matches!(segment, "" | "." | ".."))
+            || super::points_to_device(&suffix)
         {
             return None;
         }

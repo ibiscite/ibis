@@ -359,8 +359,11 @@ fn is_variable(name: &str) -> bool {
     name == "type" || TEXT.contains(&name) || NAMES.contains(&name) || DATES.contains(&name)
 }
 
-/// Inspect only the decoded, normalized projection that consumers receive.
+/// Inspect the fully decoded projection, refusing values beyond the decoding bound.
 pub(crate) fn points_to_device(value: &str) -> bool {
+    let Some(value) = text::decode_for_privacy(value) else {
+        return true;
+    };
     let path = |word: &str| {
         let bytes = word.as_bytes();
         (word.starts_with('/') || word.starts_with("~/")) && word.len() > 2
