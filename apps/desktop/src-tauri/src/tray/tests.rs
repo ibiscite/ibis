@@ -114,6 +114,22 @@ fn a_missing_file_moves_the_single_file_chooser_under_the_problem() {
 }
 
 #[test]
+fn a_missing_file_with_a_retained_snapshot_offers_recovery_without_fixes() {
+    let mut status = loaded("thesis.bib", false);
+    status.stale = true;
+    status.warnings = 2;
+    status.error = Some("source unavailable".into());
+    status.error_reason = Some(LoadError::FileRefresh(EngineError::new(ErrorCode::SourceUnavailable)));
+    let source = Source::File("thesis.bib".into());
+    let mut choices = LibraryChoices::default();
+    choices.observe(Some(&source), Some(&source));
+    assert_eq!(
+        labels(&status, &choices),
+        expected(&["thesis.bib was moved or is unavailable", "Choose File…", "thesis.bib"])
+    );
+}
+
+#[test]
 fn a_failed_refresh_keeps_the_loaded_choice_and_offers_try_again() {
     let mut status = loaded("thesis.bib", false);
     status.stale = true;

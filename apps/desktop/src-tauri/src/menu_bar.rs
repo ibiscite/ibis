@@ -11,7 +11,7 @@ use objc2_app_kit::{
     NSHapticFeedbackPattern, NSHapticFeedbackPerformanceTime, NSHapticFeedbackPerformer, NSPasteboard,
     NSPasteboardTypeFileURL, NSPasteboardTypeString, NSRegisterServicesProvider, NSWindowDelegate, NSWorkspace,
 };
-use objc2_foundation::{MainThreadMarker, NSArray, NSObject, NSObjectProtocol, NSString, NSURL};
+use objc2_foundation::{MainThreadMarker, NSArray, NSObject, NSObjectProtocol, NSRange, NSString, NSURL};
 use tauri::image::Image;
 use tauri::tray::TrayIcon;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
@@ -30,6 +30,7 @@ const LOWERED: Image<'static> = tauri::include_image!("../../../brand/exports/pn
 const DIP_FRAME: Duration = Duration::from_millis(50);
 /// The selection is a search box's worth of text, not a document.
 const SEARCH_LIMIT: usize = 200;
+const TEXT_PREFIX: usize = SEARCH_LIMIT * 4;
 
 static HOVERING: AtomicBool = AtomicBool::new(false);
 static DIPPING: AtomicBool = AtomicBool::new(false);
@@ -124,21 +125,62 @@ fn search_query(text: &str) -> String {
         .collect()
 }
 
+fn normalize_prefix(text: &[u16]) -> String {
+    search_query(&String::from_utf16_lossy(&text[..text.len().min(TEXT_PREFIX)]))
+}
+
+fn native_search_query(text: &NSString) -> String {
+    let len = text.length().min(TEXT_PREFIX);
+    let mut prefix = [0u16; TEXT_PREFIX];
+    if len > 0 {
+        // SAFETY: The range is within the NSString's UTF-16 length and the
+        // buffer holds at least `len` UTF-16 units. Neither escapes this call.
+        unsafe {
+            text.getCharacters_range(
+                std::ptr::NonNull::from(&mut prefix[0]),
+                NSRange::new(0, len),
+            )
+        };
+    }
+    normalize_prefix(&prefix[..len])
+}
+
 fn dragged(sender: &ProtocolObject<dyn NSDraggingInfo>) -> Option<Drop> {
     let pasteboard = sender.draggingPasteboard();
     // SAFETY: Shared AppKit constants, read only on AppKit's main-thread callbacks.
     let (file_kind, text_kind) = unsafe { (NSPasteboardTypeFileURL, NSPasteboardTypeString) };
     let file = pasteboard.types().is_some_and(|types| types.containsObject(file_kind));
-    let path = pasteboard
-        .stringForType(file_kind)
-        .and_then(|url| NSURL::URLWithString(&url)?.filePathURL()?.path())
-        .map(|path| std::path::PathBuf::from(path.to_string()));
+    let path = file
+        .then(|| {
+            pasteboard
+                .stringForType(file_kind)
+                .and_then(|url| NSURL::URLWithString(&url)?.filePathURL()?.path())
+                .map(|path| std::path::PathBuf::from(path.to_string()))
+        })
+        .flatten();
     let text = if file {
         None
     } else {
-        pasteboard.stringForType(text_kind).map(|text| text.to_string())
+        pasteboard
+            .stringForType(text_kind)
+            .map(|text| native_search_query(&text))
     };
     read_drop(file, path, text.as_deref())
+}
+
+fn hover_drag(sender: &ProtocolObject<dyn NSDraggingInfo>) -> NSDragOperation {
+    let count = sender.draggingPasteboard().changeCount();
+    let readable = HOVER_CACHE.with(|cache| {
+        if let Some((cached_count, readable)) = cache.get()
+            && cached_count == count
+        {
+            return readable;
+        }
+        let readable = dragged(sender).is_some();
+        cache.set(Some((count, readable)));
+        readable
+    });
+    hover(readable)
 }
 
 fn hover(readable: bool) -> NSDragOperation {
@@ -197,26 +239,30 @@ define_class!(
     unsafe impl NSDraggingDestination for MenuBarTarget {
         #[unsafe(method(draggingEntered:))]
         fn entered(&self, sender: &ProtocolObject<dyn NSDraggingInfo>) -> NSDragOperation {
-            hover(dragged(sender).is_some())
+            HOVER_CACHE.with(|cache| cache.set(None));
+            hover_drag(sender)
         }
 
         #[unsafe(method(draggingUpdated:))]
         fn updated(&self, sender: &ProtocolObject<dyn NSDraggingInfo>) -> NSDragOperation {
-            hover(dragged(sender).is_some())
+            hover_drag(sender)
         }
 
         #[unsafe(method(draggingExited:))]
         fn exited(&self, _sender: Option<&ProtocolObject<dyn NSDraggingInfo>>) {
+            HOVER_CACHE.with(|cache| cache.set(None));
             hover(false);
         }
 
         #[unsafe(method(draggingEnded:))]
         fn ended(&self, _sender: &ProtocolObject<dyn NSDraggingInfo>) {
+            HOVER_CACHE.with(|cache| cache.set(None));
             hover(false);
         }
 
         #[unsafe(method(performDragOperation:))]
         fn perform(&self, sender: &ProtocolObject<dyn NSDraggingInfo>) -> bool {
+            HOVER_CACHE.with(|cache| cache.set(None));
             let dropped = dragged(sender).zip(APP.get());
             hover(false);
             let accepted = dropped.is_some();
@@ -248,6 +294,7 @@ define_class!(
 );
 
 thread_local! {
+    static HOVER_CACHE: std::cell::Cell<Option<(isize, bool)>> = const { std::cell::Cell::new(None) };
     // AppKit holds delegates weakly: keep the one target for the app's lifetime.
     static TARGET: std::cell::OnceCell<Retained<MenuBarTarget>> = const { std::cell::OnceCell::new() };
 }
@@ -302,6 +349,18 @@ pub(crate) fn watch<R: Runtime>(tray: &TrayIcon<R>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn long_text_is_normalized_only_within_the_utf16_prefix() {
+        let mut text = vec![u16::from(b' '); TEXT_PREFIX];
+        text.extend("hidden query".encode_utf16());
+        text.extend(std::iter::repeat_n(u16::from(b'x'), 1_000_000));
+        assert_eq!(normalize_prefix(&text), "");
+        text[0] = u16::from(b'a');
+        text[1] = u16::from(b'\n');
+        text[2] = u16::from(b'b');
+        assert_eq!(normalize_prefix(&text), "a\tb");
+    }
 
     #[test]
     fn menu_bar_text_searches_but_an_unreadable_file_never_becomes_a_text_search() {

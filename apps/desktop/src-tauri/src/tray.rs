@@ -249,7 +249,14 @@ fn menu_rows(status: &LibraryStatus, choices: &LibraryChoices) -> Vec<Row> {
     let fix = problem(status).map(|(_, fix)| fix);
     let mut rows = vec![Row::Open, Row::Separator(0), Row::Library, Row::Status];
     rows.extend(fix);
-    if status.warnings > 0 {
+    let source_missing = match status.error_reason {
+        Some(LoadError::FileRefresh(error)) => error.code == ibis_core::contract::ErrorCode::SourceUnavailable,
+        Some(LoadError::File(error)) => {
+            status.source_is_requested && error.code == ibis_core::contract::ErrorCode::SourceUnavailable
+        }
+        _ => false,
+    };
+    if status.warnings > 0 && !source_missing {
         rows.push(Row::FixProblems);
     }
     if choices.zotero_detected {
