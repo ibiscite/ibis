@@ -2191,6 +2191,7 @@ dependencies = [
  "nix",
  "notify",
  "proptest",
+ "quick-xml 0.42.0",
  "rusqlite",
  "schemars 1.2.3",
  "serde",

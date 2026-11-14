@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xml><records>
+<record>
+  <rec-number>1</rec-number><ref-type name="Journal Article">17</ref-type>
+  <contributors><authors><author>Vale, Ivo</author><author>Quill, Ada</author></authors>
+    <secondary-authors><author>Editor, Ena</author></secondary-authors></contributors>
+  <titles><title><style face="normal">Invented marées &amp; 星</style></title>
+    <secondary-title>Journal of Invented Tides</secondary-title></titles>
+  <periodical><full-title>Journal of Invented Tides</full-title></periodical>
+  <dates><year>2026</year><pub-dates><date>2026/03/14</date></pub-dates></dates>
+  <volume>12</volume><number>3</number><pages>101-118</pages>
+  <electronic-resource-num>10.0000/invented.tides</electronic-resource-num>
+</record>
+<record>
+  <rec-number>2</rec-number><ref-type name="Book">6</ref-type>
+  <contributors><authors><author>Roe, Rafael</author></authors>
+    <secondary-authors><author>Page, Pia</author></secondary-authors></contributors>
+  <titles><title>Invented forêt handbook</title><secondary-title>Invented Series</secondary-title></titles>
+  <dates><year>2025</year></dates><pages>320</pages>
+  <publisher>Example Press</publisher><pub-location>Exampleville</pub-location>
+</record>
+<record>
+  <rec-number>3</rec-number><ref-type name="Book Section">5</ref-type>
+  <contributors><authors><author>Leaf, Léo</author></authors>
+    <secondary-authors><author>Reed, Ria</author></secondary-authors></contributors>
+  <titles><title>Invented capítulo &#x3B2;</title><secondary-title>The Invented Atlas</secondary-title></titles>
+  <dates><year>2024</year><pub-dates><date>2024/07/09</date></pub-dates></dates>
+  <pages>41-59</pages><publisher>Example Press</publisher>
+</record>
+</records></xml>

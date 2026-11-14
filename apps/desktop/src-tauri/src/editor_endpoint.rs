@@ -176,7 +176,7 @@ trait Host: Send + Sync + 'static {
     fn accepted(&self) {}
     fn pending(&self) -> &Pending;
     fn ready(&self) -> bool;
-    fn style(&self) -> String;
+    fn style(&self) -> Result<String, cayw::Refusal>;
     fn writing(&self, _pick: &CaywPick) -> Result<Option<settings::writings::Writing>, cayw::Refusal> {
         Ok(None)
     }
@@ -257,9 +257,16 @@ fn serve<H: Host>(mut stream: TcpStream, port: u16, token: &str, host: Arc<H>, s
                     return;
                 }
             };
+            let style = match host.style() {
+                Ok(style) => style,
+                Err(refusal) => {
+                    reply(&mut stream, refusal.status(), refusal.message());
+                    return;
+                }
+            };
             let Some((id, answer)) = host
                 .pending()
-                .begin_context(&pick, &host.style(), writing, stop, || host.retire())
+                .begin_context(&pick, &style, writing, stop, || host.retire())
             else {
                 if stop.load(Ordering::SeqCst) {
                     let _ = stream.shutdown(Shutdown::Both);
@@ -356,11 +363,9 @@ impl Host for AppHost {
             return Ok(None);
         }
         let loaded = settings::load(&self.0.state::<SettingsFile>().path);
-        if loaded.problem.is_some() {
-            return Err(cayw::Refusal::Option);
-        }
+        let saved = loaded.cites().map_err(|_| cayw::Refusal::Option)?;
         settings::writings::from_context(
-            &loaded.settings,
+            saved,
             pick.document.as_deref(),
             pick.bibliography.as_deref(),
             pick.csl.as_deref(),
@@ -376,9 +381,10 @@ impl Host for AppHost {
             .lock()
             .is_ok_and(|library| library.file.is_some() && !library.opening)
     }
-    fn style(&self) -> String {
-        let saved = settings::load(&self.0.state::<SettingsFile>().path).settings.output;
-        crate::output::default_style(crate::output::stored(saved.as_deref())).to_owned()
+    fn style(&self) -> Result<String, cayw::Refusal> {
+        let loaded = settings::load(&self.0.state::<SettingsFile>().path);
+        let saved = loaded.cites().map_err(|_| cayw::Refusal::Option)?;
+        Ok(crate::output::default_style(crate::output::stored(saved.portable.output.as_deref())).to_owned())
     }
     fn changed(&self) {
         report(self.0.emit("editor:request", ()), NativeIssue::LibraryEvent);
@@ -494,16 +500,17 @@ pub(crate) fn start(app: &AppHandle, saved: Option<EditorEndpoint>) {
 
 fn forget_unavailable(file: &SettingsFile, failed: &EditorEndpoint) {
     let _ = file.update(|settings| {
-        if settings.editor_endpoint.as_ref() == Some(failed) {
-            settings.editor_endpoint = None;
+        if settings.device.editor_endpoint.as_ref() == Some(failed) {
+            settings.device.editor_endpoint = None;
         }
     });
 }
 
 fn status(app: &AppHandle) -> EndpointStatus {
     let saved = settings::load(&app.state::<SettingsFile>().path)
-        .settings
-        .editor_endpoint;
+        .cites()
+        .ok()
+        .and_then(|settings| settings.device.editor_endpoint.clone());
     let state = app.state::<Endpoint>();
     let state = state.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     EndpointStatus {
@@ -551,7 +558,7 @@ pub(crate) fn set_editor_endpoint(on: bool, app: AppHandle) -> EndpointStatus {
         open(&app, &endpoint).or_else(|| {
             let saved = endpoint.clone();
             app.state::<SettingsFile>()
-                .update(move |settings| settings.editor_endpoint = Some(saved))
+                .update(move |settings| settings.device.editor_endpoint = Some(saved))
                 .err()
                 .map(|_| {
                     let mut state = state.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -561,7 +568,7 @@ pub(crate) fn set_editor_endpoint(on: bool, app: AppHandle) -> EndpointStatus {
         })
     } else {
         app.state::<SettingsFile>()
-            .update(|settings| settings.editor_endpoint = None)
+            .update(|settings| settings.device.editor_endpoint = None)
             .err()
             .map(|_| EndpointProblem::NotSaved)
     };
@@ -576,7 +583,10 @@ pub(crate) fn apply_file_setting(app: &AppHandle, expected: Option<EditorEndpoin
     let state = app.state::<Endpoint>();
     let _changing = state.1.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let loaded = settings::load(&app.state::<SettingsFile>().path);
-    if loaded.problem.is_some() || loaded.settings.editor_endpoint != expected {
+    if !loaded
+        .cites()
+        .is_ok_and(|settings| settings.device.editor_endpoint == expected)
+    {
         return;
     }
     let closing = {
@@ -644,12 +654,15 @@ mod tests {
             port: DEFAULT_PORT + 1,
             token: "fedcba9876543210fedcba9876543210".into(),
         };
-        file.update(|settings| settings.editor_endpoint = Some(newer.clone()))
+        file.update(|settings| settings.device.editor_endpoint = Some(newer.clone()))
             .unwrap_or_else(|error| panic!("{error}"));
         forget_unavailable(&file, &older);
-        assert_eq!(settings::load(&file.path).settings.editor_endpoint, Some(newer.clone()));
+        assert_eq!(
+            crate::settings_fixture::read(&file.path).device.editor_endpoint,
+            Some(newer.clone())
+        );
         forget_unavailable(&file, &newer);
-        assert_eq!(settings::load(&file.path).settings.editor_endpoint, None);
+        assert_eq!(crate::settings_fixture::read(&file.path).device.editor_endpoint, None);
     }
 
     type Then = Box<dyn FnOnce(&Pending) + Send>;
@@ -681,11 +694,11 @@ mod tests {
         fn ready(&self) -> bool {
             self.ready.load(Ordering::SeqCst)
         }
-        fn style(&self) -> String {
+        fn style(&self) -> Result<String, cayw::Refusal> {
             if let Some(then) = self.reading_style.lock().ok().and_then(|mut then| then.take()) {
                 then(&self.pending);
             }
-            "apa".into()
+            Ok("apa".into())
         }
         fn changed(&self) {
             self.changes.fetch_add(1, Ordering::SeqCst);

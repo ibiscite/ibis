@@ -37,10 +37,9 @@ impl Audience {
 }
 
 /// The groups of engine codes, each a message per code.
-pub const GROUPS: [&str; 10] = [
+pub const GROUPS: [&str; 9] = [
     "error",
     "reason",
-    "refusal",
     "problem",
     "warning",
     "source-warning",
@@ -95,8 +94,45 @@ pub fn text(id: &str, attribute: Option<&str>, args: &[(&str, &str)]) -> Option<
 /// The sentence for a code, then what this audience can do about it, if anything.
 pub fn sentence(group: &str, code: impl Serialize, audience: Audience, args: &[(&str, &str)]) -> String {
     let id = id(group, code);
-    let said = text(&id, None, args).unwrap_or_else(|| id.clone());
-    match text(&id, Some(audience.attribute()), args) {
+    render(&id, audience, None, args)
+}
+
+/// The same diagnostic with the reference named where the client knows it.
+pub fn citation(error: ibis_core::contract::CitationError, audience: Audience, args: &[(&str, &str)]) -> String {
+    render(error.message_id(), audience, None, args)
+}
+
+fn render(
+    id: &str,
+    audience: Audience,
+    context: Option<ibis_core::contract::CitationSurface>,
+    args: &[(&str, &str)],
+) -> String {
+    if audience == Audience::Cli && context.is_none() {
+        let detail = if args.iter().any(|(key, value)| *key == "form" && *value != "normal") {
+            text(id, Some("cli-form"), args)
+        } else if args.iter().any(|(key, value)| *key == "options" && !value.is_empty()) {
+            text(id, Some("cli-options"), args)
+        } else {
+            None
+        };
+        if let Some(detail) = detail {
+            return detail;
+        }
+    }
+    let named = args.iter().any(|(key, _)| *key == "reference");
+    let app_detail = (audience == Audience::App && named && args.iter().any(|(key, _)| *key == "form"))
+        .then(|| text(id, Some("app-named"), args))
+        .flatten();
+    let said = app_detail
+        .or_else(|| named.then(|| text(id, Some("named"), args)).flatten())
+        .or_else(|| text(id, None, args))
+        .unwrap_or_else(|| id.into());
+    let attribute = match context {
+        Some(ibis_core::contract::CitationSurface::Bibliography) => "bibliography",
+        None => audience.attribute(),
+    };
+    match text(id, Some(attribute), args) {
         Some(fix) => format!("{said} {fix}"),
         None => said,
     }
@@ -126,11 +162,7 @@ pub fn problem(problem: &ibis_core::contract::Problem, audience: Audience) -> St
         .iter()
         .map(|(name, value)| (name.as_str(), value.as_str()))
         .collect();
-    let said = text(&message.id, None, &args).unwrap_or_else(|| message.id.clone());
-    match text(&message.id, Some(audience.attribute()), &args) {
-        Some(fix) => format!("{said} {fix}"),
-        None => said,
-    }
+    render(&message.id, audience, message.context, &args)
 }
 
 /// The fallback words for a code alone.
@@ -144,6 +176,17 @@ mod tests {
     use ibis_core::contract::{CitationError, CitationForm, CitationWarningCode, ErrorReason, LossField, Notice};
     use schemars::JsonSchema;
     use std::collections::BTreeSet;
+
+    #[test]
+    fn bibliography_advice_names_the_control_that_surface_can_use() {
+        use ibis_core::contract::CitationSurface;
+        let diagnostic = CitationError::UnsupportedForm.problem();
+        let picker = problem(&diagnostic, Audience::App);
+        let bibliography = problem(&diagnostic.on(CitationSurface::Bibliography), Audience::App);
+        assert!(picker.contains("Name in brackets"), "{picker}");
+        assert!(bibliography.contains("Remove the references"), "{bibliography}");
+        assert!(!bibliography.contains("Name in brackets"), "{bibliography}");
+    }
 
     #[test]
     fn recovery_messages_resolve_without_source_text_or_missing_arguments() {
@@ -196,7 +239,6 @@ mod tests {
         for (group, names) in [
             ("error", names::<ErrorCode>()),
             ("reason", names::<ErrorReason>()),
-            ("refusal", names::<CitationError>()),
             ("problem", names::<CitationError>()),
             ("warning", names::<CitationWarningCode>()),
             ("source-warning", names::<ibis_sources::WarningCode>()),

@@ -1,4 +1,4 @@
-//! Libraries other programs export without citation keys: RIS and Ibis's CSV
+//! Libraries other programs export without citation keys: RIS, EndNote XML and Ibis's CSV
 //! template (decision 0043). Each record becomes CSL data whose identity is a
 //! versioned hash of that data, so it lasts across refreshes and fresh exports.
 use std::collections::{BTreeMap, HashSet};
@@ -10,6 +10,7 @@ use serde_json::{Value, json};
 use crate::{ParsedLibrary, SourceWarning, WarningCause, WarningCode};
 
 pub(crate) mod csv;
+pub(crate) mod endnote;
 pub(crate) mod ris;
 
 /// A skipped row or record, with a fixed format field when one can be named.
@@ -142,6 +143,7 @@ pub(crate) struct Records<'a> {
     candidates: Candidates<(String, BTreeMap<String, Value>, bool)>,
     /// Records the file holds, read or not: the record limit counts these.
     started: usize,
+    warning_start: usize,
     pub(crate) parsed: ParsedLibrary,
 }
 
@@ -153,6 +155,7 @@ impl<'a> Records<'a> {
             prefix,
             candidates: Candidates::default(),
             started: 0,
+            warning_start: 0,
             parsed: ParsedLibrary::default(),
         }
     }
@@ -187,6 +190,7 @@ impl<'a> Records<'a> {
     /// Counts a record that starts at `line`; past the record limit it warns
     /// once and says to stop reading.
     pub(crate) fn start(&mut self, line: usize) -> bool {
+        self.warning_start = self.parsed.warnings.len();
         self.started += 1;
         if self.started > crate::MAX_LIBRARY_RECORDS {
             self.warn(WarningCode::WorkLimit, line);
@@ -206,6 +210,14 @@ impl<'a> Records<'a> {
             .push(SourceWarning::at(WarningCode::Syntax, Some(line)).because(cause, field));
     }
 
+    fn label_warnings(&mut self, title: Option<&str>) {
+        for warning in &mut self.parsed.warnings[self.warning_start..] {
+            if warning.entry.is_none() {
+                *warning = warning.clone().for_entry(title);
+            }
+        }
+    }
+
     /// Claims the content identity before building its record. These formats
     /// have no independent native ID. `uncertain` marks a lost field.
     pub(crate) fn push(&mut self, mut csl: BTreeMap<String, Value>, line: usize, mut uncertain: bool) {
@@ -213,18 +225,7 @@ impl<'a> Records<'a> {
             self.warn(WarningCode::Field, line);
             uncertain = true;
         }
-        let title = csl.get("title").and_then(Value::as_str);
-        for warning in self
-            .parsed
-            .warnings
-            .iter_mut()
-            .rev()
-            .take_while(|warning| warning.line == Some(line))
-        {
-            if warning.entry.is_none() {
-                *warning = warning.clone().for_entry(title);
-            }
-        }
+        self.label_warnings(csl.get("title").and_then(Value::as_str));
         self.candidates.push(csl, |csl| {
             // Serialising the sorted map gives the same bytes for the same fields.
             let fields = serde_json::to_vec(&csl).unwrap_or_default();

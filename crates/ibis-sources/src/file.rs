@@ -69,25 +69,28 @@ pub(crate) enum Format {
     CslJson,
     Ris,
     Csv,
+    Endnote,
 }
 
 /// Each format with the file names it goes by: the one place a format is named.
 /// Front ends take their chooser and drop lists from here. EndNote online saves
 /// RIS as `.txt`, but that name alone does not say a file is a library.
-const NAMES: [(Format, &[&str]); 4] = [
+const NAMES: [(Format, &[&str]); 5] = [
     (Format::Bibtex, &["bib", "bibtex", "biblatex"]),
     (Format::CslJson, &["json", "csljson"]),
     (Format::Ris, &["ris", "txt"]),
     (Format::Csv, &["csv"]),
+    (Format::Endnote, &["xml"]),
 ];
 
 impl Format {
     /// By name first: BibTeX comments may start with a JSON-looking bracket.
-    /// An unknown name needs a RIS opening or a BibTeX entry block.
+    /// An unknown name needs a recognizable reference entry structure.
     pub(crate) fn of(path: &Path, text: &str) -> Result<Self, SourceError> {
         match Self::named(path) {
             Some(format) => Ok(format),
             None if crate::exported::ris::looks_like_ris(text) => Ok(Self::Ris),
+            None if text.trim_start().starts_with('<') => Ok(Self::Endnote),
             None if bibtex::has_entry_block(text) => Ok(Self::Bibtex),
             None => Err(SourceError::UnknownFormat),
         }
@@ -338,6 +341,7 @@ fn parse_with_budget(
         Format::CslJson => csl_json::load_str(&library, text)?,
         Format::Ris => exported::ris::load(&library, text, previous)?,
         Format::Csv => exported::csv::load(&library, text, previous)?,
+        Format::Endnote => exported::endnote::load(&library, text, previous)?,
         Format::Bibtex => bibtex::load_with_budget(&library, text, budget, previous),
     };
     let parsed_cut_short = parsed.cut_short;

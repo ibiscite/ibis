@@ -61,6 +61,6 @@ stderr| ibis: --id must be a reference's id, the JSON that ibis search --json pr
 
 $ ibis show absent --json
 exit 4
-stdout| {"error":{"code":"not-found","focus":"search","message":{"args":{},"id":"error-not-found"},"next":["ibis","search","absent"],"recovery":{"action":"select-references"},"suggestions":[]},"ibis":1,"ok":false}
+stdout| {"error":{"code":"not-found","focus":"search","message":{"args":{},"id":"error-not-found"},"next":["ibis","search","absent"],"recovery":{"action":"search-references"},"suggestions":[]},"ibis":1,"ok":false}
 stderr| ibis: no reference has the key 'absent'
 stderr|   Try: ibis search absent

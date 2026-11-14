@@ -331,7 +331,7 @@ fn locator_fields_and_canonical_locators_give_the_same_shown_and_checked_content
         .unwrap()
         .run()
         .unwrap_err();
-    assert_eq!(error.problem().info.focus, FocusTarget::Locator);
+    assert_eq!(error.problem().info.recovery().focus(), FocusTarget::Locator);
 }
 
 #[test]
@@ -668,6 +668,89 @@ fn a_missing_doi_keeps_its_typed_recovery_through_the_session() {
         .unwrap_err()
         .problem();
     assert_eq!(problem, CitationError::MissingDoi.problem());
-    assert_eq!(problem.info.recovery, Recovery::ChooseForm);
-    assert_eq!(problem.info.focus, FocusTarget::CitationForm);
+    assert_eq!(problem.info.recovery(), Recovery::ChooseOutput);
+    assert_eq!(problem.info.recovery().focus(), FocusTarget::FormatPicker);
+}
+
+#[test]
+fn all_refused_bibliography_offers_removing_references() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("invented.bib");
+    std::fs::write(
+        &path,
+        "@book{others2026,title={Invented signals},author={Taylor, Avery and others},year={2026}}",
+    )
+    .unwrap();
+    let engine = Engine::new().unwrap().without_file_watches();
+    engine.open_file_observed(&path, &Cancellation::default()).unwrap();
+    let ids = engine
+        .snapshot()
+        .unwrap()
+        .objects()
+        .iter()
+        .map(|object| object.object.id().clone())
+        .collect();
+    let error = engine
+        .citations()
+        .bibliography(SessionId::PICKER, ids, "apa".into(), Cancellation::default(), false)
+        .unwrap()
+        .run()
+        .unwrap_err();
+    let problem = error.problem();
+    assert_eq!(problem.info.recovery(), Recovery::RemoveReferences);
+    assert_eq!(problem.info.recovery().focus(), FocusTarget::SessionReferences);
+    assert!(error.to_string().contains("others2026"));
+    assert!(error.to_string().contains("Remove"));
+}
+
+#[test]
+fn unsupported_group_forms_name_the_reference_and_offer_a_form_the_picker_can_choose() {
+    let engine = engine();
+    for output in ["pandoc", "autocite", "apa"] {
+        let mut request = draft(&engine, output);
+        let mut second = request.items[0].clone();
+        second.form = Some(CitationForm::Narrative);
+        request.items.push(second);
+        let shown = engine
+            .citations()
+            .preview(SessionId::PICKER, request, Cancellation::default())
+            .unwrap()
+            .run()
+            .unwrap();
+        let failure = shown.failure.unwrap();
+        assert_eq!(failure.info.recovery(), Recovery::ChooseForm);
+        assert_eq!(failure.info.recovery().focus(), FocusTarget::CitationForm);
+        let text = shown.problem.unwrap();
+        assert!(text.contains("Reference 2"), "{text}");
+        assert!(text.contains("Name in brackets"), "{text}");
+        assert!(!text.contains("app-command-"), "{text}");
+        assert!(
+            engine
+                .citations()
+                .commit(SessionId::PICKER, &shown.ticket, &shown.content_hash)
+                .is_err()
+        );
+    }
+}
+
+#[test]
+fn oversized_reference_fields_are_refused_before_formatting_without_echoing_them() {
+    let engine = engine();
+    for output in ["pandoc", "apa"] {
+        let mut request = draft(&engine, output);
+        let text = "x".repeat(ibis_core::syntax::MAX_CITATION_BYTES / 2 + 1);
+        request.items[0].prefix = Some(text.clone());
+        request.items[0].suffix = Some(text);
+        let error = engine
+            .citations()
+            .preview(SessionId::PICKER, request, Cancellation::default())
+            .unwrap()
+            .run()
+            .unwrap_err();
+        assert_eq!(error.problem().info.recovery(), Recovery::ReduceSelection);
+        assert_eq!(
+            error.to_string(),
+            "This citation has too much text. Shorten its fields or remove references."
+        );
+    }
 }
