@@ -9,10 +9,8 @@
  * screens centre their own group and the inspector is its own column, so
  * neither is held to the window's columns. */
 export const columns = {
-  marks: [".result-tile", ".ui-palette-row > .ui-band-icon", ".search-bar .search-mark", ".ui-view-back .ui-icon"],
-  words: [".result-title", ".search-bar input", ".ui-view-field", ".shelf-citation", ".ui-view-title", ".ui-palette-label"],
-  leading: [".library-bar .library-status", ".ui-notice-line .notice-band > span:first-child", ".ui-notice-line .update-text", ".ui-notice-line .ui-line-words", ".ui-view-status", ".ui-list-heading > :is(span:first-child, h2)"],
-  outside: ".choice-screen, .inspector, .menu-popover, [inert], .ui-notice-line > :is(.notice-slot, .ui-line-notice) ~ .ui-line-notice",
+  bands: "[data-band]",
+  outside: ".choice-screen, .inspector, .menu-popover, .ui-sheet-status, [inert], .ui-notice-line > :is(.notice-slot, .ui-line-notice) ~ .ui-line-notice",
   /** Hover plates on the window's leading edge: each starts on the window inset, as a row does. */
   plates: ["#results [role=\"option\"]", ".library-bar .library-status-trigger"],
 } as const;
@@ -121,22 +119,24 @@ export function geometry(root: ParentNode = document): string[] {
     const tileStart = lead(tile), tileCentre = tileStart + tile.width / 2, titleStart = lead(title.getBoundingClientRect()), plateStart = lead(plate.getBoundingClientRect());
     probe.remove(); title.remove(); plate.remove();
     const held = (selector: string) => [...root.querySelectorAll(selector)].filter((node) => visible(node) && !node.closest(columns.outside));
-    for (const node of held(columns.marks.join(", "))) {
-      const rect = node.getBoundingClientRect(), centre = lead(rect) + rect.width / 2;
-      if (Math.abs(centre - tileCentre) > tolerance) failures.push(`[C3] ${name(node)}: centre ${centre.toFixed(1)}, tile column ${tileCentre.toFixed(1)}`);
+    for (const band of held(columns.bands)) {
+      const slots = [...band.children];
+      const icon = slots.find((node) => node.getAttribute("data-band-slot") === "lead");
+      if (icon && visible(icon)) {
+        const rect = icon.getBoundingClientRect(), centre = lead(rect) + rect.width / 2;
+        if (Math.abs(centre - tileCentre) > tolerance) failures.push(`[C3] ${name(icon)}: centre ${centre.toFixed(1)}, tile column ${tileCentre.toFixed(1)}`);
+      }
+      const content = slots.find((node) => !node.hasAttribute("data-band-slot") && !node.matches(".visually-hidden") && visible(node));
+      if (content) {
+        const edge = band.getAttribute("data-band") === "title" ? titleStart : tileStart;
+        const column = band.getAttribute("data-band") === "title" ? "title column" : "leading edge";
+        const start = lead(content.getBoundingClientRect());
+        if (Math.abs(start - edge) > tolerance) failures.push(`[C3] ${name(content)}: starts ${start.toFixed(1)}, ${column} ${edge.toFixed(1)}`);
+      }
     }
     for (const node of held(columns.plates.join(", "))) {
       const start = lead(node.getBoundingClientRect());
       if (Math.abs(start - plateStart) > tolerance) failures.push(`[C3] ${name(node)}: plate starts ${start.toFixed(1)}, window inset ${plateStart.toFixed(1)}`);
-    }
-    for (const [selectors, edge, column] of [[columns.words, titleStart, "title column"], [columns.leading, tileStart, "leading edge"]] as const) {
-      for (const node of held(selectors.join(", "))) {
-        const rect = node.getBoundingClientRect(), style = getComputedStyle(node);
-        // Field and title words start inside their padding and border.
-        const inset = node.matches("input, .ui-view-title") ? parseFloat(rtl ? style.paddingRight : style.paddingLeft) + parseFloat(rtl ? style.borderRightWidth : style.borderLeftWidth) : 0;
-        const start = lead(rect) + inset;
-        if (Math.abs(start - edge) > tolerance) failures.push(`[C3] ${name(node)}: starts ${start.toFixed(1)}, ${column} ${edge.toFixed(1)}`);
-      }
     }
   }
 

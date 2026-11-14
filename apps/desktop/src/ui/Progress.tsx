@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import "./Progress.css";
 import { ProgressBar } from "react-aria-components";
+import { Band } from "./Band";
 
 /** Accessible indeterminate progress; the caller supplies its visual content. */
 export function IndeterminateProgress({ label, className, children }: {
@@ -17,16 +18,17 @@ export function IndeterminateProgress({ label, className, children }: {
 export function Progress({ title, label, value, detail }: { title?: string; label: string; value?: number; detail?: string }) {
   const indeterminate = value === undefined;
   return <ProgressBar aria-label={title ? `${title}, ${label}` : label} value={value} isIndeterminate={indeterminate} data-indeterminate={indeterminate || undefined} className="update-card">
-    <span className="update-ring" aria-hidden="true">
+    <Band icon={<span className="update-ring" aria-hidden="true">
       <svg viewBox="0 0 20 20">
         <circle className="update-ring-fill" cx="10" cy="10" r="8.75" pathLength={100}
           style={indeterminate ? undefined : { "--progress": value } as CSSProperties} />
       </svg>
-    </span>
+    </span>}>
     <span className="update-text">
       <strong>{title ?? label}</strong>
       {(title || detail) && <span>{[title ? label : null, detail].filter(Boolean).join(" · ")}</span>}
     </span>
     {!indeterminate && <span className="update-percent">{Math.floor(value)}%</span>}
+    </Band>
   </ProgressBar>;
 }

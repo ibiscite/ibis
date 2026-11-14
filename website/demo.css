@@ -23,7 +23,7 @@
 /* Native select semantics, with one local chevron (including on iOS). */
 .picker-format { position: relative; display: inline-flex; flex: none; min-width: 0; max-width: 100%; }
 .picker-format select { appearance: none; min-width: 0; width: 100%; padding-inline-end: calc(var(--space-2) + 1.1em); }
-.picker-format svg { position: absolute; inset-inline-end: var(--space-2); inset-block-start: 50%; translate: 0 -50%; fill: none; stroke: var(--text-secondary); stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.picker-format svg { position: absolute; inset-inline-end: var(--space-2); inset-block-start: 50%; translate: 0 -50%; color: var(--text-secondary); pointer-events: none; }
 .picker input::-webkit-search-cancel-button { appearance: none; }
 .picker button:disabled { color: var(--text-disabled); background: var(--fill-control); cursor: default; }
 .picker-middle { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-block: var(--inset); }
@@ -78,7 +78,7 @@
 .picker-empty { flex: 1; min-height: 0; overflow-y: auto; display: grid; align-content: center; justify-items: center; text-align: center; padding: 2rem 1rem; color: var(--text-secondary); font-size: var(--type-body-size); }
 .picker-empty strong { color: var(--text); font-size: var(--type-title-size); }
 .picker-empty p { margin: var(--space-2) 0 var(--space-4); }
-.picker-empty svg { margin-bottom: var(--space-3); fill: none; stroke: var(--text-tertiary); }
+.picker-empty .ui-icon { margin-bottom: var(--space-3); color: var(--text-tertiary); }
 .draft code { display: inline; white-space: normal; overflow-wrap: anywhere; }
 .paste-gap { display: inline-block; min-width: 7rem; line-height: 1; border-bottom: var(--ring-width) dashed var(--scarlet); }
 .draft .paste-slot { position: relative; display: inline-flex; align-items: center; gap: var(--space-1); vertical-align: .1em; min-height: 0; padding: .1em .5em; border: var(--border-width) dashed var(--scarlet); border-radius: var(--website-chip-radius); background: var(--website-accent-soft); color: var(--scarlet); font: var(--type-body-size)/1.4 var(--font); }

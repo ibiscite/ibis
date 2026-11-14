@@ -17,9 +17,9 @@ export function Band({ as: Tag = "div", className, icon, trailing, fill, childre
   fill?: boolean;
   children?: ReactNode;
 } & ComponentPropsWithRef<"div">) {
-  return <Tag className={className ? `ui-band ${className}` : "ui-band"} data-fill={fill || undefined} {...rest as object}>
-    {icon !== undefined && <span className="ui-band-icon">{icon}</span>}
+  return <Tag className={className ? `ui-band ${className}` : "ui-band"} data-band={icon !== undefined ? "title" : "leading"} data-fill={fill || undefined} {...rest as object}>
+    {icon !== undefined && <span className="ui-band-icon" data-band-slot="lead">{icon}</span>}
     {children}
-    {trailing !== undefined && <span className="ui-band-trailing">{trailing}</span>}
+    {trailing !== undefined && <span className="ui-band-trailing" data-band-slot="trailing">{trailing}</span>}
   </Tag>;
 }
