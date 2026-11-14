@@ -148,8 +148,10 @@ Ibis also writes org-cite, MyST, ConTeXt and other key syntaxes. Supported
 forms and field losses depend on the output. Numeric styles give an
 unnumbered reference entry; note styles give a full first note. Ibis cannot
 determine a document's numbering, ibid. or year-letter disambiguation.
-A scan marker being generated does not prove a round trip through a particular
-Zotero or word-processor version.
+The pinned upstream ODF differential and its verification command are in the
+[live-citations guide](live-citations.md#evidence-and-remaining-native-checks).
+Actual Zotero, DOCX packaging, word-processor save/reopen and Google Docs
+transfer remain unqualified.
 
 ## Editors (Cite as You Write)
 
