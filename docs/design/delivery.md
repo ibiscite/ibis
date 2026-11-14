@@ -27,30 +27,8 @@
 
 The frame keeps the same notice node when the list gives way to the empty room, including the command list's heading. `Status` supplies its single atomic announcement; the Undo owner keeps its registration and remaining time.
 
-Every "copied, not pasted" sentence says why, then ends with its fix, with full stops; the fix is usually "Press ⌘V to paste." (Ctrl+V on Windows and Linux). Every copy has a reason: none is a bare "Copied." These are the exact words; a test compares them with the catalogue's `copied-notice-reason`.
+`copied-notice-reason` in [`locales/en-US.ftl`](../../locales/en-US.ftl) is the source of truth for copy-reason codes and their exact messages.
 
-| Reason | Code | Words |
-| --- | --- | --- |
-| Pasting off | `paste-off` | Copied. Pasting is off in Settings. Press ⌘V to paste. |
-| Paste check unavailable or too slow | `paste-unavailable` | Copied. Ibis couldn’t confirm where the text would go. Press ⌘V to paste. |
-| No paste on this system | `unsupported-system` | Copied. Ibis can’t paste on this system yet. Press ⌘V to paste. |
-| No app to paste into | `no-target` | Copied. There was no app to paste into. Press ⌘V to paste. |
-| Unapproved app | `unknown-app` | Copied. Automatic paste is not approved for this app. Press ⌘V to paste. |
-| Copy Only chosen | `copy-only` | Copied. Copy Only is set for this app. Press ⌘V to paste. |
-| App with another paste key | `nonstandard-shortcut` | Copied. This app’s paste key does something else. Use its own paste command. |
-| Target changed | `target-changed` | Copied. The target app or window changed. Press ⌘V to paste. |
-| Clipboard replaced | `clipboard-changed` | Copied. The clipboard changed since. Copy the citation again. |
-| Expired | `paste-expired` | Copied. The paste expired. Press ⌘V to paste. |
-| Paste permission missing | `no-permission` | Copied. Ibis needs your OK to paste. Press ⌘V to paste. |
-| Accessibility missing | `accessibility-required` | Copied. Ibis needs Accessibility access to paste safely. Press ⌘V to paste. |
-| Terminal | `terminal` | Copied. Not pasted into a terminal. Press ⌘V to paste. |
-| Remote desktop | `remote-desktop` | Copied. Not pasted into a remote desktop. Press ⌘V to paste. |
-| Virtual machine | `virtual-machine` | Copied. Not pasted into a virtual machine. Press ⌘V to paste. |
-| A field that hides typing | `secure-field` | Copied. This field hides what you type. Press ⌘V to paste. |
-| Secure Event Input on | `secure-input` | Copied. Secure typing is on, possibly in another app. Press ⌘V to paste. |
-| Administrator app (Windows) | `elevated-app` | Copied. Not pasted into an administrator app. Press ⌘V to paste. |
-| Windows keys stuck | `key-release-failed` | Copied. Ibis couldn’t release the keys it pressed. Press and release Ctrl and V to paste. |
-| Selected text never shown | `selection-not-shown` | Copied. Ibis replaces only text it showed you. Press ⌘V to replace it. |
-| Old citation not selected | `citation-not-selected` | Copied. Ibis replaces a citation only when it is selected. Select it, then press ⌘V. |
+Every copy says why, then ends with its fix in full sentences; never a bare "Copied."
 
 Never call the destination a password field. A field that hides typing is named only when its subrole says so (a web password field included); secure typing alone says "possibly in another app". The right paste key is shown per system.

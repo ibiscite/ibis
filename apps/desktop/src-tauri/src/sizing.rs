@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
-use ibis_engine::settings::{PickerWindow, Settings};
+use ibis_engine::settings::PickerWindow;
 use owner::{Display, Event, MINIMUM, Owner, Sample, Save, content_room};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -170,7 +170,7 @@ fn chosen(saved: Option<Frame>, size: (u32, u32), larger: bool, room: (f64, f64)
 }
 
 impl Sizing {
-    pub(crate) fn load(&self, settings: &Settings) {
+    pub(crate) fn load(&self, settings: &ibis_engine::settings::Interface) {
         if let Ok(mut state) = self.shared.state.lock() {
             state.windows = settings.picker_windows.clone();
         }
@@ -211,7 +211,7 @@ impl Shared {
         // A late A cannot write over B, including B from another display: every
         // snapshot contains all accepted drags. Never hold sizing across I/O.
         let current = || self.state.lock().is_ok_and(|state| state.revision == save.revision);
-        let result = file.update_when(current, |settings| settings.picker_windows = save.windows);
+        let result = file.update_when(current, |settings| settings.device.picker_windows = save.windows);
         if !current() || matches!(result, Ok(None)) {
             return None;
         }

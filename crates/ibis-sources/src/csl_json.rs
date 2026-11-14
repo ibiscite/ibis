@@ -1,9 +1,10 @@
 //! CSL-JSON 1.0.2 ingestion; malformed fields warn and locations stay private.
 //! Field vocabulary: citation-style-language/schema v1.0.2, schemas/input/csl-data.json.
+use crate::candidates::Candidates;
 use crate::{ParsedLibrary, SourceError, SourceWarning, WarningCause, WarningCode};
 use ibis_core::contract::{CitationKey, CitationKeySource, ItemRef, LibraryId, Record};
 use serde_json::Value;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::BTreeMap;
 
 /// CSL-JSON records a caller sent, requiring an `id` before applying the file
 /// reader's rules without touching a file. A `file` field is dropped unread:
@@ -45,6 +46,7 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
     read_str(library, text, Input::Library)
 }
 
+#[derive(Clone, Copy)]
 enum Input {
     Library,
     Request,
@@ -88,18 +90,24 @@ fn read_str(library: &LibraryId, text: &str, input: Input) -> Result<ParsedLibra
     let nonempty = !items.is_empty();
     let spans = item_spans(text);
     let mut result = ParsedLibrary::default();
-    // Each `id` with the line of its first record, and those seen again.
-    let mut seen = HashMap::<String, Option<usize>>::new();
-    let mut repeated = HashSet::new();
-    for (index, raw) in items.into_iter().take(crate::MAX_LIBRARY_RECORDS).enumerate() {
+    let candidates = Candidates::collect(
+        items.into_iter().take(crate::MAX_LIBRARY_RECORDS).enumerate(),
+        |(index, raw)| {
+            let line = spans.get(index).map(|(_, _, line)| *line);
+            let fields = object_fields(raw.get());
+            let native_ids = fields
+                .as_ref()
+                .map(|fields| native_ids(fields, input))
+                .unwrap_or_default();
+            let claims = native_ids.iter().map(|id| (format!("record:{id}"), line)).collect();
+            (claims, (raw, line, fields, native_ids))
+        },
+    );
+    let mut duplicates = Vec::new();
+    for (raw, line, fields, native_ids) in candidates.finish(&mut result.duplicate_keys, &mut duplicates) {
         let warnings_before = result.warnings.len();
-        let line = spans.get(index).map(|(_, _, line)| *line);
         let warning = |code| SourceWarning::at(code, line);
-        if raw.get().len() > 1024 * 1024 {
-            result.warnings.push(warning(WarningCode::WorkLimit));
-            continue;
-        }
-        let Ok(mut fields) = object_fields(raw.get()) else {
+        let Some(mut fields) = fields.ok().and_then(unique_fields) else {
             result
                 .warnings
                 .push(warning(WarningCode::Syntax).because(WarningCause::Unreadable, None));
@@ -131,14 +139,6 @@ fn read_str(library: &LibraryId, text: &str, input: Input) -> Result<ParsedLibra
             result.warnings.push(because(WarningCode::Syntax, cause, "id"));
             continue;
         }
-        let numeric_native = fields
-            .get("id")
-            .filter(|value| {
-                value
-                    .get()
-                    .starts_with(|character: char| character.is_ascii_digit() || character == '-')
-            })
-            .map(|value| value.get().to_owned());
         if fields.contains_key("id") && id.is_none() {
             result
                 .warnings
@@ -153,17 +153,20 @@ fn read_str(library: &LibraryId, text: &str, input: Input) -> Result<ParsedLibra
         }
         // A record's `id` names it inside this file; only `citation-key` is a key.
         // A number too large to stay exact can stand in only beside a real key.
-        let native = id.or_else(|| {
-            explicit
-                .as_ref()
-                .map(|key| numeric_native.unwrap_or_else(|| key.clone()))
-        });
-        let Some(native) = native else {
+        let Some(native) = native_ids.into_iter().next() else {
             result
                 .warnings
                 .push(because(WarningCode::Syntax, WarningCause::MissingField, "id"));
             continue;
         };
+        let item = ItemRef {
+            library: library.clone(),
+            key: format!("record:{native}"),
+        };
+        if raw.get().len() > 1024 * 1024 {
+            result.warnings.push(warning(WarningCode::WorkLimit));
+            continue;
+        }
         let kind = scalar("type");
         if native.trim().is_empty()
             || native.chars().any(char::is_control)
@@ -183,25 +186,6 @@ fn read_str(library: &LibraryId, text: &str, input: Input) -> Result<ParsedLibra
             result.warnings.push(warning(WarningCode::WorkLimit));
             continue;
         }
-        // Ibis cannot know which record a repeated `id` means, whether written
-        // `1` or `"1"`, so none is kept. The first has its warning added below.
-        if seen.contains_key(&native) {
-            result.warnings.push(SourceWarning {
-                code: WarningCode::DuplicateKey,
-                line,
-                key: Some(native.clone()),
-                entry: None,
-                cause: None,
-                field: None,
-            });
-            repeated.insert(format!("record:{native}"));
-            continue;
-        }
-        seen.insert(native.clone(), line);
-        let item = ItemRef {
-            library: library.clone(),
-            key: format!("record:{native}"),
-        };
         if let Some(file) = fields.remove("file") {
             if let Ok(file) = serde_json::from_str::<String>(file.get()) {
                 result.attachments.push((item.clone(), file, line));
@@ -266,27 +250,12 @@ fn read_str(library: &LibraryId, text: &str, input: Input) -> Result<ParsedLibra
             identifiers: vec![],
         });
     }
-    if !repeated.is_empty() {
-        result.records.retain(|record| !repeated.contains(&record.id.key));
-        result.attachments.retain(|(item, ..)| !repeated.contains(&item.key));
-        for (native, line) in seen {
-            if repeated.contains(&format!("record:{native}")) {
-                result.warnings.push(SourceWarning {
-                    code: WarningCode::DuplicateKey,
-                    line,
-                    key: Some(native),
-                    entry: None,
-                    cause: None,
-                    field: None,
-                });
-            }
-        }
-    }
     // A file in which no record could be read is not a library; requests keep
     // their diagnostics so the engine can explain why it refuses every record.
-    if matches!(input, Input::Library) && nonempty && result.records.is_empty() && repeated.is_empty() {
+    if matches!(input, Input::Library) && nonempty && result.records.is_empty() && duplicates.is_empty() {
         return Err(SourceError::InvalidData);
     }
+    result.warnings.extend(duplicates);
     if limited {
         result.cut_short = true;
         result.warnings.push(SourceWarning {
@@ -300,27 +269,61 @@ fn read_str(library: &LibraryId, text: &str, input: Input) -> Result<ParsedLibra
     }
     Ok(result)
 }
-fn object_fields(text: &str) -> serde_json::Result<BTreeMap<String, &serde_json::value::RawValue>> {
-    struct UniqueFields;
-    impl<'de> serde::de::Visitor<'de> for UniqueFields {
-        type Value = BTreeMap<String, &'de serde_json::value::RawValue>;
+type ObjectFields<'a> = BTreeMap<String, Vec<&'a serde_json::value::RawValue>>;
+
+fn object_fields(text: &str) -> serde_json::Result<ObjectFields<'_>> {
+    struct Fields;
+    impl<'de> serde::de::Visitor<'de> for Fields {
+        type Value = ObjectFields<'de>;
         fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            formatter.write_str("an object with unique property names")
+            formatter.write_str("an object")
         }
         fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
-            let mut fields = BTreeMap::new();
+            let mut fields = ObjectFields::new();
             while let Some((name, value)) = map.next_entry::<String, &serde_json::value::RawValue>()? {
-                if fields.insert(name, value).is_some() {
-                    return Err(serde::de::Error::custom("duplicate property"));
-                }
+                fields.entry(name).or_default().push(value);
             }
             Ok(fields)
         }
     }
     let mut parser = serde_json::Deserializer::from_str(text);
-    let result = serde::Deserializer::deserialize_map(&mut parser, UniqueFields)?;
+    let result = serde::Deserializer::deserialize_map(&mut parser, Fields)?;
     parser.end()?;
     Ok(result)
+}
+
+fn unique_fields(fields: ObjectFields<'_>) -> Option<BTreeMap<String, &serde_json::value::RawValue>> {
+    fields
+        .into_iter()
+        .map(|(name, values)| (values.len() == 1).then(|| (name, values[0])))
+        .collect()
+}
+
+/// Read every identity-bearing property, even when another property repeats.
+fn native_ids(fields: &ObjectFields<'_>, input: Input) -> Vec<String> {
+    let keys: Vec<String> = fields
+        .get("citation-key")
+        .into_iter()
+        .flatten()
+        .filter_map(|value| serde_json::from_str::<String>(value.get()).ok())
+        .filter(|key| !key.trim().is_empty())
+        .collect();
+    let mut ids = Vec::new();
+    for value in fields.get("id").into_iter().flatten() {
+        if let Some(id) = id_string(value) {
+            ids.push(id);
+        } else if matches!(input, Input::Library) && !keys.is_empty() {
+            if value.get().starts_with(|c: char| c.is_ascii_digit() || c == '-') {
+                ids.push(value.get().to_owned());
+            } else {
+                ids.extend(keys.iter().cloned());
+            }
+        }
+    }
+    if !fields.contains_key("id") && matches!(input, Input::Library) {
+        ids.extend(keys);
+    }
+    ids
 }
 
 #[derive(Clone, Copy)]

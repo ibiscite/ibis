@@ -3,6 +3,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use super::CitationError;
 use super::model::{Fingerprint, ItemRef};
 
 /// CSL 1.0.2 input locator vocabulary, including the disambiguating `-locator` names.
@@ -240,63 +241,6 @@ pub struct CitationRequest {
     #[serde(default)]
     /// None uses the style default. Engines validate locale strings as data.
     pub output_locale: Option<String>,
-}
-
-/// Fixed citation diagnostics contain no source data, paths, keys or request text.
-/// A front-end boundary maps a wholly invalid/cancelled request to its envelope error.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case")]
-pub enum CitationError {
-    EmptySelection,
-    TooManyItems,
-    InvalidLocator,
-    InvalidRichText,
-    OutputTooLarge,
-    UnsupportedForm,
-    MissingItem,
-    ChangedItem,
-    MissingKey,
-    MissingDoi,
-    AmbiguousKey,
-    ConflictingKey,
-    InvalidKey,
-    UnsupportedOutput,
-    InvalidLocale,
-    Cancelled,
-    FormatterUnavailable,
-    AnnotationMismatch,
-    NotCitable,
-    // A Zotero marker names a Zotero item, and Ibis did not read this one from Zotero.
-    NotFromZotero,
-    /// A code from a newer engine. It reads as needing review, never as success.
-    #[serde(other)]
-    #[schemars(skip)]
-    Unknown,
-}
-
-impl CitationError {
-    pub const ALL: [Self; 20] = [
-        Self::EmptySelection,
-        Self::TooManyItems,
-        Self::InvalidLocator,
-        Self::InvalidRichText,
-        Self::OutputTooLarge,
-        Self::UnsupportedForm,
-        Self::MissingItem,
-        Self::ChangedItem,
-        Self::MissingKey,
-        Self::MissingDoi,
-        Self::AmbiguousKey,
-        Self::ConflictingKey,
-        Self::InvalidKey,
-        Self::UnsupportedOutput,
-        Self::InvalidLocale,
-        Self::Cancelled,
-        Self::FormatterUnavailable,
-        Self::AnnotationMismatch,
-        Self::NotCitable,
-        Self::NotFromZotero,
-    ];
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

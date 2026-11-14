@@ -20,7 +20,7 @@ beforeAll(async () => {
   stylesheet = String(css.source);
 }, 30_000);
 
-test("the built scenario list renders, switches and reopens without Tauri or network", async () => {
+test.each(["light", "dark"])("the built scenario list renders, switches and reopens in %s without Tauri or network", async (theme) => {
   const errors = [];
   const console = new VirtualConsole();
   console.on("jsdomError", (error) => errors.push(error));
@@ -110,7 +110,7 @@ test("the built scenario list renders, switches and reopens without Tauri or net
     host.querySelector('[role="option"][data-key="file"]')?.click();
     await vi.waitFor(() => expect(host.textContent).toContain("The file chooser did not open. Try again."));
     expect(canvas.scenarios).toEqual(expect.arrayContaining(["results", "first-run", "shelf", "missing", "states", "tokens", "settings-about"]));
-    for (const theme of ["light", "dark"]) for (const scenario of canvas.scenarios) {
+    for (const scenario of canvas.scenarios) {
       const unmount = canvas.mount(host, { scenario, theme });
       await shown(scenario, theme);
       // Refuse an unknown scenario before disturbing the visible board.

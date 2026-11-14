@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "re
 import { Reader } from "../reader/Reader";
 import { usePageSource } from "../reader/source";
 import { citationDetails, isCancelled } from "../../api";
-import type { FilePreview, ReferenceDetails } from "../../bindings";
+import type { Preview, FormDetails } from "../../bindings";
 import { composing } from "../../composition";
 import { Icon } from "../../icons";
 import { say } from "../../i18n";
@@ -26,7 +26,7 @@ export function CitationInspector({ id, panel, anchor, keepOrder, heading, refer
   anchor: RefObject<Element | null>;
   /** Keep My Order, at the foot only where the style may sort. */
   keepOrder: { checked: boolean; onChange: (on: boolean) => void } | null;
-  reference: CitationReference | undefined; index: number; selected: boolean; previewReceipt?: FilePreview;
+  reference: CitationReference | undefined; index: number; selected: boolean; previewReceipt?: Preview;
   /** Which output the citation is in; a page edit leaves it the same. */
   output: string;
   failure: string | null; notes: CitationNotes;
@@ -34,7 +34,7 @@ export function CitationInspector({ id, panel, anchor, keepOrder, heading, refer
   onSubmit?: () => void;
   onRemove: (reference: CitationReference) => void; onClose: () => void;
 }) {
-  const [details, setDetails] = useState<{ receipt: FilePreview; output: string; value: ReferenceDetails | "failed" }>();
+  const [details, setDetails] = useState<{ receipt: Preview; output: string; value: FormDetails | "failed" }>();
   const editing = panel.kind !== "warnings";
   const pdf = usePageSource(editing ? reference : undefined);
   // Reading belongs to this opening of these details: closing them ends it.
@@ -96,8 +96,8 @@ export function CitationInspector({ id, panel, anchor, keepOrder, heading, refer
     return <Inspector ref={body} invoker={anchor} id={id} label={say("citation-details-details", { reference: reference.title || reference.key })}
       heading={reference.title || heading} byline={byline || undefined} closeLabel={say("key-close")} onClose={onClose} reading
       footer={<div className="inspector-actions"><hr /><Button variant="quiet" className="inspector-action" label={say("reader-hide")} aria-expanded onPress={() => setReading(false)} /></div>}
-      document={<Reader key={pdf.id} source={pdf} title={reference.title || reference.key} page={reference.locator?.label === "page" ? reference.locator.value : ""}
-        onPageChange={(value) => onChange(reference, { locator: value ? { label: "page", value, input: "editor" } : null })} />}
+      document={<Reader key={pdf.id} source={pdf} title={reference.title || reference.key} page={reference.locator?.term === "page" ? reference.locator.value : ""}
+        onPageChange={(value) => onChange(reference, { locator: value ? { term: "page", value, input: "editor" } : null })} />}
       onKeyDown={removeKeys}>{fields}</Inspector>;
   }
   return <Popover triggerRef={anchor} label={reference ? say("citation-details-details", { reference: reference.title || reference.key }) : say("picker-citation-details")}

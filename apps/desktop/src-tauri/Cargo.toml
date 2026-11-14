@@ -64,7 +64,6 @@ objc2-foundation = { version = "0.3.2", default-features = false, features = ["s
 smappservice-rs = "0.1.3"
 
 [dev-dependencies]
-ibis = { path = "../../../crates/ibis-cli" }
 tempfile = "3.27.0"
 # A mock app for the offline update check test.
 tauri = { version = "2.12", features = ["test"] }

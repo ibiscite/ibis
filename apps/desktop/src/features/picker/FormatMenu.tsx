@@ -23,7 +23,8 @@ const remember = (output: OutputId) => { recent.splice(0, recent.length, output,
  * use and, when it isn't your own, why ("APA · Word", "APA · Thesis"). It opens
  * the palette: the way back to your format first, your recent formats, the
  * app's own choices, then every format by typing, with a key citation or a
- * labelled style example beside the list. Focus returns to Search. */
+ * labelled style example beside the list. A pick returns to Search; dismissal
+ * returns to the opener. */
 export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpenChange, pasteChoices, onPasteChange, disabled, styles, onChange, searchRef, writing, onWritings, preview, usualFormat, onUseUsual, formatLabel }: {
   format: OutputId;
   formatLabel?: string;

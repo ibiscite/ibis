@@ -315,6 +315,7 @@ fn caching_a_silent_parent_expansion_keeps_its_later_warning() {
 // --- size boundary -----------------------------------------------------------------------
 
 #[test]
+#[allow(clippy::disallowed_methods)]
 fn exactly_sixty_four_mib_loads_and_one_more_byte_is_rejected() {
     let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
     let path = dir.path().join("参考文献 synthetic.bib");

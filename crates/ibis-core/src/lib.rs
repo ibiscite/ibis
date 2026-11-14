@@ -1,5 +1,6 @@
 //! Shared contracts and pure rules for sources, search and citation output.
 
+pub mod atomic_file;
 pub mod citable;
 pub mod citation;
 pub mod command_install;

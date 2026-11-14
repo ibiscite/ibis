@@ -26,7 +26,7 @@ function walk(ordered: HTMLElement[]) {
   for (const previous of ordered.slice(0, -1).reverse()) { tab(true); expect(document.activeElement).toBe(previous); }
 }
 
-test("keyboard walks picker, shelf, preview, library menu, citation details and format picker", async () => {
+async function pickerWithCitation() {
   backend({ search: () => [result("aster", "Invented Aster work")] });
   render(<App />);
   await screen.findByText("Invented Aster work");
@@ -34,6 +34,11 @@ test("keyboard walks picker, shelf, preview, library menu, citation details and 
   fireEvent.keyDown(search, { key: "Enter", shiftKey: true });
   const token = await findInCitation("aster");
   const format = screen.getByRole("button", { name: /^Citation format/ });
+  return { search, token, format };
+}
+
+test("keyboard walks picker, shelf, preview and library menu", async () => {
+  const { search, token, format } = await pickerWithCitation();
   const footer = screen.getByRole("button", { name: /^More/ }).closest("footer")!;
   walk([search, format, token, ...tabStops(footer)]);
 
@@ -50,7 +55,10 @@ test("keyboard walks picker, shelf, preview, library menu, citation details and 
   act(() => within(menu).getAllByRole("menuitem")[0]!.focus());
   fireEvent.keyDown(document.activeElement!, { key: "Escape" });
   await waitFor(() => expect(document.activeElement).toBe(library));
+});
 
+test("keyboard walks citation details and format picker", async () => {
+  const { token, format } = await pickerWithCitation();
   act(() => token.focus());
   const page = await openCitationDetails();
   const dialog = screen.getByRole("dialog", { name: /^Citation details/ });

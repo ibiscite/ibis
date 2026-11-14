@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { Icon } from "../../icons";
 import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type Ref, type RefObject } from "react";
 import type { SearchResult } from "../../api";
-import type { FilePreview, Notice } from "../../bindings";
+import type { Preview, Notice } from "../../bindings";
 import { outputName, writesEntries, type FormattedCitation, type OutputId } from "../../format/outputs";
 import { renderDisplay, renderNode } from "../../format/display";
 import { say } from "../../i18n";
@@ -68,7 +68,7 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
   selected: Map<string, CitationReference>;
   highlightedReference?: CitationReference;
   highlightedReferences?: CitationReference[];
-  previewReceipt?: FilePreview;
+  previewReceipt?: Preview;
   onChangeReference?: (reference: CitationReference, change: CitationDetailsChange) => void;
   onRemove: (r: SearchResult) => void;
   referenceLibrary?: (r: SearchResult) => string | null;
