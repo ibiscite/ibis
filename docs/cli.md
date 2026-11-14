@@ -376,17 +376,24 @@ every library for a key, or the item's own library.
 and `last_successful_read_ms`. `source-warnings` gives the `count` of entries
 skipped or read with problems. Later refreshes cannot change a result's health.
 
-| Exit | Meaning / error code |
+Exit 0 means success, including empty results. Exit 1 means findings: refusals,
+losses, source warnings or `source_health` problems in libraries read.
+An output-write failure is `internal`; a closed reader pipe is not an error.
+
+<!-- gen:errors -->
+
+| Exit | Error code |
 | --- | --- |
-| 0 | Success, including empty results. |
-| 1 | Findings: refusals, losses, source warnings or `source_health` problems in libraries read. |
 | 2 | `usage` |
 | 3 | `bad-input` |
 | 4 | `not-found` |
-| 5 | `source-unavailable` or `resource-limit` |
+| 5 | `source-unavailable` |
+| 5 | `resource-limit` |
 | 6 | `newer-format` |
-| 70 | `internal`, including output-write failure. A closed reader pipe is not an error. |
+| 70 | `internal` |
 | 130 | `cancelled` |
+
+<!-- /gen:errors -->
 
 [Release notes](https://github.com/ibiscite/ibis/releases) call out contract changes;
 `ibis schema` describes the version you have.

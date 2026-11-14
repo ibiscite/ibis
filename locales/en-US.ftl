@@ -1208,8 +1208,7 @@ row-item-type =
 copied-notice-pasted-into = Pasted into { $app }
 copied-notice-pasted = Pasted
 # Every "copied, not pasted" sentence says why and ends with its fix, written
-# with ⌘V; other systems show Ctrl+V. The words are the Notices table in
-# docs/design/delivery.md, which a test reads.
+# with ⌘V; other systems show Ctrl+V.
 copied-notice-reason =
     { $reason ->
         [paste-off] Copied. Pasting is off in Settings. Press ⌘V to paste.

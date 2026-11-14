@@ -74,29 +74,13 @@ Built in `ibis-core` so every front end shares them (#1204).
 
 ## Keys
 
-`KEY_TABLE` in [`apps/desktop/src/keys.ts`](../../apps/desktop/src/keys.ts) is the one source of shortcuts; the keys sheet, footer and More read it. A key is added only with the code that handles it.
+`KEY_TABLE` and `DEFAULT_PICKER_SHORTCUT` in [`apps/desktop/src/keys.ts`](../../apps/desktop/src/keys.ts) are the source of truth for shortcut actions, platform bindings and the default summon shortcut.
 
-| Input | Does |
-| --- | --- |
-| ⇧⌘Y (Ctrl+Shift+Y elsewhere) | Opens Ibis from any app (the default; follows the active layout's letter) |
-| Click / double-click a row | Selects [C5] / pastes or copies what the shelf shows |
-| ⌘1–⌘9 (Ctrl elsewhere) | Does what a double-click on the row with that number does. The first nine rows wholly in view are numbered from the top, so scrolling renumbers them; holding ⌘ (the same one-second hold) writes each row's key where its type icon was, as plain secondary text like a menu's key equivalent (⌘1; Ctrl+1 elsewhere), ending where the tile column ends, like a numbered list's marker: no cap and no plate, nothing moves, and the year stays. A cited row's check gives way for the hold too (the shelf shows the citation) and returns when ⌘ is let go. Only while the result list is shown: not over the command list, a palette, a sheet or an empty state |
-| Enter, or the footer action | Pastes or copies what the shelf shows; success hides an unpinned window |
-| ⌘-click, the tile’s +, ⇧Enter | Adds to the citation, in order |
-| ⌘↓ in Search | Goes to the citation's last token |
-| ← → / ⇧← ⇧→ / ⌫ or ⌦ / ↓ or Space on a token | Moves between the citation’s references / moves the focused one one place / removes it, with Undo / opens its details |
-| Esc | Steps back one layer, from any control: sheet, menu, inspector, library chooser, then clears search (the shelf stays), then hides. A held Esc takes one step |
-| ⌘O / ⇧⌘O | Opens the source / Choose Library… |
-| ⌘K | More |
-| ⌘/, or `?` outside a field | Keyboard shortcuts |
-| ⇧⌘P | Keep window open |
-| ⇧⌘F | The format chooser |
-| ⌘Y | Peek at the highlighted reference |
-| `>` first in the search | Command search |
-| ⌘E | Change the last citation for this app |
-| ⌘+ / ⌘− | Text size |
-| ⌘Z | Undo what the notice slot offers |
-| Typing outside a field | Types into search, except in the reader's pages |
+- The summon shortcut follows the active layout’s letter.
+- Double-clicking a row or the footer action pastes or copies what the shelf shows; success hides an unpinned window. The tile’s + adds to the citation, in order.
+- Numbered-result shortcuts act on the first nine rows wholly in view, renumbered on scroll. Holding the command key for one second writes each row’s key where its type icon was, as plain secondary text ending at the tile column: no cap and no plate, nothing moves, and the year stays. A cited row’s check gives way for the hold too (the shelf shows the citation) and returns when the command key is let go. They work only while the result list is shown, not over a command list, palette, sheet or empty state.
+- Escape steps back one layer from any control: sheet, menu, inspector, library chooser, then clears search (the shelf stays), then hides. A held key takes one step.
+- The question-mark shortcut works only outside a field. Typing outside a field goes into search, except in the reader’s pages.
 
 ## Window behaviour
 
