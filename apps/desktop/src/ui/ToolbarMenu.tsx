@@ -75,7 +75,7 @@ export function ToolbarMenu({ buttonRef, disabled, label, value, heading, note, 
     {sections.map((section) => <MenuSection key={section.id} id={section.id} className="menu-section">
       {section.label && <Header className="ui-list-heading menu-heading">{section.label}</Header>}
       {section.note && <Header className="toolbar-menu-note">{section.note}</Header>}
-      {section.items.map((item) => <MenuItem className="menu-item" id={item.id} key={item.id} textValue={item.keywords ? `${item.label} ${item.keywords}` : item.label} shouldCloseOnSelect={false}
+      {section.items.map((item) => <MenuItem className="menu-item" data-note={item.note ? "" : undefined} id={item.id} key={item.id} textValue={item.keywords ? `${item.label} ${item.keywords}` : item.label} shouldCloseOnSelect={false}
         render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={item.id} aria-disabled={disabled || item.disabled || undefined}
           {...item.command ? { role: "menuitem", "aria-checked": undefined } : {}} />}>
         {({ isSelected }) => <><MenuCheck checked={!item.command && isSelected} />

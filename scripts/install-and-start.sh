@@ -18,6 +18,8 @@ show() {
   return "$rc"
 }
 stays_up=scripts/stays-up.py
+# The journey needs an account with no Ibis settings, and starting the app
+# writes them, so on macOS and Windows it runs before the startup check.
 
 journey() {
   [ "${IBIS_INSTALLED_JOURNEY:-0}" = 1 ] || return 0
@@ -66,8 +68,8 @@ macos() {
   test -f "$app"
   test -x "$app"
   echo "installed at $app"
-  show python3 "$stays_up" "$app"
   journey
+  show python3 "$stays_up" "$app"
   rm -rf "$installed"
 }
 
@@ -84,8 +86,8 @@ windows() {
   app="$dir/ibis-desktop.exe"
   test -f "$app" || { echo "::error::The setup executable installed no desktop app in $dir"; exit 1; }
   echo "installed at $app"
-  show python "$stays_up" "$app"
   journey
+  show python "$stays_up" "$app"
   "$dir/uninstall.exe" //S
   # The uninstaller copies itself and returns early; wait for removal.
   for _ in $(seq 30); do [ -e "$app" ] || break; sleep 2; done
