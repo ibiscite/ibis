@@ -1,4 +1,10 @@
-# 0049 Local machines gate merges
+# 0049 Local machines gate merges (superseded)
+
+2026-11-14 (maintainer): superseded. Hosted **CI result** through GitHub's merge
+queue is the required merge check; local checks are for speed only. The local
+gate reported on itself, and main went red the day it became required.
+`scripts/land.sh` runs fast local checks, pushes the branch and requests
+auto-merge; hosted CI checks the PR and the merge-group revision before merging.
 
 2026-11-13 (maintainer): this is a solo project; the maintainer and his agents
 are the only writers. **The local machines are the gate; GitHub CI confirms

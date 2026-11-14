@@ -33,9 +33,9 @@ done
   };
 }
 
-test("only dependency changes block main advisory failures; unreadable ranges enforce the policy", posix, (t) => {
+test("only dependency changes block merge candidates and main advisory failures; unreadable ranges enforce the policy", posix, (t) => {
   const run = fixture(t);
-  for (const event of ["push"]) {
+  for (const event of ["push", "pull_request", "merge_group"]) {
     assert.equal(run("policy", { EVENT: event }).stdout, "blocking=false\n");
     for (const file of ["Cargo.toml", "Cargo.lock", "deny.toml", "crates/example/Cargo.toml"]) {
       assert.equal(run("policy", { EVENT: event, FILES: file }).stdout, "blocking=true\n");

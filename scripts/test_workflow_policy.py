@@ -1,8 +1,8 @@
 """Workflow rules that only the workflow's structure can show, read with a YAML
 parser, never with regular expressions.
 
-"CI result" confirms the merged revision before publication; Local gate owns
-merging. The result must include every platform and daily/manual qualifier,
+"CI result" gates the merge queue and confirms main before publication. It must
+include every platform and daily/manual qualifier,
 even after a failed prerequisite. The reporter is outside that result.
 """
 
@@ -37,7 +37,7 @@ class CiResultTest(unittest.TestCase):
 
     def test_runs_whatever_its_needs_did(self):
         key, jobs = result_job(self.workflow)
-        self.assertEqual(str(jobs[key].get("if", "")).strip(), "always()")
+        self.assertEqual(str(jobs[key].get("if", "")).strip(), "always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)")
 
     def test_needs_every_other_job(self):
         key, jobs = result_job(self.workflow)
@@ -45,16 +45,17 @@ class CiResultTest(unittest.TestCase):
         needs = [needs] if isinstance(needs, str) else list(needs)
         self.assertEqual(sorted(needs), sorted(name for name in jobs if name not in {key, "nightly-report"}))
 
-    def test_main_confirmation_always_runs_the_full_platform_matrix(self):
+    def test_merge_candidates_and_main_run_the_full_platform_matrix(self):
         events = self.workflow.get("on", self.workflow.get(True))
-        self.assertEqual(set(events), {"push", "schedule", "workflow_dispatch"})
+        self.assertEqual(set(events), {"push", "pull_request", "merge_group", "schedule", "workflow_dispatch"})
         self.assertEqual(events["push"], {"branches": ["main"]})
+        self.assertEqual(events["pull_request"], {"branches": ["main"]})
         jobs = self.workflow["jobs"]
         for name in ["test", "desktop"]:
-            self.assertNotIn("if", jobs[name])
+            self.assertEqual(jobs[name]["if"], "github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository")
             self.assertEqual(jobs[name]["strategy"]["matrix"]["os"], ["ubuntu-24.04", "macos-15", "windows-2025"])
         for name in ["interface", "web"]:
-            self.assertNotIn("if", jobs[name])
+            self.assertEqual(jobs[name]["if"], "github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository")
         self.assertEqual(jobs["desktop"]["needs"], "interface")
 
     def test_dependency_rules_and_identities_remain_in_confirmation(self):
@@ -83,7 +84,7 @@ class CiResultTest(unittest.TestCase):
         self.assertIn({"cron": "43 5 * * 1"}, events["schedule"])
         jobs = self.workflow["jobs"]
         self.assertIn("dependencies", jobs["result"]["needs"])
-        self.assertNotIn("if", jobs["dependencies"])
+        self.assertEqual(jobs["dependencies"]["if"], "github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository")
         self.assertEqual(jobs["dependencies"]["permissions"], {"contents": "read", "issues": "write"})
         reporter = next(step for step in jobs["dependencies"]["steps"] if step.get("name") == "Report advisory failure")
         self.assertEqual(reporter["env"]["SCHEDULE"], "${{ github.event.schedule }}")
