@@ -109,6 +109,9 @@ Zotero reads use the same pinned Zotero-to-CSL mapping in both modes:
   source warning after required table, column and lookup shapes validate;
   incompatible layouts are refused.
 
+On Windows, private copies and their lock belong to the user who made them, and
+an existing lock is never deleted; a lock Ibis cannot repair reports its own
+error with the "Open Zotero, then reload" recovery.
 Missing Zotero groups fail instead of falling back; several closed profiles require a named choice. Disagreeing citation keys stay visible and block key output.
 
 Readers accept a change after two identical reads; network and unknown mounts use manual refresh and report `live-refresh-off`. Cloud placeholders are refused before reading. Each file load shares one two-second filesystem deadline; calls share eight slots and optional attachment batches can hold at most four slots and skip immediately when capacity is unavailable, leaving availability `unknown`. Desktop loads carry the request's cancellation token through every file open and have a two-minute deadline, four per source family. Decoding is pure: the source probes attachments in one batch under the load's deadline, capped at 256, and unchecked ones stay with `unknown` availability. A failed refresh keeps the previous snapshot and reports its health; stale results cannot publish.

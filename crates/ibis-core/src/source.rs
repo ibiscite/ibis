@@ -1,6 +1,37 @@
-//! Shared file-source errors used by clients. File loading lives in `ibis-sources`.
+//! Shared source identity claims and safe errors. File loading lives in `ibis-sources`.
 
+use std::{collections::HashMap, hash::Hash};
 use thiserror::Error;
+
+/// Source identities, claimed before validating their payloads. A rejected
+/// contender still makes the identity ambiguous; no contender may win it.
+pub struct IdentityClaims<K, L> {
+    claims: HashMap<K, Vec<L>>,
+}
+
+impl<K: Eq + Hash, L> Default for IdentityClaims<K, L> {
+    fn default() -> Self {
+        Self { claims: HashMap::new() }
+    }
+}
+
+impl<K: Eq + Hash, L> IdentityClaims<K, L> {
+    pub fn claim(&mut self, identity: K, location: L) {
+        self.claims.entry(identity).or_default().push(location);
+    }
+
+    pub fn is_unique(&self, identity: &K) -> bool {
+        self.claims.get(identity).is_some_and(|locations| locations.len() == 1)
+    }
+
+    /// Every location under every repeated identity, including the first.
+    pub fn duplicates(&self) -> impl Iterator<Item = (&K, &L)> {
+        self.claims
+            .iter()
+            .filter(|(_, locations)| locations.len() > 1)
+            .flat_map(|(identity, locations)| locations.iter().map(move |location| (identity, location)))
+    }
+}
 
 /// Allowlisted diagnostics: never expose paths, contents or operating system errors.
 /// Front ends add any context about their installed references.

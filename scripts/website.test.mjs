@@ -81,7 +81,7 @@ test("public build has four canonical routes, local assets, safe headers and no 
     }
     assert.match(await readFile(join(dir, "404.html"), "utf8"), /noindex/);
     assert.equal(await readFile(join(dir, "tokens.css"), "utf8"), await readFile(new URL("../apps/desktop/src/tokens.css", import.meta.url), "utf8"));
-    assert.deepEqual((await readdir(dir)).sort(), ["404.html", "LICENSE-lucide", "_headers", "arrow-up-right.svg", "assets", "cli", "demo-model.mjs", "demo.css", "demo.js", "features", "get", "icon-paths.js", "icon.css", "index.html", "keys.js", "llms.txt", "picker-tokens.css", "platform.js", "robots.txt", "setup", "setup.md", "site.js", "sitemap.xml", "style.css", "tokens.css"]);
+    assert.deepEqual((await readdir(dir)).sort(), ["404.html", "LICENSE-phosphor", "_headers", "arrow-up-right.svg", "assets", "cli", "demo-model.mjs", "demo.css", "demo.js", "features", "get", "icon-art.js", "icon.css", "index.html", "keys.js", "llms.txt", "picker-tokens.css", "platform.js", "robots.txt", "setup", "setup.md", "site.js", "sitemap.xml", "style.css", "tokens.css"]);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

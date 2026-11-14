@@ -161,7 +161,7 @@ test("partial results say Closest matches visibly and aloud and remain usable", 
   const box = screen.getByLabelText("Search references");
   fireEvent.change(box, { target: { value: "sleep photon" } });
   await screen.findByText("Closest matches");
-  expect(document.querySelector(".results-heading")?.textContent).toBe("Closest matches1 result");
+  expect(document.querySelector(".ui-list-heading")?.textContent).toBe("Closest matches1 result");
   expect(screen.queryByText("Best matches")).toBeNull();
   const status = screen.getByRole("status", { name: "Search results" });
   await waitFor(() => expect(status.textContent).toBe("Closest matches · 1 result"));
@@ -177,7 +177,7 @@ test("partial results say Closest matches visibly and aloud and remain usable", 
 
   fireEvent.change(box, { target: { value: "photon" } });
   await screen.findByText("No matching references");
-  expect(document.querySelector(".results-heading")).toBeNull();
+  expect(document.querySelector(".ui-list-heading")).toBeNull();
   await waitFor(() => expect(status.textContent).toBe("0 results"));
 });
 
@@ -356,9 +356,8 @@ test("⌘1–9 (Ctrl elsewhere) does what a double-click on that numbered row do
   // Each shown row carries its number for the keys sheet and assistive technology.
   expect(screen.getAllByRole("option").map((row) => row.getAttribute("aria-keyshortcuts"))).toEqual(["Control+1", "Control+2", "Control+3"]);
   // Held, each number takes its row's leading tile; the year, citation context, stays.
-  expect(screen.getAllByRole("option").map((row) => [row.querySelector(".result-tile")?.getAttribute("data-key"), row.querySelector(".result-year")?.textContent]))
-    .toEqual([["Ctrl+1", "2020"], ["Ctrl+2", "2020"], ["Ctrl+3", "2020"]]);
-  screen.getAllByRole("option").forEach((row, i) => expect(row.textContent).not.toContain(`Ctrl+${i + 1}`));
+  expect(screen.getAllByRole("option").map((row) => [row.querySelector(".ui-key-mark")?.textContent, row.querySelector(".result-year")?.textContent]))
+    .toEqual([["1", "2020"], ["2", "2020"], ["3", "2020"]]);
   // No fourth row: the key is left alone.
   expect(fireEvent.keyDown(search, { key: "4", code: "Digit4", ctrlKey: true })).toBe(true);
   // The command list stands in for the results: no row has a number.
@@ -431,7 +430,7 @@ test.each(["", "unmatched"])("result headings only name actual rows, preserving 
     expect(screen.queryByRole("button", { name: "Search references" })).toBeNull();
     expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
   }
-  expect(document.querySelector(".results-heading")).toBeNull();
+  expect(document.querySelector(".ui-list-heading")).toBeNull();
   await waitFor(() => expect(screen.getByRole("status", { name: "Search results" }).textContent).toBe("0 results"));
 });
 
@@ -468,7 +467,7 @@ test("first-run setup has no result section heading", async () => {
     zotero: false, references: 0, warnings: 0, error: null, problem: null, note: null }) });
   render(<App />);
   await screen.findByRole("listbox", { name: "Where do your references live?" });
-  expect(document.querySelector(".results-heading")).toBeNull();
+  expect(document.querySelector(".ui-list-heading")).toBeNull();
 });
 
 test("first-run setup keeps the copy-format question out of the header", async () => {
@@ -997,7 +996,7 @@ test("the library is shown, can be chosen and reloaded, and failures are explain
   pressRow(await screen.findByRole("option", { name: FILE_ROW }));
   await waitFor(() => expect(calls).toContain("choose_library"));
   await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 3, warnings: 1, reading: [{ code: "field", line: 2, key: null }], error: null, problem: null, note: null });
-  await waitFor(() => expect(bar.textContent).toContain("refs.bib · 3 references · 1 to check"));
+  await waitFor(() => expect(bar.textContent).toContain("refs.bib · 1 to check"));
   await chooseFromLibrary("Reload Library");
   await waitFor(() => expect(calls).toContain("reload_library"));
   await emit("library:changed", { revision: "1",
@@ -1064,7 +1063,7 @@ test.each([1, 20])("the %i-result heading keeps its English word order on an RTL
   backend({ search: () => Array.from({ length: count }, (_, i) => result(`key${i}`, `Reference ${i}`)) });
   const { container } = render(<div dir="rtl"><App /></div>);
   await screen.findByText("Reference 0");
-  const heading = container.querySelector(".results-heading")!;
+  const heading = container.querySelector(".ui-list-heading")!;
   const label = heading.lastElementChild!;
   expect(label.textContent).toBe(`${count} ${count === 1 ? "result" : "results"}`);
   expect(label.tagName).toBe("BDI");
@@ -1147,7 +1146,7 @@ test.each([
 ])("%s failures are reported without rejected IPC payloads", async (command, notice) => {
   backend({ [command]: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); } });
   render(<App />);
-  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/reference/));
+  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toContain("refs.bib"));
   if (command === "choose_library") { await chooseFromLibrary("Choose Library…"); pressRow(await screen.findByRole("option", { name: FILE_ROW })); }
   else if (command === "reload_library") await chooseFromLibrary("Reload Library");
   else fireEvent.keyDown(screen.getByLabelText("Search references"), command === "quit"
@@ -1222,7 +1221,7 @@ test("opening a chosen library shows its name and searches only when ready", asy
   });
   render(<App />);
   await screen.findByText("Opening 研究 refs.bib…");
-  expect(document.querySelector(".results-heading")).toBeNull();
+  expect(document.querySelector(".ui-list-heading")).toBeNull();
   expect(screen.queryByRole("listbox", { name: "Where do your references live?" })).toBeNull();
   expect(document.body.textContent).not.toContain("No library chosen");
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
@@ -1245,7 +1244,7 @@ test("a reload keeps the previous library searchable without adding an opening s
   expect(screen.getByText("Kept reference")).toBeTruthy();
   expect(screen.queryByRole("progressbar")).toBeNull();
   // The heading stays too: rows do not move while the library reloads.
-  expect(document.querySelector(".results-heading")).not.toBeNull();
+  expect(document.querySelector(".ui-list-heading")).not.toBeNull();
 });
 
 
@@ -1269,7 +1268,7 @@ test("an unavailable initial library is named once without a duplicate search er
   });
   render(<App />);
   const notice = await screen.findByRole("alert");
-  expect(document.querySelector(".results-heading")).toBeNull();
+  expect(document.querySelector(".ui-list-heading")).toBeNull();
   expect(notice.textContent).toBe("Can’t open 研究 refs.bib. The library file is unavailable.");
   // The choice list fills its rows after the notice renders.
   expect(await screen.findByRole("option", { name: /^Try Again/ })).toBeTruthy();
@@ -1317,7 +1316,7 @@ test.each(["", "sleep"])("an empty loaded library is explained even for query %s
   if (query) fireEvent.change(screen.getByLabelText("Search references"), { target: { value: query } });
   const title = await screen.findByText("No references in empty 研究.bib");
   expect(title.compareDocumentPosition(screen.getByRole("listbox", { name: "No references in empty 研究.bib" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  expect(document.querySelector(".results-heading")).toBeNull();
+  expect(document.querySelector(".ui-list-heading")).toBeNull();
   expect(screen.getByText("Add references to it, or choose another library.")).toBeTruthy();
   expect(screen.queryByText("Type to find a reference")).toBeNull();
   expect(screen.queryByText("No matching references")).toBeNull();
@@ -1432,7 +1431,7 @@ test("Ctrl+K opens More's actions with their keys, Escape closes it before hidin
   const calls = backend({ hide_picker: () => null, reload_library: () => null });
   render(<App />);
   const box = screen.getByLabelText("Search references");
-  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/reference/));
+  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toContain("refs.bib"));
   fireEvent.keyDown(box, { key: "k", ctrlKey: true });
   const palette = await screen.findByRole("dialog", { name: "Actions" });
   const field = within(palette).getByRole("combobox", { name: "Search actions" });
@@ -2377,7 +2376,7 @@ test.each([30_000, 61_000])(
     }
   });
 
-test("Search Clear preserves citations and invalidates an escaped query before reopening", async () => {
+test("Esc clearing preserves citations and invalidates an escaped query before reopening", async () => {
   const calls = backend({ search: ({ query: { text: query } }) => [result("a", query ? `First ${String(query)}` : "First")] });
   render(<App />);
   const box = screen.getByRole("combobox", { name: "Search references" }) as HTMLInputElement;
@@ -2388,7 +2387,7 @@ test("Search Clear preserves citations and invalidates an escaped query before r
   await screen.findByText("First 研究");
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
   inCitation("a");
-  fireEvent.click(screen.getByRole("button", { name: "Clear Search" }));
+  fireEvent.keyDown(box, { key: "Escape" });
   expect(box.value).toBe("");
   expect(document.activeElement).toBe(box);
   expect(inCitation("a")).toBeTruthy();
@@ -2565,7 +2564,7 @@ test.each([false, true])("Search hint layout survives pointer focus moving to Mo
   expect(searchHint.hasAttribute("aria-hidden")).toBe(false);
 });
 
-test("the footer names the source and count, the age only when it matters, and the detail in More", async () => {
+test("the footer names a healthy library alone and keeps counts and update times in detail", async () => {
   const plain = (text: string | null | undefined) => text?.replace(/[\u2068\u2069]/g, "");
   let status: Record<string, unknown> = { state: "loaded", has_snapshot: true, zotero: true, snapshot_zotero: true, stale: false,
     zotero_libraries: ["user", { group: 7 }], name: "2 Zotero libraries", snapshot_name: "2 Zotero libraries", references: 1204, warnings: 0,
@@ -2573,9 +2572,9 @@ test("the footer names the source and count, the age only when it matters, and t
   backend({ library_status: () => status, zotero_groups: () => [{ id: 7, name: "Lab group" }] });
   render(<App />);
   const live = await screen.findByRole("status", { name: "Library status" });
-  await waitFor(() => expect(live.textContent).toBe("Zotero · 1,204 references"));
+  await waitFor(() => expect(live.textContent).toBe("Zotero"));
   const item = screen.getByRole("button", { name: "Library" }).querySelector(".library-status")!;
-  expect(item.textContent).toBe("Zotero · 1,204 references");
+  expect(item.textContent).toBe("Zotero");
   expect(item.closest(".library-status-controls")?.getAttribute("data-health")).toBe("done");
   expect(plain(item.getAttribute("title"))).toMatch(/^Zotero · 1,204 references\nMy Library, (Group 7|Lab group) · checked 3 hours ago, .+$/);
   fireEvent.click(screen.getByRole("button", { name: /^More/ }));
@@ -2584,11 +2583,13 @@ test("the footer names the source and count, the age only when it matters, and t
   // The footer shows the library line right under More, so More never repeats it on screen.
   expect(group.querySelector(".menu-detail-title")).toBeNull();
 
-  // A change just arrived: the age shows, outside the live region.
+  // A healthy update changes the detail while the footer keeps just the name.
   status = { ...status, references: 1205, updated_at: Date.now(), checked_at: Date.now() };
   await emit("library:changed", status);
-  await waitFor(() => expect(live.textContent).toBe("Zotero · 1,205 references"));
-  expect(item.textContent).toBe("Zotero · 1,205 references · updated just now");
+  await waitFor(() => expect(item.getAttribute("title")).toContain("1,205 references"));
+  expect(live.textContent).toBe("Zotero");
+  expect(item.textContent).toBe("Zotero");
+  expect(document.querySelector(".library-age")).toBeNull();
 
   // Zotero closed: the copy still searched says when it was last checked.
   status = { ...status, state: "error", stale: true, checked_at: Date.now() - 2 * 3_600_000,

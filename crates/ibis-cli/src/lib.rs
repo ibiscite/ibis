@@ -606,12 +606,20 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
 ) -> u8 {
     // A person at a terminal gets a start; a script still gets the usage error.
     if arguments.len() < 2 && mode.stdout_terminal() {
-        let greeting = format!("Ibis {} {GREETING}\n", ibis_core::VERSION);
-        return if output.write_all(greeting.as_bytes()).is_ok() {
-            0
-        } else {
-            70
-        };
+        return emit(
+            false,
+            Ok(DispatchResult {
+                data: Value::Null,
+                text: Some(format!("Ibis {} {GREETING}", ibis_core::VERSION)),
+                source_findings: false,
+                exit_code: ExitCode::Ok,
+            }),
+            None,
+            Presentation::default(),
+            &mut output,
+            &mut errors,
+            mode,
+        );
     }
     let program = program_name(arguments.first());
     let matches = match command().bin_name(&program).try_get_matches_from(arguments.iter()) {
@@ -622,30 +630,24 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
                 error.kind(),
                 clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion
             ) {
-                if json {
-                    return emit(
-                        true,
-                        Ok(DispatchResult {
-                            data: if error.kind() == clap::error::ErrorKind::DisplayVersion {
-                                json!({"version":ibis_core::VERSION})
-                            } else {
-                                json!({"help":error.to_string()})
-                            },
-                            text: None,
-                            source_findings: false,
-                            exit_code: ibis_core::contract::ExitCode::Ok,
-                        }),
-                        None,
-                        Presentation::default(),
-                        &mut output,
-                        &mut errors,
-                        mode,
-                    );
-                }
-                return match write!(output, "{error}") {
-                    Err(failure) if failure.kind() != std::io::ErrorKind::BrokenPipe => 70,
-                    _ => 0,
-                };
+                return emit(
+                    json,
+                    Ok(DispatchResult {
+                        data: if error.kind() == clap::error::ErrorKind::DisplayVersion {
+                            json!({"version":ibis_core::VERSION})
+                        } else {
+                            json!({"help":error.to_string()})
+                        },
+                        text: Some(error.to_string().trim_end().to_owned()),
+                        source_findings: false,
+                        exit_code: ExitCode::Ok,
+                    }),
+                    None,
+                    Presentation::default(),
+                    &mut output,
+                    &mut errors,
+                    mode,
+                );
             }
             // clap names the argument and prints the usage line; keep its words,
             // but a line break typed in an argument must not start a forged line.
@@ -910,8 +912,8 @@ fn key_failure(engine: &Engine, matches: &ArgMatches, key: &str, error: EngineEr
     let warnings: Vec<_> = match error.reason {
         Some(ErrorReason::DuplicateKey) => libraries
             .iter()
-            .flat_map(|library| &library.warnings)
-            .filter(|warning| warning.key.as_deref() == Some(key))
+            .filter_map(|library| library.duplicate_keys.get(key))
+            .flatten()
             .cloned()
             .collect(),
         Some(ErrorReason::DamagedEntry) => libraries
@@ -1069,7 +1071,11 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
         let session = match opened {
             Ok(_) => ibis_engine::mcp::Session::default(),
             Err(failure) => {
-                let _ = writeln!(errors, "ibis: {}", terminal_display(&failure.sentence()));
+                write_stream(
+                    errors,
+                    format!("ibis: {}\n", terminal_display(&failure.sentence())).as_bytes(),
+                )
+                .map_err(|error| Failure::new(ErrorCode::Internal, human::write_failure(&error)))?;
                 ibis_engine::mcp::Session::without_libraries(failure.refusal())
             }
         };
@@ -1101,7 +1107,8 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
             .is_some_and(|path| path == Path::new("-"))
         && mode.stdin_terminal()
     {
-        let _ = writeln!(errors, "ibis: waiting for keys, one per line; end with Ctrl-D.");
+        write_stream(errors, b"ibis: waiting for keys, one per line; end with Ctrl-D.\n")
+            .map_err(|error| Failure::new(ErrorCode::Internal, human::write_failure(&error)))?;
     }
     run_method(engine, matches, name, args, names, input, mode)
 }
@@ -1922,115 +1929,125 @@ fn emit(
 ) -> u8 {
     // Continuation lines are indented, so no text inside a message can pass
     // for a separate `ibis:` diagnostic.
+    let mut diagnostics = String::new();
     let mut say = |line: &str| {
         let text = terminal_display(line);
         let mut lines = text.split('\n');
-        let _ = writeln!(errors, "ibis: {}", lines.next().unwrap_or_default());
+        diagnostics.push_str("ibis: ");
+        diagnostics.push_str(lines.next().unwrap_or_default());
+        diagnostics.push('\n');
         for line in lines {
-            let _ = if line.is_empty() {
-                writeln!(errors)
-            } else {
-                writeln!(errors, "  {line}")
-            };
+            if !line.is_empty() {
+                diagnostics.push_str("  ");
+                diagnostics.push_str(line);
+            }
+            diagnostics.push('\n');
         }
     };
-    if result.as_ref().is_ok_and(|result| result.source_findings) {
-        let json_flag = if json { " --json" } else { "" };
-        say(&format!(
-            "note: a library has warnings or could not refresh; see: ibis libraries{}{json_flag}",
-            presentation.libraries
-        ));
-    }
-    if !json {
-        for note in presentation.notes {
-            say(note);
+    let (mut code, encoded) = (|| {
+        if result.as_ref().is_ok_and(|result| result.source_findings) {
+            let json_flag = if json { " --json" } else { "" };
+            say(&format!(
+                "note: a library has warnings or could not refresh; see: ibis libraries{}{json_flag}",
+                presentation.libraries
+            ));
         }
-    }
-    if !json && let (Ok(result), Some(citing)) = (&result, citing) {
-        let citation = result.data.get("citation").unwrap_or(&result.data);
-        let project_blocked = result
-            .data
-            .pointer("/assessment/state")
-            .and_then(Value::as_str)
-            .is_some_and(|state| state == "conflict");
-        if !project_blocked {
-            for line in human::citation_report(citation, citing, result.text.is_some()) {
-                say(&line);
+        if !json {
+            for note in presentation.notes {
+                say(note);
             }
         }
-        if let Some(project) = result.data.get("bibliography").filter(|value| !value.is_null())
-            && let Some(report) = human::project_report(project)
-        {
-            say(&report);
-        }
-        if let Some(message) = result.data.pointer("/assessment/message").and_then(Value::as_str) {
-            say(message);
-        }
-        if result.text.is_none() {
-            // Refused citations print their reasons above and nothing to stdout.
-            return result.exit_code.value();
-        }
-    }
-    let (code, envelope, text) = match result.and_then(|result| result.bounded().map_err(Failure::from)) {
-        Ok(result) => (result.exit_code, json!(Envelope::success(result.data)), result.text),
-        Err(failure) => {
-            // The sentence goes to stderr in both modes; --json adds the stable code on stdout.
-            say(&failure
-                .message
-                .clone()
-                .unwrap_or_else(|| human::code_sentence(failure.error.code)));
-            if !json {
-                return failure.error.code.exit_code().value();
+        if !json && let (Ok(result), Some(citing)) = (&result, citing) {
+            let citation = result.data.get("citation").unwrap_or(&result.data);
+            let project_blocked = result
+                .data
+                .pointer("/assessment/state")
+                .and_then(Value::as_str)
+                .is_some_and(|state| state == "conflict");
+            if !project_blocked {
+                for line in human::citation_report(citation, citing, result.text.is_some()) {
+                    say(&line);
+                }
             }
-            let mut envelope = json!(Envelope::<Value>::failure(failure.error));
-            if let Some((suggestions, next)) = failure.recovery {
-                envelope["error"]["suggestions"] = json!(suggestions);
-                envelope["error"]["next"] = json!(next);
+            if let Some(project) = result.data.get("bibliography").filter(|value| !value.is_null())
+                && let Some(report) = human::project_report(project)
+            {
+                say(&report);
             }
-            (failure.error.code.exit_code(), envelope, None)
+            if let Some(message) = result.data.pointer("/assessment/message").and_then(Value::as_str) {
+                say(message);
+            }
+            if result.text.is_none() {
+                // Refused citations print their reasons above and nothing to stdout.
+                return (result.exit_code.value(), Vec::new());
+            }
         }
-    };
-    let encoded = if json {
-        serde_json::to_value(&envelope)
-            .ok()
-            .and_then(|value| ibis_engine::wire::encode(&value, protocol::MAX_RESPONSE_BYTES).ok())
-    } else if let Some(text) = text {
-        Some(text.into_bytes())
-    } else {
-        envelope
-            .get("data")
-            .and_then(|data| serde_json::to_vec_pretty(data).ok())
-    };
-    let Some(mut encoded) = encoded else {
-        if json
-            && output
-                .write_all(b"{\"error\":{\"code\":\"internal\"},\"ibis\":1,\"ok\":false}\n")
-                .is_err()
-        {
-            return 70;
+        let (code, envelope, text) = match result.and_then(|result| result.bounded().map_err(Failure::from)) {
+            Ok(result) => (result.exit_code, json!(Envelope::success(result.data)), result.text),
+            Err(failure) => {
+                // The sentence goes to stderr in both modes; --json adds the stable code on stdout.
+                say(&failure
+                    .message
+                    .clone()
+                    .unwrap_or_else(|| human::code_sentence(failure.error.code)));
+                if !json {
+                    return (failure.error.code.exit_code().value(), Vec::new());
+                }
+                let mut envelope = json!(Envelope::<Value>::failure(failure.error));
+                if let Some((suggestions, next)) = failure.recovery {
+                    envelope["error"]["suggestions"] = json!(suggestions);
+                    envelope["error"]["next"] = json!(next);
+                }
+                (failure.error.code.exit_code(), envelope, None)
+            }
+        };
+        let encoded = if json {
+            serde_json::to_value(&envelope)
+                .ok()
+                .and_then(|value| ibis_engine::wire::encode(&value, protocol::MAX_RESPONSE_BYTES).ok())
+        } else if let Some(text) = text {
+            Some(text.into_bytes())
+        } else {
+            envelope
+                .get("data")
+                .and_then(|data| serde_json::to_vec_pretty(data).ok())
+        };
+        let Some(mut encoded) = encoded else {
+            return (
+                ExitCode::Internal.value(),
+                if json {
+                    b"{\"error\":{\"code\":\"internal\"},\"ibis\":1,\"ok\":false}\n".to_vec()
+                } else {
+                    Vec::new()
+                },
+            );
+        };
+        if !json && mode.stdout_terminal() && !presentation.terminal_summary {
+            encoded = terminal_display(&String::from_utf8_lossy(&encoded)).into_bytes();
         }
-        return ibis_core::contract::ExitCode::Internal.value();
-    };
-    if !json && mode.stdout_terminal() && !presentation.terminal_summary {
-        encoded = terminal_display(&String::from_utf8_lossy(&encoded)).into_bytes();
-    }
-    // An empty keys-only selection has no lines, including no trailing newline.
-    if !json && presentation.keys_only && encoded.is_empty() {
-        return code.value();
-    }
-    if let Err(error) = output
-        .write_all(&encoded)
-        .and_then(|()| output.write_all(b"\n"))
-        .and_then(|()| output.flush())
-    {
+        // An empty keys-only selection has no lines, including no trailing newline.
+        if json || !presentation.keys_only || !encoded.is_empty() {
+            encoded.push(b'\n');
+        }
+        (code.value(), encoded)
+    })();
+    if let Err(error) = write_stream(output, &encoded) {
         // A reader that closed the pipe early (`| head`) asked for no more, so nothing went wrong.
-        if error.kind() == std::io::ErrorKind::BrokenPipe {
-            return code.value();
+        if error.kind() != std::io::ErrorKind::BrokenPipe {
+            say(human::write_failure(&error));
+            code = 70;
         }
-        say(human::write_failure(&error));
-        return 70;
     }
-    code.value()
+    if let Err(error) = write_stream(errors, diagnostics.as_bytes())
+        && error.kind() != std::io::ErrorKind::BrokenPipe
+    {
+        code = 70;
+    }
+    code
+}
+
+fn write_stream(stream: &mut impl Write, bytes: &[u8]) -> std::io::Result<()> {
+    stream.write_all(bytes).and_then(|()| stream.flush())
 }
 
 /// Terminal presentation escapes control sequences and invisible direction overrides;

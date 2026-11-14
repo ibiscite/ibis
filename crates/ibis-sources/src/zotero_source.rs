@@ -79,6 +79,7 @@ impl ZoteroError {
                 | closed::ClosedError::UnsafeSource
                 | closed::ClosedError::Unreadable
                 | closed::ClosedError::PrivateStorage
+                | closed::ClosedError::LockPermissions
                 | closed::ClosedError::Damaged
                 | closed::ClosedError::TooOld
                 | closed::ClosedError::NeedsRecovery,
@@ -485,8 +486,9 @@ impl ZoteroSource {
         let keys_unknown = warnings
             .iter()
             .any(|warning| warning.code == WarningCode::CitationKeysUnavailable);
-        let mut objects = Vec::new();
-        for item in items {
+        let mut parsed = crate::ParsedLibrary::default();
+        let candidates = crate::candidates::Candidates::collect(items, |item| (vec![(item.key.clone(), None)], item));
+        for item in candidates.finish(&mut parsed.duplicate_keys, &mut parsed.warnings) {
             if cancelled() {
                 return Err(LiveError::Cancelled.into());
             }
@@ -537,7 +539,7 @@ impl ZoteroSource {
                             .because(cause, field)
                             .for_entry(label.as_deref())
                     }));
-                    objects.push(LibraryObject::Record(mapped.record));
+                    parsed.records.push(mapped.record);
                 }
                 Err(MappingError::UnsupportedType) => warnings.push(
                     SourceWarning::at(WarningCode::Field, None)
@@ -560,7 +562,9 @@ impl ZoteroSource {
                 Err(_) => return Err(ZoteroError::InvalidData),
             }
         }
-        let snapshot = Snapshot::new(objects).map_err(|_| ZoteroError::InvalidData)?;
+        warnings.extend(parsed.warnings);
+        let snapshot = Snapshot::new(parsed.records.into_iter().map(LibraryObject::Record).collect())
+            .map_err(|_| ZoteroError::InvalidData)?;
         if cancelled() {
             return Err(LiveError::Cancelled.into());
         }
@@ -569,6 +573,7 @@ impl ZoteroSource {
             kind: LibraryKind::Zotero,
             snapshot,
             warnings,
+            duplicate_keys: parsed.duplicate_keys,
             cut_short: false,
             damaged_keys: Default::default(),
         });
@@ -924,6 +929,7 @@ mod tests {
             closed::ClosedError::UnsafeSource,
             closed::ClosedError::Unreadable,
             closed::ClosedError::PrivateStorage,
+            closed::ClosedError::LockPermissions,
             closed::ClosedError::Damaged,
             closed::ClosedError::TooOld,
             closed::ClosedError::NeedsRecovery,

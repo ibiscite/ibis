@@ -364,6 +364,7 @@ fn parse_with_budget(
         kind: crate::LibraryKind::File,
         snapshot,
         warnings,
+        duplicate_keys: parsed.duplicate_keys,
         cut_short: parsed_cut_short,
         damaged_keys: parsed.damaged_keys,
     })

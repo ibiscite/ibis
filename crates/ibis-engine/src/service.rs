@@ -65,7 +65,7 @@ pub struct LibraryInfo {
     /// say why the key selects nothing.
     #[serde(skip)]
     #[schemars(skip)]
-    pub duplicate_keys: std::collections::BTreeSet<String>,
+    pub duplicate_keys: std::collections::BTreeMap<String, Vec<ibis_sources::SourceWarning>>,
     /// Each skipped entry whose header names its key, with why it was skipped.
     #[serde(skip)]
     #[schemars(skip)]
@@ -1084,7 +1084,10 @@ fn select<'a>(
                 record.answers_to(key)
             });
             let found = matches.next().ok_or_else(|| {
-                if libraries.values().any(|library| library.duplicate_keys.contains(key)) {
+                if libraries
+                    .values()
+                    .any(|library| library.duplicate_keys.contains_key(key))
+                {
                     EngineError::because(ErrorCode::NotFound, ErrorReason::DuplicateKey)
                 } else if libraries.values().any(|library| library.damaged_keys.contains_key(key)) {
                     EngineError::because(ErrorCode::NotFound, ErrorReason::DamagedEntry)
