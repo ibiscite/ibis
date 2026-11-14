@@ -35,16 +35,6 @@ fn keyless_refusal_tells_every_client_to_choose_a_style() {
 }
 
 #[test]
-fn a_duplicate_project_name_requests_a_new_name_instead_of_retrying_the_same_save() {
-    let problem = Problem::from(&ibis_core::settings::writing_projects::ProjectError::DuplicateName);
-    let problem = serde_json::to_value(problem).unwrap_or_default();
-    assert_eq!(problem["code"], "project-duplicate-name");
-    assert_eq!(problem["message"]["id"], "app-project-error-duplicate-name");
-    assert_eq!(problem["recovery"]["action"], "rename-project");
-    assert_eq!(problem["focus"], "project-name");
-}
-
-#[test]
 fn an_omitted_reference_requires_reviewing_the_source_library() {
     let value = serde_json::to_value(EngineError::because(ErrorCode::NotFound, ErrorReason::LibraryCutShort))
         .unwrap_or_default();

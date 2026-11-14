@@ -101,7 +101,7 @@
               "type": "string"
             },
             "source_health": {
-              "description": "How cleanly the libraries behind this answer were read. Tell the user about each finding.",
+              "description": "Library read health. Tell the user about each finding.",
               "type": "object"
             }
           },
@@ -347,8 +347,12 @@
       "oneOf": [
         {
           "properties": {
+            "bibliography": {
+              "description": "The writing's .bib checks; filenames only.",
+              "type": "object"
+            },
             "destination": {
-              "description": "What Ibis does for the app named by for_app, with pasting on and permitted.",
+              "description": "Delivery for for_app, with pasting on and permitted.",
               "type": "object"
             },
             "language": {

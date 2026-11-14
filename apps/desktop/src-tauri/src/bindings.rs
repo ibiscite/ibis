@@ -79,8 +79,8 @@ registry![
     crate::project::choose_project,
     crate::project::stop_project,
     crate::project::copy_project_entry,
-    crate::writing_projects::writing_projects,
-    crate::writing_projects::edit_writing_project,
+    crate::writings::writings,
+    crate::writings::edit_writing,
     crate::editor_endpoint::editor_request,
     crate::editor_endpoint::editor_endpoint,
     crate::editor_endpoint::set_editor_endpoint,
@@ -97,6 +97,10 @@ registry![
     crate::preferences::picker_preferences_saved,
     crate::destination::picker_destination,
     crate::destination::remember_app_output,
+    crate::destination::forget_app_output,
+    crate::format_settings::format_settings,
+    crate::format_settings::forget_app_format,
+    crate::settings_window::open_settings_file,
     crate::login_item::login_item,
     crate::login_item::set_login_item,
     crate::picker::hide_picker,
@@ -108,6 +112,7 @@ registry![
     crate::picker::wayland::configure_shortcuts,
     crate::notice::show_copied_notice,
     crate::notice::copied_notice,
+    crate::notice::change_suggested_format,
     crate::native_feel::native_appearance,
     crate::row_context::row_context,
     crate::updater::setting::update_checks,
@@ -215,6 +220,9 @@ mod tests {
 
     /// What the Settings window may call: saved choices, never the library or copies.
     const SETTINGS_COMMANDS: &[&str] = &[
+        "format_settings",
+        "forget_app_format",
+        "open_settings_file",
         "picker_preferences",
         "save_picker_preferences",
         "editor_endpoint",
@@ -249,6 +257,9 @@ mod tests {
     /// Only Settings asks about paste permission, changes the global shortcut
     /// or chooses a window size.
     const SETTINGS_ONLY: &[&str] = &[
+        "format_settings",
+        "forget_app_format",
+        "open_settings_file",
         "editor_endpoint",
         "set_editor_endpoint",
         "copy_editor_endpoint",
@@ -308,7 +319,8 @@ mod tests {
             serde_json::json!([
                 "core:event:allow-listen",
                 "core:event:allow-unlisten",
-                "allow-copied-notice"
+                "allow-copied-notice",
+                "allow-change-suggested-format"
             ])
         );
         let mut settings_expected = [
@@ -338,7 +350,10 @@ mod tests {
         expected.extend(
             APP_COMMANDS
                 .iter()
-                .filter(|command| **command != "copied_notice" && !SETTINGS_ONLY.contains(command))
+                .filter(|command| {
+                    !matches!(**command, "copied_notice" | "change_suggested_format")
+                        && !SETTINGS_ONLY.contains(command)
+                })
                 .map(|command| format!("allow-{}", command.replace('_', "-"))),
         );
         assert_eq!(picker["permissions"], serde_json::json!(expected));
@@ -402,8 +417,11 @@ mod tests {
                     let allowed = origin == local
                         && APP_COMMANDS.contains(&command)
                         && match label {
-                            "main" => command != "copied_notice" && !SETTINGS_ONLY.contains(&command),
-                            "notice" => command == "copied_notice",
+                            "main" => {
+                                !matches!(command, "copied_notice" | "change_suggested_format")
+                                    && !SETTINGS_ONLY.contains(&command)
+                            }
+                            "notice" => matches!(command, "copied_notice" | "change_suggested_format"),
                             "settings" => SETTINGS_COMMANDS.contains(&command),
                             _ => false,
                         };

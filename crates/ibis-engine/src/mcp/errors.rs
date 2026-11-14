@@ -18,6 +18,7 @@ pub(super) enum ToolProblem {
     Strict,
     OutputChoice,
     Format,
+    CitationFormat,
     Style,
     Locale,
     KeyLocale,
@@ -43,9 +44,12 @@ impl ToolProblem {
             Self::StaleReference => (ErrorCode::NotFound, R::SelectReferences, F::Search),
             Self::Query | Self::StyleQuery => (ErrorCode::BadInput, R::EditInput, F::Search),
             Self::TooManyItems => (ErrorCode::BadInput, R::ReduceSelection, F::Results),
-            Self::Format | Self::Style | Self::OutputChoice | Self::KeyLocale | Self::EmptyOutput => {
-                (ErrorCode::BadInput, R::ChooseStyle, F::FormatPicker)
-            }
+            Self::CitationFormat
+            | Self::Format
+            | Self::Style
+            | Self::OutputChoice
+            | Self::KeyLocale
+            | Self::EmptyOutput => (ErrorCode::BadInput, R::ChooseStyle, F::FormatPicker),
             Self::Locale => (ErrorCode::BadInput, R::ChooseLocale, F::Language),
             Self::Locator => (ErrorCode::BadInput, R::EditCitation, F::Locator),
             Self::Arguments

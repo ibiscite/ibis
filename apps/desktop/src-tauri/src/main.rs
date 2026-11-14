@@ -17,6 +17,7 @@ mod diagnostics;
 mod editor_endpoint;
 mod errors;
 mod feedback;
+mod format_settings;
 mod library;
 mod login_item;
 #[cfg(target_os = "macos")]
@@ -46,13 +47,13 @@ mod shortcut_setting;
 mod sizing;
 mod tray;
 mod updater;
-mod writing_projects;
+mod writings;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::atomic::Ordering;
 
-use ibis_core::settings;
+use ibis_engine::settings;
 use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_global_shortcut::ShortcutState;
 
@@ -173,7 +174,7 @@ fn main() {
         .manage(settings_backup::PendingRestore::default())
         .manage(row_context::RowContext::default())
         .manage(project::ProjectBibliography::default())
-        .manage(writing_projects::Runtime::default())
+        .manage(writings::Runtime::default())
         .manage(editor_endpoint::Pending::default())
         .manage(editor_endpoint::Endpoint::default())
         .manage(session_references::SessionReferences::default())
@@ -285,6 +286,7 @@ fn main() {
             ibis_engine::identity::use_saved_key(true);
             let settings_path = app.path().app_config_dir()?.join("settings.json");
             let loaded = settings::load(&settings_path);
+            library::engine_library::warm_formatter(loaded.settings.output.clone());
             app.manage(SettingsFile::new(settings_path.clone()));
             let remember = loaded.problem.is_none() && loaded.settings.recent_citations.unwrap_or(true);
             session_references::manage(app.handle(), &settings_path, remember);
@@ -352,7 +354,6 @@ fn main() {
             // After the tray, so the menu item shows the saved choice.
             updater::start(app.handle(), loaded.settings.update_checks, loaded.problem.is_none());
             // The library from settings; IBIS_LIBRARY overrides it for development.
-            project::start(app.handle(), loaded.settings.project_bibliography.clone());
             project::watch_openings(app.handle());
             editor_endpoint::start(app.handle(), loaded.settings.editor_endpoint.clone());
             let library = std::env::var_os("IBIS_LIBRARY")
@@ -376,6 +377,10 @@ fn main() {
             {
                 picker::present_window(&window, initial_picker.1, initial_picker_owner);
             }
+            // Install after startup effects: a newer file edit must never be
+            // undone by an older initial tray, shortcut or recording value.
+            let watching = app.state::<SettingsFile>().watch(app.handle().clone());
+            app.manage(std::sync::Mutex::new(watching));
             Ok(())
         });
     #[cfg(target_os = "macos")]

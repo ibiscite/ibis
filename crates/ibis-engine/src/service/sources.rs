@@ -115,6 +115,7 @@ fn zotero_error(failure: ZoteroError) -> EngineError {
         reason: failure.reason(),
         detail: failure.schema_table().map(|table| ErrorDetail { table }),
         strict_cause: None,
+        citation_error: None,
     }
 }
 
@@ -214,6 +215,7 @@ impl Engine {
         // Retire the active engine only while the client still owns this read.
         let candidate = Engine {
             shared: Arc::new(Shared::new(base.clone())),
+            formatting: self.formatting.clone(),
             resources: Arc::new(resources),
             watch_files: false,
         };
@@ -804,6 +806,7 @@ impl Engine {
                     reason: failure.reason(),
                     detail: None,
                     strict_cause: None,
+                    citation_error: None,
                 });
             }
         };
@@ -1477,7 +1480,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(
-            DispatchResult::citation(cited.value, 1)
+            DispatchResult::citation(cited.value, 1, &OutputSpec::Preset { name: "pandoc".into() })
                 .unwrap()
                 .with_health(&cited.source_health)
                 .unwrap()

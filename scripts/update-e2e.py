@@ -26,6 +26,21 @@ The seeded synthetic library and shortcut must remain in its settings.
 Windows and macOS change the signed-in account's own settings folder and
 installed apps, so run it only on a disposable account such as a CI runner. It
 refuses to start when Ibis Nightly settings already exist there.
+
+Qualification detail:
+
+`scripts/update-e2e.py` installs the previous nightly, reopens it once,
+identifies its owned native offer, activates Install once, verifies package
+replacement and a fresh process, and checks persisted library/shortcut
+choices. Ambiguous ownership, uncertain input or failed checks terminate the
+run without another activation. `--self-test` exercises the harness contract.
+
+Linux targets the verified X11 window and observes GTK focus through
+`update-gtk-probe.c`; macOS verifies sheet/button Accessibility identities;
+Windows verifies UI Automation ownership and invokes Install or sends one
+bounded TaskDialog action. Models cannot prove an installed update.
+See [signing](code-signing.md#qualification-before-claiming-permission-survival)
+for the separate paste-permission check.
 """
 
 import argparse

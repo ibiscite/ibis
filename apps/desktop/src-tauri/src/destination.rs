@@ -13,14 +13,12 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use ibis_core::contract::citation::OutputSpec;
-use ibis_core::destination::{
-    AppId, AppPaste, CopyReason, OutputQuestion, PasteSafety, has_citation_plugins, lookup, output_for,
-};
-use ibis_core::settings;
+use ibis_core::destination::{AppId, AppPaste, CopyReason, PasteSafety, has_citation_plugins, lookup};
+use ibis_engine::settings;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
+use crate::library::CommandError;
 use crate::output::OutputRef;
 use crate::preferences::SettingsFile;
 
@@ -39,18 +37,16 @@ pub(crate) struct PickerDestination {
     pub(crate) app_id: Option<String>,
     /// Opaque app-location fingerprint; no path crosses IPC.
     pub(crate) app_identity: Option<String>,
-    /// The app suggestion, an engine output id; `None` follows the saved default.
-    #[schemars(with = "Option<String>")]
-    pub(crate) automatic: Option<OutputRef>,
-    /// The output the person chose to always use for this app.
-    #[schemars(with = "Option<String>")]
-    pub(crate) remembered: Option<OutputRef>,
+    /// The engine's answer: the format the next citation uses and which level
+    /// chose it (decision 0042). The picker shows it as it is.
+    pub(crate) format: ibis_engine::format::FormatChoice,
+    /// Your format for this kind, used by the return-to-usual action.
+    pub(crate) usual_format: String,
+    pub(crate) find_open: bool,
     /// This app needs a delivery choice after an unreadable per-app file; formats use defaults.
     pub(crate) unreadable: bool,
     /// The current paste policy permits an attempt; final delivery checks still apply.
     pub(crate) can_paste: bool,
-    /// The app cannot identify document syntax; ask until an output is remembered.
-    pub(crate) output_question: Option<OutputQuestion>,
     /// The separate delivery choice; never inferred from a remembered format.
     pub(crate) paste: Option<AppPaste>,
     /// An unrecognised app has a proven target but no delivery choice yet.
@@ -58,28 +54,11 @@ pub(crate) struct PickerDestination {
     /// A proven ordinary target can accept an explicit delivery choice, including recovery.
     pub(crate) can_choose_paste: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) writing_project: Option<crate::writing_projects::WritingProjectView>,
+    pub(crate) writing: Option<crate::writings::WritingView>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) context_version: Option<(u32, u32)>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) writing_context: Option<String>,
-}
-
-/// The output an app's documents use, from the destination table through
-/// `output_for`, as the engine names it. Formatted apps get the default
-/// output's style, else the engine's default style; apps the table gives no
-/// output follow the person's default (`None`).
-pub(crate) fn automatic(app: &AppId, default: OutputRef) -> Option<OutputRef> {
-    lookup(app)?.output?;
-    let style = crate::output::default_style(default);
-    let output = output_for(
-        Some(app),
-        &OutputSpec::Csl {
-            style: style.to_owned(),
-        },
-        style,
-    );
-    ibis_engine::outputs::named(&output).and_then(|entry| crate::output::listed(&entry.id))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -346,42 +325,71 @@ pub(crate) fn memory_path(settings: &Path) -> PathBuf {
 pub(crate) fn picker_destination(
     app: AppHandle,
     memory: State<'_, AppMemory>,
-    settings_file: State<'_, SettingsFile>,
+    _settings_file: State<'_, SettingsFile>,
     editor: State<'_, crate::editor_endpoint::Pending>,
 ) -> Result<PickerDestination, crate::library::CommandError> {
     // The editor already said what it wants and takes the citation itself.
-    let last = if editor.current().is_some() {
+    let request = editor.current();
+    let last = if request.is_some() {
         None
     } else {
         crate::paste::last_app(&app)
     };
-    let context = crate::writing_projects::destination_context(&app, last.as_ref().map(|(id, _, _)| id))?;
+    let context = crate::writings::destination_context(&app, last.as_ref().map(|(id, _, _)| id))?;
     let context_version = Some(context.version);
-    let writing_project = context.active.map(|project| project.view());
+    let settings = context.settings;
+    let captured = last.as_ref().map(|(id, _, _)| id);
+    let usual_format = ibis_engine::format::usual(&settings, captured).id.unwrap_or_default();
+    // The writing this picker reports, also one chosen only for this session.
+    let format = if let Some(request) = &request {
+        match &request.writing {
+            Some(writing) => ibis_engine::format::for_writing(
+                &request.output,
+                ibis_engine::format::WritingName {
+                    id: writing.name.clone(),
+                    name: writing.name.clone(),
+                },
+                None,
+            ),
+            None => ibis_engine::format::choose_with(&settings, None, Some(&request.output)),
+        }
+    } else {
+        match &context.active {
+            Some(project) => ibis_engine::format::for_writing(
+                project.output.spec(),
+                ibis_engine::format::WritingName {
+                    id: project.id.clone(),
+                    name: project.name.clone(),
+                },
+                captured,
+            ),
+            None => ibis_engine::format::choose(&settings, captured),
+        }
+    };
+    let writing = context.active.map(|project| project.view());
     let writing_context = editor.current().is_none().then_some(context.edit);
+    if editor.current() != request {
+        return Err(CommandError::SnapshotChanged);
+    }
     let Some((id, name, app_identity)) = last else {
         return Ok(PickerDestination {
             app: None,
             app_id: None,
             app_identity: None,
-            automatic: None,
-            remembered: None,
+            format,
+            usual_format,
+            find_open: false,
             unreadable: false,
             can_paste: false,
-            output_question: None,
             paste: None,
             paste_question: false,
             can_choose_paste: false,
-            writing_project,
+            writing,
             context_version,
             writing_context,
         });
     };
-    let settings = settings::load(&settings_file.path).settings;
     let can_paste = crate::paste::intends_paste(&app, settings.paste.unwrap_or(true));
-    let default = crate::output::stored(settings.output.as_deref());
-    // An id this Ibis does not list reads as no choice.
-    let remembered = settings.app_output(&id).and_then(crate::output::listed);
     let policy = memory.paste_for(&id, app_identity.as_deref());
     let can_choose_paste = crate::paste::may_choose_paste(&app, settings.paste.unwrap_or(true));
     // Only an app that can answer sees the warning; the others never paste anyway.
@@ -393,15 +401,15 @@ pub(crate) fn picker_destination(
         app: Some(name),
         app_id: Some(id.normalized()),
         app_identity,
-        automatic: automatic(&id, default),
-        remembered,
+        format,
+        usual_format,
+        find_open: ibis_core::destination::finds_in_app(&id),
         unreadable,
         can_paste,
-        output_question: lookup(&id).and_then(|app| app.output_question),
         paste,
         paste_question,
         can_choose_paste,
-        writing_project,
+        writing,
         context_version,
         writing_context,
     })
@@ -426,7 +434,7 @@ pub(crate) fn remember_app_output(
     let output = output
         .map(|id| crate::output::listed(&id).ok_or("this format is not available; choose another"))
         .transpose()
-        .map_err(AppChoiceError::not_saved)?;
+        .map_err(|_| AppChoiceError::not_saved())?;
     // The settings turn before the destination, the order every writer takes them in.
     settings_file
         .exclusive(|settings_path| {
@@ -439,8 +447,32 @@ pub(crate) fn remember_app_output(
                 Ok(remember(settings_path, &memory, id, output, paste, identity))
             })
         })
-        .map_err(AppChoiceError::not_saved)?
-        .map_err(AppChoiceError::not_saved)?
+        .map_err(AppChoiceError::from)?
+        .map_err(|_| AppChoiceError::not_saved())?
+}
+
+/// Forget only the current app's format, after checking the captured target.
+#[tauri::command]
+#[ibis_desktop_macros::command]
+pub(crate) fn forget_app_output(
+    app: AppHandle,
+    settings_file: State<'_, SettingsFile>,
+    app_id: String,
+    identity: Option<String>,
+) -> Result<(), CommandError> {
+    settings_file.exclusive(|path| {
+        crate::paste::change_destination(&app, false, |captured| {
+            let captured = captured.ok_or("no app to forget a format for")?;
+            let id = captured.target.app.as_ref().ok_or("no app to forget a format for")?;
+            if id.normalized() != app_id || captured.app_identity != identity {
+                return Err("the app changed; open the format menu again".into());
+            }
+            Ok(settings::update(path, |settings| settings.forget_app_output(id))
+                .map(|_| ())
+                .map_err(CommandError::from))
+        })
+        .map_err(|_| CommandError::SnapshotChanged)?
+    })?
 }
 
 /// Why a choice for an app was not saved, so the picker can say which part
@@ -449,26 +481,41 @@ pub(crate) fn remember_app_output(
 #[serde(tag = "code", rename_all = "snake_case")]
 pub(crate) enum AppChoiceError {
     NotSaved {
-        message: String,
+        problem: ibis_core::contract::Problem,
     },
     /// The format was saved; whether to paste into the app was not.
     DeliveryNotSaved,
 }
 
 impl AppChoiceError {
-    fn not_saved(message: impl Into<String>) -> Self {
-        Self::NotSaved {
-            message: message.into(),
-        }
+    fn not_saved() -> Self {
+        Self::from(CommandError::Presented(ibis_core::contract::Problem {
+            code: "not-saved".into(),
+            info: ibis_core::contract::RecoveryInfo::new(
+                "app-command-output-not-saved",
+                ibis_core::contract::Recovery::Retry,
+                ibis_core::contract::FocusTarget::RecoveryAction,
+            ),
+        }))
     }
 }
 
 impl std::error::Error for AppChoiceError {}
+impl From<CommandError> for AppChoiceError {
+    fn from(error: CommandError) -> Self {
+        Self::NotSaved {
+            problem: error.problem(),
+        }
+    }
+}
 
 impl std::fmt::Display for AppChoiceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NotSaved { message } => f.write_str(message),
+            Self::NotSaved { problem } => f.write_str(&ibis_engine::catalogue::problem(
+                problem,
+                ibis_engine::catalogue::Audience::App,
+            )),
             Self::DeliveryNotSaved => f.write_str("the format was saved, but the paste choice could not be"),
         }
     }
@@ -484,20 +531,20 @@ fn remember(
     identity: Option<String>,
 ) -> Result<(), AppChoiceError> {
     if output.is_none() && paste.is_none() {
-        return Err(AppChoiceError::not_saved("there is no choice to remember"));
+        return Err(AppChoiceError::not_saved());
     }
     if let Some(output) = output {
         settings::update(settings_path, |settings| {
             settings.remember_app_output(id, output.id().to_owned())
         })
-        .map_err(|_| AppChoiceError::not_saved("the choice for this app could not be saved"))?;
+        .map_err(|error| AppChoiceError::from(CommandError::from(error)))?;
     }
     if let Some(paste) = paste {
         memory.set_bound_choice(id, paste, identity).map_err(|_| {
             if output.is_some() {
                 AppChoiceError::DeliveryNotSaved
             } else {
-                AppChoiceError::not_saved("the choice for this app could not be saved")
+                AppChoiceError::not_saved()
             }
         })?;
     }
@@ -518,7 +565,8 @@ fn remember_for(
         return Err("the app changed; open the output menu again".into());
     }
     settings_file
-        .exclusive(|path| remember(path, memory, id, output, paste, test_identity(id)))?
+        .exclusive(|path| remember(path, memory, id, output, paste, test_identity(id)))
+        .map_err(|error| error.to_string())?
         .map_err(|error| error.to_string())
 }
 
@@ -592,7 +640,7 @@ mod tests {
                         test_identity(app),
                     )
                 })
-                .map_err(AppChoiceError::not_saved)?
+                .map_err(AppChoiceError::from)?
         }
 
         /// The format a restart reads for `app`.
@@ -718,7 +766,7 @@ mod tests {
         let settings = SettingsFile::new(directory.path().join("settings.json"));
         settings
             .exclusive(|path| remember(path, &reopened, &app, listed("pandoc"), None, other.clone()))
-            .map_err(AppChoiceError::not_saved)
+            .map_err(|_| AppChoiceError::not_saved())
             .and_then(|saved| saved)
             .map_err(io::Error::other)?;
         assert_eq!(reopened.paste_for(&app, other.as_deref()), Ok(None));
@@ -740,7 +788,7 @@ mod tests {
         let settings = SettingsFile::new(directory.path().join("settings.json"));
         settings
             .exclusive(|path| remember(path, &memory, &other, listed("pandoc"), None, None))
-            .map_err(AppChoiceError::not_saved)
+            .map_err(|_| AppChoiceError::not_saved())
             .and_then(|saved| saved)
             .map_err(io::Error::other)?;
         assert_eq!(memory.paste(&word), Err(CopyReason::PasteUnavailable));
@@ -860,27 +908,6 @@ mod tests {
     }
 
     #[test]
-    fn each_kind_of_app_gets_its_output_and_unknown_apps_follow_the_default() {
-        let id = |app: &AppId, default: &str| automatic(app, crate::output::stored(Some(default))).map(OutputRef::id);
-        // A formatted app takes the default when it is a style, else the engine's style.
-        assert_eq!(id(&mac("com.microsoft.Word"), "pandoc"), Some("apa"));
-        assert_eq!(id(&mac("com.microsoft.Word"), "ieee"), Some("ieee"));
-        assert_eq!(
-            id(&mac("com.microsoft.Word"), "typst"),
-            Some(ibis_engine::outputs::DEFAULT_STYLE)
-        );
-        assert_eq!(id(&mac("md.obsidian"), "ieee"), Some("pandoc"));
-        assert_eq!(id(&mac("texshop"), "pandoc"), Some("autocite"));
-        let windows = AppId {
-            system: System::Windows,
-            id: r"C:\Program Files\TeXstudio\texstudio.exe".into(),
-        };
-        assert_eq!(id(&windows, "pandoc"), Some("autocite"));
-        assert_eq!(id(&mac("com.apple.Terminal"), "pandoc"), None);
-        assert_eq!(id(&mac("org.example.unknown"), "pandoc"), None);
-    }
-
-    #[test]
     fn a_format_saved_in_the_per_app_file_before_is_dropped_and_its_delivery_kept() {
         let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let path = memory_path(&directory.path().join("settings.json"));
@@ -977,29 +1004,10 @@ mod tests {
             fs::write(&path, damaged).unwrap_or_else(|e| panic!("{e}"));
             let memory = AppMemory::open(path.clone());
             assert_eq!(memory.paste(&word), Err(CopyReason::PasteUnavailable));
-            settings.exclusive(|path| remember(path, &memory, &word, listed("cite"), None, None)).map_err(AppChoiceError::not_saved).and_then(|saved| saved).unwrap_or_else(|e| panic!("{e}"));
+            settings.exclusive(|path| remember(path, &memory, &word, listed("cite"), None, None)).map_err(|_| AppChoiceError::not_saved()).and_then(|saved| saved).unwrap_or_else(|e| panic!("{e}"));
             assert_eq!(AppMemory::open(path.clone()).paste(&word), Err(CopyReason::PasteUnavailable));
         }
     }
-    #[test]
-    fn ambiguous_browser_and_editor_ids_have_no_inferred_document_syntax() {
-        for id in ["com.google.Chrome", "com.apple.Safari", "com.microsoft.VSCode"] {
-            assert_eq!(automatic(&mac(id), crate::output::stored(None)), None);
-        }
-        for id in ["chrome.exe", "msedge.exe", "code.exe"] {
-            assert_eq!(
-                automatic(
-                    &AppId {
-                        system: System::Windows,
-                        id: id.into()
-                    },
-                    crate::output::stored(None)
-                ),
-                None
-            );
-        }
-    }
-
     #[test]
     fn a_stale_app_cannot_receive_the_previous_apps_choice() -> io::Result<()> {
         let choices = Choices::new()?;

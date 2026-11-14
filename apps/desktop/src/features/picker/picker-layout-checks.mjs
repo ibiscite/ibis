@@ -21,33 +21,13 @@ export function shelfControl(page, name) {
 }
 
 // Keep this function self-contained: Playwright serializes it into the page.
+// A notice takes the frame's one notice line (ui/Frame): shown there, inside the
+// line's box, with its whole sentence kept for its tooltip and screen readers.
 export function isWholeNotice(text) {
-  const node = [...document.querySelectorAll('.notices [role="alert"]')].find((node) => node.textContent === text);
+  const node = [...document.querySelectorAll('.ui-notice-line [role="alert"]')].find((node) => node.textContent === text);
   if (!node) return false;
-  const rect = node.getBoundingClientRect(), port = node.closest(".picker-content").getBoundingClientRect();
-  return rect.height > 0 && rect.top >= port.top - 1 && rect.bottom <= port.bottom + 1;
-}
-
-// Report the three refusal requirements separately so the built probe identifies
-// whether visibility, complete wrapping or keyboard reach failed. Self-contained
-// because Playwright serializes this function into the page.
-export function refusalPresentation(node) {
-  const style = getComputedStyle(node);
-  const rect = node.getBoundingClientRect(), bounds = node.closest(".picker-content").getBoundingClientRect();
-  return {
-    startsInView: rect.top >= bounds.top - 1 && rect.top < bounds.bottom,
-    wrapsInFull: style.whiteSpace === "normal" && style.overflowY === "visible" &&
-      node.scrollWidth <= node.clientWidth + 1 && node.scrollHeight <= node.clientHeight + 1,
-    keyboardReachable: node.tabIndex === 0,
-  };
-}
-
-// Diagnostic values stay separate from the three pass/fail requirements.
-export function refusalGeometry(node) {
-  const owner = node.closest(".picker-content");
-  const rect = node.getBoundingClientRect(), bounds = owner.getBoundingClientRect();
-  return { rect: { top: rect.top, bottom: rect.bottom, width: rect.width }, bounds: { top: bounds.top, bottom: bounds.bottom }, scrollTop: owner.scrollTop,
-    viewport: { width: innerWidth, height: innerHeight } };
+  const rect = node.getBoundingClientRect(), line = node.closest(".ui-notice-line").getBoundingClientRect();
+  return rect.height > 0 && rect.top >= line.top - 1 && rect.bottom <= line.bottom + 1 && node.title === text;
 }
 
 // A long notice cannot be read in a collapsed scrollport, even when its own
@@ -104,8 +84,8 @@ export function layoutGeometry() {
     active: box(document.querySelector('[role="option"][aria-selected="true"]')),
     shelf: box(document.querySelector(".shelf")), footer: box(document.querySelector("footer")),
     inspector: box(document.querySelector(".inspector")), inspectorScroll: box(document.querySelector(".inspector-body")),
-    notices: [...document.querySelectorAll(".notices")].map(box),
-    alerts: [...document.querySelectorAll('.notices [role="alert"]')].map(box),
+    notices: [...document.querySelectorAll(".ui-notice-line")].map(box),
+    alerts: [...document.querySelectorAll('.ui-notice-line [role="alert"]')].map(box),
     segments: [...document.querySelectorAll(".citation-token")].map(box),
   };
 }

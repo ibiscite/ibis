@@ -30,6 +30,8 @@ pub fn provenance() -> ibis_core::contract::FormattingProvenance {
 /// Fixed diagnostics never include reference content or JavaScript exceptions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum FormatError {
+    #[error("citation request refused")]
+    Citation(ibis_core::contract::CitationError),
     #[error("invalid citation request")]
     InvalidRequest,
     #[error("unsupported citation style")]
@@ -152,6 +154,14 @@ impl Formatter {
     pub fn submit(&self, snapshot: Arc<Snapshot>, request: CitationRequest) -> Result<FormatTask, FormatError> {
         self.service
             .submit(input::prepare(&snapshot, &request, self.service.limits())?)
+    }
+    /// Best-effort startup work. Call off the UI thread; no library is read and
+    /// no citation is published. A foreground request retires late warm-ups.
+    pub fn warm(&self, style: &str, locale: Option<&str>) -> Result<(), FormatError> {
+        if let Some(task) = self.service.warm(input::warm(style, locale)?)? {
+            task.wait()?;
+        }
+        Ok(())
     }
 }
 

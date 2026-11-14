@@ -208,6 +208,6 @@ fn remembered_file_choice_uses_the_observation_that_supplied_the_loaded_bytes() 
         ..Default::default()
     })));
     let chosen = crate::library::tasks::remembered_choice(&source, &loaded).ok_or("choice")?;
-    assert_eq!(chosen, ibis_core::settings::LibrarySetting::Bibtex(b.canonicalize()?));
+    assert_eq!(chosen, ibis_engine::settings::LibrarySetting::Bibtex(b.canonicalize()?));
     Ok(())
 }

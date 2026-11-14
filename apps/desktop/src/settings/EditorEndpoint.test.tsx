@@ -58,6 +58,18 @@ test("a failure to change it says so", async () => {
   await screen.findByText("The endpoint could not be changed. Try again.");
 });
 
+test("an outside file change retires an older endpoint read and updates the open row", async () => {
+  let release!: (status: EndpointStatus) => void;
+  let changed!: (status: EndpointStatus) => void;
+  row({ editorEndpoint: () => new Promise((resolve) => { release = resolve; }),
+    onEditorEndpoint: async (listener) => { changed = listener; return () => {}; } });
+  await act(async () => changed(on));
+  expect(await screen.findByText(on.url!)).toBeTruthy();
+  await act(async () => release(off));
+  expect(screen.getByRole<HTMLInputElement>("switch", { name: "Cite from your editor" }).checked).toBe(true);
+  await act(async () => changed(off));
+  expect(screen.queryByText(on.url!)).toBeNull();
+});
 
 test("Use Default switches the editor endpoint off and Undo restores it", async () => {
   const api = row({ editorEndpoint: vi.fn(async () => on) });
@@ -67,4 +79,31 @@ test("Use Default switches the editor endpoint off and Undo restores it", async 
   fireEvent.click(undo);
   await waitFor(() => expect(screen.getByRole("switch", { name: "Cite from your editor" })).toHaveProperty("checked", true));
   expect(vi.mocked(api.setEditorEndpoint).mock.calls).toEqual([[false], [true]]);
+});
+
+test("a live endpoint save offers Undo after its event, and an outside edit retires it", async () => {
+  let changed!: (status: EndpointStatus) => void;
+  row({ editorEndpoint: async () => on,
+    onEditorEndpoint: async (listener) => { changed = listener; return () => {}; },
+    setEditorEndpoint: async (enabled) => { const next = enabled ? on : off; changed(next); return next; } });
+  fireEvent.click(await screen.findByRole("button", { name: "Use Default for Cite from your editor" }));
+  await screen.findByRole("button", { name: "Undo Restore Default for Cite from your editor" });
+  expect(screen.getByRole("switch", { name: "Cite from your editor" })).toHaveProperty("checked", false);
+  await act(async () => changed(on));
+  expect(screen.getByRole("switch", { name: "Cite from your editor" })).toHaveProperty("checked", true);
+  expect(screen.queryByRole("button", { name: "Undo Restore Default for Cite from your editor" })).toBeNull();
+});
+
+test("an older endpoint reply cannot replace a newer live address while enabling", async () => {
+  let changed!: (status: EndpointStatus) => void;
+  let finish!: (status: EndpointStatus) => void;
+  const newer = { ...on, url: on.url!.replace("0123456789abcdef0123456789abcdef", "fedcba9876543210fedcba9876543210") };
+  row({ onEditorEndpoint: async (listener) => { changed = listener; return () => {}; },
+    setEditorEndpoint: () => new Promise((resolve) => { finish = resolve; }) });
+  const toggle = await screen.findByRole("switch", { name: "Cite from your editor" });
+  await waitFor(() => expect(toggle).toHaveProperty("disabled", false));
+  fireEvent.click(toggle);
+  await act(async () => { changed(on); changed(newer); finish(on); });
+  expect(screen.getByText(newer.url!)).toBeTruthy();
+  expect(screen.queryByText(on.url!)).toBeNull();
 });

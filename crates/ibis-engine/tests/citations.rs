@@ -454,13 +454,14 @@ fn golden_cases_have_the_same_preview_and_commit_through_the_session_api() {
         {
             let preview = preview.unwrap_or_else(|error| panic!("{}: {error}", case.name));
             assert_eq!(preview.text, expected.text, "{}", case.name);
-            assert_eq!(preview.html, expected.html, "{}", case.name);
             assert_eq!(preview.display, expected.display, "{}", case.name);
             let checked = engine
                 .citations()
                 .commit(SessionId::PICKER, &preview.ticket, &preview.content_hash)
                 .unwrap();
-            assert_eq!(checked.check(&engine).unwrap().content().text, expected.text);
+            let guard = checked.check(&engine).unwrap();
+            assert_eq!(guard.content().text, expected.text);
+            assert_eq!(guard.content().html, expected.html.as_deref());
             covered += 1;
         }
     }
@@ -627,4 +628,46 @@ fn bibliography_copy_refuses_when_a_selected_absent_record_is_restored() {
         .err()
         .unwrap();
     assert_eq!(error.problem(), CitationError::ChangedItem.problem());
+}
+
+#[test]
+fn sharing_uses_the_session_preview_and_checked_commit() {
+    let original = engine();
+    let LibraryObject::Record(mut record) = original.snapshot().unwrap().objects()[0].object.clone() else {
+        panic!("record")
+    };
+    record.csl.insert("DOI".into(), json!("10.1000/Invented"));
+    record.csl.insert("note".into(), json!("Invented private note"));
+    let engine = Engine::from_snapshot(Arc::new(Snapshot::new(vec![LibraryObject::Record(record)]).unwrap()));
+    for output in ["bibtex", "doi-links"] {
+        let shown = engine
+            .citations()
+            .preview(SessionId::PICKER, draft(&engine, output), Cancellation::default())
+            .unwrap()
+            .run()
+            .unwrap();
+        assert_eq!(shown.effective_output.as_deref(), Some(output));
+        assert!(shown.text.contains("10.1000/Invented"));
+        assert!(!shown.text.contains("Invented private note"));
+        let checked = engine
+            .citations()
+            .commit(SessionId::PICKER, &shown.ticket, &shown.content_hash)
+            .unwrap();
+        assert_eq!(checked.check(&engine).unwrap().content().text, shown.text);
+    }
+}
+
+#[test]
+fn a_missing_doi_keeps_its_typed_recovery_through_the_session() {
+    let engine = engine();
+    let problem = engine
+        .citations()
+        .preview(SessionId::PICKER, draft(&engine, "doi-links"), Cancellation::default())
+        .unwrap()
+        .run()
+        .unwrap_err()
+        .problem();
+    assert_eq!(problem, CitationError::MissingDoi.problem());
+    assert_eq!(problem.info.recovery, Recovery::ChooseForm);
+    assert_eq!(problem.info.focus, FocusTarget::CitationForm);
 }

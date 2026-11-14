@@ -106,6 +106,41 @@ pub(crate) struct Notice {
     /// Advanced each time the picker opens: a copy claimed before then never
     /// shows its notice over the search field.
     retirements: Retirements,
+    format: Mutex<Option<(u32, Option<AppId>, ibis_engine::format::FormatChoice)>>,
+}
+
+fn ignores_pointer<R: tauri::Runtime>(app: &AppHandle<R>) -> bool {
+    app.state::<Notice>()
+        .text
+        .lock()
+        .ok()
+        .is_none_or(|text| text.as_ref().is_none_or(|text| text.suggested_format.is_none()))
+}
+
+impl Notice {
+    pub(crate) fn remember_format(
+        &self,
+        token: Option<u32>,
+        app: Option<AppId>,
+        choice: ibis_engine::format::FormatChoice,
+    ) {
+        let Some(token) = token else { return };
+        let Ok(mut format) = self.format.lock() else { return };
+        if format.as_ref().is_none_or(|(newer, _, _)| *newer < token) {
+            *format = Some((token, app, choice));
+        }
+    }
+    fn take_format(&self, token: Option<u32>, app: Option<&AppId>) -> Option<ibis_engine::format::FormatChoice> {
+        let mut format = self.format.lock().ok()?;
+        if format
+            .as_ref()
+            .is_some_and(|(pending, target, _)| Some(*pending) == token && target.as_ref() == app)
+        {
+            format.take().map(|(_, _, choice)| choice)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Default)]
@@ -171,6 +206,8 @@ pub(crate) struct NoticeMessage {
     /// document uses one.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     plugin_note: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    suggested_format: Option<String>,
     /// Ibis's own Light or Dark, set as the notice is shown; absent for System.
     #[serde(skip_serializing_if = "crate::preferences::Appearance::is_system")]
     appearance: crate::preferences::Appearance,
@@ -178,7 +215,11 @@ pub(crate) struct NoticeMessage {
 
 impl NoticeMessage {
     fn shown_for(&self) -> Duration {
-        if self.plugin_note { NOTE_SHOWN_FOR } else { SHOWN_FOR }
+        if self.plugin_note || self.suggested_format.is_some() {
+            NOTE_SHOWN_FOR
+        } else {
+            SHOWN_FOR
+        }
     }
 }
 
@@ -242,7 +283,6 @@ pub(crate) async fn show_copied_notice(
     } else {
         None
     };
-    let pasted_into = target.filter(|_| receipt.is_some() && matches!(delivered, Delivered::Pasted { .. }));
     show(
         &app,
         NoticeMessage {
@@ -253,15 +293,16 @@ pub(crate) async fn show_copied_notice(
             more: summary.as_ref().map(|receipt| receipt.more),
             milestone,
             plugin_note: false,
+            suggested_format: None,
             appearance: Default::default(),
         },
         (receipt, epoch),
-        pasted_into,
+        target,
     );
     delivered
 }
 
-fn show(app: &AppHandle, mut text: NoticeMessage, (receipt, epoch): (Option<u64>, u64), pasted_into: Option<AppId>) {
+fn show(app: &AppHandle, mut text: NoticeMessage, (receipt, epoch): (Option<u64>, u64), target: Option<AppId>) {
     let notice = app.state::<Notice>();
     // Check after acquiring the publication lock. If B publishes while A
     // waits here, A cannot replace B's text, restart its timer or show itself.
@@ -271,7 +312,29 @@ fn show(app: &AppHandle, mut text: NoticeMessage, (receipt, epoch): (Option<u64>
         return;
     }
     // Spent only here: a notice a newer one replaced keeps it for the next paste.
-    text.plugin_note = pasted_into.is_some_and(|id| app.state::<crate::destination::AppMemory>().take_plugin_note(&id));
+    let pasted = matches!(text.delivered, Delivered::Pasted { .. });
+    text.plugin_note = target
+        .as_ref()
+        .filter(|_| pasted)
+        .is_some_and(|id| app.state::<crate::destination::AppMemory>().take_plugin_note(id));
+    if let Some(choice) = notice.take_format(owner.latest_token, target.as_ref())
+        && choice.from == ibis_engine::format::FormatFrom::Suggestion
+    {
+        // A copy explains its format without claiming a paste or accepting it.
+        // Only a successful paste remembers the suggestion and spends its receipt.
+        let explain = if pasted {
+            let mut first = false;
+            let saved = app.state::<crate::preferences::SettingsFile>().update(|settings| {
+                first = ibis_engine::format::accept_suggestion(settings, target.as_ref(), &choice);
+            });
+            saved.is_ok() && first
+        } else {
+            true
+        };
+        if explain {
+            text.suggested_format = choice.id;
+        }
+    }
     text.appearance = app
         .try_state::<crate::preferences::SettingsFile>()
         .map(|file| file.appearance())
@@ -290,6 +353,15 @@ fn show(app: &AppHandle, mut text: NoticeMessage, (receipt, epoch): (Option<u64>
                     report(window.set_position(corner.position()), NativeIssue::Position);
                 }
                 report(window.emit_to(LABEL, "notice:show", &text), NativeIssue::Notice);
+                // An invisible GTK window may not have a GdkWindow yet. Its
+                // page-load callback applies this after show(), including if
+                // another copy replaces its text before the page finishes.
+                if !cfg!(target_os = "linux") || window.is_visible().unwrap_or(false) {
+                    report(
+                        window.set_ignore_cursor_events(text.suggested_format.is_none()),
+                        NativeIssue::Notice,
+                    );
+                }
                 present(app, showing);
                 shown_for
             }
@@ -304,6 +376,14 @@ fn show(app: &AppHandle, mut text: NoticeMessage, (receipt, epoch): (Option<u64>
         notice.showing.fetch_add(1, Ordering::SeqCst);
         dismiss(app);
     }
+}
+
+/// The one-time suggestion receipt opens the matching choices in Settings.
+#[tauri::command]
+#[ibis_desktop_macros::command]
+pub(crate) async fn change_suggested_format(app: AppHandle) {
+    dismiss(&app);
+    crate::settings_window::open_settings(app, Some(crate::settings_window::Page::Citations), None).await;
 }
 
 /// When a notice in view for `shown` starts fading out, and how long after
@@ -447,7 +527,10 @@ fn create(app: &AppHandle, showing: u64) -> Option<()> {
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             report(window.show(), NativeIssue::Notice);
-            report(window.set_ignore_cursor_events(true), NativeIssue::Notice);
+            report(
+                window.set_ignore_cursor_events(ignores_pointer(window.app_handle())),
+                NativeIssue::Notice,
+            );
         }
         let app = window.app_handle();
         let notice = app.state::<Notice>();
@@ -467,7 +550,10 @@ fn create(app: &AppHandle, showing: u64) -> Option<()> {
     // Clicks pass through, including its transparent margins, so it never
     // blocks what is under it (macOS does this in `configure`).
     #[cfg(target_os = "windows")]
-    report(window.set_ignore_cursor_events(true), NativeIssue::Notice);
+    report(
+        window.set_ignore_cursor_events(ignores_pointer(app)),
+        NativeIssue::Notice,
+    );
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let _ = window;
     #[cfg(not(target_os = "macos"))]
@@ -624,7 +710,7 @@ mod macos {
                 );
                 panel.set_level(PanelLevel::Status.value());
                 panel.set_hides_on_deactivate(false);
-                panel.set_ignores_mouse_events(true);
+                panel.set_ignores_mouse_events(super::ignores_pointer(&handle));
                 // The picker's dismissal hides the whole app; the notice must stay.
                 panel.as_panel().setCanHide(false);
                 if super::still_showing(&handle, showing) {
@@ -665,6 +751,23 @@ mod macos {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_older_delivery_cannot_consume_a_newer_copies_format() {
+        for app in [
+            None,
+            Some(ibis_core::destination::AppId::named(
+                "com.microsoft.word",
+                ibis_core::destination::System::Macos,
+            )),
+        ] {
+            let notice = super::Notice::default();
+            let choice = ibis_engine::format::choose(&ibis_engine::settings::Settings::default(), app.as_ref());
+            notice.remember_format(Some(2), app.clone(), choice.clone());
+            assert!(notice.take_format(Some(1), app.as_ref()).is_none());
+            assert_eq!(notice.take_format(Some(2), app.as_ref()), Some(choice));
+            assert!(notice.take_format(Some(2), app.as_ref()).is_none());
+        }
+    }
     use super::*;
 
     #[test]

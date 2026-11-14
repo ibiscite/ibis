@@ -1,7 +1,6 @@
 // The engine's outputs, generated into the bindings from its one list (#1260).
 // Each has one id, stored and sent as it is, and one name, shown everywhere.
 import { DEFAULT_OUTPUT, DEFAULT_STYLE, OUTPUTS } from "../bindings";
-import type { Markup } from "./markup";
 import type { DisplayTree, Notice } from "../bindings";
 
 export type OutputChoice = (typeof OUTPUTS)[number];
@@ -47,12 +46,14 @@ export function writesEntries(id: OutputId): boolean {
   return outputOf(id).entries;
 }
 
-/** Actual previews are formatted by the engine. Other formats use its labeled
- * example until they have a prepared result of their own. Lookup IDs are never text. */
-export function previewOf(id: OutputId, formatted: Pick<FormattedCitation, "text"> | null): { text: string; more: number; example: boolean } | null {
+/** The prepared format shows its engine result. Other key formats show the chosen
+ * citation keys in the engine’s example pattern; styles show a labeled example.
+ * Lookup IDs are never text. */
+export function previewOf(id: OutputId, formatted: Pick<FormattedCitation, "text"> | null, keys: readonly string[] = []): { text: string; more: number; example: boolean } | null {
   if (formatted?.text) return { text: formatted.text, more: 0, example: false };
   const output = outputOf(id);
   if (!output.example) return null;
+  if (!output.style && keys[0]) return { text: output.example.replace(/\bkey\b/g, keys[0]), more: keys.length - 1, example: false };
   return { text: output.example, more: 0, example: true };
 }
 
@@ -63,11 +64,9 @@ export const styleOutputs = OUTPUTS.filter((output) => output.style);
 /** The engine result displayed by the picker. */
 export interface FormattedCitation {
   effective_output?: string | null;
-  markup: Markup[];
+  display: DisplayTree;
   text: string;
-  html: string;
   warnings: string[];
-  display?: DisplayTree;
   /** Why a key citation is refused: a key in the project bibliography names a different work. */
   project_refusal?: string | null;
   /** The engine's notices about it, such as a full first note. */

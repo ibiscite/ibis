@@ -4,7 +4,7 @@
 use std::fs;
 
 use ibis_core::contract::ErrorCode;
-use ibis_core::settings::{self, Density, LibrarySetting};
+use ibis_engine::settings::{self, Density, LibrarySetting};
 use ibis_engine::settings_backup::{self as backup, BackupProblem};
 
 #[test]

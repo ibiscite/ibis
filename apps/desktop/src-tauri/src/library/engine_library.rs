@@ -1,10 +1,8 @@
 //! The picker delegates acquisition, search, rendering and copy validation to the engine.
 use super::CommandError;
 use super::search::{SearchQuery, SearchReply, SearchResult};
-use ibis_core::{
-    contract::{ItemRef, LibraryId},
-    settings::{ZoteroLibraries, ZoteroLibrary},
-};
+use ibis_core::contract::{ItemRef, LibraryId};
+use ibis_engine::settings::{ZoteroLibraries, ZoteroLibrary};
 use ibis_engine::{
     Cancellation, Engine, Method,
     request::{SearchRequest, ZoteroLibrary as EngineZoteroLibrary},
@@ -87,13 +85,19 @@ impl FileLibrary {
     }
 
     pub(crate) fn open(path: &Path) -> Result<Self, super::LoadError> {
-        Self::open_file(path, Engine::new().map_err(|_| super::LoadError::Stopped)?)
+        Self::open_file(
+            path,
+            Engine::new()
+                .map(|engine| engine.with_formatting(FORMATTING.clone()))
+                .map_err(|_| super::LoadError::Stopped)?,
+        )
     }
 
     pub(super) fn open_samples(path: &Path) -> Result<Self, super::LoadError> {
         let mut file = Self::open_file(
             path,
             Engine::new()
+                .map(|engine| engine.with_formatting(FORMATTING.clone()))
                 .map_err(|_| super::LoadError::Stopped)?
                 .without_file_watches(),
         )?;
@@ -132,7 +136,9 @@ impl FileLibrary {
         profile: Option<&str>,
         cancel: &Cancellation,
     ) -> Result<Self, super::LoadError> {
-        let engine = Engine::new().map_err(super::LoadError::Zotero)?;
+        let engine = Engine::new()
+            .map(|engine| engine.with_formatting(FORMATTING.clone()))
+            .map_err(super::LoadError::Zotero)?;
         Self::open_zotero_with(engine, chosen, profile, cancel)
     }
 
@@ -193,6 +199,7 @@ impl FileLibrary {
                 reason: info.refresh_reason,
                 detail: None,
                 strict_cause: None,
+                citation_error: None,
             })
         });
         if let Some(failure) = failure {
@@ -287,6 +294,7 @@ impl FileLibrary {
                     reason: info.refresh_reason,
                     detail: None,
                     strict_cause: None,
+                    citation_error: None,
                 })
             })
         {
@@ -423,3 +431,17 @@ pub(super) fn native_source(info: &ibis_engine::LibraryInfo) -> String {
 mod library_tests;
 #[cfg(test)]
 mod zotero_acceptance;
+
+// Source changes share the desktop's lazy formatter; its policy stays in the engine.
+static FORMATTING: std::sync::LazyLock<ibis_engine::Formatting> =
+    std::sync::LazyLock::new(ibis_engine::Formatting::default);
+
+pub(crate) fn warm_formatter(output: Option<String>) {
+    let formatting = FORMATTING.clone();
+    let _ = std::thread::Builder::new()
+        .name("ibis-format-startup".into())
+        .spawn(move || {
+            let output = crate::output::stored(output.as_deref());
+            let _ = formatting.warm(crate::output::default_style(output), None);
+        });
+}

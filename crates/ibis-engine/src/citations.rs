@@ -39,6 +39,7 @@ impl SessionError {
             Self::Presented(problem) => problem.clone(),
             Self::SharedCitationKey { key } => {
                 let mut problem = CitationError::AmbiguousKey.problem();
+                problem.info.message.id = "app-command-shared-citation-key".into();
                 problem.info = problem.info.argument("key", key.clone());
                 problem
             }
@@ -594,7 +595,7 @@ impl Worker {
         let result = citation.result();
         let shown = SessionBibliography {
             text: result.text.clone(),
-            html: result.html.clone(),
+            display: result.display.clone(),
             content_hash: result.content_hash.as_str().to_owned(),
             warnings,
             left_out,
@@ -805,7 +806,6 @@ impl Worker {
             ticket: reservation.to_string(),
             content_hash: result.content_hash.as_str().to_owned(),
             text: result.text.clone(),
-            html: result.html.clone(),
             warnings: citation_warnings_named(&citation),
             display: result.display.clone(),
             problem: None,

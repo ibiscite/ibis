@@ -1,7 +1,7 @@
 //! One session owner claims feedback before the existing settings writer flushes it.
 use std::collections::BTreeSet;
 
-use ibis_core::settings::Delights;
+use ibis_engine::settings::Delights;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
@@ -206,7 +206,7 @@ impl SettingsFile {
         (self.surprises_enabled() && [1, 100, 1000].contains(&count)).then_some(count)
     }
 
-    pub(crate) fn flush_delights(&self) -> Result<(), String> {
+    pub(crate) fn flush_delights(&self) -> Result<(), crate::library::CommandError> {
         // Snapshot INSIDE the single writer: delayed A always writes the latest B.
         let mut revision = 0;
         let saved = self.update_when(

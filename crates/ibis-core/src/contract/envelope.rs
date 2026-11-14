@@ -180,6 +180,8 @@ pub enum ErrorReason {
     NotIbis,
     /// The Ibis app started but did not confirm the request in time.
     NoAnswer,
+    /// The app's library settings did not finish loading in time.
+    SettingsReadTimeout,
     /// Zotero is running but does not let other applications read it.
     ZoteroSharingOff,
     /// Zotero is closed and which profile to read is not settled; name one.
@@ -275,6 +277,8 @@ pub struct EngineError {
     pub detail: Option<ErrorDetail>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub strict_cause: Option<StrictCause>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub citation_error: Option<super::CitationError>,
 }
 #[derive(Serialize, JsonSchema)]
 struct PresentedError {
@@ -285,6 +289,8 @@ struct PresentedError {
     detail: Option<ErrorDetail>,
     #[serde(skip_serializing_if = "Option::is_none")]
     strict_cause: Option<StrictCause>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    citation_error: Option<super::CitationError>,
     #[serde(flatten)]
     info: super::RecoveryInfo,
 }
@@ -295,6 +301,7 @@ impl From<EngineError> for PresentedError {
             reason: error.reason,
             detail: error.detail,
             strict_cause: error.strict_cause,
+            citation_error: error.citation_error,
             info: error.recovery_info(),
         }
     }
@@ -314,6 +321,7 @@ impl EngineError {
             reason: None,
             detail: None,
             strict_cause: None,
+            citation_error: None,
         }
     }
     pub const fn because(code: ErrorCode, reason: ErrorReason) -> Self {
@@ -322,6 +330,21 @@ impl EngineError {
             reason: Some(reason),
             detail: None,
             strict_cause: None,
+            citation_error: None,
+        }
+    }
+    pub const fn citation(error: super::CitationError) -> Self {
+        Self {
+            code: if matches!(
+                error,
+                super::CitationError::OutputTooLarge | super::CitationError::TooManyItems
+            ) {
+                ErrorCode::ResourceLimit
+            } else {
+                ErrorCode::BadInput
+            },
+            citation_error: Some(error),
+            ..Self::new(ErrorCode::BadInput)
         }
     }
 }

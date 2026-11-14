@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { currentPlatform } from "../platform";
 import { NoticeSlot, QuietNotice } from "./NoticeSlot";
 import { UndoNotice } from "./UndoNotice";
+import { Frame, FrameNotices } from "./Frame";
 
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
@@ -167,4 +168,18 @@ test("a remark's time runs only while it is shown, and restarts when it returns"
 test("an empty slot draws nothing", () => {
   const { container } = render(<NoticeSlot>{null}{false}</NoticeSlot>);
   expect(container.firstChild).toBeNull();
+});
+
+test("an Undo moving between the list's heading line and the room above an empty state keeps its time", () => {
+  vi.useFakeTimers();
+  const expire = vi.fn();
+  const notice = <UndoNotice key="undo" message="Removed an invented reference." action="Remove Invented, 2020" onUndo={async () => {}} onExpire={expire} />;
+  const view = (empty: boolean) => <Frame search={null} notice={[notice]}>{empty && <FrameNotices />}</Frame>;
+  const { rerender } = render(view(false));
+  act(() => { vi.advanceTimersByTime(5000); });
+  // The search finds nothing: an empty state takes the list's place.
+  rerender(view(true));
+  expect(screen.getByRole("button", { name: "Undo Remove Invented, 2020" })).toBeTruthy();
+  act(() => { vi.advanceTimersByTime(3100); });
+  expect(expire).toHaveBeenCalledOnce();
 });

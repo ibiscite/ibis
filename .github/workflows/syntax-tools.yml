@@ -5,14 +5,6 @@ name: Syntax tools
 # or published, and no secret is available to the steps.
 
 on:
-  pull_request:
-    paths:
-      - crates/ibis-core/src/syntax/**
-      - crates/ibis-core/src/contract/citation.rs
-      - crates/ibis-cli/**
-      - fixtures/syntax-tools/**
-      - scripts/syntax-tools.mjs
-      - .github/workflows/syntax-tools.yml
   push:
     branches: [main]
     paths:

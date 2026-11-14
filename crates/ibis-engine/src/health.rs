@@ -1,7 +1,8 @@
 //! Source health over the engine's published state; inspection is read-only.
 use super::{Engine, LibraryInfo};
 use crate::Cancellation;
-use ibis_core::{contract::*, settings};
+use crate::settings;
+use ibis_core::contract::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -64,6 +65,7 @@ impl SourceHealth {
                         reason: library.refresh_reason,
                         detail: None,
                         strict_cause: None,
+                        citation_error: None,
                     }
                     .recovery_info(),
                     last_successful_read_ms: library.updated_at_ms,

@@ -74,6 +74,7 @@ mod shelf_summary_tests {
     fn shelf_summary_keeps_narrative_remainders_and_counts_remaining_references() {
         let text = format!("Taylor (2026, p. {})", "12–30 ".repeat(40));
         let node = |item, text: String| DisplayNode {
+            blocks: vec![],
             item,
             content: vec![DisplayRun {
                 text,
@@ -276,7 +277,11 @@ pub(crate) async fn preview_file_citation(
         editor.as_ref().map_or(&output, |request| &request.output),
         ibis_core::contract::OutputSpec::Key { .. }
     );
-    let current_project = current_project.filter(|_| key_output);
+    let current_project = editor
+        .as_ref()
+        .and_then(|request| request.bibliography())
+        .or(current_project)
+        .filter(|_| key_output);
     let draft = ibis_core::contract::Draft {
         items,
         output: editor.as_ref().map_or(output, |editor| editor.output.clone()),
@@ -400,15 +405,15 @@ fn commit_shown(
     if editor.current().is_none() {
         // The citation uses the project as saved: a change made elsewhere since
         // the preview, by the command line for one, retires it before the commit.
-        crate::writing_projects::refresh(&app, captured.as_ref().map(|(id, _, _)| id))?;
+        crate::writings::refresh(&app, captured.as_ref().map(|(id, _, _)| id))?;
     }
     #[cfg(target_os = "windows")]
     let attempt = crate::paste::begin_copy(&app, &replaces);
     let file = open_file(&library)?;
-    let captured = captured.map(|(id, _, _)| id.normalized());
+    let captured_id = captured.as_ref().map(|(id, _, _)| id.normalized());
     let record = |copied: &Copied| {
         if !file.sample {
-            session.record(&epoch, captured.as_deref(), &copied.cited);
+            session.record(&epoch, captured_id.as_deref(), &copied.cited);
         }
     };
     // Serialize clipboard writes through recording; privacy invalidation has its own lock.
@@ -420,10 +425,21 @@ fn commit_shown(
         if recited.citation().request_output() != &request.output || recited.citation().request_form() != request.form {
             return Err(CommandError::SnapshotChanged);
         }
+        let current = request.bibliography();
+        if let Some(refused) =
+            crate::project::preview_evidence(&file.engine, recited.ticket(), recited.content_hash(), current.as_ref())?
+                .filter(|assessment| !assessment.can_copy())
+        {
+            return Err(CommandError::ProjectConflict {
+                keys: refused.conflicts,
+            });
+        }
+        let warnings =
+            crate::project::preview_warnings(&file.engine, recited.ticket(), recited.content_hash(), current.as_ref())?;
         // The text leaves the commit barrier first; the editor is answered with no
         // lock held, because ending a request takes these locks the other way round.
         let mut text = None;
-        let copied = copy_checked(&file.engine, recited, |content| {
+        let mut copied = copy_checked(&file.engine, recited, |content| {
             text = Some((
                 content.text.to_owned(),
                 content.html.map(str::to_owned),
@@ -431,6 +447,7 @@ fn commit_shown(
             ));
             Ok(())
         })?;
+        copied.warnings.extend(warnings);
         let (text, html, rtf) = text.ok_or(CommandError::SnapshotChanged)?;
         if !editor.answer(request.id, &text, || {
             file.engine
@@ -459,8 +476,18 @@ fn commit_shown(
             session.lock().add(copied.cited.clone());
             record(&copied);
         }
+        if matches!(request.output, ibis_core::contract::OutputSpec::Key { .. }) {
+            app.state::<crate::preferences::SettingsFile>().record_key_format_use();
+        }
         return Ok(copied);
     }
+    let format = {
+        let settings = ibis_engine::settings::load(&app.state::<crate::preferences::SettingsFile>().path);
+        let target = captured.as_ref().map(|(id, _, _)| id);
+        let chosen = ibis_engine::format::choose(&settings.settings, target);
+        (settings.problem.is_none() && chosen.output == *recited.citation().request_output())
+            .then(|| (target.cloned(), chosen))
+    };
     let copied = commit_copy(
         &file,
         recited,
@@ -487,6 +514,16 @@ fn commit_shown(
         },
     )?;
     record(&copied);
+    if matches!(
+        recited.citation().request_output(),
+        ibis_core::contract::OutputSpec::Key { .. }
+    ) {
+        app.state::<crate::preferences::SettingsFile>().record_key_format_use();
+    }
+    if let Some((id, chosen)) = format {
+        app.state::<crate::notice::Notice>()
+            .remember_format(copied.delivery, id, chosen);
+    }
     Ok(copied)
 }
 

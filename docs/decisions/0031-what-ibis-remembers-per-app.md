@@ -1,34 +1,7 @@
 # 0031 What Ibis remembers per app
 
-2026-11-04 (maintainer, #1697): an optional writing project remembers its output
-and optional checked bibliography together. Each app remembers its own selected
-project; selecting No Writing Project restores that app's ordinary output.
-The selected project's output takes precedence over the app's format, and a
-format pick changes the project while it is selected. The picker continuously
-names that project and offers a quick explicit switch. A project is chosen by
-the person, never inferred from a document, window title or browser URL.
-Selection grants no paste permission. Explicit editor and command-line requests
-keep their own output and do not change the GUI selection. Project switches
-replace format and bibliography together and retire pending copy authority;
-failed saves keep the previous context whole. Search continues across connected
-libraries; a project saves no search scope (2026-11-05, decision 0028). The checked bibliography remains one read-only file, not proof about
-the actual document. Implementation and acceptance scenarios: #1697.
-
-2026-11-05 (maintainer): a project is only a `.bib` file and its format, picked
-from the format menu. There is no Apply Updates step: the next citation uses the
-project as saved.
-
-2026-11-02 (maintainer): with no writing project selected, Ibis remembers a
-format per app, and the person changes it in the format menu. One default in
-Settings › Citations applies to apps with no remembered format. "Just this
-once", "Automatic", "Use as global default" and "Forget formats for apps" are
-gone, along with their Undo; a later pick replaces the old one. A format is
-remembered only for a captured app. When Ibis can't tell the app, the default
-applies and a pick changes it, so no choice is lost; when the destination could
-not be read, the app may be a real one, so a pick holds for that paste alone. A
-pick that cannot be saved also holds for that paste, and the control says "This
-paste". The app table's starting formats stay, as suggestions the menu names, so
-a new install still pastes APA into Word.
+Format resolution and writings are defined by [0042](0042-formats-apps-and-writings.md).
+The storage and delivery limits below still apply.
 
 `apps.json`, beside `settings.json`, keeps
 only the operating system, normalised app ID, optional delivery choice
@@ -37,13 +10,7 @@ one-time plugin note was shown, for at most 200 apps;
 the least recently chosen app is dropped first. Since 2026-11-07 the format
 per app lives in `settings.json` instead (decision 0040), under the same
 limits. Never a document title, URL,
-window title, document text or citation. Browser and editor IDs cannot identify
-a project's syntax, so the first paste in each browser or code editor opens
-the output chooser once and remembers the pick (maintainer, 2026-10-28).
-Remembered choices beat app-table suggestions, then the
-default; a format save and a delivery save each leave the other alone, except that
-answering Paste or Copy only in an open browser or editor first-paste question
-accepts the format it showed, unless a format is being held for that paste. A new default never erases app choices.
+window title, document text or citation.
 
 2026-10-31 (#1486): Recent citations keep only opaque reference identities and
 known originating app IDs in the channel's WebView storage, bounded to 20 apps,

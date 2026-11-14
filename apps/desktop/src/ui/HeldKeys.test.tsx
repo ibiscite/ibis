@@ -12,6 +12,7 @@ afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 const scene = () => render(<>
   <button aria-keyshortcuts="Meta+Shift+P">Keep open</button>
   <button aria-keyshortcuts="Meta+K">More<kbd>⌘K</kbd></button>
+  <div role="option" aria-keyshortcuts="Meta+1"><span className="result-tile" data-key="⌘1" />Result</div>
   <HeldKeys />
 </>);
 const held = (container: HTMLElement) => container.querySelectorAll(".ui-held-key");
@@ -47,11 +48,31 @@ test("closing mid-hold leaves no timer behind", () => {
   expect(vi.getTimerCount()).toBe(0);
 });
 
-test("a badge sits above its control, or below it where the window has no room above", () => {
-  const { container } = scene();
-  const badge = () => { fireEvent.keyDown(window, { key: "Meta" }); act(() => { vi.advanceTimersByTime(HOLD_MS); }); const shown = held(container)[0] as HTMLElement; fireEvent.keyUp(window, { key: "Meta" }); return [shown.dataset.side, shown.style.top]; };
-  expect(badge()).toEqual(["above", "20px"]);
-  // At the window's top, a badge above the control would start off screen.
-  Element.prototype.getBoundingClientRect = function (this: Element) { return { left: 10, width: 28, top: this.classList.contains("ui-held-key") ? -24 : 0, bottom: 28, height: 28 } as DOMRect; };
-  expect(badge()).toEqual(["below", "28px"]);
+test("only keys that use the held key are named: a token's ↓ does something else while ⌘ is down", () => {
+  const { container } = render(<><button aria-keyshortcuts="ArrowDown">Token</button><button aria-keyshortcuts="Backspace Meta+Shift+F">Format</button><HeldKeys /></>);
+  fireEvent.keyDown(window, { key: "Meta" });
+  act(() => { vi.advanceTimersByTime(HOLD_MS); });
+  expect([...held(container)].map((badge) => badge.textContent)).toEqual(["⇧⌘F"]);
+});
+
+test("a badge sits beside its control where it covers nothing, else inside the control's own box", () => {
+  // A 28 px control at (100, 100), 20 px badges; `others` are controls already drawn around it.
+  const place = (others: Record<string, [number, number]>) => {
+    Element.prototype.getBoundingClientRect = function (this: Element) {
+      const at = this.textContent === "Keep open" ? [100, 100] : others[this.textContent ?? ""];
+      const size = this.classList.contains("ui-held-key") ? 20 : 28;
+      const [left, top] = at ?? [0, 0];
+      return new DOMRect(left, top, at || this.classList.contains("ui-held-key") ? size : 0, at || this.classList.contains("ui-held-key") ? size : 0);
+    };
+    const { container, unmount } = render(<><button aria-keyshortcuts="Meta+Shift+P">Keep open</button>{Object.keys(others).map((name) => <button key={name}>{name}</button>)}<HeldKeys /></>);
+    fireEvent.keyDown(window, { key: "Meta" });
+    act(() => { vi.advanceTimersByTime(HOLD_MS); });
+    const badge = held(container)[0] as HTMLElement;
+    const found = [badge.dataset.side, badge.style.left, badge.style.top, badge.style.width];
+    unmount();
+    return found;
+  };
+  expect(place({})).toEqual(["above", "104px", "76px", ""]);
+  expect(place({ Heading: [100, 70] })).toEqual(["below", "104px", "132px", ""]);
+  expect(place({ Heading: [100, 70], Rows: [100, 130], Clear: [70, 100], Menu: [130, 100] })).toEqual(["inside", "100px", "100px", "28px"]);
 });

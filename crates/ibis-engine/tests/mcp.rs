@@ -142,7 +142,7 @@ fn agents_never_see_private_notes_and_long_text_is_cut() {
     assert_eq!(summary.chars().count(), mcp::MAX_TEXT + 1);
     assert!(summary.ends_with('…'));
 
-    // CSL-JSON output would carry the whole record, notes included.
+    // Record sharing stays outside MCP, even with share-safe metadata.
     let exported = tool(
         &engine,
         "cite",
@@ -341,6 +341,25 @@ fn cite_for_an_app_uses_that_apps_output_and_says_how_it_arrives() {
         cite(json!({"items":[{"ref":"demo2026"}],"for_app":""}))["isError"],
         true
     );
+}
+
+#[test]
+fn for_app_is_refused_when_the_apps_settings_cannot_be_found() {
+    let (_dir, engine) = engine();
+    let mut session =
+        mcp::Session::default().without_formats(mcp::Refusal::from(ibis_core::contract::EngineError::because(
+            ibis_core::contract::ErrorCode::SourceUnavailable,
+            ibis_core::contract::ErrorReason::SettingsReadTimeout,
+        )));
+    let mut cite = |arguments: Value| {
+        let message = modern(9, "tools/call", json!({"name":"cite","arguments":arguments}));
+        mcp::handle(&engine, &mut session, &message).unwrap()["result"].clone()
+    };
+    // Defaults would be a guess about the person's formats, so nothing is cited.
+    let refused = cite(json!({"items":[{"ref":"demo2026"}],"for_app":"md.obsidian"}));
+    assert_eq!(refused["isError"], true, "{refused}");
+    assert!(refused["content"][0]["text"].as_str().unwrap().contains("settings"));
+    assert_eq!(cite(json!({"items":[{"ref":"demo2026"}]}))["isError"], false);
 }
 
 #[test]
@@ -787,6 +806,72 @@ fn every_tool_answer_has_the_fields_its_output_schema_requires() {
                     "hit lacks {field}"
                 );
             }
+        }
+    }
+}
+
+#[test]
+fn an_app_writing_checks_its_bibliography_and_conflicting_keys_are_not_handed_to_an_agent() {
+    let (directory, engine) = library(
+        "library.bib",
+        "@book{invented,title={Intended Work},doi={10.1000/intended}}\n",
+    );
+    let bibliography = directory.path().join("writing.bib");
+    std::fs::write(
+        &bibliography,
+        "@book{invented,title={Other Work},doi={10.1000/other}}\n",
+    )
+    .unwrap();
+    let settings = directory.path().join("settings.json");
+    std::fs::write(
+        &settings,
+        json!({"schema_version":2,
+            "writings":[{"name":"Thesis","format":"pandoc","bibliography":bibliography}],
+            "writing_apps":{"macos:com.microsoft.word":"Thesis"}
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let mut session = mcp::Session::default().with_formats(settings);
+    let request = modern(
+        9,
+        "tools/call",
+        json!({"name":"cite","arguments":{"items":[{"ref":"invented"}],"for_app":"com.microsoft.word"}}),
+    );
+    let refused = mcp::handle(&engine, &mut session, &request).unwrap();
+    assert_eq!(refused["result"]["isError"], true, "{refused}");
+    assert!(!refused.to_string().contains("[@invented]"));
+    std::fs::remove_file(&bibliography).unwrap();
+    let warning = mcp::handle(&engine, &mut session, &request).unwrap();
+    assert_eq!(warning["result"]["structuredContent"]["text"], "[@invented]");
+    assert_eq!(
+        warning["result"]["structuredContent"]["bibliography"]["keys"][0]["check"]["status"],
+        "could-not-check"
+    );
+    assert!(!warning.to_string().contains(directory.path().to_str().unwrap()));
+}
+
+#[test]
+fn an_apps_or_writings_record_export_never_bypasses_the_agents_citation_boundary() {
+    let (directory, engine) = engine();
+    let settings = directory.path().join("settings.json");
+    let mut session = mcp::Session::default().with_formats(settings.clone());
+    let request = modern(
+        9,
+        "tools/call",
+        json!({"name":"cite","arguments":{"items":[{"ref":"demo2026"}],"for_app":"com.microsoft.word"}}),
+    );
+    for output in ["csl-json", "scannable-cite"] {
+        for selected in [false, true] {
+            let mut value = json!({"schema_version":2,"app_outputs":[{"app":{"system":"macos","id":"com.microsoft.word"},"output":output}]});
+            if selected {
+                value["writings"] = json!([{"name":"Export","format":output}]);
+                value["writing_apps"] = json!({"macos:com.microsoft.word":"Export"});
+            }
+            std::fs::write(&settings, value.to_string()).unwrap();
+            let result = mcp::handle(&engine, &mut session, &request).unwrap();
+            assert_eq!(result["result"]["isError"], true, "{result}");
+            assert!(!result.to_string().contains("private reading note"));
         }
     }
 }

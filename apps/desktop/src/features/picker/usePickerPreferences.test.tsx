@@ -51,11 +51,29 @@ test("a global key choice during a stale Settings read wins and sends only its f
   await act(async () => { result.current.loadPreferences(() => true); });
   reading = true;
   act(() => result.current.loadPreferences(() => true));
-  act(() => result.current.chooseFormat("cite"));
-  await act(async () => { save.resolve({ preferences: { ...preferences, output: "cite" } }); });
+  act(() => { void result.current.chooseFormat("cite"); });
+  await act(async () => { save.resolve({ preferences: { ...preferences, output: "apa", key_output: "cite" } }); });
   await act(async () => { old.resolve({ ...preferences, output: "apa" }); });
   expect(result.current.format).toBe("cite");
-  expect(setPickerPreferences).toHaveBeenCalledWith({ output: "cite" }, 1);
+  expect(setPickerPreferences).toHaveBeenCalledWith({ key_output: "cite" }, 1);
+});
+
+test("a queued key-format save never replays a style acknowledged before it reaches the native lock", async () => {
+  const output = deferred<{ preferences: PickerPreferences }>();
+  const setPickerPreferences = vi.fn()
+    .mockImplementationOnce(() => output.promise)
+    .mockImplementationOnce(async (patch: Partial<PickerPreferences>) => ({
+      // The other window changed the global style after the first write.
+      preferences: { ...preferences, output: "ieee", ...patch },
+    }));
+  const { result } = renderHook(() => usePickerPreferences({
+    pickerPreferences: async () => ({ ...preferences, output: "apa" }), ...owner(setPickerPreferences), quit: async () => undefined }, context));
+  await act(async () => { result.current.loadPreferences(() => true); });
+  act(() => { void result.current.chooseFormat("chicago-author-date"); });
+  act(() => { void result.current.chooseFormat("cite"); });
+  await act(async () => { output.resolve({ preferences: { ...preferences, output: "chicago-author-date" } }); });
+  expect(setPickerPreferences.mock.calls[1]).toEqual([{ key_output: "cite" }, 2]);
+  expect(result.current.format).toBe("cite");
 });
 
 test("a failed later output stays applied in the picker and is never sent again", async () => {
@@ -72,9 +90,9 @@ test("a failed later output stays applied in the picker and is never sent again"
   const { result } = renderHook(() => usePickerPreferences({ pickerPreferences: async () => state,
     ...owner(setPickerPreferences), quit: async () => undefined }, context));
   await act(async () => { result.current.loadPreferences(() => true); });
-  act(() => result.current.chooseFormat("cite"));
-  act(() => result.current.chooseFormat("ieee"));
-  act(() => result.current.chooseFormat("typst"));
+  act(() => { void result.current.chooseFormat("cite"); });
+  act(() => { void result.current.chooseFormat("ieee"); });
+  act(() => { void result.current.chooseFormat("typst"); });
   await act(async () => { first.resolve(); });
   expect(writes).toBe(3);
   expect(state.output).toBe("ieee");

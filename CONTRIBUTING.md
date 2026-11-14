@@ -65,8 +65,8 @@ can change the workflow that reports its own result
 work with a `Co-authored-by` trailer and thank you in the release notes.
 
 Follow [AGENTS.md](AGENTS.md). A bug fix starts with a failing regression.
-Run the focused check; `node scripts/check.mjs --plan` shows the CI classes
-and `node scripts/check.mjs` runs local checks for your changes.
+Run the focused check for your change. Maintainer branches land through the
+[local gate](docs/testing.md#where-checks-run); GitHub confirms after merge.
 
 Use a Conventional Commit title, at most 72 characters, with lower case after
 the colon. Name branches `type/short-description`. Explain the problem,

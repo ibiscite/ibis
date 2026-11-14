@@ -7,7 +7,7 @@ import { commands, type CommandError, type LibraryStatus, type PreferenceChange,
 export type { Sources } from "./bindings";
 export type {
   AppPaste, Copied, Density, EntryCopy, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PastedList, PickerDestination, PickerPreferences, ProjectStatus, SearchQuery, SearchResult, SessionBibliography, SessionEdit, SessionReferencesView, ShortcutStatus, ZoteroGroup, ZoteroLibrary, ZoteroProfiles,
-  WritingProjectView, WritingProjectsView, WritingProjectEdit,
+  WritingView, WritingsView, WritingEdit,
 } from "./bindings";
 /** What the notice after a copy says: pasted into an app, or copied and why. */
 export type NoticeMessage = NonNullable<Awaited<ReturnType<typeof commands.copiedNotice>>>;
@@ -29,8 +29,8 @@ export const {
   chooseProject,
   stopProject,
   copyProjectEntry,
-  writingProjects,
-  editWritingProject,
+  writings,
+  editWriting,
   editorRequest,
   sessionReferences,
   editSessionReferences,
@@ -46,6 +46,7 @@ export const {
   pickerPreferences,
   pickerDestination,
   rememberAppOutput,
+  forgetAppOutput,
   loginItem,
   setLoginItem,
   findZotero,
@@ -199,8 +200,8 @@ export function onProjectChanged(handler: (version: [number, number] | null) => 
 }
 
 /** Saved-definition metadata can change without retargeting the current task. */
-export function onWritingProjectsChanged(handler: () => void): Promise<UnlistenFn> {
-  return listen("writing-projects:changed", handler);
+export function onWritingsChanged(handler: () => void): Promise<UnlistenFn> {
+  return listen("writings:changed", handler);
 }
 
 /** A chosen project bibliography could not be saved, so the old choice stands. */
@@ -217,7 +218,7 @@ export function onEditorRequest(handler: () => void): Promise<UnlistenFn> {
 export function sharedCitationKey(error: unknown): string | null {
   const failed = typeof error === "object" && error !== null ? error as { code?: unknown; message?: { args?: { key?: unknown } } } : null;
   const key = failed?.message?.args?.key;
-  return failed?.code === "shared_citation_key" && typeof key === "string" ? key : null;
+  return failed?.code === "ambiguous-key" && typeof key === "string" ? key : null;
 }
 
 /** Only the backend's snapshot rejection code becomes a recovery explanation. */
@@ -231,7 +232,7 @@ export function isCancelled(error: unknown): boolean {
 }
 
 export function isSnapshotChanged(error: unknown): boolean {
-  return typeof error === "object" && error !== null && (error as Partial<CommandError>).code === "snapshot_changed";
+  return typeof error === "object" && error !== null && ["snapshot_changed", "changed-item", "missing-item"].includes(String((error as Partial<CommandError>).code));
 }
 
 export type UpdateProgress = { attempt: number; revision: number; received: number; total: number | null; phase: "downloading" | "installing" | "failed" };

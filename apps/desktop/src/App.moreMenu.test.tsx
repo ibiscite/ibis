@@ -33,7 +33,7 @@ test("with a result ready to copy, the citation format is a distinct named contr
   const saved: unknown[] = [];
   const calls = backend({
     search: ({ query }) => query.text ? [result("invented", "Invented reference")] : [],
-    picker_preferences_saved: ({ preferences }) => { saved.push((preferences as { output?: string }).output ?? null); return null; },
+    picker_preferences_saved: ({ preferences }) => { saved.push((preferences as { key_output?: string }).key_output ?? null); return null; },
   });
   render(<App />);
   const search = screen.getByLabelText("Search references");
@@ -76,4 +76,3 @@ test("More holds working actions, leaving preferences and update checks to Setti
   expect(calls).not.toContain("picker_preferences_saved");
   expect(calls).not.toContain("forget_app_outputs");
 });
-

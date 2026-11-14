@@ -10,7 +10,7 @@ import type { AppPaste } from "../../api";
 import type { FormatPick, FormatSource } from "./useDestination";
 
 /** The search bar: the search box and the copy format. */
-export function PickerHeader({ hidden = false, onResetPosition, inputRef, query, pageToken, onQueryChange, expanded, activeDescendant, format, formatButtonRef, app = null, formatSource = "default", formatPick = "default", onFormatOpenChange, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, yours, preview, writingProject, onWritingProjects }: {
+export function PickerHeader({ hidden = false, onResetPosition, inputRef, query, pageToken, onQueryChange, expanded, activeDescendant, format, formatButtonRef, app = null, formatSource = "default", formatPick = "default", onFormatOpenChange, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, yours, preview, writing, onWritings, usualFormat, onUseUsual, formatLabel }: {
   /** Welcome has no search yet; the field stays mounted so focus can return to it. */
   hidden?: boolean;
   inputRef: React.RefObject<HTMLInputElement | null>;
@@ -26,13 +26,16 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
   /** The id of the highlighted row, when there is one. */
   activeDescendant: string | undefined;
   format: OutputId;
+  formatLabel?: string;
   formatButtonRef?: React.RefObject<HTMLButtonElement | null>;
   /** The app the picker was opened from, when Ibis knows it. */
   app?: string | null;
   formatSource?: FormatSource;
   formatPick?: FormatPick;
-  writingProject?: { name: string } | null;
-  onWritingProjects?: () => void;
+  writing?: { name: string } | null;
+  onWritings?: () => void;
+  usualFormat?: OutputId | null;
+  onUseUsual?: () => void;
   onFormatOpenChange?: (open: boolean, reason?: MenuCloseReason) => void;
   pasteChoices?: boolean;
   onPasteChange?: (paste: AppPaste) => void;
@@ -51,9 +54,8 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
     return twice;
   };
   return (
-    <SearchBar hidden={hidden} title={say("picker-drag-search-bar")}
+    <SearchBar hidden={hidden} title={say("picker-drag-search-bar")} mark={<IbisMark className="search-mark" size="search" />}
       onMouseDown={emptyArea} onMouseUp={(event) => { if (emptyArea(event)) onResetPosition?.(); }}>
-      <IbisMark className="search-mark" size="search" />
       <SearchField
         id="search"
         label={say("picker-search-label")}
@@ -87,7 +89,7 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
           });
         }}
       />
-      {showFormat && <FormatMenu format={format} buttonRef={formatButtonRef} app={app} source={formatSource} pick={formatPick} onOpenChange={onFormatOpenChange} pasteChoices={pasteChoices} onPasteChange={onPasteChange} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} writingProject={writingProject} onWritingProjects={onWritingProjects} yours={yours} preview={preview} />}
+      {showFormat && <FormatMenu format={format} buttonRef={formatButtonRef} app={app} source={formatSource} pick={formatPick} onOpenChange={onFormatOpenChange} pasteChoices={pasteChoices} onPasteChange={onPasteChange} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} writing={writing} onWritings={onWritings} usualFormat={usualFormat} onUseUsual={onUseUsual} formatLabel={formatLabel} yours={yours} preview={preview} />}
     </SearchBar>
   );
 }

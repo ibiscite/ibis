@@ -5,12 +5,11 @@ case ${1:-} in
   policy)
     blocking=true
     case ${EVENT:-} in
-      pull_request | push)
-        # PRs compare with their merge base; main pushes compare both commits.
+      push)
+        # Main pushes compare both commits.
         # No rename detection: removing a manifest counts as a change too.
         if [[ ${REF:-} == refs/tags/* ]]; then echo "blocking=true"; exit 0; fi
         range="${BASE_SHA:-}..${HEAD_SHA:-}"
-        if [ "$EVENT" = pull_request ]; then range="${BASE_SHA:-}...${HEAD_SHA:-}"; fi
         if [[ ${BASE_SHA:-} =~ ^[0-9a-f]{40}$ && ${HEAD_SHA:-} =~ ^[0-9a-f]{40}$ ]] &&
           files=$(git diff --name-only --no-renames "$range" -- '**/Cargo.toml' Cargo.toml '**/Cargo.lock' Cargo.lock deny.toml); then
           if [ -z "$files" ]; then blocking=false; fi
@@ -19,9 +18,8 @@ case ${1:-} in
         fi
         ;;
       *)
-        # Releases are prepared manually on the Release Please branch. Tags
-        # and the weekly check enforce the full advisory policy.
-        if [[ ${REF:-} != refs/tags/* && ${HEAD_REF:-} != release-please--* && ${REF:-} != refs/heads/release-please--* && ${EVENT:-} != release ]] &&
+        # Release publication and the weekly check enforce the full policy.
+        if [[ ${REF:-} != refs/tags/* && ${EVENT:-} != release ]] &&
           ! { [ "${EVENT:-}" = schedule ] && [ "${SCHEDULE:-}" = '43 5 * * 1' ]; }; then
           blocking=false
         fi

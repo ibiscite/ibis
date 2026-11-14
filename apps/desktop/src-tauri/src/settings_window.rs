@@ -17,6 +17,63 @@ const MIN_SIZE: (f64, f64) = (800.0, 400.0);
 /// Room kept round the window, for its frame and title bar, on a small screen.
 const MARGIN: f64 = 32.0;
 
+/// Open the native-owned settings path in its registered editor. An absent
+/// file is created through the owner; unreadable existing bytes stay intact.
+#[tauri::command]
+#[ibis_desktop_macros::command]
+pub(crate) async fn open_settings_file(app: AppHandle) -> Result<(), crate::library::CommandError> {
+    let file = app.state::<crate::preferences::SettingsFile>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        file.exclusive(ibis_engine::settings::ensure_file)?
+            .map_err(crate::library::CommandError::from)?;
+        let path = file
+            .path
+            .canonicalize()
+            .map_err(|_| crate::errors::NativeOperation::OpenSettingsFile.failure())?;
+        #[cfg(not(target_os = "windows"))]
+        {
+            let mut command = std::process::Command::new(if cfg!(target_os = "macos") {
+                "/usr/bin/open"
+            } else {
+                "xdg-open"
+            });
+            #[cfg(target_os = "macos")]
+            command.arg("--");
+            let status = command
+                .arg(path)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
+            if status.is_ok_and(|status| status.success()) {
+                Ok(())
+            } else {
+                Err(crate::errors::NativeOperation::OpenSettingsFile.failure())
+            }
+        }
+        #[cfg(target_os = "windows")]
+        {
+            use windows::{Storage::StorageFile, System::Launcher, core::HSTRING};
+            let fault = |_| crate::errors::NativeOperation::OpenSettingsFile.failure();
+            let path = dunce::simplified(&path)
+                .to_str()
+                .ok_or_else(|| crate::errors::NativeOperation::OpenSettingsFile.failure())?;
+            let file = StorageFile::GetFileFromPathAsync(&HSTRING::from(path))
+                .map_err(fault)?
+                .join()
+                .map_err(fault)?;
+            let opened = Launcher::LaunchFileAsync(&file).map_err(fault)?.join().map_err(fault)?;
+            if opened {
+                Ok(())
+            } else {
+                Err(crate::errors::NativeOperation::OpenSettingsFile.failure())
+            }
+        }
+    })
+    .await
+    .map_err(|_| crate::errors::NativeOperation::OpenSettingsFile.failure())?
+}
+
 /// Settings' size and minimum on a screen whose work area is `area` in logical
 /// pixels: the design size where it fits, never larger than the screen (a 1440
 /// × 900 display at GDK_SCALE=2 is 720 × 450), so no control is ever off it.

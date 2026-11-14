@@ -1,6 +1,8 @@
 import { useId, useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
 import { Button } from "./Button";
-import { ViewFrame, leaveView } from "./ViewFrame";
+import { flushSync } from "react-dom";
+import { useLayer } from "./layers";
+import { ViewFrame } from "./ViewFrame";
 import { useScrollEdges } from "./ScrollArea";
 import "./Layout.css";
 import "./Sheet.css";
@@ -42,16 +44,18 @@ export function Sheet({ title, closeLabel, description, actions, leadingActions,
   const titleId = useId(), aboutId = useId();
   useScrollEdges(body);
   useLayoutEffect(() => { dialog.current?.focus(); }, []);
-  const dismiss = () => {
+  // Esc and Back go back (ui/layers). A command can open native UI next, so the sheet is already gone then.
+  const layer = useLayer("sheet", true, () => { flushSync(dismiss); });
+  function dismiss() {
     if (memory) {
       const focused = document.activeElement;
       memory.current = { focus: focused instanceof HTMLElement && focused !== dialog.current && dialog.current?.contains(focused) ? focusName(focused) : null,
         selection: focused instanceof HTMLInputElement ? [focused.selectionStart, focused.selectionEnd] : undefined,
         scroll: body.current?.scrollTop ?? 0 };
     }
-    if (dialog.current) leaveView(dialog.current);
+    layer.leave();
     onClose();
-  };
+  }
   // Any render can remove or disable the focused control.
   useLayoutEffect(() => {
     const focused = document.activeElement;
@@ -66,7 +70,7 @@ export function Sheet({ title, closeLabel, description, actions, leadingActions,
       memory!.current = null;
     }
   });
-  return <ViewFrame title={title} titleId={titleId} frameRef={dialog} back={{ label: closeLabel, onBack: dismiss }}
+  return <ViewFrame title={title} titleId={titleId} frameRef={dialog} back={{ label: closeLabel, onBack: dismiss }} layer={layer}
     role="dialog" aria-modal="true" aria-describedby={description ? aboutId : undefined}
     // Clicking plain text inside keeps focus here, so Escape still closes it.
     tabIndex={-1} actions={actions?.length ? actions.map(footerAction) : undefined} leadingActions={leadingActions?.length ? leadingActions.map(footerAction) : undefined}
@@ -93,7 +97,7 @@ export function Sheet({ title, closeLabel, description, actions, leadingActions,
 
 /** What a sheet will copy or save, kept as written and selectable, on a card. */
 export function SheetOutput({ children }: { children: ReactNode }) {
-  return <div className="ui-group"><p className="ui-sheet-output" dir="auto">{children}</p></div>;
+  return <div className="ui-group"><div className="ui-sheet-output" dir="auto">{children}</div></div>;
 }
 
 /** A line reserved under a sheet's content for a spinner or a problem, so nothing above it moves. */

@@ -7,8 +7,8 @@
 
 use crate::Failure;
 use ibis_core::contract::ErrorCode;
-use ibis_core::settings::{self, LibrarySetting, PrimaryRead, SettingsError, ZoteroLibrary as Chosen};
 use ibis_engine::request::ZoteroLibrary;
+use ibis_engine::settings::{self, LibrarySetting, PrimaryRead, SettingsError, ZoteroLibrary as Chosen};
 use std::path::{Path, PathBuf};
 
 /// The apps whose settings are read, in order: the first one with a settings
@@ -43,6 +43,24 @@ pub(crate) fn load() -> Result<AppLibraries, Failure> {
         }
     }
     Err(missing())
+}
+
+/// The app's settings, for the format it uses for each app (decision 0042):
+/// none yet means nothing is chosen, and settings that cannot be used as they
+/// are stop the command with their reason, never falling back.
+pub(crate) fn format_settings(nightly: bool) -> Result<settings::Settings, Failure> {
+    let (app, path) = crate::settings_backup::settings_file(nightly)?;
+    let loaded = settings::load(&path);
+    match &loaded.problem {
+        Some(problem) => Err(Failure::new(
+            problem_code(problem),
+            format!(
+                "cannot read the formats chosen in {app}: {}. Open {app} to repair its settings.",
+                problem_text(problem)
+            ),
+        )),
+        None => Ok(loaded.settings),
+    }
 }
 
 /// `None` when this app has no settings file at all, so the next app is tried.
@@ -106,6 +124,8 @@ fn read(app: &'static str, path: &Path) -> Result<Option<AppLibraries>, Failure>
 /// A fixed description: never the settings' own text, which may hold private values.
 fn problem_text(problem: &SettingsError) -> String {
     match problem {
+        SettingsError::Changed => "its settings changed while saving; try again".into(),
+        SettingsError::Busy => ibis_engine::settings_backup::settings_message(problem),
         SettingsError::Unreadable(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
             "this program is not allowed to read its settings file; allow it to, or run it outside the sandbox".into()
         }
@@ -125,10 +145,5 @@ fn problem_text(problem: &SettingsError) -> String {
 }
 
 fn problem_code(problem: &SettingsError) -> ErrorCode {
-    match problem {
-        SettingsError::NewerVersion(_) => ErrorCode::NewerFormat,
-        SettingsError::Invalid(_) | SettingsError::InvalidZoteroLibraryEntry { .. } => ErrorCode::BadInput,
-        SettingsError::Backup(inner) => problem_code(inner),
-        SettingsError::Unreadable(_) => ErrorCode::SourceUnavailable,
-    }
+    ibis_engine::settings_backup::settings_code(problem)
 }

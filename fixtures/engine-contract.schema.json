@@ -143,6 +143,7 @@
             "missing-item",
             "changed-item",
             "missing-key",
+            "missing-doi",
             "ambiguous-key",
             "conflicting-key",
             "invalid-key",
@@ -700,7 +701,7 @@
       ]
     },
     "Destination": {
-      "description": "What Ibis does for a named app: the output it uses and whether it pastes,\nwith pasting on and permitted, as they are by default. A choice remembered\nin the app for one app is that person's and stays out of this answer.",
+      "description": "What Ibis does for a named app: the format the engine chose for it from\nthe person's settings, and whether it pastes, with pasting on and\npermitted, as they are by default.",
       "type": "object",
       "properties": {
         "app": {
@@ -708,6 +709,10 @@
         },
         "delivery": {
           "$ref": "#/$defs/Decision"
+        },
+        "from": {
+          "description": "Which level chose `output`.",
+          "$ref": "#/$defs/FormatFrom"
         },
         "name": {
           "description": "The app's name, when Ibis knows it.",
@@ -719,11 +724,11 @@
         "output": {
           "$ref": "#/$defs/OutputSpec"
         },
-        "output_question": {
-          "description": "The app keeps `output` until a person answers this question in Ibis.",
+        "writing": {
+          "description": "The writing that chose it, when one did.",
           "anyOf": [
             {
-              "$ref": "#/$defs/OutputQuestion"
+              "$ref": "#/$defs/WritingName"
             },
             {
               "type": "null"
@@ -734,13 +739,55 @@
       "required": [
         "app",
         "output",
+        "from",
         "delivery"
       ]
     },
-    "DisplayNode": {
-      "description": "One display group owns ordered text leaves; shared punctuation has no item.",
+    "DisplayBlock": {
+      "description": "A block covers content runs in [start, end). Blocks are in opening order;\nranges are nested or disjoint, never crossing. Equal ranges retain nesting.",
       "type": "object",
       "properties": {
+        "end": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "kind": {
+          "$ref": "#/$defs/DisplayBlockKind"
+        },
+        "start": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "kind",
+        "start",
+        "end"
+      ]
+    },
+    "DisplayBlockKind": {
+      "description": "Passive CSL layout, independent of HTML class names or CSS.",
+      "type": "string",
+      "enum": [
+        "entry",
+        "margin",
+        "inline",
+        "block",
+        "indent"
+      ]
+    },
+    "DisplayNode": {
+      "description": "One display group owns ordered text leaves and their block layout;\nshared punctuation has no item.",
+      "type": "object",
+      "properties": {
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DisplayBlock"
+          }
+        },
         "content": {
           "type": "array",
           "items": {
@@ -757,7 +804,8 @@
         }
       },
       "required": [
-        "content"
+        "content",
+        "blocks"
       ]
     },
     "DisplayRun": {
@@ -791,7 +839,7 @@
       ]
     },
     "DisplayTree": {
-      "description": "A bounded-depth tree: root -> ownership groups -> styled text leaves.",
+      "description": "Ownership groups with bounded-depth passive blocks and styled text leaves.",
       "type": "object",
       "properties": {
         "nodes": {
@@ -808,6 +856,16 @@
     "EngineError": {
       "type": "object",
       "properties": {
+        "citation_error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CitationError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "code": {
           "$ref": "#/$defs/ErrorCode"
         },
@@ -960,6 +1018,11 @@
           "const": "no-answer"
         },
         {
+          "description": "The app's library settings did not finish loading in time.",
+          "type": "string",
+          "const": "settings-read-timeout"
+        },
+        {
           "description": "Zotero is running but does not let other applications read it.",
           "type": "string",
           "const": "zotero-sharing-off"
@@ -1085,6 +1148,31 @@
         "project-menu",
         "settings",
         "request"
+      ]
+    },
+    "FormatFrom": {
+      "description": "Which level chose a citation's format (decision 0042); the engine decides.",
+      "oneOf": [
+        {
+          "description": "The writing chosen for this app.",
+          "type": "string",
+          "const": "writing"
+        },
+        {
+          "description": "The format this app was given when the person changed it there.",
+          "type": "string",
+          "const": "app"
+        },
+        {
+          "description": "Your format for this kind of app.",
+          "type": "string",
+          "const": "yours"
+        },
+        {
+          "description": "Nothing was chosen; the format suits the kind of app. The first\npaste with it says so, once.",
+          "type": "string",
+          "const": "suggestion"
+        }
       ]
     },
     "FormattingProvenance": {
@@ -1292,6 +1380,8 @@
         "scannable-cite",
         "keys",
         "csl-json",
+        "bibtex",
+        "doi-links",
         "cayw-json"
       ]
     },
@@ -1582,14 +1672,6 @@
             "input-language-unsupported"
           ]
         }
-      ]
-    },
-    "OutputQuestion": {
-      "description": "An app ID that cannot tell Ibis which output its document needs.",
-      "type": "string",
-      "enum": [
-        "browser",
-        "editor"
       ]
     },
     "OutputSpec": {
@@ -2281,6 +2363,23 @@
       "additionalProperties": false,
       "required": [
         "text"
+      ]
+    },
+    "WritingName": {
+      "description": "The writing that chose a format.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name"
       ]
     },
     "ZoteroTable": {

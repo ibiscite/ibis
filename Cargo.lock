@@ -2091,6 +2091,7 @@ dependencies = [
  "icu_locale_core",
  "rquickjs",
  "ruzstd",
+ "schemars 1.2.3",
  "serde",
  "serde_json",
  "sha2 0.11.1",
@@ -2107,7 +2108,6 @@ dependencies = [
  "dunce",
  "getrandom 0.3.4",
  "gtk",
- "ibis",
  "ibis-core",
  "ibis-desktop-macros",
  "ibis-engine",
@@ -2156,6 +2156,8 @@ dependencies = [
  "ibis-core",
  "ibis-csl",
  "ibis-sources",
+ "libc",
+ "notify",
  "schemars 1.2.3",
  "serde",
  "serde_json",
@@ -2163,6 +2165,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "unic-langid",
+ "unicode-normalization",
 ]
 
 [[package]]

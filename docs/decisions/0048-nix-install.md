@@ -13,8 +13,8 @@ keeping maintenance in the repository and its agents.
 - Nixpkgs is pinned to the specified nixos-26.05 commit directly in the flake.
   The obsolete lock is omitted; CI generates and preserves a matching lock.
 - A separate read-only workflow builds the CLI on Linux and macOS and the
-  desktop with package checks on Linux, on relevant pull requests, weekly
-  and by hand. It is not part of the required **CI result**.
+  desktop with package checks on Linux, on relevant main pushes, weekly
+  and by hand. It is independent of the [local merge gate](0049-local-gate.md).
 - Desktop dependencies keep their hash in `nix/pnpm-deps-hash`. A failed Nix
   job prints the new hash and the exact `scripts/nix-pnpm-hash.mjs` command;
   agents update it in the same pull request as the pnpm lock.

@@ -4,6 +4,36 @@
 Exit 1 means a failed assertion; exit 2 means the session lacks a required native
 capability. Only synthetic test text is recorded, never the accessibility tree or
 clipboard contents. See ../CONTRIBUTING.md before running on a personal desktop.
+
+Journeys (daily/manual CI and Preview run them on the installed nightly):
+
+`scripts/smoke-native.py` drives the real desktop app with invented data.
+Daily/manual CI runs installed nightly journeys; Preview checks package
+install/start and offline observation.
+Hosted runner coverage is listed in [compatibility](compatibility.md#platforms-tested-and-targeted).
+
+- **Linux/X11:** Xvfb/Openbox, one display and the default layout. Checks
+  shortcut/focus, search, Pandoc clipboard text, hide/reopen, settings, reload
+  and recovery. After Enter copies, it checks the reason, explicitly pastes
+  with Shift+Insert into its xterm editor and reads the citation back.
+  Require passing `smoke.json`; 100k launch/memory figures are diagnostics.
+- **macOS journey:** `bash scripts/hands-on-macos.sh --journey` installs a
+  nightly in an isolated profile and invokes the harness. From TextEdit,
+  selected text becomes the search; Enter must replace it with the expected
+  citation exactly once, verified through Accessibility. A safe copy gets
+  one retry. A Terminal collector must receive no keys. Missing terminal
+  Accessibility permission or an already open TextEdit makes it unavailable.
+  Daily/manual CI runs this journey on the installed nightly.
+- **Windows journey:** `smoke-native.py --journey` uses Notepad and an inert
+  console collector. It types the search, checks selection replacement once
+  through `WM_GETTEXT`, and checks that the console gets no automatic input.
+  `journey.json` records the editor and console host. A locked/disconnected
+  desktop is unavailable. `scripts/windows-journey.ps1` supplies native control.
+
+The separate Windows paste primitive test bypasses the picker. Foreground
+denial can skip it. macOS/Windows notice text is checked only when native
+accessibility exposes it. These journeys do not establish every editor,
+keyboard layout, screen reader, cloud provider or Wayland compositor.
 """
 import argparse
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
@@ -511,6 +541,7 @@ def claim_settings(candidate):
 
 
 CLIPBOARD_SENTINEL = "Ibis native smoke clipboard sentinel"
+CLIPBOARD_READ_TIMEOUT = 3
 
 
 def prime_clipboard(native):
@@ -548,7 +579,7 @@ def quiet_key_window(key_window):
         return None
 
 
-def copy_with_diagnostics(native, report, key_window=None):
+def copy_with_diagnostics(native, report, key_window=None, *, expected="[@smoke000001]"):
     """Press Return once in the picker and require the exact citation.
 
     On macOS the search field's accessible focus is only the WebView's DOM
@@ -567,11 +598,15 @@ def copy_with_diagnostics(native, report, key_window=None):
             raise
     native.key("Return")
     started = time.monotonic()
-    clipboard = {"polls": 0, "expected": False, "sentinel": False, "empty": False}
+    clipboard = {"polls": 0, "stalled_reads": 0, "expected": False, "sentinel": False, "empty": False}
 
     def copied():
-        value = native.clipboard()
-        clipboard.update(polls=clipboard["polls"] + 1, expected=value == "[@smoke000001]",
+        try:
+            value = native.clipboard(timeout=CLIPBOARD_READ_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            clipboard["stalled_reads"] += 1
+            raise
+        clipboard.update(polls=clipboard["polls"] + 1, expected=value == expected,
                          sentinel=value == CLIPBOARD_SENTINEL, empty=value == "")
         return clipboard["expected"]
 
@@ -585,6 +620,15 @@ def copy_with_diagnostics(native, report, key_window=None):
                                   "after_timeout": copy_picker_observation(native)}
         if key_window is not None:
             report["copy_failure"]["key_window_after_timeout"] = quiet_key_window(key_window)
+        # Only Linux offers these X11 probes. Look on the type so an optional
+        # method on a plain Mock cannot manufacture non-JSON failure facts.
+        probe = getattr(type(native), "clipboard_facts", None)
+        if probe is not None:
+            try:
+                with open(os.devnull, "w") as quiet, redirect_stdout(quiet), redirect_stderr(quiet):
+                    clipboard["formats"] = probe(native)
+            except Exception:
+                clipboard["formats"] = {"available": False}
         print("NATIVE COPY FAILURE " + json.dumps(report["copy_failure"]), file=sys.stderr)
         raise
 
@@ -1330,6 +1374,29 @@ class Linux:
         # is appropriate for window IDs, not copied citation text.
         return subprocess.check_output(["xclip", "-selection", "clipboard", "-out"],
                                        text=True, stderr=subprocess.PIPE, timeout=timeout)
+
+    def clipboard_facts(self):
+        """Independent bounded X11 probes; retain target names, never content/errors."""
+        facts = {"offered_targets": []}
+        for target in ("TARGETS", "text/html"):
+            command = ["xclip", "-selection", "clipboard", "-out", "-target", target]
+            try:
+                if target == "TARGETS":
+                    names = subprocess.check_output(command, text=True, stderr=subprocess.PIPE,
+                                                    timeout=CLIPBOARD_READ_TIMEOUT)
+                    if type(names) is not str:
+                        raise ValueError("Invalid target names")
+                    facts["offered_targets"] = names.splitlines()
+                else:
+                    # HTML is not needed even transiently in Python or a diagnostic exception.
+                    subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                   check=True, timeout=CLIPBOARD_READ_TIMEOUT)
+                facts[target] = "succeeded"
+            except subprocess.TimeoutExpired:
+                facts[target] = "stalled"
+            except (OSError, subprocess.SubprocessError, ValueError):
+                facts[target] = "errored"
+        return facts
 
     def set_clipboard(self, text):
         subprocess.run(["xclip", "-selection", "clipboard", "-in"], input=text, text=True, check=True,
@@ -2559,10 +2626,13 @@ def smoke_main(args):
             wait_for_query(snapshot, "smoke000001", "Ibis smoke reference 000001", report, settled=True)
 
             def copy():
+                # Linux captures no destination app. Decision 0042 now suggests
+                # APA for an unknown app, rather than the old Pandoc default.
+                citation = "(Example, 2026)"
                 # Installed release builds never report the non-activating panel as the
                 # key window although Return still reaches it (#454), so the
                 # key-window wait stays out of the native copy check.
-                copy_with_diagnostics(native, report)
+                copy_with_diagnostics(native, report, expected=citation)
                 wait_for(lambda: not snapshot()["visible"], "copy hides picker")
                 try:
                     wait_for(native.editor_focused, "copy restores focus to previous editor")
@@ -2579,7 +2649,7 @@ def smoke_main(args):
                     before = native.editor_received()
                     assert before["available"], "Synthetic editor exited before the paste"
                     native.key("shift+Insert")
-                    wait_for(lambda: native.editor_received().get("text") == before["text"] + "[@smoke000001]",
+                    wait_for(lambda: native.editor_received().get("text") == before["text"] + citation,
                              "the person's paste puts exactly the citation into the editor", timeout=5)
 
             def live_settings_copy():
@@ -3813,16 +3883,18 @@ class ContractTests(unittest.TestCase):
         return patch.multiple(time, monotonic=clock.monotonic, sleep=clock.sleep)
 
     def test_native_copy_accepts_a_later_equality_poll_without_another_return(self):
-        native, report, clock = self.copy_setup(19)
-        sentinel = "Ibis native smoke clipboard sentinel"
-        native.clipboard.side_effect = [sentinel, sentinel, "[@smoke000001]"]
-        with self.copy_time(clock):
-            copy_with_diagnostics(native, report)
-        self.assertEqual(native.key.call_args_list, [call("Return")])
-        self.assertEqual(native.clipboard.call_count, 3)
-        self.assertEqual(native.snapshot.call_count, 1)
-        self.assertNotIn("copy_failure", report)
-        self.assertEqual(native.mock_calls[:4], [call.set_clipboard(sentinel), call.clipboard(), call.snapshot(), call.key("Return")])
+        for citation in ("[@smoke000001]", "(Example, 2026)"):
+            with self.subTest(citation=citation):
+                native, report, clock = self.copy_setup(19)
+                sentinel = "Ibis native smoke clipboard sentinel"
+                native.clipboard.side_effect = [sentinel, sentinel, citation]
+                with self.copy_time(clock):
+                    copy_with_diagnostics(native, report, expected=citation)
+                self.assertEqual(native.key.call_args_list, [call("Return")])
+                self.assertEqual(native.clipboard.call_count, 3)
+                self.assertEqual(native.snapshot.call_count, 1)
+                self.assertNotIn("copy_failure", report)
+                self.assertEqual(native.mock_calls[:4], [call.set_clipboard(sentinel), call.clipboard(), call.snapshot(), call.key("Return")])
 
     def test_return_waits_until_the_picker_owns_the_keyboard(self):
         native, report, clock = self.copy_setup(1)
@@ -3876,7 +3948,8 @@ class ContractTests(unittest.TestCase):
         self.assertFalse(facts["after_timeout"]["visible"])
         self.assertFalse(facts["after_timeout"]["search_focused"])
         self.assertTrue(facts["after_timeout"]["copy_error_present"])
-        self.assertEqual(facts["clipboard"], {"polls": 2, "elapsed_seconds": 20, "expected": False, "sentinel": True, "empty": False})
+        self.assertEqual(facts["clipboard"], {"polls": 2, "stalled_reads": 0, "elapsed_seconds": 20,
+                                             "expected": False, "sentinel": True, "empty": False})
         self.assertEqual(native.key.call_args_list, [call("Return")])
         self.assertEqual(native.clipboard.call_count, 3, "A late diagnostic read must not replace the failed final poll")
 
@@ -3904,7 +3977,9 @@ class ContractTests(unittest.TestCase):
                     self.assertFalse(facts["after_timeout"]["search_focused"])
                     self.assertTrue(facts["after_timeout"]["copy_error_present"])
                     self.assertEqual(facts["clipboard"], {"polls": completed, "expected": False,
-                                     "sentinel": bool(completed), "empty": False, "elapsed_seconds": completed * 10})
+                                     "sentinel": bool(completed), "empty": False, "elapsed_seconds": completed * 10,
+                                     "stalled_reads": int(isinstance(original, subprocess.TimeoutExpired))})
+                    self.assertEqual(native.clipboard.call_args_list[1:], [call(timeout=3)] * (completed + 1))
                     self.assertEqual(native.clipboard.call_count, completed + 2, "Never read again after the failed poll")
                     self.assertEqual(native.snapshot.call_count, 2)
                     self.assertEqual(native.key.call_args_list, [call("Return")])
@@ -3938,7 +4013,7 @@ class ContractTests(unittest.TestCase):
     def test_copy_keeps_success_from_a_poll_started_before_the_deadline(self):
         native, report, clock = self.copy_setup()
         reads = iter(["Ibis native smoke clipboard sentinel", "[@smoke000001]"])
-        def clipboard():
+        def clipboard(**_options):
             value = next(reads)
             if value == "[@smoke000001]":
                 clock.elapsed = 25  # The existing wait accepts this completed read.
@@ -4003,6 +4078,55 @@ class ContractTests(unittest.TestCase):
                     self.assertFalse(facts[stage]["copy_error_present"])
                     self.assertTrue(all(type(value) is bool for value in facts[stage].values()))
                 self.assertNotIn("private", errors.getvalue() + json.dumps(report))
+
+    def test_linux_copy_failure_adds_independent_format_facts_without_payloads(self):
+        native = Linux.__new__(Linux)
+        native.set_clipboard, native.key = Mock(), Mock()
+        original = subprocess.TimeoutExpired(["private command"], 3, output="private text")
+        native.snapshot = Mock(return_value=self.copy_snapshot())
+        report, clock, errors = {}, self.CopyClock(1), io.StringIO()
+        with self.copy_time(clock), patch("sys.stderr", errors), \
+             patch("subprocess.check_output", side_effect=[CLIPBOARD_SENTINEL, CLIPBOARD_SENTINEL, original,
+                   "TARGETS\nUTF8_STRING\ntext/html\n"]) as reads, \
+             patch("subprocess.run", return_value=subprocess.CompletedProcess([], 0, stdout="private HTML")) as html, \
+             self.assertRaises(subprocess.TimeoutExpired) as caught:
+            copy_with_diagnostics(native, report)
+        self.assertIs(caught.exception, original)
+        facts = report["copy_failure"]["clipboard"]
+        self.assertEqual((facts["polls"], facts["stalled_reads"], facts["expected"]), (1, 1, False))
+        self.assertEqual(facts["formats"], {"TARGETS": "succeeded", "text/html": "succeeded",
+                                          "offered_targets": ["TARGETS", "UTF8_STRING", "text/html"]})
+        self.assertEqual(reads.call_args.args[0], ["xclip", "-selection", "clipboard", "-out", "-target", "TARGETS"])
+        self.assertEqual(html.call_args.args[0], ["xclip", "-selection", "clipboard", "-out", "-target", "text/html"])
+        self.assertEqual([read.kwargs["timeout"] for read in reads.call_args_list[1:]], [3, 3, 3])
+        self.assertEqual(html.call_args.kwargs, {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL,
+                                               "check": True, "timeout": 3})
+        self.assertEqual(reads.call_count, 4, "Only TARGETS is read after the failed text poll")
+        native.key.assert_called_once_with("Return")
+        self.assertNotIn("private", errors.getvalue() + json.dumps(report))
+
+    def test_linux_clipboard_format_failures_are_bounded_independent_and_private(self):
+        private = "private clipboard and helper payload"
+        failures = [(subprocess.TimeoutExpired([private], 3, output=private, stderr=private), "stalled"),
+                    (subprocess.CalledProcessError(1, [private], output=private, stderr=private), "errored"),
+                    (OSError(private), "errored")]
+        target_outcomes = [("TARGETS\nUTF8_STRING\ntext/html\n", "succeeded"), (Mock(), "errored")] + failures
+        html_outcomes = [(subprocess.CompletedProcess([], 0, stdout=private), "succeeded")] + failures
+        for target_result, targets_status in target_outcomes:
+            for html_result, html_status in html_outcomes:
+                targets = Mock(side_effect=target_result) if isinstance(target_result, Exception) else Mock(return_value=target_result)
+                html = Mock(side_effect=html_result) if isinstance(html_result, Exception) else Mock(return_value=html_result)
+                with self.subTest(targets=targets_status, html=html_status), \
+                     patch("subprocess.check_output", targets), patch("subprocess.run", html):
+                    facts = Linux.__new__(Linux).clipboard_facts()
+                    self.assertEqual(facts, {"TARGETS": targets_status, "text/html": html_status,
+                                             "offered_targets": ["TARGETS", "UTF8_STRING", "text/html"]
+                                             if targets_status == "succeeded" else []})
+                    self.assertEqual(targets.call_count, 1)
+                    self.assertEqual(html.call_count, 1, "A TARGETS failure must not skip the HTML probe")
+                    self.assertEqual(targets.call_args.kwargs["timeout"], 3)
+                    self.assertEqual(html.call_args.kwargs["timeout"], 3)
+                    self.assertNotIn(private, json.dumps(facts))
 
     class InitialPickerModel:
         def __init__(self, visible=True, search_ready=True, accepts_escape=True, owns_keys=True):

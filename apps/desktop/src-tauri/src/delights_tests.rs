@@ -26,7 +26,7 @@ fn surprises_off_keeps_tips_and_counts_but_does_not_claim_fun_items() {
             .is_empty()
     );
     file.flush_delights().unwrap();
-    let saved = ibis_core::settings::load(&path).settings;
+    let saved = ibis_engine::settings::load(&path).settings;
     assert_eq!(saved.small_surprises, Some(false));
     assert_eq!(saved.delights.unwrap().paste_count, 1);
 }
@@ -300,12 +300,12 @@ fn saved_delights_preserve_other_settings_and_old_files_remain_optional() {
     settings.claim_delights(moment(2026, 11, 1), true, None);
     settings.flush_delights().unwrap();
     settings.update(|s| s.larger_text = Some(true)).unwrap();
-    let saved = ibis_core::settings::load(&path).settings;
+    let saved = ibis_engine::settings::load(&path).settings;
     assert_eq!(saved.shortcut.here(), Some("Alt+Space"));
     assert_eq!(saved.unknown["invented_future"], original["invented_future"]);
     assert!(saved.delights.is_some());
     assert!(
-        serde_json::to_value(ibis_core::settings::Settings::default())
+        serde_json::to_value(ibis_engine::settings::Settings::default())
             .unwrap()
             .get("delights")
             .is_none()
@@ -336,7 +336,7 @@ fn the_shorthand_hint_is_shown_three_times_on_a_computer_then_never() {
     );
     file.flush_delights().unwrap();
     assert_eq!(
-        ibis_core::settings::load(&path)
+        ibis_engine::settings::load(&path)
             .settings
             .delights
             .unwrap()

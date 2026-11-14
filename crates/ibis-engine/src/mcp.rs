@@ -280,6 +280,8 @@ pub struct Session {
     submission: Option<Arc<crate::citations::SubmittedCitation>>,
     legacy: bool,
     library_problem: Option<Refusal>,
+    /// Where the app's settings are read for the format each app uses.
+    formats: Formats,
 }
 
 struct ConnectionCitations {
@@ -314,6 +316,30 @@ impl Session {
             ..Self::default()
         }
     }
+
+    /// Choose `for_app` formats from the app's settings file, read at each call
+    /// so an edit applies at once (decision 0042).
+    pub fn with_formats(mut self, settings: std::path::PathBuf) -> Self {
+        self.formats = Formats::File(settings);
+        self
+    }
+
+    /// The app's settings cannot be found here, so `for_app` is refused with
+    /// this rather than answered from defaults.
+    pub fn without_formats(mut self, problem: Refusal) -> Self {
+        self.formats = Formats::Unavailable(problem);
+        self
+    }
+}
+
+/// Where `for_app` reads the formats chosen in the app.
+#[derive(Debug, Default, Clone)]
+pub(crate) enum Formats {
+    /// Nothing is chosen: a server embedded without app settings, as in tests.
+    #[default]
+    Defaults,
+    File(std::path::PathBuf),
+    Unavailable(Refusal),
 }
 
 const CAPABILITIES_KEY: &str = "io.modelcontextprotocol/clientCapabilities";
@@ -474,6 +500,7 @@ fn handle_message(engine: &Engine, session: &mut Session, message: &Value, cance
                 Some(tool) => tools::call(
                     engine,
                     session.library_problem.as_ref(),
+                    &session.formats,
                     tool,
                     &arguments,
                     cancel,

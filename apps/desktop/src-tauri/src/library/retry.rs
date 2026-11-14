@@ -4,7 +4,7 @@
 use std::sync::Mutex;
 use std::sync::atomic::Ordering;
 
-use ibis_core::settings::ZoteroLibraries;
+use ibis_engine::settings::ZoteroLibraries;
 
 use super::source::Source;
 use super::state::{Library, LoadRequests, record_open};
@@ -113,7 +113,7 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    use ibis_core::settings::ZoteroLibrary;
+    use ibis_engine::settings::ZoteroLibrary;
 
     use crate::library::error::{LoadError, ZOTERO_OFFLINE};
     use crate::library::load::Loaded;

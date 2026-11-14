@@ -4,6 +4,9 @@ use ibis_core::{
     contract::*,
     search::{MatchField, SnapshotIndex},
 };
+pub use ibis_csl::{
+    LocaleEntry as LocaleInfo, Release as UpstreamRelease, StyleEntry as StyleInfo, StylePage as StylesResult,
+};
 pub use ibis_sources::{LibraryKind, SourceCapability, SourceWarning, WarningCause, WarningCode};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -23,15 +26,14 @@ mod sources;
 pub use sources::{PreparedFileReload, PreparedZoteroReload};
 
 pub(crate) mod formatting;
-pub use formatting::Cancellation;
+pub use formatting::{Cancellation, Formatting};
 mod prepared;
 mod receipt;
 pub use prepared::{CitationCommitError, PreparedCitation};
 mod project;
 pub use ibis_sources::project::{Doubt, EntryRefusal, KeyCheck, ProjectProblem, ProjectRead};
 pub use project::{
-    EntryResult, ProjectAssessment, ProjectAssessmentState, ProjectKey, ProjectResult, WritingProjectCitation,
-    project_name,
+    EntryResult, ProjectAssessment, ProjectAssessmentState, ProjectKey, ProjectResult, WritingCitation, project_name,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -142,54 +144,11 @@ pub struct SearchResult {
     /// The libraries searched, as they were when these hits were found.
     pub source_health: health::SourceHealth,
 }
-#[derive(Debug, Clone, Serialize, JsonSchema)]
-pub struct StylesResult {
-    pub styles: Vec<StyleInfo>,
-    /// How many styles match the request, beyond this page.
-    pub total: usize,
-    /// Every language a style can be written in.
-    pub locales: Vec<LocaleInfo>,
-    /// Styles change only with an Ibis release; these say which release.
-    pub styles_release: UpstreamRelease,
-    pub locales_release: UpstreamRelease,
-}
-#[derive(Debug, Clone, Serialize, JsonSchema)]
-pub struct StyleInfo {
-    pub id: String,
-    pub title: String,
-    /// The style's own last-changed date: its only version marker.
-    pub updated: String,
-    /// One of the styles offered first.
-    pub curated: bool,
-    /// The independent style whose rules this one uses.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub parent: Option<String>,
-    /// The language this style is written in unless a request names another.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub default_locale: Option<String>,
-    /// CSL's citation format, such as `author-date`, `numeric` or `note`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub format: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub fields: Vec<String>,
-}
-#[derive(Debug, Clone, Serialize, JsonSchema)]
-pub struct LocaleInfo {
-    pub tag: String,
-    pub native: String,
-    pub english: String,
-}
-#[derive(Debug, Clone, Serialize, JsonSchema)]
-pub struct UpstreamRelease {
-    pub repo: String,
-    pub tag: String,
-    pub commit: String,
-}
 #[derive(Debug)]
 pub struct DispatchResult {
     pub data: Value,
     pub exit_code: ExitCode,
-    /// Literal terminal citation only after the canonical completeness/hash gate.
+    /// Checked terminal content; record exports may report refused records beside it.
     pub text: Option<String>,
     pub source_findings: bool,
 }
@@ -213,12 +172,37 @@ impl DispatchResult {
             .map_err(|_| error(ErrorCode::ResourceLimit))?;
         Ok(self)
     }
-    pub fn citation(result: CitationResult, expected_items: usize) -> Result<Self, EngineError> {
+    pub fn citation(result: CitationResult, expected_items: usize, output: &OutputSpec) -> Result<Self, EngineError> {
         let source_findings = result.receipt.as_ref().is_some_and(receipt::source_findings);
         let text = result
             .copy_content(expected_items)
-            .map(|content| content.text.to_owned());
-        let exit_code = if result.losses.is_empty() && text.is_some() && !source_findings {
+            .map(|content| content.text.to_owned())
+            .or_else(|| {
+                // Sharing can keep usable records while naming those refused.
+                // A citation still requires the canonical completeness gate.
+                (crate::outputs::named(output).is_some_and(|output| output.exports_records)
+                    && result.outcomes.len() == expected_items
+                    && result
+                        .outcomes
+                        .iter()
+                        .enumerate()
+                        .all(|(index, outcome)| match outcome {
+                            ItemOutcome::Rendered { item } => *item == index,
+                            ItemOutcome::Refused { item, error } => *item == index && *error != CitationError::Unknown,
+                            ItemOutcome::Unknown => false,
+                        })
+                    && result
+                        .outcomes
+                        .iter()
+                        .any(|outcome| matches!(outcome, ItemOutcome::Rendered { .. }))
+                    && result.html.is_none()
+                    && result.rtf.is_none()
+                    && !result.text.trim().is_empty()
+                    && !result.text.contains('\0')
+                    && result.content_matches_hash())
+                .then(|| result.text.clone())
+            });
+        let exit_code = if result.is_complete() && result.losses.is_empty() && text.is_some() && !source_findings {
             ExitCode::Ok
         } else {
             ExitCode::Findings
@@ -294,7 +278,6 @@ struct State {
 }
 pub(crate) struct Shared {
     pub(crate) citations: crate::citations::Registry,
-    formatter: Mutex<Option<ibis_csl::Formatter>>,
     state: RwLock<Arc<State>>,
     /// Serializes publications without blocking readers during index building.
     publication: Mutex<()>,
@@ -306,7 +289,6 @@ impl Shared {
     fn new(state: Arc<State>) -> Self {
         Self {
             citations: crate::citations::Registry::default(),
-            formatter: Mutex::new(None),
             state: RwLock::new(state),
             publication: Mutex::new(()),
             subscribers: Mutex::new(BTreeMap::new()),
@@ -318,6 +300,7 @@ impl Shared {
 #[derive(Clone)]
 pub struct Engine {
     pub(crate) shared: Arc<Shared>,
+    formatting: Formatting,
     resources: Arc<sources::Owners>,
     watch_files: bool,
 }
@@ -332,6 +315,11 @@ impl Engine {
         self.watch_files = false;
         self
     }
+    /// Reuse a session's compiled style when replacing its library.
+    pub fn with_formatting(mut self, formatting: Formatting) -> Self {
+        self.formatting = formatting;
+        self
+    }
     pub fn from_snapshot(snapshot: Arc<Snapshot>) -> Self {
         let mut libraries = BTreeMap::<LibraryId, LibraryInfo>::new();
         for item in snapshot.objects() {
@@ -342,6 +330,7 @@ impl Engine {
                 .objects += 1;
         }
         Self {
+            formatting: Formatting::default(),
             shared: Arc::new(Shared::new(Arc::new(State {
                 accepted: Arc::new(()),
                 zotero_generation: 0,
@@ -728,18 +717,9 @@ impl Engine {
     ) -> Result<CitationResult, EngineError> {
         let request = &resolved.request;
         let snapshot = &context.snapshot;
-        if request.items.is_empty() || request.items.len() > ibis_core::syntax::MAX_CITATION_ITEMS {
-            return Err(error(ErrorCode::BadInput));
-        }
         crate::wire::serialized_size(request, crate::protocol::MAX_REQUEST_BYTES)
             .map_err(|_| error(ErrorCode::ResourceLimit))?;
-        let key_error = |failure| {
-            error(if failure == CitationError::OutputTooLarge {
-                ErrorCode::ResourceLimit
-            } else {
-                ErrorCode::BadInput
-            })
-        };
+        let key_error = EngineError::citation;
         let mut result = match &request.output {
             OutputSpec::Key {
                 syntax: KeySyntax::ScannableCite,
@@ -828,7 +808,7 @@ impl Engine {
             Method::Cite => {
                 let request: CitationRequest = parameters(params)?;
                 let checked = self.prepare_citation(&request, cancel)?.into_checked();
-                return DispatchResult::citation(checked.value, request.items.len())?
+                return DispatchResult::citation(checked.value, request.items.len(), &request.output)?
                     .with_health(&checked.source_health);
             }
             Method::Records => {
@@ -842,7 +822,7 @@ impl Engine {
                     .warnings
                     .iter()
                     .any(|warning| warning.code == CitationWarningCode::SourceField);
-                let mut dispatched = DispatchResult::citation(result, count)?;
+                let mut dispatched = DispatchResult::citation(result, count, &request.output)?;
                 if unread {
                     dispatched.exit_code = ExitCode::Findings;
                 }

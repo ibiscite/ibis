@@ -1,7 +1,8 @@
 name: Nix
 
 on:
-  pull_request:
+  push:
+    branches: [main]
     paths:
       - .github/workflows/nix.yml
       - flake.nix
@@ -17,13 +18,13 @@ on:
     - cron: "29 6 * * 1"
   workflow_dispatch:
 
-# This workflow reports independently; it is not a dependency of CI result.
+# This workflow reports independently; it confirms Nix builds after merge.
 permissions:
   contents: read
 
 concurrency:
   group: nix-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 jobs:
   cli:

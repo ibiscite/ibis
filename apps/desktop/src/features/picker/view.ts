@@ -73,7 +73,7 @@ export function deriveView(s: SessionState): SessionView | null {
   const key = previewKey(output, o.version, choiceKey(shownChoice), d.destination?.context_version ?? null, s.keepOrder);
   const preview = ownedPreview(s.preview, key, s.session, s.opened);
   return {
-    appId: d.destination?.app_id ?? null, writingProjectId: d.destination?.writing_project?.id ?? null, projectVersion: projectVersion(d),
+    appId: d.destination?.app_id ?? null, writingId: d.destination?.writing?.id ?? null, projectVersion: projectVersion(d),
     queryKey: sessionQueryKeyOf(s), format, snapshotRevision: o.library?.revision,
     defaultChoice: list && status.ready ? choiceKey(results) : choiceKey(highlighted),
     chosen, shown: preview ? preview.value : null, searchPending: status.pending,

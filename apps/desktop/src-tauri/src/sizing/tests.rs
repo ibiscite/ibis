@@ -151,7 +151,7 @@ fn sizing_hidden_choice_without_display_identity_survives_reopen_only_in_session
     assert_eq!(save.windows.len(), 1);
     assert!(!save.windows.contains_key(""));
     assert_eq!(sizing.persist(&file, save), Some(true));
-    let settings = ibis_core::settings::load(&file.path).settings;
+    let settings = ibis_engine::settings::load(&file.path).settings;
     assert!(!settings.picker_windows.contains_key(""));
     let relaunched = Sizing::default();
     relaunched.load(&settings);
@@ -410,7 +410,7 @@ fn sizing_takes_the_text_size_at_dispatch_and_keeps_it_if_its_save_fails() {
             .record("display-a".into(), dragged(840, 600))
             .unwrap_or_else(|| panic!("missing synthetic frame"));
         assert_eq!(sizing.persist(&app.state::<SettingsFile>(), geometry), Some(true));
-        let saved = ibis_core::settings::load(&path).settings;
+        let saved = ibis_engine::settings::load(&path).settings;
         assert_eq!(
             saved.picker_windows["display-a"],
             remember(dragged(840, 600), (3000.0, 2000.0))
@@ -541,7 +541,7 @@ fn sizing_a_delayed_event_reads_the_live_frame_and_cannot_restore_an_older_drag(
     assert_eq!(sizing.persist(&file, b), Some(true));
     assert_eq!(sizing.persist(&file, a), None);
     assert_eq!(
-        ibis_core::settings::load(&file.path).settings.picker_windows["display-a"],
+        ibis_engine::settings::load(&file.path).settings.picker_windows["display-a"],
         remember(dragged(840, 600), (3000.0, 2000.0))
     );
 }
@@ -567,7 +567,7 @@ fn sizing_failed_save_keeps_the_visible_frame_for_reopen_and_a_later_drag_can_sa
         .unwrap_or_else(|| panic!("missing synthetic frame"));
     assert_eq!(sizing.persist(&file, save), Some(true));
     assert_eq!(
-        ibis_core::settings::load(&path).settings.picker_windows["display-a"],
+        ibis_engine::settings::load(&path).settings.picker_windows["display-a"],
         remember(dragged(840, 600), (3000.0, 2000.0))
     );
 }
@@ -587,7 +587,7 @@ fn sizing_hide_reopen_relaunch_and_another_display_keep_independent_sizes_and_ot
         .unwrap_or_else(|| panic!("missing synthetic frame"));
     assert_eq!(sizing.persist(&file, a), None);
     assert_eq!(sizing.persist(&file, b), Some(true));
-    let settings = ibis_core::settings::load(&file.path).settings;
+    let settings = ibis_engine::settings::load(&file.path).settings;
     assert_eq!(settings.larger_text, Some(true));
     let restarted = Sizing::default();
     restarted.load(&settings);
@@ -660,7 +660,7 @@ fn sizing_reset_invalidates_pending_drag_and_clears_only_this_displays_spot() {
         sizing.remembered("display-b", (3000.0, 2000.0)),
         Some(dragged(640, 400))
     );
-    let settings = ibis_core::settings::load(&file.path).settings;
+    let settings = ibis_engine::settings::load(&file.path).settings;
     assert_eq!(settings.picker_windows["display-a"].position, None);
     let reopened = plan(
         Some(restore(settings.picker_windows["display-a"], (3000.0, 2000.0))),
@@ -776,7 +776,7 @@ fn sizing_a_save_waiting_for_the_settings_owner_is_obsolete_before_it_can_write(
             None
         );
     });
-    let saved = ibis_core::settings::load(&file.path).settings;
+    let saved = ibis_engine::settings::load(&file.path).settings;
     assert_eq!(
         saved.picker_windows["display-a"],
         remember(dragged(840, 600), (3000.0, 2000.0))
@@ -827,7 +827,7 @@ fn sizing_owned_worker_flushes_on_hide_then_drains_the_final_frame_before_exit()
         (1, true)
     );
     assert_eq!(
-        ibis_core::settings::load(&file.path).settings.picker_windows["display-a"],
+        ibis_engine::settings::load(&file.path).settings.picker_windows["display-a"],
         remember(dragged(840, 600), (3000.0, 2000.0))
     );
     sizing.record("display-a".into(), dragged(900, 640));
@@ -839,7 +839,7 @@ fn sizing_owned_worker_flushes_on_hide_then_drains_the_final_frame_before_exit()
     worker
         .join()
         .unwrap_or_else(|_| panic!("synthetic geometry worker panicked"));
-    let saved = ibis_core::settings::load(&file.path).settings;
+    let saved = ibis_engine::settings::load(&file.path).settings;
     assert_eq!(
         saved.picker_windows["display-a"],
         remember(dragged(900, 640), (3000.0, 2000.0))
@@ -925,7 +925,7 @@ fn sizing_exit_drain_is_bounded_even_when_another_settings_writer_is_blocked() {
     worker
         .join()
         .unwrap_or_else(|_| panic!("synthetic geometry worker panicked"));
-    let saved = ibis_core::settings::load(&file.path).settings;
+    let saved = ibis_engine::settings::load(&file.path).settings;
     assert_eq!(
         saved.picker_windows["display-a"],
         remember(dragged(840, 600), (3000.0, 2000.0))

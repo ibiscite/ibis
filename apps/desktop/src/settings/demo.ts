@@ -58,5 +58,6 @@ export function demoApi(): SettingsApi {
     configureShortcuts: async () => null, version: async () => "0.2.1",
     onShortcutStatus: subscribe, onPage: subscribe, onUpdateChecks: async (changed) => { updateListeners.add(changed); return () => { updateListeners.delete(changed); }; }, onCloseRequested: subscribe,
     onPreferencesChanged: async (changed) => { listeners.add(changed); return () => { listeners.delete(changed); }; },
+    onSettingsChanged: async (changed) => { listeners.add(changed); return () => { listeners.delete(changed); }; },
   };
 }
