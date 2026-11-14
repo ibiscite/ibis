@@ -18,7 +18,7 @@ export function useFormatSettings(api: SettingsApi) {
   const request = useRef(0);
   const openRequest = useRef(0);
   const refresh = useRef<(() => Promise<void>) | null>(null);
-  useEffect(() => () => { openRequest.current += 1; }, [api]);
+  useEffect(() => () => { openRequest.current += 1; }, []);
   useEffect(() => {
     if (!api.formatSettings) return;
     setBusy(false);

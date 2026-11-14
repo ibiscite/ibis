@@ -490,7 +490,7 @@ settings-results-count = { $count ->
    *[other] { $count } results
     }
 settings-read-failed = Ibis could not read your settings; reopen Settings to try again.
-settings-forget-failed = Ibis could not forget the app's format; the saved choice is shown.
+settings-forget-failed = Ibis could not forget the app’s format; the saved choice is shown.
 settings-open-failed = Ibis could not open the settings file.
 settings-choice-failed = Ibis could not save this choice; the saved value is shown.
 settings-startup-words = startup launch restart login
