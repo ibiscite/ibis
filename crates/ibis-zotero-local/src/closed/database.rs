@@ -3,11 +3,12 @@ use super::{
     ClosedError, ClosedItem, ClosedLibrary, ClosedSnapshot, ClosedWarning, Control, RawCreator, RawItem,
     SourceMetadata, StoredValue, ZoteroTable,
 };
+use ibis_core::source::IdentityClaims;
 use rusqlite::config::DbConfig;
 use rusqlite::limits::Limit;
 use rusqlite::{Connection, OpenFlags, Row};
 use std::cell::Cell;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 // Verified against Zotero 10.0.9; see fixtures/closed/README.md.
 const TESTED_SCHEMA: i64 = 131;
@@ -19,8 +20,14 @@ const MAX_CREATORS: usize = 4096;
 // Retained strings plus conservative container overhead. Separate from the
 // source-file cap: allow room for a 512MiB live payload's allocation overhead.
 const MAX_RETAINED_BYTES: usize = 1024 * 1024 * 1024;
-// Independent work ceiling; only retained bibliographic rows consume it.
+// Global work ceiling, including excluded item identities.
 const MAX_ROWS: usize = MAX_ITEMS * 64;
+
+enum Membership {
+    Included(ClosedLibrary),
+    Excluded,
+    Invalid,
+}
 
 /// The snapshot and the major version of the Zotero that last opened the
 /// database, when it recorded one.
@@ -106,18 +113,17 @@ pub(super) fn read(
         {
             return Err(rusqlite::Error::InvalidQuery);
         }
-        if libraries
-            .insert(
-                id,
-                ClosedLibrary {
-                    library_id: id,
-                    group_id,
-                    name,
-                    items: Vec::new(),
-                },
-            )
-            .is_some()
-        {
+        let membership = match kind.as_str() {
+            "user" | "group" => Membership::Included(ClosedLibrary {
+                library_id: id,
+                group_id,
+                name,
+                items: Vec::new(),
+            }),
+            "feed" => Membership::Excluded,
+            _ => Membership::Invalid,
+        };
+        if libraries.insert(id, membership).is_some() {
             return Err(rusqlite::Error::InvalidQuery);
         }
         Ok(())
@@ -128,26 +134,37 @@ pub(super) fn read(
     } else {
         Vec::new()
     };
-    let mut identities = BTreeSet::new();
+    let mut identities = IdentityClaims::default();
     each(&db, READ_SQL[1], &budget, |r| {
         let id: i64 = r.get(0)?;
         let library: i64 = r.get(1)?;
-        if !libraries.contains_key(&library) {
-            return Ok(());
-        }
-        if items.len() >= MAX_ITEMS {
-            return budget.limit();
+        match libraries.get(&library).unwrap_or(&Membership::Invalid) {
+            Membership::Included(_) => (),
+            Membership::Excluded => return Ok(()),
+            Membership::Invalid => return Err(rusqlite::Error::InvalidQuery),
         }
         let key = budget.text(r, 2)?;
-        let item_type = budget.text(r, 4)?;
+        identities.claim((library, key.clone()), ());
         if id < 1
             || key.is_empty()
             || key.len() > 128
             || key.chars().any(|c| c.is_whitespace() || c.is_control())
-            || item_type.is_empty()
-            || !identities.insert((library, key.clone()))
+            || !identities.is_unique(&(library, key.clone()))
         {
             return Err(rusqlite::Error::InvalidQuery);
+        }
+        if r.get::<_, bool>(7)? {
+            return Ok(());
+        }
+        let item_type = budget.text(r, 4)?;
+        if matches!(item_type.as_str(), "note" | "attachment" | "annotation") {
+            return Ok(());
+        }
+        if item_type.is_empty() {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        if items.len() >= MAX_ITEMS {
+            return budget.limit();
         }
         let item = ClosedItem {
             data: RawItem {
@@ -287,17 +304,22 @@ pub(super) fn read(
             }
             item.data.creators = ordered.into_values().collect();
         }
-        libraries
-            .get_mut(&item.metadata.library_id)
-            .ok_or(ClosedError::Damaged)?
-            .items
-            .push(item);
+        match libraries.get_mut(&item.metadata.library_id) {
+            Some(Membership::Included(library)) => library.items.push(item),
+            _ => return Err(ClosedError::Damaged),
+        }
     }
     control.check()?;
     Ok((
         ClosedSnapshot {
             schema_version: version,
-            libraries: libraries.into_values().collect(),
+            libraries: libraries
+                .into_values()
+                .filter_map(|membership| match membership {
+                    Membership::Included(library) => Some(library),
+                    Membership::Excluded | Membership::Invalid => None,
+                })
+                .collect(),
             warnings,
             better_bibtex_unknown: false,
             owner,
@@ -378,8 +400,8 @@ pub(super) fn configure(db: &mut Connection, control: &Control) -> Result<(), Cl
 }
 
 const READ_SQL: [&str; 4] = [
-    "SELECT L.libraryID,L.type,G.groupID,CASE WHEN typeof(G.name)='text' AND octet_length(G.name)<=1024 THEN G.name ELSE '' END FROM libraries L LEFT JOIN groups G USING(libraryID) WHERE L.type IN ('user','group')",
-    "SELECT I.itemID,I.libraryID,I.key,I.version,T.typeName,I.dateAdded,I.dateModified FROM items I LEFT JOIN itemTypesCombined T USING(itemTypeID) WHERE (T.typeName IS NULL OR T.typeName NOT IN ('note','attachment','annotation')) AND NOT EXISTS(SELECT 1 FROM deletedItems D WHERE D.itemID=I.itemID)",
+    "SELECT L.libraryID,L.type,G.groupID,CASE WHEN typeof(G.name)='text' AND octet_length(G.name)<=1024 THEN G.name ELSE '' END FROM libraries L LEFT JOIN groups G USING(libraryID)",
+    "SELECT I.itemID,I.libraryID,I.key,I.version,T.typeName,I.dateAdded,I.dateModified,EXISTS(SELECT 1 FROM deletedItems D WHERE D.itemID=I.itemID) FROM items I LEFT JOIN itemTypesCombined T USING(itemTypeID)",
     "SELECT D.itemID,F.fieldName,CASE WHEN octet_length(V.value)>:max_value THEN NULL ELSE V.value END,V.valueID,octet_length(V.value) FROM itemData D LEFT JOIN fieldsCombined F USING(fieldID) LEFT JOIN itemDataValues V USING(valueID) WHERE EXISTS(SELECT 1 FROM items I JOIN libraries L USING(libraryID) JOIN itemTypesCombined T USING(itemTypeID) WHERE I.itemID=D.itemID AND L.type IN ('user','group') AND T.typeName NOT IN ('note','attachment','annotation') AND NOT EXISTS(SELECT 1 FROM deletedItems X WHERE X.itemID=I.itemID))",
     "SELECT IC.itemID,CT.creatorType,CASE WHEN octet_length(C.firstName)>:max_value THEN NULL ELSE C.firstName END,CASE WHEN octet_length(C.lastName)>:max_value THEN NULL ELSE C.lastName END,C.fieldMode,IC.orderIndex,octet_length(C.firstName),octet_length(C.lastName) FROM itemCreators IC LEFT JOIN creators C USING(creatorID) LEFT JOIN creatorTypes CT USING(creatorTypeID) WHERE EXISTS(SELECT 1 FROM items I JOIN libraries L USING(libraryID) JOIN itemTypesCombined T USING(itemTypeID) WHERE I.itemID=IC.itemID AND L.type IN ('user','group') AND T.typeName NOT IN ('note','attachment','annotation') AND NOT EXISTS(SELECT 1 FROM deletedItems X WHERE X.itemID=I.itemID))",
 ];
