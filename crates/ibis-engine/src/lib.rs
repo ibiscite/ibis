@@ -4,6 +4,7 @@ mod method;
 pub use method::Method;
 
 pub mod cayw;
+pub mod links;
 
 pub mod catalogue;
 

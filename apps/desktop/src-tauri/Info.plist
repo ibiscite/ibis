@@ -4,6 +4,17 @@
 <dict>
   <key>CFBundleIconName</key>
   <string>Ibis</string>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>
+      <string>Ibis search</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>ibis</string>
+      </array>
+    </dict>
+  </array>
   <key>NSServices</key>
   <array>
     <dict>

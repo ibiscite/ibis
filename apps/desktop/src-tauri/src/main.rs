@@ -18,6 +18,8 @@ mod editor_endpoint;
 mod errors;
 mod feedback;
 mod library;
+#[cfg(any(target_os = "macos", test))]
+mod links;
 mod login_item;
 #[cfg(target_os = "macos")]
 mod macos_notifications;
@@ -387,9 +389,34 @@ fn main() {
         }
     });
     let app = builder.build(context);
+    #[cfg(target_os = "macos")]
+    let (mut links_ready, mut link_waiting) = (false, false);
     match app {
-        Ok(app) => app.run(|app, event| {
+        Ok(app) => app.run(move |app, event| {
             match &event {
+                #[cfg(target_os = "macos")]
+                tauri::RunEvent::Ready => {
+                    links_ready = true;
+                    if std::mem::take(&mut link_waiting) {
+                        links::present(app);
+                    }
+                }
+                #[cfg(target_os = "macos")]
+                tauri::RunEvent::Opened { urls } => {
+                    // Both cold launch and a running app use this OS event.
+                    // Keep only the newest accepted query in SearchRequest.
+                    let mut accepted = false;
+                    for url in urls {
+                        accepted |= links::receive(app, url.as_str());
+                    }
+                    if accepted {
+                        if links_ready {
+                            links::present(app);
+                        } else {
+                            link_waiting = true;
+                        }
+                    }
+                }
                 tauri::RunEvent::MainEventsCleared => sizing::settled(app),
                 tauri::RunEvent::ExitRequested { .. } => {
                     sizing::flush(app, true);
