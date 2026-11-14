@@ -1021,7 +1021,7 @@
                 ]
               },
               "key": {
-                "description": "The repeated citation key or CSL `id`, for `duplicate-key` only. It is the person's\nown data and is shown only in their library diagnostics.",
+                "description": "The repeated citation key or CSL `id`, for `duplicate-key` only. It is the person's\nown data and is shown only in their library diagnostics. Display text\nis bounded to 256 characters plus a truncation marker.",
                 "type": [
                   "string",
                   "null"

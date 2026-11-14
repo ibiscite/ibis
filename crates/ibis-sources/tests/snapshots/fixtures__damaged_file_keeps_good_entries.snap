@@ -66,16 +66,6 @@ expression: "summary(\"damaged.bib\")"
   ],
   "warnings": [
     {
-      "code": "duplicate-key",
-      "key": "good1",
-      "line": 3
-    },
-    {
-      "code": "duplicate-key",
-      "key": "good1",
-      "line": 9
-    },
-    {
       "cause": "no-key",
       "code": "syntax",
       "line": 21
@@ -91,6 +81,16 @@ expression: "summary(\"damaged.bib\")"
       "entry": "undefinedmacro",
       "field": "journal",
       "line": 15
+    },
+    {
+      "code": "duplicate-key",
+      "key": "good1",
+      "line": 3
+    },
+    {
+      "code": "duplicate-key",
+      "key": "good1",
+      "line": 9
     }
   ]
 }

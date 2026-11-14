@@ -407,7 +407,7 @@ mod tests {
     #[test]
     fn tray_fix_problems_targets_the_warning_library_among_multiple_selections()
     -> Result<(), Box<dyn std::error::Error>> {
-        use crate::library::{engine_file::FileLibrary, zotero_fixture};
+        use crate::library::{engine_library::FileLibrary, zotero_fixture};
         use ibis_engine::{
             Cancellation, Engine,
             settings::{ZoteroLibraries, ZoteroLibrary},

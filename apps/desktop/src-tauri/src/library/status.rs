@@ -190,7 +190,7 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
             .iter()
             .map(|info| {
                 (
-                    super::engine_file::native_source(info),
+                    super::engine_library::native_source(info),
                     counts.get(&info.id).copied().unwrap_or_default(),
                 )
             })
@@ -426,7 +426,7 @@ mod tests {
 
     #[test]
     fn reference_counts_exclude_attachments_in_library_status() -> Result<(), Box<dyn std::error::Error>> {
-        use super::super::engine_file::FileLibrary;
+        use super::super::engine_library::FileLibrary;
         use ibis_engine::{Cancellation, Engine};
         use std::sync::Arc;
 
@@ -464,7 +464,7 @@ mod tests {
     #[test]
     fn non_record_sources_count_as_empty_and_do_not_claim_retained_references() -> Result<(), Box<dyn std::error::Error>>
     {
-        use super::super::engine_file::FileLibrary;
+        use super::super::engine_library::FileLibrary;
         use ibis_core::contract::{LibraryId, LibraryObject, Snapshot};
         use ibis_engine::Engine;
         use serde_json::json;

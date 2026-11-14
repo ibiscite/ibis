@@ -1,4 +1,4 @@
-import { iconPaths, iconStroke, iconViewBox } from "./icon-paths";
+import { art } from "./icon-art";
 import "./ui/Icon.css";
 // What a copy says afterwards, and what a click on a result row does.
 // Pure decisions, kept apart from the picker so they can be tested alone.
@@ -87,6 +87,8 @@ export function noticeTitle({ delivered }: Pick<Notice, "delivered">, platform =
   return platform === "macos" ? text : text.replaceAll("⌘V", "Ctrl+V");
 }
 
+let receiptId = 0;
+
 /**
  * Draw one receipt card: a check tile, what happened, then the citation.
  * Text goes in as text, never as markup. The status region exists before its
@@ -106,18 +108,14 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform, onChan
   source.textContent = say("copied-notice-source");
   const mark = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   mark.setAttribute("aria-hidden", "true");
-  mark.setAttribute("viewBox", iconViewBox);
+  mark.setAttribute("viewBox", art.viewBox);
   mark.setAttribute("data-size", "tile");
-  mark.setAttribute("fill", "none");
-  mark.setAttribute("stroke", "currentColor");
-  mark.setAttribute("stroke-linecap", "round");
-  mark.setAttribute("stroke-linejoin", "round");
+  mark.setAttribute("fill", "currentColor");
   mark.classList.add("ui-icon", "copied-notice-mark", "copy-receipt-mark");
-  const tick = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  tick.setAttribute("d", iconPaths.check);
-  tick.setAttribute("pathLength", "1");
-  mark.setAttribute("stroke-width", String(iconStroke.tile));
-  mark.append(tick);
+  // Reveal the filled upstream glyph through a travelling mask; the art stays
+  // unchanged, and reduced motion shows the whole check immediately.
+  const mask = `copied-check-${++receiptId}`;
+  mark.innerHTML = `<defs><mask id="${mask}" mask-type="alpha" maskUnits="userSpaceOnUse" x="0" y="0" width="256" height="256"><rect class="copy-check-reveal" width="256" height="256" fill="white" /></mask></defs><g mask="url(#${mask})">${art.body.check}</g>`;
   const title = document.createElement("strong");
   const code = document.createElement("code");
   code.dir = "auto";

@@ -2,7 +2,7 @@ import { renderDisplay } from "../../format/display";
 import type * as nativeApi from "../../api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SessionBibliography, SessionEdit, SessionReferencesView } from "../../api";
-import { isCancelled } from "../../api";
+import { isCancelled, isSnapshotChanged } from "../../api";
 import { outputName, type OutputId } from "../../format/outputs";
 import { isolate, problemText, say } from "../../i18n";
 import { Button } from "../../ui/Button";
@@ -12,8 +12,6 @@ import { idKey } from "./choice";
 import { abbreviatedAuthors, tileName } from "./rows";
 
 type Api = Pick<typeof nativeApi, "sessionReferences" | "editSessionReferences" | "sessionBibliography" | "copySessionBibliography" | "exportSessionBibliography">;
-
-const changed = (error: unknown) => typeof error === "object" && error !== null && (error as { code?: string }).code === "snapshot_changed";
 
 /** The references copied this session, editable, and their bibliography. Native
     code owns the list; each answer counts only if it is still the newest asked. */
@@ -81,7 +79,7 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
     pendingDelivery.current = true;
     act(controller.signal).then((done) => { if (owns() && done) setStatus(done); }, (error) => {
       if (!owns() || isCancelled(error)) return;
-      if (changed(error)) load(sessionReferences, say("session-changed")); else setProblem({ text: problemText(error, failure), retry: () => deliver(act, failure) });
+      if (isSnapshotChanged(error)) load(sessionReferences, say("session-changed")); else setProblem({ text: problemText(error, failure), retry: () => deliver(act, failure) });
     });
   };
   const hash = bibliography?.content_hash;

@@ -2,10 +2,17 @@
    here. The window inset, the row's padding, the icon column (--tile), the gap,
    then the label column; trailing controls end on the inset. A glyph, the bird
    or the back button centres in the icon column whatever its size, so no part
-   computes where a column starts. */
-.ui-band { display: flex; align-items: center; gap: var(--band-gap, 0px); min-width: 0; padding-inline: var(--inset); }
+   computes where a column starts. A list holds the inset for the bands in it
+   (--band-inset: 0px). A row is a band with a fill: the inset sits outside it, so
+   the fill starts on the inset, and its words end on the row's padding. */
+.ui-band { display: flex; align-items: center; gap: var(--band-gap, 0px); min-width: 0; padding-inline: var(--band-inset, var(--inset)); }
+.ui-band[data-fill] { margin-inline: var(--band-inset, var(--inset)); padding-inline: 0 var(--row-pad); border-radius: var(--r-control); cursor: default; }
 /* A band that spaces its controls (--band-gap) still starts its label on the column. */
-.ui-band-icon { flex: none; display: flex; align-items: center; justify-content: center; inline-size: var(--tile); margin-inline: var(--row-pad) calc(var(--row-gap) - var(--band-gap, 0px)); }
+.ui-band-icon { position: relative; flex: none; display: flex; align-items: center; justify-content: center; inline-size: var(--tile); margin-inline: var(--row-pad) calc(var(--row-gap) - var(--band-gap, 0px)); }
 .ui-band-label { flex: 1 1 auto; min-width: 0; }
+/* Every glyph in the lead column is a tile glyph (20 px), whichever list holds it. */
+.ui-band-icon > .ui-icon { width: var(--icon-tile); height: var(--icon-tile); }
+/* No lead column: the words start on the leading edge, where the lead column starts. */
+.ui-band:not(:has(> .ui-band-icon)):not([data-fill]) { padding-inline-start: calc(var(--band-inset, var(--inset)) + var(--row-pad)); }
 .ui-band-trailing { flex: none; display: flex; align-items: center; gap: var(--space-2); min-width: 0; margin-inline-start: var(--space-2); }
 .ui-band-trailing:empty { display: none; }

@@ -136,12 +136,12 @@ test("a slow bibliography for an older list never replaces the newer one", async
   expect(dialog.textContent).not.toContain("older list");
 });
 
-test("a list that moved on since it was shown is shown again, not copied", async () => {
+test.each(["snapshot_changed", "changed-item", "missing-item"])("a list that moved on (%s) is shown again, not copied", async (code) => {
   let calls = 0;
   backend({
     session_references: () => list(),
     session_bibliography: () => formatted(`version ${++calls}`),
-    copy_session_bibliography: () => { throw { code: "snapshot_changed" }; },
+    copy_session_bibliography: () => { throw { code }; },
   });
   const dialog = await open();
   await within(dialog).findByText("version 1");

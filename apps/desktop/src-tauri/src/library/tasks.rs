@@ -120,7 +120,7 @@ pub(super) fn publish_current_with(library: &Mutex<Library>, emit: impl FnOnce(L
 
 /// Apply an engine notification for `file`, accounting for each snapshot once.
 /// Returns whether `file` is still the open library.
-pub(super) fn engine_changed(library: &mut Library, file: &std::sync::Arc<super::engine_file::FileLibrary>) -> bool {
+pub(super) fn engine_changed(library: &mut Library, file: &std::sync::Arc<super::engine_library::FileLibrary>) -> bool {
     if !library
         .file
         .as_ref()
@@ -170,7 +170,7 @@ pub(super) fn watch_current(app: &AppHandle) {
 fn observe_current(
     library: &Mutex<Library>,
 ) -> Option<(
-    std::sync::Arc<super::engine_file::FileLibrary>,
+    std::sync::Arc<super::engine_library::FileLibrary>,
     ibis_engine::LibrarySubscription,
 )> {
     let mut library = library.lock().ok()?;
@@ -647,7 +647,7 @@ pub(super) fn guard_zotero_read(
     requests: &LoadRequests,
     request: u64,
     source: &Source,
-    bridge: Option<&Arc<super::engine_file::FileLibrary>>,
+    bridge: Option<&Arc<super::engine_library::FileLibrary>>,
     retire: &mut dyn FnMut() -> Result<(), ibis_core::contract::EngineError>,
 ) -> Result<(), ibis_core::contract::EngineError> {
     use ibis_core::contract::{EngineError, ErrorCode};

@@ -113,6 +113,8 @@ pub fn style_writes_entries(id: &str) -> Result<bool, FormatError> {
 pub struct Formatter {
     service: Arc<service::Service>,
 }
+pub use input::ResolvedOutput;
+
 impl Formatter {
     pub fn new() -> Result<Self, FormatError> {
         Self::with_limits(Limits::default())
@@ -134,6 +136,20 @@ impl Formatter {
     /// Refuse an unknown style or locale before formatting starts.
     pub fn check_output(output: &OutputSpec, locale: Option<&str>) -> Result<(), FormatError> {
         input::check_output(output, locale)
+    }
+    /// An engine request has already resolved and validated output and locale.
+    pub fn submit_resolved(
+        &self,
+        snapshot: Arc<Snapshot>,
+        request: CitationRequest,
+        output: &ResolvedOutput,
+    ) -> Result<FormatTask, FormatError> {
+        self.service.submit(input::prepare_resolved(
+            &snapshot,
+            &request,
+            self.service.limits(),
+            output,
+        )?)
     }
     pub fn submit(&self, snapshot: Arc<Snapshot>, request: CitationRequest) -> Result<FormatTask, FormatError> {
         self.service

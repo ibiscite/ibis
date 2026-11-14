@@ -38,7 +38,7 @@ export const libraryMessages = {
       const moved = status.source_is_requested && status.problem === "missing" && !status.snapshot_zotero;
       return [source, ` ${say(moved ? "library-moved" : "library-not-updated")}`];
     }
-    return [source, ` · ${status.references === 0 ? say("library-no-references") : references(status.references)}` +
+    return [source, (status.references === 0 ? ` · ${say("library-no-references")}` : "") +
       readingSummary(status) +
       (status.error ? ` · ${isolate(requestedLabel(status))} ${say(status.problem === "missing" ? "library-moved" : "library-not-opened")}` : "")];
   },
@@ -62,7 +62,9 @@ export const libraryMessages = {
    * problem). Names are isolated so right-to-left names keep their order. */
   detail: (status: LibraryStatus | null | undefined, now: number, libraryNames: (status: LibraryStatus) => string): [string, string | null] => {
     const [source, state] = libraryMessages.summaryParts(status);
-    const summary = (source === null ? "" : isolate(source)) + state;
+    const count = status?.has_snapshot && status.state !== "loading" && !status.stale && status.references > 0
+      ? ` · ${references(status.references)}` : "";
+    const summary = (source === null ? "" : isolate(source)) + count + state;
     if (!status?.has_snapshot || status.state === "loading") return [summary, null];
     const { checked } = times(status);
     const parts = [

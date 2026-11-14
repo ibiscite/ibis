@@ -135,26 +135,13 @@ pub(crate) fn words(id: &str, args: &[(&str, &str)]) -> String {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(into = "ibis_core::contract::Problem")]
 pub(crate) enum CommandError {
-    LocatorField {
-        error: ibis_core::locator::FieldError,
-        index: usize,
-    },
-    LocatorConflict {
-        index: usize,
-    },
     SnapshotChanged,
     LibraryLoading,
     Cancelled,
-    SharedCitationKey {
-        key: String,
-    },
     Engine(EngineError),
     Refused(ibis_core::contract::CitationError),
     Presented(ibis_core::contract::Problem),
     NotPrepared,
-    BibliographyUnsupported {
-        references: Vec<String>,
-    },
     BibliographyUnavailable,
     BibliographyNotSaved,
     BibliographyNameTaken,
@@ -162,11 +149,8 @@ pub(crate) enum CommandError {
     ClipboardUnavailable,
     SettingsUnavailable,
     RecentHistoryNotSaved,
-    ProjectConflict {
-        keys: Vec<String>,
-    },
+    ProjectConflict { keys: Vec<String> },
     SourceNotOpened,
-    CitationTooLarge,
     SearchFailed,
     RecentReferencesFailed,
 }
@@ -200,31 +184,6 @@ impl CommandError {
             Self::Engine(error) => return ibis_core::contract::Problem::from(*error),
             Self::Refused(error) => return error.problem(),
             Self::Presented(problem) => return problem.clone(),
-            Self::LocatorField { error, index } => {
-                use ibis_core::locator::FieldError;
-                let (FieldError::MissingValue(term) | FieldError::InvalidValue(term)) = *error;
-                let code = match (
-                    term == ibis_core::contract::LocatorTerm::Page,
-                    matches!(error, FieldError::MissingValue(_)),
-                ) {
-                    (true, true) => "page-missing",
-                    (true, false) => "page-invalid",
-                    (false, true) => "locator-missing",
-                    (false, false) => "locator-invalid",
-                };
-                let label = words(&ibis_engine::catalogue::id("locator", term), &[]);
-                (
-                    code,
-                    RecoveryInfo::new(&format!("app-command-{code}"), R::EditLocator)
-                        .argument("number", (index + 1).to_string())
-                        .argument("label", label),
-                )
-            }
-            Self::LocatorConflict { index } => (
-                "locator-conflict",
-                RecoveryInfo::new("app-command-locator-conflict", R::EditLocator)
-                    .argument("number", (index + 1).to_string()),
-            ),
             Self::SnapshotChanged => (
                 "snapshot_changed",
                 RecoveryInfo::new("app-command-snapshot-changed", R::SelectReferences),
@@ -246,15 +205,6 @@ impl CommandError {
                         reason: NoRecoveryReason::Cancelled,
                     },
                 ),
-            ),
-            Self::SharedCitationKey { key } => (
-                "shared_citation_key",
-                RecoveryInfo::new("app-command-shared-citation-key", R::ChooseStyle).argument("key", key),
-            ),
-            Self::BibliographyUnsupported { references } => (
-                "bibliography-unsupported",
-                RecoveryInfo::new("app-command-bibliography-unsupported", R::RemoveReferences)
-                    .argument("references", references.join(", ")),
             ),
             Self::BibliographyUnavailable => (
                 "bibliography-unavailable",
@@ -293,10 +243,6 @@ impl CommandError {
                 "source-not-opened",
                 RecoveryInfo::new("app-command-source-not-opened", R::Retry),
             ),
-            Self::CitationTooLarge => (
-                "citation-too-large",
-                RecoveryInfo::new("app-command-citation-too-large", R::ReduceSelection),
-            ),
             Self::SearchFailed => (
                 "search-failed",
                 RecoveryInfo::new("app-failure-search", R::SearchReferences),
@@ -325,9 +271,15 @@ impl fmt::Display for CommandError {
         ))
     }
 }
+
+/// Preserve the session's complete problem at the native boundary.
+impl From<ibis_engine::citations::SessionError> for CommandError {
+    fn from(error: ibis_engine::citations::SessionError) -> Self {
+        Self::Presented(error.problem())
+    }
+}
 impl std::error::Error for CommandError {}
 
-/// Failures as the engine reports them, for tests.
 #[cfg(test)]
 pub(crate) const FILE_UNREADABLE: LoadError = LoadError::File(EngineError::new(ErrorCode::Internal));
 #[cfg(test)]
@@ -397,8 +349,11 @@ mod tests {
 
     #[test]
     fn app_refusals_have_one_recovery_and_catalogue_arguments() {
-        let error = serde_json::to_value(CommandError::SharedCitationKey { key: "same".into() }).unwrap_or_default();
-        assert_eq!(error["code"], "shared_citation_key");
+        let error = serde_json::to_value(CommandError::from(
+            ibis_engine::citations::SessionError::SharedCitationKey { key: "same".into() },
+        ))
+        .unwrap_or_default();
+        assert_eq!(error["code"], "ambiguous-key");
         assert_eq!(error["message"]["args"]["key"], "same");
         assert_eq!(error["recovery"]["action"], "choose-style");
         assert_eq!(error["focus"], "format-picker");
@@ -491,7 +446,7 @@ mod tests {
             CommandError::SnapshotChanged,
             CommandError::LibraryLoading,
             CommandError::Cancelled,
-            CommandError::SharedCitationKey { key: "same2026".into() },
+            CommandError::from(ibis_engine::citations::SessionError::SharedCitationKey { key: "same2026".into() }),
             CommandError::from(EngineError::new(ErrorCode::Internal)),
             CommandError::SourceNotOpened,
         ];
@@ -503,7 +458,8 @@ mod tests {
             assert!(!text.is_empty() && !text.contains("app-"), "{text:?} is worded");
         }
         assert_eq!(
-            CommandError::SharedCitationKey { key: "same2026".into() }.to_string(),
+            CommandError::from(ibis_engine::citations::SessionError::SharedCitationKey { key: "same2026".into() })
+                .to_string(),
             "the citation key `same2026` belongs to more than one reference"
         );
     }
