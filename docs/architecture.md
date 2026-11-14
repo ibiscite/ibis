@@ -127,7 +127,12 @@ rechecks these and failed sources. There is no periodic filesystem retry.
 One-shot CLI reads install no watches.
 
 Known cloud placeholders are refused before reading, without requesting a
-download. Filesystem probes have a two-second wait and eight-call limit.
+download. Each file load shares one two-second filesystem deadline and the
+eight-call pool. Pure decoding leaves attachment references for the source to
+probe in one batch, capped at 256 local attachments. Unchecked references remain
+in the snapshot with `unknown` availability; completed probes survive a later
+blocked path. Bibliographic-only project and original-entry reads do no
+attachment probing.
 Desktop loads have a two-minute deadline and at most four complete loads in
 flight. Blocked OS calls can outlive the wait, but their late results cannot
 publish. A failed refresh keeps the previous snapshot and reports its health.

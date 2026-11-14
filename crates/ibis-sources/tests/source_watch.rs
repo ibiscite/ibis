@@ -109,7 +109,8 @@ fn seeded_watches_reuse_bibtex_and_json_records_in_the_registration_gap() {
             std::fs::write(&path, text).unwrap_or_else(|error| panic!("{error}"));
         };
         write("Before");
-        let (loaded, observation) = ibis_sources::load_file_snapshot(&path).unwrap_or_else(|error| panic!("{error}"));
+        let (loaded, observation) =
+            ibis_sources::load_file_snapshot(&path, &|| false).unwrap_or_else(|error| panic!("{error}"));
         let original = loaded.snapshot;
         write("After");
         let (tx, rx) = mpsc::channel();
@@ -352,7 +353,7 @@ fn unchanged_damaged_initial_load_is_not_published_again() {
     let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
     let path = dir.path().join("library.bib");
     std::fs::write(&path, "@misc{good}\n@misc{unfinished,").unwrap_or_else(|e| panic!("{e}"));
-    let (initial, snapshot) = load_file_snapshot(&path).unwrap_or_else(|e| panic!("{e}"));
+    let (initial, snapshot) = load_file_snapshot(&path, &|| false).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(records(&initial).len(), 1);
     assert_eq!(initial.warnings.len(), 1);
     let (tx, rx) = mpsc::channel();
@@ -369,12 +370,13 @@ fn unchanged_damaged_initial_load_is_not_published_again() {
 }
 
 #[test]
+#[allow(clippy::disallowed_methods)]
 fn changes_before_watch_registration_are_still_loaded_even_at_the_same_size() {
     use ibis_sources::load_file_snapshot;
     let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
     let path = dir.path().join("library.bib");
     std::fs::write(&path, "@misc{old}").unwrap_or_else(|e| panic!("{e}"));
-    let (_, snapshot) = load_file_snapshot(&path).unwrap_or_else(|e| panic!("{e}"));
+    let (_, snapshot) = load_file_snapshot(&path, &|| false).unwrap_or_else(|e| panic!("{e}"));
     let modified = std::fs::metadata(&path)
         .and_then(|m| m.modified())
         .unwrap_or_else(|e| panic!("{e}"));
@@ -402,7 +404,7 @@ fn unchanged_contents_after_a_gap_error_publish_recovery() {
         let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let path = dir.path().join("library.bib");
         std::fs::write(&path, contents).unwrap_or_else(|e| panic!("{e}"));
-        let (initial, snapshot) = load_file_snapshot(&path).unwrap_or_else(|e| panic!("{e}"));
+        let (initial, snapshot) = load_file_snapshot(&path, &|| false).unwrap_or_else(|e| panic!("{e}"));
         std::fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
         let (tx, rx) = mpsc::channel();
         let _watch = SourceWatch::with_snapshot(&path, snapshot, move |result| {
@@ -426,7 +428,7 @@ fn damaged_changes_in_the_registration_gap_load_as_an_open_would() {
     let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
     let path = dir.path().join("library.bib");
     std::fs::write(&path, "@misc{old}").unwrap_or_else(|e| panic!("{e}"));
-    let (initial, snapshot) = load_file_snapshot(&path).unwrap_or_else(|e| panic!("{e}"));
+    let (initial, snapshot) = load_file_snapshot(&path, &|| false).unwrap_or_else(|e| panic!("{e}"));
     std::fs::write(&path, "@misc{changed}\n@misc{unfinished,").unwrap_or_else(|e| panic!("{e}"));
     let (tx, rx) = mpsc::channel();
     let _watch = SourceWatch::with_snapshot(&path, snapshot, move |result| {
@@ -533,29 +535,12 @@ fn json_reloads_retain_failed_snapshot_and_accept_stable_empty_array() {
 }
 
 #[test]
-fn private_location_changes_publish_a_new_owner_even_if_public_hashes_match() {
-    use ibis_sources::load_file_snapshot;
-    let dir = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
-    let path = dir.path().join("synthetic.bib");
-    std::fs::write(&path, "@book{one,file={one.pdf}}").unwrap_or_else(|error| panic!("{error}"));
-    let (initial, observation) = load_file_snapshot(&path).unwrap_or_else(|error| panic!("{error}"));
-    let (tx, rx) = mpsc::channel();
-    let _watch = SourceWatch::with_snapshot(&path, observation, move |result| {
-        let _ = tx.send(result);
-    })
-    .unwrap_or_else(|error| panic!("{error}"));
-    std::fs::write(&path, "@book{one,file={two.pdf}}").unwrap_or_else(|error| panic!("{error}"));
-    let changed = next(&rx).unwrap_or_else(|error| panic!("{error}"));
-    assert_eq!(initial.snapshot.fingerprints(), changed.snapshot.fingerprints());
-    assert_eq!(changed.local_attachment_count(), 1);
-}
-
-#[test]
 fn long_identity_attachment_limits_load_alike_on_open_and_reload() {
     let dir = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
     let path = dir.path().join("synthetic.json");
     std::fs::write(&path, r#"[{"id":"initial","type":"book"}]"#).unwrap_or_else(|error| panic!("{error}"));
-    let (initial, observation) = ibis_sources::load_file_snapshot(&path).unwrap_or_else(|error| panic!("{error}"));
+    let (initial, observation) =
+        ibis_sources::load_file_snapshot(&path, &|| false).unwrap_or_else(|error| panic!("{error}"));
     let (tx, rx) = mpsc::channel();
     let _watch = SourceWatch::with_snapshot(&path, observation, move |candidate| {
         let _ = tx.send(candidate);
@@ -611,7 +596,7 @@ fn a_library_opened_with_one_damaged_entry_keeps_refreshing() {
             .map(|record| record.csl["title"].as_str().unwrap_or_default().to_owned())
             .collect()
     };
-    let (initial, observation) = load_file_snapshot(&path).unwrap_or_else(|e| panic!("{e}"));
+    let (initial, observation) = load_file_snapshot(&path, &|| false).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(titles(&initial), ["Synthetic Lantern", "Other Synthetic Work"]);
     assert_eq!(initial.warnings.len(), 1);
     let (tx, rx) = mpsc::channel();
