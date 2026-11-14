@@ -402,6 +402,28 @@ fn formatted_outputs_keep_decoded_literal_text_and_rich_markup() {
 }
 
 #[test]
+fn formatted_dois_use_checked_text_before_url_encoding_and_markup() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    let mut failures = Vec::new();
+    for (doi, expected) in [
+        ("https://doi.org/&#47;home/invented/secret.pdf", None),
+        ("&#100;oi:&#47;home/invented/secret.pdf", None),
+        ("10.1000/<invented>", Some("https://doi.org/10.1000/%3Cinvented%3E")),
+    ] {
+        let snapshot = library(&[json!({"type":"book", "title":"Invented atlas", "DOI":doi})]);
+        let result = formatter.format(&snapshot, &selection(&snapshot, "apa", true)).unwrap();
+        assert!(result.copy_content(1).is_some());
+        for text in [Some(result.text), result.html, result.rtf].into_iter().flatten() {
+            if text.contains("secret") || expected.is_some_and(|expected| !text.contains(expected)) {
+                failures.push(text);
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
 fn apa_prints_rich_text_titles_with_whitespace_before_closing_tags() {
     let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();

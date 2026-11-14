@@ -46,7 +46,7 @@ impl RecordSummary {
     /// The summary of already checked, decoded text. No further entity or
     /// markup interpretation may change a citable field after its privacy check.
     pub fn citable(fields: &crate::citable::CitableFields) -> Self {
-        Self::with_text(|name| fields.get(name), str::to_owned)
+        Self::with_text(|name| fields.plain().get(name), str::to_owned)
     }
 
     fn with_text<'a>(field: impl Fn(&str) -> Option<&'a Value>, plain: fn(&str) -> String) -> Self {

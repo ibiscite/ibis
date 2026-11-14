@@ -7,6 +7,7 @@
 //! anything the record says. The marker has no escape for `|`, `{` or `}`:
 //! text that would need one is refused, and the whole citation with it.
 use super::MAX_OUTPUT_BYTES;
+use crate::citable::CitableFields;
 use crate::citation::{self, ItemSupport};
 use crate::contract::*;
 use crate::summary::RecordSummary;
@@ -109,11 +110,12 @@ fn marker<'a>(
     origin: &impl Fn(&LibraryId) -> Option<ZoteroOrigin>,
 ) -> Result<(String, &'a Record), CitationError> {
     let identifier = identifier(origin(&record.id.library), &record.id.key)?;
+    let fields = CitableFields::new(record.csl.to_map());
     let locator = match &item.locator {
         None => String::new(),
         Some(locator) => {
-            let legal = record
-                .csl
+            let legal = fields
+                .plain()
                 .get("type")
                 .and_then(serde_json::Value::as_str)
                 .is_some_and(|kind| LEGAL_TYPES.contains(&kind));
@@ -127,7 +129,7 @@ fn marker<'a>(
             format!("{label} {value}")
         }
     };
-    let label = label(record);
+    let label = label(&fields);
     let label = if item.suppress_author {
         format!("-{label}")
     } else {
@@ -164,39 +166,24 @@ fn identifier(origin: Option<ZoteroOrigin>, key: &str) -> Result<String, Citatio
 }
 
 /// What the marker shows until Zotero replaces it: the first author and the
-/// year, else the title. It is display only, so text it cannot carry is dropped.
-fn label(record: &Record) -> String {
-    let summary = RecordSummary::of(|name| record.csl.get(name));
+/// year, else the title. Unrepresentable components are omitted unchanged.
+fn label(fields: &CitableFields) -> String {
+    let summary = RecordSummary::citable(fields);
     let name = summary
         .authors
         .first()
         .map(|author| author.short.clone())
         .or_else(|| summary.title.map(|title| title.chars().take(60).collect()));
-    let plain = |part: String| {
-        let part: String = part
-            .chars()
-            .map(|ch| {
-                if ch.is_control() || RESERVED.contains(&ch) {
-                    ' '
-                } else {
-                    ch
-                }
-            })
-            .collect();
-        part.split_whitespace().collect::<Vec<_>>().join(" ")
-    };
-    let parts: Vec<String> = name
-        .into_iter()
+    name.into_iter()
         .chain(summary.year)
-        .map(plain)
-        .filter(|part| !part.is_empty())
-        .collect();
-    // A leading `-` would ask Zotero to leave the author out.
-    parts
+        .filter(|part| {
+            !part.is_empty()
+                && !part.starts_with('-')
+                && !part.contains(RESERVED)
+                && !part.chars().any(char::is_control)
+        })
+        .collect::<Vec<_>>()
         .join(", ")
-        .trim_start_matches(|ch: char| ch == '-' || ch.is_whitespace())
-        .trim_end()
-        .to_owned()
 }
 
 /// Plain text with at most one italic and one bold span, written `*so*` and
@@ -372,7 +359,7 @@ mod tests {
                 ),
                 item(GROUP, "WXYZ6789", json!({})),
             ]),
-            "{ | -Example, 2026 | ch. 3 | | zu:0:ABCD2345 }{ | Untitled braced atlas, 2025 | | | zg:4321:WXYZ6789 }"
+            "{ | -Example, 2026 | ch. 3 | | zu:0:ABCD2345 }{ | 2025 | | | zg:4321:WXYZ6789 }"
         );
     }
 
@@ -447,7 +434,7 @@ mod tests {
         // A name that starts like a dash never asks Zotero to drop the author.
         assert_eq!(
             text(vec![item(PERSONAL, "DASHED23", json!({}))]),
-            "{ | Dashed | | | zu:0:DASHED23 }"
+            "{ | | | | zu:0:DASHED23 }"
         );
         assert_eq!(
             text(vec![item(PERSONAL, "LEGAL234", json!({}))]),

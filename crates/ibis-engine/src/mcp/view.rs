@@ -37,7 +37,7 @@ pub(super) fn summary(csl: &CitableFields, reference: String) -> Map<String, Val
         ("authors", (!authors.is_empty()).then_some(Value::Array(authors))),
         ("year", text(summary.year.as_ref())),
         ("container", text(summary.container.as_ref())),
-        ("doi", csl.get("DOI").map(shorten)),
+        ("doi", csl.plain().get("DOI").map(shorten)),
     ];
     for (name, value) in found {
         if let Some(value) = value.filter(|value| !value.is_null()) {
@@ -50,7 +50,8 @@ pub(super) fn summary(csl: &CitableFields, reference: String) -> Map<String, Val
 /// The citable fields [`summary`] does not already give.
 pub(super) fn details(csl: &CitableFields) -> Value {
     Value::Object(
-        csl.iter()
+        csl.plain()
+            .iter()
             .filter(|(name, _)| !SUMMARIZED.contains(&name.as_str()))
             .map(|(name, value)| (name.clone(), shorten(value)))
             .collect(),

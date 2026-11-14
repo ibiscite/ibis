@@ -564,16 +564,6 @@ fn locator_label(term: LocatorTerm, plural: bool) -> &'static str {
     }
 }
 
-pub(super) fn source_id(record: &Record) -> Option<&str> {
-    record
-        .csl
-        .get("id")
-        .and_then(serde_json::Value::as_str)
-        // Source URLs can identify a person's library even on public hosts.
-        // Preserve only plain tokens; every other id uses the citation key.
-        .filter(|id| !id.is_empty() && id.chars().all(|c| c.is_alphanumeric() || matches!(c, '-' | '_')))
-}
-
 /// Serialize one share-safe record at a time into a bounded writer. Repeated
 /// records are deduplicated and each filtered map is dropped immediately.
 fn csl_json(picks: &[Pick<'_>]) -> Result<String, CitationError> {
@@ -588,12 +578,13 @@ fn csl_json(picks: &[Pick<'_>]) -> Result<String, CitationError> {
     struct Export<'a>(&'a Pick<'a>);
     impl Serialize for Export<'_> {
         fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            let fields = CitableFields::new(self.0.record.csl.to_map());
             // Preserve a plain source token; URL-shaped or private source
             // identities never leave through the export's id field.
             RecordExport {
-                id: source_id(self.0.record).unwrap_or(self.0.key),
+                id: fields.source_id().unwrap_or(self.0.key),
                 key: self.0.key,
-                fields: &CitableFields::new(self.0.record.csl.to_map()),
+                fields: &fields,
             }
             .serialize(serializer)
         }
@@ -658,7 +649,7 @@ fn share(syntax: KeySyntax, picks: &[Pick<'_>]) -> Result<String, CitationError>
 /// bytes, encoding reserved URL characters rather than letting them change the
 /// resolver's path, query or fragment. Missing/invalid values refuse the item.
 pub(super) fn doi_link(fields: &CitableFields) -> Option<String> {
-    let doi = fields.plain().get("DOI")?.as_str()?.trim();
+    let doi = fields.plain().get("DOI")?.as_str()?;
     let (prefix, suffix) = doi.split_once('/')?;
     let registrant = prefix.strip_prefix("10.")?;
     if doi.len() > 64 * 1024

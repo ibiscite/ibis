@@ -527,14 +527,22 @@ fn item_id(engine: &Engine) -> Value {
 fn agent_views_do_not_decode_or_join_text_after_the_privacy_check() {
     let literal = "Invented &amp;#67;&amp;#58;&amp;#92;invented&amp;#92;secret.pdf";
     let (_dir, engine) = library("synthetic.json", &json!([
-        {"id":"literal", "type":"book", "title":literal},
-        {"id":"hidden", "type":"book", "title":"Invented C\u{2060}:\\invented\\secret.pdf", "publisher":"Invented Press"}
+        {"id":"literal", "type":"book", "title":literal, "DOI":"https://doi.org/&#47;home/invented/secret.pdf", "issued":{"date-parts":[[2020]], "circa":1}},
+        {"id":"hidden", "type":"book", "title":"Invented C\u{2060}:\\invented\\secret.pdf", "publisher":"Invented Press", "DOI":"10.1000/<invented>", "issued":{"date-parts":[[2020]], "circa":"1"}},
+        {"id":"encoded", "type":"book", "title":"&#67;&#58;&#92;invented&#92;secret.pdf", "publisher":"Invented Press"}
     ]).to_string());
     let search = tool(&engine, "search", json!({"query":"invented"}));
     let hits = search["structuredContent"]["hits"].as_array().unwrap();
-    assert_eq!(hits.len(), 2, "{search}");
+    assert_eq!(hits.len(), 3, "{search}");
     for hit in hits {
         let shown = tool(&engine, "show", json!({"ref":hit["ref"]}));
+        assert_eq!(hit.get("doi"), shown["structuredContent"].get("doi"));
+        if let Some(doi) = hit.get("doi") {
+            assert_eq!(doi, "10.1000/<invented>");
+        }
+        if let Some(issued) = shown["structuredContent"]["fields"].get("issued") {
+            assert_eq!(issued["circa"], true, "{shown}");
+        }
         if hit.get("title").is_some() {
             let expected = "Invented &#67;&#58;&#92;invented&#92;secret.pdf";
             assert_eq!(hit["title"], expected);

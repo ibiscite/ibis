@@ -592,7 +592,7 @@ pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationRe
     let mut linked = std::collections::HashSet::new();
     // CSL-JSON keeps each record's source `id`, and two records from different
     // libraries can share one; an export naming both would be unreadable.
-    let mut exported = HashMap::<&str, &ItemRef>::new();
+    let mut exported = HashMap::<String, &ItemRef>::new();
     for (index, item) in request.items.iter().enumerate() {
         match checked[index].and_then(|record| resolve(record, item, request.form, caps, &owners)) {
             Err(error) => outcomes.push(ItemOutcome::Refused { item: index, error }),
@@ -687,13 +687,16 @@ pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationRe
                         reason: LossReason::Flattened,
                     });
                 }
-                let id = render::source_id(record).unwrap_or(key);
-                if caps.syntax == KeySyntax::CslJson && *exported.entry(id).or_insert(&record.id) != &record.id {
-                    outcomes.push(ItemOutcome::Refused {
-                        item: index,
-                        error: CitationError::AmbiguousKey,
-                    });
-                    continue;
+                if caps.syntax == KeySyntax::CslJson {
+                    let fields = crate::citable::CitableFields::new(record.csl.to_map());
+                    let id = fields.source_id().unwrap_or(key).to_owned();
+                    if *exported.entry(id).or_insert(&record.id) != &record.id {
+                        outcomes.push(ItemOutcome::Refused {
+                            item: index,
+                            error: CitationError::AmbiguousKey,
+                        });
+                        continue;
+                    }
                 }
                 picks.push(Pick {
                     index,

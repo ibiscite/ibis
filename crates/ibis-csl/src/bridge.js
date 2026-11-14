@@ -89,9 +89,12 @@
   CSL.Output.Formats.text["@display/block"] = (state, str) => "\n" + str + "\n";
   CSL.Output.Formats.text["@display/indent"] = (state, str) => "\n    " + str + "\n";
   let literalLessThan = null;
+  const checkedText = (text) => literalLessThan && text ? text.split(literalLessThan).join("<") : text;
+  const encodeDoiForUrl = CSL.Util.encodeDoiForUrl;
+  CSL.Util.encodeDoiForUrl = (doi) => encodeDoiForUrl(checkedText(doi));
   for (const format of ["text", "html", "rtf"]) {
     const escape = CSL.Output.Formats[format].text_escape;
-    CSL.Output.Formats[format].text_escape = (text) => escape(literalLessThan && text ? text.split(literalLessThan).join("<") : text);
+    CSL.Output.Formats[format].text_escape = (text) => escape(checkedText(text));
   }
   const processorItems = (request) => {
     // One unused symbol protects literal less-than signs in every text scalar.

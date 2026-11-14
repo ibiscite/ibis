@@ -80,6 +80,65 @@ fn doi_links_refuse_entity_encoded_device_paths() {
 }
 
 #[test]
+fn exports_check_dois_after_decoding_and_removing_resolver_wrappers() {
+    for doi in [
+        "https://doi.org/&#47;home/invented/secret.pdf",
+        "&#100;oi:&#47;home/invented/secret.pdf",
+        "https:&#47;&#47;doi.org/&#47;home/invented/secret.pdf",
+    ] {
+        for format in ["bibtex", "csl-json", "doi-links"] {
+            let case = case(
+                format,
+                json!({"type":"book", "title":"Invented atlas", "DOI":doi}),
+                Some("atlas"),
+            );
+            let result = syntax::cite(&case.library, &case.request).unwrap();
+            assert!(!result.text.contains("secret"), "{format}: {}", result.text);
+            if format == "doi-links" {
+                assert_eq!(
+                    result.outcomes,
+                    [ItemOutcome::Refused {
+                        item: 0,
+                        error: CitationError::MissingDoi
+                    }]
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn scannable_markers_only_show_checked_authorless_titles() {
+    for title in [
+        "&#67;&#58;&#92;invented&#92;secret.pdf",
+        "-/home/invented/secret.pdf",
+        "|/home/invented/secret.pdf",
+        "Invented <i>atlas</i> &amp; tides",
+    ] {
+        let mut case = case("scannable-cite", json!({"type":"book", "title":title}), None);
+        let LibraryObject::Record(mut record) = case.library.objects()[0].object.clone() else {
+            unreachable!()
+        };
+        record.id.key = "ABCD2345".into();
+        case.request.items[0].item = record.id.clone();
+        case.library = Snapshot::new(vec![LibraryObject::Record(record)]).unwrap();
+        let result = syntax::scannable::cite(&case.library, &case.request, |_| {
+            Some(syntax::scannable::ZoteroOrigin::Personal)
+        })
+        .unwrap();
+        assert_eq!(
+            result.text,
+            if title.contains("secret") {
+                "{ | | | | zu:0:ABCD2345 }"
+            } else {
+                "{ | Invented atlas & tides | | | zu:0:ABCD2345 }"
+            }
+        );
+        assert!(result.copy_content(1).is_some());
+    }
+}
+
+#[test]
 fn bibtex_preserves_approximate_date_parts() {
     let case = case(
         "bibtex",

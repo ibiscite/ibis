@@ -25,29 +25,21 @@ pub struct CitableFields {
     plain: Map<String, Value>,
     #[serde(skip)]
     rich: BTreeMap<String, Vec<TextPart>>,
-}
-
-impl std::ops::Deref for CitableFields {
-    type Target = Map<String, Value>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.plain
-    }
+    #[serde(skip)]
+    source_id: Option<String>,
 }
 
 impl CitableFields {
     /// Apply note overrides, remove private fields and links, and reject embedded
     /// device references or malformed shapes hiding data inside a CSL variable.
     pub fn new(mut fields: Map<String, Value>) -> Self {
+        let source_id = fields.remove("id").and_then(|mut id| {
+            project_scalar(&mut id, false)?;
+            id.as_str()
+                .filter(|id| !id.is_empty() && id.chars().all(|c| c.is_alphanumeric() || matches!(c, '-' | '_')))
+                .map(str::to_owned)
+        });
         fields.remove("annote");
-        let private_url = |fields: &mut Map<String, Value>| {
-            if fields
-                .get("URL")
-                .is_some_and(|url| !url.as_str().is_some_and(public_url))
-            {
-                fields.remove("URL");
-            }
-        };
         // Preserve source precedence, with a note fallback for a private URL.
         // Both candidates enter the projection exactly once.
         let source_url = fields.remove("URL");
@@ -82,13 +74,19 @@ impl CitableFields {
             } else if DATES.contains(&name.as_str()) {
                 let Value::Object(parts) = value else { return false };
                 parts.retain(|part, _| DATE_PARTS.contains(&part.as_str()));
-                normalize_raw_date(parts);
+                let has_raw = parts
+                    .get("raw")
+                    .and_then(Value::as_str)
+                    .is_some_and(|raw| !raw.is_empty());
                 parts.retain(|name, value| {
                     if name == "date-parts" {
                         value.as_array_mut().is_some_and(|dates| {
                             dates.iter_mut().all(|date| {
                                 date.as_array_mut().is_some_and(|parts| {
                                     parts.iter_mut().all(|part| {
+                                        if !scalar(part) {
+                                            return false;
+                                        }
                                         if let Some(number) =
                                             part.as_str().and_then(|part| part.trim().parse::<i64>().ok())
                                         {
@@ -103,6 +101,10 @@ impl CitableFields {
                         scalar(value)
                     }
                 });
+                normalize_raw_date(parts, has_raw);
+                if let Some(circa) = parts.get_mut("circa") {
+                    *circa = Value::Bool(truthy(circa));
+                }
                 !parts.is_empty()
             } else if matches!(value, Value::String(_) | Value::Number(_)) {
                 let Some(projected) = project_scalar(value, true) else {
@@ -119,15 +121,15 @@ impl CitableFields {
         // URL and DOI rules see the same decoded, normalized text as writers.
         if let Some(mut url) = source_url
             && project_scalar(&mut url, false).is_some()
+            && retain_public(&mut url)
             && url.as_str().is_some_and(public_url)
         {
             fields.insert("URL".into(), url);
         }
-        private_url(&mut fields);
         if let Some(Value::String(doi)) = fields.get_mut("DOI") {
             // CSL styles supply their own resolver prefix. Strip only recognized
             // wrappers, retaining the identifier's spelling, punctuation and case.
-            let value = doi.trim();
+            let mut value = doi.trim();
             let prefixes = [
                 "https://doi.org/",
                 "http://doi.org/",
@@ -137,23 +139,32 @@ impl CitableFields {
                 "dx.doi.org/",
                 "doi:",
             ];
-            let bare = prefixes.iter().find_map(|prefix| {
+            while let Some(bare) = prefixes.iter().find_map(|prefix| {
                 value
                     .get(..prefix.len())
                     .filter(|head| head.eq_ignore_ascii_case(prefix))
                     .map(|_| value[prefix.len()..].trim())
-            });
-            if let Some(bare) = bare {
-                *doi = bare.to_owned();
+            }) {
+                value = bare;
             }
+            *doi = value.to_owned();
         }
+        // No source interpretation follows this pass. Writers receive only
+        // these final values or their checked rich-text runs.
+        fields.retain(|name, value| retain_public(value) && (name != "URL" || value.as_str().is_some_and(public_url)));
+        rich.retain(|name, _| fields.contains_key(name));
         let plain = fields;
         let mut fields = plain.clone();
         encode_values(fields.values_mut());
         for (name, parts) in &rich {
             fields.insert(name.clone(), json!(text::encode(parts)));
         }
-        Self { fields, plain, rich }
+        Self {
+            fields,
+            plain,
+            rich,
+            source_id,
+        }
     }
 
     /// Decoded inline text already checked by the privacy projection. Consumers
@@ -165,6 +176,11 @@ impl CitableFields {
     /// Checked literal text and supported markup, without downstream decoding.
     pub fn rich_text(&self) -> &BTreeMap<String, Vec<TextPart>> {
         &self.rich
+    }
+
+    /// A plain source identity token; library URLs never leave as export IDs.
+    pub fn source_id(&self) -> Option<&str> {
+        self.source_id.as_deref()
     }
 }
 
@@ -181,7 +197,7 @@ fn project_scalar(value: &mut Value, keep_markup: bool) -> Option<Vec<TextPart>>
     match value {
         Value::String(source) => {
             let projected = Projection::new(source);
-            if points_to_device(&projected.plain) || points_to_device(&projected.attributes) {
+            if points_to_device(&projected.attributes) {
                 return None;
             }
             *source = projected.plain;
@@ -189,6 +205,23 @@ fn project_scalar(value: &mut Value, keep_markup: bool) -> Option<Vec<TextPart>>
         }
         Value::Number(_) | Value::Bool(_) => Some(Vec::new()),
         _ => None,
+    }
+}
+
+fn retain_public(value: &mut Value) -> bool {
+    match value {
+        Value::String(text) => !points_to_device(text),
+        Value::Object(fields) => {
+            fields.retain(|_, value| retain_public(value));
+            !fields.is_empty()
+        }
+        Value::Array(values) => {
+            let was_empty = values.is_empty();
+            values.retain_mut(retain_public);
+            was_empty || !values.is_empty()
+        }
+        Value::Number(_) | Value::Bool(_) => true,
+        Value::Null => false,
     }
 }
 
@@ -289,21 +322,19 @@ pub fn literal_date(value: &str) -> bool {
 // Raw parsing replaces the whole date when structured parts are absent/empty.
 // Resolve that priority once for note overrides and CSL dates, before projecting
 // sort data. Curly delimiters need explicit normalization; ASCII stays native.
-fn normalize_raw_date(date: &mut Map<String, Value>) {
-    if date
-        .get("date-parts")
-        .is_some_and(|parts| !parts.as_array().is_some_and(Vec::is_empty))
+fn normalize_raw_date(date: &mut Map<String, Value>, has_raw: bool) {
+    if !has_raw
+        || date
+            .get("date-parts")
+            .is_some_and(|parts| !parts.as_array().is_some_and(Vec::is_empty))
     {
         return;
     }
-    let Some(raw) = date.get("raw").and_then(Value::as_str).filter(|raw| !raw.is_empty()) else {
-        return;
-    };
-    // Whitespace-only raw is still truthy to the pinned processor.
-    let literal = raw
-        .trim()
-        .strip_prefix('“')
-        .and_then(|raw| raw.strip_suffix('”'))
+    // Source raw wins even if normalizing its line breaks left it empty.
+    let literal = date
+        .get("raw")
+        .and_then(Value::as_str)
+        .and_then(|raw| raw.trim().strip_prefix('“').and_then(|raw| raw.strip_suffix('”')))
         .map(|text| Value::String(text.into()));
     if let Some(literal) = literal {
         date.clear();
@@ -704,6 +735,7 @@ fn truthy(value: &Value) -> bool {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 
