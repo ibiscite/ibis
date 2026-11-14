@@ -10,7 +10,9 @@ fn unrelated_json_reports_a_format_error_in_library_status() -> Result<(), Box<d
     let library = Mutex::new(Library::default());
     let requests = LoadRequests::default();
     let (request, _, _) = begin_open(&library, &requests, Source::File(path.clone())).ok_or("begin")?;
-    let error = FileLibrary::open(&path).err().ok_or("unrelated JSON opened")?;
+    let error = FileLibrary::open(&path, &ibis_engine::Cancellation::default())
+        .err()
+        .ok_or("unrelated JSON opened")?;
     assert_eq!(
         error,
         super::super::LoadError::File(ibis_core::contract::ErrorCode::BadInput.into())
@@ -23,7 +25,10 @@ fn unrelated_json_reports_a_format_error_in_library_status() -> Result<(), Box<d
     );
     for text in ["", "[]"] {
         std::fs::write(&path, text)?;
-        assert!(FileLibrary::open(&path).is_ok(), "an empty JSON library must open");
+        assert!(
+            FileLibrary::open(&path, &ibis_engine::Cancellation::default()).is_ok(),
+            "an empty JSON library must open"
+        );
     }
     Ok(())
 }
@@ -35,7 +40,7 @@ fn deleted_current_file_retains_four_references_and_reports_not_updated() -> Res
     let directory = tempfile::tempdir()?;
     let path = directory.path().join("synthetic.bib");
     std::fs::write(&path, "@book{a}\n@book{b}\n@book{c}\n@book{d}")?;
-    let file = Arc::new(FileLibrary::open(&path).map_err(|_| "file")?);
+    let file = Arc::new(FileLibrary::open(&path, &ibis_engine::Cancellation::default()).map_err(|_| "file")?);
     let source = Source::File(path.clone());
     let library = Mutex::new(Library {
         source: Some(source.clone()),
@@ -61,7 +66,8 @@ fn a_coherent_engine_update_clears_only_its_own_failed_reload() -> Result<(), Bo
     std::fs::write(&path, "@book{a}")?;
     // No live watcher: its own accepted read would supersede these reloads.
     let engine = Engine::new().map_err(|_| "engine")?.without_file_watches();
-    let file = Arc::new(FileLibrary::open_file_with(&path, engine, || {}).map_err(|_| "file")?);
+    let file =
+        Arc::new(FileLibrary::open_file_with(&path, engine, &Cancellation::default(), || {}).map_err(|_| "file")?);
     let source = Source::File(path.clone());
     let library = Mutex::new(Library {
         source: Some(source.clone()),
@@ -104,7 +110,7 @@ fn repeated_reloads_and_failed_choices_emit_one_engine_notification() -> Result<
     let directory = tempfile::tempdir()?;
     let path = directory.path().join("synthetic.bib");
     std::fs::write(&path, "@book{a}")?;
-    let file = Arc::new(FileLibrary::open(&path).map_err(|_| "file")?);
+    let file = Arc::new(FileLibrary::open(&path, &ibis_engine::Cancellation::default()).map_err(|_| "file")?);
     let source = Source::File(path.clone());
     let library = Mutex::new(Library {
         source: Some(source),
@@ -156,7 +162,7 @@ fn shelf_recents_resolve_current_records_and_source_added_order_without_old_page
         &path,
         r#"[{"id":"a","type":"book","title":"Synthetic A","date-added":"2026-10-01"},{"id":"b","type":"book","title":"Synthetic B","date-added":"2026-10-30"},{"id":"c","type":"book","title":"Synthetic C","date-added":"2026-10-15"}]"#,
     )?;
-    let file = FileLibrary::open(&path).map_err(|_| "open")?;
+    let file = FileLibrary::open(&path, &ibis_engine::Cancellation::default()).map_err(|_| "open")?;
     let rows = file.search(
         &SearchQuery {
             text: "Synthetic A".into(),
@@ -195,6 +201,7 @@ fn remembered_file_choice_uses_the_observation_that_supplied_the_loaded_bytes() 
     let file = FileLibrary::open_file_with(
         &selected,
         Engine::new().map_err(|_| "engine")?.without_file_watches(),
+        &Cancellation::default(),
         || {
             std::fs::remove_file(&selected).unwrap_or_else(|e| panic!("{e}"));
             std::os::unix::fs::symlink(&b, &selected).unwrap_or_else(|e| panic!("{e}"));

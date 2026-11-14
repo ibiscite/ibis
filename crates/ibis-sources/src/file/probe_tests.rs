@@ -20,6 +20,45 @@ fn references() -> (Vec<LibraryObject>, Vec<(usize, String)>) {
 }
 
 #[test]
+fn repeated_blocked_attachment_batches_leave_room_for_a_healthy_library() {
+    const CHILD: &str = "IBIS_ATTACHMENT_CAPACITY_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        subprocess_watchdog::assert_finishes(
+            "file::io::probe_tests::repeated_blocked_attachment_batches_leave_room_for_a_healthy_library",
+            CHILD,
+            "blocked attachment probes prevented a healthy library from opening",
+        );
+        return;
+    }
+    let mut releases = Vec::new();
+    for _ in 0..MAX_IN_FLIGHT {
+        let (mut objects, mut references) = references();
+        references.truncate(1);
+        let (release, blocked) = mpsc::channel::<()>();
+        releases.push(release);
+        let mut scope = Scope::new(&|| false);
+        scope.until = Instant::now() + Duration::from_millis(30);
+        scope
+            .attachments_with(&mut objects, references, move |_| {
+                let _ = blocked.recv();
+                Availability::OnDisk
+            })
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert!(objects.iter().all(|object| matches!(
+            object,
+            LibraryObject::Attachment(attachment) if attachment.availability == Availability::Unknown
+        )));
+    }
+    let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+    let path = dir.path().join("healthy.bib");
+    std::fs::write(&path, "@book{healthy, title={Healthy library}}").unwrap_or_else(|e| panic!("{e}"));
+    let (loaded, _) = load_file_snapshot(&path, &|| false).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(loaded.snapshot.objects().len(), 1);
+    // All started probes remain blocked while the healthy file opens.
+    drop(releases);
+}
+
+#[test]
 fn five_hundred_blocked_attachments_share_the_sources_remaining_deadline() {
     let (mut objects, references) = references();
     let mut scope = Scope::new(&|| false);

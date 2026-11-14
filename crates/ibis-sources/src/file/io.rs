@@ -8,29 +8,57 @@ use std::time::Instant;
 
 const DEADLINE: Duration = Duration::from_secs(2);
 const MAX_IN_FLIGHT: usize = 8;
+const MAX_PROBE_BATCHES: usize = MAX_IN_FLIGHT / 2;
 const MAX_ATTACHMENT_PROBES: usize = 256;
 
-#[derive(Clone, Default)]
-struct Budget(Arc<(Mutex<usize>, Condvar)>);
+#[derive(Default)]
+struct InFlight {
+    total: usize,
+    probes: usize,
+}
 
-struct Permit(Budget);
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Work {
+    Read,
+    Probe,
+}
+
+#[derive(Clone, Default)]
+struct Budget(Arc<(Mutex<InFlight>, Condvar)>);
+
+struct Permit(Budget, Work);
 impl Drop for Permit {
     fn drop(&mut self) {
         let (count, available) = &*self.0.0;
-        *count.lock().unwrap_or_else(|e| e.into_inner()) -= 1;
+        let mut count = count.lock().unwrap_or_else(|e| e.into_inner());
+        count.total -= 1;
+        if self.1 == Work::Probe {
+            count.probes -= 1;
+        }
         available.notify_one();
     }
 }
 
 impl Budget {
+    fn shared() -> &'static Self {
+        static BUDGET: OnceLock<Budget> = OnceLock::new();
+        BUDGET.get_or_init(Budget::default)
+    }
+
     fn run<T: Send + 'static>(
         &self,
         scope: &Scope<'_>,
+        work: Work,
         operation: impl FnOnce() -> Result<T, SourceError> + Send + 'static,
     ) -> Result<T, SourceError> {
         let (count, available) = &*self.0;
         let mut count = count.lock().map_err(|_| SourceError::Unavailable)?;
-        while *count >= MAX_IN_FLIGHT {
+        // Optional metadata never queues behind I/O or occupies the four
+        // slots reserved for library reads, even after its caller times out.
+        if work == Work::Probe && (count.probes >= MAX_PROBE_BATCHES || count.total >= MAX_IN_FLIGHT) {
+            return Err(SourceError::Unavailable);
+        }
+        while count.total >= MAX_IN_FLIGHT {
             let remaining = scope.remaining()?;
             count = available
                 .wait_timeout(count, remaining.min(Duration::from_millis(10)))
@@ -38,9 +66,12 @@ impl Budget {
                 .0;
         }
         scope.remaining()?;
-        *count += 1;
+        count.total += 1;
+        if work == Work::Probe {
+            count.probes += 1;
+        }
         drop(count);
-        let permit = Permit(self.clone());
+        let permit = Permit(self.clone(), work);
         let (send, result) = mpsc::sync_channel(1);
         std::thread::Builder::new()
             .name("ibis-file-io".into())
@@ -96,8 +127,7 @@ impl<'a> Scope<'a> {
         &self,
         operation: impl FnOnce() -> Result<T, SourceError> + Send + 'static,
     ) -> Result<T, SourceError> {
-        static BUDGET: OnceLock<Budget> = OnceLock::new();
-        BUDGET.get_or_init(Budget::default).run(self, operation)
+        Budget::shared().run(self, Work::Read, operation)
     }
 
     pub(super) fn attachments(
@@ -130,7 +160,7 @@ impl<'a> Scope<'a> {
         references.shrink_to_fit();
         let until = self.until;
         let (send, results) = mpsc::channel();
-        let outcome = self.run(move || {
+        let outcome = Budget::shared().run(self, Work::Probe, move || {
             for (index, path) in references {
                 if Instant::now() >= until {
                     break;
@@ -391,16 +421,18 @@ mod tests {
             let (release, stuck) = mpsc::channel::<()>();
             releases.push(release);
             assert_eq!(
-                budget.run(&test_scope(Duration::from_millis(10)), move || {
+                budget.run(&test_scope(Duration::from_millis(10)), Work::Read, move || {
                     stuck.recv().map_err(|_| SourceError::Unavailable)
                 }),
                 Err(SourceError::Unavailable)
             );
         }
         assert_eq!(
-            budget.run(&test_scope(Duration::from_secs(1)), || -> Result<(), SourceError> {
-                panic!("the detached I/O limit was exceeded")
-            }),
+            budget.run(
+                &test_scope(Duration::from_secs(1)),
+                Work::Read,
+                || -> Result<(), SourceError> { panic!("the detached I/O limit was exceeded") }
+            ),
             Err(SourceError::Unavailable)
         );
         drop(releases);

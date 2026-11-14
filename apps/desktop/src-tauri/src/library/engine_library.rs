@@ -84,35 +84,40 @@ impl FileLibrary {
             .collect())
     }
 
-    pub(crate) fn open(path: &Path) -> Result<Self, super::LoadError> {
-        Self::open_file(
+    pub(crate) fn open(path: &Path, cancel: &Cancellation) -> Result<Self, super::LoadError> {
+        Self::open_file_with(
             path,
             Engine::new()
                 .map(|engine| engine.with_formatting(FORMATTING.clone()))
                 .map_err(|_| super::LoadError::Stopped)?,
+            cancel,
+            || {},
         )
     }
 
-    pub(super) fn open_samples(path: &Path) -> Result<Self, super::LoadError> {
-        let mut file = Self::open_file(
+    pub(super) fn open_samples(path: &Path, cancel: &Cancellation) -> Result<Self, super::LoadError> {
+        let mut file = Self::open_file_with(
             path,
             Engine::new()
                 .map(|engine| engine.with_formatting(FORMATTING.clone()))
                 .map_err(|_| super::LoadError::Stopped)?
                 .without_file_watches(),
+            cancel,
+            || {},
         )?;
         file.sample = true;
         Ok(file)
     }
 
-    fn open_file(path: &Path, engine: Engine) -> Result<Self, super::LoadError> {
-        Self::open_file_with(path, engine, || {})
-    }
-
-    fn open_file_with(path: &Path, engine: Engine, before_read: impl FnOnce()) -> Result<Self, super::LoadError> {
+    fn open_file_with(
+        path: &Path,
+        engine: Engine,
+        cancel: &Cancellation,
+        before_read: impl FnOnce(),
+    ) -> Result<Self, super::LoadError> {
         before_read();
         let source_path = engine
-            .open_file_observed(path, &Cancellation::default())
+            .open_file_observed(path, cancel)
             .map_err(super::LoadError::file)?;
         let mut file = Self::from_engine(engine);
         file.source_path = Some(source_path);

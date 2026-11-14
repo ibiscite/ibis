@@ -403,7 +403,8 @@ mod tests {
             &path,
             "@book{taylor,title={Synthetic signals},author={Taylor, Alex},year={2026}}",
         )?;
-        let file = FileLibrary::open(&path).map_err(|_| "open invented library")?;
+        let file =
+            FileLibrary::open(&path, &ibis_engine::Cancellation::default()).map_err(|_| "open invented library")?;
         let query = serde_json::from_value(serde_json::json!({"text":"signals","interpret_locators":false}))?;
         let rows = serde_json::to_value(file.search(&query, 10, None, &ibis_engine::Cancellation::default())?)?;
         let id = serde_json::from_value(rows["results"][0]["id"].clone())?;
