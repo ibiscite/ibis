@@ -1,6 +1,6 @@
 // What the picker copies and which references it acts on. Pure; no React.
 import type { Locator, SearchResult, ZoteroLibrary } from "../../api";
-import type { ReferenceForm } from "../../bindings";
+import type { CitationForm } from "../../bindings";
 import { say } from "../../i18n";
 import { outputName, writesEntries, type OutputId } from "../../format/outputs";
 
@@ -9,7 +9,7 @@ export type CitationReference = SearchResult & {
   /** A locator typed in the details carries `input`, and only the engine reads it
    * (a typed label such as "ch. 3" names its type); one captured from search is canonical. */
   readonly locator?: (Readonly<Locator> & { readonly input?: "editor" }) | null;
-  readonly form?: ReferenceForm;
+  readonly form?: CitationForm;
   readonly prefix?: string;
   readonly suffix?: string;
 };
@@ -24,7 +24,7 @@ export function asTyped(result: SearchResult, typed: Typed): CitationReference {
 
 /** Selection is keyed by record identity, never by list position or citation key. */
 export function choiceKey(records: readonly CitationReference[]): string {
-  return JSON.stringify(records.map((record) => [record.id, record.revision, record.cite, record.locator?.label ?? null, record.locator?.value ?? null, record.locator?.input ?? null, record.form ?? "normal", record.prefix ?? "", record.suffix ?? ""]));
+  return JSON.stringify(records.map((record) => [record.id, record.revision, record.cite, record.locator?.term ?? null, record.locator?.value ?? null, record.locator?.input ?? null, record.form ?? "normal", record.prefix ?? "", record.suffix ?? ""]));
 }
 
 export function idKey(id: unknown): string {

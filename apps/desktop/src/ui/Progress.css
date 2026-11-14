@@ -12,8 +12,11 @@
 
 /* A task as one line of the notice slot. The track is the ring's own inset edge;
    the fill is its one stroke. */
-.update-card { --progress-track: var(--fill-control-pressed); display: flex; flex: 1; align-items: center; gap: calc((var(--tile) - var(--icon)) / 2 + var(--row-gap)); min-width: 0; min-height: var(--control-small-h); }
-.update-ring { position: relative; flex: none; width: var(--icon); height: var(--icon); margin-inline-start: calc((var(--tile) - var(--icon)) / 2); border-radius: var(--r-full); box-shadow: inset 0 0 0 var(--border-width) var(--progress-track); }
+/* [C3] The ring centres in the icon column and the words start on the label column, as a row's. */
+.update-card { --progress-track: var(--fill-control-pressed); flex: 1; min-width: 0; min-height: var(--control-small-h); }
+.update-card > .ui-band { --band-inset: 0px; min-height: var(--control-small-h); }
+.ui-notice-line .update-card > .ui-band { margin-inline-start: calc(-1 * var(--row-pad)); }
+.update-ring { position: relative; width: var(--icon); height: var(--icon); border-radius: var(--r-full); box-shadow: inset 0 0 0 var(--border-width) var(--progress-track); }
 .update-ring > svg:first-child { position: absolute; inset: 0; width: 100%; height: 100%; rotate: -90deg; }
 .update-ring-fill { --progress: 0; fill: none; stroke-width: 2.5; stroke: var(--progress-fill); stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: calc(100 - var(--progress)); transform-box: fill-box; transform-origin: center; transition: stroke-dashoffset var(--dur-2) var(--ease-out); }
 .update-card[data-indeterminate] .update-ring-fill { stroke-dashoffset: 72; animation: update-turn 1s linear infinite; }
@@ -23,7 +26,7 @@
 .update-text { display: flex; flex-wrap: wrap; column-gap: var(--space-2); min-width: 0; height: 1lh; overflow: hidden; white-space: nowrap; }
 .update-text > strong { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
 .update-text > span, .update-percent { flex: none; color: var(--text-secondary); }
-.update-percent { font-variant-numeric: tabular-nums; }
+.update-percent { margin-inline-start: var(--row-gap); font-variant-numeric: tabular-nums; }
 
 /* Paused while the picker is hidden (App.tsx). */
 :root[data-picker-hidden] .update-progress[data-indeterminate] .update-track > div, :root[data-picker-hidden] .update-card[data-indeterminate] .update-ring-fill { animation-play-state: paused; }

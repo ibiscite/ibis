@@ -30,7 +30,7 @@ The values every part reads, in [`tokens.css`](../../apps/desktop/src/tokens.css
 - **Surfaces** [D4]: `--surface` (window), `--surface-grouped` (grouped content), `--surface-overlay` (every overlay), `--surface-field`. Settings cards are grouped content. No other surface colours.
 - **Window glass** [C13]: on macOS one glass sheet for the whole panel (Liquid Glass, popover vibrancy fallback) under a surface veil, so colour shows through but never readable shapes. Never glass on glass or CSS blur posing as the desktop. Elsewhere an opaque surface.
 - **Views, not cards**: the palettes and sheets are views of the window (`ui/ViewFrame`), not layers over it. The picker's content swaps out; the view keeps the picker's header and footer geometry and its list grid, and has no card, border, corner, shadow or dimmed backdrop of its own. Back (the chevron where the bird sits, the footer's Back, Esc) returns.
-- **Readable overlays** [C9][C13]: everything that floats (menus, pop-overs, the peek card, held keys, the reader's controls) is one raised layer, `ui/Overlay` (`.ui-overlay`): `--surface-overlay`, a step off the window in either mode as a Mac menu is (never the window's own white or black), the panel's glass where it applied, and one shadow. No part paints its own.
+- **Readable overlays** [C9][C13]: everything that floats (menus, pop-overs, the peek card, the reader's controls) is one raised layer, `ui/Overlay` (`.ui-overlay`): `--surface-overlay`, a step off the window in either mode as a Mac menu is (never the window's own white or black), the panel's glass where it applied, and one shadow. No part paints its own.
 - **Elevation** [D11]: one overlay shadow, on that layer only; none on rows, chips or inside an overlay. In dark mode fills and hairlines separate layers first.
 - **Layers** [D15]: one z-order (`--z-*`); one overlay of each kind at a time; overlays keep `--inset` from the window edge and never leave it.
 - **Increase Contrast** uses the Mac's stronger set: stronger labels and marks, a solid ring, no scroll fades.
@@ -48,7 +48,14 @@ The values every part reads, in [`tokens.css`](../../apps/desktop/src/tokens.css
 
 - **Spacing** [C1]: S = `--inset` on every OS. Every fill keeps S from the window edge and from any divider it touches; the list's viewport starts S below the header divider and ends S above the shelf. 4 px grid; 2 px only as an optical nudge.
 - **Control sizes**: the picker uses Apple's large controls and Settings the regular ones, as Spotlight and System Settings do. Targets grow to 32 px without changing the drawn size.
-- **Two columns** [C3]: icons, the search glyph, Back's chevron, the footer status dot and type tiles centre on the tile column (`--tile`); text (row titles, the query, status text, the shelf citation) starts on the title column. Removing a header label or changing a control's target never shifts these columns. The trailing edge is where row text ends; the last header control, footer key cap and year column end there. Distances run from the logical start edge, also in RTL.
+- **The window grid** [C3] (decision 0053): three lines, set once in `tokens.css` and drawn by `ui/Band`, so no screen places anything.
+  - **Leading edge** (`--row-start`, 20 px from the window): where a tile's plate starts. Anything without a glyph that starts a line starts here: list headings, the notice standing in for a heading, the footer's library status.
+  - **Lead column** (`--tile`, 32 px from the leading edge): one glyph per band, centred: a row's type glyph or tile, the bird, Back's chevron, the shelf's beak, a held row's digit. A glyph in it is always 20 px (`--icon-tile`). A band either has a lead column (`icon` given, `null` for an empty one in a list of glyph rows) or none (headings, notices, status); nothing else sits in it.
+  - **Title column** (`--label-start`): row titles, the query, view titles, the shelf citation.
+  - **Trailing edge** (`--row-start` from the far side): where the last ink ends: years, the heading's count, palette keys, the format pop-up's chevrons and the footer's last key cap (`--cap-end` puts a cap's fill there). A quiet button's hover plate may run past an edge; its words and glyph never do.
+  Distances run from the logical start edge, also in RTL. Menus are the one exception, as NSMenu draws them: a menu's section heading sits on its items' label column.
+- **Type, four sizes in the picker** (`--type-*`): search 22/26 (the query and a view's search), title 15/20 semibold (result titles), body 13/16 (everything else that is read: palette and command rows, meta lines, menus, notices), label 12/15 (headings in semibold, the footer, key caps). Lead 17 is for an empty state's or choice screen's title and display 20 for Settings headings and the welcome; nothing else. A one-line action row (palette, commands, menus) is body, never title.
+- **Spacing, one 4 px scale** (`--space-1` to `--space-10`): the inset 8, a row's padding and the gap after its glyph 12, the gutter between sections 16. Parts read the roles (`--inset`, `--row-pad`, `--row-gap`, `--gutter`), never a step directly, and a screen sets none of them (`ui/ownership.test.ts`).
 - **Rows** [C4]: two densities: Compact (one line; a long title ends in an ellipsis) and Comfortable (two, the default). Density changes rows only. Rows are 2 px apart in results.
 - **One steady window** [C10]: the picker keeps one size the whole time it is open, in every state; nothing measures content to choose a height and nothing animates a resize. Medium 720 × 480 is the default, minimum 480 × 360; Look › **Window size** offers Small, Medium and Large. A dragged size shows as Custom and is kept per display.
 - **Nothing clipped, one scroller**: no state is ever cut off; only the middle area or an open menu scrolls, never two at once. The inspector is the one exception: a sidebar scrolls apart from the list beside it, as in Preview, and its actions stay pinned at its bottom so none scrolls out of reach at the smallest window or with Larger Text. In a short frame with large text the header gaps and footer hint labels give way first.
@@ -64,8 +71,10 @@ The values every part reads, in [`tokens.css`](../../apps/desktop/src/tokens.css
 
 ## Icons
 
-- One `Icon` primitive uses Lucide (ISC, with the bundled Feather MIT notices; source versions in `brand/README.md`) from `brand/icons/`, built by `python3 brand/build.py`. Controls, menus and rows use `--icon` (16px); tiles and toolbar use `--icon-tile` (20px). Both render a 1.5px stroke, centred on the label line; parts never resize glyphs. These pixel sizes stay fixed under Larger Text.
-- Missing glyphs are drawn only when no Lucide glyph fits: use its 24-unit grid, nominal 2-unit stroke, round caps and joins, no fill, and one path including any subpaths. The icon guard checks the source; the canvas checks rendered sizes and strokes ([decision 0044](../decisions/0044-lucide-icon-primitive.md)).
+- One `Icon` primitive draws **Phosphor Regular** (MIT, `@phosphor-icons/core`), vendored unchanged in `brand/icons/` and built by `python3 brand/build.py` ([decision 0053](../decisions/0053-window-grid-and-icons.md)). Phosphor draws on a 256-unit grid that is a 16 px pixel grid: at 16 px its stroke is 1 px and its horizontals and verticals fall on whole pixels, so it stays crisp at 1× on Windows and Linux (checked) and reads like SF Symbols beside system text; at 20 px the stroke is 1.25 px.
+- **Two sizes, chosen by place, not by part:** 16 px (`--icon`) inside controls and menus; 20 px (`--icon-tile`) in the lead column of any list. These stay fixed under Larger Text.
+- **Named by meaning:** each file is named for what it stands for (`peek`, `settings`, `quit`, `reset`, `history`), and `brand/icons/SOURCES.json` names its upstream glyph. One meaning, one glyph: a glyph is never borrowed for a second meaning (no contrast circle for Peek, no × for Quit). A new meaning adds a file; nothing is redrawn or normalized.
+- A glyph Phosphor lacks is drawn on its grid at Regular weight (a 16-unit stroke, round caps and joins, outlined to a fill), so it cannot be told apart from the set.
 - App icons come from the system, including the installed Zotero icon on its setup card (bundle id `org.zotero.zotero`, read through NSWorkspace). Rasterize at the displayed size before exporting; a failed read or decode keeps the action's distinct fallback.
 - Ibis never ships Zotero's logo or other apps' artwork.
 - Seven type icons (article, book, chapter, thesis, web page, report, other) stay distinct from attachment drawings. Toggled-on keeps the same outline; the control's fill carries state.
@@ -87,7 +96,7 @@ The bird appears only where Ibis itself is the subject, in the one treatment of 
 | Ibis as an app: About, the Dock, Finder, the paste guide's drag icon | The real app icon on its tile, never redrawn | `--mark-app` |
 | Greeting: welcome, the first open | The depth mark, no tile | `--mark-greeting` |
 | Waiting: opening a library | The flat mark, breathing | 2.5 rem |
-| Working: the search bar | The flat mark in `--scarlet`, eye open | The search glyph's size |
+| Working: the search bar | The flat mark in `--scarlet`, eye open, in the lead column | `--mark-search`: the column's 32 px, so its ink is the query's line height |
 | System chrome: the menu bar | The one-colour bird the system tints | The system's |
 
 ## Key caps
@@ -106,7 +115,7 @@ The bird appears only where Ibis itself is the subject, in the one treatment of 
 
 ## Accessibility
 
-- Every action has a key and a visible, named control; hover is never the only way to see something; visible labels match accessible names.
+- Every action has a key and a visible, named control; hover is never the only way to see something; visible labels match accessible names. Editing the query is typing, not an action: Esc clears it, as in Spotlight, and the field has no clear button.
 - Focus order: search, header pop-ups, pin, browsing tabs, footer actions, More. The list is not a Tab stop (↑ ↓ move it from search). Nothing takes focus except search on open.
 - Screen readers hear a row as title, first author, year, container, type and why it matched. "Copied" is announced politely; a Rows change is announced once.
 - An input method's confirming Enter never copies or pastes. Every release passes the whole citation with VoiceOver and NVDA and with CJK input methods (decision 0032).

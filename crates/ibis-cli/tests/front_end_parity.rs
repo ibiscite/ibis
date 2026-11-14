@@ -1,7 +1,7 @@
 //! Same results from every front end (#1200): each golden case runs through
 //! every front end that exposes a method. CLI recovery advice is additional;
 //! the underlying result and error stay byte-identical. The picker's row is
-//! `apps/desktop/src-tauri/src/library/engine_file/parity_tests.rs`.
+//! `crates/ibis-engine/tests/citations.rs`.
 use ibis_core::contract::*;
 use ibis_engine::protocol::{read_frame, write_frame};
 use ibis_engine::{Cancellation, Engine, Method};

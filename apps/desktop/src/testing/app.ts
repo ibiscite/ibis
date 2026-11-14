@@ -1,3 +1,5 @@
+import { displayTree } from "../test-fixtures";
+export { displayTree } from "../test-fixtures";
 // The lightweight mocked Rust side and shared steps for whole-picker tests.
 // For clipboard/document outcomes and reordered workers, use ./delivery instead.
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
@@ -5,7 +7,7 @@ import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { expect, vi } from "vitest";
 import { emit, listen } from "@tauri-apps/api/event";
 import type * as api from "../api";
-import type { Density, DisplayRun, DisplayTree, FilePreview, FileSelection, PreviewIntent } from "../bindings";
+import type { Density, DisplayTree, Preview, DraftItem, CitationIntent } from "../bindings";
 import { recordId } from "../test-fixtures";
 import { isStyle, listedOutput } from "../format/outputs";
 import { fixtureDestination, formatAnswer } from "./format";
@@ -136,7 +138,7 @@ export function closeCitationDetails() {
 }
 
 const fixtureKeys = new Map<string, string>();
-export const fixtureCitationKey = (id: FileSelection["id"]) => fixtureKeys.get(JSON.stringify(id)) ?? "";
+export const fixtureCitationKey = (id: DraftItem["id"]) => fixtureKeys.get(JSON.stringify(id)) ?? "";
 
 export function result(key: string, title: string, source = "refs.bib") {
   const id = { library: source, key: recordId(key) };
@@ -147,31 +149,26 @@ export function result(key: string, title: string, source = "refs.bib") {
   };
 }
 
-export type SyntheticId = FileSelection["id"];
+export type SyntheticId = DraftItem["id"];
 export type PreviewRequest = {
-  items: (Omit<FileSelection, "id"> & { id: SyntheticId })[];
+  items: (Omit<DraftItem, "id"> & { id: SyntheticId })[];
   /** The engine output id the picker asked for. */
   output: string;
   expectedRevision: string;
-  intent: PreviewIntent;
+  intent: CitationIntent;
 };
-type Prepared = { request: PreviewRequest; preview: FilePreview };
+type Prepared = { request: PreviewRequest; preview: Preview };
 const receipts = new Map<string, Prepared>();
 let receiptNumber = 0;
 
-/** Invented ownership groups in the engine display contract. */
-export function displayTree(spans: { item: number | null; text: string; runs?: DisplayRun[] }[]): DisplayTree {
-  return { nodes: spans.map(({ item, text, runs }) => ({ item, content: runs ?? [{ text, italic: false, bold: false, script: "normal" }], blocks: [] })) };
-}
-
 /** A synthetic engine result. Tests choose output; no renderer runs in the browser. */
-export function receipt(text: string, display: DisplayTree | null = null, warnings: string[] = []): FilePreview {
+export function receipt(text: string, display: DisplayTree | null = null, warnings: string[] = []): Preview {
   const number = ++receiptNumber;
   return { effective_output: null, ticket: `synthetic-ticket-${number}`, content_hash: `synthetic-hash-${number}`, text, display: display ?? displayTree([{ item: 0, text }]), warnings };
 }
 
 /** A synthetic result with each reference's own words as its own token, joined by "; ". */
-export function lineReceipt(words: readonly string[], warnings: string[] = []): FilePreview {
+export function lineReceipt(words: readonly string[], warnings: string[] = []): Preview {
   const spans = words.flatMap((text, item) => [...(item ? [{ item: null, text: "; " }] : []), { item, text }]);
   return { ...receipt(spans.map((span) => span.text).join(""), null, warnings), display: displayTree(spans) };
 }
@@ -283,7 +280,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
         return { preferences };
       });
       if (cmd === "preview_file_citation") return Promise.resolve(value).then((preview) => {
-        const result = preview as FilePreview;
+        const result = preview as Preview;
         result.effective_output ??= (args as PreviewRequest).output;
         receipts.set(result.ticket, { request: args as PreviewRequest, preview: result });
         return result;

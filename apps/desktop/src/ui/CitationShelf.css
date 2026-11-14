@@ -36,11 +36,9 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 .shelf[data-copied]::before { animation: shelf-copy-wash var(--dur-2) var(--ease-out); }
 .shelf-copied { display: inline-flex; flex: none; align-items: center; gap: var(--space-1); height: var(--control-small-h); padding-inline: var(--space-2); border-radius: var(--r-full); color: var(--text); background: var(--status-ok-fill); font: var(--strong) var(--type-label-size) / var(--type-label-line) var(--font); white-space: nowrap; }
 .shelf-copied svg { color: var(--status-ok); }
-.shelf-copied path { animation: shelf-check var(--dur-2) var(--ease-out); }
 @keyframes shelf-copy-wash { from { opacity: 1; } to { opacity: 0; } }
-@keyframes shelf-check { from { stroke-dasharray: 1; stroke-dashoffset: 1; } to { stroke-dasharray: 1; stroke-dashoffset: 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .shelf[data-copied]::before, .shelf-copied path { animation: none; }
+  .shelf[data-copied]::before { animation: none; }
 }
 @media (prefers-contrast: more), (forced-colors: active) {
   .shelf { outline: var(--border-width) solid CanvasText; outline-offset: var(--border-outside); }

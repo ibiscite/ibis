@@ -2,19 +2,14 @@
    so a list that ends on a whole row still shows there is more. A mask reads
    only alpha, so the opaque text colour serves. In a short picker, results
    yield to the middle scroll area; the header, shelf and footer stay put. */
-.scroll-area { overflow: auto; }
-.scroll-area[data-more-above] {
-  -webkit-mask-image: linear-gradient(transparent, currentColor min(var(--scroll-fade), var(--scroll-fade-above-space, var(--scroll-fade))));
-  mask-image: linear-gradient(transparent, currentColor min(var(--scroll-fade), var(--scroll-fade-above-space, var(--scroll-fade))));
-}
-.scroll-area[data-more-below] {
-  -webkit-mask-image: linear-gradient(currentColor calc(100% - min(var(--scroll-fade), var(--scroll-fade-below-space, var(--scroll-fade)))), transparent);
-  mask-image: linear-gradient(currentColor calc(100% - min(var(--scroll-fade), var(--scroll-fade-below-space, var(--scroll-fade)))), transparent);
-}
-.scroll-area[data-more-above][data-more-below] {
-  -webkit-mask-image: linear-gradient(transparent, currentColor min(var(--scroll-fade), var(--scroll-fade-above-space, var(--scroll-fade))), currentColor calc(100% - min(var(--scroll-fade), var(--scroll-fade-below-space, var(--scroll-fade)))), transparent);
-  mask-image: linear-gradient(transparent, currentColor min(var(--scroll-fade), var(--scroll-fade-above-space, var(--scroll-fade))), currentColor calc(100% - min(var(--scroll-fade), var(--scroll-fade-below-space, var(--scroll-fade)))), transparent);
+/* Each edge's fade is a stop of one mask, zero where nothing lies beyond it. */
+.scroll-area { overflow: auto; --fade-above: 0px; --fade-below: 0px; }
+.scroll-area[data-more-above] { --fade-above: min(var(--scroll-fade), var(--scroll-fade-above-space, var(--scroll-fade))); }
+.scroll-area[data-more-below] { --fade-below: min(var(--scroll-fade), var(--scroll-fade-below-space, var(--scroll-fade))); }
+.scroll-area[data-more-above], .scroll-area[data-more-below] {
+  -webkit-mask-image: linear-gradient(transparent, currentColor var(--fade-above), currentColor calc(100% - var(--fade-below)), transparent);
+  mask-image: linear-gradient(transparent, currentColor var(--fade-above), currentColor calc(100% - var(--fade-below)), transparent);
 }
 @media (prefers-contrast: more), (prefers-reduced-transparency: reduce), (forced-colors: active) {
-  .scroll-area[data-more-above], .scroll-area[data-more-below], .scroll-area[data-more-above][data-more-below] { -webkit-mask-image: none; mask-image: none; }
+  .scroll-area[data-more-above], .scroll-area[data-more-below] { -webkit-mask-image: none; mask-image: none; }
 }

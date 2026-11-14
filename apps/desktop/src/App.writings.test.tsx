@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import type { PickerDestination, WritingsView } from "./api";
-import type { FilePreview } from "./bindings";
+import type { Preview } from "./bindings";
 import { backend, prepared, receipt, resetApp, result } from "./testing/app";
 
 afterEach(resetApp);
@@ -22,7 +22,7 @@ const writingDestination = (name: string, format: "cite" | "typst", context: [nu
 test("Enter pressed during reopening waits for the newly captured writing and copies its fresh preview once", async () => {
   const first = writingDestination("Writing A", "cite", [1, 0]);
   const second = writingDestination("Writing B", "typst", [2, 0]);
-  const reopening = pending<PickerDestination>(), settled = pending<PickerDestination>(), preview = pending<FilePreview>();
+  const reopening = pending<PickerDestination>(), settled = pending<PickerDestination>(), preview = pending<Preview>();
   const copied: string[] = [];
   let reads = 0, initialPreviewStarted = false, newPreviewStarted = false;
   backend({
@@ -57,7 +57,7 @@ test("Enter pressed during reopening waits for the newly captured writing and co
 
 test("a bibliography read finishing for the same writing refreshes a waiting Enter without cancelling it", async () => {
   let destination = writingDestination("Writing A", "cite", [1, 0]);
-  const earlier = pending<FilePreview>(), checked = pending<FilePreview>();
+  const earlier = pending<Preview>(), checked = pending<Preview>();
   const copied: string[] = [];
   let delayedPreviewStarted = false, checkedPreviewStarted = false;
   backend({
@@ -231,7 +231,7 @@ test("a same-format writing switch starts a new copy and an older copy cannot de
 
 test("a checked bibliography warning still copies the waiting citation once and keeps the picker open", async () => {
   let destination = writingDestination("Writing A", "cite", [1, 0]);
-  const earlier = pending<FilePreview>(), checked = pending<FilePreview>();
+  const earlier = pending<Preview>(), checked = pending<Preview>();
   const warning = "synthetic2026 is missing from refs.bib.";
   const copied: { text: string; warnings: string[] }[] = [];
   let earlierStarted = false, checkedStarted = false, hidden = 0;
@@ -270,7 +270,7 @@ test("a checked bibliography warning still copies the waiting citation once and 
 test("a bibliography event retires an old copy proof before its delayed destination read settles", async () => {
   const first = writingDestination("Writing A", "cite", [1, 0]);
   const refreshed = writingDestination("Writing A", "cite", [1, 1]);
-  const destination = pending<PickerDestination>(), checked = pending<FilePreview>();
+  const destination = pending<PickerDestination>(), checked = pending<Preview>();
   const oldCopy = pending<{ text: string; warnings: string[]; delivery: number }>();
   const invoked: string[] = [], delivered: { text: unknown; delivery: unknown }[] = [];
   let reads = 0, checkedPreviewStarted = false, hidden = 0;

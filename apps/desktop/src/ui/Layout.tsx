@@ -2,15 +2,14 @@ import type { ReactNode } from "react";
 import { Button as AriaButton } from "react-aria-components";
 import { Icon } from "../icons";
 import { useInterfaceMessages } from "../i18n";
-import { Button } from "./Button";
+import { IconButton } from "./IconButton";
 import { settingControl } from "./settingFocus";
 import "./Layout.css";
 
 /** The layout parts. Screens compose these and never set
  * their own margin, padding, gap or position, so left edges line up by
- * construction: a card's edge on the window inset, a heading, a description and a
- * row's words on the heading offset, and an icon row's words on the label column
- * after the icon slot. */
+ * construction: a card's edge on the window inset, and a heading, a description
+ * and a row's words on the heading offset. */
 
 /** A part of a page or sheet named by its heading: the heading and an optional
  * description on the row text's edge, then its content (usually a Group). */
@@ -39,38 +38,42 @@ export function Group({ label, children }: { label?: string; children: ReactNode
   return label ? <ul className="ui-group" aria-label={label}>{children}</ul> : <div className="ui-group">{children}</div>;
 }
 
-/** One row of a Group: an optional icon in the icon slot, the label with a quiet
+/** One row of a Group: the label with a quiet
  * description, then its accessory (a control or buttons) at the end, which wraps
  * below when the row is narrow. `labelHidden` keeps the label for screen readers
  * only, for a row whose control names itself (a picture choice). */
-export function Row({ id, label, description, icon, children, problem, highlighted, pending, reset, labelHidden = false, item = false, changed = Boolean(reset) }: {
-  id?: string; label: ReactNode; description?: ReactNode; icon?: ReactNode; children?: ReactNode;
+export function Row({ id, label, description, children, problem, highlighted, pending, reset, labelHidden = false, item = false }: {
+  id?: string; label: ReactNode; description?: ReactNode; children?: ReactNode;
   problem?: string; highlighted?: boolean; pending?: boolean; labelHidden?: boolean;
-  reset?: { label: string; onReset: () => void; disabled?: boolean };
+  reset?: Reset; /** Given while the setting is away from its default. */
   /** In a labelled Group (a list). */
   item?: boolean;
-  changed?: boolean;
 }) {
-  const { text } = useInterfaceMessages();
   const Element = item ? "li" : "div";
   return <Element className="ui-row" aria-busy={pending || undefined} data-bare={labelHidden || undefined} data-highlighted={highlighted || undefined}>
     <span className={labelHidden ? "visually-hidden" : "ui-row-lead"}>
-      {icon && !labelHidden && <span className="ui-row-icon" aria-hidden="true">{icon}</span>}
       <span className="ui-row-text">
-        <span id={id} dir="auto">{label}</span>
-        {changed && <span className="ui-row-description">{text("settings-changed")}</span>}
+        <span className="ui-row-label"><span id={id} dir="auto">{label}</span>{children !== undefined && <ResetSlot reset={reset} />}</span>
         {description && <span id={id ? `${id}-description` : undefined} className="ui-row-description" dir="auto">{description}</span>}
       </span>
     </span>
     {children}
-    {reset && <Button variant="quiet" size="small" data-setting-reset aria-label={text("settings-use-default", { setting: reset.label })}
-      isDisabled={reset.disabled} onPress={(event) => {
-        const row = event.target.closest<HTMLElement>(".ui-row");
-        if (row) settingControl(row)?.focus({ preventScroll: true });
-        reset.onReset();
-      }}>{text("shortcuts-use-default")}</Button>}
     {problem && <p className="ui-row-problem" role="alert">{problem}</p>}
   </Element>;
+}
+
+type Reset = { label: string; onReset: () => void; disabled?: boolean };
+/** [C24] Use Default, the only way back to a default: it follows the setting's
+ * name, so it appears beside what it restores and every control keeps the
+ * row's one trailing edge. Nothing is reserved while the setting is default. */
+export function ResetSlot({ reset }: { reset?: Reset }) {
+  const { text } = useInterfaceMessages();
+  return reset ? <span className="ui-row-reset"><IconButton icon="reset" data-setting-reset isDisabled={reset.disabled}
+    aria-label={text("settings-use-default", { setting: reset.label })} title={text("shortcuts-use-default")} onPress={(event) => {
+      const row = event.target.closest<HTMLElement>(".ui-row, tr");
+      if (row) settingControl(row)?.focus({ preventScroll: true });
+      reset.onReset();
+    }} /></span> : null;
 }
 
 /** A row to choose from a list, as System Settings lists choices: the whole row is

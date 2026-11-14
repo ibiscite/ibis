@@ -106,7 +106,7 @@ test("colliding keys from different libraries have distinct visible and screen-r
   fireEvent.click(screen.getByRole("button", { name: "Edit García 2021 · shared · Second library" }));
   expect(details("Citation details for Second invented work")).toBeTruthy();
   fireEvent.change(screen.getByRole("textbox", { name: "Page" }), { target: { value: "42" } });
-  expect(change).toHaveBeenCalledWith(second, { locator: { label: "page", value: "42", input: "editor" } });
+  expect(change).toHaveBeenCalledWith(second, { locator: { term: "page", value: "42", input: "editor" } });
 });
 
 test.each(["click", "ArrowDown", " "])("a single reference is the whole citation token; %s opens its details and focuses Page", (key) => {
@@ -184,7 +184,7 @@ test("pending retains dimmed old text for 300 ms, then Formatting without treati
   try {
     const reference = record("a");
     const { rerender } = render(shelf({ selected: chosen([reference]), shown: output("Original citation") }));
-    rerender(shelf({ selected: chosen([{ ...reference, locator: { label: "page", value: "9" } }]), shown: null }));
+    rerender(shelf({ selected: chosen([{ ...reference, locator: { term: "page", value: "9" } }]), shown: null }));
     expect(document.querySelector('.shelf-output[data-state="pending"] .preview-text')?.textContent).toBe("Original citation");
     act(() => vi.advanceTimersByTime(299));
     expect(screen.queryByText("Formatting…")).toBeNull();
@@ -224,14 +224,14 @@ test("a formatting reply cannot retire a token while it is being activated", () 
 });
 
 test("Page retains typed input, canonical pages from search, and independent reference details", () => {
-  const reference: CitationReference = { ...record("a"), locator: { label: "page", value: "S.12" }, form: "year-only" };
+  const reference: CitationReference = { ...record("a"), locator: { term: "page", value: "S.12" }, form: "year-only" };
   const change = vi.fn();
   render(shelf({ highlightedReference: reference, shown: output("(2021, S.12)"), onChangeReference: change }));
   fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
   const page = screen.getByRole<HTMLInputElement>("textbox", { name: "Page" });
   expect(page.value).toBe("S.12");
   fireEvent.change(page, { target: { value: "pp. ١٢–١٥" } });
-  expect(change).toHaveBeenCalledWith(reference, { locator: { label: "page", value: "pp. ١٢–١٥", input: "editor" } });
+  expect(change).toHaveBeenCalledWith(reference, { locator: { term: "page", value: "pp. ١٢–١٥", input: "editor" } });
   expect(document.activeElement).toBe(page);
   fireEvent.change(page, { target: { value: "" } });
   expect(change).toHaveBeenLastCalledWith(reference, { locator: null });

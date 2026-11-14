@@ -15,8 +15,9 @@ when a read fails.
   keeps its identity across refreshes and fresh exports, whatever the record order,
   notes or database fields; a corrected field, a new edition or a changed type is a
   new reference. Nothing matches by position. `ID`, `AN`, `DB` and `DP` are not read:
-  no exporter's `ID` is proven to persist, so they wait until one is. Two records
-  with the same citation fields are one reference, kept once.
+  no exporter's `ID` is proven to persist, so they wait until one is. Repeated
+  identities quarantine every contender, including identical citation fields
+  (maintainer, 2026-11-14).
 - **RIS is recognised by its content.** A `.ris` or `.txt` file, or any other whose
   first line is `TY  - `, is read as RIS; one with no record is refused, which turns
   away renamed `.nbib`, RefWorks Tagged and native Web of Science files. UTF-8 only.

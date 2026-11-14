@@ -41,7 +41,7 @@ export function useCitationOutput({ session, state, chosen, library, libraryVers
       selection: chosen.map((r) => ({
         id: r.id, cite: r.cite ?? "",
         locator: r.locator?.input === "editor" ? null : r.locator ?? null,
-        ...(r.locator?.input === "editor" ? { locator_input: { label: r.locator.label, text: r.locator.value } } : {}),
+        ...(r.locator?.input === "editor" ? { locator_input: { label: r.locator.term, text: r.locator.value } } : {}),
         ...(r.form ? { form: r.form } : {}),
         ...(r.prefix ? { prefix: r.prefix } : {}), ...(r.suffix ? { suffix: r.suffix } : {}),
       })),

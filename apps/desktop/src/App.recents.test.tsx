@@ -72,7 +72,7 @@ test.each(["compact", "comfortable"])("%s requests and renders the same recent g
   await screen.findByRole("heading", { name: "Recently added" });
   await waitFor(() => expect(document.documentElement.dataset.density).toBe(density));
   expect(requests.at(-1)).toBe(false);
-  expect(screen.getAllByRole("option").map((row) => row.textContent?.slice(0, 8))).toEqual([expect.stringContaining("Recent A"), expect.stringContaining("Recent B")]);
+  expect(screen.getAllByRole("option").map((row) => row.querySelector(".result-title")?.textContent)).toEqual([expect.stringContaining("Recent A"), expect.stringContaining("Recent B")]);
 });
 
 

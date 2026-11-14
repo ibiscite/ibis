@@ -11,10 +11,11 @@ use super::{Loaded, Settings, SettingsError};
 use crate::settings;
 
 type Work = Box<dyn FnOnce(&Path, u64) -> Completion + Send>;
+type Reply = Box<dyn FnOnce() + Send>;
 #[derive(Default)]
 struct Completion {
-    written: Option<Vec<u8>>,
-    reply: Option<Box<dyn FnOnce() + Send>>,
+    written: Vec<Commit>,
+    publish: Option<Box<dyn FnOnce() -> Reply + Send>>,
 }
 struct Job {
     receipt: u64,
@@ -44,18 +45,23 @@ fn fingerprint(path: &Path) -> Fingerprint {
     }
 }
 
-// Record bytes actually committed by this job. Read-only and failed jobs never
-// adopt an outside edit as their own last write.
-thread_local! { static COMMITTED: RefCell<Option<Option<Vec<u8>>>> = const { RefCell::new(None) }; }
-pub(super) fn committed(bytes: Vec<u8>) {
+// Keep each successful write's input as well as its output: an editor may have
+// changed the input after the turn's initial observation. Replay in order so
+// several transactions in one turn do not report each other's writes as edits.
+struct Commit {
+    before: settings::Snapshot,
+    bytes: Vec<u8>,
+}
+thread_local! { static COMMITTED: RefCell<Option<Vec<Commit>>> = const { RefCell::new(None) }; }
+pub(super) fn committed(before: settings::Snapshot, bytes: Vec<u8>) {
     COMMITTED.with(|slot| {
         if let Some(written) = slot.borrow_mut().as_mut() {
-            *written = Some(bytes);
+            written.push(Commit { before, bytes });
         }
     });
 }
-fn tracking<T>(work: impl FnOnce() -> T) -> (T, Option<Vec<u8>>) {
-    struct Restore(Option<Option<Vec<u8>>>);
+fn tracking<T>(work: impl FnOnce() -> T) -> (T, Vec<Commit>) {
+    struct Restore(Option<Vec<Commit>>);
     impl Drop for Restore {
         fn drop(&mut self) {
             COMMITTED.with(|slot| {
@@ -63,9 +69,9 @@ fn tracking<T>(work: impl FnOnce() -> T) -> (T, Option<Vec<u8>>) {
             });
         }
     }
-    let restore = Restore(COMMITTED.with(|slot| slot.replace(Some(None))));
+    let restore = Restore(COMMITTED.with(|slot| slot.replace(Some(Vec::new()))));
     let result = work();
-    let written = COMMITTED.with(|slot| slot.borrow_mut().as_mut().and_then(Option::take));
+    let written = COMMITTED.with(|slot| slot.borrow_mut().as_mut().map(std::mem::take).unwrap_or_default());
     drop(restore);
     (result, written)
 }
@@ -117,7 +123,15 @@ fn report(path: &Path, receipt: u64, watch: &Mutex<WatchState>, primary: std::io
 }
 
 fn observe(path: &Path, receipt: u64, watch: &Mutex<WatchState>, seen: &mut Fingerprint) {
-    let primary = settings::read_regular_bytes(path);
+    observe_read(path, receipt, watch, seen, settings::read_regular_bytes(path));
+}
+fn observe_read(
+    path: &Path,
+    receipt: u64,
+    watch: &Mutex<WatchState>,
+    seen: &mut Fingerprint,
+    primary: std::io::Result<Vec<u8>>,
+) {
     match (&*seen, &primary) {
         (Fingerprint::Bytes(previous), Ok(bytes)) if previous == bytes => return,
         (Fingerprint::Failed(previous), Err(error)) if *previous == error.kind() => return,
@@ -175,14 +189,24 @@ impl Owner {
                     observe(&file, job.receipt - 1, &watching, &mut seen);
                     let completed =
                         catch_unwind(AssertUnwindSafe(|| (job.work)(&file, job.receipt))).unwrap_or_default();
-                    if let Some(bytes) = completed.written {
-                        seen = Fingerprint::Bytes(bytes);
+                    for commit in completed.written {
+                        observe_read(
+                            &file,
+                            job.receipt - 1,
+                            &watching,
+                            &mut seen,
+                            commit.before.map_err(std::io::Error::from),
+                        );
+                        seen = Fingerprint::Bytes(commit.bytes);
                     }
+                    let reply = completed
+                        .publish
+                        .and_then(|publish| catch_unwind(AssertUnwindSafe(publish)).ok());
                     observe(&file, job.receipt + 1, &watching, &mut seen);
                     // Finish the whole turn before returning its outcome. The
                     // caller's next edit must not race this turn's final read.
-                    if let Some(reply) = completed.reply {
-                        reply();
+                    if let Some(reply) = reply {
+                        let _ = catch_unwind(AssertUnwindSafe(reply));
                     }
                 }
             })
@@ -277,21 +301,27 @@ impl Owner {
         &self,
         work: impl FnOnce(&Path) -> T + Send + 'static,
     ) -> (Option<u64>, Pending<T>) {
-        self.submit_on_file_with_receipt(move |_, path| work(path))
+        self.submit_on_file_with_receipt(work, |_, result| result)
     }
-    pub fn submit_on_file_with_receipt<T: Send + 'static>(
+    /// Publish a save's effects after its input edits and before its final
+    /// observation; return the outcome only once the whole turn is finished.
+    pub fn submit_on_file_with_receipt<T: Send + 'static, U: Send + 'static>(
         &self,
-        work: impl FnOnce(u64, &Path) -> T + Send + 'static,
-    ) -> (Option<u64>, Pending<T>) {
+        work: impl FnOnce(&Path) -> T + Send + 'static,
+        after: impl FnOnce(u64, T) -> U + Send + 'static,
+    ) -> (Option<u64>, Pending<U>) {
         let (reply, outcome) = mpsc::channel();
         let receipt = enqueue(
             &self.jobs,
             Box::new(move |path, receipt| {
-                let (result, written) = tracking(|| work(receipt, path));
+                let (result, written) = tracking(|| work(path));
                 Completion {
                     written,
-                    reply: Some(Box::new(move || {
-                        let _ = reply.send(result);
+                    publish: Some(Box::new(move || {
+                        let result = after(receipt, result);
+                        Box::new(move || {
+                            let _ = reply.send(result);
+                        })
                     })),
                 }
             }),
@@ -307,16 +337,18 @@ impl Owner {
     }
     pub fn in_turn<T>(&self, work: impl FnOnce(&Path) -> T) -> Option<T> {
         let (start, turn) = mpsc::channel::<()>();
-        let (finished, done) = mpsc::channel::<Option<Vec<u8>>>();
+        let (finished, done) = mpsc::channel::<Vec<Commit>>();
         let (settled, completion) = mpsc::channel::<()>();
         enqueue(
             &self.jobs,
             Box::new(move |_, _| {
                 let _ = start.send(());
                 Completion {
-                    written: done.recv().ok().flatten(),
-                    reply: Some(Box::new(move || {
-                        let _ = settled.send(());
+                    written: done.recv().unwrap_or_default(),
+                    publish: Some(Box::new(move || {
+                        Box::new(move || {
+                            let _ = settled.send(());
+                        })
                     })),
                 }
             }),
@@ -667,6 +699,63 @@ mod tests {
         let reported = next(&edits);
         assert_eq!(reported.settings.larger_text, Some(true));
         assert_eq!(owner.read().settings.larger_text, Some(true));
+    }
+
+    #[test]
+    fn an_edit_after_observe_is_reported_once_before_an_unrelated_save_is_adopted()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (_directory, owner) = owner();
+        owner.change(|settings| {
+            settings.shortcut.set_here(Some("Control+Shift+Y".into()));
+            settings.density = Some(settings::Density::Compact);
+            Ok::<_, SettingsError>(())
+        })?;
+        let (sender, edits) = mpsc::channel();
+        let published = sender.clone();
+        owner.watch.lock().map_err(|_| "watch poisoned")?.edited = Some(Arc::new(move |receipt, loaded| {
+            let _ = sender.send((receipt, Some(loaded)));
+        }));
+        let (started, paused) = mpsc::channel();
+        let (release, held) = mpsc::channel();
+        // The file-work closure is the hook between the turn's initial
+        // observation and the transaction's checked read; no native watcher.
+        let (receipt, saved) = owner.submit_on_file_with_receipt(
+            move |path| {
+                started.send(()).unwrap_or_else(|error| panic!("{error}"));
+                held.recv_timeout(CHANNEL_LIMIT)
+                    .unwrap_or_else(|error| panic!("{error}"));
+                settings::update(path, |settings| settings.density = Some(settings::Density::Comfortable))
+            },
+            move |receipt, saved| {
+                let _ = published.send((receipt, None));
+                saved
+            },
+        );
+        paused.recv_timeout(CHANNEL_LIMIT)?;
+        let mut outside = owner.read().settings;
+        outside.shortcut.set_here(Some("Control+Alt+F12".into()));
+        replace(owner.path(), &serde_json::to_vec(&outside)?);
+        release.send(())?;
+        let saved = saved.wait().ok_or("save closed")??;
+        assert_eq!(saved.density, Some(settings::Density::Comfortable));
+        assert_eq!(saved.shortcut.here(), Some("Control+Alt+F12"));
+        let (reported_receipt, Some(reported)) = edits.try_recv()? else {
+            panic!("outside fields must be reported before publishing the save");
+        };
+        assert!(Some(reported_receipt) < receipt);
+        assert!(reported.problem.is_none());
+        assert_eq!(
+            reported.settings, outside,
+            "report the outside fields, before our density change"
+        );
+        assert!(matches!(edits.try_recv()?, (saved_receipt, None) if Some(saved_receipt) == receipt));
+        assert_eq!(owner.submit_on_file(|_| ()).wait(), Some(()));
+        assert!(
+            matches!(edits.try_recv(), Err(mpsc::TryRecvError::Empty)),
+            "report the edit exactly once"
+        );
+        assert_eq!(owner.read().settings, saved);
+        Ok(())
     }
 
     #[test]

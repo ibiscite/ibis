@@ -2,7 +2,7 @@
 // session: one numbered preview request at a time, and only the
 // newest started one may answer.
 import type * as nativeApi from "../../api";
-import type { FilePreview, Problem } from "../../bindings";
+import type { Preview, Problem } from "../../bindings";
 import type { FormattedCitation, OutputId } from "../../format/outputs";
 import { say } from "../../i18n";
 
@@ -25,7 +25,7 @@ export type PreviewInputs = {
 
 export type PreviewResult = {
   key: string; request: number; session: number; opened: number;
-  preview?: FilePreview; value: Prepared | "failed" | "stale"; problem?: string;
+  preview?: Preview; value: Prepared | "failed" | "stale"; problem?: string;
   failure?: Problem;
 };
 
@@ -54,7 +54,7 @@ export type PreviewFailure = { kind: "loading" | "cancelled" | "stale" | "failed
 
 export type PreviewEvent =
   | { type: "preview-inputs"; inputs: PreviewInputs }
-  | { type: "previewed"; request: number; preview: FilePreview; value: Prepared }
+  | { type: "previewed"; request: number; preview: Preview; value: Prepared }
   | { type: "preview-failed"; request: number; failure: PreviewFailure };
 
 export type PreviewEffect = { type: "preview"; request: number; ask: PreviewAsk } | { type: "stop-preview" };

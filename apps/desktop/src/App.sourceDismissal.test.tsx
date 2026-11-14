@@ -115,7 +115,7 @@ test("watcher updates keep Choose Library and its focus until its own selection 
   await act(async () => { await emit("library:changed", current); });
   expect(fileRow()).toBe(file);
   expect(document.activeElement).toBe(file);
-  expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("14 references");
+  expect(document.querySelector(".library-status")?.getAttribute("title")).toContain("14 references");
   fireEvent.click(zotero);
   await waitFor(() => expect(select).toHaveBeenCalledOnce());
   current = { ...library, revision: "3", references: 16 };
