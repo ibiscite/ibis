@@ -73,7 +73,7 @@ export function ToolbarMenu({ buttonRef, buttonShortcut, disabled, label, value,
       onAction(String(key));
     }}>
     {sections.map((section) => <MenuSection key={section.id} id={section.id} className="menu-section">
-      {section.label && <Header className="menu-heading">{section.label}</Header>}
+      {section.label && <Header className="ui-list-heading menu-heading">{section.label}</Header>}
       {section.note && <Header className="toolbar-menu-note">{section.note}</Header>}
       {section.items.map((item) => <MenuItem className="menu-item" id={item.id} key={item.id} textValue={item.keywords ? `${item.label} ${item.keywords}` : item.label} shouldCloseOnSelect={false}
         render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={item.id} aria-disabled={disabled || item.disabled || undefined}
@@ -93,7 +93,7 @@ export function ToolbarMenu({ buttonRef, buttonShortcut, disabled, label, value,
       <Floating kind="menu" open={open} onClose={(event) => changeOpen(false, event ? "dismiss" : "command")} ref={wholeRows} className="menu-popover toolbar-menu-popover ui-overlay" data-anchor={placement === "bottom start" ? "field" : undefined} data-named={named || undefined}
         // [C21] Never narrower than its button: React Aria measures the trigger.
         style={placement === "bottom start" ? { minWidth: "min(var(--trigger-width), calc(100vw - 2 * var(--inset)))" } : undefined} placement={renderedPlacement} offset={4} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
-        {heading && <p className="menu-heading toolbar-menu-heading" aria-hidden="true">{heading}</p>}
+        {heading && <p className="ui-list-heading menu-heading toolbar-menu-heading" aria-hidden="true">{heading}</p>}
         {note && <p id={noteId} className={heading ? "visually-hidden" : "toolbar-menu-note"}>{note}</p>}
         {filtered ? <Autocomplete key={opening} filter={contains}><SearchField className="toolbar-menu-filter" aria-label={filterLabel} autoFocus><Input placeholder={filterLabel} aria-describedby={note ? noteId : undefined} /></SearchField>{menu}</Autocomplete> : menu}
       </Floating>

@@ -17,10 +17,11 @@ main.ui-frame > footer { grid-area: footer; }
 .ui-notice-line:not(:has(> .ui-line-notice, > .notice-slot, > .ui-heading-slot:not(:empty))) { display: none; }
 main.ui-frame:has(> .ui-notice-line > .ui-heading-slot:not(:empty)) .results-area { margin-block-start: 0; }
 .ui-notice-line:has(> .ui-line-notice, > .notice-slot) > .ui-heading-slot { display: none; }
-/* The heading starts on the row inset, as section headings do. */
+/* The heading's words start on the label column, where its rows' words do, and
+   its count ends where their years do. */
 .ui-notice-line { --title-pull: calc(-1 * var(--title-start)); }
-.ui-heading-slot { flex: 1 1 auto; min-width: 0; margin-inline-start: var(--title-pull); }
-.ui-heading-slot > .results-heading { padding-block: 0; }
+.ui-heading-slot { flex: 1 1 auto; min-width: 0; padding-inline-end: var(--row-pad); }
+.ui-heading-slot > .ui-list-heading { display: flex; align-items: baseline; justify-content: space-between; }
 /* With no list, the line itself moves to the room above the empty state, over its
    padding at the content's top, so its notice is never drawn anew. */
 main.ui-frame[data-notice-room] > .ui-notice-line:not(:has(> .ui-heading-slot:not(:empty))) { grid-area: middle; align-self: start; z-index: var(--z-chrome); }

@@ -118,7 +118,7 @@ test("view geometry holds the back chevron, search mark and palette tiles on one
   const view = render(<main><div className="search-bar"><span className="search-mark" /></div>
     <div className="ui-view-head"><button type="button" className="ui-view-back"><span className="ui-icon" /></button>
       <input className="ui-view-field" aria-label="Search formats" style={{ border: 0, padding: 0 }} />
-    </div><span className="ui-palette-lead" /></main>);
+    </div><li className="ui-palette-row"><span className="ui-band-icon" /></li></main>);
   let glyphX = 28, backY = 10;
   const boxes = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
     if (this.matches(".search-mark")) return new DOMRect(24, 14, 24, 24);

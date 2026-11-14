@@ -121,7 +121,7 @@ function FormatPreviewPane({ output, preview }: { output: OutputId | null; previ
   const shown = output && preview ? preview(output) : null;
   if (!output) return null;
   return <>
-    <h3 className="ui-palette-preview-heading">{say(shown?.example ? "palette-preview-example" : "palette-preview-key")}</h3>
+    <h3 className="ui-list-heading ui-palette-preview-heading">{say(shown?.example ? "palette-preview-example" : "palette-preview-key")}</h3>
     <p className="ui-palette-preview-text" data-key={!isStyle(output) || undefined} dir="auto">
       {shown ? shown.text : say("palette-preview-unavailable")}
     </p>

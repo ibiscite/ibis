@@ -7,6 +7,7 @@ import { PICK_KEYS, ariaKeys, keyLabel } from "../../keys";
 import { AddGlyph, TypeIcon } from "../../icons";
 import { say } from "../../i18n";
 import { PointerButton } from "../../ui/Button";
+import { Band } from "../../ui/Band";
 import { Option } from "../../ui/Option";
 import { idKey } from "./choice";
 import { abbreviatedAuthors, hiddenMatch, tileName } from "./rows";
@@ -91,9 +92,9 @@ export function ResultList({ results, active, selected, density, hoverAllowed = 
 
 function ResultGroup({ record, previous, children }: { record: SearchResult; previous?: SearchResult; children: React.ReactNode }) {
   // The first group's heading is the list's, in the frame's line (PickerResults).
-  return <>{record.recent && previous && record.recent !== previous.recent && <li role="presentation" className="results-heading recent-heading">
+  return <>{record.recent && previous && record.recent !== previous.recent && <Band as="li" role="presentation" className="ui-list-heading">
     <h2 id={`recent-${record.recent}`}>{record.recent === "cited" ? "Cited here recently" : "Recently added"}</h2>
-  </li>}{children}</>;
+  </Band>}{children}</>;
 }
 
 /** One search result as an option of the result list. */
@@ -133,22 +134,22 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
       }}
       onContextMenu={(e) => handlers.onContext(i, r, e)}
       onClick={(e) => handlers.onClick(i, r, e)}
-    >
-      {/* The leading tile: the type icon, which gives way to the add
-          (or remove) control on hover and on the active row. An option's
-          children are presentational (ARIA) and must not be focusable, so
-          the control is for the pointer only: no Tab stop, no role, its
-          name in the tooltip. Keyboards use Shift+Enter. */}
-      <span className="result-tile" data-key={pickKeys && keyLabel(pickKeys, isMac)}>
+      // The leading tile: the type icon, which gives way to the add (or remove)
+      // control on hover and on the active row. An option's children are
+      // presentational (ARIA) and must not be focusable, so the control is for
+      // the pointer only: no Tab stop, no role, its name in the tooltip.
+      // Keyboards use Shift+Enter. While the command key is held, the row's key
+      // takes the tile's place as plain text, a numbered list's marker
+      // (ui/HeldKeys); the year stays.
+      icon={<span className="result-tile" data-key={pickKeys && keyLabel(pickKeys, isMac)}>
         <TypeIcon itemType={r.item_type} />
-        {/* While the command key is held, the row's key takes the tile's place as plain
-            text, a numbered list's marker (ui/HeldKeys); the year stays. */}
         <PointerButton className="tile-button" hoverAllowed={hoverAllowed}
           title={added ? say("picker-remove-named", { name: tileName(r) }) : say("picker-add-named", { name: tileName(r) })}
           onPress={() => handlers.onTileClick(i, r)}>
           <AddGlyph added={added} />
         </PointerButton>
-      </span>
+      </span>}
+    >
       <span className="result-body" title={r.key || undefined}>
         <span className="result-line">
           <strong className="result-title">{r.sample && <><bdi>{say("setup-sample-label")}</bdi>{" · "}</>}{r.title}</strong>

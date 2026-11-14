@@ -9,8 +9,8 @@
  * screens centre their own group and the inspector is its own column, so
  * neither is held to the window's columns. */
 export const columns = {
-  marks: [".result-tile", ".ui-palette-lead", ".search-bar .search-mark", ".library-bar .status-dot", ".ui-notice-line .update-ring", ".ui-view-back .ui-icon"],
-  words: [".result-title", ".search-bar input", ".ui-view-field", ".library-bar .library-words", ".ui-notice-line .notice-band > span:first-child", ".ui-notice-line .update-text", ".ui-notice-line .ui-line-words", ".shelf-citation", ".ui-view-title", ".ui-palette-label", ".ui-view-status"],
+  marks: [".result-tile", ".ui-palette-row > .ui-band-icon", ".search-bar .search-mark", ".library-bar .status-dot", ".ui-notice-line .update-ring", ".ui-view-back .ui-icon"],
+  words: [".result-title", ".search-bar input", ".ui-view-field", ".library-bar .library-words", ".ui-notice-line .notice-band > span:first-child", ".ui-notice-line .update-text", ".ui-notice-line .ui-line-words", ".shelf-citation", ".ui-view-title", ".ui-palette-label", ".ui-view-status", ".ui-list-heading > :is(span:not(.ui-band-icon), h2)"],
   outside: ".choice-screen, .inspector, .menu-popover, [inert], .ui-notice-line > :is(.notice-slot, .ui-line-notice) ~ .ui-line-notice",
   /** Hover plates on the window's leading edge: each starts on the window inset, as a row does. */
   plates: ["#results [role=\"option\"]", ".library-bar .library-status-trigger"],

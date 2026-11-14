@@ -160,7 +160,7 @@ test("partial results say Closest matches visibly and aloud and remain usable", 
   const box = screen.getByLabelText("Search references");
   fireEvent.change(box, { target: { value: "sleep photon" } });
   await screen.findByText("Closest matches");
-  expect(document.querySelector(".results-heading")?.textContent).toBe("Closest matches1 result");
+  expect(document.querySelector(".ui-list-heading")?.textContent).toBe("Closest matches1 result");
   expect(screen.queryByText("Best matches")).toBeNull();
   const status = screen.getByRole("status", { name: "Search results" });
   await waitFor(() => expect(status.textContent).toBe("Closest matches · 1 result"));
@@ -176,7 +176,7 @@ test("partial results say Closest matches visibly and aloud and remain usable", 
 
   fireEvent.change(box, { target: { value: "photon" } });
   await screen.findByText("No matching references");
-  expect(document.querySelector(".results-heading")).toBeNull();
+  expect(document.querySelector(".ui-list-heading")).toBeNull();
   await waitFor(() => expect(status.textContent).toBe("0 results"));
 });
 
@@ -429,7 +429,7 @@ test.each(["", "unmatched"])("result headings only name actual rows, preserving 
     expect(screen.queryByRole("button", { name: "Search references" })).toBeNull();
     expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
   }
-  expect(document.querySelector(".results-heading")).toBeNull();
+  expect(document.querySelector(".ui-list-heading")).toBeNull();
   await waitFor(() => expect(screen.getByRole("status", { name: "Search results" }).textContent).toBe("0 results"));
 });
 
@@ -466,7 +466,7 @@ test("first-run setup has no result section heading", async () => {
     zotero: false, references: 0, warnings: 0, error: null, problem: null, note: null }) });
   render(<App />);
   await screen.findByRole("listbox", { name: "Where do your references live?" });
-  expect(document.querySelector(".results-heading")).toBeNull();
+  expect(document.querySelector(".ui-list-heading")).toBeNull();
 });
 
 test("first-run setup keeps the copy-format question out of the header", async () => {
@@ -1062,7 +1062,7 @@ test.each([1, 20])("the %i-result heading keeps its English word order on an RTL
   backend({ search: () => Array.from({ length: count }, (_, i) => result(`key${i}`, `Reference ${i}`)) });
   const { container } = render(<div dir="rtl"><App /></div>);
   await screen.findByText("Reference 0");
-  const heading = container.querySelector(".results-heading")!;
+  const heading = container.querySelector(".ui-list-heading")!;
   const label = heading.lastElementChild!;
   expect(label.textContent).toBe(`${count} ${count === 1 ? "result" : "results"}`);
   expect(label.tagName).toBe("BDI");
@@ -1220,7 +1220,7 @@ test("opening a chosen library shows its name and searches only when ready", asy
   });
   render(<App />);
   await screen.findByText("Opening 研究 refs.bib…");
-  expect(document.querySelector(".results-heading")).toBeNull();
+  expect(document.querySelector(".ui-list-heading")).toBeNull();
   expect(screen.queryByRole("listbox", { name: "Where do your references live?" })).toBeNull();
   expect(document.body.textContent).not.toContain("No library chosen");
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
@@ -1243,7 +1243,7 @@ test("a reload keeps the previous library searchable without adding an opening s
   expect(screen.getByText("Kept reference")).toBeTruthy();
   expect(screen.queryByRole("progressbar")).toBeNull();
   // The heading stays too: rows do not move while the library reloads.
-  expect(document.querySelector(".results-heading")).not.toBeNull();
+  expect(document.querySelector(".ui-list-heading")).not.toBeNull();
 });
 
 
@@ -1267,7 +1267,7 @@ test("an unavailable initial library is named once without a duplicate search er
   });
   render(<App />);
   const notice = await screen.findByRole("alert");
-  expect(document.querySelector(".results-heading")).toBeNull();
+  expect(document.querySelector(".ui-list-heading")).toBeNull();
   expect(notice.textContent).toBe("Can’t open 研究 refs.bib. The library file is unavailable.");
   // The choice list fills its rows after the notice renders.
   expect(await screen.findByRole("option", { name: /^Try Again/ })).toBeTruthy();
@@ -1315,7 +1315,7 @@ test.each(["", "sleep"])("an empty loaded library is explained even for query %s
   if (query) fireEvent.change(screen.getByLabelText("Search references"), { target: { value: query } });
   const title = await screen.findByText("No references in empty 研究.bib");
   expect(title.compareDocumentPosition(screen.getByRole("listbox", { name: "No references in empty 研究.bib" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  expect(document.querySelector(".results-heading")).toBeNull();
+  expect(document.querySelector(".ui-list-heading")).toBeNull();
   expect(screen.getByText("Add references to it, or choose another library.")).toBeTruthy();
   expect(screen.queryByText("Type to find a reference")).toBeNull();
   expect(screen.queryByText("No matching references")).toBeNull();
