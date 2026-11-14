@@ -490,7 +490,6 @@ impl AppChoiceError {
             info: ibis_core::contract::RecoveryInfo::new(
                 "app-command-output-not-saved",
                 ibis_core::contract::Recovery::Retry,
-                ibis_core::contract::FocusTarget::RecoveryAction,
             ),
         }))
     }

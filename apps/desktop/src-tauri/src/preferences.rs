@@ -746,10 +746,10 @@ fn apply_preferences(s: &mut settings::Settings, preferences: PickerPreferencesP
 }
 
 fn format_problem(code: &str, message: &str) -> CommandError {
-    use ibis_core::contract::{FocusTarget, Problem, Recovery, RecoveryInfo};
+    use ibis_core::contract::{Problem, Recovery, RecoveryInfo};
     CommandError::Presented(Problem {
         code: code.into(),
-        info: RecoveryInfo::new(message, Recovery::ChooseStyle, FocusTarget::FormatPicker),
+        info: RecoveryInfo::new(message, Recovery::ChooseStyle),
     })
 }
 
@@ -1337,7 +1337,11 @@ mod tests {
             None,
         );
         std::fs::set_permissions(&path, original).unwrap_or_else(|e| panic!("{e}"));
-        assert!(refused.is_err_and(|problem| problem.problem().code == "settings-read-only"));
+        assert!(refused.is_err_and(|error| {
+            let problem = error.problem();
+            problem.code == "settings-read-only"
+                && problem.info.recovery() == ibis_core::contract::Recovery::ReviewSettings
+        }));
         assert_eq!(
             SettingsFile::new(path.clone())
                 .preferences()

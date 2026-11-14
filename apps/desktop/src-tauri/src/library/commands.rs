@@ -276,7 +276,6 @@ pub(crate) async fn search(
                             info: ibis_core::contract::RecoveryInfo::new(
                                 "app-command-no-library",
                                 ibis_core::contract::Recovery::ChooseLibrary,
-                                ibis_core::contract::FocusTarget::LibraryPicker,
                             ),
                         })
                     }));

@@ -411,3 +411,39 @@ fn a_repeated_csl_json_id_refuses_every_record_and_lookup_says_why() {
         EngineError::because(ErrorCode::NotFound, ErrorReason::DuplicateKey)
     );
 }
+
+#[test]
+fn clients_can_identify_available_missing_and_unchecked_attachments() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("available.pdf"), b"invented attachment").unwrap();
+    let path = dir.path().join("invented.json");
+    let records: Vec<_> = (0..500)
+        .map(|index| {
+            json!({
+                "id": format!("item{index:03}"), "type": "book",
+                "file": if index == 1 { "missing.pdf" } else { "available.pdf" }
+            })
+        })
+        .collect();
+    std::fs::write(&path, serde_json::to_vec(&records).unwrap()).unwrap();
+    let engine = Engine::new().unwrap().without_file_watches();
+    let library = open(&engine, &path);
+    for (index, expected) in [
+        (0, Availability::OnDisk),
+        (1, Availability::BrokenLink),
+        (499, Availability::Unknown),
+    ] {
+        let shown = engine
+            .show(&ShowRequest {
+                item: ItemSelector::Id(ItemRef {
+                    library: library.clone(),
+                    key: format!("attachment:record:item{index:03}:0"),
+                }),
+            })
+            .unwrap();
+        let LibraryObject::Attachment(attachment) = shown.object else {
+            panic!("attachment")
+        };
+        assert_eq!(attachment.availability, expected);
+    }
+}

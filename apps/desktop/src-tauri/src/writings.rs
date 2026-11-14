@@ -106,31 +106,18 @@ impl From<settings::SettingsError> for ChangeError {
 
 impl From<ChangeError> for CommandError {
     fn from(error: ChangeError) -> Self {
-        use ibis_core::contract::{FocusTarget as F, Problem, Recovery as R, RecoveryInfo};
-        let (code, id, recovery, focus) = match error {
+        use ibis_core::contract::{Problem, Recovery as R, RecoveryInfo};
+        let (code, id, recovery) = match error {
             ChangeError::Project(error) => return Self::Presented((&error).into()),
-            ChangeError::Stale | ChangeError::Destination => (
-                "project-changed",
-                "app-project-error-changed",
-                R::ReopenProjectMenu,
-                F::ProjectMenu,
-            ),
-            ChangeError::Editor => (
-                "editor-pending",
-                "app-project-error-editor",
-                R::FinishEditorRequest,
-                F::Citation,
-            ),
-            ChangeError::Unsupported => (
-                "project-output-unavailable",
-                "app-project-error-output",
-                R::ChooseStyle,
-                F::FormatPicker,
-            ),
+            ChangeError::Stale | ChangeError::Destination => {
+                ("project-changed", "app-project-error-changed", R::ReopenProjectMenu)
+            }
+            ChangeError::Editor => ("editor-pending", "app-project-error-editor", R::FinishEditorRequest),
+            ChangeError::Unsupported => ("project-output-unavailable", "app-project-error-output", R::ChooseStyle),
         };
         Self::Presented(Problem {
             code: code.into(),
-            info: RecoveryInfo::new(id, recovery, focus),
+            info: RecoveryInfo::new(id, recovery),
         })
     }
 }
