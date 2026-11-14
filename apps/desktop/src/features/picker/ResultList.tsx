@@ -3,11 +3,12 @@ import { memo, useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import type { Density, ProjectStatus, SearchResult } from "../../api";
 import { rowClickAction } from "../../copyFeedback";
 import { isMac } from "../../platform";
-import { PICK_KEYS, ariaKeys, keyLabel } from "../../keys";
+import { PICK_KEYS, ariaKeys } from "../../keys";
 import { AddGlyph, TypeIcon } from "../../icons";
 import { say } from "../../i18n";
 import { PointerButton } from "../../ui/Button";
 import { Band } from "../../ui/Band";
+import { KeyMark } from "../../ui/HeldKeys";
 import { Option } from "../../ui/Option";
 import { idKey } from "./choice";
 import { abbreviatedAuthors, hiddenMatch, tileName } from "./rows";
@@ -139,16 +140,15 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
       // presentational (ARIA) and must not be focusable, so the control is for
       // the pointer only: no Tab stop, no role, its name in the tooltip.
       // Keyboards use Shift+Enter. While the command key is held, the row's key
-      // takes the tile's place as plain text, a numbered list's marker
-      // (ui/HeldKeys); the year stays.
-      icon={<span className="result-tile" data-key={pickKeys && keyLabel(pickKeys, isMac)}>
+      // takes the tile's place (ui/HeldKeys); the year stays.
+      icon={<><span className="result-tile">
         <TypeIcon itemType={r.item_type} />
         <PointerButton className="tile-button" hoverAllowed={hoverAllowed}
           title={added ? say("picker-remove-named", { name: tileName(r) }) : say("picker-add-named", { name: tileName(r) })}
           onPress={() => handlers.onTileClick(i, r)}>
           <AddGlyph added={added} />
         </PointerButton>
-      </span>}
+      </span><KeyMark keys={pickKeys} /></>}
     >
       <span className="result-body" title={r.key || undefined}>
         <span className="result-line">

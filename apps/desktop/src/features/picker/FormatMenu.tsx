@@ -1,6 +1,5 @@
 import { useState, type RefObject } from "react";
-import { ariaKeys, keysFor } from "../../keys";
-import { isMac } from "../../platform";
+import { keysFor } from "../../keys";
 import type { AppPaste } from "../../api";
 import { isStyle, keyOutputs, listedOutput, outputName, outputOf, previewOf, styleOutputs, type OutputChoice, type OutputId } from "../../format/outputs";
 import { isolate, say } from "../../i18n";
@@ -102,7 +101,7 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
   };
   return <>
     <span role="status" aria-label={say("picker-format-label")} className="visually-hidden">{`${name}. ${why}`}</span>
-    <PopupButton ref={buttonRef} aria-keyshortcuts={ariaKeys(keysFor("format"), isMac)} isDisabled={disabled} className="toolbar-menu-button"
+    <PopupButton ref={buttonRef} keys={keysFor("format")} isDisabled={disabled} className="toolbar-menu-button"
       aria-label={`${say("picker-format-label")} ${value}`} aria-expanded={open} aria-haspopup="dialog"
       onPress={() => { if (open) close("dismiss"); else { setOpen(true); onOpenChange?.(true); } }}
       // ↓ opens it too, as on every pop-up button.

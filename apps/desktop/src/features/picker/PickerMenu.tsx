@@ -93,7 +93,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
   const more = keysFor("more");
   return <>
     {pinned && <IconButton icon="pin" className="footer-pinned" isSelected aria-label={say("picker-keep-open")}
-      title={`${say("picker-keep-open-menu")} (${keyLabel(keysFor("pin"), mac)})`} aria-keyshortcuts={ariaKeys(keysFor("pin"), mac)} onChange={actions.pin} />}
+      title={`${say("picker-keep-open-menu")} (${keyLabel(keysFor("pin"), mac)})`} keys={keysFor("pin")} onChange={actions.pin} />}
     <Button ref={buttonRef} variant="quiet" size="small" className="more-button" aria-label={say("picker-more")} aria-haspopup="dialog" aria-expanded={isOpen}
       title={say("picker-more-title", { keys: keyLabel(more, mac) })} aria-keyshortcuts={ariaKeys(more, mac)} onPress={() => onOpenChange(!isOpen)}>
       <KeyHint label={say("picker-more")} keys={more} platform={platform} hidden />

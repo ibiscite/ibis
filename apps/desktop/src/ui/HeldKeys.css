@@ -1,12 +1,13 @@
-/* Sits beside the control it names, above everything, so it covers no words and
-   no other control, and takes no clicks; placed by ui/HeldKeys. Unplaced, it is
-   measured out of sight. Where no side is free it fills the control's own box,
-   standing in for its label until the key is let go. */
-.ui-held-key {
-  position: fixed; z-index: var(--z-overlay); pointer-events: none;
-  border-radius: var(--r-small);
+/* [C24 held] A key in its control's place while ⌘ is held (ui/HeldKeys): plain
+   text, never a cap on a plate, over the control's own box while its words or
+   glyph step aside. A row's number ends where the icon column ends, so a wide
+   "Ctrl+1" grows towards the row's edge and keeps the gap before the title. */
+.ui-key-mark { display: none; color: var(--text-secondary); }
+:root[data-keys-held] .ui-key-mark {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; white-space: nowrap; pointer-events: none;
+  font-size: var(--type-body-size); font-weight: 400; line-height: var(--type-body-line); font-variant-numeric: tabular-nums;
 }
-.ui-held-key:not([data-side]) { visibility: hidden; left: 0; top: 0; }
-.ui-held-key[data-side="inside"] { display: flex; align-items: center; justify-content: center; border-radius: var(--r-control); }
-/* Inside its control the key stands in for the label, as a row's key stands in for its icon: no cap on the plate. */
-.ui-held-key[data-side="inside"] kbd { background: transparent; }
+:root[data-keys-held] :has(> .ui-key-mark) > :not(.ui-key-mark) { visibility: hidden; }
+:root[data-keys-held] .ui-band-icon > .ui-key-mark { justify-content: end; }
+[data-active] .ui-key-mark { color: var(--selected-text-secondary); }
+@media (prefers-contrast: more) { .ui-key-mark { color: var(--text); } }

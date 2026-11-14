@@ -415,42 +415,23 @@ function wordBoxes(root: ParentNode): { node: Node; box: DOMRect }[] {
 
 const overlaps = (a: DOMRect, b: DOMRect) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;
 
-/** [C24 held] A key shown while ⌘ (Ctrl) is held covers no words and no other
- * control: it sits beside its control, or wholly inside the control it names,
- * covering only that control's own words. Held badges take no pointer, so
- * occlusion() cannot see them; this is their cover check. */
+/** [C24 held] A key shown while ⌘ (Ctrl) is held (ui/HeldKeys' KeyMark) stays in
+ * the window and covers no words and no control but the slot it stands in for.
+ * Marks take no pointer, so occlusion() cannot see them; this is their cover check. */
 export function heldKeys(root: ParentNode = document): string[] {
   const failures: string[] = [];
   const words = wordBoxes(root);
-  // Generated content has no text node or DOM box. Measure a temporary grid item
-  // with the same paint properties so the guard also sees each row's key.
-  const rowKeys = [...root.querySelectorAll<HTMLElement>(".result-tile[data-key]")].flatMap((tile) => {
-    const style = getComputedStyle(tile, "::before");
-    if (style.content === "none" || style.content === "normal") return [];
-    const marker = document.createElement("span");
-    marker.textContent = tile.dataset.key ?? "";
-    marker.setAttribute("aria-hidden", "true");
-    Object.assign(marker.style, { gridArea: "1 / 1", justifySelf: "end", whiteSpace: "nowrap", direction: "ltr", unicodeBidi: "isolate", font: style.font, fontVariantNumeric: style.fontVariantNumeric, lineHeight: style.lineHeight, marginInlineEnd: style.marginInlineEnd, visibility: "hidden" });
-    tile.append(marker);
-    const box = marker.getBoundingClientRect();
-    marker.remove();
-    return [{ node: tile, box }];
-  });
   const shown = [...root.querySelectorAll(controls)].filter(live).map((node) => ({ node, box: seen(node) })).filter((part): part is { node: Element; box: DOMRect } => !!part.box);
-  for (const badge of root.querySelectorAll(".ui-held-key")) {
-    const box = badge.getBoundingClientRect();
-    const name = `"${badge.textContent}"`;
+  const marks = [...root.querySelectorAll<HTMLElement>(".ui-key-mark")].map((mark) => ({ mark, box: (mark.firstElementChild ?? mark).getBoundingClientRect() })).filter(({ box }) => box.width > 0);
+  for (const { mark, box } of marks) {
+    const slot = mark.parentElement!, name = `"${mark.textContent}"`;
     if (box.left < 0 || box.top < 0 || box.right > innerWidth || box.bottom > innerHeight) failures.push(`[C24 held] ${name} leaves the window`);
-    // The control the badge sits inside, if any: its own words may be covered.
-    const own = shown.find(({ box: control }) => box.left >= control.left - 1 && box.right <= control.right + 1 && box.top >= control.top - 1 && box.bottom <= control.bottom + 1)?.node;
     for (const { node, box: control } of shown)
-      if (node !== own && !node.contains(own ?? null) && overlaps(box, control)) failures.push(`[C24 held] ${name} covers ${label(node)}`);
+      if (!slot.contains(node) && !node.contains(slot) && overlaps(box, control)) failures.push(`[C24 held] ${name} covers ${label(node)}`);
     for (const { node, box: text } of words)
-      if (!badge.contains(node) && !own?.contains(node) && overlaps(box, text)) failures.push(`[C24 held] ${name} covers "${node.textContent!.trim().slice(0, 30)}"`);
-    for (const { node, box: key } of rowKeys)
-      if (!own?.contains(node) && overlaps(box, key)) failures.push(`[C24 held] ${name} covers the row key "${node.dataset.key}"`);
-    for (const other of root.querySelectorAll(".ui-held-key"))
-      if (other !== badge && overlaps(box, other.getBoundingClientRect())) failures.push(`[C24 held] ${name} covers the key "${other.textContent}"`);
+      if (!slot.contains(node) && overlaps(box, text)) failures.push(`[C24 held] ${name} covers "${node.textContent!.trim().slice(0, 30)}"`);
+    for (const other of marks)
+      if (other.mark !== mark && overlaps(box, other.box)) failures.push(`[C24 held] ${name} covers the key "${other.mark.textContent}"`);
   }
   return [...new Set(failures)];
 }
