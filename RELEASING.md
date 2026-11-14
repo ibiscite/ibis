@@ -2,7 +2,7 @@
 
 Stable publication needs the maintainer's GitHub deployment approval.
 Nightlies publish automatically. Engineering and review authority is in
-[AGENTS.md](AGENTS.md#merging); future release work is in [ROADMAP.md](ROADMAP.md).
+[AGENTS.md](AGENTS.md#trust-and-authority); future release work is in [ROADMAP.md](ROADMAP.md).
 
 ## Releases
 
@@ -52,7 +52,7 @@ Main CI confirms the full platform matrix. Daily/manual CI adds installed nightl
 release-mode/MSRV checks and bounded fuzzing; failures update one issue. Run
 `ci.yml` with `workflow_dispatch` on main for qualification before a stable release.
 Manual Preview with publication disabled retains artifacts for 14 days. The
-daily installed-update check still uses the previous nightly; see [testing](docs/testing.md#installed-update-qualification).
+daily installed-update check still uses the previous nightly; see [testing](docs/testing.md#native-journeys-and-installed-updates).
 
 ## Update keys
 

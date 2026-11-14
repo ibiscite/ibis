@@ -1,6 +1,7 @@
 // Where the next citation goes and in which format, as part of the picker
 // session (decision 0035): the app or writing project in front, the format
 // picked for it, and the OutputToken a copy is checked against.
+import { problemText } from "../../i18n";
 import type { AppPaste, PickerDestination } from "../../api";
 import type * as nativeApi from "../../api";
 import { listedOutput, type OutputId } from "../../format/outputs";
@@ -151,8 +152,9 @@ export function reduceDestination(d: DestinationState, event: DestinationEvent):
     }
     case "destination-read-failed": {
       if (event.request !== d.reads) return null;
-      const said = typeof event.error === "string";
-      return { destination: settled({ ...d, destination: null, readProblem: said ? event.error as string : null }),
+      const message = problemText(event.error, "");
+      const said = Boolean(message);
+      return { destination: settled({ ...d, destination: null, readProblem: said ? message : null }),
         effects: [report("appChoices", false), report("appRead", !said)] };
     }
     case "project-changed": {
@@ -216,8 +218,9 @@ export function reduceDestination(d: DestinationState, event: DestinationEvent):
         preserveOpeningOutput: false, held: null, ready: false, saves: d.saves + 1 }, effects: [], observed: { clearReplacement: true } };
     }
     case "project-edit-failed": {
-      const current = event.opening === d.output.opening && event.choice === d.output.choice && typeof event.error === "string";
-      return read(current ? { ...d, editProblem: event.error as string } : d, false);
+      const message = problemText(event.error, "");
+      const current = event.opening === d.output.opening && event.choice === d.output.choice && Boolean(message);
+      return read(current ? { ...d, editProblem: message } : d, false);
     }
     case "consume-held":
       return sameOutput(event.output, d.output) ? { destination: { ...d, preserveOpeningOutput: false, held: null }, effects: [] } : null;

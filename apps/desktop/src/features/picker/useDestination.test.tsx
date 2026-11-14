@@ -49,11 +49,11 @@ test("a project's format beats the app and a failed project save keeps both old 
 });
 
 test("a failed format save keeps the project's format and says why", async () => {
-  const message = "The writing could not be saved. Try again.";
+  const message = "The writing or destination changed. Open the format menu again.";
   const project = { id: "thesis", name: "Thesis", output: "cite", bibliography: "refs.bib" };
   const target = fixtureDestination({ ...browser, writing: project, writing_context: "opening-a", context_version: [1, 0], format: formatAnswer(project.output!, "writing") });
   const { result } = renderHook(() => useDestination({ pickerDestination: async () => target,
-    editWriting: async () => { throw message; } }, options()));
+    editWriting: async () => { throw { code: "project-changed", message: { id: "app-project-error-changed", args: {} }, recovery: { action: "reopen-project-menu" }, focus: "project-menu" }; } }, options()));
   await act(async () => result.current.read());
   await act(async () => result.current.choose("typst"));
   await waitFor(() => expect(result.current.ready).toBe(true));
@@ -431,6 +431,14 @@ test("a new read withdraws Paste at once, and a failed read leaves Copy", async 
   expect(result.current.canPaste).toBe(false);
 });
 
+test("a typed destination refusal explains the settings failure", async () => {
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => { throw {
+    code: "settings-unreadable", message: { id: "app-settings-error-unreadable", args: {} },
+    recovery: { action: "retry" }, focus: "recovery-action",
+  }; } }, options()));
+  await act(async () => result.current.read());
+  expect(result.current.readProblem).toBe("The settings file could not be read or saved.");
+});
 
 test("the native format answer is displayed without an app-specific reinterpretation", async () => {
   const target = fixtureDestination({ ...browser, format: formatAnswer("apa", "yours") });

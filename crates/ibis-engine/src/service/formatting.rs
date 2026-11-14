@@ -155,6 +155,7 @@ impl Engine {
 }
 fn formatter_error(failure: FormatError) -> EngineError {
     match failure {
+        FormatError::Citation(error) => EngineError::citation(error),
         FormatError::Busy | FormatError::TimedOut | FormatError::ResourceLimit => error(ErrorCode::ResourceLimit),
         FormatError::Cancelled => error(ErrorCode::Cancelled),
         FormatError::InvalidRequest => error(ErrorCode::BadInput),

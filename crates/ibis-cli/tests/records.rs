@@ -128,7 +128,7 @@ fn refused_records_say_which_and_print_nothing_on_stdout() -> Result {
     assert_eq!(code, 3);
     assert_eq!(
         serde_json::from_slice::<Value>(&output)?,
-        json!({"ibis":1,"ok":false,"error":{"code":"bad-input","reason":"duplicate-record"}})
+        json!({"ibis":1,"ok":false,"error":{"code":"bad-input","reason":"duplicate-record","message":{"id":"reason-duplicate-record","args":{}},"recovery":{"action":"edit-input"},"focus":"request"}})
     );
     // A keyless record has no key to write; the style still formats it.
     let keyless = br#"[{"id":"r1","type":"book","title":"Invented"}]"#;
@@ -203,6 +203,10 @@ fn strict_records_refuse_warnings_through_cli_and_mcp() -> Result {
     )
     .ok_or("mcp")?;
     assert_eq!(answer["result"]["isError"], true);
-    assert!(answer["result"].get("structuredContent").is_none());
+    assert_eq!(
+        answer["result"]["structuredContent"]["error"]["message"]["id"],
+        "reason-strict-citation"
+    );
+    assert!(answer["result"]["structuredContent"].get("text").is_none());
     Ok(())
 }

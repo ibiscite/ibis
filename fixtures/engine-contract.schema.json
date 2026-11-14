@@ -853,9 +853,18 @@
       ]
     },
     "EngineError": {
-      "description": "Like every result, an error accepts fields it does not know (decision 0028).",
       "type": "object",
       "properties": {
+        "citation_error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CitationError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "code": {
           "$ref": "#/$defs/ErrorCode"
         },
@@ -869,6 +878,12 @@
             }
           ]
         },
+        "focus": {
+          "$ref": "#/$defs/FocusTarget"
+        },
+        "message": {
+          "$ref": "#/$defs/Message"
+        },
         "reason": {
           "anyOf": [
             {
@@ -878,10 +893,26 @@
               "type": "null"
             }
           ]
+        },
+        "recovery": {
+          "$ref": "#/$defs/Recovery"
+        },
+        "strict_cause": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StrictCause"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
-        "code"
+        "code",
+        "message",
+        "recovery",
+        "focus"
       ]
     },
     "Envelope": {
@@ -966,6 +997,11 @@
           "const": "missing-key"
         },
         {
+          "description": "The selected library file was moved, renamed or removed.",
+          "type": "string",
+          "const": "missing-file"
+        },
+        {
           "description": "The program started as the Ibis app does not exist.",
           "type": "string",
           "const": "app-missing"
@@ -979,6 +1015,11 @@
           "description": "The Ibis app started but did not confirm the request in time.",
           "type": "string",
           "const": "no-answer"
+        },
+        {
+          "description": "The app's library settings did not finish loading in time.",
+          "type": "string",
+          "const": "settings-read-timeout"
         },
         {
           "description": "Zotero is running but does not let other applications read it.",
@@ -1086,6 +1127,26 @@
       "required": [
         "cite",
         "full"
+      ]
+    },
+    "FocusTarget": {
+      "type": "string",
+      "enum": [
+        "format-picker",
+        "library-picker",
+        "source-file",
+        "zotero-sharing-help",
+        "search",
+        "results",
+        "locator",
+        "citation",
+        "citation-form",
+        "language",
+        "recovery-action",
+        "project-name",
+        "project-menu",
+        "settings",
+        "request"
       ]
     },
     "FormatFrom": {
@@ -1253,20 +1314,32 @@
             "error": {
               "$ref": "#/$defs/CitationError"
             },
+            "focus": {
+              "$ref": "#/$defs/FocusTarget"
+            },
             "item": {
               "type": "integer",
               "format": "uint",
               "minimum": 0
             },
+            "message": {
+              "$ref": "#/$defs/Message"
+            },
             "outcome": {
               "type": "string",
               "const": "refused"
+            },
+            "recovery": {
+              "$ref": "#/$defs/Recovery"
             }
           },
           "required": [
             "outcome",
             "item",
-            "error"
+            "error",
+            "message",
+            "recovery",
+            "focus"
           ]
         }
       ]
@@ -1276,7 +1349,7 @@
       "type": "object",
       "properties": {
         "key": {
-          "type": "string"
+          "$ref": "#/$defs/RecordId"
         },
         "library": {
           "$ref": "#/$defs/LibraryId"
@@ -1532,6 +1605,31 @@
         }
       ]
     },
+    "Message": {
+      "type": "object",
+      "properties": {
+        "args": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "args"
+      ]
+    },
+    "NoRecoveryReason": {
+      "type": "string",
+      "enum": [
+        "cancelled",
+        "in-progress"
+      ]
+    },
     "Note": {
       "type": "object",
       "properties": {
@@ -1689,6 +1787,343 @@
         "csl"
       ]
     },
+    "RecordId": {
+      "type": "string",
+      "x-ibis-opaque": "RecordId"
+    },
+    "Recovery": {
+      "description": "Exactly one next action; absence must have an explicit, machine-readable reason.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "choose-style"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "choose-form"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "locate-file"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "choose-library"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "open-zotero-sharing-help"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "open-zotero"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "retry"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "choose-project"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "rename-project"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "remove-project"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "reopen-project-menu"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "finish-editor-request"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "review-settings"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "edit-citation"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "edit-input"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "select-references"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "reduce-selection"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "choose-locale"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "review-library"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "free-disk-space"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "upgrade-ibis"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "choose-backup"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "download-file"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "choose-shortcut"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "open-ibis"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "restart-session"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "none"
+            },
+            "reason": {
+              "$ref": "#/$defs/NoRecoveryReason"
+            }
+          },
+          "required": [
+            "action",
+            "reason"
+          ]
+        }
+      ]
+    },
     "SavedSearch": {
       "type": "object",
       "properties": {
@@ -1771,6 +2206,81 @@
       "required": [
         "object",
         "fingerprints"
+      ]
+    },
+    "StrictCause": {
+      "description": "The fact that prevents a strict citation, retained for every client.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "loss"
+            },
+            "loss": {
+              "$ref": "#/$defs/Loss"
+            }
+          },
+          "required": [
+            "kind",
+            "loss"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "error": {
+              "$ref": "#/$defs/CitationError"
+            },
+            "kind": {
+              "type": "string",
+              "const": "refused"
+            }
+          },
+          "required": [
+            "kind",
+            "error"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "code": {
+              "$ref": "#/$defs/ErrorCode"
+            },
+            "kind": {
+              "type": "string",
+              "const": "source"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ErrorReason"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "code"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "source-warning"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        }
       ]
     },
     "Success": {

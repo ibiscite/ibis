@@ -10,6 +10,8 @@ pub mod model;
 pub use citation::*;
 pub use envelope::*;
 pub use model::*;
+mod recovery;
+pub use recovery::*;
 mod added;
 pub use added::added_date;
 

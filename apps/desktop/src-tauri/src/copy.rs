@@ -200,7 +200,7 @@ pub(crate) fn write_copy_only_unless_written(
     if clipboard_mark() != began {
         return Err(CommandError::Cancelled);
     }
-    write_copy_only(app, content.content()).map_err(CommandError::from)
+    write_copy_only(app, content.content()).map_err(|_| CommandError::ClipboardUnavailable)
 }
 
 mod clipboard;
@@ -230,7 +230,7 @@ pub(crate) async fn citation_details(
         .ok_or(CommandError::SnapshotChanged)?;
     tauri::async_runtime::spawn_blocking(move || file.details(&ticket, &content_hash, item, &cancel))
         .await
-        .map_err(|_| CommandError::from("Citation examples are unavailable. Close and reopen the menu to try again."))?
+        .map_err(|_| CommandError::NotPrepared)?
 }
 
 // Each managed state is its own argument: Tauri hands them to commands that way.
@@ -252,19 +252,14 @@ pub(crate) async fn preview_file_citation(
     let cancel = requests.start(intent).ok_or(CommandError::Cancelled)?;
     // The engine's id, as the menu sent it; one it does not list is refused, not guessed.
     let output = crate::output::listed(&output)
-        .ok_or_else(|| CommandError::from("This format is not available. Choose another."))?;
+        .ok_or_else(|| CommandError::from(ibis_core::contract::CitationError::UnsupportedOutput))?;
     let (file, generation) = {
-        let library = library
-            .lock()
-            .map_err(|_| CommandError::from("The library is unavailable."))?;
+        let library = library.lock().map_err(|_| CommandError::SourceNotOpened)?;
         let _ = expected_revision;
         if library.opening {
             return Err(CommandError::LibraryLoading);
         }
-        let file = library
-            .file
-            .clone()
-            .ok_or_else(|| CommandError::from("The selected file is no longer open."))?;
+        let file = library.file.clone().ok_or(CommandError::SnapshotChanged)?;
         (file, library.source_generation)
     };
     let reservation = file.reserve_preview_with(cancel);
@@ -299,7 +294,7 @@ pub(crate) async fn preview_file_citation(
         Ok::<_, CommandError>(preview)
     })
     .await
-    .map_err(|_| CommandError::from("The preview is unavailable. Try again."))?;
+    .map_err(|_| CommandError::NotPrepared)?;
     // A reload cancels previews it overtakes, and the quiet check that follows
     // each show retires Zotero while it reads. Both publish when they end, which
     // asks again; that is waiting, not a failure.
@@ -339,7 +334,6 @@ pub(crate) async fn copy_file_citation(
     app: AppHandle,
     library: State<'_, Mutex<Library>>,
 ) -> Result<Copied, CommandError> {
-    const FAILED: &str = "The citation could not be copied. Try again.";
     let intent = CopyIntent {
         presentation: tauri::Manager::state::<crate::picker::PickerGeneration>(&app).current(),
         clipboard: clipboard_mark(),
@@ -354,17 +348,17 @@ pub(crate) async fn copy_file_citation(
     let file = open_file(&library)?;
     let recited = tauri::async_runtime::spawn_blocking(move || file.recite(&ticket, &content_hash))
         .await
-        .map_err(|_| CommandError::from(FAILED))??;
+        .map_err(|_| CommandError::ClipboardUnavailable)??;
     let (send, committed) = std::sync::mpsc::sync_channel(1);
     let main = app.clone();
     app.run_on_main_thread(move || {
         let _ = send.send(commit_shown(&main, &recited, replaces, captured, epoch, intent));
     })
-    .map_err(|_| CommandError::from(FAILED))?;
+    .map_err(|_| CommandError::ClipboardUnavailable)?;
     tauri::async_runtime::spawn_blocking(move || committed.recv())
         .await
-        .map_err(|_| CommandError::from(FAILED))?
-        .map_err(|_| CommandError::from(FAILED))?
+        .map_err(|_| CommandError::ClipboardUnavailable)?
+        .map_err(|_| CommandError::ClipboardUnavailable)?
 }
 
 fn commit_shown(
@@ -384,7 +378,7 @@ fn commit_shown(
     if editor.current().is_none() {
         // The citation uses the project as saved: a change made elsewhere since
         // the preview, by the command line for one, retires it before the commit.
-        crate::writings::refresh(&app, captured.as_ref().map(|(id, _, _)| id)).map_err(CommandError::from)?;
+        crate::writings::refresh(&app, captured.as_ref().map(|(id, _, _)| id))?;
     }
     #[cfg(target_os = "windows")]
     let attempt = crate::paste::begin_copy(&app, &replaces);
@@ -409,10 +403,9 @@ fn commit_shown(
             .prepared_project_evidence(recited.ticket(), recited.content_hash(), current.as_ref())?
             .filter(|assessment| !assessment.can_copy())
         {
-            return Err(refused
-                .message
-                .unwrap_or_else(|| "A bibliography key identifies another work.".into())
-                .into());
+            return Err(CommandError::ProjectConflict {
+                keys: refused.conflicts,
+            });
         }
         let warnings = file.prepared_project_warnings(recited.ticket(), recited.content_hash(), current.as_ref())?;
         // The text leaves the commit barrier first; the editor is answered with no
@@ -429,7 +422,7 @@ fn commit_shown(
         copied.warnings.extend(warnings);
         let (text, html, rtf) = text.ok_or(CommandError::SnapshotChanged)?;
         if !editor.answer(request.id, &text, || file.invalidate_preview()) {
-            return Err("Your editor stopped waiting for this citation.".into());
+            return Err(CommandError::Cancelled);
         }
         // Only a request that was answered may leave its citation on the clipboard.
         if request.clipboard {
@@ -445,7 +438,7 @@ fn commit_shown(
                             rtf: rtf.as_deref(),
                         },
                     )
-                    .map_err(CommandError::from)
+                    .map_err(|_| CommandError::ClipboardUnavailable)
                 },
             )?;
             session.lock().add(copied.cited.clone());
@@ -480,7 +473,8 @@ fn commit_shown(
                         crate::paste::remember_copy(&app, attempt, sequence, token)
                     };
                     #[cfg(not(target_os = "windows"))]
-                    let delivery = clipboard::write(&app, content, &replaces).map_err(CommandError::from)?;
+                    let delivery =
+                        clipboard::write(&app, content, &replaces).map_err(|_| CommandError::ClipboardUnavailable)?;
                     Ok(delivery)
                 },
             )
@@ -504,7 +498,7 @@ fn open_file(
 ) -> Result<std::sync::Arc<crate::library::engine_file::FileLibrary>, CommandError> {
     let library = library.lock().map_err(|_| CommandError::SnapshotChanged)?;
     if library.opening {
-        return Err("The library is loading. Try again after it opens.".into());
+        return Err(CommandError::LibraryLoading);
     }
     library.file.clone().ok_or(CommandError::SnapshotChanged)
 }
@@ -528,10 +522,9 @@ pub(crate) fn commit_copy(
             .prepared_project_evidence(ticket, content_hash, current.as_ref())?
             .filter(|assessment| !assessment.can_copy());
         if let Some(assessment) = refused {
-            return Err(assessment
-                .message
-                .unwrap_or_else(|| "A key in the project bibliography identifies a different work.".into())
-                .into());
+            return Err(CommandError::ProjectConflict {
+                keys: assessment.conflicts,
+            });
         }
         let warnings = file.prepared_project_warnings(ticket, content_hash, current.as_ref())?;
         let mut delivery = None;

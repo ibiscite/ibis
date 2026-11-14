@@ -399,8 +399,8 @@ mod tests {
         assert_eq!(preview(1), Some(CommandError::LibraryLoading));
         checking(false);
         assert_eq!(
-            preview(2),
-            Some(CommandError::from("The citation could not be prepared. Try again."))
+            preview(2).map(|error| error.problem()),
+            Some(ibis_core::contract::CitationError::EmptySelection.problem())
         );
     }
 
@@ -786,7 +786,7 @@ mod tests {
         assert_eq!(failed.name.as_deref(), Some("missing.bib"));
         assert_eq!(
             failed.error.as_deref(),
-            Some("the library file is unavailable; download any online-only file to this computer first")
+            Some("The library file was moved, renamed or removed.")
         );
         assert!(!failed.has_snapshot);
         assert!(

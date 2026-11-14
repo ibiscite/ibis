@@ -652,6 +652,7 @@ impl Engine {
         };
         self.cite_snapshot(
             &receipt::CitationContext {
+                source_failure: None,
                 snapshot,
                 sources: Vec::new(),
                 zotero: BTreeMap::new(),
@@ -692,13 +693,7 @@ impl Engine {
             }
             _ => request,
         };
-        let key_error = |failure| {
-            error(if failure == CitationError::OutputTooLarge {
-                ErrorCode::ResourceLimit
-            } else {
-                ErrorCode::BadInput
-            })
-        };
+        let key_error = EngineError::citation;
         let mut result = match &request.output {
             OutputSpec::Key {
                 syntax: KeySyntax::ScannableCite,
