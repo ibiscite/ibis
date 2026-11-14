@@ -122,3 +122,6 @@ the anchor older links use.
 
 ## 0053 One window grid, and icons by meaning
 [0053](decisions/0053-window-grid-and-icons.md): a leading edge, a 32 px lead column, a title column and a trailing edge, drawn by `ui/Band`; headings and status start on the leading edge; held ⌘ marks rows only; no clear button; Use Default follows the setting's name; Phosphor Regular, named by meaning, replaces Lucide.
+
+## 0054 Owners and boundaries
+[0054](decisions/0054-owners-and-boundaries.md): three exclusive engine owners that accept intents and publish observations, one native delivery owner, and typed boundaries (checked artifacts, `Problem`, executable actions); ten stages, the gate first.
