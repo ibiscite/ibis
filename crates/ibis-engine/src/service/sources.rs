@@ -114,14 +114,18 @@ fn zotero_error(failure: ZoteroError) -> EngineError {
         code,
         reason: failure.reason(),
         detail: failure.schema_table().map(|table| ErrorDetail { table }),
+        strict_cause: None,
+        citation_error: None,
     }
 }
 
 pub(super) fn source_error(error: SourceError) -> EngineError {
     use ibis_core::contract::ErrorReason;
     super::error(match error {
+        SourceError::Missing => return EngineError::because(ErrorCode::SourceUnavailable, ErrorReason::MissingFile),
         SourceError::UnknownFormat => return EngineError::because(ErrorCode::BadInput, ErrorReason::UnknownFormat),
         SourceError::CsvTemplate => return EngineError::because(ErrorCode::BadInput, ErrorReason::CsvTemplate),
+        SourceError::Cancelled => ErrorCode::Cancelled,
         SourceError::TooLarge => ErrorCode::ResourceLimit,
         SourceError::NotRegular | SourceError::Unreadable | SourceError::Incomplete | SourceError::InvalidData => {
             ErrorCode::BadInput
@@ -144,12 +148,7 @@ fn info(loaded: &LoadedLibrary) -> LibraryInfo {
         updated_at_ms: now_ms(),
         watch_warning: None,
         zotero: None,
-        duplicate_keys: loaded
-            .warnings
-            .iter()
-            .filter(|warning| warning.code == ibis_sources::WarningCode::DuplicateKey)
-            .filter_map(|warning| warning.key.clone())
-            .collect(),
+        duplicate_keys: loaded.duplicate_keys.clone(),
         damaged_keys: loaded.damaged_keys.clone(),
         cut_short: loaded.cut_short,
     }
@@ -325,7 +324,8 @@ impl Engine {
             .lock()
             .map_err(|_| error(ErrorCode::Internal))?;
         let path = std::path::absolute(path).map_err(|_| error(ErrorCode::BadInput))?;
-        let (loaded, observation) = ibis_sources::load_file_snapshot(&path).map_err(source_error)?;
+        let (loaded, observation) =
+            ibis_sources::load_file_snapshot(&path, &|| cancel.is_cancelled()).map_err(source_error)?;
         let source = observation.source_path().to_path_buf();
         cancel.check()?;
         self.install_file(path, loaded, Some(observation), cancel)?;
@@ -369,7 +369,8 @@ impl Engine {
         };
         let read = (|| {
             let (loaded, observation) =
-                ibis_sources::reload_file_snapshot_reusing(&path, base.index.snapshot()).map_err(source_error)?;
+                ibis_sources::reload_file_snapshot(&path, Some(base.index.snapshot()), &|| cancel.is_cancelled())
+                    .map_err(source_error)?;
             cancel.check()?;
             let library = loaded.library.clone();
             let mut next = State::replacement(&base, vec![(info(&loaded), &loaded.snapshot)], |old| {
@@ -802,6 +803,8 @@ impl Engine {
                     code: ErrorCode::SourceUnavailable,
                     reason: failure.reason(),
                     detail: None,
+                    strict_cause: None,
+                    citation_error: None,
                 });
             }
         };
@@ -888,7 +891,9 @@ mod tests {
         assert_eq!(
             serde_json::to_value(failure).unwrap(),
             serde_json::json!({
-                "code":"newer-format", "detail":{"table":"fieldsCombined"}
+                "code":"newer-format", "detail":{"table":"fieldsCombined"},
+                "message":{"id":"error-newer-format","args":{}},
+                "recovery":{"action":"upgrade-ibis"},"focus":"recovery-action"
             })
         );
     }
@@ -1058,6 +1063,15 @@ mod tests {
         assert_eq!(info.libraries[0].objects, 1);
         assert_eq!(info.libraries[0].refresh_error, Some(ErrorCode::BadInput));
         assert_eq!(info.libraries[0].refresh_reason, Some(ErrorReason::UnknownFormat));
+        // A missing file must stay missing through a watcher publication too.
+        std::fs::rename(&path, dir.path().join("moved.bak")).unwrap();
+        let refused = ibis_sources::load_file(&path).map(|_| ()).unwrap_err();
+        engine.shared.file_changed(id, generation, Err(refused));
+        let info = engine.libraries().unwrap();
+        let health = serde_json::to_value(crate::health::SourceHealth::of(&info.libraries)).unwrap();
+        assert_eq!(info.libraries[0].objects, 1);
+        assert_eq!(health["findings"][0]["reason"], "missing-file");
+        assert_eq!(health["findings"][0]["recovery"]["action"], "locate-file");
     }
 
     #[test]
@@ -1216,7 +1230,8 @@ mod tests {
             Err(EngineError {
                 code: ErrorCode::Cancelled,
                 reason: None,
-                detail: None
+                detail: None,
+                ..
             })
         ));
         assert_eq!(engine.snapshot().unwrap().fingerprints(), &newer);
@@ -1301,7 +1316,8 @@ mod tests {
             Err(EngineError {
                 code: ErrorCode::Cancelled,
                 reason: None,
-                detail: None
+                detail: None,
+                ..
             })
         ));
     }
@@ -1323,7 +1339,8 @@ mod tests {
             Err(EngineError {
                 code: ErrorCode::Cancelled,
                 reason: None,
-                detail: None
+                detail: None,
+                ..
             })
         ));
         assert_eq!(engine.snapshot().unwrap().fingerprints(), original.fingerprints());
@@ -1334,7 +1351,8 @@ mod tests {
             Err(EngineError {
                 code: ErrorCode::BadInput,
                 reason: None,
-                detail: None
+                detail: None,
+                ..
             })
         ));
         assert_eq!(engine.snapshot().unwrap().fingerprints(), original.fingerprints());
@@ -1383,7 +1401,8 @@ mod tests {
             Err(CitationCommitError::Engine(EngineError {
                 code: ErrorCode::SourceUnavailable,
                 reason: None,
-                detail: None
+                detail: None,
+                ..
             }))
         ));
         assert_eq!(engine.recite(&file, &cancel).unwrap().text, "[@Example2026]");
@@ -1459,7 +1478,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(
-            DispatchResult::citation(cited.value, 1)
+            DispatchResult::citation(cited.value, 1, &OutputSpec::Preset { name: "pandoc".into() })
                 .unwrap()
                 .with_health(&cited.source_health)
                 .unwrap()

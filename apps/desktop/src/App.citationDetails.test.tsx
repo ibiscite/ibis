@@ -1,3 +1,6 @@
+import type { Problem } from "./bindings";
+import { fixtureCitationKey } from "./testing/app";
+import { recordId } from "./test-fixtures";
 import { afterEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
@@ -6,8 +9,13 @@ import { oneSurface } from "../canvas/geometry";
 import { inventedSource, PageSources } from "./features/reader/source";
 import { displayTree, backend, chooseForm, chooseFromMore, paletteRow, prepared, receipt, resetApp, result, openCitationDetails, textField, formExamples, closeCitationDetails, type PreviewRequest, inCitation, findInCitation, citationDetails, citationKeys, lineReceipt, removeFromCitation } from "./testing/app";
 
+
+const pageMessage = "Reference 1: Page needs a page or range. Enter one after the label, or clear Page.";
+
 afterEach(resetApp);
 
+const pageFailure = { code: "page-missing", message: { id: "app-command-page-missing", args: { number: "1", label: "Page" } }, recovery: { action: "edit-locator" }, focus: "locator" };
+const formFailure = { code: "unsupported-form", message: { id: "problem-unsupported-form", args: { reference: "Reference 1", output: "Pandoc", form: "Name in the sentence" } }, recovery: { action: "choose-form" }, focus: "citation-form" };
 test("the surface guard ignores the reader HUD but catches a second registered surface", async () => {
   backend({ search: () => [result("a", "Invented work")] });
   const book = inventedSource();
@@ -35,6 +43,17 @@ test("the surface guard ignores the reader HUD but catches a second registered s
   } finally { boxes.mockRestore(); }
 });
 
+test("a token's details float over the picker: ⌘1–9 leaves the list alone under them, and a hide closes them", async () => {
+  const calls = backend({ search: () => [result("a", "First work"), result("b", "Second work")] });
+  render(<App />);
+  fireEvent.click(await screen.findByText("First work"), { ctrlKey: true });
+  await openCitationDetails();
+  expect(fireEvent.keyDown(document.body, { key: "2", code: "Digit2", ctrlKey: true })).toBe(true);
+  expect(calls).not.toContain("copy_file_citation");
+  await act(async () => { await emit("picker:hidden"); });
+  expect(citationDetails()).toBeNull();
+});
+
 test("closing slow inspector formatting lets citation B finish before the abandoned examples", async () => {
   let busy = false;
   let started = false;
@@ -44,7 +63,7 @@ test("closing slow inspector formatting lets citation B finish before the abando
       started = busy = true;
       return new Promise(() => {});
     },
-    preview_file_citation: ({ items }) => busy ? new Promise(() => {}) : receipt(items[0]?.id.key === "b" ? "Citation B" : "Citation A"),
+    preview_file_citation: ({ items }) => busy ? new Promise(() => {}) : receipt(items[0]?.id.key === recordId("b") ? "Citation B" : "Citation A"),
   });
   render(<App />);
   await openCitationDetails();
@@ -55,9 +74,9 @@ test("closing slow inspector formatting lets citation B finish before the abando
 });
 
 test("explicit arrows still reveal another result while a built citation is refused", async () => {
-  const message = "Reference 1: Choose another form or clear Page.";
+  const message = "Reference 1: Name in the sentence cannot be expressed in this output or group. Choose Name in brackets, cite it alone, or choose another output.";
   backend({ search: () => [result("a", "First invented work"), result("b", "Second invented work")],
-    preview_file_citation: () => { throw { code: "failed", message }; },
+    preview_file_citation: () => { throw formFailure; },
   });
   render(<App />);
   const refusal = await screen.findByRole("alert");
@@ -213,7 +232,7 @@ test("source and sentence-case warnings stay visible in preview and copy feedbac
 
 test.each(["S.12", "pages of notes"])("a form edit preserves the captured page %s as canonical text", async (value) => {
   const previews: PreviewRequest[] = [];
-  const locator = { label: "page", value };
+  const locator = { term: "page", value };
   backend({ search: () => ({ revision: "1", results: [result("a", "Synthetic work")],
     interpretation: { search: "Example", locator, typed: `pp. "${value}"` } }),
     preview_file_citation: (request) => { previews.push(request); return receipt("Canonical output"); } });
@@ -228,11 +247,11 @@ test.each(["S.12", "pages of notes"])("a form edit preserves the captured page %
 });
 
 test("a label-only Page refuses copy until corrected", async () => {
-  const message = "Reference 1: Page needs a page or range. Enter one after the label, or clear Page.";
+  const message = pageMessage;
   const copied: string[] = [];
   const calls = backend({ search: () => [result("a", "Synthetic work")],
     preview_file_citation: ({ items }) => {
-      if (items[0]?.locator_input?.text === "pp.") throw { code: "failed", message };
+      if (items[0]?.locator_input?.text === "pp.") throw pageFailure;
       return receipt(items[0]?.locator_input?.text ? "Synthetic normalized output" : "Original output");
     },
     copy_file_citation: (args) => { const saved = prepared(args); copied.push(saved.preview.text); return { text: saved.preview.text, warnings: [] }; },
@@ -273,7 +292,7 @@ test.each(["pointer", " ", "ArrowDown"])("a token activated with %s opens its de
     expect(document.activeElement).toBe(page);
     expect(screen.getByRole("dialog", { name: `Citation details for ${title}` }).contains(page)).toBe(true);
     fireEvent.change(page, { target: { value } });
-    await waitFor(() => expect(previews.at(-1)?.items.find((item) => item.id.key === key)?.locator_input?.text).toBe(value));
+    await waitFor(() => expect(previews.at(-1)?.items.find((item) => item.id.key === recordId(key ?? ""))?.locator_input?.text).toBe(value));
     closeCitationDetails();
   }
   expect(previews.at(-1)?.items).toMatchObject([
@@ -284,10 +303,10 @@ test.each(["pointer", " ", "ArrowDown"])("a token activated with %s opens its de
 });
 
 test("actionable refusals remain visible until corrected", async () => {
-  const message = "Reference 1: Narrative cannot be expressed in this output. Choose Normal or another output.";
+  const message = "Reference 1: Name in the sentence cannot be expressed in this output or group. Choose Name in brackets, cite it alone, or choose another output.";
   const calls = backend({ search: () => [result("a", "Synthetic work")],
     preview_file_citation: ({ items }) => {
-      if (items[0]?.form === "narrative") throw { code: "failed", message };
+      if (items[0]?.form === "narrative") throw formFailure;
       return receipt("Synthetic output");
     } });
   render(<App />);
@@ -361,7 +380,7 @@ test("losses keep a visible count and an unsupported form blocks copying until c
   const warning = "Reference 1: Page is not included in this output.";
   const calls = backend({ search: () => [result("a", "Synthetic work")],
     preview_file_citation: ({ items }) => {
-      if (items[0]?.form === "narrative") throw { code: "failed", message: "Reference 1: Narrative cannot be expressed in this output." };
+      if (items[0]?.form === "narrative") throw formFailure;
       return receipt("Synthetic output", null, items[0]?.locator_input?.text ? [warning] : []);
     } });
   render(<App />);
@@ -378,7 +397,7 @@ test("losses keep a visible count and an unsupported form blocks copying until c
   fireEvent.keyDown(notes, { key: "Escape" });
   await openCitationDetails();
   await chooseForm("Name in the sentence");
-  expect((await screen.findByRole("alert")).textContent).toContain("Narrative cannot be expressed");
+  expect((await screen.findByRole("alert")).textContent).toContain("Name in the sentence cannot be expressed");
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   expect(calls).not.toContain("copy_file_citation");
   await chooseForm("Name in brackets");
@@ -406,7 +425,7 @@ test("a form edit cancels queued Enter and ignores the retired preview", async (
 
 test("changing only the form does not offer to reapply an unchanged search page", async () => {
   backend({ search: () => ({ revision: "1", results: [result("a", "Synthetic work")],
-    interpretation: { search: "Synthetic", locator: { label: "page", value: "12" }, language: "en-US" } }) });
+    interpretation: { search: "Synthetic", locator: { term: "page", value: "12" }, language: "en-US" } }) });
   render(<App />);
   await openCitationDetails();
   await chooseForm("Name in the sentence");
@@ -526,8 +545,8 @@ test("Search and the list stay live beside the details, and Esc from Search clos
 });
 
 test("a citation refusal shows once, in the details beside its fields, and returns to the list when they close", async () => {
-  const message = "Reference 1: Page needs a page or range.";
-  backend({ search: () => [result("a", "Synthetic work")], preview_file_citation: () => { throw { code: "failed", message }; } });
+  const message = "Reference 1: Page needs a page or range. Enter one after the label, or clear Page.";
+  backend({ search: () => [result("a", "Synthetic work")], preview_file_citation: () => { throw pageFailure; } });
   render(<App />);
   const inList = await screen.findByRole("alert");
   expect(inList.closest(".shelf")).toBeTruthy();
@@ -590,9 +609,9 @@ test("Enter in Page does what the footer says, once, and a held key does not rep
 });
 
 test("a refused page stays visible in place, and Enter in Page copies nothing", async () => {
-  const message = "Reference 1: Page needs a page or range.";
+  const message = "Reference 1: Page needs a page or range. Enter one after the label, or clear Page.";
   const calls = backend({ search: () => [result("a", "Synthetic work")], preview_file_citation: ({ items }) => {
-    if (items[0]?.locator_input?.text === "pp.") throw { code: "failed", message };
+    if (items[0]?.locator_input?.text === "pp.") throw pageFailure;
     return receipt("Original output");
   } });
   render(<App />);
@@ -610,7 +629,7 @@ test("a refused page stays visible in place, and Enter in Page copies nothing", 
 
 test("failed examples leave every form usable and say so once, quietly", async () => {
   const previews: PreviewRequest[] = [];
-  backend({ search: () => [result("a", "Invented work")], citation_details: () => { throw { code: "failed", message: "Invented failure" }; },
+  backend({ search: () => [result("a", "Invented work")], citation_details: () => { throw { code: "internal", message: { id: "error-internal", args: {} }, recovery: { action: "retry" }, focus: "recovery-action" } satisfies Problem; },
     preview_file_citation: (request) => { previews.push(request); return receipt("Output"); } });
   render(<App />);
   await openCitationDetails();
@@ -674,7 +693,7 @@ test("a form picked while no receipt exists shows the form asked for, and an old
     citation_details: () => ({ current_form: "normal", forms: [{ form: "normal", example: "(Smith, 2020)", reason: null }, { form: "narrative", example: null, reason: "Cite it alone." }, { form: "year-only", example: "(2020)", reason: null }] }),
     preview_file_citation: (request) => {
       previews.push(request);
-      if (request.items[0]?.locator_input?.text === "pp.") throw { code: "failed", message: "Reference 1: Page needs a page or range." };
+      if (request.items[0]?.locator_input?.text === "pp.") throw pageFailure;
       return receipt("(Smith, 2020)");
     } });
   render(<App />);
@@ -737,7 +756,7 @@ test("an output with no forms keeps its one line while a page is typed, with no 
  * With `held`, each preview waits under "kept:" or "sorted:" and its order until released. */
 function sortingStyle(held?: Map<string, () => void>) {
   return ({ items, intent }: PreviewRequest) => {
-    const order = items.map(({ id }, index) => ({ key: id.key, index }));
+    const order = items.map(({ id }, index) => ({ key: fixtureCitationKey(id), index }));
     if (!intent.keep_order) order.sort((x, y) => x.key.localeCompare(y.key));
     const spans = order.flatMap(({ key, index }, n) => [...n ? [{ item: null, text: "; " }] : [], { item: index, text: `(${key})` }]);
     const preview = { ...receipt(spans.map((span) => span.text).join("")), display: displayTree(spans) };

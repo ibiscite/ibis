@@ -33,7 +33,7 @@ M is the height of the bird.
 - **In a container.** The bird is 62% of the height of an app icon, avatar or maskable icon. Favicons use the largest bird that fits.
 - **Optical centre.** The bird's weight is in its head, so its outline's centre looks too far left. Square files and containers move it sideways halfway toward its centre of mass (which `build.py` measures from the master) and, vertically, keep the outline's centre lifted 0.75% of the container, just above the middle.
 - **Eye.** The bird has an eye, cut out so the background shows through it. It is cut crisply after the depth, and `eye_depth` in `settings.json` (0 for flat, 1 for full) sets how much soft shading shows inside it. Favicons leave it out, because it would be under a pixel.
-- **Picker.** The generated `welcomeMark` in `apps/desktop/src/brand.ts` keeps the light or dark gradient, selected by the app's colour scheme; the small `mark` and `pickerMark` are flat and take the page's `--scarlet`. The 24 px `pickerMark` opens the eye to at least 2 px across; welcome (56 px, with depth) and opening (40 px) use the master's eye. Below 48 px the bird stays flat, with its gradient and no depth effects.
+- **Picker.** The generated `welcomeMark` in `apps/desktop/src/brand.ts` keeps the light or dark gradient, selected by the app's colour scheme; the small `mark` and `pickerMark` are flat and take the page's `--scarlet`. The 32 px `pickerMark` opens the eye to 2 px across (`picker` in `settings.json`); welcome (56 px, with depth) and opening (40 px) use the master's eye. Below 48 px the bird stays flat, with its gradient and no depth effects.
 - **Depth.** A soft light along the top edge, a shade along the bottom, a tight contact shadow and a wide, faint ambient shadow, all set in `settings.json`. The soft depth is for 48 px and up; smaller uses the flat bird. Favicons use a slightly thicker neck so the bird still reads at 16 px.
 - **Colour.** Scarlet 600 `#C23A1C` on light backgrounds and Scarlet 400 `#F2552F` on dark (the darker stop of the dark gradient, so a white check still reads on it). Text is Ink `#171717` or Slate `#525252` on light, and near-white on dark. The full Scarlet scale (50 to 900) is for websites and videos: tints for backgrounds, 600 to 800 for text and links on light. Never stretch, outline or recolour the bird in other hues, or add effects.
 - **Themes.** `brand/build.py` generates website colour roles in the app’s `tokens.css` and the portable `colors.css`: light by default, dark when the system is dark, and an optional dim theme (`data-theme="dim"`) for a softer charcoal. Each theme names the same roles: `bg`, `surface`, `line`, `text`, `muted`, `accent`, `accent-soft`.
@@ -42,54 +42,16 @@ M is the height of the bird.
 
 ## Interface icons
 
-`icons/*.svg` contains Lucide 1.72.0 drawings from `lucide-static@1.72.0`,
-under ISC, with the original Feather MIT notices retained in
-[`icons/LICENSE-lucide`](icons/LICENSE-lucide). The added `app-window`, `folder-search`
-and `library-big` drawings come from `lucide@1.8.0` under the same licence. All interface glyphs are
-Lucide's; none needed a custom drawing. The Ibis bird and logos remain our artwork.
-
-Sources keep Lucide's 24-unit grid, nominal 2-unit stroke, round caps and joins
-and no fill. Circles, rounded rectangles and arcs are normalized to cubic
-subpaths and concatenated into one path for the guard and check-draw animation.
-The check path runs from its short leg to its long leg for that animation.
-The build writes `apps/desktop/src/icon-paths.ts`; never edit it by hand.
-`Icon` renders 16px or 20px with a 1.5px stroke at both sizes.
-`node scripts/check-icons.mjs` enforces the source contract. Inspect every
-source at 1× and 2× after a change. System app icons are separate;
-no Zotero artwork ships with Ibis.
-
-| Ibis glyph | Lucide glyph |
-| --- | --- |
-| `about` | `info` |
-| `app-window` | `app-window` |
-| `article` | `file-text` |
-| `back` | `chevron-left` |
-| `book` | `book` |
-| `chapter` | `book-marked` |
-| `check` | `check` |
-| `chevrons` | `chevrons-up-down` |
-| `citations` | `quote` |
-| `close` | `x` |
-| `error` | `circle-x` |
-| `file` | `file` |
-| `find` | `search` |
-| `folder-search` | `folder-search` |
-| `general` | `sliders-horizontal` |
-| `library` | `library` |
-| `library-big` | `library-big` |
-| `look` | `contrast` |
-| `other` | `box` |
-| `pin` | `pin` |
-| `plus` | `plus` |
-| `report` | `file-chart-column` |
-| `retry` | `rotate-cw` |
-| `sample` | `sparkle` |
-| `shortcuts` | `command` |
-| `swap` | `arrow-right-left` |
-| `thesis` | `graduation-cap` |
-| `warning` | `triangle-alert` |
-| `web` | `panel-top` |
-| `write` | `pencil` |
+`icons/*.svg` are Phosphor Regular drawings from `@phosphor-icons/core@2.1.1`,
+under MIT ([`icons/LICENSE-phosphor`](icons/LICENSE-phosphor)), vendored
+unchanged. Each file is named for what it means in Ibis (`peek`, `settings`,
+`reset`), and [`icons/SOURCES.json`](icons/SOURCES.json) names the upstream glyph,
+so updating is a copy. One meaning, one glyph. A glyph Phosphor lacks is drawn on
+its 256-unit grid at Regular weight (16-unit stroke, round caps and joins,
+outlined to a fill). The build writes `apps/desktop/src/icon-art.ts`; never edit it
+by hand. `Icon` draws 16 px in controls and menus and 20 px in a list's lead
+column ([decision 0053](../docs/decisions/0053-window-grid-and-icons.md)). The
+Ibis bird and logos remain our artwork and never stand in an icon's place.
 
 ## Changing the brand
 

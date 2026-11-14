@@ -55,14 +55,16 @@ fn each_click_says_the_next_fact_and_a_plain_read_says_none() {
 
 #[test]
 fn only_current_successful_real_loads_can_claim_library_feedback() {
-    use crate::library::engine_file::FileLibrary;
+    use crate::library::engine_library::FileLibrary;
     use crate::library::{Library, Source};
     use std::sync::Arc;
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("invented.bib");
     std::fs::write(&path, "@book{invented,title={Invented Research},year={2026}}").unwrap();
     let mut library = Library::default();
-    library.file = Some(Arc::new(FileLibrary::open(&path).unwrap()));
+    library.file = Some(Arc::new(
+        FileLibrary::open(&path, &ibis_engine::Cancellation::default()).unwrap(),
+    ));
     library.source = Some(Source::File(path));
     let loaded = crate::library::snapshot_status(&library);
     assert!(library_claim(&loaded, Some(&loaded.revision)).is_some());

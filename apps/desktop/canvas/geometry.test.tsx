@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { CitationDetails } from "../src/ui/CitationDetails";
+import { Band } from "../src/ui/Band";
+import { Progress } from "../src/ui/Progress";
 import { anchorMoves, geometry, layerRoles, occlusion, overflow, paintOnly } from "./geometry";
 
 test("the frame guard catches an anchor that moves between states, and not an edge it does not hold", () => {
@@ -85,16 +87,16 @@ test("form alignment measures a combined locator's fill and still reports a misp
   } finally { boxes.mockRestore(); view.unmount(); }
 });
 
-test("footer geometry catches a short selector, a shifted dot and a menu covering its anchor", () => {
+test("footer geometry catches a short selector, status off the leading edge and a menu covering its anchor", () => {
   const view = render(<main><div className="result-tile" /><footer className="library-bar">
-    <button type="button" className="library-status-trigger"><span className="status-dot" /></button>
+    <button type="button" className="library-status-trigger" data-band="leading"><span className="library-status">thesis.bib</span></button>
     <span className="more"><button type="button" className="ui-button more-button">More</button></span>
   </footer><div className="menu-popover"><div id="library-menu" /></div></main>);
-  let height = 24, dotX = 32, menuX = 8, menuBottom = 442;
+  let height = 24, statusX = 20, menuX = 8, menuBottom = 442;
   const boxes = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
     if (this.matches(".library-status-trigger")) return new DOMRect(8, 448, 210, height);
     if (this.matches(".more .ui-button")) return new DOMRect(640, 448, 72, 24);
-    if (this.matches(".status-dot")) return new DOMRect(dotX, 456, 8, 8);
+    if (this.matches(".library-status")) return new DOMRect(statusX, 448, 190, 24);
     if (this.matches(".menu-popover")) return new DOMRect(menuX, 200, 240, menuBottom - 200);
     if (this.style.insetInlineStart === "var(--inset)") return new DOMRect(8, 0, 32, 1);
     if (this.style.insetInlineStart.includes("--title-start")) return new DOMRect(64, 0, 32, 1);
@@ -105,9 +107,9 @@ test("footer geometry catches a short selector, a shifted dot and a menu coverin
     expect(failures()).toEqual([]);
     height = 20;
     expect(failures()).toContainEqual(expect.stringContaining("library selector 20.0px tall"));
-    height = 24; dotX = 36;
-    expect(failures()).toContainEqual(expect.stringContaining("centre 40.0, tile column 36.0"));
-    dotX = 32; menuX = 20; menuBottom = 460;
+    height = 24; statusX = 24;
+    expect(failures()).toContainEqual(expect.stringContaining("starts 24.0, leading edge 20.0"));
+    statusX = 20; menuX = 20; menuBottom = 460;
     expect(failures()).toContainEqual(expect.stringContaining("library menu starts 20.0, selector 8.0"));
     expect(failures()).toContainEqual(expect.stringContaining("must leave a gap above selector"));
   } finally { boxes.mockRestore(); view.unmount(); }
@@ -118,12 +120,13 @@ test("view geometry holds the back chevron, search mark and palette tiles on one
   const view = render(<main><div className="search-bar"><span className="search-mark" /></div>
     <div className="ui-view-head"><button type="button" className="ui-view-back"><span className="ui-icon" /></button>
       <input className="ui-view-field" aria-label="Search formats" style={{ border: 0, padding: 0 }} />
-    </div><span className="ui-palette-lead" /></main>);
+    </div><Band icon={<span />}>Label</Band></main>);
   let glyphX = 28, backY = 10;
   const boxes = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
     if (this.matches(".search-mark")) return new DOMRect(24, 14, 24, 24);
     if (this.matches(".ui-view-back")) return new DOMRect(20, backY, 32, 32);
-    if (this.matches(".ui-icon")) return new DOMRect(glyphX, 18, 16, 16);
+    if (this.matches("[data-band-slot=lead]")) return new DOMRect(glyphX - 8, 10, 32, 32);
+    if (this.parentElement?.matches("[data-band]")) return new DOMRect(64, 10, 100, 24);
     if (this.matches(".ui-view-field")) return new DOMRect(64, 8, 400, 36);
     if (this.style.insetInlineStart === "var(--inset)") return new DOMRect(8, 0, 32, 1);
     if (this.style.insetInlineStart.includes("--title-start")) return new DOMRect(64, 0, 32, 1);
@@ -137,4 +140,24 @@ test("view geometry holds the back chevron, search mark and palette tiles on one
     glyphX = 28; backY = 14;
     expect(failures()).toEqual(["[Back] centre 4.0px off the search field vertically"]);
   } finally { boxes.mockRestore(); vi.unstubAllGlobals(); view.unmount(); }
+});
+
+test("Band slots hold update progress and new rows to their declared columns", () => {
+  const view = render(<main><Progress title="Update" label="Downloading" value={50} /><Band>Heading</Band></main>);
+  let titleX = 64, leadX = 20;
+  const boxes = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    if (this.style.insetInlineStart === "var(--inset)") return new DOMRect(8, 0, 32, 1);
+    if (this.style.insetInlineStart.includes("--title-start")) return new DOMRect(64, 0, 32, 1);
+    if (this.matches(".update-text")) return new DOMRect(titleX, 0, 100, 24);
+    if (this.matches("[data-band-slot=lead]")) return new DOMRect(leadX, 0, 32, 32);
+    return new DOMRect(20, 0, 32, 32);
+  });
+  const failures = () => geometry(view.container).filter((failure) => failure.startsWith("[C3]"));
+  try {
+    expect(failures()).toEqual([]);
+    titleX = 20;
+    expect(failures()).toContainEqual(expect.stringContaining("title column 64.0"));
+    titleX = 64; leadX = 24;
+    expect(failures()).toContainEqual(expect.stringContaining("tile column 36.0"));
+  } finally { boxes.mockRestore(); view.unmount(); }
 });

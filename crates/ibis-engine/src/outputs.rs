@@ -35,8 +35,8 @@ pub struct OutputInfo {
     pub output: OutputSpec,
     /// The forms one reference can be cited in.
     pub forms: Vec<CitationForm>,
-    /// It writes each reference's whole record, notes included, not a
-    /// citation; agents are not offered it.
+    /// It shares reference metadata rather than a citation; private fields
+    /// never leave, and agents are not offered it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub exports_records: bool,
     /// It writes reference entries, never in-text citations: a numbered
@@ -185,4 +185,50 @@ pub fn resolve(output: &OutputSpec) -> Result<OutputSpec, EngineError> {
             .ok_or_else(|| EngineError::because(ErrorCode::BadInput, ErrorReason::UnknownOutput)),
         output => Ok(output.clone()),
     }
+}
+
+/// Resolution is shared by all clients, previews, examples and re-citing.
+pub(crate) struct ResolvedRequest {
+    pub request: ibis_core::contract::CitationRequest,
+    pub formatted: Option<ibis_csl::ResolvedOutput>,
+}
+pub(crate) fn resolve_request(request: &ibis_core::contract::CitationRequest) -> Result<ResolvedRequest, EngineError> {
+    let output = resolve(&request.output)?;
+    // Language tags are data, not processor options or operating-system defaults.
+    for language in [request.input_language.as_deref(), request.output_locale.as_deref()]
+        .into_iter()
+        .flatten()
+    {
+        if language.is_empty()
+            || language.len() > 63
+            || !language.split('-').enumerate().all(|(index, part)| {
+                !part.is_empty()
+                    && part.len() <= 8
+                    && part
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphabetic() || index > 0 && byte.is_ascii_digit())
+            })
+        {
+            return Err(EngineError::because(ErrorCode::BadInput, ErrorReason::UnknownLocale));
+        }
+    }
+    let formatted = match &output {
+        OutputSpec::Csl { style } => Some(
+            ibis_csl::ResolvedOutput::new(style, request.output_locale.as_deref())
+                .map_err(crate::service::formatting::formatter_error)?,
+        ),
+        OutputSpec::Key { .. } => {
+            ibis_core::syntax::capabilities(&output)
+                .map_err(|_| EngineError::because(ErrorCode::BadInput, ErrorReason::UnknownOutput))?;
+            None
+        }
+        OutputSpec::Preset { .. } => return Err(ErrorCode::Internal.into()),
+    };
+    Ok(ResolvedRequest {
+        request: ibis_core::contract::CitationRequest {
+            output,
+            ..request.clone()
+        },
+        formatted,
+    })
 }

@@ -1,7 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { IconButton } from "./IconButton";
-import { SettingsSearch } from "./SettingsSearch";
 
 test("an icon toggle keeps one outline glyph, reports state and refuses disabled presses", () => {
   const change = vi.fn();
@@ -16,15 +15,4 @@ test("an icon toggle keeps one outline glyph, reports state and refuses disabled
   change.mockClear();
   fireEvent.click(button);
   expect(change).not.toHaveBeenCalled();
-});
-
-test("Settings search clear is named, clears once and returns focus to typing", () => {
-  const change = vi.fn();
-  const view = render(<SettingsSearch label="Search settings" value="invented" onChange={change} />);
-  const clear = screen.getByRole("button", { name: "Clear Search" });
-  fireEvent.click(clear);
-  expect(change).toHaveBeenCalledExactlyOnceWith("");
-  expect(document.activeElement).toBe(screen.getByRole("searchbox"));
-  view.rerender(<SettingsSearch label="Search settings" value="" onChange={change} />);
-  expect(screen.queryByRole("button", { name: "Clear Search" })).toBeNull();
 });

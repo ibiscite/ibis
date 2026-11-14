@@ -76,7 +76,7 @@ fn save(app: &AppHandle, on: bool) {
                     file.remember_native_changes(&before, &saved);
                     set_automatic(app, on);
                 })
-                .map_err(|error| ibis_engine::settings_backup::settings_message(&error))
+                .map_err(crate::library::CommandError::from)
         },
     );
     match saved {

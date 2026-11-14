@@ -91,7 +91,7 @@ the anchor older links use.
 [0043](decisions/0043-ris-and-csv-libraries.md): RIS exports and the CSV template are read-only libraries with no citation keys; a record's identity is a hash of its CSL data.
 
 ## 0044 One Lucide icon primitive
-[0044](decisions/0044-lucide-icon-primitive.md): Lucide 1.72.0 under ISC, two fixed pixel sizes with a 1.5px rendered stroke, and Lucide's drawing rules for missing glyphs.
+[0044](decisions/0044-lucide-icon-primitive.md) (superseded by 0053): Lucide 1.72.0 under ISC, two fixed pixel sizes with a 1.5px rendered stroke, and Lucide's drawing rules for missing glyphs.
 
 ## 0045 The citation line is a token field
 [0045](decisions/0045-citation-line-token-field.md): each reference in the shelf's line is a token whose details open in a popover above it; the side panel keeps the Reader and warnings.
@@ -119,3 +119,9 @@ the anchor older links use.
 
 ## 0052 The engine owns the library and citations
 [0052](decisions/0052-engine-owns-library-and-citations.md): one engine per process with a library owner and citation sessions by id; one validator, one display contract and one vocabulary; front ends keep platform effects. Lands in six slices.
+
+## 0053 One window grid, and icons by meaning
+[0053](decisions/0053-window-grid-and-icons.md): a leading edge, a 32 px lead column, a title column and a trailing edge, drawn by `ui/Band`; headings and status start on the leading edge; held ⌘ marks rows only; no clear button; Use Default follows the setting's name; Phosphor Regular, named by meaning, replaces Lucide.
+
+## 0054 Owners and boundaries
+[0054](decisions/0054-owners-and-boundaries.md): three exclusive engine owners that accept intents and publish observations, one native delivery owner, and typed boundaries (checked artifacts, `Problem`, executable actions); ten stages, the gate first.

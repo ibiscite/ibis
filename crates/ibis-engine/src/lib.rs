@@ -7,6 +7,8 @@ pub mod cayw;
 
 pub mod catalogue;
 
+pub mod lookup;
+
 pub mod mcp;
 
 /// Which format a citation uses (decision 0042).
@@ -41,3 +43,5 @@ pub mod wire;
 pub mod server;
 
 pub mod recents;
+
+pub mod citations;

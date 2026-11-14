@@ -27,7 +27,7 @@ test("closing slow bibliography formatting lets citation B finish before the aba
       started = busy = true;
       return new Promise(() => {});
     },
-    preview_file_citation: ({ items }) => busy ? new Promise(() => {}) : receipt(items[0]?.id.key === morgan.key ? "Citation B" : "Citation A"),
+    preview_file_citation: ({ items }) => busy ? new Promise(() => {}) : receipt(items[0]?.id.key === morgan.id.key ? "Citation B" : "Citation A"),
   });
   const dialog = await open();
   await waitFor(() => expect(started).toBe(true));
@@ -47,7 +47,7 @@ test.each(["Copy Bibliography", "Save…"])("closing slow %s formatting lets cit
   backend({ search: () => [taylor, morgan], session_references: () => list(),
     session_bibliography: () => formatted("Bibliography A"),
     copy_session_bibliography: deliver, export_session_bibliography: deliver,
-    preview_file_citation: ({ items }) => busy ? new Promise(() => {}) : receipt(items[0]?.id.key === morgan.key ? "Citation B" : "Citation A"),
+    preview_file_citation: ({ items }) => busy ? new Promise(() => {}) : receipt(items[0]?.id.key === morgan.id.key ? "Citation B" : "Citation A"),
   });
   const dialog = await open();
   await within(dialog).findByText("Bibliography A");
@@ -136,12 +136,12 @@ test("a slow bibliography for an older list never replaces the newer one", async
   expect(dialog.textContent).not.toContain("older list");
 });
 
-test("a list that moved on since it was shown is shown again, not copied", async () => {
+test.each(["snapshot_changed", "changed-item", "missing-item"])("a list that moved on (%s) is shown again, not copied", async (code) => {
   let calls = 0;
   backend({
     session_references: () => list(),
     session_bibliography: () => formatted(`version ${++calls}`),
-    copy_session_bibliography: () => { throw { code: "snapshot_changed" }; },
+    copy_session_bibliography: () => { throw { code }; },
   });
   const dialog = await open();
   await within(dialog).findByText("version 1");
@@ -204,18 +204,28 @@ test("a delayed copy cannot replace the failure from a newer list edit", async (
   expect(within(dialog).queryByText("Copied the bibliography.")).toBeNull();
 });
 
-test("a copy or a save that fails says so", async () => {
-  backend({
+test.each([
+  ["Copy Bibliography", "copy_session_bibliography", "The bibliography could not be copied. Try again.", "Copied the bibliography."],
+  ["Save…", "export_session_bibliography", "Save it as .rtf, .html or .txt.", "Saved invented.rtf."],
+])("Try Again repeats %s after delivery fails", async (action, command, failure, success) => {
+  let attempts = 0;
+  const calls = backend({
     session_references: () => list(), session_bibliography: () => formatted("text"),
-    copy_session_bibliography: () => { throw new Error("no sentence for a person"); },
-    export_session_bibliography: () => { throw "no sentence for a person"; },
+    [command]: () => {
+      if (++attempts === 1) throw command === "copy_session_bibliography" ? new Error("invented failure")
+        : { code: "bibliography-format", message: { id: "app-bibliography-format", args: {} }, recovery: { action: "retry" }, focus: "recovery-action" };
+      return "invented.rtf";
+    },
   });
   const dialog = await open();
   await within(dialog).findByText("text");
-  fireEvent.click(within(dialog).getByRole("button", { name: "Copy Bibliography" }));
-  await within(dialog).findByText("The bibliography could not be copied. Try again.");
-  fireEvent.click(within(dialog).getByRole("button", { name: "Save…" }));
-  await within(dialog).findByText("The bibliography could not be saved. Try again.");
+  fireEvent.click(within(dialog).getByRole("button", { name: action }));
+  await within(dialog).findByText(failure);
+  fireEvent.click(within(dialog).getByRole("button", { name: "Try Again" }));
+  await waitFor(() => expect(plain(dialog.textContent)).toContain(success));
+  expect(attempts).toBe(2);
+  expect(calls.filter((name) => name === "session_references")).toHaveLength(1);
+  expect(calls.filter((name) => name === "session_bibliography")).toHaveLength(1);
 });
 
 test("a saved file is named, and a cancelled dialog says nothing", async () => {
@@ -241,17 +251,6 @@ test("a reference the style cannot write is named, and the rest can still be cop
   const dialog = await open();
   await waitFor(() => expect(plain(dialog.textContent)).toContain("Left out because this style can’t write them: taylor2026."));
   expect(within(dialog).getByRole<HTMLButtonElement>("button", { name: "Copy Bibliography" }).disabled).toBe(false);
-});
-
-test("a native refusal keeps its own words", async () => {
-  backend({
-    session_references: () => list(), session_bibliography: () => formatted("text"),
-    export_session_bibliography: () => { throw { code: "failed", message: "Save it as .rtf, .html or .txt." }; },
-  });
-  const dialog = await open();
-  await within(dialog).findByText("text");
-  fireEvent.click(within(dialog).getByRole("button", { name: "Save…" }));
-  await within(dialog).findByText("Save it as .rtf, .html or .txt.");
 });
 
 test("a removed row leaves the keyboard in the sheet, so the next key cannot act behind it", async () => {
@@ -293,18 +292,34 @@ test("opening the source with its shortcut closes the sheet instead of acting be
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 });
 
-test("a read that fails says so, and closing and reopening reads the list again", async () => {
+test.each(["read", "format"])("Try Again reloads after a %s failure", async (operation) => {
   let fail = true, reads = 0;
   backend({
-    session_references: () => { reads += 1; if (fail) throw new Error("no"); return list(); },
-    session_bibliography: () => formatted("text"),
+    session_references: () => { reads += 1; if (fail && operation === "read") throw new Error("invented failure"); return list(); },
+    session_bibliography: () => { if (fail && operation === "format") throw new Error("invented failure"); return formatted("text"); },
   });
   const dialog = await open();
-  await within(dialog).findByText("The references could not be read. Try again.");
-  fireEvent.keyDown(dialog, { key: "Escape" });
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  await within(dialog).findByRole("alert");
   fail = false;
-  await chooseFromMore("Cited Since Opening…");
-  await within(await screen.findByRole("dialog")).findByText("text");
+  fireEvent.click(within(dialog).getByRole("button", { name: "Try Again" }));
+  await within(dialog).findByText("text");
   expect(reads).toBe(2);
+});
+
+test("an all-refused bibliography offers the sheet’s Remove controls and removal retries it", async () => {
+  let current = list({ rows: [taylor] });
+  const calls = backend({ session_references: () => current,
+    session_bibliography: () => {
+      if (current.rows.length === 0) return null;
+      throw { code: "bibliography-unsupported", message: { id: "app-command-bibliography-unsupported", args: { references: "taylor2026" } },
+        recovery: { action: "remove-references" }, focus: "session-references" };
+    },
+    edit_session_references: () => { current = list({ rows: [] }); return current; },
+  });
+  const dialog = await open();
+  expect((await within(dialog).findByRole("alert")).textContent).toContain("Remove them from this list to continue.");
+  expect(within(dialog).getByRole("button", { name: "Copy Bibliography" }).hasAttribute("disabled")).toBe(true);
+  fireEvent.click(within(dialog).getByRole("button", { name: /^Remove / }));
+  await waitFor(() => expect(within(dialog).queryByRole("alert")).toBeNull());
+  expect(calls.filter((command) => command === "session_bibliography")).toHaveLength(2);
 });

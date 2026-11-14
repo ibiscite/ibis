@@ -1,12 +1,12 @@
-//! Local identity and outbound intent only: these scenarios make no network requests.
+//! Offline DOI resolution through the production public engine module.
 #![allow(clippy::unwrap_used)]
 
-#[path = "../src/lookup.rs"]
-mod lookup;
-
 use ibis_core::{contract::*, identifier::Identifier};
-use ibis_engine::Engine;
-use lookup::{Disclosure, Refusal, Resolution, resolve};
+use ibis_engine::{
+    Cancellation, Engine,
+    lookup::{Refusal, Resolution, resolve},
+    request::SearchRequest,
+};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -17,10 +17,10 @@ fn record(library: &str, key: &str, fields: Value, identifiers: Vec<Identifier>)
     let mut csl = json!({
         "id": key,
         "type": "article-journal",
-        "title": "PRIVATE_TITLE_SENTINEL",
-        "author": [{"family": "PRIVATE_AUTHOR_SENTINEL"}],
-        "note": "PRIVATE_DOCUMENT_SENTINEL",
-        "URL": "file:///invented/PRIVATE_PATH_SENTINEL.pdf"
+        "title": "Invented Rivers",
+        "author": [{"family": "Vale", "given": "Ada"}],
+        "note": "Invented document text",
+        "URL": "file:///invented/river.pdf"
     });
     csl.as_object_mut().unwrap().extend(fields.as_object().unwrap().clone());
     LibraryObject::Record(Record {
@@ -31,175 +31,231 @@ fn record(library: &str, key: &str, fields: Value, identifiers: Vec<Identifier>)
         added_at: None,
         csl: serde_json::from_value(csl).unwrap(),
         citation_keys: vec![CitationKey {
-            value: "PRIVATE_CITATION_KEY_SENTINEL".into(),
+            value: "vale2026".into(),
             source: CitationKeySource::Bibtex,
         }],
-        aliases: vec!["PRIVATE_ALIAS_SENTINEL".into()],
+        aliases: vec!["invented-alias".into()],
         warnings: vec![],
         identifiers,
     })
 }
 
-fn disclose(query: &str, snapshot: &Snapshot) -> Disclosure {
-    let Resolution::NeedsApproval(disclosure) = resolve(query, snapshot, Some(true)).unwrap() else {
-        panic!("an enabled local miss must require disclosure");
+fn local<'a>(query: &str, snapshot: &'a Snapshot) -> Vec<&'a SnapshotObject> {
+    let Resolution::Local(matches) = resolve(query, snapshot).unwrap() else {
+        panic!("a held DOI must resolve locally");
     };
-    disclosure
+    matches
 }
 
-#[test]
-fn absent_default_and_off_refuse_outbound_intent() {
-    let snapshot = Snapshot::new(vec![]).unwrap();
-    for permission in [Option::<bool>::default(), Some(false)] {
-        assert!(matches!(resolve(DOI, &snapshot, permission), Err(Refusal::Disabled)));
-    }
-}
-
-#[test]
-fn local_resolution_returns_every_exact_match_across_open_libraries_even_while_off() {
-    let mut objects: Vec<_> = (0..80)
-        .map(|i| record("a", &format!("decoy-{i}"), json!({"title": DOI}), vec![]))
-        .collect();
-    // More matches than a picker page, after all the title-only decoys.
-    objects.extend((0..70).map(|i| record("b", &format!("held-{i:02}"), json!({"DOI": DOI}), vec![])));
-    objects.push(record(
-        "c",
-        "url",
-        json!({"URL": "https://doi.org/10.5555/INVENTED-RIVER"}),
-        vec![],
-    ));
-    objects.push(record("d", "search-only", json!({}), vec![Identifier::Doi(DOI.into())]));
-    let snapshot = Snapshot::new(objects).unwrap();
-    let before = snapshot.clone();
-    for permission in [None, Some(false), Some(true)] {
-        let Resolution::Local(matches) = resolve("doi: 10.5555/INVENTED-RIVER", &snapshot, permission).unwrap() else {
-            panic!("held DOI must resolve locally before permission is considered");
-        };
-        let ids: Vec<_> = matches.iter().map(|item| item.object.id().clone()).collect();
-        let expected: Vec<_> = snapshot.objects()[80..]
-            .iter()
-            .map(|item| item.object.id().clone())
-            .collect();
-        assert_eq!(ids, expected);
-        assert_eq!(matches.len(), 72);
-    }
-    assert_eq!(snapshot, before);
-}
-
-#[test]
-fn local_identity_includes_the_core_arxiv_doi_equivalence() {
-    let snapshot = Snapshot::new(vec![record(
-        "invented",
-        "preprint",
-        json!({}),
-        vec![Identifier::Arxiv("arXiv:2101.00001v2".into())],
-    )])
-    .unwrap();
-    let Resolution::Local(matches) = resolve("10.48550/arxiv.2101.00001", &snapshot, None).unwrap() else {
-        panic!("core identifier equivalence must be used");
+fn missing(query: &str, snapshot: &Snapshot) -> String {
+    let Resolution::Missing { doi } = resolve(query, snapshot).unwrap() else {
+        panic!("an absent DOI must identify what was requested");
     };
-    assert_eq!(matches[0].object.id().key, "preprint");
+    doi
 }
 
 #[test]
-fn enabling_alone_requires_disclosure_of_exact_doi_bytes_and_all_services() {
-    let snapshot = Snapshot::new(vec![]).unwrap();
-    let disclosure = disclose(" https://doi.org/10.5555/INVENTED%2Friver ", &snapshot);
-    assert_eq!(disclosure.doi().as_bytes(), b"10.5555/invented/river");
-    assert_eq!(
-        disclosure.services(),
-        ["doi.org", "api.crossref.org", "data.crosscite.org"]
-    );
-    let shown = disclosure.doi().as_bytes().to_vec();
-    let intent = disclosure.decide(true).unwrap().prepare(Some(true)).unwrap();
-    assert_eq!(intent.doi().as_bytes(), shown);
-}
-
-#[test]
-fn declining_produces_no_approval_or_outbound_intent() {
-    let snapshot = Snapshot::new(vec![]).unwrap();
-    assert!(disclose(DOI, &snapshot).decide(false).is_none());
-    // Declining does not persist disclosure or approve a later attempt.
-    assert!(matches!(
-        resolve(DOI, &snapshot, Some(true)),
-        Ok(Resolution::NeedsApproval(_))
-    ));
-}
-
-#[test]
-fn approval_of_a_cannot_be_retargeted_by_disclosing_b() {
-    let snapshot = Snapshot::new(vec![]).unwrap();
-    let approval_a = disclose(DOI, &snapshot).decide(true).unwrap();
-    let disclosure_b = disclose(OTHER, &snapshot);
-    assert_eq!(disclosure_b.doi(), OTHER);
-    assert!(disclosure_b.decide(false).is_none());
-    // Preparing consumes approval and accepts no replacement query or DOI.
-    let intent = approval_a.prepare(Some(true)).unwrap();
-    assert_eq!(intent.doi(), DOI);
-    assert!(matches!(
-        resolve(OTHER, &snapshot, Some(true)),
-        Ok(Resolution::NeedsApproval(_))
-    ));
-}
-
-#[test]
-fn switching_off_or_losing_permission_before_consumption_refuses_intent() {
-    let snapshot = Snapshot::new(vec![]).unwrap();
-    for current_permission in [Some(false), None] {
-        let approval = disclose(DOI, &snapshot).decide(true).unwrap();
-        assert!(matches!(approval.prepare(current_permission), Err(Refusal::Disabled)));
-    }
-}
-
-#[test]
-fn outbound_intent_contains_only_the_approved_doi_and_leaves_the_library_unchanged() {
+fn a_doi_held_beyond_a_search_result_cap_is_found() {
     let engine = Engine::from_snapshot(Arc::new(
-        Snapshot::new(vec![record(
-            "PRIVATE_LIBRARY_SENTINEL",
-            "PRIVATE_RECORD_SENTINEL",
-            json!({"DOI": OTHER}),
-            vec![Identifier::Pmid("12345".into())],
-        )])
+        Snapshot::new(
+            (0..80)
+                .map(|i| record("invented", &format!("held-{i:02}"), json!({"DOI": DOI}), vec![]))
+                .collect(),
+        )
         .unwrap(),
     ));
-    let before = engine.snapshot().unwrap();
-    let libraries = serde_json::to_value(engine.libraries().unwrap()).unwrap();
-    let intent = disclose(DOI, &before)
-        .decide(true)
-        .unwrap()
-        .prepare(Some(true))
+    let page = engine
+        .search(
+            &SearchRequest {
+                query: "Invented Rivers".into(),
+                limit: 10,
+                libraries: None,
+                interpret_locator: false,
+            },
+            &Cancellation::default(),
+        )
         .unwrap();
-    // This is the complete outbound-intent payload, not a captured HTTP request.
-    assert_eq!(serde_json::to_value(&intent).unwrap(), json!({"doi": DOI}));
-    assert_eq!(intent.doi(), DOI);
-    assert_eq!(*engine.snapshot().unwrap(), *before);
-    assert_eq!(serde_json::to_value(engine.libraries().unwrap()).unwrap(), libraries);
+    assert_eq!(page.hits.len(), 10);
+    assert!(!page.complete);
+
+    let snapshot = engine.snapshot().unwrap();
+    let beyond_cap = snapshot
+        .objects()
+        .iter()
+        .find(|item| !page.hits.iter().any(|hit| hit.item.object.id() == item.object.id()))
+        .unwrap();
+    let matches = local(DOI, &snapshot);
+    assert_eq!(matches.len(), 80);
+    assert!(matches.iter().any(|item| std::ptr::eq(*item, beyond_cap.as_ref())));
 }
 
 #[test]
-fn unsupported_identifiers_and_ordinary_search_are_refused_even_if_held_locally() {
+fn every_exact_match_across_libraries_keeps_its_identity_and_fingerprints() {
+    let snapshot = Snapshot::new(vec![
+        record(
+            "invented-a",
+            "shared-key",
+            json!({"DOI": DOI, "URL": DOI}),
+            vec![Identifier::Doi(DOI.into())],
+        ),
+        record("invented-b", "shared-key", json!({"DOI": DOI}), vec![]),
+        record(
+            "invented-c",
+            "another-key",
+            json!({}),
+            vec![Identifier::Doi(DOI.into())],
+        ),
+        record("invented-d", "unrelated", json!({"DOI": OTHER}), vec![]),
+    ])
+    .unwrap();
+    let matches = local(DOI, &snapshot);
+    assert_eq!(matches.len(), 3);
+    for (found, held) in matches.iter().zip(&snapshot.objects()[..3]) {
+        assert!(std::ptr::eq(*found, held.as_ref()));
+        assert_eq!(found.object.id(), held.object.id());
+        assert_eq!(found.fingerprints, held.fingerprints);
+    }
+}
+
+#[test]
+fn normalized_doi_queries_match_csl_fields_urls_and_source_identifiers() {
+    let snapshot = Snapshot::new(vec![
+        record(
+            "invented",
+            "doi-field",
+            json!({"DOI": " DOI: 10.5555/INVENTED-RIVER "}),
+            vec![],
+        ),
+        record(
+            "invented",
+            "url-field",
+            json!({"URL": "https://doi.org/10.5555/INVENTED%2Driver"}),
+            vec![],
+        ),
+        record(
+            "invented",
+            "legacy-url",
+            json!({"URL": "http://dx.doi.org/10.5555/INVENTED-RIVER"}),
+            vec![],
+        ),
+        record(
+            "invented",
+            "source-id",
+            json!({}),
+            vec![Identifier::Doi("DOI: 10.5555/INVENTED-RIVER".into())],
+        ),
+    ])
+    .unwrap();
+    for query in [
+        DOI,
+        " doi: 10.5555/INVENTED-RIVER ",
+        "https://doi.org/10.5555/INVENTED%2Driver",
+        "http://dx.doi.org/10.5555/INVENTED-RIVER",
+    ] {
+        let matches = local(query, &snapshot);
+        assert_eq!(matches.len(), 4, "{query}");
+    }
+}
+
+#[test]
+fn existing_arxiv_doi_equivalence_matches_versioned_ids_and_urls() {
+    let snapshot = Snapshot::new(vec![
+        record(
+            "invented",
+            "preprint-id",
+            json!({}),
+            vec![Identifier::Arxiv("arXiv:2101.00001v2".into())],
+        ),
+        record(
+            "invented",
+            "preprint-url",
+            json!({"URL": "https://arxiv.org/abs/2101.00001v3"}),
+            vec![],
+        ),
+        record(
+            "invented",
+            "other-preprint",
+            json!({}),
+            vec![Identifier::Arxiv("2101.00002".into())],
+        ),
+    ])
+    .unwrap();
+    let matches = local("https://doi.org/10.48550/ARXIV.2101.00001", &snapshot);
+    assert_eq!(matches.len(), 2);
+    assert_eq!(matches[0].object.id().key, "preprint-id");
+    assert_eq!(matches[1].object.id().key, "preprint-url");
+}
+
+#[test]
+fn title_only_decoys_do_not_resolve() {
+    let snapshot = Snapshot::new(vec![
+        record("invented", "title-only", json!({"title": DOI}), vec![]),
+        record("invented", "wrong-doi", json!({"title": DOI, "DOI": OTHER}), vec![]),
+    ])
+    .unwrap();
+    assert_eq!(missing(DOI, &snapshot), DOI);
+}
+
+#[test]
+fn a_miss_identifies_only_the_requested_normalized_doi() {
+    let snapshot = Snapshot::new(vec![record(
+        "invented",
+        "unrelated",
+        json!({"DOI": OTHER}),
+        vec![Identifier::Pmid("12345".into())],
+    )])
+    .unwrap();
+    // No record, path, title, service list or approval accompanies a local miss.
+    assert_eq!(missing(" https://doi.org/10.5555/INVENTED%2Driver ", &snapshot), DOI);
+    assert_eq!(missing(DOI, &Snapshot::new(vec![]).unwrap()), DOI);
+}
+
+#[test]
+fn unsupported_input_is_refused_even_if_the_identifier_is_held() {
     let snapshot = Snapshot::new(vec![record(
         "invented",
         "held",
-        json!({"title": "invented rivers", "ISBN": "9780306406157"}),
+        json!({"title": "Invented Rivers", "ISBN": "9780306406157"}),
         vec![Identifier::Pmid("12345".into()), Identifier::Arxiv("2101.00001".into())],
     )])
     .unwrap();
     for query in [
         "",
-        "invented rivers",
+        "Invented Rivers",
         "pmid:12345",
         "ISBN 9780306406157",
         "arXiv:2101.00001",
+        "https://arxiv.org/abs/2101.00001",
         "10.5555/",
         "https://example.org/10.5555/invented-river",
         "10.5555/a 10.5555/b",
     ] {
-        for permission in [None, Some(false), Some(true)] {
-            assert!(
-                matches!(resolve(query, &snapshot, permission), Err(Refusal::UnsupportedQuery)),
-                "{query}"
-            );
-        }
+        assert!(
+            matches!(resolve(query, &snapshot), Err(Refusal::UnsupportedQuery)),
+            "{query}"
+        );
     }
+}
+
+#[test]
+fn local_matches_misses_and_refusals_leave_the_engine_snapshot_unchanged() {
+    let engine = Engine::from_snapshot(Arc::new(
+        Snapshot::new(vec![record("invented", "held", json!({"DOI": DOI}), vec![])]).unwrap(),
+    ));
+    let before = engine.snapshot().unwrap();
+    let contents = serde_json::to_value(before.as_ref()).unwrap();
+    let libraries = serde_json::to_value(engine.libraries().unwrap()).unwrap();
+
+    assert_eq!(local(DOI, &before).len(), 1);
+    assert_eq!(missing(OTHER, &before), OTHER);
+    assert!(matches!(
+        resolve("Invented Rivers", &before),
+        Err(Refusal::UnsupportedQuery)
+    ));
+
+    let after = engine.snapshot().unwrap();
+    assert!(Arc::ptr_eq(&before, &after));
+    assert_eq!(serde_json::to_value(after.as_ref()).unwrap(), contents);
+    assert_eq!(after.fingerprints(), before.fingerprints());
+    assert_eq!(serde_json::to_value(engine.libraries().unwrap()).unwrap(), libraries);
 }

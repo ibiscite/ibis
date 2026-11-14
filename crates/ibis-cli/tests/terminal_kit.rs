@@ -372,7 +372,7 @@ fn terminal_kit_usage_errors_keep_the_existing_exit_code_and_envelope() {
         assert_eq!(output.status.code(), Some(2));
         assert_eq!(
             serde_json::from_slice::<Value>(&output.stdout).unwrap_or_default(),
-            json!({"ibis":1,"ok":false,"error":{"code":"usage"}})
+            json!({"ibis":1,"ok":false,"error":{"code":"usage","message":{"id":"error-usage","args":{}},"recovery":{"action":"edit-input"},"focus":"request"}})
         );
         assert!(output.stderr.starts_with(b"ibis: "), "{:?}", output.stderr);
     }

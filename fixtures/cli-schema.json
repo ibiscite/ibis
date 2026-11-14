@@ -165,6 +165,13 @@
       },
       "result": {
         "$defs": {
+          "CitationSurface": {
+            "description": "Wording context only; operations choose their recovery before presentation.",
+            "enum": [
+              "bibliography"
+            ],
+            "type": "string"
+          },
           "ErrorCode": {
             "enum": [
               "usage",
@@ -222,6 +229,11 @@
                 "type": "string"
               },
               {
+                "const": "missing-file",
+                "description": "The selected library file was moved, renamed or removed.",
+                "type": "string"
+              },
+              {
                 "const": "app-missing",
                 "description": "The program started as the Ibis app does not exist.",
                 "type": "string"
@@ -234,6 +246,11 @@
               {
                 "const": "no-answer",
                 "description": "The Ibis app started but did not confirm the request in time.",
+                "type": "string"
+              },
+              {
+                "const": "settings-read-timeout",
+                "description": "The app's library settings did not finish loading in time.",
                 "type": "string"
               },
               {
@@ -287,6 +304,27 @@
                 "type": "string"
               }
             ]
+          },
+          "FocusTarget": {
+            "enum": [
+              "format-picker",
+              "library-picker",
+              "source-file",
+              "zotero-sharing-help",
+              "search",
+              "results",
+              "locator",
+              "citation",
+              "citation-form",
+              "session-references",
+              "language",
+              "recovery-action",
+              "project-name",
+              "project-menu",
+              "settings",
+              "request"
+            ],
+            "type": "string"
           },
           "HealthStatus": {
             "oneOf": [
@@ -415,6 +453,434 @@
               }
             ]
           },
+          "Message": {
+            "properties": {
+              "args": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "context": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CitationSurface"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "args"
+            ],
+            "type": "object"
+          },
+          "NoRecoveryReason": {
+            "enum": [
+              "cancelled",
+              "in-progress"
+            ],
+            "type": "string"
+          },
+          "Recovery": {
+            "description": "Exactly one next action; absence must have an explicit, machine-readable reason.",
+            "oneOf": [
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-output",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-style",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-form",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "locate-file",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-library",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-zotero-sharing-help",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-zotero",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "retry",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "rename-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "reopen-project-menu",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "finish-editor-request",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "review-settings",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-citation",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-locator",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-input",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "search-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "select-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "reduce-selection",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "close",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-locale",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "review-library",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "free-disk-space",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "upgrade-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-backup",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "download-file",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-shortcut",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "restart-session",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "none",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "$ref": "#/$defs/NoRecoveryReason"
+                  }
+                },
+                "required": [
+                  "action",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            ]
+          },
           "SourceCapability": {
             "description": "A fixed list per kind, not a plugin system. Zotero's two read paths share\none kind, so running and closed Zotero cannot offer different lists.",
             "enum": [
@@ -439,6 +905,9 @@
                   "error": {
                     "$ref": "#/$defs/ErrorCode"
                   },
+                  "focus": {
+                    "$ref": "#/$defs/FocusTarget"
+                  },
                   "last_successful_read_ms": {
                     "format": "uint64",
                     "minimum": 0,
@@ -446,6 +915,9 @@
                   },
                   "library": {
                     "$ref": "#/$defs/LibraryId"
+                  },
+                  "message": {
+                    "$ref": "#/$defs/Message"
                   },
                   "reason": {
                     "anyOf": [
@@ -456,12 +928,18 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "recovery": {
+                    "$ref": "#/$defs/Recovery"
                   }
                 },
                 "required": [
                   "code",
                   "library",
                   "error",
+                  "message",
+                  "recovery",
+                  "focus",
                   "last_successful_read_ms"
                 ],
                 "type": "object"
@@ -543,7 +1021,7 @@
                 ]
               },
               "key": {
-                "description": "The repeated citation key or CSL `id`, for `duplicate-key` only. It is the person's\nown data and is shown only in their library diagnostics.",
+                "description": "The repeated citation key or CSL `id`, for `duplicate-key` only. It is the person's\nown data and is shown only in their library diagnostics. Display text\nis bounded to 256 characters plus a truncation marker.",
                 "type": [
                   "string",
                   "null"
@@ -987,6 +1465,13 @@
             ],
             "type": "string"
           },
+          "CitationSurface": {
+            "description": "Wording context only; operations choose their recovery before presentation.",
+            "enum": [
+              "bibliography"
+            ],
+            "type": "string"
+          },
           "CitationWarningCode": {
             "description": "Fixed codes only; source diagnostics never include field text or locations.",
             "oneOf": [
@@ -1089,6 +1574,11 @@
                 "type": "string"
               },
               {
+                "const": "missing-file",
+                "description": "The selected library file was moved, renamed or removed.",
+                "type": "string"
+              },
+              {
                 "const": "app-missing",
                 "description": "The program started as the Ibis app does not exist.",
                 "type": "string"
@@ -1101,6 +1591,11 @@
               {
                 "const": "no-answer",
                 "description": "The Ibis app started but did not confirm the request in time.",
+                "type": "string"
+              },
+              {
+                "const": "settings-read-timeout",
+                "description": "The app's library settings did not finish loading in time.",
                 "type": "string"
               },
               {
@@ -1173,6 +1668,27 @@
               "full"
             ],
             "type": "object"
+          },
+          "FocusTarget": {
+            "enum": [
+              "format-picker",
+              "library-picker",
+              "source-file",
+              "zotero-sharing-help",
+              "search",
+              "results",
+              "locator",
+              "citation",
+              "citation-form",
+              "session-references",
+              "language",
+              "recovery-action",
+              "project-name",
+              "project-menu",
+              "settings",
+              "request"
+            ],
+            "type": "string"
           },
           "HealthStatus": {
             "oneOf": [
@@ -1263,7 +1779,7 @@
             "description": "Identity inside one library; citation keys are intentionally separate.\nNon-item kinds use source-namespaced keys (for example `tag:...`) so\nsource tags and collections cannot collide with native item keys.",
             "properties": {
               "key": {
-                "type": "string"
+                "$ref": "#/$defs/RecordId"
               },
               "library": {
                 "$ref": "#/$defs/LibraryId"
@@ -1471,6 +1987,41 @@
               }
             ]
           },
+          "Message": {
+            "properties": {
+              "args": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "context": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CitationSurface"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "args"
+            ],
+            "type": "object"
+          },
+          "NoRecoveryReason": {
+            "enum": [
+              "cancelled",
+              "in-progress"
+            ],
+            "type": "string"
+          },
           "Note": {
             "properties": {
               "id": {
@@ -1563,6 +2114,403 @@
               "csl"
             ],
             "type": "object"
+          },
+          "RecordId": {
+            "type": "string",
+            "x-ibis-opaque": "RecordId"
+          },
+          "Recovery": {
+            "description": "Exactly one next action; absence must have an explicit, machine-readable reason.",
+            "oneOf": [
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-output",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-style",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-form",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "locate-file",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-library",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-zotero-sharing-help",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-zotero",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "retry",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "rename-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "reopen-project-menu",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "finish-editor-request",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "review-settings",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-citation",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-locator",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-input",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "search-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "select-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "reduce-selection",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "close",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-locale",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "review-library",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "free-disk-space",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "upgrade-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-backup",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "download-file",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-shortcut",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "restart-session",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "none",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "$ref": "#/$defs/NoRecoveryReason"
+                  }
+                },
+                "required": [
+                  "action",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            ]
           },
           "SavedSearch": {
             "properties": {
@@ -1699,6 +2647,9 @@
                   "error": {
                     "$ref": "#/$defs/ErrorCode"
                   },
+                  "focus": {
+                    "$ref": "#/$defs/FocusTarget"
+                  },
                   "last_successful_read_ms": {
                     "format": "uint64",
                     "minimum": 0,
@@ -1706,6 +2657,9 @@
                   },
                   "library": {
                     "$ref": "#/$defs/LibraryId"
+                  },
+                  "message": {
+                    "$ref": "#/$defs/Message"
                   },
                   "reason": {
                     "anyOf": [
@@ -1716,12 +2670,18 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "recovery": {
+                    "$ref": "#/$defs/Recovery"
                   }
                 },
                 "required": [
                   "code",
                   "library",
                   "error",
+                  "message",
+                  "recovery",
+                  "focus",
                   "last_successful_read_ms"
                 ],
                 "type": "object"
@@ -1878,7 +2838,7 @@
             "description": "Identity inside one library; citation keys are intentionally separate.\nNon-item kinds use source-namespaced keys (for example `tag:...`) so\nsource tags and collections cannot collide with native item keys.",
             "properties": {
               "key": {
-                "type": "string"
+                "$ref": "#/$defs/RecordId"
               },
               "library": {
                 "$ref": "#/$defs/LibraryId"
@@ -1932,6 +2892,10 @@
             "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
             "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "type": "string"
+          },
+          "RecordId": {
+            "type": "string",
+            "x-ibis-opaque": "RecordId"
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2070,6 +3034,13 @@
             ],
             "type": "string"
           },
+          "CitationSurface": {
+            "description": "Wording context only; operations choose their recovery before presentation.",
+            "enum": [
+              "bibliography"
+            ],
+            "type": "string"
+          },
           "CitationWarningCode": {
             "description": "Fixed codes only; source diagnostics never include field text or locations.",
             "oneOf": [
@@ -2172,6 +3143,11 @@
                 "type": "string"
               },
               {
+                "const": "missing-file",
+                "description": "The selected library file was moved, renamed or removed.",
+                "type": "string"
+              },
+              {
                 "const": "app-missing",
                 "description": "The program started as the Ibis app does not exist.",
                 "type": "string"
@@ -2184,6 +3160,11 @@
               {
                 "const": "no-answer",
                 "description": "The Ibis app started but did not confirm the request in time.",
+                "type": "string"
+              },
+              {
+                "const": "settings-read-timeout",
+                "description": "The app's library settings did not finish loading in time.",
                 "type": "string"
               },
               {
@@ -2256,6 +3237,27 @@
               "full"
             ],
             "type": "object"
+          },
+          "FocusTarget": {
+            "enum": [
+              "format-picker",
+              "library-picker",
+              "source-file",
+              "zotero-sharing-help",
+              "search",
+              "results",
+              "locator",
+              "citation",
+              "citation-form",
+              "session-references",
+              "language",
+              "recovery-action",
+              "project-name",
+              "project-menu",
+              "settings",
+              "request"
+            ],
+            "type": "string"
           },
           "HealthStatus": {
             "oneOf": [
@@ -2346,7 +3348,7 @@
             "description": "Identity inside one library; citation keys are intentionally separate.\nNon-item kinds use source-namespaced keys (for example `tag:...`) so\nsource tags and collections cannot collide with native item keys.",
             "properties": {
               "key": {
-                "type": "string"
+                "$ref": "#/$defs/RecordId"
               },
               "library": {
                 "$ref": "#/$defs/LibraryId"
@@ -2479,6 +3481,41 @@
               }
             ]
           },
+          "Message": {
+            "properties": {
+              "args": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "context": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CitationSurface"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "args"
+            ],
+            "type": "object"
+          },
+          "NoRecoveryReason": {
+            "enum": [
+              "cancelled",
+              "in-progress"
+            ],
+            "type": "string"
+          },
           "Note": {
             "properties": {
               "id": {
@@ -2558,6 +3595,403 @@
             ],
             "type": "object"
           },
+          "RecordId": {
+            "type": "string",
+            "x-ibis-opaque": "RecordId"
+          },
+          "Recovery": {
+            "description": "Exactly one next action; absence must have an explicit, machine-readable reason.",
+            "oneOf": [
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-output",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-style",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-form",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "locate-file",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-library",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-zotero-sharing-help",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-zotero",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "retry",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "rename-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "reopen-project-menu",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "finish-editor-request",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "review-settings",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-citation",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-locator",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-input",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "search-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "select-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "reduce-selection",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "close",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-locale",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "review-library",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "free-disk-space",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "upgrade-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-backup",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "download-file",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-shortcut",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "restart-session",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "none",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "$ref": "#/$defs/NoRecoveryReason"
+                  }
+                },
+                "required": [
+                  "action",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            ]
+          },
           "SavedSearch": {
             "properties": {
               "conditions": {
@@ -2613,6 +4047,9 @@
                   "error": {
                     "$ref": "#/$defs/ErrorCode"
                   },
+                  "focus": {
+                    "$ref": "#/$defs/FocusTarget"
+                  },
                   "last_successful_read_ms": {
                     "format": "uint64",
                     "minimum": 0,
@@ -2620,6 +4057,9 @@
                   },
                   "library": {
                     "$ref": "#/$defs/LibraryId"
+                  },
+                  "message": {
+                    "$ref": "#/$defs/Message"
                   },
                   "reason": {
                     "anyOf": [
@@ -2630,12 +4070,18 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "recovery": {
+                    "$ref": "#/$defs/Recovery"
                   }
                 },
                 "required": [
                   "code",
                   "library",
                   "error",
+                  "message",
+                  "recovery",
+                  "focus",
                   "last_successful_read_ms"
                 ],
                 "type": "object"
@@ -2843,7 +4289,7 @@
             "description": "Identity inside one library; citation keys are intentionally separate.\nNon-item kinds use source-namespaced keys (for example `tag:...`) so\nsource tags and collections cannot collide with native item keys.",
             "properties": {
               "key": {
-                "type": "string"
+                "$ref": "#/$defs/RecordId"
               },
               "library": {
                 "$ref": "#/$defs/LibraryId"
@@ -2872,6 +4318,8 @@
               "scannable-cite",
               "keys",
               "csl-json",
+              "bibtex",
+              "doi-links",
               "cayw-json"
             ],
             "type": "string"
@@ -2997,6 +4445,10 @@
               }
             ]
           },
+          "RecordId": {
+            "type": "string",
+            "x-ibis-opaque": "RecordId"
+          },
           "Script": {
             "enum": [
               "normal",
@@ -3100,7 +4552,7 @@
             "type": "object"
           },
           "CitationError": {
-            "description": "Fixed citation diagnostics contain no source data, paths, keys or request text.\nA front-end boundary maps a wholly invalid/cancelled request to its envelope error.",
+            "description": "Fixed diagnostics never contain source data, paths or request text.",
             "oneOf": [
               {
                 "enum": [
@@ -3113,6 +4565,7 @@
                   "missing-item",
                   "changed-item",
                   "missing-key",
+                  "missing-doi",
                   "ambiguous-key",
                   "conflicting-key",
                   "invalid-key",
@@ -3406,6 +4859,13 @@
               "warnings"
             ],
             "type": "object"
+          },
+          "CitationSurface": {
+            "description": "Wording context only; operations choose their recovery before presentation.",
+            "enum": [
+              "bibliography"
+            ],
+            "type": "string"
           },
           "CitationWarning": {
             "properties": {
@@ -3732,6 +5192,11 @@
                 "type": "string"
               },
               {
+                "const": "missing-file",
+                "description": "The selected library file was moved, renamed or removed.",
+                "type": "string"
+              },
+              {
                 "const": "app-missing",
                 "description": "The program started as the Ibis app does not exist.",
                 "type": "string"
@@ -3744,6 +5209,11 @@
               {
                 "const": "no-answer",
                 "description": "The Ibis app started but did not confirm the request in time.",
+                "type": "string"
+              },
+              {
+                "const": "settings-read-timeout",
+                "description": "The app's library settings did not finish loading in time.",
                 "type": "string"
               },
               {
@@ -3800,6 +5270,27 @@
           },
           "Fingerprint": {
             "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "FocusTarget": {
+            "enum": [
+              "format-picker",
+              "library-picker",
+              "source-file",
+              "zotero-sharing-help",
+              "search",
+              "results",
+              "locator",
+              "citation",
+              "citation-form",
+              "session-references",
+              "language",
+              "recovery-action",
+              "project-name",
+              "project-menu",
+              "settings",
+              "request"
+            ],
             "type": "string"
           },
           "FormatFrom": {
@@ -3879,20 +5370,32 @@
                   "error": {
                     "$ref": "#/$defs/CitationError"
                   },
+                  "focus": {
+                    "$ref": "#/$defs/FocusTarget"
+                  },
                   "item": {
                     "format": "uint",
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "message": {
+                    "$ref": "#/$defs/Message"
+                  },
                   "outcome": {
                     "const": "refused",
                     "type": "string"
+                  },
+                  "recovery": {
+                    "$ref": "#/$defs/Recovery"
                   }
                 },
                 "required": [
                   "outcome",
                   "item",
-                  "error"
+                  "error",
+                  "message",
+                  "recovery",
+                  "focus"
                 ],
                 "type": "object"
               }
@@ -3903,7 +5406,7 @@
             "description": "Identity inside one library; citation keys are intentionally separate.\nNon-item kinds use source-namespaced keys (for example `tag:...`) so\nsource tags and collections cannot collide with native item keys.",
             "properties": {
               "key": {
-                "type": "string"
+                "$ref": "#/$defs/RecordId"
               },
               "library": {
                 "$ref": "#/$defs/LibraryId"
@@ -3932,6 +5435,8 @@
               "scannable-cite",
               "keys",
               "csl-json",
+              "bibtex",
+              "doi-links",
               "cayw-json"
             ],
             "type": "string"
@@ -4043,6 +5548,41 @@
               }
             ]
           },
+          "Message": {
+            "properties": {
+              "args": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "context": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CitationSurface"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "args"
+            ],
+            "type": "object"
+          },
+          "NoRecoveryReason": {
+            "enum": [
+              "cancelled",
+              "in-progress"
+            ],
+            "type": "string"
+          },
           "Notice": {
             "oneOf": [
               {
@@ -4121,6 +5661,403 @@
               }
             ]
           },
+          "RecordId": {
+            "type": "string",
+            "x-ibis-opaque": "RecordId"
+          },
+          "Recovery": {
+            "description": "Exactly one next action; absence must have an explicit, machine-readable reason.",
+            "oneOf": [
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-output",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-style",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-form",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "locate-file",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-library",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-zotero-sharing-help",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-zotero",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "retry",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "rename-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "reopen-project-menu",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "finish-editor-request",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "review-settings",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-citation",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-locator",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-input",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "search-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "select-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "reduce-selection",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "close",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-locale",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "review-library",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "free-disk-space",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "upgrade-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-backup",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "download-file",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-shortcut",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "restart-session",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "none",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "$ref": "#/$defs/NoRecoveryReason"
+                  }
+                },
+                "required": [
+                  "action",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            ]
+          },
           "Script": {
             "enum": [
               "normal",
@@ -4142,6 +6079,9 @@
                   "error": {
                     "$ref": "#/$defs/ErrorCode"
                   },
+                  "focus": {
+                    "$ref": "#/$defs/FocusTarget"
+                  },
                   "last_successful_read_ms": {
                     "format": "uint64",
                     "minimum": 0,
@@ -4149,6 +6089,9 @@
                   },
                   "library": {
                     "$ref": "#/$defs/LibraryId"
+                  },
+                  "message": {
+                    "$ref": "#/$defs/Message"
                   },
                   "reason": {
                     "anyOf": [
@@ -4159,12 +6102,18 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "recovery": {
+                    "$ref": "#/$defs/Recovery"
                   }
                 },
                 "required": [
                   "code",
                   "library",
                   "error",
+                  "message",
+                  "recovery",
+                  "focus",
                   "last_successful_read_ms"
                 ],
                 "type": "object"
@@ -4395,6 +6344,8 @@
               "scannable-cite",
               "keys",
               "csl-json",
+              "bibtex",
+              "doi-links",
               "cayw-json"
             ],
             "type": "string"
@@ -4659,7 +6610,7 @@
             "type": "object"
           },
           "CitationError": {
-            "description": "Fixed citation diagnostics contain no source data, paths, keys or request text.\nA front-end boundary maps a wholly invalid/cancelled request to its envelope error.",
+            "description": "Fixed diagnostics never contain source data, paths or request text.",
             "oneOf": [
               {
                 "enum": [
@@ -4672,6 +6623,7 @@
                   "missing-item",
                   "changed-item",
                   "missing-key",
+                  "missing-doi",
                   "ambiguous-key",
                   "conflicting-key",
                   "invalid-key",
@@ -4965,6 +6917,13 @@
               "warnings"
             ],
             "type": "object"
+          },
+          "CitationSurface": {
+            "description": "Wording context only; operations choose their recovery before presentation.",
+            "enum": [
+              "bibliography"
+            ],
+            "type": "string"
           },
           "CitationWarning": {
             "properties": {
@@ -5291,6 +7250,11 @@
                 "type": "string"
               },
               {
+                "const": "missing-file",
+                "description": "The selected library file was moved, renamed or removed.",
+                "type": "string"
+              },
+              {
                 "const": "app-missing",
                 "description": "The program started as the Ibis app does not exist.",
                 "type": "string"
@@ -5303,6 +7267,11 @@
               {
                 "const": "no-answer",
                 "description": "The Ibis app started but did not confirm the request in time.",
+                "type": "string"
+              },
+              {
+                "const": "settings-read-timeout",
+                "description": "The app's library settings did not finish loading in time.",
                 "type": "string"
               },
               {
@@ -5359,6 +7328,27 @@
           },
           "Fingerprint": {
             "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "FocusTarget": {
+            "enum": [
+              "format-picker",
+              "library-picker",
+              "source-file",
+              "zotero-sharing-help",
+              "search",
+              "results",
+              "locator",
+              "citation",
+              "citation-form",
+              "session-references",
+              "language",
+              "recovery-action",
+              "project-name",
+              "project-menu",
+              "settings",
+              "request"
+            ],
             "type": "string"
           },
           "FormatFrom": {
@@ -5438,20 +7428,32 @@
                   "error": {
                     "$ref": "#/$defs/CitationError"
                   },
+                  "focus": {
+                    "$ref": "#/$defs/FocusTarget"
+                  },
                   "item": {
                     "format": "uint",
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "message": {
+                    "$ref": "#/$defs/Message"
+                  },
                   "outcome": {
                     "const": "refused",
                     "type": "string"
+                  },
+                  "recovery": {
+                    "$ref": "#/$defs/Recovery"
                   }
                 },
                 "required": [
                   "outcome",
                   "item",
-                  "error"
+                  "error",
+                  "message",
+                  "recovery",
+                  "focus"
                 ],
                 "type": "object"
               }
@@ -5462,7 +7464,7 @@
             "description": "Identity inside one library; citation keys are intentionally separate.\nNon-item kinds use source-namespaced keys (for example `tag:...`) so\nsource tags and collections cannot collide with native item keys.",
             "properties": {
               "key": {
-                "type": "string"
+                "$ref": "#/$defs/RecordId"
               },
               "library": {
                 "$ref": "#/$defs/LibraryId"
@@ -5491,6 +7493,8 @@
               "scannable-cite",
               "keys",
               "csl-json",
+              "bibtex",
+              "doi-links",
               "cayw-json"
             ],
             "type": "string"
@@ -5602,6 +7606,41 @@
               }
             ]
           },
+          "Message": {
+            "properties": {
+              "args": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "context": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CitationSurface"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "args"
+            ],
+            "type": "object"
+          },
+          "NoRecoveryReason": {
+            "enum": [
+              "cancelled",
+              "in-progress"
+            ],
+            "type": "string"
+          },
           "Notice": {
             "oneOf": [
               {
@@ -5680,6 +7719,403 @@
               }
             ]
           },
+          "RecordId": {
+            "type": "string",
+            "x-ibis-opaque": "RecordId"
+          },
+          "Recovery": {
+            "description": "Exactly one next action; absence must have an explicit, machine-readable reason.",
+            "oneOf": [
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-output",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-style",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-form",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "locate-file",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-library",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-zotero-sharing-help",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-zotero",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "retry",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "rename-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "reopen-project-menu",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "finish-editor-request",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "review-settings",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-citation",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-locator",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-input",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "search-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "select-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "reduce-selection",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "close",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-locale",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "review-library",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "free-disk-space",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "upgrade-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-backup",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "download-file",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-shortcut",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "restart-session",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "none",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "$ref": "#/$defs/NoRecoveryReason"
+                  }
+                },
+                "required": [
+                  "action",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            ]
+          },
           "Script": {
             "enum": [
               "normal",
@@ -5701,6 +8137,9 @@
                   "error": {
                     "$ref": "#/$defs/ErrorCode"
                   },
+                  "focus": {
+                    "$ref": "#/$defs/FocusTarget"
+                  },
                   "last_successful_read_ms": {
                     "format": "uint64",
                     "minimum": 0,
@@ -5708,6 +8147,9 @@
                   },
                   "library": {
                     "$ref": "#/$defs/LibraryId"
+                  },
+                  "message": {
+                    "$ref": "#/$defs/Message"
                   },
                   "reason": {
                     "anyOf": [
@@ -5718,12 +8160,18 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "recovery": {
+                    "$ref": "#/$defs/Recovery"
                   }
                 },
                 "required": [
                   "code",
                   "library",
                   "error",
+                  "message",
+                  "recovery",
+                  "focus",
                   "last_successful_read_ms"
                 ],
                 "type": "object"
@@ -5948,6 +8396,13 @@
       },
       "result": {
         "$defs": {
+          "CitationSurface": {
+            "description": "Wording context only; operations choose their recovery before presentation.",
+            "enum": [
+              "bibliography"
+            ],
+            "type": "string"
+          },
           "Doubt": {
             "description": "Why a key that is written in the file may not be the intended reference.",
             "oneOf": [
@@ -6035,6 +8490,11 @@
                 "type": "string"
               },
               {
+                "const": "missing-file",
+                "description": "The selected library file was moved, renamed or removed.",
+                "type": "string"
+              },
+              {
                 "const": "app-missing",
                 "description": "The program started as the Ibis app does not exist.",
                 "type": "string"
@@ -6047,6 +8507,11 @@
               {
                 "const": "no-answer",
                 "description": "The Ibis app started but did not confirm the request in time.",
+                "type": "string"
+              },
+              {
+                "const": "settings-read-timeout",
+                "description": "The app's library settings did not finish loading in time.",
                 "type": "string"
               },
               {
@@ -6100,6 +8565,27 @@
                 "type": "string"
               }
             ]
+          },
+          "FocusTarget": {
+            "enum": [
+              "format-picker",
+              "library-picker",
+              "source-file",
+              "zotero-sharing-help",
+              "search",
+              "results",
+              "locator",
+              "citation",
+              "citation-form",
+              "session-references",
+              "language",
+              "recovery-action",
+              "project-name",
+              "project-menu",
+              "settings",
+              "request"
+            ],
+            "type": "string"
           },
           "HealthStatus": {
             "oneOf": [
@@ -6208,6 +8694,41 @@
             "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "type": "string"
           },
+          "Message": {
+            "properties": {
+              "args": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "context": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CitationSurface"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "args"
+            ],
+            "type": "object"
+          },
+          "NoRecoveryReason": {
+            "enum": [
+              "cancelled",
+              "in-progress"
+            ],
+            "type": "string"
+          },
           "ProjectKey": {
             "description": "One key against the chosen file.",
             "properties": {
@@ -6248,6 +8769,399 @@
               }
             ]
           },
+          "Recovery": {
+            "description": "Exactly one next action; absence must have an explicit, machine-readable reason.",
+            "oneOf": [
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-output",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-style",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-form",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "locate-file",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-library",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-zotero-sharing-help",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-zotero",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "retry",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "rename-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "reopen-project-menu",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "finish-editor-request",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "review-settings",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-citation",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-locator",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-input",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "search-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "select-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "reduce-selection",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "close",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-locale",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "review-library",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "free-disk-space",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "upgrade-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-backup",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "download-file",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-shortcut",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "restart-session",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "none",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "$ref": "#/$defs/NoRecoveryReason"
+                  }
+                },
+                "required": [
+                  "action",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            ]
+          },
           "SourceFinding": {
             "description": "A problem with one library a result consulted. Codes only: no source text.",
             "oneOf": [
@@ -6261,6 +9175,9 @@
                   "error": {
                     "$ref": "#/$defs/ErrorCode"
                   },
+                  "focus": {
+                    "$ref": "#/$defs/FocusTarget"
+                  },
                   "last_successful_read_ms": {
                     "format": "uint64",
                     "minimum": 0,
@@ -6268,6 +9185,9 @@
                   },
                   "library": {
                     "$ref": "#/$defs/LibraryId"
+                  },
+                  "message": {
+                    "$ref": "#/$defs/Message"
                   },
                   "reason": {
                     "anyOf": [
@@ -6278,12 +9198,18 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "recovery": {
+                    "$ref": "#/$defs/Recovery"
                   }
                 },
                 "required": [
                   "code",
                   "library",
                   "error",
+                  "message",
+                  "recovery",
+                  "focus",
                   "last_successful_read_ms"
                 ],
                 "type": "object"
@@ -6391,7 +9317,7 @@
             "description": "Identity inside one library; citation keys are intentionally separate.\nNon-item kinds use source-namespaced keys (for example `tag:...`) so\nsource tags and collections cannot collide with native item keys.",
             "properties": {
               "key": {
-                "type": "string"
+                "$ref": "#/$defs/RecordId"
               },
               "library": {
                 "$ref": "#/$defs/LibraryId"
@@ -6445,6 +9371,10 @@
             "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
             "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "type": "string"
+          },
+          "RecordId": {
+            "type": "string",
+            "x-ibis-opaque": "RecordId"
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -6463,6 +9393,13 @@
       },
       "result": {
         "$defs": {
+          "CitationSurface": {
+            "description": "Wording context only; operations choose their recovery before presentation.",
+            "enum": [
+              "bibliography"
+            ],
+            "type": "string"
+          },
           "EntryRefusal": {
             "description": "Why an entry's original text cannot be copied, so a person can re-export it.",
             "oneOf": [
@@ -6546,6 +9483,11 @@
                 "type": "string"
               },
               {
+                "const": "missing-file",
+                "description": "The selected library file was moved, renamed or removed.",
+                "type": "string"
+              },
+              {
                 "const": "app-missing",
                 "description": "The program started as the Ibis app does not exist.",
                 "type": "string"
@@ -6558,6 +9500,11 @@
               {
                 "const": "no-answer",
                 "description": "The Ibis app started but did not confirm the request in time.",
+                "type": "string"
+              },
+              {
+                "const": "settings-read-timeout",
+                "description": "The app's library settings did not finish loading in time.",
                 "type": "string"
               },
               {
@@ -6612,6 +9559,27 @@
               }
             ]
           },
+          "FocusTarget": {
+            "enum": [
+              "format-picker",
+              "library-picker",
+              "source-file",
+              "zotero-sharing-help",
+              "search",
+              "results",
+              "locator",
+              "citation",
+              "citation-form",
+              "session-references",
+              "language",
+              "recovery-action",
+              "project-name",
+              "project-menu",
+              "settings",
+              "request"
+            ],
+            "type": "string"
+          },
           "HealthStatus": {
             "oneOf": [
               {
@@ -6628,6 +9596,434 @@
             "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "type": "string"
           },
+          "Message": {
+            "properties": {
+              "args": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "context": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CitationSurface"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "args"
+            ],
+            "type": "object"
+          },
+          "NoRecoveryReason": {
+            "enum": [
+              "cancelled",
+              "in-progress"
+            ],
+            "type": "string"
+          },
+          "Recovery": {
+            "description": "Exactly one next action; absence must have an explicit, machine-readable reason.",
+            "oneOf": [
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-output",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-style",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-form",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "locate-file",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-library",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-zotero-sharing-help",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-zotero",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "retry",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "rename-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "reopen-project-menu",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "finish-editor-request",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "review-settings",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-citation",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-locator",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-input",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "search-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "select-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "reduce-selection",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "close",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-locale",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "review-library",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "free-disk-space",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "upgrade-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-backup",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "download-file",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-shortcut",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "restart-session",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "none",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "$ref": "#/$defs/NoRecoveryReason"
+                  }
+                },
+                "required": [
+                  "action",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            ]
+          },
           "SourceFinding": {
             "description": "A problem with one library a result consulted. Codes only: no source text.",
             "oneOf": [
@@ -6641,6 +10037,9 @@
                   "error": {
                     "$ref": "#/$defs/ErrorCode"
                   },
+                  "focus": {
+                    "$ref": "#/$defs/FocusTarget"
+                  },
                   "last_successful_read_ms": {
                     "format": "uint64",
                     "minimum": 0,
@@ -6648,6 +10047,9 @@
                   },
                   "library": {
                     "$ref": "#/$defs/LibraryId"
+                  },
+                  "message": {
+                    "$ref": "#/$defs/Message"
                   },
                   "reason": {
                     "anyOf": [
@@ -6658,12 +10060,18 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "recovery": {
+                    "$ref": "#/$defs/Recovery"
                   }
                 },
                 "required": [
                   "code",
                   "library",
                   "error",
+                  "message",
+                  "recovery",
+                  "focus",
                   "last_successful_read_ms"
                 ],
                 "type": "object"
@@ -6974,6 +10382,8 @@
               "scannable-cite",
               "keys",
               "csl-json",
+              "bibtex",
+              "doi-links",
               "cayw-json"
             ],
             "type": "string"
@@ -7000,7 +10410,7 @@
                 ]
               },
               "exports_records": {
-                "description": "It writes each reference's whole record, notes included, not a\ncitation; agents are not offered it.",
+                "description": "It shares reference metadata rather than a citation; private fields\nnever leave, and agents are not offered it.",
                 "type": "boolean"
               },
               "forms": {

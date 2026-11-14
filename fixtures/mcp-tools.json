@@ -33,81 +33,101 @@
     },
     "name": "search",
     "outputSchema": {
-      "properties": {
-        "cited_with": {
-          "description": "prefix and locator for the cite item",
-          "type": "object"
-        },
-        "complete": {
-          "description": "False when more references match than these; use more distinctive words.",
-          "type": "boolean"
-        },
-        "hits": {
-          "items": {
-            "properties": {
-              "authors": {
-                "items": {
-                  "type": "string"
+      "oneOf": [
+        {
+          "properties": {
+            "cited_with": {
+              "description": "prefix and locator for the cite item",
+              "type": "object"
+            },
+            "complete": {
+              "description": "False when more references match than these; use more distinctive words.",
+              "type": "boolean"
+            },
+            "hits": {
+              "items": {
+                "properties": {
+                  "authors": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "container": {},
+                  "doi": {},
+                  "partial": {
+                    "description": "True when only part of the query matched; ask the user before citing.",
+                    "type": "boolean"
+                  },
+                  "ref": {
+                    "description": "Pass to show or cite: the key, or an id when no key is unique.",
+                    "type": "string"
+                  },
+                  "title": {},
+                  "type": {},
+                  "typo": {
+                    "description": "True when spelling was corrected; ask the user before citing.",
+                    "type": "boolean"
+                  },
+                  "year": {}
                 },
-                "type": "array"
+                "required": [
+                  "ref",
+                  "partial",
+                  "typo"
+                ],
+                "type": "object"
               },
-              "container": {},
-              "doi": {},
-              "partial": {
-                "description": "True when only part of the query matched; ask the user before citing.",
-                "type": "boolean"
-              },
-              "ref": {
-                "description": "Pass to show or cite: the key, or an id when no key is unique.",
+              "type": "array"
+            },
+            "library_notes": {
+              "description": "Why results may be missing or out of date. Tell the user.",
+              "items": {
                 "type": "string"
               },
-              "title": {},
-              "type": {},
-              "typo": {
-                "description": "True when spelling was corrected; ask the user before citing.",
-                "type": "boolean"
-              },
-              "year": {}
+              "type": "array"
             },
-            "required": [
-              "ref",
-              "partial",
-              "typo"
-            ],
-            "type": "object"
+            "missing": {
+              "description": "Keys or identifiers from a pasted list that the library does not hold.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "provenance": {
+              "type": "string"
+            },
+            "searched_for": {
+              "type": "string"
+            },
+            "source_health": {
+              "description": "Library read health. Tell the user about each finding.",
+              "type": "object"
+            }
           },
-          "type": "array"
+          "required": [
+            "hits",
+            "complete",
+            "provenance",
+            "source_health"
+          ]
         },
-        "library_notes": {
-          "description": "Why results may be missing or out of date. Tell the user.",
-          "items": {
-            "type": "string"
+        {
+          "properties": {
+            "error": {
+              "required": [
+                "code",
+                "message",
+                "recovery",
+                "focus"
+              ],
+              "type": "object"
+            }
           },
-          "type": "array"
-        },
-        "missing": {
-          "description": "Keys or identifiers from a pasted list that the library does not hold.",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "provenance": {
-          "type": "string"
-        },
-        "searched_for": {
-          "type": "string"
-        },
-        "source_health": {
-          "description": "How cleanly the libraries behind this answer were read. Tell the user about each finding.",
-          "type": "object"
+          "required": [
+            "error"
+          ]
         }
-      },
-      "required": [
-        "hits",
-        "complete",
-        "provenance",
-        "source_health"
       ],
       "type": "object"
     },
@@ -136,44 +156,63 @@
     },
     "name": "show",
     "outputSchema": {
-      "properties": {
-        "authors": {
-          "items": {
-            "type": "string"
+      "oneOf": [
+        {
+          "properties": {
+            "authors": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "container": {},
+            "doi": {},
+            "fields": {
+              "type": "object"
+            },
+            "library_notes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "provenance": {
+              "type": "string"
+            },
+            "ref": {
+              "description": "Pass to show or cite: the key, or an id when no key is unique.",
+              "type": "string"
+            },
+            "source_health": {
+              "type": "object"
+            },
+            "title": {},
+            "type": {},
+            "year": {}
           },
-          "type": "array"
+          "required": [
+            "ref",
+            "fields",
+            "provenance",
+            "source_health"
+          ]
         },
-        "container": {},
-        "doi": {},
-        "fields": {
-          "description": "Every other citable field, under its CSL name.",
-          "type": "object"
-        },
-        "library_notes": {
-          "items": {
-            "type": "string"
+        {
+          "properties": {
+            "error": {
+              "required": [
+                "code",
+                "message",
+                "recovery",
+                "focus"
+              ],
+              "type": "object"
+            }
           },
-          "type": "array"
-        },
-        "provenance": {
-          "type": "string"
-        },
-        "ref": {
-          "description": "Pass to show or cite: the key, or an id when no key is unique.",
-          "type": "string"
-        },
-        "source_health": {
-          "type": "object"
-        },
-        "title": {},
-        "type": {},
-        "year": {}
-      },
-      "required": [
-        "ref",
-        "fields",
-        "provenance",
-        "source_health"
+          "required": [
+            "error"
+          ]
+        }
       ],
       "type": "object"
     },
@@ -305,55 +344,75 @@
     },
     "name": "cite",
     "outputSchema": {
-      "properties": {
-        "bibliography": {
-          "description": "The selected writing's .bib checks; filenames only.",
-          "type": "object"
-        },
-        "destination": {
-          "description": "What Ibis does for the app named by for_app, with pasting on and permitted.",
-          "type": "object"
-        },
-        "language": {
-          "description": "The language a formatted citation is written in.",
-          "type": "string"
-        },
-        "library_notes": {
-          "items": {
-            "type": "string"
+      "oneOf": [
+        {
+          "properties": {
+            "bibliography": {
+              "description": "The writing's .bib checks; filenames only.",
+              "type": "object"
+            },
+            "destination": {
+              "description": "Delivery for for_app, with pasting on and permitted.",
+              "type": "object"
+            },
+            "language": {
+              "description": "The language a formatted citation is written in.",
+              "type": "string"
+            },
+            "library_notes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "losses": {
+              "description": "What was asked for but could not be shown.",
+              "type": "array"
+            },
+            "notices": {
+              "type": "array"
+            },
+            "provenance": {
+              "type": "string"
+            },
+            "receipt": {
+              "type": "object"
+            },
+            "source_health": {
+              "type": "object"
+            },
+            "text": {
+              "type": "string"
+            },
+            "warnings": {
+              "type": "array"
+            }
           },
-          "type": "array"
+          "required": [
+            "text",
+            "notices",
+            "losses",
+            "receipt",
+            "provenance",
+            "source_health"
+          ]
         },
-        "losses": {
-          "description": "What was asked for but could not be shown.",
-          "type": "array"
-        },
-        "notices": {
-          "type": "array"
-        },
-        "provenance": {
-          "type": "string"
-        },
-        "receipt": {
-          "type": "object"
-        },
-        "source_health": {
-          "type": "object"
-        },
-        "text": {
-          "type": "string"
-        },
-        "warnings": {
-          "type": "array"
+        {
+          "properties": {
+            "error": {
+              "required": [
+                "code",
+                "message",
+                "recovery",
+                "focus"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "error"
+          ]
         }
-      },
-      "required": [
-        "text",
-        "notices",
-        "losses",
-        "receipt",
-        "provenance",
-        "source_health"
       ],
       "type": "object"
     },
@@ -392,41 +451,61 @@
     },
     "name": "styles",
     "outputSchema": {
-      "properties": {
-        "locales": {
-          "type": "array"
-        },
-        "styles": {
-          "items": {
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "title": {
-                "type": "string"
-              },
-              "updated": {
-                "type": "string"
-              }
+      "oneOf": [
+        {
+          "properties": {
+            "locales": {
+              "type": "array"
             },
-            "required": [
-              "id",
-              "title",
-              "updated"
-            ],
-            "type": "object"
+            "styles": {
+              "items": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "updated": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "updated"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "total": {
+              "description": "How many styles match, beyond this page.",
+              "type": "integer"
+            }
           },
-          "type": "array"
+          "required": [
+            "styles",
+            "total",
+            "locales"
+          ]
         },
-        "total": {
-          "description": "How many styles match, beyond this page.",
-          "type": "integer"
+        {
+          "properties": {
+            "error": {
+              "required": [
+                "code",
+                "message",
+                "recovery",
+                "focus"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "error"
+          ]
         }
-      },
-      "required": [
-        "styles",
-        "total",
-        "locales"
       ],
       "type": "object"
     },

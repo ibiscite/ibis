@@ -142,7 +142,7 @@ fn agents_never_see_private_notes_and_long_text_is_cut() {
     assert_eq!(summary.chars().count(), mcp::MAX_TEXT + 1);
     assert!(summary.ends_with('…'));
 
-    // CSL-JSON output would carry the whole record, notes included.
+    // Record sharing stays outside MCP, even with share-safe metadata.
     let exported = tool(
         &engine,
         "cite",
@@ -346,10 +346,11 @@ fn cite_for_an_app_uses_that_apps_output_and_says_how_it_arrives() {
 #[test]
 fn for_app_is_refused_when_the_apps_settings_cannot_be_found() {
     let (_dir, engine) = engine();
-    let mut session = mcp::Session::default().without_formats(mcp::Refusal::new(
-        ibis_core::contract::ErrorCode::Usage,
-        "Invented: this computer has no folder for app settings.",
-    ));
+    let mut session =
+        mcp::Session::default().without_formats(mcp::Refusal::from(ibis_core::contract::EngineError::because(
+            ibis_core::contract::ErrorCode::SourceUnavailable,
+            ibis_core::contract::ErrorReason::SettingsReadTimeout,
+        )));
     let mut cite = |arguments: Value| {
         let message = modern(9, "tools/call", json!({"name":"cite","arguments":arguments}));
         mcp::handle(&engine, &mut session, &message).unwrap()["result"].clone()
@@ -357,12 +358,7 @@ fn for_app_is_refused_when_the_apps_settings_cannot_be_found() {
     // Defaults would be a guess about the person's formats, so nothing is cited.
     let refused = cite(json!({"items":[{"ref":"demo2026"}],"for_app":"md.obsidian"}));
     assert_eq!(refused["isError"], true, "{refused}");
-    assert!(
-        refused["content"][0]["text"]
-            .as_str()
-            .unwrap()
-            .contains("no folder for app settings")
-    );
+    assert!(refused["content"][0]["text"].as_str().unwrap().contains("settings"));
     assert_eq!(cite(json!({"items":[{"ref":"demo2026"}]}))["isError"], false);
 }
 
@@ -796,6 +792,7 @@ fn every_tool_answer_has_the_fields_its_output_schema_requires() {
             .unwrap()["outputSchema"]
             .clone();
         assert_eq!(schema["type"], "object", "{name}");
+        let schema = &schema["oneOf"][0];
         let answer = tool(&engine, name, arguments);
         assert_eq!(answer["isError"], false, "{name}: {answer}");
         let content = &answer["structuredContent"];

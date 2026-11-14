@@ -24,6 +24,30 @@ pub(crate) enum LoadError {
 }
 
 impl LoadError {
+    pub(crate) fn problem(self) -> ibis_core::contract::Problem {
+        use ibis_core::contract::{Problem, Recovery as R, RecoveryInfo};
+        match self {
+            Self::File(error) | Self::FileRefresh(error) => {
+                let mut problem: Problem = error.into();
+                if error.reason.is_none() && matches!(error.code, ErrorCode::BadInput | ErrorCode::ResourceLimit) {
+                    problem.info = RecoveryInfo::new(&problem.info.message.id, R::ChooseLibrary);
+                }
+                problem
+            }
+            Self::Zotero(error) => {
+                let mut problem: Problem = error.into();
+                if error.reason.is_none() && error.code == ErrorCode::NotFound {
+                    problem.info = RecoveryInfo::new(&problem.info.message.id, R::ChooseLibrary);
+                }
+                problem
+            }
+            Self::NotLocal => Problem {
+                code: "not-local".into(),
+                info: RecoveryInfo::new("app-library-not-local", R::ChooseLibrary),
+            },
+            Self::Stopped => CommandError::Cancelled.problem(),
+        }
+    }
     /// A file could not be reached in time, or too many reads are still running.
     pub(crate) const FILE_UNAVAILABLE: Self = Self::File(EngineError::new(ErrorCode::SourceUnavailable));
 
@@ -67,6 +91,7 @@ impl LoadError {
     fn words_id(self) -> &'static str {
         match self {
             LoadError::File(error) | LoadError::FileRefresh(error) => match (self, error.code) {
+                _ if error.reason == Some(ErrorReason::MissingFile) => "reason-missing-file",
                 (_, ErrorCode::SourceUnavailable) => "app-library-file-unavailable",
                 _ if error.reason == Some(ErrorReason::CsvTemplate) => "reason-csv-template",
                 _ if error.reason == Some(ErrorReason::UnknownFormat) => "reason-unknown-format",
@@ -106,71 +131,155 @@ pub(crate) fn words(id: &str, args: &[(&str, &str)]) -> String {
     ibis_engine::catalogue::text(id, None, args).unwrap_or_else(|| id.to_owned())
 }
 
-/// A failed command as the interface receives it: the interface decides
-/// from `code`, never from the text in `message`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
-#[serde(tag = "code", rename_all = "snake_case")]
+/// Native command failures preserve engine facts until the client renders them.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(into = "ibis_core::contract::Problem")]
 pub(crate) enum CommandError {
-    /// The references the interface chose from are no longer the open
-    /// library; search again and choose again.
     SnapshotChanged,
-    /// The library is being read; ask again when it has opened.
     LibraryLoading,
-    /// The work stopped because it was cancelled or replaced. Nothing failed.
     Cancelled,
-    /// Another loaded record has this citation key, so citing by key would be ambiguous.
-    SharedCitationKey { key: String },
-    /// Anything else, with fixed text for the user.
-    Failed { message: String },
+    Engine(EngineError),
+    Refused(ibis_core::contract::CitationError),
+    Presented(ibis_core::contract::Problem),
+    NotPrepared,
+    BibliographyUnavailable,
+    BibliographyNotSaved,
+    BibliographyNameTaken,
+    BibliographyFormat,
+    ClipboardUnavailable,
+    SettingsUnavailable,
+    RecentHistoryNotSaved,
+    ProjectConflict { keys: Vec<String> },
+    SourceNotOpened,
+    SearchFailed,
+    RecentReferencesFailed,
 }
 
-// Engine faults (including formatter capacity/timeouts) are not source revisions.
-// Cancellation is not a fault: it keeps its own code and never gets failure text.
-impl From<ibis_core::contract::EngineError> for CommandError {
-    fn from(error: ibis_core::contract::EngineError) -> Self {
-        match error.code {
-            ibis_core::contract::ErrorCode::Cancelled => Self::Cancelled,
-            _ => Self::failed("app-command-not-prepared"),
+impl schemars::JsonSchema for CommandError {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "CommandError".into()
+    }
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        ibis_core::contract::Problem::json_schema(generator)
+    }
+}
+impl From<EngineError> for CommandError {
+    fn from(error: EngineError) -> Self {
+        if error.code == ErrorCode::Cancelled {
+            Self::Cancelled
+        } else {
+            Self::Engine(error)
         }
     }
 }
-
+impl From<ibis_core::contract::CitationError> for CommandError {
+    fn from(error: ibis_core::contract::CitationError) -> Self {
+        Self::Refused(error)
+    }
+}
 impl CommandError {
-    /// A failure worded by this catalogue message.
-    pub(crate) fn failed(id: &str) -> Self {
-        Self::Failed {
-            message: words(id, &[]),
+    pub(crate) fn problem(&self) -> ibis_core::contract::Problem {
+        use ibis_core::contract::{NoRecoveryReason, Problem, Recovery as R, RecoveryInfo};
+        let (code, info) = match self {
+            Self::Engine(error) => return ibis_core::contract::Problem::from(*error),
+            Self::Refused(error) => return error.problem(),
+            Self::Presented(problem) => return problem.clone(),
+            Self::SnapshotChanged => (
+                "snapshot_changed",
+                RecoveryInfo::new("app-command-snapshot-changed", R::SelectReferences),
+            ),
+            Self::LibraryLoading => (
+                "library_loading",
+                RecoveryInfo::new(
+                    "app-command-library-loading",
+                    R::None {
+                        reason: NoRecoveryReason::InProgress,
+                    },
+                ),
+            ),
+            Self::Cancelled => (
+                "cancelled",
+                RecoveryInfo::new(
+                    "app-command-cancelled",
+                    R::None {
+                        reason: NoRecoveryReason::Cancelled,
+                    },
+                ),
+            ),
+            Self::BibliographyUnavailable => (
+                "bibliography-unavailable",
+                RecoveryInfo::new("app-bibliography-unavailable", R::Retry),
+            ),
+            Self::BibliographyNotSaved => (
+                "bibliography-not-saved",
+                RecoveryInfo::new("app-bibliography-not-saved", R::Retry),
+            ),
+            Self::BibliographyNameTaken => (
+                "bibliography-name-taken",
+                RecoveryInfo::new("app-bibliography-name-taken", R::Retry),
+            ),
+            Self::BibliographyFormat => (
+                "bibliography-format",
+                RecoveryInfo::new("app-bibliography-format", R::Retry),
+            ),
+            Self::SettingsUnavailable => (
+                "settings-unreadable",
+                RecoveryInfo::new("app-settings-error-unreadable", R::Retry),
+            ),
+            Self::RecentHistoryNotSaved => (
+                "recent-history-not-saved",
+                RecoveryInfo::new("app-recent-history-not-saved", R::Retry),
+            ),
+            Self::ProjectConflict { keys } => (
+                "project-conflict",
+                RecoveryInfo::new("app-project-citation-conflict", R::ReviewLibrary).argument("keys", keys.join(", ")),
+            ),
+            Self::ClipboardUnavailable => (
+                "clipboard-unavailable",
+                RecoveryInfo::new("app-clipboard-unavailable", R::Retry),
+            ),
+            Self::NotPrepared => ("not-prepared", RecoveryInfo::new("app-command-not-prepared", R::Retry)),
+            Self::SourceNotOpened => (
+                "source-not-opened",
+                RecoveryInfo::new("app-command-source-not-opened", R::Retry),
+            ),
+            Self::SearchFailed => (
+                "search-failed",
+                RecoveryInfo::new("app-failure-search", R::SearchReferences),
+            ),
+            Self::RecentReferencesFailed => (
+                "recent-references-failed",
+                RecoveryInfo::new("app-failure-recent-references", R::SearchReferences),
+            ),
+        };
+        Problem {
+            code: code.into(),
+            info,
         }
     }
 }
-
-impl From<String> for CommandError {
-    fn from(message: String) -> Self {
-        CommandError::Failed { message }
+impl From<CommandError> for ibis_core::contract::Problem {
+    fn from(error: CommandError) -> Self {
+        error.problem()
     }
 }
-
-impl From<&str> for CommandError {
-    fn from(message: &str) -> Self {
-        CommandError::Failed {
-            message: message.to_string(),
-        }
-    }
-}
-
 impl fmt::Display for CommandError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&match self {
-            CommandError::SnapshotChanged => words("app-command-snapshot-changed", &[]),
-            CommandError::LibraryLoading => words("app-command-library-loading", &[]),
-            CommandError::Cancelled => words("app-command-cancelled", &[]),
-            CommandError::SharedCitationKey { key } => words("app-command-shared-citation-key", &[("key", key)]),
-            CommandError::Failed { message } => return f.write_str(message),
-        })
+        f.write_str(&ibis_engine::catalogue::problem(
+            &self.problem(),
+            ibis_engine::catalogue::Audience::App,
+        ))
     }
 }
 
-/// Failures as the engine reports them, for tests.
+/// Preserve the session's complete problem at the native boundary.
+impl From<ibis_engine::citations::SessionError> for CommandError {
+    fn from(error: ibis_engine::citations::SessionError) -> Self {
+        Self::Presented(error.problem())
+    }
+}
+impl std::error::Error for CommandError {}
+
 #[cfg(test)]
 pub(crate) const FILE_UNREADABLE: LoadError = LoadError::File(EngineError::new(ErrorCode::Internal));
 #[cfg(test)]
@@ -220,8 +329,7 @@ mod tests {
     }
 
     #[test]
-    fn only_cancellation_escapes_the_engine_fault_text() {
-        use ibis_core::contract::{EngineError, ErrorCode};
+    fn native_errors_preserve_the_engine_code_and_required_recovery() {
         assert_eq!(
             CommandError::from(EngineError::new(ErrorCode::Cancelled)),
             CommandError::Cancelled
@@ -231,33 +339,33 @@ mod tests {
             ErrorCode::SourceUnavailable,
             ErrorCode::Internal,
         ] {
-            assert_eq!(
-                CommandError::from(EngineError::new(code)),
-                CommandError::from("The citation could not be prepared. Try again.")
-            );
+            let error = serde_json::to_value(CommandError::from(EngineError::new(code))).unwrap_or_default();
+            assert_eq!(error["code"], serde_json::to_value(code).unwrap_or_default());
+            assert!(error["message"]["id"].is_string());
+            assert!(error["recovery"]["action"].is_string());
+            assert!(error["focus"].is_string());
         }
     }
 
     #[test]
-    fn commands_fail_with_a_stable_code() {
-        let json = |error: CommandError| serde_json::to_value(error).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(
-            json(CommandError::SnapshotChanged),
-            serde_json::json!({"code": "snapshot_changed"})
-        );
-        assert_eq!(
-            json(CommandError::LibraryLoading),
-            serde_json::json!({"code": "library_loading"})
-        );
-        assert_eq!(json(CommandError::Cancelled), serde_json::json!({"code": "cancelled"}));
-        assert_eq!(
-            json(CommandError::SharedCitationKey { key: "same".into() }),
-            serde_json::json!({"code": "shared_citation_key", "key": "same"})
-        );
-        assert_eq!(
-            json("the clipboard could not be written".into()),
-            serde_json::json!({"code": "failed", "message": "the clipboard could not be written"})
-        );
+    fn app_refusals_have_one_recovery_and_catalogue_arguments() {
+        let error = serde_json::to_value(CommandError::from(
+            ibis_engine::citations::SessionError::SharedCitationKey { key: "same".into() },
+        ))
+        .unwrap_or_default();
+        assert_eq!(error["code"], "ambiguous-key");
+        assert_eq!(error["message"]["args"]["key"], "same");
+        assert_eq!(error["recovery"]["action"], "choose-style");
+        assert_eq!(error["focus"], "format-picker");
+        for error in [
+            CommandError::SnapshotChanged,
+            CommandError::LibraryLoading,
+            CommandError::Cancelled,
+        ] {
+            let error = serde_json::to_value(error).unwrap_or_default();
+            assert!(error["recovery"]["action"].is_string());
+            assert!(error["focus"].is_string());
+        }
     }
 
     /// Every value a code can take, from its own schema.
@@ -308,6 +416,15 @@ mod tests {
             "app-command-not-prepared",
             "app-command-source-not-opened",
             "app-command-citation-too-large",
+            "app-command-no-library",
+            "app-command-locator-missing",
+            "app-command-locator-invalid",
+            "app-command-page-missing",
+            "app-command-page-invalid",
+            "app-command-output-not-saved",
+            "app-command-delivery-not-saved",
+            "app-command-locator-conflict",
+            "app-command-bibliography-unsupported",
         ]);
         let catalogue: BTreeSet<&str> = ibis_engine::catalogue::SOURCE
             .lines()
@@ -329,9 +446,9 @@ mod tests {
             CommandError::SnapshotChanged,
             CommandError::LibraryLoading,
             CommandError::Cancelled,
-            CommandError::SharedCitationKey { key: "same2026".into() },
+            CommandError::from(ibis_engine::citations::SessionError::SharedCitationKey { key: "same2026".into() }),
             CommandError::from(EngineError::new(ErrorCode::Internal)),
-            CommandError::failed("app-command-source-not-opened"),
+            CommandError::SourceNotOpened,
         ];
         let shown = loads
             .iter()
@@ -341,7 +458,8 @@ mod tests {
             assert!(!text.is_empty() && !text.contains("app-"), "{text:?} is worded");
         }
         assert_eq!(
-            CommandError::SharedCitationKey { key: "same2026".into() }.to_string(),
+            CommandError::from(ibis_engine::citations::SessionError::SharedCitationKey { key: "same2026".into() })
+                .to_string(),
             "the citation key `same2026` belongs to more than one reference"
         );
     }

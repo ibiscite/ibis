@@ -66,12 +66,12 @@ test("Esc from a focused citation chip steps back, with no pointer click needed"
 test("Esc works from every focusable control in the picker", async () => {
   const { calls } = await chosenCitation();
   type("invented");
-  await screen.findByRole("button", { name: /^Clear search/i });
+  await waitFor(() => expect(search().value).toBe("invented"));
   const count = focusableControls().length;
   expect(count).toBeGreaterThan(5);
   for (let index = 0; index < count; index += 1) {
     type("invented");
-    await screen.findByRole("button", { name: /^Clear search/i });
+    await waitFor(() => expect(search().value).toBe("invented"));
     const control = focusableControls()[index]!;
     const name = control.getAttribute("aria-label") ?? control.id;
     act(() => control.focus());
@@ -256,7 +256,7 @@ test("the footer's Esc action steps back through the same stack", async () => {
   await screen.findByText("Invented reference");
   act(() => search().focus());
   type("invented");
-  await screen.findByRole("button", { name: /^Clear search/i });
+  await waitFor(() => expect(search().value).toBe("invented"));
   fireEvent.pointerOver(document.querySelector("footer")!);
   fireEvent.keyDown(window, { key: "Shift", shiftKey: true });
   fireEvent.click(await within(screen.getByRole("group", { name: /keys/i })).findByRole("button", { name: "Clear Search" }));
