@@ -112,9 +112,8 @@ ssh_options=(-o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o 
 
 mac_gate() {
   set -Ee
-  # The gate picks its own tools: Homebrew first on macOS, so a shell whose PATH starts with the
-  # system's old python3 cannot change what the scripts run with.
-  [ -d /opt/homebrew/bin ] && export PATH="/opt/homebrew/bin:$PATH"
+  # Development Python is Miniconda's on every machine, never the system's.
+  export PATH="$HOME/miniconda3/bin:$PATH"
   trap 'printf "FAILED (%s): %s\n" "$?" "$BASH_COMMAND"' ERR
   cargo fmt --all --check
   cargo clippy --workspace --all-targets --locked -- -D warnings -D clippy::unused_result_ok
@@ -152,6 +151,7 @@ git fetch -q origin "refs/heads/$branch"
 [ "$(git rev-parse FETCH_HEAD)" = "$sha" ] || { echo 'error: fetched branch moved'; exit 1; }
 git checkout -q --detach "$sha"
 . "$HOME/.cargo/env"
+export PATH="$HOME/miniconda3/bin:$PATH"
 export NVM_DIR="$HOME/.nvm"
 . "$NVM_DIR/nvm.sh"
 nvm use 26
@@ -205,7 +205,7 @@ windows_gate() {
   ' "$sha" "$branch" "$repo" <<'WINDOWS'
 $ErrorActionPreference = 'Stop'
 # Over ssh the laptop's PATH lacks Windows PowerShell; tests and scripts expect it there.
-$env:Path = "$env:SystemRoot\System32\WindowsPowerShell\v1.0;$env:Path"
+$env:Path = "$env:USERPROFILE\miniconda3;$env:USERPROFILE\miniconda3\Scripts;$env:SystemRoot\System32\WindowsPowerShell\v1.0;$env:Path"
 if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { throw 'Windows PowerShell 5.1 is required' }
 $checkout = Join-Path $env:TEMP 'ibis-local-gate'
 $lock = [IO.File]::Open("$checkout.lock", 'OpenOrCreate', 'ReadWrite', 'None')
