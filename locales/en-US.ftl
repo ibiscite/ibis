@@ -1249,7 +1249,6 @@ library-more-not-listed =
        *[other] { $count } more are not listed.
     }
 
-settings-changed = Changed
 citations-documents = In documents
 citations-keys = In Markdown, LaTeX and Typst
 citations-apps = Formats remembered for apps

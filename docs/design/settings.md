@@ -7,9 +7,8 @@
 - **Only built settings appear**: no disabled promises or "Coming soon" rows, and nothing unbuilt in the search index.
 - Each setting is one entry in one registry (key, page, group, label, description, control, default, search words); pages and search are drawn from it.
 - **Groups and rows** [D17]: `ui/Layout` sections of `Group` cards (`--r-large`, `--surface-grouped`) of `Row`s: a label, an optional description, one control at the end. Cards keep their natural height; rows grow with text; controls move below a label that does not fit. No page opens with more than eight rows; rarer rows go behind **Details…**, a disclosure row in its own card whose chevron turns down while its rows show. Every group but a page's first lone row has a title (General: **Behavior**, **Pasting**).
-- A setting that differs from its default has a quiet **Changed** mark and
-  **Use Default** with Undo, using the shared row. Restoring a default never
-  opts into background network use. Settings and `settings.json` show the
+- A setting that differs from its default shows **Use Default** (↺) with Undo in
+  the slot a row keeps at its end [C24]. Restoring a default never opts into background network use. Settings and `settings.json` show the
   same saved choices. A valid file edit applies live, retires an older Undo
   and updates open controls; a problem stays visible and refuses saves until
   repaired.
@@ -19,7 +18,7 @@
 - **Previews** (`settings/PickerPicture`, `ui/PictureChoice`): a preview is the real picker at one window shape, scaled (`--preview-window`), so every picture on the page reads alike; a picture choice inside a card draws the picture and its ring, never a second box.
 - **Title bar**: only macOS draws its window buttons over Settings, so only there does the sidebar leave `--titlebar-height` above its search field; elsewhere it keeps `--inset`.
 - **Accent**: a segmented choice of **Follow the Mac** (the default) and **Ibis scarlet**. No other hues, free colour picker, custom fonts, themes or CSS.
-- A failed save shows an alert and restores the saved choice; queued choices finish saving (at most two seconds) before the window closes. A changed row with a default shows a small, quiet **Use Default**, named with its setting for assistive technology; a confirmed reset offers eight-second Undo [D16]. File choices have no default. Automatic update checks reset to off; window-size Undo preserves Custom dimensions with a native revision ticket.
+- A failed save shows an alert and restores the saved choice; queued choices finish saving (at most two seconds) before the window closes. Its **Use Default** is named with its setting for assistive technology and says "Use Default" on hover; a confirmed reset offers eight-second Undo [D16]. File choices have no default. Automatic update checks reset to off; window-size Undo preserves Custom dimensions with a native revision ticket.
 
 **Shortcuts.** Settings › Shortcuts has a search field, then grouped cards in one order (`SHORTCUT_GROUPS`: Open Ibis, While searching, In the citation, Your library, Anywhere in Ibis, In a menu); the keys sheet shows the same groups, named the same, in the same order, less In a menu, which every menu shares. Open Ibis holds one row, "From any app", with the opening shortcut. Only the opening-shortcut recorder edits a key; fixed keys are plain secondary text at body size, as menus write key equivalents, in full ink under Increase Contrast. Group headings scroll with their cards, never sticking over a card's edge. Keys and the "or" between them share one baseline with equal gaps. General and Shortcuts share `ui/ShortcutSetting`. The Keyboard Shortcuts sheet (⌘/) uses `ui/Sheet` and the shared window frame [C13]. Its body has two equal columns of groups, folding to one when they no longer fit; Back or Esc returns to the picker.
 
