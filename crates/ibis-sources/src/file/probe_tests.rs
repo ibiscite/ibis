@@ -63,29 +63,41 @@ fn repeated_blocked_attachment_batches_leave_room_for_a_healthy_library() {
 #[test]
 fn five_hundred_blocked_attachments_share_the_sources_remaining_deadline() {
     let (mut objects, references) = references();
+    let time = Arc::new(Mutex::new(Instant::now()));
     let mut scope = Scope::new(&|| false);
-    scope.until = Instant::now() + Duration::from_millis(300);
+    scope.until = *time.lock().unwrap_or_else(|e| panic!("{e}")) + Duration::from_millis(300);
+    let clock = time.clone();
+    scope.now = Arc::new(move || *clock.lock().unwrap_or_else(|e| panic!("{e}")));
     // Earlier source I/O consumes the same deadline as the attachment batch.
+    let clock = time.clone();
     scope
-        .run(|| {
-            std::thread::sleep(Duration::from_millis(200));
+        .run(move || {
+            *clock.lock().unwrap_or_else(|e| panic!("{e}")) += Duration::from_millis(200);
             Ok(())
         })
         .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(scope.remaining(), Ok(Duration::from_millis(100)));
+    let until = scope.until;
+    let (probed, probes) = mpsc::channel();
     let (release, blocked) = mpsc::channel::<()>();
-    let start = Instant::now();
     let mut first = true;
     scope
         .attachments_with(&mut objects, references, move |_| {
+            let mut now = time.lock().unwrap_or_else(|e| panic!("{e}"));
+            probed
+                .send(until.saturating_duration_since(*now))
+                .unwrap_or_else(|e| panic!("{e}"));
+            // Each stat consumes 50 ms; the second stays blocked at the deadline.
+            *now += Duration::from_millis(50);
+            drop(now);
             if first {
                 first = false;
-                return Availability::OnDisk;
+            } else {
+                let _ = blocked.recv();
             }
-            let _ = blocked.recv();
             Availability::OnDisk
         })
         .unwrap_or_else(|e| panic!("{e}"));
-    assert!(start.elapsed() < Duration::from_millis(200));
     let snapshot = Snapshot::new(objects).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(snapshot.objects().len(), 500);
     for (index, entry) in snapshot.objects().iter().enumerate() {
@@ -104,7 +116,11 @@ fn five_hundred_blocked_attachments_share_the_sources_remaining_deadline() {
     }
     assert_eq!(Scope::new(&|| false).run(|| Ok("local B")), Ok("local B"));
     // A late stat must not start the next probe or change the published result.
-    release.send(()).unwrap_or_else(|e| panic!("{e}"));
+    drop(release);
+    assert_eq!(
+        probes.iter().collect::<Vec<_>>(),
+        [Duration::from_millis(100), Duration::from_millis(50)]
+    );
 }
 
 #[test]
