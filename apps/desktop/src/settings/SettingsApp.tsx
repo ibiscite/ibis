@@ -224,7 +224,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         }
       });
     }
-  }), [queue, clearSettingUndo]);
+  }), [queue, clearSettingUndo, text]);
   useAppearance(preferences);
   useEffect(() => {
     const root = document.documentElement;
