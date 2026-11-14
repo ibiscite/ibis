@@ -13,13 +13,13 @@ export function Details({ label, reveal, children }: { label: string; reveal?: {
   useLayoutEffect(() => {
     if (reveal && content.current?.contains(document.getElementById(reveal.id))) setOpen(true);
   }, [reveal]);
-  return <div className="ui-details">
+  return <div className="ui-section">
     <div className="ui-group"><div className="ui-row ui-choice-row">
       <AriaButton className="ui-choice ui-details-toggle" aria-expanded={open} aria-controls={id} onPress={() => setOpen(!open)}>
         <span className="ui-row-text">{label}</span>
         <span className="ui-details-mark" aria-hidden="true"><Icon name="back" /></span>
       </AriaButton>
-    </div></div>
-    <div ref={content} id={id} hidden={!open}>{children}</div>
+    </div>
+    <div ref={content} id={id} hidden={!open}>{children}</div></div>
   </div>;
 }

@@ -35,7 +35,7 @@
    secondary text at body size (Apple's measured label colour), in full ink under
    Increase Contrast; no box, even in forced colours, and one shortcut never wraps. */
 .ui-settings-keys { display: inline-flex; align-items: baseline; gap: var(--space-2); font-size: var(--type-label-size); flex-wrap: wrap; justify-content: end; color: var(--text-secondary); vertical-align: middle; }
-.ui-settings-keys:has(kbd[data-plain]) { font-size: var(--type-body-size); line-height: var(--type-body-line); }
+.ui-settings-keys[data-plain] { font-size: var(--type-body-size); line-height: var(--type-body-line); }
 .ui-shortcut-filter.ui-settings-search { margin: 0; }
 
 .ui-shortcut-table tr > * { transition: background-color var(--dur-1) ease-out; }

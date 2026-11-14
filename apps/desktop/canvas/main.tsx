@@ -37,7 +37,7 @@ import "../src/ui/CopiedNotice.css";
 import pickerStyles from "../src/ui/Window.css?inline";
 import { noFormatChosen } from "../src/testing/format";
 
-export const scenarios = ["notice", "results", "unknown-app", "unknown-app-empty", "first-run", "more", "format-menu", "writings", "writings-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "reference-details-more", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-selector", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "citation-order", "citation-handles", "citation-details-larger", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
+export const scenarios = ["notice", "results", "unknown-app", "unknown-app-empty", "first-run", "more", "format-menu", "writings", "writings-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "reference-details-more", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-selector", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "citation-order", "citation-handles", "citation-details-larger", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about", "settings-details", "settings-newer"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -65,6 +65,7 @@ const fixtures: Partial<Record<Scenario, {
   /** Clicked in order, each once the one before has drawn what it opens. */
   click?: string | string[]; keys?: KeyboardEventInit[];
 }>> = {
+  "settings-details": { click: "button.ui-details-toggle" },
   more: { library: zoteroLibrary },
   "format-menu": { library: zoteroLibrary },
   "empty-search": { query: "" },
@@ -403,6 +404,7 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
     else document.documentElement.style.removeProperty(name);
   }
   const settings = demoApi();
+  if (scenario === "settings-newer") settings.formatSettings = async () => ({ apps: [], writings: [], key_output_visible: false, unknown: { future_choice: "Enabled" } });
   void settings.savePickerPreferences({ ...fixtures[scenario as Scenario]?.preferences, appearance: theme as Theme, paste: false }).then(settings.pickerPreferencesSaved);
   // The states and tokens pages use the Settings window's base styles.
   const settingsWindow = scenario.startsWith("settings-") || scenario === "states" || scenario === "tokens" || scenario === "parts";

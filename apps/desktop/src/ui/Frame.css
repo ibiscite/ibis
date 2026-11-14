@@ -14,16 +14,16 @@ main.ui-frame > footer { grid-area: footer; }
    height. With neither (an empty state, the commands) the line is not drawn, so
    no empty band is ever reserved. The list then starts right under it. */
 .ui-notice-line { grid-area: notice; block-size: var(--notice-line-h); }
-.ui-notice-line:not(:has(> .ui-line-notice, > .notice-slot, > .ui-heading-slot:not(:empty))) { display: none; }
-main.ui-frame:has(> .ui-notice-line > .ui-heading-slot:not(:empty)) .results-area { margin-block-start: 0; }
-.ui-notice-line:has(> .ui-line-notice, > .notice-slot) > .ui-heading-slot { display: none; }
+main.ui-frame:not([data-heading], [data-notice]) > .ui-notice-line { display: none; }
+main.ui-frame[data-heading] .results-area { margin-block-start: 0; }
+main.ui-frame[data-notice] > .ui-notice-line > .ui-heading-slot { display: none; }
 /* The heading starts on the leading edge, where its rows' tiles do, and its count
    ends on the trailing edge, where their years do. */
 .ui-heading-slot { flex: 1 1 auto; min-width: 0; padding-inline-end: var(--row-pad); }
 .ui-heading-slot > .ui-list-heading { display: flex; align-items: baseline; justify-content: space-between; }
 /* With no list, the line itself moves to the room above the empty state, over its
    padding at the content's top, so its notice is never drawn anew. */
-main.ui-frame[data-notice-room] > .ui-notice-line:not(:has(> .ui-heading-slot:not(:empty))) { grid-area: middle; align-self: start; z-index: var(--z-chrome); }
+main.ui-frame[data-notice-room]:not([data-heading]) > .ui-notice-line { grid-area: middle; align-self: start; z-index: var(--z-chrome); }
 
 /* A notice shows its words on the label column, cut with an ellipsis if they must
    be, and its actions at the end. */
