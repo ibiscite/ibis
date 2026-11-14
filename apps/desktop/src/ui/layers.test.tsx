@@ -2,9 +2,10 @@ import { useState } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { LayerScope } from "./Layer";
-import { LAYER_ORDER, closeOverlays, goBack, focusLost, useKeyOwner, useLayer, useNearestLayer, type LayerClose, type LayerKind } from "./layers";
+import { KINDS, closeOverlays, goBack, focusLost, useKeyOwner, useLayer, useNearestLayer, type LayerClose, type LayerKind } from "./layers";
 
 afterEach(cleanup);
+const ORDER = Object.keys(KINDS) as LayerKind[];
 
 function Layer({ kind, open = true, close }: { kind: LayerKind; open?: boolean; close: LayerClose }) {
   useLayer(kind, open, close);
@@ -30,19 +31,19 @@ test("Esc closes the nearest kind whatever order the layers opened in", () => {
   const closed: LayerKind[] = [];
   const opened = ["window", "chooser", "sheet", "search", "panel", "menu"] as const;
   render(<>{opened.map((kind) => <Layer key={kind} kind={kind} close={() => { closed.push(kind); }} />)}</>);
-  for (let step = 0; step < LAYER_ORDER.length; step += 1) goBack();
+  for (let step = 0; step < ORDER.length; step += 1) goBack();
   // Nothing was closed for real, so the nearest stays; each press asks it again.
   expect(new Set(closed)).toEqual(new Set(["menu"]));
   cleanup();
   const steps: LayerKind[] = [];
   function Stack() {
-    const [open, setOpen] = useState<readonly LayerKind[]>(LAYER_ORDER);
-    return <>{[...LAYER_ORDER].reverse().map((kind) => <Layer key={kind} kind={kind} open={open.includes(kind)}
+    const [open, setOpen] = useState<readonly LayerKind[]>(ORDER);
+    return <>{[...ORDER].reverse().map((kind) => <Layer key={kind} kind={kind} open={open.includes(kind)}
       close={() => { steps.push(kind); setOpen((current) => current.filter((other) => other !== kind)); }} />)}</>;
   }
   render(<Stack />);
-  for (let step = 0; step < LAYER_ORDER.length; step += 1) act(() => { goBack(); });
-  expect(steps).toEqual([...LAYER_ORDER]);
+  for (let step = 0; step < ORDER.length; step += 1) act(() => { goBack(); });
+  expect(steps).toEqual(ORDER);
   expect(goBack()).toBe(false);
 });
 
@@ -55,11 +56,11 @@ test("the latest layer of one kind is nearest, and a layer may hand its key on",
   expect(first).not.toHaveBeenCalled();
 });
 
-test("a command clears overlays and leaves the panel, chooser, search and window alone", () => {
+test("a command or a hide clears every overlay, a popover too, and leaves the panel, chooser, search and window alone", () => {
   const closed: LayerKind[] = [];
-  render(<>{LAYER_ORDER.map((kind) => <Layer key={kind} kind={kind} close={(event) => { if (event) throw new Error("asked by a key"); closed.push(kind); }} />)}</>);
+  render(<>{ORDER.map((kind) => <Layer key={kind} kind={kind} close={(event) => { if (event) throw new Error("asked by a key"); closed.push(kind); }} />)}</>);
   closeOverlays();
-  expect(closed).toEqual(["menu", "palette", "sheet"]);
+  expect(closed).toEqual(["menu", "popover", "palette", "sheet"]);
 });
 
 test("Esc reaches a layer before any control can swallow it, and only once", () => {

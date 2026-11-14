@@ -35,6 +35,17 @@ test("the surface guard ignores the reader HUD but catches a second registered s
   } finally { boxes.mockRestore(); }
 });
 
+test("a token's details float over the picker: ⌘1–9 leaves the list alone under them, and a hide closes them", async () => {
+  const calls = backend({ search: () => [result("a", "First work"), result("b", "Second work")] });
+  render(<App />);
+  fireEvent.click(await screen.findByText("First work"), { ctrlKey: true });
+  await openCitationDetails();
+  expect(fireEvent.keyDown(document.body, { key: "2", code: "Digit2", ctrlKey: true })).toBe(true);
+  expect(calls).not.toContain("copy_file_citation");
+  await act(async () => { await emit("picker:hidden"); });
+  expect(citationDetails()).toBeNull();
+});
+
 test("closing slow inspector formatting lets citation B finish before the abandoned examples", async () => {
   let busy = false;
   let started = false;

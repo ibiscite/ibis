@@ -3,7 +3,7 @@ import { Children, createContext, isValidElement, useCallback, useContext, useEf
 import { composing as isComposing } from "../composition";
 import { flushSync } from "react-dom";
 import { mergeProps, setInteractionModality } from "react-aria";
-import { Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuStateContext, MenuTrigger, Popover, Separator, SubmenuTrigger, Text } from "react-aria-components";
+import { Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuStateContext, MenuTrigger, Separator, SubmenuTrigger, Text } from "react-aria-components";
 import { Button } from "./Button";
 import { markScrollEdges } from "./ScrollArea";
 import { Floating } from "./Layer";
@@ -253,12 +253,12 @@ export function MenuSubmenu({ id, label, value, title, children }: {
       <span className="menu-submenu-arrow" aria-hidden="true">›</span>
     </AriaMenuItem>
     {/* Part of its menu's layer, whose Esc it hands to React Aria. */}
-    <Popover ref={wholeRows} className="menu-popover ui-overlay" data-layer-within offset={6} containerPadding={8}>
+    <Floating ref={wholeRows} className="menu-popover ui-overlay" offset={6} containerPadding={8}>
       <AriaMenu ref={list} className="menu scroll-area" aria-label={label}
         render={(props) => <div {...props as ComponentPropsWithRef<"div">} aria-label={label} aria-labelledby={undefined} />}>
         {children}
       </AriaMenu>
-    </Popover>
+    </Floating>
   </SubmenuTrigger>;
 }
 
