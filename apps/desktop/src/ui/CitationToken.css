@@ -6,7 +6,7 @@
 .citation-token { position: relative; display: flex; flex: none; align-items: center; min-width: 0; margin-inline: var(--row-spacing); padding-block: var(--space-2); }
 /* With several, none takes more than a third of the line, so every reference
    keeps its handle in view; the line is their container (CitationShelf.css). */
-:has(> .citation-token ~ .citation-token) > .citation-token { max-width: calc(100cqi / 3); }
+[data-multiple] > .citation-token { max-width: calc(100cqi / 3); }
 .citation-token::before { content: ""; position: absolute; inset-block: var(--space-2); inset-inline: 0; border-radius: var(--r-small); background: var(--fill-control); pointer-events: none; }
 .citation-token:has(> .citation-token-button[aria-expanded="true"])::before { background: var(--fill-control-pressed); }
 .citation-token-button.ui-button[data-variant] { position: relative; justify-content: start; gap: var(--space-1); flex: 0 1 auto; min-width: 0; min-height: var(--control-small-h); max-width: 100%; padding-inline: var(--space-1); border-width: 0; border-radius: var(--r-small); color: var(--text); background: transparent; white-space: nowrap; }

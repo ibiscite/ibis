@@ -8,6 +8,7 @@ import { Button } from "./Button";
 import { markScrollEdges } from "./ScrollArea";
 import { Floating } from "./Layer";
 import { useMenuLifecycle } from "./useMenuLifecycle";
+import { usePresence, usePresenceSlot } from "./presence";
 import "./Menu.css";
 import "./Overlay.css";
 
@@ -174,6 +175,12 @@ export function MenuRow({ itemId, ...props }: ComponentPropsWithRef<"div"> & { i
 }
 
 const ActionFocusContext = createContext<(() => void) | null>(null);
+const Columns = createContext<((slot: "icons", on: boolean) => void) | undefined>(undefined);
+
+function MenuList(props: React.ComponentProps<typeof AriaMenu>) {
+  const { counts, register } = usePresence({ icons: 0 });
+  return <Columns.Provider value={register}><AriaMenu {...props} data-icons={counts.icons ? "" : undefined} /></Columns.Provider>;
+}
 
 /** A wrapping, read-only menu header, also spoken through its section label.
  * Each fact of the detail ("My Library · checked 3 minutes ago, 1:54 AM") takes
@@ -196,16 +203,17 @@ type ItemProps = {
 };
 
 /** A drawn check, so it adds no text to the row; Menu.css gives it the icon column. */
-export function MenuCheck({ checked }: { checked: boolean }) {
+export function MenuCheck({ checked, icon }: { checked: boolean; icon?: ReactNode }) {
+  usePresenceSlot(useContext(Columns), "icons");
   return <span className="menu-check" aria-hidden="true">
-    {checked && <Icon name="check" />}
+    {checked ? <Icon name="check" /> : icon}
   </span>;
 }
 
 /** An action row: label, optional shortcut and a check for toggles. */
 export function MenuItem({ id, label, title, keys, checked, disabled, closeOnSelect, onAction, icon, example }: ItemProps) {
   const requestActionFocus = useContext(ActionFocusContext);
-  return <AriaMenuItem id={id} className="menu-item" textValue={label} aria-label={example ? label : undefined}
+  return <AriaMenuItem id={id} className="menu-item" data-icon={checked !== undefined || icon ? "" : undefined} textValue={label} aria-label={example ? label : undefined}
     // A toggle keeps the menu open, as before, so several can be changed at once.
     shouldCloseOnSelect={closeOnSelect ?? (checked === undefined && !disabled ? undefined : false)}
     onAction={() => {
@@ -215,7 +223,7 @@ export function MenuItem({ id, label, title, keys, checked, disabled, closeOnSel
     }}
     render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={id} title={title} aria-disabled={disabled || undefined} />}>
     {({ isSelected }) => <>
-      {checked !== undefined ? <MenuCheck checked={isSelected} /> : icon && <span className="menu-check" aria-hidden="true">{icon}</span>}
+      {checked !== undefined ? <MenuCheck checked={isSelected} /> : icon && <MenuCheck checked={false} icon={icon} />}
       <bdi className="menu-label" dir="auto">{label}</bdi>
       {example && <Text slot="description" className="menu-example"><bdi dir="auto">{example}</bdi></Text>}
       {keys && <span className="menu-keys" aria-hidden="true"><bdi dir="ltr">{keys}</bdi></span>}
@@ -254,10 +262,10 @@ export function MenuSubmenu({ id, label, value, title, children }: {
     </AriaMenuItem>
     {/* Part of its menu's layer, whose Esc it hands to React Aria. */}
     <Floating ref={wholeRows} className="menu-popover ui-overlay" offset={6} containerPadding={8}>
-      <AriaMenu ref={list} className="menu scroll-area" aria-label={label}
+      <MenuList ref={list} className="menu scroll-area" aria-label={label}
         render={(props) => <div {...props as ComponentPropsWithRef<"div">} aria-label={label} aria-labelledby={undefined} />}>
         {children}
-      </AriaMenu>
+      </MenuList>
     </Floating>
   </SubmenuTrigger>;
 }
@@ -345,10 +353,10 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
         event.stopPropagation();
         leave(tabFocusRef.current);
       }} onKeyUpCapture={(event) => { if (isComposing(event)) event.stopPropagation(); }}>
-        <AriaMenu key={opening} ref={listRef} id={id} className="menu scroll-area" aria-label={label} autoFocus={fromTrigger.current ? undefined : "first"}
+        <MenuList key={opening} ref={listRef} id={id} className="menu scroll-area" aria-label={label} autoFocus={fromTrigger.current ? undefined : "first"}
           render={(props) => <div {...props as ComponentPropsWithRef<"div">} aria-label={label} aria-labelledby={undefined} />}>
           {children}
-        </AriaMenu>
+        </MenuList>
       </div>
     </Floating>
   </MenuTrigger></ActionFocusContext.Provider>;
