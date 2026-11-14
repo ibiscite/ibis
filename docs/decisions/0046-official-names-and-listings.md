@@ -1,7 +1,5 @@
 # 0046 Official names and listings
 
-Recorded 2026-11-11 on the maintainer's answer.
-
 - **Official package names.** Use `ibiscite` on crates.io and PyPI, and the
   `@ibiscite` namespace on npm. Each package is a real, useful MIT client of the
   engine contract ([decision 0039](0039-extending-ibis-from-outside.md)), never

@@ -4,7 +4,7 @@
 //! opens a database, executes preferences or writes files. Candidates need not
 //! exist and must be validated by the offline reader before use. Multiple
 //! candidates require an explicit choice; discovery does not select a library.
-//! Missing profile configuration falls back to `home/Zotero`. Legacy profile
+//! Missing profile configuration falls back to `home/Zotero`. Unsupported profile
 //! data and interrupted migrations require manual override; no database or
 //! migration marker is inspected here. See Zotero's directory selection:
 //! <https://github.com/zotero/zotero/blob/main/chrome/content/zotero/xpcom/dataDirectory.js>.

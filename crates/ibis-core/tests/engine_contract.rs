@@ -1,4 +1,4 @@
-//! Acceptance checks for the engine contract scaffolding (ADR 0028).
+//! Acceptance checks for the shared engine contract (decision 0028).
 use std::path::Path;
 
 #[test]

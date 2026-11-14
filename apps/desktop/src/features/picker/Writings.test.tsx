@@ -8,12 +8,12 @@ afterEach(cleanup);
 
 const thesis = { id: "thesis", name: "Thesis", output: "autocite", bibliography: "thesis.bib" };
 const notes = { id: "notes", name: "Notes", output: "pandoc", bibliography: null };
-const view = (selected: string | null = "thesis"): WritingsView => ({ writings: [thesis, notes], selected, active: [thesis, notes].find((project) => project.id === selected) ?? null, context: "opening-a", session_only: false });
+const view = (selected: string | null = "thesis"): WritingsView => ({ writings: [thesis, notes], selected, active: [thesis, notes].find((writing) => writing.id === selected) ?? null, context: "opening-a", session_only: false });
 function api(overrides: Partial<WritingsApi> = {}): WritingsApi {
   return { writings: async () => view(), editWriting: async () => view(), ...overrides };
 }
 
-test("selecting a project waits for its save and then returns to the picker", async () => {
+test("selecting a writing waits for its save and then returns to the picker", async () => {
   let finish!: (next: WritingsView) => void;
   const edit = vi.fn(() => new Promise<WritingsView>((resolve) => { finish = resolve; }));
   const close = vi.fn();
@@ -26,7 +26,7 @@ test("selecting a project waits for its save and then returns to the picker", as
   expect(close).toHaveBeenCalledOnce();
 });
 
-test("failed saves preserve the selected project and explain the failure", async () => {
+test("failed saves preserve the selected writing and explain the failure", async () => {
   const close = vi.fn();
   render(<WritingsDialog api={api({ editWriting: async () => { throw new Error("synthetic failure"); } })} format="autocite" onClose={close} />);
   fireEvent.click(await screen.findByRole("button", { name: "Use Notes" }));
@@ -55,7 +55,7 @@ test("an older read cannot replace a successful edit", async () => {
   expect(screen.queryByRole("button", { name: "Use Notes" })).toBeNull();
 });
 
-test("creating a project uses the current format and refuses an empty name", async () => {
+test("creating a writing uses the current format and refuses an empty name", async () => {
   const edit = vi.fn(async () => ({ ...view("notes"), writings: [notes] }));
   render(<WritingsDialog api={api({ editWriting: edit })} format="pandoc" onClose={vi.fn()} />);
   fireEvent.click(await screen.findByRole("button", { name: "New Writing…" }));
@@ -66,7 +66,7 @@ test("creating a project uses the current format and refuses an empty name", asy
   await screen.findByText("No bibliography selected.");
 });
 
-test("removing a project requires an explicit choice", async () => {
+test("removing a writing requires an explicit choice", async () => {
   const edit = vi.fn(async () => view(null));
   render(<WritingsDialog api={api({ editWriting: edit })} format="autocite" onClose={vi.fn()} />);
   fireEvent.click(await screen.findByRole("button", { name: "Remove Writing…" }));
@@ -75,7 +75,7 @@ test("removing a project requires an explicit choice", async () => {
   await waitFor(() => expect(edit).toHaveBeenCalledWith("opening-a", { kind: "remove", id: "thesis" }));
 });
 
-test("a refused project name keeps the form and the native correction", async () => {
+test("a refused writing name keeps the form and the native correction", async () => {
   render(<WritingsDialog api={api({ editWriting: async () => { throw { code: "project-duplicate-name", message: { id: "app-project-error-duplicate-name", args: {} }, recovery: { action: "rename-project" }, focus: "project-name" }; } })} format="autocite" onClose={vi.fn()} />);
   fireEvent.click(await screen.findByRole("button", { name: "New Writing…" }));
   fireEvent.change(screen.getByRole("textbox", { name: "Writing name" }), { target: { value: "Thesis" } });
@@ -85,7 +85,7 @@ test("a refused project name keeps the form and the native correction", async ()
   expect(screen.getByRole("button", { name: "Use Thesis" }).getAttribute("aria-pressed")).toBe("true");
 });
 
-test("an unidentified app explains that project selection is session only", async () => {
+test("an unidentified app explains that writing selection is session only", async () => {
   render(<WritingsDialog api={api({ writings: async () => ({ ...view(), session_only: true }) })} format="autocite" onClose={vi.fn()} />);
   await screen.findByText("Ibis can’t identify the app, so this writing applies only until Ibis quits.");
 });
@@ -102,7 +102,7 @@ test("hiding the picker closes the sheet and a late save cannot close its replac
   rendered.unmount();
 });
 
-test("a rename saved elsewhere shows when the projects are read again", async () => {
+test("a rename saved elsewhere shows when the writings are read again", async () => {
   let changed!: () => void;
   let current = view();
   const edit = vi.fn(async () => current);

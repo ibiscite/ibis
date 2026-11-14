@@ -1112,7 +1112,7 @@ mod tests {
         activation.send(()).unwrap();
         assert!(worker.join().unwrap().is_some());
         assert_ne!(engine.snapshot().unwrap().fingerprints(), accepted.fingerprints());
-        // A previously activated watcher still retires when the source reopens.
+        // Reopening retires the active watcher.
         let (activation, callback) = engine.reload_watch_callback(id, generation);
         activation.send(()).unwrap();
         let late = ibis_sources::load_file(&path).unwrap();

@@ -34,7 +34,7 @@ button, input, select { font: inherit; color: inherit; }
 /* Empty content centres safely while the middle viewport owns overflow. */
 main .picker-content .results-area[data-centered] { display: flex; flex-direction: column; flex: 1 0 auto; overflow: visible; min-height: min-content; }
 
-/* Remembered picker preferences (ADR 0020). */
+/* Remembered picker preferences. */
 :root[data-text-size="larger"] { font-size: calc(100% * var(--larger-text-scale)); }
 
 /* The viewport never adds a second scrollbar: short-window content scrolls

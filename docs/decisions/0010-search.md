@@ -1,6 +1,5 @@
 # 0010 Search
 
-Proposed, awaiting measurements. Keyword search is instant, ignores accents and case, works in every script and
-says why each result matched; exact key and title matches rank first.
-Meaning-based search (0.7) runs a small local model only while the picker is
-open. No cloud.
+Keyword search ignores accents and case across scripts and reports why each
+result matched. Exact citation keys and titles rank first. Search runs locally;
+performance limits are in [0032](0032-release-gates.md).

@@ -86,7 +86,7 @@ export function layoutGeometry() {
     inspector: box(document.querySelector(".inspector")), inspectorScroll: box(document.querySelector(".inspector-body")),
     notices: [...document.querySelectorAll(".ui-notice-line")].map(box),
     alerts: [...document.querySelectorAll('.ui-notice-line [role="alert"]')].map(box),
-    segments: [...document.querySelectorAll(".citation-token")].map(box),
+    tokens: [...document.querySelectorAll(".citation-token")].map(box),
   };
 }
 

@@ -17,7 +17,7 @@ import type { usePickerKeys } from "./usePickerKeys";
 import type { useCitationRows } from "./useCitationRows";
 import type { useRecentReferences } from "./useRecentReferences";
 import type { useOperations } from "./useOperations";
-import type { useProjectBibliography } from "./useProjectBibliography";
+import type { useBibliography } from "./useBibliography";
 import { libraryMessages } from "../../libraryWords";
 
 export function PickerStatusFooter({
@@ -27,7 +27,7 @@ export function PickerStatusFooter({
   /** The highlighted reference's details (⌘Y), when there is one. */
   peek?: (() => void) | null;
   citationLine?: RefObject<CitationLineActions | null>;
-  project: ReturnType<typeof useProjectBibliography>;
+  project: ReturnType<typeof useBibliography>;
   /** The active row of a key output, the one a missing entry can be copied for. */
   highlighted?: SearchResult;
   api: typeof nativeApi;

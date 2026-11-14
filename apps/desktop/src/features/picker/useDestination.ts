@@ -1,11 +1,11 @@
 // The engine's format answer and the picker's explicit format choices.
-// The picker session owns the destination (decision 0035); this hook connects
+// The picker session owns the destination; this hook connects
 // its native calls and says what the person picked.
 import { useLayoutEffect, useRef } from "react";
 import type * as nativeApi from "../../api";
 import type { AppPaste } from "../../api";
 import { listedOutput, type OutputId } from "../../format/outputs";
-import { asksPaste, destinationFormat, destinationReady, projectVersion, sameOutput, shouldAsk, type OutputToken, type ProjectEdit } from "./destination";
+import { asksPaste, destinationFormat, destinationReady, writingVersion, sameOutput, shouldAsk, type OutputToken } from "./destination";
 import { say } from "../../i18n";
 import type { Operation } from "./Notices";
 import type { SessionState } from "./session";
@@ -22,9 +22,9 @@ export function useDestination(session: ReturnType<typeof createSessionControlle
   chooseDefault: (choice: OutputId) => void | Promise<void>;
   report: (operation: Operation, failed?: boolean) => void;
 }) {
-  const { pickerDestination, rememberAppOutput, editWriting, forgetAppOutput } = api;
+  const { pickerDestination, rememberAppOutput, editWriting: saveWriting, forgetAppOutput } = api;
   useLayoutEffect(() => {
-    session.connect({ pickerDestination, rememberAppOutput, editWriting, report, chooseDefault });
+    session.connect({ pickerDestination, rememberAppOutput, editWriting: saveWriting, report, chooseDefault });
     session.dispatch({ type: "destination-reader", present: Boolean(pickerDestination), remembers: Boolean(rememberAppOutput) });
   });
   const d = state.destination;
@@ -51,14 +51,14 @@ export function useDestination(session: ReturnType<typeof createSessionControlle
   };
   /** Activation retires the old intent at its boundary. A read completing in
    * the same generation only supplies the preview a fresh Enter waits for. */
-  const projectChanged = (version: [number, number] | null) => session.dispatch({ type: "project-changed", version });
-  const editProject = editWriting ? (context: string, action: ProjectEdit) => session.editProject(context, action) : undefined;
+  const writingChanged = (version: [number, number] | null) => session.dispatch({ type: "project-changed", version });
+  const editWriting = saveWriting ? session.editWriting : undefined;
   // An app that could not be read may still be a real one, so a pick cannot change the default.
   const pick: FormatPick = app ? "app" : !pickerDestination || destination ? "default" : "paste";
   const canChooseFormat = pick === "default" && held !== null || ready && !saving;
   const choose = (choice: OutputId) => {
-    if (writing && destination?.writing_context && editProject) {
-      void editProject(destination.writing_context, { kind: "output", id: writing.id, output: choice })
+    if (writing && destination?.writing_context && editWriting) {
+      void editWriting(destination.writing_context, { kind: "output", id: writing.id, output: choice })
         .then(() => report("appChoice", false), () => report("appChoice"));
       return;
     }
@@ -76,8 +76,8 @@ export function useDestination(session: ReturnType<typeof createSessionControlle
   const source: FormatSource = held !== null && held !== baseFormat ? pick === "default" ? "default" : saving ? "remembered" : "held"
     : destination?.format.from === "app" || destination?.format.from === "writing" ? "remembered"
     : destination?.format.from === "suggestion" ? "suggested" : "default";
-  const useUsual = writing && destination?.writing_context && editProject
-    ? () => { void editProject(destination.writing_context!, { kind: "select", id: null }).catch(() => report("appChoice")); }
+  const useUsual = writing && destination?.writing_context && editWriting
+    ? () => { void editWriting(destination.writing_context!, { kind: "select", id: null }).catch(() => report("appChoice")); }
     : destination?.app_id && forgetAppOutput ? () => {
       void session.editDestination(() => forgetAppOutput(destination.app_id!, destination.app_identity)).catch(() => report("appChoice"));
     } : undefined;
@@ -87,8 +87,8 @@ export function useDestination(session: ReturnType<typeof createSessionControlle
   return { appId: destination?.app_id ?? null, app, format, ready, saving, canChooseFormat, source, pick, shouldAsk: shouldAsk(remembering), read, choose,
     findOpen: Boolean(ready && destination?.find_open),
     formatLabel: unlisted ? say("citations-unlisted") : undefined,
-    writing, writingContext: destination?.writing_context ?? null, readProblem: d.editProblem ?? d.readProblem ?? (unlisted ? say("writing-unsupported") : null), contextVersion: destination?.context_version ?? null, projectChanged, editProject,
+    writing, writingContext: destination?.writing_context ?? null, readProblem: d.editProblem ?? d.readProblem ?? (unlisted ? say("writing-unsupported") : null), contextVersion: destination?.context_version ?? null, writingChanged, editWriting,
     usualFormat: listedOutput(destination?.usual_format), useUsual,
-    projectVersion: () => projectVersion(current()),
+    writingVersion: () => writingVersion(current()),
     chooseOnce, copyToken, isCurrentCopy, canPaste, askPaste, pasteChoices, choosePaste };
 }
