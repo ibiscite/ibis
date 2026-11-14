@@ -1,0 +1,81 @@
+{
+  "pandoc_version": "pandoc 3.13",
+  "invocation": "pandoc --from=biblatex --to=csljson <input>",
+  "inputs": {
+    "references.bib": {
+      "sha256": "cc82cd9a9e74652ac7ac83bbeaca3536ecb7fb8e0127a52de205ff9f4c834c57",
+      "records": [
+        {
+          "DOI": "10.1000/imaginary-rivers",
+          "author": [
+            {
+              "family": "Vale",
+              "given": "Ada"
+            },
+            {
+              "family": "Rowan",
+              "given": "Eli"
+            }
+          ],
+          "container-title": "Journal of invented geography",
+          "id": "Vale2024",
+          "issued": {
+            "date-parts": [
+              [
+                2024,
+                3,
+                12
+              ]
+            ]
+          },
+          "title": "Mapping imaginary rivers",
+          "type": "article-journal"
+        },
+        {
+          "ISBN": "9780000000002",
+          "author": [
+            {
+              "family": "North",
+              "given": "Mira"
+            }
+          ],
+          "id": "North2021",
+          "issued": {
+            "date-parts": [
+              [
+                2021
+              ]
+            ]
+          },
+          "title": "A synthetic atlas",
+          "type": "book"
+        }
+      ]
+    },
+    "supplement.bib": {
+      "sha256": "b2102ab4f1a52439facef44dc1fbe672e5ece588610ae2fcb006bfbff038777b",
+      "records": [
+        {
+          "DOI": "10.1000/fictional-landscapes",
+          "author": [
+            {
+              "family": "Field",
+              "given": "Owen"
+            }
+          ],
+          "id": "Field2020",
+          "issued": {
+            "date-parts": [
+              [
+                2020,
+                6
+              ]
+            ]
+          },
+          "title": "Notes on fictional landscapes",
+          "type": "book"
+        }
+      ]
+    }
+  }
+}
