@@ -12,8 +12,8 @@ use super::state::Library;
 use super::status::{LibraryProblem, LibraryStatus};
 use super::tasks::{choose_library_file, current_status, reload_library_file, start_open, use_zotero_library};
 use crate::project::ProjectBibliography;
-use crate::setup::ZoteroPresence;
-use ibis_engine::{Cancellation, discovery, health::InspectionPolicy};
+use ibis_engine::discovery::{self, ZoteroPresence};
+use ibis_engine::{Cancellation, ZoteroGroup, health::InspectionPolicy};
 
 /// Choose a library with the system file dialog. The interface never passes
 /// file paths; the result arrives as the `library:changed` event.
@@ -61,13 +61,6 @@ pub(crate) fn use_zotero_libraries(app: AppHandle, libraries: Vec<ZoteroLibrary>
     Ok(())
 }
 
-/// A Zotero group library the user can choose.
-#[derive(Clone, Serialize, schemars::JsonSchema)]
-pub(crate) struct ZoteroGroup {
-    pub(crate) id: u64,
-    pub(crate) name: String,
-}
-
 /// The group libraries Zotero knows: asked of Zotero while it runs, or as
 /// listed by the closed read of the open library. Starts no read of its own.
 #[tauri::command]
@@ -80,12 +73,6 @@ pub(crate) async fn zotero_groups(library: State<'_, Mutex<Library>>) -> Result<
     })
     .await
     .map_err(|_| super::CommandError::NotPrepared)?
-    .map(|groups| {
-        groups
-            .into_iter()
-            .map(|g| ZoteroGroup { id: g.id, name: g.name })
-            .collect()
-    })
     .map_err(super::CommandError::from)
 }
 
@@ -146,7 +133,6 @@ pub(crate) async fn check_zotero_sharing(app: AppHandle) -> Result<ZoteroPresenc
     })
     .await
     .map_err(|_| super::CommandError::NotPrepared)?
-    .map(ZoteroPresence::from)
     .map_err(super::CommandError::from)?;
     let problem = app
         .state::<Mutex<Library>>()

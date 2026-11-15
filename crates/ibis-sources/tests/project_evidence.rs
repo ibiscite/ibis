@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 use ibis_core::contract::*;
 use ibis_sources::project::{KeyCheck, ProjectRead};
 use serde_json::json;

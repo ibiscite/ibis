@@ -1,5 +1,5 @@
 //! Invented inputs, checked at the boundary shared by preview and paste (#1519).
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 
 use ibis_core::contract::*;
 use ibis_csl::Formatter;

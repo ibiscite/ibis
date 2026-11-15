@@ -12,7 +12,9 @@ icons. Each came from a rule, not from one screen, so the rules change:
    trailing edge. A band has a lead column only when something can stand in it;
    headings, notices and status have none and start on the leading edge, where
    a tile's plate starts. Every glyph in the lead column is 20 px. The last ink
-   of a band ends on the trailing edge (`--cap-end` for a key cap's fill).
+   of a band ends on the trailing edge; a band's last control ends its plate on
+   the inset (amended by the maintainer in #1923, 2026-11-14: More's key cap
+   had moved off the inset with `--cap-end`, which is gone).
 2. **The bird** fills the lead column (`--mark-search`), so its ink matches the
    query's line height.
 3. **No clear button.** Esc clears, as in Spotlight and Raycast; every search

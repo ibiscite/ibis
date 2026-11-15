@@ -1,0 +1,51 @@
+name: CodeQL
+
+# Security scanning runs on what lands, not on every pull request push:
+# five analyses per push queued every other check behind them (maintainer,
+# 2026-11-10). Main is scanned on each merge and weekly, so every release,
+# which is tagged from main, has been scanned.
+on:
+  push:
+    branches: [main]
+    # A release tag gets its own scan, in its own concurrency group, so a newer
+    # merge cancelling main's scan never leaves a shipped commit unscanned.
+    tags: ["v*"]
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [actions, c-cpp, javascript-typescript, python, rust]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Initialise CodeQL
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+
+      - name: Analyse
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: /language:${{ matrix.language }}

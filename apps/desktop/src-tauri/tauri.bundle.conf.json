@@ -7,14 +7,6 @@
       "nsis": {
         "installMode": "currentUser",
         "installerHooks": "packaging/path.nsh"
-      },
-      "wix": {
-        "fragmentPaths": [
-          "packaging/path.wxs"
-        ],
-        "componentRefs": [
-          "IbisUserPath"
-        ]
       }
     },
     "resources": [

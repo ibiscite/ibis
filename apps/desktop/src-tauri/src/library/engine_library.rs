@@ -396,9 +396,7 @@ impl FileLibrary {
             revision,
             results,
             interpretation: reply.shorthand.map(Into::into),
-            list: reply
-                .list
-                .map(|list| super::search::PastedList { missing: list.missing }),
+            list: reply.list,
             unfiltered,
         })
     }

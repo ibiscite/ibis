@@ -7,6 +7,7 @@ import { Group, Row, Section } from "../ui/Layout";
 import type { SettingsApi } from "./api";
 import { rowDetails } from "./rows";
 import { Status } from "../ui/Status";
+import { listening } from "../nativeEvents";
 
 /** App choices and writings come from the engine's settings snapshot. A late
  * read or forget never replaces a more recent snapshot or a reopened page. */
@@ -32,10 +33,9 @@ export function useFormatSettings(api: SettingsApi) {
       }, (reason: unknown) => { if (alive && ticket === request.current) setProblem(reason ?? new Error("settings unread")); });
     };
     refresh.current = read;
-    const events = api.onSettingsChanged(read);
-    void events.then(read, read);
+    const stop = listening(api.onSettingsChanged, read, { ready: read, failed: read });
     window.addEventListener("focus", read);
-    return () => { alive = false; openRequest.current += 1; refresh.current = null; request.current += 1; window.removeEventListener("focus", read); void events.then((stop) => stop(), () => {}); };
+    return () => { alive = false; openRequest.current += 1; refresh.current = null; request.current += 1; window.removeEventListener("focus", read); stop(); };
   }, [api]);
   const forget = (id: string) => {
     if (!api.forgetAppFormat || !api.formatSettings || busy) return;

@@ -1208,7 +1208,7 @@ export type WritingsView = {
 	writings: WritingView[];
 };
 
-/** A Zotero group library the user can choose. */
+/** A Zotero group library by its public ID and a name safe to show. */
 export type ZoteroGroup = {
 	id: number;
 	name: string;

@@ -53,7 +53,7 @@ console.log(readFileSync(args.at(-1), "utf8").match(/<key>CFBundleExecutable<\/k
   assert.deepEqual(f.started(), [f.desktop]);
 });
 
-test("Windows NSIS and MSI smoke both start ibis-desktop.exe with a CLI sidecar present", { skip }, (t) => {
+test("Windows NSIS smoke starts ibis-desktop.exe with a CLI sidecar present", { skip }, (t) => {
   const f = fixture(t, "Windows");
   const populate = String.raw`for (const name of ["ibis.exe", "ibis-desktop.exe"]) fs.writeFileSync(path.join(dir, name), "invented executable");
 fs.writeFileSync(path.join(dir, "uninstall.exe"), "#!/usr/bin/env node\nrequire('node:fs').rmSync(require('node:path').join(__dirname, 'ibis-desktop.exe'));\n");
@@ -64,10 +64,6 @@ const command = process.argv.at(-1);
 if (command.includes("Get-ChildItem")) {
   if (fs.existsSync(path.join(process.env.FIXTURE, "installed-nsis"))) console.log("invented-key");
 } else if (command.includes("Get-ItemProperty")) console.log(path.join(dir, "uninstall.exe"));
-else if (process.env.MODE === "i") {
-  ${populate}
-  fs.writeFileSync(process.env.LOG, "Property(S): INSTALLDIR = " + dir + "\\n");
-} else if (process.env.MODE === "x") fs.rmSync(path.join(dir, "ibis-desktop.exe"));
 else process.exit(2);`);
   f.stub("cygpath", "console.log(process.argv.at(-1));");
   // Synthetic installers only create/remove fixture files; no installer is built or run.
@@ -76,8 +72,7 @@ const fs = require("node:fs"), path = require("node:path");
 const dir = path.join(process.env.FIXTURE, "installed");
 ${populate}
 fs.writeFileSync(path.join(process.env.FIXTURE, "installed-nsis"), "yes");`, { mode: 0o755 });
-  writeFileSync(join(f.dir, "dist/Ibis-Windows.msi"), "invented MSI");
   const result = f.run();
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.deepEqual(f.started(), [f.desktop, f.desktop]);
+  assert.deepEqual(f.started(), [f.desktop]);
 });

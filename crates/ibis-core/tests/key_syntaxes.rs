@@ -1,6 +1,6 @@
 //! Org, MyST, MultiMarkdown, AsciiDoc, ConTeXt, Jupyter, Jekyll Scholar and Cite as You
 //! Write JSON render from the shared request, with typed losses (#1207).
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 use ibis_core::contract::*;
 use ibis_core::syntax;
 

@@ -1,5 +1,5 @@
 //! Invented source-to-paste regressions for #1530.
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 use ibis_core::contract::*;
 use ibis_csl::Formatter;
 use ibis_sources::zotero::{ZoteroItem, map_item};

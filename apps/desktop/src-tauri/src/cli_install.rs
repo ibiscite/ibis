@@ -120,6 +120,7 @@ pub(crate) fn copy_cli_profile(app: tauri::AppHandle) -> Result<(), String> {
     crate::copy::write_plain(&app, PROFILE_LINE)
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
+#[cfg(unix)]
 #[path = "cli_install_tests.rs"]
 mod tests;

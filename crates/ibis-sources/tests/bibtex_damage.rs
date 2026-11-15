@@ -1,6 +1,7 @@
 //! Damaged, malformed or hostile BibTeX keeps every good record, never
 //! invents metadata, and reports each problem on the line it came from.
 //! Synthetic data only.
+#![cfg(test)]
 
 #[path = "support/bib.rs"]
 mod bib;

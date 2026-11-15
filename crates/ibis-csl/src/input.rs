@@ -783,7 +783,6 @@ fn placeholder(index: usize, kind: &str, runs: &[TextRun]) -> String {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use CitationForm::{AuthorOnly, Full, Narrative, Normal, YearOnly};

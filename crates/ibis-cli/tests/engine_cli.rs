@@ -1,3 +1,4 @@
+#![cfg(test)]
 use serde_json::{Value, json};
 use std::process::Command;
 fn ibis(args: &[&str]) -> std::process::Output {

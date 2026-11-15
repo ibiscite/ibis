@@ -2,6 +2,7 @@ import type * as nativeApi from "../../api";
 // The bibliography as the picker shows it. Native code owns the file and
 // its generation; a row or action counts only for the generation it came from.
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNativeEvent } from "../../nativeEvents";
 import type { EntryCopy, ProjectStatus, SearchResult } from "../../api";
 import type { useOperations } from "./useOperations";
 import { type ProjectKeyState } from "../../bindings";
@@ -36,16 +37,11 @@ export function useBibliography(api: typeof nativeApi, report: ReturnType<typeof
   }, [projectStatus, report]);
   useEffect(() => {
     read();
-    // A read that finished before this listener existed sent its event to nobody.
-    const changed = onProjectChanged?.(read);
-    void changed?.then(read);
-    const notSaved = onProjectNotSaved?.(() => report("project"));
-    return () => {
-      reading.current += 1;
-      void changed?.then((stop) => stop());
-      void notSaved?.then((stop) => stop());
-    };
-  }, [read, onProjectChanged, onProjectNotSaved, report]);
+    return () => { reading.current += 1; };
+  }, [read]);
+  // A read that finished before this listener existed sent its event to nobody.
+  useNativeEvent(onProjectChanged, read, { ready: read });
+  useNativeEvent(onProjectNotSaved, () => report("project"));
 
   const clearNotice = useCallback(() => setNotice(null), []);
   const copyEntry = useCallback((row: SearchResult) => {

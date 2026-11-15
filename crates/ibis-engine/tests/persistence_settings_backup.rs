@@ -1,5 +1,6 @@
 //! Taking settings to another computer (#1561): portable paths, shortcuts per
 //! system, and backups that are checked whole before anything changes.
+#![cfg(test)]
 #[path = "support/settings.rs"]
 mod fixture;
 use std::fs;

@@ -4,9 +4,11 @@ import { isolate, problemText, say } from "../../i18n";
 import { Button } from "../../ui/Button";
 import { TextField } from "../../ui/TextField";
 import { Progress } from "../../ui/Progress";
+import { useDelayed } from "../../ui/timers";
 import { Buttons, ChoiceRow, Group, Note, Row, Section } from "../../ui/Layout";
 import { Sheet, SheetStatus, type SheetMemory } from "../../ui/Sheet";
 import { listedOutput, outputName, type OutputId } from "../../format/outputs";
+import { useNativeEvent } from "../../nativeEvents";
 
 export type WritingsApi = {
   writings: () => Promise<WritingsView>;
@@ -32,7 +34,6 @@ export function WritingsDialog({ api, format, onClose, draft }: { api: WritingsA
   const changeForm = (next: Form | null) => { if (draft) draft.current.form = next; setForm(next); };
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [busyVisible, setBusyVisible] = useState(false);
   const reads = useRef(0);
   const mutation = useRef<object | null>(null);
   const alive = useRef(true);
@@ -44,11 +45,7 @@ export function WritingsDialog({ api, format, onClose, draft }: { api: WritingsA
     mutation.current = null;
     onClose();
   };
-  useEffect(() => {
-    if (!busy) { setBusyVisible(false); return; }
-    const timer = window.setTimeout(() => setBusyVisible(true), 400);
-    return () => window.clearTimeout(timer);
-  }, [busy]);
+  const busyVisible = useDelayed(busy, 400);
 
   const read = useCallback(() => {
     if (mutation.current !== null) return;
@@ -60,18 +57,15 @@ export function WritingsDialog({ api, format, onClose, draft }: { api: WritingsA
   useEffect(() => {
     alive.current = true;
     read();
-    const listening = onProjectChanged?.(read);
-    const writingsChanged = onWritingsChanged?.(read);
-    // A bibliography choice may finish before subscription setup completes.
-    void listening?.then(read);
     return () => {
       alive.current = false;
       reads.current += 1;
       mutation.current = null;
-      void listening?.then((stop) => stop());
-      void writingsChanged?.then((stop) => stop());
     };
-  }, [read, onProjectChanged, onWritingsChanged]);
+  }, [read]);
+  // A bibliography choice may finish before subscription setup completes.
+  useNativeEvent(onProjectChanged, read, { ready: read });
+  useNativeEvent(onWritingsChanged, read);
 
   const edit = (change: WritingEdit, leave = false) => {
     if (mutation.current !== null || !view) return;

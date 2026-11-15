@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used)]
 use ibis_core::contract::*;
 use ibis_engine::{Cancellation, Engine, Method};
 use serde_json::json;

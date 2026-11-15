@@ -1,6 +1,7 @@
-import { Children, useEffect, useRef, type ReactNode } from "react";
+import { Children, type ReactNode } from "react";
 import { say } from "../i18n";
 import { useFrameSlot } from "./Frame";
+import { useTimeout } from "./timers";
 import "./NoticeSlot.css";
 import { Status } from "./Status";
 
@@ -16,14 +17,7 @@ export function NoticeSlot({ children }: { children: ReactNode }) {
 export function QuietNotice({ children, passive = false, role = "status", onExpire, paused = false }: {
   children: ReactNode; passive?: boolean; role?: "status" | "alert"; onExpire?: () => void; paused?: boolean;
 }) {
-  const expire = useRef(onExpire);
-  expire.current = onExpire;
-  const expires = Boolean(onExpire);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a new remark starts its own time.
-  useEffect(() => {
-    if (!expires || paused) return;
-    const timer = window.setTimeout(() => expire.current?.(), 8000);
-    return () => window.clearTimeout(timer);
-  }, [children, expires, paused]);
+  // A new remark starts its own time.
+  useTimeout(() => onExpire?.(), onExpire && !paused ? 8000 : null, children);
   return <div className="notice-band"><Status as="span" role={passive ? null : role}>{children}</Status></div>;
 }

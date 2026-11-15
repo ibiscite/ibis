@@ -1,5 +1,6 @@
 import type * as nativeApi from "../../api";
-import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, type RefObject } from "react";
+import { useNativeEvent } from "../../nativeEvents";
 
 /** What the Mac asks of the picker: text from Search with Ibis, collected once
  * so a launch cannot lose it, and the trackpad's tick as a citation grows. */
@@ -15,24 +16,21 @@ export function useNativeRequests(api: typeof nativeApi, query: string, setQuery
     incoming.current = null;
     input.current?.select();
   });
-  useEffect(() => {
-    let current = true, newest = 0;
-    const take = () => {
-      const request = ++newest, asked = typed.current;
-      void api.takeSearchRequest?.().then((text) => {
-        // Only the newest reply counts, and never over what was typed meanwhile.
-        if (!current || !text || request !== newest || typed.current !== asked) return;
-        incoming.current = text;
-        latest.current(text);
-      }, () => undefined);
-    };
-    take();
-    const subscription = api.onSearchRequested?.(take);
-    return () => {
-      current = false;
-      void subscription?.then((unlisten) => unlisten());
-    };
+  const newest = useRef(0);
+  const take = useCallback(() => {
+    const request = ++newest.current, asked = typed.current;
+    void api.takeSearchRequest?.().then((text) => {
+      // Only the newest reply counts, and never over what was typed meanwhile.
+      if (!text || request !== newest.current || typed.current !== asked) return;
+      incoming.current = text;
+      latest.current(text);
+    }, () => undefined);
   }, [api]);
+  useEffect(() => {
+    take();
+    return () => { newest.current += 1; };
+  }, [take]);
+  useNativeEvent(api.onSearchRequested, take);
   const previous = useRef(shelf);
   useEffect(() => {
     if (shelf > previous.current) void api.alignmentTick?.().catch(() => undefined);

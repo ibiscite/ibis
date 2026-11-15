@@ -1,5 +1,5 @@
 //! Sharing uses the catalogue and the same privacy boundary for every format.
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 use ibis_core::{contract::*, syntax};
 use serde_json::{Value, json};
 

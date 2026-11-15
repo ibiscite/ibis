@@ -1,6 +1,6 @@
 //! One list of outputs (#1260): each has one id and one name, says what it
 //! writes, and lists exactly the forms the engine writes for it.
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 use ibis_core::contract::*;
 use ibis_engine::{Cancellation, Engine, Method, outputs};
 use serde_json::json;

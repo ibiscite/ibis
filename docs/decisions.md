@@ -43,7 +43,7 @@ the anchor older links use.
 [0031](decisions/0031-what-ibis-remembers-per-app.md): `apps.json`, recent citations and app-ID evidence. Format and writing rules are replaced by 0042.
 
 ## 0019 Updates
-[0019](decisions/0019-updates.md): Tauri's updater, opt-in, signed; offers never take Enter; release naming.
+[0019](decisions/0019-updates.md): Tauri's updater, opt-in, signed; offers never take Enter; release naming; one Windows package.
 
 ## 0021 Interface foundation
 [0021](decisions/0021-interface-foundation.md): React Aria only inside `ui/`, hand-written tokens, Ibis's own icon set.
@@ -109,7 +109,7 @@ the anchor older links use.
 [0048](decisions/0048-nix-install.md): the CLI builds from source on Linux and macOS, the desktop on Linux; independent CI reports hash repairs for agents.
 
 ## 0049 Local machines gate merges
-[0049](decisions/0049-local-gate.md): parallel local checks authorize the exact head; GitHub confirms main after merge, and release qualification stays intact.
+[0049](decisions/0049-local-gate.md): superseded; hosted CI's fast Ubuntu tier is the required merge check, without a merge queue, and macOS and Windows confirm on main and nightly.
 
 ## 0050 The menu bar menu
 [0050](decisions/0050-menu-bar-menu.md): one native menu on every system, with one-click library switching, Copy Again for the frontmost app, a spoken state and text drops; no custom card.

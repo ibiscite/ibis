@@ -178,7 +178,6 @@ fn install_interrupt(runtime: &Runtime, control: &Control) {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use std::sync::{Arc, atomic::AtomicBool};

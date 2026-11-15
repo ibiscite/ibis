@@ -562,7 +562,6 @@ pub(crate) fn preview_evidence(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use ibis_core::contract::ItemRef;

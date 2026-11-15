@@ -1,5 +1,5 @@
-#![allow(clippy::unwrap_used)]
 //! Deterministic, search-only kana readings, exercised through SnapshotIndex.
+#![cfg(test)]
 use std::sync::Arc;
 
 use ibis_core::{

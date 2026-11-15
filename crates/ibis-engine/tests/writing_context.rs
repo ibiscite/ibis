@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used)]
 use ibis_engine::settings::{
     Settings,
     writings::{self, Writing},

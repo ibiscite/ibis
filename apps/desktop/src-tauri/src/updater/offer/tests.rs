@@ -418,17 +418,7 @@ fn answer(app: &AppHandle<tauri::test::MockRuntime>, accepted: bool) -> String {
 
 #[test]
 fn automatic_update_while_hidden_signals_availability_without_showing_or_holding_the_check() -> tauri::Result<()> {
-    use tauri::Listener;
-
     let app = app(true)?;
-    let events = Arc::new(Mutex::new(Vec::<bool>::new()));
-    let heard = Arc::clone(&events);
-    app.listen_any("update:available", move |event| {
-        heard
-            .lock()
-            .unwrap_or_else(|e| panic!("{e}"))
-            .push(event.payload() == "true");
-    });
     check_result(
         app.handle(),
         false,
@@ -450,7 +440,6 @@ fn automatic_update_while_hidden_signals_availability_without_showing_or_holding
         *picker.menu_labels.lock().unwrap_or_else(|e| panic!("{e}")),
         ["Update available…"]
     );
-    assert_eq!(*events.lock().unwrap_or_else(|e| panic!("{e}")), [true]);
 
     // Neither hidden+stale focus nor visible+unfocused starts a refresh.
     picker.focused.store(true, Ordering::SeqCst);

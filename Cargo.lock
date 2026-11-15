@@ -2118,6 +2118,7 @@ dependencies = [
  "objc2-foundation",
  "raw-window-handle",
  "schemars 1.2.3",
+ "semver",
  "serde",
  "serde_json",
  "smappservice-rs",

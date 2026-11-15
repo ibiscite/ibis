@@ -92,12 +92,13 @@ test("footer geometry catches a short selector, status off the leading edge and 
     <button type="button" className="library-status-trigger" data-band="leading"><span className="library-status">thesis.bib</span></button>
     <span className="more"><button type="button" className="ui-button more-button">More</button></span>
   </footer><div className="menu-popover"><div id="library-menu" /></div></main>);
-  let height = 24, statusX = 20, menuX = 8, menuBottom = 442;
+  let height = 24, statusX = 20, menuX = 8, menuBottom = 442, moreEnd = 712;
   const boxes = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
     if (this.matches(".library-status-trigger")) return new DOMRect(8, 448, 210, height);
-    if (this.matches(".more .ui-button")) return new DOMRect(640, 448, 72, 24);
+    if (this.matches(".more .ui-button")) return new DOMRect(moreEnd - 72, 448, 72, 24);
     if (this.matches(".library-status")) return new DOMRect(statusX, 448, 190, 24);
     if (this.matches(".menu-popover")) return new DOMRect(menuX, 200, 240, menuBottom - 200);
+    if (this.style.insetInlineEnd === "var(--inset)") return new DOMRect(680, 0, 32, 1);
     if (this.style.insetInlineStart === "var(--inset)") return new DOMRect(8, 0, 32, 1);
     if (this.style.insetInlineStart.includes("--title-start")) return new DOMRect(64, 0, 32, 1);
     return new DOMRect(20, 0, 32, 32);
@@ -109,6 +110,10 @@ test("footer geometry catches a short selector, status off the leading edge and 
     expect(failures()).toContainEqual(expect.stringContaining("library selector 20.0px tall"));
     height = 24; statusX = 24;
     expect(failures()).toContainEqual(expect.stringContaining("starts 24.0, leading edge 20.0"));
+    // More is the band's last control: its plate ends on the inset, as the rows' fills do (#1923).
+    statusX = 20; moreEnd = 702;
+    expect(failures()).toContainEqual("[C3] button.ui-button.more-button: plate ends 702.0, window inset 712.0");
+    moreEnd = 712;
     statusX = 20; menuX = 20; menuBottom = 460;
     expect(failures()).toContainEqual(expect.stringContaining("library menu starts 20.0, selector 8.0"));
     expect(failures()).toContainEqual(expect.stringContaining("must leave a gap above selector"));

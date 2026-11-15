@@ -1,5 +1,4 @@
 //! The same backup operation serves the command line and native Settings.
-#![allow(clippy::unwrap_used)]
 
 #[path = "support/settings.rs"]
 mod fixture;

@@ -648,7 +648,8 @@ fn read_open_file(file: std::fs::File) -> Result<String, SourceError> {
     io::read_if_downloaded(io::needs_download(&metadata), || read_text(file, metadata.len()))
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
+#[cfg(unix)]
 #[path = "../tests/support/subprocess_watchdog.rs"]
 mod subprocess_watchdog;
 

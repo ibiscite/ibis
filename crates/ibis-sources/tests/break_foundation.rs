@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_used)]
-
 #[test]
 fn csl_rejected_payloads_still_quarantine_their_identities() {
     let dir = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();

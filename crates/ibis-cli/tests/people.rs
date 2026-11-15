@@ -1,6 +1,6 @@
-#![allow(clippy::unwrap_used)]
 //! What a person reads in a terminal: each message must be true, and each next
 //! step must work when followed. Runs the program with an empty home folder.
+#![cfg(test)]
 use std::path::{Path, PathBuf};
 use std::process::Command;
 

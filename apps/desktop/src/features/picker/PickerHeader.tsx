@@ -1,5 +1,4 @@
 import type React from "react";
-import type { MouseEvent } from "react";
 import { IbisMark } from "../../ui/IbisMark";
 import { SearchBar, SearchField } from "../../ui/SearchBar";
 import { say } from "../../i18n";
@@ -44,18 +43,12 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
   /** Whether formatted citation styles can be used now. */
   styles: boolean;
   onFormatChange: (choice: OutputId) => void;
-  /** Double-clicking the bar's empty area returns Ibis to its place. */
+  /** Double-clicking the bird or the bar's empty room returns Ibis to its place. */
   onResetPosition?: () => void;
 }) {
-  // The drag script on the document would zoom the window instead.
-  const emptyArea = (event: MouseEvent<HTMLElement>) => {
-    const twice = event.detail === 2 && event.target === event.currentTarget;
-    if (twice) event.nativeEvent.stopImmediatePropagation();
-    return twice;
-  };
   return (
     <SearchBar hidden={hidden} title={say("picker-drag-search-bar")} mark={<IbisMark className="search-mark" size="search" />}
-      onMouseDown={emptyArea} onMouseUp={(event) => { if (emptyArea(event)) onResetPosition?.(); }}>
+      onResetPosition={onResetPosition}>
       <SearchField
         id="search"
         label={say("picker-search-label")}

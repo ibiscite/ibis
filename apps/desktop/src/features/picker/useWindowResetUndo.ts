@@ -1,6 +1,7 @@
 import type * as nativeApi from "../../api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { say } from "../../i18n";
+import { listening } from "../../nativeEvents";
 
 /** The native geometry owner owns the snapshot. This hook owns only which
  * immutable ticket is visible; old reads and actions cannot consume a new one. */
@@ -18,22 +19,22 @@ export function useWindowResetUndo(api: typeof nativeApi) {
   useEffect(() => {
     if (!onWindowReset || !readWindowPositionUndo) return;
     let mounted = true, events = 0;
-    const subscription = onWindowReset((state) => {
+    const stop = listening(onWindowReset, (state) => {
       events += 1;
-      if (!mounted || state.revision < latest.current) return;
+      if (state.revision < latest.current) return;
       latest.current = state.revision;
       if (state.undo === null && current.current !== null) retired.current = Math.max(retired.current, current.current);
       publish(state.undo);
-    });
-    void subscription.then(async () => {
+    }, { ready: () => {
       const before = events;
-      const value = await readWindowPositionUndo();
-      if (mounted && before === events && (value === null || value >= latest.current)) {
-        if (value !== null) latest.current = value;
-        publish(value);
-      }
-    }).catch(() => {});
-    return () => { mounted = false; void subscription.then((stop) => stop()).catch(() => {}); };
+      void readWindowPositionUndo().then((value) => {
+        if (mounted && before === events && (value === null || value >= latest.current)) {
+          if (value !== null) latest.current = value;
+          publish(value);
+        }
+      }).catch(() => {});
+    } });
+    return () => { mounted = false; stop(); };
   }, [onWindowReset, readWindowPositionUndo, publish]);
   const expire = useCallback((value: number | null) => {
     if (value === null || current.current !== value) return;

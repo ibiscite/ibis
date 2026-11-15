@@ -1,6 +1,6 @@
 //! With no library named, commands read the libraries chosen in the Ibis app,
 //! read-only, and stop with the reason when those settings cannot be used.
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 
 use std::io::Write;
 use std::path::{Path, PathBuf};

@@ -12,6 +12,7 @@ import type { ShelfCopied } from "./session";
 import { composing } from "../../composition";
 import { Button } from "../../ui/Button";
 import { CitationToken } from "../../ui/CitationToken";
+import { useDelayed } from "../../ui/timers";
 import { beak } from "../../brand";
 import { CitationInspector } from "./CitationInspector";
 import type { CitationInspectorState, InspectorPanel } from "./useCitationInspector";
@@ -145,15 +146,10 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
   useLayoutEffect(() => { if (ready) retained.current = { presentation, ids: currentIds, value: ready }; }, [ready, presentation, referenceIds]);
   const meaning = choiceKey(references);
   const pendingOwner = useMemo(() => ({ meaning, keepOrder, style, keys, presentation }), [meaning, keepOrder, style, keys, presentation]);
-  const [expired, setExpired] = useState<object | null>(null);
   // While the next preview is made, hold the last citation for 300 ms.
   const waiting = shown === null;
-  useEffect(() => {
-    if (!waiting) { setExpired(null); return; }
-    const timer = window.setTimeout(() => setExpired(pendingOwner), 300);
-    return () => window.clearTimeout(timer);
-  }, [waiting, pendingOwner]);
-  const previous = waiting && expired !== pendingOwner && retained.current?.presentation === presentation ? retained.current?.value ?? null : null;
+  const expired = useDelayed(waiting, 300, pendingOwner);
+  const previous = waiting && !expired && retained.current?.presentation === presentation ? retained.current?.value ?? null : null;
   // The same references in another order keep their tokens while the next preview is
   // made, each found by identity, so a moved token keeps its place and its focus.
   const retainedIds = retained.current?.ids ?? [];

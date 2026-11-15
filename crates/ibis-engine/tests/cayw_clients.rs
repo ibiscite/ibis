@@ -1,5 +1,6 @@
 //! Requests recorded from real Cite as You Write clients reach the picker with
 //! the output they asked for (#42; fixtures/cayw/README.md).
+#![cfg(test)]
 use ibis_core::contract::{CitationForm, KeySyntax, OutputSpec};
 use ibis_engine::cayw::{self, CaywRequest};
 use serde_json::Value;

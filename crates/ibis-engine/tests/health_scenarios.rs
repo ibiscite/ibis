@@ -1,5 +1,4 @@
 //! Health is an engine decision; clients supply native selection facts only.
-#![allow(clippy::unwrap_used)]
 use ibis_core::contract::{ErrorCode, ExitCode, LibraryId, LibraryObject};
 use ibis_engine::{
     Cancellation, Engine, Method,

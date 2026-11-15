@@ -1,6 +1,6 @@
 mod app_commands;
 
-fn main() {
+fn main() -> Result<(), String> {
     // Build metadata only; never consult a checkout or the network.
     let date = std::process::Command::new("date")
         .args(["-u", "+%Y-%m-%d"])
@@ -15,5 +15,5 @@ fn main() {
         tauri_build::Attributes::new()
             .app_manifest(tauri_build::AppManifest::new().commands(app_commands::APP_COMMANDS)),
     )
-    .unwrap_or_else(|e| panic!("cannot build desktop command permissions: {e}"));
+    .map_err(|e| format!("cannot build desktop command permissions: {e}"))
 }

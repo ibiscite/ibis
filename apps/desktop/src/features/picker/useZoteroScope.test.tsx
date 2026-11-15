@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import type { LibraryStatus, ZoteroLibrary } from "../../api";
 import { useZoteroScope } from "./useZoteroScope";
+import { deferred } from "../../testing/deferred";
 
 type Options = Parameters<typeof useZoteroScope>[0];
 
@@ -10,13 +11,7 @@ function library(zotero_libraries: ZoteroLibrary[], source_generation = "1", zot
     zotero, zotero_libraries, snapshot_zotero: true, source_counts: {}, warnings: 0, error: null } as unknown as LibraryStatus;
 }
 
-function deferred() {
-  let resolve!: () => void, reject!: (error: unknown) => void;
-  const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
-  return { promise, resolve, reject };
-}
-
-function setup(calls: ReturnType<typeof deferred>[]) {
+function setup(calls: ReturnType<typeof deferred<void>>[]) {
   const report = vi.fn();
   const perform = vi.fn(async (operation: string, action: () => Promise<unknown>, isCurrent?: () => boolean) => {
     let failed = false;

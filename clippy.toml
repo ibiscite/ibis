@@ -1,0 +1,7 @@
+# Tests may unwrap, expect and panic; production code may not (Cargo.toml lints).
+# Clippy reads only the nearest clippy.toml: keep crate-level files in step.
+# Integration-test files whose helpers sit outside #[test] functions start
+# with `#![cfg(test)]`, which Clippy reads as test code.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true

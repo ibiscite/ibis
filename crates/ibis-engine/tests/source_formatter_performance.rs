@@ -1,5 +1,4 @@
 #![cfg(not(debug_assertions))]
-#![allow(clippy::unwrap_used)]
 use ibis_core::contract::*;
 use ibis_engine::{Cancellation, Engine, Method, request::KeyCitationRequest};
 use serde_json::json;

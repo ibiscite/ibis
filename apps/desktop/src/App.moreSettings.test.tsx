@@ -82,7 +82,7 @@ test("Settings owns automatic checks, follows saved events, and Check now explic
 test("a hidden picker ignores update availability without showing, checking or surfacing Settings preferences", async () => {
   const calls = backend({ "plugin:window|is_visible": () => false, update_available: () => true });
   await act(async () => { render(<App />); });
-  await act(async () => { await emit("update:available", true); await emit("update:automatic", true); });
+  await act(async () => { await emit("update:automatic", true); });
   expect(document.documentElement.dataset.pickerHidden).toBe("");
   fireEvent.click(screen.getByRole("button", { name: /^More/ }));
   await screen.findByRole("dialog", { name: "Actions" });

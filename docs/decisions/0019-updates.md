@@ -15,3 +15,7 @@ Numbered releases use `vX.Y.Z`, the title “Ibis X.Y.Z” and GitHub's Latest m
 on the highest version. Preview status before 1.0 is stated in the notes and
 website. “Ibis Nightly” uses the rolling `nightly` tag; “Ibis update feed” uses
 `stable`. Both are prereleases and never Latest.
+
+Windows ships one package, the per-user NSIS `Ibis-Windows-setup.exe`, which
+also carries Windows updates. The MSI was dropped (maintainer, 2026-11-14);
+Nightly never had one, since Windows Installer versions cannot carry “nightly”.

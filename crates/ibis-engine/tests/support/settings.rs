@@ -1,3 +1,4 @@
+#![cfg(test)]
 use ibis_engine::settings::{self, Settings, SettingsError};
 use std::path::{Path, PathBuf};
 

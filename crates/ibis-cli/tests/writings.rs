@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 use serde_json::{Value, json};
 use std::path::PathBuf;
 use std::process::Command;

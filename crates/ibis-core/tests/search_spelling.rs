@@ -1,6 +1,6 @@
-#![allow(clippy::unwrap_used)]
 //! Other spellings (Mueller for Müller, beta for β) and the closest matches
 //! given when nothing matches every term.
+#![cfg(test)]
 use std::sync::Arc;
 
 use ibis_core::{

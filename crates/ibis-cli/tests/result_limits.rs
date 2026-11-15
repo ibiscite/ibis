@@ -1,5 +1,5 @@
 //! CLI and stdio share one serialized engine result cap, including exact boundaries.
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 use ibis_core::contract::*;
 use ibis_engine::{Cancellation, Engine, Method, protocol};
 use serde_json::{Value, json};
