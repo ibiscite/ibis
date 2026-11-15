@@ -16,7 +16,8 @@ use std::io::{Read, Write};
 
 /// The most one stream may inflate to: page content, object and font streams.
 const MAX_STREAM_BYTES: usize = 64 * 1024 * 1024;
-/// Live Rust allocation budget, backed by OS limits where supported.
+/// Address space on Linux, a backstop for a stream bomb.
+#[cfg(target_os = "linux")]
 const MAX_MEMORY_BYTES: u64 = 3 * 1024 * 1024 * 1024;
 /// Processor seconds, a backstop behind the parent's ten-second deadline.
 #[cfg(unix)]
@@ -29,21 +30,13 @@ const MAX_LABEL_BYTES: usize = 1024 * 1024;
 // Decimal u64, Roman (up to 16 thousands) and alphabetic suffixes all fit.
 const MAX_NUMBER_BYTES: usize = 32;
 
-// SAFETY: the allocator delegates to System, with matching layouts and a
-// process-wide atomic byte counter. The budget is enabled only in the child.
-#[allow(unsafe_code)]
-#[path = "pdf_text/heap_limit.rs"]
-mod heap_limit;
-
-#[cfg(windows)]
-#[allow(unsafe_code)]
-#[path = "pdf_text/windows_limits.rs"]
-mod windows_limits;
-
 /// The child process itself: bounded first, then [`child`] over its own
 /// standard input and output.
 pub fn run_child(arguments: &[OsString]) -> u8 {
-    let Ok(_limits) = limit_resources() else { return 1 };
+    #[cfg(unix)]
+    if limit_resources().is_err() {
+        return 1;
+    }
     child(arguments, std::io::stdin().lock(), std::io::stdout().lock())
 }
 
@@ -69,37 +62,21 @@ pub fn child(arguments: &[OsString], mut input: impl Read, mut output: impl Writ
     }
 }
 
-/// Bound Rust allocations and lower Unix soft and hard limits before parsing.
-/// Darwin can reject finite AS/DATA limits; the allocator budget still applies.
+/// Lower the child's own limits before parsing: no core dumps, processor
+/// seconds and, on Linux, address space. The parent's deadline, the per-stream
+/// inflation cap and the file-size cap bound the rest everywhere.
 #[cfg(unix)]
-fn limit_resources() -> std::io::Result<()> {
-    heap_limit::set(MAX_MEMORY_BYTES as usize);
+fn limit_resources() -> nix::Result<()> {
     use nix::sys::resource::{Resource, getrlimit, setrlimit};
-    for (resource, limit) in [
-        (Resource::RLIMIT_AS, MAX_MEMORY_BYTES),
-        (Resource::RLIMIT_DATA, MAX_MEMORY_BYTES),
-        (Resource::RLIMIT_CPU, MAX_CPU_SECONDS),
-        (Resource::RLIMIT_CORE, 0),
-    ] {
+    let mut limits = vec![(Resource::RLIMIT_CPU, MAX_CPU_SECONDS), (Resource::RLIMIT_CORE, 0)];
+    #[cfg(target_os = "linux")]
+    limits.push((Resource::RLIMIT_AS, MAX_MEMORY_BYTES));
+    for (resource, limit) in limits {
         let (soft, hard) = getrlimit(resource)?;
         let hard = hard.min(limit);
-        if let Err(error) = setrlimit(resource, soft.min(hard), hard) {
-            // AS aliases RSS on Darwin, and current kernels may reject both
-            // finite memory limits. Never skip CPU limits or permission errors.
-            #[cfg(target_os = "macos")]
-            if matches!(resource, Resource::RLIMIT_AS | Resource::RLIMIT_DATA) && error == nix::errno::Errno::EINVAL {
-                continue;
-            }
-            return Err(error.into());
-        }
+        setrlimit(resource, soft.min(hard), hard)?;
     }
     Ok(())
-}
-
-#[cfg(windows)]
-fn limit_resources() -> std::io::Result<windows_limits::Limit> {
-    heap_limit::set(MAX_MEMORY_BYTES as usize);
-    windows_limits::Limit::new(MAX_MEMORY_BYTES as usize)
 }
 
 /// A PDF's pages, their text unless `labels_only`, and their labels.

@@ -150,7 +150,7 @@ impl PdfReader {
         let reader = self.clone();
         let stop = cancelled.clone();
         with_local_file(path, cancelled, self.deadline, move |mut file| {
-            let revision = file_revision(&mut file, &*stop, started + reader.deadline)?;
+            let before = stamp(&mut file)?;
             let answer = reader.run(
                 file.try_clone().map_err(|_| Refusal::NotLocal)?,
                 labels_only,
@@ -166,11 +166,10 @@ impl PdfReader {
                 Answer::Refused(refusal) => return Err(refusal),
             };
             // A file changed while parsing cannot publish text or labels.
-            if file_revision(&mut file, &*stop, started + reader.deadline)? != revision {
+            if stamp(&mut file)? != before {
                 return Err(Refusal::NotLocal);
             }
-            document.revision =
-                Fingerprint::of_bytes(format!("{}:{}", revision.as_str(), document.revision.as_str()).as_bytes());
+            document.revision = Fingerprint::of_bytes(format!("{before:?}:{}", document.revision.as_str()).as_bytes());
             Ok(document)
         })
         .map_err(|error| match error {
@@ -238,22 +237,15 @@ impl PdfReader {
             }
             match child.try_wait() {
                 Ok(Some(status)) => break Ok(status),
-                Ok(None) if Instant::now() >= deadline => break Err(Refusal::TimedOut),
                 Ok(None) => std::thread::sleep(Duration::from_millis(5)),
                 Err(_) => break Err(Refusal::Damaged),
             }
         };
         if status.is_err() {
-            // Reap before returning; the reader ends with the child's pipe.
             let _ = child.kill();
             let _ = child.wait();
         }
-        while !reader.is_finished() {
-            if cancelled() || Instant::now() >= deadline {
-                return Err(Refusal::TimedOut);
-            }
-            std::thread::sleep(Duration::from_millis(5));
-        }
+        // The child has exited, so its pipe is closed and the reader ends.
         let bytes = reader.join().ok().and_then(Result::ok);
         if !status?.success() {
             return Err(Refusal::Damaged);
@@ -266,45 +258,28 @@ impl PdfReader {
     }
 }
 
-/// A bounded digest of fixed-size chunks, with a final digest over those
-/// checks. This avoids holding the PDF's bytes in the parent's memory.
+/// The open file's size and modification time, once it is known to start
+/// as a PDF within the size bound.
 #[allow(
     clippy::disallowed_methods,
     reason = "Opened-handle checks run inside the bounded local-file I/O owner."
 )]
-fn file_revision(
-    file: &mut std::fs::File,
-    cancelled: &dyn Fn() -> bool,
-    deadline: Instant,
-) -> Result<Fingerprint, Refusal> {
-    file.rewind().map_err(|_| Refusal::NotLocal)?;
-    let length = file.metadata().map_err(|_| Refusal::NotLocal)?.len();
-    if length > MAX_FILE_BYTES {
+fn stamp(file: &mut std::fs::File) -> Result<(u64, Option<std::time::SystemTime>), Refusal> {
+    let metadata = file.metadata().map_err(|_| Refusal::NotLocal)?;
+    if metadata.len() > MAX_FILE_BYTES {
         return Err(Refusal::TooLarge);
     }
-    let mut chunks = Vec::new();
-    let mut bytes = [0; 64 * 1024];
-    let mut remaining = length;
-    while remaining > 0 {
-        if cancelled() || Instant::now() >= deadline {
-            return Err(Refusal::TimedOut);
-        }
-        let count = remaining.min(bytes.len() as u64) as usize;
-        file.read_exact(&mut bytes[..count]).map_err(|_| Refusal::NotLocal)?;
-        if remaining == length && !has_mark(&bytes[..count]) {
-            return Err(Refusal::NotPdf);
-        }
-        chunks.extend_from_slice(Fingerprint::of_bytes(&bytes[..count]).as_str().as_bytes());
-        remaining -= count as u64;
-    }
-    if length == 0 {
+    let mut start = Vec::with_capacity(MARK_WITHIN);
+    file.rewind().map_err(|_| Refusal::NotLocal)?;
+    (&mut *file)
+        .take(MARK_WITHIN as u64)
+        .read_to_end(&mut start)
+        .map_err(|_| Refusal::NotLocal)?;
+    file.rewind().map_err(|_| Refusal::NotLocal)?;
+    if !has_mark(&start) {
         return Err(Refusal::NotPdf);
     }
-    if file.metadata().map_err(|_| Refusal::NotLocal)?.len() != length {
-        return Err(Refusal::NotLocal);
-    }
-    file.rewind().map_err(|_| Refusal::NotLocal)?;
-    Ok(Fingerprint::of_bytes(&chunks))
+    Ok((metadata.len(), metadata.modified().ok()))
 }
 
 /// Whether `%PDF-` starts within the first [`MARK_WITHIN`] bytes.

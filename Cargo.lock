@@ -2158,7 +2158,6 @@ dependencies = [
  "serde_json",
  "tempfile",
  "unicode-segmentation",
- "windows-sys 0.61.2",
 ]
 
 [[package]]
