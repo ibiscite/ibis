@@ -1906,7 +1906,7 @@ test("search includes key formats used in the library and the live file action o
   fireEvent.click(await screen.findByRole("option", { name: "In Markdown, LaTeX and Typst, Citations" }));
   await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "In Markdown, LaTeX and Typst Pandoc" })));
   fireEvent.change(search, { target: { value: "Open Settings File" } });
-  fireEvent.click(await screen.findByRole("option", { name: "Open Settings File, Citations" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Open Settings File, General" }));
   const open = screen.getByRole("button", { name: "Open Settings File" });
   await waitFor(() => expect(document.activeElement).toBe(open));
   expect(document.getElementById("open-settings-file")?.closest(".ui-row")?.hasAttribute("data-highlighted")).toBe(true);

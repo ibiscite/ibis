@@ -22,20 +22,20 @@ import { localMoment } from "../ui/localMoment";
 import { useAltHeld } from "../features/picker/useAltHeld";
 import type { DelightFact, DelightView } from "../bindings";
 import { ShortcutsPage } from "./ShortcutsPage";
-import { Note, Row } from "../ui/Layout";
+import { Group, Note, Row, Section } from "../ui/Layout";
 import { ShortcutSetting } from "../ui/ShortcutSetting";
 import { SideNavigation, SideResults } from "../ui/SideNavigation";
 import { SettingsSearch } from "../ui/SettingsSearch";
 import { useAppearance } from "../ui/appearance";
 import { SettingRows, UnknownSettings } from "./SettingRows";
-import { FormatSettings, useFormatSettings } from "./FormatSettings";
+import { FormatSettings, SettingsFileRow, useFormatSettings } from "./FormatSettings";
 import { EditorEndpointRow } from "./EditorEndpoint";
 import { PasteGuide, usePastePermission } from "./PasteGuide";
 import { BackupRows } from "./BackupRows";
 import type { SettingsApi } from "./api";
 import "../ui/SettingsLayout.css";
 
-import { PAGES, ROWS, settingsRows, rowDetails, type Page } from "./rows";
+import { PAGES, ROWS, settingsRows, rowDetails, type Page, type SearchRow, type SettingRow } from "./rows";
 import { initialPreferences, preferenceState } from "./preferenceState";
 import { Status } from "../ui/Status";
 const FACT_MESSAGES: Record<DelightFact, MessageId> = { touch: "delight-fact-touch", scarlet: "delight-fact-scarlet", mummies: "delight-fact-mummies", national: "delight-fact-national", flight: "delight-fact-flight" };
@@ -432,7 +432,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     : problemRow?.id === id ? text(problemRow.message) : undefined });
   const checkSaid = checkResult === "newest" ? "about-check-newest" : checkResult === "not_run" ? "about-check-busy" : null;
   const selectPage = (next: Page) => { setRevealTarget(null); highlightOperation.current += 1; setHighlighted(null); setDetour(false); setPage(next); setFocus("top"); setDip(0); };
-  const reveal = (row: typeof ROWS[number]) => {
+  const reveal = (row: SearchRow) => {
     selectPage(row.page); setFocus(null); setQuery(""); setHighlighted(row.id === "about-ibis" && query.trim().toLowerCase() === "thoth" ? "about-name" : row.id);
     if (row.id === "about-ibis" && query.trim().toLowerCase() !== "thoth") setDip(dip + 1);
     const operation = ++highlightOperation.current;
@@ -549,7 +549,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       } },
   };
   const renderRows = (page: Page, after?: Record<string, ReactNode>) => <SettingRows
-    rows={availableRows.filter((row) => row.page === page && (row.control || row.native))}
+    rows={availableRows.filter((row): row is SettingRow => row.page === page && Boolean(row.control || row.native))}
     preferences={preferences} change={change} owners={owners} feedback={feedback} reset={settingUndo.reset} size={windowSize} after={after} />;
 
   return (
@@ -581,12 +581,16 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
             {preferences?.paste && permission?.needed && permission.granted && !guided && <Row id="paste-allowed" label={text("general-paste-allowed", { list: permission.list })} description={text("general-paste-allowed-note")}><StatusMark kind="ok" /></Row>}
             {preferences?.paste && permission?.needed && (!permission.granted || guided) && <PasteGuide name={name} permission={permission} onOpen={() => { setGuided(true); void api.openPastePermission().then(() => readProblem("paste-label", false)).catch(() => readProblem("paste-label", true)); }} onDrag={api.dragPasteApp} />}
           </> })}
-          {api.cliStatus && api.setCliInstalled && api.copyCliProfile && <CliCommandRow api={{ cliStatus: api.cliStatus, setCliInstalled: api.setCliInstalled, copyCliProfile: api.copyCliProfile }} highlighted={highlighted === "cli-command"} />}
+          {/* Working with Ibis's files and from a terminal: one titled group. */}
+          {(api.cliStatus && api.setCliInstalled && api.copyCliProfile || formatSettings.openSettingsFile) && <Section id="advanced" title={text("settings-advanced-title")}><Group>
+            {api.cliStatus && api.setCliInstalled && api.copyCliProfile && <CliCommandRow api={{ cliStatus: api.cliStatus, setCliInstalled: api.setCliInstalled, copyCliProfile: api.copyCliProfile }} highlighted={highlighted === "cli-command"} />}
+            <SettingsFileRow settings={formatSettings} highlighted={highlighted} />
+          </Group></Section>}
           <Details label={text("settings-details")} reveal={revealTarget}><BackupRows api={api} /></Details>
           <UnknownSettings preferences={preferences} saved={formatSettings.view?.unknown} />
         </>}
         {page === "look" && preferences && renderRows("look")}
-        {page === "citations" && <>{renderRows("citations")}<FormatSettings settings={formatSettings} highlighted={highlighted} /></>}
+        {page === "citations" && <>{renderRows("citations")}<FormatSettings settings={formatSettings} /></>}
         {page === "shortcuts" && <ShortcutsPage opening={shortcutSetting} enterPastes={enterPastes} reveal={revealTarget} highlighted={highlighted} />}
         {page === "about" && (
           <>

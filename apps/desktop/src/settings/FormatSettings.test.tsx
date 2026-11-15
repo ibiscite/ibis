@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, expect, test, vi } from "vitest";
 import { emit } from "@tauri-apps/api/event";
 import type { FormatSettingsView } from "../bindings";
-import { FormatSettings as FormatRows, useFormatSettings } from "./FormatSettings";
+import { FormatSettings as FormatRows, SettingsFileRow, useFormatSettings } from "./FormatSettings";
 import { settingsApi, type SettingsApi } from "./api";
 
 vi.mock("@tauri-apps/api/event", () => {
@@ -33,7 +33,8 @@ function api() {
 }
 
 function FormatSettings({ api }: { api: SettingsApi }) {
-  return <FormatRows settings={useFormatSettings(api)} highlighted={null} />;
+  const settings = useFormatSettings(api);
+  return <><FormatRows settings={settings} /><SettingsFileRow settings={settings} highlighted={null} /></>;
 }
 
 test("forgetting an app restores its usual format and hides the empty group", async () => {

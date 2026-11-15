@@ -73,6 +73,8 @@ export const SETTINGS_IDS = [
   "look-light",
   "look-dark",
   "look-accent",
+  "look-accent-description", "general-rows-description", "look-window-size-description", "look-text-size-description", "citations-keys-description",
+  "command-install-description", "settings-about-description", "about-check-description", "settings-advanced-title", "settings-reset-words",
   "look-accent-system",
   "look-accent-ibis",
   "look-accent-words",

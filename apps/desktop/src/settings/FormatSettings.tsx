@@ -56,9 +56,9 @@ export function useFormatSettings(api: SettingsApi) {
     dismissForget: () => setForgetFailed(false), dismissOpen: () => setOpenFailed(false) };
 }
 
-export function FormatSettings({ settings, highlighted }: { settings: ReturnType<typeof useFormatSettings>; highlighted: string | null }) {
+export function FormatSettings({ settings }: { settings: ReturnType<typeof useFormatSettings> }) {
   const { text } = useInterfaceMessages();
-  const { view, problem, busy, forget, openSettingsFile, forgetFailed, openFailed, dismissForget, dismissOpen } = settings;
+  const { view, problem, busy, forget, forgetFailed, dismissForget } = settings;
   return <>
     {view && view.apps.length > 0 && <Section id="remembered-formats" title={text("citations-apps")}><Group>
       {view.apps.map((app) => <Row key={app.id} id={`format-${app.id}`} label={app.app} description={listedOutput(app.format) ? outputName(listedOutput(app.format)!) : text("citations-unlisted")}>
@@ -69,11 +69,18 @@ export function FormatSettings({ settings, highlighted }: { settings: ReturnType
       {view.writings.map((writing) => <Row key={writing.id} id={`writing-${writing.id}`} label={writing.name}
         description={`${listedOutput(writing.output) ? outputName(listedOutput(writing.output)!) : text("citations-unlisted")}${writing.bibliography ? ` · ${writing.bibliography}` : ""}`} />)}
     </Group></Section>}
-    {openSettingsFile && <Section id="settings-file"><Group><Row id="open-settings-file" {...rowDetails("open-settings-file", text)} highlighted={highlighted === "open-settings-file"}>
-      <Button onPress={openSettingsFile}>{text("settings-open-file")}</Button>
-    </Row></Group></Section>}
     {problem && <Status role="alert">{text("settings-read-failed")}</Status>}
     {forgetFailed && <Status role="alert">{text("settings-forget-failed")} <Button size="small" onPress={dismissForget}>{text("picker-dismiss")}</Button></Status>}
-    {openFailed && <Status role="alert">{text("settings-open-failed")} <Button size="small" onPress={dismissOpen}>{text("picker-dismiss")}</Button></Status>}
   </>;
+}
+
+/** Opening settings.json, in General's Advanced group. */
+export function SettingsFileRow({ settings, highlighted }: { settings: ReturnType<typeof useFormatSettings>; highlighted: string | null }) {
+  const { text } = useInterfaceMessages();
+  const { openSettingsFile, openFailed, dismissOpen } = settings;
+  if (!openSettingsFile) return null;
+  return <><Row id="open-settings-file" {...rowDetails("open-settings-file", text)} highlighted={highlighted === "open-settings-file"}>
+    <Button onPress={openSettingsFile}>{text("settings-open-file")}</Button>
+  </Row>
+  {openFailed && <Status role="alert">{text("settings-open-failed")} <Button size="small" onPress={dismissOpen}>{text("picker-dismiss")}</Button></Status>}</>;
 }
