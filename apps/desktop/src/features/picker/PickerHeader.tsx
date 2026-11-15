@@ -82,7 +82,7 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
           });
         }}
       />
-      {showFormat && (delivery?.editorFormat ? <span className="search-format-label">{delivery.editorFormat} · {delivery.label}</span> : <FormatMenu format={format} buttonRef={formatButtonRef} app={app} source={formatSource} pick={formatPick} onOpenChange={onFormatOpenChange} pasteChoices={pasteChoices} onPasteChange={onPasteChange} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} writing={writing} onWritings={onWritings} usualFormat={usualFormat} onUseUsual={onUseUsual} formatLabel={formatLabel} yours={yours} preview={preview} example={example} deliveryLabel={app ? delivery?.label : undefined} />)}
+      {showFormat && (delivery?.editorFormat ? <span className="search-format-label">{delivery.editorFormat} · {delivery.mode}</span> : <FormatMenu format={format} buttonRef={formatButtonRef} app={app} source={formatSource} pick={formatPick} onOpenChange={onFormatOpenChange} pasteChoices={pasteChoices} onPasteChange={onPasteChange} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} writing={writing} onWritings={onWritings} usualFormat={usualFormat} onUseUsual={onUseUsual} formatLabel={formatLabel} yours={yours} preview={preview} example={example} deliveryLabel={delivery?.headerLabel} />)}
     </SearchBar>
   );
 }

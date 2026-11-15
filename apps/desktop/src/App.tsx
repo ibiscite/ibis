@@ -32,6 +32,7 @@ import { useLibrarySearch } from "./features/picker/useLibrarySearch";
 import { useCitationOutput } from "./features/picker/useCitationOutput";
 import { useZoteroScope } from "./features/picker/useZoteroScope";
 import { type PickerPreview, usePickerSession } from "./features/picker/usePickerSession";
+import { deriveView, type PickerInputs } from "./features/picker/view";
 import { useUpdateProgress } from "./features/picker/useUpdateProgress";
 import { usePickerLibrary } from "./features/picker/usePickerLibrary";
 import { usePickerMenus } from "./features/picker/usePickerMenus";
@@ -110,9 +111,15 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
   useEffect(resetPointer, [results, resetPointer]);
   // What the screen shows: the selection, otherwise the shown pasted list or
   // highlighted result. It stays put while a newer search runs.
-  const shownChoice = state.view?.offered ?? [];
+  const statusFailed = failures.status ?? false, remembersLast = preferences.recentCitations === true;
+  const pickerInputs: PickerInputs = { fallback: preferences.format, remembersLast, preferencesReady: preferences.ready, library, settledLibrary,
+    statusFailed, showCitations, version: checkVersion };
+  // Read this render's inputs through the session's owner before asking for a
+  // preview. Its last committed view may still belong to an older snapshot.
+  const view = deriveView({ ...state, inputs: pickerInputs });
+  const shownChoice = view?.offered ?? [];
   // What may be copied: the same, once the shown results answer the current query.
-  const chosen = selected.size > 0 || ready ? shownChoice : [];
+  const chosen = view?.chosen ?? [];
   const output = useCitationOutput({
     session, state, chosen: shownChoice, library: settledLibrary, libraryVersion: checkVersion, format, style: styleOf(format),
     previewFileCitation: api.previewFileCitation, writingContext: destination.contextVersion, contextReady: destination.ready && !project.reading,
@@ -132,10 +139,9 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     api, session, state, destination, currentPin, formatButtonRef, refreshSnapshot, report, setFormatOpen,
   });
   // What the session hears from preferences and the library's lifecycle.
-  const statusFailed = failures.status ?? false, remembersLast = preferences.recentCitations === true;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pickerInputs contains exactly these outside inputs.
   useLayoutEffect(() => {
-    send({ type: "picker-inputs", inputs: { fallback: preferences.format, remembersLast, preferencesReady: preferences.ready, library, settledLibrary,
-      statusFailed, showCitations, version: checkVersion } });
+    send({ type: "picker-inputs", inputs: pickerInputs });
   }, [send, preferences.format, remembersLast, preferences.ready, library, settledLibrary, statusFailed, showCitations, checkVersion]);
   // Last of App's layout effects: every input above has reached the session,
   // so an Enter waiting on an engine answer may copy now.

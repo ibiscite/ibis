@@ -10,8 +10,10 @@ export function enterPastes(app: string | null, canPaste: boolean, stayOpen: boo
 /** One destination for the format label, action and nearby delivery words. */
 export function citationDelivery(app: string | null, canPaste: boolean, stayOpen: boolean, editorFormat: string | null) {
   const pastes = !editorFormat && enterPastes(app, canPaste, stayOpen);
-  const label = editorFormat ? say("picker-delivery-editor") : pastes ? app! : say("picker-delivery-clipboard");
-  return { pastes, label, mode: pastes ? say("picker-delivery-paste") : label, editorFormat };
+  const mode = say(editorFormat ? "picker-delivery-editor" : pastes ? "picker-delivery-paste" : "picker-delivery-clipboard");
+  // Keep the format's app/writing/one-off context unless a normally available
+  // paste has become a copy for this citation. The mode always names delivery.
+  return { pastes, headerLabel: !editorFormat && app && canPaste && stayOpen ? mode : undefined, mode, editorFormat };
 }
 
 /** One phrase for the action and the output. Numeric styles still name entries. */

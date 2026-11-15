@@ -225,6 +225,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
       return { text: preview.text, warnings: preview.warnings };
     },
     picker_preferences: () => preferences,
+    format_settings: () => ({ apps: [], key_output_visible: Boolean(preferences.key_output), writings: [] }),
     save_picker_preferences: ({ preferences: patch }) => { const receipt = ++revision; submitted.set(receipt, patch as Partial<api.PickerPreferences>); return receipt; },
     picker_preferences_saved: () => null,
     // Opened from no app Ibis knows: the default format applies.
@@ -284,7 +285,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
         const records: api.SearchResult[] = Array.isArray(found) ? found : (found as { results?: api.SearchResult[] })?.results ?? [];
         for (const record of records) citationKeys.set(JSON.stringify(record.id), record.key);
         if (cmd === "recent_references" && Array.isArray(reply) && typeof reply[1] === "boolean") return reply;
-        const rows = Array.isArray(reply) ? { revision: reply[0]?.revision ?? "1", results: reply } : reply;
+        const rows = Array.isArray(reply) ? { revision: reply[0]?.revision ?? lastLibrary.revision ?? "1", results: reply } : reply;
         return cmd === "recent_references" ? [rows, Boolean((rows as { results?: unknown[] }).results?.length), false] : rows;
       });
       return value;

@@ -29,19 +29,24 @@ test("an editor owns the shown format and Send until its request ends", async ()
   expect(await screen.findByRole("button", { name: /^Citation format.*APA/ })).toBeTruthy();
 });
 
-test("a no-match search retains the last offered reference and copies its prepared receipt", async () => {
+test("a no-match search retains the prepared citation but needs fresh Enter after a queued Enter", async () => {
+  let finish!: () => void;
+  const unmatched = new Promise<never[]>((resolve) => { finish = () => resolve([]); });
   const preview = vi.fn(() => receipt("[@aster]"));
   const copied = vi.fn((args: unknown) => ({ text: prepared(args).preview.text, warnings: [] }));
-  backend({ search: ({ query }) => query.text === "unmatched" ? [] : [result("aster", "Invented reference")],
+  backend({ search: ({ query }) => query.text === "unmatched" ? unmatched : [result("aster", "Invented reference")],
     preview_file_citation: preview, copy_file_citation: copied });
   render(<App />);
   await screen.findByText("Invented reference");
   await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("[@aster]"));
   const preparedCount = preview.mock.calls.length;
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "unmatched" } });
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  await act(async () => { finish(); });
   await screen.findByText("No matching references");
   expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("[@aster]");
   expect(preview).toHaveBeenCalledTimes(preparedCount);
+  expect(copied).not.toHaveBeenCalled();
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   await waitFor(() => expect(copied).toHaveBeenCalledOnce());
   expect(prepared(copied.mock.calls[0]![0]).request.items[0]!.id.key).toBe("aster");

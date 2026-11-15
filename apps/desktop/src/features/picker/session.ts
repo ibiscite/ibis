@@ -183,7 +183,9 @@ function advance(s: SessionState, copies: boolean): [SessionState, SessionEffect
   if (p.choice !== null && p.choice !== key) return v.searchPending ? [s, []] : [{ ...s, pendingCopy: null }, []];
   if (p.choice === null) {
     if (v.searchPending) return [s, []];
-    if (!v.chosen.length) return [{ ...s, pendingCopy: null }, []];
+    // The kept shelf is available to a fresh Enter after a miss. It is not an
+    // answer to Enter queued for the running search.
+    if (!v.chosen.length || s.selected.size === 0 && v.defaultChoice === choiceKey([])) return [{ ...s, pendingCopy: null }, []];
     return advance({ ...s, pendingCopy: { ...p, choice: key } }, copies);
   }
   if (!v.ready || v.saving) return [s, []];
