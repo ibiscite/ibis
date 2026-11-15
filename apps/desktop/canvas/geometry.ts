@@ -226,6 +226,15 @@ export function geometry(root: ParentNode = document): string[] {
     }
     for (const shape of shapes) if (Math.abs(shape.glyph) > tolerance) failures.push(`[C12] ${name(shape.card)}: glyph ${shape.glyph.toFixed(1)} off its title's line`);
   }
+  // [C24] The frame is the native window: it ends on the window's bottom edge at every
+  // text size, never short of it (a footer floating above the edge) and never past it
+  // (a clipped preview and footer). The results absorb what the text size changes.
+  const frame = root.querySelector("main.ui-frame");
+  if (frame && visible(frame) && !frame.closest("[hidden]")) {
+    const { top, bottom } = frame.getBoundingClientRect(), edge = document.documentElement.clientHeight;
+    if (Math.abs(top) > tolerance || Math.abs(bottom - edge) > tolerance)
+      failures.push(`[C24 frame] the frame spans ${top.toFixed(1)}–${bottom.toFixed(1)}px of a ${edge}px window: it ends ${bottom < edge ? `${(edge - bottom).toFixed(1)}px short of` : `${(bottom - edge).toFixed(1)}px past`} its edge`);
+  }
   // [C24] No empty band: the frame's heading line is drawn only with something in
   // it, and nothing sits between it and the list's first row. A list with no heading
   // line (the commands) keeps its own group headings.

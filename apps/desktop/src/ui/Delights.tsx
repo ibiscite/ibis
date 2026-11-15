@@ -73,11 +73,13 @@ export function QuietStatus({ children }: { children: ReactNode }) {
   return children ? <Status className="ui-quiet-status">{children}</Status> : null;
 }
 
-/** Browser zoom stays local to this webview; the receipt slot reports its result. */
+/** ⌘+ and ⌘− change the picker's text size for this session: the same root type
+ * scale as Settings' Larger (ui/Window.css), never a zoom of the whole document,
+ * so the frame stays the native window's size. The receipt slot reports it. */
 export function useZoomFeedback(enabled: boolean) {
   const { text } = useInterfaceMessages();
   const [percent, setPercent] = useState<number | null>(null);
-  const zoom = useRef(Number(document.documentElement.style.zoom) || 1);
+  const zoom = useRef(Number(document.documentElement.style.getPropertyValue("--text-zoom")) || 1);
   useEffect(() => {
     let timer: number | undefined;
     const down = (event: KeyboardEvent) => {
@@ -86,7 +88,7 @@ export function useZoomFeedback(enabled: boolean) {
       event.preventDefault();
       if (event.repeat) return;
       zoom.current = Math.max(0.5, Math.min(2, Math.round((zoom.current + (["-", "−"].includes(event.key) ? -0.1 : 0.1)) * 10) / 10));
-      document.documentElement.style.zoom = String(zoom.current);
+      document.documentElement.style.setProperty("--text-zoom", String(zoom.current));
       setPercent(Math.round(zoom.current * 100));
       window.clearTimeout(timer);
       timer = window.setTimeout(() => setPercent(null), 1000);

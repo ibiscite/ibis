@@ -8,7 +8,7 @@ import { backend, resetApp } from "./testing/app";
 
 const tip = `${keyLabel("CmdOrCtrl+Shift+P", isMac)} keeps Ibis open between citations.`;
 beforeEach(() => vi.useFakeTimers());
-afterEach(async () => { document.documentElement.style.removeProperty("zoom"); await resetApp(); });
+afterEach(async () => { document.documentElement.style.removeProperty("--text-zoom"); await resetApp(); });
 const view = (status: string | null, peck = false) => ({ status, peck, fun: true, fact: null, revision: 1, anniversary: false, build: "0.0.0 · invented · 2026-11-01" });
 
 test("a claimed tip takes the notice line and never copies or changes focus", async () => {
@@ -36,10 +36,12 @@ test("empty Enter explains refusal and zoom reports for one second, without copy
   expect(container.querySelector("[data-empty-action]")).toBeNull();
   // Text size takes the system's command key, as KEY_TABLE lists it: Ctrl here, never the Windows key.
   fireEvent.keyDown(input, { key: "+", metaKey: true });
-  expect(document.documentElement.style.zoom).toBe("");
+  expect(document.documentElement.style.getPropertyValue("--text-zoom")).toBe("");
   fireEvent.keyDown(input, { key: "+", ctrlKey: true });
   expect(screen.getByText("110%").closest(".notice-slot")).toBeTruthy();
-  expect(document.documentElement.style.zoom).toBe("1.1");
+  // The text size, never a document zoom: the frame keeps the window's size.
+  expect(document.documentElement.style.getPropertyValue("--text-zoom")).toBe("1.1");
+  expect(document.documentElement.style.zoom).toBe("");
   act(() => vi.advanceTimersByTime(1000));
   expect(screen.queryByText("110%")).toBeNull();
   fireEvent.keyDown(input, { key: "-", ctrlKey: true });

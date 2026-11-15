@@ -35,6 +35,8 @@
   /* The longest a sheet's text and cards run before the window has more room. */
   --content-max: 42rem;
   --larger-text-scale: 1.15;
+  /* ⌘+ and ⌘− (ui/Delights' useZoomFeedback) set this for the session; 1 is 100%. */
+  --text-zoom: 1;
 
   /* Sizes. */
   /* --tile is the icon slot: every row's icon, the bird and the back chevron centre on it. */
