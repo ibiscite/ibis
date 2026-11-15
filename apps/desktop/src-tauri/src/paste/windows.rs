@@ -785,6 +785,8 @@ mod tests {
     #[ignore = "drives Notepad on a desktop session; CI's Windows job runs it"]
     fn one_ctrl_v_pastes_the_clipboard_into_the_app_in_front() {
         let text = "[@synthetic2026]";
+        let started = std::time::Instant::now();
+        let seq_before_copy = clipboard_win::seq_num().map(std::num::NonZeroU32::get);
         // The clipboard crate Ibis copies with, so no shell needs to be on PATH.
         clipboard_win::set_clipboard_string(text).unwrap_or_else(|error| {
             panic!(
@@ -795,6 +797,7 @@ mod tests {
                 }
             )
         });
+        let seq_copied = clipboard_win::seq_num().map(std::num::NonZeroU32::get);
         // Open a new empty file so restored tabs cannot satisfy the readback.
         // Close our file handle before Notepad opens it on Windows.
         let file = tempfile::Builder::new()
@@ -964,7 +967,11 @@ mod tests {
             );
         }
         let editor = editor.unwrap_or_else(|| panic!("{:?}", Failure::new(Stage::Identity)));
-        qualify_paste(
+        let seq_before_qualify = clipboard_win::seq_num().map(std::num::NonZeroU32::get);
+        let last_len = std::cell::Cell::new(None);
+        let sent_at = std::cell::Cell::new(None);
+        let seq_at_send = std::cell::Cell::new(None);
+        let result = qualify_paste(
             &editor.captured,
             text,
             Duration::from_secs(5),
@@ -975,6 +982,9 @@ mod tests {
                     ..failure
                 });
                 owned()?;
+                if let Ok(reading) = &reading {
+                    last_len.set(Some(reading.text.encode_utf16().count()));
+                }
                 reading
             },
             || {
@@ -988,8 +998,30 @@ mod tests {
                 })
                 .ok_or(last)
             },
-            |ready| send_paste(|| ready() && in_front() && !keys_held() && foreground_pid() == Some(front.pid)),
-        )
-        .unwrap_or_else(|failure| panic!("{failure:?}"));
+            |ready| {
+                let sent = send_paste(|| ready() && in_front() && !keys_held() && foreground_pid() == Some(front.pid));
+                sent_at.set(Some(started.elapsed()));
+                seq_at_send.set(clipboard_win::seq_num().map(std::num::NonZeroU32::get));
+                sent
+            },
+        );
+        if let Err(failure) = result {
+            // Failure-only: lengths, counters and timings, never document text.
+            let seq_at_failure = clipboard_win::seq_num().map(std::num::NonZeroU32::get);
+            let clipboard_matches = clipboard_win::get_clipboard_string().map(|value| value == text);
+            std::thread::sleep(Duration::from_secs(3));
+            let late = focused_text(&worker, &diagnostics, &editor).map(|reading| reading.text.encode_utf16().count());
+            eprintln!(
+                "DIAG last_len={:?} late_len={:?} expected_len={} seq_before_copy={seq_before_copy:?} seq_copied={seq_copied:?} seq_before_qualify={seq_before_qualify:?} seq_at_send={:?} seq_at_failure={seq_at_failure:?} clipboard_matches={:?} sent_at={:?} failed_at={:?}",
+                last_len.get(),
+                late.ok(),
+                text.len(),
+                seq_at_send.get(),
+                clipboard_matches.ok(),
+                sent_at.get(),
+                started.elapsed(),
+            );
+            panic!("{failure:?}");
+        }
     }
 }
