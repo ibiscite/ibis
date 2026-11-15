@@ -112,8 +112,8 @@ nor reports a status. Keep the worktree until the PR merges, then run
 [CI](../.github/workflows/ci.yml) runs on in-repository PRs and pushes to main.
 **CI result** is the required merge check: interface build, `Test` and
 `Desktop` suites, web/script tests, dependency policy and commit identities
-must all pass. PRs run `Test` and `Desktop` on Ubuntu only (about 9 minutes)
-unless [`ci-scope.sh`](../scripts/ci-scope.sh) finds platform code
+must all pass. PRs run `Desktop` (a warm lint and test, 2–4 minutes) on all
+three systems and `Test` on Ubuntu only (about 9 minutes in all) unless [`ci-scope.sh`](../scripts/ci-scope.sh) finds platform code
 (`macos`/`windows`/`platform` paths, `paste`, `copy`, `placement`,
 `native_feel`), packaging, PowerShell, Swift, Cargo manifests or lock, or
 workflow changes, or the PR has the `full-ci` label; adding the label reruns

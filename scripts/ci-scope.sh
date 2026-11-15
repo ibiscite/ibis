@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Systems for Test and Desktop. A pull request runs Ubuntu only unless it has the
+# Systems for Test (core tests; Desktop runs on all three). A pull request runs Ubuntu only unless it has the
 # full-ci label or changes platform code, packaging, dependencies or workflows;
 # every other event, and any unreadable diff, runs all three.
 set -euo pipefail

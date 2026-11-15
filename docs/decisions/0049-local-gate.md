@@ -2,8 +2,8 @@
 
 2026-11-15 (maintainer): superseded: hosted CI's fast tier is the required
 merge check, no merge queue; macOS and Windows confirm on main and nightly;
-local machines are for speed and native checks. Pull requests run Ubuntu only
-unless `scripts/ci-scope.sh` finds platform, packaging, dependency or workflow
+local machines are for speed and native checks. Pull requests run `Desktop` on
+all three systems and `Test` on Ubuntu only unless `scripts/ci-scope.sh` finds platform, packaging, dependency or workflow
 changes, or the PR has the `full-ci` label. They squash-merge once **CI result**
 passes, without being up to date with main; main's push CI checks the combined
 commit, and a red main holds the nightly.

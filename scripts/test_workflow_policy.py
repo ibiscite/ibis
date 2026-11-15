@@ -60,8 +60,8 @@ class CiResultTest(unittest.TestCase):
         scope = next(step for step in jobs["scope"]["steps"] if step.get("id") == "scope")
         self.assertEqual(scope["run"], 'bash scripts/ci-scope.sh >> "$GITHUB_OUTPUT"')
         self.assertEqual(scope["env"]["FULL_LABEL"], "${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}")
-        for name in ["test", "desktop"]:
-            self.assertEqual(jobs[name]["strategy"]["matrix"]["os"], "${{ fromJSON(needs.scope.outputs.os) }}")
+        self.assertEqual(jobs["test"]["strategy"]["matrix"]["os"], "${{ fromJSON(needs.scope.outputs.os) }}")
+        self.assertEqual(jobs["desktop"]["strategy"]["matrix"]["os"], ["ubuntu-24.04", "macos-15", "windows-2025"])
         self.assertEqual(jobs["test"]["needs"], "scope")
         self.assertEqual(jobs["desktop"]["needs"], ["scope", "interface"])
         self.assertEqual(jobs["result"]["steps"][-1]["env"]["PLATFORMS"], "${{ needs.scope.outputs.os }}")

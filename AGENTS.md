@@ -41,5 +41,5 @@ node scripts/pr-lint.mjs --title "fix: explain the change"
 Pull request titles are Conventional Commits and become the release notes; link `Closes #N`. Sign off commits (`git commit -s`) with a public project or GitHub noreply identity and disclose AI help with an `Assisted-by:` or `Co-authored-by:` trailer.
 
 Land with `bash scripts/land.sh` from a clean branch: fast local checks, push and request squash auto-merge.
-Hosted **CI result** is the required check, with no merge queue ([decision 0049](docs/decisions/0049-local-gate.md)): PRs run Ubuntu, and macOS and Windows too when they touch platform code or carry the `full-ci` label; main confirms all three. If main turns red, restore it first with the smallest verified repair or a revert and record the cause on its issue the same day.
+Hosted **CI result** is the required check, with no merge queue ([decision 0049](docs/decisions/0049-local-gate.md)): PRs run the desktop checks on all three systems and the core tests on Ubuntu, or everywhere when they touch platform code or carry the `full-ci` label; main confirms all three. If main turns red, restore it first with the smallest verified repair or a revert and record the cause on its issue the same day.
 Start with `land.sh start NAME` (the draft PR is the claim) and finish with `land.sh end NAME` after it merges.
