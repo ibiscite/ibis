@@ -34,6 +34,7 @@ import { PasteGuide, usePastePermission } from "./PasteGuide";
 import { BackupRows } from "./BackupRows";
 import type { SettingsApi } from "./api";
 import { listening } from "../nativeEvents";
+import { useFlash } from "../ui/timers";
 import "../ui/SettingsLayout.css";
 
 import { PAGES, ROWS, settingsRows, rowDetails, type Page } from "./rows";
@@ -112,7 +113,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     else sidebar.current?.querySelector<HTMLElement>('[aria-current="page"]')?.focus();
   });
   useRowReveal(revealTarget, pageRef);
-  const [highlighted, setHighlighted] = useState<string | null>(null);
+  // A row found by search is marked for 2 s.
+  const [highlighted, highlight, clearHighlight] = useFlash<string>(2000);
   const highlightOperation = useRef(0);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
@@ -129,7 +131,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const loginBusy = useRef(false);
   const [loginSaving, setLoginSaving] = useState(false);
   const [updatesSaving, setUpdatesSaving] = useState(false);
-  const [versionCopied, setVersionCopied] = useState(false);
+  const [versionCopied, flashVersionCopied, clearVersionCopied] = useFlash(1500);
   const [versionCopyFailed, setVersionCopyFailed] = useState(false);
   const [checkResult, setCheckResult] = useState<CheckResult | null>(null);
   const [checking, setChecking] = useState(false);
@@ -150,7 +152,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   // Feedback belongs to this page presentation, independently of delight preferences.
   // biome-ignore lint/correctness/useExhaustiveDependencies: changing pages retires feedback and pending operations.
   useEffect(() => {
-    setVersionCopied(false); setVersionCopyFailed(false); versionCopy.current += 1;
+    clearVersionCopied(); setVersionCopyFailed(false); versionCopy.current += 1;
     return () => { versionCopy.current += 1; };
   }, [page]);
   const { altHeld } = useAltHeld("option");
@@ -294,7 +296,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       shortcutReads.current += 1;
       latestShortcut.current = next; setShortcut(next); clearShortcutUndo();
     }, { ready: readShortcut, failed: () => { setShortcutProblem({ id: "shortcuts-read-failed" }); readShortcut(); } });
-    const page = listening(api.onPage, (name) => { setRevealTarget(null); highlightOperation.current += 1; setHighlighted(null); setQuery(""); const next = pageOf(name); setDetour(name === "paste"); setDip(0); setPage(next.page); setFocus(next.focus ?? "top"); });
+    const page = listening(api.onPage, (name) => { setRevealTarget(null); clearHighlight(); setQuery(""); const next = pageOf(name); setDetour(name === "paste"); setDip(0); setPage(next.page); setFocus(next.focus ?? "top"); });
     const automatic = listening(api.onUpdateChecks, (next) => {
       updateReads.current += 1;
       if (!updateWrite.current) clearSettingUndo();
@@ -317,7 +319,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       window.removeEventListener("focus", readShortcut);
       for (const stop of [preferenceEvents, shortcuts, page, automatic, close]) stop();
     };
-  }, [api, queue, readProblem, clearShortcutUndo, clearSettingUndo]);
+  }, [api, queue, readProblem, clearShortcutUndo, clearSettingUndo, clearHighlight]);
   useEffect(() => {
     const scroller = pageRef.current;
     if (!focus || !scroller) return;
@@ -424,13 +426,12 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     : preference.status === "refused" && preference.problem.row === id ? preference.problem.message
     : problemRow?.id === id ? text(problemRow.message) : undefined });
   const checkSaid = checkResult === "newest" ? "about-check-newest" : checkResult === "not_run" ? "about-check-busy" : null;
-  const selectPage = (next: Page) => { setRevealTarget(null); highlightOperation.current += 1; setHighlighted(null); setDetour(false); setPage(next); setFocus("top"); setDip(0); };
+  const selectPage = (next: Page) => { setRevealTarget(null); clearHighlight(); setDetour(false); setPage(next); setFocus("top"); setDip(0); };
   const reveal = (row: typeof ROWS[number]) => {
-    selectPage(row.page); setFocus(null); setQuery(""); setHighlighted(row.id === "about-ibis" && query.trim().toLowerCase() === "thoth" ? "about-name" : row.id);
+    selectPage(row.page); setFocus(null); setQuery(""); highlight(row.id === "about-ibis" && query.trim().toLowerCase() === "thoth" ? "about-name" : row.id);
     if (row.id === "about-ibis" && query.trim().toLowerCase() !== "thoth") setDip(dip + 1);
     const operation = ++highlightOperation.current;
     setRevealTarget({ id: row.id === "open-shortcut" && row.page === "general" ? "general-open-shortcut" : row.id, ticket: operation });
-    window.setTimeout(() => { if (live.current && operation === highlightOperation.current) setHighlighted(null); }, 2000);
   };
   // Look reads on showing, so a size dragged meanwhile appears as Custom.
   const readWindowSize = useCallback((request: number) => api.windowSize().then((size) => {
@@ -490,12 +491,11 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   };
   const copyVersion = () => {
     const operation = ++versionCopy.current;
-    setVersionCopied(false);
+    clearVersionCopied();
     setVersionCopyFailed(false);
     void navigator.clipboard.writeText(`${name} ${altHeld && about?.build ? about.build : version}`).then(() => {
       if (!live.current || operation !== versionCopy.current) return;
-      setVersionCopied(true);
-      window.setTimeout(() => { if (live.current && operation === versionCopy.current) setVersionCopied(false); }, 1500);
+      flashVersionCopied(true);
     }, () => { if (live.current && operation === versionCopy.current) setVersionCopyFailed(true); });
   };
   const availableRows = settingsRows(enterPastes).filter((row) => (row.id !== "menu-bar" || platform === "macos")

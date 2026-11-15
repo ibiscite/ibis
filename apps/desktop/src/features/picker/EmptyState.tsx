@@ -6,6 +6,7 @@ import { keysFor } from "../../keys";
 import { fullStop, say } from "../../i18n";
 import { ChoiceList, type Choice } from "../../ui/ChoiceList";
 import { IndeterminateProgress } from "../../ui/Progress";
+import { useDelayed } from "../../ui/timers";
 import { Button } from "../../ui/Button";
 import { IbisMark } from "../../ui/IbisMark";
 import { ResultsEmpty, useResultsLayout } from "../../ui/ResultsArea";
@@ -28,12 +29,8 @@ function shortName(name: string | null): string | null {
 }
 
 function LibraryProgress({ library }: { library: LibraryStatus }) {
-  const [visible, setVisible] = useState(false);
+  const visible = useDelayed(true, LOADING_DELAY_MS);
   useResultsLayout("opening", visible);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setVisible(true), LOADING_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, []);
   if (!visible) return null;
   const progress = library.state === "reloading" ? libraryMessages.reloading : libraryMessages.opening;
   const name = library.name || null;

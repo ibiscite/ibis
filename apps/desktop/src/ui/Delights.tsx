@@ -4,6 +4,7 @@ import { useInterfaceMessages } from "../i18n";
 import { commandKey, matchesAccelerator } from "../keys";
 import { currentPlatform } from "../platform";
 import { Button } from "./Button";
+import { useFlash } from "./timers";
 import { appIcon } from "../brand";
 import "./Delights.css";
 
@@ -24,27 +25,23 @@ function matchesEcho(event: KeyboardEvent, accelerator: string) {
 
 /** Visual echoes never handle a command or move focus. */
 export function useKeyPulse(accelerator: string | readonly string[], enabled = true) {
-  const [pressed, setPressed] = useState(false);
+  const [pressed, pulse, release] = useFlash(100);
   const keys = typeof accelerator === "string" ? accelerator : accelerator.join("|");
   useEffect(() => {
-    let timer: number | undefined;
-    setPressed(false);
+    release();
     if (!enabled) return;
     const down = (event: KeyboardEvent) => {
       if (!enabled || event.repeat || composing(event) || document.querySelector('[data-recording="true"]')) return;
       if (event.target instanceof Element && event.target.closest('[role="menu"], [role="dialog"], .toolbar-menu-popover')) return;
       if (!keys.split("|").some((key) => matchesEcho(event, key))) return;
-      setPressed(true);
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => setPressed(false), 100);
+      pulse(true);
     };
-    const clear = () => { window.clearTimeout(timer); setPressed(false); };
     // Capture: a key the layer stack uses stops there, and still pulses.
     window.addEventListener("keydown", down, true);
-    window.addEventListener("blur", clear);
-    return () => { window.clearTimeout(timer); window.removeEventListener("keydown", down, true); window.removeEventListener("blur", clear); };
-  }, [keys, enabled]);
-  return pressed;
+    window.addEventListener("blur", release);
+    return () => { window.removeEventListener("keydown", down, true); window.removeEventListener("blur", release); };
+  }, [keys, enabled, pulse, release]);
+  return pressed ?? false;
 }
 
 export function ShortcutEcho({ keys, children }: { keys: readonly string[]; children: ReactNode }) {
@@ -75,10 +72,9 @@ export function QuietStatus({ children }: { children: ReactNode }) {
 /** Browser zoom stays local to this webview; the receipt slot reports its result. */
 export function useZoomFeedback(enabled: boolean) {
   const { text } = useInterfaceMessages();
-  const [percent, setPercent] = useState<number | null>(null);
+  const [percent, showPercent, clearPercent] = useFlash<number>(1000);
   const zoom = useRef(Number(document.documentElement.style.zoom) || 1);
   useEffect(() => {
-    let timer: number | undefined;
     const down = (event: KeyboardEvent) => {
       // KEY_TABLE's textSize row: ⌘+ and ⌘− (Ctrl elsewhere), with = and the hyphen typed unshifted.
       if (!enabled || composing(event) || event.altKey || !commandKey(event, currentPlatform() === "macos") || !["+", "=", "-", "−"].includes(event.key)) return;
@@ -86,26 +82,20 @@ export function useZoomFeedback(enabled: boolean) {
       if (event.repeat) return;
       zoom.current = Math.max(0.5, Math.min(2, Math.round((zoom.current + (["-", "−"].includes(event.key) ? -0.1 : 0.1)) * 10) / 10));
       document.documentElement.style.zoom = String(zoom.current);
-      setPercent(Math.round(zoom.current * 100));
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => setPercent(null), 1000);
+      showPercent(Math.round(zoom.current * 100));
     };
-    setPercent(null);
+    clearPercent();
     window.addEventListener("keydown", down);
-    return () => { window.clearTimeout(timer); window.removeEventListener("keydown", down); };
-  }, [enabled]);
+    return () => window.removeEventListener("keydown", down);
+  }, [enabled, showPercent, clearPercent]);
   return percent === null ? null : text("delight-zoom", { percent });
 }
 
 export function useEmptyFeedback(identity: string) {
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [shaking, setShaking] = useState(false);
-  const timer = useRef<number | undefined>(undefined);
+  const [shaking, shake, still] = useFlash(240);
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new presentation retires feedback.
-  useEffect(() => { setFeedback(null); setShaking(false); return () => window.clearTimeout(timer.current); }, [identity]);
+  useEffect(() => { setFeedback(null); still(); }, [identity, still]);
   const clear = useCallback(() => setFeedback(null), []);
-  return { feedback, shaking, clear, refuse: (message: string) => {
-    setFeedback(message); setShaking(true); window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => setShaking(false), 240);
-  } };
+  return { feedback, shaking: shaking ?? false, clear, refuse: (message: string) => { setFeedback(message); shake(true); } };
 }

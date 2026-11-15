@@ -1,5 +1,6 @@
 import * as nativeApi from "./api";
 import { useNativeEvent } from "./nativeEvents";
+import { useTimeout } from "./ui/timers";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { idKey, asTyped } from "./features/picker/choice";
 import { keysFor, matchesAccelerator } from "./keys";
@@ -163,11 +164,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     input, active, selectAll: state.selectAll, pointer, selectedSize: selected.size, citationProblem, formatted, format,
   });
   // Success is brief; warnings stay available until explicitly dismissed.
-  useEffect(() => {
-    if (preview || !copied || copied.warnings.length > 0) return;
-    const timer = window.setTimeout(() => send({ type: "dismiss", copied }), 2400);
-    return () => window.clearTimeout(timer);
-  }, [copied, preview, send]);
+  useTimeout(() => { if (copied) send({ type: "dismiss", copied }); }, preview || !copied || copied.warnings.length > 0 ? null : 2400, copied);
   const rows = useCitationRows({
     api, pickerSession, searchState, chosenKey: output.chosenKey, chosen, showCitations, format, snapshotRevision,
     focusHome, pointer, requestCopy, report,
