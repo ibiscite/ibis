@@ -72,7 +72,18 @@ impl Server {
                         thread::sleep(Duration::from_millis(1));
                     }
                 }
-                let mut body = if empty && inventory {
+                // SYNTH234 has a file Zotero indexed in three pages and a link.
+                let children = request.contains("/items/SYNTH234/children?");
+                let fulltext = request.contains("/items/PDFA0001/fulltext");
+                let no_text = request.contains("/fulltext") && !fulltext;
+                let mut body = if children {
+                    json!([
+                        {"key":"PDFA0001","data":{"key":"PDFA0001","itemType":"attachment","parentItem":"SYNTH234","title":"Invented atlas PDF","contentType":"application/pdf","linkMode":"imported_file"}},
+                        {"key":"LINK0001","data":{"key":"LINK0001","itemType":"attachment","parentItem":"SYNTH234","title":"Invented atlas page","contentType":"text/html","linkMode":"linked_url"}}
+                    ])
+                } else if fulltext {
+                    json!({"content":"Invented page one about maps.\u{c}Invented page two holds a brass lantern.\u{c}Invented page three.","indexedPages":3,"totalPages":3})
+                } else if empty && inventory {
                     json!({})
                 } else if empty {
                     json!([])
@@ -81,14 +92,19 @@ impl Server {
                 } else {
                     json!([{"key":"SYNTH234","version":1,"data":{"key":"SYNTH234","version":1,"itemType":"book","title":*item_title.lock().unwrap(),"date":"2026","citationKey":"Synthetic2026","creators":[],"dateModified":"2026-10-26T12:00:00Z"}}])
                 };
-                if !inventory && request.contains("groups/7/") && warn_group.load(Ordering::Relaxed) {
+                if !inventory
+                    && !children
+                    && !fulltext
+                    && request.contains("groups/7/")
+                    && warn_group.load(Ordering::Relaxed)
+                {
                     body[0]["data"]["inventedField"] = json!("invented value");
                 }
                 let body = serde_json::to_vec(&body).unwrap();
                 let id = id.load(Ordering::Relaxed);
                 let status = if off.load(Ordering::Relaxed) {
                     "403 Forbidden"
-                } else if missing {
+                } else if missing || no_text {
                     "404 Not Found"
                 } else {
                     "200 OK"

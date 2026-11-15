@@ -426,9 +426,37 @@ pub struct Device {
     /// Frames explicitly dragged by the person, indexed by display.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub picker_windows: BTreeMap<String, PickerWindow>,
+    /// Libraries whose attachment text AI apps may read through `ibis mcp`,
+    /// written like `library`: `[{"zotero": "user"}, {"bibtex": "~/refs.bib"}]`.
+    /// A library not listed stays closed to them (decision 0055). It is a
+    /// grant, so it stays on this computer, as paste approvals do (decision 0031).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachment_text: Vec<LibrarySetting>,
 }
 
+/// A library as the attachment text choice names it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextLibrary<'a> {
+    Zotero(ZoteroLibrary),
+    File(&'a Path),
+}
+
+/// The most libraries `attachment_text` may name.
+const MAX_ATTACHMENT_TEXT: usize = 64;
+
 impl Settings {
+    /// Whether the person let AI apps read `library`'s attachment text.
+    pub fn attachment_text(&self, library: TextLibrary<'_>) -> bool {
+        self.device
+            .attachment_text
+            .iter()
+            .any(|chosen| match (chosen, library) {
+                (LibrarySetting::Zotero(chosen), TextLibrary::Zotero(library)) => chosen.libraries().contains(&library),
+                (LibrarySetting::Bibtex(chosen), TextLibrary::File(path)) => writings::same_path(chosen, path),
+                _ => false,
+            })
+    }
+
     /// The format chosen for `app`, compared as the platform compares app ids.
     pub fn app_output(&self, app: &ibis_core::destination::AppId) -> Option<&str> {
         let key = app.normalized();
@@ -664,6 +692,9 @@ fn parse_fields<T: serde::de::DeserializeOwned>(mut value: Value) -> Result<T, S
 
 fn validate_settings(settings: &Settings) -> Result<(), SettingsError> {
     writings::validate(&settings.device.writings).map_err(|error| SettingsError::Invalid(error.to_string()))?;
+    if settings.device.attachment_text.len() > MAX_ATTACHMENT_TEXT {
+        return Err(SettingsError::Invalid("too many attachment text libraries".into()));
+    }
     if settings.device.writing_apps.len() > 200
         || settings.device.writing_apps.iter().any(|(key, name)| {
             let Some((system, id)) = key.split_once(':') else {

@@ -14,6 +14,7 @@ CREATE TABLE itemCreators(itemID INTEGER,creatorID INTEGER,creatorTypeID INTEGER
 CREATE TABLE deletedItems(itemID INTEGER);
 CREATE TABLE itemNotes(itemID INTEGER PRIMARY KEY,parentItemID INT,note TEXT,title TEXT);
 CREATE TABLE itemAttachments(itemID INTEGER PRIMARY KEY,parentItemID INT,linkMode INT,contentType TEXT,path TEXT);
+CREATE TABLE fulltextItems(itemID INTEGER PRIMARY KEY,indexedPages INT,totalPages INT,indexedChars INT,totalChars INT,version INT NOT NULL DEFAULT 0,synced INT NOT NULL DEFAULT 0);
 INSERT INTO libraries VALUES(1,'user'),(2,'group'),(3,'feed');
 INSERT INTO groups VALUES(4321,2,'Invented Reading Group');
 INSERT INTO itemTypesCombined VALUES(1,'book'),(2,'journalArticle'),(3,'note'),(4,'attachment'),(5,'annotation');

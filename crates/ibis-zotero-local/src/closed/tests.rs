@@ -228,3 +228,44 @@ fn newer_schema_refuses_missing_columns_and_changed_lookup_shapes() {
         );
     }
 }
+
+#[test]
+fn the_text_cache_is_read_from_a_regular_file_in_the_attachments_folder() {
+    let data = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic data directory"));
+    let folder = data.path().join("storage").join("FILE0001");
+    std::fs::create_dir_all(&folder).unwrap_or_else(|_| panic!("synthetic storage"));
+    assert_eq!(read_text_cache(data.path(), "FILE0001"), Ok(None));
+    std::fs::write(
+        folder.join(".zotero-ft-cache"),
+        "Invented page one.\u{c}Invented page two.",
+    )
+    .unwrap_or_else(|_| panic!("synthetic cache"));
+    assert_eq!(
+        read_text_cache(data.path(), "FILE0001"),
+        Ok(Some("Invented page one.\u{c}Invented page two.".into()))
+    );
+    assert_eq!(read_text_cache(data.path(), "NOFOLDER"), Ok(None));
+    let large = data.path().join("storage").join("LARGE001");
+    std::fs::create_dir_all(&large).unwrap_or_else(|_| panic!("synthetic storage"));
+    std::fs::write(
+        large.join(".zotero-ft-cache"),
+        vec![b'a'; crate::fulltext::MAX_TEXT_BYTES + 1],
+    )
+    .unwrap_or_else(|_| panic!("synthetic cache"));
+    assert_eq!(read_text_cache(data.path(), "LARGE001"), Err(ClosedError::TooLarge));
+    assert_eq!(
+        read_text_cache(data.path(), "../storage"),
+        Err(ClosedError::UnsafeSource)
+    );
+    #[cfg(unix)]
+    {
+        let linked = data.path().join("storage").join("LINKED01");
+        std::fs::create_dir_all(&linked).unwrap_or_else(|_| panic!("synthetic storage"));
+        std::os::unix::fs::symlink(folder.join(".zotero-ft-cache"), linked.join(".zotero-ft-cache"))
+            .unwrap_or_else(|_| panic!("synthetic link"));
+        assert!(
+            read_text_cache(data.path(), "LINKED01").is_err(),
+            "a linked cache is not followed"
+        );
+    }
+}

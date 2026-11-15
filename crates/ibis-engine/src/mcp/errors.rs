@@ -36,11 +36,13 @@ pub(super) enum ToolProblem {
     NumberMinimum,
     StyleQuery,
     NoLibrary,
+    AttachmentText,
 }
 impl ToolProblem {
     pub(super) fn problem(self, args: &[(&str, &str)]) -> (ErrorCode, Problem) {
         let (code, recovery) = match self {
             Self::NoLibrary => (ErrorCode::SourceUnavailable, R::ChooseLibrary),
+            Self::AttachmentText => (ErrorCode::SourceUnavailable, R::ReviewSettings),
             Self::StaleReference => (ErrorCode::NotFound, R::SearchReferences),
             Self::Query | Self::StyleQuery => (ErrorCode::BadInput, R::EditInput),
             Self::CitationFormat

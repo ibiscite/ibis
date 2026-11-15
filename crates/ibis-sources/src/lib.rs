@@ -7,6 +7,7 @@ mod exported;
 mod file;
 pub mod identity;
 pub mod project;
+pub mod reading;
 mod urls;
 pub mod zotero;
 

@@ -31,10 +31,12 @@ mod prepared;
 mod receipt;
 pub use prepared::{CitationCommitError, PreparedCitation};
 mod project;
+mod reading;
 pub use ibis_sources::project::{Doubt, EntryRefusal, KeyCheck, ProjectProblem, ProjectRead};
 pub use project::{
     EntryResult, ProjectAssessment, ProjectAssessmentState, ProjectKey, ProjectResult, WritingCitation, project_name,
 };
+pub use reading::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
@@ -851,6 +853,9 @@ impl Engine {
                 };
                 return checked(result, exit_code);
             }
+            Method::Outline => return checked(self.outline(&parameters(params)?, cancel)?, ExitCode::Ok),
+            Method::Read => return checked(self.read_attachment(&parameters(params)?, cancel)?, ExitCode::Ok),
+            Method::FindIn => return checked(self.find_in(&parameters(params)?, cancel)?, ExitCode::Ok),
             Method::Styles => value(self.styles(&parameters(params)?)?)?,
             Method::Outputs => {
                 let OutputsRequest {} = parameters(params)?;
@@ -1131,6 +1136,9 @@ fn response_schema(method: Method) -> Value {
         Method::Records => schema_for!(health::Checked<CitationResult>),
         Method::Styles => schema_for!(StylesResult),
         Method::Outputs => schema_for!(crate::outputs::OutputsResult),
+        Method::Outline => schema_for!(health::Checked<OutlineResult>),
+        Method::Read => schema_for!(health::Checked<ReadResult>),
+        Method::FindIn => schema_for!(health::Checked<FindInResult>),
         _ => schema_for!(Value),
     }
     .into()

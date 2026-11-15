@@ -302,6 +302,16 @@
                 "const": "rejected-record",
                 "description": "A record a request sends was not valid CSL-JSON, so none is cited.",
                 "type": "string"
+              },
+              {
+                "const": "no-attachment-text",
+                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or reading its file needs what Ibis does not have yet.",
+                "type": "string"
+              },
+              {
+                "const": "no-such-pages",
+                "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
+                "type": "string"
               }
             ]
           },
@@ -1646,6 +1656,16 @@
               {
                 "const": "rejected-record",
                 "description": "A record a request sends was not valid CSL-JSON, so none is cited.",
+                "type": "string"
+              },
+              {
+                "const": "no-attachment-text",
+                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or reading its file needs what Ibis does not have yet.",
+                "type": "string"
+              },
+              {
+                "const": "no-such-pages",
+                "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
                 "type": "string"
               }
             ]
@@ -3216,6 +3236,16 @@
               {
                 "const": "rejected-record",
                 "description": "A record a request sends was not valid CSL-JSON, so none is cited.",
+                "type": "string"
+              },
+              {
+                "const": "no-attachment-text",
+                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or reading its file needs what Ibis does not have yet.",
+                "type": "string"
+              },
+              {
+                "const": "no-such-pages",
+                "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
                 "type": "string"
               }
             ]
@@ -5269,6 +5299,16 @@
               {
                 "const": "rejected-record",
                 "description": "A record a request sends was not valid CSL-JSON, so none is cited.",
+                "type": "string"
+              },
+              {
+                "const": "no-attachment-text",
+                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or reading its file needs what Ibis does not have yet.",
+                "type": "string"
+              },
+              {
+                "const": "no-such-pages",
+                "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
                 "type": "string"
               }
             ]
@@ -7332,6 +7372,16 @@
                 "const": "rejected-record",
                 "description": "A record a request sends was not valid CSL-JSON, so none is cited.",
                 "type": "string"
+              },
+              {
+                "const": "no-attachment-text",
+                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or reading its file needs what Ibis does not have yet.",
+                "type": "string"
+              },
+              {
+                "const": "no-such-pages",
+                "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
+                "type": "string"
               }
             ]
           },
@@ -8572,6 +8622,16 @@
                 "const": "rejected-record",
                 "description": "A record a request sends was not valid CSL-JSON, so none is cited.",
                 "type": "string"
+              },
+              {
+                "const": "no-attachment-text",
+                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or reading its file needs what Ibis does not have yet.",
+                "type": "string"
+              },
+              {
+                "const": "no-such-pages",
+                "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
+                "type": "string"
               }
             ]
           },
@@ -9565,6 +9625,16 @@
                 "const": "rejected-record",
                 "description": "A record a request sends was not valid CSL-JSON, so none is cited.",
                 "type": "string"
+              },
+              {
+                "const": "no-attachment-text",
+                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or reading its file needs what Ibis does not have yet.",
+                "type": "string"
+              },
+              {
+                "const": "no-such-pages",
+                "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
+                "type": "string"
               }
             ]
           },
@@ -10186,6 +10256,2569 @@
     },
     {
       "contract": 1,
+      "method": "outline",
+      "params": {
+        "$defs": {
+          "ItemRef": {
+            "additionalProperties": false,
+            "description": "Identity inside one library; citation keys are intentionally separate.\nNon-item kinds use source-namespaced keys (for example `tag:...`) so\nsource tags and collections cannot collide with native item keys.",
+            "properties": {
+              "key": {
+                "$ref": "#/$defs/RecordId"
+              },
+              "library": {
+                "$ref": "#/$defs/LibraryId"
+              }
+            },
+            "required": [
+              "library",
+              "key"
+            ],
+            "type": "object"
+          },
+          "ItemSelector": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "by": {
+                    "const": "id",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/$defs/ItemRef"
+                  }
+                },
+                "required": [
+                  "by",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "by": {
+                    "const": "key",
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "by",
+                  "value"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "LibraryId": {
+            "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "type": "string"
+          },
+          "RecordId": {
+            "type": "string",
+            "x-ibis-opaque": "RecordId"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "A reference's attachments: what each is and whether its text can be read\n(decision 0055).",
+        "properties": {
+          "item": {
+            "$ref": "#/$defs/ItemSelector"
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "title": "OutlineRequest",
+        "type": "object"
+      },
+      "result": {
+        "$defs": {
+          "AttachmentOutline": {
+            "description": "One attachment, without its text.",
+            "properties": {
+              "cite_pages_known": {
+                "description": "Printed page labels are known, so pages have a `cite_page`.",
+                "type": "boolean"
+              },
+              "id": {
+                "description": "Pass to `read` or `find-in`. It stays valid while the library holds\nthe reference unchanged.",
+                "type": "string"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "pages": {
+                "description": "Pages the file has, as its source recorded them.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "pages_known": {
+                "description": "The text's page breaks were verified, so each page has its number.",
+                "type": "boolean"
+              },
+              "pages_with_text": {
+                "description": "Pages that have text, from the first.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "text": {
+                "$ref": "#/$defs/TextAvailability"
+              },
+              "title": {
+                "description": "The attachment's title, as the library has it.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "media_type",
+              "text",
+              "pages_known",
+              "cite_pages_known"
+            ],
+            "type": "object"
+          },
+          "CitationSurface": {
+            "description": "Wording context only; operations choose their recovery before presentation.",
+            "enum": [
+              "bibliography"
+            ],
+            "type": "string"
+          },
+          "ErrorCode": {
+            "enum": [
+              "usage",
+              "bad-input",
+              "not-found",
+              "source-unavailable",
+              "resource-limit",
+              "newer-format",
+              "internal",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "ErrorReason": {
+            "description": "Why a request failed, when the code alone cannot tell a caller what to change.\nFront ends choose their words from it; they never guess a reason from the code.",
+            "oneOf": [
+              {
+                "const": "strict-citation",
+                "description": "Strict citation policy found losses, refusals or unhealthy evidence.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-style",
+                "description": "No style has the requested id; `styles` lists them.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-output",
+                "description": "No output has the requested id; `outputs` lists them.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-locale",
+                "description": "The requested locale is not bundled; `styles` lists the locales.",
+                "type": "string"
+              },
+              {
+                "const": "duplicate-key",
+                "description": "The key is repeated in a library, so every entry under it is skipped.",
+                "type": "string"
+              },
+              {
+                "const": "damaged-entry",
+                "description": "The entry with this key is damaged, so it is skipped; the library's\nwarnings say where and why.",
+                "type": "string"
+              },
+              {
+                "const": "ambiguous-key",
+                "description": "Several references share the key.",
+                "type": "string"
+              },
+              {
+                "const": "missing-key",
+                "description": "A key output needs a citation key this reference does not have.",
+                "type": "string"
+              },
+              {
+                "const": "missing-file",
+                "description": "The selected library file was moved, renamed or removed.",
+                "type": "string"
+              },
+              {
+                "const": "app-missing",
+                "description": "The program started as the Ibis app does not exist.",
+                "type": "string"
+              },
+              {
+                "const": "not-ibis",
+                "description": "The program started as the Ibis app is not Ibis.",
+                "type": "string"
+              },
+              {
+                "const": "no-answer",
+                "description": "The Ibis app started but did not confirm the request in time.",
+                "type": "string"
+              },
+              {
+                "const": "settings-read-timeout",
+                "description": "The app's library settings did not finish loading in time.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-sharing-off",
+                "description": "Zotero is running but does not let other applications read it.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-profile-needed",
+                "description": "Zotero is closed and which profile to read is not settled; name one.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-needs-opening",
+                "description": "A closed read is unsafe or impossible here; opening Zotero is the fix.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-not-found",
+                "description": "No Zotero library is on this computer.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-no-space",
+                "description": "A closed read needs a private copy and there is no room for it.",
+                "type": "string"
+              },
+              {
+                "const": "csv-template",
+                "description": "A CSV file's first row does not name the columns of Ibis's template.",
+                "type": "string"
+              },
+              {
+                "const": "library-cut-short",
+                "description": "Nothing has the key in what was read, and a library was too large to read whole.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-format",
+                "description": "Neither the file's name nor its contents identify a supported library format.",
+                "type": "string"
+              },
+              {
+                "const": "duplicate-record",
+                "description": "Two records a request sends share an `id`, `1` and `\"1\"` included.",
+                "type": "string"
+              },
+              {
+                "const": "rejected-record",
+                "description": "A record a request sends was not valid CSL-JSON, so none is cited.",
+                "type": "string"
+              },
+              {
+                "const": "no-attachment-text",
+                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or reading its file needs what Ibis does not have yet.",
+                "type": "string"
+              },
+              {
+                "const": "no-such-pages",
+                "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
+                "type": "string"
+              }
+            ]
+          },
+          "FocusTarget": {
+            "enum": [
+              "format-picker",
+              "library-picker",
+              "source-file",
+              "zotero-sharing-help",
+              "search",
+              "results",
+              "locator",
+              "citation",
+              "citation-form",
+              "session-references",
+              "language",
+              "recovery-action",
+              "project-name",
+              "project-menu",
+              "settings",
+              "request"
+            ],
+            "type": "string"
+          },
+          "HealthStatus": {
+            "oneOf": [
+              {
+                "enum": [
+                  "ok",
+                  "findings"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "LibraryId": {
+            "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "type": "string"
+          },
+          "Message": {
+            "properties": {
+              "args": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "context": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CitationSurface"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "args"
+            ],
+            "type": "object"
+          },
+          "NoRecoveryReason": {
+            "enum": [
+              "cancelled",
+              "in-progress"
+            ],
+            "type": "string"
+          },
+          "Recovery": {
+            "description": "Exactly one next action; absence must have an explicit, machine-readable reason.",
+            "oneOf": [
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-output",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-style",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-form",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "locate-file",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-library",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-zotero-sharing-help",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-zotero",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "retry",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "rename-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "reopen-project-menu",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "finish-editor-request",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "review-settings",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-citation",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-locator",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-input",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "search-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "select-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "reduce-selection",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "close",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-locale",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "review-library",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "free-disk-space",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "upgrade-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-backup",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "download-file",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-shortcut",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "restart-session",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "none",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "$ref": "#/$defs/NoRecoveryReason"
+                  }
+                },
+                "required": [
+                  "action",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "SourceFinding": {
+            "description": "A problem with one library a result consulted. Codes only: no source text.",
+            "oneOf": [
+              {
+                "description": "The library changed and could not be read again; the result used the\nreferences from its last successful read.",
+                "properties": {
+                  "code": {
+                    "const": "refresh-failed",
+                    "type": "string"
+                  },
+                  "error": {
+                    "$ref": "#/$defs/ErrorCode"
+                  },
+                  "focus": {
+                    "$ref": "#/$defs/FocusTarget"
+                  },
+                  "last_successful_read_ms": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "library": {
+                    "$ref": "#/$defs/LibraryId"
+                  },
+                  "message": {
+                    "$ref": "#/$defs/Message"
+                  },
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/ErrorReason"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "recovery": {
+                    "$ref": "#/$defs/Recovery"
+                  }
+                },
+                "required": [
+                  "code",
+                  "library",
+                  "error",
+                  "message",
+                  "recovery",
+                  "focus",
+                  "last_successful_read_ms"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Entries were skipped or read with problems; `ibis libraries` lists them.",
+                "properties": {
+                  "code": {
+                    "const": "source-warnings",
+                    "type": "string"
+                  },
+                  "count": {
+                    "format": "uint",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "library": {
+                    "$ref": "#/$defs/LibraryId"
+                  }
+                },
+                "required": [
+                  "code",
+                  "library",
+                  "count"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "SourceHealth": {
+            "description": "Whether the sources behind one result were healthy, read from the same\nlibrary state the result came from: a later refresh never changes it.",
+            "properties": {
+              "findings": {
+                "description": "One entry per problem, in library order; empty when `status` is `ok`.",
+                "items": {
+                  "$ref": "#/$defs/SourceFinding"
+                },
+                "type": "array"
+              },
+              "status": {
+                "$ref": "#/$defs/HealthStatus"
+              }
+            },
+            "required": [
+              "status",
+              "findings"
+            ],
+            "type": "object"
+          },
+          "TextAvailability": {
+            "oneOf": [
+              {
+                "const": "available",
+                "description": "Its text can be read.",
+                "type": "string"
+              },
+              {
+                "const": "not-indexed",
+                "description": "The library holds no text for it: Zotero has not indexed it.",
+                "type": "string"
+              },
+              {
+                "const": "no-file",
+                "description": "A link, with no file.",
+                "type": "string"
+              },
+              {
+                "const": "not-yet",
+                "description": "A file whose text Ibis cannot read yet.",
+                "type": "string"
+              },
+              {
+                "const": "too-large",
+                "description": "Text larger than Ibis reads at once.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "A result with the health of the sources it consulted.",
+        "properties": {
+          "attachments": {
+            "items": {
+              "$ref": "#/$defs/AttachmentOutline"
+            },
+            "type": "array"
+          },
+          "source_health": {
+            "$ref": "#/$defs/SourceHealth"
+          }
+        },
+        "required": [
+          "attachments",
+          "source_health"
+        ],
+        "title": "Checked",
+        "type": "object"
+      }
+    },
+    {
+      "contract": 1,
+      "method": "read",
+      "params": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "The text of an attachment `outline` listed: at most five pages or 32 KiB,\neach page marked. `next` in the answer gives the arguments that go on.",
+        "properties": {
+          "attachment": {
+            "description": "An attachment id from `outline`.",
+            "type": "string"
+          },
+          "first_page": {
+            "default": null,
+            "description": "The first page, from 1; only when pages are known. Omitted, page 1.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "last_page": {
+            "default": null,
+            "description": "The last page, at most four after the first.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "offset": {
+            "default": null,
+            "description": "Where to start within the first page, or within the text when pages\nare not known: a byte offset a `next` gave.",
+            "format": "uint",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "attachment"
+        ],
+        "title": "ReadRequest",
+        "type": "object"
+      },
+      "result": {
+        "$defs": {
+          "CitationSurface": {
+            "description": "Wording context only; operations choose their recovery before presentation.",
+            "enum": [
+              "bibliography"
+            ],
+            "type": "string"
+          },
+          "ErrorCode": {
+            "enum": [
+              "usage",
+              "bad-input",
+              "not-found",
+              "source-unavailable",
+              "resource-limit",
+              "newer-format",
+              "internal",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "ErrorReason": {
+            "description": "Why a request failed, when the code alone cannot tell a caller what to change.\nFront ends choose their words from it; they never guess a reason from the code.",
+            "oneOf": [
+              {
+                "const": "strict-citation",
+                "description": "Strict citation policy found losses, refusals or unhealthy evidence.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-style",
+                "description": "No style has the requested id; `styles` lists them.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-output",
+                "description": "No output has the requested id; `outputs` lists them.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-locale",
+                "description": "The requested locale is not bundled; `styles` lists the locales.",
+                "type": "string"
+              },
+              {
+                "const": "duplicate-key",
+                "description": "The key is repeated in a library, so every entry under it is skipped.",
+                "type": "string"
+              },
+              {
+                "const": "damaged-entry",
+                "description": "The entry with this key is damaged, so it is skipped; the library's\nwarnings say where and why.",
+                "type": "string"
+              },
+              {
+                "const": "ambiguous-key",
+                "description": "Several references share the key.",
+                "type": "string"
+              },
+              {
+                "const": "missing-key",
+                "description": "A key output needs a citation key this reference does not have.",
+                "type": "string"
+              },
+              {
+                "const": "missing-file",
+                "description": "The selected library file was moved, renamed or removed.",
+                "type": "string"
+              },
+              {
+                "const": "app-missing",
+                "description": "The program started as the Ibis app does not exist.",
+                "type": "string"
+              },
+              {
+                "const": "not-ibis",
+                "description": "The program started as the Ibis app is not Ibis.",
+                "type": "string"
+              },
+              {
+                "const": "no-answer",
+                "description": "The Ibis app started but did not confirm the request in time.",
+                "type": "string"
+              },
+              {
+                "const": "settings-read-timeout",
+                "description": "The app's library settings did not finish loading in time.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-sharing-off",
+                "description": "Zotero is running but does not let other applications read it.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-profile-needed",
+                "description": "Zotero is closed and which profile to read is not settled; name one.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-needs-opening",
+                "description": "A closed read is unsafe or impossible here; opening Zotero is the fix.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-not-found",
+                "description": "No Zotero library is on this computer.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-no-space",
+                "description": "A closed read needs a private copy and there is no room for it.",
+                "type": "string"
+              },
+              {
+                "const": "csv-template",
+                "description": "A CSV file's first row does not name the columns of Ibis's template.",
+                "type": "string"
+              },
+              {
+                "const": "library-cut-short",
+                "description": "Nothing has the key in what was read, and a library was too large to read whole.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-format",
+                "description": "Neither the file's name nor its contents identify a supported library format.",
+                "type": "string"
+              },
+              {
+                "const": "duplicate-record",
+                "description": "Two records a request sends share an `id`, `1` and `\"1\"` included.",
+                "type": "string"
+              },
+              {
+                "const": "rejected-record",
+                "description": "A record a request sends was not valid CSL-JSON, so none is cited.",
+                "type": "string"
+              },
+              {
+                "const": "no-attachment-text",
+                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or reading its file needs what Ibis does not have yet.",
+                "type": "string"
+              },
+              {
+                "const": "no-such-pages",
+                "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
+                "type": "string"
+              }
+            ]
+          },
+          "FocusTarget": {
+            "enum": [
+              "format-picker",
+              "library-picker",
+              "source-file",
+              "zotero-sharing-help",
+              "search",
+              "results",
+              "locator",
+              "citation",
+              "citation-form",
+              "session-references",
+              "language",
+              "recovery-action",
+              "project-name",
+              "project-menu",
+              "settings",
+              "request"
+            ],
+            "type": "string"
+          },
+          "HealthStatus": {
+            "oneOf": [
+              {
+                "enum": [
+                  "ok",
+                  "findings"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "LibraryId": {
+            "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "type": "string"
+          },
+          "Message": {
+            "properties": {
+              "args": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "context": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CitationSurface"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "args"
+            ],
+            "type": "object"
+          },
+          "NoRecoveryReason": {
+            "enum": [
+              "cancelled",
+              "in-progress"
+            ],
+            "type": "string"
+          },
+          "PageText": {
+            "description": "One page's text, or the text read when pages are not known.",
+            "properties": {
+              "cite_page": {
+                "description": "The printed page to cite, only from verified labels; null otherwise.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "cut": {
+                "description": "The page holds more than one read returns; `next` goes on.",
+                "type": "boolean"
+              },
+              "pdf_page": {
+                "description": "The file's own page number, from 1; null when pages are not known.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text"
+            ],
+            "type": "object"
+          },
+          "ReadNext": {
+            "properties": {
+              "first_page": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "offset": {
+                "format": "uint",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "Recovery": {
+            "description": "Exactly one next action; absence must have an explicit, machine-readable reason.",
+            "oneOf": [
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-output",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-style",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-form",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "locate-file",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-library",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-zotero-sharing-help",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-zotero",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "retry",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "rename-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "reopen-project-menu",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "finish-editor-request",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "review-settings",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-citation",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-locator",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-input",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "search-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "select-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "reduce-selection",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "close",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-locale",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "review-library",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "free-disk-space",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "upgrade-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-backup",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "download-file",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-shortcut",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "restart-session",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "none",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "$ref": "#/$defs/NoRecoveryReason"
+                  }
+                },
+                "required": [
+                  "action",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "SourceFinding": {
+            "description": "A problem with one library a result consulted. Codes only: no source text.",
+            "oneOf": [
+              {
+                "description": "The library changed and could not be read again; the result used the\nreferences from its last successful read.",
+                "properties": {
+                  "code": {
+                    "const": "refresh-failed",
+                    "type": "string"
+                  },
+                  "error": {
+                    "$ref": "#/$defs/ErrorCode"
+                  },
+                  "focus": {
+                    "$ref": "#/$defs/FocusTarget"
+                  },
+                  "last_successful_read_ms": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "library": {
+                    "$ref": "#/$defs/LibraryId"
+                  },
+                  "message": {
+                    "$ref": "#/$defs/Message"
+                  },
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/ErrorReason"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "recovery": {
+                    "$ref": "#/$defs/Recovery"
+                  }
+                },
+                "required": [
+                  "code",
+                  "library",
+                  "error",
+                  "message",
+                  "recovery",
+                  "focus",
+                  "last_successful_read_ms"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Entries were skipped or read with problems; `ibis libraries` lists them.",
+                "properties": {
+                  "code": {
+                    "const": "source-warnings",
+                    "type": "string"
+                  },
+                  "count": {
+                    "format": "uint",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "library": {
+                    "$ref": "#/$defs/LibraryId"
+                  }
+                },
+                "required": [
+                  "code",
+                  "library",
+                  "count"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "SourceHealth": {
+            "description": "Whether the sources behind one result were healthy, read from the same\nlibrary state the result came from: a later refresh never changes it.",
+            "properties": {
+              "findings": {
+                "description": "One entry per problem, in library order; empty when `status` is `ok`.",
+                "items": {
+                  "$ref": "#/$defs/SourceFinding"
+                },
+                "type": "array"
+              },
+              "status": {
+                "$ref": "#/$defs/HealthStatus"
+              }
+            },
+            "required": [
+              "status",
+              "findings"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "A result with the health of the sources it consulted.",
+        "properties": {
+          "attachment": {
+            "type": "string"
+          },
+          "next": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ReadNext"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The arguments for the next `read`, while text remains."
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/$defs/PageText"
+            },
+            "type": "array"
+          },
+          "pages_known": {
+            "type": "boolean"
+          },
+          "source_health": {
+            "$ref": "#/$defs/SourceHealth"
+          }
+        },
+        "required": [
+          "attachment",
+          "pages",
+          "pages_known",
+          "source_health"
+        ],
+        "title": "Checked",
+        "type": "object"
+      }
+    },
+    {
+      "contract": 1,
+      "method": "find-in",
+      "params": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Short passages of an attachment that hold some words, with their pages.",
+        "properties": {
+          "attachment": {
+            "description": "An attachment id from `outline`.",
+            "type": "string"
+          },
+          "query": {
+            "description": "Words to find in this order, ignoring case and line breaks.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attachment",
+          "query"
+        ],
+        "title": "FindInRequest",
+        "type": "object"
+      },
+      "result": {
+        "$defs": {
+          "CitationSurface": {
+            "description": "Wording context only; operations choose their recovery before presentation.",
+            "enum": [
+              "bibliography"
+            ],
+            "type": "string"
+          },
+          "ErrorCode": {
+            "enum": [
+              "usage",
+              "bad-input",
+              "not-found",
+              "source-unavailable",
+              "resource-limit",
+              "newer-format",
+              "internal",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "ErrorReason": {
+            "description": "Why a request failed, when the code alone cannot tell a caller what to change.\nFront ends choose their words from it; they never guess a reason from the code.",
+            "oneOf": [
+              {
+                "const": "strict-citation",
+                "description": "Strict citation policy found losses, refusals or unhealthy evidence.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-style",
+                "description": "No style has the requested id; `styles` lists them.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-output",
+                "description": "No output has the requested id; `outputs` lists them.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-locale",
+                "description": "The requested locale is not bundled; `styles` lists the locales.",
+                "type": "string"
+              },
+              {
+                "const": "duplicate-key",
+                "description": "The key is repeated in a library, so every entry under it is skipped.",
+                "type": "string"
+              },
+              {
+                "const": "damaged-entry",
+                "description": "The entry with this key is damaged, so it is skipped; the library's\nwarnings say where and why.",
+                "type": "string"
+              },
+              {
+                "const": "ambiguous-key",
+                "description": "Several references share the key.",
+                "type": "string"
+              },
+              {
+                "const": "missing-key",
+                "description": "A key output needs a citation key this reference does not have.",
+                "type": "string"
+              },
+              {
+                "const": "missing-file",
+                "description": "The selected library file was moved, renamed or removed.",
+                "type": "string"
+              },
+              {
+                "const": "app-missing",
+                "description": "The program started as the Ibis app does not exist.",
+                "type": "string"
+              },
+              {
+                "const": "not-ibis",
+                "description": "The program started as the Ibis app is not Ibis.",
+                "type": "string"
+              },
+              {
+                "const": "no-answer",
+                "description": "The Ibis app started but did not confirm the request in time.",
+                "type": "string"
+              },
+              {
+                "const": "settings-read-timeout",
+                "description": "The app's library settings did not finish loading in time.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-sharing-off",
+                "description": "Zotero is running but does not let other applications read it.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-profile-needed",
+                "description": "Zotero is closed and which profile to read is not settled; name one.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-needs-opening",
+                "description": "A closed read is unsafe or impossible here; opening Zotero is the fix.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-not-found",
+                "description": "No Zotero library is on this computer.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-no-space",
+                "description": "A closed read needs a private copy and there is no room for it.",
+                "type": "string"
+              },
+              {
+                "const": "csv-template",
+                "description": "A CSV file's first row does not name the columns of Ibis's template.",
+                "type": "string"
+              },
+              {
+                "const": "library-cut-short",
+                "description": "Nothing has the key in what was read, and a library was too large to read whole.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-format",
+                "description": "Neither the file's name nor its contents identify a supported library format.",
+                "type": "string"
+              },
+              {
+                "const": "duplicate-record",
+                "description": "Two records a request sends share an `id`, `1` and `\"1\"` included.",
+                "type": "string"
+              },
+              {
+                "const": "rejected-record",
+                "description": "A record a request sends was not valid CSL-JSON, so none is cited.",
+                "type": "string"
+              },
+              {
+                "const": "no-attachment-text",
+                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or reading its file needs what Ibis does not have yet.",
+                "type": "string"
+              },
+              {
+                "const": "no-such-pages",
+                "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
+                "type": "string"
+              }
+            ]
+          },
+          "FocusTarget": {
+            "enum": [
+              "format-picker",
+              "library-picker",
+              "source-file",
+              "zotero-sharing-help",
+              "search",
+              "results",
+              "locator",
+              "citation",
+              "citation-form",
+              "session-references",
+              "language",
+              "recovery-action",
+              "project-name",
+              "project-menu",
+              "settings",
+              "request"
+            ],
+            "type": "string"
+          },
+          "HealthStatus": {
+            "oneOf": [
+              {
+                "enum": [
+                  "ok",
+                  "findings"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "LibraryId": {
+            "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "type": "string"
+          },
+          "Message": {
+            "properties": {
+              "args": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "context": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CitationSurface"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "args"
+            ],
+            "type": "object"
+          },
+          "NoRecoveryReason": {
+            "enum": [
+              "cancelled",
+              "in-progress"
+            ],
+            "type": "string"
+          },
+          "Passage": {
+            "properties": {
+              "cite_page": {
+                "description": "The printed page to cite, only from verified labels; null otherwise.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "pdf_page": {
+                "description": "The file's own page number, from 1; null when pages are not known.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "text": {
+                "description": "About 400 characters around the words, on one line.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "text"
+            ],
+            "type": "object"
+          },
+          "Recovery": {
+            "description": "Exactly one next action; absence must have an explicit, machine-readable reason.",
+            "oneOf": [
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-output",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-style",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-form",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "locate-file",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-library",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-zotero-sharing-help",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-zotero",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "retry",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "rename-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "reopen-project-menu",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "finish-editor-request",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "review-settings",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-citation",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-locator",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-input",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "search-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "select-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "reduce-selection",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "close",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-locale",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "review-library",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "free-disk-space",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "upgrade-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-backup",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "download-file",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-shortcut",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "restart-session",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "none",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "$ref": "#/$defs/NoRecoveryReason"
+                  }
+                },
+                "required": [
+                  "action",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "SourceFinding": {
+            "description": "A problem with one library a result consulted. Codes only: no source text.",
+            "oneOf": [
+              {
+                "description": "The library changed and could not be read again; the result used the\nreferences from its last successful read.",
+                "properties": {
+                  "code": {
+                    "const": "refresh-failed",
+                    "type": "string"
+                  },
+                  "error": {
+                    "$ref": "#/$defs/ErrorCode"
+                  },
+                  "focus": {
+                    "$ref": "#/$defs/FocusTarget"
+                  },
+                  "last_successful_read_ms": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "library": {
+                    "$ref": "#/$defs/LibraryId"
+                  },
+                  "message": {
+                    "$ref": "#/$defs/Message"
+                  },
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/ErrorReason"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "recovery": {
+                    "$ref": "#/$defs/Recovery"
+                  }
+                },
+                "required": [
+                  "code",
+                  "library",
+                  "error",
+                  "message",
+                  "recovery",
+                  "focus",
+                  "last_successful_read_ms"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Entries were skipped or read with problems; `ibis libraries` lists them.",
+                "properties": {
+                  "code": {
+                    "const": "source-warnings",
+                    "type": "string"
+                  },
+                  "count": {
+                    "format": "uint",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "library": {
+                    "$ref": "#/$defs/LibraryId"
+                  }
+                },
+                "required": [
+                  "code",
+                  "library",
+                  "count"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "SourceHealth": {
+            "description": "Whether the sources behind one result were healthy, read from the same\nlibrary state the result came from: a later refresh never changes it.",
+            "properties": {
+              "findings": {
+                "description": "One entry per problem, in library order; empty when `status` is `ok`.",
+                "items": {
+                  "$ref": "#/$defs/SourceFinding"
+                },
+                "type": "array"
+              },
+              "status": {
+                "$ref": "#/$defs/HealthStatus"
+              }
+            },
+            "required": [
+              "status",
+              "findings"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "A result with the health of the sources it consulted.",
+        "properties": {
+          "attachment": {
+            "type": "string"
+          },
+          "complete": {
+            "description": "False when more passages hold the words than one answer gives.",
+            "type": "boolean"
+          },
+          "pages_known": {
+            "type": "boolean"
+          },
+          "passages": {
+            "items": {
+              "$ref": "#/$defs/Passage"
+            },
+            "type": "array"
+          },
+          "source_health": {
+            "$ref": "#/$defs/SourceHealth"
+          }
+        },
+        "required": [
+          "attachment",
+          "passages",
+          "complete",
+          "pages_known",
+          "source_health"
+        ],
+        "title": "Checked",
+        "type": "object"
+      }
+    },
+    {
+      "contract": 1,
       "method": "styles",
       "params": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -10560,6 +13193,9 @@
               "records",
               "project",
               "entry",
+              "outline",
+              "read",
+              "find-in",
               "styles",
               "outputs",
               "schema",
@@ -10605,6 +13241,9 @@
               "records",
               "project",
               "entry",
+              "outline",
+              "read",
+              "find-in",
               "styles",
               "outputs",
               "schema",

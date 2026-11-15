@@ -12,6 +12,17 @@ crash-upload service. This page describes current data flows; plans live in
   `.bib` files under Documents, Desktop and Downloads; it opens a file only
   after selection. Closed Zotero databases and Better BibTeX key files are
   read from private temporary copies that are removed after use.
+- **Attachment text:** `ibis outline`, `ibis read` and `ibis find-in` read
+  the text Zotero keeps for the files it indexed: from Zotero while it runs,
+  or from the `.zotero-ft-cache` file in the attachment's storage folder while
+  it is closed, with page counts from the private copy of Zotero's database.
+  They need no permission, so an AI app that can run commands can read
+  attachment text this way. The MCP tools `outline`, `read` and `find_in` are
+  offered only for libraries where you allow AI apps to read attachment text;
+  this is off by default, separate for each library, kept only on this
+  computer and not part of a settings backup. Text is held in memory for one
+  request, never written to disk, and returned in bounded parts: at most five
+  pages or 32 KiB, or ten passages. Ids name an attachment, never its path.
 - **Project bibliographies:** chosen files are checked without changes.
   Settings retain their paths; the picker receives only file names.
 - **Clipboard:** copying replaces its contents. Clipboard managers, cloud
@@ -79,7 +90,7 @@ MCP responses go to the client that started the server, as listed below.
 | App updates | Automatic checks require consent; Check for Updates… checks on request. GitHub receives IP address and app version, not library data. Downloads require agreement and a valid channel signature. |
 | Windows installation | Downloads Microsoft's WebView2 bootstrapper/runtime if missing. Microsoft's runtime updates are separate. |
 | Feedback | Opens GitHub in your browser with app version and OS; you decide whether to submit. |
-| AI clients | `ibis mcp` passes bibliographic fields and citations over stdio to its caller. That client may send them to its own service. [MCP privacy boundary](docs/cli.md#ai-agents-mcp). |
+| AI clients | `ibis mcp` passes bibliographic fields and citations over stdio to its caller, and attachment text from libraries where you allow it. That client may send them to its own service. [MCP privacy boundary](docs/cli.md#ai-agents-mcp). |
 
 The web interface has window-scoped native commands rather than file,
 clipboard, shell or network plugin permissions. Its CSP limits connections

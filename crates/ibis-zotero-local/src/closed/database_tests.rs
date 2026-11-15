@@ -431,3 +431,48 @@ fn the_owner_is_the_account_the_local_api_names_from_the_first_top_level_item() 
         assert_eq!(owner(&format!("DROP TABLE {table};")), Err(ClosedError::Damaged));
     }
 }
+
+#[test]
+fn attachments_carry_zoteros_index_counts_and_never_fail_a_read() {
+    let dir = fixture(10);
+    edit(
+        dir.path(),
+        "INSERT INTO itemAttachments VALUES(14,10,0,'application/pdf','storage:invented.pdf');
+         INSERT INTO items VALUES(17,1,'LINK0001',1,4,'2020-01-01 00:00:00','2020-01-01 00:00:00');
+         INSERT INTO itemAttachments VALUES(17,10,3,NULL,NULL);
+         INSERT INTO fulltextItems(itemID,indexedPages,totalPages) VALUES(14,2,12);
+         INSERT INTO itemDataValues VALUES(900,'Invented full text');
+         INSERT INTO itemData VALUES(14,1,900);",
+    );
+    let snapshot = read_fixture(dir.path()).unwrap();
+    let attachments = snapshot.attachments.unwrap();
+    assert_eq!(attachments.len(), 2);
+    let pdf = attachments
+        .iter()
+        .find(|attachment| attachment.key == "FILE0001")
+        .unwrap();
+    assert_eq!((pdf.library_id, pdf.parent.as_str()), (1, "SYNTH001"));
+    assert_eq!(
+        (pdf.title.as_str(), pdf.content_type.as_str()),
+        ("Invented full text", "application/pdf")
+    );
+    assert!(!pdf.link_only);
+    assert!(
+        pdf.indexed
+            == Some(IndexedCounts {
+                indexed_pages: Some(2),
+                total_pages: Some(12)
+            })
+    );
+    let link = attachments
+        .iter()
+        .find(|attachment| attachment.key == "LINK0001")
+        .unwrap();
+    assert!(link.link_only && link.indexed.is_none() && link.content_type.is_empty());
+
+    // A layout without Zotero's full-text table still reads every reference.
+    edit(dir.path(), "DROP TABLE fulltextItems;");
+    let snapshot = read_fixture(dir.path()).unwrap();
+    assert!(snapshot.attachments.is_none());
+    assert_eq!(snapshot.libraries[0].items.len(), 1);
+}

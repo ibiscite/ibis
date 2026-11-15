@@ -2,7 +2,8 @@
 
 Decided by the maintainer on 2026-11-15: yes to every question below, as
 recommended, and the direction in [One place to set it up](#one-place-to-set-it-up).
-`ibis agents setup` is built; the numbered sections are not yet.
+`ibis agents setup` and step 3 of the order (attachment text from Zotero's
+index) are built; the other numbered steps are not yet.
 
 It builds on [0033](0033-engine-for-agents-and-tools.md),
 [0036](0036-reader-trust-boundary.md), [0051](0051-references-in-and-out.md) and
@@ -168,8 +169,14 @@ online wherever it appears, and its MCP results say so in `source_health`, so th
 1. Record the three-layer rule; trim tool descriptions and move workflow into the
    skill.
 2. Document `ssh HOST ibis mcp` and the move between computers.
-3. `outline`, `read` and `find_in` on Zotero's cache: engine, then CLI, then MCP
-   behind the opt-in, with the skill and privacy pages.
+3. Done: `outline`, `read` and `find_in` on Zotero's cache: engine, then CLI, then
+   MCP behind the opt-in, with the skill and privacy pages. While Zotero runs, the
+   text and page counts come from its local API (`items/KEY/fulltext`); while it is
+   closed, from `.zotero-ft-cache` and the private copy of its database. The opt-in
+   is `attachment_text` in settings, a list of libraries kept on this computer and
+   out of backups, as paste approvals are ([0031](0031-what-ibis-remembers-per-app.md)).
+   `cite_page` stays empty until step 4 reads page labels, and `.bib` attachments
+   are listed without text until then.
 4. The PDF extractor in a child process, with page labels and fuzzing.
 5. Agent proposals for writes, after 0051's add-by-identifier slice.
 6. The Web API source, only after the maintainer's yes.

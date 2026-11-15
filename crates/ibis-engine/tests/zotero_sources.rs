@@ -388,3 +388,57 @@ fn zotero_markers_name_each_item_in_the_library_it_was_read_from() {
         "{ | Invented atlas, 2026 | | | zg:7:SYNTH234 }"
     );
 }
+
+#[test]
+fn a_running_zoteros_indexed_text_is_outlined_read_and_searched_by_page() {
+    let server = fixture::Server::new();
+    let engine = Engine::with_zotero_port(server.port).unwrap();
+    let cancel = Cancellation::default();
+    engine
+        .dispatch(Method::Libraries, &json!({"action":"open-zotero"}), &cancel)
+        .unwrap();
+    let outline = engine
+        .dispatch(
+            Method::Outline,
+            &json!({"item":{"by":"key","value":"Synthetic2026"}}),
+            &cancel,
+        )
+        .unwrap()
+        .data;
+    let attachments = outline["attachments"].as_array().unwrap();
+    assert_eq!(attachments.len(), 2);
+    assert_eq!(attachments[0]["title"], "Invented atlas PDF");
+    assert_eq!(attachments[0]["media_type"], "application/pdf");
+    assert_eq!(attachments[0]["text"], "available");
+    assert_eq!(attachments[0]["pages"], 3);
+    assert_eq!(attachments[0]["pages_known"], true);
+    assert_eq!(attachments[0]["cite_pages_known"], false);
+    assert_eq!(attachments[1]["text"], "no-file");
+    assert!(!outline.to_string().contains("PDFA0001"));
+    let file = attachments[0]["id"].clone();
+    let read = engine
+        .dispatch(Method::Read, &json!({"attachment":file,"first_page":2}), &cancel)
+        .unwrap()
+        .data;
+    assert_eq!(read["pages"].as_array().unwrap().len(), 2);
+    assert_eq!(read["pages"][0]["pdf_page"], 2);
+    assert_eq!(read["pages"][0]["cite_page"], serde_json::Value::Null);
+    assert_eq!(read["pages"][0]["text"], "Invented page two holds a brass lantern.");
+    assert!(read.get("next").is_none());
+    let found = engine
+        .dispatch(
+            Method::FindIn,
+            &json!({"attachment":file,"query":"Brass Lantern"}),
+            &cancel,
+        )
+        .unwrap()
+        .data;
+    assert_eq!(found["complete"], true);
+    assert_eq!(found["passages"][0]["pdf_page"], 2);
+    assert_eq!(found["passages"][0]["text"], "Invented page two holds a brass lantern.");
+    let refused = engine
+        .dispatch(Method::Read, &json!({"attachment":attachments[1]["id"]}), &cancel)
+        .unwrap_err();
+    assert_eq!(refused.code, ErrorCode::SourceUnavailable);
+    assert_eq!(refused.reason, Some(ErrorReason::NoAttachmentText));
+}

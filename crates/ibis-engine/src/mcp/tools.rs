@@ -89,22 +89,21 @@ pub(super) const TOOLS: [Tool; 4] = [
     },
 ];
 
-pub(super) fn list() -> Value {
+mod reading;
+pub(super) use reading::{offered_list, offered_tool};
+
+/// One tool as tools/list describes it.
+fn entry(tool: &Tool) -> Value {
     let read_only =
         json!({"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false});
-    TOOLS
-        .iter()
-        .map(|tool| {
-            json!({
-                "name": tool.name,
-                "title": tool.title,
-                "description": crate::catalogue::text(tool.description, None, &[]).unwrap_or_else(|| tool.description.into()),
-                "inputSchema": (tool.input)(),
-                "outputSchema": output_schema((tool.output)()),
-                "annotations": read_only,
-            })
-        })
-        .collect()
+    json!({
+        "name": tool.name,
+        "title": tool.title,
+        "description": crate::catalogue::text(tool.description, None, &[]).unwrap_or_else(|| tool.description.into()),
+        "inputSchema": (tool.input)(),
+        "outputSchema": output_schema((tool.output)()),
+        "annotations": read_only,
+    })
 }
 
 /// Clients can validate either a successful answer or the required recovery data.
@@ -1056,6 +1055,6 @@ fn styles(
 #[ignore = "writes the generated tool list for gen.mjs"]
 fn write_tool_list() {
     let directory = std::env::var_os("IBIS_GEN_DIR").unwrap_or_else(|| panic!("set IBIS_GEN_DIR"));
-    let text = serde_json::to_string_pretty(&list()).unwrap_or_else(|e| panic!("{e}")) + "\n";
+    let text = serde_json::to_string_pretty(&reading::full_list()).unwrap_or_else(|e| panic!("{e}")) + "\n";
     std::fs::write(std::path::Path::new(&directory).join("mcp-tools.json"), text).unwrap_or_else(|e| panic!("{e}"));
 }

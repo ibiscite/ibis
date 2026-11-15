@@ -146,6 +146,31 @@ pub struct ClosedSnapshot {
     /// account's user ID, or 0 when none is signed in or when the personal
     /// library holds no top-level item (the API reads it from the first one).
     pub owner: u64,
+    /// Attachments of the items read, or `None` when this database's
+    /// attachment or full-text tables could not be read. Never fails a read.
+    pub attachments: Option<Vec<ClosedAttachment>>,
+}
+
+/// One attachment of an item, with the page counts Zotero recorded when it
+/// indexed the file (decision 0055). Its title is library text.
+#[derive(Clone, PartialEq, Eq)]
+pub struct ClosedAttachment {
+    pub library_id: i64,
+    /// The key of the item it belongs to.
+    pub parent: String,
+    pub key: String,
+    pub title: String,
+    pub content_type: String,
+    /// A link to a web page, with no file and no text.
+    pub link_only: bool,
+    /// Zotero's record of what it indexed, when it indexed the file.
+    pub indexed: Option<IndexedCounts>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct IndexedCounts {
+    pub indexed_pages: Option<u32>,
+    pub total_pages: Option<u32>,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -177,7 +202,9 @@ private_debug!(
     ClosedItem,
     ClosedLibrary,
     ClosedSnapshot,
-    ClosedWarning
+    ClosedWarning,
+    ClosedAttachment,
+    IndexedCounts
 );
 
 /// Reads through a private copy root under `cache`, held only while a read runs.
@@ -216,6 +243,40 @@ impl ClosedReader {
     }
 }
 
+/// The text Zotero cached for attachment `key` of the data directory `data`,
+/// or `None` when Zotero cached none. Only a regular local file is read, in
+/// at most ten seconds, and the text stays in memory (decision 0036).
+pub fn read_text_cache(data: &Path, key: &str) -> Result<Option<String>, ClosedError> {
+    use std::io::Read;
+    if !crate::fulltext::valid_key(key) {
+        return Err(ClosedError::UnsafeSource);
+    }
+    let control = Control::within(Arc::new(|| false), Duration::from_secs(10));
+    let folder = data.join("storage").join(key);
+    match std::fs::symlink_metadata(&folder) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(ClosedError::Unreadable),
+        Ok(_) => (),
+    }
+    let folder = platform::directory(&folder, &control)?;
+    let Some(file) = platform::open_regular(&folder.join(".zotero-ft-cache"))? else {
+        return Ok(None);
+    };
+    let limit = crate::fulltext::MAX_TEXT_BYTES as u64;
+    if file.metadata().map_err(|_| ClosedError::Unreadable)?.len() > limit {
+        return Err(ClosedError::TooLarge);
+    }
+    let mut bytes = Vec::new();
+    file.take(limit + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| ClosedError::Unreadable)?;
+    control.check()?;
+    if bytes.len() as u64 > limit {
+        return Err(ClosedError::TooLarge);
+    }
+    Ok(Some(String::from_utf8_lossy(&bytes).into_owned()))
+}
+
 #[derive(Clone)]
 struct Control {
     deadline: Instant,
@@ -223,8 +284,12 @@ struct Control {
 }
 impl Control {
     fn new(cancelled: Arc<dyn Fn() -> bool + Send + Sync>) -> Self {
+        Self::within(cancelled, Duration::from_secs(60))
+    }
+
+    fn within(cancelled: Arc<dyn Fn() -> bool + Send + Sync>, budget: Duration) -> Self {
         Self {
-            deadline: Instant::now() + Duration::from_secs(60),
+            deadline: Instant::now() + budget,
             cancelled,
         }
     }

@@ -1,0 +1,624 @@
+//! Reading a reference's attachments (decision 0055): what they are, a few of
+//! their pages, and short passages that hold some words.
+//!
+//! Text comes from the source, held in memory for one call; nothing is written.
+//! An attachment id names one attachment of one reference while the library
+//! holds that reference unchanged; it never holds a path or file URL. A page
+//! number is the file's own page, and only when its breaks were verified;
+//! `cite_page` comes only from verified printed labels, which this source
+//! does not give, so it stays empty rather than copy the file's page number.
+use super::*;
+use crate::request::{FindInRequest, OutlineRequest, ReadRequest};
+use ibis_sources::reading::{Body, DocumentText, SourceAttachment, TextState};
+
+/// Pages one `read` returns at most.
+pub const MAX_READ_PAGES: u32 = 5;
+/// Bytes of text one `read` returns at most.
+pub const MAX_READ_BYTES: usize = 32 * 1024;
+/// Passages one `find-in` returns at most.
+pub const MAX_PASSAGES: usize = 10;
+/// Characters in one passage, about.
+pub const PASSAGE_CHARS: usize = 400;
+const MAX_QUERY_CHARS: usize = 200;
+const ID_MARK: &str = "att:";
+const SLOT_LENGTH: usize = 16;
+
+/// A reference's attachments, in its library's order.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct OutlineResult {
+    pub attachments: Vec<AttachmentOutline>,
+}
+
+/// One attachment, without its text.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct AttachmentOutline {
+    /// Pass to `read` or `find-in`. It stays valid while the library holds
+    /// the reference unchanged.
+    pub id: String,
+    /// The attachment's title, as the library has it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    pub media_type: String,
+    pub text: TextAvailability,
+    /// Pages the file has, as its source recorded them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pages: Option<u32>,
+    /// Pages that have text, from the first.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pages_with_text: Option<u32>,
+    /// The text's page breaks were verified, so each page has its number.
+    pub pages_known: bool,
+    /// Printed page labels are known, so pages have a `cite_page`.
+    pub cite_pages_known: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum TextAvailability {
+    /// Its text can be read.
+    Available,
+    /// The library holds no text for it: Zotero has not indexed it.
+    NotIndexed,
+    /// A link, with no file.
+    NoFile,
+    /// A file whose text Ibis cannot read yet.
+    NotYet,
+    /// Text larger than Ibis reads at once.
+    TooLarge,
+}
+
+/// Some of an attachment's text, page by page.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct ReadResult {
+    pub attachment: String,
+    pub pages: Vec<PageText>,
+    pub pages_known: bool,
+    /// The arguments for the next `read`, while text remains.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next: Option<ReadNext>,
+}
+
+/// One page's text, or the text read when pages are not known.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct PageText {
+    /// The file's own page number, from 1; null when pages are not known.
+    pub pdf_page: Option<u32>,
+    /// The printed page to cite, only from verified labels; null otherwise.
+    pub cite_page: Option<String>,
+    pub text: String,
+    /// The page holds more than one read returns; `next` goes on.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub cut: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+pub struct ReadNext {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_page: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset: Option<usize>,
+}
+
+/// Passages that hold the words, in the order they appear.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct FindInResult {
+    pub attachment: String,
+    pub passages: Vec<Passage>,
+    /// False when more passages hold the words than one answer gives.
+    pub complete: bool,
+    pub pages_known: bool,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct Passage {
+    /// The file's own page number, from 1; null when pages are not known.
+    pub pdf_page: Option<u32>,
+    /// The printed page to cite, only from verified labels; null otherwise.
+    pub cite_page: Option<String>,
+    /// About 400 characters around the words, on one line.
+    pub text: String,
+}
+
+/// One attachment found for a reference, with how its text is read.
+struct Listed {
+    attachment: SourceAttachment,
+    id: String,
+}
+
+/// Where a reference's attachments come from.
+enum Owner {
+    Zotero(ibis_sources::zotero_source::ZoteroReading, u16),
+    Snapshot,
+}
+
+impl Engine {
+    /// The attachments of one reference, and whether their text can be read.
+    pub fn outline(
+        &self,
+        request: &OutlineRequest,
+        cancel: &Cancellation,
+    ) -> Result<health::Checked<OutlineResult>, EngineError> {
+        cancel.check()?;
+        let state = self.state()?;
+        let parent = select(state.index.snapshot(), &state.libraries, &request.item)?.clone();
+        if !matches!(parent.object, LibraryObject::Record(_)) {
+            return Err(error(ErrorCode::NotFound));
+        }
+        let owner = self.owner(&state, &parent)?;
+        let mut attachments = Vec::new();
+        for listed in self.listed(&state, &owner, &parent)? {
+            cancel.check()?;
+            // One text too large to read leaves the others to list.
+            let text = match self.text(&owner, &parent, &listed.attachment) {
+                Err(failure) if failure.code == ErrorCode::ResourceLimit => None,
+                text => Some(text?),
+            };
+            let (availability, pages, pages_with_text, pages_known) = match &text {
+                None => (TextAvailability::TooLarge, None, None, false),
+                Some(TextState::Text(text)) => (
+                    TextAvailability::Available,
+                    text.total_pages,
+                    match &text.body {
+                        Body::Pages(pages) => u32::try_from(pages.len()).ok(),
+                        Body::Whole(_) => text.indexed_pages,
+                    },
+                    matches!(text.body, Body::Pages(_)),
+                ),
+                Some(TextState::NotIndexed) => (TextAvailability::NotIndexed, None, None, false),
+                Some(TextState::NoFile) => (TextAvailability::NoFile, None, None, false),
+                Some(TextState::NotYet) => (TextAvailability::NotYet, None, None, false),
+            };
+            let title = clean(&listed.attachment.title)
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            attachments.push(AttachmentOutline {
+                id: listed.id,
+                title: (!title.is_empty()).then_some(title),
+                media_type: clean(&listed.attachment.media_type),
+                text: availability,
+                pages,
+                pages_with_text,
+                pages_known,
+                cite_pages_known: false,
+            });
+        }
+        let result = OutlineResult { attachments };
+        ensure_budget(&result)?;
+        Ok(health::Checked {
+            source_health: consulted(&state, &request.item, &parent.object.id().library),
+            value: result,
+        })
+    }
+
+    /// At most five pages or 32 KiB of an attachment's text.
+    pub fn read_attachment(
+        &self,
+        request: &ReadRequest,
+        cancel: &Cancellation,
+    ) -> Result<health::Checked<ReadResult>, EngineError> {
+        let (state, parent, text) = self.attachment_text(&request.attachment, cancel)?;
+        let (pages, next) = read_pages(&text, request)?;
+        let result = ReadResult {
+            attachment: request.attachment.clone(),
+            pages_known: matches!(text.body, Body::Pages(_)),
+            pages,
+            next,
+        };
+        ensure_budget(&result)?;
+        Ok(health::Checked {
+            source_health: own_health(&state, &parent),
+            value: result,
+        })
+    }
+
+    /// At most ten short passages of an attachment that hold `query`.
+    pub fn find_in(
+        &self,
+        request: &FindInRequest,
+        cancel: &Cancellation,
+    ) -> Result<health::Checked<FindInResult>, EngineError> {
+        let query = fold(request.query.trim()).0;
+        if query.trim().is_empty() || request.query.chars().count() > MAX_QUERY_CHARS {
+            return Err(error(ErrorCode::BadInput));
+        }
+        let (state, parent, text) = self.attachment_text(&request.attachment, cancel)?;
+        let (passages, complete) = find_passages(&text, &query, cancel)?;
+        let result = FindInResult {
+            attachment: request.attachment.clone(),
+            passages,
+            complete,
+            pages_known: matches!(text.body, Body::Pages(_)),
+        };
+        ensure_budget(&result)?;
+        Ok(health::Checked {
+            source_health: own_health(&state, &parent),
+            value: result,
+        })
+    }
+
+    /// The library of the reference an attachment id belongs to.
+    pub fn attachment_library(&self, attachment: &str) -> Result<LibraryId, EngineError> {
+        let state = self.state()?;
+        let (parent, _) = parse_id(&state, attachment)?;
+        Ok(parent.object.id().library.clone())
+    }
+
+    /// Whether the person let AI apps read `library`'s attachment text.
+    pub fn attachment_text_allowed(
+        &self,
+        settings: &crate::settings::Settings,
+        library: &LibraryId,
+    ) -> Result<bool, EngineError> {
+        use crate::settings::TextLibrary;
+        let state = self.state()?;
+        let Some(info) = state.libraries.get(library) else {
+            return Ok(false);
+        };
+        Ok(match (info.kind, info.zotero) {
+            (LibraryKind::Zotero, Some(zotero)) => settings.attachment_text(TextLibrary::Zotero(match zotero {
+                crate::request::ZoteroLibrary::Personal => crate::settings::ZoteroLibrary::User,
+                crate::request::ZoteroLibrary::Group(id) => crate::settings::ZoteroLibrary::Group(id),
+            })),
+            (LibraryKind::File, _) => self
+                .file_path(library)?
+                .is_some_and(|path| settings.attachment_text(TextLibrary::File(&path))),
+            _ => false,
+        })
+    }
+
+    fn owner(&self, state: &State, parent: &SnapshotObject) -> Result<Owner, EngineError> {
+        let kind = state
+            .libraries
+            .get(&parent.object.id().library)
+            .map(|info| info.kind)
+            .ok_or_else(|| error(ErrorCode::NotFound))?;
+        Ok(match kind {
+            LibraryKind::Zotero => {
+                let (reading, port) = self.zotero_reading()?;
+                Owner::Zotero(reading, port)
+            }
+            LibraryKind::File | LibraryKind::Snapshot => Owner::Snapshot,
+        })
+    }
+
+    fn listed(&self, state: &State, owner: &Owner, parent: &SnapshotObject) -> Result<Vec<Listed>, EngineError> {
+        let id = parent.object.id();
+        let found = match owner {
+            Owner::Zotero(reading, port) => reading
+                .attachments(&mut ibis_sources::zotero_source::LocalZotero::on_port(*port), id)
+                .map_err(sources::zotero_error)?,
+            Owner::Snapshot => state
+                .index
+                .snapshot()
+                .objects()
+                .iter()
+                .filter_map(|item| match &item.object {
+                    LibraryObject::Attachment(attachment) if attachment.parent.as_ref() == Some(id) => {
+                        Some(SourceAttachment {
+                            key: attachment.id.key.clone(),
+                            title: attachment.title.clone(),
+                            media_type: attachment.media_type.clone(),
+                            link_only: attachment.availability == Availability::Online,
+                        })
+                    }
+                    _ => None,
+                })
+                .take(ibis_sources::reading::MAX_ATTACHMENTS)
+                .collect(),
+        };
+        Ok(found
+            .into_iter()
+            .map(|attachment| Listed {
+                id: attachment_id(parent, &attachment.key),
+                attachment,
+            })
+            .collect())
+    }
+
+    fn text(
+        &self,
+        owner: &Owner,
+        parent: &SnapshotObject,
+        attachment: &SourceAttachment,
+    ) -> Result<TextState, EngineError> {
+        match owner {
+            Owner::Zotero(reading, port) => reading
+                .text(
+                    &mut ibis_sources::zotero_source::LocalZotero::on_port(*port),
+                    parent.object.id(),
+                    attachment,
+                )
+                .map_err(sources::zotero_error),
+            // Reading a file's text needs the PDF reader of decision 0055's next step.
+            Owner::Snapshot if attachment.link_only => Ok(TextState::NoFile),
+            Owner::Snapshot => Ok(TextState::NotYet),
+        }
+    }
+
+    /// The text of the attachment an id names, refused when there is none.
+    fn attachment_text(
+        &self,
+        attachment: &str,
+        cancel: &Cancellation,
+    ) -> Result<(Arc<State>, SnapshotObject, DocumentText), EngineError> {
+        cancel.check()?;
+        let state = self.state()?;
+        let (parent, slot) = parse_id(&state, attachment)?;
+        let owner = self.owner(&state, &parent)?;
+        let listed = self
+            .listed(&state, &owner, &parent)?
+            .into_iter()
+            .find(|listed| listed.id.ends_with(&format!(".{slot}")))
+            .ok_or_else(|| error(ErrorCode::NotFound))?;
+        cancel.check()?;
+        match self.text(&owner, &parent, &listed.attachment)? {
+            TextState::Text(text) => {
+                cancel.check()?;
+                Ok((state, parent, text))
+            }
+            TextState::NotIndexed | TextState::NoFile | TextState::NotYet => Err(EngineError::because(
+                ErrorCode::SourceUnavailable,
+                ErrorReason::NoAttachmentText,
+            )),
+        }
+    }
+}
+
+/// The health of the one library an attachment came from.
+fn own_health(state: &State, parent: &SnapshotObject) -> health::SourceHealth {
+    consulted(
+        state,
+        &ItemSelector::Id(parent.object.id().clone()),
+        &parent.object.id().library,
+    )
+}
+
+/// `att:` and the parent's opaque reference, then a check of the attachment
+/// and the parent as it is now.
+fn attachment_id(parent: &SnapshotObject, key: &str) -> String {
+    let reference = parent.object.id().opaque_reference();
+    let slot =
+        Fingerprint::of_bytes(format!("ibis attachment\0{}\0{key}", parent.fingerprints.full.as_str()).as_bytes());
+    format!(
+        "{ID_MARK}{}.{}",
+        reference.strip_prefix("id:").unwrap_or(&reference),
+        &slot.as_str()[..SLOT_LENGTH]
+    )
+}
+
+/// The reference an id names, and its check, or not found.
+fn parse_id<'a>(state: &State, id: &'a str) -> Result<(SnapshotObject, &'a str), EngineError> {
+    let not_found = || error(ErrorCode::NotFound);
+    let (reference, slot) = id
+        .strip_prefix(ID_MARK)
+        .and_then(|rest| rest.split_once('.'))
+        .filter(|(_, slot)| slot.len() == SLOT_LENGTH && slot.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .ok_or_else(not_found)?;
+    if reference.len() > 128 {
+        return Err(not_found());
+    }
+    let snapshot = state.index.snapshot();
+    let parent = snapshot
+        .resolve_opaque(&format!("id:{reference}"))
+        .and_then(|item| snapshot.get(item))
+        .ok_or_else(not_found)?;
+    Ok((parent.clone(), slot))
+}
+
+/// Text an agent or a terminal may be shown: no hidden or control characters
+/// but line breaks and tabs.
+fn clean(text: &str) -> String {
+    text.replace("\r\n", "\n")
+        .chars()
+        .map(|character| if character == '\r' { '\n' } else { character })
+        .filter(|character| !ibis_core::model::is_hidden(*character))
+        .collect()
+}
+
+/// The largest char boundary of `text` at or before `at`.
+fn floor(text: &str, at: usize) -> usize {
+    let mut at = at.min(text.len());
+    while !text.is_char_boundary(at) {
+        at -= 1;
+    }
+    at
+}
+
+fn no_such_pages() -> EngineError {
+    EngineError::because(ErrorCode::BadInput, ErrorReason::NoSuchPages)
+}
+
+/// The pages a read asks for, within both bounds, and where the next read starts.
+fn read_pages(text: &DocumentText, request: &ReadRequest) -> Result<(Vec<PageText>, Option<ReadNext>), EngineError> {
+    let offset = request.offset.unwrap_or(0);
+    let pages = match &text.body {
+        Body::Whole(whole) => {
+            if request.first_page.is_some() || request.last_page.is_some() || offset > whole.len() {
+                return Err(no_such_pages());
+            }
+            let start = floor(whole, offset);
+            let end = floor(whole, start.saturating_add(MAX_READ_BYTES));
+            let page = PageText {
+                pdf_page: None,
+                cite_page: None,
+                text: clean(&whole[start..end]),
+                cut: false,
+            };
+            let next = (end < whole.len()).then_some(ReadNext {
+                first_page: None,
+                offset: Some(end),
+            });
+            return Ok((vec![page], next));
+        }
+        Body::Pages(pages) => pages,
+    };
+    let count = u32::try_from(pages.len()).map_err(|_| error(ErrorCode::ResourceLimit))?;
+    let first = request.first_page.unwrap_or(1);
+    let last = request
+        .last_page
+        .unwrap_or(u32::MAX)
+        .min(first.saturating_add(MAX_READ_PAGES - 1))
+        .min(count);
+    if first == 0 || first > count || request.last_page.is_some_and(|asked| asked < first) {
+        return Err(no_such_pages());
+    }
+    let mut read = Vec::new();
+    let mut left = MAX_READ_BYTES;
+    let mut next = None;
+    for number in first..=last {
+        let page = &pages[(number - 1) as usize];
+        let start = if number == first {
+            if offset > page.len() {
+                return Err(no_such_pages());
+            }
+            floor(page, offset)
+        } else {
+            0
+        };
+        let rest = &page[start..];
+        if rest.len() <= left {
+            left -= rest.len();
+            read.push(PageText {
+                pdf_page: Some(number),
+                cite_page: None,
+                text: clean(rest),
+                cut: false,
+            });
+            continue;
+        }
+        if read.is_empty() {
+            // A page longer than one read holds: its start, then the rest.
+            let end = start + floor(rest, left);
+            read.push(PageText {
+                pdf_page: Some(number),
+                cite_page: None,
+                text: clean(&page[start..end]),
+                cut: true,
+            });
+            next = Some(ReadNext {
+                first_page: Some(number),
+                offset: Some(end),
+            });
+        } else {
+            next = Some(ReadNext {
+                first_page: Some(number),
+                offset: None,
+            });
+        }
+        break;
+    }
+    if next.is_none() && last < count {
+        next = Some(ReadNext {
+            first_page: Some(last + 1),
+            offset: None,
+        });
+    }
+    Ok((read, next))
+}
+
+/// The first passages of `text` that hold `query`, already folded, and
+/// whether they are all there are.
+fn find_passages(text: &DocumentText, query: &str, cancel: &Cancellation) -> Result<(Vec<Passage>, bool), EngineError> {
+    let pages: Vec<(Option<u32>, &str)> = match &text.body {
+        Body::Pages(pages) => pages
+            .iter()
+            .enumerate()
+            .map(|(index, page)| (u32::try_from(index + 1).ok(), page.as_str()))
+            .collect(),
+        Body::Whole(text) => vec![(None, text.as_str())],
+    };
+    let mut passages = Vec::new();
+    for (page, text) in pages {
+        cancel.check()?;
+        for (start, end) in matches(text, query) {
+            if passages.len() == MAX_PASSAGES {
+                return Ok((passages, false));
+            }
+            passages.push(Passage {
+                pdf_page: page,
+                cite_page: None,
+                text: passage(text, start, end),
+            });
+        }
+    }
+    Ok((passages, true))
+}
+
+/// `text` lowercased, with each run of white space one space, and for each
+/// byte of that the byte of `text` it came from.
+fn fold(text: &str) -> (String, Vec<u32>) {
+    let mut folded = String::with_capacity(text.len());
+    let mut origins = Vec::with_capacity(text.len());
+    let mut space = false;
+    for (at, character) in text.char_indices() {
+        let at = u32::try_from(at).unwrap_or(u32::MAX);
+        if character.is_whitespace() || ibis_core::model::is_hidden(character) {
+            if !space && character.is_whitespace() {
+                folded.push(' ');
+                origins.push(at);
+                space = true;
+            }
+            continue;
+        }
+        space = false;
+        for lower in character.to_lowercase() {
+            let before = folded.len();
+            folded.push(lower);
+            origins.extend(std::iter::repeat_n(at, folded.len() - before));
+        }
+    }
+    (folded, origins)
+}
+
+/// Where `query`, already folded, appears in `text`, without overlapping
+/// passages: byte ranges of `text`.
+fn matches(text: &str, query: &str) -> Vec<(usize, usize)> {
+    let (folded, origins) = fold(text);
+    let mut found: Vec<(usize, usize)> = Vec::new();
+    let mut covered = 0;
+    for (at, _) in folded.match_indices(query) {
+        let start = origins[at] as usize;
+        let end = origins.get(at + query.len()).map_or(text.len(), |end| *end as usize);
+        if start < covered {
+            continue;
+        }
+        covered = passage_bounds(text, start, end).1;
+        found.push((start, end));
+        if found.len() > MAX_PASSAGES {
+            break;
+        }
+    }
+    found
+}
+
+/// About [`PASSAGE_CHARS`] characters of `text` around `start..end`.
+fn passage_bounds(text: &str, start: usize, end: usize) -> (usize, usize) {
+    let length = text[start..end].chars().count();
+    let before = PASSAGE_CHARS.saturating_sub(length) / 2;
+    let from = text[..start]
+        .char_indices()
+        .rev()
+        .nth(before.saturating_sub(1))
+        .map_or(0, |(at, _)| at);
+    let from = if before == 0 { start } else { from };
+    let to = text[from..]
+        .char_indices()
+        .nth(PASSAGE_CHARS)
+        .map_or(text.len(), |(at, _)| from + at);
+    (from, to.max(end))
+}
+
+fn passage(text: &str, start: usize, end: usize) -> String {
+    let (from, to) = passage_bounds(text, start, end);
+    let words = clean(&text[from..to]).split_whitespace().collect::<Vec<_>>().join(" ");
+    format!(
+        "{}{words}{}",
+        if from > 0 { "…" } else { "" },
+        if to < text.len() { "…" } else { "" }
+    )
+}
+
+#[cfg(test)]
+#[path = "reading_tests.rs"]
+mod tests;

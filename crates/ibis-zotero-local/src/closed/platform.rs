@@ -148,29 +148,42 @@ pub(super) fn resident(metadata: &Metadata) -> bool {
 }
 
 pub(super) fn open_source(path: &Path) -> Result<File, ClosedError> {
+    let file = open_regular(path)?.ok_or(ClosedError::Unreadable)?;
+    passive(&file)?;
+    Ok(file)
+}
+
+/// A regular, resident local file opened without following a final link, or
+/// `None` when nothing is there.
+pub(super) fn open_regular(path: &Path) -> Result<Option<File>, ClosedError> {
     #[cfg(unix)]
     let file = {
         use nix::fcntl::{OFlag, open};
         use nix::sys::stat::Mode;
-        File::from(
-            open(
-                path,
-                OFlag::O_RDONLY | OFlag::O_NOFOLLOW | OFlag::O_NONBLOCK | OFlag::O_CLOEXEC,
-                Mode::empty(),
-            )
-            .map_err(|_| ClosedError::Unreadable)?,
-        )
+        match open(
+            path,
+            OFlag::O_RDONLY | OFlag::O_NOFOLLOW | OFlag::O_NONBLOCK | OFlag::O_CLOEXEC,
+            Mode::empty(),
+        ) {
+            Ok(file) => File::from(file),
+            Err(nix::errno::Errno::ENOENT) => return Ok(None),
+            Err(_) => return Err(ClosedError::Unreadable),
+        }
     };
     #[cfg(windows)]
     let file = {
         use std::os::windows::fs::OpenOptionsExt;
         // FILE_SHARE_READ | WRITE | DELETE: never prevent a Zotero launch.
-        std::fs::OpenOptions::new()
+        match std::fs::OpenOptions::new()
             .read(true)
             .share_mode(7)
             .custom_flags(0x0020_0000)
             .open(path)
-            .map_err(|_| ClosedError::Unreadable)?
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(_) => return Err(ClosedError::Unreadable),
+        }
     };
     #[cfg(not(any(unix, windows)))]
     return Err(ClosedError::UnsafeSource);
@@ -178,8 +191,7 @@ pub(super) fn open_source(path: &Path) -> Result<File, ClosedError> {
     if !m.is_file() || m.file_type().is_symlink() || !resident(&m) {
         return Err(ClosedError::UnsafeSource);
     }
-    passive(&file)?;
-    Ok(file)
+    Ok(Some(file))
 }
 
 /// Query existing SQLite byte-range locks; F_GETLK never obtains a lock.

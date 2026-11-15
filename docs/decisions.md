@@ -127,4 +127,4 @@ the anchor older links use.
 [0054](decisions/0054-owners-and-boundaries.md): three exclusive engine owners that accept intents and publish observations, one native delivery owner, and typed boundaries (checked artifacts, `Problem`, executable actions); ten stages, the gate first.
 
 ## 0055 Agent layers, full text, writes and remote libraries
-[0055](decisions/0055-agent-layers-full-text-writes-remote.md): decided 2026-11-15; one engine with CLI, MCP and skill as thin layers; opt-in attachment text with verified pages; agent writes only as proposals confirmed in Ibis; remote libraries through SSH first; app and CLI share one set of settings, with AI apps connected from Settings through the same code as `ibis agents`.
+[0055](decisions/0055-agent-layers-full-text-writes-remote.md): decided 2026-11-15, step 3 built; one engine with CLI, MCP and skill as thin layers; opt-in attachment text with verified pages; agent writes only as proposals confirmed in Ibis; remote libraries through SSH first; app and CLI share one set of settings, with AI apps connected from Settings through the same code as `ibis agents`.

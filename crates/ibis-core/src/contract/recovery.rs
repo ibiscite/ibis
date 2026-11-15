@@ -239,6 +239,8 @@ impl EngineError {
                 ErrorReason::CsvTemplate | ErrorReason::UnknownFormat => R::ChooseLibrary,
                 ErrorReason::LibraryCutShort => R::ReviewLibrary,
                 ErrorReason::DuplicateRecord | ErrorReason::RejectedRecord => R::EditInput,
+                ErrorReason::NoAttachmentText => R::ReviewLibrary,
+                ErrorReason::NoSuchPages => R::EditInput,
             };
             return RecoveryInfo::new(&format!("reason-{}", name(reason)), recovery);
         }
