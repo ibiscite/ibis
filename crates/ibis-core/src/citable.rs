@@ -379,6 +379,18 @@ pub(crate) fn points_to_device(value: &str) -> bool {
     // Any other mark (a typographic quote, a dash, an invisible space) can open
     // an absolute path too. There it needs two segments and a named first one,
     // so prose such as `€/kWh`, `°/s/s`, `C#/F#` or `Fe(II)/Fe(III)` stays.
+    // A mark opens a path at the start of a word or after another mark (`--/`);
+    // after a letter or digit it closes that word (`Na⁺/K⁺/2Cl⁻`, `“yes”/“no”/…`),
+    // unless it is a dash (`file—/Users/…`). Unit signs never open one.
+    let opens = |previous: Option<char>, c: char| {
+        !c.is_alphanumeric()
+            && !matches!(c, '/' | '$' | '%' | '°' | '‰' | '¢'..='¥' | '\u{20a0}'..='\u{20cf}')
+            && (previous.is_none_or(|previous| !previous.is_alphanumeric())
+                || matches!(
+                    c,
+                    '\u{2010}'..='\u{2015}' | '\u{2e3a}' | '\u{2e3b}' | '\u{fe58}' | '\u{fe63}' | '\u{ff0d}'
+                ))
+    };
     let nested = |word: &str| {
         path(word)
             && word.strip_prefix('/').is_none_or(|rest| {
@@ -407,7 +419,7 @@ pub(crate) fn points_to_device(value: &str) -> bool {
                     && !(c == '<'
                         && crate::model::markup_tag(&word[index..]).is_some_and(|(_, tail)| tail.starts_with('>')))
                     && path(rest)
-                    || !url && !c.is_alphanumeric() && !"/._-+#)]}".contains(c) && nested(rest)
+                    || !url && opens(word[..index].chars().next_back(), c) && nested(rest)
             })
             || (url && PublicUrl::new(word.trim_matches(['<', '>'])).is_none())
     })

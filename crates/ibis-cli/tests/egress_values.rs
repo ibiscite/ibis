@@ -280,6 +280,10 @@ fn prose_and_identifiers_shaped_like_paths_stay_public() {
         "Fe(II)/Fe(III)/Mn redox and/or TCP/IP",
         "HTTP: The definitive guide",
         "Doses of 5\u{b0}/s/s",
+        "Na\u{207a}/K\u{207a}/2Cl\u{207b} cotransport",
+        "\u{201c}yes\u{201d}/\u{201c}no\u{201d}/\u{201c}maybe\u{201d} answers",
+        "Costs in $/kW/yr, \u{20ac}/MWh/a and \u{b0}/sec/sec",
+        "pre-/intra-/post-operative",
     ];
     for title in titles {
         let records = json!([{

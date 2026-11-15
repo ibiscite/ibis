@@ -34,6 +34,8 @@ const WRAPPED: &[&str] = &[
     "*/Users/invented/secret.pdf*",
     "?/Users/invented/secret.pdf",
     "\u{200b}/Users/invented/secret.pdf",
+    "Saved--/Users/invented/secret.pdf",
+    "#/Users/invented/secret.pdf",
 ];
 
 fn path_records(paths: &[&str]) -> Value {
