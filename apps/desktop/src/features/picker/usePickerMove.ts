@@ -1,16 +1,11 @@
 import type * as nativeApi from "../../api";
 import { useEffect } from "react";
+import { startsWindowDrag } from "../../ui/windowDrag";
 import type { usePickerSession } from "./usePickerSession";
 
 /** How close to the window's edge a press starts a native resize. */
 const EDGE = 6;
 let lastId = 0;
-
-/** As Tauri's own drag script decides: a direct press on a plain drag region, or anywhere in a deep one. */
-function startsDrag(target: Element | null) {
-  const own = target?.getAttribute("data-tauri-drag-region");
-  return own === "" || own === "true" || own === "deep" || Boolean(target?.closest('[data-tauri-drag-region="deep"]'));
-}
 
 /**
  * Tell the native side while the person moves or resizes the picker. Some
@@ -32,9 +27,8 @@ export function usePickerMove(api: Pick<typeof nativeApi, "pickerMoving">, sessi
     const down = (event: PointerEvent) => {
       const presentation = session.getSnapshot().presentation;
       if (event.button !== 0 || presentation === null) return;
-      const target = event.target instanceof Element ? event.target : null;
       const edge = event.clientX < EDGE || event.clientY < EDGE || event.clientX > window.innerWidth - EDGE || event.clientY > window.innerHeight - EDGE;
-      if (!edge && !startsDrag(target)) return;
+      if (!edge && !startsWindowDrag(event.target)) return;
       end();
       // Numbered in start order, also across reloads, so the native side can
       // refuse whatever arrives late or out of order.

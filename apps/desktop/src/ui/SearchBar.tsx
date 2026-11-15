@@ -1,16 +1,17 @@
-import type { ComponentPropsWithRef, MouseEventHandler, ReactNode } from "react";
+import type { ComponentPropsWithRef, ReactNode } from "react";
 import { composing } from "../composition";
 import { Band } from "./Band";
 import "./SearchBar.css";
 
 /** The picker's top band (ui/Band): the window's drag region, holding the mark in
  * the icon column, the search field on the label column and the controls beside
- * it. The editable field itself is not a drag region. */
-export function SearchBar({ hidden, title, mark, onMouseDown, onMouseUp, children }: {
+ * it. The mark and the band's empty room move the window, and double-clicking
+ * them returns it to its place; the editable field itself never moves it. */
+export function SearchBar({ hidden, title, mark, onResetPosition, children }: {
   hidden?: boolean; title: string; mark: ReactNode; children: ReactNode;
-  onMouseDown?: MouseEventHandler<HTMLElement>; onMouseUp?: MouseEventHandler<HTMLElement>;
+  onResetPosition?: () => void;
 }) {
-  return <Band as="header" className="search-bar" icon={mark} hidden={hidden} data-tauri-drag-region title={title} onMouseDown={onMouseDown} onMouseUp={onMouseUp}>{children}</Band>;
+  return <Band as="header" className="search-bar" icon={mark} hidden={hidden} drag onDragReset={onResetPosition} title={title}>{children}</Band>;
 }
 
 /** The large, frameless search field: a hidden label, the input and anything

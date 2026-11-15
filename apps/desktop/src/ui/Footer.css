@@ -1,6 +1,6 @@
 /* The picker's footer band: library status on the leading edge, then the
-   actions and More, whose last cap ends on --cap-end. */
-footer { display: flex; align-items: center; padding-block: 0; padding-inline: var(--row-start) var(--cap-end); font-size: var(--type-label-size); line-height: var(--type-label-line); min-height: var(--footer-h); }
+   actions and More, which ends on the inset as every band's last control does. */
+footer { display: flex; align-items: center; padding-block: 0; padding-inline: var(--row-start) var(--inset); font-size: var(--type-label-size); line-height: var(--type-label-line); min-height: var(--footer-h); }
 /* The divider is outside the 24 px actions and their two 8 px gaps.
    Coarse targets grow the band instead of clipping; the grid below owns its columns. */
 .library-bar { flex: 1; min-width: 0; align-items: center; gap: var(--space-2); padding-block: var(--inset); }
