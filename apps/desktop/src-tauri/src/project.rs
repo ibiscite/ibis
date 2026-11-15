@@ -73,7 +73,9 @@ struct Slot {
     /// The bound receipt, its project observation and whether its keys are checked.
     prepared: Option<(String, (u32, u32), bool)>,
     output: Option<crate::output::OutputRef>,
-    worker_running: bool,
+    /// The choices being read now: the current one, and at most one replaced
+    /// choice whose read has not finished yet.
+    readers: Vec<u32>,
     pending_read: Option<Ticket>,
 }
 
@@ -98,32 +100,40 @@ impl ProjectBibliography {
         Self::begin(&mut slot)
     }
 
-    /// One bounded reader and one latest queued choice. A discarded choice
-    /// cannot retain another full bibliography parse while the person switches.
+    /// A replaced choice's read never holds up the current one, which starts
+    /// beside it. At most two reads run and one latest choice waits, so quick
+    /// switching cannot keep more than one discarded bibliography parse alive.
     fn enqueue_read(&self, ticket: Ticket) -> Option<Ticket> {
         let mut slot = self.lock();
         if ticket.generation != slot.generation {
             return None;
         }
-        if slot.worker_running {
+        if slot.readers.len() < 2 && !slot.readers.contains(&ticket.generation) {
+            slot.readers.push(ticket.generation);
+            Some(ticket)
+        } else {
             slot.pending_read = Some(ticket);
             None
-        } else {
-            slot.worker_running = true;
-            Some(ticket)
         }
     }
 
-    fn next_read(&self) -> Option<Ticket> {
+    /// The reader of `finished` takes the waiting choice, if it may start now.
+    fn next_read(&self, finished: u32) -> Option<Ticket> {
         let mut slot = self.lock();
+        if let Some(index) = slot.readers.iter().position(|reading| *reading == finished) {
+            slot.readers.swap_remove(index);
+        }
+        let current = slot.generation;
         let next = slot
             .pending_read
             .take()
-            .filter(|ticket| ticket.generation == slot.generation);
-        if next.is_none() {
-            slot.worker_running = false;
+            .filter(|ticket| ticket.generation == current)?;
+        if slot.readers.contains(&current) {
+            slot.pending_read = Some(next);
+            return None;
         }
-        next
+        slot.readers.push(current);
+        Some(next)
     }
 
     pub(crate) fn version(&self) -> (u32, u32) {
@@ -354,7 +364,7 @@ fn start_read(app: &AppHandle, ticket: Option<Ticket>) {
             if project.finish_read(&handle, ticket.generation, read).is_some() {
                 changed(&handle);
             }
-            match project.next_read() {
+            match project.next_read(ticket.generation) {
                 Some(next) => ticket = next,
                 None => break,
             }
@@ -678,25 +688,40 @@ mod tests {
     }
 
     #[test]
-    fn rapid_project_switches_keep_one_reader_and_only_the_latest_pending_choice() {
+    fn an_obsolete_read_never_holds_up_the_newest_choice() {
         let slot = ProjectBibliography::default();
-        let first = slot.choose(Some("/invented/a.bib".into())).unwrap();
-        assert!(slot.enqueue_read(first).is_some());
-        for name in ["b.bib", "c.bib", "d.bib"] {
+        let a = slot.choose(Some("/invented/a.bib".into())).unwrap();
+        let a = slot.enqueue_read(a).unwrap();
+        // A is still being read when the person chooses B: B starts at once.
+        let b = slot.choose(Some("/invented/b.bib".into())).unwrap();
+        let b = slot.enqueue_read(b).unwrap_or_else(|| panic!("B waited for A"));
+        assert!(slot.finish(b.generation, read(&b)));
+        assert_eq!(slot.status().map(|status| status.name), Some("b.bib".into()));
+        assert!(!slot.finish(a.generation, read(&a)), "A's late answer changes nothing");
+        assert_eq!(slot.status().map(|status| status.name), Some("b.bib".into()));
+        assert!(slot.next_read(a.generation).is_none(), "and A's reader takes no other work");
+        assert!(slot.next_read(b.generation).is_none());
+        assert!(slot.lock().readers.is_empty());
+
+        // Quick switching keeps at most one replaced read beside the current
+        // one; later choices wait, and only the latest of them is read.
+        let c = slot.enqueue_read(slot.choose(Some("/invented/c.bib".into())).unwrap()).unwrap();
+        let d = slot.enqueue_read(slot.choose(Some("/invented/d.bib".into())).unwrap()).unwrap();
+        for name in ["e.bib", "f.bib"] {
             let queued = slot.choose(Some(std::path::Path::new("/invented").join(name))).unwrap();
             assert!(slot.enqueue_read(queued).is_none());
         }
-        let next = slot.next_read().unwrap();
-        assert_eq!(next.path.file_name().unwrap(), "d.bib");
-        assert!(slot.lock().worker_running);
-        assert!(slot.next_read().is_none());
-        assert!(!slot.lock().worker_running);
-        let queued = slot.choose(Some("/invented/e.bib".into())).unwrap();
-        assert!(slot.enqueue_read(queued).is_some());
-        let abandoned = slot.choose(Some("/invented/f.bib".into())).unwrap();
+        let f = slot.next_read(c.generation).unwrap_or_else(|| panic!("the latest choice"));
+        assert_eq!(f.path.file_name().unwrap(), "f.bib");
+        assert!(slot.next_read(d.generation).is_none());
+        assert!(slot.next_read(f.generation).is_none());
+        assert!(slot.lock().readers.is_empty());
+        let g = slot.enqueue_read(slot.choose(Some("/invented/g.bib".into())).unwrap()).unwrap();
+        slot.enqueue_read(slot.choose(Some("/invented/h.bib".into())).unwrap()).unwrap();
+        let abandoned = slot.choose(Some("/invented/i.bib".into())).unwrap();
         assert!(slot.enqueue_read(abandoned).is_none());
         slot.choose(None);
-        assert!(slot.next_read().is_none(), "leaving a project drops its queued read");
+        assert!(slot.next_read(g.generation).is_none(), "leaving a project drops its queued read");
     }
 
     #[test]
