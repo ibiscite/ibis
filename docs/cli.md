@@ -239,6 +239,28 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | --- | --- |
 | `KEY` | The citation key of the reference |
 
+**`ibis outline`**: List a reference's attachments and whether Ibis can read their text
+
+| Option | Does |
+| --- | --- |
+| `KEY` | The citation key of the reference |
+| `--id ID_JSON` | The reference's id, as the JSON that ibis search --json prints |
+
+**`ibis read`**: Print up to five pages of an attachment's text
+
+| Option | Does |
+| --- | --- |
+| `ATTACHMENT` | The attachment's id, as ibis outline prints it |
+| `--pages RANGE` | The pages to read, like 3 or 3-5; at most five are read at once |
+| `--offset N` | Start N bytes into the first page, or into the text when pages are not known |
+
+**`ibis find-in`**: Find short passages of an attachment that hold some words
+
+| Option | Does |
+| --- | --- |
+| `ATTACHMENT` | The attachment's id, as ibis outline prints it |
+| `WORDS` | The words to find, ignoring case; quote several words |
+
 **`ibis styles`**: Find bundled CSL styles and citation languages
 
 | Option | Does |
@@ -524,6 +546,67 @@ To use the same `.bib` elsewhere, upload it beside an Overleaf document, name it
 under Quarto's `bibliography:` or use Typst's `#bibliography("thesis.bib")`.
 The check covers only the file you name.
 
+### Attachment text
+
+```sh
+ibis outline vale2024lanterns --zotero
+ibis read ATTACHMENT --pages 3-5 --zotero
+ibis find-in ATTACHMENT "brass lantern" --zotero
+```
+
+`outline` lists a reference's attachments: an id for each, its title and
+type, and whether Ibis can read its text. `read` prints at most five pages or
+32 KiB, each page marked; `next` in `--json` (or the last line) says how to
+go on. `find-in` prints at most ten passages of about 400 characters that
+hold the words, ignoring case and line breaks, with their pages.
+
+Text comes from two places. For a Zotero attachment Zotero indexed, it is the
+text Zotero keeps: while Zotero runs, Ibis asks Zotero for it; while Zotero is
+closed, it reads Zotero's text cache from the attachment's storage folder,
+with the page counts from its private copy of the database. Zotero's pages
+count only when the text's page breaks match the number of pages Zotero
+recorded; both indexed and total counts must be present and equal. A PDF
+with no such index, or with only part of the file indexed, and a `.bib`
+file's `file` attachments that are PDFs, are read by Ibis itself:
+`ibis` starts a short-lived copy of itself that gets the opened file and
+nothing else, no environment and no path, parses it in at most ten seconds
+and gives each page's text. On Linux that process may use at most 3 GiB of
+address space; elsewhere the ten seconds bound it. The desktop app never
+parses a PDF. Nothing is written, and the text stays in memory for the one
+command.
+
+Ibis reads only a regular file on this computer of at most 256 MiB and 10,000
+pages that starts as a PDF: never a link, a file on a network or FUSE mount,
+or an online-only file not yet downloaded. A Zotero file is looked for in its
+storage folder, or at a linked file's full path; while Zotero runs, only in
+the data directory Ibis finds on this computer. A linked file relative to
+Zotero's base folder is not read. `outline` says why a file's text is
+not read: `missing`, `not-local`, `not-pdf`, `damaged`, `too-large` or
+`timed-out`. Text without known pages is read by `--offset` and has no page
+numbers.
+
+`pdf_page` is the file's own page, from 1; use it only to find a passage.
+`cite_page`, the printed page to cite, comes only from the PDF's page labels
+(`/PageLabels`), such as `xii` or `A-3`: at most 16 letters, digits, `-` or
+`.`, and never a label two pages share. With Zotero's text, labels count only
+when the PDF has exactly as many pages as Zotero recorded. Otherwise
+`cite_page` is null and the printed page is not known; it is never taken from
+the file's page number.
+
+An attachment id names one attachment in the current library generation.
+Changing its reference, attachment revision, indexed text or PDF file retires
+the id; run `outline` again after a replacement or reindex. It holds no path
+or file location. Links have no text, and EPUB and web snapshots have text only from Zotero's index. Zotero shows
+Reindex Item for a file with no text.
+
+AI apps need a separate choice for each library. In the app's settings,
+`"attachment_text": ["lib_example_library"]` names complete opaque library
+ids from `ibis libraries --json`, including the Zotero profile's identity.
+Choosing one profile's personal library or group never opens another profile's.
+This choice stays on this computer and out of settings backups. The direct
+commands and `ibis call outline|read|find-in` use the app's libraries when none
+is named and do not need this choice.
+
 ### Writings
 
 A writing saves a name, format and optional read-only `.bib` in `settings.json`
@@ -663,7 +746,7 @@ or paste this prompt into your assistant:
 Set up Ibis for me: https://ibiscite.org/setup
 ```
 
-`ibis mcp --file refs.bib`, or `ibis mcp --app-libraries`, serves four
+`ibis mcp --file refs.bib`, or `ibis mcp --app-libraries`, serves these
 read-only tools over stdio:
 
 | Tool | Input and result |
@@ -672,6 +755,18 @@ read-only tools over stdio:
 | `show` | `ref`; bibliographic fields and `source_health`. |
 | `cite` | Items with `ref` and optional locator/affixes/author omission, or caller [records](#records-you-send); a key-syntax `format` or any CSL `style`, locale, form, order, optional `for_app`, `strict` and `include_receipt`; citation text, notices, losses, warnings, `source_health`, and the receipt when asked. |
 | `styles` | Optional `query`, `limit` and `offset`; matching styles, total and locales. |
+| `outline` | `ref`; the reference's attachments, each with an `id` for `read` and `find_in` and whether its text can be read. |
+| `read` | `attachment`, optional `first_page`, `last_page` and `offset`; at most 5 pages or 32 KiB, each with `pdf_page` and `cite_page`, and `next`. |
+| `find_in` | `attachment` and `query`; at most 10 passages of about 400 characters, each with `pdf_page` and `cite_page`, and `complete`. |
+
+`outline`, `read` and `find_in` are listed only when the person lets AI apps
+read attachment text from an open library, and they answer only for such a
+library. The choice is per library, off by default, and kept in the app's
+settings as `"attachment_text": ["lib_example_library"]`, using complete
+library ids from `ibis libraries --json`, including the Zotero profile;
+it stays on this computer and is not part of a settings backup. While they
+are listed, `tools/list` answers with `cacheScope: private`. The `ibis outline`,
+`ibis read` and `ibis find-in` commands do not need this choice.
 
 Each answer's `structuredContent` holds the full result. Its text is a short
 summary for the model instead of the same JSON again: one `ref · authors ·

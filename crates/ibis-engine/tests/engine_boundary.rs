@@ -29,8 +29,9 @@ const LAYERS: [(&str, &[&str]); 9] = [
     ),
     // Records each command's types for the generated bindings; ships nothing else.
     ("apps/desktop/src-tauri/macros", &[]),
-    // The fuzzing harness ships nothing; it reads BibTeX as the engine does.
-    ("fuzz", &["ibis-core", "ibis-sources"]),
+    // The fuzzing harness ships nothing; it reads BibTeX as the engine does and
+    // PDFs as the `ibis` extractor's child process does.
+    ("fuzz", &["ibis", "ibis-core", "ibis-sources"]),
 ];
 
 type Graph = BTreeMap<String, BTreeSet<String>>;

@@ -19,6 +19,7 @@ mod generated;
 mod human;
 mod keys;
 mod out;
+pub mod pdf_text;
 mod settings_backup;
 mod toggle;
 mod writings;
@@ -67,6 +68,23 @@ fn search_limit(text: &str) -> Result<usize, String> {
         .ok()
         .filter(|limit| (1..=1000).contains(limit))
         .ok_or_else(|| "give a whole number from 1 to 1000".to_owned())
+}
+
+fn attachment_arg() -> Arg {
+    Arg::new("attachment")
+        .value_name("ATTACHMENT")
+        .required(true)
+        .help("The attachment's id, as ibis outline prints it")
+}
+
+/// `--pages 3-5` or `--pages 3`: the first and last page, from 1.
+fn page_range(text: &str) -> Result<(u32, u32), String> {
+    let page = |text: &str| text.trim().parse::<u32>().ok().filter(|page| *page > 0);
+    let (first, last) = text.split_once('-').unwrap_or((text, text));
+    match (page(first), page(last)) {
+        (Some(first), Some(last)) if first <= last => Ok((first, last)),
+        _ => Err("give a page or a range of pages, like 3 or 3-5".to_owned()),
+    }
 }
 
 fn command() -> Command {
@@ -403,6 +421,53 @@ fn command() -> Command {
                      Example:\n  ibis entry vale2024lanterns --file refs.bib >> thesis.bib",
                 )
                 .arg(Arg::new("key").value_name("KEY").required(true).help("The citation key of the reference")),
+            Method::Outline => subcommand
+                .about("List a reference's attachments and whether Ibis can read their text")
+                .after_help("Example:\n  ibis outline vale2024lanterns\n  ibis read ATTACHMENT --pages 3-5")
+                .arg(
+                    Arg::new("key")
+                        .value_name("KEY")
+                        .required_unless_present("id")
+                        .conflicts_with("id")
+                        .help("The citation key of the reference"),
+                )
+                .arg(
+                    Arg::new("id")
+                        .long("id")
+                        .value_name("ID_JSON")
+                        .help("The reference's id, as the JSON that ibis search --json prints"),
+                ),
+            Method::Read => subcommand
+                .about("Print up to five pages of an attachment's text")
+                .after_help(
+                    "Pages are the file's own pages, and only when Ibis could check where they begin.\n\n\
+                     Examples:\n  ibis read ATTACHMENT --pages 3-5\n  ibis read ATTACHMENT --offset 32768",
+                )
+                .arg(attachment_arg())
+                .arg(
+                    Arg::new("pages")
+                        .long("pages")
+                        .value_name("RANGE")
+                        .value_parser(page_range)
+                        .help("The pages to read, like 3 or 3-5; at most five are read at once"),
+                )
+                .arg(
+                    Arg::new("offset")
+                        .long("offset")
+                        .value_name("N")
+                        .value_parser(clap::value_parser!(usize))
+                        .help("Start N bytes into the first page, or into the text when pages are not known"),
+                ),
+            Method::FindIn => subcommand
+                .about("Find short passages of an attachment that hold some words")
+                .after_help("Example:\n  ibis find-in ATTACHMENT \"brass lantern\"")
+                .arg(attachment_arg())
+                .arg(
+                    Arg::new("query")
+                        .value_name("WORDS")
+                        .required(true)
+                        .help("The words to find, ignoring case; quote several words"),
+                ),
             Method::Styles => subcommand
                 .about("Find bundled CSL styles and citation languages")
                 .after_help("Examples:\n  ibis styles            # the common styles first\n  ibis styles nature\n  ibis styles \"gb/t 7714\"\n  ibis styles --locales")
@@ -553,7 +618,14 @@ pub fn run<R: BufRead, W: Write + Send, E: Write>(
     mode: OutputMode,
 ) -> u8 {
     match Engine::new() {
-        Ok(engine) => run_engine(engine, arguments, input, output, errors, mode, Defaults::App),
+        Ok(engine) => {
+            // PDFs are parsed by this same executable, in a child process.
+            let engine = match std::env::current_exe() {
+                Ok(program) => engine.with_pdf_reader(program),
+                Err(_) => engine,
+            };
+            run_engine(engine, arguments, input, output, errors, mode, Defaults::App)
+        }
         Err(error) => emit(
             json_before_options_end(&arguments),
             Err(error.into()),
@@ -1144,12 +1216,19 @@ fn open_libraries(
             Ok(names)
         };
     }
-    // `call` of search, show or cite reads what those commands would read.
+    // Generic calls read the same default libraries as their direct commands.
     let called = matches
         .subcommand_matches("call")
         .and_then(|call| call.get_one::<String>("method"));
-    let reads_app = matches!(name, "search" | "show" | "cite" | "entry" | "libraries")
-        || called.is_some_and(|called| matches!(called.as_str(), "search" | "show" | "cite"));
+    let reads_app = matches!(
+        name,
+        "search" | "show" | "cite" | "entry" | "libraries" | "outline" | "read" | "find-in"
+    ) || called.is_some_and(|called| {
+        matches!(
+            called.as_str(),
+            "search" | "show" | "cite" | "outline" | "read" | "find-in"
+        )
+    });
     let app = if asked || (defaults == Defaults::App && !named && reads_app) {
         Some(bounded(app_libraries::load).unwrap_or_else(|| {
             Err(Failure::explained(
@@ -1609,6 +1688,51 @@ fn run_method<R: BufRead>(
             let result = engine
                 .dispatch(method, &json!({"item":{"by":"key","value":key}}), &cancel)
                 .map_err(|error| key_failure(engine, matches, &key, error, libraries_open()))?;
+            return Ok(Execution::Result(
+                human::with_summary(result, method, matches.get_flag("json"), holdings(), &names, out),
+                None,
+            ));
+        }
+        Method::Outline => {
+            let (params, key) = match args.get_one::<String>("id") {
+                Some(id) => (
+                    json!({"item":{"by":"id","value":explain(parse_json(id.as_bytes()), |_| cli("cli-id-help", &[]))?}}),
+                    None,
+                ),
+                None => {
+                    let key = args.get_one::<String>("key").cloned().unwrap_or_default();
+                    (json!({"item":{"by":"key","value":key}}), Some(key))
+                }
+            };
+            let result = engine.dispatch(method, &params, &cancel).map_err(|error| match &key {
+                Some(key) => key_failure(engine, matches, key, error, libraries_open()),
+                None if error.code == ErrorCode::NotFound => Failure::explained(error, cli("cli-id-not-found", &[])),
+                None if error.code == ErrorCode::BadInput => Failure::explained(error, cli("cli-id-help", &[])),
+                None => Failure::from(error),
+            })?;
+            return Ok(Execution::Result(
+                human::with_summary(result, method, matches.get_flag("json"), holdings(), &names, out),
+                None,
+            ));
+        }
+        Method::Read | Method::FindIn => {
+            let attachment = args.get_one::<String>("attachment").cloned().unwrap_or_default();
+            let params = if method == Method::Read {
+                let pages = args.get_one::<(u32, u32)>("pages");
+                json!({
+                    "attachment": attachment,
+                    "first_page": pages.map(|pages| pages.0),
+                    "last_page": pages.map(|pages| pages.1),
+                    "offset": args.get_one::<usize>("offset"),
+                })
+            } else {
+                json!({"attachment": attachment, "query": args.get_one::<String>("query")})
+            };
+            let result = explain(engine.dispatch(method, &params, &cancel), |error| match error.code {
+                ErrorCode::NotFound => cli("cli-attachment-not-found", &[]),
+                ErrorCode::BadInput if method == Method::FindIn => cli("cli-find-in-words", &[]),
+                code => human::code_sentence(code),
+            })?;
             return Ok(Execution::Result(
                 human::with_summary(result, method, matches.get_flag("json"), holdings(), &names, out),
                 None,

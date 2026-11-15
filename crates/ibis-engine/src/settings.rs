@@ -426,9 +426,23 @@ pub struct Device {
     /// Frames explicitly dragged by the person, indexed by display.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub picker_windows: BTreeMap<String, PickerWindow>,
+    /// Libraries whose attachment text AI apps may read through `ibis mcp`,
+    /// stored as the complete opaque library ids from `ibis libraries --json`.
+    /// A library not listed stays closed to them (decision 0055). It is a
+    /// grant, so it stays on this computer, as paste approvals do (decision 0031).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachment_text: Vec<ibis_core::contract::LibraryId>,
 }
 
+/// The most libraries `attachment_text` may name.
+const MAX_ATTACHMENT_TEXT: usize = 64;
+
 impl Settings {
+    /// Whether the person let AI apps read `library`'s attachment text.
+    pub fn attachment_text(&self, library: &ibis_core::contract::LibraryId) -> bool {
+        self.device.attachment_text.contains(library)
+    }
+
     /// The format chosen for `app`, compared as the platform compares app ids.
     pub fn app_output(&self, app: &ibis_core::destination::AppId) -> Option<&str> {
         let key = app.normalized();
@@ -664,6 +678,9 @@ fn parse_fields<T: serde::de::DeserializeOwned>(mut value: Value) -> Result<T, S
 
 fn validate_settings(settings: &Settings) -> Result<(), SettingsError> {
     writings::validate(&settings.device.writings).map_err(|error| SettingsError::Invalid(error.to_string()))?;
+    if settings.device.attachment_text.len() > MAX_ATTACHMENT_TEXT {
+        return Err(SettingsError::Invalid("too many attachment text libraries".into()));
+    }
     if settings.device.writing_apps.len() > 200
         || settings.device.writing_apps.iter().any(|(key, name)| {
             let Some((system, id)) = key.split_once(':') else {
@@ -1153,6 +1170,25 @@ impl From<&crate::settings::SettingsError> for Problem {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn attachment_text_settings_store_complete_library_ids() {
+        let id = ibis_core::contract::LibraryId::digest(b"invented-profile-a-personal");
+        let text = serde_json::json!({"schema_version": 2, "attachment_text": [id]}).to_string();
+        let settings = super::parse(&text).unwrap();
+        assert!(settings.attachment_text(&id));
+        assert_eq!(
+            serde_json::to_value(&settings).unwrap()["attachment_text"],
+            serde_json::json!([id])
+        );
+        for old in [
+            serde_json::json!({"zotero":"user"}),
+            serde_json::json!({"bibtex":"/invented/refs.bib"}),
+        ] {
+            assert!(
+                super::parse(&serde_json::json!({"schema_version":2,"attachment_text":[old]}).to_string()).is_err()
+            );
+        }
+    }
     use super::*;
 
     #[test]

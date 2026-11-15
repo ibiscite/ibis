@@ -14,6 +14,7 @@ cargo-fuzz = true
 fuzzing = ["dep:libfuzzer-sys"]
 
 [dependencies]
+ibis = { path = "../crates/ibis-cli" }
 ibis-core = { path = "../crates/ibis-core" }
 ibis-sources = { path = "../crates/ibis-sources" }
 libfuzzer-sys = { version = "=0.4.13", optional = true }
@@ -23,6 +24,14 @@ tempfile = "3.27.0"
 [[bin]]
 name = "damaged_bibtex"
 path = "fuzz_targets/damaged_bibtex.rs"
+required-features = ["fuzzing"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "damaged_pdf"
+path = "fuzz_targets/damaged_pdf.rs"
 required-features = ["fuzzing"]
 test = false
 doc = false

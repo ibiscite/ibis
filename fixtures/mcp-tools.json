@@ -486,5 +486,283 @@
       "type": "object"
     },
     "title": "Find citation styles"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "List a reference's attachments by ref, with the ids read and find_in take and whether their text can be read.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "description": "A ref from search.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "type": "object"
+    },
+    "name": "outline",
+    "outputSchema": {
+      "oneOf": [
+        {
+          "properties": {
+            "attachments": {
+              "items": {
+                "required": [
+                  "id",
+                  "text",
+                  "pages_known",
+                  "cite_pages_known"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "library_notes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "provenance": {
+              "type": "string"
+            },
+            "ref": {
+              "type": "string"
+            },
+            "source_health": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "ref",
+            "attachments",
+            "provenance",
+            "source_health"
+          ]
+        },
+        {
+          "properties": {
+            "error": {
+              "required": [
+                "code",
+                "message",
+                "recovery",
+                "focus"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "error"
+          ]
+        }
+      ],
+      "type": "object"
+    },
+    "title": "List a reference's attachments"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Read up to 5 pages or 32 KiB of an attachment's text. Cite a page only from cite_page; when it is null, ask the user.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "attachment": {
+          "description": "An attachment id from outline.",
+          "type": "string"
+        },
+        "first_page": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "last_page": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "offset": {
+          "description": "From next, to go on.",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "attachment"
+      ],
+      "type": "object"
+    },
+    "name": "read",
+    "outputSchema": {
+      "oneOf": [
+        {
+          "properties": {
+            "attachment": {
+              "type": "string"
+            },
+            "library_notes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "next": {
+              "type": "object"
+            },
+            "pages": {
+              "items": {
+                "required": [
+                  "pdf_page",
+                  "cite_page",
+                  "text"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "pages_known": {
+              "type": "boolean"
+            },
+            "provenance": {
+              "type": "string"
+            },
+            "source_health": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "attachment",
+            "pages",
+            "pages_known",
+            "provenance",
+            "source_health"
+          ]
+        },
+        {
+          "properties": {
+            "error": {
+              "required": [
+                "code",
+                "message",
+                "recovery",
+                "focus"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "error"
+          ]
+        }
+      ],
+      "type": "object"
+    },
+    "title": "Read attachment text"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Find up to 10 short passages of an attachment that hold some words, each with its page when known.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "attachment": {
+          "description": "An attachment id from outline.",
+          "type": "string"
+        },
+        "query": {
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "attachment",
+        "query"
+      ],
+      "type": "object"
+    },
+    "name": "find_in",
+    "outputSchema": {
+      "oneOf": [
+        {
+          "properties": {
+            "attachment": {
+              "type": "string"
+            },
+            "complete": {
+              "type": "boolean"
+            },
+            "library_notes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "pages_known": {
+              "type": "boolean"
+            },
+            "passages": {
+              "items": {
+                "required": [
+                  "pdf_page",
+                  "cite_page",
+                  "text"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "provenance": {
+              "type": "string"
+            },
+            "source_health": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "attachment",
+            "passages",
+            "complete",
+            "pages_known",
+            "provenance",
+            "source_health"
+          ]
+        },
+        {
+          "properties": {
+            "error": {
+              "required": [
+                "code",
+                "message",
+                "recovery",
+                "focus"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "error"
+          ]
+        }
+      ],
+      "type": "object"
+    },
+    "title": "Find words in an attachment"
   }
 ]

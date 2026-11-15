@@ -16,11 +16,29 @@ chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 console = { version = "0.16.6", default-features = false, features = ["std"] }
 icu_properties = "2.4.0"
 unicode-segmentation = "1.13.3"
+# The PDF extractor's child process (decision 0055). Only `ibis` parses PDFs,
+# never the desktop app: lopdf is pure Rust and forbids unsafe code.
+lopdf = { version = "0.47.0", default-features = false }
+
+[target.'cfg(unix)'.dependencies]
+# The child's address-space and processor-time limits.
+nix = { version = "0.31.3", default-features = false, features = ["resource"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
 
 [dev-dependencies]
 insta = "1.49.0"
 tempfile = "3.27.0"
 ibis-sources = { path = "../ibis-sources" }
 
-[lints]
-workspace = true
+# Deny unsafe except in the scoped allocator and Windows job boundaries (0029).
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+panic = "deny"
+unused_result_ok = "deny"
+expect_used = "warn"

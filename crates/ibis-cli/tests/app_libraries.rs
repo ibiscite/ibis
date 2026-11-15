@@ -101,6 +101,46 @@ fn the_library_chosen_in_the_app_is_read_when_none_is_named() {
 }
 
 #[test]
+fn direct_and_generic_attachment_commands_load_the_app_library() {
+    let home = Home::new("attachment-commands");
+    let library = home.library("refs.bib");
+    std::fs::write(&library, "@book{lee2024,title={Invented atlas},file={atlas.pdf}}\n").unwrap();
+    home.choose(STABLE, &library);
+    let (status, stdout, stderr) = home.run(&["outline", "lee2024", "--json"]);
+    assert_eq!((status, stderr.as_str()), (0, ""), "{stdout}");
+    let outlined: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let id = outlined["data"]["attachments"][0]["id"].as_str().unwrap();
+    for (command, method, params) in [
+        (
+            vec!["outline", "lee2024", "--json"],
+            "outline",
+            serde_json::json!({"item":{"by":"key","value":"lee2024"}}),
+        ),
+        (vec!["read", id, "--json"], "read", serde_json::json!({"attachment":id})),
+        (
+            vec!["find-in", id, "atlas", "--json"],
+            "find-in",
+            serde_json::json!({"attachment":id,"query":"atlas"}),
+        ),
+    ] {
+        let (direct_status, direct_stdout, _) = home.run(&command);
+        let params = params.to_string();
+        let (status, stdout, _) = home.run(&["call", method, "--params", &params, "--json"]);
+        let direct: serde_json::Value = serde_json::from_str(&direct_stdout).unwrap();
+        let generic: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+        assert_eq!(status, direct_status, "{method}: {stdout}");
+        assert_eq!(generic, direct, "{method}");
+        if method != "outline" {
+            assert_eq!(
+                code(&stdout),
+                "source-unavailable",
+                "the attachment was resolved before refusing unimplemented file text"
+            );
+        }
+    }
+}
+
+#[test]
 fn named_libraries_replace_the_app_and_servers_read_it_only_when_asked() {
     let home = Home::new("named");
     let settings = home.settings(STABLE, "{\"schema_version\":99}");

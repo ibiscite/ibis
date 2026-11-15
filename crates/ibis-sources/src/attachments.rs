@@ -237,26 +237,13 @@ fn decode(text: &str) -> Option<(String, String, String)> {
 }
 fn is_media_type(text: &str) -> bool {
     let text = text.trim();
-    if text.len() > 255 {
-        return false;
-    }
     if ["pdf", "html", "epub", "txt"]
         .iter()
         .any(|kind| text.eq_ignore_ascii_case(kind))
     {
         return true;
     }
-    let Some((kind, subtype)) = text.split_once('/') else {
-        return false;
-    };
-    fn token(text: &str) -> bool {
-        (1..=127).contains(&text.len())
-            && text.as_bytes()[0].is_ascii_alphanumeric()
-            && text
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || b"!#$&-^_.+".contains(&byte))
-    }
-    token(kind) && token(subtype)
+    ibis_core::model::is_media_type(text)
 }
 fn normalize_media(text: &str) -> String {
     match text.trim().to_ascii_lowercase().as_str() {

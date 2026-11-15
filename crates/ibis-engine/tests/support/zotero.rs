@@ -24,6 +24,10 @@ pub struct Server {
     pub group_warning: Arc<AtomicBool>,
     #[allow(dead_code)]
     pub title: Arc<Mutex<String>>,
+    #[allow(dead_code)] // Shared desktop scenarios do not replace attachment data.
+    pub attachment: Arc<Mutex<serde_json::Value>>,
+    #[allow(dead_code)]
+    pub fulltext: Arc<Mutex<serde_json::Value>>,
     stop: Arc<AtomicBool>,
     worker: Option<thread::JoinHandle<()>>,
 }
@@ -44,6 +48,14 @@ impl Server {
         let warn_group = group_warning.clone();
         let title = Arc::new(Mutex::new("Invented atlas".to_owned()));
         let item_title = title.clone();
+        let attachment = Arc::new(Mutex::new(
+            json!({"key":"PDFA0001","version":1,"data":{"key":"PDFA0001","version":1,"dateModified":"2026-11-15T12:00:00Z","itemType":"attachment","parentItem":"SYNTH234","title":"Invented atlas PDF","contentType":"application/pdf","linkMode":"imported_file"}}),
+        ));
+        let attachment_data = attachment.clone();
+        let fulltext = Arc::new(Mutex::new(
+            json!({"content":"Invented page one about maps.\u{c}Invented page two holds a brass lantern.\u{c}Invented page three.","indexedPages":3,"totalPages":3}),
+        ));
+        let fulltext_data = fulltext.clone();
         let (id, wait, seen, stopping) = (instance.clone(), pause.clone(), paused.clone(), stop.clone());
         let worker = thread::spawn(move || {
             while !stopping.load(Ordering::Relaxed) {
@@ -72,7 +84,18 @@ impl Server {
                         thread::sleep(Duration::from_millis(1));
                     }
                 }
-                let mut body = if empty && inventory {
+                // SYNTH234 has a file Zotero indexed in three pages and a link.
+                let children = request.contains("/items/SYNTH234/children?");
+                let fulltext = request.contains("/items/PDFA0001/fulltext");
+                let no_text = request.contains("/fulltext") && !fulltext;
+                let mut body = if children {
+                    json!([
+                        *attachment_data.lock().unwrap(),
+                        {"key":"LINK0001","data":{"key":"LINK0001","itemType":"attachment","parentItem":"SYNTH234","title":"Invented atlas page","contentType":"text/html","linkMode":"linked_url"}}
+                    ])
+                } else if fulltext {
+                    fulltext_data.lock().unwrap().clone()
+                } else if empty && inventory {
                     json!({})
                 } else if empty {
                     json!([])
@@ -81,14 +104,19 @@ impl Server {
                 } else {
                     json!([{"key":"SYNTH234","version":1,"data":{"key":"SYNTH234","version":1,"itemType":"book","title":*item_title.lock().unwrap(),"date":"2026","citationKey":"Synthetic2026","creators":[],"dateModified":"2026-10-26T12:00:00Z"}}])
                 };
-                if !inventory && request.contains("groups/7/") && warn_group.load(Ordering::Relaxed) {
+                if !inventory
+                    && !children
+                    && !fulltext
+                    && request.contains("groups/7/")
+                    && warn_group.load(Ordering::Relaxed)
+                {
                     body[0]["data"]["inventedField"] = json!("invented value");
                 }
                 let body = serde_json::to_vec(&body).unwrap();
                 let id = id.load(Ordering::Relaxed);
                 let status = if off.load(Ordering::Relaxed) {
                     "403 Forbidden"
-                } else if missing {
+                } else if missing || no_text {
                     "404 Not Found"
                 } else {
                     "200 OK"
@@ -111,6 +139,8 @@ impl Server {
             sharing_off,
             group_warning,
             title,
+            attachment,
+            fulltext,
             stop,
             worker: Some(worker),
         }

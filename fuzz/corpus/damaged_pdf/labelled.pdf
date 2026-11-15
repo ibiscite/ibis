@@ -1,0 +1,31 @@
+%PDF-1.7
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R /PageLabels << /Nums [0 << /S /r >> 1 << /S /D /P (A-) /St 3 >>] >> >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 6 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 7 0 R >>
+endobj
+6 0 obj
+<< /Length 52 >>
+stream
+BT /F1 12 Tf 72 720 Td (Invented preface page.) Tj ET
+endstream
+endobj
+7 0 obj
+<< /Length 77 >>
+stream
+BT /F1 12 Tf 72 720 Td [(Invented) -300 (lantern)] TJ 0 -14 Td (Second line.) Tj ET
+endstream
+endobj
+trailer
+<< /Root 1 0 R /Size 8 >>
+%%EOF

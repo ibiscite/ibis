@@ -431,3 +431,70 @@ fn the_owner_is_the_account_the_local_api_names_from_the_first_top_level_item() 
         assert_eq!(owner(&format!("DROP TABLE {table};")), Err(ClosedError::Damaged));
     }
 }
+
+#[test]
+fn attachments_carry_zoteros_index_counts_and_never_fail_a_read() {
+    let dir = fixture(10);
+    edit(
+        dir.path(),
+        "INSERT INTO itemAttachments VALUES(14,10,0,'application/pdf','storage:invented.pdf');
+         INSERT INTO items VALUES(17,1,'LINK0001',1,4,'2020-01-01 00:00:00','2020-01-01 00:00:00');
+         INSERT INTO itemAttachments VALUES(17,10,3,NULL,NULL);
+         INSERT INTO fulltextItems(itemID,indexedPages,totalPages) VALUES(14,2,12);
+         INSERT INTO itemDataValues VALUES(900,'Invented full text');
+         INSERT INTO itemData VALUES(14,1,900);",
+    );
+    let snapshot = read_fixture(dir.path()).unwrap();
+    let attachments = snapshot.attachments.unwrap();
+    assert_eq!(attachments.len(), 2);
+    let pdf = attachments
+        .iter()
+        .find(|attachment| attachment.key == "FILE0001")
+        .unwrap();
+    assert_eq!((pdf.library_id, pdf.parent.as_str()), (1, "SYNTH001"));
+    assert_eq!(
+        (pdf.title.as_str(), pdf.content_type.as_str()),
+        ("Invented full text", "application/pdf")
+    );
+    assert!(!pdf.link_only);
+    assert_eq!(pdf.path, "storage:invented.pdf");
+    assert!(
+        pdf.indexed
+            == Some(IndexedCounts {
+                indexed_pages: Some(2),
+                total_pages: Some(12)
+            })
+    );
+    let link = attachments
+        .iter()
+        .find(|attachment| attachment.key == "LINK0001")
+        .unwrap();
+    assert!(link.link_only && link.indexed.is_none() && link.content_type.is_empty() && link.path.is_empty());
+
+    // A layout without Zotero's full-text table still reads every reference.
+    edit(dir.path(), "DROP TABLE fulltextItems;");
+    let snapshot = read_fixture(dir.path()).unwrap();
+    assert!(snapshot.attachments.is_none());
+    assert_eq!(snapshot.libraries[0].items.len(), 1);
+}
+
+#[test]
+fn reading_attachment_revisions_include_item_and_index_changes() {
+    let dir = fixture(10);
+    edit(
+        dir.path(),
+        "INSERT INTO itemAttachments VALUES(14,10,0,'application/pdf','storage:invented.pdf'); INSERT INTO fulltextItems(itemID,indexedPages,totalPages,indexedChars,totalChars) VALUES(14,2,2,100,100);",
+    );
+    let attachment = || read_fixture(dir.path()).unwrap().attachments.unwrap().remove(0);
+    for sql in [
+        "UPDATE items SET version=version+1 WHERE itemID=14;",
+        "UPDATE items SET dateModified='2026-11-15 12:00:00' WHERE itemID=14;",
+        "UPDATE fulltextItems SET indexedChars=101 WHERE itemID=14;",
+        "UPDATE fulltextItems SET totalChars=102 WHERE itemID=14;",
+        "UPDATE fulltextItems SET version=version+1 WHERE itemID=14;",
+    ] {
+        let before = attachment();
+        edit(dir.path(), sql);
+        assert_ne!(attachment(), before, "{sql}");
+    }
+}

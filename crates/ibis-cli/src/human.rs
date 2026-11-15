@@ -161,6 +161,9 @@ fn summary(
             EntryResult::Entry { text, .. } => Some(text.trim_end().to_owned()),
             EntryResult::Refused { reason } => Some(entry_refusal(reason)),
         },
+        Method::Outline => outline_summary(data),
+        Method::Read => read_summary(data),
+        Method::FindIn => find_in_summary(data),
         Method::Styles => {
             let styles = data.get("styles")?.as_array()?;
             let total = data.get("total")?.as_u64()?;
@@ -187,6 +190,107 @@ fn summary(
         }
         _ => None,
     }
+}
+
+/// One line per attachment: its id, title, type and whether its text can be read.
+fn outline_summary(data: &Value) -> Option<String> {
+    let attachments = data.get("attachments")?.as_array()?;
+    if attachments.is_empty() {
+        return Some(cli("cli-outline-none", &[]));
+    }
+    attachments
+        .iter()
+        .map(|attachment| {
+            let pages = attachment.get("pages").and_then(Value::as_u64);
+            let text = match attachment.get("text")?.as_str()? {
+                "available" if attachment.get("pages_known") == Some(&Value::Bool(true)) => cli(
+                    if attachment.get("cite_pages_known") == Some(&Value::Bool(true)) {
+                        "cli-outline-printed-pages"
+                    } else {
+                        "cli-outline-pages"
+                    },
+                    &[("count", &pages.unwrap_or_default().to_string())],
+                ),
+                "available" => cli("cli-outline-text", &[]),
+                "not-indexed" => cli("cli-outline-not-indexed", &[]),
+                "no-file" => cli("cli-outline-no-file", &[]),
+                "too-large" => cli("cli-outline-too-large", &[]),
+                "missing" => cli("cli-outline-missing", &[]),
+                "not-local" => cli("cli-outline-not-local", &[]),
+                "not-pdf" => cli("cli-outline-not-pdf", &[]),
+                "damaged" => cli("cli-outline-damaged", &[]),
+                "timed-out" => cli("cli-outline-timed-out", &[]),
+                _ => cli("cli-outline-not-yet", &[]),
+            };
+            Some(format!(
+                "{}\t{}\t{}\t{text}",
+                field(attachment.get("id")?.as_str()?),
+                field(attachment.get("title").and_then(Value::as_str).unwrap_or_default()),
+                field(attachment.get("media_type").and_then(Value::as_str).unwrap_or_default()),
+            ))
+        })
+        .collect::<Option<Vec<_>>>()
+        .map(|lines| lines.join("\n"))
+}
+
+/// Attachment text as it reads, each page under its number, then how to go on.
+fn read_summary(data: &Value) -> Option<String> {
+    let mut parts = Vec::new();
+    for page in data.get("pages")?.as_array()? {
+        let text: Vec<String> = page
+            .get("text")?
+            .as_str()?
+            .lines()
+            .map(super::terminal_display)
+            .collect();
+        if let Some(mark) = page_mark(page) {
+            parts.push(mark);
+        }
+        parts.push(text.join("\n"));
+    }
+    if let Some(next) = data.get("next") {
+        let attachment = field(data.get("attachment")?.as_str()?);
+        let mut command = format!("ibis read {attachment}");
+        if let Some(page) = next.get("first_page").and_then(Value::as_u64) {
+            command.push_str(&format!(" --pages {page}-{}", page + 4));
+        }
+        if let Some(offset) = next.get("offset").and_then(Value::as_u64) {
+            command.push_str(&format!(" --offset {offset}"));
+        }
+        parts.push(cli("cli-read-more", &[("command", &command)]));
+    }
+    Some(parts.join("\n"))
+}
+
+/// The file's page, and the printed page to cite when its label is known.
+fn page_mark(item: &Value) -> Option<String> {
+    let page = item.get("pdf_page")?.as_u64()?.to_string();
+    Some(match item.get("cite_page").and_then(Value::as_str) {
+        Some(label) => cli("cli-read-printed-page", &[("page", &page), ("label", &field(label))]),
+        None => cli("cli-read-page", &[("page", &page)]),
+    })
+}
+
+/// One line per passage, after its page when pages are known.
+fn find_in_summary(data: &Value) -> Option<String> {
+    let passages = data.get("passages")?.as_array()?;
+    if passages.is_empty() {
+        return Some(cli("cli-find-in-none", &[]));
+    }
+    let mut lines = passages
+        .iter()
+        .map(|passage| {
+            let text = field(passage.get("text")?.as_str()?);
+            Some(match page_mark(passage) {
+                Some(mark) => format!("{mark}\t{text}"),
+                None => text,
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+    if data.get("complete") == Some(&Value::Bool(false)) {
+        lines.push(cli("cli-find-in-more", &[("count", &passages.len().to_string())]));
+    }
+    Some(lines.join("\n"))
 }
 
 /// One line per key, the file's own state first, in the words the app uses.

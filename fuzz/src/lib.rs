@@ -1,4 +1,5 @@
-//! BibTeX loader oracle shared by libFuzzer and the ordinary seed-corpus test.
+//! Loader oracles shared by libFuzzer and the ordinary seed-corpus tests:
+//! damaged BibTeX here, damaged PDFs in [`pdf`].
 #![allow(clippy::panic, reason = "a fuzz oracle reports a failed property by panicking")]
 
 use std::sync::Once;
@@ -7,6 +8,8 @@ use std::time::{Duration, Instant};
 
 use ibis_core::contract::{CitationKeySource, LibraryObject, Snapshot};
 use ibis_sources::{SourceError, load_file};
+
+pub mod pdf;
 
 const MAX_INPUT_BYTES: usize = 64 * 1024;
 const INPUT_TIMEOUT: Duration = Duration::from_secs(5);

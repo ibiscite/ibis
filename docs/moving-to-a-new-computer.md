@@ -18,8 +18,9 @@ setting so they can load when available. The backup does not contain library
 records or recent-citation history.
 
 Paste approvals, formats per app, window positions, small-surprise state,
-writings and their bibliographies, editor endpoint, update consent
-and Zotero profile stay on each computer. The replaced settings become
+writings and their bibliographies, editor endpoint, update consent,
+Zotero profile and which libraries AI apps may read attachment text from
+stay on each computer. The replaced settings become
 `settings.json.bak`.
 
 Damaged, newer-format or online-only backups are refused without

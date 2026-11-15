@@ -1344,6 +1344,19 @@ mod tests {
     }
 
     #[test]
+    fn text_cache_refuses_a_junction_to_another_attachment() {
+        let data = scratch();
+        let storage = data.path().join("storage");
+        let secret = storage.join("SECRET01");
+        std::fs::create_dir_all(&secret).unwrap();
+        std::fs::write(secret.join(".zotero-ft-cache"), "Invented secret text").unwrap();
+        let link = storage.join("ALLOW001");
+        junction(&link, &secret);
+        assert!(crate::closed::read_text_cache(data.path(), "ALLOW001", std::sync::Arc::new(|| false)).is_err());
+        std::fs::remove_dir(&link).unwrap();
+    }
+
+    #[test]
     fn native_actions_preserve_cancellation_and_deadlines() {
         let parent = scratch();
         let child = parent.path().join("never-created");

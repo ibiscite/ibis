@@ -6,7 +6,9 @@ mod csl_json;
 mod exported;
 mod file;
 pub mod identity;
+pub mod pdf;
 pub mod project;
+pub mod reading;
 mod urls;
 pub mod zotero;
 
@@ -18,8 +20,9 @@ use serde::{Deserialize, Serialize};
 
 pub use csl_json::{RequestRecords, request_records};
 pub use file::{
-    MAX_LIBRARY_BYTES, SourceError, SourceSnapshot, SourceWatch, inspect_io, library_file_extensions, load_file,
-    load_file_snapshot, names_a_library, original_entry, reload_file, reload_file_reusing, reload_file_snapshot,
+    MAX_LIBRARY_BYTES, SourceError, SourceSnapshot, SourceWatch, attachment_file, inspect_io, library_file_extensions,
+    load_file, load_file_snapshot, names_a_library, original_entry, reload_file, reload_file_reusing,
+    reload_file_snapshot,
 };
 
 // Real bibliographies reach 100,000 entries (#1251). Memory follows file size
