@@ -11,6 +11,7 @@ import { useLayer } from "./layers";
 import { ViewFrame } from "./ViewFrame";
 import { say } from "../i18n";
 import "./Palette.css";
+import { Status } from "./Status";
 
 /** One row: a name, a quiet detail only when it tells rows apart, its keys, and
  * a check on the current choice. `back` rows undo a remembered choice (↩). A
@@ -166,7 +167,7 @@ export function Palette({ id, title, subtitle, description, placeholder, section
         {!items.length && <li role="presentation" className="ui-palette-empty">{empty}</li>}
       </ul>
       {preview && <div className="ui-palette-preview">
-        <div aria-live="polite">{current && preview(current)}</div>
+        <Status as="div" label={title}>{current && preview(current)}</Status>
         {why && <p id={descriptionId} className="ui-palette-preview-note">{why}</p>}
       </div>}
       {!preview && why && <p id={descriptionId} className="visually-hidden">{why}</p>}

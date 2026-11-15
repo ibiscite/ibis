@@ -3,6 +3,7 @@ import { ListBox, ListBoxItem } from "react-aria-components";
 import { ariaKeys, keyLabel } from "../keys";
 import { currentPlatform } from "../platform";
 import { useResultsLayout } from "./ResultsArea";
+import { Stack } from "./Stack";
 import "./ChoiceList.css";
 import "./Option.css";
 
@@ -55,8 +56,10 @@ export function ChoiceList({ title, line, choices, onChoose, footnote, autoFocus
   return (
     <section className="choice-screen" data-grid={grid || undefined} data-compact={compact || undefined} aria-labelledby={heading}>
       {mark}
-      <h2 className={compact ? "visually-hidden" : "choice-title"} id={heading} dir="auto">{title}</h2>
-      {line && <p className="choice-line">{line}</p>}
+      <Stack gap="--space-6"><Stack gap="--space-1">
+        <h2 className={compact ? "visually-hidden" : "choice-title"} id={heading} dir="auto">{title}</h2>
+        {line && <p className="choice-line">{line}</p>}
+      </Stack><Stack gap="--space-4">
       <ListBox ref={list} className="choice-list" layout={grid ? "grid" : "stack"} aria-labelledby={heading} selectionMode="none" autoFocus={autoFocus && !focusId ? "first" : undefined}
         onAction={(id) => onChoose(String(id))}>
         {choices.map((choice) => (
@@ -75,6 +78,7 @@ export function ChoiceList({ title, line, choices, onChoose, footnote, autoFocus
         ))}
       </ListBox>
       {footnote && <p className="choice-line choice-footnote">{footnote}</p>}
+      </Stack></Stack>
     </section>
   );
 }

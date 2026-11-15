@@ -37,7 +37,7 @@ import "../src/ui/CopiedNotice.css";
 import pickerStyles from "../src/ui/Window.css?inline";
 import { formatAnswer, noFormatChosen } from "../src/testing/format";
 
-export const scenarios = ["notice", "results", "unknown-app", "unknown-app-empty", "first-run", "more", "format-menu", "writings", "writings-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "reference-details-more", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-selector", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "citation-order", "citation-handles", "share-bibtex", "token-warnings", "sample", "citation-details-larger", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about", "settings-details", "settings-newer"] as const;
+export const scenarios = ["notice", "results", "unknown-app", "unknown-app-empty", "first-run", "more", "format-menu", "writings", "writings-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "reference-details-more", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-selector", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "citation-order", "citation-handles", "citation-details-larger", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about", "settings-details", "settings-newer", "settings-broken", "text-80", "text-120", "share-bibtex", "token-warnings", "sample"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -62,6 +62,8 @@ const zoteroLibrary: Partial<LibraryStatus> = { zotero: true, snapshot_zotero: t
  * picture is whatever the app draws for it. */
 const fixtures: Partial<Record<Scenario, {
   query?: string; library?: Partial<LibraryStatus>; rows?: SearchResult[]; preferences?: { density?: "compact"; larger_text?: boolean; output?: string };
+  /** The session's text size from ⌘+/⌘− (1 is 100%). */
+  textZoom?: number;
   /** Clicked in order, each once the one before has drawn what it opens. */
   click?: string | string[]; keys?: KeyboardEventInit[];
 }>> = {
@@ -91,6 +93,8 @@ const fixtures: Partial<Record<Scenario, {
   unreadable: { query: "", library: { state: "error", has_snapshot: false, references: 0, problem: "unreadable", error: "the library file does not contain valid reference data" } },
   stale: { library: { stale: true, zotero: true, snapshot_zotero: true, name: "Zotero", snapshot_name: "Zotero", error: "Zotero’s library cannot be read while it is closed", problem: "zotero_closed", checked_at: Date.now() - 2 * 3_600_000 } },
   compact: { preferences: { density: "compact" } },
+  "text-80": { textZoom: 0.8 },
+  "text-120": { textZoom: 1.2 },
   "larger-text": { preferences: { larger_text: true } },
   "right-to-left": {},
   "long-titles": { rows: longRows },
@@ -425,7 +429,16 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
     if (value) document.documentElement.style.setProperty(name, value);
     else document.documentElement.style.removeProperty(name);
   }
+  const zoom = fixtures[scenario as Scenario]?.textZoom;
+  if (zoom) document.documentElement.style.setProperty("--text-zoom", String(zoom));
+  else document.documentElement.style.removeProperty("--text-zoom");
   const settings = demoApi();
+  // Citations with what people have once they cite: an app's remembered format and writings.
+  if (scenario === "settings-citations") settings.formatSettings = async () => ({ apps: [{ id: "invented.editor", app: "Invented Editor", format: "apa" }], writings: writings.writings, key_output_visible: true });
+  // The installed app can always open settings.json (General › Advanced, and a broken file's recovery).
+  settings.openSettingsFile ??= async () => null;
+  // settings.json that does not parse: the engine's own Problem, as the picker gets it.
+  if (scenario === "settings-broken") settings.formatSettings = () => Promise.reject({ code: "settings-invalid", message: { id: "app-settings-error-invalid", args: {} }, recovery: { action: "review-settings" }, focus: "settings" });
   if (scenario === "settings-newer") settings.formatSettings = async () => ({ apps: [], writings: [], key_output_visible: false, unknown: { future_choice: "Enabled" } });
   void settings.savePickerPreferences({ ...fixtures[scenario as Scenario]?.preferences, appearance: theme as Theme, paste: false }).then(settings.pickerPreferencesSaved);
   // The states and tokens pages use the Settings window's base styles.

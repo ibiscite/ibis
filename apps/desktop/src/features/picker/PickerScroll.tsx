@@ -3,14 +3,18 @@ import { Component, createRef, type ReactNode } from "react";
 import { useFileDrag } from "../../ui/useFileDrag";
 
 type Props = { onFileDrag?: (change: (active: boolean) => void) => Promise<() => void>; presentation?: number; drag?: ReturnType<typeof useFileDrag>; children: ReactNode };
+/** The first row and how far it sits below the top of the region that scrolls it. */
 type Place = { node: HTMLElement; owner: HTMLElement; top: number };
 
 /** The content slot's one scroller. Notices live in the frame's own line
  * (ui/Frame), so nothing is inserted above the rows; only a window too short
  * for the list's own viewport hands scrolling to the middle region, and then
- * the first row keeps its place. The commit snapshot reads the old DOM before
- * layout can clamp its scroll offset. This geometry never chooses or changes a
- * window size. */
+ * the first row keeps its place in the scroller that takes over. Where that
+ * scroller sits is the frame's: a slot the frame opens or closes in the same
+ * commit (the heading line, whose presence lands one commit after the rows)
+ * moves the list with it, never under it. The commit snapshot reads the old DOM
+ * before layout can clamp its scroll offset. This geometry never chooses or
+ * changes a window size. */
 class PickerScrollFrame extends Component<Props> {
   private middle = createRef<HTMLDivElement>();
   private anchor: Place | null = null;
@@ -24,7 +28,7 @@ class PickerScrollFrame extends Component<Props> {
     const node = area?.querySelector<HTMLElement>('[role="option"]');
     const owner = [area, middle].find((part) => part && /auto|scroll/.test(getComputedStyle(part).overflowY));
     if (!node || !owner) return null;
-    return { node, owner, top: node.getBoundingClientRect().top };
+    return { node, owner, top: node.getBoundingClientRect().top - owner.getBoundingClientRect().top };
   };
 
   private restore = (before: Place | null) => {
@@ -32,7 +36,8 @@ class PickerScrollFrame extends Component<Props> {
     if (before && after?.node === before.node && before.owner !== after.owner) {
       // The former owner's offset may already be clamped by the new layout.
       before.owner.scrollTop = 0;
-      after.owner.scrollTop += after.node.getBoundingClientRect().top - before.top;
+      const { node, owner } = after;
+      owner.scrollTop += node.getBoundingClientRect().top - owner.getBoundingClientRect().top - before.top;
       after = this.capture();
     }
     this.anchor = after;

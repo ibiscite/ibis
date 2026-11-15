@@ -5,6 +5,7 @@ import { useInterfaceMessages } from "../i18n";
 import { IconButton } from "./IconButton";
 import { settingControl } from "./settingFocus";
 import "./Layout.css";
+import { Status } from "./Status";
 
 /** The layout parts. Screens compose these and never set
  * their own margin, padding, gap or position, so left edges line up by
@@ -45,7 +46,9 @@ export function Group({ label, children }: { label?: string; children: ReactNode
 export function Row({ id, label, description, children, problem, highlighted, pending, reset, labelHidden = false, item = false }: {
   id?: string; label: ReactNode; description?: ReactNode; children?: ReactNode;
   problem?: string; highlighted?: boolean; pending?: boolean; labelHidden?: boolean;
-  reset?: Reset; /** Given while the setting is away from its default. */
+  /** Use Default. Left out, the row cannot reset and keeps no room for it; null,
+   * the setting is at its default and the room stays empty; a value shows ↺. */
+  reset?: Reset | null;
   /** In a labelled Group (a list). */
   item?: boolean;
 }) {
@@ -53,27 +56,29 @@ export function Row({ id, label, description, children, problem, highlighted, pe
   return <Element className="ui-row" aria-busy={pending || undefined} data-bare={labelHidden || undefined} data-highlighted={highlighted || undefined}>
     <span className={labelHidden ? "visually-hidden" : "ui-row-lead"}>
       <span className="ui-row-text">
-        <span className="ui-row-label"><span id={id} dir="auto">{label}</span>{children !== undefined && <ResetSlot reset={reset} />}</span>
+        <span id={id} dir="auto">{label}</span>
         {description && <span id={id ? `${id}-description` : undefined} className="ui-row-description" dir="auto">{description}</span>}
       </span>
     </span>
-    {children}
-    {problem && <p className="ui-row-problem" role="alert">{problem}</p>}
+    {reset !== undefined && children !== undefined ? <span className="ui-row-control"><ResetSlot reset={reset} />{children}</span> : children}
+    {problem && <Status className="ui-row-problem" role="alert">{problem}</Status>}
   </Element>;
 }
 
 type Reset = { label: string; onReset: () => void; disabled?: boolean };
-/** [C24] Use Default, the only way back to a default: it follows the setting's
- * name, so it appears beside what it restores and every control keeps the
- * row's one trailing edge. Nothing is reserved while the setting is default. */
-export function ResetSlot({ reset }: { reset?: Reset }) {
+/** [C24] Use Default, the only way back to a default, right before the control it
+ * restores, as macOS places it. A resettable setting keeps its room at the
+ * default too, so the control never moves when ↺ appears; a setting that cannot
+ * reset keeps none. */
+export function ResetSlot({ reset }: { reset?: Reset | null }) {
   const { text } = useInterfaceMessages();
-  return reset ? <span className="ui-row-reset"><IconButton icon="reset" data-setting-reset isDisabled={reset.disabled}
+  if (reset === undefined) return null;
+  return <span className="ui-row-reset">{reset && <IconButton icon="reset" data-setting-reset isDisabled={reset.disabled}
     aria-label={text("settings-use-default", { setting: reset.label })} title={text("shortcuts-use-default")} onPress={(event) => {
       const row = event.target.closest<HTMLElement>(".ui-row, tr");
       if (row) settingControl(row)?.focus({ preventScroll: true });
       reset.onReset();
-    }} /></span> : null;
+    }} />}</span>;
 }
 
 /** A row to choose from a list, as System Settings lists choices: the whole row is
@@ -97,5 +102,6 @@ export function Buttons({ children, end = false }: { children: ReactNode; end?: 
 
 /** Quiet words under a row or a section: a note, a status, a problem. */
 export function Note({ children, role, problem = false, list = false }: { children: ReactNode; role?: "status" | "alert"; problem?: boolean; list?: boolean }) {
-  return list ? <ul className="ui-note">{children}</ul> : <p className="ui-note" role={role} data-problem={problem || undefined}>{children}</p>;
+  return list ? <ul className="ui-note">{children}</ul> : role ? <Status className="ui-note" role={role} data-problem={problem || undefined}>{children}</Status>
+    : <p className="ui-note" data-problem={problem || undefined}>{children}</p>;
 }

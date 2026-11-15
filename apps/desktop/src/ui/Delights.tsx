@@ -7,6 +7,7 @@ import { Button } from "./Button";
 import { useFlash } from "./timers";
 import { appIcon } from "../brand";
 import "./Delights.css";
+import { Status } from "./Status";
 
 function matchesEcho(event: KeyboardEvent, accelerator: string) {
   const parts = accelerator === "+" ? ["+"] : accelerator.split(/\+(?!$)/);
@@ -62,18 +63,20 @@ export function AboutDelight({ dip, enabled, onClick }: { dip: number; enabled: 
 
 /** One line under the bird, read aloud when a click changes it. */
 export function AboutLine({ children, said, highlighted }: { children: string; said: boolean; highlighted: boolean }) {
-  return <p id="about-name" className="ui-about-line" data-highlighted={highlighted || undefined} aria-live="polite"><span key={children} data-said={said || undefined}>{children}</span></p>;
+  return <Status id="about-name" className="ui-about-line" data-highlighted={highlighted || undefined}><span key={children} data-said={said || undefined}>{children}</span></Status>;
 }
 
 export function QuietStatus({ children }: { children: ReactNode }) {
-  return children ? <p className="ui-quiet-status" role="status">{children}</p> : null;
+  return children ? <Status className="ui-quiet-status">{children}</Status> : null;
 }
 
-/** Browser zoom stays local to this webview; the receipt slot reports its result. */
+/** ⌘+ and ⌘− change the picker's text size for this session: the same root type
+ * scale as Settings' Larger (ui/Window.css), never a zoom of the whole document,
+ * so the frame stays the native window's size. The receipt slot reports it. */
 export function useZoomFeedback(enabled: boolean) {
   const { text } = useInterfaceMessages();
   const [percent, showPercent, clearPercent] = useFlash<number>(1000);
-  const zoom = useRef(Number(document.documentElement.style.zoom) || 1);
+  const zoom = useRef(Number(document.documentElement.style.getPropertyValue("--text-zoom")) || 1);
   useEffect(() => {
     const down = (event: KeyboardEvent) => {
       // KEY_TABLE's textSize row: ⌘+ and ⌘− (Ctrl elsewhere), with = and the hyphen typed unshifted.
@@ -81,7 +84,7 @@ export function useZoomFeedback(enabled: boolean) {
       event.preventDefault();
       if (event.repeat) return;
       zoom.current = Math.max(0.5, Math.min(2, Math.round((zoom.current + (["-", "−"].includes(event.key) ? -0.1 : 0.1)) * 10) / 10));
-      document.documentElement.style.zoom = String(zoom.current);
+      document.documentElement.style.setProperty("--text-zoom", String(zoom.current));
       showPercent(Math.round(zoom.current * 100));
     };
     clearPercent();

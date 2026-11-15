@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import axe from "axe-core";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
-import type { CommandStatus, PickerPreferences, PickerSave, ShortcutStatus, WindowSize } from "../bindings";
+import type { CommandStatus, LoginItem, PickerPreferences, PickerSave, ShortcutStatus, WindowSize } from "../bindings";
 import { bindingKeys, DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
 import { currentPlatform } from "../platform";
 import { pageOf, SettingsApp } from "./SettingsApp";
@@ -1657,7 +1657,8 @@ test("a successful manual update check cannot turn an unreadable update setting 
   await act(async () => fireEvent.click(button));
   expect(check).toHaveBeenCalledOnce();
   expect(screen.getByRole("button", { name: "Check for Updates" })).toBe(button);
-  expect(screen.getByRole("switch", { name: "Check for updates automatically" })).toHaveProperty("disabled", true);
+  // Unread, the setting shows no value at all rather than a disabled "off".
+  expect(screen.queryByRole("switch", { name: "Check for updates automatically" })).toBeNull();
   expect(screen.getByText("Ibis could not read your settings; reopen Settings to try again.")).toBeTruthy();
   expect(screen.queryByText("This build does not update itself.")).toBeNull();
 });
@@ -1900,8 +1901,8 @@ test("search includes key formats used in the library and the live file action o
   fireEvent.click(await screen.findByRole("option", { name: "In Markdown, LaTeX and Typst, Citations" }));
   await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "In Markdown, LaTeX and Typst Pandoc" })));
   fireEvent.change(search, { target: { value: "Open Settings File" } });
-  fireEvent.click(await screen.findByRole("option", { name: "Open Settings File, Citations" }));
-  const open = screen.getByRole("button", { name: "Open Settings File" });
+  fireEvent.click(await screen.findByRole("option", { name: "Open Settings File, General" }));
+  const open = screen.getByRole("button", { name: "Open" });
   await waitFor(() => expect(document.activeElement).toBe(open));
   expect(document.getElementById("open-settings-file")?.closest(".ui-row")?.hasAttribute("data-highlighted")).toBe(true);
   fireEvent.click(open);
@@ -1910,6 +1911,28 @@ test("search includes key formats used in the library and the live file action o
   await act(async () => { for (const changed of state.preferenceEvents) changed(++state.revision); });
   fireEvent.change(search, { target: { value: "Markdown" } });
   expect(screen.queryByRole("option", { name: "In Markdown, LaTeX and Typst, Citations" })).toBeNull();
+});
+
+test.each(["reset", "default"])("searching %s finds the settings that can go back to their default, and only those", async (query) => {
+  const { api } = fakeApi();
+  render(<SettingsApp api={api} initialPage="general" />);
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search Settings" }), { target: { value: query } });
+  expect(await screen.findByRole("option", { name: "Accent, Appearance" })).toBeTruthy();
+  expect(screen.getByRole("option", { name: "Recent citations, Citations" })).toBeTruthy();
+  expect(screen.queryByRole("option", { name: /^Back up settings/ })).toBeNull();
+});
+
+test.each(["general", "citations"] as const)("a settings file that does not parse explains the fallback on %s with its one recovery", async (page) => {
+  const { api } = fakeApi();
+  api.formatSettings = vi.fn(() => Promise.reject({ code: "settings-invalid", message: { id: "app-settings-error-invalid", args: {} }, recovery: { action: "review-settings" }, focus: "settings" }));
+  api.openSettingsFile = vi.fn(async () => null);
+  render(<SettingsApp api={api} initialPage={page} />);
+  const problem = await screen.findByRole("alert");
+  expect(problem.textContent).toContain("settings.json isn’t valid, so Ibis is using your last good settings.");
+  expect(problem.textContent).not.toContain("Open Settings to review it.");
+  expect(screen.queryByText(/could not read your settings/)).toBeNull();
+  fireEvent.click(within(problem).getByRole("button", { name: "Open" }));
+  expect(api.openSettingsFile).toHaveBeenCalledOnce();
 });
 
 test("a refused setting default keeps its saved choice and offers no Undo", async () => {
@@ -2120,3 +2143,16 @@ function shortcutFailure(code: string) {
   return { code, message: { id: `shortcuts-refusal-${code}`, args: {} },
     recovery: { action: code === "unavailable" ? "open-ibis" : code === "not-saved" ? "retry" : "choose-shortcut" }, focus: "recovery-action" };
 }
+
+test("a setting whose value is not known yet paints neither on nor off, then its value", async () => {
+  const { api } = fakeApi();
+  let answer!: (status: LoginItem) => void;
+  vi.spyOn(api, "loginItem").mockReturnValueOnce(new Promise<LoginItem>((resolve) => { answer = resolve; }));
+  render(<SettingsApp api={api} initialPage="general" />);
+  const row = (await screen.findByText(/^(Open at login|Start when you sign in|Start on login)$/)).closest(".ui-row")!;
+  expect(within(row as HTMLElement).queryByRole("switch")).toBeNull();
+  expect(row.getAttribute("aria-busy")).toBe("true");
+  expect(row.querySelector(".ui-switch[data-placeholder]")).not.toBeNull();
+  await act(async () => answer({ enabled: true, name: "Ibis", problem: null }));
+  expect((within(row as HTMLElement).getByRole("switch") as HTMLInputElement).checked).toBe(true);
+});

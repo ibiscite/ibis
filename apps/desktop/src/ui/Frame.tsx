@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Band } from "./Band";
 import { usePresence, usePresenceSlot } from "./presence";
 import "./Frame.css";
+import { Status } from "./Status";
 
 type FrameSlot = "heading" | "notice" | "host" | "inspector" | "reading";
 type FrameSlots = { heading: HTMLElement | null; register: (slot: FrameSlot, on: boolean) => void };
@@ -67,7 +68,7 @@ export function LineNotice({ role = "status", children, actions, className }: {
 }) {
   const words = typeof children === "string" ? children : undefined;
   return <FrameNotice className={className} data-role={role}>
-    <p className="ui-line-words" role={role} dir="auto" title={words} tabIndex={0}>{children}</p>
+    <Status className="ui-line-words" role={role} dir="auto" title={words} tabIndex={0}>{children}</Status>
     {actions}
   </FrameNotice>;
 }

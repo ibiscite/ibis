@@ -22,13 +22,13 @@ import { localMoment } from "../ui/localMoment";
 import { useAltHeld } from "../ui/useAltHeld";
 import type { DelightFact, DelightView } from "../bindings";
 import { ShortcutsPage } from "./ShortcutsPage";
-import { Note, Row } from "../ui/Layout";
+import { Group, Note, Row, Section } from "../ui/Layout";
 import { ShortcutSetting } from "../ui/ShortcutSetting";
 import { SideNavigation, SideResults } from "../ui/SideNavigation";
 import { SettingsSearch } from "../ui/SettingsSearch";
 import { useAppearance } from "../ui/appearance";
 import { SettingRows, UnknownSettings } from "./SettingRows";
-import { FormatSettings, useFormatSettings } from "./FormatSettings";
+import { FormatSettings, SettingsFileProblem, SettingsFileRow, useFormatSettings } from "./FormatSettings";
 import { EditorEndpointRow } from "./EditorEndpoint";
 import { PasteGuide, usePastePermission } from "./PasteGuide";
 import { BackupRows } from "./BackupRows";
@@ -37,8 +37,9 @@ import { listening } from "../nativeEvents";
 import { useFlash } from "../ui/timers";
 import "../ui/SettingsLayout.css";
 
-import { PAGES, ROWS, settingsRows, rowDetails, type Page } from "./rows";
+import { PAGES, ROWS, settingsRows, rowDetails, type Page, type SearchRow, type SettingRow } from "./rows";
 import { initialPreferences, preferenceState } from "./preferenceState";
+import { Status } from "../ui/Status";
 const FACT_MESSAGES: Record<DelightFact, MessageId> = { touch: "delight-fact-touch", scarlet: "delight-fact-scarlet", mummies: "delight-fact-mummies", national: "delight-fact-national", flight: "delight-fact-flight" };
 const LOGIN_PROBLEMS = {
   unsupported: "general-login-unsupported", needs_approval: "general-login-needs-approval",
@@ -427,7 +428,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     : problemRow?.id === id ? text(problemRow.message) : undefined });
   const checkSaid = checkResult === "newest" ? "about-check-newest" : checkResult === "not_run" ? "about-check-busy" : null;
   const selectPage = (next: Page) => { setRevealTarget(null); clearHighlight(); setDetour(false); setPage(next); setFocus("top"); setDip(0); };
-  const reveal = (row: typeof ROWS[number]) => {
+  const reveal = (row: SearchRow) => {
     selectPage(row.page); setFocus(null); setQuery(""); highlight(row.id === "about-ibis" && query.trim().toLowerCase() === "thoth" ? "about-name" : row.id);
     if (row.id === "about-ibis" && query.trim().toLowerCase() !== "thoth") setDip(dip + 1);
     const operation = ++highlightOperation.current;
@@ -507,7 +508,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     && (row.id !== "editor-endpoint" || Boolean(api.editorEndpoint && api.setEditorEndpoint && api.copyEditorEndpoint)));
   const matchedIds = new Set(query.trim() ? filterPalette([{ id: "settings", items: availableRows.map((row) => ({ id: row.id,
     label: text(row.label, { platform }), detail: row.description ? text(row.description, { platform }) : undefined,
-    keywords: row.keywords ? text(row.keywords, { platform }) : undefined })) }], query).flatMap((group) => group.items.map((item) => item.id)) : []);
+    // A setting that can go back to its default is found by "reset" and "default" too.
+    keywords: [row.keywords && text(row.keywords, { platform }), row.default !== undefined && text("settings-reset-words")].filter(Boolean).join(" ") || undefined })) }], query).flatMap((group) => group.items.map((item) => item.id)) : []);
   const matches = PAGES.flatMap((page) => availableRows.filter((row) => row.page === page && matchedIds.has(row.id)));
   const name = login?.name ?? "Ibis";
   const undoTicket = shortcutUndoTicket.current;
@@ -542,7 +544,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       } },
   };
   const renderRows = (page: Page, after?: Record<string, ReactNode>) => <SettingRows
-    rows={availableRows.filter((row) => row.page === page && (row.control || row.native))}
+    rows={availableRows.filter((row): row is SettingRow => row.page === page && Boolean(row.control || row.native))}
     preferences={preferences} change={change} owners={owners} feedback={feedback} reset={settingUndo.reset} size={windowSize} after={after} />;
 
   return (
@@ -565,27 +567,27 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         : <SideNavigation label={text("settings-pages")} value={page} options={PAGES.map((value) => ({ value, label: text(`settings-${value}`), tile: PAGE_TILES[value], gapBefore: value === "about" }))}
           onChange={selectPage} />}
       </nav>
-      <NoticeSlot>
-        {settingUndo.notice}
-        {shortcutUndo && <UndoNotice key={undoTicket} action={text("undo-shortcut")} message={text("settings-shortcut-restored")} paused={!focused}
-          onUndo={() => changeShortcut(shortcutUndo, true, undoTicket)}
-          onExpire={() => { if (undoTicket === shortcutUndoTicket.current) clearShortcutUndo(); }} />}
-      </NoticeSlot>
       <main ref={pageRef} className="settings-page" aria-labelledby="settings-page-title">
         <h1 id="settings-page-title" className={page === "about" ? "visually-hidden" : "ui-settings-page-title"}>{text(`settings-${page}`)}</h1>
-        {preference.status === "unknown" && preference.message && <Note problem role="alert">{text(preference.message)}</Note>}
+        {/* One cause, one sentence: a file that cannot be read says so in the engine's words, on every page. */}
+        {formatSettings.problem !== null ? <SettingsFileProblem settings={formatSettings} />
+          : preference.status === "unknown" && preference.message && <Note problem role="alert">{text(preference.message)}</Note>}
         {detour && returnFailed && <Note problem role="alert">{text("general-paste-return-failed")}</Note>}
         {page === "general" && <>
           {renderRows("general", { "paste-label": <>
             {preferences?.paste && permission?.needed && permission.granted && !guided && <Row id="paste-allowed" label={text("general-paste-allowed", { list: permission.list })} description={text("general-paste-allowed-note")}><StatusMark kind="ok" /></Row>}
             {preferences?.paste && permission?.needed && (!permission.granted || guided) && <PasteGuide name={name} permission={permission} onOpen={() => { setGuided(true); void api.openPastePermission().then(() => readProblem("paste-label", false)).catch(() => readProblem("paste-label", true)); }} onDrag={api.dragPasteApp} />}
           </> })}
-          {api.cliStatus && api.setCliInstalled && api.copyCliProfile && <CliCommandRow api={{ cliStatus: api.cliStatus, setCliInstalled: api.setCliInstalled, copyCliProfile: api.copyCliProfile }} highlighted={highlighted === "cli-command"} />}
+          {/* Working with Ibis's files and from a terminal: one titled group. */}
+          {(api.cliStatus && api.setCliInstalled && api.copyCliProfile || formatSettings.openSettingsFile) && <Section id="advanced" title={text("settings-advanced-title")}><Group>
+            {api.cliStatus && api.setCliInstalled && api.copyCliProfile && <CliCommandRow api={{ cliStatus: api.cliStatus, setCliInstalled: api.setCliInstalled, copyCliProfile: api.copyCliProfile }} highlighted={highlighted === "cli-command"} />}
+            <SettingsFileRow settings={formatSettings} highlighted={highlighted} />
+          </Group></Section>}
           <Details label={text("settings-details")} reveal={revealTarget}><BackupRows api={api} /></Details>
           <UnknownSettings preferences={preferences} saved={formatSettings.view?.unknown} />
         </>}
         {page === "look" && preferences && renderRows("look")}
-        {page === "citations" && <>{renderRows("citations")}<FormatSettings settings={formatSettings} highlighted={highlighted} /></>}
+        {page === "citations" && <>{renderRows("citations")}<FormatSettings settings={formatSettings} /></>}
         {page === "shortcuts" && <ShortcutsPage opening={shortcutSetting} enterPastes={enterPastes} reveal={revealTarget} highlighted={highlighted} />}
         {page === "about" && (
           <>
@@ -595,14 +597,15 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
             <div id="about-ibis" className="ui-about-hero">
               <AboutDelight dip={dip} enabled={about?.fun ?? false} onClick={() => clickAbout.current()} />
               <p className="ui-about-name">{name}</p>
-              <Button variant="quiet" size="small" preventFocusOnPress onPress={copyVersion}>
+              {/* It copies the version, so it is drawn as a button: quiet words would read as a label. */}
+              <Button size="small" preventFocusOnPress onPress={copyVersion}>
                 {text(versionCopied ? "about-copied" : "about-version", { version: altHeld && about?.build ? about.build : version })}
               </Button>
               {versionCopyFailed && <Note problem role="alert">{text("about-copy-failed")}</Note>}
               {/* Under the version, as Mac apps place it (decision 0038); its outcome follows it. */}
               {(updates !== null || readProblems.has("automatic")) && <div id="check-updates" className="ui-about-check" data-highlighted={highlighted === "check-updates" || undefined}>
                 <Button aria-disabled={checking || undefined} onPress={checkNow}>{text(checking ? "about-checking" : "about-check")}</Button>
-                <p className="ui-quiet-status" role="status">{checking ? text("about-checking") : checkSaid && text(checkSaid)}</p>
+                <Status className="ui-quiet-status">{checking ? text("about-checking") : checkSaid && text(checkSaid)}</Status>
                 {checkResult === "failed" && <Note problem role="alert">{text("about-check-failed")}</Note>}
               </div>}
               <p className="ui-about-mission">{text("about-mission")}</p>
@@ -616,6 +619,13 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
           </>
         )}
       </main>
+      {/* At the window's foot (ui/SettingsLayout.css), and after the page in Tab order too. */}
+      <NoticeSlot>
+        {settingUndo.notice}
+        {shortcutUndo && <UndoNotice key={undoTicket} action={text("undo-shortcut")} message={text("settings-shortcut-restored")} paused={!focused}
+          onUndo={() => changeShortcut(shortcutUndo, true, undoTicket)}
+          onExpire={() => { if (undoTicket === shortcutUndoTicket.current) clearShortcutUndo(); }} />}
+      </NoticeSlot>
     </div>
   );
 }

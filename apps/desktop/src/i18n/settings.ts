@@ -35,7 +35,7 @@ export function shortcutRefusalMessage(refusal: unknown): ShortcutProblem {
 
 export const SETTINGS_IDS = [
   "citations-unlisted",
-  "citations-documents", "citations-keys", "citations-apps", "citations-forget", "citations-writings", "settings-open-file", "settings-file-description",
+  "citations-documents", "citations-keys", "citations-apps", "citations-forget", "citations-writings", "settings-open-file", "settings-open", "settings-file-description",
   "settings-shortcut-words", "settings-details", "settings-use-default", "settings-default-restored", "settings-undo-default",
   "command-install", "command-remove", "command-checking", "command-missing", "command-matching", "command-different", "command-foreign", "command-profile", "command-copy", "command-copied", "command-failed",
   "backup-words", "backup-title", "backup-label", "backup-description", "backup-button", "backup-saved",
@@ -73,6 +73,8 @@ export const SETTINGS_IDS = [
   "look-light",
   "look-dark",
   "look-accent",
+  "look-accent-description", "general-rows-description", "look-window-size-description", "look-text-size-description", "citations-keys-description",
+  "command-install-description", "settings-about-description", "about-check-description", "settings-advanced-title", "settings-reset-words",
   "look-accent-system",
   "look-accent-ibis",
   "look-accent-words",

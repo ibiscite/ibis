@@ -7,13 +7,12 @@
 .choice-screen[data-compact] .choice-list { margin-top: 0; }
 .choice-title, .choice-line { padding-inline: var(--row-pad); margin: 0; overflow-wrap: anywhere; }
 .choice-title { color: var(--text); font-size: var(--type-lead-size); line-height: var(--type-lead-line); font-weight: var(--strong); }
-.choice-line { margin-top: var(--space-1); color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
-.choice-list { display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-6); outline: none; text-align: start; }
+.choice-line { color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
+.choice-list { display: flex; flex-direction: column; gap: var(--space-1); outline: none; text-align: start; }
 .choice-screen .choice-row { display: flex; align-items: center; gap: var(--row-gap); min-width: 0; height: auto; padding-inline: var(--row-pad); border-radius: var(--r-control); outline: none; color: var(--text); cursor: default; }
 .choice-screen .choice-row + .choice-row { margin-top: 0; }
 .choice-screen .result-title, .choice-screen .choice-help { white-space: normal; overflow: visible; display: block; overflow-wrap: anywhere; }
 :root[data-density="compact"] .choice-screen .choice-help { display: block; }
-.choice-footnote { margin-top: var(--space-4); }
 .choice-help { margin-top: var(--space-1); }
 .choice-tag { max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .choice-line-title > .result-title { flex: 0 1 auto; }

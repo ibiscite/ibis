@@ -1,7 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import english from "../../../../locales/en-US.ftl?raw";
-import { createInterfaceMessages, englishMessages, fullStop, InterfaceMessagesProvider, say, useInterfaceMessages } from ".";
+import { createInterfaceMessages, englishMessages, fullStop, InterfaceMessagesProvider, problemText, say, useInterfaceMessages } from ".";
+import type { Problem } from "../bindings";
 
 test("the bundled interface default is English, independent of browser language and direction", () => {
   expect(englishMessages.locale).toBe("en-US");
@@ -17,6 +18,15 @@ test("interface messages resolve a shared Fluent term", () => {
   const messages = createInterfaceMessages(source.replace(/^choice-library-file-help =.*$/m,
     "choice-library-file-help = { -library-formats-test }"));
   expect(messages.text("choice-library-file-help")).toBe("BibTeX, BibLaTeX, CSL-JSON, RIS or CSV");
+});
+
+test("one settings Problem has words for the picker and for Settings, with the same recovery", () => {
+  const problem: Problem = { code: "settings-invalid", message: { id: "app-settings-error-invalid", args: {} },
+    recovery: { action: "review-settings" }, focus: "settings" };
+  expect(problemText(problem, "fallback")).toBe("The settings file is not valid. Open Settings to review it.");
+  expect(problemText(problem, "fallback", say, "settings")).toBe("settings.json isn’t valid, so Ibis is using your last good settings.");
+  const unreadable: Problem = { ...problem, code: "settings-unreadable", message: { id: "app-settings-error-unreadable", args: {} } };
+  expect(problemText(unreadable, "fallback", say, "settings")).toBe(problemText(unreadable, "fallback"));
 });
 
 test.each([

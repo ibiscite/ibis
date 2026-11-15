@@ -27,6 +27,39 @@ const MAX_APPS: usize = 200;
 const MAX_BYTES: u64 = 256 * 1024;
 const VERSION: u32 = 1;
 
+/// The name both windows show, resolved when read, never saved: the installed
+/// Mac bundle's display name, then the destination table, then the original ID.
+pub(crate) fn display_name(app: &AppId) -> String {
+    #[cfg(target_os = "macos")]
+    if app.system == ibis_core::destination::System::Macos
+        && let Some(name) = installed_name(&app.id)
+    {
+        return name;
+    }
+    lookup(app).map_or_else(|| app.id.clone(), |known| known.name.to_owned())
+}
+
+#[cfg(target_os = "macos")]
+fn installed_name(id: &str) -> Option<String> {
+    use objc2_app_kit::NSWorkspace;
+    use objc2_foundation::{NSBundle, NSString};
+
+    let url = NSWorkspace::sharedWorkspace().URLForApplicationWithBundleIdentifier(&NSString::from_str(id))?;
+    if let Some(bundle) = NSBundle::bundleWithURL(&url) {
+        for key in ["CFBundleDisplayName", "CFBundleName"] {
+            if let Some(value) = bundle.objectForInfoDictionaryKey(&NSString::from_str(key))
+                && let Some(name) = value.downcast_ref::<NSString>()
+                && name.length() > 0
+            {
+                return Some(name.to_string());
+            }
+        }
+    }
+    url.URLByDeletingPathExtension()?
+        .lastPathComponent()
+        .map(|name| name.to_string())
+}
+
 /// What the picker needs to know about the app it was opened from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub(crate) struct PickerDestination {
@@ -433,7 +466,8 @@ pub(crate) fn remember_app_output<R: tauri::Runtime>(
     settings_file.owner.change_with(
         |settings| {
             crate::paste::change_destination(&app, paste.is_some(), |captured| {
-                settings.remember_app_output(&target(captured)?, output.id().to_owned());
+                let id = target(captured)?;
+                settings.remember_app_output(&id, output.id().to_owned());
                 Ok(())
             })
             .map_err(|_| AppChoiceError::not_saved())
@@ -552,6 +586,32 @@ mod tests {
 
     fn word() -> AppId {
         mac("com.microsoft.word")
+    }
+
+    #[test]
+    fn display_names_fall_back_to_the_table_then_the_original_id() {
+        // A different system's table is still useful; it must not consult an
+        // installed Mac app or replace an unknown ID with a guessed name.
+        let known = AppId {
+            system: System::Windows,
+            id: "WINWORD.EXE".into(),
+        };
+        assert_eq!(display_name(&known), "Microsoft Word");
+        for system in [System::Macos, System::Windows, System::Linux] {
+            let unknown = AppId {
+                system,
+                id: "org.example.InventedEditor".into(),
+            };
+            assert_eq!(display_name(&unknown), unknown.id);
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn finder_display_name_comes_from_its_installed_bundle() {
+        let finder = mac("com.apple.finder");
+        assert!(lookup(&finder).is_none(), "Finder exercises the native lookup");
+        assert_eq!(display_name(&finder), "Finder");
     }
 
     fn memory_in(directory: &tempfile::TempDir) -> AppMemory {

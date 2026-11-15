@@ -166,3 +166,20 @@ test("Band slots hold update progress and new rows to their declared columns", (
     expect(failures()).toContainEqual(expect.stringContaining("tile column 36.0"));
   } finally { boxes.mockRestore(); view.unmount(); }
 });
+
+test("the frame guard catches a frame that ends short of the window or past it", () => {
+  const view = render(<main className="ui-frame" />);
+  const edge = vi.spyOn(document.documentElement, "clientHeight", "get").mockReturnValue(480);
+  const frame = (bottom: number) => vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 720, bottom));
+  const frameFailures = () => geometry(view.container).filter((failure) => failure.includes("the frame spans"));
+  try {
+    // Text at 80% that zoomed the whole document left the footer 96 px above the edge.
+    let boxes = frame(384);
+    expect(frameFailures()).toEqual(["[C24 frame] the frame spans 0.0–384.0px of a 480px window: it ends 96.0px short of its edge"]);
+    boxes.mockRestore(); boxes = frame(576);
+    expect(frameFailures()).toEqual(["[C24 frame] the frame spans 0.0–576.0px of a 480px window: it ends 96.0px past its edge"]);
+    boxes.mockRestore(); boxes = frame(480);
+    expect(frameFailures()).toEqual([]);
+    boxes.mockRestore();
+  } finally { edge.mockRestore(); view.unmount(); }
+});
