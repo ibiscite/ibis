@@ -13,10 +13,11 @@ export type KeyHints = { enter: string | null; shiftEnter: string | null; escape
 
 /** Status and its fix, Copy, then More. More's place never depends on the action:
  * shorten the status, then truncate the label, then fold labels to keys by width. */
-export function PickerFooter({ library, groupName, hints, altHeld, actions, more, status, emptyAction, copyProblem }: {
+export function PickerFooter({ library, groupName, hints, altHeld, actions, more, status, emptyAction, copyProblem, delivery }: {
   library: LibraryStatus | null | undefined; groupName: (id: number) => string; hints: KeyHints; altHeld: boolean;
   actions: { copy: () => void; add: () => void; escape: () => void };
   more: React.ReactNode; status?: React.ReactNode; emptyAction?: boolean; copyProblem?: string | null;
+  delivery?: string;
 }) {
   const bar = useRef<HTMLElement>(null);
   const hintsRow = useRef<HTMLElement>(null);
@@ -47,11 +48,13 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
       // room in the leading column, so it can neither wrap onto the action nor fold it.
       const fix = intrinsic(element.querySelector(".source-action"));
       element.style.setProperty("--footer-fix", `${fix}px`);
-      const actions = [...(hintsRow.current?.children ?? [])];
+      const actions = [...(hintsRow.current?.querySelectorAll(".footer-action") ?? [])];
+      const delivery = hintsRow.current?.querySelector<HTMLElement>(".footer-delivery");
+      const deliveryWidth = delivery ? Math.max(width(delivery), delivery.scrollWidth) + gap : 0;
       const hintGap = hintsRow.current ? parseFloat(getComputedStyle(hintsRow.current).columnGap) || 0 : 0;
       // More, and the pin beside it while the window is kept open.
       const moreWidth = intrinsic(menu.current?.querySelector(".more-button") ?? menu.current?.querySelector("button") ?? null) + width(menu.current?.querySelector(".footer-pinned") ?? null);
-      const status = preferred + fix + moreWidth + actions.reduce((sum, action) => sum + intrinsic(action), 0)
+      const status = preferred + fix + moreWidth + deliveryWidth + actions.reduce((sum, action) => sum + intrinsic(action), 0)
         + Math.max(0, actions.length - 1) * hintGap + gap * 2 > available;
       // Never the action's own width: its label must not be able to resize More.
       const labels = width(statusMinimum.current) + fix + moreWidth + width(labelMinimum.current) + gap * 2 > available;
@@ -66,7 +69,7 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
     for (const node of [bar.current, statusSize.current, hintsRow.current, menu.current, bar.current?.querySelector(".source-action")]) if (node) observer?.observe(node);
     window.addEventListener("resize", measure);
     return () => { observer?.disconnect(); window.removeEventListener("resize", measure); };
-  }, [hints.enter, hints.shiftEnter, hints.escape, altHeld, platform, status]);
+  }, [hints.enter, hints.shiftEnter, hints.escape, altHeld, platform, status, delivery]);
   return <footer data-menu-floor>
     {/* The region includes More and Copy. Its name must stay distinct from
         the Library button, so native name lookup cannot activate the region. */}
@@ -78,7 +81,7 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
         {altHeld ? <>
           {hints.shiftEnter && <FooterAction label={hints.shiftEnter} keys={keysFor("add")} onAction={actions.add} />}
           <FooterAction label={hints.escape} keys={keysFor("escape")} onAction={actions.escape} />
-        </> : hints.enter ? <FooterAction label={hints.enter} keys={keysFor("copy")} primary onAction={actions.copy} disabled={Boolean(copyProblem)} description={copyProblem ?? undefined} />
+        </> : hints.enter ? <span className="footer-primary">{delivery && <span className="footer-delivery">{delivery}</span>}<FooterAction label={hints.enter} keys={keysFor("copy")} primary onAction={actions.copy} disabled={Boolean(copyProblem)} description={copyProblem ?? undefined} /></span>
           : emptyAction && <FooterAction label={say("key-copy")} keys={keysFor("copy")} disabled onAction={actions.copy} />}
       </small>
       <span key="more" ref={menu} className="more">{more}</span>

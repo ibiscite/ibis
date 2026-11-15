@@ -6,6 +6,7 @@ import { useInterfaceMessages } from "../i18n";
 import { registerUndo, subscribeUndo } from "./editUndo";
 import "./NoticeSlot.css";
 import { Status } from "./Status";
+import { useTimeout } from "./timers";
 
 function noticeText(value: string) {
   const letters = [...value.replace(/\s+/gu, " ")].filter((letter) => {
@@ -22,7 +23,6 @@ export function UndoNotice({ message, action, onUndo, onExpire, paused = false, 
 }) {
   const { text } = useInterfaceMessages();
   const label = text("undo-action", { action: noticeText(action) });
-  const remaining = useRef(8000);
   const description = useId();
   const notice = useRef<HTMLDivElement>(null);
   const mounted = useRef(true);
@@ -52,12 +52,7 @@ export function UndoNotice({ message, action, onUndo, onExpire, paused = false, 
     setFocused(false);
     fallbackFocusRef?.current?.focus({ preventScroll: true });
   }, [newest, fallbackFocusRef]);
-  useEffect(() => {
-    if (paused || hovered || focused || pending || !newest) return;
-    const start = performance.now();
-    const timer = window.setTimeout(onExpire, remaining.current);
-    return () => { window.clearTimeout(timer); remaining.current = Math.max(0, remaining.current - (performance.now() - start)); };
-  }, [paused, hovered, focused, pending, newest, onExpire]);
+  useTimeout(onExpire, 8000, label, paused || hovered || focused || pending || !newest);
   useLayoutEffect(() => {
     mounted.current = true;
     const node = notice.current;

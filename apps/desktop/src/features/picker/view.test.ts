@@ -8,7 +8,7 @@ import { initialSession, reduceSession, sessionQueryKey, type SessionEvent, type
 const a = testStates[1]!.results[0]!;
 const prepared = { display: { nodes: [] }, text: "canonical engine text", warnings: [], fileTicket: "ticket-a", fileHash: "hash-a" };
 const base = (state: SessionState): SessionView => ({ queryKey: sessionQueryKey(state), format: "pandoc", snapshotRevision: "synthetic", defaultChoice: choiceKey([a]),
-  chosen: [a], shown: prepared, searchPending: false, ready: true, saving: false, shouldAsk: false, remembersLast: true, output: { opening: 0, choice: 0, delivery: 0 } });
+  offered: [a], chosen: [a], shown: prepared, searchPending: false, ready: true, saving: false, shouldAsk: false, remembersLast: true, output: { opening: 0, choice: 0, delivery: 0 } });
 
 /** A picker showing `a` with its preview, then `events`; returns what Enter asked for. */
 function run(events: SessionEvent[], query = "garcia") {

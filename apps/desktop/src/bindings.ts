@@ -786,6 +786,9 @@ export type PickerDestination = {
 	writing_context?: string | null;
 };
 
+/** Default picker placement on the active display; a deliberate move wins there. */
+export type PickerPlacement = "centre" | "top-left" | "top-right" | "bottom-left" | "bottom-right";
+
 /**
  * How the picker looks and what it formats with, remembered across restarts
  * (ADR 0020).
@@ -805,6 +808,7 @@ export type PickerPreferences = {
 	output: string;
 	/** Enter pastes into the app the picker was opened from; on by default. */
 	paste: boolean;
+	picker_placement?: PickerPlacement | null;
 	/** Recent citations per app; on by default. Off records nothing. */
 	recent_citations?: boolean | null;
 	small_surprises?: boolean | null;
@@ -821,6 +825,7 @@ export type PickerPreferencesPatch = {
 	/** Only an id the engine lists; any other refuses the whole change. */
 	output?: string | null;
 	paste?: boolean | null;
+	picker_placement?: PickerPlacement | null;
 	recent_citations?: boolean | null;
 	small_surprises?: boolean | null;
 };
@@ -851,6 +856,7 @@ export type PreferenceChange = {
 	output: string;
 	/** Enter pastes into the app the picker was opened from; on by default. */
 	paste: boolean;
+	picker_placement?: PickerPlacement | null;
 	/** Recent citations per app; on by default. Off records nothing. */
 	recent_citations?: boolean | null;
 	revision: number;

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
-use ibis_engine::settings::{self, Density};
+use ibis_engine::settings::{self, Density, PickerPlacement};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -360,6 +360,15 @@ impl SettingsFile {
 pub(crate) use settings::{Accent, Appearance};
 
 impl SettingsFile {
+    /// Placement uses the last valid snapshot, without disk I/O while showing.
+    pub(crate) fn picker_placement(&self) -> PickerPlacement {
+        self.last_valid
+            .lock()
+            .ok()
+            .and_then(|preferences| preferences.picker_placement)
+            .unwrap_or_default()
+    }
+
     /// The saved Appearance, for a window that shows without the picker's
     /// preferences: the Copied notice follows Ibis's Light or Dark, not only the system's.
     pub(crate) fn appearance(&self) -> Appearance {
@@ -387,6 +396,8 @@ pub(crate) struct PickerPreferences {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) accent: Option<Accent>,
     pub(crate) density: Density,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) picker_placement: Option<PickerPlacement>,
     pub(crate) larger_text: bool,
     /// Enter pastes into the app the picker was opened from; on by default.
     pub(crate) paste: bool,
@@ -414,6 +425,7 @@ impl PickerPreferences {
             appearance: Some(settings.appearance.unwrap_or_default()),
             accent: Some(settings.accent.unwrap_or_default()),
             density: settings.density.unwrap_or(Density::Comfortable),
+            picker_placement: Some(settings.picker_placement.unwrap_or_default()),
             larger_text: settings.larger_text.unwrap_or(false),
             paste: settings.paste.unwrap_or(true),
             menu_bar: settings.menu_bar.unwrap_or(true),
@@ -474,6 +486,8 @@ pub(crate) struct PickerPreferencesPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) density: Option<Density>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) picker_placement: Option<PickerPlacement>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) larger_text: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) paste: Option<bool>,
@@ -504,6 +518,7 @@ impl From<PickerPreferences> for PickerPreferencesPatch {
             output: Some(value.output),
             key_output: value.key_output,
             density: Some(value.density),
+            picker_placement: value.picker_placement,
             larger_text: Some(value.larger_text),
             paste: Some(value.paste),
             menu_bar: Some(value.menu_bar),
@@ -724,6 +739,9 @@ fn apply_preferences(s: &mut settings::Settings, preferences: PickerPreferencesP
         s.portable.key_output = Some(output.id().to_owned());
     }
     // Defaults stay unwritten, so the file only names real choices.
+    if let Some(placement) = preferences.picker_placement {
+        s.portable.picker_placement = Some(placement).filter(|p| *p != PickerPlacement::Centre);
+    }
     if let Some(density) = preferences.density {
         s.portable.density = Some(density).filter(|d| *d != Density::Comfortable);
     }
@@ -1495,6 +1513,7 @@ mod tests {
             key_output: None,
             appearance: Some(Appearance::System),
             accent: Some(Accent::System),
+            picker_placement: Some(PickerPlacement::Centre),
             density: Density::Compact,
             larger_text: true,
             paste: true,
@@ -1919,6 +1938,7 @@ mod tests {
             key_output: None,
             appearance: Some(Appearance::System),
             accent: Some(Accent::System),
+            picker_placement: Some(PickerPlacement::BottomRight),
             density: Density::Compact,
             larger_text: true,
             paste: false,
@@ -1928,6 +1948,8 @@ mod tests {
         };
         let saved = file.save_preferences(chosen, None).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(saved.portable.paste, Some(false));
+        assert_eq!(saved.portable.picker_placement, Some(PickerPlacement::BottomRight));
+        assert_eq!(file.picker_placement(), PickerPlacement::BottomRight);
         assert_eq!(saved.portable.output.as_deref(), Some("chicago-author-date"));
         assert_eq!(
             PickerPreferences::from_settings(&saved),
@@ -1941,6 +1963,7 @@ mod tests {
             key_output: None,
             appearance: Some(Appearance::System),
             accent: Some(Accent::System),
+            picker_placement: Some(PickerPlacement::Centre),
             density: Density::Comfortable,
             larger_text: false,
             paste: true,
@@ -1949,6 +1972,7 @@ mod tests {
             small_surprises: Some(true),
         };
         let saved = file.save_preferences(defaults, None).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(file.picker_placement(), PickerPlacement::Centre);
         assert_eq!(
             PickerPreferences::from_settings(&saved),
             PickerPreferences {
@@ -1957,7 +1981,14 @@ mod tests {
             }
         );
         let text = std::fs::read_to_string(&file.path).unwrap_or_default();
-        for field in ["density", "larger_text", "paste", "menu_bar", "recent_citations"] {
+        for field in [
+            "density",
+            "picker_placement",
+            "larger_text",
+            "paste",
+            "menu_bar",
+            "recent_citations",
+        ] {
             assert!(!text.contains(field), "{field} is not written for the default");
         }
     }
@@ -2090,6 +2121,7 @@ mod tests {
             key_output: None,
             appearance: Some(Appearance::System),
             accent: Some(Accent::System),
+            picker_placement: Some(PickerPlacement::Centre),
             density: Density::Comfortable,
             larger_text: false,
             paste: true,

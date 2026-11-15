@@ -153,14 +153,104 @@ fn choose_for_show(
     )
 }
 
-/// The picker's top-left corner on a display: centred across its usable area,
-/// with the search row's centre a quarter of the way down. Clamp the whole
-/// frame; a picker larger than the area starts at its corner.
-pub(crate) fn launcher_position(usable: Area, width: f64, height: f64, search_centre: f64) -> (f64, f64) {
-    (
-        usable.x + (usable.width - width).max(0.0) / 2.0,
-        usable.y + (usable.height * 0.25 - search_centre).clamp(0.0, (usable.height - height).max(0.0)),
-    )
+/// Default or corner placement in logical units. Clamp the whole frame; an
+/// oversized picker starts at the work area's corner. Centre retains the
+/// launcher's search anchor a quarter of the way down the usable height.
+pub(crate) fn launcher_position(
+    usable: Area,
+    width: f64,
+    height: f64,
+    search_centre: f64,
+    placement: ibis_engine::settings::PickerPlacement,
+) -> (f64, f64) {
+    use ibis_engine::settings::PickerPlacement::*;
+    let spare = ((usable.width - width).max(0.0), (usable.height - height).max(0.0));
+    let inset = (16.0_f64.min(spare.0 / 2.0), 16.0_f64.min(spare.1 / 2.0));
+    let (x, y) = match placement {
+        Centre => (
+            spare.0 / 2.0,
+            (usable.height * 0.25 - search_centre).clamp(0.0, spare.1),
+        ),
+        TopLeft => inset,
+        TopRight => (spare.0 - inset.0, inset.1),
+        BottomLeft => (inset.0, spare.1 - inset.1),
+        BottomRight => (spare.0 - inset.0, spare.1 - inset.1),
+    };
+    (usable.x + x, usable.y + y)
+}
+
+/// Native monitor rectangles, before conversion to a window builder's logical units.
+#[derive(Clone, Copy)]
+pub(crate) struct CreationDisplay {
+    pub(crate) bounds: Area,
+    pub(crate) usable: Area,
+    pub(crate) scale: f64,
+}
+
+impl CreationDisplay {
+    fn logical(self, area: Area) -> Area {
+        Area {
+            x: area.x / self.scale,
+            y: area.y / self.scale,
+            width: area.width / self.scale,
+            height: area.height / self.scale,
+        }
+    }
+}
+
+/// A logical origin supplied before the native window is built. Displays must
+/// retain the backend's enumeration order, with finite geometry and positive
+/// scales. `None` means the target is absent or Windows cannot distinguish a
+/// fitting origin from an earlier display using its logical creation API.
+pub(crate) fn creation_origin(
+    displays: &[CreationDisplay],
+    target: usize,
+    size: (f64, f64),
+    margin: f64,
+    windows: bool,
+) -> Option<(f64, f64)> {
+    let display = displays.get(target)?;
+    let area = display.logical(display.usable);
+    let spare = ((area.width - size.0).max(0.0), (area.height - size.1).max(0.0));
+    let inset = (margin.min(spare.0 / 2.0), margin.min(spare.1 / 2.0));
+    let start = (area.x + inset.0, area.y + inset.1);
+    let end = (area.x + spare.0 - inset.0, area.y + spare.1 - inset.1);
+    let centre = ((start.0 + end.0) / 2.0, (start.1 + end.1) / 2.0);
+    if !windows {
+        return Some(centre);
+    }
+    // Tao resolves a logical creation position against each monitor's own
+    // scale, first match wins. Those rectangles can overlap on Windows even
+    // though the physical displays do not. Choose the nearest unambiguous
+    // origin while keeping the whole window in its target work area. Moving
+    // an already built window is too late to choose its first size's DPI.
+    let earlier: Vec<_> = displays[..target]
+        .iter()
+        .map(|d| {
+            let bounds = d.logical(d.bounds);
+            // Windows includes the invisible left resize border when it resolves
+            // a new window's display. Leave room for it as well as pixel rounding.
+            Area {
+                x: bounds.x - 32.0,
+                width: bounds.width + 32.0,
+                ..bounds
+            }
+        })
+        .collect();
+    let mut xs = vec![centre.0, start.0, end.0];
+    let mut ys = vec![centre.1, start.1, end.1];
+    for bounds in &earlier {
+        xs.extend([bounds.x - 1.0, bounds.x + bounds.width + 1.0].map(|x| x.clamp(start.0, end.0)));
+        ys.extend([bounds.y - 1.0, bounds.y + bounds.height + 1.0].map(|y| y.clamp(start.1, end.1)));
+    }
+    xs.into_iter()
+        .flat_map(|x| ys.iter().map(move |&y| (x, y)))
+        .filter(|&point| earlier.iter().all(|bounds| bounds.distance(point) > 0.0))
+        .min_by(|a, b| {
+            (a.0 - centre.0)
+                .hypot(a.1 - centre.1)
+                .total_cmp(&(b.0 - centre.0).hypot(b.1 - centre.1))
+        })
 }
 
 const MACOS: bool = cfg!(target_os = "macos");

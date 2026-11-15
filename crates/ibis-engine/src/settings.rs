@@ -312,6 +312,18 @@ pub enum Accent {
     Ibis,
 }
 
+/// Default picker placement on the active display; a deliberate move wins there.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum PickerPlacement {
+    #[default]
+    Centre,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
 impl Appearance {
     pub fn is_system(&self) -> bool {
         *self == Self::System
@@ -356,6 +368,9 @@ pub struct Portable {
     /// Result row density. `None` means comfortable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub density: Option<Density>,
+    /// Default position on the active display. `None` means Centre.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub picker_placement: Option<PickerPlacement>,
     /// Larger text in the picker. `None` means the normal size.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub larger_text: Option<bool>,
@@ -457,6 +472,7 @@ impl Default for Portable {
             output: None,
             key_output: None,
             density: None,
+            picker_placement: None,
             larger_text: None,
             paste: None,
             menu_bar: None,
@@ -520,6 +536,7 @@ pub struct Interface {
     pub appearance: Option<Appearance>,
     pub accent: Option<Accent>,
     pub density: Option<Density>,
+    pub picker_placement: Option<PickerPlacement>,
     pub larger_text: Option<bool>,
     pub paste: Option<bool>,
     pub menu_bar: Option<bool>,
@@ -539,6 +556,7 @@ impl From<&Settings> for Interface {
             appearance: portable.appearance,
             accent: portable.accent,
             density: portable.density,
+            picker_placement: portable.picker_placement,
             larger_text: portable.larger_text,
             paste: portable.paste,
             menu_bar: portable.menu_bar,

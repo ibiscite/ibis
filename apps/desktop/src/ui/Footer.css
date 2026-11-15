@@ -61,6 +61,9 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: v
 /* Footer key hints (#491): what Enter does now, or with Alt held the other
    keys. They stay in narrow windows and truncate instead of overlapping. */
 .enter-hints:empty { display: none; }
+.footer-primary { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.footer-primary > .footer-action { min-width: 0; }
+.footer-delivery { flex: 0 10 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .enter-hints { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); min-width: 0; color: var(--text-secondary); font-size: var(--type-label-size); overflow-wrap: anywhere; }
 /* Corners nest: the key sits 4 px inside the action on three sides, and More
    ends on the same edge as the rows, 8 px inside the window's corner. */

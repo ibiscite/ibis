@@ -70,7 +70,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
       ...action("change-last", say("picker-change-last-citation"), COMMAND_ICONS.changeLast, actions.changeLast, keyed("changeLast")),
       ...citation?.tokens ? [
         ...action("citation-focus", say("key-go-to-citation"), "arrow-down", citation.focus, keyed("citationFocus")),
-        ...action("citation-edit", say("key-edit-citation"), "hash", citation.edit),
+        ...action("citation-edit", say("key-edit-citation"), COMMAND_ICONS.inspector, citation.edit, keyed("inspector")),
       ] : [],
       ...citation && citation.selected > 1 ? [
         ...action("citation-move-left", say("key-move-left"), "arrow-left", () => citation.move(-1), { keys: "Shift+ArrowLeft" }),

@@ -9,7 +9,7 @@ export const SHORTCUT_ACTIONS = {
   keys: "shortcuts-action-keys", settings: "shortcuts-action-settings", quit: "shortcuts-action-quit",
   undo: "shortcuts-action-undo", textSize: "shortcuts-action-text-size",
   citationMove: "shortcuts-action-citation-move", citationRemove: "shortcuts-action-citation-remove",
-  citationReorder: "shortcuts-action-citation-reorder", citationOpen: "shortcuts-action-citation-open", citationFocus: "shortcuts-action-citation-focus",
+  citationReorder: "shortcuts-action-citation-reorder", citationOpen: "shortcuts-action-citation-open", citationFocus: "shortcuts-action-citation-focus", inspector: "shortcuts-action-inspector",
   menuMove: "shortcuts-action-menu-move", menuEnds: "shortcuts-action-menu-ends",
   menuChoose: "shortcuts-action-menu-choose", menuLeave: "shortcuts-action-menu-leave",
 } as const satisfies Record<string, MessageId>;
@@ -34,6 +34,8 @@ export function shortcutRefusalMessage(refusal: unknown): ShortcutProblem {
 }
 
 export const SETTINGS_IDS = [
+  "general-placement", "general-placement-description", "general-placement-words", "general-placement-centre",
+  "general-placement-top-left", "general-placement-top-right", "general-placement-bottom-left", "general-placement-bottom-right",
   "citations-unlisted",
   "citations-documents", "citations-keys", "citations-apps", "citations-forget", "citations-writings", "settings-open-file", "settings-open", "settings-file-description",
   "settings-shortcut-words", "settings-details", "settings-use-default", "settings-default-restored", "settings-undo-default",

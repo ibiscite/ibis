@@ -317,6 +317,14 @@ general-login-refused = The system did not let { $name } change this. You can ch
 general-login-unreadable = { $name } could not check whether it starts when you { general-login-when }. Look in { general-login-place }.
 
 general-menu-bar-label = Show in menu bar
+general-placement = Where Ibis opens
+general-placement-description = On the display you’re working on, unless you’ve moved Ibis there.
+general-placement-words = position screen display corner centre center opens
+general-placement-centre = Centre
+general-placement-top-left = Top left
+general-placement-top-right = Top right
+general-placement-bottom-left = Bottom left
+general-placement-bottom-right = Bottom right
 general-menu-bar-description = If hidden, open Ibis from Applications to come back here.
 general-paste-title = Pasting
 general-behavior-title = Behavior
@@ -409,6 +417,8 @@ shortcuts-action-citation-remove = Remove the reference
 shortcuts-action-citation-reorder = Move the reference
 shortcuts-action-citation-open = Show its details
 shortcuts-action-citation-focus = Go to the citation
+shortcuts-action-inspector = Show citation details
+shortcuts-action-send = Send to your editor
 shortcuts-action-menu-move = Move through the menu
 shortcuts-action-menu-ends = Go to the first or last item
 shortcuts-action-menu-choose = Choose the item
@@ -1032,6 +1042,10 @@ picker-project-entry =
        *[dependency] This entry relies on a crossref, xdata or @string that can’t come with it. Export it from your reference manager, keeping its key.
     }
 picker-editor-waiting = Citing for your editor in { $format }. Esc cancels.
+picker-send = Send · { $format }
+picker-delivery-editor = Editor
+picker-delivery-clipboard = Clipboard
+picker-delivery-paste = Automatic paste
 picker-find-source = Find { $name }…
 picker-find-source-unnamed = Find…
 picker-show-source-folder =

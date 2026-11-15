@@ -1,5 +1,6 @@
 // The picker's, setup's and notices' words in the catalogue, by id.
 export const PICKER_IDS = [
+  "picker-send", "picker-delivery-editor", "picker-delivery-clipboard", "picker-delivery-paste", "shortcuts-action-inspector", "shortcuts-action-send",
   "picker-format-suggestion",
   "picker-find-open", "shortcuts-action-find-open",
   "copied-notice-suggested", "copied-notice-suggestion", "copied-notice-change",

@@ -36,6 +36,7 @@ export const KEY_TABLE: readonly KeyBinding[] = [
   { region: "citation", action: "citationRemove", keys: ["Backspace", "Delete"] },
   { region: "picker", action: "escape", keys: ["Escape"] },
   { region: "picker", action: "format", keys: ["CmdOrCtrl+Shift+F"] },
+  { region: "picker", action: "inspector", keys: ["CmdOrCtrl+I"] },
   { region: "picker", action: "more", keys: ["CmdOrCtrl+K"] },
   { region: "picker", action: "pin", keys: ["CmdOrCtrl+Shift+P"] },
   { region: "picker", action: "changeLast", keys: ["CmdOrCtrl+E"] },

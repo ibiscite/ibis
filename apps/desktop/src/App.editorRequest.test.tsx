@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import { backend, chooseFromMore, paletteRow, receipt, resetApp, result } from "./testing/app";
+import { backend, chooseFromMore, receipt, resetApp, result } from "./testing/app";
 
 afterEach(resetApp);
 
@@ -77,7 +77,7 @@ test("Keep My Order follows the waiting editor's output, not the picker's format
   expect(screen.queryByRole("option", { name: "Keep My Order" })).toBeNull();
 });
 
-test("the format menu never presents an editor citation as another format's preview", async () => {
+test("an editor's format is plain text and cannot open another format's preview", async () => {
   backend({ editor_request: () => ({ request: 1, format: "APA", style: true }),
     search: () => [result("taylor2026", "Synthetic signals")],
     preview_file_citation: () => ({ ...receipt("(Taylor, 2026)"), effective_output: "apa" }),
@@ -85,11 +85,9 @@ test("the format menu never presents an editor citation as another format's prev
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "signals" } });
   await waitFor(() => expect(document.body.textContent).toContain("(Taylor, 2026)"));
-  fireEvent.click(screen.getByRole("button", { name: /^Citation format Pandoc/ }));
-  const palette = await screen.findByRole("dialog", { name: "Format" });
-  expect(palette.querySelector(".ui-palette-preview-text")?.textContent).toBe("[@key]");
-  expect(palette.textContent).toContain("For example");
-  fireEvent.pointerMove(paletteRow(palette, "APA"));
-  expect(palette.querySelector(".ui-palette-preview-text")?.textContent).toBe("(Taylor, 2026)");
-  expect(within(palette).getByRole("option", { name: "Pandoc" })).toBeTruthy();
+  // docs/design/picker.md: an endpoint request owns the format until it ends.
+  expect(within(screen.getByRole("banner")).getByText("APA · Editor")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /^Citation format/ })).toBeNull();
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "F", ctrlKey: true, shiftKey: true });
+  expect(screen.queryByRole("dialog", { name: "Format" })).toBeNull();
 });
