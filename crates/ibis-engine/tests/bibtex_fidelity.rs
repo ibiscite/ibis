@@ -116,6 +116,62 @@ fn resolver_and_label_doi_forms_print_one_resolver_prefix() {
 }
 
 #[test]
+fn accepted_circa_flags_export_and_reimport_as_one_approximation() {
+    let formatter = Formatter::new().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("invented.json");
+    for (circa, approximate) in [
+        (json!(true), true),
+        (json!(1), true),
+        (json!("1"), true),
+        (json!(-2), true),
+        (json!(0.5), true),
+        (json!("true"), true),
+        (json!("0"), true),
+        (json!("false"), true),
+        (json!(false), false),
+        (json!(0), false),
+        (json!(""), false),
+    ] {
+        std::fs::write(&path, json!([{"id":"work", "citation-key":"work", "type":"book", "title":"Invented atlas", "issued":{"date-parts":[[2020,3]], "circa":circa}}]).to_string()).unwrap();
+        let source = ibis_sources::load_file(&path).unwrap().snapshot;
+        let mut request: CitationRequest = serde_json::from_value(json!({
+            "items":[{"item":source.objects()[0].object.id()}],
+            "output":{"kind":"key", "syntax":"bibtex"}
+        }))
+        .unwrap();
+        let exported = ibis_core::syntax::cite(&source, &request).unwrap();
+        let expected = if approximate {
+            "date = {2020-03~}"
+        } else {
+            "date = {2020-03}"
+        };
+        assert!(exported.text.contains(expected), "{circa}: {}", exported.text);
+        let reimported = bib(&exported.text);
+        let LibraryObject::Record(record) = &reimported.objects()[0].object else {
+            unreachable!()
+        };
+        assert_eq!(
+            record.csl["issued"]
+                .get("circa")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            approximate
+        );
+        request.output = OutputSpec::Key {
+            syntax: KeySyntax::CslJson,
+            command: None,
+        };
+        let exported: Value = serde_json::from_str(&ibis_core::syntax::cite(&source, &request).unwrap().text).unwrap();
+        assert_eq!(exported[0]["issued"]["circa"], approximate, "{circa}");
+        assert_eq!(
+            format(&formatter, &source, "apa").text,
+            format(&formatter, &reimported, "apa").text
+        );
+    }
+}
+
+#[test]
 fn doi_suffix_typography_is_verbatim_and_case_and_percent_bytes_are_preserved() {
     let formatter = Formatter::new().unwrap();
     for doi in [

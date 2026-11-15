@@ -1,4 +1,5 @@
 use crate::{FormatError, Limits, catalog};
+use ibis_core::citable::CitableFields;
 use ibis_core::citation::{self, ItemSupport};
 use ibis_core::contract::*;
 use serde::Serialize;
@@ -330,16 +331,9 @@ pub(crate) fn prepare_resolved(
             Entry::Vacant(entry) => {
                 let bytes = bounded_json(&record.csl, remaining)?;
                 remaining = remaining.saturating_sub(bytes.len());
-                let mut value: serde_json::Map<String, Value> =
+                let value: serde_json::Map<String, Value> =
                     serde_json::from_slice(&bytes).map_err(|_| FormatError::InvalidRequest)?;
-                // Notes, annotations and private links never reach the
-                // processor; every check below sees what it will print.
-                ibis_core::citable::citable_fields(&mut value);
-                normalize_strings(value.values_mut())?;
-                if value.keys().any(|key| crate::output::unsupported_controls(key)) || record_controls(value.values()) {
-                    return Err(FormatError::InvalidRequest);
-                }
-                entry.insert(value)
+                entry.insert(processor_fields(&CitableFields::new(value))?)
             }
         };
         if style.sentence_titles
@@ -610,74 +604,32 @@ fn year(issued: Option<&Value>) -> Option<String> {
         .or_else(|| (!date.is_empty()).then_some(date))
 }
 
+/// Only the filtered projection enters the processor's mutable envelope.
+fn processor_fields(fields: &CitableFields) -> Result<serde_json::Map<String, Value>, FormatError> {
+    if record_controls(fields.plain().values()) {
+        return Err(FormatError::InvalidRequest);
+    }
+    let mut value = fields.plain().clone();
+    if !fields.rich_text().is_empty() {
+        value.insert(
+            "ibis-rich-text".into(),
+            serde_json::to_value(fields.rich_text()).map_err(|_| FormatError::InvalidRequest)?,
+        );
+    }
+    Ok(value)
+}
+
 fn record_controls<'a>(values: impl Iterator<Item = &'a Value>) -> bool {
     let mut pending: Vec<_> = values.collect();
     while let Some(value) = pending.pop() {
         match value {
             Value::String(text) if crate::output::unsupported_controls(text) => return true,
-            Value::Object(map) => {
-                if map.keys().any(|key| crate::output::unsupported_controls(key)) {
-                    return true;
-                }
-                pending.extend(map.values());
-            }
+            Value::Object(map) => pending.extend(map.values()),
             Value::Array(values) => pending.extend(values),
             _ => {}
         }
     }
     false
-}
-
-// citeproc's title casing can silently discard words at line boundaries. CSL
-// fields are inline content: preserve their words before the processor sees them.
-fn normalize_strings<'a>(values: impl Iterator<Item = &'a mut Value>) -> Result<(), FormatError> {
-    let mut pending: Vec<_> = values.collect();
-    while let Some(value) = pending.pop() {
-        match value {
-            Value::String(text) => {
-                let mut normalized = String::with_capacity(text.len());
-                let mut line_break = false;
-                let mut inside_tag = false;
-                for ch in text.chars() {
-                    // Directional formatting must not escape a field and
-                    // reorder the citation around it. Keep RTL letters and
-                    // shaping characters (including ZWJ/ZWNJ) unchanged.
-                    if bidi_control(ch) {
-                        // Removing a control inside tag-looking text could
-                        // create markup that the source never contained.
-                        if inside_tag {
-                            return Err(FormatError::InvalidRequest);
-                        }
-                        continue;
-                    }
-                    match ch {
-                        '<' => inside_tag = true,
-                        '>' => inside_tag = false,
-                        _ => {}
-                    }
-                    let is_break = matches!(ch, '\r' | '\n' | '\u{85}' | '\u{2028}' | '\u{2029}');
-                    if is_break {
-                        // A break between words is a space; one at either
-                        // end is nothing, or the processor prints it.
-                        if !line_break && !normalized.is_empty() {
-                            normalized.push(' ');
-                        }
-                    } else {
-                        normalized.push(if ch.is_control() && ch != '\t' { ' ' } else { ch });
-                    }
-                    line_break = is_break;
-                }
-                if line_break && normalized.ends_with(' ') {
-                    normalized.pop();
-                }
-                *text = normalized;
-            }
-            Value::Object(map) => pending.extend(map.values_mut()),
-            Value::Array(values) => pending.extend(values),
-            _ => {}
-        }
-    }
-    Ok(())
 }
 
 fn bidi_control(ch: char) -> bool {
@@ -786,6 +738,33 @@ fn placeholder(index: usize, kind: &str, runs: &[TextRun]) -> String {
 mod tests {
     use super::*;
     use CitationForm::{AuthorOnly, Full, Narrative, Normal, YearOnly};
+
+    #[test]
+    fn processor_fields_exclude_private_data_before_normalizing_printed_text() {
+        let fields = ibis_core::citable::CitableFields::new(
+            serde_json::from_value(json!({
+                "id": "http://zotero.org/users/12345/items/INVENTED",
+                "note": "Private <\u{202e}memo>\ntitle: Invented title\npublisher: Invented Press",
+                "annote": "Private annotation", "file": "/home/invented/private.pdf",
+                "archive_location": "path=/home/invented/private.pdf",
+                "abstract": {"memo": "Private"}, "URL": "https://localhost/private",
+                "author": [{"family": "Doe", "given": "path=C:/private", "file": "Private"}],
+                "issued": {"date-parts": [[2026]], "file": "Private"},
+                "container-title": "Invented\ncontainer"
+            }))
+            .unwrap(),
+        );
+        let mut processor = processor_fields(&fields).unwrap();
+        processor.remove("ibis-rich-text");
+        assert_eq!(
+            serde_json::to_value(processor).unwrap(),
+            json!({
+                "title": "Invented title", "publisher": "Invented Press",
+                "author": [{"family": "Doe"}], "issued": {"date-parts": [[2026]]},
+                "container-title": "Invented container"
+            })
+        );
+    }
 
     fn synthetic_style(id: &str, xml: &str) -> catalog::Resolved {
         catalog::Resolved {

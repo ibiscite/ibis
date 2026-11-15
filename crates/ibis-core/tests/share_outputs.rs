@@ -26,6 +26,215 @@ fn case(format: &str, fields: Value, key: Option<&str>) -> GoldenCase {
     case
 }
 
+const ENCODED_PATHS: &[&str] = &[
+    "&#x66;ile:&#x2f;&#x2f;&#x2f;home/invented/secret.pdf",
+    "&#67;&#58;&#92;invented&#92;secret.pdf",
+    "&#102;ile:&#47;&#x2f;&#47;home/invented/secret.pdf",
+    "%2FUsers%2Finvented%2Fsecret.pdf",
+    "%252fUsers%252finvented%252fsecret.pdf",
+    "&#37;2FUsers&#37;2Finvented&#37;2Fsecret.pdf",
+    "%26%2347%3BUsers%26%2347%3Binvented%26%2347%3Bsecret.pdf",
+    "&amp;#47;Users/invented/secret.pdf",
+    "%43%3A%5Cinvented%5Csecret.pdf",
+    "<i>%2FUsers%2F</i><b>invented%2Fsecret.pdf</b>",
+    "<span class=\"nocase\" data-path=\"%2FUsers%2Finvented%2Fsecret.pdf\">secret</span>",
+];
+
+fn encoded_paths_are_private(format: &str) {
+    let mut leaks = Vec::new();
+    for path in ENCODED_PATHS {
+        let case = case(
+            format,
+            json!({
+                "type":"book", "title":path, "publisher":"Invented Press", "DOI":format!("10.1000/x;{path}"),
+                "author":[{"family":path}], "issued":{"literal":path}, "note":format!("archive: {path}")
+            }),
+            Some("atlas"),
+        );
+        let result = syntax::cite(&case.library, &case.request).unwrap();
+        if format == "doi-links" {
+            if !result.text.is_empty()
+                || result.outcomes
+                    != [ItemOutcome::Refused {
+                        item: 0,
+                        error: CitationError::MissingDoi,
+                    }]
+            {
+                leaks.push(result.text);
+            }
+        } else {
+            assert!(result.text.contains("Invented Press"), "{}", result.text);
+            if result.text.contains("secret") {
+                leaks.push(result.text);
+            }
+        }
+    }
+    assert!(leaks.is_empty(), "{format}: {leaks:?}");
+}
+
+#[test]
+fn bibtex_drops_entity_encoded_device_paths() {
+    encoded_paths_are_private("bibtex");
+}
+
+#[test]
+fn csl_json_drops_entity_encoded_device_paths() {
+    encoded_paths_are_private("csl-json");
+}
+
+#[test]
+fn doi_links_refuse_entity_encoded_device_paths() {
+    encoded_paths_are_private("doi-links");
+}
+
+#[test]
+fn exports_check_dois_after_decoding_and_removing_resolver_wrappers() {
+    for doi in [
+        "https://doi.org/&#47;home/invented/secret.pdf",
+        "&#100;oi:&#47;home/invented/secret.pdf",
+        "https:&#47;&#47;doi.org/&#47;home/invented/secret.pdf",
+    ] {
+        for format in ["bibtex", "csl-json", "doi-links"] {
+            let case = case(
+                format,
+                json!({"type":"book", "title":"Invented atlas", "DOI":doi}),
+                Some("atlas"),
+            );
+            let result = syntax::cite(&case.library, &case.request).unwrap();
+            assert!(!result.text.contains("secret"), "{format}: {}", result.text);
+            if format == "doi-links" {
+                assert_eq!(
+                    result.outcomes,
+                    [ItemOutcome::Refused {
+                        item: 0,
+                        error: CitationError::MissingDoi
+                    }]
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn doi_shaped_paths_are_refused_by_the_identity_constructors_and_exports() {
+    use ibis_core::citable::{DoiLink, PublicUrl};
+    for doi in [
+        "10.1000//Users/invented/secret.pdf",
+        "10.1000/%2FUsers/invented/secret.pdf",
+        "10.1000/a//secret.pdf",
+        "10.1000/Users/invented/secret.pdf/",
+        "10.1000/C:/invented/secret.pdf",
+        "10.1000/~/invented/secret.pdf",
+    ] {
+        assert!(DoiLink::new(doi).is_none(), "{doi}");
+        assert!(PublicUrl::new(&format!("https://doi.org/{doi}")).is_none(), "{doi}");
+        let case = case("doi-links", json!({"type":"book", "DOI":doi}), Some("atlas"));
+        let result = syntax::cite(&case.library, &case.request).unwrap();
+        assert_eq!(result.text, "");
+        assert_eq!(
+            result.outcomes,
+            [ItemOutcome::Refused {
+                item: 0,
+                error: CitationError::MissingDoi
+            }]
+        );
+    }
+    for url in [
+        "https://doi.org/&#47;Users/invented/secret.pdf",
+        "https://dx.doi.org/%252FUsers/invented/secret.pdf",
+    ] {
+        assert!(PublicUrl::new(url).is_none(), "{url}");
+    }
+}
+
+#[test]
+fn decoding_that_exceeds_the_privacy_bound_is_refused() {
+    let mut path = "%2FUsers%2Finvented%2Fsecret.pdf".to_owned();
+    for _ in 0..32 {
+        path = path.replace('%', "%25");
+    }
+    let case = case("csl-json", json!({"type":"book", "title":path}), Some("atlas"));
+    let result = syntax::cite(&case.library, &case.request).unwrap();
+    assert!(!result.text.contains("secret"), "{}", result.text);
+}
+
+#[test]
+fn scannable_markers_only_show_checked_authorless_titles() {
+    for title in [
+        "&#67;&#58;&#92;invented&#92;secret.pdf",
+        "-/home/invented/secret.pdf",
+        "|/home/invented/secret.pdf",
+        "%2FUsers%2Finvented%2Fsecret.pdf",
+        "%252FUsers%252Finvented%252Fsecret.pdf",
+        "Invented <i>atlas</i> &amp; tides",
+    ] {
+        let mut case = case("scannable-cite", json!({"type":"book", "title":title}), None);
+        let LibraryObject::Record(mut record) = case.library.objects()[0].object.clone() else {
+            unreachable!()
+        };
+        record.id.key = "ABCD2345".into();
+        case.request.items[0].item = record.id.clone();
+        case.library = Snapshot::new(vec![LibraryObject::Record(record)]).unwrap();
+        let result = syntax::scannable::cite(&case.library, &case.request, |_| {
+            Some(syntax::scannable::ZoteroOrigin::Personal)
+        })
+        .unwrap();
+        assert_eq!(
+            result.text,
+            if title.contains("secret") {
+                "{ | | | | zu:0:ABCD2345 }"
+            } else {
+                "{ | Invented atlas & tides | | | zu:0:ABCD2345 }"
+            }
+        );
+        assert!(result.copy_content(1).is_some());
+    }
+}
+
+#[test]
+fn bibtex_preserves_approximate_date_parts() {
+    let case = case(
+        "bibtex",
+        json!({
+            "type":"book", "issued":{"date-parts":[[2020, 3]], "circa":true},
+            "accessed":{"date-parts":[[2020, 3, 1]], "circa":true},
+            "original-date":{"date-parts":[[2019], [2020]], "circa":true},
+            "event-date":{"date-parts":[[2020]], "circa":false}
+        }),
+        Some("atlas"),
+    );
+    let text = syntax::cite(&case.library, &case.request).unwrap().text;
+    assert!(text.contains("  date = {2020-03~},"), "{text}");
+    assert!(text.contains("  urldate = {2020-03-01~},"), "{text}");
+    assert!(text.contains("  origdate = {2019/2020~},"), "{text}");
+    assert!(text.contains("  eventdate = {2020},"), "{text}");
+}
+
+#[test]
+fn exports_share_decoded_normalized_text_without_reinterpreting_literal_tags() {
+    let fields = json!({
+        "type":"book", "title":"<i>Invented</i>&#10;atlas &lt;b&gt;e&#x301;&lt;/b&gt; &amp;lt;i&amp;gt;",
+        "author":[{"family":"D&#111;e"}], "DOI":"&#100;oi:10.1000/Invented&#38;tides",
+        "URL":"https:&#47;&#47;example.invalid/work?x=1&#38;y=2"
+    });
+    let csl = case("csl-json", fields.clone(), Some("atlas"));
+    let records: Value = serde_json::from_str(&syntax::cite(&csl.library, &csl.request).unwrap().text).unwrap();
+    assert_eq!(
+        records[0]["title"],
+        "<i>Invented</i> atlas &lt;b&gt;é&lt;/b&gt; &amp;lt;i&amp;gt;"
+    );
+    assert_eq!(records[0]["author"][0]["family"], "Doe");
+    assert_eq!(records[0]["URL"], "https://example.invalid/work?x=1&y=2");
+    let bib = case("bibtex", fields.clone(), Some("atlas"));
+    let bib = syntax::cite(&bib.library, &bib.request).unwrap().text;
+    assert!(bib.contains(r"\textit{Invented} atlas <b>é</b> \&lt;i\&gt;"), "{bib}");
+    let doi = case("doi-links", fields, Some("atlas"));
+    assert_eq!(
+        syntax::cite(&doi.library, &doi.request).unwrap().text,
+        "https://doi.org/10.1000/Invented%26tides"
+    );
+}
+
 #[test]
 fn every_record_export_removes_private_metadata_and_keeps_public_fields() {
     for format in ["csl-json", "bibtex", "doi-links"] {
@@ -36,7 +245,7 @@ fn every_record_export_removes_private_metadata_and_keeps_public_fields() {
                 "note":"PRIVATE memo", "annote":"PRIVATE annotation", "file":"/home/PRIVATE/work.pdf",
                 "attachments":[{"path":"/home/PRIVATE/work.pdf"}], "URL":"https://localhost/PRIVATE",
                 "author":[{"family":"Doe", "x-private":"PRIVATE"}],
-                "issued":{"date-parts":[[2026]],"x-private":"PRIVATE"},
+                "issued":{"date-parts":[["2026"]],"x-private":"PRIVATE"},
             "original-date":{"date-parts":[[{"note":"PRIVATE"}]]},
             "publisher":{"note":"PRIVATE"},
                 "abstract":"See file:///home/PRIVATE/work.pdf"
@@ -50,6 +259,7 @@ fn every_record_export_removes_private_metadata_and_keeps_public_fields() {
         if format != "doi-links" {
             assert!(result.text.contains("Invented atlas"));
             assert!(result.text.contains("Doe"));
+            assert!(result.text.contains("2026"));
         }
     }
 }
@@ -84,13 +294,20 @@ fn bibtex_quotes_hostile_field_text_and_refuses_missing_or_unsafe_keys() {
 
 #[test]
 fn doi_links_preserve_identifier_spelling_encode_url_delimiters_and_name_missing_dois() {
-    let case = case(
+    let mut case = case(
         "doi-links",
         json!({"type":"book","DOI":"HTTPS://DOI.ORG/10.1000/Invented%2Fpart?#"}),
         None,
     );
     let result = syntax::cite(&case.library, &case.request).unwrap();
     assert_eq!(result.text, "https://doi.org/10.1000/Invented%252Fpart%3F%23");
+    case.request.items.push(case.request.items[0].clone());
+    let repeated = syntax::cite(&case.library, &case.request).unwrap();
+    assert_eq!(repeated.text, result.text);
+    assert_eq!(
+        repeated.outcomes,
+        [ItemOutcome::Rendered { item: 0 }, ItemOutcome::Rendered { item: 1 }]
+    );
     for doi in [
         Value::Null,
         json!(""),
@@ -123,6 +340,7 @@ fn sharing_private_network_urls_never_exposes_a_link() {
         "http:localhost/PRIVATE",
         "https://１２７.０.０.１/PRIVATE",
         "https://nas.ｌｏｃａｌ/PRIVATE",
+        "https://invented.&#108;ocal/PRIVATE",
     ] {
         for format in ["bibtex", "csl-json"] {
             let case = case(
@@ -182,15 +400,63 @@ fn record_sharing_removes_device_paths_after_value_delimiters() {
         r"path=C:\invented\secret.pdf",
         r"path=\\invented\secret.pdf",
         "path=file:///Users/invented/secret.pdf",
+        "path;/Users/invented/secret.pdf",
+        "&lt;/i&gt;/Users/invented/secret.pdf",
+        "&lt;/home/invented/secret.pdf&gt;",
+        "<i>/home/</i>invented/secret.pdf",
+        "<span class=\"nocase\">file:</span>///home/invented/secret.pdf",
+        "&lt;span class=&quot;nocase&quot; title=&quot;/home/invented/secret.pdf&quot;&gt;DNA&lt;/span&gt;",
+        "Invented <span class=\"nocase\" data-private=\"/home/invented/secret.pdf\">DNA</span>",
+        "Invented <span class=\"nocase\" data-private=\"C&#x202e;:&#92;invented&#92;secret.pdf\">DNA</span>",
+        "C\u{2060}:\\invented\\secret.pdf",
     ] {
         let case = case(
             "csl-json",
-            json!({"type":"book","title":"Invented atlas","archive_location":value}),
+            json!({"type":"book","title":"Invented &lt;i&gt;atlas&lt;/i&gt;","archive_location":value}),
             Some("good"),
         );
         let records: Value = serde_json::from_str(&syntax::cite(&case.library, &case.request).unwrap().text).unwrap();
         assert!(records[0].get("archive_location").is_none(), "{value}: {records}");
-        assert_eq!(records[0]["title"], "Invented atlas");
+        assert_eq!(records[0]["title"], "Invented &lt;i&gt;atlas&lt;/i&gt;");
+    }
+}
+
+#[test]
+fn record_sharing_keeps_rich_text_and_normalizes_padded_date_parts() {
+    let title = "Invented <span class=\"nocase\">DNA </span> study";
+    for fields in [
+        json!({"title":title, "issued":{"date-parts":[[" 2026 ", "5\n", 1]]}}),
+        json!({"note":format!("title: {title}"), "issued":{"date-parts":[["2026\n", 5, " 1 "]]}}),
+    ] {
+        let case = case("csl-json", fields, Some("good"));
+        let result = syntax::cite(&case.library, &case.request).unwrap();
+        let records: Value = serde_json::from_str(&result.text).unwrap();
+        assert_eq!(records[0]["title"], title);
+        assert_eq!(records[0]["issued"], json!({"date-parts":[[2026, 5, 1]]}));
+    }
+    for (title, canonical) in [
+        (
+            "Invented &lt;span class=&quot;nocase&quot;&gt;DNA &lt;/span&gt; study",
+            "Invented &lt;span class=&quot;nocase&quot;&gt;DNA &lt;/span&gt; study",
+        ),
+        // CSL processors print anything but their own tags literally.
+        (
+            "Invented &lt;em&gt;DNA &lt;/em&gt; study",
+            "Invented <em>DNA </em> study",
+        ),
+        (
+            "Invented <https://example.invalid/work>",
+            "Invented <https://example.invalid/work>",
+        ),
+        (
+            "Invented &lt;https://example.invalid/work&gt;",
+            "Invented <https://example.invalid/work>",
+        ),
+    ] {
+        let case = case("csl-json", json!({"title":title}), Some("good"));
+        let result = syntax::cite(&case.library, &case.request).unwrap();
+        let records: Value = serde_json::from_str(&result.text).unwrap();
+        assert_eq!(records[0]["title"], canonical);
     }
 }
 
@@ -225,7 +491,7 @@ fn malformed_dates_are_omitted_instead_of_writing_empty_or_partial_dates() {
 }
 
 #[test]
-fn verbatim_identifiers_still_cannot_break_fields_or_activate_tex() {
+fn unrepresentable_verbatim_identifiers_are_omitted() {
     let case = case(
         "bibtex",
         json!({"type":"book","ISBN":"} @misc{ \\input{x}\nnext"}),
@@ -235,5 +501,5 @@ fn verbatim_identifiers_still_cannot_break_fields_or_activate_tex() {
     assert!(!text.contains("} @misc{"), "{text}");
     assert!(!text.contains("\\input"), "{text}");
     assert!(!text.contains("\nnext"), "{text}");
-    assert!(text.contains("input"));
+    assert!(!text.contains("  isbn ="), "{text}");
 }

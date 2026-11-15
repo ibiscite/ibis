@@ -85,7 +85,9 @@ fn bibtex_url_and_doi_dashes_remain_verbatim_but_pages_use_en_dashes() {
     for (field, value, ending) in [
         ("url", "https://example.org/a--b", "https://example.org/a--b"),
         ("url", r"https\://example.org/a--b", "https://example.org/a--b"),
-        ("url", "https://example.org/{a--b}", "https://example.org/a--b"),
+        // Decision 0051: BibTeX identifiers are verbatim; braces belong to
+        // this URL, rather than protecting prose from TeX typography.
+        ("url", "https://example.org/{a--b}", "https://example.org/{a--b}"),
         (
             "doi",
             "10.1000/imagined--river",
@@ -118,7 +120,10 @@ fn bibtex_url_and_doi_dashes_remain_verbatim_but_pages_use_en_dashes() {
                 "<div class=\"csl-entry\">Okafor, A. (2026). Imagined rivers. <i>Invented Journal</i>, 12–19. {}</div>",
                 ending.replace('&', "&#38;")
             ),
-            &format!(r"Okafor, A. (2026). Imagined rivers. {{\i{{}}Invented Journal}}, 12\uc0\u8211{{}}19. {ending}"),
+            &format!(
+                r"Okafor, A. (2026). Imagined rivers. {{\i{{}}Invented Journal}}, 12\uc0\u8211{{}}19. {}",
+                ending.replace('{', r"\{").replace('}', r"\}")
+            ),
         );
     }
 }
@@ -401,15 +406,18 @@ fn bidi_controls_cannot_reorder_any_paste_flavour() {
 #[test]
 fn removing_controls_cannot_create_a_new_markup_instruction() {
     let formatter = Formatter::new().unwrap();
-    for title in [
-        "Imagined <\u{202e}i>rivers</i>",
-        "Imagined <span class=\"no\u{202e}case\">rivers</span>",
+    for (title, literal) in [
+        ("Imagined <\u{202e}i>rivers</i>", "Imagined &lt;i&gt;rivers</i>"),
+        (
+            "Imagined <span class=\"no\u{202e}case\">rivers</span>",
+            "Imagined &lt;span class=&quot;nocase&quot;&gt;rivers</span>",
+        ),
     ] {
         let source = csl(json!({"type":"article-journal","title":title,"container-title":"Invented Journal"}));
-        assert_eq!(
-            formatter.format(&source, &request(&source, "apa", CitationForm::Normal)),
-            Err(ibis_csl::FormatError::InvalidRequest)
-        );
+        let expected = csl(json!({"type":"article-journal","title":literal,"container-title":"Invented Journal"}));
+        let result = format(&formatter, &source, CitationForm::Normal);
+        same_paste(&result, &format(&formatter, &expected, CitationForm::Normal));
+        assert!(result.html.as_deref().unwrap().contains("&#60;"));
     }
 }
 
@@ -441,9 +449,9 @@ fn escapes_in_titles_names_containers_and_publishers_match_literal_csl() {
     }
     paste(
         &format(&formatter, &source, CitationForm::BibliographyOnly),
-        "A & B. (2026). Imagined & rivers. C &amp; D.",
-        "<div class=\"csl-entry\">A &#38; B. (2026). <i>Imagined &#38; rivers</i>. C &#38;amp; D.</div>",
-        r"A & B. (2026). {\i{}Imagined & rivers}. C &amp; D.",
+        "A & B. (2026). Imagined & rivers. C & D.",
+        "<div class=\"csl-entry\">A &#38; B. (2026). <i>Imagined &#38; rivers</i>. C &#38; D.</div>",
+        r"A & B. (2026). {\i{}Imagined & rivers}. C & D.",
     );
 }
 
@@ -832,7 +840,11 @@ fn date_sort_projection_is_private_fresh_and_obeys_keep_order() {
 #[test]
 fn raw_curly_quoted_dates_are_literal_but_cannot_replace_structured_dates() {
     let formatter = Formatter::new().unwrap();
-    for date in [json!({"raw":"“2020a”"}), json!({"date-parts":[],"raw":"“2020a”"})] {
+    for date in [
+        json!({"raw":"“2020a”"}),
+        json!({"date-parts":[],"raw":"“2020a”"}),
+        json!({"raw":"&#8220;2020a&#8221;"}),
+    ] {
         let source = csl(
             json!({"type":"article-journal","title":"Invented title","author":[{"family":"Okafor"}],"issued":date}),
         );
@@ -901,7 +913,15 @@ fn raw_date_priority_controls_both_rendered_and_sorted_years() {
 #[test]
 fn raw_date_replaces_ignored_metadata_including_when_raw_is_whitespace() {
     let formatter = Formatter::new().unwrap();
-    for raw in [" ", "\"2022b\"", "“2022b”", "2022"] {
+    for raw in [
+        " ",
+        "\n",
+        "\u{2028}",
+        "\"2022b\"",
+        "“2022b”",
+        "2022",
+        "<span class=\"nocase\" data-private=\"/home/invented/secret.pdf\">2022</span>",
+    ] {
         let fields = json!({"type":"article-journal","title":"Invented title","author":[{"family":"Okafor"}],"issued":{"raw":raw}});
         let clean = csl(fields.clone());
         let mut fields = fields;
