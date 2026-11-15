@@ -17,6 +17,7 @@ import { beak } from "../../brand";
 import { CitationInspector } from "./CitationInspector";
 import type { CitationInspectorState, InspectorPanel } from "./useCitationInspector";
 import "../../ui/CitationShelf.css";
+import { Status } from "../../ui/Status";
 
 /** A short name for the menu, independent of its citation key. */
 export function referenceLabel(r: SearchResult): string {
@@ -317,10 +318,10 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
     ? token(single, labels[0]!, singleWords, <bdi id={text !== undefined ? citationId : undefined} dir="auto" className={text !== undefined ? "preview-text" : "shelf-reference-name"}>{text !== undefined ? visible ? renderDisplay(visible.display, keyText) : keyText(text) : labels[0]}</bdi>, text !== undefined ? citationId : undefined)
     : null;
   return <>
-    <p className="visually-hidden" role="status" aria-label={say("picker-citation-selection")} aria-live="polite" aria-atomic="true">
+    <Status className="visually-hidden" label={say("picker-citation-selection")}>
       {announce ? [say("picker-selection-count", { count: selected.size }), ...partialWarnings.map((w) => warningText(w))].join(" ") : ""}
-    </p>
-    <p className="visually-hidden" role="status" aria-live="polite">{keepOrder ? orderNote : ""}</p>
+    </Status>
+    <Status className="visually-hidden">{keepOrder ? orderNote : ""}</Status>
     {panel && hasShelf && <CitationInspector key={panel.reference ?? panel.kind} ref={returnFocus} id={inspectorId} panel={panel} anchor={anchor} heading={labels[editedIndex] ?? say("picker-citation-details")}
       keepOrder={style && onKeepOrder && references.length > 1 && edited && isSelected(edited) ? { checked: keepOrder, onChange: onKeepOrder } : null}
       reference={panel.kind === "warnings" ? undefined : edited} index={editedIndex} selected={Boolean(edited && isSelected(edited))} previewReceipt={previewReceipt} output={`${style}:${keys}`}
@@ -351,12 +352,12 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
           {previous && !retainedTokens ? <bdi className="preview-text shelf-retained" dir="auto">{renderDisplay(previous.display, keyText)}</bdi> : shown !== "failed" && shown !== "stale" && singleToken}
           {text !== undefined ? singleToken ? null : citationTokens ? <span className="shelf-fragments" data-multiple={citationTokens.filter((node) => node.type === CitationToken).length > 1 || undefined} dir={keys ? "ltr" : "auto"}>{citationTokens}</span> : <bdi id={citationId} dir="auto" className="preview-text">
             {ready && !keys ? renderDisplay(ready.display, keyText) : keyText(text)}
-          </bdi> : shown === "failed" ? <><span className="shelf-state-icon" data-state="failed" aria-hidden="true">!</span><p role={panel ? undefined : "alert"} title={fullProblem}>{fullProblem}</p></> : shown === "stale" ? <><span className="shelf-state-icon" data-state="stale" aria-hidden="true">!</span><p role="status">{say("picker-shelf-stale")}</p></>
-            : shown === undefined && !previous && citationTokens ? <span className="shelf-fragments">{citationTokens}</span> : shown === null && !previous ? <p role="status">{say("picker-preview-pending")}</p> : null}
+          </bdi> : shown === "failed" ? <><span className="shelf-state-icon" data-state="failed" aria-hidden="true">!</span><Status role={panel ? null : "alert"} title={fullProblem}>{fullProblem}</Status></> : shown === "stale" ? <><span className="shelf-state-icon" data-state="stale" aria-hidden="true">!</span><Status>{say("picker-shelf-stale")}</Status></>
+            : shown === undefined && !previous && citationTokens ? <span className="shelf-fragments">{citationTokens}</span> : shown === null && !previous ? <Status>{say("picker-preview-pending")}</Status> : null}
           {copied && <Beak closing />}
         </div>
         <div className="shelf-actions">
-          {copied && <span role="status" aria-label={say("picker-copied")} className="shelf-copied"><Icon name="check" />{say("picker-copied")}</span>}
+          {copied && <Status as="span" label={say("picker-copied")} className="shelf-copied"><Icon name="check" />{say("picker-copied")}</Status>}
           {statusLabel && <Button variant="quiet" className="shelf-warnings" aria-label={statusLabel} title={statusLabel}
             aria-expanded={panel?.kind === "warnings"} aria-controls={panel?.kind === "warnings" ? inspectorId : undefined}
             onPress={(event) => toggle("warnings", event.target as HTMLElement)}>{compact ? warnings.length > 0 ? `! ${warnings.length}` : "i" : <>

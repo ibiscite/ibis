@@ -1,0 +1,2 @@
+.ui-status { display: flex; align-items: baseline; gap: var(--space-2); margin: 0; color: var(--text); }
+.ui-status > .ui-status-mark { align-self: flex-start; }

@@ -41,9 +41,9 @@ test("a port another program holds is said, and the switch stays off", async () 
 test("a slow first read cannot undo a newer switch", async () => {
   let release: (status: EndpointStatus) => void = () => {};
   const api = row({ editorEndpoint: vi.fn(() => new Promise<EndpointStatus>((resolve) => { release = resolve; })) });
-  const toggle = await screen.findByRole("switch", { name: "Cite from your editor" });
-  // A failed first read leaves it usable; here the read is still out.
-  expect((toggle as HTMLInputElement).disabled).toBe(true);
+  // While the read is out the row shows no value at all, not a disabled "off".
+  await screen.findByText("Cite from your editor");
+  expect(screen.queryByRole("switch", { name: "Cite from your editor" })).toBeNull();
   await act(async () => { await api.setEditorEndpoint(true); });
   release(off);
   await act(async () => {});

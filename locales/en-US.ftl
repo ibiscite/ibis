@@ -291,6 +291,7 @@ settings-pages = Settings pages
 settings-general = General
 settings-shortcuts = Shortcuts
 settings-about = About Ibis
+settings-about-description = The version, updates and where Ibis comes from.
 
 general-login-label =
     { $platform ->
@@ -347,6 +348,7 @@ general-paste-return-failed = Couldn’t return to your citation. Open Ibis with
 general-paste-stale = Already on, but still waiting? In System Settings, remove { $name } from the list, add this copy again, then turn it on.
 
 general-rows = Rows
+general-rows-description = Compact rows fit more references; comfortable rows show each one’s authors and source.
 general-density-compact = Compact
 general-density-comfortable = Comfortable
 
@@ -417,6 +419,9 @@ about-automatic = Check for updates automatically
 about-automatic-description = Reads a small update file from GitHub a few times a day.
 about-check = Check for Updates
 about-check-label = Check for updates
+about-check-description = See whether a newer Ibis is ready to install.
+settings-advanced-title = Advanced
+settings-reset-words = reset default restore use default
 about-checking = Checking…
 about-check-failed = Ibis could not check for updates. Try again.
 about-check-newest = You have the newest version.
@@ -458,6 +463,7 @@ look-system = System
 look-light = Light
 look-dark = Dark
 look-accent = Accent
+look-accent-description = The colour of selection and buttons: the Mac’s accent, or Ibis scarlet.
 look-accent-system =
     { $platform ->
         [macos] Follow the Mac
@@ -466,12 +472,14 @@ look-accent-system =
 look-accent-ibis = Ibis scarlet
 look-accent-words = colour color scarlet red
 look-window-size = Window size
+look-window-size-description = How large the picker opens.
 look-window-small = Small
 look-window-medium = Medium
 look-window-large = Large
 look-window-custom = Custom
 look-window-custom-note = Drag an edge of the picker to set your own size. Ibis remembers it on each display.
 look-text-size = Text size
+look-text-size-description = The size of the picker’s words, apart from the Mac’s own text size.
 look-default-text = Default
 look-larger-text = Larger
 look-sample-title = The quiet garden
@@ -1226,10 +1234,12 @@ library-more-not-listed =
 
 citations-documents = In documents
 citations-keys = In Markdown, LaTeX and Typst
+citations-keys-description = Used where you write citation keys rather than formatted citations.
 citations-apps = Formats remembered for apps
 citations-forget = Forget
 citations-writings = Writings
 settings-open-file = Open Settings File
+settings-open = Open
 settings-file-description = Edits to settings.json apply while Ibis is running.
 picker-use-usual = Use { $format } in { $app } again
 picker-stop-writing = Stop using { $name } in { $app }
@@ -1303,6 +1313,7 @@ mcp-cite-description = Cite refs returned by search, passing each ref unchanged;
 
 # The desktop's bundled command. Never execute another program to check its version.
 command-install = Install the ibis command
+command-install-description = Search and cite from a terminal with the same library and settings.
 command-remove = Remove Command
 command-checking = Checking the ibis command…
 command-missing = Not installed
@@ -1437,6 +1448,7 @@ app-project-error-editor = This editor request chooses its own output. Finish it
 app-project-error-output = This writing’s format is not available in the picker. Choose another format.
 app-settings-error-unreadable = The settings file could not be read or saved.
 app-settings-error-invalid = The settings file is not valid. Open Settings to review it.
+    .settings = settings.json isn’t valid, so Ibis is using your last good settings.
 app-settings-error-newer = Settings were written by a newer version of Ibis. Update Ibis before changing them.
 app-settings-error-read-only = Settings are read-only. Make the settings file writable before trying again.
 app-command-output-not-saved = The format choice could not be saved.
