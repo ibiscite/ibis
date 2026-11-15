@@ -49,8 +49,6 @@ export const events = {
   onUpdateProgress: on<UpdateProgress>("update:progress"),
   /** The saved automatic update choice, after a change from any menu. */
   onUpdateChecks: on<boolean>("update:automatic"),
-  /** Quiet availability only; this event never shows or focuses the picker. */
-  onUpdateAvailable: on<boolean>("update:available"),
   /** Settings is asked to show a page, such as the paste guide after a refused paste. */
   onSettingsPage: on<string>("settings:page"),
   onNoticeShow: on<NoticeMessage>("notice:show"),

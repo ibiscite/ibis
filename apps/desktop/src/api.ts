@@ -149,7 +149,7 @@ export function pickerVisible(): Promise<boolean> {
 export const {
   onPickerShown, onPickerPreparing, onPickerHidden, onSearchRequested, onWindowReset, onShortcutStatus, onWritingsChanged,
   onProjectNotSaved, onEditorRequest, onLibraryChanged, onFileDrag, onLibraryFileDropped, onLibraryFileRefused,
-  onUpdateProgress, onUpdateChecks, onUpdateAvailable,
+  onUpdateProgress, onUpdateChecks,
 } = events;
 
 /** Settings changed a picker preference; tests may announce one without its fields. */
