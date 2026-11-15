@@ -1927,6 +1927,18 @@ test.each(["reset", "default"])("searching %s finds the settings that can go bac
   expect(screen.queryByRole("option", { name: /^Back up settings/ })).toBeNull();
 });
 
+test.each(["general", "citations"] as const)("a settings file that does not parse says so on %s in the picker's words, with its one recovery", async (page) => {
+  const { api } = fakeApi();
+  api.formatSettings = vi.fn(() => Promise.reject({ code: "settings-invalid", message: { id: "app-settings-error-invalid", args: {} }, recovery: { action: "review-settings" }, focus: "settings" }));
+  api.openSettingsFile = vi.fn(async () => null);
+  render(<SettingsApp api={api} initialPage={page} />);
+  const problem = await screen.findByRole("alert");
+  expect(problem.textContent).toContain("The settings file is not valid.");
+  expect(screen.queryByText(/could not read your settings/)).toBeNull();
+  fireEvent.click(within(problem).getByRole("button", { name: "Open Settings File" }));
+  expect(api.openSettingsFile).toHaveBeenCalledOnce();
+});
+
 test("a refused setting default keeps its saved choice and offers no Undo", async () => {
   const { api } = fakeApi({}, { appearance: "dark" });
   render(<SettingsApp api={api} initialPage="look" />);

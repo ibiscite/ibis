@@ -28,7 +28,7 @@ import { SideNavigation, SideResults } from "../ui/SideNavigation";
 import { SettingsSearch } from "../ui/SettingsSearch";
 import { useAppearance } from "../ui/appearance";
 import { SettingRows, UnknownSettings } from "./SettingRows";
-import { FormatSettings, SettingsFileRow, useFormatSettings } from "./FormatSettings";
+import { FormatSettings, SettingsFileProblem, SettingsFileRow, useFormatSettings } from "./FormatSettings";
 import { EditorEndpointRow } from "./EditorEndpoint";
 import { PasteGuide, usePastePermission } from "./PasteGuide";
 import { BackupRows } from "./BackupRows";
@@ -575,7 +575,9 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       </nav>
       <main ref={pageRef} className="settings-page" aria-labelledby="settings-page-title">
         <h1 id="settings-page-title" className={page === "about" ? "visually-hidden" : "ui-settings-page-title"}>{text(`settings-${page}`)}</h1>
-        {preference.status === "unknown" && preference.message && <Note problem role="alert">{text(preference.message)}</Note>}
+        {/* One cause, one sentence: a file that cannot be read says so in the engine's words, on every page. */}
+        {formatSettings.problem !== null ? <SettingsFileProblem settings={formatSettings} />
+          : preference.status === "unknown" && preference.message && <Note problem role="alert">{text(preference.message)}</Note>}
         {detour && returnFailed && <Note problem role="alert">{text("general-paste-return-failed")}</Note>}
         {page === "general" && <>
           {renderRows("general", { "paste-label": <>

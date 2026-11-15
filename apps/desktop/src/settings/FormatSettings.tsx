@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import type { FormatSettingsView } from "../bindings";
+import type { FormatSettingsView, Problem } from "../bindings";
 import { outputName, listedOutput } from "../format/outputs";
-import { useInterfaceMessages } from "../i18n";
+import { problemText, useInterfaceMessages } from "../i18n";
 import { Button } from "../ui/Button";
-import { Group, Row, Section } from "../ui/Layout";
+import { Group, Note, Row, Section } from "../ui/Layout";
 import type { SettingsApi } from "./api";
 import { rowDetails } from "./rows";
 import { Status } from "../ui/Status";
@@ -12,7 +12,8 @@ import { Status } from "../ui/Status";
  * read or forget never replaces a more recent snapshot or a reopened page. */
 export function useFormatSettings(api: SettingsApi) {
   const [view, setView] = useState<FormatSettingsView | null>(null);
-  const [problem, setProblem] = useState(false);
+  // Why the file could not be read: the engine's Problem, as the picker gets it.
+  const [problem, setProblem] = useState<unknown>(null);
   const [forgetFailed, setForgetFailed] = useState(false);
   const [openFailed, setOpenFailed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -27,8 +28,8 @@ export function useFormatSettings(api: SettingsApi) {
       const ticket = ++request.current;
       return api.formatSettings!().then((next) => {
         if (!alive || ticket !== request.current) return;
-        setView(next); setProblem(false);
-      }, () => { if (alive && ticket === request.current) setProblem(true); });
+        setView(next); setProblem(null);
+      }, (reason: unknown) => { if (alive && ticket === request.current) setProblem(reason ?? new Error("settings unread")); });
     };
     refresh.current = read;
     const events = api.onSettingsChanged(read);
@@ -58,7 +59,7 @@ export function useFormatSettings(api: SettingsApi) {
 
 export function FormatSettings({ settings }: { settings: ReturnType<typeof useFormatSettings> }) {
   const { text } = useInterfaceMessages();
-  const { view, problem, busy, forget, forgetFailed, dismissForget } = settings;
+  const { view, busy, forget, forgetFailed, dismissForget } = settings;
   return <>
     {view && view.apps.length > 0 && <Section id="remembered-formats" title={text("citations-apps")}><Group>
       {view.apps.map((app) => <Row key={app.id} id={`format-${app.id}`} label={app.app} description={listedOutput(app.format) ? outputName(listedOutput(app.format)!) : text("citations-unlisted")}>
@@ -69,9 +70,19 @@ export function FormatSettings({ settings }: { settings: ReturnType<typeof useFo
       {view.writings.map((writing) => <Row key={writing.id} id={`writing-${writing.id}`} label={writing.name}
         description={`${listedOutput(writing.output) ? outputName(listedOutput(writing.output)!) : text("citations-unlisted")}${writing.bibliography ? ` · ${writing.bibliography}` : ""}`} />)}
     </Group></Section>}
-    {problem && <Status role="alert">{text("settings-read-failed")}</Status>}
     {forgetFailed && <Status role="alert">{text("settings-forget-failed")} <Button size="small" onPress={dismissForget}>{text("picker-dismiss")}</Button></Status>}
   </>;
+}
+
+/** Why settings.json could not be read, in the engine's own words (the picker
+ * shows the same Problem), with its one recovery: open the file to repair it. */
+export function SettingsFileProblem({ settings }: { settings: ReturnType<typeof useFormatSettings> }) {
+  const { text } = useInterfaceMessages();
+  const { problem, openSettingsFile } = settings;
+  if (problem === null) return null;
+  const review = typeof problem === "object" && (problem as Partial<Problem>).recovery?.action === "review-settings";
+  return <Note problem role="alert">{problemText(problem, text("settings-read-failed"), text)}
+    {review && openSettingsFile && <> <Button size="small" onPress={openSettingsFile}>{text("settings-open-file")}</Button></>}</Note>;
 }
 
 /** Opening settings.json, in General's Advanced group. */
