@@ -1,5 +1,8 @@
 // Build-time custom commands; the bindings test compares this with the runtime registry.
 pub const APP_COMMANDS: &[&str] = &[
+    "waiting_proposals",
+    "apply_proposal",
+    "reject_proposal",
     "agent_apps",
     "connect_agent_app",
     "disconnect_agent_app",

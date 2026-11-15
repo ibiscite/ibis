@@ -827,7 +827,7 @@ Settings backup/restore instructions live in
 let an AI app propose small library changes
 ([decision 0055](decisions/0055-agent-layers-full-text-writes-remote.md)). They
 only propose: nothing in a library changes until the person applies the
-proposal in the Ibis app, and an AI client's own approval of a tool call never
+proposal in **Settings › AI Apps › Proposed changes**, and an AI client's own approval of a tool call never
 counts. Without the flag these tools are not listed and a call is an unknown
 tool. `ibis agents setup` writes the read-only server; add `--allow-writes` to
 the `ibis mcp` arguments in an app's settings by hand to offer them.
@@ -853,7 +853,7 @@ ibis proposals reject 3f9c2a7d41b8e605
 
 `show` prints the change and, for a `.bib` file, the entry as it is and as it
 would be written. There is no `apply` command: the person applies a proposal
-in the Ibis app, after the same preview. Applying writes `.bib` files only. It
+in **Settings › AI Apps › Proposed changes**, after the same preview. Applying writes `.bib` files only. It
 refuses when the entry changed since the proposal, edits only that entry's
 fields, or adds the new entry at the end, keeps every other byte, and saves
 the replaced file as `refs.bib.ibis-backup-N`. A field written with a

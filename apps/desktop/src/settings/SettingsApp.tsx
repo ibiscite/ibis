@@ -4,6 +4,7 @@ import { Details } from "../ui/Details";
 import { useSettingUndo } from "../ui/useSettingUndo";
 import { useRowReveal } from "../ui/useRowReveal";
 import { AttachmentText } from "./AttachmentText";
+import { ProposedChanges } from "./ProposedChanges";
 import { CliCommandRow } from "./CliCommand";
 import { StatusMark } from "../ui/StatusMark";
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
@@ -509,6 +510,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     && (row.id !== "paste-label" || permission?.pastes === true)
     && ((row.id !== "automatic" && row.id !== "check-updates") || updates !== null || readProblems.has("automatic"))
     && (row.id !== "agent-apps" || Boolean(api.agentApps && api.connectAgentApp && api.disconnectAgentApp))
+    && (row.id !== "proposed-changes" || Boolean(api.waitingProposals && api.applyProposal && api.rejectProposal))
     && (row.id !== "cli-command" || Boolean(api.cliStatus && api.setCliInstalled && api.copyCliProfile))
     && (row.id !== "editor-endpoint" || Boolean(api.editorEndpoint && api.setEditorEndpoint && api.copyEditorEndpoint)));
   const matchedIds = new Set(query.trim() ? filterPalette([{ id: "settings", items: availableRows.map((row) => ({ id: row.id,
@@ -597,6 +599,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
           </Group></Section>}
           {api.agentApps && api.connectAgentApp && api.disconnectAgentApp && <AiApps api={{ agentApps: api.agentApps, connectAgentApp: api.connectAgentApp, disconnectAgentApp: api.disconnectAgentApp }} highlighted={highlighted} refresh={agentRefresh} />}
           {api.attachmentTextLibraries && api.setAttachmentText && <AttachmentText api={{ ...api, attachmentTextLibraries: api.attachmentTextLibraries, setAttachmentText: api.setAttachmentText }} highlighted={highlighted === "attachment-text"} />}
+          {api.waitingProposals && api.applyProposal && api.rejectProposal && <ProposedChanges api={{ waitingProposals: api.waitingProposals, applyProposal: api.applyProposal, rejectProposal: api.rejectProposal }} highlighted={highlighted} />}
         </>}
         {page === "shortcuts" && <ShortcutsPage opening={shortcutSetting} enterPastes={enterPastes} reveal={revealTarget} highlighted={highlighted} />}
         {page === "about" && (

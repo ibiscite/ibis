@@ -51,6 +51,9 @@ macro_rules! registry {
 }
 
 registry![
+    crate::proposals::waiting_proposals,
+    crate::proposals::apply_proposal,
+    crate::proposals::reject_proposal,
     crate::agent_apps::agent_apps,
     crate::agent_apps::connect_agent_app,
     crate::agent_apps::disconnect_agent_app,
@@ -260,6 +263,9 @@ mod tests {
         "agent_apps",
         "connect_agent_app",
         "disconnect_agent_app",
+        "waiting_proposals",
+        "apply_proposal",
+        "reject_proposal",
         "cli_status",
         "set_cli_installed",
         "copy_cli_profile",
@@ -292,6 +298,9 @@ mod tests {
         "agent_apps",
         "connect_agent_app",
         "disconnect_agent_app",
+        "waiting_proposals",
+        "apply_proposal",
+        "reject_proposal",
         "cli_status",
         "set_cli_installed",
         "copy_cli_profile",

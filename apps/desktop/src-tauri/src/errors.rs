@@ -20,6 +20,9 @@ pub(crate) enum NativeOperation {
     AgentApps,
     ConnectAgentApp,
     DisconnectAgentApp,
+    WaitingProposals,
+    ApplyProposal,
+    RejectProposal,
     CliStatus,
     SetCliInstalled,
     CopyCliProfile,
@@ -50,6 +53,9 @@ impl NativeOperation {
             | Self::AgentApps
             | Self::ConnectAgentApp
             | Self::DisconnectAgentApp
+            | Self::WaitingProposals
+            | Self::ApplyProposal
+            | Self::RejectProposal
             | Self::CliStatus
             | Self::SetCliInstalled
             | Self::CopyCliProfile
