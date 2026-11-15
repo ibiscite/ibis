@@ -9,6 +9,7 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+use ibis_core::contract::{CitedWarning, Message};
 use ibis_engine::{EntryRefusal, EntryResult, KeyCheck, ProjectProblem, ProjectRead, project_name};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -311,17 +312,26 @@ impl Current {
         Some(ProjectMark::new(self.generation, &check?))
     }
 
-    /// A sentence for a key that is not plainly in the file. These join the
-    /// citation's own warnings, so the picker copies and stays open.
-    pub(crate) fn warning(&self, key: &str, check: &KeyCheck) -> Option<String> {
-        let name = &self.name;
-        match check {
-            KeyCheck::In { .. } => None,
-            KeyCheck::Missing => Some(format!("{key} is missing from {name}.")),
-            KeyCheck::CouldNotCheck => Some(format!("Couldn't check {key} against {name}.")),
-            KeyCheck::Repeated { .. } => Some(format!("{key} appears more than once in {name}.")),
-            KeyCheck::MayNameAnother { .. } => Some(format!("{key} may name another reference in {name}.")),
-        }
+    /// The warning for cited item `item`, when its key is not plainly in the
+    /// file. These join the citation's own warnings, so the picker copies and
+    /// stays open, and each shows with its reference.
+    pub(crate) fn warning(&self, item: usize, key: &str, check: &KeyCheck) -> Option<CitedWarning> {
+        let state = match check {
+            KeyCheck::In { .. } => return None,
+            KeyCheck::Missing => "missing",
+            KeyCheck::CouldNotCheck => "could-not-check",
+            KeyCheck::Repeated { .. } => "repeated",
+            KeyCheck::MayNameAnother { .. } => "may-name-another",
+        };
+        let args = [("key", key), ("name", &self.name), ("state", state)];
+        Some(CitedWarning {
+            item: Some(item),
+            message: Message {
+                id: "app-project-warning".into(),
+                args: args.map(|(name, value)| (name.to_owned(), value.to_owned())).into(),
+                context: None,
+            },
+        })
     }
 }
 
@@ -532,7 +542,7 @@ pub(crate) fn preview_warnings(
     id: &str,
     hash: &str,
     project: Option<&Current>,
-) -> Result<Vec<String>, crate::library::CommandError> {
+) -> Result<Vec<CitedWarning>, crate::library::CommandError> {
     let citation = engine
         .citations()
         .prepared(ibis_engine::citations::SessionId::PICKER, id, hash)?;
@@ -542,7 +552,7 @@ pub(crate) fn preview_warnings(
             citation
                 .project_checks(&project.read)
                 .into_iter()
-                .filter_map(|key| project.warning(&key.key, &key.check))
+                .filter_map(|(item, key)| project.warning(item, &key.key, &key.check))
                 .collect()
         })
         .unwrap_or_default())
@@ -562,7 +572,6 @@ pub(crate) fn preview_evidence(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use ibis_core::contract::ItemRef;
@@ -801,9 +810,10 @@ mod tests {
             })
             .unwrap_or_default();
         let preview = crate::test_citations::preview(&file.engine, file.sample, selections, "pandoc").unwrap();
-        let mut warnings =
-            crate::project::preview_warnings(&file.engine, &preview.ticket, &preview.content_hash, Some(&current))
-                .unwrap();
+        let mut warnings = crate::test_citations::said(
+            &crate::project::preview_warnings(&file.engine, &preview.ticket, &preview.content_hash, Some(&current))
+                .unwrap(),
+        );
         warnings.sort();
         assert_eq!(
             warnings,
@@ -856,7 +866,7 @@ mod tests {
             )
             .unwrap();
             copied.warnings.extend(warnings);
-            copied.warnings
+            crate::test_citations::said(&copied.warnings)
         };
         assert_eq!(copied(None), ["gone2026 is missing from thesis.bib."]);
         assert_eq!(copied(Some("apa")), Vec::<String>::new());
@@ -947,7 +957,7 @@ mod tests {
         }
 
         /// The preview's warnings, then the copy's, of the one row `text` finds.
-        fn cite(&self, text: &str, request: u32) -> (Vec<String>, crate::copy::Copied) {
+        fn cite(&self, text: &str, request: u32) -> (Vec<CitedWarning>, crate::copy::Copied) {
             let (file, preview) = self.prepare(text, request);
             let copied = crate::copy::commit_copy(
                 &file,
@@ -981,7 +991,10 @@ mod tests {
         let picker = Picker::new("@book{gone2026,title={Gone},author={Lee, Kim},year={2026}}\n", &project);
 
         let (previewed, copied) = picker.cite("gone", 1);
-        assert_eq!(previewed, ["gone2026 is missing from thesis.bib."]);
+        assert_eq!(
+            crate::test_citations::said(&previewed),
+            ["gone2026 is missing from thesis.bib."]
+        );
         assert_eq!(copied.warnings, previewed, "the copy says what the preview said");
         assert_eq!(copied.text, "[@gone2026]");
         assert_eq!(picker.listed(), copied.cited, "and the session list has the reference");
@@ -1034,7 +1047,10 @@ mod tests {
         picker.read_again();
         let (file, preview) = picker.prepare("a2026", 2);
         assert_eq!(preview.project_refusal, None);
-        assert_eq!(preview.warnings, ["Couldn't check a2026 against thesis.bib."]);
+        assert_eq!(
+            crate::test_citations::said(&preview.warnings),
+            ["Couldn’t check a2026 against thesis.bib."]
+        );
         let copied = crate::copy::commit_copy(
             &file,
             &file

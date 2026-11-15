@@ -41,7 +41,7 @@ pub fn run(app: Option<&Path>) -> Result<(), EngineError> {
             image.as_deref()
         }
     });
-    // Per-user (NSIS) first, then machine-wide (MSI or NSIS for all users).
+    // Per-user first, then machine-wide.
     let install_roots: Vec<PathBuf> = ["LOCALAPPDATA", "ProgramFiles"]
         .into_iter()
         .filter_map(std::env::var_os)

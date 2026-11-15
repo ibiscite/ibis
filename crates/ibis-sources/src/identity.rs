@@ -156,7 +156,6 @@ fn hex(key: &Key) -> String {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;

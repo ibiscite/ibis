@@ -1,5 +1,5 @@
 //! A receipt describes the citation a client received, even after newer work.
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 use ibis_core::contract::{CitationResult, CitationWarningCode, ErrorCode, LibraryObject, OutputSpec, Snapshot};
 use ibis_engine::{Cancellation, DispatchResult, Engine, Method, mcp};
 use serde_json::{Value, json};

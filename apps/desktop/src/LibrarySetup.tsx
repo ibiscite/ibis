@@ -172,12 +172,14 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty, shortcut,
 }
 
 /** The same keyboard choice rows let a sample session return to setup. */
-export function SampleLibraryExit({ useSampleLibrary: changeSamples, perform }: {
+export function SampleLibraryExit({ useSampleLibrary: changeSamples, perform, compact = false }: {
   useSampleLibrary?: SetupApi["useSampleLibrary"];
+  /** Results are listed: the way out steps aside for them, one row at their end. */
+  compact?: boolean;
   perform: (action: Action, run: () => Promise<unknown>) => Promise<void>;
 }) {
   if (!changeSamples) return null;
-  return <ChoiceList title={say("setup-sample-title")} choices={[{
+  return <ChoiceList compact={compact} title={say("setup-sample-title")} choices={[{
     id: "own", title: say("setup-own-library"), help: say("setup-own-library-help"), icon: <ChoiceIcon name="swap" />,
   }]} onChoose={() => void perform("samples", () => changeSamples(false))} />;
 }

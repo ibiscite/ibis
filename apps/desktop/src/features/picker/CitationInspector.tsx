@@ -2,10 +2,10 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Ref, ty
 import { Reader } from "../reader/Reader";
 import { usePageSource } from "../reader/source";
 import { citationDetails, isCancelled } from "../../api";
-import type { Preview, FormDetails } from "../../bindings";
+import type { CitedWarning, Preview, FormDetails } from "../../bindings";
 import { composing } from "../../composition";
 import { Icon } from "../../icons";
-import { say } from "../../i18n";
+import { say, warningText } from "../../i18n";
 import { Button } from "../../ui/Button";
 import { CitationDetails } from "../../ui/CitationDetails";
 import { Inspector } from "../../ui/Inspector";
@@ -14,8 +14,9 @@ import { Switch } from "../../ui/Switch";
 import type { CitationDetailsChange, CitationReference } from "./choice";
 import type { InspectorPanel } from "./useCitationInspector";
 
-/** `entry` explains output that depends on the whole document: its short name and its sentence. */
-export type CitationNotes = { entry: { short: string; text: string } | null; output: readonly string[]; closest: readonly string[] };
+/** `entry` explains output that depends on the whole document: its short name and its sentence.
+ * The warnings are the output's and the closest matches, each about the reference at its item. */
+export type CitationNotes = { entry: { short: string; text: string } | null; output: readonly CitedWarning[]; closest: readonly CitedWarning[] };
 
 /** The details of one reference, or the notes on its citation. The column's
  * controls never move: everything that grows with the output sits beside them. */
@@ -70,9 +71,9 @@ export function CitationInspector({ ref, id, panel, anchor, keepOrder, heading, 
     const { entry, output, closest } = notes;
     return <Inspector ref={ref} id={id} label={say("picker-citation-warnings")} heading={say("picker-citation-warnings")} closeLabel={say("key-close")} readOnly onClose={onClose}>
       {entry && <><h3>{entry.short}</h3><p>{entry.text}</p></>}
-      {output.map((warning, i) => <p key={`output-${i}`}>{warning}</p>)}
+      {output.map((warning, i) => <p key={`output-${i}`}>{warningText(warning)}</p>)}
       {closest.length > 0 && <h3>{say("picker-closest-matches")}</h3>}
-      {closest.map((warning, i) => <p key={`partial-${i}`}>{warning}</p>)}
+      {closest.map((warning, i) => <p key={`partial-${i}`}>{warningText(warning)}</p>)}
       {problem}
     </Inspector>;
   }
@@ -90,7 +91,10 @@ export function CitationInspector({ ref, id, panel, anchor, keepOrder, heading, 
     onFormChange={(form) => onChange(reference, { form })}
     prefix={reference.prefix ?? ""} suffix={reference.suffix ?? ""}
     onPrefixChange={(prefix) => onChange(reference, { prefix })} onSuffixChange={(suffix) => onChange(reference, { suffix })} onSubmit={onSubmit} />;
-  const notesShown = [...notes.entry ? [notes.entry.text] : [], ...notes.output, ...notes.closest].map((note, i) => <p key={i} className="ui-popover-note">{note}</p>);
+  // A token's details say only what is about it: the output's own note, then the
+  // warnings about this reference, never another's.
+  const own = reference ? [...notes.output, ...notes.closest].filter((warning) => warning.item === index).map((warning) => warningText(warning)) : [];
+  const notesShown = [...notes.entry ? [notes.entry.text] : [], ...own].map((note, i) => <p key={i} className="ui-popover-note">{note}</p>);
   const removeKeys = (event: React.KeyboardEvent<HTMLElement>) => {
     const target = event.target as HTMLElement;
     if (event.key !== "Delete" || event.repeat || composing(event) || target.matches("input, textarea, [contenteditable]") || !reference || !selected) return;

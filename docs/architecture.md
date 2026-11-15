@@ -49,44 +49,14 @@ a recovery before it compiles. The JSON envelope, refusal outcomes, source-healt
 refresh failures, MCP tool errors and native command errors carry these facts.
 Desktop status also carries `failure` and `retained_failure` alongside its
 rendered status text; preview refusals carry `failure`. Clients render the
-message from `locales/en-US.ftl` and dispatch the declared recovery.
+message from `locales/en-US.ftl` and dispatch the declared recovery. Each
+error's recovery and focus are in `crates/ibis-core/src/contract/recovery.rs`.
 
 Generated TypeScript treats `ItemRef.key` as an opaque `RecordId`, incompatible
 with strings and React children. Display labels and citation keys are separate.
 Format previews use prepared engine text; another output shows its labeled
 example until a prepared result is available. MCP fallback refs are opaque
 digests resolved against the current snapshot, never embedded lookup IDs.
-
-| Error or refusal | Recovery | Focus |
-| --- | --- | --- |
-| Missing key; unknown style/output; unsupported output; conflicting/invalid key; record not from Zotero | ChooseStyle | FormatPicker |
-| Unsupported citation form | ChooseForm | CitationForm |
-| Missing library file, including a failed watched refresh | LocateFile | LibraryPicker |
-| Missing Zotero/profile; unsupported file format/CSV template; non-local selection | ChooseLibrary | LibraryPicker |
-| Zotero sharing off | OpenZoteroSharingHelp | ZoteroSharingHelp |
-| Zotero requires an open app | OpenZotero | RecoveryAction |
-| Duplicate key within a library | ReviewLibrary | SourceFile |
-| Ambiguous lookup key | SelectReferences | Search |
-| Ambiguous citation key | ChooseStyle | FormatPicker |
-| Strict citation or damaged entry | ReviewLibrary | LibraryPicker / SourceFile |
-| Missing/changed item, annotation mismatch, empty selection, uncitable item | SelectReferences | Results |
-| Not found | SelectReferences | Search |
-| Resource limit, too many items, oversized output, cut-short library | ReduceSelection | Search / Results |
-| Invalid locator | EditCitation | Locator |
-| Usage, bad input, rejected/duplicate caller records, tool validation | EditInput | Request |
-| Invalid rich text | EditCitation | Citation |
-| Unknown/invalid language | ChooseLocale | Language |
-| Source/formatter/internal failure; app did not answer | Retry | RecoveryAction |
-| Newer format; missing/wrong Ibis app | UpgradeIbis | RecoveryAction |
-| Zotero has no space for a private copy | FreeDiskSpace | RecoveryAction |
-| Snapshot changed | SelectReferences | Results |
-| Cancelled / library loading | None (Cancelled / InProgress) | Search |
-| Invalid/duplicate project name | RenameProject | ProjectName |
-| Missing project / project limit | ChooseProject / RemoveProject | ProjectMenu |
-| Changed project or destination | ReopenProjectMenu | ProjectMenu |
-| Pending editor request | FinishEditorRequest | Citation |
-| Invalid project definitions | ReviewSettings | Settings |
-| Invalid or read-only settings / settings from a newer Ibis | ReviewSettings / UpgradeIbis | Settings / RecoveryAction |
 
 Native command infrastructure has a closed operation enum with its own catalogue
 messages. Backup recovery chooses a backup, downloads it, retries or upgrades;
@@ -128,9 +98,23 @@ Key syntax capabilities live in `ibis_core::syntax::CAPABILITIES`. The engine's
 `outputs` list supplies IDs, names and supported forms to CLI, MCP, menus and
 settings. Formatted output uses citeproc-js on one worker with a bounded
 queue, cancellation, time and memory limits. The compressed style bundle
-loads the requested style and locale. Formatting receives citable fields,
-without notes, annotations or private links. Zotero differential fixtures
+loads the requested style and locale. Formatting, MCP reference views and record
+writers require immutable `CitableFields`, constructed only by the privacy
+filter: no notes, annotations, private links or device paths in values. Source
+identities and citation keys stay separate from metadata. Zotero differential fixtures
 check output independently of the renderer.
+
+The decoded projection checks visible text and markup attributes before keeping
+any rich-text runs. `PublicUrl` owns URL parsing and refuses local names and
+special-purpose literal addresses (IPv6 requires native global unicast).
+`DoiLink` owns DOI identity and resolver links; dot path segments are refused
+before any serializer, including citeproc. BibTeX identifiers and keys use
+verbatim values, with balanced literal braces and no TeX commands; prose keeps
+TeX escaping. Names are normalized once with both particles retained. When
+both occupy one name, BibLaTeX's single prefix holds the dropping particle and
+the protected family includes the non-dropping particle, keeping particles
+out of given-name initialization. This keeps every name word; CSL-JSON is
+required to preserve both explicit particle roles on reimport.
 
 `engine.citations()` owns a bounded registry: one picker session and up to 64
 connection sessions. Submission reserves order before workers run. A newer
@@ -141,7 +125,8 @@ One-shot RPC/MCP cite calls reserve independent operations and answer every
 accepted request; interactive preview supersession does not swallow their replies.
 Session failures carry a typed `Problem` with its catalogue message, recovery and
 focus. BibTeX and DOI links use the same preview and checked commit as citations;
-record exports pass through `CitableFields`.
+record exports pass through `ibis_core::citable::share_fields`
+(`crates/ibis-core/src/citable.rs`), which drops notes, annotations and device links.
 
 The desktop warms its saved default style, locale and runtime in the background,
 independently of the library, and shares that formatter for the session. Warm-up

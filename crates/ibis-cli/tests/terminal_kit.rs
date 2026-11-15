@@ -1,4 +1,5 @@
 //! Terminal scenarios use invented files and pipes; diagnostics never need a TTY.
+#![cfg(test)]
 use serde_json::{Value, json};
 use std::{path::PathBuf, process::Command};
 
@@ -143,7 +144,6 @@ fn broken_config_does_not_hide_sources_or_repair_primary_or_backup() {
 }
 
 #[test]
-#[allow(clippy::unwrap_used)]
 fn doctor_leaves_an_entire_invented_home_and_selected_sources_unchanged() {
     fn contents(root: &std::path::Path) -> Vec<(PathBuf, Vec<u8>)> {
         let mut entries = Vec::new();

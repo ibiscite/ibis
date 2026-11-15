@@ -166,7 +166,11 @@ pub fn error(error: &EngineError, audience: Audience) -> String {
 
 /// Render the engine's declared message and arguments at the last boundary.
 pub fn problem(problem: &ibis_core::contract::Problem, audience: Audience) -> String {
-    let message = &problem.info.message;
+    message(&problem.info.message, audience)
+}
+
+/// A declared message in this audience's words, as the app's catalogue says it.
+pub fn message(message: &ibis_core::contract::Message, audience: Audience) -> String {
     let args: Vec<_> = message
         .args
         .iter()

@@ -19,24 +19,27 @@ import { UndoNotice } from "../ui/UndoNotice";
 import { Button } from "../ui/Button";
 import { AboutDelight, AboutLine } from "../ui/Delights";
 import { localMoment } from "../ui/localMoment";
-import { useAltHeld } from "../features/picker/useAltHeld";
+import { useAltHeld } from "../ui/useAltHeld";
 import type { DelightFact, DelightView } from "../bindings";
 import { ShortcutsPage } from "./ShortcutsPage";
-import { Note, Row } from "../ui/Layout";
+import { Group, Note, Row, Section } from "../ui/Layout";
 import { ShortcutSetting } from "../ui/ShortcutSetting";
 import { SideNavigation, SideResults } from "../ui/SideNavigation";
 import { SettingsSearch } from "../ui/SettingsSearch";
 import { useAppearance } from "../ui/appearance";
 import { SettingRows, UnknownSettings } from "./SettingRows";
-import { FormatSettings, useFormatSettings } from "./FormatSettings";
+import { brokenSettingsFile, FormatSettings, SettingsFileProblem, SettingsFileRow, useFormatSettings } from "./FormatSettings";
 import { EditorEndpointRow } from "./EditorEndpoint";
 import { PasteGuide, usePastePermission } from "./PasteGuide";
 import { BackupRows } from "./BackupRows";
 import type { SettingsApi } from "./api";
+import { listening } from "../nativeEvents";
+import { useFlash } from "../ui/timers";
 import "../ui/SettingsLayout.css";
 
-import { PAGES, ROWS, settingsRows, rowDetails, type Page } from "./rows";
+import { PAGES, ROWS, settingsRows, rowDetails, type Page, type SearchRow, type SettingRow } from "./rows";
 import { initialPreferences, preferenceState } from "./preferenceState";
+import { Status } from "../ui/Status";
 const FACT_MESSAGES: Record<DelightFact, MessageId> = { touch: "delight-fact-touch", scarlet: "delight-fact-scarlet", mummies: "delight-fact-mummies", national: "delight-fact-national", flight: "delight-fact-flight" };
 const LOGIN_PROBLEMS = {
   unsupported: "general-login-unsupported", needs_approval: "general-login-needs-approval",
@@ -111,7 +114,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     else sidebar.current?.querySelector<HTMLElement>('[aria-current="page"]')?.focus();
   });
   useRowReveal(revealTarget, pageRef);
-  const [highlighted, setHighlighted] = useState<string | null>(null);
+  // A row found by search is marked for 2 s.
+  const [highlighted, highlight, clearHighlight] = useFlash<string>(2000);
   const highlightOperation = useRef(0);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
@@ -128,7 +132,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const loginBusy = useRef(false);
   const [loginSaving, setLoginSaving] = useState(false);
   const [updatesSaving, setUpdatesSaving] = useState(false);
-  const [versionCopied, setVersionCopied] = useState(false);
+  const [versionCopied, flashVersionCopied, clearVersionCopied] = useFlash(1500);
   const [versionCopyFailed, setVersionCopyFailed] = useState(false);
   const [checkResult, setCheckResult] = useState<CheckResult | null>(null);
   const [checking, setChecking] = useState(false);
@@ -149,7 +153,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   // Feedback belongs to this page presentation, independently of delight preferences.
   // biome-ignore lint/correctness/useExhaustiveDependencies: changing pages retires feedback and pending operations.
   useEffect(() => {
-    setVersionCopied(false); setVersionCopyFailed(false); versionCopy.current += 1;
+    clearVersionCopied(); setVersionCopyFailed(false); versionCopy.current += 1;
     return () => { versionCopy.current += 1; };
   }, [page]);
   const { altHeld } = useAltHeld("option");
@@ -281,23 +285,20 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         if (active && updateRequest === updateReads.current) readProblem("automatic", true);
       });
     };
-    const preferenceEvents = api.onPreferencesChanged((revision, fields) => {
+    const preferenceEvents = listening(api.onPreferencesChanged, (revision, fields) => {
       void queue.refresh(revision, () => active, fields);
-    });
+    }, { ready: () => void queue.load(() => active), failed: () => dispatchPreference({ type: "read-failed" }) });
     readAll(false);
-    void preferenceEvents.then(() => { if (active) void queue.load(() => active); }).catch(() => { if (active) dispatchPreference({ type: "read-failed" }); });
     api.version().then((next) => { if (active) setVersion(next); }).catch(() => undefined);
     // Changes made in the picker or the menu bar while Settings was open.
     window.addEventListener("focus", readAll);
     window.addEventListener("focus", readShortcut);
-    const shortcuts = api.onShortcutStatus((next) => {
+    const shortcuts = listening(api.onShortcutStatus, (next) => {
       shortcutReads.current += 1;
-      if (active) { latestShortcut.current = next; setShortcut(next); clearShortcutUndo(); }
-    });
-    void shortcuts.catch(() => { if (active) setShortcutProblem({ id: "shortcuts-read-failed" }); }).then(() => { if (active) readShortcut(); });
-    const page = api.onPage((name) => { setRevealTarget(null); highlightOperation.current += 1; setHighlighted(null); setQuery(""); const next = pageOf(name); setDetour(name === "paste"); setDip(0); setPage(next.page); setFocus(next.focus ?? "top"); });
-    const automatic = api.onUpdateChecks((next) => {
-      if (!active) return;
+      latestShortcut.current = next; setShortcut(next); clearShortcutUndo();
+    }, { ready: readShortcut, failed: () => { setShortcutProblem({ id: "shortcuts-read-failed" }); readShortcut(); } });
+    const page = listening(api.onPage, (name) => { setRevealTarget(null); clearHighlight(); setQuery(""); const next = pageOf(name); setDetour(name === "paste"); setDip(0); setPage(next.page); setFocus(next.focus ?? "top"); });
+    const automatic = listening(api.onUpdateChecks, (next) => {
       updateReads.current += 1;
       if (!updateWrite.current) clearSettingUndo();
       latestUpdates.current = next;
@@ -311,19 +312,15 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       }
       setUpdatesSaving(false);
     });
-    const close = api.onCloseRequested(() => queue.finishSaving());
+    const close = listening(api.onCloseRequested, () => queue.finishSaving());
     return () => {
       active = false;
       updateWrite.current?.reject(); updateWrite.current = null;
       window.removeEventListener("focus", readAll);
       window.removeEventListener("focus", readShortcut);
-      void preferenceEvents.then((stop) => stop()).catch(() => undefined);
-      void shortcuts.then((stop) => stop()).catch(() => undefined);
-      void page.then((stop) => stop()).catch(() => undefined);
-      void automatic.then((stop) => stop()).catch(() => undefined);
-      void close.then((stop) => stop()).catch(() => undefined);
+      for (const stop of [preferenceEvents, shortcuts, page, automatic, close]) stop();
     };
-  }, [api, queue, readProblem, clearShortcutUndo, clearSettingUndo]);
+  }, [api, queue, readProblem, clearShortcutUndo, clearSettingUndo, clearHighlight]);
   useEffect(() => {
     const scroller = pageRef.current;
     if (!focus || !scroller) return;
@@ -430,13 +427,12 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     : preference.status === "refused" && preference.problem.row === id ? preference.problem.message
     : problemRow?.id === id ? text(problemRow.message) : undefined });
   const checkSaid = checkResult === "newest" ? "about-check-newest" : checkResult === "not_run" ? "about-check-busy" : null;
-  const selectPage = (next: Page) => { setRevealTarget(null); highlightOperation.current += 1; setHighlighted(null); setDetour(false); setPage(next); setFocus("top"); setDip(0); };
-  const reveal = (row: typeof ROWS[number]) => {
-    selectPage(row.page); setFocus(null); setQuery(""); setHighlighted(row.id === "about-ibis" && query.trim().toLowerCase() === "thoth" ? "about-name" : row.id);
+  const selectPage = (next: Page) => { setRevealTarget(null); clearHighlight(); setDetour(false); setPage(next); setFocus("top"); setDip(0); };
+  const reveal = (row: SearchRow) => {
+    selectPage(row.page); setFocus(null); setQuery(""); highlight(row.id === "about-ibis" && query.trim().toLowerCase() === "thoth" ? "about-name" : row.id);
     if (row.id === "about-ibis" && query.trim().toLowerCase() !== "thoth") setDip(dip + 1);
     const operation = ++highlightOperation.current;
     setRevealTarget({ id: row.id === "open-shortcut" && row.page === "general" ? "general-open-shortcut" : row.id, ticket: operation });
-    window.setTimeout(() => { if (live.current && operation === highlightOperation.current) setHighlighted(null); }, 2000);
   };
   // Look reads on showing, so a size dragged meanwhile appears as Custom.
   const readWindowSize = useCallback((request: number) => api.windowSize().then((size) => {
@@ -446,7 +442,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     if (focused && page === "look") void readWindowSize(++windowSizes.current);
   }, [focused, page, readWindowSize]);
   useEffect(() => {
-    const stop = api.onWindowSaved((saved, revision) => {
+    const stop = listening(api.onWindowSaved, (saved, revision) => {
       windowSaved.current = { revision, saved };
       if (windowUndoRevision.current !== null && revision > windowUndoRevision.current) clearSettingUndo();
       const pending = windowSaveWaiter.current;
@@ -456,7 +452,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       }
       if (live.current && !saved) setProblemRow({ id: "window-size", message: "settings-choice-failed" });
     });
-    return () => { windowSaveWaiter.current?.reject(); windowSaveWaiter.current = null; void stop.then((unlisten) => unlisten()); };
+    return () => { windowSaveWaiter.current?.reject(); windowSaveWaiter.current = null; stop(); };
   }, [api, clearSettingUndo]);
   const chooseWindowSize = async (size: WindowSize, undo: number | null = null, waitForSave = false, restoring = false): Promise<number> => {
     if (!restoring) clearSettingUndo();
@@ -496,12 +492,11 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   };
   const copyVersion = () => {
     const operation = ++versionCopy.current;
-    setVersionCopied(false);
+    clearVersionCopied();
     setVersionCopyFailed(false);
     void navigator.clipboard.writeText(`${name} ${altHeld && about?.build ? about.build : version}`).then(() => {
       if (!live.current || operation !== versionCopy.current) return;
-      setVersionCopied(true);
-      window.setTimeout(() => { if (live.current && operation === versionCopy.current) setVersionCopied(false); }, 1500);
+      flashVersionCopied(true);
     }, () => { if (live.current && operation === versionCopy.current) setVersionCopyFailed(true); });
   };
   const availableRows = settingsRows(enterPastes).filter((row) => (row.id !== "menu-bar" || platform === "macos")
@@ -513,7 +508,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     && (row.id !== "editor-endpoint" || Boolean(api.editorEndpoint && api.setEditorEndpoint && api.copyEditorEndpoint)));
   const matchedIds = new Set(query.trim() ? filterPalette([{ id: "settings", items: availableRows.map((row) => ({ id: row.id,
     label: text(row.label, { platform }), detail: row.description ? text(row.description, { platform }) : undefined,
-    keywords: row.keywords ? text(row.keywords, { platform }) : undefined })) }], query).flatMap((group) => group.items.map((item) => item.id)) : []);
+    // A setting that can go back to its default is found by "reset" and "default" too.
+    keywords: [row.keywords && text(row.keywords, { platform }), row.default !== undefined && text("settings-reset-words")].filter(Boolean).join(" ") || undefined })) }], query).flatMap((group) => group.items.map((item) => item.id)) : []);
   const matches = PAGES.flatMap((page) => availableRows.filter((row) => row.page === page && matchedIds.has(row.id)));
   const name = login?.name ?? "Ibis";
   const undoTicket = shortcutUndoTicket.current;
@@ -548,7 +544,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       } },
   };
   const renderRows = (page: Page, after?: Record<string, ReactNode>) => <SettingRows
-    rows={availableRows.filter((row) => row.page === page && (row.control || row.native))}
+    rows={availableRows.filter((row): row is SettingRow => row.page === page && Boolean(row.control || row.native))}
     preferences={preferences} change={change} owners={owners} feedback={feedback} reset={settingUndo.reset} size={windowSize} after={after} />;
 
   return (
@@ -571,27 +567,27 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         : <SideNavigation label={text("settings-pages")} value={page} options={PAGES.map((value) => ({ value, label: text(`settings-${value}`), tile: PAGE_TILES[value], gapBefore: value === "about" }))}
           onChange={selectPage} />}
       </nav>
-      <NoticeSlot>
-        {settingUndo.notice}
-        {shortcutUndo && <UndoNotice key={undoTicket} action={text("undo-shortcut")} message={text("settings-shortcut-restored")} paused={!focused}
-          onUndo={() => changeShortcut(shortcutUndo, true, undoTicket)}
-          onExpire={() => { if (undoTicket === shortcutUndoTicket.current) clearShortcutUndo(); }} />}
-      </NoticeSlot>
       <main ref={pageRef} className="settings-page" aria-labelledby="settings-page-title">
         <h1 id="settings-page-title" className={page === "about" ? "visually-hidden" : "ui-settings-page-title"}>{text(`settings-${page}`)}</h1>
-        {preference.status === "unknown" && preference.message && <Note problem role="alert">{text(preference.message)}</Note>}
+        {/* One cause, one sentence: a file that cannot be read says so in the engine's words, on every page. */}
+        {brokenSettingsFile(formatSettings.problem) ? <SettingsFileProblem settings={formatSettings} />
+          : preference.status === "unknown" && preference.message && <Note problem role="alert">{text(preference.message)}</Note>}
         {detour && returnFailed && <Note problem role="alert">{text("general-paste-return-failed")}</Note>}
         {page === "general" && <>
           {renderRows("general", { "paste-label": <>
             {preferences?.paste && permission?.needed && permission.granted && !guided && <Row id="paste-allowed" label={text("general-paste-allowed", { list: permission.list })} description={text("general-paste-allowed-note")}><StatusMark kind="ok" /></Row>}
             {preferences?.paste && permission?.needed && (!permission.granted || guided) && <PasteGuide name={name} permission={permission} onOpen={() => { setGuided(true); void api.openPastePermission().then(() => readProblem("paste-label", false)).catch(() => readProblem("paste-label", true)); }} onDrag={api.dragPasteApp} />}
           </> })}
-          {api.cliStatus && api.setCliInstalled && api.copyCliProfile && <CliCommandRow api={{ cliStatus: api.cliStatus, setCliInstalled: api.setCliInstalled, copyCliProfile: api.copyCliProfile }} highlighted={highlighted === "cli-command"} />}
+          {/* Working with Ibis's files and from a terminal: one titled group. */}
+          {(api.cliStatus && api.setCliInstalled && api.copyCliProfile || formatSettings.openSettingsFile) && <Section id="advanced" title={text("settings-advanced-title")}><Group>
+            {api.cliStatus && api.setCliInstalled && api.copyCliProfile && <CliCommandRow api={{ cliStatus: api.cliStatus, setCliInstalled: api.setCliInstalled, copyCliProfile: api.copyCliProfile }} highlighted={highlighted === "cli-command"} />}
+            <SettingsFileRow settings={formatSettings} highlighted={highlighted} />
+          </Group></Section>}
           <Details label={text("settings-details")} reveal={revealTarget}><BackupRows api={api} /></Details>
           <UnknownSettings preferences={preferences} saved={formatSettings.view?.unknown} />
         </>}
         {page === "look" && preferences && renderRows("look")}
-        {page === "citations" && <>{renderRows("citations")}<FormatSettings settings={formatSettings} highlighted={highlighted} /></>}
+        {page === "citations" && <>{renderRows("citations")}<FormatSettings settings={formatSettings} /></>}
         {page === "shortcuts" && <ShortcutsPage opening={shortcutSetting} enterPastes={enterPastes} reveal={revealTarget} highlighted={highlighted} />}
         {page === "about" && (
           <>
@@ -601,14 +597,15 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
             <div id="about-ibis" className="ui-about-hero">
               <AboutDelight dip={dip} enabled={about?.fun ?? false} onClick={() => clickAbout.current()} />
               <p className="ui-about-name">{name}</p>
-              <Button variant="quiet" size="small" preventFocusOnPress onPress={copyVersion}>
+              {/* It copies the version, so it is drawn as a button: quiet words would read as a label. */}
+              <Button size="small" preventFocusOnPress onPress={copyVersion}>
                 {text(versionCopied ? "about-copied" : "about-version", { version: altHeld && about?.build ? about.build : version })}
               </Button>
               {versionCopyFailed && <Note problem role="alert">{text("about-copy-failed")}</Note>}
               {/* Under the version, as Mac apps place it (decision 0038); its outcome follows it. */}
               {(updates !== null || readProblems.has("automatic")) && <div id="check-updates" className="ui-about-check" data-highlighted={highlighted === "check-updates" || undefined}>
                 <Button aria-disabled={checking || undefined} onPress={checkNow}>{text(checking ? "about-checking" : "about-check")}</Button>
-                <p className="ui-quiet-status" role="status">{checking ? text("about-checking") : checkSaid && text(checkSaid)}</p>
+                <Status className="ui-quiet-status">{checking ? text("about-checking") : checkSaid && text(checkSaid)}</Status>
                 {checkResult === "failed" && <Note problem role="alert">{text("about-check-failed")}</Note>}
               </div>}
               <p className="ui-about-mission">{text("about-mission")}</p>
@@ -622,6 +619,13 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
           </>
         )}
       </main>
+      {/* At the window's foot (ui/SettingsLayout.css), and after the page in Tab order too. */}
+      <NoticeSlot>
+        {settingUndo.notice}
+        {shortcutUndo && <UndoNotice key={undoTicket} action={text("undo-shortcut")} message={text("settings-shortcut-restored")} paused={!focused}
+          onUndo={() => changeShortcut(shortcutUndo, true, undoTicket)}
+          onExpire={() => { if (undoTicket === shortcutUndoTicket.current) clearShortcutUndo(); }} />}
+      </NoticeSlot>
     </div>
   );
 }

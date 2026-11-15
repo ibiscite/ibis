@@ -5,9 +5,9 @@ export { displayTree } from "../test-fixtures";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { expect, vi } from "vitest";
-import { emit, listen } from "@tauri-apps/api/event";
+import { listen } from "@tauri-apps/api/event";
 import type * as api from "../api";
-import type { Density, DisplayTree, Preview, DraftItem, CitationIntent } from "../bindings";
+import type { CitedWarning, DisplayTree, Preview, DraftItem, CitationIntent } from "../bindings";
 import { recordId } from "../test-fixtures";
 import { isStyle, listedOutput } from "../format/outputs";
 import { fixtureDestination, formatAnswer } from "./format";
@@ -30,14 +30,6 @@ export async function resetApp() {
   clearMocks();
   receipts.clear();
   delete document.documentElement.dataset.pickerHidden;
-}
-
-let changeSaved: ((patch: Partial<api.PickerPreferences>) => void) | null = null;
-
-/** Rows changed in Settings, the one place it lives, as the picker hears of it. */
-export async function chooseRows(density: Density) {
-  changeSaved?.({ density });
-  await act(async () => { await emit("preferences:changed"); });
 }
 
 /** A palette row by its name, as a person reads it (the label, not the detail or keys). */
@@ -162,13 +154,13 @@ const receipts = new Map<string, Prepared>();
 let receiptNumber = 0;
 
 /** A synthetic engine result. Tests choose output; no renderer runs in the browser. */
-export function receipt(text: string, display: DisplayTree | null = null, warnings: string[] = []): Preview {
+export function receipt(text: string, display: DisplayTree | null = null, warnings: CitedWarning[] = []): Preview {
   const number = ++receiptNumber;
   return { effective_output: null, ticket: `synthetic-ticket-${number}`, content_hash: `synthetic-hash-${number}`, text, display: display ?? displayTree([{ item: 0, text }]), warnings };
 }
 
 /** A synthetic result with each reference's own words as its own token, joined by "; ". */
-export function lineReceipt(words: readonly string[], warnings: string[] = []): Preview {
+export function lineReceipt(words: readonly string[], warnings: CitedWarning[] = []): Preview {
   const spans = words.flatMap((text, item) => [...(item ? [{ item: null, text: "; " }] : []), { item, text }]);
   return { ...receipt(spans.map((span) => span.text).join(""), null, warnings), display: displayTree(spans) };
 }
@@ -195,7 +187,6 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
   let lastLibrary: Partial<api.LibraryStatus> = {};
   let activityTicket = 0;
   let preferences = { output: "pandoc", density: "comfortable", larger_text: false, paste: true, menu_bar: true } as api.PickerPreferences;
-  changeSaved = (patch) => { preferences = { ...preferences, ...patch }; };
   let revision = 0;
   const written = new Map<string, number>();
   const submitted = new Map<number, Partial<api.PickerPreferences>>();
@@ -227,6 +218,8 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
       { form: "narrative", example: "Smith (2020)", reason: null },
       { form: "year-only", example: "(2020)", reason: null },
     ] }),
+    // A way to share references, as the engine would copy the shown citation in it.
+    citation_example: (args) => prepared(args).request.items.map(({ id }) => `@misc{${citationKeys.get(JSON.stringify(id)) ?? ""}}`).join("\n"),
     copy_file_citation: (args) => {
       const { preview } = prepared(args);
       return { text: preview.text, warnings: preview.warnings };

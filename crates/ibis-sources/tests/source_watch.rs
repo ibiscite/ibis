@@ -1,4 +1,5 @@
 //! The real platform watcher, using synthetic files only.
+#![cfg(test)]
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 

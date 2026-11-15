@@ -35,6 +35,8 @@
   /* The longest a sheet's text and cards run before the window has more room. */
   --content-max: 42rem;
   --larger-text-scale: 1.15;
+  /* ⌘+ and ⌘− (ui/Delights' useZoomFeedback) set this for the session; 1 is 100%. */
+  --text-zoom: 1;
 
   /* Sizes. */
   /* --tile is the icon slot: every row's icon, the bird and the back chevron centre on it. */
@@ -152,7 +154,10 @@
   --highlight: var(--accent-wash);
   /* Previews: the real part at one size each. The window picture keeps Medium's shape. */
   --preview-window-w: 45rem; --preview-window-h: 30rem;
-  --preview-window: .21; --preview-thumb: .09; --preview-live: .75;
+  --preview-window: .21; --preview-thumb: .09; --preview-live: .5;
+  /* The live preview shows the window's top: the search band and the first rows,
+     so the choices under it stay in view in a 560 px tall Settings window. */
+  --preview-live-crop: .6;
   /* The bird: the app icon names Ibis; the depth mark greets. */
   --mark-app: 6rem; --mark-greeting: 3.5rem;
   /* The search bar's bird fills the lead column, so its ink is the query's line height. */
@@ -288,9 +293,6 @@
 /* Layer 3: components, derived from the layers above. */
 :root {
   --key-gap: calc((var(--control-small-h) - var(--key)) / 2);
-  /* A band that ends in a key cap's button ends here, so the cap's fill lands on the
-     trailing edge (--row-start from the window), where years and counts end. */
-  --cap-end: calc(var(--row-start) - var(--key-gap));
   /* Layout: the header (the search field's band) and the footer band, and where a
      section's heading and words start: on the text of the rows in its card. */
   --header-h: calc(var(--field-h) + 2 * var(--inset) + var(--border-width));

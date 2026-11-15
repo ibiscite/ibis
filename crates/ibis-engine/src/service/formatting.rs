@@ -174,7 +174,6 @@ pub(crate) fn formatter_error(failure: FormatError) -> EngineError {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used)]
     use super::*;
     use std::time::{Duration, Instant};
     fn case() -> GoldenCase {

@@ -2,20 +2,22 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { Icon } from "../../icons";
 import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type Ref, type RefObject } from "react";
 import type { SearchResult } from "../../api";
-import type { Preview, Notice } from "../../bindings";
+import type { CitedWarning, Preview, Notice } from "../../bindings";
 import { outputName, writesEntries, type FormattedCitation, type OutputId } from "../../format/outputs";
 import { renderDisplay, renderNode } from "../../format/display";
-import { say } from "../../i18n";
+import { say, warningText } from "../../i18n";
 import { choiceKey, idKey, type CitationDetailsChange, type CitationReference } from "./choice";
 import { closestMatchWarnings } from "./rows";
 import type { ShelfCopied } from "./session";
 import { composing } from "../../composition";
 import { Button } from "../../ui/Button";
 import { CitationToken } from "../../ui/CitationToken";
+import { useDelayed } from "../../ui/timers";
 import { beak } from "../../brand";
 import { CitationInspector } from "./CitationInspector";
 import type { CitationInspectorState, InspectorPanel } from "./useCitationInspector";
 import "../../ui/CitationShelf.css";
+import { Status } from "../../ui/Status";
 
 /** A short name for the menu, independent of its citation key. */
 export function referenceLabel(r: SearchResult): string {
@@ -74,7 +76,7 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
   style: OutputId | null;
   keys: boolean;
   shown: FormattedCitation | "failed" | "stale" | null | undefined;
-  outputWarnings: readonly string[];
+  outputWarnings: readonly CitedWarning[];
   /** The engine's notices about the shown citation. */
   outputNotices?: readonly Notice[];
   problem?: string;
@@ -144,15 +146,10 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
   useLayoutEffect(() => { if (ready) retained.current = { presentation, ids: currentIds, value: ready }; }, [ready, presentation, referenceIds]);
   const meaning = choiceKey(references);
   const pendingOwner = useMemo(() => ({ meaning, keepOrder, style, keys, presentation }), [meaning, keepOrder, style, keys, presentation]);
-  const [expired, setExpired] = useState<object | null>(null);
   // While the next preview is made, hold the last citation for 300 ms.
   const waiting = shown === null;
-  useEffect(() => {
-    if (!waiting) { setExpired(null); return; }
-    const timer = window.setTimeout(() => setExpired(pendingOwner), 300);
-    return () => window.clearTimeout(timer);
-  }, [waiting, pendingOwner]);
-  const previous = waiting && expired !== pendingOwner && retained.current?.presentation === presentation ? retained.current?.value ?? null : null;
+  const expired = useDelayed(waiting, 300, pendingOwner);
+  const previous = waiting && !expired && retained.current?.presentation === presentation ? retained.current?.value ?? null : null;
   // The same references in another order keep their tokens while the next preview is
   // made, each found by identity, so a moved token keeps its place and its focus.
   const retainedIds = retained.current?.ids ?? [];
@@ -198,7 +195,8 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
   });
   const fromPrevious = !ready && retainedTokens;
   const referenceAt = (item: number) => fromPrevious ? references.find((reference) => idKey(reference.id) === retainedIds[item]) : references[item];
-  const keyText = (value: string) => keys ? value.split(/([^\p{L}\p{N}\s]+)/u).map((part, index) => index % 2 ? <span className="shelf-punctuation" key={index}>{part}</span> : part) : value;
+  // The shelf is one line: an output written on several (BibTeX) reads as one here, its words in full in the tooltip.
+  const keyText = (written: string) => { const value = written.replace(/\s*\n\s*/g, " "); return keys ? value.split(/([^\p{L}\p{N}\s]+)/u).map((part, index) => index % 2 ? <span className="shelf-punctuation" key={index}>{part}</span> : part) : value; };
   const tokens = visible?.display.nodes.map((node) => ({ item: node.item, text: node.content.map((run) => run.text).join(""), node })) ?? (shown === undefined || shown === null && !previous ? references.map((_, item) => ({ item, text: `${item ? "; " : ""}${labels[item]}` })) : undefined);
   // The line's order, which a style may have sorted: moves follow what the person sees.
   const shownOrder = [...new Set(tokens?.flatMap((span) => span.item === null ? [] : [referenceAt(span.item)]).filter((r) => r !== undefined).map((r) => idKey(r.id)))];
@@ -320,10 +318,10 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
     ? token(single, labels[0]!, singleWords, <bdi id={text !== undefined ? citationId : undefined} dir="auto" className={text !== undefined ? "preview-text" : "shelf-reference-name"}>{text !== undefined ? visible ? renderDisplay(visible.display, keyText) : keyText(text) : labels[0]}</bdi>, text !== undefined ? citationId : undefined)
     : null;
   return <>
-    <p className="visually-hidden" role="status" aria-label={say("picker-citation-selection")} aria-live="polite" aria-atomic="true">
-      {announce ? [say("picker-selection-count", { count: selected.size }), ...partialWarnings].join(" ") : ""}
-    </p>
-    <p className="visually-hidden" role="status" aria-live="polite">{keepOrder ? orderNote : ""}</p>
+    <Status className="visually-hidden" label={say("picker-citation-selection")}>
+      {announce ? [say("picker-selection-count", { count: selected.size }), ...partialWarnings.map((w) => warningText(w))].join(" ") : ""}
+    </Status>
+    <Status className="visually-hidden">{keepOrder ? orderNote : ""}</Status>
     {panel && hasShelf && <CitationInspector key={panel.reference ?? panel.kind} ref={returnFocus} id={inspectorId} panel={panel} anchor={anchor} heading={labels[editedIndex] ?? say("picker-citation-details")}
       keepOrder={style && onKeepOrder && references.length > 1 && edited && isSelected(edited) ? { checked: keepOrder, onChange: onKeepOrder } : null}
       reference={panel.kind === "warnings" ? undefined : edited} index={editedIndex} selected={Boolean(edited && isSelected(edited))} previewReceipt={previewReceipt} output={`${style}:${keys}`}
@@ -354,13 +352,13 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
           {previous && !retainedTokens ? <bdi className="preview-text shelf-retained" dir="auto">{renderDisplay(previous.display, keyText)}</bdi> : shown !== "failed" && shown !== "stale" && singleToken}
           {text !== undefined ? singleToken ? null : citationTokens ? <span className="shelf-fragments" data-multiple={citationTokens.filter((node) => node.type === CitationToken).length > 1 || undefined} dir={keys ? "ltr" : "auto"}>{citationTokens}</span> : <bdi id={citationId} dir="auto" className="preview-text">
             {ready && !keys ? renderDisplay(ready.display, keyText) : keyText(text)}
-          </bdi> : shown === "failed" ? <><span className="shelf-state-icon" data-state="failed" aria-hidden="true">!</span><p role={panel ? undefined : "alert"} title={fullProblem}>{fullProblem}</p></> : shown === "stale" ? <><span className="shelf-state-icon" data-state="stale" aria-hidden="true">!</span><p role="status">{say("picker-shelf-stale")}</p></>
-            : shown === undefined && !previous && citationTokens ? <span className="shelf-fragments">{citationTokens}</span> : shown === null && !previous ? <p role="status">{say("picker-preview-pending")}</p> : null}
+          </bdi> : shown === "failed" ? <><span className="shelf-state-icon" data-state="failed" aria-hidden="true">!</span><Status role={panel ? null : "alert"} title={fullProblem}>{fullProblem}</Status></> : shown === "stale" ? <><span className="shelf-state-icon" data-state="stale" aria-hidden="true">!</span><Status>{say("picker-shelf-stale")}</Status></>
+            : shown === undefined && !previous && citationTokens ? <span className="shelf-fragments">{citationTokens}</span> : shown === null && !previous ? <Status>{say("picker-preview-pending")}</Status> : null}
           {copied && <Beak closing />}
         </div>
         <div className="shelf-actions">
-          {copied && <span role="status" aria-label={say("picker-copied")} className="shelf-copied"><Icon name="check" />{say("picker-copied")}</span>}
-          {statusLabel && !detailsOpen && <Button variant="quiet" className="shelf-warnings" aria-label={statusLabel} title={statusLabel}
+          {copied && <Status as="span" label={say("picker-copied")} className="shelf-copied"><Icon name="check" />{say("picker-copied")}</Status>}
+          {statusLabel && <Button variant="quiet" className="shelf-warnings" aria-label={statusLabel} title={statusLabel}
             aria-expanded={panel?.kind === "warnings"} aria-controls={panel?.kind === "warnings" ? inspectorId : undefined}
             onPress={(event) => toggle("warnings", event.target as HTMLElement)}>{compact ? warnings.length > 0 ? `! ${warnings.length}` : "i" : <>
               {warnings.length > 0 && <span>{say("picker-warning-count", { count: warnings.length })}</span>}

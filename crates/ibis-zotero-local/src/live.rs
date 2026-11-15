@@ -723,7 +723,6 @@ fn item_data(data: &serde_json::Map<String, Value>, key: &str, kind: &str) -> Re
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use serde_json::json;

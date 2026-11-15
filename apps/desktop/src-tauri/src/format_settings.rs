@@ -7,6 +7,7 @@ use crate::{library::CommandError, preferences::SettingsFile};
 #[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct AppFormat {
     id: String,
+    /// Resolved at display time by the same native lookup as the picker.
     app: String,
     format: String,
 }
@@ -32,8 +33,7 @@ pub(crate) fn format_settings(app: AppHandle) -> Result<FormatSettingsView, Comm
             .iter()
             .map(|entry| AppFormat {
                 id: crate::writings::app_key(&entry.app),
-                app: ibis_core::destination::lookup(&entry.app)
-                    .map_or_else(|| entry.app.normalized(), |app| app.name.to_owned()),
+                app: crate::destination::display_name(&entry.app),
                 format: entry.output.clone(),
             })
             .collect(),

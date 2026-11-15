@@ -1,4 +1,4 @@
-import { listen } from "@tauri-apps/api/event";
+import { events } from "./nativeEvents";
 
 function luminance(rgb: number[]): number {
   const linear = rgb.map((c) => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4);
@@ -42,6 +42,6 @@ export function setNativeAccent(value: unknown): void {
 
 export async function subscribeNativeAccent(): Promise<() => void> {
   let active = true;
-  const dispose = await listen<unknown>("accent:changed", ({ payload }) => { if (active) setNativeAccent(payload); });
+  const dispose = await events.onAccentChanged((payload) => { if (active) setNativeAccent(payload); });
   return () => { active = false; dispose(); setNativeAccent(null); };
 }

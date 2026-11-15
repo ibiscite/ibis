@@ -1,5 +1,5 @@
-#![allow(clippy::unwrap_used)]
 //! Deterministic, search-only kana readings, exercised through SnapshotIndex.
+#![cfg(test)]
 use std::sync::Arc;
 
 use ibis_core::{
@@ -78,6 +78,46 @@ fn kana_width_script_and_composed_voicing_share_author_readings() {
         // Search cannot alter original names, CSL, keys, aliases or fingerprints.
         assert_eq!(serde_json::to_value(index.snapshot().as_ref()).unwrap(), original);
     }
+}
+
+#[test]
+fn kana_romaji_and_kanji_queries_agree_through_one_reading() {
+    // Romaji names are found by a kana query read the same way; Han has no reading.
+    let index = SnapshotIndex::new(snapshot(vec![
+        record(
+            "romaji",
+            json!({"title": "Invented tides", "author": [{"family": "Kazane", "given": "Shuu"}]}),
+        ),
+        record(
+            "kana",
+            json!({"title": "Invented shores", "author": [{"family": "かざね", "given": "しゅう"}]}),
+        ),
+        record(
+            "han",
+            json!({"title": "Invented cliffs", "author": [{"family": "風音", "given": "しゅう"}]}),
+        ),
+        record(
+            "titled",
+            json!({"title": "Kazane", "author": [{"literal": "Invented Collective"}]}),
+        ),
+    ]));
+    for query in ["kazane", "かざね", "カザネ", "ｶｻﾞﾈ", "a:かざね", "かざね しゅう", "かざ"] {
+        let mut found = keys(&index, query);
+        found.retain(|key| key != "titled");
+        found.sort();
+        assert_eq!(found, ["kana", "romaji"], "{query}");
+    }
+    // A phrase reads as its romaji does, in the order the name is written.
+    assert_eq!(keys(&index, "a:\"かざね しゅう\""), keys(&index, "a:\"kazane shuu\""));
+    // A reading is matched in names only, and a kanji name only as written.
+    assert!(!keys(&index, "かざね").contains(&"titled".to_string()));
+    assert!(keys(&index, "t:かざね").is_empty());
+    assert_eq!(keys(&index, "風音"), ["han"]);
+    let hits = index.search("かざね", 10, None, &|| false).unwrap();
+    assert!(
+        hits.iter()
+            .all(|hit| hit.matched == [MatchField::Author] && !hit.typo && !hit.partial)
+    );
 }
 
 #[test]

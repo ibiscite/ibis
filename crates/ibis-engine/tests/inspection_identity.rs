@@ -1,5 +1,4 @@
 //! A host's normal write permission cannot widen a read-only health request.
-#![allow(clippy::unwrap_used)]
 use ibis_engine::{
     Cancellation, Engine,
     health::{self, InspectionPolicy},

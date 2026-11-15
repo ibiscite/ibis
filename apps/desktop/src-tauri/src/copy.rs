@@ -12,7 +12,7 @@ use crate::library::{CommandError, Library, PreviewIntent};
 pub(crate) struct Copied {
     pub(crate) text: String,
     /// What the chosen syntax could not express, and other problems the user should see.
-    pub(crate) warnings: Vec<String>,
+    pub(crate) warnings: Vec<ibis_core::contract::CitedWarning>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) summary: Option<ReceiptSummary>,
     /// Unique clipboard-write identity for receipts, even without a native paste proof.
@@ -232,6 +232,39 @@ pub(crate) async fn citation_details(
         .engine
         .citations()
         .forms(SessionId::PICKER, &ticket, &content_hash, item, cancel)?;
+    tauri::async_runtime::spawn_blocking(move || task.run().map_err(CommandError::from))
+        .await
+        .map_err(|_| CommandError::NotPrepared)?
+}
+
+/// The prepared preview in another output, as choosing that output would copy
+/// it; like the details, it never publishes a new ticket. `None` when that
+/// output cannot write every reference.
+#[tauri::command]
+#[ibis_desktop_macros::command]
+pub(crate) async fn citation_example(
+    ticket: String,
+    content_hash: String,
+    output: String,
+    intent: PreviewIntent,
+    library: State<'_, Mutex<Library>>,
+) -> Result<Option<String>, CommandError> {
+    let file = library
+        .lock()
+        .map_err(|_| CommandError::SnapshotChanged)?
+        .file
+        .clone()
+        .ok_or(CommandError::SnapshotChanged)?;
+    let output = crate::output::listed(&output)
+        .ok_or_else(|| CommandError::from(ibis_core::contract::CitationError::UnsupportedOutput))?;
+    let cancel = file
+        .engine
+        .citations()
+        .start(SessionId::PICKER, Operation::Forms, intent)?;
+    let task =
+        file.engine
+            .citations()
+            .example(SessionId::PICKER, &ticket, &content_hash, output.spec().clone(), cancel)?;
     tauri::async_runtime::spawn_blocking(move || task.run().map_err(CommandError::from))
         .await
         .map_err(|_| CommandError::NotPrepared)?

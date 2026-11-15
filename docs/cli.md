@@ -17,11 +17,10 @@ The desktop app includes the matching `ibis` built from the same commit.
   as root. On macOS, Finder's PATH can differ from your terminal; Homebrew's
   standard locations are also checked for conflicts.
 - **Windows:** the per-user NSIS installer adds the app folder to your user
-  PATH without elevation. MSI also adds a user PATH entry. Open a new terminal
-  after installation. Channel installs serialize their PATH updates and refuse
-  additions that exceed Windows's expanded PATH limit. Successful uninstall
-  removes the installer's entry; cancellation preserves it, and MSI rollback
-  preserves later PATH edits.
+  PATH without elevation. Open a new terminal after installation. Channel
+  installs serialize their PATH updates and refuse additions that exceed
+  Windows's expanded PATH limit. Successful uninstall removes the installer's
+  entry; cancellation preserves it.
 - **Linux AppImage:** the same Settings action offers the command as an owned
   copy in `~/.local/bin`, so it keeps working after the image unmounts. It shows
   the same profile line when that directory is missing from PATH. Install again

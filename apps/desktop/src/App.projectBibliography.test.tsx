@@ -5,11 +5,12 @@ import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import type { EntryCopy, ProjectStatus } from "./api";
 import { backend, chooseFromMore, receipt, resetApp, result } from "./testing/app";
+import { missingKey } from "./test-fixtures";
 
 afterEach(resetApp);
 
 test("an unreadable bibliography is a warning with Retry: Enter copies, says why and stays open", async () => {
-  const warning = "Couldn't check a against thesis.bib.";
+  const warning = { item: 0, message: { id: "app-project-warning", args: { key: "a", name: "thesis.bib", state: "could-not-check" } } };
   const called = backend({
     search: () => [result("a", "Invented work")],
     project_status: () => file({ state: "failed", reason: "It is not there, or not on this computer yet." }),
@@ -24,7 +25,7 @@ test("an unreadable bibliography is a warning with Retry: Enter copies, says why
   await waitFor(() => expect(called).toContain("retry_project"));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   await waitFor(() => expect(called).toContain("copy_file_citation"));
-  await waitFor(() => expect(screen.getAllByText(warning).length).toBeGreaterThan(0));
+  await waitFor(() => expect(screen.getAllByText("Couldn’t check a against thesis.bib.").length).toBeGreaterThan(0));
   expect(called).not.toContain("hide_picker");
 });
 
@@ -96,7 +97,7 @@ test("a repeated key says where to look in the file", async () => {
 });
 
 test("a citation with a warning stays open and says why instead of pasting", async () => {
-  const warning = "okafor2018 is missing from thesis.bib.";
+  const warning = missingKey("okafor2018");
   picker("missing", () => file(), {
     preview_file_citation: () => receipt("[@okafor2018]", null, [warning]),
     copy_file_citation: () => ({ text: "[@okafor2018]", warnings: [warning] }),
@@ -104,7 +105,7 @@ test("a citation with a warning stays open and says why instead of pasting", asy
   await waitFor(() => expect(shownRow()).toContain("Missing from thesis.bib"));
   await waitFor(() => expect(document.body.textContent).toContain("[@okafor2018]"));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
-  await waitFor(() => expect(document.body.textContent).toContain(warning));
+  await waitFor(() => expect(document.body.textContent).toContain("okafor2018 is missing from thesis.bib."));
   expect(calls("hide_picker")).toBe(0);
 });
 

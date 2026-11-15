@@ -125,6 +125,7 @@ pub struct SearchHit {
     /// nothing matches every term.
     pub partial: bool,
 }
+/// Missing explicit citation keys in a recognized pasted list.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct PastedList {
     pub missing: Vec<String>,

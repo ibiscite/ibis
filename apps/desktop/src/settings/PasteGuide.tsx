@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { Button } from "../ui/Button";
 import { FileDrag } from "../ui/FileDrag";
+import { useDelayed } from "../ui/timers";
 import "../ui/PasteGuide.css";
 import { useInterfaceMessages } from "../i18n";
 import type { PastePermission, SettingsApi } from "./api";
 import appIcon from "../../src-tauri/icons/128x128.png";
+import { Status } from "../ui/Status";
 
 /** How often to look again while waiting for the person in System Settings. */
 export const RECHECK_MS = 1_000;
@@ -51,15 +53,11 @@ export function PasteGuide({ name, permission, onOpen, onDrag }: {
   name: string; permission: ReadPermission; onOpen: () => void; onDrag: () => Promise<void>;
 }) {
   const { text } = useInterfaceMessages();
-  const [opened, setOpened] = useState(false);
-  const [slow, setSlow] = useState(false);
+  // Each Open starts its own wait before the hint that the switch is slow to show.
+  const [opened, setOpened] = useState(0);
+  const slow = useDelayed(opened > 0 && !permission.granted, STALE_HINT_MS, opened);
   const [dragFailed, setDragFailed] = useState(false);
-  const open = () => { setOpened(true); setSlow(false); setDragFailed(false); onOpen(); };
-  useEffect(() => {
-    if (!opened || permission.granted) return;
-    const timer = window.setTimeout(() => setSlow(true), STALE_HINT_MS);
-    return () => window.clearTimeout(timer);
-  }, [opened, permission.granted]);
+  const open = () => { setOpened((count) => count + 1); setDragFailed(false); onOpen(); };
   return (
     <div className="ui-paste-guide" data-granted={permission.granted || undefined}>
       <div className="ui-paste-guide-art" aria-hidden="true">
@@ -81,13 +79,13 @@ export function PasteGuide({ name, permission, onOpen, onDrag }: {
             <FileDrag icon={appIcon} label={text("general-paste-drag", { name, list: permission.list })} description={text("general-paste-drag-keyboard")} onPress={open}
               onDrag={() => { setDragFailed(false); void onDrag().catch(() => setDragFailed(true)); }} />
           </>}
-          <p className="ui-paste-guide-status" role="status" aria-live="polite" data-done={permission.granted || undefined}>
-            {permission.granted ? text("general-paste-granted") : permission.unreadable ? text("general-paste-unreadable") : opened ? text("general-paste-waiting") : ""}
-          </p>
+          <Status className="ui-paste-guide-status" data-done={permission.granted || undefined}>
+            {permission.granted ? text("general-paste-granted") : permission.unreadable ? text("general-paste-unreadable") : opened > 0 ? text("general-paste-waiting") : ""}
+          </Status>
         </div>
         {!permission.granted && <p className="ui-paste-guide-note">{text("general-paste-drag-fallback")}</p>}
-        {dragFailed && !permission.granted && <p className="ui-paste-guide-note" data-problem role="alert">{text("general-paste-drag-failed")}</p>}
-        {slow && !permission.granted && <p className="ui-paste-guide-note">{text("general-paste-stale", { name })}</p>}
+        {dragFailed && !permission.granted && <Status className="ui-paste-guide-note" data-problem role="alert">{text("general-paste-drag-failed")}</Status>}
+        {slow && <p className="ui-paste-guide-note">{text("general-paste-stale", { name })}</p>}
       </div>
     </div>
   );

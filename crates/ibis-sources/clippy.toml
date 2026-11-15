@@ -1,3 +1,11 @@
+# Tests may unwrap, expect and panic; production code may not (Cargo.toml lints).
+# Clippy reads only this file for this crate: keep it in step with the workspace clippy.toml.
+# Integration-test files whose helpers sit outside #[test] functions start
+# with `#![cfg(test)]`, which Clippy reads as test code.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+
 disallowed-methods = [
     { path = "std::fs::metadata", reason = "Filesystem metadata belongs to the source I/O owner." },
     { path = "std::fs::symlink_metadata", reason = "Filesystem metadata belongs to the source I/O owner." },

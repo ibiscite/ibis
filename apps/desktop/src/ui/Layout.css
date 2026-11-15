@@ -38,9 +38,12 @@
 .ui-row-text { display: flex; flex: 1; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
 .ui-row > :not(.ui-row-lead, .ui-row-problem, .visually-hidden) { max-inline-size: 100%; }
 .ui-row .ui-button { padding-block: var(--space-1); }
-/* [C24] Use Default keeps its place at a row's end, so nothing moves when it shows. */
-.ui-row-label { display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0; }
-.ui-row-reset { display: inline-flex; flex: none; block-size: var(--type-body-line); align-items: center; }
+/* [C24] A resettable control and its Use Default, which sits right before it in a
+   room the row keeps either way, so the control never moves when ↺ shows. */
+.ui-row-control { display: flex; flex-wrap: wrap; align-items: center; justify-content: end; gap: var(--space-1); min-width: 0; margin-inline-start: auto; }
+/* A note about the control (Window size's Custom) takes its own line under it, ending where it ends. */
+.ui-row-control > .ui-note { text-align: end; }
+.ui-row-reset { display: inline-flex; flex: none; inline-size: var(--control-small-h); align-items: center; justify-content: center; }
 .ui-row-reset .ui-icon-button.ui-button[data-variant] { color: var(--text-secondary); }
 .ui-row-description { color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-body-line); }
 .ui-row-problem { flex-basis: 100%; margin: 0; color: var(--text); overflow-wrap: anywhere; }

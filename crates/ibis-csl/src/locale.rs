@@ -87,7 +87,6 @@ pub(crate) fn install(ctx: &Ctx<'_>) -> rquickjs::Result<()> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use rquickjs::{Context, Runtime};

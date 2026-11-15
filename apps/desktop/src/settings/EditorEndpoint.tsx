@@ -6,6 +6,7 @@ import { Note, Row } from "../ui/Layout";
 import { Setting } from "./SettingRows";
 import { ROWS } from "./rows";
 import { useSettingUndo } from "../ui/useSettingUndo";
+import { useNativeEvent } from "../nativeEvents";
 
 export type EditorEndpointApi = {
   editorEndpoint: () => Promise<EndpointStatus>;
@@ -56,25 +57,20 @@ export function EditorEndpointRow({ api, highlighted, resetSetting, onEdit }: {
   };
   // biome-ignore lint/correctness/useExhaustiveDependencies: read once when the page opens.
   useEffect(() => { mounted.current = true; void take(api.editorEndpoint).catch(() => undefined); return () => { mounted.current = false; asked.current += 1; }; }, [api.editorEndpoint]);
-  useEffect(() => {
-    let alive = true;
-    const events = api.onEditorEndpoint?.((next) => {
-      if (!alive) return;
-      // An acknowledgement of this save may arrive before its command reply.
-      // A different live choice retires the operation and its possible Undo.
-      if (pending.current?.expected !== next.on || next.problem) {
-        asked.current += 1;
-        pending.current = null;
-        const previous = latestStatus.current;
-        if (!previous || !sameStatus(previous, next)) {
-          onEdit?.(); localUndo.clear();
-        }
-      } else pending.current.observed = next;
-      latestStatus.current = next;
-      setStatus(next); setFailed(false); setCopied(false);
-    });
-    return () => { alive = false; void events?.then((stop) => stop()); };
-  }, [api.onEditorEndpoint, onEdit, localUndo.clear]);
+  useNativeEvent(api.onEditorEndpoint, (next) => {
+    // An acknowledgement of this save may arrive before its command reply.
+    // A different live choice retires the operation and its possible Undo.
+    if (pending.current?.expected !== next.on || next.problem) {
+      asked.current += 1;
+      pending.current = null;
+      const previous = latestStatus.current;
+      if (!previous || !sameStatus(previous, next)) {
+        onEdit?.(); localUndo.clear();
+      }
+    } else pending.current.observed = next;
+    latestStatus.current = next;
+    setStatus(next); setFailed(false); setCopied(false);
+  });
   const change = (on: boolean, restoring = false) => {
     if (!restoring) { onEdit?.(); localUndo.clear(); }
     return take(() => api.setEditorEndpoint(on), on);

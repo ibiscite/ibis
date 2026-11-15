@@ -92,12 +92,13 @@ test("footer geometry catches a short selector, status off the leading edge and 
     <button type="button" className="library-status-trigger" data-band="leading"><span className="library-status">thesis.bib</span></button>
     <span className="more"><button type="button" className="ui-button more-button">More</button></span>
   </footer><div className="menu-popover"><div id="library-menu" /></div></main>);
-  let height = 24, statusX = 20, menuX = 8, menuBottom = 442;
+  let height = 24, statusX = 20, menuX = 8, menuBottom = 442, moreEnd = 712;
   const boxes = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
     if (this.matches(".library-status-trigger")) return new DOMRect(8, 448, 210, height);
-    if (this.matches(".more .ui-button")) return new DOMRect(640, 448, 72, 24);
+    if (this.matches(".more .ui-button")) return new DOMRect(moreEnd - 72, 448, 72, 24);
     if (this.matches(".library-status")) return new DOMRect(statusX, 448, 190, 24);
     if (this.matches(".menu-popover")) return new DOMRect(menuX, 200, 240, menuBottom - 200);
+    if (this.style.insetInlineEnd === "var(--inset)") return new DOMRect(680, 0, 32, 1);
     if (this.style.insetInlineStart === "var(--inset)") return new DOMRect(8, 0, 32, 1);
     if (this.style.insetInlineStart.includes("--title-start")) return new DOMRect(64, 0, 32, 1);
     return new DOMRect(20, 0, 32, 32);
@@ -109,6 +110,10 @@ test("footer geometry catches a short selector, status off the leading edge and 
     expect(failures()).toContainEqual(expect.stringContaining("library selector 20.0px tall"));
     height = 24; statusX = 24;
     expect(failures()).toContainEqual(expect.stringContaining("starts 24.0, leading edge 20.0"));
+    // More is the band's last control: its plate ends on the inset, as the rows' fills do (#1923).
+    statusX = 20; moreEnd = 702;
+    expect(failures()).toContainEqual("[C3] button.ui-button.more-button: plate ends 702.0, window inset 712.0");
+    moreEnd = 712;
     statusX = 20; menuX = 20; menuBottom = 460;
     expect(failures()).toContainEqual(expect.stringContaining("library menu starts 20.0, selector 8.0"));
     expect(failures()).toContainEqual(expect.stringContaining("must leave a gap above selector"));
@@ -160,4 +165,21 @@ test("Band slots hold update progress and new rows to their declared columns", (
     titleX = 64; leadX = 24;
     expect(failures()).toContainEqual(expect.stringContaining("tile column 36.0"));
   } finally { boxes.mockRestore(); view.unmount(); }
+});
+
+test("the frame guard catches a frame that ends short of the window or past it", () => {
+  const view = render(<main className="ui-frame" />);
+  const edge = vi.spyOn(document.documentElement, "clientHeight", "get").mockReturnValue(480);
+  const frame = (bottom: number) => vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 720, bottom));
+  const frameFailures = () => geometry(view.container).filter((failure) => failure.includes("the frame spans"));
+  try {
+    // Text at 80% that zoomed the whole document left the footer 96 px above the edge.
+    let boxes = frame(384);
+    expect(frameFailures()).toEqual(["[C24 frame] the frame spans 0.0–384.0px of a 480px window: it ends 96.0px short of its edge"]);
+    boxes.mockRestore(); boxes = frame(576);
+    expect(frameFailures()).toEqual(["[C24 frame] the frame spans 0.0–576.0px of a 480px window: it ends 96.0px past its edge"]);
+    boxes.mockRestore(); boxes = frame(480);
+    expect(frameFailures()).toEqual([]);
+    boxes.mockRestore();
+  } finally { edge.mockRestore(); view.unmount(); }
 });

@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, expect, test, vi } from "vitest";
 import type { RestorePreview } from "../bindings";
 import { type BackupApi, BackupRows } from "./BackupRows";
+import { deferred } from "../testing/deferred";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
@@ -12,12 +13,6 @@ const preview = (ticket: number, changes: RestorePreview["changes"] = [
   { setting: "larger_text", from: null, to: "on" },
   { setting: "shortcut.windows", from: null, to: "Alt+Space" },
 ]): RestorePreview => ({ ticket, made_on: "windows", made_by: "0.2.8", changes, notes: ["library-not-found"] });
-
-function deferred<T>() {
-  let resolve!: (value: T) => void, reject!: (error: unknown) => void;
-  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
-  return { promise, resolve, reject };
-}
 
 function fakeApi(overrides: Partial<BackupApi> = {}): BackupApi {
   return {

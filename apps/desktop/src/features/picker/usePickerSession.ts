@@ -1,7 +1,10 @@
 import { useState, useSyncExternalStore } from "react";
-import type { PickerPreview } from "../../App";
+import type { Copied } from "../../api";
 import { initialSession } from "./session";
 import { createSessionController } from "./sessionController";
+
+// A picture of the picker starts from this query and copy notice.
+export type PickerPreview = { query?: string; copied?: Copied };
 
 export function usePickerSession(preview?: PickerPreview) {
   const [session] = useState(() => createSessionController(initialSession(preview?.query, preview?.copied)));

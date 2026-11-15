@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { SessionBibliography, SessionEdit, SessionReferencesView } from "../../api";
 import { isCancelled, isSnapshotChanged } from "../../api";
 import { outputName, type OutputId } from "../../format/outputs";
-import { isolate, problemText, say } from "../../i18n";
+import { isolate, problemText, say, warningText } from "../../i18n";
 import { Button } from "../../ui/Button";
 import { Group, Row, Section } from "../../ui/Layout";
 import { Sheet, SheetOutput } from "../../ui/Sheet";
@@ -114,7 +114,7 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
     {view?.overflowed && <p role="status">{say("session-full")}</p>}
     {bibliography && <Section title={say("session-bibliography-in", { style: isolate(name) })} id="session-bibliography" level={3}>
       <SheetOutput>{renderDisplay(bibliography.display)}</SheetOutput>
-      {bibliography.warnings.map((warning) => <p key={warning} role="status">{warning}</p>)}
+      {bibliography.warnings.map((warning, i) => <p key={i} role="status">{warningText(warning)}</p>)}
       {bibliography.left_out.length > 0 && <p role="status">{say("session-left-out", { names: bibliography.left_out.map(isolate).join(", ") })}</p>}
     </Section>}
     {problem && <p role="alert">{problem.text}</p>}

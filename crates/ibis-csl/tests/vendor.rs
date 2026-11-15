@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used)]
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeSet, fs, path::Path};
 

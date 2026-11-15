@@ -5,6 +5,7 @@
 //! `--ignored`. The test adds synthetic items through Zotero's connector
 //! endpoint, so what Ibis reads is exactly what Zotero itself sends, not a
 //! hand-written imitation of it.
+#![cfg(test)]
 
 use std::error::Error;
 use std::io::{Read, Write};

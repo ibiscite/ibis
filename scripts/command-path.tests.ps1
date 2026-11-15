@@ -135,73 +135,42 @@ $stable = Join-Path $base 'Stable'
 $nightly = Join-Path $base 'Nightly'
 $foreign = Join-Path $base 'Foreign'
 $mutex = 'ibis-path-tests-' + [guid]::NewGuid().ToString('N')
-$transaction = '{12345678-1234-1234-1234-123456789abc}'
 $receipts = 'Software\ibiscite\Ibis\CommandPath'
-$transactions = 'Software\ibiscite\Ibis\CommandPathTransactions'
-function Update($Registry, [string]$Action, [string]$Directory = $stable, [string]$Transaction = '', [string]$Machine = '') {
-  Invoke-IbisPathUpdate -Action $Action -Directory $Directory -Transaction $Transaction -Registry $Registry -MutexName $mutex -MachinePath $Machine
+function Update($Registry, [string]$Action, [string]$Directory = $stable, [string]$Machine = '') {
+  Invoke-IbisPathUpdate -Action $Action -Directory $Directory -Registry $Registry -MutexName $mutex -MachinePath $Machine
 }
 
 try {
-  # MSI formats ExeCommand before PowerShell sees it. Literal type brackets
-  # must survive MSI's property expansion in the inline commit cleanup too.
-  $wix = [xml](Get-Content -Raw -LiteralPath "$PSScriptRoot/../apps/desktop/src-tauri/packaging/path.wxs")
-  $command = ($wix.Wix.Fragment.CustomAction | Where-Object { $_.Id -eq 'IbisCommitUserPath' }).ExeCommand
-  $properties = @{ SystemFolder='C:\Windows\System32\'; ProductCode=$transaction }
-  $formatted = [regex]::Replace($command, '\[(?:\\(.)|([^\]]+))\]', [Text.RegularExpressions.MatchEvaluator]{
-    param($match)
-    if ($match.Groups[1].Success) { return $match.Groups[1].Value }
-    return $properties[$match.Groups[2].Value]
-  })
-  $commit = [regex]::Match($formatted, '-Command "(.*)"$').Groups[1].Value
-  if (-not $commit) { throw 'MSI commit supplied no PowerShell command.' }
-  $tokens = $parseErrors = $null
-  [void][Management.Automation.Language.Parser]::ParseInput($commit, [ref]$tokens, [ref]$parseErrors)
-  if ($parseErrors.Count -ne 0) { throw 'MSI property expansion corrupted the commit command.' }
-
-  # Exact rollback, including an originally absent value and registry type.
+  # Install and uninstall preserve an originally absent value and registry type.
   foreach ($initial in @($null, '', 'invented;;%IBIS_TEST_ROOT%;')) {
     $registry = [PathTestRegistry]::new()
     if ($null -ne $initial) { Put $registry $initial ([Microsoft.Win32.RegistryValueKind]::String) }
-    Update $registry Add $stable $transaction
-    Update $registry Rollback $stable $transaction
-    Equal (Raw $registry) $initial 'Unchanged rollback did not restore the exact original PATH.'
-    if ($null -ne $initial) { Equal ($registry.CreateSubKey('Environment').GetValueKind('Path')) ([Microsoft.Win32.RegistryValueKind]::String) 'Rollback changed the registry type.' }
-    Equal ($registry.Read()[$receipts]) $null 'Rollback left an ownership receipt.'
-    Equal ($registry.Read()[$transactions]) $null 'Rollback left a transaction.'
+    Update $registry Add $stable
+    Update $registry Remove $stable
+    Equal (Raw $registry) $initial 'Uninstall did not restore the exact original PATH.'
+    if ($null -ne $initial) { Equal ($registry.CreateSubKey('Environment').GetValueKind('Path')) ([Microsoft.Win32.RegistryValueKind]::String) 'Uninstall changed the registry type.' }
+    Equal ($registry.Read()[$receipts]) $null 'Uninstall left an ownership receipt.'
   }
 
   $registry = [PathTestRegistry]::new()
   Put $registry "original;$stable"
-  Update $registry Add $stable $transaction
+  Update $registry Add $stable
   Update $registry Remove
-  Update $registry Rollback $stable $transaction
-  Equal (Raw $registry) "original;$stable" 'Removal or rollback consumed a preexisting PATH entry.'
+  Equal (Raw $registry) "original;$stable" 'Removal consumed a preexisting PATH entry.'
   Equal ($registry.Read()[$receipts]) $null 'A preexisting entry acquired an ownership receipt.'
 
   $registry = [PathTestRegistry]::new()
   Put $registry 'original;'
-  Update $registry Add $stable $transaction
+  Update $registry Add $stable
   Update $registry Add $nightly
   Put $registry ((Raw $registry) + ';' + $foreign)
-  Update $registry Rollback $stable $transaction
-  Equal (Raw $registry) "original;;$nightly;$foreign" 'Rollback erased a later installer or user PATH entry.'
-  Update $registry Rollback $stable $transaction
-  Equal (Raw $registry) "original;;$nightly;$foreign" 'Repeated rollback changed PATH.'
+  Update $registry Remove $stable
+  Equal (Raw $registry) "original;;$nightly;$foreign" 'Removal erased a later installer or user PATH entry.'
+  Update $registry Remove $stable
+  Equal (Raw $registry) "original;;$nightly;$foreign" 'Repeated removal changed PATH.'
   Update $registry Remove $nightly
   Equal (Raw $registry) "original;;$foreign" 'Removal erased a foreign PATH entry.'
-  Write-Output 'PASS: add rollback preserves later PATH edits and other channels.'
-
-  $registry = [PathTestRegistry]::new()
-  Put $registry 'original'
-  Update $registry Add
-  Update $registry Remove $stable $transaction
-  Put $registry ((Raw $registry) + ';' + $foreign)
-  Update $registry Rollback $stable $transaction
-  Equal (Raw $registry) "original;$stable;$foreign" 'Remove rollback erased later edits or failed to restore Ibis.'
-  Update $registry Remove
-  Equal (Raw $registry) "original;$foreign" 'Remove rollback failed to restore ownership.'
-  Write-Output 'PASS: uninstall rollback restores only the removed command.'
+  Write-Output 'PASS: removal preserves later PATH edits and other channels.'
 
   # Expansion and the machine PATH both count toward the effective value.
   $oldExpansion = [Environment]::GetEnvironmentVariable('IBIS_PATH_TEST_EXPANSION')
@@ -210,10 +179,9 @@ try {
     foreach ($initial in @('%IBIS_PATH_TEST_EXPANSION%', ('x' * 32000))) {
       $registry = [PathTestRegistry]::new()
       Put $registry $initial
-      Reject { Update $registry Add $stable $transaction ('m' * 1000) } 'PATH is too long'
+      Reject { Update $registry Add $stable ('m' * 1000) } 'PATH is too long'
       Equal (Raw $registry) $initial 'Overflow changed PATH.'
       Equal ($registry.Read()[$receipts]) $null 'Overflow wrote a receipt.'
-      Equal ($registry.Read()[$transactions]) $null 'Overflow wrote a transaction.'
     }
     foreach ($length in @(32766, 32767)) {
       $registry = [PathTestRegistry]::new()
@@ -232,15 +200,13 @@ try {
   } finally { [Environment]::SetEnvironmentVariable('IBIS_PATH_TEST_EXPANSION', $oldExpansion) }
   Write-Output 'PASS: expanded machine plus user PATH is bounded before any ownership write.'
 
-  foreach ($action in @('Remove', 'Rollback')) {
-    $registry = [PathTestRegistry]::new()
-    Put $registry 'original'
-    Update $registry Add $stable $transaction
-    $later = 'x' * 32767
-    Put $registry ((Raw $registry) + ';' + $later)
-    Update $registry $action $stable $(if ($action -eq 'Rollback') { $transaction } else { '' })
-    Equal (Raw $registry) "original;$later" 'An oversized later edit prevented removal of only Ibis.'
-  }
+  $registry = [PathTestRegistry]::new()
+  Put $registry 'original'
+  Update $registry Add $stable
+  $later = 'x' * 32767
+  Put $registry ((Raw $registry) + ';' + $later)
+  Update $registry Remove $stable
+  Equal (Raw $registry) "original;$later" 'An oversized later edit prevented removal of only Ibis.'
 
   $registry = [PathTestRegistry]::new()
   Put $registry 'original'

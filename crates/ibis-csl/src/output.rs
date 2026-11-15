@@ -607,7 +607,6 @@ fn decode_entities(text: &str) -> Result<String, FormatError> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     #[test]
@@ -657,7 +656,6 @@ mod tests {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod review_tests {
     use super::*;
     use serde_json::json;

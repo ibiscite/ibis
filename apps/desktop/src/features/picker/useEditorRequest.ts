@@ -3,6 +3,7 @@ import type * as nativeApi from "../../api";
 // shows that one is waiting and asks for a fresh preview, which native code
 // writes in the editor's format.
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNativeEvent } from "../../nativeEvents";
 
 export function useEditorRequest(api: typeof nativeApi) {
   const { editorRequest, onEditorRequest } = api;
@@ -27,12 +28,9 @@ export function useEditorRequest(api: typeof nativeApi) {
   }, [editorRequest]);
   useEffect(() => {
     read();
-    const unlisten = onEditorRequest?.(read);
-    void unlisten?.then(read);
-    return () => {
-      asked.current += 1;
-      void unlisten?.then((stop) => stop());
-    };
-  }, [read, onEditorRequest]);
+    return () => { asked.current += 1; };
+  }, [read]);
+  // A request that began before this listener existed sent its event to nobody.
+  useNativeEvent(onEditorRequest, read, { ready: read });
   return { label, version, style };
 }

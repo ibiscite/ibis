@@ -43,4 +43,4 @@
 }
 .settings-page[data-more-above] > .ui-settings-page-title { box-shadow: 0 var(--border-width) 0 var(--separator); }
 /* Words of the page itself (a problem, a note) start on the row text, as a section's do. */
-.settings-page > .ui-note { padding-inline: var(--heading-offset); }
+.settings-page > :is(.ui-note, .ui-status) { padding-inline: var(--heading-offset); }

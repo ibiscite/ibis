@@ -1,5 +1,5 @@
 //! A shared BibTeX file is an ordinary library, with the same records and keys.
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 use ibis_engine::Engine;
 use serde_json::{Value, json};
 use std::{io::Cursor, path::Path};
@@ -86,6 +86,10 @@ fn shared_bibtex_reopens_with_the_same_records_and_keys() {
         ] {
             if field == "URL" && original["citation-key"] == "atlas2026" {
                 assert!(reopened[field].is_null());
+            } else if field == "title" && original["citation-key"] == "rich" {
+                // An ampersand that starts no reference stays as CSL processors print it.
+                let canonical = original[field].as_str().unwrap().replace("&amp;", "&");
+                assert_eq!(reopened[field], canonical, "{reopened}");
             } else {
                 assert_eq!(original[field], reopened[field], "{field}: {reopened}");
             }
@@ -139,8 +143,7 @@ fn identifier_fields_are_verbatim_for_latex_and_reopen_identically() {
         "URL":"https://e.org/a~b--c_d#x?y=1&z=2", "DOI":"10.1000/a~b--c_d#x?y=1&z=2",
         "ISBN":"978-0-1", "ISSN":"1234-5678", "PMID":"12345", "PMCID":"PMC12345"
     });
-    let braced =
-        json!({"id":"two","citation-key":"braced","type":"book","title":"Invented braces","URL":"https://e.org/{x}"});
+    let braced = json!({"id":"two","citation-key":"braced","type":"book","title":"Invented braces","URL":"https://e.org/{x}","ISBN":"978-0-{1}","ISSN":"1234-{5678}"});
     std::fs::write(&source, json!([record, braced]).to_string()).unwrap();
     let (code, text, errors) = run(&source, &["cite", "good", "braced", "--format", "bibtex"]);
     assert_eq!(code, 0, "{errors}");
@@ -167,6 +170,9 @@ fn identifier_fields_are_verbatim_for_latex_and_reopen_identically() {
     }
     assert_eq!(back[1]["URL"], "https://e.org/%7Bx%7D");
     assert_eq!(back[1]["citation-key"], "braced");
+    for field in ["ISBN", "ISSN"] {
+        assert_eq!(back[1][field], braced[field], "{field}");
+    }
 }
 
 #[test]

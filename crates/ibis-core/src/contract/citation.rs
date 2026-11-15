@@ -601,7 +601,6 @@ fn content_hash(text: &str, html: Option<&str>, rtf: Option<&str>) -> Fingerprin
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::super::model::LibraryId;
     use super::*;

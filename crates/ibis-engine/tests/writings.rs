@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 use ibis_core::contract::*;
 use ibis_engine::settings::{Settings, writings};
 use ibis_engine::{
@@ -172,8 +172,8 @@ fn prepared_bibliography_checks_keep_the_original_key_after_a_source_rename() {
     )
     .unwrap();
     let checked = prepared.project_checks(&ProjectRead::read(&path, None));
-    assert_eq!(checked[0].key, "vale2024");
-    assert!(matches!(checked[0].check, KeyCheck::In { .. }));
+    assert_eq!(checked[0].1.key, "vale2024");
+    assert!(matches!(checked[0].1.check, KeyCheck::In { .. }));
     assert_eq!(prepared.result().text, "[@vale2024]");
 }
 

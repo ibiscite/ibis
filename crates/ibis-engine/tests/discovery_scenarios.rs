@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 use ibis_core::{
     contract::ErrorCode,
     zotero::api::{Response, Transport, TransportError},

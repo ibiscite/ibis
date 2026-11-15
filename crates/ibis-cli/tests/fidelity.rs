@@ -4,6 +4,7 @@
 //!
 //! Requires `pandoc` on PATH. Skipped when it is missing, unless
 //! `IBIS_REQUIRE_PANDOC=1` is set (as in CI), in which case it fails.
+#![cfg(test)]
 
 use std::path::Path;
 use std::process::Command;

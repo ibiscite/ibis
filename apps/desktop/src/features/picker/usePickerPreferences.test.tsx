@@ -3,6 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { usePickerPreferences } from "./usePickerPreferences";
 import type { PickerPreferences } from "../../api";
 import type { PickerPreferencesPatch } from "../../bindings";
+import { deferred } from "../../testing/deferred";
 
 /** The settings owner as the picker sees it: each choice gets a receipt when
  * made, and `save` answers for it by patch and receipt. */
@@ -16,11 +17,6 @@ function owner(save: (patch: Partial<PickerPreferences>, receipt: number) => Pro
 }
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const preferences: PickerPreferences = { output: "pandoc", density: "comfortable", larger_text: false, paste: true, menu_bar: true };
-const deferred = <T,>() => {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
-  return { promise, resolve };
-};
 const context = { presentation: 0, styles: true, report: vi.fn(), perform: async (_operation: unknown, action: () => Promise<unknown>) => { try { await action(); } catch {} } };
 
 test("an older Settings notification read cannot restore the wrong global output", async () => {

@@ -1,0 +1,4 @@
+/* A column (ui/Stack.tsx) whose gaps come only from the spacing scale; in a short
+   window it may take its smaller short gap. */
+.ui-stack { --stack-gap: 0px; --stack-short-gap: initial; display: flex; flex-direction: column; gap: var(--stack-gap); min-width: 0; }
+@media (max-height: 400px) { .ui-stack { gap: var(--stack-short-gap, var(--stack-gap)); } }

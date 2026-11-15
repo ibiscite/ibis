@@ -4,7 +4,7 @@ import { FrameNotice, LineNotice } from "../../ui/Frame";
 import { QuietNotice } from "../../ui/NoticeSlot";
 import { Progress } from "../../ui/Progress";
 import { Button } from "../../ui/Button";
-import { isolate, type MessageId, say } from "../../i18n";
+import { isolate, type MessageId, say, warningText } from "../../i18n";
 
 /** An action whose failure the picker reports in its notices. */
 /** What failed, by operation: each says what didn't happen and what to do. */
@@ -62,8 +62,8 @@ export function notices({ library, failures, error, copyError, copied, confirmat
     error && <LineNotice key="error" role="alert">{error}</LineNotice>,
     copyError && <LineNotice key="copy-error" role="alert">{copyError}</LineNotice>,
     copied && copied.warnings.length > 0 && <FrameNotice key="warnings" className="copy-notice" role="group">
-      <ul className="ui-line-words" tabIndex={0} aria-label={say("picker-copy-warnings")} title={copied.warnings.join("\n")}>
-        {copied.warnings.map((w, i) => <li key={i}>{w}</li>)}
+      <ul className="ui-line-words" tabIndex={0} aria-label={say("picker-copy-warnings")} title={copied.warnings.map((w) => warningText(w)).join("\n")}>
+        {copied.warnings.map((w, i) => <li key={i}>{warningText(w)}</li>)}
       </ul>
       <Button size="small" aria-label={say("picker-dismiss-warnings")} onPress={onDismissCopied}>{say("picker-dismiss")}</Button>
     </FrameNotice>,

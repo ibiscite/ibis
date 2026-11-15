@@ -1,3 +1,4 @@
+#![cfg(test)]
 use ibis_zotero_local::discovery::{DiscoveryRoots, Platform, Warning, discover};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};

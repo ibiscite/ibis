@@ -73,6 +73,42 @@ test("a format pick is remembered for the browser, and a later pick replaces it"
   expect(calls).not.toContain("picker_preferences_saved");
 });
 
+test("sharing references is for this copy only: never remembered, and the app's format returns after it", async () => {
+  const { previews, copies, calls, remembered } = opened(() => (fixtureDestination({ ...BROWSER, format: formatAnswer("cite", "app") })));
+  await screen.findByText("First");
+  await waitFor(() => expect(formatShown()).toBe("LaTeX \\cite · Example Browser"));
+  openFormats();
+  const share = screen.getByRole("group", { name: "Share references" });
+  expect(within(share).getAllByRole("option").map((option) => option.textContent)).toEqual(["CSL-JSON", "BibTeX", "DOI links"]);
+  expect(within(screen.getByRole("group", { name: "Key formats" })).queryByRole("option", { name: "BibTeX" })).toBeNull();
+  // Highlighted, it says it is for this paste, not for the app.
+  fireEvent.pointerMove(within(share).getByRole("option", { name: "BibTeX" }), { clientX: 1, clientY: 1 });
+  await waitFor(() => expect(screen.getByRole("button", { name: /^Use for This Paste/ })).toBeTruthy());
+  expect(screen.getByRole("dialog").getAttribute("aria-describedby") && document.getElementById(screen.getByRole("dialog").getAttribute("aria-describedby")!)?.textContent).toContain("Your pick applies to this paste only.");
+  fireEvent.click(within(share).getByRole("option", { name: "BibTeX" }));
+  // The header and the action name the same output and say whose it is.
+  await waitFor(() => expect(formatShown()).toBe("BibTeX · This paste"));
+  await waitFor(() => expect(previews.at(-1)).toMatchObject({ output: "bibtex" }));
+  expect(screen.getByRole("button", { name: /^Copy as BibTeX/ })).toBeTruthy();
+  await copy(previews, copies);
+  await waitFor(() => expect(formatShown()).toBe("LaTeX \\cite · Example Browser"));
+  expect(remembered).toEqual([]);
+  expect(calls).not.toContain("picker_preferences_saved");
+});
+
+test("More finds the format chooser by the words for sharing", async () => {
+  opened(() => BROWSER);
+  await screen.findByText("First");
+  for (const word of ["share", "export", "bibtex", "doi"]) {
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    const search = await screen.findByRole("combobox", { name: "Search actions" });
+    fireEvent.change(search, { target: { value: word } });
+    expect(screen.getAllByRole("option").some((option) => option.textContent?.startsWith("Change Format…"))).toBe(true);
+    fireEvent.keyDown(search, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("combobox", { name: "Search actions" })).toBeNull());
+  }
+});
+
 test("a pick that cannot be saved says it is for this paste, then the saved format returns", async () => {
   const { previews, copies, calls } = opened(() => (fixtureDestination({ ...BROWSER, format: formatAnswer("cite", "app") })), { remember_app_output: refuseSave });
   await screen.findByText("First");
@@ -213,7 +249,7 @@ test("one format shortcut opens the formats without copying or changing any defa
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "F", ctrlKey: true, shiftKey: true });
   const menu = await screen.findByRole("dialog");
   expect(within(menu).queryByRole("menuitemcheckbox")).toBeNull();
-  expect(within(menu).getAllByRole("option").filter((row) => row.closest('[aria-label="Recent"], [aria-label="Key formats"], [aria-label="Citation styles"]'))).toHaveLength(OUTPUTS.length);
+  expect(within(menu).getAllByRole("option").filter((row) => row.closest('[aria-label="Recent"], [aria-label="Key formats"], [aria-label="Citation styles"], [aria-label="Share references"]'))).toHaveLength(OUTPUTS.length);
   expect(calls).not.toContain("copy_file_citation");
   expect(calls).not.toContain("picker_preferences_saved");
   expect(remembered).toEqual([]);

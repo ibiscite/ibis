@@ -1,6 +1,6 @@
 //! RIS exports and the CSV template as libraries (#1531, decision 0043), from
 //! the invented files in `fixtures/ris/` and `fixtures/csv/`.
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;

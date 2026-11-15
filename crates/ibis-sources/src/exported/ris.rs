@@ -297,7 +297,9 @@ fn csl(fields: &[(&str, String)]) -> Result<(BTreeMap<String, Value>, bool), Rec
         }
     }
     // Exports list file links beside web addresses; only a public one is kept.
-    let public = all(&["UR"]).into_iter().find(|url| ibis_core::citable::public_url(url));
+    let public = all(&["UR"])
+        .into_iter()
+        .find(|url| ibis_core::citable::PublicUrl::new(url).is_some());
     text(&mut csl, "URL", public);
     Ok((csl, dropped))
 }

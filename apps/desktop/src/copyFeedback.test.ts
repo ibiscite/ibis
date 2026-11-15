@@ -1,4 +1,5 @@
 import { expect, test, vi } from "vitest";
+import { missingKey } from "./test-fixtures";
 
 test("paste milestones decorate only the receipt heading and preserve the citation and focus", () => {
   const root = document.createElement("div");
@@ -44,8 +45,8 @@ test("on Linux every refusal keeps its reason and ends with Ctrl+V, and a paste 
 test("only unpinned copies without blocking warnings hide the picker", () => {
   expect(afterCopy({ text: "[@a]", warnings: [] }, false)).toBe("hide-and-notify");
   expect(afterCopy({ text: "[@a]", warnings: [] }, true)).toBe("stay");
-  expect(afterCopy({ text: "a", warnings: ["bare keys cannot carry page numbers"] }, false)).toBe("stay");
-  expect(afterCopy({ text: "a", warnings: ["w"] }, true)).toBe("stay");
+  expect(afterCopy({ text: "a", warnings: [missingKey("bare2026")] }, false)).toBe("stay");
+  expect(afterCopy({ text: "a", warnings: [missingKey("w2026")] }, true)).toBe("stay");
 });
 
 const click: RowClick = { shiftKey: false, ctrlKey: false, metaKey: false, altKey: false, detail: 1, moved: 0, onControl: false, selectedText: false };

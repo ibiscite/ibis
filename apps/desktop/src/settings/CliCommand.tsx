@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CommandStatus } from "../bindings";
 import { useInterfaceMessages } from "../i18n";
 import { Button } from "../ui/Button";
-import { Buttons, Group, Note, Row, Section } from "../ui/Layout";
+import { Buttons, Note, Row } from "../ui/Layout";
 import { rowDetails } from "./rows";
 
 type Api = {
@@ -45,7 +45,7 @@ export function CliCommandRow({ api, highlighted }: { api: Api; highlighted: boo
   const description = !status ? text("command-checking") : text({
     "not-installed": "command-missing", matching: "command-matching", different: "command-different", foreign: "command-foreign",
   }[status.state] as "command-missing" | "command-matching" | "command-different" | "command-foreign", { version: status.version ?? "", path: status.used_path ?? "" });
-  return <Section id="command"><Group>
+  return <>
     <Row id="cli-command" {...rowDetails("cli-command", text)} description={description} highlighted={highlighted} pending={!status && !failed} problem={failed ? text("command-failed") : undefined}>
       <Buttons>
         {status?.installable && <Button isDisabled={busy} onPress={() => change(true)}>{text("command-install")}</Button>}
@@ -59,5 +59,5 @@ export function CliCommandRow({ api, highlighted }: { api: Api; highlighted: boo
         void api.copyCliProfile().then(() => { if (request === sequence.current) setCopied(true); }, () => { if (request === sequence.current) setFailed(true); });
       }}>{text(copied ? "command-copied" : "command-copy")}</Button>
     </Row>}
-  </Group></Section>;
+  </>;
 }

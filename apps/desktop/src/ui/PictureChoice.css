@@ -14,7 +14,7 @@
 .ui-picture-choice[data-disabled] { color: var(--text-disabled); }
 /* A preview is the real part: a window of its set shape, scaled. Every choice
    on Appearance is this one picture, so the page reads as one kind of choice. */
-.ui-picker-picture { --preview: var(--preview-window); display: block; position: relative; overflow: hidden; pointer-events: none; min-width: 0; max-width: 100%; width: calc(var(--preview-window-w) * var(--preview)); height: calc(var(--preview-window-h) * var(--preview)); border-radius: var(--r-small); box-shadow: 0 0 0 var(--border-width) var(--separator); text-align: start; }
+.ui-picker-picture { --preview: var(--preview-window); display: block; position: relative; overflow: hidden; pointer-events: none; min-width: 0; max-width: 100%; width: calc(var(--preview-window-w) * var(--preview)); height: calc(var(--preview-window-h) * var(--preview) * var(--preview-crop, 1)); border-radius: var(--r-small); box-shadow: 0 0 0 var(--border-width) var(--separator); text-align: start; }
 .ui-picker-picture-mask { position: absolute; inset: 0; background: var(--surface); color: var(--text); }
 .ui-picker-picture-mask[data-dark] { clip-path: polygon(100% 0, 100% 100%, 0 100%); }
 .ui-picker-picture-content { position: absolute; inset-block-start: 0; inset-inline-start: 0; width: var(--preview-window-w); transform: scale(var(--preview)); transform-origin: top left; }
@@ -32,4 +32,8 @@
 .ui-picture-choices[data-size="small"] .ui-picker-picture { --preview: var(--preview-thumb); }
 /* The one live picture over a group of choices: the picker as they make it. */
 .ui-picture-preview { container-type: inline-size; display: grid; place-items: center; padding: var(--row-pad); }
-.ui-picture-preview .ui-picker-picture { --preview: min(var(--preview-live), calc(100cqi / var(--preview-window-w))); border-radius: var(--r-control); }
+/* One live picture, or for System two side by side, so no edge between light and
+   dark crosses any words; each shows the window's top (--preview-live-crop). */
+.ui-picture-preview { --pictures: 1; }
+.ui-picture-preview[data-pair] { --pictures: 2; display: flex; justify-content: center; gap: var(--space-3); }
+.ui-picture-preview .ui-picker-picture { --preview: min(var(--preview-live), calc((100cqi - var(--space-3) * (var(--pictures) - 1)) / var(--pictures) / var(--preview-window-w))); --preview-crop: var(--preview-live-crop); border-radius: var(--r-control); }

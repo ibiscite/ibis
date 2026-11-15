@@ -13,6 +13,9 @@ export const columns = {
   outside: ".choice-screen, .inspector, .menu-popover, .ui-sheet-status, [inert], .ui-notice-line > :is(.notice-slot, .ui-line-notice) ~ .ui-line-notice",
   /** Hover plates on the window's leading edge: each starts on the window inset, as a row does. */
   plates: ["#results [role=\"option\"]", ".library-bar .library-status-trigger"],
+  /** The last control of a band, on the window's trailing edge: its plate ends on
+   * the window inset, as a row's fill and the shelf do (#1923). */
+  ends: [".search-bar .toolbar-menu-button", ".library-bar .more-button", ".ui-view-foot > .ui-band-trailing > :last-child"],
 } as const;
 
 /** [C21] Pop-ups that fill a form row: the menu sits under the button's leading
@@ -116,8 +119,13 @@ export function geometry(root: ParentNode = document): string[] {
     const plate = probe.cloneNode() as HTMLElement;
     plate.style.insetInlineStart = "var(--inset)";
     main.append(plate);
+    const trailing = probe.cloneNode() as HTMLElement;
+    trailing.style.insetInlineStart = "auto";
+    trailing.style.insetInlineEnd = "var(--inset)";
+    main.append(trailing);
     const tileStart = lead(tile), tileCentre = tileStart + tile.width / 2, titleStart = lead(title.getBoundingClientRect()), plateStart = lead(plate.getBoundingClientRect());
-    probe.remove(); title.remove(); plate.remove();
+    const plateEnd = lead(trailing.getBoundingClientRect(), true);
+    probe.remove(); title.remove(); plate.remove(); trailing.remove();
     const held = (selector: string) => [...root.querySelectorAll(selector)].filter((node) => visible(node) && !node.closest(columns.outside));
     for (const band of held(columns.bands)) {
       const slots = [...band.children];
@@ -137,6 +145,10 @@ export function geometry(root: ParentNode = document): string[] {
     for (const node of held(columns.plates.join(", "))) {
       const start = lead(node.getBoundingClientRect());
       if (Math.abs(start - plateStart) > tolerance) failures.push(`[C3] ${name(node)}: plate starts ${start.toFixed(1)}, window inset ${plateStart.toFixed(1)}`);
+    }
+    for (const node of held(columns.ends.join(", "))) {
+      const end = lead(node.getBoundingClientRect(), true);
+      if (Math.abs(end - plateEnd) > tolerance) failures.push(`[C3] ${name(node)}: plate ends ${end.toFixed(1)}, window inset ${plateEnd.toFixed(1)}`);
     }
   }
 
@@ -225,6 +237,15 @@ export function geometry(root: ParentNode = document): string[] {
       if (Math.abs(shape.top - shapes[0]!.top) > tolerance) failures.push(`[C12] ${name(shape.card)}: glyph ${shape.top.toFixed(1)} from the top, the first card ${shapes[0]!.top.toFixed(1)}`);
     }
     for (const shape of shapes) if (Math.abs(shape.glyph) > tolerance) failures.push(`[C12] ${name(shape.card)}: glyph ${shape.glyph.toFixed(1)} off its title's line`);
+  }
+  // [C24] The frame is the native window: it ends on the window's bottom edge at every
+  // text size, never short of it (a footer floating above the edge) and never past it
+  // (a clipped preview and footer). The results absorb what the text size changes.
+  const frame = root.querySelector("main.ui-frame");
+  if (frame && visible(frame) && !frame.closest("[hidden]")) {
+    const { top, bottom } = frame.getBoundingClientRect(), edge = document.documentElement.clientHeight;
+    if (Math.abs(top) > tolerance || Math.abs(bottom - edge) > tolerance)
+      failures.push(`[C24 frame] the frame spans ${top.toFixed(1)}–${bottom.toFixed(1)}px of a ${edge}px window: it ends ${bottom < edge ? `${(edge - bottom).toFixed(1)}px short of` : `${(bottom - edge).toFixed(1)}px past`} its edge`);
   }
   // [C24] No empty band: the frame's heading line is drawn only with something in
   // it, and nothing sits between it and the list's first row. A list with no heading

@@ -7,8 +7,7 @@ import type { usePickerSession } from "./usePickerSession";
 import type { usePickerMenus } from "./usePickerMenus";
 import type { useDestination } from "./useDestination";
 import type { usePickerPreferences } from "./usePickerPreferences";
-import { OPERATION_FAILURES } from "./Notices";
-import { say } from "../../i18n";
+import { listening } from "../../nativeEvents";
 
 export function usePickerLifecycle({ api, pickerSession, menus, destination, preferences, resetPointer, readShortcut, report, setAltHeld }: {
   api: typeof nativeApi;
@@ -31,11 +30,6 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
     let mounted = true;
     let focusAfterActivation = false;
     let searchAtShow = "";
-    const subscriptionFailure = (operation: Operation) => {
-      if (mounted) report(operation);
-      else console.error(say(OPERATION_FAILURES[operation]));
-      return () => undefined;
-    };
     const selectSearch = () => {
       focusHome();
       input.current?.select();
@@ -74,56 +68,50 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
     };
     // Every hide is reported, including the native one when focus moves away;
     // a monotonic clock keeps clock changes from clearing or keeping a search.
-    const unlistenHidden = onPickerHidden(() => {
-      if (!mounted) return;
-      focusAfterActivation = false;
-      resetPointer();
-      send({ type: "hidden", now: performance.now() });
-      closeOverlays();
-      setAltHeld(false);
-    })
-      .catch(() => subscriptionFailure("pickerEvents"));
-    // The window appears after this: settle what its first frame shows.
-    const unlistenPreparing = onPickerPreparing?.((selection) => {
-      if (!mounted) return;
-      prepared = true;
-      send({ type: "preparing", now: performance.now(), selection });
-      destination.read(true, keepsOutput());
-    }).catch(() => subscriptionFailure("pickerEvents"));
-    const unlisten = onPickerShown((presentation) => {
-      if (!mounted) return;
-      focusSearch(presentation);
-    }).catch(() => subscriptionFailure("pickerEvents"));
-    void Promise.all([unlistenHidden, unlisten]).then(async () => {
-      if (!mounted) return;
+    const reporting = (operation: Operation) => ({ failed: () => report(operation), subject: "Picker" });
+    // Visibility is read once hiding and showing are both heard (or refused), so neither is missed.
+    const heard = () => {
+      let settle = () => {};
+      const settled = new Promise<void>((done) => { settle = done; });
+      return { settled, options: { ready: settle, failed: () => { report("pickerEvents"); settle(); }, subject: "Picker" } };
+    };
+    const hidden = heard(), shown = heard();
+    void Promise.all([hidden.settled, shown.settled]).then(async () => {
       send({ type: "initialize" });
       const events = session.getSnapshot().visibilityEvents;
       const visible = await pickerVisible();
       // The session keeps a newer event over this read; a failed read changes nothing.
       if (mounted) send({ type: "visibility-read", visible, events });
     }).catch(() => undefined);
+    const stops = [
+      listening(onPickerHidden, () => {
+        focusAfterActivation = false;
+        resetPointer();
+        send({ type: "hidden", now: performance.now() });
+        closeOverlays();
+        setAltHeld(false);
+      }, hidden.options),
+      // The window appears after this: settle what its first frame shows.
+      listening(onPickerPreparing, (selection) => {
+        prepared = true;
+        send({ type: "preparing", now: performance.now(), selection });
+        destination.read(true, keepsOutput());
+      }, reporting("pickerEvents")),
+      listening(onPickerShown, focusSearch, shown.options),
+    ];
     destination.read();
     preferences.loadPreferences(() => mounted);
-    // Choices made in Settings apply to the picker at once.
-    const unlistenPreferences = onPreferencesChanged?.((change) => { preferences.preferencesChanged(change?.revision, change?.fields, () => mounted); destination.read(false); })
-      .catch(() => undefined);
-    const unlistenProject = onProjectChanged?.((version) => {
-      if (!mounted) return;
-      destination.writingChanged(version);
-    }).catch(() => subscriptionFailure("project"));
-    const unlistenWritings = onWritingsChanged?.(() => {
-      if (mounted) destination.read(false);
-    }).catch(() => subscriptionFailure("project"));
+    stops.push(
+      // Choices made in Settings apply to the picker at once.
+      listening(onPreferencesChanged, (change) => { preferences.preferencesChanged(change?.revision, change?.fields, () => mounted); destination.read(false); }),
+      listening(onProjectChanged, (version) => destination.writingChanged(version), reporting("project")),
+      listening(onWritingsChanged, () => destination.read(false), reporting("project")),
+    );
     return () => {
       mounted = false;
       window.removeEventListener("focus", activated);
       send({ type: "retire" });
-      void unlistenHidden.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
-      void unlisten.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
-      void unlistenPreparing?.then((stop) => stop?.());
-      void unlistenPreferences?.then((stop) => stop?.());
-      void unlistenProject?.then((stop) => stop?.());
-      void unlistenWritings?.then((stop) => stop?.());
+      for (const stop of stops) stop();
     };
   }, [resetPointer]);
 }

@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 use ibis_core::{contract::*, identifier::Identifier, search::SnapshotIndex, syntax};
 use proptest::prelude::*;
 use std::sync::Arc;

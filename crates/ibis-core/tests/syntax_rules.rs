@@ -1,5 +1,5 @@
 //! Key output through the shared citation contract: pasted text, losses and refusals.
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 use ibis_core::contract::*;
 use ibis_core::contract::{GoldenCase, OutputSpec};
 use ibis_core::syntax;

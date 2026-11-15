@@ -7,23 +7,17 @@
 //! path to open and a choice from an older list is refused.
 
 use crate::library::{Source, start_open};
-use ibis_engine::{Cancellation, discovery, health::InspectionPolicy};
+use ibis_engine::{
+    Cancellation,
+    discovery::{self, ZoteroPresence},
+    health::InspectionPolicy,
+};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager, State};
 
 #[derive(Default)]
 pub(crate) struct Offered(discovery::Discovery);
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum ZoteroPresence {
-    Available,
-    AccessOff,
-    /// Not running, but its library is on this computer and can be read.
-    Closed,
-    Absent,
-}
 
 /// A `.bib` file found on this computer.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
@@ -46,17 +40,6 @@ pub(crate) struct Sources {
     pub(crate) cut_short: bool,
 }
 
-impl From<discovery::ZoteroPresence> for ZoteroPresence {
-    fn from(found: discovery::ZoteroPresence) -> Self {
-        match found {
-            discovery::ZoteroPresence::Available => Self::Available,
-            discovery::ZoteroPresence::AccessOff => Self::AccessOff,
-            discovery::ZoteroPresence::Closed => Self::Closed,
-            discovery::ZoteroPresence::Absent => Self::Absent,
-        }
-    }
-}
-
 /// What the welcome screen can say about Zotero before anything is chosen, so
 /// it can offer Zotero first. Reads Zotero's profile configuration and no library.
 #[tauri::command]
@@ -67,7 +50,6 @@ pub(crate) async fn find_zotero() -> Result<ZoteroPresence, String> {
     })
     .await
     .map_err(|_| "looking for Zotero stopped unexpectedly".to_string())?
-    .map(ZoteroPresence::from)
     .map_err(|_| "looking for Zotero stopped unexpectedly".to_string())
 }
 
@@ -100,7 +82,7 @@ pub(crate) async fn find_sources(app: AppHandle) -> Result<Sources, String> {
                 .unwrap_or_default(),
         })?;
         Ok::<_, ibis_core::contract::EngineError>(Sources {
-            zotero: zotero.into(),
+            zotero,
             list,
             files,
             cut_short,

@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used)]
 #[path = "support/zotero.rs"]
 mod fixture;
 use ibis_core::contract::{ErrorCode, ErrorReason, GoldenCase};
