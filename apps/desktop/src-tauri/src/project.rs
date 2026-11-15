@@ -124,10 +124,7 @@ impl ProjectBibliography {
             slot.readers.swap_remove(index);
         }
         let current = slot.generation;
-        let next = slot
-            .pending_read
-            .take()
-            .filter(|ticket| ticket.generation == current)?;
+        let next = slot.pending_read.take().filter(|ticket| ticket.generation == current)?;
         if slot.readers.contains(&current) {
             slot.pending_read = Some(next);
             return None;
@@ -699,29 +696,44 @@ mod tests {
         assert_eq!(slot.status().map(|status| status.name), Some("b.bib".into()));
         assert!(!slot.finish(a.generation, read(&a)), "A's late answer changes nothing");
         assert_eq!(slot.status().map(|status| status.name), Some("b.bib".into()));
-        assert!(slot.next_read(a.generation).is_none(), "and A's reader takes no other work");
+        assert!(
+            slot.next_read(a.generation).is_none(),
+            "and A's reader takes no other work"
+        );
         assert!(slot.next_read(b.generation).is_none());
         assert!(slot.lock().readers.is_empty());
 
         // Quick switching keeps at most one replaced read beside the current
         // one; later choices wait, and only the latest of them is read.
-        let c = slot.enqueue_read(slot.choose(Some("/invented/c.bib".into())).unwrap()).unwrap();
-        let d = slot.enqueue_read(slot.choose(Some("/invented/d.bib".into())).unwrap()).unwrap();
+        let c = slot
+            .enqueue_read(slot.choose(Some("/invented/c.bib".into())).unwrap())
+            .unwrap();
+        let d = slot
+            .enqueue_read(slot.choose(Some("/invented/d.bib".into())).unwrap())
+            .unwrap();
         for name in ["e.bib", "f.bib"] {
             let queued = slot.choose(Some(std::path::Path::new("/invented").join(name))).unwrap();
             assert!(slot.enqueue_read(queued).is_none());
         }
-        let f = slot.next_read(c.generation).unwrap_or_else(|| panic!("the latest choice"));
+        let f = slot
+            .next_read(c.generation)
+            .unwrap_or_else(|| panic!("the latest choice"));
         assert_eq!(f.path.file_name().unwrap(), "f.bib");
         assert!(slot.next_read(d.generation).is_none());
         assert!(slot.next_read(f.generation).is_none());
         assert!(slot.lock().readers.is_empty());
-        let g = slot.enqueue_read(slot.choose(Some("/invented/g.bib".into())).unwrap()).unwrap();
-        slot.enqueue_read(slot.choose(Some("/invented/h.bib".into())).unwrap()).unwrap();
+        let g = slot
+            .enqueue_read(slot.choose(Some("/invented/g.bib".into())).unwrap())
+            .unwrap();
+        slot.enqueue_read(slot.choose(Some("/invented/h.bib".into())).unwrap())
+            .unwrap();
         let abandoned = slot.choose(Some("/invented/i.bib".into())).unwrap();
         assert!(slot.enqueue_read(abandoned).is_none());
         slot.choose(None);
-        assert!(slot.next_read(g.generation).is_none(), "leaving a project drops its queued read");
+        assert!(
+            slot.next_read(g.generation).is_none(),
+            "leaving a project drops its queued read"
+        );
     }
 
     #[test]
