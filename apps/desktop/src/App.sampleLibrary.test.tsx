@@ -73,6 +73,10 @@ test.each([true, false])("first citation: choose samples, search, Enter and rece
   const row = await screen.findByRole("option", { name: new RegExp(`Sample · ${title}`) });
   expect(within(row).getByText("Sample")).toBeTruthy();
   expect(screen.getByRole("status", { name: "Library status" }).textContent).toBe("Sample references");
+  // With results the way out steps aside: one row after them, nothing centred, its title unseen.
+  const exit = screen.getByRole("listbox", { name: "Sample references" });
+  expect(exit.closest(".results-area")?.hasAttribute("data-centered")).toBe(false);
+  expect(screen.getByRole("heading", { name: "Sample references" }).className).toBe("visually-hidden");
   await waitFor(() => expect(document.querySelector(".shelf")?.textContent).toContain(text));
   fireEvent.keyDown(input, { key: "Enter" });
   if (formatted) {

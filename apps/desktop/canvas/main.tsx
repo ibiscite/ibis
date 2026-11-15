@@ -102,7 +102,7 @@ const fixtures: Partial<Record<Scenario, {
   // The engine warns about the second reference; the first one's details are open.
   "token-warnings": { keys: [{ key: "Enter", shiftKey: true }, { key: "ArrowDown" }, { key: "Enter", shiftKey: true }], click: 'button[aria-label^="Edit "]' },
   // The sample references with matching rows: the way out steps aside for them.
-  sample: { library: { sample: true, name: "Sample references", snapshot_name: "Sample references" } },
+  sample: { rows: rows.slice(0, 3), library: { sample: true, name: "Sample references", snapshot_name: "Sample references" } },
   // A numbered style's words are numbers, so each token carries its author and year.
   "citation-handles": { preferences: { output: "ieee" }, keys: [{ key: "Enter", shiftKey: true }, { key: "ArrowDown" }, { key: "Enter", shiftKey: true }] },
 };
