@@ -67,7 +67,7 @@ export interface FormattedCitation {
   display: DisplayTree;
   text: string;
   warnings: string[];
-  /** Why a key citation is refused: a key in the project bibliography names a different work. */
+  /** Why a key citation is refused: a key in the bibliography names a different work. */
   project_refusal?: string | null;
   /** The engine's notices about it, such as a full first note. */
   notices?: readonly Notice[];

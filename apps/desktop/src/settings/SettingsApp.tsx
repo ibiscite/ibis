@@ -595,7 +595,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         {page === "shortcuts" && <ShortcutsPage opening={shortcutSetting} enterPastes={enterPastes} reveal={revealTarget} highlighted={highlighted} />}
         {page === "about" && (
           <>
-            {/* Centred, as System Settings' About (maintainer, 2026-11-10, option C):
+            {/* Centred, as System Settings' About:
                 the icon, name and version, Check for Updates under them, then the
                 lines; the groups below are the same cards as every page. */}
             <div id="about-ibis" className="ui-about-hero">

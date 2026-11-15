@@ -20,7 +20,7 @@
   /* Space, on the grid. S = --inset keeps every fill S from a window edge or divider. */
   --space-1: var(--unit); --space-2: calc(2 * var(--unit)); --space-3: calc(3 * var(--unit)); --space-4: calc(4 * var(--unit));
   --space-5: calc(5 * var(--unit)); --space-6: calc(6 * var(--unit)); --space-8: calc(8 * var(--unit)); --space-10: calc(10 * var(--unit));
-  /* Layout (maintainer, 2026-11-10): where things sit, decided here once. Only ui/
+  /* Layout: where things sit, decided here once. Only ui/
      parts read these; a screen never sets a margin, padding, gap, inset or width
      (ui/ownership.test.ts). The window inset, on both sides of every band and body. */
   --inset: var(--space-2);
@@ -65,7 +65,7 @@
      the native mask [C15]), a capsule and the app icon's. Nested shapes are
      concentric: a shape --space-2 inside a --r-large one takes --r-control, a mark
      a few pixels inside a control takes --r-small.
-       window 16 -8-> row, field, control 8 -2-> segment, key cap 6
+       window 16 -8-> row, field, control 8 -2-> token, key cap 6
        menu, card, sheet 12 -4-> menu item 8     row 8 -> tile 6 */
   --r-small: calc(.75 * var(--radius)); --r-control: var(--radius); --r-large: calc(1.5 * var(--radius));
   --r-win: 16px; --r-full: 999px; --r-icon: 22.5%;

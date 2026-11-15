@@ -1,12 +1,11 @@
-// What Enter would act on now, worked out from the session itself (decision
-// 0035): the shown choice, its preview, the destination and whether all of
-// them answer the current query. Only preferences and the library's lifecycle
+// What Enter would act on: the shown choice, preview and destination,
+// and whether they answer the current query. Only preferences and the library's lifecycle
 // come from outside, as PickerInputs.
 import type { LibraryStatus } from "../../api";
 import { styleOf, type OutputId } from "../../format/outputs";
 import { choiceKey, asTyped } from "./choice";
 import { COMMAND_PREFIX } from "./commands";
-import { destinationFormat, destinationReady, projectVersion, shouldAsk } from "./destination";
+import { destinationFormat, destinationReady, writingVersion, shouldAsk } from "./destination";
 import { ownedPreview, previewKey } from "./preview";
 import { sameInputs, type SearchInputs, type SearchState } from "./search";
 import type { SessionState, SessionView } from "./session";
@@ -24,7 +23,7 @@ export type PickerInputs = {
   statusFailed: boolean;
   /** False while the library is chosen or set up: no citation is offered. */
   showCitations: boolean;
-  /** Changes whenever a library, an editor request or a project bibliography asks again. */
+  /** Changes whenever a library, an editor request or a bibliography asks again. */
   version: number;
 };
 
@@ -73,7 +72,7 @@ export function deriveView(s: SessionState): SessionView | null {
   const key = previewKey(output, o.version, choiceKey(shownChoice), d.destination?.context_version ?? null, s.keepOrder);
   const preview = ownedPreview(s.preview, key, s.session, s.opened);
   return {
-    appId: d.destination?.app_id ?? null, writingId: d.destination?.writing?.id ?? null, projectVersion: projectVersion(d),
+    appId: d.destination?.app_id ?? null, writingId: d.destination?.writing?.id ?? null, writingVersion: writingVersion(d),
     queryKey: sessionQueryKeyOf(s), format, snapshotRevision: o.library?.revision,
     defaultChoice: list && status.ready ? choiceKey(results) : choiceKey(highlighted),
     chosen, shown: preview ? preview.value : null, searchPending: status.pending,

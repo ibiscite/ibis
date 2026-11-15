@@ -1,15 +1,13 @@
 // Where the next citation goes and in which format, as part of the picker
-// session (decision 0035): the app or writing project in front, the format
+// session: the app or writing in front, the format
 // picked for it, and the OutputToken a copy is checked against.
 import { problemText } from "../../i18n";
 import type { AppPaste, PickerDestination } from "../../api";
-import type * as nativeApi from "../../api";
 import { listedOutput, type OutputId } from "../../format/outputs";
 import type { Operation } from "./Notices";
 
 /** Which opening, format choice and paste choice a copy was made for. */
 export type OutputToken = { opening: number; choice: number; delivery: number };
-export type ProjectEdit = Parameters<typeof nativeApi.editWriting>[1];
 
 export type DestinationState = {
   /** Whether this picker reads its destination at all; without a reader it is always ready. */
@@ -82,7 +80,7 @@ export const asksPaste = (d: DestinationState) => Boolean(d.remembers && d.desti
 export const shouldAsk = (d: DestinationState) => asksPaste(d);
 /** Ready to copy: read, or nothing to read. */
 export const destinationReady = (d: DestinationState) => !d.reader || d.ready && (!d.destination || listedOutput(d.destination.format.id) !== null);
-export const projectVersion = (d: DestinationState) => d.observedVersion?.join(":") ?? null;
+export const writingVersion = (d: DestinationState) => d.observedVersion?.join(":") ?? null;
 export const sameOutput = (a: OutputToken, b: OutputToken) => a.opening === b.opening && a.choice === b.choice && a.delivery === b.delivery;
 
 const report = (operation: Operation, failed = true): DestinationEffect => ({ type: "report", operation, failed });
@@ -134,7 +132,7 @@ export function reduceDestination(d: DestinationState, event: DestinationEvent):
       }
       const generation = next.context_version?.[0] ?? null;
       const version = next.context_version?.join(":") ?? null;
-      const versionChanged = projectVersion(d) !== version;
+      const versionChanged = writingVersion(d) !== version;
       const generationChanged = d.observedVersion !== undefined && (d.observedVersion?.[0] ?? null) !== generation;
       if (generationChanged) {
         if (!settling) output = { ...output, choice: output.choice + 1 };

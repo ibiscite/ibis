@@ -18,6 +18,8 @@ from unittest.mock import Mock, patch
 SOURCE = Path(__file__).with_name("real-zotero.sh").read_text()
 
 
+# real-zotero.sh is a bash tool for macOS and Linux (POSIX paths, permissions and symlinks).
+@unittest.skipIf(sys.platform == "win32", "real-zotero.sh runs on macOS and Linux")
 class CaptureTests(unittest.TestCase):
     def setUp(self):
         self.assertTrue("<<'PY_CAPTURE'\n" in SOURCE, "the existing harness has no capture mode")

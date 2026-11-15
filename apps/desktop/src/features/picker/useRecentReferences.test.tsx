@@ -12,7 +12,7 @@ const deferred = <T,>() => {
   return { promise, resolve, reject };
 };
 
-test.each(["startup", "Forget", "disable"])("%s removes private legacy history without importing it", async (clear) => {
+test.each(["startup", "Forget", "disable"])("%s removes WebView citation history without importing it", async (clear) => {
   const key = "ibis-citation-history";
   localStorage.setItem(key, "invented private citation history");
   let changed!: Parameters<typeof onPreferencesChanged>[0];
@@ -20,7 +20,7 @@ test.each(["startup", "Forget", "disable"])("%s removes private legacy history w
   const native = vi.fn<typeof recentReferences>().mockResolvedValue(reply);
   const { result, unmount } = renderHook(() => useRecentReferences(native, null, 0, subscribe));
   if (clear !== "startup") {
-    localStorage.setItem(key, "another obsolete private history");
+    localStorage.setItem(key, "another private history");
     if (clear === "Forget") {
       native.mockResolvedValueOnce([empty, true, false]);
       await act(async () => { await result.current.load!(); });
@@ -32,7 +32,7 @@ test.each(["startup", "Forget", "disable"])("%s removes private legacy history w
   localStorage.removeItem(key);
 });
 
-test("a failed legacy deletion stays visible after loading and native Forget until a successful retry", async () => {
+test("a failed WebView history deletion stays visible after loading and native Forget until a successful retry", async () => {
   const key = "ibis-citation-history";
   localStorage.setItem(key, "invented private citation history");
   const remove = vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => { throw new Error("synthetic storage refusal"); });

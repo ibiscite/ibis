@@ -1,6 +1,6 @@
 /* C7: one band, on the result columns, regardless of selection or open menu. */
 /* One band, one padding, corner, hover and pressed fill for every control in it:
-   segments and the count. Hover and open steps are even: band, tertiary, system fill.
+   tokens and the count. Hover and open steps are even: band, tertiary, system fill.
    At rest the count shows only its chevron, whose glyph is drawn inside its box, so
    it takes no end padding and the glyph ends on the year column [C3]. */
 .shelf { --band-control-pad: var(--space-2); --band-control-pad-end: 0px; --band-control-radius: var(--r-small); --band-control-hover: var(--fill-control); --band-control-pressed: var(--fill-control-pressed); --shelf-target: var(--control-h); position: relative; flex: none; min-height: 0; overflow: visible; margin: 0 var(--inset) var(--inset); border-radius: var(--r-control); background: var(--layer-inset); }

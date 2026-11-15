@@ -94,10 +94,10 @@ test.each([
 
 test.each(["before", "after"] as const)("a refreshed checked receipt cannot adopt an earlier copy or let its response hide the picker (%s new Enter)", (oldResponse) => {
   const s = scenario();
-  const first = { writingId: "a", projectVersion: "1:0" };
+  const first = { writingId: "a", writingVersion: "1:0" };
   s.send(s.view(first));
   s.send({ type: "enter", choice: choiceKey([a]) });
-  const checked = { writingId: "a", projectVersion: "1:1", shown: { ...prepared, fileTicket: "checked-ticket", warnings: ["Couldn't check a2026 against thesis.bib."] } };
+  const checked = { writingId: "a", writingVersion: "1:1", shown: { ...prepared, fileTicket: "checked-ticket", warnings: ["Couldn't check a2026 against thesis.bib."] } };
   s.send(s.view(checked));
   if (oldResponse === "before") {
     s.complete(1);
@@ -116,10 +116,10 @@ test.each(["before", "after"] as const)("a refreshed checked receipt cannot adop
 
 test("a stale checked copy cannot consume the one-time output a fresh Enter is waiting for", () => {
   const s = scenario();
-  const original = { format: "cite" as const, projectVersion: "1:0" };
+  const original = { format: "cite" as const, writingVersion: "1:0" };
   s.send(s.view(original));
   s.send({ type: "enter", choice: choiceKey([a]) });
-  const refreshing = { format: "cite" as const, projectVersion: "1:1", shown: null };
+  const refreshing = { format: "cite" as const, writingVersion: "1:1", shown: null };
   s.send(s.view(refreshing));
   s.send({ type: "enter", choice: choiceKey([a]) });
   expect(s.state.pendingCopy).not.toBeNull();
@@ -198,7 +198,7 @@ test("Undo never overwrites a reference added again or crosses a cleared session
   expect(s.state.selected.size).toBe(0);
 });
 
-test("a retired segment cannot remove a newly edited reference or add a removed one back", () => {
+test("a retired token cannot remove a newly edited reference or add a removed one back", () => {
   const s = scenario();
   s.send({ type: "toggle", result: a });
   const retired = s.state.selected.get(idKey(a.id))!;

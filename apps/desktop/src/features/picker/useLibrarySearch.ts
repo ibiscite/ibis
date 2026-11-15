@@ -1,5 +1,5 @@
 // The search for the current query in the open library, and which of its
-// results may be acted on. The picker session owns the search (decision 0035);
+// results may be acted on. The picker session owns the search;
 // this hook tells it what to search in and reads its answer.
 import { useLayoutEffect } from "react";
 import type * as nativeApi from "../../api";

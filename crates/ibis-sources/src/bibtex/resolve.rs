@@ -438,7 +438,7 @@ impl<'a, 's> Resolver<'a, 's> {
                     return Rc::default();
                 }
                 let missing = cached.keys().filter(|key| !walk.memo.contains_key(key)).count();
-                // Falling back at the boundary preserves even the old quota's memo-edge cuts.
+                // Reevaluate at the boundary to apply the per-walk evaluation limit.
                 if walk.evaluations.saturating_add(missing) < MAX_EVALUATIONS {
                     for (key, fields) in cached.iter() {
                         walk.memo.entry(*key).or_insert_with(|| Rc::clone(fields));
@@ -1217,10 +1217,7 @@ mod tests {
 
         // Golden transcripts include exact canonical bytes, diagnostics, remaining
         // work credits and the final records/fingerprints published to consumers.
-        // Title casing and source-warning fingerprints were updated for #1530, and
-        // library ids for #1535, and entry/field warning labels for terminal diagnostics;
-        // subsequent allocation changes must preserve them. Pinned hashes keep the many
-        // partial-budget outcomes small without keeping a second resolver.
+        // Pinned hashes keep partial-budget outcomes small without a second resolver.
         let cases = [
             (
                 "plain",

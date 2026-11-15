@@ -1,5 +1,5 @@
 """Workflow rules that only the workflow's structure can show, read with a YAML
-parser, never with regular expressions (decision 0035).
+parser, never with regular expressions.
 
 "CI result" confirms the merged revision before publication; Local gate owns
 merging. The result must include every platform and daily/manual qualifier,
