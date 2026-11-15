@@ -16,7 +16,7 @@ pub(in crate::mcp) const READING_TOOLS: [Tool; 3] = [
         input: outline_input,
         output: outline_output,
         reads_library: |_| true,
-        answer: outline,
+        answer: Answer::Reads(outline),
     },
     Tool {
         name: "read",
@@ -25,7 +25,7 @@ pub(in crate::mcp) const READING_TOOLS: [Tool; 3] = [
         input: read_input,
         output: read_output,
         reads_library: |_| true,
-        answer: read,
+        answer: Answer::Reads(read),
     },
     Tool {
         name: "find_in",
@@ -34,7 +34,7 @@ pub(in crate::mcp) const READING_TOOLS: [Tool; 3] = [
         input: find_in_input,
         output: find_in_output,
         reads_library: |_| true,
-        answer: find_in,
+        answer: Answer::Reads(find_in),
     },
 ];
 
@@ -60,28 +60,39 @@ fn offered(engine: &Engine, formats: &Formats) -> bool {
     })
 }
 
-/// The tools this session offers, and whether the reading tools are among
-/// them, since the list then depends on this person's settings.
-pub(in crate::mcp) fn offered_list(engine: &Engine, formats: &Formats) -> (Value, bool) {
+/// The tools this session offers, and whether the list depends on this
+/// person's settings or on how the server was started.
+pub(in crate::mcp) fn offered_list(engine: &Engine, formats: &Formats, writes: bool) -> (Value, bool) {
     let reading = offered(engine, formats);
-    let tools = TOOLS.iter().chain(READING_TOOLS.iter().filter(|_| reading));
-    (Value::Array(tools.map(entry).collect()), reading)
-}
-
-/// Every tool, as `fixtures/mcp-tools.json` documents them.
-#[cfg(test)]
-pub(super) fn full_list() -> Value {
-    Value::Array(TOOLS.iter().chain(READING_TOOLS.iter()).map(entry).collect())
+    let tools = TOOLS
+        .iter()
+        .chain(READING_TOOLS.iter().filter(|_| reading))
+        .chain(super::writing::WRITING_TOOLS.iter().filter(|_| writes));
+    (Value::Array(tools.map(entry).collect()), reading || writes)
 }
 
 /// The tool `name` names, when this session offers it.
-pub(in crate::mcp) fn offered_tool(engine: &Engine, formats: &Formats, name: Option<&str>) -> Option<&'static Tool> {
-    TOOLS.iter().find(|tool| Some(tool.name) == name).or_else(|| {
-        READING_TOOLS
-            .iter()
-            .find(|tool| Some(tool.name) == name)
-            .filter(|_| offered(engine, formats))
-    })
+pub(in crate::mcp) fn offered_tool(
+    engine: &Engine,
+    formats: &Formats,
+    writes: bool,
+    name: Option<&str>,
+) -> Option<&'static Tool> {
+    TOOLS
+        .iter()
+        .find(|tool| Some(tool.name) == name)
+        .or_else(|| {
+            READING_TOOLS
+                .iter()
+                .find(|tool| Some(tool.name) == name)
+                .filter(|_| offered(engine, formats))
+        })
+        .or_else(|| {
+            super::writing::WRITING_TOOLS
+                .iter()
+                .find(|tool| Some(tool.name) == name)
+                .filter(|_| writes)
+        })
 }
 
 /// Refused unless the person lets AI apps read `library`'s attachment text.

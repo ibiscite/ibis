@@ -116,9 +116,11 @@ the maintainer promotes it.
   desktop sharing and file destinations; then paste a DOI to cite using the
   single opt-in lookup module; then add by identifier through Zotero's official
   local write API. Attachment sharing needs its own design and review. Agent
-  write proposals that the person confirms in Ibis, for every library kind with a
-  safe write route, follow
-  [0055](docs/decisions/0055-agent-layers-full-text-writes-remote.md).
+  write proposals that the person confirms in Ibis
+  ([0055](docs/decisions/0055-agent-layers-full-text-writes-remote.md)): the engine,
+  `ibis mcp --allow-writes` and `ibis proposals` are built and apply to `.bib`
+  files; the app's confirmation screen comes next, and Zotero follows its official
+  local write API.
 
 ## 0.7 Everywhere you work
 

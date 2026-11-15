@@ -20,6 +20,7 @@ mod human;
 mod keys;
 mod out;
 pub mod pdf_text;
+mod proposals;
 mod settings_backup;
 mod toggle;
 mod writings;
@@ -546,7 +547,14 @@ fn command() -> Command {
                 ),
         )
         .subcommand(
-            Command::new("mcp").about("Serve read-only search and citation tools to AI agents (MCP over stdio)"),
+            Command::new("mcp")
+                .about("Serve read-only search and citation tools to AI agents (MCP over stdio)")
+                .arg(
+                    Arg::new("allow-writes")
+                        .long("allow-writes")
+                        .action(ArgAction::SetTrue)
+                        .help("Also offer tools that propose library changes; you apply or reject each one in the Ibis app"),
+                ),
         )
         .subcommand(
             Command::new("toggle").about("Show or hide the desktop picker").arg(
@@ -571,6 +579,7 @@ fn command() -> Command {
         .subcommand(agents::command())
         .subcommand(settings_backup::command())
         .subcommand(writings::command())
+        .subcommand(proposals::command())
         .subcommand(
             Command::new("completions").about("Print shell completions").arg(
                 Arg::new("shell")
@@ -1105,6 +1114,9 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
     if name == "writings" {
         return Ok(Execution::Result(writings::run(engine, args)?, None));
     }
+    if name == "proposals" {
+        return Ok(Execution::Result(proposals::run(args)?, None));
+    }
     if name == "completions" {
         let shell = args
             .get_one::<String>("shell")
@@ -1150,8 +1162,21 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
         };
         // for_app reads the formats chosen in the app, as `cite --for-app` does.
         let session = match settings_backup::settings_file(false) {
+            // Proposals are kept beside the app's settings, as its recent citations are.
+            Ok((_, path)) if args.get_flag("allow-writes") => session
+                .allowing_writes(ibis_engine::write::Proposals::beside(&path))
+                .with_formats(path),
             Ok((_, path)) => session.with_formats(path),
-            Err(failure) => session.without_formats(failure.refusal()),
+            Err(failure) => {
+                if args.get_flag("allow-writes") {
+                    write_stream(
+                        errors,
+                        b"ibis: proposals are kept beside the app's settings, which cannot be found here, so this server offers no proposal tools\n",
+                    )
+                    .map_err(|error| Failure::new(ErrorCode::Internal, human::write_failure(&error)))?;
+                }
+                session.without_formats(failure.refusal())
+            }
         };
         return Ok(Execution::Stdio(
             match ibis_engine::mcp::serve(engine, session, input, output) {

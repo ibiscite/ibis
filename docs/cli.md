@@ -294,6 +294,10 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 
 **`ibis mcp`**: Serve read-only search and citation tools to AI agents (MCP over stdio)
 
+| Option | Does |
+| --- | --- |
+| `--allow-writes` | Also offer tools that propose library changes; you apply or reject each one in the Ibis app |
+
 **`ibis toggle`**: Show or hide the desktop picker
 
 | Option | Does |
@@ -386,6 +390,22 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | `--style STYLE_ID` | Any bundled CSL style ID; list them with: ibis styles |
 | `--bibliography FILE` | The read-only writing bibliography to check, as a .bib file |
 | `--no-bibliography` | Stop checking a bibliography in this writing |
+
+**`ibis proposals`**: List, show or reject library changes AI apps proposed; apply them in the Ibis app
+
+**`ibis proposals list`**: List proposals, newest first
+
+**`ibis proposals show`**: Show what a proposal would change, with the entry before and after
+
+| Option | Does |
+| --- | --- |
+| `ID` | The proposal id printed by ibis proposals list |
+
+**`ibis proposals reject`**: Reject a pending proposal; no library changes
+
+| Option | Does |
+| --- | --- |
+| `ID` | The proposal id printed by ibis proposals list |
 
 **`ibis completions`**: Print shell completions
 
@@ -800,3 +820,50 @@ or directory approval is not established by the repository configuration.
 
 Settings backup/restore instructions live in
 [moving to a new computer](moving-to-a-new-computer.md).
+
+### Proposed changes
+
+`ibis mcp --allow-writes`, with the usual library options, adds tools that
+let an AI app propose small library changes
+([decision 0055](decisions/0055-agent-layers-full-text-writes-remote.md)). They
+only propose: nothing in a library changes until the person applies the
+proposal in the Ibis app, and an AI client's own approval of a tool call never
+counts. Without the flag these tools are not listed and a call is an unknown
+tool. `ibis agents setup` writes the read-only server; add `--allow-writes` to
+the `ibis mcp` arguments in an app's settings by hand to offer them.
+
+| Tool | Input and result |
+| --- | --- |
+| `propose_add` | `fields` as CSL-JSON (`type` and `title` required) and `library` when several are open; the proposal id, a summary and the BibTeX entry Ibis would add. |
+| `propose_change` | `ref` and CSL-JSON `fields` with new values; the proposal id and a summary. |
+| `propose_tags` | `ref`, `add` and `remove` (BibTeX `keywords`, at most 20 tags of 64 characters); the proposal id and a summary. |
+| `proposals` | Nothing; this app's proposals with their status, and the open libraries `propose_add` can name. |
+
+Fields go through the same filter as every shared record: a field it would
+drop, such as `note`, `file`, `id` or a private link, refuses the proposal by
+name. A new reference whose DOI the library already holds is refused. Each
+proposal is a private file beside the app's settings, at most 64 KiB and at
+most 100 waiting ([privacy](../PRIVACY.md)).
+
+```sh
+ibis proposals list
+ibis proposals show 3f9c2a7d41b8e605
+ibis proposals reject 3f9c2a7d41b8e605
+```
+
+`show` prints the change and, for a `.bib` file, the entry as it is and as it
+would be written. There is no `apply` command: the person applies a proposal
+in the Ibis app, after the same preview. Applying writes `.bib` files only. It
+refuses when the entry changed since the proposal, edits only that entry's
+fields, or adds the new entry at the end, keeps every other byte, and saves
+the replaced file as `refs.bib.ibis-backup-N`. A field written with a
+`@string` macro is replaced whole; tags already written keep their spelling.
+A new entry gets a citation key such as `taylor2026signals`: the first
+author's family name, the year and the first title word that is not a short
+word like "the", in lowercase ASCII, with `a`, `b`, … added when the file or a
+waiting proposal already uses it in any letter case.
+
+Only `.bib` libraries take proposals for now. Zotero libraries wait for
+Zotero's official local write API, and Ibis never writes `zotero.sqlite`.
+Applies run one at a time, and a library file reached through a link that
+was not there when it was opened is left alone.

@@ -3,8 +3,8 @@
 Decided by the maintainer on 2026-11-15: yes to every question below, as
 recommended, and the direction in [One place to set it up](#one-place-to-set-it-up).
 `ibis agents setup` and steps 3 and 4 of the order (attachment text from
-Zotero's index and from the PDF itself) are built; the other numbered steps are
-not yet.
+Zotero's index and from the PDF itself) are built, and step 5 for `.bib` files;
+the other numbered steps are not yet.
 
 It builds on [0033](0033-engine-for-agents-and-tools.md),
 [0036](0036-reader-trust-boundary.md), [0051](0051-references-in-and-out.md) and
@@ -197,7 +197,21 @@ online wherever it appears, and its MCP results say so in `source_health`, so th
    root once, after cached mount classification; open every component below it
    without following links. A `.bib` library's folder is already canonical.
    Test temp roots use the same policy, including macOS's `/var` system link.
-5. Agent proposals for writes, after 0051's add-by-identifier slice.
+5. Built for `.bib` files: agent proposals for writes. The engine's `write`
+   module keeps each proposal (add a reference from CSL-JSON, set fields, add or
+   remove tags) as a private file beside the app's settings, at most 100 waiting
+   and 64 KiB each, with its source, target library and a fingerprint of the
+   entry. `ibis mcp --allow-writes` adds `propose_add`, `propose_change`,
+   `propose_tags` and `proposals`; `ibis proposals list|show|reject` reads and
+   rejects them. Apply is an engine method for the app's confirmation screen only,
+   never an MCP tool or a command: it refuses a changed entry, edits only that
+   entry or appends the new one with a generated key, writes atomically and keeps
+   a numbered backup. Zotero libraries take no proposals until Zotero's official
+   local write API exists. Applies hold one lock across Ibis processes and refuse
+   a library path that no longer resolves to itself.
+   The confirmation screen in the app is next. Proposals came before 0051's
+   add-by-identifier slice, at the maintainer's request, because `.bib` files
+   have a safe write path today.
 6. The Web API source, only after the maintainer's yes.
 
 ## Questions for the maintainer

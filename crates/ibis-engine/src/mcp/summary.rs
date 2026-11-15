@@ -21,6 +21,8 @@ pub(super) fn text(tool: &str, data: &Value) -> String {
         "outline" => outline(data),
         "read" => read(data),
         "find_in" => find_in(data),
+        "propose_add" | "propose_change" | "propose_tags" => proposed(data),
+        "proposals" => proposals(data),
         _ => vec![],
     };
     for note in strings(data.get("library_notes")) {
@@ -279,6 +281,47 @@ fn styles(data: &Map<String, Value>) -> Vec<String> {
         .collect();
     if !locales.is_empty() {
         lines.push(format!("Languages for locale: {}.", locales.join(", ")));
+    }
+    lines
+}
+
+/// The proposal id first, then what it changes and that nothing has yet.
+fn proposed(data: &Map<String, Value>) -> Vec<String> {
+    let text = |name: &str| data.get(name).and_then(Value::as_str).map(line).unwrap_or_default();
+    vec![
+        format!(
+            "Proposal {} ({}): {}",
+            text("proposal"),
+            text("status"),
+            text("summary")
+        ),
+        text("next"),
+    ]
+}
+
+fn proposals(data: &Map<String, Value>) -> Vec<String> {
+    let list = |name: &str| data.get(name).and_then(Value::as_array).cloned().unwrap_or_default();
+    let (proposals, libraries) = (list("proposals"), list("libraries"));
+    let mut lines = vec![match proposals.len() {
+        0 => "No proposals from this app.".to_owned(),
+        count => format!("{count} proposal(s) from this app:"),
+    }];
+    for proposal in &proposals {
+        let text = |name: &str| proposal.get(name).and_then(Value::as_str).map(line).unwrap_or_default();
+        lines.push(format!(
+            "{} ({}): {}",
+            text("proposal"),
+            text("status"),
+            text("summary")
+        ));
+    }
+    for library in &libraries {
+        lines.push(format!(
+            "Library {}: {}, {} references.",
+            library.get("library").and_then(scalar).unwrap_or_default(),
+            library.get("kind").and_then(scalar).unwrap_or_default(),
+            library.get("references").and_then(Value::as_u64).unwrap_or_default()
+        ));
     }
     lines
 }
