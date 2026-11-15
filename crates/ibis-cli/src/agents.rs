@@ -4,7 +4,7 @@ use clap::{Arg, ArgAction, ArgMatches, Command};
 use ibis_core::contract::{ErrorCode, ExitCode};
 use ibis_engine::{
     DispatchResult,
-    agent_apps::{self, ARGS, AgentApp, AgentAppState, COMMAND, Change, GUIDE, Home},
+    agent_apps::{self, ARGS, AgentApp, AgentAppState, COMMAND, Change, GUIDE, Home, Outcome},
 };
 use serde_json::json;
 use std::io::{BufRead, Write};
@@ -205,21 +205,20 @@ fn report(action: &str, lines: &[Line], home: &Home, dry_run: bool) -> DispatchR
         text.push('\n');
     }
     match action {
-        "setup" if dry_run => text.push_str("\nNothing was changed (--dry-run).\n"),
+        "setup" | "remove" if dry_run => text.push_str("\nNothing was changed (--dry-run).\n"),
         "setup"
             if lines
                 .iter()
-                .any(|line| matches!(line.change.outcome.as_str(), "connected" | "replaced")) =>
+                .any(|line| matches!(line.change.outcome, Outcome::Connected | Outcome::Replaced)) =>
         {
             text.push_str("\nRestart each app, or start a new session, to use Ibis. To undo: ibis agents remove\n");
         }
-        "remove" if dry_run => text.push_str("\nNothing was changed (--dry-run).\n"),
         _ => {}
     }
     let problem = lines.iter().any(|line| {
         matches!(
-            line.change.outcome.as_str(),
-            "failed" | "blocked" | "different" | "stale" | "kept"
+            line.change.outcome,
+            Outcome::Failed | Outcome::Blocked | Outcome::Different | Outcome::Stale | Outcome::Kept
         )
     });
     DispatchResult {

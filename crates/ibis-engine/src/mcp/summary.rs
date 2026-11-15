@@ -1,12 +1,6 @@
-//! The text half of a tool answer: a short summary a person or model can read.
-//!
-//! MCP suggests repeating structured content as serialized JSON text for older
-//! clients. Many clients hand both halves to the model, so the whole answer
-//! would be paid for twice. `structuredContent` keeps every field; this text
-//! keeps what an agent needs to act: each ref and every notice, loss, warning
-//! and library note. The citation comes first as one JSON string, so library
-//! text in it cannot start a line of its own and pose as a warning; its exact
-//! text is also `structuredContent.text`.
+//! Compact MCP text; structuredContent retains the complete answer.
+//! Keep findings and page attribution, flatten library line breaks, and mark
+//! library text as data. JSON-quote citations so they cannot forge warning lines.
 use crate::catalogue;
 use serde_json::{Map, Value};
 
@@ -74,6 +68,10 @@ fn line(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+fn array<'a>(data: &'a Map<String, Value>, field: &str) -> &'a [Value] {
+    data.get(field).and_then(Value::as_array).map_or(&[], Vec::as_slice)
+}
+
 fn strings(value: Option<&Value>) -> Vec<String> {
     value
         .and_then(Value::as_array)
@@ -119,7 +117,7 @@ fn scalar(value: &Value) -> Option<String> {
 }
 
 fn search(data: &Map<String, Value>) -> Vec<String> {
-    let hits = data.get("hits").and_then(Value::as_array).cloned().unwrap_or_default();
+    let hits = array(data, "hits");
     let complete = data.get("complete").and_then(Value::as_bool).unwrap_or(true);
     let mut lines = vec![match (hits.len(), complete) {
         (0, _) => "No references match. Say so; never cite from memory.".to_owned(),
@@ -185,13 +183,13 @@ fn cite(data: &Map<String, Value>) -> Vec<String> {
         .cloned()
         .unwrap_or_else(|| Value::String(String::new()));
     let mut lines = vec![format!("Citation: {citation}")];
-    for notice in data.get("notices").and_then(Value::as_array).into_iter().flatten() {
+    for notice in array(data, "notices").iter() {
         let code = notice.as_str().unwrap_or("unknown");
         let sentence = catalogue::text(&format!("notice-{code}"), None, &[])
             .unwrap_or_else(|| format!("Check this citation ({code})."));
         lines.push(format!("Notice: {sentence}"));
     }
-    for loss in data.get("losses").and_then(Value::as_array).into_iter().flatten() {
+    for loss in array(data, "losses").iter() {
         let field = loss["field"].as_str().unwrap_or_default();
         let what = catalogue::text(&format!("loss-{field}"), None, &[]).unwrap_or_else(|| field.to_owned());
         let target = loss["item"]
@@ -201,7 +199,7 @@ fn cite(data: &Map<String, Value>) -> Vec<String> {
         let sentence = catalogue::text("app-loss", None, &[("what", &what), ("target", &target)]).unwrap_or_default();
         lines.push(format!("Loss: {sentence}"));
     }
-    for warning in data.get("warnings").and_then(Value::as_array).into_iter().flatten() {
+    for warning in array(data, "warnings").iter() {
         let code = warning["code"].as_str().unwrap_or("unknown");
         let reference = warning["item"]
             .as_u64()
@@ -261,17 +259,13 @@ fn cite(data: &Map<String, Value>) -> Vec<String> {
 }
 
 fn styles(data: &Map<String, Value>) -> Vec<String> {
-    let styles = data
-        .get("styles")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+    let styles = array(data, "styles");
     let total = data.get("total").and_then(Value::as_u64).unwrap_or(styles.len() as u64);
     let mut lines = vec![format!(
         "{} of {total} matching styles; pass an id as style.",
         styles.len()
     )];
-    for style in &styles {
+    for style in styles {
         let id = style["id"].as_str().unwrap_or_default();
         let title = style["title"].as_str().map(line).unwrap_or_default();
         match style["format"].as_str() {
@@ -279,11 +273,8 @@ fn styles(data: &Map<String, Value>) -> Vec<String> {
             None => lines.push(format!("{id} · {title}")),
         }
     }
-    let locales: Vec<String> = data
-        .get("locales")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
+    let locales: Vec<String> = array(data, "locales")
+        .iter()
         .filter_map(|locale| locale["tag"].as_str().map(str::to_owned))
         .collect();
     if !locales.is_empty() {
@@ -293,17 +284,13 @@ fn styles(data: &Map<String, Value>) -> Vec<String> {
 }
 
 fn outline(data: &Map<String, Value>) -> Vec<String> {
-    let attachments = data
-        .get("attachments")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+    let attachments = array(data, "attachments");
     let mut lines = vec![match attachments.len() {
         0 => "This reference has no attachments.".to_owned(),
         1 => "1 attachment; pass its id to read or find_in.".to_owned(),
         count => format!("{count} attachments; pass an id to read or find_in."),
     }];
-    for attachment in &attachments {
+    for attachment in attachments {
         let mut parts = vec![attachment["id"].as_str().unwrap_or_default().to_owned()];
         for field in ["title", "media_type"] {
             if let Some(value) = attachment.get(field).and_then(scalar) {
@@ -347,13 +334,7 @@ fn attachment_line(item: &Value) -> String {
 }
 
 fn read(data: &Map<String, Value>) -> Vec<String> {
-    let mut lines: Vec<String> = data
-        .get("pages")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .map(attachment_line)
-        .collect();
+    let mut lines: Vec<String> = array(data, "pages").iter().map(attachment_line).collect();
     if let Some(next) = data.get("next") {
         let parts: Vec<String> = ["first_page", "offset"]
             .iter()
@@ -365,11 +346,7 @@ fn read(data: &Map<String, Value>) -> Vec<String> {
 }
 
 fn find_in(data: &Map<String, Value>) -> Vec<String> {
-    let passages = data
-        .get("passages")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+    let passages = array(data, "passages");
     let complete = data.get("complete").and_then(Value::as_bool).unwrap_or(true);
     let mut lines = vec![match (passages.len(), complete) {
         (0, _) => "No passage holds those words. Say so; never guess what the attachment says.".to_owned(),

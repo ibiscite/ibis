@@ -19,7 +19,7 @@ export function demoApi(): SettingsApi {
   const noop = async () => undefined as never;
   let command: CommandStatus = { state: "not-installed", version: null, used_path: null, profile_line: null, removable: false, installable: true };
   const app = (id: string, name: string, state: AgentApp["state"], extra: Partial<AgentApp> = {}): AgentApp =>
-    ({ id, name, state, found: true, detail: "", diff: null, needs_command: false, ibis_on_path: true, revision: id as never, ...extra });
+    ({ id, name, state, found: true, detail: "", diff: null, needs_command: false, ibis_on_path: true, revision: id, ...extra });
   let agents: AgentApp[] = [
     app("claude-desktop", "Claude Desktop", "not-connected", { needs_command: true }),
     app("claude-code", "Claude Code", "connected"),
@@ -73,8 +73,8 @@ export function demoApi(): SettingsApi {
     onPreferencesChanged: async (changed) => { listeners.add(changed); return () => { listeners.delete(changed); }; },
     onSettingsChanged: async (changed) => { listeners.add(changed); return () => { listeners.delete(changed); }; },
     agentApps: async () => agents,
-    connectAgentApp: async (id) => { agents = agents.map((app) => app.id === id ? { ...app, state: "connected", diff: null, revision: `${app.revision}+` as never } : app); return agents; },
-    disconnectAgentApp: async (id) => { agents = agents.map((app) => app.id === id ? { ...app, state: "not-connected", revision: `${app.revision}-` as never } : app); return agents; },
+    connectAgentApp: async (id) => { agents = agents.map((app) => app.id === id ? { ...app, state: "connected", diff: null, revision: `${app.revision}+` } : app); return agents; },
+    disconnectAgentApp: async (id) => { agents = agents.map((app) => app.id === id ? { ...app, state: "not-connected", revision: `${app.revision}-` } : app); return agents; },
     cliStatus: async () => command,
     setCliInstalled: async (installed) => (command = { ...command, state: installed ? "matching" : "not-installed", version: installed ? "0.2.1" : null, installable: !installed, removable: installed }),
     copyCliProfile: noop,

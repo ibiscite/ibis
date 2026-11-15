@@ -5,63 +5,49 @@ import { listening } from "../nativeEvents";
 import { Group, Row, Section } from "../ui/Layout";
 import { Switch } from "../ui/Switch";
 import type { SettingsApi } from "./api";
+import { useSettingsRequests } from "./useSettingsRequests";
 
 export type AttachmentTextApi = Required<Pick<SettingsApi, "attachmentTextLibraries" | "setAttachmentText">>
   & Pick<SettingsApi, "onSettingsChanged" | "onLibraryChanged">;
 
-/** One device-only choice per open library, shared with the command line. */
 export function AttachmentText({ api, highlighted = false }: { api: AttachmentTextApi; highlighted?: boolean }) {
   const { text } = useInterfaceMessages();
   const [libraries, setLibraries] = useState<AttachmentTextLibrary[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [problems, setProblems] = useState<ReadonlySet<LibraryId>>(new Set());
-  const sequence = useRef(0);
-  const pending = useRef(new Map<LibraryId, number>());
   const saved = useRef(new Map<LibraryId, boolean>());
-  const mounted = useRef(false);
-  const refresh = useRef(() => {});
+  const { read, begin, isPending } = useSettingsRequests(api.attachmentTextLibraries, (next) => {
+    saved.current = new Map(next.map((library) => [library.id, library.on]));
+    setLibraries(next); setFailed(false);
+  }, () => setFailed(true));
 
   useEffect(() => {
-    mounted.current = true;
-    const read = () => {
-      if (pending.current.size) return;
-      const ticket = ++sequence.current;
-      void api.attachmentTextLibraries().then((next) => {
-        if (!mounted.current || ticket !== sequence.current) return;
-        saved.current = new Map(next.map((library) => [library.id, library.on]));
-        setLibraries(next); setFailed(false);
-      }, () => { if (mounted.current && ticket === sequence.current) setFailed(true); });
-    };
-    refresh.current = read;
     const stopSettings = listening(api.onSettingsChanged, read);
     const stopLibrary = listening(api.onLibraryChanged, read);
     read();
     window.addEventListener("focus", read);
     return () => {
-      mounted.current = false; sequence.current += 1; pending.current.clear();
-      refresh.current = () => {};
       stopSettings(); stopLibrary(); window.removeEventListener("focus", read);
     };
-  }, [api.attachmentTextLibraries, api.onSettingsChanged, api.onLibraryChanged]);
+  }, [read, api.onSettingsChanged, api.onLibraryChanged]);
 
   const change = (id: LibraryId, on: boolean) => {
-    const ticket = ++sequence.current;
-    pending.current.set(id, ticket);
+    const request = begin(id);
+    const update = (on: boolean) => setLibraries((previous) => previous?.map((library) => library.id === id ? { ...library, on } : library) ?? null);
     setProblems((previous) => { const next = new Set(previous); next.delete(id); return next; });
-    setLibraries((previous) => previous?.map((library) => library.id === id ? { ...library, on } : library) ?? null);
-    const current = () => mounted.current && pending.current.get(id) === ticket;
+    update(on);
     void api.setAttachmentText(id, on).then((next) => {
-      if (!current()) return;
+      if (!request.current()) return;
       saved.current.set(id, next);
-      setLibraries((previous) => previous?.map((library) => library.id === id ? { ...library, on: next } : library) ?? null);
+      update(next);
     }, () => {
-      if (!current()) return;
-      setLibraries((previous) => previous?.map((library) => library.id === id ? { ...library, on: saved.current.get(id) ?? false } : library) ?? null);
+      if (!request.current()) return;
+      update(saved.current.get(id) ?? false);
       setProblems((previous) => new Set(previous).add(id));
     }).finally(() => {
-      if (!current()) return;
-      pending.current.delete(id);
-      if (!pending.current.size) refresh.current();
+      if (!request.current()) return;
+      request.finish();
+      if (!isPending()) read();
     });
   };
 

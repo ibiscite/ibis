@@ -707,39 +707,31 @@ requests finish before exit. Process exit codes do not apply per request.
 
 ## AI agents (MCP)
 
-In the desktop app, open **Settings › AI Apps** to connect or disconnect an
-AI app, repair a stale command path, or review and replace a different entry.
-**Command Line** on that page installs the ibis command. Settings and
-`ibis agents setup|status|remove` perform the same actions on the same engine
-code and saved app settings; a change in either appears in the other. The
-button press confirms a change, with no copying or pasting.
-
-Connect every AI app on this computer in one terminal step:
+**Settings › AI Apps** and `ibis agents` share the engine and saved app
+settings. Connect, disconnect, repair a stale path, or review and replace a
+different entry with the row’s button. **Command Line** installs `ibis`.
 
 ```sh
-ibis agents setup            # shows what it adds and asks first
+ibis agents setup            # asks first
 ibis agents status           # which apps have Ibis
 ibis agents remove           # undo; other servers stay
 ```
 
 Setup finds Claude Code, Claude Desktop, Codex, Cursor, VS Code, Gemini CLI,
-Windsurf and LM Studio, and adds the server the plugin uses,
-`ibis mcp --app-libraries`. Claude Code and Codex are changed through their own
-`mcp add` command; for the others the entry is merged into the app's JSON file,
-keeping every other server and setting, with a new `<file>.ibis-backup-N` copy
-beside it for each change. Backups are created privately; older backups stay.
-Claude Desktop and LM Studio get the full path of `ibis`, because apps opened
-from the Dock or Start menu may not see your terminal's PATH. Removal takes out
-only the entry setup adds, including one with a stale command path. Status
-reports `connected`, `not-connected`, `stale` (run setup to repair the path),
-`different`, `blocked` or `by-hand`; `stale`, `different` and `blocked` exit 1.
-When the command's full path is known, setup repairs its own stale entry without
-the different-entry question and reports `replaced` with the before/after diff.
-A different `ibis` entry is shown and replaced only if you agree, or with
-`--replace`. A file that is not plain JSON, or is a link, is left alone with
-the step to do by hand. With the Ibis plugin installed, Claude Code is left as
-it is, so the server is not there twice. Scripts pass `--yes`; `--dry-run`
-changes nothing. ChatGPT desktop is set up in its own window.
+Windsurf and LM Studio, using `ibis mcp --app-libraries`. Claude Code and Codex
+use their own `mcp add` commands. Other apps get a JSON merge that preserves
+other servers and settings, with a private `<file>.ibis-backup-N` for each
+change; older backups stay. Links, non-JSON and files changed during setup are
+left alone. Claude Desktop and LM Studio need a durable full CLI path. The
+Ibis plugin already connects Claude Code, so setup adds nothing there.
+ChatGPT desktop shows steps for its own window.
+
+Status reports `connected`, `not-connected`, `stale`, `different`, `blocked`
+or `by-hand`; `stale`, `different` and `blocked` exit 1. Setup repairs its own
+stale path without a replacement question, reporting `replaced` and the diff.
+Different entries require agreement or `--replace`; removal takes out only
+setup’s own entry, including a stale path. Scripts use `--yes`; `--dry-run`
+changes nothing.
 
 For any other app, follow the [assistant setup guide](https://ibiscite.org/setup),
 or paste this prompt into your assistant:

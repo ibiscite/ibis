@@ -46,7 +46,10 @@ pub(super) fn run(
     });
     let cancel = Cancellation::default();
     let ids_last = health::inspect_identity(&cancel)?;
-    let mut config = config_check(args.get_one::<PathBuf>("config").map(PathBuf::as_path), &cancel);
+    let mut config = args.get_one::<PathBuf>("config").map_or_else(
+        || check("not-checked", "config-not-requested"),
+        |path| config_report(health::inspect_config(path.clone(), &cancel)),
+    );
     // Capture existing state once. A later check cannot relabel this observation.
     let (_, sources) = engine.health()?;
     let mut sources: Vec<_> = sources.iter().map(library_report).collect();
@@ -266,13 +269,6 @@ fn check(status: &str, reason: &str) -> Value {
     json!({"status":status, "code":code, "message":message})
 }
 
-fn config_check(path: Option<&Path>, cancel: &Cancellation) -> Value {
-    path.map_or_else(
-        || check("not-checked", "config-not-requested"),
-        |path| config_report(health::inspect_config(path.to_owned(), cancel)),
-    )
-}
-
 fn config_report(loaded: Option<settings::Loaded>) -> Value {
     let Some(loaded) = loaded else {
         let mut result = check("failed", "config-timeout");
@@ -308,23 +304,17 @@ fn config_problem(problem: &settings::SettingsError) -> &'static str {
 /// The app's chosen libraries: files checked offline, Zotero named but not
 /// opened. No chosen path is shown; agents read this report too.
 fn app_reports(chosen: &AppLibraries, cancel: &Cancellation) -> Vec<Value> {
-    let mut reports: Vec<_> = chosen
-        .files
-        .iter()
-        .map(|path| {
-            let mut report = file_report(path, cancel);
-            report["chosen_in"] = json!(chosen.app);
-            report
-        })
-        .collect();
+    let mut reports: Vec<_> = chosen.files.iter().map(|path| file_report(path, cancel)).collect();
     for _ in &chosen.zotero {
         let mut report = unavailable("zotero", "not-checked", "zotero-not-checked");
-        report["chosen_in"] = json!(chosen.app);
         report["message"] = json!(format!(
             "Chosen in {}. Doctor does not open Zotero: reading it can contact Zotero and copy its database, and doctor sends and writes nothing. `ibis libraries` reads it.",
             chosen.app
         ));
         reports.push(report);
+    }
+    for report in &mut reports {
+        report["chosen_in"] = json!(chosen.app);
     }
     reports
 }

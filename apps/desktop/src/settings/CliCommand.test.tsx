@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { CommandStatus } from "../bindings";
+import { deferred } from "../testing/deferred";
 import { CliCommandRow } from "./CliCommand";
 
 afterEach(cleanup);
@@ -34,11 +35,11 @@ test("only a successful command change on the current page notifies its owner", 
   await screen.findByText("ibis 1.2.3 — matches this app");
   expect(onChanged).toHaveBeenCalledOnce();
   first.unmount();
-  let finish!: (status: CommandStatus) => void;
-  const second = row(missing, { setCliInstalled: vi.fn(() => new Promise<CommandStatus>((resolve) => { finish = resolve; })) }, onChanged);
+  const pending = deferred<CommandStatus>();
+  const second = row(missing, { setCliInstalled: vi.fn(() => pending.promise) }, onChanged);
   fireEvent.click(await screen.findByRole("button", { name: "Install the ibis command" }));
   second.unmount();
-  await act(async () => finish(matching));
+  await act(async () => pending.resolve(matching));
   expect(onChanged).toHaveBeenCalledOnce();
 });
 
@@ -63,27 +64,26 @@ test("PATH guidance copies the exact native profile line", async () => {
 });
 
 test("failed I/O says so and a completion after closing cannot change a reopened row", async () => {
-  let resolve!: (status: CommandStatus) => void;
-  const first = row(missing, { setCliInstalled: vi.fn(() => new Promise<CommandStatus>((done) => { resolve = done; })) });
+  const pending = deferred<CommandStatus>();
+  const first = row(missing, { setCliInstalled: vi.fn(() => pending.promise) });
   fireEvent.click(await screen.findByRole("button", { name: "Install the ibis command" }));
   first.unmount();
   row(missing, { setCliInstalled: vi.fn(async () => { throw new Error("denied"); }) });
-  await act(async () => resolve(matching));
+  await act(async () => pending.resolve(matching));
   await screen.findByText("Not installed");
   fireEvent.click(screen.getByRole("button", { name: "Install the ibis command" }));
   await screen.findByRole("alert");
   expect(screen.queryByText("ibis 1.2.3 — matches this app")).toBeNull();
 });
 
-
 test("a read delayed beyond an install cannot undo its result", async () => {
-  let release!: (status: CommandStatus) => void;
-  const cliStatus = vi.fn().mockResolvedValueOnce(missing).mockImplementationOnce(() => new Promise<CommandStatus>((done) => { release = done; }));
+  const pending = deferred<CommandStatus>();
+  const cliStatus = vi.fn().mockResolvedValueOnce(missing).mockImplementationOnce(() => pending.promise);
   row(missing, { cliStatus });
   const install = await screen.findByRole("button", { name: "Install the ibis command" });
   fireEvent(window, new Event("focus"));
   fireEvent.click(install);
   await screen.findByText("ibis 1.2.3 — matches this app");
-  await act(async () => release(missing));
+  await act(async () => pending.resolve(missing));
   expect(screen.getByText("ibis 1.2.3 — matches this app")).toBeTruthy();
 });
