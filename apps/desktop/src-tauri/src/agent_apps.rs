@@ -1,4 +1,5 @@
 //! Fixed app IDs and native environment; the web view never supplies a file or command.
+use crate::{errors::NativeOperation, library::CommandError};
 use ibis_engine::agent_apps::{self, AgentApp, Outcome};
 
 /// Every supported AI app, found ones first.
@@ -16,8 +17,10 @@ pub(crate) async fn connect_agent_app(
     id: String,
     replace: bool,
     expected: String,
-) -> Result<Vec<AgentApp>, String> {
-    operation(app, Step::Connect { id, replace, expected }).await
+) -> Result<Vec<AgentApp>, CommandError> {
+    operation(app, Step::Connect { id, replace, expected })
+        .await
+        .map_err(|detail| connection_failure(detail, NativeOperation::ConnectAgentApp))
 }
 
 /// Disconnect only if expected is the revision of the displayed connection.
@@ -27,8 +30,18 @@ pub(crate) async fn disconnect_agent_app(
     app: tauri::AppHandle,
     id: String,
     expected: String,
-) -> Result<Vec<AgentApp>, String> {
-    operation(app, Step::Disconnect { id, expected }).await
+) -> Result<Vec<AgentApp>, CommandError> {
+    operation(app, Step::Disconnect { id, expected })
+        .await
+        .map_err(|detail| connection_failure(detail, NativeOperation::DisconnectAgentApp))
+}
+
+/// Private recovery text goes only to the requesting window. The catalogue's
+/// generic diagnostic remains suitable for Display; never log these arguments.
+fn connection_failure(detail: String, operation: NativeOperation) -> CommandError {
+    let mut problem = operation.failure().problem();
+    problem.info = problem.info.argument("detail", detail);
+    CommandError::Presented(problem)
 }
 
 enum Step {
@@ -73,10 +86,7 @@ fn apply(home: &agent_apps::Home, step: Step) -> Result<Vec<AgentApp>, String> {
         app.disconnect(home, true, false)
     };
     if matches!(change.outcome, Outcome::Failed | Outcome::Blocked | Outcome::Kept) {
-        return Err(
-            "Could not change the AI app connection. Check the app’s settings and folder permissions, then try again."
-                .into(),
-        );
+        return Err(change.detail);
     }
     Ok(agent_apps::list(home))
 }
@@ -84,6 +94,65 @@ fn apply(home: &agent_apps::Home, step: Step) -> Result<Vec<AgentApp>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    #[test]
+    fn agent_failed_add_returns_the_removed_entry_to_the_window() {
+        use std::os::unix::fs::PermissionsExt;
+        for (id, program) in [("claude-code", "claude"), ("codex", "codex")] {
+            let dir = tempfile::TempDir::new().unwrap();
+            let home = agent_apps::Home {
+                root: dir.path().to_owned(),
+                config: None,
+                path: vec![dir.path().join("bin")],
+                codex_home: None,
+                ibis: None,
+            };
+            std::fs::create_dir_all(&home.path[0]).unwrap();
+            let old = serde_json::json!({"command":"other", "env":{"INVENTED":"restore this"}});
+            let settings = if id == "codex" {
+                let path = home.root.join(".codex/config.toml");
+                std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                std::fs::write(
+                    &path,
+                    "[mcp_servers.ibis]\ncommand = \"other\"\n[mcp_servers.ibis.env]\nINVENTED = \"restore this\"\n",
+                )
+                .unwrap();
+                path
+            } else {
+                let path = home.root.join(".claude.json");
+                std::fs::write(&path, serde_json::json!({"mcpServers":{"ibis":old}}).to_string()).unwrap();
+                path
+            };
+            let script = home.path[0].join(program);
+            std::fs::write(
+                &script,
+                format!(
+                    "#!/bin/sh\ncase \"$2\" in\nremove) /bin/rm '{}' ;;\nadd) exit 1 ;;\nesac\n",
+                    settings.display()
+                ),
+            )
+            .unwrap();
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+            let preview = agent_apps::plan(&home, &[id]).remove(0);
+            let error = apply(
+                &home,
+                Step::Connect {
+                    id: id.into(),
+                    replace: true,
+                    expected: preview.revision.as_str().into(),
+                },
+            )
+            .err()
+            .unwrap();
+            assert!(!settings.exists());
+            assert!(error.contains("the old ibis entry was taken out"), "{error}");
+            assert!(error.contains(&format!("\"ibis\": {old}")), "{error}");
+            let failure = connection_failure(error.clone(), NativeOperation::ConnectAgentApp);
+            let wire = serde_json::to_value(&failure).unwrap();
+            assert_eq!(wire["message"]["args"]["detail"], error);
+            assert!(!failure.to_string().contains("restore this"));
+        }
+    }
     #[test]
     fn agent_replace_refuses_an_entry_changed_since_its_preview() {
         let dir = tempfile::TempDir::new().unwrap();

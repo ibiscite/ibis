@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import axe from "axe-core";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
-import type { CommandStatus, LoginItem, PickerPreferences, PickerSave, ShortcutStatus, WindowSize } from "../bindings";
+import type { AgentApp, CommandStatus, LoginItem, PickerPreferences, PickerSave, ShortcutStatus, WindowSize } from "../bindings";
 import { bindingKeys, DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
 import { currentPlatform } from "../platform";
 import { pageOf, SettingsApp } from "./SettingsApp";
@@ -20,6 +20,31 @@ import { SHORTCUT_ACTIONS, SHORTCUT_REGIONS } from "../i18n/settings";
 import { deferred } from "../testing/deferred";
 
 afterEach(() => { vi.useRealTimers(); localStorage.clear(); });
+
+test("command changes refresh AI Apps and retire older observations", async () => {
+  const { api } = fakeApi();
+  const missing: CommandStatus = { state: "not-installed", version: null, used_path: null, profile_line: null, removable: false, installable: true };
+  const app: AgentApp = { id: "cursor", name: "Cursor", found: true, revision: "before-install", state: "not-connected", detail: "", diff: null, needs_command: true, ibis_on_path: false };
+  const installed = { ...app, revision: "after-install", ibis_on_path: true };
+  const late = deferred<AgentApp[]>();
+  api.cliStatus = vi.fn(async () => missing);
+  api.setCliInstalled = vi.fn(async (on: boolean): Promise<CommandStatus> => on ? { ...missing, state: "matching", version: "1.2.3", installable: false, removable: true } : missing);
+  api.copyCliProfile = vi.fn();
+  api.agentApps = vi.fn().mockResolvedValueOnce([app]).mockReturnValueOnce(late.promise).mockResolvedValueOnce([installed]).mockResolvedValueOnce([app]);
+  api.connectAgentApp = vi.fn(async () => [installed]);
+  api.disconnectAgentApp = vi.fn();
+  render(<SettingsApp api={api} initialPage="ai-apps" />);
+  await screen.findByText(/Command Line above/);
+  fireEvent(window, new Event("focus"));
+  fireEvent.click(screen.getByRole("button", { name: "Install the ibis command" }));
+  await waitFor(() => expect(screen.queryByText(/Command Line above/)).toBeNull());
+  await act(async () => late.resolve([app]));
+  expect(screen.queryByText(/Command Line above/)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: /^Connect/ }));
+  await waitFor(() => expect(api.connectAgentApp).toHaveBeenCalledWith("cursor", false, "after-install"));
+  fireEvent.click(screen.getByRole("button", { name: "Remove Command" }));
+  await screen.findByText(/Command Line above/);
+});
 
 test.each(["macos", "linux"])("AI Apps offers the per-user command and PATH guidance on %s", async (platform) => {
   const previous = document.documentElement.dataset.system;

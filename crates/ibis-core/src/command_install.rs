@@ -132,15 +132,11 @@ impl CommandInstall {
         self.home.join(".local/share/ibis/command-settled")
     }
 
-    /// An app still on its disk image, translocated by macOS or run from an
-    /// unregistered temporary mount: its command would vanish with it.
-    fn temporary(&self) -> bool {
+    /// The bundled command would vanish with its disk image, translocation or
+    /// AppImage mount, even when a persistent AppImage is known.
+    pub fn temporary(&self) -> bool {
         let text = self.bundled.to_string_lossy();
-        if cfg!(target_os = "macos") {
-            text.starts_with("/Volumes/") || text.contains("/AppTranslocation/")
-        } else {
-            self.app.is_none() && text.contains("/.mount_")
-        }
+        text.starts_with("/Volumes/") || text.contains("/AppTranslocation/") || text.contains("/.mount_")
     }
 
     /// What the app does at launch, so installing the app is all it takes:
@@ -149,7 +145,7 @@ impl CommandInstall {
     /// Anything another installer owns (Homebrew, a download), another Ibis
     /// channel's command, and a command the person removed are left alone.
     pub fn keep_installed(&self) -> io::Result<CommandStatus> {
-        if self.temporary() {
+        if self.temporary() && self.app.is_none() {
             return self.status();
         }
         let first =
@@ -383,6 +379,23 @@ impl CommandInstall {
 #[cfg(test)]
 #[cfg(unix)]
 mod tests {
+    #[test]
+    fn command_install_temporary_covers_mounts_even_with_a_persistent_appimage() {
+        for path in [
+            "/tmp/.mount_Ibis/usr/bin/ibis",
+            "/Volumes/Ibis/Ibis.app/Contents/MacOS/ibis",
+            "/tmp/AppTranslocation/invented/Ibis.app/Contents/MacOS/ibis",
+        ] {
+            let install = super::CommandInstall::new(
+                "/invented/home".into(),
+                vec![],
+                path.into(),
+                Some("/invented/Ibis.AppImage".into()),
+                "1.2.3".into(),
+            );
+            assert!(install.temporary(), "{path}");
+        }
+    }
     use super::*;
     use std::os::unix::fs::{PermissionsExt, symlink};
 

@@ -69,6 +69,7 @@ fn agent_environment(
 ) -> Result<ibis_engine::agent_apps::Home, String> {
     let status = install.status().map_err(|_| "Could not check the ibis command.")?;
     let destination = install.destination();
+    let bundled = (!install.temporary()).then_some(install.bundled);
     let mut path = install.path;
     path.push(install.home.join(".local/bin"));
     let mut home = ibis_engine::agent_apps::Home {
@@ -78,13 +79,11 @@ fn agent_environment(
         codex_home,
         ibis: None,
     };
-    home.ibis = Some(
-        if status.removable && ibis_engine::agent_apps::executable(&destination) {
-            destination
-        } else {
-            home.find("ibis").unwrap_or(install.bundled)
-        },
-    );
+    home.ibis = if status.removable && ibis_engine::agent_apps::executable(&destination) {
+        Some(destination)
+    } else {
+        home.find("ibis").or(bundled)
+    };
     Ok(home)
 }
 

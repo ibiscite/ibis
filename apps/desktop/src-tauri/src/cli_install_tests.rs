@@ -33,6 +33,36 @@ fn fixture_for(package: &str) -> (TempDir, CommandInstall) {
 }
 
 #[test]
+fn agent_temporary_bundles_need_a_durable_command() {
+    for location in [
+        ".mount_Ibis/usr/bin/ibis",
+        "AppTranslocation/invented/Ibis.app/Contents/MacOS/ibis",
+    ] {
+        let (dir, mut install) = fixture();
+        let temporary = dir.path().join(location);
+        fs::create_dir_all(temporary.parent().unwrap()).unwrap();
+        fs::rename(&install.bundled, &temporary).unwrap();
+        install.bundled = temporary;
+        assert!(
+            super::agent_environment(install.clone(), dir.path().join("config"), None)
+                .unwrap()
+                .ibis
+                .is_none()
+        );
+        let durable = install.home.join(".local/bin/ibis");
+        fs::create_dir_all(durable.parent().unwrap()).unwrap();
+        fs::write(&durable, "invented durable CLI").unwrap();
+        fs::set_permissions(&durable, fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(
+            super::agent_environment(install, dir.path().join("config"), None)
+                .unwrap()
+                .ibis,
+            Some(durable)
+        );
+    }
+}
+
+#[test]
 fn agent_full_path_is_the_cli_in_each_package_never_the_desktop_executable() {
     for package in ["macos", "deb", "rpm", "appimage"] {
         let (dir, mut install) = fixture_for(package);
@@ -43,16 +73,14 @@ fn agent_full_path_is_the_cli_in_each_package_never_the_desktop_executable() {
         assert_eq!(
             super::agent_environment(install.clone(), dir.path().join("config"), None)
                 .unwrap()
-                .ibis
-                .unwrap(),
-            install.bundled
+                .ibis,
+            (package != "appimage").then(|| install.bundled.clone())
         );
         assert_ne!(
             super::agent_environment(install.clone(), dir.path().join("config"), None)
                 .unwrap()
-                .ibis
-                .unwrap(),
-            desktop
+                .ibis,
+            Some(desktop)
         );
         install.install().unwrap();
         assert_eq!(
@@ -67,9 +95,8 @@ fn agent_full_path_is_the_cli_in_each_package_never_the_desktop_executable() {
             assert_eq!(
                 super::agent_environment(install.clone(), dir.path().join("config"), None)
                     .unwrap()
-                    .ibis
-                    .unwrap(),
-                install.bundled
+                    .ibis,
+                None
             );
         }
         install.remove().unwrap();

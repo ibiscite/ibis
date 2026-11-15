@@ -59,17 +59,24 @@ plain words and offers one action: **Connect**, **Disconnect**, **Repair** for
 a stale command path, or **Replace…** for a different entry. A different entry
 shows its before/after text in a Note; pressing Replace is the confirmation,
 with no second dialog. Mutations carry the shown observation’s fingerprint, so a
-changed entry cannot be replaced before its new preview is reviewed. Blocked
+changed entry cannot be replaced or disconnected before its new observation
+is reviewed. Blocked
 files show their reason, plugins say they already connect Ibis, and apps set up
 in their own window show their steps.
-A failed change says so and keeps the previous list. Apps needing the bare
+A failed change says so and keeps the previous list. If an app's own command
+removed an entry before its replacement failed, a Note under that row shows
+the recovery detail and entry in code, only in the requesting window and never
+in logs. Each action's accessible name includes its app. Apps needing the
 `ibis` command point to Command Line above when it is missing. One Note under
 the group explains that other servers and settings stay, a backup is kept
 beside each changed file, and the terminal does the same. The engine owns
 merging, private numbered backups and the change re-check. Desktop connections
 use the installer's PATH locations plus `~/.local/bin`, and a full CLI path for
-Claude Desktop and LM Studio, never the desktop executable. Refresh only on a
-visit or window focus while visible; a late read cannot overwrite a newer change.
+Claude Desktop and LM Studio, never the desktop executable or a temporary
+AppImage, disk-image or translocated path. Without a durable full path, connecting
+or repairing those apps is blocked with **Install the ibis command first**.
+Refresh on a visit, window focus while visible, or a successful command
+install/remove on this page; a late read cannot overwrite a newer change.
 Search finds both groups by agents, MCP, app names and command line.
 
 **Another computer.** Settings › General’s **Details…** holds **Back up settings** (Back Up…, a save dialog that starts in iCloud Drive on macOS, OneDrive on Windows, otherwise Documents) and **Restore settings** (Restore…). A chosen backup is checked whole, then the row lists every change as "Setting: before → after" with notes (a bibliography not on this computer, a shortcut kept for this system), **Cancel** and the primary **Restore and Restart**. Nothing changes before that button; a bibliography shows by its file name only. Refusals say why in one line and change nothing ([moving to a new computer](../moving-to-a-new-computer.md)).

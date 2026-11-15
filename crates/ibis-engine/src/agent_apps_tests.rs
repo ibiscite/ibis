@@ -1,5 +1,73 @@
 use super::*;
 
+#[test]
+fn agent_full_path_clients_without_a_command_are_blocked_without_writing() {
+    for id in ["claude-desktop", "lm-studio"] {
+        for existing in [None, Some(COMMAND), Some("/missing/ibis")] {
+            let home = home(&format!("no-command-{id}-{}", existing.is_some()));
+            let path = absolute_settings(&home, id, existing.unwrap_or("other"));
+            if existing.is_none() {
+                fs::remove_file(&path).unwrap();
+            }
+            let before = fs::read(&path).ok();
+            let app = plan(&home, &[id]).remove(0);
+            assert_eq!(app.state, AgentAppState::Blocked);
+            assert_eq!(app.detail, "Install the ibis command first");
+            let change = app.connect(&home, true, false, true);
+            assert_eq!(change.outcome, Outcome::Blocked);
+            assert_eq!(change.detail, "Install the ibis command first");
+            assert_eq!(fs::read(&path).ok(), before);
+        }
+    }
+}
+
+#[test]
+fn agent_connected_and_stale_revisions_pin_the_observed_entry() {
+    for id in ["cursor", "claude-desktop"] {
+        let mut home = home(&format!("pin-entry-{id}"));
+        known_command(&mut home);
+        let path = absolute_settings(&home, id, "/one/ibis");
+        let first = plan(&home, &[id]).remove(0);
+        absolute_settings(&home, id, "/two/ibis");
+        let changed = fs::read(&path).unwrap();
+        let second = plan(&home, &[id]).remove(0);
+        assert_ne!(first.revision, second.revision, "{id}");
+        assert_eq!(first.disconnect(&home, true, false).outcome, Outcome::Failed);
+        assert_eq!(fs::read(&path).unwrap(), changed);
+        // JSON key order and whitespace do not change the observed entry.
+        fs::write(
+            &path,
+            r#"{ "mcpServers": { "ibis": { "args": ["mcp", "--app-libraries"], "command": "/two/ibis" } } }"#,
+        )
+        .unwrap();
+        assert_eq!(second.revision, plan(&home, &[id]).remove(0).revision);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn agent_hung_program_is_killed_and_reaped_at_the_deadline() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::time::{Duration, Instant};
+    let home = home("hung-program");
+    let script = home.root.join("bin/fake-agent");
+    fs::write(&script, "#!/bin/sh\nexec /bin/sleep 1\n").unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+    let child = std::process::Command::new(script).spawn().unwrap();
+    let pid = child.id().to_string();
+    let result = finish_program(child, "fake-agent", &[], Instant::now() + Duration::from_millis(100));
+    assert!(result.unwrap_err().contains("did not finish in time"));
+    assert!(
+        !std::process::Command::new("/bin/kill")
+            .args(["-0", &pid])
+            .stderr(std::process::Stdio::null())
+            .status()
+            .unwrap()
+            .success(),
+        "child still exists or was not reaped"
+    );
+}
+
 fn home(name: &str) -> Home {
     let root = std::env::temp_dir().join(format!("ibis-agents-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
@@ -100,7 +168,8 @@ fn outcome(result: &[(AgentApp, Change)], id: &str) -> String {
 
 #[test]
 fn setup_merges_the_entry_and_keeps_every_other_setting_in_order() {
-    let home = home("merge");
+    let mut home = home("merge");
+    let command = known_command(&mut home);
     let path = desktop(&home);
     fs::write(&path, DESKTOP).unwrap();
     let result = changes(&home, "setup", &[], false);
@@ -108,7 +177,7 @@ fn setup_merges_the_entry_and_keeps_every_other_setting_in_order() {
     let written = fs::read_to_string(&path).unwrap();
     assert_eq!(
         written,
-        "{\n    \"mcpServers\": {\n        \"other\": {\n            \"command\": \"invented\",\n            \"args\": []\n        },\n        \"ibis\": {\n            \"command\": \"ibis\",\n            \"args\": [\n                \"mcp\",\n                \"--app-libraries\"\n            ]\n        }\n    },\n    \"theme\": \"dark\"\n}\n"
+        "{\n    \"mcpServers\": {\n        \"other\": {\n            \"command\": \"invented\",\n            \"args\": []\n        },\n        \"ibis\": {\n            \"command\": \"ibis\",\n            \"args\": [\n                \"mcp\",\n                \"--app-libraries\"\n            ]\n        }\n    },\n    \"theme\": \"dark\"\n}\n".replace("\"command\": \"ibis\"", &format!("\"command\": {}", json!(command)))
     );
     assert_eq!(
         fs::read_to_string(path.with_file_name("claude_desktop_config.json.ibis-backup-1")).unwrap(),
@@ -130,7 +199,8 @@ fn setup_merges_the_entry_and_keeps_every_other_setting_in_order() {
 
 #[test]
 fn backups_keep_each_original_in_a_new_private_file() {
-    let home = home("backup-history");
+    let mut home = home("backup-history");
+    known_command(&mut home);
     let path = desktop(&home);
     let original = json!({"mcpServers":{"ibis":{"command":"ibis","args":["mcp","--file","invented.bib"]}}}).to_string();
     fs::write(&path, &original).unwrap();
@@ -317,7 +387,8 @@ fn an_entry_with_settings_of_its_own_is_never_removed() {
 #[test]
 fn backup_names_taken_by_links_or_public_files_are_kept_and_skipped() {
     use std::os::unix::fs::PermissionsExt;
-    let home = home("backup-link");
+    let mut home = home("backup-link");
+    known_command(&mut home);
     let path = desktop(&home);
     fs::write(&path, DESKTOP).unwrap();
     let elsewhere = home.root.join("elsewhere.txt");
@@ -397,7 +468,8 @@ fn every_supported_app_is_listed_found_first_with_manual_steps_and_a_replacement
 
 #[test]
 fn a_change_after_observation_is_refused() {
-    let home = home("observation");
+    let mut home = home("observation");
+    known_command(&mut home);
     let path = desktop(&home);
     fs::write(&path, DESKTOP).unwrap();
     let app = list(&home).into_iter().find(|app| app.id == "claude-desktop").unwrap();

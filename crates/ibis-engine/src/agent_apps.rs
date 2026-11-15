@@ -182,7 +182,7 @@ pub struct Home {
     pub config: Option<PathBuf>,
     pub path: Vec<PathBuf>,
     pub codex_home: Option<PathBuf>,
-    /// The `ibis` that apps given a full path start: the one on PATH, else this one.
+    /// A durable CLI path for apps that need one; None blocks connecting them.
     pub ibis: Option<PathBuf>,
 }
 
@@ -239,12 +239,12 @@ pub fn executable(path: &Path) -> bool {
 }
 
 /// What an app has for `ibis` now.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 enum Found {
     /// No entry, and nothing in the way of adding one.
     Missing,
     /// The entry Ibis would write, or one that runs the same command from another place.
-    Connected,
+    Connected(Value),
     /// Setup's entry, but its command needs an absolute executable path.
     Stale(Value),
     /// The Ibis plugin already gives this app the server.
@@ -362,8 +362,7 @@ fn state(client: &Client, home: &Home) -> Found {
     match servers.get(COMMAND) {
         None => Found::Missing,
         Some(entry) if ours(entry) => {
-            let needs_path = home.ibis.is_some()
-                && matches!(client.store, Store::Json { absolute: true, .. })
+            let needs_path = matches!(client.store, Store::Json { absolute: true, .. })
                 && entry["command"]
                     .as_str()
                     .map(Path::new)
@@ -371,7 +370,7 @@ fn state(client: &Client, home: &Home) -> Found {
             if needs_path {
                 Found::Stale(entry.clone())
             } else {
-                Found::Connected
+                Found::Connected(entry.clone())
             }
         }
         Some(entry) => Found::Different(entry.clone()),
@@ -472,12 +471,19 @@ fn wanted(client: &Client, home: &Home) -> String {
     }
 }
 
+fn missing_full_path(client: &Client, home: &Home) -> bool {
+    matches!(client.store, Store::Json { absolute: true, .. }) && home.ibis.is_none()
+}
+
 fn observe(client: &'static Client, home: &Home) -> AgentApp {
     let planned = state(client, home);
     let (state, detail) = match (&planned, client.store) {
         (_, Store::ByHand { steps }) => (AgentAppState::ByHand, steps.to_owned()),
-        (Found::Connected, _) => (AgentAppState::Connected, String::new()),
+        (Found::Connected(_), _) => (AgentAppState::Connected, String::new()),
         (Found::Plugin, _) => (AgentAppState::Plugin, "through the Ibis plugin".into()),
+        (Found::Missing | Found::Stale(_) | Found::Different(_), _) if missing_full_path(client, home) => {
+            (AgentAppState::Blocked, "Install the ibis command first".into())
+        }
         (Found::Missing, _) => (AgentAppState::NotConnected, "run: ibis agents setup".into()),
         (Found::Stale(_), _) => (
             AgentAppState::Stale,
@@ -491,11 +497,8 @@ fn observe(client: &'static Client, home: &Home) -> AgentApp {
         Found::Different(old) | Found::Stale(old) => Some(format!("- \"ibis\": {old}\n+ \"ibis\": {wanted}")),
         _ => None,
     };
-    let revision = ibis_core::contract::Fingerprint::of_bytes(
-        json!([client.id, format!("{planned:?}"), &wanted])
-            .to_string()
-            .as_bytes(),
-    );
+    let revision =
+        ibis_core::contract::Fingerprint::of_bytes(json!([client.id, &planned, &wanted]).to_string().as_bytes());
     AgentApp {
         revision,
         id: client.id,
@@ -504,7 +507,8 @@ fn observe(client: &'static Client, home: &Home) -> AgentApp {
         state,
         detail,
         diff,
-        needs_command: !matches!(client.store, Store::Json { absolute: true, .. }),
+        needs_command: !matches!(client.store, Store::Json { absolute: true, .. })
+            || (state == AgentAppState::Blocked && missing_full_path(client, home)),
         ibis_on_path: home.on_path(COMMAND),
         client,
         planned,
@@ -540,9 +544,12 @@ pub fn ids() -> impl Iterator<Item = &'static str> {
 
 impl AgentApp {
     pub fn would_change(&self, setup: bool) -> bool {
+        if setup && self.state == AgentAppState::Blocked {
+            return false;
+        }
         match self.planned {
             Found::Missing | Found::Different(_) => setup && !matches!(self.client.store, Store::ByHand { .. }),
-            Found::Connected => !setup,
+            Found::Connected(_) => !setup,
             Found::Stale(_) => true,
             _ => false,
         }
@@ -584,7 +591,7 @@ fn connect(
 ) -> (Outcome, String) {
     let planned = found.clone();
     let replacing = match found {
-        Found::Connected => return (Outcome::Connected, "already connected".into()),
+        Found::Connected(_) => return (Outcome::Connected, "already connected".into()),
         Found::Plugin => {
             return (
                 Outcome::Connected,
@@ -597,6 +604,9 @@ fn connect(
     };
     if let Store::ByHand { steps } = client.store {
         return (Outcome::ByHand, steps.to_owned());
+    }
+    if missing_full_path(client, home) {
+        return (Outcome::Blocked, "Install the ibis command first".into());
     }
     let wanted = wanted(client, home);
     let diff = replacing
@@ -670,7 +680,7 @@ fn disconnect(client: &'static Client, found: Found, home: &Home, write: bool, d
             );
         }
         Found::Blocked(reason) => return (Outcome::Blocked, reason),
-        Found::Connected | Found::Stale(_) => {}
+        Found::Connected(_) | Found::Stale(_) => {}
     }
     if let Store::ByHand { steps } = client.store {
         return (Outcome::ByHand, steps.to_owned());
@@ -698,6 +708,7 @@ fn disconnect(client: &'static Client, found: Found, home: &Home, write: bool, d
 }
 
 fn run_program(home: &Home, program: &str, args: &[&str]) -> Result<(), String> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     let path = home
         .find(program)
         .ok_or_else(|| format!("the {program} command isn't on PATH"))?;
@@ -705,7 +716,7 @@ fn run_program(home: &Home, program: &str, args: &[&str]) -> Result<(), String> 
     if let Some(config) = &home.config {
         command.env("APPDATA", config).env("XDG_CONFIG_HOME", config);
     }
-    let status = command
+    let child = command
         .args(args)
         .env("HOME", &home.root)
         .env("USERPROFILE", &home.root)
@@ -717,8 +728,37 @@ fn run_program(home: &Home, program: &str, args: &[&str]) -> Result<(), String> 
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
-        .status()
+        .spawn()
         .map_err(|_| format!("{program} could not be started"))?;
+    finish_program(child, program, args, deadline)
+}
+
+/// Own the spawned child until it exits or the absolute deadline requires
+/// killing and reaping it. Tests use the same lifetime with a shorter deadline.
+fn finish_program(
+    mut child: std::process::Child,
+    program: &str,
+    args: &[&str],
+    deadline: std::time::Instant,
+) -> Result<(), String> {
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {}
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("{program} could not be waited for"));
+            }
+        }
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        if remaining.is_zero() {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!("{program} did not finish in time"));
+        }
+        std::thread::sleep(remaining.min(std::time::Duration::from_millis(10)));
+    };
     if status.success() {
         Ok(())
     } else {

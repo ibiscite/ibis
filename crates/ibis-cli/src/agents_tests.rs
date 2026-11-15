@@ -5,6 +5,21 @@ use std::path::Path;
 const CHANGED: &str = "its settings changed while Ibis was working; nothing was written, so run the command again";
 use std::io::Cursor;
 
+#[test]
+fn agents_without_a_full_command_path_report_the_install_step() {
+    for id in ["claude-desktop", "lm-studio"] {
+        let home = home(&format!("install-first-{id}"));
+        for action in ["status", "setup"] {
+            let args = vec![action, "--client", id];
+            let result = run(&home, &args, "", false).0.ok().unwrap();
+            assert_eq!(outcome(&result, id), "blocked");
+            assert_eq!(result.data["apps"][0]["detail"], "Install the ibis command first");
+            assert_eq!(result.exit_code, ExitCode::Findings);
+            assert!(result.text.unwrap().contains("blocked: Install the ibis command first"));
+        }
+    }
+}
+
 /// An invented home with no real app settings in it.
 fn home(name: &str) -> Home {
     let root = std::env::temp_dir().join(format!("ibis-agents-{name}-{}", std::process::id()));
@@ -120,7 +135,8 @@ fn a_different_ibis_entry_is_shown_and_replaced_only_on_a_yes() {
 
 #[test]
 fn without_a_person_to_ask_nothing_changes_unless_told_to() {
-    let home = home("unattended");
+    let mut home = home("unattended");
+    known_command(&mut home);
     let path = desktop(&home);
     fs::write(&path, DESKTOP).unwrap();
     let (result, _) = run(&home, &["setup"], "", false);
@@ -134,13 +150,14 @@ fn without_a_person_to_ask_nothing_changes_unless_told_to() {
 
 #[test]
 fn only_apps_found_here_are_set_up_and_a_missing_file_is_created() {
-    let home = home("found");
+    let mut home = home("found");
     assert!(
         run(&home, &["status"], "", false).0.ok().unwrap().data["apps"]
             .as_array()
             .unwrap()
             .is_empty()
     );
+    let command = known_command(&mut home);
     fs::create_dir_all(home.root.join(".lmstudio")).unwrap();
     let (result, _) = run(&home, &["setup", "--yes"], "", false);
     let result = result.ok().unwrap();
@@ -150,7 +167,7 @@ fn only_apps_found_here_are_set_up_and_a_missing_file_is_created() {
         serde_json::from_str(&fs::read_to_string(home.root.join(".lmstudio/mcp.json")).unwrap()).unwrap();
     assert_eq!(
         value,
-        json!({"mcpServers": {"ibis": {"command": "ibis", "args": ["mcp", "--app-libraries"]}}})
+        json!({"mcpServers": {"ibis": {"command": command, "args": ["mcp", "--app-libraries"]}}})
     );
     // VS Code's entries name their transport.
     fs::create_dir_all(home.config.clone().unwrap().join("Code").join("User")).unwrap();
@@ -320,11 +337,13 @@ fn status_reports_an_unusable_absolute_client_command_as_stale() {
             assert!(result.text.unwrap().contains("ibis agents setup"));
             assert_eq!(fs::read(path).unwrap(), before);
         }
-        // Without a known command there is no better path to write.
+        // Without a known command, repair waits for the command installation.
         home.ibis = None;
         absolute_settings(&home, id, COMMAND);
         let (result, _) = run(&home, &["status", "--client", id], "", false);
-        assert_eq!(outcome(&result.ok().unwrap(), id), "connected");
+        let result = result.ok().unwrap();
+        assert_eq!(outcome(&result, id), "blocked");
+        assert_eq!(result.data["apps"][0]["detail"], "Install the ibis command first");
     }
 }
 

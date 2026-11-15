@@ -11,7 +11,7 @@ type Api = {
   copyCliProfile: () => Promise<unknown>;
 };
 
-export function CliCommandRow({ api, highlighted }: { api: Api; highlighted: boolean }) {
+export function CliCommandRow({ api, highlighted, onChanged }: { api: Api; highlighted: boolean; onChanged?: () => void }) {
   const { text } = useInterfaceMessages();
   const [status, setStatus] = useState<CommandStatus | null>(null);
   const [busy, setBusy] = useState(false);
@@ -36,7 +36,7 @@ export function CliCommandRow({ api, highlighted }: { api: Api; highlighted: boo
     changing.current = true;
     setBusy(true); setFailed(false); setCopied(false);
     void api.setCliInstalled(installed).then((next) => {
-      if (request === sequence.current) setStatus(next);
+      if (request === sequence.current) { setStatus(next); onChanged?.(); }
     }, () => { if (request === sequence.current) setFailed(true); }).finally(() => {
       changing.current = false;
       if (request === sequence.current) setBusy(false);

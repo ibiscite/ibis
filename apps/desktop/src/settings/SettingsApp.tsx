@@ -68,6 +68,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const platform = currentPlatform();
   const start = pageOf(initialPage);
   const [page, setPage] = useState<Page>(start.page);
+  const [agentRefresh, setAgentRefresh] = useState(0);
   const [focus, setFocus] = useState<"top" | "paste" | null>(start.focus ?? "top");
   const pageRef = useRef<HTMLElement>(null);
   useScrollEdges(pageRef);
@@ -590,9 +591,9 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         {page === "citations" && <>{renderRows("citations")}<FormatSettings settings={formatSettings} /></>}
         {page === "ai-apps" && <>
           {api.cliStatus && api.setCliInstalled && api.copyCliProfile && <Section id="command-line" title={text("ai-apps-command-line")}><Group>
-            <CliCommandRow api={{ cliStatus: api.cliStatus, setCliInstalled: api.setCliInstalled, copyCliProfile: api.copyCliProfile }} highlighted={highlighted === "cli-command"} />
+            <CliCommandRow api={{ cliStatus: api.cliStatus, setCliInstalled: api.setCliInstalled, copyCliProfile: api.copyCliProfile }} highlighted={highlighted === "cli-command"} onChanged={() => setAgentRefresh((revision) => revision + 1)} />
           </Group></Section>}
-          {api.agentApps && api.connectAgentApp && api.disconnectAgentApp && <AiApps api={{ agentApps: api.agentApps, connectAgentApp: api.connectAgentApp, disconnectAgentApp: api.disconnectAgentApp }} highlighted={highlighted} />}
+          {api.agentApps && api.connectAgentApp && api.disconnectAgentApp && <AiApps api={{ agentApps: api.agentApps, connectAgentApp: api.connectAgentApp, disconnectAgentApp: api.disconnectAgentApp }} highlighted={highlighted} refresh={agentRefresh} />}
         </>}
         {page === "shortcuts" && <ShortcutsPage opening={shortcutSetting} enterPastes={enterPastes} reveal={revealTarget} highlighted={highlighted} />}
         {page === "about" && (
