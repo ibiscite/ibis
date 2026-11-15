@@ -54,7 +54,7 @@ pub(super) const TOOLS: [Tool; 4] = [
     Tool {
         name: "search",
         title: "Search references",
-        description: "Find references in the user's own library by author, title words, year or citation key. Start here: every citation needs a `ref` from this tool. If nothing is found, say so; never cite from memory.",
+        description: "Find references in the user's library by author, title words, year or key. Every citation needs a ref from here.",
         input: search_input,
         output: search_output,
         reads_library: |_| true,
@@ -63,7 +63,7 @@ pub(super) const TOOLS: [Tool; 4] = [
     Tool {
         name: "show",
         title: "Show a reference",
-        description: "Read one reference's bibliographic fields, such as pages, publisher and identifiers, given a `ref` from search. Not needed before citing.",
+        description: "Read a reference's fields (pages, publisher, identifiers) by ref. Not needed before citing.",
         input: show_input,
         output: show_output,
         reads_library: |_| true,
@@ -81,7 +81,7 @@ pub(super) const TOOLS: [Tool; 4] = [
     Tool {
         name: "styles",
         title: "Find citation styles",
-        description: "Find the style ids cite accepts by journal or style name, and the languages a citation can be written in. With no query, the common styles come first.",
+        description: "Find CSL style ids by journal or style name, and the locales cite accepts.",
         input: styles_input,
         output: styles_output,
         reads_library: |_| false,
@@ -110,7 +110,9 @@ pub(super) fn list() -> Value {
 /// Clients can validate either a successful answer or the required recovery data.
 fn output_schema(mut success: Value) -> Value {
     // The shared contract describes the closed recovery vocabulary. Keep the
-    // tool catalogue small enough to fit in each agent conversation.
+    // tool catalogue small enough to fit in each agent conversation: what a
+    // field means for the agent is said in each answer's text, not here.
+    undescribed(&mut success);
     if let Some(schema) = success.as_object_mut() {
         schema.remove("type");
     }
@@ -119,6 +121,17 @@ fn output_schema(mut success: Value) -> Value {
             "type":"object", "required":["code","message","recovery","focus"]
         }}
     }]})
+}
+
+fn undescribed(schema: &mut Value) {
+    match schema {
+        Value::Object(fields) => {
+            fields.remove("description");
+            fields.values_mut().for_each(undescribed);
+        }
+        Value::Array(values) => values.iter_mut().for_each(undescribed),
+        _ => {}
+    }
 }
 
 /// Why a tool did not answer.
@@ -188,7 +201,7 @@ pub(super) fn call(
     submission: Option<&crate::citations::SubmittedCitation>,
 ) -> Value {
     let answered = answer(engine, problem, formats, tool, arguments, cancel, submission).and_then(|(text, data)| {
-        // The answer goes twice, as text and as structured content: the bound is on what is sent.
+        // The bound is on what is sent: the summary and the structured content.
         let result = json!({
             "content": [{"type": "text", "text": text}],
             "structuredContent": data,
@@ -255,7 +268,7 @@ fn answer(
         (tool.answer)(engine, formats, arguments, cancel)?
     };
     cancel.check()?;
-    Ok((data.to_string(), data))
+    Ok((super::summary::text(tool.name, &data), data))
 }
 
 /// An argument nothing reads would be lost in silence, so it is refused by name.
@@ -326,7 +339,7 @@ fn with_library_notes(mut answer: Value, engine: &Engine, health: &SourceHealth)
 fn health_output(described: bool) -> Value {
     let mut health = json!({"type": "object"});
     if described {
-        health["description"] = json!("Library read health. Tell the user about each finding.");
+        health["description"] = json!("Tell the user about each finding.");
     }
     health
 }
@@ -335,7 +348,7 @@ fn search_input() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "query": {"type": "string", "minLength": 1, "description": "Distinctive words: an author surname, title words, a year or a key."},
+            "query": {"type": "string", "minLength": 1, "description": "An author surname, title words, a year or a key."},
             "limit": {"type": "integer", "minimum": 1, "maximum": MAX_HITS, "default": 10},
             "shorthand": {"type": "boolean", "description": "Read \"see\" before and \"417\" after the words into cited_with."}
         },
@@ -350,7 +363,7 @@ fn record_output() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "ref": {"type": "string", "description": "Pass to show or cite: the key, or an id when no key is unique."},
+            "ref": {"type": "string", "description": "Pass unchanged to show or cite."},
             "type": {}, "title": {}, "year": {}, "container": {}, "doi": {},
             "authors": {"type": "array", "items": {"type": "string"}}
         },
@@ -360,23 +373,19 @@ fn record_output() -> Value {
 
 fn search_output() -> Value {
     let mut hit = record_output();
-    hit["properties"]["partial"] = json!({
-        "type": "boolean", "description": "True when only part of the query matched; ask the user before citing."
-    });
-    hit["properties"]["typo"] = json!({
-        "type": "boolean", "description": "True when spelling was corrected; ask the user before citing."
-    });
+    hit["properties"]["partial"] = json!({"type": "boolean", "description": "Part of the query matched; ask first."});
+    hit["properties"]["typo"] = json!({"type": "boolean", "description": "Spelling was corrected; ask first."});
     hit["required"] = json!(["ref", "partial", "typo"]);
     json!({
         "type": "object",
         "properties": {
             "hits": {"type": "array", "items": hit},
-            "complete": {"type": "boolean", "description": "False when more references match than these; use more distinctive words."},
-            "missing": {"type": "array", "items": {"type": "string"}, "description": "Keys or identifiers from a pasted list that the library does not hold."},
+            "complete": {"type": "boolean", "description": "False: more match; use more distinctive words."},
+            "missing": {"type": "array", "items": {"type": "string"}, "description": "Pasted keys the library lacks."},
             "cited_with": {"type": "object", "description": "prefix and locator for the cite item"},
             "searched_for": {"type": "string"},
             "provenance": {"type": "string"},
-            "library_notes": {"type": "array", "items": {"type": "string"}, "description": "Why results may be missing or out of date. Tell the user."},
+            "library_notes": {"type": "array", "items": {"type": "string"}, "description": "Tell the user."},
             "source_health": health_output(true)
         },
         "required": ["hits", "complete", "provenance", "source_health"]
@@ -435,9 +444,8 @@ fn search(
         let mut data = view::summary(&CitableFields::new(record.csl.to_map()), reference);
         data.insert("partial".into(), json!(hit.partial));
         data.insert("typo".into(), json!(hit.typo));
-        // Each hit is sent twice: as JSON, and escaped inside the answer's text.
-        let json = Value::Object(data.clone()).to_string();
-        size += json.len() + Value::String(json).to_string().len();
+        // Each hit is sent as JSON, and again as a shorter line of the summary.
+        size += 2 * Value::Object(data.clone()).to_string().len();
         // Leave room for the envelope; a shorter list is still a true answer.
         if size > MAX_ANSWER - 8192 {
             complete = false;
@@ -563,10 +571,10 @@ fn cite_input() -> Value {
         "type": "object",
         "properties": {
             "ref": {"type": "string", "description": "A ref from search."},
-            "locator": {"type": "string", "description": "Where in the work, such as \"p. 12\", \"ch. 3\" or \"12-14\"."},
-            "prefix": {"type": "string", "description": "Text before this item, such as \"see\"."},
+            "locator": {"type": "string", "description": "Such as \"p. 12\", \"ch. 3\" or \"12-14\"."},
+            "prefix": {"type": "string", "description": "Such as \"see\"."},
             "suffix": {"type": "string", "description": "Text after this item."},
-            "omit_author": {"type": "boolean", "description": "Leave out the author the sentence already names."}
+            "omit_author": {"type": "boolean", "description": "The sentence already names the author."}
         },
         "required": ["ref"],
         "additionalProperties": false
@@ -575,14 +583,15 @@ fn cite_input() -> Value {
         "type": "object",
         "properties": {
             "items": {"type": "array", "items": item, "minItems": 1, "description": "The references, in order."},
-            "records": {"type": "array", "items": {"type": "object"}, "minItems": 1, "description": "Instead of items: CSL-JSON objects, each with an id and a type. The library is not read."},
-            "format": {"type": "string", "enum": format_ids(), "description": "A key syntax for the document's own processor, or a common style."},
-            "style": {"type": "string", "description": "Any style id from the styles tool, instead of format."},
-            "locale": {"type": "string", "description": "A language for a style, such as de-DE, from the styles tool."},
-            "form": {"type": "string", "enum": ["normal", "narrative", "author-only", "year-only", "full", "bibliography-only"], "description": "bibliography-only writes reference-list entries and needs a style."},
+            "records": {"type": "array", "items": {"type": "object"}, "minItems": 1, "description": "Instead of items: CSL-JSON objects with id and type."},
+            "format": {"type": "string", "enum": key_syntax_ids(), "description": "Citation keys for a document processor, instead of style."},
+            "style": {"type": "string", "description": "A CSL style id, such as apa, ieee or one from styles. Default: apa."},
+            "locale": {"type": "string", "description": "A style's language, such as de-DE."},
+            "form": {"type": "string", "enum": ["normal", "narrative", "author-only", "year-only", "full", "bibliography-only"], "description": "bibliography-only writes reference-list entries."},
             "keep_order": {"type": "boolean", "description": "Keep this order where a style would sort."},
             "strict": {"type": "boolean", "description": crate::catalogue::text("mcp-strict-help", None, &[]).unwrap_or_default()},
-            "for_app": {"type": "string", "description": "A macOS bundle ID or Windows executable: the output Ibis uses for that app."}
+            "for_app": {"type": "string", "description": "A macOS bundle ID or Windows executable: use the output Ibis uses there."},
+            "include_receipt": {"type": "boolean", "description": "Add the audit receipt: hashes of the request, formatter and sources."}
         },
         "additionalProperties": false
     })
@@ -597,14 +606,14 @@ fn cite_output() -> Value {
             "notices": {"type": "array"},
             "losses": {"type": "array", "description": "What was asked for but could not be shown."},
             "warnings": {"type": "array"},
-            "receipt": {"type":"object"},
+            "receipt": {"type":"object", "description": "Only with include_receipt."},
             "destination": {"type": "object", "description": "Delivery for for_app, with pasting on and permitted."},
             "bibliography": {"type": "object", "description": "The writing's .bib checks; filenames only."},
             "provenance": {"type": "string"},
             "library_notes": {"type": "array", "items": {"type": "string"}},
             "source_health": health_output(false)
         },
-        "required": ["text", "notices", "losses", "receipt", "provenance", "source_health"]
+        "required": ["text", "notices", "losses", "provenance", "source_health"]
     })
 }
 
@@ -614,6 +623,18 @@ fn cite_output() -> Value {
 fn format_ids() -> Vec<&'static str> {
     outputs::outputs()
         .iter()
+        .filter(|output| !output.exports_records && !output.zotero_items)
+        .map(|output| output.id.as_str())
+        .collect()
+}
+
+/// The key syntaxes `format` lists. The common styles are still accepted as a
+/// format, but the schema names them through `style`, which keeps the tool
+/// list short; `styles` finds every other one.
+fn key_syntax_ids() -> Vec<&'static str> {
+    outputs::outputs()
+        .iter()
+        .filter(|output| matches!(output.output, OutputSpec::Key { .. }))
         .filter(|output| !output.exports_records && !output.zotero_items)
         .map(|output| output.id.as_str())
         .collect()
@@ -736,7 +757,7 @@ fn cite_submitted(
     } else {
         (prepared.result().clone(), prepared.source_health().clone(), None)
     };
-    let mut answer = written(&result, count)?;
+    let mut answer = written(&result, count, arguments)?;
     answer["provenance"] = json!(PROVENANCE);
     if let Some(destination) = destination {
         answer["destination"] = json!(destination);
@@ -745,6 +766,15 @@ fn cite_submitted(
         answer["bibliography"] = json!(bibliography);
     }
     with_library_notes(answer, engine, &source_health)
+}
+
+fn receipt_asked(arguments: &Map<String, Value>) -> Result<bool, Refusal> {
+    match arguments.get("include_receipt") {
+        None => Ok(false),
+        Some(asked) => asked
+            .as_bool()
+            .ok_or_else(|| Refusal::bad(ToolProblem::IncludeReceipt, &[])),
+    }
 }
 
 fn strict(arguments: &Map<String, Value>) -> Result<bool, Refusal> {
@@ -800,7 +830,7 @@ fn language_and_form(
 }
 
 /// A complete citation as an agent receives it, or the refusal that says why not.
-fn written(result: &CitationResult, count: usize) -> Result<Value, Refusal> {
+fn written(result: &CitationResult, count: usize, arguments: &Map<String, Value>) -> Result<Value, Refusal> {
     let Some(content) = result.copy_content(count) else {
         return Err(refusal(result));
     };
@@ -813,8 +843,11 @@ fn written(result: &CitationResult, count: usize) -> Result<Value, Refusal> {
         "text": text,
         "notices": result.notices,
         "losses": result.losses,
-        "receipt": result.receipt,
     });
+    // The receipt is for audit, and most of an answer's size: only when asked.
+    if receipt_asked(arguments)? {
+        answer["receipt"] = json!(result.receipt);
+    }
     if !result.warnings.is_empty() {
         answer["warnings"] = json!(result.warnings);
     }
@@ -850,7 +883,7 @@ fn cite_records(engine: &Engine, arguments: &Map<String, Value>, cancel: &Cancel
         },
         cancel,
     )?;
-    let mut answer = written(&result, records.len())?;
+    let mut answer = written(&result, records.len(), arguments)?;
     answer["provenance"] = json!(RECORDS_PROVENANCE);
     answer["source_health"] = json!(SourceHealth::of(std::iter::empty()));
     Ok(answer)
@@ -953,9 +986,9 @@ fn styles_input() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "query": {"type": "string", "maxLength": 1024, "description": "Words from a style's title or id, such as a journal's name."},
+            "query": {"type": "string", "maxLength": 1024, "description": "Words from a journal or style name."},
             "limit": {"type": "integer", "minimum": 1, "maximum": MAX_STYLES, "default": 25},
-            "offset": {"type": "integer", "minimum": 0, "default": 0, "description": "How many matching styles to skip, for the next page."}
+            "offset": {"type": "integer", "minimum": 0, "default": 0, "description": "Styles to skip, for the next page."}
         },
         "additionalProperties": false
     })
@@ -973,7 +1006,7 @@ fn styles_output() -> Value {
                     "required": ["id", "title", "updated"]
                 }
             },
-            "total": {"type": "integer", "description": "How many styles match, beyond this page."},
+            "total": {"type": "integer"},
             "locales": {"type": "array"}
         },
         "required": ["styles", "total", "locales"]

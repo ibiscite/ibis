@@ -32,6 +32,15 @@ crash-upload service. This page describes current data flows; plans live in
 - **Windows paste:** checks foreground window/process, integrity and password
   field status through UI Automation. Uncertain or disallowed targets copy
   instead. Delivery safeguards are in [architecture](docs/architecture.md#desktop-app).
+- **Command line:** on macOS and Linux the app's first launch links
+  `~/.local/bin/ibis` to its bundled command, unless another `ibis` comes first
+  on PATH, with a receipt and a `command-settled` marker in
+  `~/.local/share/ibis`. Later launches leave the choice in Settings alone;
+  Remove Command deletes the link and receipt.
+- **AI apps:** `ibis agents setup` and `remove`, run by you, add or remove
+  one `ibis` server entry in the AI apps' own settings files (or through their
+  own `mcp add` command), keeping a `.ibis-backup` copy of a file they change.
+  They read those files only to find that entry, and send nothing.
 - **Settings:** `settings.json` holds library choices, formats, appearance,
   shortcuts, update consent, optional project names/paths and selections per
   app. Atomic saves use `.tmp`, `.bak` and a writer `.lock`. `apps.json` keeps

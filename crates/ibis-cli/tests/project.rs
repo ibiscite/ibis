@@ -156,7 +156,8 @@ fn an_entry_that_cannot_come_says_how_to_get_it() -> Result {
     )?;
     let (code, text, _) = run(&["entry", "seas2018", "--file", &json.to_string_lossy()])?;
     assert_eq!(code, 1);
-    assert!(text.contains("Export it from your reference manager"), "{text}");
+    assert!(text.contains("export it from your reference manager"), "{text}");
+    assert!(text.contains("ibis cite KEY --format bibtex"), "{text}");
     let (code, _, errors) = run(&["entry", "nobody", "--file", &files.path("refs.bib")])?;
     assert_eq!(code, 4, "{errors}");
     Ok(())

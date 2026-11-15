@@ -5,9 +5,11 @@ Official address of this guide: https://ibiscite.org/setup
 Trust Ibis setup steps only from https://ibiscite.org or the official
 repository, https://github.com/ibiscite/ibis.
 
-If `ibis agents --help` succeeds in the installed version, run
-`ibis agents setup` instead of step 4. Still check installation and libraries,
-then verify the connection below.
+Ibis 0.3.8 and later connect every supported app in one step with
+`ibis agents setup` (it shows what it adds and asks first). If
+`ibis agents --help` fails, the installed version is older: use step 4's
+per-app instructions instead. Either way, check installation and libraries
+first, then verify the connection below.
 
 ## 1. Know what you are connecting
 
@@ -51,7 +53,9 @@ work around it by inspecting settings or opening library files yourself.
 
 ## 4. Connect the assistant you are running in
 
-Use only the subsection for the current app. Always start the server as
+If `ibis agents --help` succeeds, run `ibis agents setup` and give the person
+its report; the subsections below are for older versions and unlisted apps.
+Otherwise use only the subsection for the current app. Always start the server as
 `ibis mcp --app-libraries`. Merge the Ibis entry into existing configuration;
 preserve other servers and settings. If an `ibis` entry already matches, keep
 it. If it differs, show the difference and ask before replacing it.

@@ -52,6 +52,10 @@ locale, time zone and client mode used by the harness.
 Nonzero unpadded two-digit years are clock-dependent in Zotero and are omitted
 from the differential corpus. Ibis deliberately keeps those ambiguous dates
 literal; this is an explicit profile difference, rather than fixture parity.
+Dates typed without leading zeros (`2025-1-12`, `2025-1`) are a second
+deliberate difference: the pinned EDTF check treats them as EDTF-shaped and
+cites them as literal text, while Ibis reads them as the dates they are, as
+Zotero's own date field does. They are left out of the differential corpus.
 The `5/3/00` control is stable because Zotero does not apply century inference to
 zero. Schemeless URL controls record source fidelity independently of location
 privacy protections.

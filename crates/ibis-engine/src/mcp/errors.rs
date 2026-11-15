@@ -15,6 +15,7 @@ pub(super) enum ToolProblem {
     App,
     KeepOrder,
     Strict,
+    IncludeReceipt,
     OutputChoice,
     Format,
     CitationFormat,
@@ -59,6 +60,7 @@ impl ToolProblem {
             | Self::App
             | Self::KeepOrder
             | Self::Strict
+            | Self::IncludeReceipt
             | Self::Form
             | Self::HiddenCitation
             | Self::RecordsOrItems

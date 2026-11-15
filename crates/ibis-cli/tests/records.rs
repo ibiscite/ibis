@@ -98,7 +98,7 @@ fn records_cite_the_same_through_every_front_end() -> Result {
         &engine,
         &mut ibis_engine::mcp::Session::default(),
         &json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
-            "name": "cite", "arguments": {"records": records(), "format": "apa"},
+            "name": "cite", "arguments": {"records": records(), "format": "apa", "include_receipt": true},
             "_meta": {
                 "io.modelcontextprotocol/protocolVersion": ibis_engine::mcp::PROTOCOL_VERSION,
                 "io.modelcontextprotocol/clientCapabilities": {}

@@ -202,7 +202,8 @@ fn zotero_without_a_running_service_is_explicitly_unchecked_and_does_not_read_ho
         .args(["doctor", "--zotero", "--zotero-group", "42", "--json"])
         .output()
         .unwrap_or_else(|error| panic!("{error}"));
-    assert_eq!(output.status.code(), Some(1));
+    // A check skipped on purpose is not a finding, as the text says.
+    assert_eq!(output.status.code(), Some(0));
     let report: Value = serde_json::from_slice(&output.stdout).unwrap_or_default();
     assert_eq!(report["data"]["sources"][0]["code"], "zotero-not-checked");
     assert_eq!(report["data"]["sources"][1]["code"], "zotero-not-checked");

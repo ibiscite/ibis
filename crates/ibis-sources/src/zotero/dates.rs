@@ -168,8 +168,12 @@ fn edtf_parts(value: &str) -> Option<(Vec<i32>, bool)> {
     }
     let year = year_text.parse::<i32>().ok()? * if negative { -1 } else { 1 };
     let mut parts = vec![year];
+    // Zotero's EDTF shape test accepts `2025-1-12`, but its EDTF parser wants
+    // two-digit months and days, so such dates were cited as literal text.
+    // People type them, and Zotero's own date field reads them as dates.
+    let short = |text: &str| matches!(text.len(), 1 | 2) && text.bytes().all(|byte| byte.is_ascii_digit());
     if let Some(month_text) = components.next() {
-        if month_text.len() != 2 || !month_text.bytes().all(|byte| byte.is_ascii_digit()) {
+        if !short(month_text) {
             return None;
         }
         let month = month_text.parse::<i32>().ok()?;
@@ -178,7 +182,7 @@ fn edtf_parts(value: &str) -> Option<(Vec<i32>, bool)> {
         }
         parts.push(month);
         if let Some(day_text) = components.next() {
-            if day_text.len() != 2 || !day_text.bytes().all(|byte| byte.is_ascii_digit()) {
+            if !short(day_text) {
                 return None;
             }
             let day = day_text.parse::<i32>().ok()?;
@@ -717,6 +721,30 @@ mod tests {
             ("0000", json!({"date-parts": [[0]]})),
         ] {
             assert_eq!(to_csl(source, false), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn dates_typed_without_leading_zeros_are_dates() {
+        for (source, expected) in [
+            ("2025-1-12", json!({"date-parts": [[2025,1,12]]})),
+            ("2025-01-2", json!({"date-parts": [[2025,1,2]]})),
+            ("2025-12-1", json!({"date-parts": [[2025,12,1]]})),
+            ("2025-1", json!({"date-parts": [[2025,1]]})),
+            ("2025–1–12", json!({"date-parts": [[2025,1,12]]})),
+            ("2025-1/2025-3", json!({"date-parts": [[2025,1],[2025,3]]})),
+            ("ca. 2025-1", json!({"date-parts": [[2025,1]], "circa": true})),
+            ("2025/1/12", json!({"date-parts": [["2025",1,12]]})),
+            ("2025.1.12", json!({"date-parts": [["2025",1,12]]})),
+            ("2025 Jan 12", json!({"date-parts": [["2025",1,12]]})),
+            ("2025-01-12T08:00:00Z", json!({"date-parts": [["2025",1,12]]})),
+        ] {
+            assert_eq!(to_csl(source, false), expected, "{source}");
+        }
+        assert_eq!(extra_date("2025-1-12"), Some(json!({"date-parts": [[2025,1,12]]})));
+        // Impossible dates stay as typed.
+        for value in ["2025-13-1", "2025-1-32", "2025-2-29", "2025-001-1"] {
+            assert_eq!(to_csl(value, false), json!({"literal": value}), "{value}");
         }
     }
 

@@ -1323,7 +1323,7 @@ mcp-strict-help = Refuse losses, refusals or source problems.
 mcp-citation-hidden = This citation contains hidden characters and cannot be returned unchanged. Ask the user to fix the source or choose another output.
 mcp-citation-source-failed = A source could not be refreshed; this citation uses its last good copy. The receipt records its last successful read.
 mcp-citation-source-warnings = A cited source has warnings; its receipt records the warning count.
-mcp-cite-description = Cite refs returned by search, passing each ref unchanged; add page locators if needed. Choose `format` (pandoc, autocite or typst for processed documents; apa for finished text) or any CSL `style`. Default: apa. Use returned text unchanged and report notices, losses and warnings. Set `strict` to refuse findings. To cite CSL-JSON you were given instead, pass it as `records`.
+mcp-cite-description = Cite refs from search, in order, with optional locators. Use the returned text unchanged and tell the user about notices, losses and warnings.
 
 # The desktop's bundled command. Never execute another program to check its version.
 command-install = Install the ibis command
@@ -1502,6 +1502,7 @@ mcp-error-format = format must be one of: { $formats }.
 mcp-error-text = { $name } must be text.
 mcp-error-number-range = { $name } must be a whole number from 1 to { $limit }.
 mcp-error-number-minimum = { $name } must be a whole number, 0 or more.
+mcp-error-include-receipt = include_receipt must be true or false.
 mcp-error-stale-reference = This reference changed since search returned it; search again and check it is the one you meant.
 mcp-error-no-library = No library is open. Ask the user to choose a library in Ibis, or to start `ibis mcp` with --file or --zotero, and then start a new session.
 mcp-error-strict = { mcp-strict-help }
@@ -1635,7 +1636,7 @@ cli-search-no-match-terminal = No references matched. Try a shorter query.
 cli-search-no-match = No references found.
 cli-libraries-empty = No libraries loaded. Open one with --file <library>.
 cli-styles-no-match = No style matches those words.
-cli-entry-no-original = This reference has no original BibTeX entry here. Export it from your reference manager in your project’s dialect, keeping its key.
+cli-entry-no-original = This reference has no original BibTeX entry here: only a .bib library keeps one, and Zotero, CSL-JSON, RIS and CSV libraries don’t. To write an entry from its fields, run ibis cite KEY --format bibtex, or export it from your reference manager in your project’s dialect, keeping its key.
 cli-entry-changed = The library file changed or could not be read. Reload it and try again.
 cli-entry-repeated = The library file repeats this key, so Ibis cannot tell which entry to give.
 cli-entry-dependency = This entry relies on a crossref, xdata or @string that cannot come with it. Export it from your reference manager, keeping its key.

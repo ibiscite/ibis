@@ -161,13 +161,21 @@ fn cite_offers_exactly_the_engines_outputs() {
     let tools = handle(&engine, &modern(3, "tools/list", json!({}))).unwrap();
     let formats = &tools["result"]["tools"][2]["inputSchema"]["properties"]["format"]["enum"];
     // Every listed output but those that export whole records and Zotero's
-    // scan markers, in the list's order.
+    // scan markers, in the list's order, is accepted. The schema names only
+    // the key syntaxes, to keep the tool list short; styles go through `style`.
     let listed: Vec<_> = ibis_engine::outputs::outputs()
         .iter()
         .filter(|output| !output.exports_records && !output.zotero_items)
         .map(|output| output.id.as_str())
         .collect();
-    assert_eq!(formats, &json!(listed));
+    let keys: Vec<_> = ibis_engine::outputs::outputs()
+        .iter()
+        .filter(|output| !output.exports_records && !output.zotero_items)
+        .filter(|output| matches!(output.output, ibis_core::contract::OutputSpec::Key { .. }))
+        .map(|output| output.id.as_str())
+        .collect();
+    assert_eq!(formats, &json!(keys));
+    assert!(keys.len() < listed.len());
     let item = engine
         .show(&ibis_engine::request::ShowRequest {
             item: ibis_engine::request::ItemSelector::Key("demo2026".into()),
@@ -413,8 +421,10 @@ fn cite_preserves_both_item_warning_codes_by_key_and_by_id() {
         assert_eq!(answer["isError"], false);
         assert_eq!(answer["structuredContent"]["text"], expected.text);
         assert_eq!(answer["structuredContent"]["warnings"], json!(expected.warnings));
-        let text: Value = serde_json::from_str(answer["content"][0]["text"].as_str().unwrap()).unwrap();
-        assert_eq!(text["warnings"], json!(expected.warnings));
+        // The text is a summary that names each warning in words.
+        let text = answer["content"][0]["text"].as_str().unwrap();
+        assert!(text.starts_with(&expected.text), "{text}");
+        assert_eq!(text.matches("\nWarning: ").count(), expected.warnings.len(), "{text}");
         assert!(!answer.to_string().contains("PRIVATE_SYNTHETIC_FIELD"));
     }
 }

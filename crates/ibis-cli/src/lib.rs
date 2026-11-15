@@ -10,6 +10,7 @@ use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
+mod agents;
 mod app_libraries;
 mod completions;
 mod doctor;
@@ -151,7 +152,7 @@ fn command() -> Command {
             .help_heading(LIBRARIES)
             .display_order(1004)
             .help(
-                "Read the libraries chosen in the Ibis app, read-only; search, show, cite and libraries do this when no library is named",
+                "Read the libraries chosen in the Ibis app, read-only; search, show, cite, libraries and doctor do this when no library is named",
             ),
     );
     // `records` is `cite --records` here, and `ibis call records`.
@@ -502,6 +503,7 @@ fn command() -> Command {
                         .help("Check a chosen Ibis settings file without repairing it or loading its libraries"),
                 ),
         )
+        .subcommand(agents::command())
         .subcommand(settings_backup::command())
         .subcommand(writings::command())
         .subcommand(
@@ -1017,10 +1019,16 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
 ) -> Result<Execution, Failure> {
     let (name, args) = matches.subcommand().ok_or(EngineError::new(ErrorCode::Usage))?;
     if name == "doctor" {
-        return Ok(Execution::Result(doctor::run(engine, matches, mode)?, None));
+        return Ok(Execution::Result(doctor::run(engine, matches, mode, defaults)?, None));
     }
     if name == "settings" {
         return Ok(Execution::Result(settings_backup::run(args)?, None));
+    }
+    if name == "agents" {
+        return Ok(Execution::Result(
+            agents::run(args, input, errors, mode.stdin_terminal())?,
+            None,
+        ));
     }
     if name == "writings" {
         return Ok(Execution::Result(writings::run(engine, args)?, None));
