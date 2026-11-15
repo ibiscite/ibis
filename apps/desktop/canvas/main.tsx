@@ -178,6 +178,11 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
       receipts.set(ticket, { text, items, output, key: key(0) });
       return { ticket, content_hash: ticket, text, display: { nodes: spans.map(({ item, text }) => ({ item, blocks: [], content: [{ text, italic: false, bold: false, script: "normal" }] })) }, warnings, project_refusal: refusal };
     },
+    // What a way to share would copy of the shown citation, as the engine writes it.
+    citation_example: ({ ticket, output }) => {
+      const receipt = receipts.get(ticket);
+      return receipt && output === "bibtex" ? receipt.items.map((item) => bibtex(rows.find((row) => row.id.key === item.id.key)?.key ?? "")).join("\n\n") : null;
+    },
     copy_file_citation: ({ ticket }) => {
       const receipt = receipts.get(ticket);
       if (!receipt) throw new Error("Unknown synthetic preview");

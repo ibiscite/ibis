@@ -1813,8 +1813,9 @@ test("a saved citation style, density and text size come back at start", async (
 
 const savedOutput = (preferences: unknown) => (preferences as { output?: string; key_output?: string }).key_output ?? (preferences as { output?: string }).output ?? null;
 
-// Every key output the engine lists; styles wait for the formatter and have their own tests.
-test.each(OUTPUTS.filter((output) => !output.style).map((output) => output.id))("choosing %s survives a restart without copying", async (choice) => {
+// Every key output the engine lists; styles wait for the formatter and have their own tests,
+// and a way to share references holds for one copy, so it is never remembered.
+test.each(OUTPUTS.filter((output) => !output.style && !output.shares).map((output) => output.id))("choosing %s survives a restart without copying", async (choice) => {
   let remembered = "typst";
   const calls = backend({
     picker_preferences: () => ({ output: remembered }),
@@ -3336,7 +3337,7 @@ test("format toolbar menu exposes both sections and saves a choice without copyi
   expect(screen.getByRole("group", { name: "Citation styles" })).toBeTruthy();
   // Exactly the engine's list, each by its one name.
   const formats = within(screen.getByRole("dialog", { name: "Format" })).getAllByRole("option")
-    .filter((item) => item.closest('[aria-label="Recent"], [aria-label="Key formats"], [aria-label="Citation styles"]')).map((item) => item.querySelector(".ui-palette-label")?.textContent);
+    .filter((item) => item.closest('[aria-label="Recent"], [aria-label="Key formats"], [aria-label="Citation styles"], [aria-label="Share references"]')).map((item) => item.querySelector(".ui-palette-label")?.textContent);
   expect([...formats].sort()).toEqual(OUTPUTS.map((output) => output.name).sort());
   expect(screen.getByRole("option", { name: "Pandoc" }).getAttribute("aria-current")).toBe("true");
   fireEvent.click(screen.getByRole("option", { name: "BibLaTeX \\autocite" }));
@@ -3379,9 +3380,10 @@ test("engine citation styles are reachable and save their choice without copying
   render(<App />);
   fireEvent.click(await waitFor(() => formatButton("Citation format Pandoc")));
   const filter = screen.getByRole("combobox", { name: /^Search (formats|actions)$/ });
+  // The last of the engine's common styles, whichever it is: the ways to share follow them.
   fireEvent.keyDown(filter, { key: "End" });
-  // The last of the engine's common styles, whichever it is.
-  const last = OUTPUTS.at(-1)!;
+  for (const _ of OUTPUTS.filter((output) => output.shares)) fireEvent.keyDown(filter, { key: "ArrowUp" });
+  const last = OUTPUTS.filter((output) => output.style).at(-1)!;
   const style = screen.getByRole("option", { name: last.name });
   expect(style.getAttribute("aria-disabled")).not.toBe("true");
   expect(filter.getAttribute("aria-activedescendant")).toBe(style.id);

@@ -73,6 +73,7 @@ registry![
     crate::library::commands::recent_references,
     crate::copy::preview_file_citation,
     crate::copy::citation_details,
+    crate::copy::citation_example,
     crate::copy::copy_file_citation,
     crate::project::project_status,
     crate::project::retry_project,

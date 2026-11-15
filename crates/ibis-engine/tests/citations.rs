@@ -800,3 +800,55 @@ fn a_warning_names_the_reference_it_is_about() {
         .unwrap();
     assert_eq!(checked.warnings(), shown.warnings);
 }
+
+#[test]
+fn a_share_example_is_what_choosing_it_copies_and_keeps_the_shown_citation() {
+    let engine = two_records_the_second_warned();
+    let shown = engine
+        .citations()
+        .preview(
+            SessionId::PICKER,
+            every_record(&engine, "pandoc"),
+            Cancellation::default(),
+        )
+        .unwrap()
+        .run()
+        .unwrap();
+    let bibtex = OutputSpec::Preset { name: "bibtex".into() };
+    let example = engine
+        .citations()
+        .example(
+            SessionId::PICKER,
+            &shown.ticket,
+            &shown.content_hash,
+            bibtex,
+            Cancellation::default(),
+        )
+        .unwrap()
+        .run()
+        .unwrap()
+        .unwrap();
+    // The shown citation is still the one Enter copies.
+    let checked = engine
+        .citations()
+        .commit(SessionId::PICKER, &shown.ticket, &shown.content_hash)
+        .unwrap();
+    assert_eq!(checked.check(&engine).unwrap().content().text, shown.text);
+    drop(checked);
+    let chosen = engine
+        .citations()
+        .preview(
+            SessionId::PICKER,
+            every_record(&engine, "bibtex"),
+            Cancellation::default(),
+        )
+        .unwrap()
+        .run()
+        .unwrap();
+    let copied = engine
+        .citations()
+        .commit(SessionId::PICKER, &chosen.ticket, &chosen.content_hash)
+        .unwrap();
+    assert_eq!(copied.check(&engine).unwrap().content().text, example);
+    assert!(example.contains("Second2026"));
+}

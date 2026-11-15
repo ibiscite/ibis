@@ -321,23 +321,27 @@ impl Citations<'_> {
         cancel: Cancellation,
     ) -> Result<CitationTask<FormDetails>, SessionError> {
         let worker = self.worker(id)?;
-        let ticket = ticket.to_owned();
-        let hash = hash.to_owned();
-        {
-            let prepared = worker.prepared.lock().map_err(|_| SessionError::SnapshotChanged)?;
-            let latest = worker.latest_preview.lock().map_err(|_| SessionError::Cancelled)?;
-            if latest.0.to_string() != ticket
-                || !prepared
-                    .as_ref()
-                    .is_some_and(|(id, citation, _)| id == &ticket && citation.result().content_hash.as_str() == hash)
-            {
-                return Err(SessionError::SnapshotChanged);
-            }
-            latest.1.check()?;
-            Worker::replace_formatting(&worker.latest_details, &cancel)?;
-        }
+        worker.admit_example(ticket, hash, &cancel)?;
+        let (ticket, hash) = (ticket.to_owned(), hash.to_owned());
         Ok(CitationTask(Box::new(move || {
             worker.details(&ticket, &hash, item, &cancel)
+        })))
+    }
+    /// Read-only, like the forms: the prepared preview in another output.
+    /// `None` when that output cannot write all of it.
+    pub fn example(
+        &self,
+        id: SessionId,
+        ticket: &str,
+        hash: &str,
+        output: OutputSpec,
+        cancel: Cancellation,
+    ) -> Result<CitationTask<Option<String>>, SessionError> {
+        let worker = self.worker(id)?;
+        worker.admit_example(ticket, hash, &cancel)?;
+        let (ticket, hash) = (ticket.to_owned(), hash.to_owned());
+        Ok(CitationTask(Box::new(move || {
+            worker.example(&ticket, &hash, &output, &cancel)
         })))
     }
     pub fn bibliography(
@@ -855,14 +859,31 @@ impl Worker {
         Self::replace_formatting(&self.latest_bibliography, cancel)
     }
 
-    fn details(
+    /// Admit read-only work on the latest prepared preview. It replaces the
+    /// examples still running, and a newer preview stops it.
+    fn admit_example(&self, ticket: &str, hash: &str, cancel: &Cancellation) -> Result<(), SessionError> {
+        let prepared = self.prepared.lock().map_err(|_| SessionError::SnapshotChanged)?;
+        let latest = self.latest_preview.lock().map_err(|_| SessionError::Cancelled)?;
+        if latest.0.to_string() != ticket
+            || !prepared
+                .as_ref()
+                .is_some_and(|(id, citation, _)| id == ticket && citation.result().content_hash.as_str() == hash)
+        {
+            return Err(SessionError::SnapshotChanged);
+        }
+        latest.1.check()?;
+        Self::replace_formatting(&self.latest_details, cancel)
+    }
+    /// The prepared preview `ticket` names, while it is still the latest one,
+    /// checked under the preview's identity lock so a replacement cannot pass
+    /// between this check and the examples' start.
+    fn held(
         &self,
         ticket: &str,
         hash: &str,
-        item: usize,
         cancel: &Cancellation,
-    ) -> Result<FormDetails, SessionError> {
-        let (reservation, citation, original_output) = {
+    ) -> Result<(u64, Arc<PreparedCitation>, OutputSpec), SessionError> {
+        let (reservation, citation, original_output): (u64, _, _) = {
             let slot = self.prepared.lock().map_err(|_| SessionError::SnapshotChanged)?;
             let (current, citation, output) = slot.as_ref().ok_or(SessionError::SnapshotChanged)?;
             if current != ticket || citation.result().content_hash.as_str() != hash {
@@ -874,16 +895,42 @@ impl Worker {
                 output.clone(),
             )
         };
-        {
-            // Install under the preview's identity lock so a replacement cannot
-            // pass between validation and registration of the examples' owner.
-            let latest = self.latest_preview.lock().map_err(|_| SessionError::Cancelled)?;
-            if latest.0 != reservation || self.closed.load(Ordering::Acquire) {
-                return Err(SessionError::Cancelled);
-            }
-            latest.1.check().map_err(SessionError::from)?;
-            cancel.check()?;
+        let latest = self.latest_preview.lock().map_err(|_| SessionError::Cancelled)?;
+        if latest.0 != reservation || self.closed.load(Ordering::Acquire) {
+            return Err(SessionError::Cancelled);
         }
+        latest.1.check().map_err(SessionError::from)?;
+        cancel.check()?;
+        Ok((reservation, citation, original_output))
+    }
+    /// The prepared preview in another output, as choosing it would show and copy.
+    fn example(
+        &self,
+        ticket: &str,
+        hash: &str,
+        output: &OutputSpec,
+        cancel: &Cancellation,
+    ) -> Result<Option<String>, SessionError> {
+        let (reservation, citation, _) = self.held(ticket, hash, cancel)?;
+        let result = citation
+            .in_output(&self.engine, output, cancel)
+            .map_err(SessionError::from)?;
+        self.preview_cancellation(reservation)?
+            .check()
+            .map_err(SessionError::from)?;
+        cancel.check().map_err(SessionError::from)?;
+        Ok(result
+            .copy_content(citation.items().len())
+            .map(|content| content.text.to_owned()))
+    }
+    fn details(
+        &self,
+        ticket: &str,
+        hash: &str,
+        item: usize,
+        cancel: &Cancellation,
+    ) -> Result<FormDetails, SessionError> {
+        let (reservation, citation, original_output) = self.held(ticket, hash, cancel)?;
         // A numbered style writes reference entries, which have no name forms.
         let entry = citation.result().notices.contains(&Notice::ReferenceEntry);
         let bare_keys = matches!(

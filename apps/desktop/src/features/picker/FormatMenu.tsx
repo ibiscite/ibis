@@ -1,6 +1,6 @@
-import { useState, type RefObject } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import { keysFor } from "../../keys";
-import type { AppPaste } from "../../api";
+import { isCancelled, type AppPaste } from "../../api";
 import { isStyle, keyOutputs, listedOutput, outputName, outputOf, previewOf, shareOutputs, sharesReferences, styleOutputs, type OutputChoice, type OutputId } from "../../format/outputs";
 import { isolate, say } from "../../i18n";
 import { Palette, type PaletteClose, type PaletteItem, type PaletteSection } from "../../ui/Palette";
@@ -11,6 +11,8 @@ import type { FormatPick, FormatSource } from "./useDestination";
 export type MenuCloseReason = PaletteClose;
 /** How another format would show the chosen references, or null when it can't say. */
 export type FormatPreview = (output: OutputId) => ReturnType<typeof previewOf>;
+/** What a way to share references would copy of the shown citation, from the engine; null when it can't write them. */
+export type FormatExample = (output: OutputId, signal: AbortSignal) => Promise<string | null>;
 
 // The formats chosen in this run of Ibis, newest first: the chooser's short list.
 const recent: OutputId[] = [];
@@ -23,7 +25,7 @@ const remember = (output: OutputId) => { recent.splice(0, recent.length, output,
  * the palette: the way back to your format first, your recent formats, the
  * app's own choices, then every format by typing, with a key citation or a
  * labelled style example beside the list. Focus returns to Search. */
-export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpenChange, pasteChoices, onPasteChange, disabled, styles, onChange, searchRef, writing, onWritings, preview, usualFormat, onUseUsual, formatLabel }: {
+export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpenChange, pasteChoices, onPasteChange, disabled, styles, onChange, searchRef, writing, onWritings, preview, example, usualFormat, onUseUsual, formatLabel }: {
   format: OutputId;
   formatLabel?: string;
   usualFormat?: OutputId | null;
@@ -50,6 +52,7 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
   writing?: { name: string } | null;
   onWritings?: () => void;
   preview?: FormatPreview | null;
+  example?: FormatExample | null;
 }) {
   const [open, setOpen] = useState(false);
   const name = formatLabel ?? outputName(format);
@@ -114,21 +117,32 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
     {open && <Palette id="format-palette" title={say("picker-format-title")} subtitle={(item) => once(item) ? say("picker-pick-heading-this-paste") : whose} placeholder={say("palette-search-formats")}
       sections={sections} initial={back ? "back" : format} onAction={choose} onClose={close} empty={say("palette-no-formats")}
       actionLabel={(item) => item.back || listedOutput(item.id) ? say(pick === "paste" || once(item) ? "palette-use-this-paste" : pick === "default" || !app ? "palette-use-default" : "palette-use-for-app", { app: writing?.name ?? app ?? "" }) : say("palette-run")}
-      description={(item) => `${why} ${once(item) ? say("picker-pick-this-paste") : next}`.trim()} preview={(item) => <FormatPreviewPane output={listedOutput(item.back ? back : item.id)} preview={preview ?? null} />} />}
+      description={(item) => `${why} ${once(item) ? say("picker-pick-this-paste") : next}`.trim()} preview={(item) => <FormatPreviewPane output={listedOutput(item.back ? back : item.id)} preview={preview ?? null} example={example ?? null} />} />}
   </>;
 }
 
 /** The highlighted format's citation for the chosen references: a key syntax with
- * their real key, a style by the engine's invented example (only the engine
- * formats real references, and asking it here would replace the shelf's copy). */
-function FormatPreviewPane({ output, preview }: { output: OutputId | null; preview: FormatPreview | null }) {
+ * their real key, a style by the engine's invented example, and a way to share
+ * them by exactly what the engine would copy, asked without replacing the shelf's copy. */
+function FormatPreviewPane({ output, preview, example }: { output: OutputId | null; preview: FormatPreview | null; example: FormatExample | null }) {
   const shown = output && preview ? preview(output) : null;
+  const asks = output && example && !shown && sharesReferences(output) ? output : null;
+  const [answer, setAnswer] = useState<{ output: OutputId; example: FormatExample; text: string | null }>();
+  useEffect(() => {
+    if (!asks || !example) return;
+    const controller = new AbortController();
+    example(asks, controller.signal).then(
+      (text) => setAnswer({ output: asks, example, text }),
+      (error) => { if (!isCancelled(error)) setAnswer({ output: asks, example, text: null }); },
+    );
+    return () => controller.abort();
+  }, [asks, example]);
   if (!output) return null;
+  const answered = asks && answer?.output === asks && answer.example === example ? answer : null;
+  const text = shown ? shown.text : answered?.text ?? say(asks && !answered ? "picker-preview-pending" : "palette-preview-unavailable");
   return <>
     <h3 className="ui-list-heading ui-palette-preview-heading">{say(shown?.example ? "palette-preview-example" : "palette-preview-key")}</h3>
-    <p className="ui-palette-preview-text" data-key={!isStyle(output) || undefined} dir="auto">
-      {shown ? shown.text : say("palette-preview-unavailable")}
-    </p>
+    <p className="ui-palette-preview-text" data-key={!isStyle(output) || undefined} dir="auto">{text}</p>
     {shown && shown.more > 0 && <p className="ui-palette-preview-note">{say("palette-preview-more", { count: shown.more })}</p>}
   </>;
 }

@@ -83,6 +83,12 @@ export const commands = {
 	/** Read-only examples owned by a prepared preview; never publishes a new ticket. */
 	citationDetails: (ticket: string, contentHash: string, item: number, intent: CitationIntent) => __TAURI_INVOKE<FormDetails>("citation_details", { ticket, contentHash, item, intent }),
 	/**
+	 * The prepared preview in another output, as choosing that output would copy
+	 * it; like the details, it never publishes a new ticket. `None` when that
+	 * output cannot write every reference.
+	 */
+	citationExample: (ticket: string, contentHash: string, output: string, intent: CitationIntent) => __TAURI_INVOKE<string | null>("citation_example", { ticket, contentHash, output, intent }),
+	/**
 	 * Copy the shown citation. Citing it again can wait for the formatter, so
 	 * that runs on a worker with no lock held; the short commit that writes the
 	 * clipboard stays on the main thread, as the native clipboard needs.
