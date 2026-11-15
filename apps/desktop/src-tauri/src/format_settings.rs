@@ -32,8 +32,8 @@ pub(crate) fn format_settings(app: AppHandle) -> Result<FormatSettingsView, Comm
             .iter()
             .map(|entry| AppFormat {
                 id: crate::writings::app_key(&entry.app),
-                app: ibis_core::destination::lookup(&entry.app)
-                    .map_or_else(|| entry.app.normalized(), |app| app.name.to_owned()),
+                // The picker's own naming (paste::last_app), so both say "Finder".
+                app: ibis_core::destination::display_name(&entry.app, entry.name.as_deref()),
                 format: entry.output.clone(),
             })
             .collect(),

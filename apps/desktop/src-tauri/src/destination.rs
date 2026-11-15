@@ -433,7 +433,11 @@ pub(crate) fn remember_app_output<R: tauri::Runtime>(
     settings_file.owner.change_with(
         |settings| {
             crate::paste::change_destination(&app, paste.is_some(), |captured| {
-                settings.remember_app_output(&target(captured)?, output.id().to_owned());
+                let id = target(captured)?;
+                settings.remember_app_output(&id, output.id().to_owned());
+                if let Some(name) = captured.and_then(|captured| captured.name.as_deref()) {
+                    settings.name_app(&id, name);
+                }
                 Ok(())
             })
             .map_err(|_| AppChoiceError::not_saved())

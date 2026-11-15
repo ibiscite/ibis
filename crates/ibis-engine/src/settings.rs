@@ -41,6 +41,10 @@ pub const MAX_APP_OUTPUTS: usize = 200;
 pub struct AppOutput {
     pub app: ibis_core::destination::AppId,
     pub output: String,
+    /// The app's own name when Ibis last saw it, so Settings names it as the
+    /// picker did ("Finder", never its bundle ID).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 /// Settings are small; bound both primary and backup reads, including growth
@@ -430,10 +434,29 @@ impl Settings {
             system: app.system,
             id: app.normalized(),
         };
+        let name = self
+            .device
+            .app_outputs
+            .iter()
+            .find(|entry| entry.app == app)
+            .and_then(|entry| entry.name.clone());
         self.device.app_outputs.retain(|entry| entry.app != app);
-        self.device.app_outputs.push(AppOutput { app, output });
+        self.device.app_outputs.push(AppOutput { app, output, name });
         let excess = self.device.app_outputs.len().saturating_sub(MAX_APP_OUTPUTS);
         self.device.app_outputs.drain(..excess);
+    }
+
+    /// Record the name the system gave `app`, beside its remembered format.
+    pub fn name_app(&mut self, app: &ibis_core::destination::AppId, name: &str) {
+        let key = app.normalized();
+        if let Some(entry) = self
+            .device
+            .app_outputs
+            .iter_mut()
+            .find(|entry| entry.app.system == app.system && entry.app.id == key)
+        {
+            entry.name = Some(name.to_owned());
+        }
     }
 
     /// Forget the normalized app identity, just as it was remembered.
@@ -1342,7 +1365,12 @@ mod tests {
             "the least recently chosen app went first"
         );
         assert_eq!(settings.app_output(&other(0)), Some("pandoc"));
-        // Only the system, the app id and the output are written.
+        // A later choice for a named app keeps the name the system gave it.
+        settings.name_app(&other(1), "Invented Editor");
+        settings.remember_app_output(&other(1), "apa".into());
+        let named = settings.device.app_outputs.last().map(|entry| entry.name.as_deref());
+        assert_eq!(named, Some(Some("Invented Editor")));
+        // Only the system, the app id and the output are written, and a name once seen.
         let saved = serde_json::to_value(&settings).unwrap_or_default();
         assert_eq!(
             saved["app_outputs"][0],

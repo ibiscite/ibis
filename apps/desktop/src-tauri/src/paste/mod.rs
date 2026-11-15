@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 use ibis_core::destination::AppPaste;
 #[cfg(test)]
 use ibis_core::destination::PastePermission;
-use ibis_core::destination::{AppId, CopyReason, System, lookup};
+use ibis_core::destination::{AppId, CopyReason, System};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
@@ -454,10 +454,7 @@ pub(crate) fn last_app(app: &AppHandle) -> Option<(AppId, String, Option<String>
     #[cfg(target_os = "windows")]
     let captured = last.target.as_ref()?.captured.clone()?;
     let id = captured.target.app?;
-    let name = captured
-        .name
-        .or_else(|| lookup(&id).map(|known| known.name.to_owned()))
-        .unwrap_or_else(|| id.id.clone());
+    let name = ibis_core::destination::display_name(&id, captured.name.as_deref());
     Some((id, name, captured.app_identity))
 }
 
