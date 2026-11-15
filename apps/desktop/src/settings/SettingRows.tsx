@@ -41,7 +41,8 @@ export function Setting({ row, state, preferences, feedback, reset, size = null 
   return <>{row.control === "appearance" && <div className="ui-picture-preview" data-pair={pictures.length > 1 || undefined} aria-hidden="true">
     {pictures.map((appearance) => <PickerPicture key={appearance} density={preferences?.density} appearance={appearance} frame={WINDOWS[size ?? "medium"]} />)}</div>}
   <Row id={row.id} {...details} description={state.description ?? details.description} {...feedback}
-    pending={!known || undefined}
+    // Busy while the value is on its way; a read that failed says why instead.
+    pending={!known && !state.description || undefined}
     reset={row.default === undefined ? undefined : !state.disabled && known && value !== row.default ? { label, onReset: () => {
       const restore = state.restore ?? { apply: async () => { await state.change(row.default!); }, undo: async () => { await state.change(value!, true); } };
       void reset(label, restore.apply, restore.undo);
