@@ -11,7 +11,7 @@ const surfaces = [
   ["results", "Picker"], ["format-menu", "Format"], ["more", "Actions (More)"],
   ["cited-since-opening", "Cited Since Opening"], ["writing-projects", "Writing Projects"], ["shortcuts", "Keyboard Shortcuts"],
   ["settings-general", "Settings › General"], ["settings-look", "Settings › Look"], ["settings-citations", "Settings › Citations"],
-  ["settings-shortcuts", "Settings › Shortcuts"], ["settings-about", "About"],
+  ["settings-ai-apps", "Settings › AI Apps"], ["settings-shortcuts", "Settings › Shortcuts"], ["settings-about", "About"],
   ["first-run", "First run"], ["empty", "Empty library"], ["missing", "Library missing"], ["zotero-closed", "Zotero closed"],
   ["unreadable", "Library unreadable"], ["loading", "Opening"], ["error", "Error"],
 ];

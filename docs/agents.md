@@ -159,8 +159,10 @@ Setup always connects the read-only server. To let an assistant propose adding
 references, changing fields or tags, add `--allow-writes` to the arguments
 yourself, for example `"args":["mcp","--app-libraries","--allow-writes"]`, or
 `claude mcp add --scope user --transport stdio ibis -- ibis mcp --app-libraries --allow-writes`.
-Nothing changes until you apply a proposal in Ibis; `ibis proposals list` shows
-them. Assistants setting up Ibis never add this flag on their own.
+Review the preview and press **Apply** or **Reject** in
+**Settings › AI Apps › Proposed changes**. Nothing changes until you press
+Apply; `ibis proposals list` also shows them. Only `.bib` libraries take
+proposals for now. Assistants setting up Ibis never add this flag on their own.
 
 ## 5. Verify one result
 

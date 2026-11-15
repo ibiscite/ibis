@@ -18,10 +18,25 @@ import english from "../../../../locales/en-US.ftl?raw";
 import { createInterfaceMessages, englishMessages, InterfaceMessagesProvider, say } from "../i18n";
 import { SHORTCUT_ACTIONS, SHORTCUT_REGIONS } from "../i18n/settings";
 import { deferred } from "../testing/deferred";
+import { exampleProposals } from "../testing/proposals";
+
+test.each(["proposals", "changes", "add reference"])("search finds proposed changes by %s on AI Apps", async (query) => {
+  const { api } = fakeApi();
+  api.agentApps = vi.fn(async () => []);
+  api.connectAgentApp = vi.fn(); api.disconnectAgentApp = vi.fn();
+  api.waitingProposals = vi.fn(async () => exampleProposals());
+  api.applyProposal = vi.fn(); api.rejectProposal = vi.fn();
+  render(<SettingsApp api={api} initialPage="general" />);
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search Settings" }), { target: { value: query } });
+  fireEvent.click(await screen.findByRole("option", { name: /^Proposed changes/ }));
+  await screen.findByText("Claude Desktop · signals.bib");
+  expect(screen.getByRole("main", { name: "AI Apps" })).toBeTruthy();
+  expect(api.applyProposal).not.toHaveBeenCalled();
+});
 
 afterEach(() => { vi.useRealTimers(); localStorage.clear(); });
 
-test("AI Apps keeps Command Line and connections before Attachment text", async () => {
+test("AI Apps keeps Command Line, connections and Attachment text before Proposed changes", async () => {
   const { api } = fakeApi();
   const app: AgentApp = { id: "cursor", name: "Cursor", found: true, revision: "invented-revision", state: "not-connected", detail: "", diff: null, needs_command: true, ibis_on_path: true };
   api.cliStatus = async () => ({ state: "not-installed", version: null, used_path: null, profile_line: null, removable: false, installable: true });
@@ -31,11 +46,13 @@ test("AI Apps keeps Command Line and connections before Attachment text", async 
   api.connectAgentApp = vi.fn();
   api.disconnectAgentApp = vi.fn();
   api.attachmentTextLibraries = async () => [{ id: "lib_invented_library", name: "Invented references", on: false }];
+  api.waitingProposals = async () => [];
+  api.applyProposal = vi.fn(); api.rejectProposal = vi.fn();
   render(<SettingsApp api={api} initialPage="ai-apps" />);
   expect(await screen.findByRole("button", { name: "Install the ibis command" })).toBeTruthy();
   expect(await screen.findByRole("button", { name: "Connect Cursor" })).toBeTruthy();
   expect(await screen.findByRole("switch", { name: "Let AI apps read attachment text Invented references" })).toHaveProperty("checked", false);
-  expect(within(screen.getByRole("main")).getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["Command Line", "AI Apps", "Attachment text"]);
+  expect(within(screen.getByRole("main")).getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["Command Line", "AI Apps", "Attachment text", "Proposed changes"]);
 });
 
 test("command changes refresh AI Apps and retire older observations", async () => {

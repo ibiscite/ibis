@@ -11,6 +11,7 @@ import type { CitedWarning, DisplayTree, Preview, DraftItem, CitationIntent } fr
 import { recordId } from "../test-fixtures";
 import { isStyle, listedOutput } from "../format/outputs";
 import { fixtureDestination, formatAnswer } from "./format";
+import { exampleProposals } from "./proposals";
 import { forgetRecentFormats } from "../features/picker/FormatMenu";
 
 export async function resetApp() {
@@ -182,6 +183,7 @@ export type Handler = (args: Record<string, unknown> & PreviewRequest & { query:
 
 /** Mock the Rust commands; returns the list of commands called. */
 export function backend(overrides: Record<string, Handler> = {}): string[] {
+  let proposals = exampleProposals();
   const calls: string[] = [];
   const citationKeys = new Map<string, string>();
   let lastLibrary: Partial<api.LibraryStatus> = {};
@@ -192,6 +194,9 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
   const submitted = new Map<number, Partial<api.PickerPreferences>>();
   receipts.clear();
   const defaults: Record<string, Handler> = {
+    waiting_proposals: () => proposals,
+    apply_proposal: ({ id }) => { proposals = proposals.filter((proposal) => proposal.id !== id); return { status: "applied", backup: "signals.bib.ibis-backup-1" }; },
+    reject_proposal: ({ id }) => { proposals = proposals.filter((proposal) => proposal.id !== id); return { status: "rejected" }; },
     "plugin:window|is_visible": () => true,
     shortcut_status: () => ({ shortcut: "CommandOrControl+Shift+Y", registered: true, error: null }),
     search: () => [],

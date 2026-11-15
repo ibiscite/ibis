@@ -3,6 +3,12 @@
 import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 
 export const commands = {
+	/** Waiting proposals and their engine previews, with library names only. */
+	waitingProposals: () => __TAURI_INVOKE<WaitingProposal[]>("waiting_proposals"),
+	/** Apply only after the person presses Apply on the displayed proposal. */
+	applyProposal: (id: string) => __TAURI_INVOKE<ProposalResult>("apply_proposal", { id }),
+	/** Reject a waiting proposal; no library changes. */
+	rejectProposal: (id: string) => __TAURI_INVOKE<ProposalResult>("reject_proposal", { id }),
 	/** Every supported AI app, found ones first. */
 	agentApps: () => __TAURI_INVOKE<AgentApp[]>("agent_apps"),
 	/** Connect only if expected is the revision of the displayed entry and proposal. */
@@ -958,6 +964,16 @@ export type ProjectStatus = {
 	state: ProjectState;
 };
 
+export type ProposalResult = {
+	backup: string;
+	status: "applied";
+} | {
+	status: "rejected";
+} | {
+	sentence: string;
+	status: "refused";
+};
+
 /** One thing reading the library found: an entry skipped or one to check. */
 export type ReadingNotice = {
 	/** The engine's warning code, such as `duplicate-key` or `syntax`. */
@@ -1219,6 +1235,18 @@ export type UndoView = {
 	reference: SearchResult | null;
 } | {
 	kind: "reset";
+};
+
+export type WaitingProposal = {
+	after: string | null;
+	before: string | null;
+	created_ms: number;
+	id: string;
+	library: string;
+	lines: string[];
+	refusal: string | null;
+	source_app: string;
+	summary: string;
 };
 
 /** Settings › Look's window size. Any other dragged size is Custom. */

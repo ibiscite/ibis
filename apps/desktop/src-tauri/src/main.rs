@@ -40,6 +40,7 @@ mod picker;
 mod placement;
 mod preferences;
 mod project;
+mod proposals;
 mod row_context;
 mod session_references;
 mod settings_backup;

@@ -1,9 +1,11 @@
 import type { AgentApp, CommandStatus, DelightFact, PickerPreferences, ShortcutStatus, WindowSize } from "../bindings";
 import { DEFAULT_PICKER_SHORTCUT } from "../keys";
+import { exampleProposals } from "../testing/proposals";
 import type { SettingsApi } from "./api";
 
 /** Explicit development-only fixture: no native commands, files or network. */
 export function demoApi(): SettingsApi {
+  let proposals = exampleProposals();
   let preferences: PickerPreferences = { output: "pandoc", density: "comfortable", larger_text: false, paste: true, menu_bar: true, appearance: "system", accent: "system" };
   let shortcut: ShortcutStatus = { shortcut: DEFAULT_PICKER_SHORTCUT, registered: true, error: null };
   let enabled = false, automatic = false;
@@ -31,6 +33,9 @@ export function demoApi(): SettingsApi {
     attachmentTextLibraries: async () => [{ id: "lib_invented_demo_library", name: "Sample references", on: attachmentText }],
     setAttachmentText: async (id, on) => { if (id !== "lib_invented_demo_library") throw new Error("Unknown library"); attachmentText = on; return on; },
     onLibraryChanged: subscribe,
+    waitingProposals: async () => proposals,
+    applyProposal: async (id) => { proposals = proposals.filter((proposal) => proposal.id !== id); return { status: "applied", backup: "signals.bib.ibis-backup-1" }; },
+    rejectProposal: async (id) => { proposals = proposals.filter((proposal) => proposal.id !== id); return { status: "rejected" }; },
     delightView: async (_now, _presentation, _revision, click) => {
       const fun = preferences.small_surprises ?? true;
       if (fun && click) factIndex = (factIndex + 1) % facts.length;

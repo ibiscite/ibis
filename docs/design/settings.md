@@ -81,6 +81,17 @@ complete IDs previously listed and still open can change. Failed saves restore
 the saved choice; late saves cannot undo newer choices. Search finds attachment,
 full text and PDF.
 
+**Proposed changes** follows Attachment text. One row names the proposing
+app, target library (never its path), summary and time, with the engine's
+before/after text in a Note in code. **Apply** is the confirmation, without a
+second dialog; nothing in a library changes before that press. The row keeps
+the result: **Applied; backup kept as NAME**, or the engine's refusal sentence.
+**Reject** removes a waiting proposal. Only `.bib` libraries take proposals
+(maintainer direction 2026-11-15). An empty group has one row,
+**No proposed changes**. Refresh on a visit, visible window focus or
+visibility change, without letting late reads replace newer decisions or erase
+an Apply receipt. Search finds the group by proposals, changes and add reference.
+
 **Another computer.** Settings › General’s **Details…** holds **Back up settings** (Back Up…, a save dialog that starts in iCloud Drive on macOS, OneDrive on Windows, otherwise Documents) and **Restore settings** (Restore…). A chosen backup is checked whole, then the row lists every change as "Setting: before → after" with notes (a bibliography not on this computer, a shortcut kept for this system), **Cancel** and the primary **Restore and Restart**. Nothing changes before that button; a bibliography shows by its file name only. Refusals say why in one line and change nothing ([moving to a new computer](../moving-to-a-new-computer.md)).
 
 **About**. One centred column, as System Settings' About: the actual app icon, the name, a **Version x** button that copies it, drawn as a button (a secondary plate), since quiet words read as a label (⌥ shows and copies the full build), **Check for Updates** under the version, as Mac apps place it, with its result under it, then the mission line and the line on the name, which keeps the room of two lines so a new fact never moves the page. Under it, the Updates group (one row: the automatic-checks switch) is the same card as every page, and the links and the free-software note are centred at the foot. The mission line is the hero's lead, in the text colour; the line on the name is secondary. The icon is the page's only bird. It fits 920 × 560 without scrolling. **Check for Updates…** in the tray and menu bar checks at once and leaves Settings closed: an update found is the offer (install now or later); otherwise one native prompt says Ibis has the newest version, could not check, is already checking, or does not update itself. Automatic update offers never show or focus the picker; they wait for empty, idle input, and **Later** is the default for every key (decision 0019).
