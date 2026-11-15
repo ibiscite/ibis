@@ -44,8 +44,10 @@ export function AiApps({ api, highlighted, refresh = 0 }: { api: Api; highlighte
     // A command install/remove is another observation trigger on this page.
     void refresh;
     read();
+    // A window opened hidden reads once it is shown, even without focus.
     window.addEventListener("focus", read);
-    return () => { window.removeEventListener("focus", read); };
+    document.addEventListener("visibilitychange", read);
+    return () => { window.removeEventListener("focus", read); document.removeEventListener("visibilitychange", read); };
   }, [read, refresh]);
   const change = (app: AgentApp) => {
     if (changing.current) return;
