@@ -26,6 +26,8 @@ export function usePickerPreferences(
   const [available, setAvailable] = useState(false);
   const [format, setFormat] = useState<OutputId>(defaultOutput);
   const formatField = useRef<"output" | "key_output">("output");
+  /** The failure shown is a read's, which a later successful read ends. */
+  const readFailed = useRef(false);
   const [density, setDensity] = useState<Density>("comfortable");
   const [largerText, setLargerText] = useState(false);
   const [queue] = useState(() => new PreferencePatchQueue({
@@ -41,6 +43,7 @@ export function usePickerPreferences(
   }, []);
   useEffect(() => queue.subscribe((event) => {
     if (event.type === "saving") {
+      readFailed.current = false;
       void perform("preferences", () => event.promise);
     } else if (event.type === "saved") {
       setAvailable(true);
@@ -50,10 +53,13 @@ export function usePickerPreferences(
       const { preferences: saved } = event.value;
       setReady(true);
       setAvailable(saved !== null);
-      if (saved) applyView(saved);
-      else {
+      if (saved) {
+        applyView(saved);
+        if (readFailed.current) { readFailed.current = false; report("preferences", false); }
+      } else {
         // Unknown again: record nothing, forget nothing.
         setRecentCitations(null);
+        readFailed.current = true;
         report("preferences");
       }
       if (event.pendingOutput) return;
