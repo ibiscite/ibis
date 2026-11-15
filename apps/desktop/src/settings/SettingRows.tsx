@@ -32,8 +32,10 @@ export function Setting({ row, state, preferences, feedback, reset, size = null 
   const options = "options" in row ? row.options.filter((option) => !option.currentOnly || option.value === value) : [];
   const labels = options.map((option) => ({ value: String(option.value), label: text(option.label, { platform }), isDisabled: state.disabled }));
   const choose = (next: string) => { const option = options.find((option) => String(option.value) === next); if (option) change(option.value); };
-  return <>{row.control === "appearance" && <div className="ui-picture-preview" aria-hidden="true"><PickerPicture density={preferences?.density}
-    appearance={value === "system" ? "light" : String(value)} split={value === "system"} frame={WINDOWS[size ?? "medium"]} /></div>}
+  // The live picture: System is both appearances side by side, never split by a line through the words.
+  const pictures = value === "system" ? ["light", "dark"] : [String(value)];
+  return <>{row.control === "appearance" && <div className="ui-picture-preview" data-pair={pictures.length > 1 || undefined} aria-hidden="true">
+    {pictures.map((appearance) => <PickerPicture key={appearance} density={preferences?.density} appearance={appearance} frame={WINDOWS[size ?? "medium"]} />)}</div>}
   <Row id={row.id} {...details} description={state.description ?? details.description} {...feedback}
     reset={row.default === undefined ? undefined : !state.disabled && state.value !== null && value !== row.default ? { label, onReset: () => {
       const restore = state.restore ?? { apply: async () => { await state.change(row.default!); }, undo: async () => { await state.change(value!, true); } };
