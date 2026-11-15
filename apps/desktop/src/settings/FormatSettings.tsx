@@ -3,7 +3,7 @@ import type { FormatSettingsView, Problem } from "../bindings";
 import { outputName, listedOutput } from "../format/outputs";
 import { problemText, useInterfaceMessages } from "../i18n";
 import { Button } from "../ui/Button";
-import { Group, Note, Row, Section } from "../ui/Layout";
+import { Group, Row, Section } from "../ui/Layout";
 import type { SettingsApi } from "./api";
 import { rowDetails } from "./rows";
 import { Status } from "../ui/Status";
@@ -81,8 +81,8 @@ export function SettingsFileProblem({ settings }: { settings: ReturnType<typeof 
   const { problem, openSettingsFile } = settings;
   if (problem === null) return null;
   const review = typeof problem === "object" && (problem as Partial<Problem>).recovery?.action === "review-settings";
-  return <Note problem role="alert">{problemText(problem, text("settings-read-failed"), text)}
-    {review && openSettingsFile && <> <Button size="small" onPress={openSettingsFile}>{text("settings-open-file")}</Button></>}</Note>;
+  return <Status tone="warning" role="alert">{problemText(problem, text("settings-read-failed"), text, "settings")}
+    {review && openSettingsFile && <> <Button size="small" onPress={openSettingsFile}>{text("settings-open")}</Button></>}</Status>;
 }
 
 /** Opening settings.json, in General's Advanced group. */
@@ -91,7 +91,7 @@ export function SettingsFileRow({ settings, highlighted }: { settings: ReturnTyp
   const { openSettingsFile, openFailed, dismissOpen } = settings;
   if (!openSettingsFile) return null;
   return <><Row id="open-settings-file" {...rowDetails("open-settings-file", text)} highlighted={highlighted === "open-settings-file"}>
-    <Button onPress={openSettingsFile}>{text("settings-open-file")}</Button>
+    <Button onPress={openSettingsFile}>{text("settings-open")}</Button>
   </Row>
   {openFailed && <Status role="alert">{text("settings-open-failed")} <Button size="small" onPress={dismissOpen}>{text("picker-dismiss")}</Button></Status>}</>;
 }

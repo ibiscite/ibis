@@ -298,6 +298,7 @@ export type AboutLink = "website" | "source" | "problem" | "licences";
 export type Accent = "system" | "ibis";
 
 export type AppFormat = {
+	/** Resolved at display time by the same native lookup as the picker. */
 	app: string;
 	format: string;
 	id: string;

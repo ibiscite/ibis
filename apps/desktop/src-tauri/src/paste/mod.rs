@@ -445,7 +445,7 @@ pub(crate) fn capture(app: &AppHandle) -> Option<String> {
 }
 
 /// The app the picker was last opened from, with the name the picker shows
-/// for it: the app's own, else the destination table's, else its ID.
+/// for it, resolved by the same owner as Settings.
 pub(crate) fn last_app(app: &AppHandle) -> Option<(AppId, String, Option<String>)> {
     let state = app.state::<LastTarget>();
     let last = state.0.lock().ok()?;
@@ -454,7 +454,7 @@ pub(crate) fn last_app(app: &AppHandle) -> Option<(AppId, String, Option<String>
     #[cfg(target_os = "windows")]
     let captured = last.target.as_ref()?.captured.clone()?;
     let id = captured.target.app?;
-    let name = ibis_core::destination::display_name(&id, captured.name.as_deref());
+    let name = crate::destination::display_name(&id);
     Some((id, name, captured.app_identity))
 }
 

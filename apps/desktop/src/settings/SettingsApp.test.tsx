@@ -1908,7 +1908,7 @@ test("search includes key formats used in the library and the live file action o
   await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "In Markdown, LaTeX and Typst Pandoc" })));
   fireEvent.change(search, { target: { value: "Open Settings File" } });
   fireEvent.click(await screen.findByRole("option", { name: "Open Settings File, General" }));
-  const open = screen.getByRole("button", { name: "Open Settings File" });
+  const open = screen.getByRole("button", { name: "Open" });
   await waitFor(() => expect(document.activeElement).toBe(open));
   expect(document.getElementById("open-settings-file")?.closest(".ui-row")?.hasAttribute("data-highlighted")).toBe(true);
   fireEvent.click(open);
@@ -1928,15 +1928,16 @@ test.each(["reset", "default"])("searching %s finds the settings that can go bac
   expect(screen.queryByRole("option", { name: /^Back up settings/ })).toBeNull();
 });
 
-test.each(["general", "citations"] as const)("a settings file that does not parse says so on %s in the picker's words, with its one recovery", async (page) => {
+test.each(["general", "citations"] as const)("a settings file that does not parse explains the fallback on %s with its one recovery", async (page) => {
   const { api } = fakeApi();
   api.formatSettings = vi.fn(() => Promise.reject({ code: "settings-invalid", message: { id: "app-settings-error-invalid", args: {} }, recovery: { action: "review-settings" }, focus: "settings" }));
   api.openSettingsFile = vi.fn(async () => null);
   render(<SettingsApp api={api} initialPage={page} />);
   const problem = await screen.findByRole("alert");
-  expect(problem.textContent).toContain("The settings file is not valid.");
+  expect(problem.textContent).toContain("settings.json isn’t valid, so Ibis is using your last good settings.");
+  expect(problem.textContent).not.toContain("Open Settings to review it.");
   expect(screen.queryByText(/could not read your settings/)).toBeNull();
-  fireEvent.click(within(problem).getByRole("button", { name: "Open Settings File" }));
+  fireEvent.click(within(problem).getByRole("button", { name: "Open" }));
   expect(api.openSettingsFile).toHaveBeenCalledOnce();
 });
 

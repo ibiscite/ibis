@@ -326,11 +326,6 @@ fn show(app: &AppHandle, mut text: NoticeMessage, (receipt, epoch): (Option<u64>
             let mut first = false;
             let saved = app.state::<crate::preferences::SettingsFile>().update(|settings| {
                 first = ibis_engine::format::accept_suggestion(settings, target.as_ref(), &choice);
-                // Named as the picker named it, so Settings lists the same app.
-                if let Some((id, name, _)) = crate::paste::last_app(app).filter(|(id, ..)| Some(id) == target.as_ref())
-                {
-                    settings.name_app(&id, &name);
-                }
             });
             saved.is_ok() && first
         } else {

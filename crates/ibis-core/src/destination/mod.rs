@@ -186,14 +186,6 @@ pub fn lookup(app: &AppId) -> Option<&'static App> {
     APPS.iter().find(|entry| entry.system == app.system && entry.id == id)
 }
 
-/// The one name every surface shows for an app: its own (as the system named it
-/// when Ibis last saw it), else the destination table's, else its ID.
-pub fn display_name(app: &AppId, own: Option<&str>) -> String {
-    own.map(str::to_owned)
-        .or_else(|| lookup(app).map(|known| known.name.to_owned()))
-        .unwrap_or_else(|| app.id.clone())
-}
-
 /// Zotero's default action finds a reference. An explicit citation copy must
 /// remain copied, including when an older app rule approved automatic paste.
 pub fn finds_in_app(app: &AppId) -> bool {

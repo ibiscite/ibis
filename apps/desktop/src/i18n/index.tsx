@@ -42,9 +42,10 @@ export type MessageId = typeof IDS[number];
 /** Messages Rust owns: engine codes and the CLI, MCP and native app's words. */
 const RUST = /^(error|reason|refusal|problem|warning|source-warning|loss|notice|form|cause|cli|mcp|app)-/;
 type Variables = Readonly<Record<string, string | number>>;
+type Audience = "app" | "bibliography" | "settings";
 export type InterfaceMessages = Readonly<{
   locale: typeof INTERFACE_LOCALE;
-  text: (id: MessageId, variables?: Variables, audience?: "app" | "bibliography") => string;
+  text: (id: MessageId, variables?: Variables, audience?: Audience) => string;
 }>;
 
 /** Visible expansion for build/test use; variables stay untouched. */
@@ -78,14 +79,15 @@ export function createInterfaceMessages(source: string, pseudo = false): Interfa
     transform: pseudo ? pseudolocalize : undefined,
   });
   if (bundle.addResource(new FluentResource(source)).length) throw invalid();
-  const text = (id: MessageId, variables?: Variables, audience?: "app" | "bibliography"): string => {
+  const text = (id: MessageId, variables?: Variables, audience?: Audience): string => {
     const message = bundle.getMessage(id);
     const errors: Error[] = [];
     if (!message?.value) throw new Error("Invalid interface message");
     const named = variables?.reference ? (variables.form ? message.attributes["app-named"] : undefined) ?? message.attributes.named : undefined;
-    const value = bundle.formatPattern(named ?? message.value, variables, errors);
+    const variant = audience === "settings" ? message.attributes.settings : undefined;
+    const value = bundle.formatPattern(named ?? variant ?? message.value, variables, errors);
     if (errors.length) throw new Error("Invalid interface message");
-    const advice = audience ? message.attributes[audience] : undefined;
+    const advice = audience && audience !== "settings" ? message.attributes[audience] : undefined;
     if (!advice) return value;
     const fix = bundle.formatPattern(advice, variables, errors);
     if (errors.length) throw new Error("Invalid interface message");
@@ -128,9 +130,9 @@ export function useInterfaceMessages(): InterfaceMessages {
 }
 
 /** Render a native IPC diagnostic through the shared catalogue. */
-export function problemText(error: unknown, fallback: string, text = say): string {
+export function problemText(error: unknown, fallback: string, text = say, audience: "app" | "settings" = "app"): string {
   const problem = typeof error === "object" && error !== null ? error as Partial<Problem> : null;
   if (!problem?.message || typeof problem.message.id !== "string" || !problem.recovery || !problem.focus) return fallback;
-  try { return text(problem.message.id as MessageId, problem.message.args, problem.message.context === "bibliography" ? "bibliography" : "app"); }
+  try { return text(problem.message.id as MessageId, problem.message.args, problem.message.context === "bibliography" ? "bibliography" : audience); }
   catch { return fallback; }
 }

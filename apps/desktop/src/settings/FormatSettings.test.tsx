@@ -107,7 +107,7 @@ test("opening the settings file has its own failure, cleared by dismissal or a s
   vi.mocked(native.openSettingsFile!).mockRejectedValueOnce(new Error("synthetic failure")).mockResolvedValueOnce(null)
     .mockRejectedValueOnce(new Error("synthetic failure"));
   render(<FormatSettings api={native} />);
-  const open = await screen.findByRole("button", { name: "Open Settings File" });
+  const open = await screen.findByRole("button", { name: "Open" });
   fireEvent.click(open);
   expect((await screen.findByRole("alert")).textContent).toContain("could not open");
   fireEvent.focus(window);
