@@ -2,6 +2,7 @@
 //! graph is read from `cargo metadata`, as Cargo itself reads the manifests, so
 //! a renamed, target-specific or inherited dependency cannot hide. A new crate
 //! or a new edge must declare its place in the graph.
+#![cfg(test)]
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::Path,

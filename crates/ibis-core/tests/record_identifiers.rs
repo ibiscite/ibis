@@ -1,5 +1,5 @@
 //! Search identifiers stay out of printed CSL fields and citation fingerprints.
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 use ibis_core::contract::*;
 use serde_json::json;
 

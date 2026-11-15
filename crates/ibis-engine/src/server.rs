@@ -184,7 +184,6 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
     })
 }
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use std::{

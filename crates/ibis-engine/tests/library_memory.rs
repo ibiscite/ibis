@@ -3,7 +3,7 @@
 //! A counting allocator gives the exact bytes requested, so the limit is the
 //! same on every runner and needs no timing margin.
 //! Run with `cargo test -p ibis-engine --test library_memory -- --nocapture`.
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 use std::alloc::System;
 
 use ibis_engine::{Cancellation, Engine, Method};

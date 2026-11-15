@@ -1,5 +1,5 @@
 //! The new renderer consumes the shared contract without front-end formatting.
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 use ibis_core::contract::*;
 use ibis_core::contract::{GoldenCase, OutputSpec};
 use ibis_core::syntax::{self, CAPABILITIES, Escaping};

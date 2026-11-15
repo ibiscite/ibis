@@ -174,7 +174,6 @@ fn write_private(path: &Path, bytes: &[u8]) -> io::Result<()> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;

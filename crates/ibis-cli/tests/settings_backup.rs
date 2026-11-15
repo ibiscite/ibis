@@ -1,7 +1,7 @@
 //! `ibis settings export|import` takes the app's settings to another computer
 //! (#1561): a bibliography in the home folder is found again under the other
 //! home, and nothing changes until a whole backup has been checked.
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 
 use std::path::{Path, PathBuf};
 use std::process::Command;

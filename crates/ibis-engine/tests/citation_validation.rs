@@ -1,5 +1,5 @@
 //! Shared eligibility and precedence, observed through both output families.
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 use ibis_core::contract::*;
 use ibis_engine::{Cancellation, CitationCommitError, Engine, LibraryKind};
 use serde_json::json;

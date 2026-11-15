@@ -19,6 +19,8 @@ unsafe_code = "forbid"
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
 unwrap_used = "deny"
+panic = "deny"
+unused_result_ok = "deny"
 expect_used = "warn"
 
 # Debug builds run the native smoke and performance checks in CI. Optimizing

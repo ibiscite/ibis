@@ -2,7 +2,7 @@
 //! publish partial libraries, attachment details stay private, malformed items
 //! cannot change their neighbours, and diagnostics never copy field labels.
 //! Invented API responses only; no Zotero process or library is used.
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 
 use std::collections::BTreeMap;
 

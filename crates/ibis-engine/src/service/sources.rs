@@ -881,7 +881,6 @@ impl Shared {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     #[test]
     fn incompatible_newer_zotero_schema_names_only_the_fixed_table_in_json() {

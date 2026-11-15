@@ -1,5 +1,5 @@
-#![allow(clippy::unwrap_used)]
 //! Citation sessions are tested as a client: submit, show, then commit.
+#![cfg(test)]
 use ibis_core::contract::*;
 use ibis_engine::{Cancellation, Engine, citations::SessionId};
 use serde_json::json;

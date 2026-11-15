@@ -1,6 +1,6 @@
 //! RIS exports and the CSV template as a person and a client meet them
 //! (#1531, decision 0043): through the command line and the engine contract.
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 use ibis_engine::{Cancellation, Engine, Method};
 use serde_json::{Value, json};
 use std::{

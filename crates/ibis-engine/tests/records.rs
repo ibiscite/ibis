@@ -1,6 +1,5 @@
 //! Citing CSL-JSON records a caller sends, with no library (#1539). The
 //! records are untrusted input: nothing they name is opened or followed.
-#![allow(clippy::unwrap_used)]
 use ibis_core::contract::{CitationError, ErrorCode, ErrorReason, ItemOutcome};
 use ibis_engine::{Cancellation, DispatchResult, Engine, Method};
 use serde_json::{Value, json};

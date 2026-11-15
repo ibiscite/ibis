@@ -419,7 +419,8 @@ fn drive_path(path: &Path) -> bool {
 #[allow(unsafe_code)]
 mod windows;
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
+#[cfg(unix)]
 pub(super) mod tests {
     use super::*;
     use crate::closed::tests::control;
@@ -636,7 +637,8 @@ pub(super) mod tests {
     }
 }
 
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
+#[cfg(target_os = "macos")]
 mod macos_acl_tests {
     use super::*;
     #[test]
@@ -698,7 +700,8 @@ mod macos_acl_tests {
     }
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
+#[cfg(unix)]
 mod cache_tag_tests {
     use super::*;
     #[test]

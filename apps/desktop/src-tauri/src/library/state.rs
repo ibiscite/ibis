@@ -417,7 +417,6 @@ mod tests {
     use crate::tray::library_line;
 
     #[test]
-    #[allow(clippy::unwrap_used)]
     fn startup_parses_fresh_and_can_cite_immediately() {
         use tauri::Manager;
         let dir = tempfile::tempdir().unwrap();

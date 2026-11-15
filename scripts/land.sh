@@ -116,7 +116,7 @@ mac_gate() {
   export PATH="$HOME/miniconda3/bin:$PATH"
   trap 'printf "FAILED (%s): %s\n" "$?" "$BASH_COMMAND"' ERR
   cargo fmt --all --check
-  cargo clippy --workspace --all-targets --locked -- -D warnings -D clippy::unused_result_ok
+  cargo clippy --workspace --all-targets --locked -- -D warnings
   cargo test --workspace --locked
   pnpm -C apps/desktop install --frozen-lockfile --prefer-offline
   pnpm -C apps/desktop exec tsc --noEmit
@@ -159,7 +159,7 @@ export CARGO_TARGET_DIR="$HOME/Code/ibis/target"
 export CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=1 CARGO_BUILD_JOBS=4  # 8 cores but 7 GB RAM
 # Empty, not unset: an empty value also overrides a wrapper set in Cargo's config.
 export RUSTC_WRAPPER= RUSTC_WORKSPACE_WRAPPER=
-cargo clippy --workspace --all-targets --locked -- -D warnings -D clippy::unused_result_ok
+cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 pnpm -C apps/desktop install --frozen-lockfile --prefer-offline
 pnpm -C apps/desktop exec vitest run --maxWorkers=2

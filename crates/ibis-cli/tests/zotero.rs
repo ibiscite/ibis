@@ -1,5 +1,5 @@
 //! The real CLI parser/engine/transport, against an ephemeral synthetic server.
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 use ibis_engine::{Cancellation, Engine, Method};
 use serde_json::{Value, json};
 use std::{

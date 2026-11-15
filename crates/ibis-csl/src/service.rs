@@ -271,7 +271,6 @@ fn worker(shared: &Shared, limits: &Limits) {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use ibis_core::contract::{ItemOutcome, Notice};
@@ -378,7 +377,6 @@ mod tests {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod waiting_tests {
     use super::tests::queued_service;
     use super::*;
@@ -443,7 +441,6 @@ mod waiting_tests {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod shutdown_tests {
     use super::*;
     use std::time::Duration;

@@ -41,7 +41,6 @@ pub fn sign_receipt(path: &Path) -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used)]
     use super::*;
 
     fn args(items: &[&str]) -> Vec<String> {

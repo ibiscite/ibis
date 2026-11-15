@@ -1,5 +1,5 @@
 //! Search identifiers found in every source field, never printed as CSL.
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 
 use ibis_core::contract::{LibraryId, LibraryObject, Record};
 use ibis_core::identifier::{Identifier, of_record};
