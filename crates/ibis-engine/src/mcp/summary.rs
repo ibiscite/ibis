@@ -318,6 +318,11 @@ fn outline(data: &Map<String, Value>) -> Vec<String> {
             Some("not-indexed") => "no text: Zotero has not indexed it".to_owned(),
             Some("no-file") => "no text: a link".to_owned(),
             Some("too-large") => "no text: too large to read".to_owned(),
+            Some("missing") => "no text: the file is missing".to_owned(),
+            Some("not-local") => "no text: not a plain file on this computer".to_owned(),
+            Some("not-pdf") => "no text: the file is not a PDF".to_owned(),
+            Some("damaged") => "no text: the PDF is damaged".to_owned(),
+            Some("timed-out") => "no text: reading the PDF took too long".to_owned(),
             _ => "no text: Ibis cannot read this file yet".to_owned(),
         });
         if attachment["text"] == "available" && attachment["cite_pages_known"] != true {

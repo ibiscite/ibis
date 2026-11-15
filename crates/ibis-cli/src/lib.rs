@@ -19,6 +19,7 @@ mod generated;
 mod human;
 mod keys;
 mod out;
+pub mod pdf_text;
 mod settings_backup;
 mod toggle;
 mod writings;
@@ -617,7 +618,14 @@ pub fn run<R: BufRead, W: Write + Send, E: Write>(
     mode: OutputMode,
 ) -> u8 {
     match Engine::new() {
-        Ok(engine) => run_engine(engine, arguments, input, output, errors, mode, Defaults::App),
+        Ok(engine) => {
+            // PDFs are parsed by this same executable, in a child process.
+            let engine = match std::env::current_exe() {
+                Ok(program) => engine.with_pdf_reader(program),
+                Err(_) => engine,
+            };
+            run_engine(engine, arguments, input, output, errors, mode, Defaults::App)
+        }
         Err(error) => emit(
             json_before_options_end(&arguments),
             Err(error.into()),

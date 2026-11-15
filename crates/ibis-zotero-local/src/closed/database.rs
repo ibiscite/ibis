@@ -336,7 +336,7 @@ fn attachments(db: &Connection, budget: &Budget) -> Result<Option<Vec<ClosedAtta
     if validate_table(
         db,
         "itemAttachments",
-        &["itemID", "parentItemID", "linkMode", "contentType"],
+        &["itemID", "parentItemID", "linkMode", "contentType", "path"],
     )
     .is_err()
         || validate_table(db, "fulltextItems", &["itemID", "indexedPages", "totalPages"]).is_err()
@@ -369,6 +369,7 @@ fn attachments(db: &Connection, budget: &Budget) -> Result<Option<Vec<ClosedAtta
                 total_pages: count(7)?,
             }),
             title: text(8)?,
+            path: text(9)?,
         });
         Ok(())
     });
@@ -379,7 +380,7 @@ fn attachments(db: &Connection, budget: &Budget) -> Result<Option<Vec<ClosedAtta
     }
 }
 
-const ATTACHMENTS_SQL: &str = "SELECT I.libraryID,P.key,I.key,CASE WHEN typeof(A.contentType)='text' AND octet_length(A.contentType)<=255 THEN A.contentType ELSE '' END,A.linkMode,F.itemID IS NOT NULL,F.indexedPages,F.totalPages,(SELECT CASE WHEN typeof(V.value)='text' AND octet_length(V.value)<=1024 THEN V.value ELSE '' END FROM itemData D JOIN fieldsCombined C USING(fieldID) JOIN itemDataValues V USING(valueID) WHERE D.itemID=A.itemID AND C.fieldName='title' LIMIT 1) FROM itemAttachments A JOIN items I USING(itemID) JOIN items P ON P.itemID=A.parentItemID JOIN libraries L ON L.libraryID=I.libraryID LEFT JOIN fulltextItems F ON F.itemID=A.itemID WHERE L.type IN ('user','group') AND typeof(P.key)='text' AND typeof(I.key)='text' AND octet_length(P.key)<=128 AND octet_length(I.key)<=128 AND NOT EXISTS(SELECT 1 FROM deletedItems X WHERE X.itemID=A.itemID)";
+const ATTACHMENTS_SQL: &str = "SELECT I.libraryID,P.key,I.key,CASE WHEN typeof(A.contentType)='text' AND octet_length(A.contentType)<=255 THEN A.contentType ELSE '' END,A.linkMode,F.itemID IS NOT NULL,F.indexedPages,F.totalPages,(SELECT CASE WHEN typeof(V.value)='text' AND octet_length(V.value)<=1024 THEN V.value ELSE '' END FROM itemData D JOIN fieldsCombined C USING(fieldID) JOIN itemDataValues V USING(valueID) WHERE D.itemID=A.itemID AND C.fieldName='title' LIMIT 1),CASE WHEN typeof(A.path)='text' AND octet_length(A.path)<=4096 THEN A.path ELSE '' END FROM itemAttachments A JOIN items I USING(itemID) JOIN items P ON P.itemID=A.parentItemID JOIN libraries L ON L.libraryID=I.libraryID LEFT JOIN fulltextItems F ON F.itemID=A.itemID WHERE L.type IN ('user','group') AND typeof(P.key)='text' AND typeof(I.key)='text' AND octet_length(P.key)<=128 AND octet_length(I.key)<=128 AND NOT EXISTS(SELECT 1 FROM deletedItems X WHERE X.itemID=A.itemID)";
 
 /// Who the local API would say owns the personal library: it reads the owner
 /// from the first top-level item, which a trashed item, a child note or
@@ -569,7 +570,7 @@ fn column_shape(table: &str, column: &str, declared: &str) -> bool {
         "valueID" if table == "itemData" => matches!(affinity, "integer" | "blob"),
         "dateAdded" | "dateModified" => matches!(affinity, "text" | "numeric"),
         "schema" | "type" | "name" | "key" | "typeName" | "fieldName" | "firstName" | "lastName" | "creatorType"
-        | "setting" | "contentType" => affinity == "text",
+        | "setting" | "contentType" | "path" => affinity == "text",
         _ => affinity == "integer",
     }
 }

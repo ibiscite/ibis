@@ -2,8 +2,9 @@
 
 Decided by the maintainer on 2026-11-15: yes to every question below, as
 recommended, and the direction in [One place to set it up](#one-place-to-set-it-up).
-`ibis agents setup` and step 3 of the order (attachment text from Zotero's
-index) are built; the other numbered steps are not yet.
+`ibis agents setup` and steps 3 and 4 of the order (attachment text from
+Zotero's index and from the PDF itself) are built; the other numbered steps are
+not yet.
 
 It builds on [0033](0033-engine-for-agents-and-tools.md),
 [0036](0036-reader-trust-boundary.md), [0051](0051-references-in-and-out.md) and
@@ -175,9 +176,16 @@ online wherever it appears, and its MCP results say so in `source_health`, so th
    closed, from `.zotero-ft-cache` and the private copy of its database. The opt-in
    is `attachment_text` in settings, a list of libraries kept on this computer and
    out of backups, as paste approvals are ([0031](0031-what-ibis-remembers-per-app.md)).
-   `cite_page` stays empty until step 4 reads page labels, and `.bib` attachments
-   are listed without text until then.
-4. The PDF extractor in a child process, with page labels and fuzzing.
+4. Done: the PDF extractor in a child process, with page labels and fuzzing.
+   `lopdf` (MIT, pure Rust, no `unsafe`) parses in `ibis __extract-pdf`, which
+   gets the opened file as its standard input and no environment, within ten
+   seconds and, on Linux, 3 GiB of address space; the desktop app never parses.
+   It reads `.bib` `file` attachments and Zotero PDFs with no index or a partial
+   one; Zotero's complete, verified pages still win. `cite_page` comes only from
+   `/PageLabels`, checked against 0036's label rules, and with Zotero's text only
+   when the PDF's page count matches exactly. `ibis-fuzz` has a `damaged_pdf`
+   target. `pdf-extract` was not chosen: it builds on an older `lopdf` and adds
+   font crates for little gain at this step.
 5. Agent proposals for writes, after 0051's add-by-identifier slice.
 6. The Web API source, only after the maintainer's yes.
 

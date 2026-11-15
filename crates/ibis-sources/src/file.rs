@@ -331,15 +331,7 @@ fn parse_with_budget(
     previous: Option<&Snapshot>,
     scope: Option<&io::Scope<'_>>,
 ) -> Result<LoadedLibrary, SourceError> {
-    let source = std::path::absolute(path).map_err(|_| SourceError::Unavailable)?;
-    let library = crate::identity::library_id(crate::LibraryKind::File, &[source.as_os_str().as_encoded_bytes()]);
-    let text = text.trim_start_matches('\u{feff}');
-    let parsed = match Format::of(&source, text)? {
-        Format::CslJson => csl_json::load_str(&library, text)?,
-        Format::Ris => exported::ris::load(&library, text, previous)?,
-        Format::Csv => exported::csv::load(&library, text, previous)?,
-        Format::Bibtex => bibtex::load_with_budget(&library, text, budget, previous),
-    };
+    let (source, library, parsed) = parse_format(path, text, budget, previous)?;
     let parsed_cut_short = parsed.cut_short;
     let mut objects: Vec<_> = parsed.records.into_iter().map(LibraryObject::Record).collect();
     let mut warnings = parsed.warnings;
@@ -368,6 +360,69 @@ fn parse_with_budget(
         cut_short: parsed_cut_short,
         damaged_keys: parsed.damaged_keys,
     })
+}
+
+/// The file's own records and attachments, before anything is probed.
+fn parse_format(
+    path: &Path,
+    text: &str,
+    budget: bibtex::Budget,
+    previous: Option<&Snapshot>,
+) -> Result<(PathBuf, ibis_core::contract::LibraryId, crate::ParsedLibrary), SourceError> {
+    let source = std::path::absolute(path).map_err(|_| SourceError::Unavailable)?;
+    let library = crate::identity::library_id(crate::LibraryKind::File, &[source.as_os_str().as_encoded_bytes()]);
+    let text = text.trim_start_matches('\u{feff}');
+    let parsed = match Format::of(&source, text)? {
+        Format::CslJson => csl_json::load_str(&library, text)?,
+        Format::Ris => exported::ris::load(&library, text, previous)?,
+        Format::Csv => exported::csv::load(&library, text, previous)?,
+        Format::Bibtex => bibtex::load_with_budget(&library, text, budget, previous),
+    };
+    Ok((source, library, parsed))
+}
+
+/// Where the attachment `key` of `parent` is, when the library file at
+/// `path` still holds that reference as the library read it (`full` is its
+/// fingerprint). A location is resolved from the file's folder; nothing is
+/// opened here. `None` when the file has no such attachment, or names a place
+/// that is not a local file.
+pub fn attachment_file(
+    path: &Path,
+    parent: &ibis_core::contract::ItemRef,
+    full: &Fingerprint,
+    key: &str,
+) -> Result<Option<PathBuf>, SourceError> {
+    let observation = SourceSnapshot::read_with(path, || {}, &io::Scope::new(&|| false))?;
+    let (source, library, parsed) = parse_format(
+        &observation.source,
+        &observation.text,
+        bibtex::Budget::for_input(observation.text.len()),
+        None,
+    )?;
+    if library != parent.library {
+        return Err(SourceError::Changing);
+    }
+    let mut objects: Vec<_> = parsed.records.into_iter().map(LibraryObject::Record).collect();
+    let references = attachments::append(parsed.attachments, &mut objects, &mut Vec::new());
+    let location = references
+        .into_iter()
+        .find_map(|(index, location)| match &objects[index] {
+            LibraryObject::Attachment(attachment)
+                if attachment.id.key == key && attachment.parent.as_ref() == Some(parent) =>
+            {
+                Some(location)
+            }
+            _ => None,
+        });
+    let snapshot = Snapshot::new(objects).map_err(|_| SourceError::InvalidData)?;
+    if snapshot
+        .get(parent)
+        .is_none_or(|current| current.fingerprints.full != *full)
+    {
+        return Err(SourceError::Changing);
+    }
+    let base = source.parent().ok_or(SourceError::Unavailable)?;
+    Ok(location.map(|location| base.join(location)))
 }
 
 /// One read: damaged entries warn while complete entries load.

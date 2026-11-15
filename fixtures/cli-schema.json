@@ -305,7 +305,7 @@
               },
               {
                 "const": "no-attachment-text",
-                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or reading its file needs what Ibis does not have yet.",
+                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or its file is missing, damaged or one Ibis cannot read.",
                 "type": "string"
               },
               {
@@ -1660,7 +1660,7 @@
               },
               {
                 "const": "no-attachment-text",
-                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or reading its file needs what Ibis does not have yet.",
+                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or its file is missing, damaged or one Ibis cannot read.",
                 "type": "string"
               },
               {
@@ -3240,7 +3240,7 @@
               },
               {
                 "const": "no-attachment-text",
-                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or reading its file needs what Ibis does not have yet.",
+                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or its file is missing, damaged or one Ibis cannot read.",
                 "type": "string"
               },
               {
@@ -5303,7 +5303,7 @@
               },
               {
                 "const": "no-attachment-text",
-                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or reading its file needs what Ibis does not have yet.",
+                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or its file is missing, damaged or one Ibis cannot read.",
                 "type": "string"
               },
               {
@@ -7375,7 +7375,7 @@
               },
               {
                 "const": "no-attachment-text",
-                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or reading its file needs what Ibis does not have yet.",
+                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or its file is missing, damaged or one Ibis cannot read.",
                 "type": "string"
               },
               {
@@ -8625,7 +8625,7 @@
               },
               {
                 "const": "no-attachment-text",
-                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or reading its file needs what Ibis does not have yet.",
+                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or its file is missing, damaged or one Ibis cannot read.",
                 "type": "string"
               },
               {
@@ -9628,7 +9628,7 @@
               },
               {
                 "const": "no-attachment-text",
-                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or reading its file needs what Ibis does not have yet.",
+                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or its file is missing, damaged or one Ibis cannot read.",
                 "type": "string"
               },
               {
@@ -10536,7 +10536,7 @@
               },
               {
                 "const": "no-attachment-text",
-                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or reading its file needs what Ibis does not have yet.",
+                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or its file is missing, damaged or one Ibis cannot read.",
                 "type": "string"
               },
               {
@@ -11127,12 +11127,37 @@
               },
               {
                 "const": "not-yet",
-                "description": "A file whose text Ibis cannot read yet.",
+                "description": "A file Ibis does not read: not a PDF, or a PDF where no PDF reader runs\n(only `ibis` reads PDFs, never the desktop app).",
                 "type": "string"
               },
               {
                 "const": "too-large",
-                "description": "Text larger than Ibis reads at once.",
+                "description": "Text larger than Ibis reads at once, or a PDF over 256 MiB or 10,000 pages.",
+                "type": "string"
+              },
+              {
+                "const": "missing",
+                "description": "No file is where the library says it is.",
+                "type": "string"
+              },
+              {
+                "const": "not-local",
+                "description": "Not a plain file on this computer: a link, a network or online-only\nfile, or one Ibis may not open.",
+                "type": "string"
+              },
+              {
+                "const": "not-pdf",
+                "description": "The file is not a PDF.",
+                "type": "string"
+              },
+              {
+                "const": "damaged",
+                "description": "The PDF is damaged or could not be parsed.",
+                "type": "string"
+              },
+              {
+                "const": "timed-out",
+                "description": "Reading the PDF took longer than ten seconds.",
                 "type": "string"
               }
             ]
@@ -11350,7 +11375,7 @@
               },
               {
                 "const": "no-attachment-text",
-                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or reading its file needs what Ibis does not have yet.",
+                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or its file is missing, damaged or one Ibis cannot read.",
                 "type": "string"
               },
               {
@@ -12182,7 +12207,7 @@
               },
               {
                 "const": "no-attachment-text",
-                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or reading its file needs what Ibis does not have yet.",
+                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or its file is missing, damaged or one Ibis cannot read.",
                 "type": "string"
               },
               {

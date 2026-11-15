@@ -16,8 +16,13 @@ crash-upload service. This page describes current data flows; plans live in
   the text Zotero keeps for the files it indexed: from Zotero while it runs,
   or from the `.zotero-ft-cache` file in the attachment's storage folder while
   it is closed, with page counts from the private copy of Zotero's database.
-  They need no permission, so an AI app that can run commands can read
-  attachment text this way. The MCP tools `outline`, `read` and `find_in` are
+  A PDF Zotero has not fully indexed, and a PDF named in a `.bib` file's
+  `file` field, is read from the file itself: `ibis` opens it, only if it is a
+  regular file on this computer of at most 256 MiB, and hands the opened file
+  to a short-lived copy of itself that has no other file, no environment and
+  ten seconds to give the text and printed page labels. The desktop app never
+  reads PDFs. These commands need no permission, so an AI app that can run
+  commands can read attachment text this way. The MCP tools `outline`, `read` and `find_in` are
   offered only for libraries where you allow AI apps to read attachment text;
   this is off by default, separate for each library, kept only on this
   computer and not part of a settings backup. Text is held in memory for one

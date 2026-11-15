@@ -457,6 +457,7 @@ fn attachments_carry_zoteros_index_counts_and_never_fail_a_read() {
         ("Invented full text", "application/pdf")
     );
     assert!(!pdf.link_only);
+    assert_eq!(pdf.path, "storage:invented.pdf");
     assert!(
         pdf.indexed
             == Some(IndexedCounts {
@@ -468,7 +469,7 @@ fn attachments_carry_zoteros_index_counts_and_never_fail_a_read() {
         .iter()
         .find(|attachment| attachment.key == "LINK0001")
         .unwrap();
-    assert!(link.link_only && link.indexed.is_none() && link.content_type.is_empty());
+    assert!(link.link_only && link.indexed.is_none() && link.content_type.is_empty() && link.path.is_empty());
 
     // A layout without Zotero's full-text table still reads every reference.
     edit(dir.path(), "DROP TABLE fulltextItems;");

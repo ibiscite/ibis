@@ -12,11 +12,12 @@ describes this checkout. Plans live in [ROADMAP.md](../ROADMAP.md).
 | `crates/ibis-sources` | Read-only file and Zotero adapters, discovery, database snapshots and file watches. |
 | `crates/ibis-csl` | citeproc-js in QuickJS, ICU4X collation, bundled CSL styles and locales. |
 | `crates/ibis-engine` | Typed methods, source lifecycle, prepared citations, settings owner, recents, JSON-RPC and MCP. |
-| `crates/ibis-cli` | The `ibis` executable. Depends on core and engine. |
+| `crates/ibis-cli` | The `ibis` executable, and the PDF text extractor it starts as its own child process (`ibis __extract-pdf`, with `lopdf`). Depends on core and engine. |
 | `apps/desktop/src-tauri` | Native windows, clipboard, paste, shortcuts, settings dialogs and updates. Depends on core, engine and its command macro crate. |
 | `apps/desktop/src` | React interface, shared controls in `ui/`, tokens in `tokens.css`. |
 
-The desktop links the engine in process, with generated TypeScript bindings.
+The desktop links the engine in process, with generated TypeScript bindings;
+it is given no PDF reader, so PDF parsing never runs in the app ([0055](decisions/0055-agent-layers-full-text-writes-remote.md)).
 Contracts for the CLI, JSON-RPC and MCP are in [the CLI reference](cli.md); the
 desktop also provides the [editor endpoint](parity.md#better-bibtex-cite-as-you-write).
 Library results carry `source_health` from the state they read; later refresh

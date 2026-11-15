@@ -1,4 +1,5 @@
 //! Raw live acquisition and immutable publication through the shared mapper.
+use crate::pdf::PdfReader;
 use crate::reading::{DocumentText, SourceAttachment, TextState};
 use crate::{
     LibraryKind, LoadedLibrary, SourceWarning, WarningCode,
@@ -134,18 +135,17 @@ pub struct ZoteroSource {
     profile_name: Option<String>,
     /// Groups the last closed read listed; Zotero has no API while closed.
     closed_groups: Vec<Group>,
-    /// What the last closed read found of attachments and where Zotero keeps
-    /// their text; nothing after a live read, which asks Zotero instead.
-    closed_text: Option<ClosedText>,
-}
-
-/// Attachments by library and parent key, from one closed read, and the data
-/// directory whose storage holds their text.
-#[derive(Clone)]
-struct ClosedText {
-    attachments: Arc<BTreeMap<LibraryId, BTreeMap<String, Vec<closed::ClosedAttachment>>>>,
+    /// What the last closed read found of attachments; nothing after a live
+    /// read, which asks Zotero instead.
+    closed_attachments: Option<Arc<ClosedAttachments>>,
+    /// The data directory whose storage folder holds attachment files and
+    /// Zotero's text cache: the one a closed read copied, or while Zotero runs
+    /// the lone or chosen directory found on this computer.
     data: Option<PathBuf>,
 }
+
+/// Attachments by library and parent key, from one closed read.
+type ClosedAttachments = BTreeMap<LibraryId, BTreeMap<String, Vec<closed::ClosedAttachment>>>;
 impl Default for ZoteroSource {
     fn default() -> Self {
         Self {
@@ -155,7 +155,8 @@ impl Default for ZoteroSource {
             mode: None,
             profile_name: None,
             closed_groups: vec![],
-            closed_text: None,
+            closed_attachments: None,
+            data: None,
         }
     }
 }
@@ -181,7 +182,8 @@ impl ZoteroSource {
             mode: None,
             profile_name: None,
             closed_groups: vec![],
-            closed_text: None,
+            closed_attachments: None,
+            data: None,
         })
     }
     /// Read this profile while Zotero is closed. A running Zotero answers for
@@ -285,6 +287,12 @@ impl ZoteroSource {
             Ok(found) => self.use_discovery(found),
             Err(_) => self.profile = Profile::Running,
         }
+        // Zotero's API never says where its files are; while it runs they are
+        // looked for only in the directory a closed read would copy.
+        self.data = found
+            .as_ref()
+            .ok()
+            .and_then(|found| chosen_directory(found, self.profile_name.as_deref()).ok());
         match self.refresh_observed(DEFAULT_PORT, reload, &|| cancelled(), on_full) {
             Ok(loaded) => return Ok(loaded),
             Err(ZoteroError::Live(LiveError::Transport(TransportError::Unreachable))) => (),
@@ -401,7 +409,7 @@ impl ZoteroSource {
         self.readers = readers;
         self.current = loaded.clone();
         self.mode = Some(ZoteroMode::Live);
-        self.closed_text = None;
+        self.closed_attachments = None;
         Ok(loaded)
     }
     fn publish_closed(
@@ -501,10 +509,8 @@ impl ZoteroSource {
         }
         self.current = loaded.clone();
         self.mode = Some(ZoteroMode::Closed);
-        self.closed_text = snapshot.attachments.as_ref().map(|_| ClosedText {
-            attachments: Arc::new(attachments),
-            data: data.map(Path::to_owned),
-        });
+        self.closed_attachments = snapshot.attachments.as_ref().map(|_| Arc::new(attachments));
+        self.data = data.map(Path::to_owned);
         self.readers = Self::readers(&chosen);
         self.closed_groups = closed_groups(snapshot);
         Ok(loaded)
@@ -629,19 +635,22 @@ impl ZoteroSource {
                 .zip(self.libraries())
                 .collect(),
             mode: self.mode,
-            closed: self.closed_text.clone(),
+            closed: self.closed_attachments.clone(),
+            data: self.data.clone(),
         }
     }
 }
 
 /// The attachments of the published Zotero libraries and their text (decision
 /// 0055): Zotero's local API while it runs, the last closed read and Zotero's
-/// text cache while it is closed. Nothing is written and no PDF is parsed.
+/// text cache while it is closed, and the PDF itself through the extractor's
+/// child process when Zotero's index is missing or partial. Nothing is written.
 #[derive(Clone)]
 pub struct ZoteroReading {
     libraries: Vec<(LibraryId, Library)>,
     mode: Option<ZoteroMode>,
-    closed: Option<ClosedText>,
+    closed: Option<Arc<ClosedAttachments>>,
+    data: Option<PathBuf>,
 }
 impl ZoteroReading {
     fn library(&self, id: &LibraryId) -> Result<Library, ZoteroError> {
@@ -658,7 +667,6 @@ impl ZoteroReading {
             .as_ref()
             .ok_or(ZoteroError::Closed(closed::ClosedError::Unreadable))?;
         Ok(found
-            .attachments
             .get(&parent.library)
             .and_then(|parents| parents.get(&parent.key))
             .map_or(&[], Vec::as_slice))
@@ -680,6 +688,7 @@ impl ZoteroReading {
                     title: found.title,
                     media_type: found.content_type,
                     link_only: found.link_only,
+                    location: found.path,
                 })
                 .collect(),
             Some(ZoteroMode::Closed) => self
@@ -691,18 +700,21 @@ impl ZoteroReading {
                     title: found.title.clone(),
                     media_type: found.content_type.clone(),
                     link_only: found.link_only,
+                    location: found.path.clone(),
                 })
                 .collect(),
             None => return Err(ZoteroError::LibraryNotFound),
         })
     }
 
-    /// The text of `attachment`, one of `parent`'s attachments.
+    /// The text of `attachment`, one of `parent`'s attachments; `pdf` reads
+    /// a PDF whose index is missing or partial, and its page labels.
     pub fn text(
         &self,
         transport: &mut impl Transport,
         parent: &ItemRef,
         attachment: &SourceAttachment,
+        pdf: Option<&PdfReader>,
     ) -> Result<TextState, ZoteroError> {
         if attachment.link_only {
             return Ok(TextState::NoFile);
@@ -718,8 +730,7 @@ impl ZoteroReading {
                     .iter()
                     .find(|found| found.key == attachment.key)
                     .and_then(|found| found.indexed);
-                let data = self.closed.as_ref().and_then(|found| found.data.as_deref());
-                match (counts, data) {
+                match (counts, self.data.as_deref()) {
                     (Some(counts), Some(data)) => closed::read_text_cache(data, &attachment.key)?
                         .map(|text| (text, counts.indexed_pages, counts.total_pages)),
                     _ => None,
@@ -727,12 +738,31 @@ impl ZoteroReading {
             }
             None => return Err(ZoteroError::LibraryNotFound),
         };
-        Ok(match indexed {
-            Some((text, indexed_pages, total_pages)) => {
-                TextState::Text(DocumentText::from_zotero(text, indexed_pages, total_pages))
+        let indexed = indexed
+            .map(|(text, indexed_pages, total_pages)| DocumentText::from_zotero(text, indexed_pages, total_pages));
+        let file = pdf.filter(|_| attachment.is_pdf()).zip(self.file(attachment));
+        Ok(crate::reading::text_of(
+            indexed,
+            file.as_ref().map(|(reader, file)| (*reader, file.as_path())),
+        ))
+    }
+
+    /// Where the attachment's file is: in its storage folder, or the path of a
+    /// linked file. A linked file relative to Zotero's base folder is not looked
+    /// for, since only Zotero's preferences say where that folder is.
+    fn file(&self, attachment: &SourceAttachment) -> Option<PathBuf> {
+        if let Some(name) = attachment.location.strip_prefix("storage:") {
+            let mut parts = Path::new(name).components();
+            let (Some(std::path::Component::Normal(name)), None) = (parts.next(), parts.next()) else {
+                return None;
+            };
+            if !fulltext::valid_key(&attachment.key) {
+                return None;
             }
-            None => TextState::NotIndexed,
-        })
+            return Some(self.data.as_ref()?.join("storage").join(&attachment.key).join(name));
+        }
+        let path = Path::new(&attachment.location);
+        path.is_absolute().then(|| path.to_owned())
     }
 }
 
@@ -1903,6 +1933,7 @@ mod tests {
             title: format!("Invented {key}"),
             content_type: "application/pdf".into(),
             link_only: false,
+            path: format!("storage:{key}.pdf"),
             indexed: indexed.map(|pages| closed::IndexedCounts {
                 indexed_pages: Some(pages),
                 total_pages: Some(40),
@@ -1948,7 +1979,25 @@ mod tests {
             found.iter().map(|found| found.key.as_str()).collect::<Vec<_>>(),
             ["PDF00001", "PDF00002", "PDF00003"]
         );
-        let TextState::Text(text) = reading.text(unused, &parent, &found[0]).unwrap() else {
+        // A stored file is looked for only in its own storage folder.
+        assert_eq!(
+            reading.file(&found[0]),
+            Some(data.path().join("storage/PDF00001/PDF00001.pdf"))
+        );
+        let mut elsewhere = found[0].clone();
+        for location in [
+            "storage:../PDF00002/x.pdf",
+            "storage:",
+            "attachments:papers/x.pdf",
+            "papers/x.pdf",
+        ] {
+            elsewhere.location = location.into();
+            assert_eq!(reading.file(&elsewhere), None, "{location}");
+        }
+        let linked = data.path().join("linked.pdf");
+        elsewhere.location = linked.to_string_lossy().into_owned();
+        assert_eq!(reading.file(&elsewhere), Some(linked));
+        let TextState::Text(text) = reading.text(unused, &parent, &found[0], None).unwrap() else {
             panic!("indexed text")
         };
         assert!(
@@ -1957,11 +2006,11 @@ mod tests {
         );
         assert_eq!((text.indexed_pages, text.total_pages), (Some(2), Some(40)));
         // Zotero counted three pages: the breaks do not match, so pages are unknown.
-        let TextState::Text(text) = reading.text(unused, &parent, &found[1]).unwrap() else {
+        let TextState::Text(text) = reading.text(unused, &parent, &found[1], None).unwrap() else {
             panic!("indexed text")
         };
         assert!(matches!(text.body, crate::reading::Body::Whole(_)));
-        assert!(reading.text(unused, &parent, &found[2]).unwrap() == TextState::NotIndexed);
+        assert!(reading.text(unused, &parent, &found[2], None).unwrap() == TextState::NotIndexed);
         let elsewhere = ItemRef {
             library: LibraryId::digest(b"invented other library"),
             key: "SYNTH001".into(),

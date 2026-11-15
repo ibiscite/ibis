@@ -18,6 +18,13 @@ chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 console = { version = "0.16.6", default-features = false, features = ["std"] }
 icu_properties = "2.4.0"
 unicode-segmentation = "1.13.3"
+# The PDF extractor's child process (decision 0055). Only `ibis` parses PDFs,
+# never the desktop app: lopdf is pure Rust and forbids unsafe code.
+lopdf = { version = "0.47.0", default-features = false }
+
+[target.'cfg(unix)'.dependencies]
+# The child's address-space and processor-time limits.
+nix = { version = "0.31.3", default-features = false, features = ["resource"] }
 
 [dev-dependencies]
 insta = "1.49.0"

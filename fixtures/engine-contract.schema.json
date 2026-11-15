@@ -1084,7 +1084,7 @@
           "const": "rejected-record"
         },
         {
-          "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or reading its file needs what Ibis does not have yet.",
+          "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or its file is missing, damaged or one Ibis cannot read.",
           "type": "string",
           "const": "no-attachment-text"
         },

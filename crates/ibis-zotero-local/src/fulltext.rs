@@ -43,6 +43,10 @@ pub struct Attachment {
     pub content_type: String,
     /// A link to a web page, with no file and no text.
     pub link_only: bool,
+    /// Where Zotero keeps the file, as its database writes it: `storage:NAME`
+    /// in the attachment's storage folder, or a linked file's path. Empty
+    /// when Zotero gives none.
+    pub path: String,
 }
 impl std::fmt::Debug for Attachment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -113,18 +117,27 @@ pub fn attachments(
             {
                 return None;
             }
-            let text = |name: &str| {
+            let bounded = |name: &str, limit: usize| {
                 data.get(name)
                     .and_then(Value::as_str)
-                    .filter(|text| text.len() <= 1024)
+                    .filter(|text| text.len() <= limit)
                     .unwrap_or_default()
                     .to_owned()
             };
+            let link_mode = data.get("linkMode").and_then(Value::as_str);
+            let path = match link_mode {
+                Some("imported_file" | "imported_url") => Some(bounded("filename", 1024))
+                    .filter(|name| !name.is_empty())
+                    .map(|name| format!("storage:{name}")),
+                Some("linked_file") => Some(bounded("path", 4096)),
+                _ => None,
+            };
             Some(Attachment {
                 key: key.to_owned(),
-                title: text("title"),
-                content_type: text("contentType"),
-                link_only: data.get("linkMode").and_then(Value::as_str) == Some("linked_url"),
+                title: bounded("title", 1024),
+                content_type: bounded("contentType", 1024),
+                link_only: link_mode == Some("linked_url"),
+                path: path.unwrap_or_default(),
             })
         })
         .collect())
@@ -207,7 +220,7 @@ mod tests {
     #[test]
     fn attachments_belong_to_the_parent_and_fulltext_gives_counts() {
         let rows = serde_json::json!([
-            {"key":"PDF00001","data":{"key":"PDF00001","itemType":"attachment","parentItem":"SYNTH001","title":"Invented PDF","contentType":"application/pdf","linkMode":"imported_file"}},
+            {"key":"PDF00001","data":{"key":"PDF00001","itemType":"attachment","parentItem":"SYNTH001","title":"Invented PDF","contentType":"application/pdf","linkMode":"imported_file","filename":"invented.pdf"}},
             {"key":"LINK0001","data":{"key":"LINK0001","itemType":"attachment","parentItem":"SYNTH001","linkMode":"linked_url"}},
             {"key":"OTHER001","data":{"key":"OTHER001","itemType":"attachment","parentItem":"SYNTH999"}},
             {"key":"NOTE0001","data":{"key":"NOTE0001","itemType":"note","parentItem":"SYNTH001"}}
@@ -221,6 +234,10 @@ mod tests {
         assert_eq!(found.len(), 2);
         assert_eq!(found[0].title, "Invented PDF");
         assert!(!found[0].link_only && found[1].link_only);
+        assert_eq!(
+            (found[0].path.as_str(), found[1].path.as_str()),
+            ("storage:invented.pdf", "")
+        );
 
         let mut fake = Fake(vec![
             (

@@ -2,6 +2,9 @@
 //! 0055). Locations stay in the source: what leaves it is a key the source
 //! gave, a title and a media type, and text held in memory for one call.
 
+use crate::pdf::{PdfDocument, PdfReader, Refusal};
+use std::path::Path;
+
 /// Attachments listed for one reference at most, from every source.
 pub const MAX_ATTACHMENTS: usize = ibis_zotero_local::fulltext::MAX_ATTACHMENTS;
 
@@ -14,6 +17,25 @@ pub struct SourceAttachment {
     pub media_type: String,
     /// A link to a web page, with no file and so no text.
     pub link_only: bool,
+    /// Where the source keeps the file, in the source's own terms; it never
+    /// leaves the source.
+    pub(crate) location: String,
+}
+impl SourceAttachment {
+    pub fn new(key: String, title: String, media_type: String, link_only: bool) -> Self {
+        Self {
+            key,
+            title,
+            media_type,
+            link_only,
+            location: String::new(),
+        }
+    }
+
+    /// A PDF, by the type its library gives it.
+    pub fn is_pdf(&self) -> bool {
+        self.media_type.eq_ignore_ascii_case("application/pdf")
+    }
 }
 impl std::fmt::Debug for SourceAttachment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -31,6 +53,8 @@ pub enum TextState {
     NoFile,
     /// A file whose text needs a reader Ibis does not have yet.
     NotYet,
+    /// A PDF whose file Ibis would not or could not read.
+    Refused(Refusal),
 }
 impl std::fmt::Debug for TextState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -40,13 +64,17 @@ impl std::fmt::Debug for TextState {
 
 /// An attachment's text. Pages are known only when their breaks were
 /// verified; a page number is then the file's own (physical) page, never a
-/// printed label.
+/// printed label. Printed labels come only from the PDF's `/PageLabels`.
 #[derive(Clone, PartialEq, Eq)]
 pub struct DocumentText {
     pub body: Body,
     /// Pages the source read, from the first, when it says.
     pub indexed_pages: Option<u32>,
     pub total_pages: Option<u32>,
+    /// Each page's printed label, when `body` has pages and the PDF's label
+    /// tree gave one label slot for each of them; a page without a citable
+    /// label is `None`.
+    pub cite_pages: Option<Vec<Option<String>>>,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -69,6 +97,124 @@ impl DocumentText {
             body,
             indexed_pages,
             total_pages,
+            cite_pages: None,
         }
+    }
+
+    /// A PDF's own text, page by page, with its labels.
+    pub fn from_pdf(document: PdfDocument) -> Self {
+        Self {
+            body: Body::Pages(document.text.unwrap_or_default()),
+            indexed_pages: Some(document.pages),
+            total_pages: Some(document.pages),
+            cite_pages: document.labels,
+        }
+    }
+
+    /// Zotero's pages are trusted and cover the whole file, as it recorded.
+    fn complete(&self) -> bool {
+        matches!(self.body, Body::Pages(_)) && self.total_pages.is_none_or(|total| self.indexed_pages == Some(total))
+    }
+
+    /// The same text with the PDF's labels, only when the PDF has exactly
+    /// as many pages as this text.
+    fn with_labels(mut self, document: &PdfDocument) -> Self {
+        if let Body::Pages(pages) = &self.body
+            && u32::try_from(pages.len()) == Ok(document.pages)
+            && self.total_pages.is_none_or(|total| total == document.pages)
+        {
+            self.cite_pages = document.labels.clone();
+        }
+        self
+    }
+
+    /// The printed label of the file's page `pdf_page`, counted from 1.
+    pub fn cite_page(&self, pdf_page: u32) -> Option<String> {
+        let index = usize::try_from(pdf_page.checked_sub(1)?).ok()?;
+        self.cite_pages.as_ref()?.get(index)?.clone()
+    }
+}
+
+/// An attachment's text from Zotero's index, the PDF itself, or both.
+///
+/// Zotero's text wins while its pages are trusted and cover the file; the PDF
+/// then gives only its labels, which count when its page count matches
+/// exactly. Otherwise the PDF's own text is read, and Zotero's partial or
+/// unpaged text is kept only when the PDF cannot be read.
+pub fn text_of(zotero: Option<DocumentText>, pdf: Option<(&PdfReader, &Path)>) -> TextState {
+    let Some((reader, file)) = pdf else {
+        return zotero.map_or(TextState::NotIndexed, TextState::Text);
+    };
+    match zotero {
+        Some(text) if text.complete() => TextState::Text(match reader.read(file, true) {
+            Ok(document) => text.with_labels(&document),
+            Err(_) => text,
+        }),
+        zotero => match reader.read(file, false) {
+            Ok(document) => TextState::Text(DocumentText::from_pdf(document)),
+            Err(refusal) => zotero.map_or(TextState::Refused(refusal), TextState::Text),
+        },
+    }
+}
+
+#[cfg(test)]
+#[cfg(unix)]
+mod tests {
+    use super::*;
+
+    /// A stand-in for `ibis __extract-pdf` that answers as the real child
+    /// would for an invented two-page PDF labelled i and ii.
+    fn reader(folder: &Path) -> PdfReader {
+        use std::os::unix::fs::PermissionsExt;
+        let program = folder.join("invented-ibis");
+        std::fs::write(
+            &program,
+            "#!/bin/sh\ncat >/dev/null\nif [ \"$2\" = --labels-only ]; then\n\
+             printf '{\"read\":{\"pages\":2,\"labels\":[\"i\",\"ii\"],\"text\":null}}'\nelse\n\
+             printf '{\"read\":{\"pages\":2,\"labels\":[\"i\",\"ii\"],\"text\":[\"PDF one\",\"PDF two\"]}}'\nfi\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        PdfReader::new(program)
+    }
+
+    #[test]
+    fn zoteros_complete_pages_win_and_take_labels_only_when_page_counts_match() {
+        let folder = tempfile::tempdir().unwrap();
+        let reader = reader(folder.path());
+        let file = folder.path().join("invented.pdf");
+        std::fs::write(&file, "%PDF-1.7\n").unwrap();
+        let pdf = Some((&reader, file.as_path()));
+
+        let complete = DocumentText::from_zotero("Zotero one\u{c}Zotero two".into(), Some(2), Some(2));
+        let TextState::Text(text) = text_of(Some(complete), pdf) else {
+            panic!("text")
+        };
+        assert!(text.body == Body::Pages(vec!["Zotero one".into(), "Zotero two".into()]));
+        assert_eq!(
+            (text.cite_page(1), text.cite_page(2)),
+            (Some("i".into()), Some("ii".into()))
+        );
+
+        // Zotero counted three pages, the PDF two: no labels, never shifted ones.
+        let other = DocumentText::from_zotero("One\u{c}Two\u{c}Three".into(), Some(3), Some(3));
+        let TextState::Text(text) = text_of(Some(other), pdf) else {
+            panic!("text")
+        };
+        assert_eq!(text.cite_pages, None);
+
+        // A partial index gives way to the PDF's own pages.
+        let partial = DocumentText::from_zotero("Zotero one".into(), Some(1), Some(2));
+        let TextState::Text(text) = text_of(Some(partial.clone()), pdf) else {
+            panic!("text")
+        };
+        assert!(text.body == Body::Pages(vec!["PDF one".into(), "PDF two".into()]));
+        assert_eq!(text.cite_page(2), Some("ii".into()));
+
+        // When the PDF cannot be read, Zotero's partial text is still given.
+        let gone = folder.path().join("gone.pdf");
+        assert!(text_of(Some(partial.clone()), Some((&reader, gone.as_path()))) == TextState::Text(partial));
+        assert!(text_of(None, Some((&reader, gone.as_path()))) == TextState::Refused(Refusal::Missing));
+        assert!(text_of(None, None) == TextState::NotIndexed);
     }
 }

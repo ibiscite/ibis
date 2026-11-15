@@ -2,13 +2,16 @@
 //! their pages, and short passages that hold some words.
 //!
 //! Text comes from the source, held in memory for one call; nothing is written.
-//! An attachment id names one attachment of one reference while the library
-//! holds that reference unchanged; it never holds a path or file URL. A page
-//! number is the file's own page, and only when its breaks were verified;
-//! `cite_page` comes only from verified printed labels, which this source
-//! does not give, so it stays empty rather than copy the file's page number.
+//! Zotero's index gives it where it has one; a PDF is otherwise read by the
+//! extractor's child process, an `ibis` executable this engine was given, and
+//! without one PDFs stay unread. An attachment id names one attachment of one
+//! reference while the library holds that reference unchanged; it never holds
+//! a path or file URL. A page number is the file's own page, and only when its
+//! breaks were verified; `cite_page` comes only from the PDF's `/PageLabels`,
+//! never from the file's page number.
 use super::*;
 use crate::request::{FindInRequest, OutlineRequest, ReadRequest};
+use ibis_sources::pdf::{PdfReader, Refusal};
 use ibis_sources::reading::{Body, DocumentText, SourceAttachment, TextState};
 
 /// Pages one `read` returns at most.
@@ -61,10 +64,36 @@ pub enum TextAvailability {
     NotIndexed,
     /// A link, with no file.
     NoFile,
-    /// A file whose text Ibis cannot read yet.
+    /// A file Ibis does not read: not a PDF, or a PDF where no PDF reader runs
+    /// (only `ibis` reads PDFs, never the desktop app).
     NotYet,
-    /// Text larger than Ibis reads at once.
+    /// Text larger than Ibis reads at once, or a PDF over 256 MiB or 10,000 pages.
     TooLarge,
+    /// No file is where the library says it is.
+    Missing,
+    /// Not a plain file on this computer: a link, a network or online-only
+    /// file, or one Ibis may not open.
+    NotLocal,
+    /// The file is not a PDF.
+    NotPdf,
+    /// The PDF is damaged or could not be parsed.
+    Damaged,
+    /// Reading the PDF took longer than ten seconds.
+    TimedOut,
+}
+
+impl From<Refusal> for TextAvailability {
+    fn from(refusal: Refusal) -> Self {
+        match refusal {
+            Refusal::Missing => Self::Missing,
+            Refusal::NotLocal => Self::NotLocal,
+            Refusal::NotPdf => Self::NotPdf,
+            Refusal::TooLarge => Self::TooLarge,
+            Refusal::Damaged => Self::Damaged,
+            Refusal::TimedOut => Self::TimedOut,
+            Refusal::Unavailable => Self::NotYet,
+        }
+    }
 }
 
 /// Some of an attachment's text, page by page.
@@ -128,6 +157,8 @@ struct Listed {
 /// Where a reference's attachments come from.
 enum Owner {
     Zotero(ibis_sources::zotero_source::ZoteroReading, u16),
+    /// A library file, whose attachments are found from its folder.
+    File(std::path::PathBuf),
     Snapshot,
 }
 
@@ -153,6 +184,7 @@ impl Engine {
                 Err(failure) if failure.code == ErrorCode::ResourceLimit => None,
                 text => Some(text?),
             };
+            let cite_pages_known = matches!(&text, Some(TextState::Text(text)) if text.cite_pages.is_some());
             let (availability, pages, pages_with_text, pages_known) = match &text {
                 None => (TextAvailability::TooLarge, None, None, false),
                 Some(TextState::Text(text)) => (
@@ -167,6 +199,7 @@ impl Engine {
                 Some(TextState::NotIndexed) => (TextAvailability::NotIndexed, None, None, false),
                 Some(TextState::NoFile) => (TextAvailability::NoFile, None, None, false),
                 Some(TextState::NotYet) => (TextAvailability::NotYet, None, None, false),
+                Some(TextState::Refused(refusal)) => ((*refusal).into(), None, None, false),
             };
             let title = clean(&listed.attachment.title)
                 .split_whitespace()
@@ -180,7 +213,7 @@ impl Engine {
                 pages,
                 pages_with_text,
                 pages_known,
-                cite_pages_known: false,
+                cite_pages_known,
             });
         }
         let result = OutlineResult { attachments };
@@ -278,7 +311,11 @@ impl Engine {
                 let (reading, port) = self.zotero_reading()?;
                 Owner::Zotero(reading, port)
             }
-            LibraryKind::File | LibraryKind::Snapshot => Owner::Snapshot,
+            LibraryKind::File => match self.file_path(&parent.object.id().library)? {
+                Some(path) => Owner::File(path),
+                None => Owner::Snapshot,
+            },
+            LibraryKind::Snapshot => Owner::Snapshot,
         })
     }
 
@@ -288,19 +325,19 @@ impl Engine {
             Owner::Zotero(reading, port) => reading
                 .attachments(&mut ibis_sources::zotero_source::LocalZotero::on_port(*port), id)
                 .map_err(sources::zotero_error)?,
-            Owner::Snapshot => state
+            Owner::File(_) | Owner::Snapshot => state
                 .index
                 .snapshot()
                 .objects()
                 .iter()
                 .filter_map(|item| match &item.object {
                     LibraryObject::Attachment(attachment) if attachment.parent.as_ref() == Some(id) => {
-                        Some(SourceAttachment {
-                            key: attachment.id.key.clone(),
-                            title: attachment.title.clone(),
-                            media_type: attachment.media_type.clone(),
-                            link_only: attachment.availability == Availability::Online,
-                        })
+                        Some(SourceAttachment::new(
+                            attachment.id.key.clone(),
+                            attachment.title.clone(),
+                            attachment.media_type.clone(),
+                            attachment.availability == Availability::Online,
+                        ))
                     }
                     _ => None,
                 })
@@ -328,10 +365,14 @@ impl Engine {
                     &mut ibis_sources::zotero_source::LocalZotero::on_port(*port),
                     parent.object.id(),
                     attachment,
+                    self.pdf.as_ref(),
                 )
                 .map_err(sources::zotero_error),
-            // Reading a file's text needs the PDF reader of decision 0055's next step.
-            Owner::Snapshot if attachment.link_only => Ok(TextState::NoFile),
+            _ if attachment.link_only => Ok(TextState::NoFile),
+            Owner::File(library) => match self.pdf.as_ref().filter(|_| attachment.is_pdf()) {
+                Some(reader) => file_text(reader, library, parent, attachment),
+                None => Ok(TextState::NotYet),
+            },
             Owner::Snapshot => Ok(TextState::NotYet),
         }
     }
@@ -357,12 +398,31 @@ impl Engine {
                 cancel.check()?;
                 Ok((state, parent, text))
             }
-            TextState::NotIndexed | TextState::NoFile | TextState::NotYet => Err(EngineError::because(
-                ErrorCode::SourceUnavailable,
-                ErrorReason::NoAttachmentText,
-            )),
+            TextState::NotIndexed | TextState::NoFile | TextState::NotYet | TextState::Refused(_) => Err(
+                EngineError::because(ErrorCode::SourceUnavailable, ErrorReason::NoAttachmentText),
+            ),
         }
     }
+}
+
+/// The text of a library file's PDF attachment, found from the file's folder
+/// while the file still holds the reference as the library read it.
+fn file_text(
+    reader: &PdfReader,
+    library: &std::path::Path,
+    parent: &SnapshotObject,
+    attachment: &SourceAttachment,
+) -> Result<TextState, EngineError> {
+    let file = ibis_sources::attachment_file(library, parent.object.id(), &parent.fingerprints.full, &attachment.key)
+        .map_err(|failure| match failure {
+        // The reference changed since the library was read: the id is stale.
+        ibis_sources::SourceError::Changing => error(ErrorCode::NotFound),
+        failure => sources::source_error(failure),
+    })?;
+    Ok(match file {
+        Some(file) => ibis_sources::reading::text_of(None, Some((reader, &file))),
+        None => TextState::Refused(Refusal::Missing),
+    })
 }
 
 /// The health of the one library an attachment came from.
@@ -481,7 +541,7 @@ fn read_pages(text: &DocumentText, request: &ReadRequest) -> Result<(Vec<PageTex
             left -= rest.len();
             read.push(PageText {
                 pdf_page: Some(number),
-                cite_page: None,
+                cite_page: text.cite_page(number),
                 text: clean(rest),
                 cut: false,
             });
@@ -492,7 +552,7 @@ fn read_pages(text: &DocumentText, request: &ReadRequest) -> Result<(Vec<PageTex
             let end = start + floor(rest, left);
             read.push(PageText {
                 pdf_page: Some(number),
-                cite_page: None,
+                cite_page: text.cite_page(number),
                 text: clean(&page[start..end]),
                 cut: true,
             });
@@ -526,19 +586,19 @@ fn find_passages(text: &DocumentText, query: &str, cancel: &Cancellation) -> Res
             .enumerate()
             .map(|(index, page)| (u32::try_from(index + 1).ok(), page.as_str()))
             .collect(),
-        Body::Whole(text) => vec![(None, text.as_str())],
+        Body::Whole(whole) => vec![(None, whole.as_str())],
     };
     let mut passages = Vec::new();
-    for (page, text) in pages {
+    for (page, body) in pages {
         cancel.check()?;
-        for (start, end) in matches(text, query) {
+        for (start, end) in matches(body, query) {
             if passages.len() == MAX_PASSAGES {
                 return Ok((passages, false));
             }
             passages.push(Passage {
                 pdf_page: page,
-                cite_page: None,
-                text: passage(text, start, end),
+                cite_page: page.and_then(|page| text.cite_page(page)),
+                text: passage(body, start, end),
             });
         }
     }

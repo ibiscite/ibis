@@ -165,6 +165,9 @@ pub struct ClosedAttachment {
     pub link_only: bool,
     /// Zotero's record of what it indexed, when it indexed the file.
     pub indexed: Option<IndexedCounts>,
+    /// Where Zotero keeps the file: `storage:NAME` in the attachment's
+    /// storage folder, or the path of a linked file. Empty when unknown.
+    pub path: String,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -251,15 +254,8 @@ pub fn read_text_cache(data: &Path, key: &str) -> Result<Option<String>, ClosedE
     if !crate::fulltext::valid_key(key) {
         return Err(ClosedError::UnsafeSource);
     }
-    let control = Control::within(Arc::new(|| false), Duration::from_secs(10));
-    let folder = data.join("storage").join(key);
-    match std::fs::symlink_metadata(&folder) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(_) => return Err(ClosedError::Unreadable),
-        Ok(_) => (),
-    }
-    let folder = platform::directory(&folder, &control)?;
-    let Some(file) = platform::open_regular(&folder.join(".zotero-ft-cache"))? else {
+    let started = Instant::now();
+    let Some(file) = open_local_file(&data.join("storage").join(key).join(".zotero-ft-cache"))? else {
         return Ok(None);
     };
     let limit = crate::fulltext::MAX_TEXT_BYTES as u64;
@@ -270,11 +266,35 @@ pub fn read_text_cache(data: &Path, key: &str) -> Result<Option<String>, ClosedE
     file.take(limit + 1)
         .read_to_end(&mut bytes)
         .map_err(|_| ClosedError::Unreadable)?;
-    control.check()?;
+    if started.elapsed() >= LOCAL_FILE_BUDGET {
+        return Err(ClosedError::TimedOut);
+    }
     if bytes.len() as u64 > limit {
         return Err(ClosedError::TooLarge);
     }
     Ok(Some(String::from_utf8_lossy(&bytes).into_owned()))
+}
+
+const LOCAL_FILE_BUDGET: Duration = Duration::from_secs(10);
+
+/// The file at `path`, opened only when it is a regular, resident file on a
+/// local disk (decision 0036): its folders must resolve on local mounts, never
+/// a network, FUSE or cloud placeholder, and `path` itself is never followed
+/// as a link. `None` when nothing is there. Opening takes at most ten seconds.
+pub fn open_local_file(path: &Path) -> Result<Option<std::fs::File>, ClosedError> {
+    let (Some(folder), Some(name)) = (path.parent(), path.file_name()) else {
+        return Err(ClosedError::UnsafeSource);
+    };
+    let control = Control::within(Arc::new(|| false), LOCAL_FILE_BUDGET);
+    match std::fs::symlink_metadata(folder) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(ClosedError::Unreadable),
+        Ok(_) => (),
+    }
+    let folder = platform::directory(folder, &control)?;
+    let file = platform::open_regular(&folder.join(name))?;
+    control.check()?;
+    Ok(file)
 }
 
 #[derive(Clone)]

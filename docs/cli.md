@@ -560,19 +560,41 @@ type, and whether Ibis can read its text. `read` prints at most five pages or
 go on. `find-in` prints at most ten passages of about 400 characters that
 hold the words, ignoring case and line breaks, with their pages.
 
-The text is the one Zotero keeps for the files it indexed. While Zotero runs,
-Ibis asks Zotero for it; while Zotero is closed, it reads Zotero's text cache
-from the attachment's storage folder, with the page counts from its private
-copy of the database. Nothing is written. Pages are the file's own pages,
-from 1, and are given only when the text's page breaks match the number of
-pages Zotero recorded; otherwise the text is read by `--offset` and has no
-page numbers. `cite_page`, the printed page to cite, is null until Ibis can
-read a PDF's page labels. Use the file's page only to find a passage, never
-as the page you cite.
+Text comes from two places. For a Zotero attachment Zotero indexed, it is the
+text Zotero keeps: while Zotero runs, Ibis asks Zotero for it; while Zotero is
+closed, it reads Zotero's text cache from the attachment's storage folder,
+with the page counts from its private copy of the database. Zotero's pages
+count only when the text's page breaks match the number of pages Zotero
+recorded. A PDF with no such index, or with only part of the file indexed,
+and a `.bib` file's `file` attachments that are PDFs, are read by Ibis itself:
+`ibis` starts a short-lived copy of itself that gets the opened file and
+nothing else, no environment and no path, parses it in at most ten seconds
+and gives each page's text. On Linux that process may use at most 3 GiB of
+address space; elsewhere the ten seconds bound it. The desktop app never
+parses a PDF. Nothing is written, and the text stays in memory for the one
+command.
+
+Ibis reads only a regular file on this computer of at most 256 MiB and 10,000
+pages that starts as a PDF: never a link, a file on a network or FUSE mount,
+or an online-only file not yet downloaded. A Zotero file is looked for in its
+storage folder, or at a linked file's full path; while Zotero runs, only in
+the data directory Ibis finds on this computer. A linked file relative to
+Zotero's base folder is not read. `outline` says why a file's text is
+not read: `missing`, `not-local`, `not-pdf`, `damaged`, `too-large` or
+`timed-out`. Text without known pages is read by `--offset` and has no page
+numbers.
+
+`pdf_page` is the file's own page, from 1; use it only to find a passage.
+`cite_page`, the printed page to cite, comes only from the PDF's page labels
+(`/PageLabels`), such as `xii` or `A-3`: at most 16 letters, digits, `-` or
+`.`, and never a label two pages share. With Zotero's text, labels count only
+when the PDF has exactly as many pages as Zotero recorded. Otherwise
+`cite_page` is null and the printed page is not known; it is never taken from
+the file's page number.
 
 An attachment id names one attachment of one reference while that reference
-stays unchanged; it holds no path or file location. Links have no text, and a
-`.bib` file's `file` attachments are listed but not read yet. Zotero shows
+stays unchanged; it holds no path or file location. Links have no text, and
+EPUB and web snapshots have text only from Zotero's index. Zotero shows
 Reindex Item for a file with no text.
 
 ### Writings

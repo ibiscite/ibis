@@ -204,13 +204,22 @@ fn outline_summary(data: &Value) -> Option<String> {
             let pages = attachment.get("pages").and_then(Value::as_u64);
             let text = match attachment.get("text")?.as_str()? {
                 "available" if attachment.get("pages_known") == Some(&Value::Bool(true)) => cli(
-                    "cli-outline-pages",
+                    if attachment.get("cite_pages_known") == Some(&Value::Bool(true)) {
+                        "cli-outline-printed-pages"
+                    } else {
+                        "cli-outline-pages"
+                    },
                     &[("count", &pages.unwrap_or_default().to_string())],
                 ),
                 "available" => cli("cli-outline-text", &[]),
                 "not-indexed" => cli("cli-outline-not-indexed", &[]),
                 "no-file" => cli("cli-outline-no-file", &[]),
                 "too-large" => cli("cli-outline-too-large", &[]),
+                "missing" => cli("cli-outline-missing", &[]),
+                "not-local" => cli("cli-outline-not-local", &[]),
+                "not-pdf" => cli("cli-outline-not-pdf", &[]),
+                "damaged" => cli("cli-outline-damaged", &[]),
+                "timed-out" => cli("cli-outline-timed-out", &[]),
                 _ => cli("cli-outline-not-yet", &[]),
             };
             Some(format!(
@@ -234,8 +243,8 @@ fn read_summary(data: &Value) -> Option<String> {
             .lines()
             .map(super::terminal_display)
             .collect();
-        if let Some(number) = page.get("pdf_page").and_then(Value::as_u64) {
-            parts.push(cli("cli-read-page", &[("page", &number.to_string())]));
+        if let Some(mark) = page_mark(page) {
+            parts.push(mark);
         }
         parts.push(text.join("\n"));
     }
@@ -253,6 +262,15 @@ fn read_summary(data: &Value) -> Option<String> {
     Some(parts.join("\n"))
 }
 
+/// The file's page, and the printed page to cite when its label is known.
+fn page_mark(item: &Value) -> Option<String> {
+    let page = item.get("pdf_page")?.as_u64()?.to_string();
+    Some(match item.get("cite_page").and_then(Value::as_str) {
+        Some(label) => cli("cli-read-printed-page", &[("page", &page), ("label", &field(label))]),
+        None => cli("cli-read-page", &[("page", &page)]),
+    })
+}
+
 /// One line per passage, after its page when pages are known.
 fn find_in_summary(data: &Value) -> Option<String> {
     let passages = data.get("passages")?.as_array()?;
@@ -263,8 +281,8 @@ fn find_in_summary(data: &Value) -> Option<String> {
         .iter()
         .map(|passage| {
             let text = field(passage.get("text")?.as_str()?);
-            Some(match passage.get("pdf_page").and_then(Value::as_u64) {
-                Some(page) => format!("{}\t{text}", cli("cli-read-page", &[("page", &page.to_string())])),
+            Some(match page_mark(passage) {
+                Some(mark) => format!("{mark}\t{text}"),
                 None => text,
             })
         })

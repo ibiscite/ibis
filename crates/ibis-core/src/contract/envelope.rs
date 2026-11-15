@@ -203,7 +203,7 @@ pub enum ErrorReason {
     /// A record a request sends was not valid CSL-JSON, so none is cited.
     RejectedRecord,
     /// The attachment has no text Ibis can read: Zotero has not indexed it,
-    /// it is a link, or reading its file needs what Ibis does not have yet.
+    /// it is a link, or its file is missing, damaged or one Ibis cannot read.
     NoAttachmentText,
     /// The attachment has no text for the pages asked for, or its pages are
     /// not known; `outline` says which.

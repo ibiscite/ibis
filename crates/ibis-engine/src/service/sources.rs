@@ -214,6 +214,7 @@ impl Engine {
             formatting: self.formatting.clone(),
             resources: Arc::new(resources),
             watch_files: false,
+            pdf: self.pdf.clone(),
         };
         let mut expected = base;
         let mut retirement_error = None;

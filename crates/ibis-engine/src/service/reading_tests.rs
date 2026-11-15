@@ -8,6 +8,7 @@ fn paged(pages: &[&str]) -> DocumentText {
         body: Body::Pages(pages),
         indexed_pages: count,
         total_pages: count,
+        cite_pages: None,
     }
 }
 
@@ -16,6 +17,7 @@ fn whole(text: &str) -> DocumentText {
         body: Body::Whole(text.to_owned()),
         indexed_pages: None,
         total_pages: None,
+        cite_pages: None,
     }
 }
 
@@ -61,6 +63,22 @@ fn a_read_gives_at_most_five_marked_pages_and_says_where_to_go_on() {
             Some(ErrorReason::NoSuchPages)
         );
     }
+}
+
+#[test]
+fn cite_pages_come_only_from_the_pdfs_labels() {
+    let mut text = paged(&["Preface.", "Chapter with a lantern.", "Plate."]);
+    text.cite_pages = Some(vec![Some("xii".into()), Some("1".into()), None]);
+    let (pages, _) = read_pages(&text, &ask(None, None, None)).unwrap();
+    assert_eq!(
+        pages.iter().map(|page| page.cite_page.as_deref()).collect::<Vec<_>>(),
+        [Some("xii"), Some("1"), None]
+    );
+    let (passages, _) = find_passages(&text, "lantern", &Cancellation::default()).unwrap();
+    assert_eq!(
+        (passages[0].pdf_page, passages[0].cite_page.as_deref()),
+        (Some(2), Some("1"))
+    );
 }
 
 #[test]
@@ -183,7 +201,7 @@ fn outline(engine: &Engine, key: &str) -> Result<OutlineResult, EngineError> {
 }
 
 #[test]
-fn a_files_attachments_are_outlined_but_their_text_is_not_read_yet() {
+fn without_a_pdf_reader_a_files_attachments_are_outlined_but_not_read() {
     let (engine, _directory, path) = engine_with(
         "@book{atlas,title={Invented atlas},file={atlas.pdf;https://example.invalid/atlas}}\n@book{bare,title={Bare}}\n",
     );
@@ -229,6 +247,47 @@ fn a_files_attachments_are_outlined_but_their_text_is_not_read_yet() {
         );
     }
     assert_ne!(outline(&engine, "atlas").unwrap().attachments[0].id, file.id);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_files_pdf_is_read_by_the_child_and_only_while_the_file_holds_the_reference() {
+    use std::os::unix::fs::PermissionsExt;
+    let (engine, directory, path) = engine_with("@book{atlas,title={Invented atlas},file={atlas.pdf;notes.txt}}\n");
+    // A stand-in for `ibis __extract-pdf`, answering for a one-page PDF.
+    let program = directory.path().join("invented-ibis");
+    std::fs::write(
+        &program,
+        "#!/bin/sh\ncat >/dev/null\nprintf '{\"read\":{\"pages\":1,\"labels\":[\"7\"],\"text\":[\"Invented lantern.\"]}}'\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let engine = engine.with_pdf_reader(program);
+    let found = outline(&engine, "atlas").unwrap();
+    assert_eq!(found.attachments[0].text, TextAvailability::Missing);
+    std::fs::write(directory.path().join("atlas.pdf"), "%PDF-1.7\n").unwrap();
+    let found = outline(&engine, "atlas").unwrap();
+    let pdf = &found.attachments[0];
+    assert_eq!(pdf.text, TextAvailability::Available);
+    assert!(pdf.pages_known && pdf.cite_pages_known && pdf.pages == Some(1));
+    // Only PDFs are handed to the reader.
+    assert_eq!(found.attachments[1].text, TextAvailability::NotYet);
+    let request = FindInRequest {
+        attachment: pdf.id.clone(),
+        query: "lantern".into(),
+    };
+    let passages = engine
+        .find_in(&request, &Cancellation::default())
+        .unwrap()
+        .value
+        .passages;
+    assert_eq!(passages[0].cite_page.as_deref(), Some("7"));
+    // An edit not yet reloaded retires the id rather than read another file.
+    std::fs::write(&path, "@book{atlas,title={Invented atlas, revised},file={atlas.pdf}}\n").unwrap();
+    assert_eq!(
+        engine.find_in(&request, &Cancellation::default()).err().map(|e| e.code),
+        Some(ErrorCode::NotFound)
+    );
 }
 
 #[test]
