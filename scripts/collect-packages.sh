@@ -8,7 +8,7 @@
 set -eo pipefail
 bundle="target/$TARGET/release/bundle"
 mkdir -p dist
-find "$bundle" -maxdepth 2 -type f \( -name '*.dmg' -o -name '*.msi' -o -name '*-setup.exe' -o -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) -exec cp {} dist/ \;
+find "$bundle" -maxdepth 2 -type f \( -name '*.dmg' -o -name '*-setup.exe' -o -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) -exec cp {} dist/ \;
 if [ -z "$(ls dist)" ]; then
   echo "no packages were produced in $bundle" >&2
   exit 1

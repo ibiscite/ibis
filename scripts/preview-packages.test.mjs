@@ -95,17 +95,7 @@ test("Windows packages add only the user PATH and remove their entry on uninstal
   assert.match(path, /CurrentUser/);
   assert.doesNotMatch(path, /\$env:PATH/);
   assert.match(path, /Remove/);
-  assert.match(path, /CommandPathTransactions/);
   assert.doesNotMatch(path, /WriteAllText|Join-Path \$Directory/);
-  const wix = read(windows.wix.fragmentPaths[0]);
-  assert.match(wix, /Id="IbisAddUserPath"[^>]*Execute="deferred"[^>]*Impersonate="yes"/);
-  assert.match(wix, /Id="IbisRemoveUserPath"[^>]*Execute="deferred"[^>]*Impersonate="yes"/);
-  assert.match(wix, /Action="IbisRollbackAddUserPath" After="InstallFiles"/);
-  assert.match(wix, /Action="IbisAddUserPath" After="IbisRollbackAddUserPath"/);
-  assert.match(wix, /Action="IbisRollbackRemoveUserPath" Before="IbisRemoveUserPath"/);
-  assert.match(wix, /Action="IbisRemoveUserPath" Before="RemoveFiles"/);
-  assert.doesNotMatch(wix, /<Environment /);
-  assert.ok(windows.wix.componentRefs.includes("IbisUserPath"));
 });
 
 test("the CLI build stages the same bytes under the app target, including musl Linux", { skip }, (t) => {

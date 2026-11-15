@@ -43,7 +43,7 @@ the anchor older links use.
 [0031](decisions/0031-what-ibis-remembers-per-app.md): `apps.json`, recent citations and app-ID evidence. Format and writing rules are replaced by 0042.
 
 ## 0019 Updates
-[0019](decisions/0019-updates.md): Tauri's updater, opt-in, signed; offers never take Enter; release naming.
+[0019](decisions/0019-updates.md): Tauri's updater, opt-in, signed; offers never take Enter; release naming; one Windows package.
 
 ## 0021 Interface foundation
 [0021](decisions/0021-interface-foundation.md): React Aria only inside `ui/`, hand-written tokens, Ibis's own icon set.
