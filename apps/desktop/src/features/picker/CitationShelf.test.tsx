@@ -273,6 +273,15 @@ test("with details open, notes read in them and nothing comes and goes in the sh
   expect(document.querySelector(".shelf-warnings")).toBeNull();
 });
 
+test("an output written on several lines, such as BibTeX, reads as one line on the shelf", () => {
+  const a = record("a", "Alpha"), b = record("b", "Beta");
+  const entry = (key: string) => `@article{${key},\n  title = {Invented title},\n  year = {2021}\n}`;
+  const text = `${entry("a")}\n\n${entry("b")}`;
+  render(shelf({ selected: chosen([a, b]), keys: true, shown: { ...output(text), display: displayTree([{ item: 0, text: entry("a") }, { item: null, text: "\n\n" }, { item: 1, text: entry("b") }]) } }));
+  expect(document.querySelector(".shelf-citation")?.textContent).toBe("@article{a, title = {Invented title}, year = {2021} } @article{b, title = {Invented title}, year = {2021} }");
+  expect(screen.getByRole("button", { name: "Edit Alpha 2021" }).closest("[title]")?.getAttribute("title")).toBe(entry("a"));
+});
+
 test("a key the token does not use is handed on to the picker", () => {
   const picker = vi.fn();
   render(<main onKeyDown={(event) => picker(event.key)}>{shelf({ selected: chosen([record("a")]), shown: output() })}</main>);
