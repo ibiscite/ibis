@@ -421,9 +421,12 @@ fn cite_preserves_both_item_warning_codes_by_key_and_by_id() {
         assert_eq!(answer["isError"], false);
         assert_eq!(answer["structuredContent"]["text"], expected.text);
         assert_eq!(answer["structuredContent"]["warnings"], json!(expected.warnings));
-        // The citation stands alone; the second block names each warning.
-        assert_eq!(answer["content"][0]["text"], expected.text);
-        let text = answer["content"][1]["text"].as_str().unwrap();
+        // The citation is one escaped line; the lines after it name each warning.
+        let text = answer["content"][0]["text"].as_str().unwrap();
+        assert!(
+            text.starts_with(&format!("Citation: {}\n", json!(expected.text))),
+            "{text}"
+        );
         assert_eq!(
             text.lines().filter(|line| line.starts_with("Warning: ")).count(),
             expected.warnings.len(),
@@ -899,7 +902,7 @@ fn an_app_writing_checks_its_bibliography_and_conflicting_keys_are_not_handed_to
         warning["result"]["structuredContent"]["bibliography"]["keys"][0]["check"]["status"],
         "could-not-check"
     );
-    let summary = warning["result"]["content"][1]["text"].as_str().unwrap();
+    let summary = warning["result"]["content"][0]["text"].as_str().unwrap();
     assert!(
         summary.contains("writing.bib") && summary.contains("invented: could-not-check"),
         "{summary}"

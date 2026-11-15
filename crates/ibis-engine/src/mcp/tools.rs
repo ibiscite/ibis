@@ -201,17 +201,9 @@ pub(super) fn call(
     submission: Option<&crate::citations::SubmittedCitation>,
 ) -> Value {
     let answered = answer(engine, problem, formats, tool, arguments, cancel, submission).and_then(|data| {
-        let summary = json!({"type": "text", "text": super::summary::text(tool.name, &data)});
-        // MCP permits multiple text blocks. Keep verbatim citation data apart
-        // from trusted diagnostics, even when it starts with "Warning:".
-        let content = if tool.name == "cite" {
-            vec![json!({"type": "text", "text": data["text"]}), summary]
-        } else {
-            vec![summary]
-        };
-        // Bound the complete answer, including both text blocks and structured content.
+        // The bound is on what is sent: the summary and the structured content.
         let result = json!({
-            "content": content,
+            "content": [{"type": "text", "text": super::summary::text(tool.name, &data)}],
             "structuredContent": data,
             "isError": false
         });

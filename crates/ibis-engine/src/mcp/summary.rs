@@ -4,8 +4,9 @@
 //! clients. Many clients hand both halves to the model, so the whole answer
 //! would be paid for twice. `structuredContent` keeps every field; this text
 //! keeps what an agent needs to act: each ref and every notice, loss, warning
-//! and library note. `call` puts the byte-exact citation in its own text block
-//! before this summary, so library text cannot imitate diagnostic lines.
+//! and library note. The citation comes first as one JSON string, so library
+//! text in it cannot start a line of its own and pose as a warning; its exact
+//! text is also `structuredContent.text`.
 use crate::catalogue;
 use serde_json::{Map, Value};
 
@@ -176,7 +177,11 @@ fn show(data: &Map<String, Value>) -> Vec<String> {
 }
 
 fn cite(data: &Map<String, Value>) -> Vec<String> {
-    let mut lines = vec![];
+    let citation = data
+        .get("text")
+        .cloned()
+        .unwrap_or_else(|| Value::String(String::new()));
+    let mut lines = vec![format!("Citation: {citation}")];
     for notice in data.get("notices").and_then(Value::as_array).into_iter().flatten() {
         let code = notice.as_str().unwrap_or("unknown");
         let sentence = catalogue::text(&format!("notice-{code}"), None, &[])
@@ -317,7 +322,7 @@ mod tests {
         );
         assert_eq!(
             summary,
-            "Notice: This is the full reference entry.\n\
+            "Citation: \"(Lee, 2024)\"\nNotice: This is the full reference entry.\n\
              Loss: This output cannot fully show the page or location for item 1.\n\
              Warning: A field of item 1 could not be fully converted. Check it in your library.\n\
              A note.\nLibrary health: 1 finding(s); see source_health and tell the user.\n\

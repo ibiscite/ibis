@@ -669,8 +669,8 @@ read-only tools over stdio:
 Each answer's `structuredContent` holds the full result. Its text is a short
 summary for the model instead of the same JSON again: one `ref · authors ·
 year · title` line per hit, each notice, loss and warning in words, and any
-library notes. For `cite`, `content[0]` holds exactly the citation text and
-`content[1]` holds the diagnostics, so a title cannot imitate a warning line.
+library notes. For `cite`, the first line is `Citation:` and the citation as
+one JSON string, so a title cannot start a line and imitate a warning.
 Receipt, bibliography and delivery advice are named in that summary too.
 The common styles are accepted as
 `format` too, but the schema lists only key syntaxes; `styles` finds the rest.

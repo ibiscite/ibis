@@ -814,12 +814,18 @@ fn edit_json(path: &Path, key: &str, entry: Option<String>) -> Result<(), String
         }
         return Err(reason);
     }
-    if before.is_some() {
+    let written = if before.is_some() {
         staged.replace()
     } else {
         staged.create()
-    }
-    .map_err(|_| "the file could not be written".to_owned())
+    };
+    // A backup is kept only beside a change that was made.
+    written.map_err(|_| {
+        if let Some(backup) = backup {
+            let _ = fs::remove_file(backup);
+        }
+        "the file could not be written".to_owned()
+    })
 }
 
 /// The file's own indentation, two spaces when it has none yet.

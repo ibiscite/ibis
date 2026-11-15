@@ -63,8 +63,8 @@ Use these four tools from the `ibis` MCP server, in this order:
 ```
 
 Each answer's text is a short summary: one `ref · authors · year · title` line per
-hit; for `cite`, the first text block is exactly the citation and the second
-names its notices, losses and warnings in words. The same answer in full is in
+hit; for `cite`, a `Citation:` line with the citation as one JSON string (insert
+it unquoted and unescaped), then its notices, losses and warnings in words. The same answer in full is in
 the tool's structured result.
 
 ## When a tool returns an error
