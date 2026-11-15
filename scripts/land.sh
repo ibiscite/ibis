@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fast local feedback; hosted CI and the merge queue authorize the squash merge.
+# Fast local feedback; hosted CI result decides the squash merge (no merge queue).
 set -euo pipefail
 if [ "${1:-}" = start ] || [ "${1:-}" = end ]; then
   action=$1 name=${2:-} issue=${3:-}
@@ -115,4 +115,4 @@ fi
 unchanged
 if [ "$draft" = true ]; then gh pr ready "$number" --repo "$repo"; fi
 gh pr merge "$number" --repo "$repo" --auto --squash --body-file "$body" --match-head-commit "$sha"
-printf 'Auto-merge requested for %s; hosted CI and the merge queue decide when it merges.\n' "$number"
+printf 'Auto-merge requested for %s; it merges once hosted CI result passes.\n' "$number"

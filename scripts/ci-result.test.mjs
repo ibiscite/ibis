@@ -4,20 +4,21 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const script = fileURLToPath(new URL("./ci-result.sh", import.meta.url));
+const all = '["ubuntu-24.04","macos-15","windows-2025"]', ubuntu = '["ubuntu-24.04"]';
 const check = (env, expected) => {
   const result = spawnSync("bash", [script], { encoding: "utf8", timeout: 5000,
-    env: { ...process.env, EVENT: "push", RESULTS: "success success success success success", QUALIFICATION: "skipped skipped skipped skipped", ...env } });
+    env: { ...process.env, EVENT: "push", RESULTS: Array(6).fill("success").join(" "), PLATFORMS: all, QUALIFICATION: "skipped skipped skipped skipped", ...env } });
   assert.equal(result.status, expected, `${JSON.stringify(env)}: ${result.stdout}${result.stderr}`);
 };
 
-test("confirmation requires all three-system suites; daily qualification cannot skip or fail", () => {
-  for (const EVENT of ["push", "pull_request", "merge_group", "schedule", "workflow_dispatch"]) {
+test("every job must pass; daily qualification cannot skip or fail", () => {
+  for (const EVENT of ["push", "pull_request", "schedule", "workflow_dispatch"]) {
     const daily = ["schedule", "workflow_dispatch"].includes(EVENT);
     const env = { EVENT, QUALIFICATION: !daily ? "skipped skipped skipped skipped" : "success success success success" };
     check(env, 0);
     for (const state of ["failure", "cancelled", "skipped", "unavailable", ""]) {
-      for (let i = 0; i < 5; i++) {
-        const results = Array(5).fill("success"); results[i] = state;
+      for (let i = 0; i < 6; i++) {
+        const results = Array(6).fill("success"); results[i] = state;
         check({ ...env, RESULTS: results.join(" ") }, 1);
       }
       if (daily) for (let i = 0; i < 4; i++) {
@@ -26,6 +27,14 @@ test("confirmation requires all three-system suites; daily qualification cannot 
       }
     }
   }
-  check({ EVENT: "unknown" }, 1);
-  check({ RESULTS: "success success success success success success" }, 1);
+  check({ EVENT: "merge_group" }, 1);
+  check({ RESULTS: Array(7).fill("success").join(" ") }, 1);
+});
+
+test("only pull requests may run Ubuntu alone; main and daily runs need all three systems", () => {
+  check({ EVENT: "pull_request", PLATFORMS: ubuntu }, 0);
+  check({ EVENT: "pull_request", PLATFORMS: "" }, 1);
+  check({ EVENT: "push", PLATFORMS: ubuntu }, 1);
+  check({ EVENT: "push", PLATFORMS: "" }, 1);
+  check({ EVENT: "schedule", PLATFORMS: ubuntu, QUALIFICATION: "success success success success" }, 1);
 });

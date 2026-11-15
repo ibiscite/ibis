@@ -1,10 +1,17 @@
 # 0049 Local machines gate merges (superseded)
 
-2026-11-14 (maintainer): superseded. Hosted **CI result** through GitHub's merge
-queue is the required merge check; local checks are for speed only. The local
-gate reported on itself, and main went red the day it became required.
+2026-11-15 (maintainer): superseded: hosted CI's fast tier is the required
+merge check, no merge queue; macOS and Windows confirm on main and nightly;
+local machines are for speed and native checks. Pull requests run Ubuntu only
+unless `scripts/ci-scope.sh` finds platform, packaging, dependency or workflow
+changes, or the PR has the `full-ci` label. They squash-merge once **CI result**
+passes, without being up to date with main; main's push CI checks the combined
+commit, and a red main holds the nightly.
+
+2026-11-14 (maintainer): hosted **CI result** is the required check again. The
+local gate reported on itself, and main went red the day it became required.
 `scripts/land.sh` runs fast local checks, pushes the branch and requests
-auto-merge; hosted CI checks the PR and the merge-group revision before merging.
+squash auto-merge.
 
 2026-11-13 (maintainer): this is a solo project; the maintainer and his agents
 are the only writers. **The local machines are the gate; GitHub CI confirms

@@ -21,7 +21,7 @@ definition does not certify a passing run. Plans live in
 
 Setup is in [CONTRIBUTING.md](../CONTRIBUTING.md#setup). Run the focused check
 for the changed behaviour; `land.sh` runs fast local checks before requesting
-auto-merge through hosted CI and the merge queue.
+auto-merge on hosted CI.
 
 ```sh
 bash scripts/land.sh
@@ -104,15 +104,22 @@ only ([decision 0049](decisions/0049-local-gate.md)).
 After passing, it pushes the checked head, preserves existing PR text or creates
 a PR from `--title`/`--body-file` or the first non-merge commit, marks drafts
 ready and requests squash auto-merge. Signed-off-by and Assisted-by trailers
-carry into the squash commit. GitHub's merge queue owns conflict handling and
-the final merge; the script neither waits for CI nor reports a required status.
-Keep the worktree until the PR merges, then run `land.sh end NAME`.
+carry into the squash commit. There is no merge queue and no up-to-date rule:
+GitHub merges as soon as **CI result** passes; the script neither waits for CI
+nor reports a status. Keep the worktree until the PR merges, then run
+`land.sh end NAME`.
 
-[CI](../.github/workflows/ci.yml) runs on in-repository PRs, merge groups and
-pushes to main. **CI result** is the required merge check: interface build,
-three-platform Rust and desktop suites, web/script tests, dependency policy
-and commit identities must all pass. Fork PRs retain read-only title feedback;
-full PR CI is restricted to branches in this repository and uses no secrets.
+[CI](../.github/workflows/ci.yml) runs on in-repository PRs and pushes to main.
+**CI result** is the required merge check: interface build, `Test` and
+`Desktop` suites, web/script tests, dependency policy and commit identities
+must all pass. PRs run `Test` and `Desktop` on Ubuntu only (about 9 minutes)
+unless [`ci-scope.sh`](../scripts/ci-scope.sh) finds platform code
+(`macos`/`windows`/`platform` paths, `paste`, `copy`, `placement`,
+`native_feel`), packaging, PowerShell, Swift, Cargo manifests or lock, or
+workflow changes, or the PR has the `full-ci` label; adding the label reruns
+the check on all three systems. Pushes to main always run all three and so
+confirm each merged commit. Fork PRs skip every job, so their **CI result**
+fails; they keep read-only title feedback.
 
 Daily/manual runs add WebKit, release-mode/MSRV checks, five-minute fuzzing and
 installed journeys against the published nightly; failures update one issue.
@@ -120,6 +127,6 @@ installed journeys against the published nightly; failures update one issue.
 Run manual qualification before a stable release.
 [Preview](../.github/workflows/preview.yml) keeps full builds, signing and
 install/start checks before publishing. Nix and syntax-tool workflows confirm
-after merge. RustSec advisories block dependency changes on PRs, merge groups
-and main, release publication and the weekly check; other failures warn. Publication details are
+after merge. RustSec advisories block dependency changes on PRs and main, release
+publication and the weekly check; other failures warn. Publication details are
 in [RELEASING.md](../RELEASING.md).
