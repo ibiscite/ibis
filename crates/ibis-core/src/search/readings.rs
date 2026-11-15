@@ -1,4 +1,4 @@
-//! One bounded search alias per all-kana name; never a source-data conversion.
+//! One bounded reading per all-kana name or query term; never a source-data conversion.
 use unicode_normalization::UnicodeNormalization;
 
 use crate::model::Name;
@@ -23,10 +23,18 @@ pub(super) fn alias(name: &Name) -> Option<String> {
         .map(String::as_str)
         .collect()
     };
-    let chars: Vec<char> = parts
-        .iter()
-        .enumerate()
-        .flat_map(|(i, part)| std::iter::once(' ').take(usize::from(i > 0)).chain(part.chars()))
+    reading(
+        parts
+            .iter()
+            .enumerate()
+            .flat_map(|(i, part)| std::iter::once(' ').take(usize::from(i > 0)).chain(part.chars())),
+    )
+}
+
+/// The same reading for any text, such as a query term, so a kana query
+/// finds a name written in romaji exactly as a romaji query finds a kana name.
+pub(super) fn reading(text: impl Iterator<Item = char>) -> Option<String> {
+    let chars: Vec<char> = text
         .nfkc()
         .map(|c| match c {
             '\u{30A1}'..='\u{30F6}' => char::from_u32(c as u32 - 0x60).unwrap_or(c),
