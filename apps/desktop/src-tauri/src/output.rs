@@ -90,6 +90,9 @@ pub(crate) struct OutputChoice {
     style: bool,
     /// It writes reference entries, never in-text citations.
     entries: bool,
+    /// It shares references (BibTeX, DOI links, CSL-JSON) rather than citing
+    /// them: a one-off output, never remembered as a format (decision 0051).
+    shares: bool,
 }
 
 /// Every output the picker offers, in the engine's order.
@@ -104,6 +107,7 @@ pub(crate) fn choices() -> Vec<OutputChoice> {
             example: output.example.clone(),
             style: matches!(output.output, OutputSpec::Csl { .. }),
             entries: output.entries,
+            shares: output.exports_records,
         })
         .collect()
 }

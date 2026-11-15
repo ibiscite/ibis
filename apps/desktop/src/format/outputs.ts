@@ -57,8 +57,15 @@ export function previewOf(id: OutputId, formatted: Pick<FormattedCitation, "text
   return { text: output.example, more: 0, example: true };
 }
 
-/** The outputs in the engine's order: key syntaxes, then common styles. */
-export const keyOutputs = OUTPUTS.filter((output) => !output.style);
+/** It shares references (BibTeX, DOI links) rather than citing them: a one-off
+ * output for this copy, never remembered as a format (decision 0051). */
+export function sharesReferences(id: OutputId): boolean {
+  return outputOf(id).shares;
+}
+
+/** The outputs in the engine's order: key syntaxes, then ways to share, then common styles. */
+export const keyOutputs = OUTPUTS.filter((output) => !output.style && !output.shares);
+export const shareOutputs = OUTPUTS.filter((output) => output.shares);
 export const styleOutputs = OUTPUTS.filter((output) => output.style);
 
 /** The engine result displayed by the picker. */

@@ -1,7 +1,7 @@
 import { useState, type RefObject } from "react";
 import { keysFor } from "../../keys";
 import type { AppPaste } from "../../api";
-import { isStyle, keyOutputs, listedOutput, outputName, outputOf, previewOf, styleOutputs, type OutputChoice, type OutputId } from "../../format/outputs";
+import { isStyle, keyOutputs, listedOutput, outputName, outputOf, previewOf, shareOutputs, sharesReferences, styleOutputs, type OutputChoice, type OutputId } from "../../format/outputs";
 import { isolate, say } from "../../i18n";
 import { Palette, type PaletteClose, type PaletteItem, type PaletteSection } from "../../ui/Palette";
 import { PopupButton } from "../../ui/PopupButton";
@@ -63,7 +63,7 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
   const usual = usualFormat ?? yours;
   const back = app && onUseUsual && (writing || source === "remembered") ? usual ?? format : null;
   const row = (output: OutputChoice): PaletteItem => ({
-    id: output.id, label: output.name, checked: output.id === format, keywords: [output.example, output.description].filter(Boolean).join(" "),
+    id: output.id, label: output.name, checked: output.id === format, keywords: [output.example, output.description, output.shares && say("palette-words-share")].filter(Boolean).join(" "),
     ...output.style && !styles ? { disabled: true, detail: say("palette-style-unavailable") } : {},
   });
   const shortIds = [...new Set<OutputId>([format, ...recent, ...usual ? [usual] : []])].slice(0, 5);
@@ -80,9 +80,14 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
     // Each format appears once: before typing, the catalogue leaves out the recent ones above it.
     { id: "key-formats", label: say("picker-key-formats"), items: keyOutputs.filter(notRecent).map(row), only: "browsing" },
     { id: "citation-styles", label: say("picker-formatted-styles"), items: styleOutputs.filter(notRecent).map(row), only: "browsing" },
+    // Sharing references is a one-off output for this copy, so it has its own group.
+    { id: "share", label: say("picker-share-formats"), items: shareOutputs.filter(notRecent).map(row), only: "browsing" },
     { id: "key-formats-all", label: say("picker-key-formats"), items: keyOutputs.map(row), only: "searching" },
     { id: "citation-styles-all", label: say("picker-formatted-styles"), items: styleOutputs.map(row), only: "searching" },
+    { id: "share-all", label: say("picker-share-formats"), items: shareOutputs.map(row), only: "searching" },
   ];
+  // A way to share references holds for one copy whoever's format it would otherwise be.
+  const once = (item: PaletteItem | undefined) => Boolean(item && !item.back && listedOutput(item.id) && sharesReferences(listedOutput(item.id)!));
   const close = (reason: PaletteClose) => {
     setOpen(false);
     onOpenChange?.(false, reason);
@@ -106,10 +111,10 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
       onPress={() => { if (open) close("dismiss"); else { setOpen(true); onOpenChange?.(true); } }}
       // ↓ opens it too, as on every pop-up button.
       onKeyDown={(event) => { if (event.key === "ArrowDown" && !open && !disabled) { setOpen(true); onOpenChange?.(true); } else event.continuePropagation(); }}>{value}</PopupButton>
-    {open && <Palette id="format-palette" title={say("picker-format-title")} subtitle={whose} placeholder={say("palette-search-formats")}
+    {open && <Palette id="format-palette" title={say("picker-format-title")} subtitle={(item) => once(item) ? say("picker-pick-heading-this-paste") : whose} placeholder={say("palette-search-formats")}
       sections={sections} initial={back ? "back" : format} onAction={choose} onClose={close} empty={say("palette-no-formats")}
-      actionLabel={(item) => item.back || listedOutput(item.id) ? say(pick === "paste" ? "palette-use-this-paste" : pick === "default" || !app ? "palette-use-default" : "palette-use-for-app", { app: writing?.name ?? app ?? "" }) : say("palette-run")}
-      description={`${why} ${next}`.trim()} preview={(item) => <FormatPreviewPane output={listedOutput(item.back ? back : item.id)} preview={preview ?? null} />} />}
+      actionLabel={(item) => item.back || listedOutput(item.id) ? say(pick === "paste" || once(item) ? "palette-use-this-paste" : pick === "default" || !app ? "palette-use-default" : "palette-use-for-app", { app: writing?.name ?? app ?? "" }) : say("palette-run")}
+      description={(item) => `${why} ${once(item) ? say("picker-pick-this-paste") : next}`.trim()} preview={(item) => <FormatPreviewPane output={listedOutput(item.back ? back : item.id)} preview={preview ?? null} />} />}
   </>;
 }
 
