@@ -293,3 +293,22 @@ fn prose_and_identifiers_shaped_like_paths_stay_public() {
         assert_eq!(back[0]["DOI"], "10.1016/S0140-6736(20)30183-5", "{back}");
     }
 }
+
+/// CSL-JSON readers print text literally apart from rich-text tags, so an export
+/// escapes only a literal tag and an ampersand that starts a character reference.
+#[test]
+fn csl_json_text_is_what_citeproc_and_pandoc_print() {
+    let doi = "10.1002/(SICI)1097-4636(199706)35:3<367::AID-JBM12>3.0.CO;2-M";
+    let records = json!([{
+        "id":"invented", "citation-key":"invented", "type":"article-journal",
+        "title":"Invented AT&T <i>atlas</i> when p < 0.05 and \"quoted\" &amp;lt;i&amp;gt;",
+        "container-title":"Q&A Journal", "publisher":"Invented & Sons &amp;sol;",
+        "DOI":doi, "URL":"https://example.invalid/?a=1&b=2"
+    }]);
+    let (code, result) = cite(&records, "csl-json");
+    assert_eq!(code, 0, "{result}");
+    let back: Value = serde_json::from_str(result["text"].as_str().unwrap()).unwrap();
+    for field in ["title", "container-title", "publisher", "DOI", "URL"] {
+        assert_eq!(back[0][field], records[0][field], "{field}");
+    }
+}

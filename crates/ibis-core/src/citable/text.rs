@@ -97,7 +97,10 @@ impl Projection {
     }
 }
 
-/// Canonical CSL encoding; literal tags cannot become markup on reimport.
+/// Canonical CSL-JSON text. Processors such as citeproc-js and pandoc print
+/// strings literally except for rich-text tags, so only what some reader could
+/// decode is escaped: an ampersand starting a character reference, and a
+/// literal tag. Neither becomes markup or another character on reimport.
 pub(super) fn encode(parts: &[TextPart]) -> String {
     parts
         .iter()
@@ -109,21 +112,35 @@ pub(super) fn encode(parts: &[TextPart]) -> String {
 }
 
 pub(super) fn encode_literal(text: &str) -> String {
-    text.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-}
-
-/// Keep ordinary identifier punctuation verbatim, escaping text that another
-/// projection could otherwise interpret as an entity or a tag.
-pub(super) fn encode_plain(text: &str) -> String {
-    let text = if decode_entities(text) == text {
-        text.to_owned()
-    } else {
-        text.replace('&', "&amp;")
-    };
-    text.replace('<', "&lt;")
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find(['&', '<']) {
+        out.push_str(&rest[..start]);
+        rest = &rest[start..];
+        let length = if let Some(after) = rest.strip_prefix('&') {
+            // HTML's grammar, wider than this decoder's: `&sol;`, `&#X2F;` and
+            // `&#47` cannot turn into a slash in any reader either.
+            let name = after.bytes().take_while(u8::is_ascii_alphanumeric).count();
+            let reference = after.starts_with('#')
+                || after.starts_with(|c: char| c.is_ascii_alphabetic()) && after[name..].starts_with(';');
+            out.push_str(if reference { "&amp;" } else { "&" });
+            1
+        } else if let Some(length) = crate::model::rich_text_tag_len(rest) {
+            out.push_str(
+                &rest[..length]
+                    .replace('<', "&lt;")
+                    .replace('>', "&gt;")
+                    .replace('"', "&quot;"),
+            );
+            length
+        } else {
+            out.push('<');
+            1
+        };
+        rest = &rest[length..];
+    }
+    out.push_str(rest);
+    out
 }
 
 pub(crate) fn bidi_control(ch: char) -> bool {

@@ -439,17 +439,18 @@ fn record_sharing_keeps_rich_text_and_normalizes_padded_date_parts() {
             "Invented &lt;span class=&quot;nocase&quot;&gt;DNA &lt;/span&gt; study",
             "Invented &lt;span class=&quot;nocase&quot;&gt;DNA &lt;/span&gt; study",
         ),
+        // CSL processors print anything but their own tags literally.
         (
             "Invented &lt;em&gt;DNA &lt;/em&gt; study",
-            "Invented &lt;em&gt;DNA &lt;/em&gt; study",
+            "Invented <em>DNA </em> study",
         ),
         (
             "Invented <https://example.invalid/work>",
-            "Invented &lt;https://example.invalid/work&gt;",
+            "Invented <https://example.invalid/work>",
         ),
         (
             "Invented &lt;https://example.invalid/work&gt;",
-            "Invented &lt;https://example.invalid/work&gt;",
+            "Invented <https://example.invalid/work>",
         ),
     ] {
         let case = case("csl-json", json!({"title":title}), Some("good"));

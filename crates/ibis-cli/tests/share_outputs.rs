@@ -86,6 +86,10 @@ fn shared_bibtex_reopens_with_the_same_records_and_keys() {
         ] {
             if field == "URL" && original["citation-key"] == "atlas2026" {
                 assert!(reopened[field].is_null());
+            } else if field == "title" && original["citation-key"] == "rich" {
+                // An ampersand that starts no reference stays as CSL processors print it.
+                let canonical = original[field].as_str().unwrap().replace("&amp;", "&");
+                assert_eq!(reopened[field], canonical, "{reopened}");
             } else {
                 assert_eq!(original[field], reopened[field], "{field}: {reopened}");
             }

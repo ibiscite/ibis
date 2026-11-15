@@ -235,7 +235,7 @@ fn project_scalar(value: &mut Value, keep_markup: bool) -> Option<Vec<TextPart>>
 fn encode_values<'a>(values: impl Iterator<Item = &'a mut Value>) {
     for value in values {
         match value {
-            Value::String(text) => *text = text::encode_plain(text),
+            Value::String(text) => *text = text::encode_literal(text),
             Value::Object(fields) => encode_values(fields.values_mut()),
             Value::Array(values) => encode_values(values.iter_mut()),
             _ => {}
