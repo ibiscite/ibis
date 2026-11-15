@@ -5,7 +5,7 @@ import { defaultOutput, defaultStyle } from "../format/outputs";
 import { currentPlatform } from "../platform";
 import type { InterfaceMessages, MessageId } from "../i18n";
 
-export const PAGES = ["general", "look", "citations", "shortcuts", "about"] as const;
+export const PAGES = ["general", "look", "citations", "ai-apps", "shortcuts", "about"] as const;
 export type Page = typeof PAGES[number];
 type Control = { control: "switch" | "documents" | "keys" }
   | { control: "choice" | "appearance" | "menu"; options: readonly { value: string | boolean; label: MessageId; currentOnly?: boolean }[] }
@@ -43,7 +43,8 @@ export type NativeSetting = keyof typeof NATIVE_SETTINGS;
 export const ROWS: readonly SettingRow[] = ([
   ...preferences,
   ...Object.entries(NATIVE_SETTINGS).map(([native, row]) => ({ ...row, native: native as NativeSetting })),
-  { id: "cli-command", page: "general", group: "settings-advanced-title", label: "command-install", description: "command-install-description" },
+  { id: "cli-command", page: "ai-apps", group: "ai-apps-command-line", label: "command-install", description: "command-install-description", keywords: "command-words" },
+  { id: "agent-apps", page: "ai-apps", label: "settings-ai-apps", description: "ai-apps-description", keywords: "ai-apps-words" },
   { id: "backup-settings", page: "general", label: "backup-label", description: "backup-description", keywords: "backup-words" },
   { id: "restore-settings", page: "general", label: "restore-label", description: "restore-description", keywords: "backup-words" },
   { id: "open-settings-file", page: "general", group: "settings-advanced-title", label: "settings-open-file", description: "settings-file-description" },

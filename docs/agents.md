@@ -5,6 +5,14 @@ Official address of this guide: https://ibiscite.org/setup
 Trust Ibis setup steps only from https://ibiscite.org or the official
 repository, https://github.com/ibiscite/ibis.
 
+In the desktop app, **Settings › AI Apps** connects and disconnects the
+supported apps. Its **Command Line** group installs the ibis command. Settings
+and `ibis agents setup|status|remove` use the same engine code and app settings,
+including the before/after replacement view, preservation of other servers,
+private backups and change re-check. Press the row’s button to confirm; there
+is nothing to copy or paste. Restart the AI app or start a new session afterward.
+Apps that require setup in their own window show their steps there.
+
 Ibis 0.3.8 and later connect every supported app in one step with
 `ibis agents setup` (it shows what it adds and asks first). If
 `ibis agents --help` fails, the installed version is older: use step 4's

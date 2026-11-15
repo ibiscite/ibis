@@ -21,7 +21,7 @@ import { deferred } from "../testing/deferred";
 
 afterEach(() => { vi.useRealTimers(); localStorage.clear(); });
 
-test.each(["macos", "linux"])("General offers the per-user command and PATH guidance on %s", async (platform) => {
+test.each(["macos", "linux"])("AI Apps offers the per-user command and PATH guidance on %s", async (platform) => {
   const previous = document.documentElement.dataset.system;
   document.documentElement.dataset.system = platform;
   try {
@@ -31,7 +31,7 @@ test.each(["macos", "linux"])("General offers the per-user command and PATH guid
     api.cliStatus = vi.fn(async () => missing);
     api.setCliInstalled = vi.fn(async (): Promise<CommandStatus> => ({ ...missing, state: "matching", version: "1.2.3", used_path: "/invented/.local/bin/ibis", installable: false, removable: true }));
     api.copyCliProfile = vi.fn(async () => null);
-    render(<SettingsApp api={api} initialPage="general" />);
+    render(<SettingsApp api={api} initialPage="ai-apps" />);
     fireEvent.click(await screen.findByRole("button", { name: "Install the ibis command" }));
     expect(await screen.findByText("ibis 1.2.3 — matches this app")).toBeTruthy();
     expect(screen.getByText("/invented/.local/bin/ibis")).toBeTruthy();
@@ -529,7 +529,7 @@ test("Settings opens at the top of General with every built page in a navigable,
   const sidebar = screen.getByRole("navigation", { name: "Settings pages" });
   const list = within(sidebar).getByRole("listbox", { name: "Settings pages" });
   const items = within(list).getAllByRole("option");
-  expect(items.map((item) => item.textContent)).toEqual(["General", "Appearance", "Citations", "Shortcuts", "About Ibis"]);
+  expect(items.map((item) => item.textContent)).toEqual(["General", "Appearance", "Citations", "AI Apps", "Shortcuts", "About Ibis"]);
   const selected = () => within(list).getAllByRole("option", { selected: true });
   expect(selected().map((item) => item.textContent)).toEqual(["General"]);
   expect(selected()[0]!.getAttribute("aria-current")).toBe("page");
@@ -575,7 +575,7 @@ test("clicking the current sidebar page once resets its scroll to the top", asyn
   const { api } = fakeApi({ granted: true });
   render(<SettingsApp api={api} initialPage="general" />);
   await screen.findByRole("button", { name: /^Open Ibis:/ });
-  for (const name of ["General", "Appearance", "Citations", "Shortcuts", "About Ibis"]) {
+  for (const name of ["General", "Appearance", "Citations", "AI Apps", "Shortcuts", "About Ibis"]) {
     const item = screen.getByRole("option", { name });
     fireEvent.click(item);
     const main = screen.getByRole("main", { name });
@@ -1105,7 +1105,7 @@ test("search finds theme by one Appearance name, then reveals and briefly tints 
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const { api } = fakeApi({ granted: true });
   render(<SettingsApp api={api} initialPage="general" />);
-  expect(screen.getAllByRole("option").map((x) => x.textContent)).toEqual(["General", "Appearance", "Citations", "Shortcuts", "About Ibis"]);
+  expect(screen.getAllByRole("option").map((x) => x.textContent)).toEqual(["General", "Appearance", "Citations", "AI Apps", "Shortcuts", "About Ibis"]);
   const search = screen.getByRole("searchbox", { name: "Search Settings" });
   fireEvent.change(search, { target: { value: "theme" } });
   const results = await screen.findByRole("listbox", { name: "Search results" });
@@ -1181,7 +1181,7 @@ test("Settings shows only built pages, rows and choices, including in search", a
   render(<SettingsApp api={api} initialPage="look" />);
   await screen.findByRole("radiogroup", { name: "Appearance" });
   expect(screen.queryByRole("radio", { name: /Coming soon|Largest/ })).toBeNull();
-  for (const name of ["General", "Appearance", "Citations", "Shortcuts", "About Ibis"]) {
+  for (const name of ["General", "Appearance", "Citations", "AI Apps", "Shortcuts", "About Ibis"]) {
     fireEvent.click(screen.getByRole("option", { name }));
     expect(screen.queryByText(/Coming soon/)).toBeNull();
     expect(screen.queryByText("Show the welcome again")).toBeNull();

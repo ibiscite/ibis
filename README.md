@@ -81,7 +81,8 @@ ibis cite vale2024lanterns --file refs.bib --style apa
 
 See the [CLI reference](docs/cli.md) for installation, JSON, projects,
 JSON-RPC and the [agent plugin](docs/cli.md#ai-agents-mcp).
-Connect the AI apps on your computer with `ibis agents setup`, or follow the
+Connect the AI apps on your computer in **Settings › AI Apps** or with
+`ibis agents setup` (the same actions and settings), or follow the
 [setup guide](https://ibiscite.org/setup), or paste this prompt:
 
 ```text

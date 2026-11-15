@@ -193,6 +193,9 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
   receipts.clear();
   const defaults: Record<string, Handler> = {
     "plugin:window|is_visible": () => true,
+    agent_apps: () => [],
+    connect_agent_app: () => [],
+    disconnect_agent_app: () => [],
     shortcut_status: () => ({ shortcut: "CommandOrControl+Shift+Y", registered: true, error: null }),
     search: () => [],
     project_status: () => null,

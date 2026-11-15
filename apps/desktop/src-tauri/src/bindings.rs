@@ -51,6 +51,9 @@ macro_rules! registry {
 }
 
 registry![
+    crate::agent_apps::agent_apps,
+    crate::agent_apps::connect_agent_app,
+    crate::agent_apps::disconnect_agent_app,
     crate::cli_install::cli_status,
     crate::cli_install::set_cli_installed,
     crate::cli_install::copy_cli_profile,
@@ -250,6 +253,9 @@ mod tests {
         "choose_settings_backup",
         "restore_settings_backup",
         "cancel_settings_restore",
+        "agent_apps",
+        "connect_agent_app",
+        "disconnect_agent_app",
         "cli_status",
         "set_cli_installed",
         "copy_cli_profile",
@@ -277,6 +283,9 @@ mod tests {
         "choose_settings_backup",
         "restore_settings_backup",
         "cancel_settings_restore",
+        "agent_apps",
+        "connect_agent_app",
+        "disconnect_agent_app",
         "cli_status",
         "set_cli_installed",
         "copy_cli_profile",
