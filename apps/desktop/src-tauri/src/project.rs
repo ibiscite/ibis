@@ -70,7 +70,8 @@ struct Slot {
     read: Option<ProjectRead>,
     reading: bool,
     context: Option<String>,
-    prepared: Option<(String, (u32, u32))>,
+    /// The bound receipt, its project observation and whether its keys are checked.
+    prepared: Option<(String, (u32, u32), bool)>,
     output: Option<crate::output::OutputRef>,
     worker_running: bool,
     pending_read: Option<Ticket>,
@@ -147,7 +148,7 @@ impl ProjectBibliography {
             .is_some_and(|context| context.starts_with("unavailable:"))
             && !(matches!(output.spec(), ibis_core::contract::OutputSpec::Key { .. })
                 && slot.path.is_some()
-                && slot.read.is_none())
+                && (slot.read.is_none() || slot.reading))
             && expected == Some(version)
             && slot.output.is_none_or(|current| current == output);
         if !valid {
@@ -170,27 +171,28 @@ impl ProjectBibliography {
         }
         // The engine validates its own identity while the project binding is locked.
         // A late native completion cannot replace a newer receipt's context.
-        engine.citations().prepared(
+        let citation = engine.citations().prepared(
             ibis_engine::citations::SessionId::PICKER,
             &preview.ticket,
             &preview.content_hash,
         )?;
-        slot.prepared = Some((preview.ticket.clone(), version));
+        slot.prepared = Some((preview.ticket.clone(), version, citation.uses_citation_keys()));
         Ok(())
     }
 
     /// Project changes and clipboard commits share this lock. Warnings and
     /// content are committed under the same context, before any clipboard I/O.
+    /// A key citation waits for a read in progress: the answer it holds may be
+    /// the one that read replaces.
     pub(crate) fn commit<T>(
         &self,
         ticket: &str,
         write: impl FnOnce(Option<Current>) -> Result<T, crate::library::CommandError>,
     ) -> Result<T, crate::library::CommandError> {
         let slot = self.lock();
-        let valid = slot
-            .prepared
-            .as_ref()
-            .is_some_and(|(prepared, version)| prepared == ticket && *version == (slot.generation, slot.revision));
+        let valid = slot.prepared.as_ref().is_some_and(|(prepared, version, keys)| {
+            prepared == ticket && *version == (slot.generation, slot.revision) && !(*keys && slot.reading)
+        });
         if !valid {
             return Err(crate::library::CommandError::SnapshotChanged);
         }
@@ -214,11 +216,11 @@ impl ProjectBibliography {
     }
 
     /// Install a finished read, if its choice is still current. True when that
-    /// changed what the picker shows; an unchanged file wakes nothing.
-    fn finish_with(&self, generation: u32, read: ProjectRead, retire_delivery: impl FnOnce()) -> bool {
+    /// changed an answer; an unchanged file asks nothing again.
+    fn finish_with(&self, generation: u32, read: ProjectRead, retire_delivery: impl FnOnce()) -> Option<bool> {
         let mut slot = self.lock();
         if slot.generation != generation {
-            return false;
+            return None;
         }
         slot.reading = false;
         let unchanged = slot.read.as_ref().is_some_and(|old| old.same_answers(&read));
@@ -231,15 +233,17 @@ impl ProjectBibliography {
         if !unchanged {
             slot.revision = slot.revision.wrapping_add(1);
         }
-        !unchanged
+        Some(!unchanged)
     }
 
+    /// `None` when the read's choice was replaced; otherwise whether it changed
+    /// an answer. Either way a current read has ended, which the status shows.
     pub(crate) fn finish_read<R: tauri::Runtime>(
         &self,
         app: &AppHandle<R>,
         generation: u32,
         read: ProjectRead,
-    ) -> bool {
+    ) -> Option<bool> {
         self.finish_with(generation, read, || {
             let _ = crate::paste::change_destination(app, true, |_| Ok(()));
         })
@@ -247,13 +251,15 @@ impl ProjectBibliography {
 
     #[cfg(test)]
     fn finish(&self, generation: u32, read: ProjectRead) -> bool {
-        self.finish_with(generation, read, || {})
+        self.finish_with(generation, read, || {}) == Some(true)
     }
 
     pub(crate) fn status(&self) -> Option<ProjectStatus> {
         let slot = self.lock();
         let name = project_name(slot.path.as_deref()?);
+        // A check of a file already read also reads: its old answer may not stand.
         let state = match &slot.read {
+            _ if slot.reading => ProjectState::Reading,
             None => ProjectState::Reading,
             Some(read) if read.problem().is_some() => ProjectState::Failed,
             Some(read) if read.bibliography().is_some_and(|read| !read.complete()) => ProjectState::Damaged,
@@ -345,7 +351,7 @@ fn start_read(app: &AppHandle, ticket: Option<Ticket>) {
         loop {
             let read = ProjectRead::read(&ticket.path, ticket.previous.as_ref());
             let project = handle.state::<ProjectBibliography>();
-            if project.finish_read(&handle, ticket.generation, read) {
+            if project.finish_read(&handle, ticket.generation, read).is_some() {
                 changed(&handle);
             }
             match project.next_read() {
@@ -397,10 +403,17 @@ pub(crate) fn activate_context(
 pub(crate) fn watch_openings(app: &AppHandle) {
     use tauri::Listener;
     let handle = app.clone();
-    app.listen("picker:shown", move |_| {
-        let ticket = handle.state::<ProjectBibliography>().check_again();
-        start_read(&handle, ticket);
-    });
+    app.listen("picker:shown", move |_| read_again(&handle));
+}
+
+/// Check the current choice again. The picker hears that it is reading, so a
+/// key citation waits for the new answer instead of using the old one.
+fn read_again(app: &AppHandle) {
+    let ticket = app.state::<ProjectBibliography>().check_again();
+    if ticket.is_some() {
+        changed(app);
+    }
+    start_read(app, ticket);
 }
 
 fn apply(app: &AppHandle, path: Option<PathBuf>) -> Result<(), crate::library::CommandError> {
@@ -422,8 +435,7 @@ pub(crate) fn retry_project(app: AppHandle) {
     // saved; a changed bibliography starts its own read here.
     let captured = crate::paste::last_app(&app);
     let _ = crate::writings::refresh(&app, captured.as_ref().map(|(id, _, _)| id));
-    let ticket = app.state::<ProjectBibliography>().check_again();
-    start_read(&app, ticket);
+    read_again(&app);
 }
 
 /// Choose the file with the system dialog; the interface never handles a path.
@@ -1031,6 +1043,62 @@ mod tests {
         assert!(copied.is_err());
         assert_eq!(writes, 0);
         assert!(picker.listed().is_empty());
+    }
+
+    #[test]
+    fn a_key_citation_waits_for_the_check_that_reopening_starts() {
+        let intended = "@book{a2026,title={Intended work},doi={10.5555/intended}}\n";
+        let (_project_dir, path) = written("thesis.bib", intended);
+        let picker = Picker::new(intended, &path);
+        let (file, preview) = picker.prepare("a2026", 1);
+        assert_eq!(preview.project_refusal, None, "the key names the intended work");
+
+        // The file's key now names another work; the picker opens again and its
+        // check is still reading when Enter is pressed.
+        std::fs::write(&path, "@book{a2026,title={Another work},doi={10.5555/other}}\n")
+            .unwrap_or_else(|error| panic!("{error}"));
+        let slot = picker.app.state::<ProjectBibliography>();
+        let again = slot.check_again().unwrap_or_else(|| panic!("a ticket"));
+        assert_eq!(slot.status().map(|status| status.state), Some(ProjectState::Reading));
+        assert!(
+            slot.capture(Some(slot.version()), Some(crate::output::stored(Some("pandoc"))))
+                .is_err(),
+            "no key citation is prepared from the answer being replaced"
+        );
+        assert!(
+            slot.capture(Some(slot.version()), Some(crate::output::stored(Some("apa"))))
+                .is_ok(),
+            "formatted text does not wait"
+        );
+        let mut writes = 0;
+        let copied = crate::copy::commit_copy(
+            &file,
+            &file
+                .engine
+                .citations()
+                .commit(
+                    ibis_engine::citations::SessionId::PICKER,
+                    &preview.ticket,
+                    &preview.content_hash,
+                )
+                .unwrap_or_else(|_| panic!("recited")),
+            crate::copy::ProjectCopy {
+                project: &slot,
+                session: &picker.app.state::<crate::session_references::SessionReferences>(),
+            },
+            |_| {
+                writes += 1;
+                Ok(None)
+            },
+        );
+        assert!(copied.is_err());
+        assert_eq!(writes, 0, "nothing reaches the clipboard or is pasted");
+        assert!(picker.listed().is_empty());
+
+        // The check's answer arrives, and the citation is refused for it.
+        assert!(slot.finish(again.generation, read(&again)));
+        let (_, preview) = picker.prepare("a2026", 2);
+        assert!(preview.project_refusal.is_some());
     }
 
     #[test]
