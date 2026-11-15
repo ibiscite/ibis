@@ -5,8 +5,8 @@ case ${1:-} in
   policy)
     blocking=true
     case ${EVENT:-} in
-      push)
-        # Main pushes compare both commits.
+      push|pull_request)
+        # Compare a pull request or main push with its base.
         # No rename detection: removing a manifest counts as a change too.
         if [[ ${REF:-} == refs/tags/* ]]; then echo "blocking=true"; exit 0; fi
         range="${BASE_SHA:-}..${HEAD_SHA:-}"
