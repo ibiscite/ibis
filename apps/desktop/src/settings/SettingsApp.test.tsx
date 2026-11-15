@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import axe from "axe-core";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
-import type { CommandStatus, PickerPreferences, PickerSave, ShortcutStatus, WindowSize } from "../bindings";
+import type { CommandStatus, LoginItem, PickerPreferences, PickerSave, ShortcutStatus, WindowSize } from "../bindings";
 import { bindingKeys, DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
 import { currentPlatform } from "../platform";
 import { pageOf, SettingsApp } from "./SettingsApp";
@@ -1663,7 +1663,8 @@ test("a successful manual update check cannot turn an unreadable update setting 
   await act(async () => fireEvent.click(button));
   expect(check).toHaveBeenCalledOnce();
   expect(screen.getByRole("button", { name: "Check for Updates" })).toBe(button);
-  expect(screen.getByRole("switch", { name: "Check for updates automatically" })).toHaveProperty("disabled", true);
+  // Unread, the setting shows no value at all rather than a disabled "off".
+  expect(screen.queryByRole("switch", { name: "Check for updates automatically" })).toBeNull();
   expect(screen.getByText("Ibis could not read your settings; reopen Settings to try again.")).toBeTruthy();
   expect(screen.queryByText("This build does not update itself.")).toBeNull();
 });
@@ -2147,3 +2148,16 @@ function shortcutFailure(code: string) {
   return { code, message: { id: `shortcuts-refusal-${code}`, args: {} },
     recovery: { action: code === "unavailable" ? "open-ibis" : code === "not-saved" ? "retry" : "choose-shortcut" }, focus: "recovery-action" };
 }
+
+test("a setting whose value is not known yet paints neither on nor off, then its value", async () => {
+  const { api } = fakeApi();
+  let answer!: (status: LoginItem) => void;
+  vi.spyOn(api, "loginItem").mockReturnValueOnce(new Promise<LoginItem>((resolve) => { answer = resolve; }));
+  render(<SettingsApp api={api} initialPage="general" />);
+  const row = (await screen.findByText(/^(Open at login|Start when you sign in|Start on login)$/)).closest(".ui-row")!;
+  expect(within(row as HTMLElement).queryByRole("switch")).toBeNull();
+  expect(row.getAttribute("aria-busy")).toBe("true");
+  expect(row.querySelector(".ui-switch[data-placeholder]")).not.toBeNull();
+  await act(async () => answer({ enabled: true, name: "Ibis", problem: null }));
+  expect((within(row as HTMLElement).getByRole("switch") as HTMLInputElement).checked).toBe(true);
+});

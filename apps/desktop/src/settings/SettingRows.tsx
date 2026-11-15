@@ -13,6 +13,7 @@ import { PickerPicture } from "./PickerPicture";
 import { PREFERENCES, rowDetails, type SettingRow, type NativeSetting } from "./rows";
 
 export type SettingState = {
+  /** Null until the saved value is known: the row then shows no value at all. */
   value: string | boolean | null; disabled?: boolean; description?: string;
   change: (value: string | boolean, restoring?: boolean) => Promise<unknown>;
   restore?: { apply: () => Promise<void>; undo: () => Promise<void> };
@@ -27,7 +28,10 @@ export function Setting({ row, state, preferences, feedback, reset, size = null 
   const { text } = useInterfaceMessages();
   const details = rowDetails(row.id, text);
   const label = details.label, platform = currentPlatform();
-  const value = state.value ?? row.default ?? null;
+  // Never paint a value before it is known: a default drawn first, then the saved
+  // value, reads as the setting changing by itself.
+  const value = state.value;
+  const known = value !== null;
   const change = (next: string | boolean) => { void state.change(next).catch(() => undefined); };
   const options = "options" in row ? row.options.filter((option) => !option.currentOnly || option.value === value) : [];
   const labels = options.map((option) => ({ value: String(option.value), label: text(option.label, { platform }), isDisabled: state.disabled }));
@@ -37,17 +41,20 @@ export function Setting({ row, state, preferences, feedback, reset, size = null 
   return <>{row.control === "appearance" && <div className="ui-picture-preview" data-pair={pictures.length > 1 || undefined} aria-hidden="true">
     {pictures.map((appearance) => <PickerPicture key={appearance} density={preferences?.density} appearance={appearance} frame={WINDOWS[size ?? "medium"]} />)}</div>}
   <Row id={row.id} {...details} description={state.description ?? details.description} {...feedback}
-    reset={row.default === undefined ? undefined : !state.disabled && state.value !== null && value !== row.default ? { label, onReset: () => {
+    pending={!known || undefined}
+    reset={row.default === undefined ? undefined : !state.disabled && known && value !== row.default ? { label, onReset: () => {
       const restore = state.restore ?? { apply: async () => { await state.change(row.default!); }, undo: async () => { await state.change(value!, true); } };
       void reset(label, restore.apply, restore.undo);
     } } : null}>
-    {row.control === "switch" ? <Switch aria-labelledby={row.id} aria-describedby={details.description ? `${row.id}-description` : undefined}
+    {row.control === "switch" ? known ? <Switch aria-labelledby={row.id} aria-describedby={details.description ? `${row.id}-description` : undefined}
       isSelected={Boolean(value)} isDisabled={state.disabled} onChange={change} />
-    : row.control === "appearance" ? <PictureChoice size="small" label={label} value={String(value)}
+      // The switch's room, neither on nor off and not announced, until the value arrives.
+      : <span className="ui-switch" data-placeholder aria-hidden="true"><span className="ui-switch-track" /></span>
+    : row.control === "appearance" ? <PictureChoice size="small" label={label} value={known ? String(value) : ""} isDisabled={!known}
       options={labels.map((option) => ({ ...option, picture: <PickerPicture density={preferences?.density}
         appearance={option.value === "system" ? "light" : option.value} split={option.value === "system"} /> }))} onChange={choose} />
     : row.control === "documents" || row.control === "keys" ? <FormatControl label={label} value={String(value)} keys={row.control === "keys"} onChange={change} />
-    : <><Segmented label={label} value={String(value)} options={labels} onChange={choose} />
+    : <><Segmented label={label} value={known ? String(value) : null} options={labels} onChange={choose} />
       {row.note && options.some((option) => option.currentOnly && option.value === value) && <Note>{text(row.note)}</Note>}</>}
   </Row></>;
 }
@@ -65,7 +72,7 @@ export function SettingRows({ rows, preferences, change, owners, feedback, reset
   return <>{groups.map((group) => <Section key={group ?? "choices"} id={rows.find((row) => row.group === group)?.section} title={group && text(group)}><Group>
     {rows.filter((row) => row.group === group).map((row) => {
       const preference = row.preference;
-      const state = preference ? { value: preferences?.[preference] ?? row.default ?? null, disabled: !preferences,
+      const state = preference ? { value: preferences ? preferences[preference] ?? row.default ?? null : null, disabled: !preferences,
         change: (value: string | boolean, restoring?: boolean) => change({ [preference]: value }, restoring) } : owners[row.native!];
       return <Fragment key={row.id}>{"content" in state ? state.content : <Setting row={row} state={state} preferences={preferences} feedback={feedback(row.id)} reset={reset} size={size} />}{after[row.id]}</Fragment>;
     })}
