@@ -1,5 +1,4 @@
-//! Win32 calls for the closed reader on Windows: the only unsafe code in
-//! Ibis (decision 0006). Each call sits in a small wrapper with a SAFETY note.
+//! Win32 calls for the closed reader on Windows, with a SAFETY note at each call.
 
 use super::{ClosedError, Control, FileLease, drive_path};
 use std::ffi::{OsString, c_void};
@@ -300,11 +299,16 @@ fn open(path: &Path, access: u32, control: &Control) -> Result<Handle, ClosedErr
     })
 }
 
-/// Disposable files get TokenUser ownership at creation, even when elevated.
-/// CREATE_NEW refuses existing entries; inherit the verified user-only DACL.
-pub(super) fn private_file(path: &Path, control: &Control) -> Result<File, ClosedError> {
+/// Set TokenUser ownership only on creation, inheriting the verified parent's
+/// DACL. Reusable Zotero locks retain their name and ownership-repair rights.
+fn private_open(path: &Path, lock: bool, control: &Control) -> Result<(File, User), ClosedError> {
     control.check()?;
-    let value = checked_path(path).map_err(|error| error.context(ClosedError::PrivateStorage))?;
+    let failure = if lock {
+        ClosedError::LockPermissions
+    } else {
+        ClosedError::PrivateStorage
+    };
+    let value = checked_path(path).map_err(|error| error.context(failure))?;
     let parent = path.parent().ok_or(ClosedError::PrivateStorage)?;
     verify(parent, true, control).map_err(|error| error.context(ClosedError::PrivateStorage))?;
     let user = user(control)?;
@@ -316,30 +320,43 @@ pub(super) fn private_file(path: &Path, control: &Control) -> Result<File, Close
     control.check()?;
     // SAFETY: sd is initialized and user owns the live, validated TokenUser SID.
     succeeded(unsafe { SetSecurityDescriptorOwner(sd, user.sid(), 0) })?;
-    // Leave SE_DACL_PRESENT unset, so Windows inherits the parent's DACL.
-    // A present NULL DACL would instead grant unrestricted access.
+    // Leave SE_DACL_PRESENT unset to inherit; a NULL DACL would allow everyone.
     let attributes = SECURITY_ATTRIBUTES {
         nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
         lpSecurityDescriptor: sd,
         bInheritHandle: 0,
     };
     control.check()?;
-    // SAFETY: path, descriptor and SID remain live throughout creation.
-    // CREATE_NEW never replaces an entry, including a reparse point.
-    let handle = Handle::new(unsafe {
+    // SAFETY: the checked path and security allocations remain live. CREATE_NEW
+    // refuses every existing entry; OPEN_ALWAYS preserves existing security.
+    let raw = unsafe {
         CreateFileW(
             value.as_ptr(),
-            GENERIC_READ | GENERIC_WRITE | DELETE,
-            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            GENERIC_READ | GENERIC_WRITE | if lock { WRITE_OWNER | WRITE_DAC } else { DELETE },
+            FILE_SHARE_READ | FILE_SHARE_WRITE | if lock { 0 } else { FILE_SHARE_DELETE },
             &attributes,
-            CREATE_NEW,
+            if lock { OPEN_ALWAYS } else { CREATE_NEW },
             FILE_FLAG_OPEN_REPARSE_POINT,
             null_mut(),
         )
-    })?;
+    };
+    if raw == INVALID_HANDLE_VALUE {
+        // SAFETY: read immediately after failed CreateFileW.
+        return Err(if lock && unsafe { GetLastError() } == ERROR_SHARING_VIOLATION {
+            ClosedError::StorageInUse
+        } else {
+            failure
+        });
+    }
+    let file = Handle::new(raw).map_err(|error| error.context(failure))?.into_file();
+    Ok((file, user))
+}
+
+pub(super) fn private_file(path: &Path, control: &Control) -> Result<File, ClosedError> {
+    let (file, user) = private_open(path, false, control)?;
     let result = (|| {
-        verify_file(&handle, control)?;
-        verify_acl(&handle, &user, false, control)
+        verify_file(&file, control)?;
+        verify_acl(&file, &user, false, control)
     })();
     if let Err(error) = result {
         let mut disposition = FILE_DISPOSITION_INFO { DeleteFile: true };
@@ -348,7 +365,7 @@ pub(super) fn private_file(path: &Path, control: &Control) -> Result<File, Close
         // This also leaves a cancelled root-tag creation retryable.
         unsafe {
             SetFileInformationByHandle(
-                handle.0,
+                file.as_raw_handle(),
                 FileDispositionInfo,
                 addr_of_mut!(disposition).cast(),
                 size_of::<FILE_DISPOSITION_INFO>() as u32,
@@ -356,55 +373,14 @@ pub(super) fn private_file(path: &Path, control: &Control) -> Result<File, Close
         };
         return Err(error);
     }
-    Ok(handle.into_file())
+    Ok(file)
 }
 
 /// A persistent lock is never unlinked. Repair old elevated TokenOwner files
 /// on the very handle holding the exclusive lease, then verify before use.
 pub(super) fn private_lock(path: &Path, control: &Control) -> Result<FileLease, ClosedError> {
-    control.check()?;
-    let value = checked_path(path).map_err(|error| error.context(ClosedError::LockPermissions))?;
-    let parent = path.parent().ok_or(ClosedError::PrivateStorage)?;
-    verify(parent, true, control).map_err(|error| error.context(ClosedError::PrivateStorage))?;
-    let user = user(control)?;
-    let mut descriptor = SECURITY_DESCRIPTOR::default();
-    let sd = addr_of_mut!(descriptor).cast::<c_void>();
-    control.check()?;
-    // SAFETY: sd points to writable, aligned SECURITY_DESCRIPTOR storage.
-    succeeded(unsafe { InitializeSecurityDescriptor(sd, 1) })?;
-    // SAFETY: descriptor is initialized and the validated TokenUser SID is live.
-    succeeded(unsafe { SetSecurityDescriptorOwner(sd, user.sid(), 0) })?;
-    let attributes = SECURITY_ATTRIBUTES {
-        nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
-        lpSecurityDescriptor: sd,
-        bInheritHandle: 0,
-    };
-    control.check()?;
-    // SAFETY: all path/descriptor/SID storage is live. OPEN_ALWAYS preserves
-    // existing bytes and security. WRITE_OWNER/WRITE_DAC ask Windows to check
-    // this token's authority to repair; no ownership privilege is enabled here.
-    // Omitting delete sharing keeps this lock's name in place until release.
-    let raw = unsafe {
-        CreateFileW(
-            value.as_ptr(),
-            GENERIC_READ | GENERIC_WRITE | WRITE_OWNER | WRITE_DAC,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            &attributes,
-            OPEN_ALWAYS,
-            FILE_FLAG_OPEN_REPARSE_POINT,
-            null_mut(),
-        )
-    };
-    if raw == INVALID_HANDLE_VALUE {
-        // SAFETY: read immediately after failed CreateFileW.
-        return Err(if unsafe { GetLastError() } == ERROR_SHARING_VIOLATION {
-            ClosedError::StorageInUse
-        } else {
-            ClosedError::LockPermissions
-        });
-    }
-    let handle = Handle::new(raw).map_err(|error| error.context(ClosedError::LockPermissions))?;
-    let lease = FileLease::acquire(handle.into_file()).map_err(|error| match error {
+    let (file, user) = private_open(path, true, control)?;
+    let lease = FileLease::acquire(file).map_err(|error| match error {
         std::fs::TryLockError::WouldBlock => ClosedError::StorageInUse,
         _ => ClosedError::LockPermissions,
     })?;
@@ -967,6 +943,46 @@ mod tests {
         // An exclusive Windows byte-range lease prevents ordinary reads.
         drop(lease);
         assert_eq!(std::fs::read(&lock).unwrap_or_default(), b"invented");
+    }
+
+    #[test]
+    fn ordinary_files_need_only_data_access_and_keep_standard_security() {
+        use windows_sys::Win32::Storage::FileSystem::{FILE_GENERIC_READ, FILE_GENERIC_WRITE};
+        let parent = scratch();
+        let path = parent.path().join("settings.lock");
+        File::create(&path).unwrap_or_else(|_| panic!("synthetic settings lock"));
+        let editor =
+            open(&path, READ_CONTROL | WRITE_DAC, &control()).unwrap_or_else(|_| panic!("synthetic permission handle"));
+        let before = Descriptor::read(&editor, &control()).unwrap_or_else(|_| panic!("synthetic owner"));
+        replace_acl(&editor, FILE_GENERIC_READ | FILE_GENERIC_WRITE, 1);
+        let opened = ibis_core::atomic_file::open_private(&path);
+        let after = Descriptor::read(&editor, &control()).unwrap_or_else(|_| panic!("synthetic owner"));
+        replace_acl(&editor, FILE_ALL_ACCESS, 1);
+        assert!(
+            opened.is_ok(),
+            "opening an ordinary lock needs no ownership or ACL rights"
+        );
+        // SAFETY: both SIDs borrow live OS-returned security descriptors.
+        assert_ne!(unsafe { EqualSid(before.owner, after.owner) }, 0);
+        drop(opened);
+        drop(editor);
+        ibis_core::atomic_file::AtomicFile::new(&path, b"replacement")
+            .and_then(|file| file.replace())
+            .unwrap_or_else(|_| panic!("synthetic replacement"));
+        let replaced = open(&path, READ_CONTROL, &control()).unwrap_or_else(|_| panic!("synthetic replaced file"));
+        let after = Descriptor::read(&replaced, &control()).unwrap_or_else(|_| panic!("synthetic replaced security"));
+        // SAFETY: both owners belong to live OS-returned descriptors.
+        assert_ne!(unsafe { EqualSid(before.owner, after.owner) }, 0);
+        let mut controls = [0; 2];
+        for (descriptor, flags) in [&before, &after].into_iter().zip(&mut controls) {
+            let mut revision = 0;
+            // SAFETY: the descriptor is live and both outputs are writable.
+            assert_ne!(
+                unsafe { GetSecurityDescriptorControl(descriptor.raw, flags, &mut revision) },
+                0
+            );
+        }
+        assert_eq!(controls[0], controls[1], "replacement keeps std's inherited security");
     }
 
     #[test]

@@ -57,7 +57,7 @@ stderr|   For more information, try '--help'.
 
 $ ibis show --id nonsense
 exit 3
-stderr| ibis: --id must be a reference's id, the JSON that ibis search --json prints.
+stderr| ibis: --id must be a reference’s id, the JSON that ibis search --json prints.
 
 $ ibis show absent --json
 exit 4

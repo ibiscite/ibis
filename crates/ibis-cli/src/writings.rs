@@ -1,6 +1,6 @@
 //! Writings use the same checked settings model as the app. CLI
 //! selection belongs to one request, never the GUI's selected app or document.
-use crate::{Failure, human, settings_backup};
+use crate::{Failure, human, human::cli, settings_backup};
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use ibis_core::contract::{ErrorCode, ExitCode, OutputSpec};
 use ibis_engine::settings::{
@@ -141,7 +141,7 @@ fn output(engine: &Engine, args: &ArgMatches) -> Result<Option<OutputSpec>, Fail
         if !styles.styles.iter().any(|known| &known.id == style) {
             return Err(Failure::new(
                 ErrorCode::BadInput,
-                "That citation style is unavailable. List styles with: ibis styles",
+                cli("cli-writing-style-unavailable", &[]),
             ));
         }
         return Ok(Some(OutputSpec::Csl { style: style.clone() }));
@@ -150,12 +150,7 @@ fn output(engine: &Engine, args: &ArgMatches) -> Result<Option<OutputSpec>, Fail
         .map(|format| {
             ibis_engine::outputs::find(format)
                 .map(|output| output.output.clone())
-                .ok_or_else(|| {
-                    Failure::new(
-                        ErrorCode::BadInput,
-                        "That output is unavailable. List outputs with: ibis outputs",
-                    )
-                })
+                .ok_or_else(|| Failure::new(ErrorCode::BadInput, cli("cli-writing-output-unavailable", &[])))
         })
         .transpose()
 }
@@ -171,18 +166,15 @@ fn bibliography(args: &ArgMatches) -> Result<Option<PathBuf>, Failure> {
             {
                 return Err(Failure::new(
                     ErrorCode::BadInput,
-                    "Choose a BibTeX or BibLaTeX bibliography with a .bib file name.",
+                    cli("cli-writing-bibliography-needed", &[]),
                 ));
             }
             if path.is_absolute() {
                 Ok(path.clone())
             } else {
-                std::env::current_dir().map(|current| current.join(path)).map_err(|_| {
-                    Failure::new(
-                        ErrorCode::SourceUnavailable,
-                        "The current folder is unavailable. Give the bibliography's full path.",
-                    )
-                })
+                std::env::current_dir()
+                    .map(|current| current.join(path))
+                    .map_err(|_| Failure::new(ErrorCode::SourceUnavailable, cli("cli-writing-folder-unavailable", &[])))
             }
         })
         .transpose()
@@ -197,7 +189,7 @@ pub(crate) fn run(engine: &Engine, args: &ArgMatches) -> Result<DispatchResult, 
     let nightly = args.get_flag("nightly");
     let (action, args) = args
         .subcommand()
-        .ok_or_else(|| Failure::new(ErrorCode::Usage, "Choose list, create, rename, update or remove."))?;
+        .ok_or_else(|| Failure::new(ErrorCode::Usage, cli("cli-writing-action-needed", &[])))?;
     if action == "schema" {
         return Ok(DispatchResult {
             data: WritingCitation::schema(),
@@ -210,7 +202,7 @@ pub(crate) fn run(engine: &Engine, args: &ArgMatches) -> Result<DispatchResult, 
     let result = if action == "list" {
         let rows: Vec<_> = settings.device.writings.iter().map(view).collect();
         let text = if rows.is_empty() {
-            "No writings yet. Create one with: ibis writings create NAME --format pandoc".into()
+            cli("cli-writings-empty", &[])
         } else {
             settings
                 .device
@@ -252,7 +244,7 @@ pub(crate) fn run(engine: &Engine, args: &ArgMatches) -> Result<DispatchResult, 
         match action {
             "create" => {
                 let output = output(engine, args)?
-                    .ok_or_else(|| Failure::new(ErrorCode::Usage, "Choose --format or --style."))?;
+                    .ok_or_else(|| Failure::new(ErrorCode::Usage, cli("cli-writing-format-needed", &[])))?;
                 let bibliography = bibliography(args)?;
                 let name = args.get_one::<String>("name").cloned().unwrap_or_default();
                 owner.change(|settings| writings::create(settings, name, output, bibliography))
@@ -277,10 +269,7 @@ pub(crate) fn run(engine: &Engine, args: &ArgMatches) -> Result<DispatchResult, 
                 })
             }
             _ => {
-                return Err(Failure::new(
-                    ErrorCode::Usage,
-                    "Choose list, create, rename, update or remove.",
-                ));
+                return Err(Failure::new(ErrorCode::Usage, cli("cli-writing-action-needed", &[])));
             }
         }
         .map(|(_, writing)| writing)
@@ -288,20 +277,9 @@ pub(crate) fn run(engine: &Engine, args: &ArgMatches) -> Result<DispatchResult, 
     };
     Ok(DispatchResult {
         data: json!({"writing":view(&result),"action":action}),
-        text: Some(format!(
-            "{} writing {}.{}",
-            match action {
-                "create" => "Created",
-                "rename" => "Renamed",
-                "remove" => "Removed",
-                _ => "Updated",
-            },
-            human::field(&result.name),
-            if action == "remove" {
-                " Its bibliography file was kept."
-            } else {
-                ""
-            }
+        text: Some(cli(
+            "cli-writing-saved",
+            &[("action", action), ("name", &human::field(&result.name))],
         )),
         source_findings: false,
         exit_code: ExitCode::Ok,
@@ -324,6 +302,6 @@ pub(crate) fn with_check(
         result.exit_code = ExitCode::Findings;
     }
     result.data = serde_json::to_value(writing)
-        .map_err(|_| Failure::new(ErrorCode::Internal, "The writing citation is unavailable."))?;
+        .map_err(|_| Failure::new(ErrorCode::Internal, cli("cli-writing-citation-unavailable", &[])))?;
     Ok(result.bounded()?)
 }

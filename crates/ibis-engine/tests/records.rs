@@ -186,15 +186,14 @@ fn a_file_field_is_never_followed_and_private_links_are_removed() {
 }
 
 #[test]
-fn too_many_or_too_deep_records_hit_a_resource_limit() {
+fn too_many_records_have_a_specific_refusal_and_deep_records_hit_a_resource_limit() {
     let engine = Engine::new().unwrap();
     let many: Vec<Value> = (0..1001)
         .map(|n| json!({"id": format!("r{n}"), "type": "book", "title": "Invented"}))
         .collect();
-    assert_eq!(
-        records(&engine, apa(json!(many))).unwrap_err().code,
-        ErrorCode::ResourceLimit
-    );
+    let error = records(&engine, apa(json!(many))).unwrap_err();
+    assert_eq!(error.code, ErrorCode::ResourceLimit);
+    assert_eq!(error.citation_error, Some(CitationError::TooManyRecords));
     let mut deep = json!("bottom");
     for _ in 0..20 {
         deep = json!([deep]);

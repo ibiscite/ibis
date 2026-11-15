@@ -552,9 +552,11 @@ impl Engine {
         cancel: &Cancellation,
     ) -> Result<CitationRequest, EngineError> {
         cancel.check()?;
-        if request.keys.is_empty() || request.keys.len() > ibis_core::syntax::MAX_CITATION_ITEMS {
+        if request.keys.is_empty() {
             return Err(error(ErrorCode::BadInput));
         }
+        ibis_core::citation::check_item_limit(request.keys.len())
+            .map_err(|_| EngineError::citation(CitationError::TooManyKeys))?;
         let state = self.state()?;
         let snapshot = state.index.snapshot();
         let output = crate::outputs::resolve(&request.output)?;
@@ -596,8 +598,9 @@ impl Engine {
         }
         // Records are far shallower than any transport limit allows, so the
         // same records meet the same limits however they arrive.
-        if request.records.len() > ibis_core::syntax::MAX_CITATION_ITEMS
-            || request.records.iter().any(|record| depth(record) > MAX_RECORD_DEPTH)
+        ibis_core::citation::check_item_limit(request.records.len())
+            .map_err(|_| EngineError::citation(CitationError::TooManyRecords))?;
+        if request.records.iter().any(|record| depth(record) > MAX_RECORD_DEPTH)
             || crate::wire::serialized_size(&request.records, MAX_RECORDS_BYTES).is_err()
         {
             return Err(error(ErrorCode::ResourceLimit));
@@ -638,9 +641,11 @@ impl Engine {
                 })
                 .collect(),
         };
-        if picks.is_empty() || picks.len() > ibis_core::syntax::MAX_CITATION_ITEMS {
+        if picks.is_empty() {
             return Err(error(ErrorCode::BadInput));
         }
+        ibis_core::citation::check_item_limit(picks.len())
+            .map_err(|_| EngineError::citation(CitationError::TooManyRecordItems))?;
         let snapshot = Arc::new(
             Snapshot::new(read.records.into_iter().map(LibraryObject::Record).collect())
                 .map_err(|_| error(ErrorCode::BadInput))?,

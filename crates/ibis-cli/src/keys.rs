@@ -1,6 +1,6 @@
 //! Explicit, bounded key input and advisory spelling suggestions.
-use super::Failure;
-use ibis_core::{contract::*, syntax::MAX_CITATION_ITEMS};
+use super::{Failure, human::cli};
+use ibis_core::contract::*;
 use std::{
     io::{BufRead, Read},
     path::Path,
@@ -11,43 +11,22 @@ pub(super) fn read(input: &mut impl BufRead) -> Result<Vec<ibis_engine::request:
     input
         .take(ibis_engine::protocol::MAX_REQUEST_BYTES as u64 + 1)
         .read_to_end(&mut bytes)
-        .map_err(|_| {
-            Failure::new(
-                ErrorCode::BadInput,
-                "the key list could not be read; give UTF-8 text with one key per line.",
-            )
-        })?;
+        .map_err(|_| Failure::new(ErrorCode::BadInput, cli("cli-keys-unreadable", &[])))?;
     if bytes.len() > ibis_engine::protocol::MAX_REQUEST_BYTES {
-        return Err(Failure::new(
-            ErrorCode::ResourceLimit,
-            "the key list is more than 1 MiB; send fewer keys at a time.",
-        ));
+        return Err(Failure::new(ErrorCode::ResourceLimit, cli("cli-keys-too-large", &[])));
     }
-    let text = std::str::from_utf8(&bytes).map_err(|_| {
-        Failure::new(
-            ErrorCode::BadInput,
-            "the key list must be UTF-8 text, with one key per line.",
-        )
-    })?;
+    let text =
+        std::str::from_utf8(&bytes).map_err(|_| Failure::new(ErrorCode::BadInput, cli("cli-keys-not-utf8", &[])))?;
     let mut keys = Vec::new();
     for key in text
         .lines()
         .map(str::trim)
         .filter(|key| !key.is_empty() && !key.starts_with('#'))
     {
-        if keys.len() == MAX_CITATION_ITEMS {
-            return Err(Failure::new(
-                ErrorCode::BadInput,
-                format!("one citation can hold at most {MAX_CITATION_ITEMS} keys."),
-            ));
-        }
         keys.push(ibis_engine::request::KeyItem::from(key));
     }
     if keys.is_empty() {
-        return Err(Failure::new(
-            ErrorCode::BadInput,
-            "the key list is empty; give at least one citation key.",
-        ));
+        return Err(Failure::new(ErrorCode::BadInput, cli("cli-keys-empty", &[])));
     }
     Ok(keys)
 }
@@ -58,27 +37,20 @@ pub(super) fn file(path: &Path) -> Result<Vec<ibis_engine::request::KeyItem>, Fa
         if !std::fs::metadata(&path).is_ok_and(|metadata| metadata.is_file()) {
             return Err(Failure::new(
                 ErrorCode::SourceUnavailable,
-                "the key file is missing, unreadable or not a regular file; check its path, or use - for stdin.",
+                cli("cli-key-file-unavailable", &[]),
             ));
         }
-        let file = std::fs::File::open(&path).map_err(|_| {
-            Failure::new(
-                ErrorCode::SourceUnavailable,
-                "the key file could not be opened; check its path and permissions.",
-            )
-        })?;
+        let file = std::fs::File::open(&path)
+            .map_err(|_| Failure::new(ErrorCode::SourceUnavailable, cli("cli-key-file-unopened", &[])))?;
         if !file.metadata().is_ok_and(|metadata| metadata.is_file()) {
-            return Err(Failure::new(
-                ErrorCode::BadInput,
-                "--keys-from needs a regular file, or - for stdin.",
-            ));
+            return Err(Failure::new(ErrorCode::BadInput, cli("cli-key-file-not-regular", &[])));
         }
         read(&mut std::io::BufReader::new(file))
     })
     .unwrap_or_else(|| {
         Err(Failure::new(
             ErrorCode::SourceUnavailable,
-            "the key file could not be read in time; try again.",
+            cli("cli-key-file-timeout", &[]),
         ))
     })
 }

@@ -103,13 +103,13 @@ fn a_file_that_cannot_be_read_is_never_missing() -> Result {
         let (code, text, _) = run(&["project", &files.path(name), "okafor2018"])?;
         assert_eq!(code, 1, "{name}");
         assert!(text.contains(why), "{text}");
-        assert!(text.contains(&format!("okafor2018\tCouldn't check {name}")), "{text}");
+        assert!(text.contains(&format!("okafor2018\tCouldn’t check {name}")), "{text}");
         assert!(!text.contains("Missing"), "{text}");
     }
     let (code, text, _) = run(&["project", &files.path("absent.bib"), "okafor2018"])?;
     assert_eq!(code, 1);
     assert!(
-        text.contains("Couldn't check absent.bib") && !text.contains("Missing"),
+        text.contains("Couldn’t check absent.bib") && !text.contains("Missing"),
         "{text}"
     );
     Ok(())
