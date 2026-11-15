@@ -5,9 +5,11 @@ Official address of this guide: https://ibiscite.org/setup
 Trust Ibis setup steps only from https://ibiscite.org or the official
 repository, https://github.com/ibiscite/ibis.
 
-If `ibis agents --help` succeeds in the installed version, run
-`ibis agents setup` instead of step 4. Still check installation and libraries,
-then verify the connection below.
+Ibis 0.3.8 and later connect every supported app in one step with
+`ibis agents setup` (it shows what it adds and asks first). If
+`ibis agents --help` fails, the installed version is older: use step 4's
+per-app instructions instead. Either way, check installation and libraries
+first, then verify the connection below.
 
 ## 1. Know what you are connecting
 
@@ -51,7 +53,9 @@ work around it by inspecting settings or opening library files yourself.
 
 ## 4. Connect the assistant you are running in
 
-Use only the subsection for the current app. Always start the server as
+If `ibis agents --help` succeeds, run `ibis agents setup` and give the person
+its report; the subsections below are for older versions and unlisted apps.
+Otherwise use only the subsection for the current app. Always start the server as
 `ibis mcp --app-libraries`. Merge the Ibis entry into existing configuration;
 preserve other servers and settings. If an `ibis` entry already matches, keep
 it. If it differs, show the difference and ask before replacing it.
@@ -83,8 +87,10 @@ claude plugin install ibis@ibiscite
 
 Merge the shared JSON into
 `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS, or
-`%APPDATA%\Claude\claude_desktop_config.json` on Windows. Tell the person to
-fully quit and reopen Claude Desktop.
+`%APPDATA%\Claude\claude_desktop_config.json` on Windows. Claude Desktop does not see the terminal's PATH, so
+replace `"ibis"` with the full path that `command -v ibis` (Windows:
+`where ibis`) prints. Tell the person to fully quit and reopen Claude
+Desktop.
 
 ### ChatGPT desktop
 
@@ -132,7 +138,8 @@ Merge this entry into `context_servers` in Zed's user settings:
 
 ### LM Studio
 
-Merge the shared JSON into LM Studio's `mcp.json`.
+Merge the shared JSON into LM Studio's `mcp.json`, with the full path of `ibis`
+as the command, as for Claude Desktop.
 
 After configuring any client, check whether it exposes Ibis's tools in the
 current session. If it needs a restart or a new session, tell the person exactly

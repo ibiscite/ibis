@@ -79,25 +79,49 @@ fn registered_user_path() -> Result<Option<std::ffi::OsString>, String> {
 #[tauri::command]
 #[ibis_desktop_macros::command]
 pub(crate) async fn cli_status(app: tauri::AppHandle) -> Result<CommandStatus, String> {
-    operation(app, None).await
+    operation(app, Step::Status).await
 }
 
 #[tauri::command]
 #[ibis_desktop_macros::command]
 pub(crate) async fn set_cli_installed(app: tauri::AppHandle, installed: bool) -> Result<CommandStatus, String> {
-    operation(app, Some(installed)).await
+    operation(app, if installed { Step::Install } else { Step::Remove }).await
 }
 
-async fn operation(app: tauri::AppHandle, installed: Option<bool>) -> Result<CommandStatus, String> {
+/// Installing the app is all it takes to get `ibis` on macOS and Linux: the
+/// first launch of an installed release puts the command in `~/.local/bin`
+/// (Settings shows the profile line when that is not on PATH) unless another
+/// installer owns that place; afterwards the choice in Settings stands
+/// (Windows's installer adds it to PATH itself). Development builds never do.
+pub(crate) fn keep_at_launch(app: &tauri::AppHandle) {
+    if cfg!(debug_assertions) || cfg!(windows) {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = operation(app, Step::Keep).await;
+    });
+}
+
+#[derive(Clone, Copy)]
+enum Step {
+    Status,
+    Install,
+    Remove,
+    Keep,
+}
+
+async fn operation(app: tauri::AppHandle, step: Step) -> Result<CommandStatus, String> {
     static OWNER: tauri::async_runtime::Mutex<()> = tauri::async_runtime::Mutex::const_new(());
     // Acquire the FIFO owner before scheduling blocking work, including reads
     // after a close/reopen. Moving the lock into that work permits reordering.
     with_owner(&OWNER, move || {
         let install = installer(&app)?;
-        match installed {
-            None => install.status(),
-            Some(true) => install.install(),
-            Some(false) => install.remove(),
+        match step {
+            Step::Status => install.status(),
+            Step::Install => install.install(),
+            Step::Remove => install.remove(),
+            Step::Keep => install.keep_installed(),
         }
         .map_err(|_| "Could not change the ibis command. Check the folder permissions and try again.".into())
     })

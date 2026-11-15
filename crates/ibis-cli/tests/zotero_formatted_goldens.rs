@@ -182,3 +182,91 @@ fn replay(engine: &Engine, cases: &[Value], keys: &[String], items: &[Value]) ->
     }
     Ok(())
 }
+
+/// A Zotero date typed without leading zeros is still a date: APA prints the
+/// year, never the typed text (beta report, 2026-11-15).
+#[test]
+fn a_date_typed_without_leading_zeros_cites_its_year() -> TestResult {
+    let library = ZoteroSource::default().id_of(Library::User).ok_or("library id")?;
+    let item: ZoteroItem = serde_json::from_value(json!({
+        "key": "UNPADDED", "itemType": "journalArticle", "title": "Invented localization study",
+        "date": "2025-1-12", "citationKey": "inventedUnpadded2025",
+        "creators": [
+            {"creatorType": "author", "firstName": "Ada", "lastName": "Synthetic"},
+            {"creatorType": "author", "firstName": "Ben", "lastName": "Example"},
+            {"creatorType": "author", "firstName": "Cy", "lastName": "Invented"}
+        ]
+    }))?;
+    let mapped = map_item(library, &item).map_err(|error| format!("{error:?}"))?;
+    assert_eq!(
+        mapped.record.csl.to_map()["issued"],
+        json!({"date-parts": [[2025, 1, 12]]})
+    );
+    let engine = Engine::from_snapshot(Arc::new(Snapshot::new(vec![LibraryObject::Record(mapped.record)])?));
+    let cite = |extra: &[&str]| -> TestResult<String> {
+        let mut args: Vec<String> = ["ibis", "cite", "inventedUnpadded2025", "--style", "apa"]
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        args.extend(extra.iter().map(|arg| (*arg).to_owned()));
+        let (mut output, mut errors) = (vec![], vec![]);
+        let code = ibis::run_with(
+            engine.clone(),
+            args.into_iter().map(Into::into).collect(),
+            Cursor::new(vec![]),
+            &mut output,
+            &mut errors,
+            ibis::OutputMode::Plain,
+        );
+        assert_eq!(code, 0, "{}", String::from_utf8_lossy(&errors));
+        Ok(String::from_utf8(output)?)
+    };
+    assert_eq!(cite(&[])?.trim(), "(Synthetic et al., 2025)");
+    let entry = cite(&["--bibliography"])?;
+    assert!(entry.contains("(2025)."), "{entry}");
+    assert!(!entry.contains("2025-1-12"), "{entry}");
+    Ok(())
+}
+
+/// A Zotero item has no original BibTeX entry: `entry` refuses as a finding
+/// (exit 1, `ok: true`), names the reason and says how to write one instead.
+#[test]
+fn entry_for_a_zotero_item_is_a_documented_finding_with_a_way_forward() -> TestResult {
+    let library = ZoteroSource::default().id_of(Library::User).ok_or("library id")?;
+    let item: ZoteroItem = serde_json::from_value(json!({
+        "key": "NOBIBTEX", "itemType": "book", "title": "Invented book", "date": "2024",
+        "citationKey": "inventedBook2024",
+        "creators": [{"creatorType": "author", "firstName": "Ada", "lastName": "Synthetic"}]
+    }))?;
+    let mapped = map_item(library, &item).map_err(|error| format!("{error:?}"))?;
+    let engine = Engine::from_snapshot(Arc::new(Snapshot::new(vec![LibraryObject::Record(mapped.record)])?));
+    for json in [true, false] {
+        let mut args = vec!["ibis".to_owned(), "entry".into(), "inventedBook2024".into()];
+        if json {
+            args.push("--json".into());
+        }
+        let (mut output, mut errors) = (vec![], vec![]);
+        let code = ibis::run_with(
+            engine.clone(),
+            args.into_iter().map(Into::into).collect(),
+            Cursor::new(vec![]),
+            &mut output,
+            &mut errors,
+            ibis::OutputMode::Plain,
+        );
+        assert_eq!(code, 1, "a refusal is a finding");
+        let (output, errors) = (String::from_utf8(output)?, String::from_utf8(errors)?);
+        if json {
+            let envelope: Value = serde_json::from_str(&output)?;
+            assert_eq!(envelope["ok"], true);
+            assert_eq!(envelope["data"]["outcome"], "refused");
+            assert_eq!(envelope["data"]["reason"], "no-original");
+        } else {
+            assert!(
+                format!("{output}{errors}").contains("ibis cite KEY --format bibtex"),
+                "{output}{errors}"
+            );
+        }
+    }
+    Ok(())
+}

@@ -20,6 +20,7 @@ use std::sync::{Arc, Mutex, mpsc};
 mod cancellation_tests;
 
 mod errors;
+mod summary;
 mod tools;
 mod view;
 pub use tools::{MAX_ANSWER, MAX_HITS, MAX_LIST, MAX_STYLES, Refusal};

@@ -50,15 +50,22 @@ Use these four tools from the `ibis` MCP server, in this order:
 2. `show` with a `ref` when you need more fields (pages, publisher, identifiers).
    You do not need it before citing.
 3. `cite` with `items`, in order, each holding a `ref` and any `locator`, `prefix`,
-   `suffix` or `omit_author`. Add either a `format` (the ids in the tool's input
-   schema: key syntaxes such as `pandoc`, `autocite` or `typst`, and common styles
-   such as `apa`) or any other `style` id from `styles`. With neither it is `apa`.
+   `suffix` or `omit_author`. Add either a `format` for a document processor (the
+   key syntaxes in the tool's input schema, such as `pandoc`, `autocite` or
+   `typst`) or a CSL `style` such as `apa`, `ieee` or any id from `styles`. With
+   neither it is `apa`. Leave out `include_receipt` unless the user asks for an
+   audit record.
 4. `styles` finds a style id by journal or style name among every official CSL style,
    and lists the languages `cite` can write in with `locale`.
 
 ```json
 {"items": [{"ref": "vale2024lanterns#6aa5054b", "locator": "p. 12", "prefix": "see"}], "style": "apa"}
 ```
+
+Each answer's text is a short summary: one `ref · authors · year · title` line per
+hit; for `cite`, a `Citation:` line with the citation as one JSON string (insert
+it unquoted and unescaped), then its notices, losses and warnings in words. The same answer in full is in
+the tool's structured result.
 
 ## When a tool returns an error
 
@@ -70,8 +77,8 @@ pass it on and stop.
 ## If the MCP server is unavailable
 
 Stop and explain that Ibis must be connected before you can search or cite. Ask the
-user to install the current `ibis` command on PATH, choose a library in Ibis, and
-start a new agent session. `ibis mcp --help` must list `--app-libraries`; a command
+user to install the current `ibis` command on PATH (the Ibis app adds it), choose a
+library in Ibis, run `ibis agents setup`, and start a new agent session. `ibis mcp --help` must list `--app-libraries`; a command
 that rejects that option is too old for this plugin.
 
 Do not fall back to reading library files or raw `ibis search` / `ibis show` JSON.

@@ -16,10 +16,17 @@ engine as the app. Its contract is [the CLI reference](../cli.md).
 - The command is `ibis`; published package names follow
   [0046](0046-official-names-and-listings.md).
 
-Desktop packages carry the CLI from the same commit. macOS and Linux deb/rpm
-Settings offer an explicit, non-elevated `~/.local/bin` symlink; Ibis copies a
-PATH profile line when needed and never edits profiles. AppImage installs an
-owned durable copy with a version/removal receipt. Foreign commands and the
+Desktop packages carry the CLI from the same commit. Installing the app is all
+it takes (changed 2026-11-15, so people need no extra step): on macOS and Linux
+the first launch of an installed release creates a non-elevated
+`~/.local/bin` symlink, unless another command (including the other channel's)
+comes first on PATH or the app runs from its disk image or a temporary mount.
+A marker then leaves later launches to the person's choice in Settings, so a
+removed command stays removed. Ibis copies a PATH profile line when needed and
+never edits profiles. AppImage installs an owned durable copy with a
+version/removal receipt, refreshed at launch when that same AppImage updates. A separately installed CLI keeps its own updates; both read the
+app's chosen libraries, and `ibis agents setup` connects AI apps to whichever
+`ibis` comes first on PATH. Foreign commands and the
 other channel's installation are preserved and never executed by Settings.
 The Windows NSIS installer manages per-user PATH and uninstall cleanup.
 

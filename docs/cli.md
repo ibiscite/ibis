@@ -7,8 +7,13 @@
 
 The desktop app includes the matching `ibis` built from the same commit.
 
-- **macOS and Linux deb/rpm:** Settings › General › **Install the ibis command**
-  links `~/.local/bin/ibis` to the command inside the app's bundle or package.
+- **macOS and Linux deb/rpm:** the first time the installed app opens, it links
+  `~/.local/bin/ibis` to the command inside its bundle or package, so where
+  that folder is on PATH, installing the app is all it takes. It skips this when another `ibis`
+  (Homebrew, a download, the other Ibis channel) comes first on PATH and while
+  the app still runs from its disk image. After that, Settings › General
+  decides: **Install the ibis command** adds it and removing it there is
+  respected at every later launch. The link follows the app's updates.
   Keep the macOS app in its permanent location. Install creates the link even
   when the app's PATH omits it. If that directory is missing from the app's
   PATH, copy this line into your shell profile, then reopen your terminal:
@@ -21,10 +26,11 @@ The desktop app includes the matching `ibis` built from the same commit.
   installs serialize their PATH updates and refuse additions that exceed
   Windows's expanded PATH limit. Successful uninstall removes the installer's
   entry; cancellation preserves it.
-- **Linux AppImage:** the same Settings action offers the command as an owned
-  copy in `~/.local/bin`, so it keeps working after the image unmounts. It shows
-  the same profile line when that directory is missing from PATH. Install again
-  after an app update to update this copy (remove the old command first).
+- **Linux AppImage:** the first launch and the same Settings action install the
+  command as an owned copy in `~/.local/bin`, so it keeps working after the
+  image unmounts. It shows the same profile line when that directory is missing
+  from PATH. When the same AppImage file is updated, its next launch updates
+  the copy; for an AppImage saved under a new name, install again in Settings.
 
 Settings shows the command's location, version and whether it matches this app.
 Another command (including Homebrew) is never overwritten or run to inspect
@@ -32,8 +38,9 @@ its version; its location is shown with version unavailable. Unix PATH lookup
 skips files without executable access. **Remove Command**
 removes only an unchanged Ibis-owned installation and its receipt. Removing the
 app itself on macOS cannot run cleanup: remove the command in Settings first.
-The shared installation operation is available for `ibis agents setup` in
-issue #1867's next slice; that command is not part of this slice.
+A separately installed `ibis` (Homebrew, winget, Nix or a download) keeps its
+own updates and is never replaced. Both read the libraries chosen in the app.
+Then `ibis agents setup` connects your AI apps; see [AI agents](#ai-agents-mcp).
 
 Standalone downloads, Homebrew and winget remain available. Download the CLI
 archive from a [release](https://github.com/ibiscite/ibis/releases/latest) or
@@ -175,7 +182,7 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | `--width N` | Use N columns for human terminal output instead of the detected width |
 | `--contract VERSION` | The JSON contract version your client expects; one this Ibis does not speak is refused |
 | `--zotero` | Read the local Zotero personal library, open or closed |
-| `--app-libraries` | Read the libraries chosen in the Ibis app, read-only; search, show, cite and libraries do this when no library is named |
+| `--app-libraries` | Read the libraries chosen in the Ibis app, read-only; search, show, cite, libraries and doctor do this when no library is named |
 
 **`ibis libraries`**: List the libraries and their warnings
 
@@ -276,6 +283,31 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | Option | Does |
 | --- | --- |
 | `--config PATH` | Check a chosen Ibis settings file without repairing it or loading its libraries |
+
+**`ibis agents`**: Connect Ibis to the AI apps on this computer, show them, or disconnect them
+
+**`ibis agents setup`**: Add Ibis's read-only MCP server to each AI app found here
+
+| Option | Does |
+| --- | --- |
+| `--client APP` | Only this app; repeat for several |
+| `--dry-run` | Show what would change and change nothing |
+| `--yes` | Do it without asking; needed when no one can answer, such as in a script |
+| `--replace` | Replace a different ibis entry without asking |
+
+**`ibis agents status`**: Show which AI apps have Ibis connected
+
+| Option | Does |
+| --- | --- |
+| `--client APP` | Only this app; repeat for several |
+
+**`ibis agents remove`**: Take Ibis's server out of each AI app; other servers are kept
+
+| Option | Does |
+| --- | --- |
+| `--client APP` | Only this app; repeat for several |
+| `--dry-run` | Show what would change and change nothing |
+| `--yes` | Do it without asking; needed when no one can answer, such as in a script |
 
 **`ibis settings`**: Back up the Ibis app's settings, or restore them on this or another computer
 
@@ -481,8 +513,12 @@ source library also enables metadata comparison.
 
 `entry` prints the original BibTeX entry and required strings/dependencies.
 It refuses unavailable originals, changed files, repeated keys and missing or
-redefined dependencies. Original entries may include private `file`/`note`
-fields; inspect them before sharing.
+redefined dependencies. A refusal is a finding, as a refused citation is: exit
+1, with `ok: true`, `data.outcome: "refused"` and a `reason` in `--json`.
+`no-original` means the library keeps no BibTeX source (Zotero, CSL-JSON, RIS
+and CSV); `ibis cite KEY --format bibtex` writes an entry from the record's
+fields instead. Original entries may include private `file`/`note` fields;
+inspect them before sharing.
 
 To use the same `.bib` elsewhere, upload it beside an Overleaf document, name it
 under Quarto's `bibliography:` or use Typst's `#bibliography("thesis.bib")`.
@@ -533,7 +569,8 @@ Plain `cite` has no wrapper.
 
 ### Receipts and strict citations
 
-Complete citations in JSON, RPC and MCP carry `receipt`: ordered opaque record
+Complete citations in JSON and RPC carry `receipt`, and MCP's `cite` does with
+`include_receipt: true`: ordered opaque record
 identities, cite fingerprints, resolved options, source read times/findings,
 content hash and formatting versions. Caller snapshots have no source read time;
 caller-record receipts list no library reads and have clean `source_health`.
@@ -585,8 +622,35 @@ requests finish before exit. Process exit codes do not apply per request.
 
 ## AI agents (MCP)
 
-Follow the [assistant setup guide](https://ibiscite.org/setup) to connect your app
-to Ibis, or paste this prompt into your assistant:
+Connect every AI app on this computer in one step:
+
+```sh
+ibis agents setup            # shows what it adds and asks first
+ibis agents status           # which apps have Ibis
+ibis agents remove           # undo; other servers stay
+```
+
+Setup finds Claude Code, Claude Desktop, Codex, Cursor, VS Code, Gemini CLI,
+Windsurf and LM Studio, and adds the server the plugin uses,
+`ibis mcp --app-libraries`. Claude Code and Codex are changed through their own
+`mcp add` command; for the others the entry is merged into the app's JSON file,
+keeping every other server and setting, with a new `<file>.ibis-backup-N` copy
+beside it for each change. Backups are created privately; older backups stay.
+Claude Desktop and LM Studio get the full path of `ibis`, because apps opened
+from the Dock or Start menu may not see your terminal's PATH. Removal takes out
+only the entry setup adds, including one with a stale command path. Status
+reports `connected`, `not-connected`, `stale` (run setup to repair the path),
+`different`, `blocked` or `by-hand`; `stale`, `different` and `blocked` exit 1.
+When the command's full path is known, setup repairs its own stale entry without
+the different-entry question and reports `replaced` with the before/after diff.
+A different `ibis` entry is shown and replaced only if you agree, or with
+`--replace`. A file that is not plain JSON, or is a link, is left alone with
+the step to do by hand. With the Ibis plugin installed, Claude Code is left as
+it is, so the server is not there twice. Scripts pass `--yes`; `--dry-run`
+changes nothing. ChatGPT desktop is set up in its own window.
+
+For any other app, follow the [assistant setup guide](https://ibiscite.org/setup),
+or paste this prompt into your assistant:
 
 ```text
 Set up Ibis for me: https://ibiscite.org/setup
@@ -599,8 +663,17 @@ read-only tools over stdio:
 | --- | --- |
 | `search` | `query`, optional `limit` (1–25, default 10), `shorthand` for a signal and locator; short hits with checked `ref` values, `complete` and `source_health`; shorthand adds `cited_with` and `searched_for`. |
 | `show` | `ref`; bibliographic fields and `source_health`. |
-| `cite` | Items with `ref` and optional locator/affixes/author omission, or caller [records](#records-you-send); format or style, locale, form, order, optional `for_app` and `strict`; citation text, notices, losses, warnings, receipt and `source_health`. |
+| `cite` | Items with `ref` and optional locator/affixes/author omission, or caller [records](#records-you-send); a key-syntax `format` or any CSL `style`, locale, form, order, optional `for_app`, `strict` and `include_receipt`; citation text, notices, losses, warnings, `source_health`, and the receipt when asked. |
 | `styles` | Optional `query`, `limit` and `offset`; matching styles, total and locales. |
+
+Each answer's `structuredContent` holds the full result. Its text is a short
+summary for the model instead of the same JSON again: one `ref · authors ·
+year · title` line per hit, each notice, loss and warning in words, and any
+library notes. For `cite`, the first line is `Citation:` and the citation as
+one JSON string, so a title cannot start a line and imitate a warning.
+Receipt, bibliography and delivery advice are named in that summary too.
+The common styles are accepted as
+`format` too, but the schema lists only key syntaxes; `styles` finds the rest.
 
 Refs contain identity and a short content check; changed records are refused.
 When a key is missing or shared, the ref uses an opaque digest. It contains no
@@ -622,8 +695,9 @@ CLI search/show JSON is not this privacy projection. MCP opens no external
 connection; an AI client can send received data to its own service.
 
 The repository's [plugin](../plugins/ibis/skills/ibis-cite/SKILL.md) supplies
-MCP configuration and a citation skill for Claude Code/Codex. It requires
-`ibis` on PATH and does not install the executable. It reads app libraries,
+MCP configuration and a citation skill for Claude Code/Codex. Its server entry
+is the one `ibis agents setup` writes. It requires `ibis` on PATH and does not
+install the executable. It reads app libraries,
 stops if MCP is unavailable and requires confirmation of partial/typo matches.
 The skill directory can also be copied to a client's skill folder. Marketplace
 or directory approval is not established by the repository configuration.

@@ -126,6 +126,68 @@ impl CommandInstall {
     pub fn receipt(&self) -> PathBuf {
         self.home.join(".local/share/ibis/command.json")
     }
+    /// Left once the app has put the command in place at a launch, or the
+    /// person chose in Settings: later launches leave that choice alone.
+    fn settled(&self) -> PathBuf {
+        self.home.join(".local/share/ibis/command-settled")
+    }
+
+    /// An app still on its disk image, translocated by macOS or run from an
+    /// unregistered temporary mount: its command would vanish with it.
+    fn temporary(&self) -> bool {
+        let text = self.bundled.to_string_lossy();
+        if cfg!(target_os = "macos") {
+            text.starts_with("/Volumes/") || text.contains("/AppTranslocation/")
+        } else {
+            self.app.is_none() && text.contains("/.mount_")
+        }
+    }
+
+    /// What the app does at launch, so installing the app is all it takes:
+    /// the first launch puts the command in `~/.local/bin` when nothing else
+    /// holds that place on PATH, and later launches bring only this app's own copy up to date.
+    /// Anything another installer owns (Homebrew, a download), another Ibis
+    /// channel's command, and a command the person removed are left alone.
+    pub fn keep_installed(&self) -> io::Result<CommandStatus> {
+        if self.temporary() {
+            return self.status();
+        }
+        let first =
+            matches!(fs::symlink_metadata(self.settled()), Err(error) if error.kind() == io::ErrorKind::NotFound);
+        let status = self.status()?;
+        let own_copy = status.state == CommandState::Different
+            && status.removable
+            && self
+                .read_receipt()?
+                .is_some_and(|receipt| receipt.copy && receipt.app.is_some() && receipt.app == self.app);
+        let status = if own_copy {
+            // An interrupted refresh must retry as a first launch. Clear the
+            // marker before removing anything; a Settings removal keeps it.
+            match fs::remove_file(self.settled()) {
+                Ok(()) => {}
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error),
+            }
+            self.remove_owned()?;
+            self.install()?
+        } else if first {
+            self.install()?
+        } else {
+            status
+        };
+        if first || own_copy {
+            self.settle()?;
+        }
+        Ok(status)
+    }
+
+    fn settle(&self) -> io::Result<()> {
+        fs::create_dir_all(self.home.join(".local/share/ibis"))?;
+        match crate::atomic_file::create_private(&self.settled()) {
+            Err(error) if error.kind() != io::ErrorKind::AlreadyExists => Err(error),
+            _ => Ok(()),
+        }
+    }
 
     fn read_receipt(&self) -> io::Result<Option<Receipt>> {
         match fs::read(self.receipt()) {
@@ -295,7 +357,14 @@ impl CommandInstall {
         Ok(CommandOwner(owner))
     }
 
+    /// Remove Command: the person's choice, which later launches respect.
     pub fn remove(&self) -> io::Result<CommandStatus> {
+        self.remove_owned()?;
+        self.settle()?;
+        self.status()
+    }
+
+    fn remove_owned(&self) -> io::Result<CommandStatus> {
         let _owner = self.owner()?;
         let receipt = self
             .read_receipt()?
@@ -316,6 +385,146 @@ impl CommandInstall {
 mod tests {
     use super::*;
     use std::os::unix::fs::{PermissionsExt, symlink};
+
+    #[test]
+    fn the_first_launch_installs_the_command_and_later_launches_respect_the_choice() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("fixture: {e}"));
+        let home = dir.path().join("home");
+        let bundled = dir.path().join("bundled-ibis");
+        fs::write(&bundled, b"invented CLI").unwrap_or_else(|e| panic!("bundle: {e}"));
+        fs::set_permissions(&bundled, fs::Permissions::from_mode(0o755)).unwrap_or_else(|e| panic!("mode: {e}"));
+        let install = CommandInstall::new(
+            home.clone(),
+            vec![home.join(".local/bin")],
+            bundled,
+            None,
+            "1.2.3".into(),
+        );
+        let launched = || install.keep_installed().unwrap_or_else(|e| panic!("launch: {e}")).state;
+        assert_eq!(launched(), CommandState::Matching);
+        assert_eq!(launched(), CommandState::Matching, "a second launch changes nothing");
+        install.remove().unwrap_or_else(|e| panic!("remove: {e}"));
+        assert_eq!(launched(), CommandState::NotInstalled, "a removal is respected");
+        install.install().unwrap_or_else(|e| panic!("install: {e}"));
+        install.remove_owned().unwrap_or_else(|e| panic!("remove: {e}"));
+        assert_eq!(
+            launched(),
+            CommandState::NotInstalled,
+            "only the first launch puts the command in place; later the person's choice stands"
+        );
+
+        // Another channel's command is never taken over, so Stable and Nightly don't trade it.
+        let other_channel = dir.path().join("nightly-ibis");
+        fs::write(&other_channel, b"invented nightly CLI").unwrap_or_else(|e| panic!("nightly: {e}"));
+        fs::set_permissions(&other_channel, fs::Permissions::from_mode(0o755)).unwrap_or_else(|e| panic!("mode: {e}"));
+        let nightly = CommandInstall::new(
+            home.clone(),
+            vec![home.join(".local/bin")],
+            other_channel.clone(),
+            None,
+            "1.2.4".into(),
+        );
+        nightly.install().unwrap_or_else(|e| panic!("install: {e}"));
+        assert_eq!(launched(), CommandState::Different);
+        assert_eq!(
+            fs::read_link(install.destination()).unwrap_or_else(|e| panic!("link: {e}")),
+            other_channel
+        );
+
+        // An app still on its disk image never installs one.
+        let mounted = CommandInstall::new(
+            dir.path().join("mounted"),
+            vec![],
+            PathBuf::from(if cfg!(target_os = "macos") {
+                "/Volumes/Ibis/Ibis.app/Contents/MacOS/ibis"
+            } else {
+                "/tmp/.mount_IbisInvented/usr/bin/ibis"
+            }),
+            None,
+            "1.2.3".into(),
+        );
+        assert_eq!(
+            mounted.keep_installed().unwrap_or_else(|e| panic!("launch: {e}")).state,
+            CommandState::NotInstalled
+        );
+        assert!(fs::symlink_metadata(mounted.destination()).is_err());
+
+        // A command another installer put first on PATH is never replaced.
+        let other = dir.path().join("homebrew");
+        fs::create_dir_all(&other).unwrap_or_else(|e| panic!("dir: {e}"));
+        fs::write(other.join("ibis"), b"other").unwrap_or_else(|e| panic!("other: {e}"));
+        fs::set_permissions(other.join("ibis"), fs::Permissions::from_mode(0o755))
+            .unwrap_or_else(|e| panic!("mode: {e}"));
+        let fresh = dir.path().join("fresh");
+        let beside = CommandInstall::new(
+            fresh.clone(),
+            vec![other.clone()],
+            install.bundled.clone(),
+            None,
+            "1.2.3".into(),
+        );
+        assert_eq!(
+            beside.keep_installed().unwrap_or_else(|e| panic!("launch: {e}")).state,
+            CommandState::Foreign
+        );
+        assert!(fs::symlink_metadata(fresh.join(".local/bin/ibis")).is_err());
+        assert_eq!(
+            fs::read(other.join("ibis")).unwrap_or_else(|e| panic!("read: {e}")),
+            b"other"
+        );
+    }
+
+    #[test]
+    fn a_failed_appimage_refresh_is_retried_at_the_next_launch() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("fixture: {e}"));
+        let home = dir.path().join("home");
+        let bundled = dir.path().join("bundled-ibis");
+        fs::write(&bundled, b"invented CLI v1").unwrap_or_else(|e| panic!("bundle: {e}"));
+        fs::set_permissions(&bundled, fs::Permissions::from_mode(0o755)).unwrap_or_else(|e| panic!("mode: {e}"));
+        let install = CommandInstall::new(
+            home.clone(),
+            vec![home.join(".local/bin")],
+            bundled.clone(),
+            Some(dir.path().join("Ibis.AppImage")),
+            "1.2.3".into(),
+        );
+        assert_eq!(install.keep_installed().unwrap().state, CommandState::Matching);
+        fs::write(&bundled, b"invented CLI v2").unwrap();
+        fs::set_permissions(&bundled, fs::Permissions::from_mode(0o000)).unwrap();
+        let unreadable = fs::read(&bundled).is_err();
+        let refresh = install.keep_installed();
+        fs::set_permissions(&bundled, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(unreadable, "this regression needs an unreadable bundle");
+        assert!(refresh.is_err(), "the refresh must fail after removing the old copy");
+        assert!(!install.destination().exists());
+        assert_eq!(install.keep_installed().unwrap().state, CommandState::Matching);
+        assert_eq!(fs::read(install.destination()).unwrap(), b"invented CLI v2");
+        // Settings removal still leaves the settled choice, even after a refresh.
+        install.remove().unwrap();
+        assert_eq!(install.keep_installed().unwrap().state, CommandState::NotInstalled);
+    }
+
+    #[test]
+    fn a_refresh_that_cannot_clear_the_settled_marker_keeps_the_old_command() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("home");
+        let bundled = dir.path().join("bundled-ibis");
+        fs::write(&bundled, b"invented CLI v1").unwrap();
+        fs::set_permissions(&bundled, fs::Permissions::from_mode(0o755)).unwrap();
+        let install = CommandInstall::new(
+            home,
+            vec![],
+            bundled.clone(),
+            Some(dir.path().join("Ibis.AppImage")),
+            "1.2.3".into(),
+        );
+        install.keep_installed().unwrap();
+        fs::write(&bundled, b"invented CLI v2").unwrap();
+        fs::remove_file(install.settled()).unwrap();
+        fs::create_dir(install.settled()).unwrap();
+        assert!(install.keep_installed().is_err());
+        assert_eq!(fs::read(install.destination()).unwrap(), b"invented CLI v1");
+    }
 
     #[test]
     fn an_inherited_descriptor_cannot_keep_a_finished_install_locked() {

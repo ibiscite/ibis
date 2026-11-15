@@ -273,6 +273,7 @@ fn main() {
                 panel::cancel_initial_presentation(app.handle());
             }
             native_feel::install(app.handle());
+            cli_install::keep_at_launch(app.handle());
             destination::manage(app.handle(), &settings_path);
             if let Some(problem) = &loaded.problem {
                 application_message(preferences::settings_problem(problem));

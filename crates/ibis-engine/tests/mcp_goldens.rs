@@ -79,8 +79,15 @@ fn golden_cases_replay_through_mcp() {
                     expected["language"] = json!(language);
                 }
                 assert_eq!(answer["structuredContent"], expected, "{}", case.name);
-                let text: Value = serde_json::from_str(answer["content"][0]["text"].as_str().unwrap()).unwrap();
-                assert_eq!(text, expected, "{}: text response", case.name);
+                // The text starts with the exact citation as one JSON string.
+                let text = answer["content"][0]["text"].as_str().unwrap();
+                let first = text.lines().next().unwrap_or_default();
+                assert_eq!(
+                    first,
+                    format!("Citation: {}", json!(content.text)),
+                    "{}: text response {text}",
+                    case.name
+                );
             }
             None => assert_eq!(answer["isError"], true, "{}", case.name),
         }
@@ -114,6 +121,7 @@ fn arguments(request: &CitationRequest) -> Option<Value> {
     let mut arguments = json!({
         "items": request.items.iter().map(|item| json!({"ref": mcp::reference(&item.item)})).collect::<Vec<_>>(),
         "form": request.form,
+        "include_receipt": true,
     });
     match &request.output {
         output @ OutputSpec::Key { .. } if request.keep_order || request.items.len() < 2 => {
