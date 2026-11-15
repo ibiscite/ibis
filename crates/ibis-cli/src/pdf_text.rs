@@ -17,7 +17,7 @@ use std::io::{Read, Write};
 /// The most one stream may inflate to: page content, object and font streams.
 const MAX_STREAM_BYTES: usize = 64 * 1024 * 1024;
 /// Address space on Linux, a backstop for a stream bomb.
-#[cfg(target_os = "linux")]
+#[cfg(unix)]
 const MAX_MEMORY_BYTES: u64 = 3 * 1024 * 1024 * 1024;
 /// Processor seconds, a backstop behind the parent's ten-second deadline.
 #[cfg(unix)]
@@ -68,10 +68,14 @@ pub fn child(arguments: &[OsString], mut input: impl Read, mut output: impl Writ
 #[cfg(unix)]
 fn limit_resources() -> nix::Result<()> {
     use nix::sys::resource::{Resource, getrlimit, setrlimit};
-    let mut limits = vec![(Resource::RLIMIT_CPU, MAX_CPU_SECONDS), (Resource::RLIMIT_CORE, 0)];
-    #[cfg(target_os = "linux")]
-    limits.push((Resource::RLIMIT_AS, MAX_MEMORY_BYTES));
-    for (resource, limit) in limits {
+    let limits = [
+        (Resource::RLIMIT_CPU, MAX_CPU_SECONDS),
+        (Resource::RLIMIT_CORE, 0),
+        (Resource::RLIMIT_AS, MAX_MEMORY_BYTES),
+    ];
+    // Darwin may reject a finite address-space limit, so only Linux sets it.
+    let count = if cfg!(target_os = "linux") { 3 } else { 2 };
+    for (resource, limit) in limits.into_iter().take(count) {
         let (soft, hard) = getrlimit(resource)?;
         let hard = hard.min(limit);
         setrlimit(resource, soft.min(hard), hard)?;
