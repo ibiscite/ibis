@@ -23,7 +23,8 @@ export function ShortcutSetting({ rowId, details, status, problem, saving, highl
   const defaultLabel = shortcutLabel(DEFAULT_PICKER_SHORTCUT, mac);
   const isDefault = status && /^[a-z]$/i.test(status.shortcut.split("+").at(-1)?.trim() ?? "")
     && shortcutLabel(status.shortcut, mac).split("+").sort().join("+") === defaultLabel.split("+").sort().join("+");
-  const reset = status && !status.desktop && !isDefault ? { label: details.label, disabled: saving, onReset: () => onRecord(null) } : undefined;
+  // A desktop's own shortcut is the system's to reset; ours keeps its room at the default.
+  const reset = status?.desktop ? undefined : status && !isDefault ? { label: details.label, disabled: saving, onReset: () => onRecord(null) } : null;
   const controls = <>
       {status?.desktop ? <>
         <Status as="span">{status.shortcut || text("shortcuts-not-assigned")}</Status>
@@ -33,7 +34,7 @@ export function ShortcutSetting({ rowId, details, status, problem, saving, highl
       {status?.error && <Status as="span">{status.error}</Status>}
 </>;
   if (table) return <>
-    <tr id={rowId} data-echo={pressed || undefined} data-highlighted={highlighted || undefined}><th scope="row"><span className="ui-row-label">{text(SHORTCUT_ACTIONS.open)}<ResetSlot reset={reset} /></span></th><td><span className="ui-settings-keys">{controls}</span></td></tr>
+    <tr id={rowId} data-echo={pressed || undefined} data-highlighted={highlighted || undefined}><th scope="row">{text(SHORTCUT_ACTIONS.open)}</th><td><span className="ui-settings-keys"><ResetSlot reset={reset} />{controls}</span></td></tr>
     {(problem || status?.desktop?.guidance) && <tr><td colSpan={2}>
       {status?.desktop?.guidance && <Note>{status.desktop.guidance}</Note>}
       {problem && <Status className="ui-row-problem" role="alert">{text(problem.id, problem.args)}</Status>}

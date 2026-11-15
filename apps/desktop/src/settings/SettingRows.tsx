@@ -35,10 +35,10 @@ export function Setting({ row, state, preferences, feedback, reset, size = null 
   return <>{row.control === "appearance" && <div className="ui-picture-preview" aria-hidden="true"><PickerPicture density={preferences?.density}
     appearance={value === "system" ? "light" : String(value)} split={value === "system"} frame={WINDOWS[size ?? "medium"]} /></div>}
   <Row id={row.id} {...details} description={state.description ?? details.description} {...feedback}
-    reset={!state.disabled && state.value !== null && row.default !== undefined && value !== row.default ? { label, onReset: () => {
+    reset={row.default === undefined ? undefined : !state.disabled && state.value !== null && value !== row.default ? { label, onReset: () => {
       const restore = state.restore ?? { apply: async () => { await state.change(row.default!); }, undo: async () => { await state.change(value!, true); } };
       void reset(label, restore.apply, restore.undo);
-    } } : undefined}>
+    } } : null}>
     {row.control === "switch" ? <Switch aria-labelledby={row.id} aria-describedby={details.description ? `${row.id}-description` : undefined}
       isSelected={Boolean(value)} isDisabled={state.disabled} onChange={change} />
     : row.control === "appearance" ? <PictureChoice size="small" label={label} value={String(value)}

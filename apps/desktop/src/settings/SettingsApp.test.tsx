@@ -1918,6 +1918,15 @@ test("search includes key formats used in the library and the live file action o
   expect(screen.queryByRole("option", { name: "In Markdown, LaTeX and Typst, Citations" })).toBeNull();
 });
 
+test.each(["reset", "default"])("searching %s finds the settings that can go back to their default, and only those", async (query) => {
+  const { api } = fakeApi();
+  render(<SettingsApp api={api} initialPage="general" />);
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search Settings" }), { target: { value: query } });
+  expect(await screen.findByRole("option", { name: "Accent, Appearance" })).toBeTruthy();
+  expect(screen.getByRole("option", { name: "Recent citations, Citations" })).toBeTruthy();
+  expect(screen.queryByRole("option", { name: /^Back up settings/ })).toBeNull();
+});
+
 test("a refused setting default keeps its saved choice and offers no Undo", async () => {
   const { api } = fakeApi({}, { appearance: "dark" });
   render(<SettingsApp api={api} initialPage="look" />);

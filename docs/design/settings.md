@@ -8,9 +8,12 @@
 - `settings/rows` declares each generated preference exactly once (page, group, order, label, help, control, default and search words); help is part of the declaration's type, so a row cannot be declared without its line; `SettingRows` renders its row and reset. Native settings supply their saved state through the same renderer. Search and backup previews use the same names and choices. Unrecognised saved fields appear read-only in General.
 - **Groups and rows** [D17]: `ui/Layout` sections of `Group` cards (`--r-large`, `--surface-grouped`) of `Row`s: a label, an optional description, one control at the end. Cards keep their natural height; rows grow with text; controls move below a label that does not fit. No page opens with more than eight rows; rarer rows go behind **Details…**, a disclosure row in its own card whose chevron turns down while its rows show. Every group but a page's first lone row has a title (General: **Behavior**, **Pasting**); the **Details…** toggle and its expanded content share one card.
 - A setting that differs from its default shows **Use Default** (`reset`, ↺) with Undo
-  right after the setting's name [C24], on the leading side, so every control in
-  every row and table ends on the card's one trailing edge and nothing is reserved
-  while the setting is default. Restoring a default never opts into background network use. Settings and `settings.json` show the
+  right before its control, as macOS places it [C24]. Only that row shows it: a
+  setting at its default has nothing to undo. Every setting that can reset keeps
+  that room at its default too, so its control never moves when ↺ appears and
+  every control still ends on the card's one trailing edge; a row that cannot
+  reset (an action, the desktop's own shortcut) keeps none. Search finds every
+  resettable setting by "reset" or "default". Restoring a default never opts into background network use. Settings and `settings.json` show the
   same saved choices. A valid file edit applies live, retires an older Undo
   and updates open controls; a problem stays visible and refuses saves until
   repaired.

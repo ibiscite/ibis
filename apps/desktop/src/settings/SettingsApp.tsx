@@ -514,7 +514,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     && (row.id !== "editor-endpoint" || Boolean(api.editorEndpoint && api.setEditorEndpoint && api.copyEditorEndpoint)));
   const matchedIds = new Set(query.trim() ? filterPalette([{ id: "settings", items: availableRows.map((row) => ({ id: row.id,
     label: text(row.label, { platform }), detail: row.description ? text(row.description, { platform }) : undefined,
-    keywords: row.keywords ? text(row.keywords, { platform }) : undefined })) }], query).flatMap((group) => group.items.map((item) => item.id)) : []);
+    // A setting that can go back to its default is found by "reset" and "default" too.
+    keywords: [row.keywords && text(row.keywords, { platform }), row.default !== undefined && text("settings-reset-words")].filter(Boolean).join(" ") || undefined })) }], query).flatMap((group) => group.items.map((item) => item.id)) : []);
   const matches = PAGES.flatMap((page) => availableRows.filter((row) => row.page === page && matchedIds.has(row.id)));
   const name = login?.name ?? "Ibis";
   const undoTicket = shortcutUndoTicket.current;
