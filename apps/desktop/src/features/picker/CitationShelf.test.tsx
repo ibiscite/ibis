@@ -261,16 +261,19 @@ test("Backspace only edits in the details, including a held key on an empty fiel
   expect(remove).toHaveBeenCalledExactlyOnceWith(reference);
 });
 
-test("with details open, notes read in them and nothing comes and goes in the shelf", () => {
-  const warning = "Reference 1: Page is not included in this output.";
-  const reference = record("a");
-  const { rerender } = render(shelf({ selected: chosen([reference]), style: "ieee", shown: output() }));
-  fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
-  rerender(shelf({ selected: chosen([reference]), style: "ieee", shown: output(), outputWarnings: [warning] }));
+test("a token's details hold only its own notes; the citation's warnings stay one press away on the shelf", () => {
+  const warning = "beta: Page is not included in this output.";
+  const alpha = record("alpha", "Alpha"), beta = { ...record("beta", "Beta"), partial: true };
+  const shown = { ...output("[1], [2]"), display: displayTree([{ item: 0, text: "[1]" }, { item: null, text: ", " }, { item: 1, text: "[2]" }]) };
+  const { rerender } = render(shelf({ selected: chosen([alpha, beta]), style: "ieee", shown }));
+  fireEvent.click(screen.getByRole("button", { name: "Edit Alpha 2021" }));
+  rerender(shelf({ selected: chosen([alpha, beta]), style: "ieee", shown, outputWarnings: [warning] }));
   const panel = details(/^Citation details for/);
-  expect(within(panel).getByText(warning)).toBeTruthy();
   expect(within(panel).getByText(/IEEE numbers depend on your whole document/)).toBeTruthy();
-  expect(document.querySelector(".shelf-warnings")).toBeNull();
+  expect(within(panel).queryByText(warning)).toBeNull();
+  expect(within(panel).queryByText(/only some search words matched/)).toBeNull();
+  press(screen.getByRole("button", { name: "2 warnings · Closest matches" }), " ");
+  expect(within(warningsPanel()).getByText(warning)).toBeTruthy();
 });
 
 test("an output written on several lines, such as BibTeX, reads as one line on the shelf", () => {

@@ -386,10 +386,12 @@ test("losses keep a visible count and an unsupported form blocks copying until c
   render(<App />);
   const page = await openCitationDetails();
   fireEvent.change(page, { target: { value: "12" } });
-  await within(screen.getByRole("dialog", { name: /^Citation details for/ })).findByText(warning);
-  closeCitationDetails();
+  // The engine's warning stays on the shelf, beside the open details, never in them.
   const preview = screen.getByRole("region", { name: "Preview" });
-  const warnings = await within(preview).findByRole("button", { name: "1 warning" });
+  await within(preview).findByRole("button", { name: "1 warning" });
+  expect(within(screen.getByRole("dialog", { name: /^Citation details for/ })).queryByText(warning)).toBeNull();
+  closeCitationDetails();
+  const warnings = within(preview).getByRole("button", { name: "1 warning" });
   expect(warnings.textContent).toBe("1 warning");
   fireEvent.click(warnings);
   const notes = screen.getByRole("region", { name: "Citation warnings" });
@@ -871,7 +873,7 @@ test.each([true, false])("reaching for a token by hand teaches the typed shortha
   const token = await findInCitation("a");
   act(() => token.focus());
   await waitFor(() => expect(asked).toBe(1));
-  const hint = "Type “vale 417” for page 417, or “see vale” to add “see”.";
+  const hint = "Type “smith 417” for page 417, or “see smith” to add “see”.";
   if (allowed) expect(await screen.findByText(hint)).toBeTruthy();
   else expect(screen.queryByText(hint)).toBeNull();
   // Once an opening: focusing again asks nothing more.
@@ -897,5 +899,5 @@ test.each(["hidden", "reopened", "failed"])("a %s shorthand hint reply cannot le
       finish(true);
     }
   });
-  expect(screen.queryByText(/^Type “vale 417” for page 417/)).toBeNull();
+  expect(screen.queryByText(/^Type “smith 417” for page 417/)).toBeNull();
 });

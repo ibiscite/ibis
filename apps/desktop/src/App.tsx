@@ -177,7 +177,9 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
   });
   const source = usePickerSource({ api, pickerSession, libraryState, menus, results: sameSnapshot ? results : [], altHeld, perform, report });
   const inspector = useCitationInspector(cancelCopy);
-  const shorthand = useShorthandHint(api, state.presentation, inspector.panel?.kind === "reference");
+  // The tip's example finds the first cited reference, so it is always the person's own.
+  const shorthand = useShorthandHint(api, state.presentation, inspector.panel?.kind === "reference",
+    (chosen[0]?.first_author || chosen[0]?.key)?.toLocaleLowerCase() ?? null);
   // A failure stays beside the fields that can correct it, in one place, also
   // when the panel takes the list's place.
   const actions = usePickerActions({

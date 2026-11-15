@@ -13,6 +13,7 @@ import { Popover } from "../../ui/Popover";
 import { Switch } from "../../ui/Switch";
 import type { CitationDetailsChange, CitationReference } from "./choice";
 import type { InspectorPanel } from "./useCitationInspector";
+import { closestMatchWarnings } from "./rows";
 
 /** `entry` explains output that depends on the whole document: its short name and its sentence. */
 export type CitationNotes = { entry: { short: string; text: string } | null; output: readonly string[]; closest: readonly string[] };
@@ -90,7 +91,10 @@ export function CitationInspector({ ref, id, panel, anchor, keepOrder, heading, 
     onFormChange={(form) => onChange(reference, { form })}
     prefix={reference.prefix ?? ""} suffix={reference.suffix ?? ""}
     onPrefixChange={(prefix) => onChange(reference, { prefix })} onSuffixChange={(suffix) => onChange(reference, { suffix })} onSubmit={onSubmit} />;
-  const notesShown = [...notes.entry ? [notes.entry.text] : [], ...notes.output, ...notes.closest].map((note, i) => <p key={i} className="ui-popover-note">{note}</p>);
+  // A token's details say only what is about it: the output's own note and this reference's
+  // closest match. The engine's warnings name their reference in words, so they stay
+  // together on the shelf, never under another reference's controls.
+  const notesShown = [...notes.entry ? [notes.entry.text] : [], ...reference ? closestMatchWarnings([reference]) : []].map((note, i) => <p key={i} className="ui-popover-note">{note}</p>);
   const removeKeys = (event: React.KeyboardEvent<HTMLElement>) => {
     const target = event.target as HTMLElement;
     if (event.key !== "Delete" || event.repeat || composing(event) || target.matches("input, textarea, [contenteditable]") || !reference || !selected) return;
