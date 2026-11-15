@@ -286,11 +286,18 @@ fn show_picker_on_thread(app: &AppHandle, owner: u64) {
             #[cfg(target_os = "windows")]
             report(window.set_always_on_top(true), NativeIssue::AlwaysOnTop);
             present_window(&window, true, owner);
-            crate::updater::picker_presented(app);
+            presented(app);
         }
         report(window.emit("picker:shown", owner), NativeIssue::PickerEvent);
     }
     crate::library::refresh_zotero(app);
+}
+
+/// Both native adapters report an actual show here. Recovery notices claim
+/// dialog ownership before the updater can offer another native dialog.
+pub(crate) fn presented(app: &AppHandle) {
+    crate::instance::picker_presented(app);
+    crate::updater::picker_presented(app);
 }
 
 #[cfg(not(target_os = "macos"))]

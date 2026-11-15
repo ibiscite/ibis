@@ -20,7 +20,8 @@ definition does not certify a passing run. Plans live in
 ## Local commands
 
 Setup is in [CONTRIBUTING.md](../CONTRIBUTING.md#setup). Run the focused check
-for the changed behaviour; `land.sh` runs the complete local gate before merging.
+for the changed behaviour; `land.sh` runs fast local checks before requesting
+auto-merge on hosted CI.
 
 ```sh
 bash scripts/land.sh
@@ -94,40 +95,38 @@ at the layer that owns the cause.
 
 ## Where checks run
 
-[`land.sh`](../scripts/land.sh) is the merge gate ([decision 0049](decisions/0049-local-gate.md)).
-Run it on the Mac from a clean, named branch. It checks for conflicts with main,
-pushes without opening a PR, then runs these machines in parallel:
+[`land.sh`](../scripts/land.sh) runs fast local feedback from a clean, named
+branch: formatting, workspace `cargo check` with all targets, TypeScript,
+Biome lint and `gen.mjs --check`. Dependencies must already be installed;
+Rust uses this worktree's `target` without sccache. These checks are for speed
+only ([decision 0049](decisions/0049-local-gate.md)).
 
-| Machine | Checks |
-| --- | --- |
-| Mac | Workspace Clippy with all targets (including desktop), workspace tests, TypeScript, Biome, full Vitest, Node script tests (two workers), headless generated-file freshness, PR title, formatting, repository guards and dependency licence/bans/source policy. |
-| Ubuntu (`db-scr-ubuntu`) | Workspace Clippy and tests, full Vitest; one build at a time in `~/Code/ibis`. A detached build and SHA-bound end marker survive dropped SSH connections. |
-| Windows laptop | When packaging or PowerShell paths change (including the gate itself): packaging-script tests and every `*.tests.ps1` under Windows PowerShell 5.1; no Rust. |
+After passing, it pushes the checked head, preserves existing PR text or creates
+a PR from `--title`/`--body-file` or the first non-merge commit, marks drafts
+ready and requests squash auto-merge. Signed-off-by and Assisted-by trailers
+carry into the squash commit. There is no merge queue and no up-to-date rule:
+GitHub merges as soon as **CI result** passes; the script neither waits for CI
+nor reports a status. Keep the worktree until the PR merges, then run
+`land.sh end NAME`.
 
-Warm dependencies must already be installed on the Mac and Ubuntu. Mac targets
-stay in this worktree's `target` (or `CARGO_TARGET_DIR`); Ubuntu reuses its one
-`target`. Neither uses sccache. Ubuntu's lock refuses competing gates or a dirty
-checkout; Windows uses a locked, reusable checkout in its temporary directory.
-Logs stay in `.local/gates/` on the Mac and Ubuntu. Failures print the first
-errors per machine and stop. Unreachable machines fail; `--skip mac|ubuntu|windows`
-is an explicit exception, recorded in both the PR gate line and status summary.
+[CI](../.github/workflows/ci.yml) runs on in-repository PRs and pushes to main.
+**CI result** is the required merge check: interface build, `Test` and
+`Desktop` suites, web/script tests, dependency policy and commit identities
+must all pass. PRs run `Desktop` (a warm lint and test, 2–4 minutes) on all
+three systems and `Test` on Ubuntu only (about 9 minutes in all) unless [`ci-scope.sh`](../scripts/ci-scope.sh) finds platform code
+(`macos`/`windows`/`platform` paths, `paste`, `copy`, `placement`,
+`native_feel`), packaging, PowerShell, Swift, Cargo manifests or lock, or
+workflow changes, or the PR has the `full-ci` label; adding the label reruns
+the check on all three systems. Pushes to main always run all three and so
+confirm each merged commit. Fork PRs skip every job, so their **CI result**
+fails; they keep read-only title feedback.
 
-On success, the script preserves an existing PR's title/body and appends one
-gate line. New PRs use `--title` or the first non-merge commit subject, and
-`--body-file` or that commit's body without trailers. It posts **Local gate**
-success on the exact SHA, then squash-merges immediately without auto-merge.
-A changed head, dirty files, missing checks or conflict stop landing. The release
-app's PR uses the same gate; no CI dispatch is needed to prepare it.
-
-[CI](../.github/workflows/ci.yml) runs after pushes to main and on daily/manual
-runs, with Linux, macOS and Windows suites on every revision. Daily/manual runs
-add WebKit, release-mode/MSRV checks, five-minute fuzzing and installed journeys
-against the published nightly; failures update one issue. **CI result** remains
-publication evidence: a red main keeps the preceding nightly. Run manual
-qualification before a stable release. [Preview](../.github/workflows/preview.yml)
-keeps full builds, signing and install/start checks before publishing.
-
-Only the read-only title workflow runs on outside PRs. Nix and syntax-tool
-workflows confirm after merge. RustSec advisories block dependency changes,
-release publication and the weekly check; other failures warn. Publication
-details are in [RELEASING.md](../RELEASING.md).
+Daily/manual runs add WebKit, release-mode/MSRV checks, five-minute fuzzing and
+installed journeys against the published nightly; failures update one issue.
+**CI result** also protects publication: a red main keeps the preceding nightly.
+Run manual qualification before a stable release.
+[Preview](../.github/workflows/preview.yml) keeps full builds, signing and
+install/start checks before publishing. Nix and syntax-tool workflows confirm
+after merge. RustSec advisories block dependency changes on PRs and main, release
+publication and the weekly check; other failures warn. Publication details are
+in [RELEASING.md](../RELEASING.md).

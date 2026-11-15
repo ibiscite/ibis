@@ -18,6 +18,7 @@ mod editor_endpoint;
 mod errors;
 mod feedback;
 mod format_settings;
+mod instance;
 mod library;
 mod login_item;
 #[cfg(target_os = "macos")]
@@ -64,48 +65,10 @@ use tauri_plugin_global_shortcut::ShortcutState;
 use crate::diagnostics::{NativeIssue, application_message, checked, report};
 use crate::library::{Library, LoadRequests, SearchRequests, Source, start_open};
 use crate::picker::{
-    ChooserOpen, Pinned, ShortcutStatus, dismiss_picker, hides_on_blur, show_picker, start_shortcut, toggle_picker,
+    ChooserOpen, Pinned, ShortcutStatus, dismiss_picker, hides_on_blur, start_shortcut, toggle_picker,
 };
 use crate::preferences::SettingsFile;
 use crate::tray::create_tray;
-
-#[derive(Debug, PartialEq, Eq)]
-enum InstanceAction {
-    Show,
-    Hide,
-    Ignore,
-}
-
-fn is_toggle(args: &[String]) -> bool {
-    matches!(args, [_, command] if command == "toggle") || ibis_core::toggle::receipt_path(args).is_some()
-}
-
-/// Only a macOS toggle shares the shortcut's main thread; see the callback.
-fn acts_on_main_thread(args: &[String], macos: bool) -> bool {
-    macos && is_toggle(args)
-}
-
-fn act_on_instance(app: &tauri::AppHandle, args: &[String]) {
-    let visible = || {
-        app.get_webview_window("main")
-            .and_then(|window| checked(window.is_visible(), NativeIssue::Visibility))
-    };
-    match instance_action(args, visible) {
-        InstanceAction::Show => show_picker(app),
-        InstanceAction::Hide => dismiss_picker(app),
-        InstanceAction::Ignore => {}
-    }
-}
-
-fn instance_action(args: &[String], visible: impl FnOnce() -> Option<bool>) -> InstanceAction {
-    if args.iter().skip(1).any(|arg| arg == login_item::AT_LOGIN_ARG) {
-        InstanceAction::Ignore
-    } else if is_toggle(args) && visible() == Some(true) {
-        InstanceAction::Hide
-    } else {
-        InstanceAction::Show
-    }
-}
 
 fn main() {
     // Answer `ibis toggle` first, whether this copy opens the picker or hands
@@ -134,24 +97,7 @@ fn main() {
     let builder = builder.manage(initial_panel);
     #[cfg(target_os = "windows")]
     let builder = builder.manage(picker::FocusChanges::default());
-    let builder = builder
-        // Must be registered first: a second launch brings the running picker forward.
-        // A login entry starting a second copy leaves the running picker alone.
-        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            // macOS: the shortcut acts on the main thread, so a toggle decides
-            // and acts there too, or the two could interleave and lose one.
-            // Elsewhere, make the instance decision in the callback;
-            // show_picker serializes native preparation and presentation.
-            if acts_on_main_thread(&args, cfg!(target_os = "macos")) {
-                let handle = app.clone();
-                report(
-                    app.run_on_main_thread(move || act_on_instance(&handle, &args)),
-                    NativeIssue::PickerEvent,
-                );
-            } else {
-                act_on_instance(app, &args);
-            }
-        }))
+    let builder = instance::install(builder)
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build());
@@ -420,11 +366,7 @@ fn main() {
             #[cfg(target_os = "macos")]
             // A Dock click while Settings is open brings Settings forward.
             if let tauri::RunEvent::Reopen { .. } = event {
-                if settings_window::is_open(app) || tray::hidden() {
-                    settings_window::open(app, None);
-                } else {
-                    show_picker(app);
-                }
+                instance::reopen(app);
             }
             #[cfg(not(target_os = "macos"))]
             let _ = (app, event);
@@ -433,66 +375,6 @@ fn main() {
             report(Err::<(), _>(err), NativeIssue::Startup);
             std::process::exit(1);
         }
-    }
-}
-
-#[cfg(test)]
-mod toggle_tests {
-    use super::*;
-
-    #[test]
-    fn only_a_macos_toggle_waits_for_the_main_thread() {
-        let toggle: Vec<String> = ["ibis-desktop", "toggle"].map(String::from).to_vec();
-        let plain: Vec<String> = ["ibis-desktop"].map(String::from).to_vec();
-        let login: Vec<String> = ["ibis-desktop", "--at-login"].map(String::from).to_vec();
-        assert!(acts_on_main_thread(&toggle, true));
-        for (args, macos) in [(&toggle, false), (&plain, true), (&plain, false), (&login, true)] {
-            assert!(!acts_on_main_thread(args, macos));
-        }
-    }
-
-    #[test]
-    fn toggle_hides_a_visible_picker_and_shows_a_hidden_or_missing_one() {
-        let plain: Vec<String> = ["/synthetic/Ibis 文献 app/ibis-desktop", "toggle"]
-            .map(String::from)
-            .to_vec();
-        let receipt: Vec<String> = ["/synthetic/ibis-desktop", "toggle", "--receipt", "/synthetic/receipt"]
-            .map(String::from)
-            .to_vec();
-        for args in [plain, receipt] {
-            assert_eq!(instance_action(&args, || Some(true)), InstanceAction::Hide);
-            assert_eq!(instance_action(&args, || Some(false)), InstanceAction::Show);
-            assert_eq!(instance_action(&args, || None), InstanceAction::Show);
-        }
-    }
-
-    #[test]
-    fn ordinary_launches_show_and_login_launches_leave_the_picker_alone() {
-        for args in [
-            vec![],
-            vec!["toggle"],
-            vec!["ibis-desktop"],
-            vec!["ibis-desktop", "--toggle"],
-            vec!["ibis-desktop", "Toggle"],
-            vec!["ibis-desktop", "toggle", "extra"],
-            vec!["ibis-desktop", "", "toggle"],
-            vec!["ibis-desktop", "切り替え"],
-        ] {
-            let args: Vec<String> = args.into_iter().map(String::from).collect();
-            let action = instance_action(&args, || panic!("no toggle requested"));
-            assert_eq!(action, InstanceAction::Show);
-        }
-        for args in [
-            vec!["ibis-desktop", "--at-login"],
-            vec!["ibis-desktop", "toggle", "--at-login"],
-        ] {
-            let args: Vec<String> = args.into_iter().map(String::from).collect();
-            let action = instance_action(&args, || panic!("login must stay hidden"));
-            assert_eq!(action, InstanceAction::Ignore);
-        }
-        let huge = ["ibis-desktop".into(), "toggle".repeat(100_000)];
-        let action = instance_action(&huge, || panic!("exact command only"));
-        assert_eq!(action, InstanceAction::Show);
     }
 }
 

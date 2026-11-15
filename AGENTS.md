@@ -8,7 +8,7 @@ Current work and owners: the tracking issue (label `tracking`).
 
 ```sh
 bash scripts/land.sh start NAME [ISSUE]    # worktree, signed first commit and draft claim
-bash scripts/land.sh                       # full local gate, then squash merge
+bash scripts/land.sh                       # fast local checks, push, squash auto-merge on hosted CI
 bash scripts/land.sh end NAME              # remove the merged session
 node scripts/gen.mjs                       # regenerate bindings, schemas and the CLI options
 cargo test -p ibis-desktop --locked        # the app's Rust side; plain cargo test skips it
@@ -40,4 +40,6 @@ node scripts/pr-lint.mjs --title "fix: explain the change"
 
 Pull request titles are Conventional Commits and become the release notes; link `Closes #N`. Sign off commits (`git commit -s`) with a public project or GitHub noreply identity and disclose AI help with an `Assisted-by:` or `Co-authored-by:` trailer.
 
-Land with `bash scripts/land.sh` from a clean branch ([decision 0049](docs/decisions/0049-local-gate.md)): the Mac, Ubuntu and, when packaging changes, Windows check the exact commit in parallel, then it merges. GitHub CI confirms main afterwards; if main turns red, restore it first with the smallest verified repair or a revert, then put the cause's fix on its issue the same day. Start each piece with `land.sh start NAME` (its draft pull request is the claim; open drafts are Now) and finish with `land.sh end NAME` after it merges.
+Land with `bash scripts/land.sh` from a clean branch: fast local checks, push and request squash auto-merge.
+Hosted **CI result** is the required check, with no merge queue ([decision 0049](docs/decisions/0049-local-gate.md)): PRs run the desktop checks on all three systems and the core tests on Ubuntu, or everywhere when they touch platform code or carry the `full-ci` label; main confirms all three. If main turns red, restore it first with the smallest verified repair or a revert and record the cause on its issue the same day.
+Start with `land.sh start NAME` (the draft PR is the claim) and finish with `land.sh end NAME` after it merges.
