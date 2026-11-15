@@ -19,7 +19,7 @@ import { UndoNotice } from "../ui/UndoNotice";
 import { Button } from "../ui/Button";
 import { AboutDelight, AboutLine } from "../ui/Delights";
 import { localMoment } from "../ui/localMoment";
-import { useAltHeld } from "../features/picker/useAltHeld";
+import { useAltHeld } from "../ui/useAltHeld";
 import type { DelightFact, DelightView } from "../bindings";
 import { ShortcutsPage } from "./ShortcutsPage";
 import { Note, Row } from "../ui/Layout";

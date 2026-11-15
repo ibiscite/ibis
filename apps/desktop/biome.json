@@ -12,5 +12,12 @@
         "useHookAtTopLevel": "error"
       }
     }
-  }
+  },
+  "overrides": [{
+    "includes": ["src/ui/**", "!src/ui/**/*.test.ts", "!src/ui/**/*.test.tsx"],
+    "linter": { "rules": { "style": { "noRestrictedImports": { "level": "error", "options": { "patterns": [{
+      "group": ["**/features/**", "**/settings/**", "**/App", "**/App.*"],
+      "message": "ui/ parts can't depend on screens: move the shared piece into ui/ or pass it as a prop."
+    }] } } } } }
+  }]
 }

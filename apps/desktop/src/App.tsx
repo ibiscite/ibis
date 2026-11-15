@@ -29,14 +29,14 @@ import { useRecentReferences } from "./features/picker/useRecentReferences";
 import { useLibrarySearch } from "./features/picker/useLibrarySearch";
 import { useCitationOutput } from "./features/picker/useCitationOutput";
 import { useZoteroScope } from "./features/picker/useZoteroScope";
-import { usePickerSession } from "./features/picker/usePickerSession";
+import { type PickerPreview, usePickerSession } from "./features/picker/usePickerSession";
 import { useUpdateProgress } from "./features/picker/useUpdateProgress";
 import { usePickerLibrary } from "./features/picker/usePickerLibrary";
 import { usePickerMenus } from "./features/picker/usePickerMenus";
 import { useUpdateOfferActivity } from "./features/picker/useUpdateOfferActivity";
 import { useCitationCopy } from "./features/picker/useCitationCopy";
 import { usePickerMove } from "./features/picker/usePickerMove";
-import { useAltHeld } from "./features/picker/useAltHeld";
+import { useAltHeld } from "./ui/useAltHeld";
 import { HeldKeys } from "./ui/HeldKeys";
 import { useNativeRequests } from "./features/picker/useNativeRequests";
 import { usePickerLifecycle } from "./features/picker/usePickerLifecycle";
@@ -53,14 +53,11 @@ import { useShorthandHint } from "./features/picker/useShorthandHint";
 import { usePickerKeys } from "./features/picker/usePickerKeys";
 import { useCommandSearch } from "./features/picker/useCommandSearch";
 import { COMMAND_PREFIX } from "./features/picker/commands";
-import type { Copied } from "./api";
 import { usePickerDelights } from "./features/picker/usePickerDelights";
 import { useEmptyFeedback, useZoomFeedback } from "./ui/Delights";
 import { useInterfaceMessages } from "./i18n";
 import { rowWords } from "./features/picker/ResultList";
 import { PickerShown } from "./features/picker/pickerShown";
-
-export type PickerPreview = { query?: string; copied?: Copied };
 
 // The picker: search, choose one or more references, copy them as a citation.
 export function App({ preview }: { preview?: PickerPreview } = {}) {
