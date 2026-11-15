@@ -116,6 +116,7 @@ The bird appears only where Ibis itself is the subject, in the one treatment of 
 ## Accessibility
 
 - Every action has a key and a visible, named control; hover is never the only way to see something; visible labels match accessible names. Editing the query is typing, not an action: Esc clears it, as in Spotlight, and the field has no clear button.
+- A control drawn without words (`IconButton`, `Switch`, `PopupButton`, a citation token) cannot be built without a name: its type requires `aria-label` or `aria-labelledby`. Words a screen reader should hear when they change are a `ui/Status`, spoken whole (atomic), never as fragments; `alert` interrupts, `status` waits, words that tick are muted. Keyboard order follows what the eye reads: Settings' Undo notice sits after the page in Tab order, as it sits at the window's foot.
 - Focus order: search, header pop-ups, pin, browsing tabs, footer actions, More. The list is not a Tab stop (↑ ↓ move it from search). Nothing takes focus except search on open.
 - Screen readers hear a row as title, first author, year, container, type and why it matched. "Copied" is announced politely; a Rows change is announced once.
 - An input method's confirming Enter never copies or pastes. Every release passes the whole citation with VoiceOver and NVDA and with CJK input methods (decision 0032).

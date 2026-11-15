@@ -7,6 +7,7 @@ import { Button } from "./Button";
 import { Note, ResetSlot, Row } from "./Layout";
 import { ShortcutRecorder } from "./ShortcutRecorder";
 import { ShortcutEcho, useKeyPulse } from "./Delights";
+import { Status } from "./Status";
 
 /** Both Settings pages edit the same owner. This component only presents it. */
 export function ShortcutSetting({ rowId, details, status, problem, saving, highlighted, onRecord, onConfigure, echo = false, table = false }: {
@@ -25,17 +26,17 @@ export function ShortcutSetting({ rowId, details, status, problem, saving, highl
   const reset = status && !status.desktop && !isDefault ? { label: details.label, disabled: saving, onReset: () => onRecord(null) } : undefined;
   const controls = <>
       {status?.desktop ? <>
-        <span role="status">{status.shortcut || text("shortcuts-not-assigned")}</span>
+        <Status as="span">{status.shortcut || text("shortcuts-not-assigned")}</Status>
         {status.desktop.configurable && <Button isDisabled={saving} onPress={onConfigure}>{text("shortcuts-change")}</Button>}
       </> : status && <ShortcutRecorder shortcut={status.shortcut} label={text("shortcuts-open")}
         prompt={text("shortcuts-record")} isDisabled={saving} onRecord={onRecord} />}
-      {status?.error && <span role="status">{status.error}</span>}
+      {status?.error && <Status as="span">{status.error}</Status>}
 </>;
   if (table) return <>
     <tr id={rowId} data-echo={pressed || undefined} data-highlighted={highlighted || undefined}><th scope="row"><span className="ui-row-label">{text(SHORTCUT_ACTIONS.open)}<ResetSlot reset={reset} /></span></th><td><span className="ui-settings-keys">{controls}</span></td></tr>
     {(problem || status?.desktop?.guidance) && <tr><td colSpan={2}>
       {status?.desktop?.guidance && <Note>{status.desktop.guidance}</Note>}
-      {problem && <p className="ui-row-problem" role="alert">{text(problem.id, problem.args)}</p>}
+      {problem && <Status className="ui-row-problem" role="alert">{text(problem.id, problem.args)}</Status>}
     </td></tr>}
   </>;
   return <ShortcutEcho keys={echo && status ? [status.shortcut] : []}><Row id={rowId} label={details.label} highlighted={highlighted} reset={reset}

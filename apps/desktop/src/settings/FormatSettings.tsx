@@ -6,6 +6,7 @@ import { Button } from "../ui/Button";
 import { Group, Row, Section } from "../ui/Layout";
 import type { SettingsApi } from "./api";
 import { rowDetails } from "./rows";
+import { Status } from "../ui/Status";
 
 /** App choices and writings come from the engine's settings snapshot. A late
  * read or forget never replaces a more recent snapshot or a reopened page. */
@@ -71,8 +72,8 @@ export function FormatSettings({ settings, highlighted }: { settings: ReturnType
     {openSettingsFile && <Section id="settings-file"><Group><Row id="open-settings-file" {...rowDetails("open-settings-file", text)} highlighted={highlighted === "open-settings-file"}>
       <Button onPress={openSettingsFile}>{text("settings-open-file")}</Button>
     </Row></Group></Section>}
-    {problem && <p role="alert">{text("settings-read-failed")}</p>}
-    {forgetFailed && <p role="alert">{text("settings-forget-failed")} <Button size="small" onPress={dismissForget}>{text("picker-dismiss")}</Button></p>}
-    {openFailed && <p role="alert">{text("settings-open-failed")} <Button size="small" onPress={dismissOpen}>{text("picker-dismiss")}</Button></p>}
+    {problem && <Status role="alert">{text("settings-read-failed")}</Status>}
+    {forgetFailed && <Status role="alert">{text("settings-forget-failed")} <Button size="small" onPress={dismissForget}>{text("picker-dismiss")}</Button></Status>}
+    {openFailed && <Status role="alert">{text("settings-open-failed")} <Button size="small" onPress={dismissOpen}>{text("picker-dismiss")}</Button></Status>}
   </>;
 }

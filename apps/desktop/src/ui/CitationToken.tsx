@@ -2,8 +2,9 @@ import type { ComponentProps, ReactNode } from "react";
 import { Button } from "./Button";
 import { IconButton } from "./IconButton";
 import "./CitationToken.css";
+import type { AccessibleName } from "./AccessibleName";
 
-type TokenButton = Omit<ComponentProps<typeof Button>, "variant" | "size" | "className" | "label" | "keys" | "icon" | "children"> & { children: ReactNode };
+type TokenButton = Omit<ComponentProps<typeof Button>, "variant" | "size" | "className" | "label" | "keys" | "icon" | "children"> & { children: ReactNode } & AccessibleName;
 
 /** One reference in the citation line (decision 0045): its own words from the
  * output on a soft fill, a quiet handle when those words do not name it, and,

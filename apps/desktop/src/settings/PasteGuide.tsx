@@ -5,6 +5,7 @@ import "../ui/PasteGuide.css";
 import { useInterfaceMessages } from "../i18n";
 import type { PastePermission, SettingsApi } from "./api";
 import appIcon from "../../src-tauri/icons/128x128.png";
+import { Status } from "../ui/Status";
 
 /** How often to look again while waiting for the person in System Settings. */
 export const RECHECK_MS = 1_000;
@@ -81,12 +82,12 @@ export function PasteGuide({ name, permission, onOpen, onDrag }: {
             <FileDrag icon={appIcon} label={text("general-paste-drag", { name, list: permission.list })} description={text("general-paste-drag-keyboard")} onPress={open}
               onDrag={() => { setDragFailed(false); void onDrag().catch(() => setDragFailed(true)); }} />
           </>}
-          <p className="ui-paste-guide-status" role="status" aria-live="polite" data-done={permission.granted || undefined}>
+          <Status className="ui-paste-guide-status" data-done={permission.granted || undefined}>
             {permission.granted ? text("general-paste-granted") : permission.unreadable ? text("general-paste-unreadable") : opened ? text("general-paste-waiting") : ""}
-          </p>
+          </Status>
         </div>
         {!permission.granted && <p className="ui-paste-guide-note">{text("general-paste-drag-fallback")}</p>}
-        {dragFailed && !permission.granted && <p className="ui-paste-guide-note" data-problem role="alert">{text("general-paste-drag-failed")}</p>}
+        {dragFailed && !permission.granted && <Status className="ui-paste-guide-note" data-problem role="alert">{text("general-paste-drag-failed")}</Status>}
         {slow && !permission.granted && <p className="ui-paste-guide-note">{text("general-paste-stale", { name })}</p>}
       </div>
     </div>

@@ -6,6 +6,7 @@ import { currentPlatform } from "../platform";
 import { Button } from "./Button";
 import { appIcon } from "../brand";
 import "./Delights.css";
+import { Status } from "./Status";
 
 function matchesEcho(event: KeyboardEvent, accelerator: string) {
   const parts = accelerator === "+" ? ["+"] : accelerator.split(/\+(?!$)/);
@@ -65,11 +66,11 @@ export function AboutDelight({ dip, enabled, onClick }: { dip: number; enabled: 
 
 /** One line under the bird, read aloud when a click changes it. */
 export function AboutLine({ children, said, highlighted }: { children: string; said: boolean; highlighted: boolean }) {
-  return <p id="about-name" className="ui-about-line" data-highlighted={highlighted || undefined} aria-live="polite"><span key={children} data-said={said || undefined}>{children}</span></p>;
+  return <Status id="about-name" className="ui-about-line" data-highlighted={highlighted || undefined}><span key={children} data-said={said || undefined}>{children}</span></Status>;
 }
 
 export function QuietStatus({ children }: { children: ReactNode }) {
-  return children ? <p className="ui-quiet-status" role="status">{children}</p> : null;
+  return children ? <Status className="ui-quiet-status">{children}</Status> : null;
 }
 
 /** Browser zoom stays local to this webview; the receipt slot reports its result. */

@@ -5,6 +5,7 @@ import { Button } from "./Button";
 import { useInterfaceMessages } from "../i18n";
 import { registerUndo, subscribeUndo } from "./editUndo";
 import "./NoticeSlot.css";
+import { Status } from "./Status";
 
 function noticeText(value: string) {
   const letters = [...value.replace(/\s+/gu, " ")].filter((letter) => {
@@ -67,7 +68,7 @@ export function UndoNotice({ message, action, onUndo, onExpire, paused = false, 
   }, [fallbackFocusRef]);
   return <div ref={notice} className="notice-band" data-offer hidden={!newest} onPointerEnter={() => setHovered(true)} onPointerLeave={() => setHovered(false)}
     onFocusCapture={() => setFocused(true)} onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false); }}>
-    <span id={description} role={error ? "alert" : "status"} title={noticeText(message)}>{error ? say("picker-undo-failed") : noticeText(message)}</span>
+    <Status as="span" id={description} role={error ? "alert" : "status"} title={noticeText(message)}>{error ? say("picker-undo-failed") : noticeText(message)}</Status>
     {/* Retain native focus while waiting, so dismissal can return it to Search. */}
     {/* The message names the action; the key cap says ⌘Z does the same. */}
     <Button variant="quiet" size="small" label={say("picker-undo")} keys={keysFor("undo")} aria-label={label} aria-describedby={description} isPending={pending} onPress={() => invoke.current()} />
