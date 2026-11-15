@@ -144,7 +144,7 @@ fn present_notice(app: &AppHandle, owner: crate::picker::ChooserLease) {
     let handle = app.clone();
     report(
         app.run_on_main_thread(move || {
-            let text = ibis_engine::catalogue::text("update-newer-installed", None, &[]).unwrap_or_default();
+            let text = ibis_engine::catalogue::text("app-newer-installed", None, &[]).unwrap_or_default();
             #[cfg(target_os = "macos")]
             crate::panel::activate_for_dialog(&handle);
             handle
@@ -331,7 +331,7 @@ mod tests {
     #[test]
     fn launch_notice_words_come_from_the_catalogue() {
         assert_eq!(
-            ibis_engine::catalogue::text("update-newer-installed", None, &[]).as_deref(),
+            ibis_engine::catalogue::text("app-newer-installed", None, &[]).as_deref(),
             Some("A newer Ibis is installed. Quit and reopen to use it.")
         );
     }
