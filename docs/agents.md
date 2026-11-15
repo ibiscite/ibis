@@ -16,7 +16,9 @@ Check the command and chosen libraries first, then verify one result below.
 
 Give your assistant read-only search, reference details, citations and styles
 from the libraries you choose in Ibis. Ibis's MCP tools never change your
-libraries, expose notes or annotations, or open network connections. They read
+libraries, expose notes or annotations, or open network connections. Only if
+you add `--allow-writes` yourself can they propose changes, which you apply or
+reject in Ibis. They read
 an attachment's text only from a library where you allow AI apps to read
 attachment text in **Settings › AI Apps › Attachment text**; this is off by
 default. This lets AI apps read text with page numbers, never the files.
@@ -150,6 +152,15 @@ After configuring any client, check whether it exposes Ibis's tools in the
 current session. If it needs a restart or a new session, tell the person exactly
 what to reopen; verify with the CLI first as below. For an unlisted app, use its
 own documented local stdio MCP setup with the same command and arguments.
+
+### Letting your assistant propose changes
+
+Setup always connects the read-only server. To let an assistant propose adding
+references, changing fields or tags, add `--allow-writes` to the arguments
+yourself, for example `"args":["mcp","--app-libraries","--allow-writes"]`, or
+`claude mcp add --scope user --transport stdio ibis -- ibis mcp --app-libraries --allow-writes`.
+Nothing changes until you apply a proposal in Ibis; `ibis proposals list` shows
+them. Assistants setting up Ibis never add this flag on their own.
 
 ## 5. Verify one result
 

@@ -319,7 +319,7 @@ impl Engine {
         prepared.outcome
     }
 
-    pub(super) fn open_file(&self, path: &Path, cancel: &Cancellation) -> Result<(), EngineError> {
+    pub(crate) fn open_file(&self, path: &Path, cancel: &Cancellation) -> Result<(), EngineError> {
         self.open_file_observed(path, cancel).map(|_| ())
     }
 
@@ -612,7 +612,7 @@ impl Engine {
         }
         SourceWatch::with_library(path, observation, model, callback)
     }
-    pub(super) fn reload_files(&self, library: Option<&LibraryId>, cancel: &Cancellation) -> Result<(), EngineError> {
+    pub(crate) fn reload_files(&self, library: Option<&LibraryId>, cancel: &Cancellation) -> Result<(), EngineError> {
         let loaded_zotero = self
             .resources
             .zotero

@@ -284,6 +284,10 @@ pub struct Session {
     library_problem: Option<Refusal>,
     /// Where the app's settings are read for the format each app uses.
     formats: Formats,
+    /// Where proposals are kept, when the server was started with `--allow-writes`.
+    proposals: Option<crate::write::Proposals>,
+    /// The name the client gave itself, for the proposals it makes.
+    client: Option<String>,
 }
 
 struct ConnectionCitations {
@@ -326,6 +330,13 @@ impl Session {
         self
     }
 
+    /// Offer the tools that propose library changes, kept in `proposals`
+    /// for the person to apply or reject in Ibis (decision 0055).
+    pub fn allowing_writes(mut self, proposals: crate::write::Proposals) -> Self {
+        self.proposals = Some(proposals);
+        self
+    }
+
     /// The app's settings cannot be found here, so `for_app` is refused with
     /// this rather than answered from defaults.
     pub fn without_formats(mut self, problem: Refusal) -> Self {
@@ -345,6 +356,7 @@ pub(crate) enum Formats {
 }
 
 const CAPABILITIES_KEY: &str = "io.modelcontextprotocol/clientCapabilities";
+const CLIENT_INFO_KEY: &str = "io.modelcontextprotocol/clientInfo";
 
 /// One message in, at most one message out. Notifications get no answer.
 pub fn handle(engine: &Engine, session: &mut Session, message: &Value) -> Option<Value> {
@@ -457,6 +469,13 @@ fn handle_message(engine: &Engine, session: &mut Session, message: &Value, cance
             ));
         }
     };
+    if let Some(name) = meta
+        .and_then(|meta| meta.get(CLIENT_INFO_KEY))
+        .and_then(|client| client.get("name"))
+        .and_then(Value::as_str)
+    {
+        session.client = Some(name.to_owned());
+    }
     let mut result = match method {
         "server/discover" => json!({
             "supportedVersions": supported_versions(),
@@ -482,6 +501,10 @@ fn handle_message(engine: &Engine, session: &mut Session, message: &Value, cance
                 ));
             }
             session.initialized = true;
+            session.client = params
+                .pointer("/clientInfo/name")
+                .and_then(Value::as_str)
+                .map(str::to_owned);
             json!({
                 "protocolVersion": INITIALIZE_VERSIONS
                     .into_iter()
@@ -494,7 +517,7 @@ fn handle_message(engine: &Engine, session: &mut Session, message: &Value, cance
         }
         "ping" if !modern => json!({}),
         "tools/list" => {
-            let (tools, personal) = tools::offered_list(engine, &session.formats);
+            let (tools, personal) = tools::offered_list(engine, &session.formats, session.proposals.is_some());
             if modern {
                 // The reading tools follow this person's settings, so that list is theirs alone.
                 json!({"tools": tools, "ttlMs": LIST_TTL_MS, "cacheScope": if personal { "private" } else { "public" }})
@@ -505,7 +528,12 @@ fn handle_message(engine: &Engine, session: &mut Session, message: &Value, cance
         "tools/call" => {
             let name = params.get("name").and_then(Value::as_str);
             let arguments = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
-            match tools::offered_tool(engine, &session.formats, name) {
+            let writes = session.proposals.is_some();
+            let writing = session.proposals.as_ref().map(|proposals| tools::Writing {
+                proposals,
+                client: session.client.as_deref().unwrap_or_default(),
+            });
+            match tools::offered_tool(engine, &session.formats, writes, name) {
                 Some(tool) => tools::call(
                     engine,
                     session.library_problem.as_ref(),
@@ -514,6 +542,7 @@ fn handle_message(engine: &Engine, session: &mut Session, message: &Value, cance
                     &arguments,
                     cancel,
                     session.submission.as_deref(),
+                    writing.as_ref(),
                 ),
                 None => return Some(error(id, -32602, "Unknown tool")),
             }

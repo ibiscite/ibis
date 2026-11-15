@@ -340,7 +340,7 @@ impl Engine {
         }))
     }
 
-    pub(super) fn file_path(&self, library: &LibraryId) -> Result<Option<PathBuf>, EngineError> {
+    pub(crate) fn file_path(&self, library: &LibraryId) -> Result<Option<PathBuf>, EngineError> {
         let registry = self.shared.sources.lock().map_err(|_| error(ErrorCode::Internal))?;
         Ok(registry.file_path(library))
     }

@@ -15,7 +15,8 @@ services. It is the first step of the wider aim in ROADMAP.md (Where Ibis is goi
 - **Selection → format → destination**: the engine's output catalogue builds what
   is shared, always through the share-safe filter, so notes, private links and
   files never leave by accident; the front ends own the system's destinations.
-- **Writes** (`ibis-engine::write`): nothing until a slice needs it.
+- **Writes** (`ibis-engine::write`): agent proposals the person confirms in
+  Ibis, applied to `.bib` files ([0055](0055-agent-layers-full-text-writes-remote.md)).
 - **Workflows**: command-line pipes and saved recipes later reuse the same path.
 
 ## Order
@@ -55,11 +56,15 @@ their BibLaTeX EDTF `~` marker; the date model has no uncertainty flag.
 
 ## Writes
 
-Zotero first, only through Zotero 10's official local write API once Zotero 10 is
-stable, never the Connector endpoints, and only to the library the person chose.
-Writing to `.bib` files comes later, once Ibis can generate good citation keys.
-Every write shows a preview and waits for the person's click; Ibis refuses if the
-target changed, writes atomically, keeps a backup and offers Undo.
+Zotero only through Zotero 10's official local write API once Zotero 10 is
+stable, never the Connector endpoints or `zotero.sqlite`, and only to the library
+the person chose. `.bib` files come first: amended on 2026-11-15 with
+[0055](0055-agent-layers-full-text-writes-remote.md), Ibis generates citation
+keys (`authoryearword`, lowercase ASCII, with `a`, `b`, … for one already used)
+and writes a `.bib` file when the person applies a proposal. Every write shows a
+preview and waits for the person's click; Ibis refuses if the target changed,
+edits only the entry it changes, writes atomically, keeps a backup and offers
+Undo.
 
 ## Attachments
 
@@ -70,10 +75,12 @@ before it ships.
 
 ## Agents and the command line
 
-MCP never gets lookup or write tools; [0055](0055-agent-layers-full-text-writes-remote.md)
-amends this for a separate mode whose tools only propose writes that the person
-confirms in Ibis. `ibis lookup` exists only while the person
-has turned lookup on. Writes stay out of the command line until they are decided
-for it. Lookup and write are kept out of the engine methods the command line
+MCP never gets lookup or write tools. Amended on 2026-11-15 with
+[0055](0055-agent-layers-full-text-writes-remote.md): `ibis mcp --allow-writes`
+adds tools that only propose a change, kept for the person, who applies or
+rejects it in the Ibis app; a client's own approval never counts. `ibis lookup`
+exists only while the person has turned lookup on. The command line lists,
+shows and rejects proposals with `ibis proposals`, and cannot apply them.
+Lookup, proposals and apply are kept out of the engine methods the command line
 generates automatically. An agent with a shell can still change settings or run
 `ibis`, and PRIVACY.md says so when lookup ships.

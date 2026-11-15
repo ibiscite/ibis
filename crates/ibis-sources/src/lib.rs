@@ -1,6 +1,8 @@
 //! Read-only library sources producing the shared engine snapshot contract.
 mod attachments;
 mod bibtex;
+/// Edits to a `.bib` file that keep every byte they do not change (decision 0055).
+pub use bibtex::edit as bibtex_edit;
 mod candidates;
 mod csl_json;
 mod exported;

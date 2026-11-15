@@ -2,7 +2,7 @@
 name: ibis-cite
 description: Find references in the user's own library (Zotero, BibTeX, BibLaTeX, CSL-JSON, RIS or CSV) and write citations or bibliography entries from real records with Ibis. Use when the user asks to cite, reference or look up a paper or book, add a citation key, or format a reference in a style such as APA, Chicago, IEEE or MLA.
 license: MIT
-compatibility: Needs a connected Ibis MCP server and the ibis command (https://github.com/ibiscite/ibis) on PATH with support for --app-libraries. Works offline and reads libraries only.
+compatibility: Needs a connected Ibis MCP server and the ibis command (https://github.com/ibiscite/ibis) on PATH with support for --app-libraries. Works offline and never changes a library itself.
 metadata:
   author: ibiscite
   homepage: https://github.com/ibiscite/ibis/blob/main/docs/cli.md
@@ -37,8 +37,27 @@ write is a record the user actually has.
 - `library_notes` says results may be missing or out of date. Tell the user.
 - When a result lists `notices`, `losses` or `warnings`, tell the user what needs
   checking. A `losses` entry for a locator means the page is not in the citation.
-- Ibis is read-only. It cannot add or change references; ask the user to do that in
-  their reference manager.
+- Ibis does not change libraries for you. If the server lists `propose_add`,
+  `propose_change` and `propose_tags`, you can propose a change; otherwise ask the
+  user to make it in their reference manager.
+
+## Proposing a change
+
+The proposal tools are listed only when the user started the server with
+`--allow-writes`. A proposal changes nothing: the user reads it in Ibis and
+applies or rejects it there.
+
+- Propose only what the user asked for, or offer to: a missing reference they want
+  to cite, a field they told you is wrong, tags to organise references they named.
+  Search first, so you never propose a reference the library already holds.
+- `propose_add` takes CSL-JSON `fields` from a source the user gave you, never from
+  memory. Ibis makes the citation key. Send no `note`, `file` or `id`.
+- `propose_change` and `propose_tags` take a `ref` from `search`.
+- Each answer gives a proposal id. Tell the user it is waiting for them in Ibis.
+  Never say a reference was added or changed; `proposals` shows whether they
+  applied it.
+- Do not cite a proposed reference until the user has applied it and `search`
+  finds it.
 
 ## The tools
 

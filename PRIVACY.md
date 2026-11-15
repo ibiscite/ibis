@@ -1,7 +1,7 @@
 # Privacy and data flows
 
-Ibis reads your libraries without changing them. It has no account or
-crash-upload service. This page describes current data flows; plans live in
+Ibis reads your libraries without changing them, except a change you apply
+yourself in the app. It has no account or crash-upload service. This page describes current data flows; plans live in
 [ROADMAP.md](ROADMAP.md).
 
 ## What Ibis reads and writes
@@ -28,6 +28,20 @@ crash-upload service. This page describes current data flows; plans live in
   computer and not part of a settings backup. Text is held in memory for one
   request, never written to disk, and returned in bounded parts: at most five
   pages or 32 KiB, or ten passages. Ids name an attachment, never its path.
+- **Proposed changes:** only when an AI app's `ibis mcp` command includes
+  `--allow-writes`, its tools can propose adding a reference, changing a
+  reference's fields or adding and removing its tags. Each proposal is one
+  private file in a `proposals` folder beside `settings.json`, at most 64 KiB
+  and at most 100 waiting: what the AI app sent, after the same filter as every
+  shared record (no notes, files or private links), the name the app gave
+  itself, the library's id and, for a `.bib` file, its path, the reference's
+  key and title, and a fingerprint of the entry. Nothing in a library changes
+  until you apply the proposal in the Ibis app; the app shows the entry before
+  and after, refuses if it changed since, edits only that entry and keeps the
+  replaced file as `<file>.ibis-backup-N`. `ibis proposals` lists, shows and
+  rejects proposals but cannot apply them. Only `.bib` files take proposals;
+  Ibis does not change Zotero libraries.
+  An AI app that can run commands can still edit files you can edit.
 - **Project bibliographies:** chosen files are checked without changes.
   Settings retain their paths; the picker receives only file names.
 - **Clipboard:** copying replaces its contents. Clipboard managers, cloud
@@ -95,7 +109,7 @@ MCP responses go to the client that started the server, as listed below.
 | App updates | Automatic checks require consent; Check for Updates… checks on request. GitHub receives IP address and app version, not library data. Downloads require agreement and a valid channel signature. |
 | Windows installation | Downloads Microsoft's WebView2 bootstrapper/runtime if missing. Microsoft's runtime updates are separate. |
 | Feedback | Opens GitHub in your browser with app version and OS; you decide whether to submit. |
-| AI clients | `ibis mcp` passes bibliographic fields and citations over stdio to its caller, and attachment text from libraries where you allow it. That client may send them to its own service. [MCP privacy boundary](docs/cli.md#ai-agents-mcp). |
+| AI clients | `ibis mcp` passes bibliographic fields and citations over stdio to its caller, and attachment text from libraries where you allow it. With `--allow-writes` it also takes proposed changes, kept on this computer as above. That client may send what it receives to its own service. [MCP privacy boundary](docs/cli.md#ai-agents-mcp). |
 
 The web interface has window-scoped native commands rather than file,
 clipboard, shell or network plugin permissions. Its CSP limits connections

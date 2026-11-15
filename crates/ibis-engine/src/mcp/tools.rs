@@ -47,8 +47,20 @@ pub(super) struct Tool {
     answer: Answer,
 }
 
-/// A tool's work: the engine, where the app's formats are read, the arguments and cancellation.
-type Answer = fn(&Engine, &Formats, &Map<String, Value>, &Cancellation) -> Result<Value, Refusal>;
+/// A reading tool's work: the engine, where the app's formats are read, the
+/// arguments and cancellation.
+type Read = fn(&Engine, &Formats, &Map<String, Value>, &Cancellation) -> Result<Value, Refusal>;
+/// A proposal tool's work, with where proposals are kept and who asks.
+type Write = fn(&Engine, &Writing<'_>, &Map<String, Value>, &Cancellation) -> Result<Value, Refusal>;
+
+#[derive(Clone, Copy)]
+pub(super) enum Answer {
+    Reads(Read),
+    /// Records a proposal for the person to confirm in Ibis; changes no library.
+    Proposes(Write),
+    /// Lists this client's proposals; changes nothing.
+    Lists(Write),
+}
 
 pub(super) const TOOLS: [Tool; 4] = [
     Tool {
@@ -58,7 +70,7 @@ pub(super) const TOOLS: [Tool; 4] = [
         input: search_input,
         output: search_output,
         reads_library: |_| true,
-        answer: search,
+        answer: Answer::Reads(search),
     },
     Tool {
         name: "show",
@@ -67,7 +79,7 @@ pub(super) const TOOLS: [Tool; 4] = [
         input: show_input,
         output: show_output,
         reads_library: |_| true,
-        answer: show,
+        answer: Answer::Reads(show),
     },
     Tool {
         name: "cite",
@@ -76,7 +88,7 @@ pub(super) const TOOLS: [Tool; 4] = [
         input: cite_input,
         output: cite_output,
         reads_library: |arguments| !arguments.contains_key("records"),
-        answer: cite,
+        answer: Answer::Reads(cite),
     },
     Tool {
         name: "styles",
@@ -85,24 +97,33 @@ pub(super) const TOOLS: [Tool; 4] = [
         input: styles_input,
         output: styles_output,
         reads_library: |_| false,
-        answer: styles,
+        answer: Answer::Reads(styles),
     },
 ];
 
 mod reading;
 pub(super) use reading::{offered_list, offered_tool};
+mod writing;
+pub(in crate::mcp) use writing::Writing;
 
 /// One tool as tools/list describes it.
 fn entry(tool: &Tool) -> Value {
-    let read_only =
-        json!({"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false});
+    let annotations = match tool.answer {
+        // A proposal changes no library until the person applies it in Ibis.
+        Answer::Proposes(_) => {
+            json!({"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false})
+        }
+        Answer::Reads(_) | Answer::Lists(_) => {
+            json!({"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false})
+        }
+    };
     json!({
         "name": tool.name,
         "title": tool.title,
         "description": crate::catalogue::text(tool.description, None, &[]).unwrap_or_else(|| tool.description.into()),
         "inputSchema": (tool.input)(),
         "outputSchema": output_schema((tool.output)()),
-        "annotations": read_only,
+        "annotations": annotations,
     })
 }
 
@@ -190,6 +211,7 @@ impl From<EngineError> for Refusal {
 }
 
 /// A tool's answer, or the error an agent reads instead.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn call(
     engine: &Engine,
     problem: Option<&Refusal>,
@@ -198,8 +220,9 @@ pub(super) fn call(
     arguments: &Value,
     cancel: &Cancellation,
     submission: Option<&crate::citations::SubmittedCitation>,
+    writing: Option<&Writing<'_>>,
 ) -> Value {
-    let answered = answer(engine, problem, formats, tool, arguments, cancel, submission).and_then(|data| {
+    let answered = answer(engine, problem, formats, tool, arguments, cancel, submission, writing).and_then(|data| {
         // The bound is on what is sent: the summary and the structured content.
         let result = json!({
             "content": [{"type": "text", "text": super::summary::text(tool.name, &data)}],
@@ -239,6 +262,7 @@ pub(super) fn tool_error(
     json!({"content": [{"type": "text", "text": text}], "structuredContent": {"error":problem}, "isError": true})
 }
 
+#[allow(clippy::too_many_arguments)]
 fn answer(
     engine: &Engine,
     problem: Option<&Refusal>,
@@ -247,6 +271,7 @@ fn answer(
     arguments: &Value,
     cancel: &Cancellation,
     submission: Option<&crate::citations::SubmittedCitation>,
+    writing: Option<&Writing<'_>>,
 ) -> Result<Value, Refusal> {
     cancel.check()?;
     let arguments = arguments
@@ -261,10 +286,13 @@ fn answer(
             return Err(Refusal::bad(ToolProblem::NoLibrary, &[]));
         }
     }
-    let data = if tool.name == "cite" {
-        cite_submitted(engine, formats, arguments, cancel, submission)?
-    } else {
-        (tool.answer)(engine, formats, arguments, cancel)?
+    let data = match tool.answer {
+        _ if tool.name == "cite" => cite_submitted(engine, formats, arguments, cancel, submission)?,
+        Answer::Reads(answer) => answer(engine, formats, arguments, cancel)?,
+        Answer::Proposes(answer) | Answer::Lists(answer) => {
+            let writing = writing.ok_or_else(|| Refusal::bad(ToolProblem::Writes, &[]))?;
+            answer(engine, writing, arguments, cancel)?
+        }
     };
     cancel.check()?;
     Ok(data)
@@ -1055,6 +1083,6 @@ fn styles(
 #[ignore = "writes the generated tool list for gen.mjs"]
 fn write_tool_list() {
     let directory = std::env::var_os("IBIS_GEN_DIR").unwrap_or_else(|| panic!("set IBIS_GEN_DIR"));
-    let text = serde_json::to_string_pretty(&reading::full_list()).unwrap_or_else(|e| panic!("{e}")) + "\n";
+    let text = serde_json::to_string_pretty(&writing::full_list()).unwrap_or_else(|e| panic!("{e}")) + "\n";
     std::fs::write(std::path::Path::new(&directory).join("mcp-tools.json"), text).unwrap_or_else(|e| panic!("{e}"));
 }

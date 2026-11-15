@@ -16,6 +16,14 @@ pub const MAX_CITATION_ITEMS: usize = 1_000;
 pub const MAX_CITATION_BYTES: usize = 1024 * 1024;
 pub const MAX_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
 
+/// One BibTeX entry under `key`, written from share-safe fields by the same
+/// writer as every BibTeX export. `None` when `key` is not a usable key.
+pub fn bibtex_entry(key: &str, fields: &crate::citable::CitableFields) -> Option<String> {
+    let mut out = Vec::new();
+    bibtex::write(&mut out, key, fields).ok()?;
+    String::from_utf8(out).ok()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FieldSupport {
     Native,

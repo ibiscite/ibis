@@ -764,5 +764,331 @@
       "type": "object"
     },
     "title": "Find words in an attachment"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Propose a new reference from CSL-JSON fields. The user confirms it in Ibis; nothing is added until then.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "description": "CSL-JSON fields, such as title, author, issued, container-title, page and DOI. No note, file or id.",
+          "minProperties": 1,
+          "required": [
+            "type",
+            "title"
+          ],
+          "type": "object"
+        },
+        "library": {
+          "description": "A library from proposals; needed when several are open.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fields"
+      ],
+      "type": "object"
+    },
+    "name": "propose_add",
+    "outputSchema": {
+      "oneOf": [
+        {
+          "properties": {
+            "bibtex": {
+              "type": "string"
+            },
+            "next": {
+              "type": "string"
+            },
+            "proposal": {
+              "type": "string"
+            },
+            "provenance": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "proposal",
+            "status",
+            "summary",
+            "next",
+            "provenance"
+          ]
+        },
+        {
+          "properties": {
+            "error": {
+              "required": [
+                "code",
+                "message",
+                "recovery",
+                "focus"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "error"
+          ]
+        }
+      ],
+      "type": "object"
+    },
+    "title": "Propose adding a reference"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Propose new values for fields of a reference by ref. The user confirms it in Ibis; nothing changes until then.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "description": "CSL-JSON fields, such as title, author, issued, container-title, page and DOI. No note, file or id.",
+          "minProperties": 1,
+          "type": "object"
+        },
+        "ref": {
+          "description": "A ref from search.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref",
+        "fields"
+      ],
+      "type": "object"
+    },
+    "name": "propose_change",
+    "outputSchema": {
+      "oneOf": [
+        {
+          "properties": {
+            "bibtex": {
+              "type": "string"
+            },
+            "next": {
+              "type": "string"
+            },
+            "proposal": {
+              "type": "string"
+            },
+            "provenance": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "proposal",
+            "status",
+            "summary",
+            "next",
+            "provenance"
+          ]
+        },
+        {
+          "properties": {
+            "error": {
+              "required": [
+                "code",
+                "message",
+                "recovery",
+                "focus"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "error"
+          ]
+        }
+      ],
+      "type": "object"
+    },
+    "title": "Propose changing a reference"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Propose tags to add to or remove from a reference by ref. The user confirms it in Ibis; nothing changes until then.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "add": {
+          "items": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 20,
+          "type": "array"
+        },
+        "ref": {
+          "description": "A ref from search.",
+          "type": "string"
+        },
+        "remove": {
+          "items": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 20,
+          "type": "array"
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "type": "object"
+    },
+    "name": "propose_tags",
+    "outputSchema": {
+      "oneOf": [
+        {
+          "properties": {
+            "bibtex": {
+              "type": "string"
+            },
+            "next": {
+              "type": "string"
+            },
+            "proposal": {
+              "type": "string"
+            },
+            "provenance": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "proposal",
+            "status",
+            "summary",
+            "next",
+            "provenance"
+          ]
+        },
+        {
+          "properties": {
+            "error": {
+              "required": [
+                "code",
+                "message",
+                "recovery",
+                "focus"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "error"
+          ]
+        }
+      ],
+      "type": "object"
+    },
+    "title": "Propose tags for a reference"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "List the proposals from this app with their status, and the libraries propose_add can name.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "name": "proposals",
+    "outputSchema": {
+      "oneOf": [
+        {
+          "properties": {
+            "libraries": {
+              "items": {
+                "required": [
+                  "library",
+                  "kind",
+                  "references"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "proposals": {
+              "items": {
+                "required": [
+                  "proposal",
+                  "status",
+                  "summary"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "provenance": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "proposals",
+            "libraries",
+            "provenance"
+          ]
+        },
+        {
+          "properties": {
+            "error": {
+              "required": [
+                "code",
+                "message",
+                "recovery",
+                "focus"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "error"
+          ]
+        }
+      ],
+      "type": "object"
+    },
+    "title": "List your proposals"
   }
 ]

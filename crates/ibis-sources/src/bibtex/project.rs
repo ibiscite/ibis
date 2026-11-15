@@ -61,6 +61,17 @@ impl KeyScan {
     pub fn commented_line(&self, key: &str) -> Option<usize> {
         self.commented.get(key).copied()
     }
+    /// Whether any entry, `ids` alias or commented entry uses `key` in any
+    /// letter case, since BibTeX reads keys without case.
+    pub fn taken(&self, key: &str) -> bool {
+        let key = key.to_lowercase();
+        self.spellings.contains_key(&key)
+            || self
+                .aliases
+                .keys()
+                .chain(self.commented.keys())
+                .any(|used| used.to_lowercase() == key)
+    }
     pub fn complete(&self) -> bool {
         !self.limited && self.damaged.is_empty()
     }
