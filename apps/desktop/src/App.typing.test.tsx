@@ -5,17 +5,13 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import { backend, prepared, resetApp, result } from "./testing/app";
+import { deferred } from "./testing/deferred";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(resetApp);
 const box = () => screen.getByLabelText("Search references");
 const type = async (value: string) => { await act(async () => { fireEvent.change(box(), { target: { value } }); }); };
 const footerAction = () => document.querySelector("footer .footer-action[data-variant='action']");
-const deferred = <T,>() => {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((finish) => { resolve = finish; });
-  return { promise, resolve };
-};
 const rows = [result("a", "Gradient methods"), result("b", "Graphs and spectra")];
 
 /** What a person sees: rows, the shelf's citation, the footer action and the empty message. */

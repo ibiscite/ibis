@@ -4,6 +4,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { useSourceOpen } from "../features/picker/useSourceOpen";
 import { SourceAction, SourceIcon, shortenedLabel } from "./SourceAction";
 import type { SourcePresentation } from "../bindings";
+import { deferred } from "../testing/deferred";
 
 const nativeIcon = { mime: "image/png", bytes: [137, 80, 78, 71] };
 
@@ -42,12 +43,6 @@ test("file and reveal actions keep their operation glyph even when a system icon
   rerender(<SourceIcon icon={nativeIcon} file glyph="folder-search" />);
   expect(container.querySelector("svg")?.innerHTML).toBe(iconBody("folder-search"));
 });
-
-function deferred<T>() {
-  let resolve!: (value: T) => void, reject!: (reason: unknown) => void;
-  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
-  return { promise, resolve, reject };
-}
 
 test("failed icon I/O, delayed A after B and close/reopen keep the current visible source", async () => {
   const replies = Array.from({ length: 4 }, () => deferred<SourcePresentation>());

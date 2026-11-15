@@ -199,10 +199,6 @@ pub(super) fn ask_first_run<R: OfferUi>(app: &AppHandle<R>) {
 fn publish_available<R: OfferUi>(app: &AppHandle<R>, available: bool) {
     if app.state::<Updates>().offer_available.swap(available, Ordering::SeqCst) != available {
         R::availability_changed(app, available);
-        report(
-            app.emit_to("main", "update:available", available),
-            NativeIssue::PickerEvent,
-        );
     }
 }
 

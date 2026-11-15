@@ -4,17 +4,12 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import { backend, prepared, resetApp, result, inCitation } from "./testing/app";
+import { deferred } from "./testing/deferred";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(resetApp);
 const box = () => screen.getByLabelText("Search references");
 const enter = async (shiftKey = false) => { await act(async () => { fireEvent.keyDown(box(), { key: "Enter", shiftKey }); }); };
-const deferred = <T,>() => {
-  let resolve!: (value: T) => void;
-  let reject!: (reason: unknown) => void;
-  const promise = new Promise<T>((finish, fail) => { resolve = finish; reject = fail; });
-  return { promise, resolve, reject };
-};
 
 test("queued Enter survives results arriving before their library revision", async () => {
   const found = deferred<unknown>(), status = deferred<unknown>();
