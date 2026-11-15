@@ -1616,17 +1616,17 @@ JOURNEY_QUERY = "invented journey"
 JOURNEY_TITLE = "An invented journey through citation"
 # The selected words become the search; the citation replaces exactly them.
 JOURNEY_DOCUMENT = "As shown in invented journey, sleep matters.\n"
-# Written by hand from the invented entry, never computed by Ibis's code:
-# TextEdit is a formatted app (APA by default), a terminal gets the default key.
+# Written by hand from the invented entry, never computed by Ibis's code.
+# With nothing chosen, TextEdit, Notepad and a terminal all get the document
+# suggestion, APA: Ibis does not know the kind of the last two (decision 0042).
+JOURNEY_CITATION = "(Example, 2026)"  # The plain text of the formatted copy.
 JOURNEY_PASTED = "As shown in (Example, 2026), sleep matters.\n"
-JOURNEY_COPIED = "[@journey2026]"
-JOURNEY_PASTED_CITATION = "(Example, 2026)"  # The plain text of TextEdit's formatted copy.
-# Notepad keeps the person's output choice, which starts as the Pandoc key.
-NOTEPAD_PASTED = "As shown in [@journey2026], sleep matters.\n"
 # The safe copy when the last check before pasting cannot finish in time.
 COPIED_HINT = "Copied. Ibis couldn\u2019t confirm where the text would go. Press ⌘V to paste."
 JOURNEY_SETTINGS = b'{"schema_version": 2, "update_checks": false}'
-PASTED_NOTICE = "Pasted into TextEdit"
+# The journey starts with no settings, so its paste is the first with a
+# suggested format and says so instead of naming the app (decision 0042).
+PASTED_NOTICE = "Pasted in APA"
 TERMINAL_NOTICE = "Copied. Not pasted into a terminal. Press ⌘V to paste."
 COLLECTOR_TITLE = "ibis-journey-collector"
 # Every Ibis answers the same shortcut, and the first one's picker takes the keys.
@@ -1658,7 +1658,7 @@ class MacOS:
     name, terminal = "TextEdit", "Terminal"
     reads_selection = True  # Ibis opens with the selected words as the search.
     select_all = "super+a"
-    pasted, pasted_citation = JOURNEY_PASTED, JOURNEY_PASTED_CITATION
+    pasted, pasted_citation = JOURNEY_PASTED, JOURNEY_CITATION
     pasted_notice, terminal_notice, copied_hint = PASTED_NOTICE, TERMINAL_NOTICE, COPIED_HINT
 
     @staticmethod
@@ -1808,8 +1808,7 @@ class Windows:
     name, terminal = "Notepad", "the console"
     reads_selection = False  # Ibis reads the selection as the search only on macOS.
     select_all = "ctrl+a"
-    pasted, pasted_citation = NOTEPAD_PASTED, JOURNEY_COPIED
-    pasted_notice = "Pasted into Notepad"
+    pasted, pasted_citation, pasted_notice = JOURNEY_PASTED, JOURNEY_CITATION, PASTED_NOTICE
     terminal_notice = TERMINAL_NOTICE.replace("⌘V", "Ctrl+V")
     copied_hint = COPIED_HINT.replace("⌘V", "Ctrl+V")
     VIRTUAL_KEYS = {"ctrl": 0x11, "shift": 0x10, "alt": 0x12, "super": 0x5B, "return": 0x0D, "escape": 0x1B}
@@ -2312,12 +2311,12 @@ def _journey_main(args):
         def copied():
             if app.poll() is None:
                 native.observe_notice(seen)
-            return native.clipboard() == JOURNEY_COPIED and seen["shown"]
+            return native.clipboard() == JOURNEY_CITATION and seen["shown"]
         try:
             wait_for(copied, "a copy and a notice", timeout=15)
         except AssertionError:
             clipboard = native.clipboard()
-            report["terminal"] = {"clipboard": "expected" if clipboard == JOURNEY_COPIED else
+            report["terminal"] = {"clipboard": "expected" if clipboard == JOURNEY_CITATION else
                                   "sentinel" if clipboard == CLIPBOARD_SENTINEL else "other",
                                   "notice_shown": seen["shown"], "notice_words": sorted(seen["words"])}
             raise AssertionError(f"{terminal} did not get exactly the citation copied and a notice") from None

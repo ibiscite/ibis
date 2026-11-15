@@ -44,6 +44,10 @@ fn with_nothing_chosen_each_kind_of_app_gets_its_suggestion() {
         (app(Macos, "com.microsoft.vscode"), "pandoc", FormatKind::Keys),
         (app(Macos, "com.apple.safari"), "apa", FormatKind::Documents),
         (app(Macos, "org.example.invented"), "apa", FormatKind::Documents),
+        // Listed apps of unknown kind count as documents too: the native
+        // journey pastes into Notepad and copies for a terminal.
+        (app(Windows, "notepad.exe"), "apa", FormatKind::Documents),
+        (app(Macos, "com.apple.terminal"), "apa", FormatKind::Documents),
     ] {
         let chosen = choose(&settings, Some(&target));
         assert_eq!(

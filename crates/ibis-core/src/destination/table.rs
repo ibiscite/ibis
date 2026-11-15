@@ -88,8 +88,8 @@ pub const APPS: &[App] = &[
     // Word processors and mail: formatted citations.
     app(Macos, "com.microsoft.word", "Microsoft Word", FORMATTED, Normal),
     app(Windows, "winword.exe", "Microsoft Word", FORMATTED, Normal),
-    // The native paste qualification uses Notepad; its plain-text documents
-    // keep the person's output choice.
+    // Listed so Enter pastes into Notepad, as the native paste qualification
+    // does; its kind is unknown, so it counts as documents (decision 0042).
     app(Windows, "notepad.exe", "Notepad", None, Normal),
     app(Macos, "com.apple.iwork.pages", "Pages", FORMATTED, Normal),
     app(Macos, "org.libreoffice.script", "LibreOffice", FORMATTED, Normal),
