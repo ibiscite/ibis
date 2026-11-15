@@ -256,3 +256,40 @@ fn read_export(path: &std::path::Path) -> Vec<u8> {
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     output.stdout
 }
+
+#[test]
+fn private_addresses_in_prose_need_no_slashes_after_the_scheme() {
+    let records = json!([{
+        "id":"invented", "citation-key":"invented", "type":"book", "publisher":"Invented Press",
+        "title":"Served at https:127.0.0.1/secret", "archive":"HTTP:[fd00::1]/secret"
+    }]);
+    for format in ["csl-json", "bibtex", "apa"] {
+        let (_, result) = cite(&records, format);
+        for text in representations(&result) {
+            assert!(!text.contains("secret"), "{format}: {text}");
+            assert!(text.contains("Invented Press"), "{format}: {text}");
+        }
+    }
+}
+
+#[test]
+fn prose_and_identifiers_shaped_like_paths_stay_public() {
+    let titles = [
+        "Prices in \u{20ac}/kWh and US$/kg",
+        "Porting C#/F#/VB code",
+        "Fe(II)/Fe(III)/Mn redox and/or TCP/IP",
+        "HTTP: The definitive guide",
+        "Doses of 5\u{b0}/s/s",
+    ];
+    for title in titles {
+        let records = json!([{
+            "id":"invented", "citation-key":"invented", "type":"article-journal", "title":title,
+            "DOI":"10.1016/S0140-6736(20)30183-5"
+        }]);
+        let (code, result) = cite(&records, "csl-json");
+        assert_eq!(code, 0, "{result}");
+        let back: Value = serde_json::from_str(result["text"].as_str().unwrap()).unwrap();
+        assert_eq!(back[0]["title"], title, "{back}");
+        assert_eq!(back[0]["DOI"], "10.1016/S0140-6736(20)30183-5", "{back}");
+    }
+}

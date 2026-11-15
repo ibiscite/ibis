@@ -43,7 +43,7 @@ The shared public-URL constructor parses hosts before checking them, so numeric,
 encoded and internationalized spellings cannot bypass local-address checks.
 CSL-JSON preserves only plain source-id tokens (letters, digits, `_`, `-`);
 other source ids use the citation key. Device paths after value delimiters stay
-private too. BibTeX identifier fields are verbatim, with URL braces percent-encoded.
+private too, as do paths of two or more segments after any other mark. BibTeX identifier fields are verbatim, with URL braces percent-encoded.
 For articles, issue takes precedence over number; malformed structured dates
 are omitted rather than exported as empty or partial dates.
 Core decodes entities and normalizes inline text before privacy checks, keeping

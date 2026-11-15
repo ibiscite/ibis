@@ -188,17 +188,15 @@ pub(crate) fn decode_entities(source: &str) -> String {
                     "quot" => Some('"'),
                     "apos" => Some('\''),
                     "nbsp" => Some('\u{a0}'),
+                    // HTML's numeric references: either `x`, any leading zeros.
                     _ => name
                         .strip_prefix("#x")
-                        .filter(|hex| !hex.is_empty() && hex.len() <= 6 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
+                        .or_else(|| name.strip_prefix("#X"))
+                        .filter(|hex| !hex.is_empty() && hex.bytes().all(|b| b.is_ascii_hexdigit()))
                         .and_then(|hex| u32::from_str_radix(hex, 16).ok())
                         .or_else(|| {
                             name.strip_prefix('#')
-                                .filter(|digits| {
-                                    !digits.is_empty()
-                                        && digits.len() <= 7
-                                        && digits.bytes().all(|b| b.is_ascii_digit())
-                                })
+                                .filter(|digits| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
                                 .and_then(|digits| digits.parse().ok())
                         })
                         .and_then(char::from_u32),

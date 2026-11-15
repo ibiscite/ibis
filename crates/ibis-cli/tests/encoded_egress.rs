@@ -24,10 +24,21 @@ const PATHS: &[&str] = &[
     "&amp;#47;Users/invented/secret.pdf",
     "<i>%2FUsers%2F</i><b>invented%2Fsecret.pdf</b>",
 ];
+/// Paths opened by marks other than value delimiters, or by HTML-only spellings.
+const WRAPPED: &[&str] = &[
+    "&#X2F;Users&#X2F;invented&#X2F;secret.pdf",
+    "&#x00002F;Users&#x00002F;invented&#x00002F;secret.pdf",
+    "\u{201c}/Users/invented/secret.pdf\u{201d}",
+    "\u{ab}/Users/invented/secret.pdf\u{bb}",
+    "\u{2014}/Users/invented/secret.pdf",
+    "*/Users/invented/secret.pdf*",
+    "?/Users/invented/secret.pdf",
+    "\u{200b}/Users/invented/secret.pdf",
+];
 
-fn path_records() -> Value {
+fn path_records(paths: &[&str]) -> Value {
     Value::Array(
-        PATHS
+        paths
             .iter()
             .enumerate()
             .map(|(i, path)| {
@@ -157,7 +168,20 @@ fn mcp_is_private(records: Value) {
 
 #[test]
 fn percent_encoded_paths_never_leave_cli_exports() {
-    exports_are_private(path_records());
+    exports_are_private(path_records(PATHS));
+}
+
+#[test]
+fn wrapped_paths_never_leave_cli_exports() {
+    exports_are_private(path_records(WRAPPED));
+}
+
+#[test]
+fn wrapped_paths_never_leave_mcp_search_or_show() {
+    // Stay below the server's bounded tool queue.
+    for paths in WRAPPED.chunks(6) {
+        mcp_is_private(path_records(paths));
+    }
 }
 
 #[test]
@@ -167,7 +191,7 @@ fn doi_shaped_paths_never_leave_cli_exports() {
 
 #[test]
 fn percent_encoded_paths_never_leave_mcp_search_or_show() {
-    mcp_is_private(path_records());
+    mcp_is_private(path_records(PATHS));
 }
 
 #[test]

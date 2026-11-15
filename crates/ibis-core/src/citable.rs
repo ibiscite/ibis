@@ -376,8 +376,25 @@ pub(crate) fn points_to_device(value: &str) -> bool {
                 .get(..8)
                 .is_some_and(|prefix| prefix.eq_ignore_ascii_case("zotero:/"))
     };
+    // Any other mark (a typographic quote, a dash, an invisible space) can open
+    // an absolute path too. There it needs two segments and a named first one,
+    // so prose such as `€/kWh`, `°/s/s`, `C#/F#` or `Fe(II)/Fe(III)` stays.
+    let nested = |word: &str| {
+        path(word)
+            && word.strip_prefix('/').is_none_or(|rest| {
+                let mut segments = rest.split('/').filter(|segment| !segment.is_empty());
+                segments
+                    .next()
+                    .is_some_and(|first| first.len() > 1 && first.chars().any(char::is_alphabetic))
+                    && segments.next().is_some()
+            })
+    };
     value.split_whitespace().any(|word| {
         let word = word.trim_matches(|c: char| "()[]{},.\"'".contains(c));
+        let url = word.contains("://")
+            || word.split_once(':').is_some_and(|(scheme, rest)| {
+                !rest.is_empty() && ["http", "https", "ftp"].iter().any(|s| scheme.eq_ignore_ascii_case(s))
+            });
         path(word)
             || word.char_indices().any(|(index, c)| {
                 let rest = &word[index + c.len_utf8()..];
@@ -390,8 +407,9 @@ pub(crate) fn points_to_device(value: &str) -> bool {
                     && !(c == '<'
                         && crate::model::markup_tag(&word[index..]).is_some_and(|(_, tail)| tail.starts_with('>')))
                     && path(rest)
+                    || !url && !c.is_alphanumeric() && !"/._-+#)]}".contains(c) && nested(rest)
             })
-            || (word.contains("://") && PublicUrl::new(word.trim_matches(['<', '>'])).is_none())
+            || (url && PublicUrl::new(word.trim_matches(['<', '>'])).is_none())
     })
 }
 
