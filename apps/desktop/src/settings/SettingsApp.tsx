@@ -603,7 +603,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
             <div id="about-ibis" className="ui-about-hero">
               <AboutDelight dip={dip} enabled={about?.fun ?? false} onClick={() => clickAbout.current()} />
               <p className="ui-about-name">{name}</p>
-              <Button variant="quiet" size="small" preventFocusOnPress onPress={copyVersion}>
+              {/* It copies the version, so it is drawn as a button: quiet words would read as a label. */}
+              <Button size="small" preventFocusOnPress onPress={copyVersion}>
                 {text(versionCopied ? "about-copied" : "about-version", { version: altHeld && about?.build ? about.build : version })}
               </Button>
               {versionCopyFailed && <Note problem role="alert">{text("about-copy-failed")}</Note>}
