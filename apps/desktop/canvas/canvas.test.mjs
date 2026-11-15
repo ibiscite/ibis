@@ -51,7 +51,7 @@ test("the built scenario list renders, switches and reopens without Tauri or net
       expect(window.document.documentElement.dataset.appearance).toBe(theme);
       expect(window.document.querySelector("[src], [href]")).toBeNull();
       if (scenario.startsWith("settings-")) {
-        expect(host.querySelector('[aria-current="page"]')?.textContent?.toLowerCase()).toContain({ look: "appearance", details: "general", newer: "general", broken: "general" }[scenario.slice(9)] ?? scenario.slice(9));
+        expect(host.querySelector('[aria-current="page"]')?.textContent?.toLowerCase()).toContain({ look: "appearance", "ai-apps": "ai apps", details: "general", newer: "general", broken: "general" }[scenario.slice(9)] ?? scenario.slice(9));
         expect(host.querySelector(scenario === "settings-shortcuts" ? ".ui-shortcut-table" : ".ui-row")).not.toBeNull();
         if (scenario === "settings-broken") expect(host.querySelector('[role="alert"]')?.textContent).toContain("settings.json isn’t valid, so Ibis is using your last good settings.");
       } else if (scenario === "notice") {
