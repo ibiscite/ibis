@@ -31,7 +31,7 @@ services. It is the first step of the wider aim in ROADMAP.md (Where Ibis is goi
 
 The first engine slice adds `bibtex` and `doi-links` to the output catalogue,
 through the existing `cite --format`. All record exports, including CSL-JSON,
-use `citable::share_fields`: bibliographic note overrides survive as fields;
+require `citable::CitableFields`: bibliographic note overrides survive as fields;
 notes, attachments, device paths and private links do not. BibTeX is generated
 from these fields with literal escaping, never reused from an imported file.
 Missing or unsafe citation keys refuse that record. DOI links need no citation
@@ -39,13 +39,19 @@ key, preserve identifier spelling and URL-encode reserved characters; a missing
 or unusable DOI is a named per-record refusal. The CLI prints usable records
 with a findings exit status and names refusals on stderr. Repeated selections
 export each record once. MCP continues to exclude record-sharing formats.
-The shared public-URL check rejects ambiguous numeric, encoded and non-ASCII
-hosts; internationalized public domains can use their ASCII punycode form.
+The shared public-URL constructor parses hosts before checking them, so numeric,
+encoded and internationalized spellings cannot bypass local-address checks.
 CSL-JSON preserves only plain source-id tokens (letters, digits, `_`, `-`);
 other source ids use the citation key. Device paths after value delimiters stay
-private too. BibTeX identifier fields are verbatim, with URL braces percent-encoded.
+private too, as do paths of two or more segments after any other mark that opens a word or is a dash. BibTeX identifier fields are verbatim, with URL braces percent-encoded.
 For articles, issue takes precedence over number; malformed structured dates
 are omitted rather than exported as empty or partial dates.
+Core decodes entities and normalizes inline text before privacy checks, keeping
+literal text separate from supported rich-text tags. Writers and the formatter
+consume that checked projection. CSL-JSON text is what CSL processors print:
+only literal tags and ampersands that start a character reference are escaped.
+Span attributes are checked and discarded. Approximate structured dates keep
+their BibLaTeX EDTF `~` marker; the date model has no uncertainty flag.
 
 ## Writes
 

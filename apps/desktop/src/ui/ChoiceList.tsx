@@ -23,7 +23,7 @@ export type Choice = {
 /** The choice screen pattern (docs/design/choice-screens.md
  * [C12]): one centred group, with result-style rows or the welcome grid.
  * React Aria owns spatial arrow navigation, activation and focus. */
-export function ChoiceList({ title, line, choices, onChoose, footnote, autoFocus = false, grid = false, mark, focusId }: {
+export function ChoiceList({ title, line, choices, onChoose, footnote, autoFocus = false, grid = false, compact = false, mark, focusId }: {
   title: ReactNode;
   line?: ReactNode;
   choices: readonly Choice[];
@@ -32,12 +32,15 @@ export function ChoiceList({ title, line, choices, onChoose, footnote, autoFocus
   footnote?: ReactNode;
   autoFocus?: boolean;
   grid?: boolean;
+  /** Beside a list of results: its rows on the list's columns, its title for
+   * screen readers only, and nothing centred, so the results keep the room. */
+  compact?: boolean;
   mark?: ReactNode;
   /** Restore the tile that opened a replaced choice screen. */
   focusId?: string;
 }) {
   const heading = useId();
-  useResultsLayout("choices");
+  useResultsLayout("choices", !compact);
   useResultsLayout("options", choices.length > 0);
   const mac = currentPlatform() === "macos";
   const list = useRef<HTMLDivElement>(null);
@@ -51,10 +54,10 @@ export function ChoiceList({ title, line, choices, onChoose, footnote, autoFocus
     return () => cancelAnimationFrame(frame);
   }, [focusId]);
   return (
-    <section className="choice-screen" data-grid={grid || undefined} aria-labelledby={heading}>
+    <section className="choice-screen" data-grid={grid || undefined} data-compact={compact || undefined} aria-labelledby={heading}>
       {mark}
       <Stack gap="--space-6"><Stack gap="--space-1">
-        <h2 className="choice-title" id={heading} dir="auto">{title}</h2>
+        <h2 className={compact ? "visually-hidden" : "choice-title"} id={heading} dir="auto">{title}</h2>
         {line && <p className="choice-line">{line}</p>}
       </Stack><Stack gap="--space-4">
       <ListBox ref={list} className="choice-list" layout={grid ? "grid" : "stack"} aria-labelledby={heading} selectionMode="none" autoFocus={autoFocus && !focusId ? "first" : undefined}

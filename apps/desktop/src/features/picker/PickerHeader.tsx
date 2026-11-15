@@ -3,13 +3,13 @@ import { IbisMark } from "../../ui/IbisMark";
 import { SearchBar, SearchField } from "../../ui/SearchBar";
 import { say } from "../../i18n";
 import type { OutputId } from "../../format/outputs";
-import { FormatMenu, type FormatPreview } from "./FormatMenu";
+import { FormatMenu, type FormatExample, type FormatPreview } from "./FormatMenu";
 import type { MenuCloseReason } from "./FormatMenu";
 import type { AppPaste } from "../../api";
 import type { FormatPick, FormatSource } from "./useDestination";
 
 /** The search bar: the search box and the copy format. */
-export function PickerHeader({ hidden = false, onResetPosition, inputRef, query, pageToken, onQueryChange, expanded, activeDescendant, format, formatButtonRef, app = null, formatSource = "default", formatPick = "default", onFormatOpenChange, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, yours, preview, writing, onWritings, usualFormat, onUseUsual, formatLabel }: {
+export function PickerHeader({ hidden = false, onResetPosition, inputRef, query, pageToken, onQueryChange, expanded, activeDescendant, format, formatButtonRef, app = null, formatSource = "default", formatPick = "default", onFormatOpenChange, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, yours, preview, example, writing, onWritings, usualFormat, onUseUsual, formatLabel }: {
   /** Welcome has no search yet; the field stays mounted so focus can return to it. */
   hidden?: boolean;
   inputRef: React.RefObject<HTMLInputElement | null>;
@@ -17,6 +17,7 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
   yours?: OutputId;
   /** The chosen references as another format would paste them. */
   preview?: FormatPreview | null;
+  example?: FormatExample | null;
   query: string;
   pageToken?: React.ReactNode;
   onQueryChange: (query: string) => void;
@@ -80,7 +81,7 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
           });
         }}
       />
-      {showFormat && <FormatMenu format={format} buttonRef={formatButtonRef} app={app} source={formatSource} pick={formatPick} onOpenChange={onFormatOpenChange} pasteChoices={pasteChoices} onPasteChange={onPasteChange} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} writing={writing} onWritings={onWritings} usualFormat={usualFormat} onUseUsual={onUseUsual} formatLabel={formatLabel} yours={yours} preview={preview} />}
+      {showFormat && <FormatMenu format={format} buttonRef={formatButtonRef} app={app} source={formatSource} pick={formatPick} onOpenChange={onFormatOpenChange} pasteChoices={pasteChoices} onPasteChange={onPasteChange} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} writing={writing} onWritings={onWritings} usualFormat={usualFormat} onUseUsual={onUseUsual} formatLabel={formatLabel} yours={yours} preview={preview} example={example} />}
     </SearchBar>
   );
 }

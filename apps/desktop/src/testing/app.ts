@@ -7,7 +7,7 @@ import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { expect, vi } from "vitest";
 import { listen } from "@tauri-apps/api/event";
 import type * as api from "../api";
-import type { DisplayTree, Preview, DraftItem, CitationIntent } from "../bindings";
+import type { CitedWarning, DisplayTree, Preview, DraftItem, CitationIntent } from "../bindings";
 import { recordId } from "../test-fixtures";
 import { isStyle, listedOutput } from "../format/outputs";
 import { fixtureDestination, formatAnswer } from "./format";
@@ -154,13 +154,13 @@ const receipts = new Map<string, Prepared>();
 let receiptNumber = 0;
 
 /** A synthetic engine result. Tests choose output; no renderer runs in the browser. */
-export function receipt(text: string, display: DisplayTree | null = null, warnings: string[] = []): Preview {
+export function receipt(text: string, display: DisplayTree | null = null, warnings: CitedWarning[] = []): Preview {
   const number = ++receiptNumber;
   return { effective_output: null, ticket: `synthetic-ticket-${number}`, content_hash: `synthetic-hash-${number}`, text, display: display ?? displayTree([{ item: 0, text }]), warnings };
 }
 
 /** A synthetic result with each reference's own words as its own token, joined by "; ". */
-export function lineReceipt(words: readonly string[], warnings: string[] = []): Preview {
+export function lineReceipt(words: readonly string[], warnings: CitedWarning[] = []): Preview {
   const spans = words.flatMap((text, item) => [...(item ? [{ item: null, text: "; " }] : []), { item, text }]);
   return { ...receipt(spans.map((span) => span.text).join(""), null, warnings), display: displayTree(spans) };
 }
@@ -218,6 +218,8 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
       { form: "narrative", example: "Smith (2020)", reason: null },
       { form: "year-only", example: "(2020)", reason: null },
     ] }),
+    // A way to share references, as the engine would copy the shown citation in it.
+    citation_example: (args) => prepared(args).request.items.map(({ id }) => `@misc{${citationKeys.get(JSON.stringify(id)) ?? ""}}`).join("\n"),
     copy_file_citation: (args) => {
       const { preview } = prepared(args);
       return { text: preview.text, warnings: preview.warnings };

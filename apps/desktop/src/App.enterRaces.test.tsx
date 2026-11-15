@@ -5,6 +5,7 @@ import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import { backend, prepared, resetApp, result, inCitation } from "./testing/app";
 import { deferred } from "./testing/deferred";
+import { missingKey } from "./test-fixtures";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(resetApp);
@@ -182,7 +183,7 @@ test.each(["failed", "pending", "successful"])("a %s newer attempt preserves own
       if (++copies === 1) return { text: prepared(args).preview.text, warnings: [] };
       if (newer === "failed") throw new Error("invented copy failure");
       if (newer === "pending") return secondCopy.promise;
-      return { text: "@a", warnings: ["Invented warning"] };
+      return { text: "@a", warnings: [missingKey("invented2026")] };
     },
     show_copied_notice: () => delivered.promise,
   });
@@ -196,7 +197,7 @@ test.each(["failed", "pending", "successful"])("a %s newer attempt preserves own
   const expected = newer === "successful" ? "Copied" : "Pasted into Example Writer";
   const outcome = screen.queryByRole("group", { name: new RegExp(`^Last outcome\\. ${expected}`) });
   if (newer === "pending") {
-    await act(async () => { secondCopy.resolve({ text: "@a", warnings: ["Invented warning"] }); });
+    await act(async () => { secondCopy.resolve({ text: "@a", warnings: [missingKey("invented2026")] }); });
     expect(screen.getByRole("group", { name: /^Last outcome\. Copied/ })).toBeTruthy();
   }
   expect(outcome).toBeTruthy();
@@ -216,6 +217,6 @@ test.each(["keyboard", "pointer"])("a different citation can proceed by %s while
   await act(async () => { fireEvent.keyDown(box(), { key: "ArrowUp" }); });
   await enter();
   const beforeCompletion = finishes.length;
-  await act(async () => { for (const finish of finishes) finish({ text: "synthetic citation", warnings: ["Invented warning"] }); });
+  await act(async () => { for (const finish of finishes) finish({ text: "synthetic citation", warnings: [missingKey("invented2026")] }); });
   expect(beforeCompletion).toBe(2);
 });

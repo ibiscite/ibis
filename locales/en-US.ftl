@@ -191,6 +191,13 @@ app-file-dialog-formats = { -library-formats }
 ## The app’s own sentence about a citation.
 
 app-loss = This output cannot fully show { $what }{ $target }.
+app-project-warning =
+    { $state ->
+        [missing] { $key } is missing from { $name }.
+        [repeated] { $key } appears more than once in { $name }.
+        [may-name-another] { $key } may name another reference in { $name }.
+       *[could-not-check] Couldn’t check { $key } against { $name }.
+    }
 app-tray-open = Open Ibis
 app-tray-open-shortcut = Open Ibis ({ $shortcut })
 app-tray-choose = Choose File…
@@ -840,12 +847,14 @@ picker-snapshot-changed = The library changed. Search again and reselect the ref
 picker-shared-key = More than one reference has the key { $key }, so it can’t be cited by key. Give one of them a different key in Zotero or your .bib file.
 picker-using-shorthand = Using { $value }
 picker-apply = Apply
-picker-shorthand-hint = Type “vale 417” for page 417, or “see vale” to add “see”.
+# $word: a word that finds the person’s own cited reference, never a sample one.
+picker-shorthand-hint = Type “{ $word } 417” for page 417, or “see { $word }” to add “see”.
 picker-search-as-typed = Search as typed
 picker-apply-locator = Apply locator to { $key }
 picker-copied = Copied
 picker-key-formats = Key formats
 picker-formatted-styles = Citation styles
+picker-share-formats = Share references
 picker-filter-formats = Filter formats
 picker-format-for-app = { $format } · { $app }
 picker-format-this-paste = { $format } · This paste
@@ -1274,7 +1283,8 @@ palette-words-choose-source = library file bib zotero open switch change
 palette-words-project-entry = bibliography bib entry missing copy
 palette-words-project-choose = bibliography bib check project
 palette-words-project-stop = bibliography bib check stop
-palette-words-format = style output apa pandoc latex syntax
+palette-words-format = style output apa pandoc latex syntax share export bibtex doi json
+palette-words-share = share export send copy references
 palette-words-peek = details preview quick look info
 palette-words-change-last = edit replace previous citation again
 palette-words-citation-focus = focus token reference citation

@@ -1,4 +1,5 @@
 import type { Problem } from "./bindings";
+import { warningText } from "./i18n";
 import { fixtureCitationKey } from "./testing/app";
 import { recordId } from "./test-fixtures";
 import { afterEach, expect, test, vi } from "vitest";
@@ -211,8 +212,8 @@ test("reference and window Undo take the slot in turn and cannot consume each ot
 
 test("source and sentence-case warnings stay visible in preview and copy feedback", async () => {
   const warnings = [
-    "Reference 1: A source field could not be fully converted. Check the library entry.",
-    "Reference 1: APA expects sentence case for this title. Stored capitalization was preserved; check it in your document.",
+    { item: 0, message: { id: "warning-source-field", args: { reference: "protected2020" } } },
+    { item: 0, message: { id: "warning-sentence-case-expected", args: { reference: "protected2020" } } },
   ];
   const calls = backend({ search: () => [result("protected2020", "Using iPhone for NASA")],
     preview_file_citation: () => receipt("Okafor, A. (2020). Using iPhone for NASA. Invented Journal.", null, warnings),
@@ -221,11 +222,11 @@ test("source and sentence-case warnings stay visible in preview and copy feedbac
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "2 warnings" }));
   const details = await screen.findByRole("region", { name: "Citation warnings" });
-  for (const warning of warnings) expect(within(details).getByText(warning)).toBeTruthy();
+  for (const warning of warnings) expect(within(details).getByText(warningText(warning))).toBeTruthy();
   fireEvent.keyDown(details, { key: "Escape" });
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   const feedback = await screen.findByRole("list", { name: "Copy warnings" });
-  for (const warning of warnings) expect(within(feedback).getByText(warning)).toBeTruthy();
+  for (const warning of warnings) expect(within(feedback).getByText(warningText(warning))).toBeTruthy();
   expect(calls).not.toContain("hide_picker");
   expect(calls).not.toContain("show_copied_notice");
 });
@@ -377,7 +378,8 @@ test("each shelf reference keeps independent details and an empty Page removes o
 });
 
 test("losses keep a visible count and an unsupported form blocks copying until corrected", async () => {
-  const warning = "Reference 1: Page is not included in this output.";
+  const warning = { item: 0, message: { id: "app-loss", args: { what: "the page or location", target: " for a" } } };
+  const said = "This output cannot fully show the page or location for a.";
   const calls = backend({ search: () => [result("a", "Synthetic work")],
     preview_file_citation: ({ items }) => {
       if (items[0]?.form === "narrative") throw formFailure;
@@ -386,14 +388,16 @@ test("losses keep a visible count and an unsupported form blocks copying until c
   render(<App />);
   const page = await openCitationDetails();
   fireEvent.change(page, { target: { value: "12" } });
-  await within(screen.getByRole("dialog", { name: /^Citation details for/ })).findByText(warning);
-  closeCitationDetails();
+  // The engine's warning is about this reference: its details say it, and the shelf counts it.
   const preview = screen.getByRole("region", { name: "Preview" });
-  const warnings = await within(preview).findByRole("button", { name: "1 warning" });
+  await within(preview).findByRole("button", { name: "1 warning" });
+  expect(within(screen.getByRole("dialog", { name: /^Citation details for/ })).getByText(said)).toBeTruthy();
+  closeCitationDetails();
+  const warnings = within(preview).getByRole("button", { name: "1 warning" });
   expect(warnings.textContent).toBe("1 warning");
   fireEvent.click(warnings);
   const notes = screen.getByRole("region", { name: "Citation warnings" });
-  expect(within(notes).getByText(warning)).toBeTruthy();
+  expect(within(notes).getByText(said)).toBeTruthy();
   fireEvent.keyDown(notes, { key: "Escape" });
   await openCitationDetails();
   await chooseForm("Name in the sentence");
@@ -871,7 +875,7 @@ test.each([true, false])("reaching for a token by hand teaches the typed shortha
   const token = await findInCitation("a");
   act(() => token.focus());
   await waitFor(() => expect(asked).toBe(1));
-  const hint = "Type “vale 417” for page 417, or “see vale” to add “see”.";
+  const hint = "Type “smith 417” for page 417, or “see smith” to add “see”.";
   if (allowed) expect(await screen.findByText(hint)).toBeTruthy();
   else expect(screen.queryByText(hint)).toBeNull();
   // Once an opening: focusing again asks nothing more.
@@ -897,5 +901,5 @@ test.each(["hidden", "reopened", "failed"])("a %s shorthand hint reply cannot le
       finish(true);
     }
   });
-  expect(screen.queryByText(/^Type “vale 417” for page 417/)).toBeNull();
+  expect(screen.queryByText(/^Type “smith 417” for page 417/)).toBeNull();
 });

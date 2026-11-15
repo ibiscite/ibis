@@ -1,4 +1,4 @@
-import { recordId } from "../../test-fixtures";
+import { missingKey, recordId } from "../../test-fixtures";
 import { displayTree } from "../../testing/app";
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
@@ -261,16 +261,34 @@ test("Backspace only edits in the details, including a held key on an empty fiel
   expect(remove).toHaveBeenCalledExactlyOnceWith(reference);
 });
 
-test("with details open, notes read in them and nothing comes and goes in the shelf", () => {
-  const warning = "Reference 1: Page is not included in this output.";
-  const reference = record("a");
-  const { rerender } = render(shelf({ selected: chosen([reference]), style: "ieee", shown: output() }));
-  fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
-  rerender(shelf({ selected: chosen([reference]), style: "ieee", shown: output(), outputWarnings: [warning] }));
-  const panel = details(/^Citation details for/);
-  expect(within(panel).getByText(warning)).toBeTruthy();
-  expect(within(panel).getByText(/IEEE numbers depend on your whole document/)).toBeTruthy();
-  expect(document.querySelector(".shelf-warnings")).toBeNull();
+test("a token's details hold only its own warnings; the shelf keeps the count of all of them", () => {
+  // The engine's warning is about the second reference, as its item says.
+  const warning = { item: 1, message: { id: "app-loss", args: { what: "the page or location", target: " for beta" } } };
+  const said = "This output cannot fully show the page or location for beta.";
+  const alpha = record("alpha", "Alpha"), beta = { ...record("beta", "Beta"), partial: true };
+  const shown = { ...output("[1], [2]"), display: displayTree([{ item: 0, text: "[1]" }, { item: null, text: ", " }, { item: 1, text: "[2]" }]) };
+  const { rerender } = render(shelf({ selected: chosen([alpha, beta]), style: "ieee", shown }));
+  fireEvent.click(screen.getByRole("button", { name: "Edit Alpha 2021" }));
+  rerender(shelf({ selected: chosen([alpha, beta]), style: "ieee", shown, outputWarnings: [warning] }));
+  const first = details(/^Citation details for/);
+  expect(within(first).getByText(/IEEE numbers depend on your whole document/)).toBeTruthy();
+  expect(within(first).queryByText(said)).toBeNull();
+  expect(within(first).queryByText(/only some search words matched/)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Edit Beta 2021" }));
+  const second = details(/^Citation details for/);
+  expect(within(second).getByText(said)).toBeTruthy();
+  expect(within(second).getByText(/only some search words matched/)).toBeTruthy();
+  press(screen.getByRole("button", { name: "2 warnings · Closest matches" }), " ");
+  expect(within(warningsPanel()).getByText(said)).toBeTruthy();
+});
+
+test("an output written on several lines, such as BibTeX, reads as one line on the shelf", () => {
+  const a = record("a", "Alpha"), b = record("b", "Beta");
+  const entry = (key: string) => `@article{${key},\n  title = {Invented title},\n  year = {2021}\n}`;
+  const text = `${entry("a")}\n\n${entry("b")}`;
+  render(shelf({ selected: chosen([a, b]), keys: true, shown: { ...output(text), display: displayTree([{ item: 0, text: entry("a") }, { item: null, text: "\n\n" }, { item: 1, text: entry("b") }]) } }));
+  expect(document.querySelector(".shelf-citation")?.textContent).toBe("@article{a, title = {Invented title}, year = {2021} } @article{b, title = {Invented title}, year = {2021} }");
+  expect(screen.getByRole("button", { name: "Edit Alpha 2021" }).closest("[title]")?.getAttribute("title")).toBe(entry("a"));
 });
 
 test("a key the token does not use is handed on to the picker", () => {
@@ -310,14 +328,13 @@ test.each([1, 2])("many references at the minimum frame and %s× text retain exa
 test.each([true, false])("folded warnings and Closest matches keep a visible count and one-step access (preview=%s)", (preview) => {
   vi.stubGlobal("innerWidth", 480); vi.stubGlobal("innerHeight", 360);
   const reference = { ...record("near"), partial: true };
-  const warning = "Reference 1: Check the invented year.";
-  render(shelf({ selected: chosen([reference]), style: "ieee", outputWarnings: [warning], shown: preview ? output() : undefined }));
+  render(shelf({ selected: chosen([reference]), style: "ieee", outputWarnings: [missingKey("near")], shown: preview ? output() : undefined }));
   const warnings = screen.getByRole("button", { name: "2 warnings · Closest matches" });
   expect(warnings.textContent).toBe("! 2");
   press(warnings, " ");
   const menu = warningsPanel();
   expect(document.activeElement).toBe(menu.querySelector(".inspector-column"));
-  expect(within(menu).getByText(warning)).toBeTruthy();
+  expect(within(menu).getByText("near is missing from thesis.bib.")).toBeTruthy();
   expect(within(menu).getByRole("heading", { name: "Closest matches" })).toBeTruthy();
   expect(within(menu).getByText(/only some search words matched/)).toBeTruthy();
   expect(within(menu).getByText(/IEEE numbers depend on your whole document/)).toBeTruthy();
@@ -409,15 +426,16 @@ test("Copied retains the citation's scientific script and emphasis", () => {
 
 test("Copied warnings keep their count and one-step access; a newer receipt retires the old notes", () => {
   vi.stubGlobal("innerWidth", 480); vi.stubGlobal("innerHeight", 360);
-  const copied = { text: "Copied citation", warnings: ["Check the invented year.", "Closest match: Invented title."], closestMatches: ["Closest match: Invented title."] };
+  const closest = { item: 0, message: { id: "picker-closest-match-warning", args: { title: "Invented title" } } };
+  const copied = { text: "Copied citation", warnings: [missingKey("year2026"), closest], closestMatches: [closest] };
   const { rerender } = render(shelf({ copied, shown: output(copied.text) }));
   const count = screen.getByRole("button", { name: "2 warnings · Closest matches" });
   expect(count.textContent).toBe("! 2");
   fireEvent.click(count);
   const menu = warningsPanel();
-  expect(within(menu).getByText("Check the invented year.")).toBeTruthy();
+  expect(within(menu).getByText("year2026 is missing from thesis.bib.")).toBeTruthy();
   expect(within(menu).getByRole("heading", { name: "Closest matches" })).toBeTruthy();
-  expect(within(menu).getAllByText("Closest match: Invented title.")).toHaveLength(1);
+  expect(within(menu).getAllByText("“Invented title” is a closest match: only some search words matched.")).toHaveLength(1);
   rerender(shelf({ copied: { text: "New citation", warnings: [] } }));
   expect(screen.queryByRole("region", { name: "Citation warnings" })).toBeNull();
 });

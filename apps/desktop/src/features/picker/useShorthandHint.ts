@@ -2,10 +2,11 @@ import type * as nativeApi from "../../api";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useInterfaceMessages } from "../../i18n";
 
-/** Teaches what can be typed with the search ("see vale 417") when a person
+/** Teaches what can be typed with the search ("see aster 417") when a person
  * reaches for a citation's details by hand: on focusing a token, or opening
- * details a second time, in one opening. Native code allows a few on a computer. */
-export function useShorthandHint(api: Pick<typeof nativeApi, "shorthandHint">, presentation: number | null, detailsOpen: boolean) {
+ * details a second time, in one opening. Native code allows a few on a computer.
+ * Its example is `word`, which finds the person's own cited reference. */
+export function useShorthandHint(api: Pick<typeof nativeApi, "shorthandHint">, presentation: number | null, detailsOpen: boolean, word: string | null) {
   const { text } = useInterfaceMessages();
   const [hint, setHint] = useState<string | null>(null);
   const asked = useRef<number | null>(null);
@@ -19,13 +20,13 @@ export function useShorthandHint(api: Pick<typeof nativeApi, "shorthandHint">, p
   }, [presentation]);
   const { shorthandHint } = api;
   const ask = useCallback(() => {
-    if (presentation === null || asked.current === presentation) return;
+    if (presentation === null || word === null || asked.current === presentation) return;
     asked.current = presentation;
     const owner = opening.current;
     void shorthandHint().then((show) => {
-      if (show && opening.current === owner) setHint(text("picker-shorthand-hint"));
+      if (show && opening.current === owner) setHint(text("picker-shorthand-hint", { word }));
     }, () => undefined);
-  }, [shorthandHint, presentation, text]);
+  }, [shorthandHint, presentation, text, word]);
   useEffect(() => { if (detailsOpen && ++opened.current >= 2) ask(); }, [detailsOpen, ask]);
   useEffect(() => {
     const focused = (event: FocusEvent) => { if (event.target instanceof Element && event.target.closest(".citation-token")) ask(); };

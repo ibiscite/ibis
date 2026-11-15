@@ -98,9 +98,23 @@ Key syntax capabilities live in `ibis_core::syntax::CAPABILITIES`. The engine's
 `outputs` list supplies IDs, names and supported forms to CLI, MCP, menus and
 settings. Formatted output uses citeproc-js on one worker with a bounded
 queue, cancellation, time and memory limits. The compressed style bundle
-loads the requested style and locale. Formatting receives citable fields,
-without notes, annotations or private links. Zotero differential fixtures
+loads the requested style and locale. Formatting, MCP reference views and record
+writers require immutable `CitableFields`, constructed only by the privacy
+filter: no notes, annotations, private links or device paths in values. Source
+identities and citation keys stay separate from metadata. Zotero differential fixtures
 check output independently of the renderer.
+
+The decoded projection checks visible text and markup attributes before keeping
+any rich-text runs. `PublicUrl` owns URL parsing and refuses local names and
+special-purpose literal addresses (IPv6 requires native global unicast).
+`DoiLink` owns DOI identity and resolver links; dot path segments are refused
+before any serializer, including citeproc. BibTeX identifiers and keys use
+verbatim values, with balanced literal braces and no TeX commands; prose keeps
+TeX escaping. Names are normalized once with both particles retained. When
+both occupy one name, BibLaTeX's single prefix holds the dropping particle and
+the protected family includes the non-dropping particle, keeping particles
+out of given-name initialization. This keeps every name word; CSL-JSON is
+required to preserve both explicit particle roles on reimport.
 
 `engine.citations()` owns a bounded registry: one picker session and up to 64
 connection sessions. Submission reserves order before workers run. A newer

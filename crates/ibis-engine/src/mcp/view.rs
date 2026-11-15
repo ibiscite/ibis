@@ -4,8 +4,8 @@
 //! pass back: its citation key when that selects it alone, or else an id.
 use super::MAX_LIST;
 use crate::request::ItemSelector;
-use ibis_core::citable::{citable_fields, is_variable};
-use ibis_core::contract::{EngineError, ErrorCode, ItemRef, Record, Snapshot};
+use ibis_core::citable::CitableFields;
+use ibis_core::contract::{EngineError, ErrorCode, ItemRef, Snapshot};
 use ibis_core::model::{is_hidden, strip_markup};
 use ibis_core::summary::RecordSummary;
 use serde_json::{Map, Value};
@@ -15,25 +15,18 @@ pub const MAX_TEXT: usize = 1_000;
 const ID_MARK: &str = "id:";
 const CHECK_LENGTH: usize = 8;
 
-/// A record's fields as formatting sees them.
-pub(super) fn citable(record: &Record) -> Map<String, Value> {
-    let mut csl = record.csl.to_map();
-    citable_fields(&mut csl);
-    csl
-}
-
 /// Fields [`summary`] already gives; `show` leaves them out of the rest.
 const SUMMARIZED: [&str; 5] = ["type", "title", "author", "container-title", "DOI"];
 
 /// What an agent needs to recognise and cite a record. Fields the record lacks are left out.
-pub(super) fn summary(csl: &Map<String, Value>, reference: String) -> Map<String, Value> {
-    let summary = RecordSummary::of(|name| csl.get(name));
-    let text = |text: Option<&String>| text.map(|text| Value::String(clean(text)));
+pub(super) fn summary(csl: &CitableFields, reference: String) -> Map<String, Value> {
+    let summary = RecordSummary::citable(csl);
+    let text = |text: Option<&String>| text.map(|text| Value::String(clean_plain(text)));
     let authors: Vec<Value> = summary
         .authors
         .iter()
         .take(MAX_LIST)
-        .map(|author| Value::String(clean(&author.name)))
+        .map(|author| Value::String(clean_plain(&author.name)))
         .collect();
     let mut data = Map::new();
     data.insert("ref".into(), Value::String(reference));
@@ -43,7 +36,7 @@ pub(super) fn summary(csl: &Map<String, Value>, reference: String) -> Map<String
         ("authors", (!authors.is_empty()).then_some(Value::Array(authors))),
         ("year", text(summary.year.as_ref())),
         ("container", text(summary.container.as_ref())),
-        ("doi", csl.get("DOI").map(shorten)),
+        ("doi", csl.plain().get("DOI").map(shorten)),
     ];
     for (name, value) in found {
         if let Some(value) = value.filter(|value| !value.is_null()) {
@@ -54,10 +47,11 @@ pub(super) fn summary(csl: &Map<String, Value>, reference: String) -> Map<String
 }
 
 /// The citable fields [`summary`] does not already give.
-pub(super) fn details(csl: &Map<String, Value>) -> Value {
+pub(super) fn details(csl: &CitableFields) -> Value {
     Value::Object(
-        csl.iter()
-            .filter(|(name, _)| is_variable(name) && !SUMMARIZED.contains(&name.as_str()))
+        csl.plain()
+            .iter()
+            .filter(|(name, _)| !SUMMARIZED.contains(&name.as_str()))
             .map(|(name, value)| (name.clone(), shorten(value)))
             .collect(),
     )
@@ -65,7 +59,7 @@ pub(super) fn details(csl: &Map<String, Value>) -> Value {
 
 fn shorten(value: &Value) -> Value {
     match value {
-        Value::String(text) => Value::String(clean(text)),
+        Value::String(text) => Value::String(clean_plain(text)),
         Value::Array(values) => Value::Array(values.iter().take(MAX_LIST).map(shorten).collect()),
         Value::Object(fields) => Value::Object(
             fields
@@ -79,8 +73,12 @@ fn shorten(value: &Value) -> Value {
 
 /// One value's readable text on one line: no markup, nothing hidden, cut short.
 pub(super) fn clean(text: &str) -> String {
-    let plain = strip_markup(text);
-    let visible = scrub(&plain);
+    clean_plain(&strip_markup(text))
+}
+
+/// Summaries have already consumed the checked plain-text projection.
+fn clean_plain(text: &str) -> String {
+    let visible = scrub(text);
     let line = visible.split_whitespace().collect::<Vec<_>>().join(" ");
     match line.char_indices().nth(MAX_TEXT) {
         Some((end, _)) => format!("{}…", &line[..end]),

@@ -1,5 +1,5 @@
 import { CITATION_FORMS } from "../bindings";
-import type { Problem } from "../bindings";
+import type { CitedWarning, Problem } from "../bindings";
 import { FluentBundle, FluentResource } from "@fluent/bundle";
 import { parse } from "@fluent/syntax";
 import { createContext, type ReactNode, useContext } from "react";
@@ -127,6 +127,11 @@ export function InterfaceMessagesProvider({ messages, children }: { messages: In
 }
 export function useInterfaceMessages(): InterfaceMessages {
   return useContext(InterfaceContext);
+}
+
+/** A citation's warning in the catalogue's words, whichever side declared it. */
+export function warningText(warning: CitedWarning, text = say): string {
+  return text(warning.message.id as MessageId, warning.message.args, "app");
 }
 
 /** Render a native IPC diagnostic through the shared catalogue. */

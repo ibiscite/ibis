@@ -33,6 +33,7 @@ export const PICKER_IDS = [
   "palette-words-project-choose",
   "palette-words-project-stop",
   "palette-words-format",
+  "palette-words-share",
   "palette-words-peek",
   "palette-words-change-last",
   "palette-words-citation-focus",
@@ -287,6 +288,7 @@ export const PICKER_IDS = [
   "picker-copied",
   "picker-key-formats",
   "picker-formatted-styles",
+  "picker-share-formats",
   "picker-filter-formats",
   "picker-format-for-app",
   "picker-format-this-paste",
@@ -504,4 +506,4 @@ export const PICKER_IDS = [
 ] as const;
 
 /** The variables those messages take. */
-export const PICKER_VARIABLES = ["ago", "app", "count", "date", "density", "field", "folder", "format", "id", "index", "key", "keys", "label", "last", "library", "line", "lines", "n", "name", "names", "outcome", "output", "platform", "printed", "reason", "reasons", "reference", "shortcut", "skipped", "source", "state", "style", "time", "title", "type", "unit", "value", "why"] as const;
+export const PICKER_VARIABLES = ["ago", "app", "count", "date", "density", "field", "folder", "format", "id", "index", "key", "keys", "label", "last", "library", "line", "lines", "n", "name", "names", "outcome", "output", "platform", "printed", "reason", "reasons", "reference", "shortcut", "skipped", "source", "state", "style", "time", "title", "type", "unit", "value", "why", "word"] as const;

@@ -8,7 +8,8 @@
 main:has(> .shelf) > footer { border-top-color: transparent; }
 /* Text starts on the title column; trailing controls keep the same gap S to the
    shelf's end as above and below them, so their corners nest in its own [C15]. */
-.shelf-output { position: relative; display: flex; align-items: center; height: max(calc(var(--control-small-h) + 2 * var(--inset)), var(--hit)); padding-inline: var(--row-pad) var(--inset); font-size: var(--type-body-size); }
+/* The slot clips what it holds, so no output, however long or tall, reaches the footer. */
+.shelf-output { position: relative; overflow: clip; display: flex; align-items: center; height: max(calc(var(--control-small-h) + 2 * var(--inset)), var(--hit)); padding-inline: var(--row-pad) var(--inset); font-size: var(--type-body-size); }
 .shelf-leading { flex: 0 0 var(--tile); display: flex; justify-content: end; margin-inline-end: var(--row-gap); }
 .shelf-leading[draggable] { cursor: grab; -webkit-user-drag: element; }
 .shelf-mark { display: block; flex: none; height: var(--space-5); width: auto; color: var(--scarlet); }
