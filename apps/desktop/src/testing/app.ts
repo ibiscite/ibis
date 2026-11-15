@@ -5,9 +5,9 @@ export { displayTree } from "../test-fixtures";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { expect, vi } from "vitest";
-import { emit, listen } from "@tauri-apps/api/event";
+import { listen } from "@tauri-apps/api/event";
 import type * as api from "../api";
-import type { Density, DisplayTree, Preview, DraftItem, CitationIntent } from "../bindings";
+import type { DisplayTree, Preview, DraftItem, CitationIntent } from "../bindings";
 import { recordId } from "../test-fixtures";
 import { isStyle, listedOutput } from "../format/outputs";
 import { fixtureDestination, formatAnswer } from "./format";
@@ -30,14 +30,6 @@ export async function resetApp() {
   clearMocks();
   receipts.clear();
   delete document.documentElement.dataset.pickerHidden;
-}
-
-let changeSaved: ((patch: Partial<api.PickerPreferences>) => void) | null = null;
-
-/** Rows changed in Settings, the one place it lives, as the picker hears of it. */
-export async function chooseRows(density: Density) {
-  changeSaved?.({ density });
-  await act(async () => { await emit("preferences:changed"); });
 }
 
 /** A palette row by its name, as a person reads it (the label, not the detail or keys). */
@@ -195,7 +187,6 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
   let lastLibrary: Partial<api.LibraryStatus> = {};
   let activityTicket = 0;
   let preferences = { output: "pandoc", density: "comfortable", larger_text: false, paste: true, menu_bar: true } as api.PickerPreferences;
-  changeSaved = (patch) => { preferences = { ...preferences, ...patch }; };
   let revision = 0;
   const written = new Map<string, number>();
   const submitted = new Map<number, Partial<api.PickerPreferences>>();

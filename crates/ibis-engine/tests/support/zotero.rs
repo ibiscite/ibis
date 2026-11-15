@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 use serde_json::json;
 use std::{
     io::{Read, Write},

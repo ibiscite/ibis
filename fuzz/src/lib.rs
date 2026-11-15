@@ -1,4 +1,5 @@
 //! BibTeX loader oracle shared by libFuzzer and the ordinary seed-corpus test.
+#![allow(clippy::panic, reason = "a fuzz oracle reports a failed property by panicking")]
 
 use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};

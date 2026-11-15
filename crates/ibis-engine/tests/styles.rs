@@ -1,6 +1,6 @@
 //! Every official style and language, through the engine and its front ends:
 //! a page of the list, the right language, refusals, order and restart.
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 use ibis_core::contract::*;
 use ibis_engine::{Cancellation, Engine, Method, mcp, request::*};
 use serde_json::{Value, json};

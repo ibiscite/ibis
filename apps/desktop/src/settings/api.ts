@@ -1,8 +1,8 @@
 // What the Settings window may call; tests replace it with a fake.
 import { getVersion } from "@tauri-apps/api/app";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { commands, type EndpointStatus, type PastePermission, type PreferenceChange, type ShortcutStatus, type WindowSize } from "../bindings";
+import { commands, type PastePermission, type WindowSize } from "../bindings";
+import { events, type Stop } from "../nativeEvents";
 
 export type { PastePermission } from "../bindings";
 
@@ -32,7 +32,7 @@ export const settingsApi = {
   editorEndpoint: commands.editorEndpoint,
   setEditorEndpoint: commands.setEditorEndpoint,
   copyEditorEndpoint: commands.copyEditorEndpoint,
-  onEditorEndpoint: (handler: (status: EndpointStatus) => void): Promise<UnlistenFn> => listen<EndpointStatus>("editor:endpoint", (event) => handler(event.payload)),
+  onEditorEndpoint: events.onEditorEndpoint,
   backUpSettings: commands.backUpSettings,
   chooseSettingsBackup: commands.chooseSettingsBackup,
   restoreSettingsBackup: commands.restoreSettingsBackup,
@@ -40,15 +40,14 @@ export const settingsApi = {
   formatSettings: commands.formatSettings,
   forgetAppFormat: commands.forgetAppFormat,
   openSettingsFile: commands.openSettingsFile,
-  onShortcutStatus: (handler: (status: ShortcutStatus) => void): Promise<UnlistenFn> => listen<ShortcutStatus>("shortcut:status", (event) => handler(event.payload)),
+  onShortcutStatus: events.onShortcutStatus,
   version: getVersion,
-  /** Settings is asked to show a page, such as the paste guide after a refused paste. */
-  onPreferencesChanged: (handler: (revision: number, fields?: string[]) => void): Promise<UnlistenFn> => listen<PreferenceChange>("preferences:changed", (event) => handler(event.payload.revision, event.payload.fields)),
+  onPreferencesChanged: (handler: (revision: number, fields?: string[]) => void) => events.onPreferencesChanged((change) => handler(change.revision, change.fields)),
   /** The format snapshot includes app choices and writings as well as preferences. */
-  onSettingsChanged: async (handler: () => void): Promise<UnlistenFn> => {
-    const stopPreferences = await listen("preferences:changed", handler);
+  onSettingsChanged: async (handler: () => void): Promise<Stop> => {
+    const stopPreferences = await events.onPreferencesChanged(handler);
     try {
-      const stopWritings = await listen("writings:changed", handler);
+      const stopWritings = await events.onWritingsChanged(handler);
       return () => { stopPreferences(); stopWritings(); };
     } catch (error) {
       stopPreferences();
@@ -56,11 +55,10 @@ export const settingsApi = {
     }
   },
   /** The window size writer's outcome; a refused write is the only news here. */
-  onWindowSaved: (handler: (saved: boolean, revision: number) => void): Promise<UnlistenFn> => listen<{ saved: boolean; revision: number }>("picker:window-saved", (event) => handler(event.payload.saved, event.payload.revision)),
-  onPage: (handler: (page: string) => void): Promise<UnlistenFn> => listen<string>("settings:page", (event) => handler(event.payload)),
-  /** The saved automatic update choice, after a change from any menu. */
-  onUpdateChecks: (handler: (on: boolean) => void): Promise<UnlistenFn> => listen<boolean>("update:automatic", (event) => handler(event.payload)),
-  onCloseRequested: (handler: () => Promise<void>): Promise<UnlistenFn> => getCurrentWindow().onCloseRequested(handler),
+  onWindowSaved: (handler: (saved: boolean, revision: number) => void) => events.onWindowSaved(({ saved, revision }) => handler(saved, revision)),
+  onPage: events.onSettingsPage,
+  onUpdateChecks: events.onUpdateChecks,
+  onCloseRequested: (handler: () => Promise<void>): Promise<Stop> => getCurrentWindow().onCloseRequested(handler),
 };
 
 type Optional = "cliStatus" | "setCliInstalled" | "copyCliProfile" | "delightView" | "editorEndpoint" | "setEditorEndpoint" | "copyEditorEndpoint" | "onEditorEndpoint" | "formatSettings" | "forgetAppFormat" | "openSettingsFile";

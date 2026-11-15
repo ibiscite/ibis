@@ -21,7 +21,7 @@ Settings offer an explicit, non-elevated `~/.local/bin` symlink; Ibis copies a
 PATH profile line when needed and never edits profiles. AppImage installs an
 owned durable copy with a version/removal receipt. Foreign commands and the
 other channel's installation are preserved and never executed by Settings.
-Windows installers manage per-user PATH and uninstall cleanup.
+The Windows NSIS installer manages per-user PATH and uninstall cleanup.
 
 Release builds stage the CLI with `scripts/build-cli.sh` and apply bundle
 configuration overlays. Qualification checks the installed command and matching

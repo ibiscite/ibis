@@ -1,4 +1,6 @@
 import * as nativeApi from "./api";
+import { useNativeEvent } from "./nativeEvents";
+import { useTimeout } from "./ui/timers";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { idKey, asTyped } from "./features/picker/choice";
 import { keysFor, matchesAccelerator } from "./keys";
@@ -29,14 +31,14 @@ import { useRecentReferences } from "./features/picker/useRecentReferences";
 import { useLibrarySearch } from "./features/picker/useLibrarySearch";
 import { useCitationOutput } from "./features/picker/useCitationOutput";
 import { useZoteroScope } from "./features/picker/useZoteroScope";
-import { usePickerSession } from "./features/picker/usePickerSession";
+import { type PickerPreview, usePickerSession } from "./features/picker/usePickerSession";
 import { useUpdateProgress } from "./features/picker/useUpdateProgress";
 import { usePickerLibrary } from "./features/picker/usePickerLibrary";
 import { usePickerMenus } from "./features/picker/usePickerMenus";
 import { useUpdateOfferActivity } from "./features/picker/useUpdateOfferActivity";
 import { useCitationCopy } from "./features/picker/useCitationCopy";
 import { usePickerMove } from "./features/picker/usePickerMove";
-import { useAltHeld } from "./features/picker/useAltHeld";
+import { useAltHeld } from "./ui/useAltHeld";
 import { HeldKeys } from "./ui/HeldKeys";
 import { useNativeRequests } from "./features/picker/useNativeRequests";
 import { usePickerLifecycle } from "./features/picker/usePickerLifecycle";
@@ -53,14 +55,11 @@ import { useShorthandHint } from "./features/picker/useShorthandHint";
 import { usePickerKeys } from "./features/picker/usePickerKeys";
 import { useCommandSearch } from "./features/picker/useCommandSearch";
 import { COMMAND_PREFIX } from "./features/picker/commands";
-import type { Copied } from "./api";
 import { usePickerDelights } from "./features/picker/usePickerDelights";
 import { useEmptyFeedback, useZoomFeedback } from "./ui/Delights";
 import { useInterfaceMessages } from "./i18n";
 import { rowWords } from "./features/picker/ResultList";
 import { PickerShown } from "./features/picker/pickerShown";
-
-export type PickerPreview = { query?: string; copied?: Copied };
 
 // The picker: search, choose one or more references, copy them as a citation.
 export function App({ preview }: { preview?: PickerPreview } = {}) {
@@ -165,11 +164,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     input, active, selectAll: state.selectAll, pointer, selectedSize: selected.size, citationProblem, formatted, format,
   });
   // Success is brief; warnings stay available until explicitly dismissed.
-  useEffect(() => {
-    if (preview || !copied || copied.warnings.length > 0) return;
-    const timer = window.setTimeout(() => send({ type: "dismiss", copied }), 2400);
-    return () => window.clearTimeout(timer);
-  }, [copied, preview, send]);
+  useTimeout(() => { if (copied) send({ type: "dismiss", copied }); }, preview || !copied || copied.warnings.length > 0 ? null : 2400, copied);
   const rows = useCitationRows({
     api, pickerSession, searchState, chosenKey: output.chosenKey, chosen, showCitations, format, snapshotRevision,
     focusHome, pointer, requestCopy, report,
@@ -223,13 +218,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
       emptyFeedback.refuse(text(library?.state === "loading" || library?.state === "reloading" ? "delight-loading" : !library?.has_snapshot ? "delight-no-library" : "delight-empty"));
     },
   });
-  const { onWindowSizeSaved } = api;
-  useEffect(() => {
-    let current = true;
-    const subscription = onWindowSizeSaved?.((saved) => { if (current) report("windowSize", !saved); });
-    void subscription?.catch(() => { if (current) report("windowSize"); });
-    return () => { current = false; void subscription?.then((stop) => stop()).catch(() => {}); };
-  }, [onWindowSizeSaved, report]);
+  useNativeEvent(api.onWindowSizeSaved, (saved) => report("windowSize", !saved), { failed: () => report("windowSize") });
   // ">" in the search lists commands by name (docs/design/picker.md, Command search).
   const commands = useCommandSearch({
     query: showCitations ? query : "", run: keys.run, setQuery,

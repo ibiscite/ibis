@@ -5,7 +5,6 @@
 //! `refresh_budget.py` runner also reports this process's peak RSS on macOS/Linux.
 //! Run with `cargo test -p ibis-engine --release --test refresh_budget -- open_refresh_budget --ignored --nocapture`.
 #![cfg(not(debug_assertions))]
-#![allow(clippy::unwrap_used)]
 use ibis_core::contract::*;
 use ibis_engine::{Cancellation, Engine, Method, request::SearchRequest};
 use serde_json::json;

@@ -1,5 +1,5 @@
 //! Invented data only. No Zotero process or library is used.
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 use ibis_sources::zotero;
 
 use ibis_core::contract::LibraryId;

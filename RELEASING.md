@@ -17,9 +17,9 @@ requests a milestone version. Do not edit versions manually.
 | Ibis update feed | `stable` | Fixed-tag pre-release for permanent download URLs. |
 
 Stable and Nightly have separate app IDs and Linux executable/icon names.
-Nightly omits MSI and RPM. Packages use stable names such as
-`Ibis-macOS-Apple-silicon.dmg` and `Ibis-Windows-setup.exe`. CLI archives contain
-`ibis`, the licence and notices. Checksums and provenance accompany packages.
+Windows ships one NSIS installer. Nightly omits RPM. Packages use stable names
+such as `Ibis-macOS-Apple-silicon.dmg` and `Ibis-Windows-setup.exe`. CLI archives
+contain `ibis`, the licence and notices. Checksums and provenance accompany packages.
 
 ## The note people read
 

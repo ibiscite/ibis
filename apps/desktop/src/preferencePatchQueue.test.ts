@@ -1,14 +1,9 @@
 import { expect, test, vi } from "vitest";
 import type { PickerPreferences, PickerSave } from "./bindings";
 import { PreferencePatchQueue, type PreferenceRead } from "./preferencePatchQueue";
+import { deferred } from "./testing/deferred";
 
 const defaults: PickerPreferences = { output: "pandoc", density: "comfortable", larger_text: false, paste: true, menu_bar: true };
-const deferred = <T,>() => {
-  let resolve!: (value: T) => void;
-  let reject!: (error?: unknown) => void;
-  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
-  return { promise, resolve, reject };
-};
 
 /** The settings owner seen from one window: a receipt when the choice is made,
  * then `write` answers for it by patch and receipt. */

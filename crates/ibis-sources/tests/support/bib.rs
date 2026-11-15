@@ -1,5 +1,6 @@
 //! Shared helpers for BibTeX tests: load synthetic text through the public
 //! file loader and read the CSL meaning of the records it publishes.
+#![cfg(test)]
 #![allow(dead_code)]
 
 use ibis_core::contract::{LibraryObject, Record};

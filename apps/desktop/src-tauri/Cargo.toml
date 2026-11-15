@@ -80,6 +80,8 @@ unsafe_code = "deny"
 [lints.clippy]
 all = { level = "deny", priority = -1 }
 unwrap_used = "deny"
+panic = "deny"
+unused_result_ok = "deny"
 expect_used = "warn"
 
 # Already locked through Tauri; direct APIs preserve actual application errors.

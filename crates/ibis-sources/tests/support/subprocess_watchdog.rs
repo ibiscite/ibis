@@ -1,3 +1,4 @@
+#![cfg(test)]
 use std::process::Command;
 use std::time::{Duration, Instant};
 

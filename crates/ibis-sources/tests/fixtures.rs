@@ -1,6 +1,6 @@
 //! Loads representative BibTeX fixtures in `fixtures/bibtex/` and compares a readable
 //! summary with the reviewed snapshot. A changed snapshot means behaviour changed.
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 
 use ibis_core::contract::LibraryObject;
 use serde_json::{Value, json};

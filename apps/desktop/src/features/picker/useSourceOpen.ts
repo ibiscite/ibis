@@ -5,6 +5,7 @@ import { isSnapshotChanged } from "../../api";
 import type { ItemRef, SourcePresentation } from "../../bindings";
 import { say } from "../../i18n";
 import { useShown } from "./pickerShown";
+import { useDelayed } from "../../ui/timers";
 
 /** A source query/open owns its item, snapshot and picker presentation. Icons
  * are read once on that identity, only while shown; they never poll. */
@@ -18,7 +19,9 @@ export function useSourceOpen(api: Pick<typeof nativeApi, "openLibrarySource" | 
   const request = useRef(0);
   const [resolved, setResolved] = useState<{ scope: typeof scope; source: SourcePresentation } | null>(null);
   const [failure, setFailure] = useState<{ scope: typeof scope; message: string; kind: "zotero" | "file"; changed: boolean } | null>(null);
-  const [busy, setBusy] = useState<typeof scope | null>(null);
+  // An open shows it is busy only once it has taken 400 ms.
+  const [opening, setOpening] = useState<{ scope: typeof scope } | null>(null);
+  const busy = useDelayed(opening !== null, 400, opening) && opening?.scope === scope;
   const read = api.librarySource;
   const withStatusIcon = Boolean(library?.error || library?.stale || failure?.scope === scope);
   // biome-ignore lint/correctness/useExhaustiveDependencies: scope captures immutable item identity; objects recreated by a render cannot restart an icon read.
@@ -32,8 +35,7 @@ export function useSourceOpen(api: Pick<typeof nativeApi, "openLibrarySource" | 
     }).catch(() => {});
     return () => { current = false; };
   }, [read, scope, visible, withStatusIcon]);
-  const busyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => { request.current += 1; clearTimeout(busyTimer.current); }, []);
+  useEffect(() => () => { request.current += 1; }, []);
   const source: SourcePresentation = resolved?.scope === scope ? resolved.source : {
     kind: zoteroOnly || (library?.has_snapshot ? library.snapshot_zotero : library?.zotero) ? "zotero" : "file",
     name: zoteroOnly ? "Zotero" : (library?.has_snapshot ? library.snapshot_name : null) ?? library?.name ?? "library", icon: null, status_icon: null,
@@ -42,14 +44,8 @@ export function useSourceOpen(api: Pick<typeof nativeApi, "openLibrarySource" | 
     if (!api.openLibrarySource) return;
     const current = ++request.current;
     setFailure(null);
-    setBusy(null);
-    clearTimeout(busyTimer.current);
-    busyTimer.current = setTimeout(() => { if (request.current === current) setBusy(scope); }, 400);
-    const settled = () => {
-      if (request.current !== current) return;
-      clearTimeout(busyTimer.current);
-      setBusy(null);
-    };
+    setOpening({ scope });
+    const settled = () => { if (request.current === current) setOpening(null); };
     const kind = appOnly ? "zotero" : source.kind;
     void api.openLibrarySource(appOnly ? null : target as ItemRef | null, library?.revision ?? "", library?.source_generation ?? "", appOnly || zoteroOnly && target === item, reveal, presentation()).then(settled, (error: unknown) => {
       settled();
@@ -59,5 +55,5 @@ export function useSourceOpen(api: Pick<typeof nativeApi, "openLibrarySource" | 
       if (changed) refresh();
     });
   };
-  return { run, source, busy: busy === scope, failure: failure?.scope === scope ? failure : null };
+  return { run, source, busy, failure: failure?.scope === scope ? failure : null };
 }

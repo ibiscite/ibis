@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { useNativeEvent } from "../../nativeEvents";
 import type * as nativeApi from "../../api";
 
 function eraseWebviewHistory() {
@@ -37,13 +38,9 @@ export function useRecentReferences(recentReferences: typeof nativeApi.recentRef
       if (current === epoch.current) setState((old) => ({ ...old, forgetFailed: false }));
     }).catch(() => { if (current === epoch.current) setState((old) => ({ ...old, forgetFailed: true })); });
   }, [recentReferences, retire]);
-  useEffect(() => {
-    if (!onPreferencesChanged) return;
-    const stop = onPreferencesChanged((change) => {
-      // Only a save that set the switch: the rest of a snapshot may be older.
-      if (change?.recent_citations === false && change.fields?.includes("recent_citations")) retire();
-    });
-    return () => { void stop.then((unlisten) => unlisten()).catch(() => undefined); };
-  }, [onPreferencesChanged, retire]);
+  useNativeEvent(onPreferencesChanged, (change) => {
+    // Only a save that set the switch: the rest of a snapshot may be older.
+    if (change?.recent_citations === false && change.fields?.includes("recent_citations")) retire();
+  });
   return { load: recentReferences ? load : undefined, forget: forgetFailed || erasureFailed || hasHistory ? forget : null, forgetFailed: forgetFailed || erasureFailed };
 }

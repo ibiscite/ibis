@@ -17,6 +17,7 @@ import pickerConflicts from "../testing/picker-shortcut-conflicts.json";
 import english from "../../../../locales/en-US.ftl?raw";
 import { createInterfaceMessages, englishMessages, InterfaceMessagesProvider, say } from "../i18n";
 import { SHORTCUT_ACTIONS, SHORTCUT_REGIONS } from "../i18n/settings";
+import { deferred } from "../testing/deferred";
 
 afterEach(() => { vi.useRealTimers(); localStorage.clear(); });
 
@@ -151,13 +152,6 @@ test("localized panel errors and native values keep their separate owners and st
   expect(screen.queryByText(pseudo.text("about-unavailable"))).toBeNull();
   expect(document.querySelector("img, b")).toBeNull();
 });
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: () => void;
-  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
-  return { promise, resolve, reject };
-}
 
 function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial<PickerPreferences> = {}) {
   const state = {

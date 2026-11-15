@@ -1076,7 +1076,6 @@ mod tests {
         );
     }
     #[test]
-    #[allow(clippy::unwrap_used)]
     fn a_queued_read_refuses_missing_citation_settings_without_restoring_the_backup() {
         let (_directory, owner) = owner();
         let path = owner.path().to_path_buf();

@@ -1,5 +1,5 @@
 //! A shared BibTeX file is an ordinary library, with the same records and keys.
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 use ibis_engine::Engine;
 use serde_json::{Value, json};
 use std::{io::Cursor, path::Path};

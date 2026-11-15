@@ -5,6 +5,7 @@ import { choiceKey } from "./choice";
 import { arrangeView } from "../../testing/sessionView";
 import { initialSession, sessionQueryKey, type SessionState } from "./session";
 import { createSessionController, type SessionPorts } from "./sessionController";
+import { deferred } from "../../testing/deferred";
 
 function setup(overrides: Partial<SessionPorts> = {}) {
   const chosen = [testStates[1]!.results[0]!];
@@ -31,11 +32,6 @@ function setup(overrides: Partial<SessionPorts> = {}) {
   return { controller, ports, ready, enter };
 }
 const held = (state: SessionState) => state.destination.held;
-const deferred = <T,>() => {
-  let resolve!: (value: T) => void, reject!: (error: unknown) => void;
-  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
-  return { promise, resolve, reject };
-};
 
 test("the runner writes and delivers one canonical result despite repeated Enter", async () => {
   const pending = deferred<Copied>();

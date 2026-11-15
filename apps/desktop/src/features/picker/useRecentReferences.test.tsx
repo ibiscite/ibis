@@ -2,15 +2,10 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { useRecentReferences } from "./useRecentReferences";
 import type { onPreferencesChanged, recentReferences } from "../../api";
+import { deferred } from "../../testing/deferred";
 
 const empty = { revision: "1", results: [] };
 const reply: Awaited<ReturnType<typeof recentReferences>> = [empty, false, false];
-const deferred = <T,>() => {
-  let resolve!: (value: T) => void;
-  let reject!: (error: Error) => void;
-  const promise = new Promise<T>((a, b) => { resolve = a; reject = b; });
-  return { promise, resolve, reject };
-};
 
 test.each(["startup", "Forget", "disable"])("%s removes WebView citation history without importing it", async (clear) => {
   const key = "ibis-citation-history";

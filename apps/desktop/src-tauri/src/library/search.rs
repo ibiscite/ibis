@@ -172,12 +172,6 @@ pub(crate) struct SearchQuery {
     pub(super) interpret_locators: bool,
 }
 
-/// Missing explicit citation keys in a recognized pasted list.
-#[derive(Serialize, schemars::JsonSchema)]
-pub(crate) struct PastedList {
-    pub(super) missing: Vec<String>,
-}
-
 pub(crate) use ibis_core::contract::Locator;
 
 /// The engine's interpretation, shown so the person can search as typed: a
@@ -215,7 +209,7 @@ pub(crate) struct SearchReply {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) interpretation: Option<LocatorQuery>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) list: Option<PastedList>,
+    pub(super) list: Option<ibis_engine::PastedList>,
     /// Nothing matched and the search has filters: the search without them.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) unfiltered: Option<String>,

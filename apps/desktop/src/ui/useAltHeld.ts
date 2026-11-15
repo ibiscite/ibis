@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { currentPlatform } from "../../platform";
+import { currentPlatform } from "../platform";
 
 export function useAltHeld(mode: "picker" | "option" = "picker") {
   // Option on macOS; Shift over the footer elsewhere, so capitals in Search

@@ -1,5 +1,5 @@
-#![allow(clippy::unwrap_used)]
 //! Post-merge review regressions for formatted citations from source files.
+#![cfg(test)]
 use ibis_core::contract::*;
 use ibis_engine::{Cancellation, Engine, Method, request::KeyCitationRequest};
 use serde_json::json;

@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used)]
 use ibis_core::contract::{KeySyntax, OutputSpec};
 use ibis_engine::settings::{self, Settings, writings};
 

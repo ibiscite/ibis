@@ -1,6 +1,6 @@
 //! Library and record identity (#1535) as a person or agent meets it: every
 //! scenario runs through the command line, JSON-RPC and MCP.
-#![allow(clippy::unwrap_used)]
+#![cfg(test)]
 use ibis_engine::protocol::{read_frame, write_frame};
 use ibis_engine::{Cancellation, Engine, Method, mcp};
 use serde_json::{Value, json};

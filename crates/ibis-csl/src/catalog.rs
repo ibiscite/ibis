@@ -464,7 +464,6 @@ pub fn files() -> Result<Vec<(String, String)>, FormatError> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

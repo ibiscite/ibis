@@ -13,10 +13,12 @@ use std::{
     time::SystemTime,
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub enum ZoteroPresence {
     Available,
     AccessOff,
+    /// Not running, but its library is on this computer and can be read.
     Closed,
     Absent,
 }

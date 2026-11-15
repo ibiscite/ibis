@@ -1,5 +1,4 @@
 //! Stream faults use in-memory writers, no native pipes or user configuration.
-#![allow(clippy::unwrap_used)]
 use std::io::{self, Cursor, Write};
 
 struct FullOnFlush;
