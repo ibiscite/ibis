@@ -1057,10 +1057,12 @@ export type SearchResult = {
 	 * so a row can name two authors and shorten three or more.
 	 */
 	author_count: number;
-	/** Every author's full reading name, in source order. */
 	authors: string;
 	cite: string;
-	/** Full journal, book or proceedings title, else the publisher. */
+	/**
+	 * Journal, book or proceedings title, else the publisher; capped at
+	 * 120 characters.
+	 */
 	container: string | null;
 	/**
 	 * Family name of the first author (or the whole name of an
