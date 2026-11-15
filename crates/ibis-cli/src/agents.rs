@@ -322,6 +322,8 @@ enum Found {
     Missing,
     /// The entry Ibis would write, or one that runs the same command from another place.
     Connected,
+    /// Setup's entry, but its command needs an absolute executable path.
+    Stale(Value),
     /// The Ibis plugin already gives this app the server.
     Plugin,
     /// Another `ibis` entry: shown, and replaced only on a yes.
@@ -436,7 +438,19 @@ fn state(client: &Client, home: &Home) -> Found {
     };
     match servers.get(COMMAND) {
         None => Found::Missing,
-        Some(entry) if ours(entry) => Found::Connected,
+        Some(entry) if ours(entry) => {
+            let needs_path = home.ibis.is_some()
+                && matches!(client.store, Store::Json { absolute: true, .. })
+                && entry["command"]
+                    .as_str()
+                    .map(Path::new)
+                    .is_none_or(|path| !path.is_absolute() || !executable(path));
+            if needs_path {
+                Found::Stale(entry.clone())
+            } else {
+                Found::Connected
+            }
+        }
         Some(entry) => Found::Different(entry.clone()),
     }
 }
@@ -489,6 +503,10 @@ fn run_in<R: BufRead, E: Write>(
                     (Found::Connected, _) => ("connected", String::new()),
                     (Found::Plugin, _) => ("connected", "through the Ibis plugin".into()),
                     (Found::Missing, _) => ("not-connected", "run: ibis agents setup".into()),
+                    (Found::Stale(_), _) => (
+                        "stale",
+                        "its ibis command needs a usable full path; run: ibis agents setup".into(),
+                    ),
                     (Found::Different(entry), _) => ("different", format!("its ibis entry is {entry}")),
                     (Found::Blocked(reason), _) => ("blocked", reason),
                 };
@@ -508,6 +526,7 @@ fn run_in<R: BufRead, E: Write>(
                 .filter(|(client, found)| match found {
                     Found::Missing | Found::Different(_) => setup && !matches!(client.store, Store::ByHand { .. }),
                     Found::Connected => !setup,
+                    Found::Stale(_) => true,
                     _ => false,
                 })
                 .count();
@@ -589,7 +608,7 @@ fn connect<R: BufRead, E: Write>(
         }
         Found::Blocked(reason) => return ("blocked", format!("{reason}. Set it up by hand: {GUIDE}")),
         Found::Missing => None,
-        Found::Different(old) => Some(old),
+        Found::Different(old) | Found::Stale(old) => Some(old),
     };
     if let Store::ByHand { steps } = client.store {
         return ("by-hand", steps.to_owned());
@@ -610,7 +629,9 @@ fn connect<R: BufRead, E: Write>(
     if !write {
         return ("unchanged", String::new());
     }
-    if let Some(diff) = &diff {
+    if let Some(diff) = &diff
+        && matches!(planned, Found::Different(_))
+    {
         let agreed = replace
             || (interactive
                 && ask(
@@ -640,7 +661,14 @@ fn connect<R: BufRead, E: Write>(
             } else {
                 Ok(())
             };
-            removed.and_then(|()| run_program(home, program, add))
+            removed.and_then(|()| {
+                run_program(home, program, add).map_err(|reason| match &replacing {
+                    Some(old) => {
+                        format!("{reason}; the old ibis entry was taken out. To restore it, put back:\n\"ibis\": {old}")
+                    }
+                    None => reason,
+                })
+            })
         }
         Store::ByHand { .. } => Ok(()),
     };
@@ -658,6 +686,7 @@ fn disconnect(
     write: bool,
     dry_run: bool,
 ) -> (&'static str, String) {
+    let planned = found.clone();
     match found {
         Found::Missing => return ("not-connected", String::new()),
         Found::Plugin => {
@@ -673,7 +702,7 @@ fn disconnect(
             );
         }
         Found::Blocked(reason) => return ("blocked", reason),
-        Found::Connected => {}
+        Found::Connected | Found::Stale(_) => {}
     }
     if let Store::ByHand { steps } = client.store {
         return ("by-hand", steps.to_owned());
@@ -684,7 +713,7 @@ fn disconnect(
     if !write {
         return ("unchanged", String::new());
     }
-    if state(client, home) != Found::Connected {
+    if state(client, home) != planned {
         return ("failed", CHANGED.into());
     }
     let done = match client.store {
@@ -751,24 +780,41 @@ fn edit_json(path: &Path, key: &str, entry: Option<String>) -> Result<(), String
     if text.contains("\r\n") {
         written = written.replace('\n', "\r\n");
     }
-    // Another program may have saved the file meanwhile: its change wins.
-    if read_file(path)? != before {
-        return Err(CHANGED.into());
-    }
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|_| "its settings folder could not be created")?;
     }
     let staged = ibis_core::atomic_file::AtomicFile::new(path, written.as_bytes())
         .map_err(|_| "the file could not be written".to_owned())?;
+    let backup = if before.is_some() {
+        let message = "a backup of the file could not be written; nothing was changed";
+        let (backup, mut file) = ibis_core::atomic_file::create_numbered(path, ".ibis-backup").map_err(|_| message)?;
+        file.write_all(text.as_bytes())
+            .and_then(|()| file.sync_all())
+            .inspect_err(|_| {
+                let _ = fs::remove_file(&backup);
+            })
+            .map_err(|_| message)?;
+        Some(backup)
+    } else {
+        None
+    };
+    // Another program's save wins, including one during staging or backup.
+    // read_file also refuses a newly substituted link. A noncooperating app
+    // can still save in the tiny window between this check and the rename.
+    let checked = read_file(path).and_then(|latest| {
+        if latest == before {
+            Ok(())
+        } else {
+            Err(CHANGED.to_owned())
+        }
+    });
+    if let Err(reason) = checked {
+        if let Some(backup) = backup {
+            fs::remove_file(backup).map_err(|_| format!("{reason}; its new backup could not be removed"))?;
+        }
+        return Err(reason);
+    }
     if before.is_some() {
-        let backup = path.with_file_name(format!(
-            "{}.ibis-backup",
-            path.file_name().map(|name| name.to_string_lossy()).unwrap_or_default()
-        ));
-        // Staged privately and renamed into place, so a link left at that name is replaced, never followed.
-        ibis_core::atomic_file::AtomicFile::new(&backup, text.as_bytes())
-            .and_then(ibis_core::atomic_file::AtomicFile::replace)
-            .map_err(|_| "a backup of the file could not be written; nothing was changed")?;
         staged.replace()
     } else {
         staged.create()
@@ -882,7 +928,7 @@ fn report(action: &str, lines: &[Line], home: &Home, dry_run: bool) -> DispatchR
     }
     let problem = lines
         .iter()
-        .any(|line| matches!(line.outcome, "failed" | "blocked" | "different" | "kept"));
+        .any(|line| matches!(line.outcome, "failed" | "blocked" | "different" | "stale" | "kept"));
     DispatchResult {
         data: json!({
             "action": action,

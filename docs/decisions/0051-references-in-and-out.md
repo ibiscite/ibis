@@ -70,7 +70,9 @@ before it ships.
 
 ## Agents and the command line
 
-MCP never gets lookup or write tools. `ibis lookup` exists only while the person
+MCP never gets lookup or write tools; [0055](0055-agent-layers-full-text-writes-remote.md)
+amends this for a separate mode whose tools only propose writes that the person
+confirms in Ibis. `ibis lookup` exists only while the person
 has turned lookup on. Writes stay out of the command line until they are decided
 for it. Lookup and write are kept out of the engine methods the command line
 generates automatically. An agent with a shell can still change settings or run

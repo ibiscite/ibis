@@ -8,8 +8,8 @@
 The desktop app includes the matching `ibis` built from the same commit.
 
 - **macOS and Linux deb/rpm:** the first time the installed app opens, it links
-  `~/.local/bin/ibis` to the command inside its bundle or package, so
-  installing the app is all it takes. It skips this when another `ibis`
+  `~/.local/bin/ibis` to the command inside its bundle or package, so where
+  that folder is on PATH, installing the app is all it takes. It skips this when another `ibis`
   (Homebrew, a download, the other Ibis channel) comes first on PATH and while
   the app still runs from its disk image. After that, Settings › General
   decides: **Install the ibis command** adds it and removing it there is
@@ -634,10 +634,16 @@ Setup finds Claude Code, Claude Desktop, Codex, Cursor, VS Code, Gemini CLI,
 Windsurf and LM Studio, and adds the server the plugin uses,
 `ibis mcp --app-libraries`. Claude Code and Codex are changed through their own
 `mcp add` command; for the others the entry is merged into the app's JSON file,
-keeping every other server and setting, with a `.ibis-backup` copy beside it.
+keeping every other server and setting, with a new `<file>.ibis-backup-N` copy
+beside it for each change. Backups are created privately; older backups stay.
 Claude Desktop and LM Studio get the full path of `ibis`, because apps opened
 from the Dock or Start menu may not see your terminal's PATH. Removal takes out
-only the entry setup adds. A different `ibis` entry is shown and replaced only if you agree, or with
+only the entry setup adds, including one with a stale command path. Status
+reports `connected`, `not-connected`, `stale` (run setup to repair the path),
+`different`, `blocked` or `by-hand`; `stale`, `different` and `blocked` exit 1.
+When the command's full path is known, setup repairs its own stale entry without
+the different-entry question and reports `replaced` with the before/after diff.
+A different `ibis` entry is shown and replaced only if you agree, or with
 `--replace`. A file that is not plain JSON, or is a link, is left alone with
 the step to do by hand. With the Ibis plugin installed, Claude Code is left as
 it is, so the server is not there twice. Scripts pass `--yes`; `--dry-run`
@@ -662,8 +668,11 @@ read-only tools over stdio:
 
 Each answer's `structuredContent` holds the full result. Its text is a short
 summary for the model instead of the same JSON again: one `ref · authors ·
-year · title` line per hit, the citation text with each notice, loss and
-warning in words, and any library notes. The common styles are accepted as
+year · title` line per hit, each notice, loss and warning in words, and any
+library notes. For `cite`, `content[0]` holds exactly the citation text and
+`content[1]` holds the diagnostics, so a title cannot imitate a warning line.
+Receipt, bibliography and delivery advice are named in that summary too.
+The common styles are accepted as
 `format` too, but the schema lists only key syntaxes; `styles` finds the rest.
 
 Refs contain identity and a short content check; changed records are refused.

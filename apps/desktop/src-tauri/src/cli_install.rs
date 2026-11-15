@@ -89,8 +89,9 @@ pub(crate) async fn set_cli_installed(app: tauri::AppHandle, installed: bool) ->
 }
 
 /// Installing the app is all it takes to get `ibis` on macOS and Linux: the
-/// first launch of an installed release puts the command on PATH unless
-/// another installer owns that place; afterwards the choice in Settings stands
+/// first launch of an installed release puts the command in `~/.local/bin`
+/// (Settings shows the profile line when that is not on PATH) unless another
+/// installer owns that place; afterwards the choice in Settings stands
 /// (Windows's installer adds it to PATH itself). Development builds never do.
 pub(crate) fn keep_at_launch(app: &tauri::AppHandle) {
     if cfg!(debug_assertions) || cfg!(windows) {

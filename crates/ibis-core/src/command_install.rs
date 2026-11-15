@@ -144,8 +144,8 @@ impl CommandInstall {
     }
 
     /// What the app does at launch, so installing the app is all it takes:
-    /// the first launch puts the command on PATH when nothing else holds that
-    /// place, and later launches bring only this app's own copy up to date.
+    /// the first launch puts the command in `~/.local/bin` when nothing else
+    /// holds that place on PATH, and later launches bring only this app's own copy up to date.
     /// Anything another installer owns (Homebrew, a download), another Ibis
     /// channel's command, and a command the person removed are left alone.
     pub fn keep_installed(&self) -> io::Result<CommandStatus> {
@@ -161,6 +161,13 @@ impl CommandInstall {
                 .read_receipt()?
                 .is_some_and(|receipt| receipt.copy && receipt.app.is_some() && receipt.app == self.app);
         let status = if own_copy {
+            // An interrupted refresh must retry as a first launch. Clear the
+            // marker before removing anything; a Settings removal keeps it.
+            match fs::remove_file(self.settled()) {
+                Ok(()) => {}
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error),
+            }
             self.remove_owned()?;
             self.install()?
         } else if first {
@@ -168,7 +175,7 @@ impl CommandInstall {
         } else {
             status
         };
-        if first {
+        if first || own_copy {
             self.settle()?;
         }
         Ok(status)
@@ -465,6 +472,58 @@ mod tests {
             fs::read(other.join("ibis")).unwrap_or_else(|e| panic!("read: {e}")),
             b"other"
         );
+    }
+
+    #[test]
+    fn a_failed_appimage_refresh_is_retried_at_the_next_launch() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("fixture: {e}"));
+        let home = dir.path().join("home");
+        let bundled = dir.path().join("bundled-ibis");
+        fs::write(&bundled, b"invented CLI v1").unwrap_or_else(|e| panic!("bundle: {e}"));
+        fs::set_permissions(&bundled, fs::Permissions::from_mode(0o755)).unwrap_or_else(|e| panic!("mode: {e}"));
+        let install = CommandInstall::new(
+            home.clone(),
+            vec![home.join(".local/bin")],
+            bundled.clone(),
+            Some(dir.path().join("Ibis.AppImage")),
+            "1.2.3".into(),
+        );
+        assert_eq!(install.keep_installed().unwrap().state, CommandState::Matching);
+        fs::write(&bundled, b"invented CLI v2").unwrap();
+        fs::set_permissions(&bundled, fs::Permissions::from_mode(0o000)).unwrap();
+        let unreadable = fs::read(&bundled).is_err();
+        let refresh = install.keep_installed();
+        fs::set_permissions(&bundled, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(unreadable, "this regression needs an unreadable bundle");
+        assert!(refresh.is_err(), "the refresh must fail after removing the old copy");
+        assert!(!install.destination().exists());
+        assert_eq!(install.keep_installed().unwrap().state, CommandState::Matching);
+        assert_eq!(fs::read(install.destination()).unwrap(), b"invented CLI v2");
+        // Settings removal still leaves the settled choice, even after a refresh.
+        install.remove().unwrap();
+        assert_eq!(install.keep_installed().unwrap().state, CommandState::NotInstalled);
+    }
+
+    #[test]
+    fn a_refresh_that_cannot_clear_the_settled_marker_keeps_the_old_command() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("home");
+        let bundled = dir.path().join("bundled-ibis");
+        fs::write(&bundled, b"invented CLI v1").unwrap();
+        fs::set_permissions(&bundled, fs::Permissions::from_mode(0o755)).unwrap();
+        let install = CommandInstall::new(
+            home,
+            vec![],
+            bundled.clone(),
+            Some(dir.path().join("Ibis.AppImage")),
+            "1.2.3".into(),
+        );
+        install.keep_installed().unwrap();
+        fs::write(&bundled, b"invented CLI v2").unwrap();
+        fs::remove_file(install.settled()).unwrap();
+        fs::create_dir(install.settled()).unwrap();
+        assert!(install.keep_installed().is_err());
+        assert_eq!(fs::read(install.destination()).unwrap(), b"invented CLI v1");
     }
 
     #[test]

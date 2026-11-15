@@ -74,27 +74,24 @@ pub(super) fn run(
         // Stable within this report; no private location is needed to identify a check.
         source["index"] = json!(index + 1);
     }
+    let library_check = match app_problem {
+        // Why the app's libraries could not be read, in the words other commands use.
+        Some(failure) if asked || failure.error.code != ErrorCode::Usage => {
+            let mut result = check("failed", "no-library");
+            result["code"] = serde_json::to_value(failure.error.code).unwrap_or(Value::Null);
+            result["message"] = json!(failure.sentence());
+            result
+        }
+        // Nothing chosen anywhere is the usual first run, not a broken setting.
+        _ if sources.is_empty() => check("failed", "no-library"),
+        _ => check("ok", "sources-reported"),
+    };
     // A check that was skipped on purpose is not a problem.
-    let findings = sources.is_empty()
+    let findings = library_check["status"] == "failed"
         || config["status"] == "failed"
         || sources
             .iter()
             .any(|source| !matches!(source["status"].as_str(), Some("ok" | "not-checked")));
-    let library_check = match (&app_problem, sources.is_empty()) {
-        (_, false) => check("ok", "sources-reported"),
-        // Nothing chosen anywhere is the usual first run, not a broken setting.
-        (Some(failure), true) if failure.error.code == ErrorCode::Usage && !asked => check("failed", "no-library"),
-        // Why the app's libraries could not be read, in the words other commands use.
-        (Some(failure), true) => {
-            let mut result = check("failed", "no-library");
-            if failure.error.code != ErrorCode::Usage {
-                result["code"] = serde_json::to_value(failure.error.code).unwrap_or(Value::Null);
-            }
-            result["message"] = json!(failure.sentence());
-            result
-        }
-        (None, true) => check("failed", "no-library"),
-    };
     let key_outputs: Vec<_> = ibis_core::syntax::CAPABILITIES
         .iter()
         .map(|capability| {
@@ -158,7 +155,7 @@ fn report_text(data: &Value, now_ms: u64) -> String {
     .unwrap_or_default();
     text.push_str("\n\n");
     let mut checks = vec![("Settings".to_owned(), &data["config"])];
-    // Each library has its own line; this one only matters when there are none.
+    // Selected libraries can be healthy while the requested app settings fail.
     if data["library_check"]["status"] != "ok" {
         checks.push(("Libraries".to_owned(), &data["library_check"]));
     }

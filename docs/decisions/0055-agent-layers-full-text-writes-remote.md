@@ -1,6 +1,8 @@
 # 0055 Agent layers, full text, writes and remote libraries
 
-Proposed (awaiting the maintainer's review); nothing here is built.
+Decided by the maintainer on 2026-11-15: yes to every question below, as
+recommended, and the direction in [One place to set it up](#one-place-to-set-it-up).
+`ibis agents setup` is built; the numbered sections are not yet.
 
 It builds on [0033](0033-engine-for-agents-and-tools.md),
 [0036](0036-reader-trust-boundary.md), [0051](0051-references-in-and-out.md) and
@@ -25,6 +27,17 @@ ship agent support in a similar shape: a setup command that finds installed agen
 apps, a plugin bundling the MCP server with skills, a small set of general tools
 rather than one per endpoint, and write actions kept apart from reads and
 confirmed by a person. `ibis agents setup` (issue #1867) is Ibis's setup command.
+
+## One place to set it up
+
+The app and the command line are one product with one set of settings. Most
+people use the app, so everything an agent needs, from connecting an AI app to
+the per-library opt-ins below, is set in Settings; `ibis` reads and changes the
+same saved settings, never a copy. Connecting AI apps is one shared piece of
+code: Settings shows each AI app found here with Connect or Disconnect and the
+same before-and-after view as `ibis agents setup|status|remove`, which use it
+too. Nothing is copied or pasted by hand, and a choice made in one place shows
+in the other. All of it stays optional.
 
 ## 1. Reading attachment text
 
@@ -99,9 +112,13 @@ in the pull request that ships the MCP tools.
 
 **Later.** Searching inside every document of a library is a separate decision.
 
-## 2. Writing to Zotero
+## 2. Writing to libraries
 
-**What.** Adding an item, later a note or a citation, at an agent's request.
+**What.** Small changes at an agent's request: adding an item, later a note,
+a citation, organising items and collections. Zotero comes first; every library
+kind with a safe way to write follows through the same proposal flow (for a
+`.bib` file, Ibis's own preview, backup and Undo), never a separate path per
+agent.
 
 **Why.** An agent that finds a missing reference can only tell the person to add
 it by hand.
@@ -158,6 +175,9 @@ online wherever it appears, and its MCP results say so in `source_health`, so th
 6. The Web API source, only after the maintainer's yes.
 
 ## Questions for the maintainer
+
+Answered on 2026-11-15: yes to all eight, as recommended. Online sources (the
+Web API, item 6 of the order) stay deferred.
 
 1. Adopt one engine and three thin layers, with workflow in the skill?
    Recommended: yes.

@@ -69,9 +69,10 @@ Ibis reads local changes automatically where file notifications work.
 
 ## Command line
 
-The desktop app puts the matching `ibis` command on PATH, and the command also
-installs on its own (Homebrew, winget, Nix or a download) and works without
-the app:
+The desktop app puts the matching `ibis` command in `~/.local/bin` on macOS and
+Linux (Settings shows the line to add if that folder is not on your PATH) and on
+PATH on Windows. The command also installs on its own (Homebrew, winget, Nix
+or a download) and works without the app:
 
 ```sh
 ibis search lantern --file refs.bib

@@ -79,9 +79,10 @@ fn golden_cases_replay_through_mcp() {
                     expected["language"] = json!(language);
                 }
                 assert_eq!(answer["structuredContent"], expected, "{}", case.name);
-                // The text is a summary that starts with the citation itself.
+                // The first block is exactly the citation, separate from diagnostics.
                 let text = answer["content"][0]["text"].as_str().unwrap();
-                assert!(text.starts_with(content.text), "{}: text response {text}", case.name);
+                assert_eq!(text, content.text, "{}: text response {text}", case.name);
+                assert_eq!(answer["content"].as_array().unwrap().len(), 2);
             }
             None => assert_eq!(answer["isError"], true, "{}", case.name),
         }

@@ -424,3 +424,37 @@ fn doctor_checks_the_libraries_chosen_in_the_app() {
     assert_eq!(report["data"]["sources"].as_array().map(Vec::len), Some(1));
     assert!(report["data"]["sources"][0].get("chosen_in").is_none());
 }
+
+#[test]
+fn doctor_reports_broken_requested_app_settings_even_with_a_healthy_named_file() {
+    let home = Home::new("doctor-broken-and-named");
+    let library = home.library("invented.bib");
+    let file = library.to_str().unwrap();
+    for (settings, code, words) in [
+        ("{\"schema_version\":99}", "newer-format", "Update this ibis command"),
+        ("{not json", "bad-input", "Open Ibis to repair"),
+        ("{\"schema_version\":2}", "usage", "no library is chosen in Ibis yet"),
+    ] {
+        home.settings(STABLE, settings);
+        let (status, stdout, stderr) = home.run(&["doctor", "--app-libraries", "--file", file, "--json"]);
+        assert_eq!(status, 1, "{stdout}{stderr}");
+        let report: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+        assert_eq!(report["data"]["library_check"]["status"], "failed");
+        assert_eq!(report["data"]["library_check"]["code"], code);
+        assert!(
+            report["data"]["library_check"]["message"]
+                .as_str()
+                .unwrap()
+                .contains(words),
+            "{stdout}"
+        );
+        assert_eq!(report["data"]["sources"][0]["status"], "ok");
+        let (status, stdout, _) = home.run(&["doctor", "--app-libraries", "--file", file]);
+        assert_eq!(status, 1, "{stdout}");
+        assert!(
+            stdout.contains(words) && stdout.contains("fail  Libraries:"),
+            "{stdout}"
+        );
+        assert!(!stdout.contains("All good"), "{stdout}");
+    }
+}

@@ -39,7 +39,8 @@ crash-upload service. This page describes current data flows; plans live in
   Remove Command deletes the link and receipt.
 - **AI apps:** `ibis agents setup` and `remove`, run by you, add or remove
   one `ibis` server entry in the AI apps' own settings files (or through their
-  own `mcp add` command), keeping a `.ibis-backup` copy of a file they change.
+  own `mcp add` command), keeping a new `<file>.ibis-backup-N` copy of each file
+  they change. Backups are created privately and never replace an older backup.
   They read those files only to find that entry, and send nothing.
 - **Settings:** `settings.json` holds library choices, formats, appearance,
   shortcuts, update consent, optional project names/paths and selections per

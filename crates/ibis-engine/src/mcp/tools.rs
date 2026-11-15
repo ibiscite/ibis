@@ -200,10 +200,18 @@ pub(super) fn call(
     cancel: &Cancellation,
     submission: Option<&crate::citations::SubmittedCitation>,
 ) -> Value {
-    let answered = answer(engine, problem, formats, tool, arguments, cancel, submission).and_then(|(text, data)| {
-        // The bound is on what is sent: the summary and the structured content.
+    let answered = answer(engine, problem, formats, tool, arguments, cancel, submission).and_then(|data| {
+        let summary = json!({"type": "text", "text": super::summary::text(tool.name, &data)});
+        // MCP permits multiple text blocks. Keep verbatim citation data apart
+        // from trusted diagnostics, even when it starts with "Warning:".
+        let content = if tool.name == "cite" {
+            vec![json!({"type": "text", "text": data["text"]}), summary]
+        } else {
+            vec![summary]
+        };
+        // Bound the complete answer, including both text blocks and structured content.
         let result = json!({
-            "content": [{"type": "text", "text": text}],
+            "content": content,
             "structuredContent": data,
             "isError": false
         });
@@ -248,7 +256,7 @@ fn answer(
     arguments: &Value,
     cancel: &Cancellation,
     submission: Option<&crate::citations::SubmittedCitation>,
-) -> Result<(String, Value), Refusal> {
+) -> Result<Value, Refusal> {
     cancel.check()?;
     let arguments = arguments
         .as_object()
@@ -268,7 +276,7 @@ fn answer(
         (tool.answer)(engine, formats, arguments, cancel)?
     };
     cancel.check()?;
-    Ok((super::summary::text(tool.name, &data), data))
+    Ok(data)
 }
 
 /// An argument nothing reads would be lost in silence, so it is refused by name.
