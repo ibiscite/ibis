@@ -9,6 +9,10 @@ export const commands = {
 	connectAgentApp: (id: string, replace: boolean, expected: string) => __TAURI_INVOKE<AgentApp[]>("connect_agent_app", { id, replace, expected }),
 	/** Disconnect only if expected is the revision of the displayed connection. */
 	disconnectAgentApp: (id: string, expected: string) => __TAURI_INVOKE<AgentApp[]>("disconnect_agent_app", { id, expected }),
+	/** Open libraries by display name and complete opaque ID, with their saved choice. */
+	attachmentTextLibraries: () => __TAURI_INVOKE<AttachmentTextLibrary[]>("attachment_text_libraries"),
+	/** Save a choice for an open library previously returned to Settings. */
+	setAttachmentText: (id: LibraryId, on: boolean) => __TAURI_INVOKE<boolean>("set_attachment_text", { id, on }),
 	cliStatus: () => __TAURI_INVOKE<CommandStatus>("cli_status"),
 	setCliInstalled: (installed: boolean) => __TAURI_INVOKE<CommandStatus>("set_cli_installed", { installed }),
 	copyCliProfile: () => __TAURI_INVOKE<null>("copy_cli_profile"),
@@ -340,6 +344,12 @@ export type AppPaste = "paste" | "copy-only";
 
 /** Settings owns these choices until the picker consumes the same event fields. */
 export type Appearance = "system" | "light" | "dark";
+
+export type AttachmentTextLibrary = {
+	id: LibraryId;
+	name: string;
+	on: boolean;
+};
 
 /** Why a backup or restore did not happen; the Settings window words it. */
 export type BackupProblem = "not-downloaded" | "unreadable" | "not-a-backup" | "settings-file" | "newer" | "invalid" | "not-saved" | "settings-unusable" | "busy" | "changed";

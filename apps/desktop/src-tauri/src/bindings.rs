@@ -54,6 +54,8 @@ registry![
     crate::agent_apps::agent_apps,
     crate::agent_apps::connect_agent_app,
     crate::agent_apps::disconnect_agent_app,
+    crate::library::attachment_text::attachment_text_libraries,
+    crate::library::attachment_text::set_attachment_text,
     crate::cli_install::cli_status,
     crate::cli_install::set_cli_installed,
     crate::cli_install::copy_cli_profile,
@@ -222,8 +224,10 @@ mod tests {
 
     include!("../app_commands.rs");
 
-    /// What the Settings window may call: saved choices, never the library or copies.
+    /// What Settings may call: saved choices and library names/IDs, never documents or copies.
     const SETTINGS_COMMANDS: &[&str] = &[
+        "attachment_text_libraries",
+        "set_attachment_text",
         "format_settings",
         "forget_app_format",
         "open_settings_file",
@@ -264,6 +268,8 @@ mod tests {
     /// Only Settings asks about paste permission, changes the global shortcut
     /// or chooses a window size.
     const SETTINGS_ONLY: &[&str] = &[
+        "attachment_text_libraries",
+        "set_attachment_text",
         "format_settings",
         "forget_app_format",
         "open_settings_file",

@@ -459,6 +459,12 @@ about-unavailable = This build does not update itself.
 # Settings window pages and visual choices.
 settings-look = Appearance
 settings-citations = Citations
+attachment-text-title = Attachment text
+attachment-text-label = Let AI apps read attachment text
+attachment-text-description = AI apps can read the text of this library’s attachments with page numbers, never the files; ibis read in a terminal does not need this choice.
+attachment-text-words = attachment full text PDF
+attachment-text-empty = No library is open.
+attachment-text-loading = Reading library choices…
 settings-search = Search Settings
 settings-no-results = No settings match ‘{ $query }’
 settings-results = Search results

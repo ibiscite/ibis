@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "settings",
-  "description": "Settings window: read and change saved choices, the login item, update checks, the paste permission and the shortcut, and back up or restore settings through system file dialogs, and switch the loopback editor endpoint on or off and copy its address. No library, copy, file system or shell access, and no network beyond that one 127.0.0.1 listener. Can inspect supported AI apps and connect/disconnect their fixed Ibis MCP entry through the shared engine, preserving unrelated settings. Can inspect and install/remove the bundled command at its fixed user location, and copy its fixed PATH profile line.",
+  "description": "Settings window: read and change saved choices, the login item, update checks, the paste permission and the shortcut, and back up or restore settings through system file dialogs, and switch the loopback editor endpoint on or off and copy its address. Can list open libraries by name and ID and change their attachment-text choices. No document, copy, file system or shell access, and no network beyond that one 127.0.0.1 listener. Can inspect supported AI apps and connect/disconnect their fixed Ibis MCP entry through the shared engine, preserving unrelated settings. Can inspect and install/remove the bundled command at its fixed user location, and copy its fixed PATH profile line.",
   "windows": [
     "settings"
   ],
@@ -11,6 +11,8 @@
     "core:app:allow-version",
     "core:window:allow-start-dragging",
     "core:window:allow-destroy",
+    "allow-attachment-text-libraries",
+    "allow-set-attachment-text",
     "allow-format-settings",
     "allow-forget-app-format",
     "allow-open-settings-file",

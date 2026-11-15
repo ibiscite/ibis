@@ -3,7 +3,7 @@ import { filterPalette } from "../ui/Palette";
 import { Details } from "../ui/Details";
 import { useSettingUndo } from "../ui/useSettingUndo";
 import { useRowReveal } from "../ui/useRowReveal";
-import { AiApps } from "./AiApps";
+import { AttachmentText } from "./AttachmentText";
 import { CliCommandRow } from "./CliCommand";
 import { StatusMark } from "../ui/StatusMark";
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
@@ -31,6 +31,7 @@ import { useAppearance } from "../ui/appearance";
 import { SettingRows, UnknownSettings } from "./SettingRows";
 import { FormatSettings, SettingsFileProblem, SettingsFileRow, useFormatSettings } from "./FormatSettings";
 import { EditorEndpointRow } from "./EditorEndpoint";
+import { AiApps } from "./AiApps";
 import { PasteGuide, usePastePermission } from "./PasteGuide";
 import { BackupRows } from "./BackupRows";
 import type { SettingsApi } from "./api";
@@ -502,6 +503,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     }, () => { if (live.current && operation === versionCopy.current) setVersionCopyFailed(true); });
   };
   const availableRows = settingsRows(enterPastes).filter((row) => (row.id !== "menu-bar" || platform === "macos")
+    && (row.id !== "attachment-text" || Boolean(api.attachmentTextLibraries && api.setAttachmentText))
     && (row.id !== "default-key-format" || keyFormatVisible)
     && (row.id !== "open-settings-file" || Boolean(api.openSettingsFile))
     && (row.id !== "paste-label" || permission?.pastes === true)
@@ -594,6 +596,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
             <CliCommandRow api={{ cliStatus: api.cliStatus, setCliInstalled: api.setCliInstalled, copyCliProfile: api.copyCliProfile }} highlighted={highlighted === "cli-command"} onChanged={() => setAgentRefresh((revision) => revision + 1)} />
           </Group></Section>}
           {api.agentApps && api.connectAgentApp && api.disconnectAgentApp && <AiApps api={{ agentApps: api.agentApps, connectAgentApp: api.connectAgentApp, disconnectAgentApp: api.disconnectAgentApp }} highlighted={highlighted} refresh={agentRefresh} />}
+          {api.attachmentTextLibraries && api.setAttachmentText && <AttachmentText api={{ ...api, attachmentTextLibraries: api.attachmentTextLibraries, setAttachmentText: api.setAttachmentText }} highlighted={highlighted === "attachment-text"} />}
         </>}
         {page === "shortcuts" && <ShortcutsPage opening={shortcutSetting} enterPastes={enterPastes} reveal={revealTarget} highlighted={highlighted} />}
         {page === "about" && (

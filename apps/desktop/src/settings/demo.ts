@@ -7,6 +7,7 @@ export function demoApi(): SettingsApi {
   let preferences: PickerPreferences = { output: "pandoc", density: "comfortable", larger_text: false, paste: true, menu_bar: true, appearance: "system", accent: "system" };
   let shortcut: ShortcutStatus = { shortcut: DEFAULT_PICKER_SHORTCUT, registered: true, error: null };
   let enabled = false, automatic = false;
+  let attachmentText = false;
   let revision = 0;
   let factIndex = -1;
   let windowSize: WindowSize = "medium", previousWindowSize: WindowSize = "medium", windowRevision = 0;
@@ -27,6 +28,9 @@ export function demoApi(): SettingsApi {
   ];
   const subscribe = async () => () => undefined;
   return {
+    attachmentTextLibraries: async () => [{ id: "lib_invented_demo_library", name: "Sample references", on: attachmentText }],
+    setAttachmentText: async (id, on) => { if (id !== "lib_invented_demo_library") throw new Error("Unknown library"); attachmentText = on; return on; },
+    onLibraryChanged: subscribe,
     delightView: async (_now, _presentation, _revision, click) => {
       const fun = preferences.small_surprises ?? true;
       if (fun && click) factIndex = (factIndex + 1) % facts.length;

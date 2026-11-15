@@ -25,7 +25,9 @@ Give your assistant read-only search, reference details, citations and styles
 from the libraries you choose in Ibis. Ibis's MCP tools never change your
 libraries, expose notes or annotations, or open network connections. They read
 an attachment's text only from a library where you allow AI apps to read
-attachment text; this is off by default. Your assistant may send the returned
+attachment text in **Settings › AI Apps › Attachment text**; this is off by
+default. This lets AI apps read text with page numbers, never the files.
+`ibis read` in a terminal does not need this choice. Your assistant may send the returned
 reference details, citations and text to its provider; that provider's privacy
 policy applies.
 
