@@ -337,7 +337,9 @@ impl EngineError {
         Self {
             code: if matches!(
                 error,
-                super::CitationError::OutputTooLarge | super::CitationError::TooManyItems
+                super::CitationError::OutputTooLarge
+                    | super::CitationError::TooManyItems
+                    | super::CitationError::TooManyRecords
             ) {
                 ErrorCode::ResourceLimit
             } else {
