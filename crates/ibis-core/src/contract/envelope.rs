@@ -335,7 +335,12 @@ impl EngineError {
     }
     pub const fn citation(error: super::CitationError) -> Self {
         Self {
-            code: if matches!(error, super::CitationError::OutputTooLarge) {
+            code: if matches!(
+                error,
+                super::CitationError::OutputTooLarge
+                    | super::CitationError::TooManyItems
+                    | super::CitationError::TooManyRecords
+            ) {
                 ErrorCode::ResourceLimit
             } else {
                 ErrorCode::BadInput

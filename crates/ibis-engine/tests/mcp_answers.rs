@@ -101,7 +101,7 @@ fn over_limit_citations_use_the_shared_count_diagnostic_before_resolving_referen
         "error: bad-input. A citation can hold at most 1000 references."
     );
     let problem = &result["structuredContent"]["error"];
-    assert_eq!(problem["code"], "too-many-items");
+    assert_eq!(problem["code"], "invalid-too-many-items");
     assert_eq!(
         problem["message"],
         json!({"id":"problem-too-many-items", "args":{"count":"1000"}})

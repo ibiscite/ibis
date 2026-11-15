@@ -336,7 +336,7 @@ fn color_is_explicit_and_machine_streams_stay_undecorated() -> Result {
 
 #[test]
 fn over_limit_citations_use_the_engine_error_and_catalogue_text() -> Result {
-    use ibis_core::contract::{CitationError, Envelope, GoldenCase};
+    use ibis_core::contract::{CitationError, EngineError, Envelope, GoldenCase};
     use ibis_engine::{Cancellation, catalogue, request::KeyCitationRequest};
 
     let (_dir, file) = library()?;
@@ -357,8 +357,7 @@ fn over_limit_citations_use_the_engine_error_and_catalogue_text() -> Result {
         .ok_or("over-limit citation must fail")?;
     let message = catalogue::error(&error, catalogue::Audience::Cli);
     assert_eq!(message, "A citation can hold at most 1000 references.");
-    assert_eq!(error.citation_error, Some(CitationError::TooManyItems));
-    let expected = serde_json::to_value(Envelope::<Value>::failure(error))?;
+    assert_eq!(error.citation_error, Some(CitationError::TooManyKeys));
     let input = keys.join("\n");
     let key_file = std::path::Path::new(&file).with_file_name("keys.txt");
     std::fs::write(&key_file, &input)?;
@@ -380,13 +379,19 @@ fn over_limit_citations_use_the_engine_error_and_catalogue_text() -> Result {
         (vec!["cite", "--request"], canonical.as_bytes()),
         (vec!["call", "cite", "--stdin"], canonical.as_bytes()),
     ] {
+        let expected_error = if args.contains(&"--request") || args.first() == Some(&"call") {
+            EngineError::citation(CitationError::TooManyItems)
+        } else {
+            error
+        };
+        let expected = serde_json::to_value(Envelope::<Value>::failure(expected_error))?;
         for json in [false, true] {
             let mut args = args.clone();
             if json {
                 args.push("--json");
             }
             let (code, output, errors) = run(&file, &args, input, ibis::OutputMode::Plain)?;
-            assert_eq!(code, 3);
+            assert_eq!(code, expected_error.code.exit_code().value());
             assert_eq!(errors, format!("ibis: {message}\n"));
             if json {
                 assert_eq!(serde_json::from_str::<Value>(&output)?, expected);

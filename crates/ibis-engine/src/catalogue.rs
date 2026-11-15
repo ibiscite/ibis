@@ -249,7 +249,6 @@ mod tests {
         for (group, names) in [
             ("error", names::<ErrorCode>()),
             ("reason", names::<ErrorReason>()),
-            ("problem", names::<CitationError>()),
             ("warning", names::<CitationWarningCode>()),
             ("source-warning", names::<ibis_sources::WarningCode>()),
             ("loss", names::<LossField>()),
@@ -260,6 +259,11 @@ mod tests {
             assert!(!names.is_empty(), "{group} lists its codes");
             ids.extend(names.into_iter().map(|name| format!("{group}-{name}")));
         }
+        ids.extend(
+            CitationError::ALL
+                .into_iter()
+                .map(|error| error.message_id().to_owned()),
+        );
         ids
     }
 

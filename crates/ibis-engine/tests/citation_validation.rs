@@ -89,20 +89,40 @@ fn over_limit_requests_share_the_count_diagnostic_across_input_and_output_types(
             ..records.clone()
         };
         let cancel = Cancellation::default();
-        for error in [
-            engine.cite(&request, &cancel).unwrap_err(),
-            engine.cite_keys(&keys, &cancel).unwrap_err(),
-            engine.cite_records(&records, &cancel).unwrap_err(),
-            engine.cite_records(&picks, &cancel).unwrap_err(),
+        for (error, code, citation_error, recovery) in [
+            (
+                engine.cite(&request, &cancel).unwrap_err(),
+                ErrorCode::ResourceLimit,
+                CitationError::TooManyItems,
+                "reduce-selection",
+            ),
+            (
+                engine.cite_keys(&keys, &cancel).unwrap_err(),
+                ErrorCode::BadInput,
+                CitationError::TooManyKeys,
+                "edit-input",
+            ),
+            (
+                engine.cite_records(&records, &cancel).unwrap_err(),
+                ErrorCode::ResourceLimit,
+                CitationError::TooManyRecords,
+                "reduce-selection",
+            ),
+            (
+                engine.cite_records(&picks, &cancel).unwrap_err(),
+                ErrorCode::BadInput,
+                CitationError::TooManyRecordItems,
+                "edit-input",
+            ),
         ] {
-            assert_eq!(error.code, ErrorCode::BadInput);
-            assert_eq!(error.citation_error, Some(CitationError::TooManyItems));
+            assert_eq!(error.code, code);
+            assert_eq!(error.citation_error, Some(citation_error));
             let presented = serde_json::to_value(error).unwrap();
             assert_eq!(
                 presented["message"],
                 json!({"id":"problem-too-many-items", "args":{"count":count.to_string()}})
             );
-            assert_eq!(presented["recovery"]["action"], "reduce-selection");
+            assert_eq!(presented["recovery"]["action"], recovery);
             for audience in [Audience::Cli, Audience::Agent, Audience::App] {
                 assert_eq!(
                     catalogue::error(&error, audience),

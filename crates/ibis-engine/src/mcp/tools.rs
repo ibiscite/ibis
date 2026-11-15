@@ -641,7 +641,8 @@ fn cite_submitted(
         .and_then(Value::as_array)
         .filter(|items| !items.is_empty())
         .ok_or_else(|| Refusal::bad(ToolProblem::Items, &[]))?;
-    ibis_core::citation::check_item_limit(items.len()).map_err(EngineError::citation)?;
+    ibis_core::citation::check_item_limit(items.len())
+        .map_err(|_| EngineError::citation(CitationError::TooManyReferences))?;
     let output = chosen_output(arguments)?;
     let mut writing = None;
     let destination = match arguments.get("for_app") {

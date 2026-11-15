@@ -31,7 +31,7 @@ fn records() -> Value {
 }
 
 #[test]
-fn record_count_limit_keeps_the_catalogue_message_and_exit_three() -> Result {
+fn record_count_limit_keeps_the_catalogue_message_and_resource_limit_exit() -> Result {
     use ibis_core::contract::{CitationError, EngineError, Envelope};
     use ibis_engine::catalogue::{self, Audience};
 
@@ -39,7 +39,7 @@ fn record_count_limit_keeps_the_catalogue_message_and_exit_three() -> Result {
         json!({"id":"invented", "type":"book"});
         ibis_core::syntax::MAX_CITATION_ITEMS + 1
     ])?;
-    let error = EngineError::citation(CitationError::TooManyItems);
+    let error = EngineError::citation(CitationError::TooManyRecords);
     let message = catalogue::error(&error, Audience::Cli);
     assert_eq!(message, "A citation can hold at most 1000 references.");
     for json in [false, true] {
@@ -48,7 +48,7 @@ fn record_count_limit_keeps_the_catalogue_message_and_exit_three() -> Result {
             args.push("--json");
         }
         let (code, output, errors) = run(&args, &input)?;
-        assert_eq!(code, 3);
+        assert_eq!(code, 5);
         assert_eq!(errors, format!("ibis: {message}\n"));
         if json {
             assert_eq!(

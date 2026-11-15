@@ -193,8 +193,8 @@ fn too_many_records_have_a_specific_refusal_and_deep_records_hit_a_resource_limi
         .map(|n| json!({"id": format!("r{n}"), "type": "book", "title": "Invented"}))
         .collect();
     let error = records(&engine, apa(json!(many))).unwrap_err();
-    assert_eq!(error.code, ErrorCode::BadInput);
-    assert_eq!(error.citation_error, Some(CitationError::TooManyItems));
+    assert_eq!(error.code, ErrorCode::ResourceLimit);
+    assert_eq!(error.citation_error, Some(CitationError::TooManyRecords));
     let mut deep = json!("bottom");
     for _ in 0..20 {
         deep = json!([deep]);
