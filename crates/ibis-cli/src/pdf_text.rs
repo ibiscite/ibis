@@ -16,20 +16,34 @@ use std::io::{Read, Write};
 
 /// The most one stream may inflate to: page content, object and font streams.
 const MAX_STREAM_BYTES: usize = 64 * 1024 * 1024;
-/// Address space for the whole child on Linux, where the limit is enforced.
-#[cfg(target_os = "linux")]
-const MAX_ADDRESS_SPACE: u64 = 3 * 1024 * 1024 * 1024;
+/// Live Rust allocation budget, backed by OS limits where supported.
+const MAX_MEMORY_BYTES: u64 = 3 * 1024 * 1024 * 1024;
 /// Processor seconds, a backstop behind the parent's ten-second deadline.
 #[cfg(unix)]
 const MAX_CPU_SECONDS: u64 = 20;
 /// Nested `/Kids` levels and nodes read from a page label tree.
 const MAX_TREE_DEPTH: usize = 32;
 const MAX_TREE_NODES: usize = 4096;
+const MAX_PREFIX_CHARS: usize = 64;
+const MAX_LABEL_BYTES: usize = 1024 * 1024;
+// Decimal u64, Roman (up to 16 thousands) and alphabetic suffixes all fit.
+const MAX_NUMBER_BYTES: usize = 32;
+
+// SAFETY: the allocator delegates to System, with matching layouts and a
+// process-wide atomic byte counter. The budget is enabled only in the child.
+#[allow(unsafe_code)]
+#[path = "pdf_text/heap_limit.rs"]
+mod heap_limit;
+
+#[cfg(windows)]
+#[allow(unsafe_code)]
+#[path = "pdf_text/windows_limits.rs"]
+mod windows_limits;
 
 /// The child process itself: bounded first, then [`child`] over its own
 /// standard input and output.
 pub fn run_child(arguments: &[OsString]) -> u8 {
-    limit_resources();
+    let Ok(_limits) = limit_resources() else { return 1 };
     child(arguments, std::io::stdin().lock(), std::io::stdout().lock())
 }
 
@@ -55,24 +69,37 @@ pub fn child(arguments: &[OsString], mut input: impl Read, mut output: impl Writ
     }
 }
 
-/// Bounds this process where the system makes it cheap: address space on
-/// Linux (macOS does not enforce it, and Windows would need a job object), and
-/// processor time on every Unix. Failing to set a bound is not fatal; the
-/// parent's deadline still applies.
-fn limit_resources() {
-    #[cfg(unix)]
-    {
-        use nix::sys::resource::{Resource, getrlimit, setrlimit};
-        let lower = |resource: Resource, limit: u64| {
-            if let Ok((soft, hard)) = getrlimit(resource) {
-                let hard = hard.min(limit);
-                let _ = setrlimit(resource, soft.min(hard), hard);
+/// Bound Rust allocations and lower Unix soft and hard limits before parsing.
+/// Darwin can reject finite AS/DATA limits; the allocator budget still applies.
+#[cfg(unix)]
+fn limit_resources() -> std::io::Result<()> {
+    heap_limit::set(MAX_MEMORY_BYTES as usize);
+    use nix::sys::resource::{Resource, getrlimit, setrlimit};
+    for (resource, limit) in [
+        (Resource::RLIMIT_AS, MAX_MEMORY_BYTES),
+        (Resource::RLIMIT_DATA, MAX_MEMORY_BYTES),
+        (Resource::RLIMIT_CPU, MAX_CPU_SECONDS),
+        (Resource::RLIMIT_CORE, 0),
+    ] {
+        let (soft, hard) = getrlimit(resource)?;
+        let hard = hard.min(limit);
+        if let Err(error) = setrlimit(resource, soft.min(hard), hard) {
+            // AS aliases RSS on Darwin, and current kernels may reject both
+            // finite memory limits. Never skip CPU limits or permission errors.
+            #[cfg(target_os = "macos")]
+            if matches!(resource, Resource::RLIMIT_AS | Resource::RLIMIT_DATA) && error == nix::errno::Errno::EINVAL {
+                continue;
             }
-        };
-        #[cfg(target_os = "linux")]
-        lower(Resource::RLIMIT_AS, MAX_ADDRESS_SPACE);
-        lower(Resource::RLIMIT_CPU, MAX_CPU_SECONDS);
+            return Err(error.into());
+        }
     }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn limit_resources() -> std::io::Result<windows_limits::Limit> {
+    heap_limit::set(MAX_MEMORY_BYTES as usize);
+    windows_limits::Limit::new(MAX_MEMORY_BYTES as usize)
 }
 
 /// A PDF's pages, their text unless `labels_only`, and their labels.
@@ -203,7 +230,11 @@ fn number(object: &Object) -> Option<f64> {
 /// answer and could never be shown.
 fn clean(text: &str) -> String {
     text.chars()
-        .map(|character| if character == '\r' { '\n' } else { character })
+        .map(|character| match character {
+            '\r' => '\n',
+            '\u{c}' => ' ',
+            other => other,
+        })
         .filter(|character| !character.is_control() || matches!(character, '\n' | '\t'))
         .collect()
 }
@@ -221,6 +252,9 @@ struct LabelRange {
 /// no tree or it is damaged: a damaged tree gives no labels at all rather
 /// than labels that may be wrong. A page before the first range has none.
 pub fn page_labels(document: &Document, pages: usize) -> Option<Vec<Option<String>>> {
+    if pages > MAX_PAGES as usize {
+        return None;
+    }
     let tree = document.catalog().ok()?.get(b"PageLabels").ok()?;
     let mut ranges = Vec::new();
     let mut nodes = 0;
@@ -231,6 +265,17 @@ pub fn page_labels(document: &Document, pages: usize) -> Option<Vec<Option<Strin
     ranges.sort_by_key(|range| range.first);
     if ranges.windows(2).any(|pair| pair[0].first == pair[1].first) {
         return None;
+    }
+    // Budget every range before allocating or copying any per-page label.
+    let mut total = 0usize;
+    for (index, range) in ranges.iter().enumerate() {
+        let first = range.first.min(pages);
+        let end = ranges.get(index + 1).map_or(pages, |next| next.first.min(pages));
+        let per_page = range.prefix.len().checked_add(MAX_NUMBER_BYTES)?;
+        total = total.checked_add((end - first).checked_mul(per_page)?)?;
+        if total > MAX_LABEL_BYTES {
+            return None;
+        }
     }
     let mut labels = vec![None; pages];
     for (index, range) in ranges.iter().enumerate() {
@@ -287,7 +332,19 @@ fn range(document: &Document, first: usize, entry: &Dictionary) -> Option<LabelR
     };
     let prefix = match entry.get(b"P") {
         Err(_) => String::new(),
-        Ok(prefix) => lopdf::decode_text_string(document.dereference(prefix).ok()?.1).ok()?,
+        Ok(prefix) => {
+            let prefix = document.dereference(prefix).ok()?.1;
+            // PDFDocEncoding, UTF-16 or UTF-8 plus BOM: reject an oversized
+            // encoded string before the decoder makes another allocation.
+            if prefix.as_str().ok()?.len() > 4 * MAX_PREFIX_CHARS + 3 {
+                return None;
+            }
+            let prefix = lopdf::decode_text_string(prefix).ok()?;
+            if prefix.chars().count() > MAX_PREFIX_CHARS {
+                return None;
+            }
+            prefix
+        }
     };
     let start = match entry.get(b"St") {
         Err(_) => 1,

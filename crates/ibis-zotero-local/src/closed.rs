@@ -155,6 +155,8 @@ pub struct ClosedSnapshot {
 /// indexed the file (decision 0055). Its title is library text.
 #[derive(Clone, PartialEq, Eq)]
 pub struct ClosedAttachment {
+    /// Check of Zotero's item revision and full-text index metadata.
+    pub revision: ibis_core::contract::Fingerprint,
     pub library_id: i64,
     /// The key of the item it belongs to.
     pub parent: String,
@@ -246,55 +248,83 @@ impl ClosedReader {
     }
 }
 
+/// The folder Zotero or the person chose, with links in its own path resolved
+/// once: only what lies below it is opened without following any link. Windows
+/// keeps the path as given, since its verbatim form fails the local-file checks.
+pub fn trusted_folder(path: &Path) -> PathBuf {
+    // Classify every component and symlink target against the cached mounts
+    // before probing it; plain canonicalize could touch a remote root first.
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    if let Ok(resolved) = platform::directory(path, &Control::within(Arc::new(|| false), LOCAL_FILE_BUDGET)) {
+        return resolved;
+    }
+    path.to_owned()
+}
+
 /// The text Zotero cached for attachment `key` of the data directory `data`,
 /// or `None` when Zotero cached none. Only a regular local file is read, in
 /// at most ten seconds, and the text stays in memory (decision 0036).
-pub fn read_text_cache(data: &Path, key: &str) -> Result<Option<String>, ClosedError> {
-    use std::io::Read;
+pub fn read_text_cache(
+    data: &Path,
+    key: &str,
+    cancelled: Arc<dyn Fn() -> bool + Send + Sync>,
+) -> Result<Option<String>, ClosedError> {
     if !crate::fulltext::valid_key(key) {
         return Err(ClosedError::UnsafeSource);
     }
-    let started = Instant::now();
-    let Some(file) = open_local_file(&data.join("storage").join(key).join(".zotero-ft-cache"))? else {
-        return Ok(None);
-    };
-    let limit = crate::fulltext::MAX_TEXT_BYTES as u64;
-    if file.metadata().map_err(|_| ClosedError::Unreadable)?.len() > limit {
-        return Err(ClosedError::TooLarge);
-    }
-    let mut bytes = Vec::new();
-    file.take(limit + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|_| ClosedError::Unreadable)?;
-    if started.elapsed() >= LOCAL_FILE_BUDGET {
-        return Err(ClosedError::TimedOut);
-    }
-    if bytes.len() as u64 > limit {
-        return Err(ClosedError::TooLarge);
-    }
-    Ok(Some(String::from_utf8_lossy(&bytes).into_owned()))
+    let control = Control::within(cancelled, Duration::from_secs(10));
+    let (data, key) = (trusted_folder(data), key.to_owned());
+    cache_text(&control, move |control| {
+        let file = platform::local_file(&data.join("storage").join(key).join(".zotero-ft-cache"), control)?;
+        if let Some(file) = &file
+            && file.metadata().map_err(|_| ClosedError::Unreadable)?.len() > crate::fulltext::MAX_TEXT_BYTES as u64
+        {
+            return Err(ClosedError::TooLarge);
+        }
+        Ok(file)
+    })
+}
+
+fn cache_text<R: std::io::Read + Send + 'static>(
+    control: &Control,
+    open: impl FnOnce(&Control) -> Result<Option<R>, ClosedError> + Send + 'static,
+) -> Result<Option<String>, ClosedError> {
+    use std::io::Read;
+    control.io(move |control| {
+        let Some(reader) = open(control)? else { return Ok(None) };
+        control.check()?;
+        let limit = crate::fulltext::MAX_TEXT_BYTES as u64;
+        let mut bytes = Vec::new();
+        reader
+            .take(limit + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|_| ClosedError::Unreadable)?;
+        control.check()?;
+        if bytes.len() as u64 > limit {
+            return Err(ClosedError::TooLarge);
+        }
+        String::from_utf8(bytes).map(Some).map_err(|_| ClosedError::Unreadable)
+    })
 }
 
 const LOCAL_FILE_BUDGET: Duration = Duration::from_secs(10);
 
-/// The file at `path`, opened only when it is a regular, resident file on a
-/// local disk (decision 0036): its folders must resolve on local mounts, never
-/// a network, FUSE or cloud placeholder, and `path` itself is never followed
-/// as a link. `None` when nothing is there. Opening takes at most ten seconds.
-pub fn open_local_file(path: &Path) -> Result<Option<std::fs::File>, ClosedError> {
-    let (Some(folder), Some(name)) = (path.parent(), path.file_name()) else {
-        return Err(ClosedError::UnsafeSource);
-    };
-    let control = Control::within(Arc::new(|| false), LOCAL_FILE_BUDGET);
-    match std::fs::symlink_metadata(folder) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(_) => return Err(ClosedError::Unreadable),
-        Ok(_) => (),
-    }
-    let folder = platform::directory(folder, &control)?;
-    let file = platform::open_regular(&folder.join(name))?;
-    control.check()?;
-    Ok(file)
+/// Use an opened regular, resident local file without following a link at
+/// any component. The operation shares a bounded I/O slot and one deadline
+/// with opening; cancelled or late results are dropped, never published.
+pub fn with_local_file<T: Send + 'static>(
+    path: &Path,
+    cancelled: Arc<dyn Fn() -> bool + Send + Sync>,
+    budget: Duration,
+    operation: impl FnOnce(std::fs::File) -> T + Send + 'static,
+) -> Result<Option<T>, ClosedError> {
+    let control = Control::within(cancelled, budget.min(LOCAL_FILE_BUDGET));
+    let path = path.to_owned();
+    control.io(move |control| {
+        let file = platform::local_file(&path, control)?;
+        control.check()?;
+        Ok(file.map(operation))
+    })
 }
 
 #[derive(Clone)]
@@ -303,6 +333,60 @@ struct Control {
     cancelled: Arc<dyn Fn() -> bool + Send + Sync>,
 }
 impl Control {
+    /// Filesystem calls may stall in the kernel. Bound both the caller's wait
+    /// and detached jobs; a late result can only be dropped, never published.
+    fn io<T: Send + 'static>(
+        &self,
+        operation: impl FnOnce(&Control) -> Result<T, ClosedError> + Send + 'static,
+    ) -> Result<T, ClosedError> {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            mpsc,
+        };
+        static IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
+        struct Permit;
+        impl Drop for Permit {
+            fn drop(&mut self) {
+                IN_FLIGHT.fetch_sub(1, Ordering::Relaxed);
+            }
+        }
+        loop {
+            self.check()?;
+            let count = IN_FLIGHT.load(Ordering::Relaxed);
+            if count < 8
+                && IN_FLIGHT
+                    .compare_exchange(count, count + 1, Ordering::Relaxed, Ordering::Relaxed)
+                    .is_ok()
+            {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let permit = Permit;
+        let worker = self.clone();
+        let (send, result) = mpsc::sync_channel(1);
+        std::thread::Builder::new()
+            .name("ibis-zotero-file-io".into())
+            .spawn(move || {
+                let _permit = permit;
+                let answer = worker.check().and_then(|()| operation(&worker));
+                let _ = send.send(answer);
+            })
+            .map_err(|_| ClosedError::Unreadable)?;
+        loop {
+            self.check()?;
+            let remaining = self.deadline.saturating_duration_since(Instant::now());
+            match result.recv_timeout(remaining.min(Duration::from_millis(5))) {
+                Ok(answer) => {
+                    self.check()?;
+                    return answer;
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => (),
+                Err(mpsc::RecvTimeoutError::Disconnected) => return Err(ClosedError::Unreadable),
+            }
+        }
+    }
+
     fn new(cancelled: Arc<dyn Fn() -> bool + Send + Sync>) -> Self {
         Self::within(cancelled, Duration::from_secs(60))
     }

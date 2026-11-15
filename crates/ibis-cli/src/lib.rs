@@ -1216,14 +1216,19 @@ fn open_libraries(
             Ok(names)
         };
     }
-    // `call` of search, show or cite reads what those commands would read.
+    // Generic calls read the same default libraries as their direct commands.
     let called = matches
         .subcommand_matches("call")
         .and_then(|call| call.get_one::<String>("method"));
     let reads_app = matches!(
         name,
         "search" | "show" | "cite" | "entry" | "libraries" | "outline" | "read" | "find-in"
-    ) || called.is_some_and(|called| matches!(called.as_str(), "search" | "show" | "cite"));
+    ) || called.is_some_and(|called| {
+        matches!(
+            called.as_str(),
+            "search" | "show" | "cite" | "outline" | "read" | "find-in"
+        )
+    });
     let app = if asked || (defaults == Defaults::App && !named && reads_app) {
         Some(bounded(app_libraries::load).unwrap_or_else(|| {
             Err(Failure::explained(

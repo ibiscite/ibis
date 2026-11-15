@@ -477,3 +477,24 @@ fn attachments_carry_zoteros_index_counts_and_never_fail_a_read() {
     assert!(snapshot.attachments.is_none());
     assert_eq!(snapshot.libraries[0].items.len(), 1);
 }
+
+#[test]
+fn reading_attachment_revisions_include_item_and_index_changes() {
+    let dir = fixture(10);
+    edit(
+        dir.path(),
+        "INSERT INTO itemAttachments VALUES(14,10,0,'application/pdf','storage:invented.pdf'); INSERT INTO fulltextItems(itemID,indexedPages,totalPages,indexedChars,totalChars) VALUES(14,2,2,100,100);",
+    );
+    let attachment = || read_fixture(dir.path()).unwrap().attachments.unwrap().remove(0);
+    for sql in [
+        "UPDATE items SET version=version+1 WHERE itemID=14;",
+        "UPDATE items SET dateModified='2026-11-15 12:00:00' WHERE itemID=14;",
+        "UPDATE fulltextItems SET indexedChars=101 WHERE itemID=14;",
+        "UPDATE fulltextItems SET totalChars=102 WHERE itemID=14;",
+        "UPDATE fulltextItems SET version=version+1 WHERE itemID=14;",
+    ] {
+        let before = attachment();
+        edit(dir.path(), sql);
+        assert_ne!(attachment(), before, "{sql}");
+    }
+}

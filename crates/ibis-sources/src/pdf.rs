@@ -13,11 +13,19 @@
 //! so PDF parsing stays away from the app's library, clipboard and paste
 //! permissions.
 
+use ibis_core::contract::Fingerprint;
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+// SAFETY: only the post-fork descriptor boundary needs unsafe calls.
+#[cfg(unix)]
+#[allow(unsafe_code)]
+#[path = "pdf/inheritance.rs"]
+mod inheritance;
 
 /// The argument that makes `ibis` the extractor's child process.
 pub const CHILD_ARGUMENT: &str = "__extract-pdf";
@@ -90,6 +98,8 @@ pub enum Refusal {
 /// label is citable or `None`.
 #[derive(Clone, PartialEq, Eq)]
 pub struct PdfDocument {
+    /// Check of the verified answer and, for a file read, its bytes.
+    pub revision: Fingerprint,
     pub pages: u32,
     /// Printed labels, when the file has a label tree.
     pub labels: Option<Vec<Option<String>>>,
@@ -129,21 +139,58 @@ impl PdfReader {
     }
 
     /// The PDF at `path`, with its text unless `labels_only`.
-    pub fn read(&self, path: &Path, labels_only: bool) -> Result<PdfDocument, Refusal> {
+    pub fn read(
+        &self,
+        path: &Path,
+        labels_only: bool,
+        cancelled: Arc<dyn Fn() -> bool + Send + Sync>,
+    ) -> Result<PdfDocument, Refusal> {
+        use ibis_zotero_local::closed::{ClosedError, with_local_file};
         let started = Instant::now();
-        let file = open(path)?;
-        let answer = self.run(file, labels_only, started)?;
-        match answer {
-            Answer::Read(extracted) => checked(extracted, labels_only),
-            // The child never reports these; a child that does is not trusted.
-            Answer::Refused(Refusal::Missing | Refusal::NotLocal | Refusal::TimedOut | Refusal::Unavailable) => {
-                Err(Refusal::Damaged)
+        let reader = self.clone();
+        let stop = cancelled.clone();
+        with_local_file(path, cancelled, self.deadline, move |mut file| {
+            let revision = file_revision(&mut file, &*stop, started + reader.deadline)?;
+            let answer = reader.run(
+                file.try_clone().map_err(|_| Refusal::NotLocal)?,
+                labels_only,
+                started,
+                &*stop,
+            )?;
+            let mut document = match answer {
+                Answer::Read(extracted) => checked(extracted, labels_only)?,
+                // These refusals belong to the parent, never the child.
+                Answer::Refused(Refusal::Missing | Refusal::NotLocal | Refusal::TimedOut | Refusal::Unavailable) => {
+                    return Err(Refusal::Damaged);
+                }
+                Answer::Refused(refusal) => return Err(refusal),
+            };
+            // A file changed while parsing cannot publish text or labels.
+            if file_revision(&mut file, &*stop, started + reader.deadline)? != revision {
+                return Err(Refusal::NotLocal);
             }
-            Answer::Refused(refusal) => Err(refusal),
-        }
+            document.revision =
+                Fingerprint::of_bytes(format!("{}:{}", revision.as_str(), document.revision.as_str()).as_bytes());
+            Ok(document)
+        })
+        .map_err(|error| match error {
+            ClosedError::NotFound => Refusal::Missing,
+            ClosedError::TimedOut | ClosedError::Cancelled => Refusal::TimedOut,
+            _ => Refusal::NotLocal,
+        })?
+        .ok_or(Refusal::Missing)?
     }
 
-    fn run(&self, file: std::fs::File, labels_only: bool, started: Instant) -> Result<Answer, Refusal> {
+    fn run(
+        &self,
+        file: std::fs::File,
+        labels_only: bool,
+        started: Instant,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<Answer, Refusal> {
+        if cancelled() || started.elapsed() >= self.deadline {
+            return Err(Refusal::TimedOut);
+        }
         let mut command = Command::new(&self.program);
         command.arg(CHILD_ARGUMENT);
         if labels_only {
@@ -156,8 +203,11 @@ impl PdfReader {
         if let Some(root) = std::env::var_os("SystemRoot") {
             command.env("SystemRoot", root);
         }
-        // Rust opens every other handle close-on-exec (not inheritable on
-        // Windows), so standard input, output and error are all it gets.
+        // Also close descriptors a native caller left inheritable. On Windows
+        // std::process uses PROC_THREAD_ATTRIBUTE_HANDLE_LIST for stdio, so
+        // other inheritable handles are excluded by CreateProcess itself.
+        #[cfg(unix)]
+        inheritance::restrict(&mut command).map_err(|_| Refusal::Unavailable)?;
         let mut child = command
             .stdin(Stdio::from(file))
             .stdout(Stdio::piped())
@@ -183,6 +233,9 @@ impl PdfReader {
         };
         let deadline = started + self.deadline;
         let status = loop {
+            if cancelled() || Instant::now() >= deadline {
+                break Err(Refusal::TimedOut);
+            }
             match child.try_wait() {
                 Ok(Some(status)) => break Ok(status),
                 Ok(None) if Instant::now() >= deadline => break Err(Refusal::TimedOut),
@@ -194,6 +247,12 @@ impl PdfReader {
             // Reap before returning; the reader ends with the child's pipe.
             let _ = child.kill();
             let _ = child.wait();
+        }
+        while !reader.is_finished() {
+            if cancelled() || Instant::now() >= deadline {
+                return Err(Refusal::TimedOut);
+            }
+            std::thread::sleep(Duration::from_millis(5));
         }
         let bytes = reader.join().ok().and_then(Result::ok);
         if !status?.success() {
@@ -207,33 +266,45 @@ impl PdfReader {
     }
 }
 
-/// The file at `path`, opened under the reader's rules and rewound, ready to
-/// hand to the child.
-fn open(path: &Path) -> Result<std::fs::File, Refusal> {
-    use ibis_zotero_local::closed::{ClosedError, open_local_file};
-    let mut file = open_local_file(path)
-        .map_err(|error| match error {
-            ClosedError::NotFound => Refusal::Missing,
-            ClosedError::TimedOut => Refusal::TimedOut,
-            _ => Refusal::NotLocal,
-        })?
-        .ok_or(Refusal::Missing)?;
-    // Its length from the opened handle; the opener already checked its type.
-    let length = file.seek(std::io::SeekFrom::End(0)).map_err(|_| Refusal::NotLocal)?;
+/// A bounded digest of fixed-size chunks, with a final digest over those
+/// checks. This avoids holding the PDF's bytes in the parent's memory.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "Opened-handle checks run inside the bounded local-file I/O owner."
+)]
+fn file_revision(
+    file: &mut std::fs::File,
+    cancelled: &dyn Fn() -> bool,
+    deadline: Instant,
+) -> Result<Fingerprint, Refusal> {
     file.rewind().map_err(|_| Refusal::NotLocal)?;
+    let length = file.metadata().map_err(|_| Refusal::NotLocal)?.len();
     if length > MAX_FILE_BYTES {
         return Err(Refusal::TooLarge);
     }
-    let mut start = Vec::with_capacity(MARK_WITHIN);
-    (&mut file)
-        .take(MARK_WITHIN as u64)
-        .read_to_end(&mut start)
-        .map_err(|_| Refusal::NotLocal)?;
-    if !has_mark(&start) {
+    let mut chunks = Vec::new();
+    let mut bytes = [0; 64 * 1024];
+    let mut remaining = length;
+    while remaining > 0 {
+        if cancelled() || Instant::now() >= deadline {
+            return Err(Refusal::TimedOut);
+        }
+        let count = remaining.min(bytes.len() as u64) as usize;
+        file.read_exact(&mut bytes[..count]).map_err(|_| Refusal::NotLocal)?;
+        if remaining == length && !has_mark(&bytes[..count]) {
+            return Err(Refusal::NotPdf);
+        }
+        chunks.extend_from_slice(Fingerprint::of_bytes(&bytes[..count]).as_str().as_bytes());
+        remaining -= count as u64;
+    }
+    if length == 0 {
         return Err(Refusal::NotPdf);
     }
+    if file.metadata().map_err(|_| Refusal::NotLocal)?.len() != length {
+        return Err(Refusal::NotLocal);
+    }
     file.rewind().map_err(|_| Refusal::NotLocal)?;
-    Ok(file)
+    Ok(Fingerprint::of_bytes(&chunks))
 }
 
 /// Whether `%PDF-` starts within the first [`MARK_WITHIN`] bytes.
@@ -266,7 +337,9 @@ pub fn checked(extracted: Extracted, labels_only: bool) -> Result<PdfDocument, R
     {
         return Err(Refusal::TooLarge);
     }
+    let revision = Fingerprint::of_bytes(&serde_json::to_vec(&extracted).map_err(|_| Refusal::Damaged)?);
     Ok(PdfDocument {
+        revision,
         pages,
         // A tree with no citable label says nothing a citation can use.
         labels: extracted
@@ -390,24 +463,107 @@ mod tests {
     fn files_that_are_not_plain_local_pdfs_are_refused_before_any_child_starts() {
         let reader = PdfReader::new(PathBuf::from("/invented/no-such-ibis"));
         let folder = tempfile::tempdir().unwrap();
-        let path = |name: &str| folder.path().join(name);
-        assert_eq!(reader.read(&path("absent.pdf"), false), Err(Refusal::Missing));
+        // The test's own folder may sit under a system link (macOS /var).
+        let root = ibis_zotero_local::closed::trusted_folder(folder.path());
+        let path = |name: &str| root.join(name);
+        assert_eq!(
+            reader.read(&path("absent.pdf"), false, Arc::new(|| false)),
+            Err(Refusal::Missing)
+        );
         std::fs::write(path("notes.pdf"), "Invented plain text, not a PDF.").unwrap();
-        assert_eq!(reader.read(&path("notes.pdf"), false), Err(Refusal::NotPdf));
+        assert_eq!(
+            reader.read(&path("notes.pdf"), false, Arc::new(|| false)),
+            Err(Refusal::NotPdf)
+        );
         std::fs::create_dir(path("folder.pdf")).unwrap();
-        assert_eq!(reader.read(&path("folder.pdf"), false), Err(Refusal::NotLocal));
+        assert_eq!(
+            reader.read(&path("folder.pdf"), false, Arc::new(|| false)),
+            Err(Refusal::NotLocal)
+        );
         let large = std::fs::File::create(path("large.pdf")).unwrap();
         large.set_len(MAX_FILE_BYTES + 1).unwrap();
-        assert_eq!(reader.read(&path("large.pdf"), false), Err(Refusal::TooLarge));
+        assert_eq!(
+            reader.read(&path("large.pdf"), false, Arc::new(|| false)),
+            Err(Refusal::TooLarge)
+        );
         #[cfg(unix)]
         {
             std::fs::write(path("real.pdf"), "%PDF-1.7\n").unwrap();
             std::os::unix::fs::symlink(path("real.pdf"), path("link.pdf")).unwrap();
-            assert_eq!(reader.read(&path("link.pdf"), false), Err(Refusal::NotLocal));
+            assert_eq!(
+                reader.read(&path("link.pdf"), false, Arc::new(|| false)),
+                Err(Refusal::NotLocal)
+            );
+        }
+        #[cfg(unix)]
+        {
+            let directory = path("nested");
+            std::fs::create_dir(&directory).unwrap();
+            std::fs::write(directory.join("real.pdf"), "%PDF-1.7\n").unwrap();
+            let link = path("linked-directory");
+            std::os::unix::fs::symlink(directory, &link).unwrap();
+            assert_eq!(
+                reader.read(&link.join("real.pdf"), false, Arc::new(|| false)),
+                Err(Refusal::NotLocal)
+            );
+            // A real parent-directory component remains usable.
+            assert_eq!(
+                reader.read(&path("nested/../real.pdf"), false, Arc::new(|| false)),
+                Err(Refusal::Unavailable)
+            );
+            // No link may be hidden by a following parent component.
+            assert_eq!(
+                reader.read(&link.join("../real.pdf"), false, Arc::new(|| false)),
+                Err(Refusal::NotLocal)
+            );
         }
         // A real PDF start reaches the child, which is missing here.
         std::fs::write(path("start.pdf"), "%PDF-1.7\n").unwrap();
-        assert_eq!(reader.read(&path("start.pdf"), false), Err(Refusal::Unavailable));
+        assert_eq!(
+            reader.read(&path("start.pdf"), false, Arc::new(|| false)),
+            Err(Refusal::Unavailable)
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "Polls only the invented child fixture's ready marker."
+    )]
+    fn cancelling_a_running_pdf_child_releases_the_caller() {
+        use std::os::unix::fs::PermissionsExt;
+        let folder = tempfile::tempdir().unwrap();
+        let root = ibis_zotero_local::closed::trusted_folder(folder.path());
+        let program = root.join("cancelled-ibis");
+        // The child signals entry, then stays busy until cancellation kills it.
+        std::fs::write(&program, "#!/bin/sh\n: > \"$0.ready\"\nexec sleep 30\n").unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let file = root.join("invented.pdf");
+        std::fs::write(&file, "%PDF-1.7\n").unwrap();
+        let started = Instant::now();
+        let ready = program.with_file_name("cancelled-ibis.ready");
+        let reader = PdfReader::new(program);
+        let stop = Arc::new(move || ready.exists());
+        assert_eq!(reader.read(&file, false, stop), Err(Refusal::TimedOut));
+        assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_pdf_child_answer_with_invalid_utf8_is_refused() {
+        use std::os::unix::fs::PermissionsExt;
+        let folder = tempfile::tempdir().unwrap();
+        let root = ibis_zotero_local::closed::trusted_folder(folder.path());
+        let program = root.join("invalid-ibis");
+        std::fs::write(&program, "#!/bin/sh\nprintf '\\377'\n").unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let file = root.join("invented.pdf");
+        std::fs::write(&file, "%PDF-1.7\n").unwrap();
+        assert_eq!(
+            PdfReader::new(program).read(&file, false, Arc::new(|| false)),
+            Err(Refusal::Damaged)
+        );
     }
 
     #[cfg(unix)]
@@ -415,14 +571,42 @@ mod tests {
     fn a_child_past_its_deadline_is_stopped() {
         use std::os::unix::fs::PermissionsExt;
         let folder = tempfile::tempdir().unwrap();
-        let program = folder.path().join("slow-ibis");
+        let root = ibis_zotero_local::closed::trusted_folder(folder.path());
+        let program = root.join("slow-ibis");
         std::fs::write(&program, "#!/bin/sh\nexec sleep 30\n").unwrap();
         std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
-        let file = folder.path().join("invented.pdf");
+        let file = root.join("invented.pdf");
         std::fs::write(&file, "%PDF-1.7\n").unwrap();
         let started = Instant::now();
         let reader = PdfReader::new(program).with_deadline(Duration::from_millis(300));
-        assert_eq!(reader.read(&file, false), Err(Refusal::TimedOut));
+        assert_eq!(reader.read(&file, false, Arc::new(|| false)), Err(Refusal::TimedOut));
         assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_pdf_child_cannot_read_an_inheritable_descriptor_from_the_caller() {
+        use nix::fcntl::{FcntlArg, FdFlag, fcntl};
+        use std::os::{fd::AsRawFd, unix::fs::PermissionsExt};
+        let folder = tempfile::tempdir().unwrap();
+        let root = ibis_zotero_local::closed::trusted_folder(folder.path());
+        let private = tempfile::tempfile().unwrap();
+        // Simulate a descriptor a native caller opened without close-on-exec.
+        fcntl(&private, FcntlArg::F_SETFD(FdFlag::empty())).unwrap();
+        let program = root.join("isolated-ibis");
+        std::fs::write(
+            &program,
+            format!(
+                "#!/bin/sh\nif [ -r /dev/fd/{} ]; then text=leaked; else text=isolated; fi\n\
+                 printf '{{\"read\":{{\"pages\":1,\"labels\":null,\"text\":[\"%s\"]}}}}' \"$text\"\n",
+                private.as_raw_fd()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let file = root.join("invented.pdf");
+        std::fs::write(&file, "%PDF-1.7\n").unwrap();
+        let document = PdfReader::new(program).read(&file, false, Arc::new(|| false)).unwrap();
+        assert_eq!(document.text, Some(vec!["isolated".into()]));
     }
 }

@@ -10348,11 +10348,14 @@
                 "type": "boolean"
               },
               "id": {
-                "description": "Pass to `read` or `find-in`. It stays valid while the library holds\nthe reference unchanged.",
+                "description": "Pass to `read` or `find-in` in this library generation, while the\nreference, attachment revision and indexed text remain unchanged.",
                 "type": "string"
               },
               "media_type": {
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "pages": {
                 "description": "Pages the file has, as its source recorded them.",
@@ -10380,7 +10383,7 @@
                 "$ref": "#/$defs/TextAvailability"
               },
               "title": {
-                "description": "The attachment's title, as the library has it.",
+                "description": "The attachment's title as safe bibliographic text, omitting private locations.",
                 "type": [
                   "string",
                   "null"
@@ -10389,7 +10392,6 @@
             },
             "required": [
               "id",
-              "media_type",
               "text",
               "pages_known",
               "cite_pages_known"

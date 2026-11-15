@@ -391,8 +391,9 @@ pub fn attachment_file(
     parent: &ibis_core::contract::ItemRef,
     full: &Fingerprint,
     key: &str,
+    cancelled: &dyn Fn() -> bool,
 ) -> Result<Option<PathBuf>, SourceError> {
-    let observation = SourceSnapshot::read_with(path, || {}, &io::Scope::new(&|| false))?;
+    let observation = SourceSnapshot::read_with(path, || {}, &io::Scope::new(cancelled))?;
     let (source, library, parsed) = parse_format(
         &observation.source,
         &observation.text,

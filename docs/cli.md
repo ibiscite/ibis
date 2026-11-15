@@ -565,8 +565,9 @@ text Zotero keeps: while Zotero runs, Ibis asks Zotero for it; while Zotero is
 closed, it reads Zotero's text cache from the attachment's storage folder,
 with the page counts from its private copy of the database. Zotero's pages
 count only when the text's page breaks match the number of pages Zotero
-recorded. A PDF with no such index, or with only part of the file indexed,
-and a `.bib` file's `file` attachments that are PDFs, are read by Ibis itself:
+recorded; both indexed and total counts must be present and equal. A PDF
+with no such index, or with only part of the file indexed, and a `.bib`
+file's `file` attachments that are PDFs, are read by Ibis itself:
 `ibis` starts a short-lived copy of itself that gets the opened file and
 nothing else, no environment and no path, parses it in at most ten seconds
 and gives each page's text. On Linux that process may use at most 3 GiB of
@@ -592,10 +593,19 @@ when the PDF has exactly as many pages as Zotero recorded. Otherwise
 `cite_page` is null and the printed page is not known; it is never taken from
 the file's page number.
 
-An attachment id names one attachment of one reference while that reference
-stays unchanged; it holds no path or file location. Links have no text, and
-EPUB and web snapshots have text only from Zotero's index. Zotero shows
+An attachment id names one attachment in the current library generation.
+Changing its reference, attachment revision, indexed text or PDF file retires
+the id; run `outline` again after a replacement or reindex. It holds no path
+or file location. Links have no text, and EPUB and web snapshots have text only from Zotero's index. Zotero shows
 Reindex Item for a file with no text.
+
+AI apps need a separate choice for each library. In the app's settings,
+`"attachment_text": ["lib_example_library"]` names complete opaque library
+ids from `ibis libraries --json`, including the Zotero profile's identity.
+Choosing one profile's personal library or group never opens another profile's.
+This choice stays on this computer and out of settings backups. The direct
+commands and `ibis call outline|read|find-in` use the app's libraries when none
+is named and do not need this choice.
 
 ### Writings
 
@@ -745,7 +755,8 @@ read-only tools over stdio:
 `outline`, `read` and `find_in` are listed only when the person lets AI apps
 read attachment text from an open library, and they answer only for such a
 library. The choice is per library, off by default, and kept in the app's
-settings as `"attachment_text": [{"zotero": "user"}, {"bibtex": "~/refs.bib"}]`;
+settings as `"attachment_text": ["lib_example_library"]`, using complete
+library ids from `ibis libraries --json`, including the Zotero profile;
 it stays on this computer and is not part of a settings backup. While they
 are listed, `tools/list` answers with `cacheScope: private`. The `ibis outline`,
 `ibis read` and `ibis find-in` commands do not need this choice.

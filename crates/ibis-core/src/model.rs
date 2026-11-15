@@ -150,6 +150,25 @@ pub fn is_hidden(character: char) -> bool {
             | '\u{e0000}'..='\u{e0fff}')
 }
 
+/// A MIME type and subtype in registered-name syntax, with no parameters or
+/// surrounding whitespace. File-field shorthand is normalized by its source.
+pub fn is_media_type(text: &str) -> bool {
+    if text.len() > 255 {
+        return false;
+    }
+    let Some((kind, subtype)) = text.split_once('/') else {
+        return false;
+    };
+    fn token(text: &str) -> bool {
+        (1..=127).contains(&text.len())
+            && text.as_bytes()[0].is_ascii_alphanumeric()
+            && text
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"!#$&-^_.+".contains(&byte))
+    }
+    token(kind) && token(subtype)
+}
+
 /// Remove CSL rich-text tags and decode the entities used to escape text.
 /// Markup is the tag set the formatter recognises (`crates/ibis-csl/src/bridge.js`);
 /// any other `<`, as in `p<0.05`, is text. Citeproc also prints an unbalanced tag

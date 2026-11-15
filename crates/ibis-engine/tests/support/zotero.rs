@@ -24,6 +24,10 @@ pub struct Server {
     pub group_warning: Arc<AtomicBool>,
     #[allow(dead_code)]
     pub title: Arc<Mutex<String>>,
+    #[allow(dead_code)] // Shared desktop scenarios do not replace attachment data.
+    pub attachment: Arc<Mutex<serde_json::Value>>,
+    #[allow(dead_code)]
+    pub fulltext: Arc<Mutex<serde_json::Value>>,
     stop: Arc<AtomicBool>,
     worker: Option<thread::JoinHandle<()>>,
 }
@@ -44,6 +48,14 @@ impl Server {
         let warn_group = group_warning.clone();
         let title = Arc::new(Mutex::new("Invented atlas".to_owned()));
         let item_title = title.clone();
+        let attachment = Arc::new(Mutex::new(
+            json!({"key":"PDFA0001","version":1,"data":{"key":"PDFA0001","version":1,"dateModified":"2026-11-15T12:00:00Z","itemType":"attachment","parentItem":"SYNTH234","title":"Invented atlas PDF","contentType":"application/pdf","linkMode":"imported_file"}}),
+        ));
+        let attachment_data = attachment.clone();
+        let fulltext = Arc::new(Mutex::new(
+            json!({"content":"Invented page one about maps.\u{c}Invented page two holds a brass lantern.\u{c}Invented page three.","indexedPages":3,"totalPages":3}),
+        ));
+        let fulltext_data = fulltext.clone();
         let (id, wait, seen, stopping) = (instance.clone(), pause.clone(), paused.clone(), stop.clone());
         let worker = thread::spawn(move || {
             while !stopping.load(Ordering::Relaxed) {
@@ -78,11 +90,11 @@ impl Server {
                 let no_text = request.contains("/fulltext") && !fulltext;
                 let mut body = if children {
                     json!([
-                        {"key":"PDFA0001","data":{"key":"PDFA0001","itemType":"attachment","parentItem":"SYNTH234","title":"Invented atlas PDF","contentType":"application/pdf","linkMode":"imported_file"}},
+                        *attachment_data.lock().unwrap(),
                         {"key":"LINK0001","data":{"key":"LINK0001","itemType":"attachment","parentItem":"SYNTH234","title":"Invented atlas page","contentType":"text/html","linkMode":"linked_url"}}
                     ])
                 } else if fulltext {
-                    json!({"content":"Invented page one about maps.\u{c}Invented page two holds a brass lantern.\u{c}Invented page three.","indexedPages":3,"totalPages":3})
+                    fulltext_data.lock().unwrap().clone()
                 } else if empty && inventory {
                     json!({})
                 } else if empty {
@@ -127,6 +139,8 @@ impl Server {
             sharing_off,
             group_warning,
             title,
+            attachment,
+            fulltext,
             stop,
             worker: Some(worker),
         }

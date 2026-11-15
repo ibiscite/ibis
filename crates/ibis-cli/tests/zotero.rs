@@ -269,7 +269,7 @@ fn outline_read_and_find_in_give_a_zotero_attachments_text_by_page() {
         format!("{id}\tInvented atlas PDF\tapplication/pdf\ttext, 3 pages\n")
     );
 
-    // An id stays valid in another process while the reference is unchanged.
+    // Another process opening the same generation and revision can use the id.
     let other = Engine::with_zotero_port(server.port).unwrap();
     let (code, output) = run(&other, &["ibis", "--zotero", "read", &id, "--pages", "2"]);
     assert_eq!(code, 0);
@@ -295,4 +295,49 @@ fn outline_read_and_find_in_give_a_zotero_attachments_text_by_page() {
     assert!(errors.contains("run ibis outline again"), "{errors}");
     let (code, _) = run_failing(&engine, &["ibis", "--zotero", "read", &id, "--pages", "3-2"]);
     assert_ne!(code, 0);
+}
+
+#[test]
+fn outline_omits_private_attachment_metadata_in_plain_and_json_output() {
+    use ibis_core::contract::{Attachment, Availability, GoldenCase, ItemRef, LibraryObject, Snapshot};
+    let case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json")).unwrap();
+    let parent = case.library.objects()[0].object.id().clone();
+    let mut objects: Vec<_> = case
+        .library
+        .objects()
+        .iter()
+        .map(|object| object.object.clone())
+        .collect();
+    objects.push(LibraryObject::Attachment(Attachment {
+        id: ItemRef {
+            library: parent.library.clone(),
+            key: "invented-attachment".into(),
+        },
+        parent: Some(parent),
+        title: "file:///synthetic/private/letter.pdf".into(),
+        media_type: "/synthetic/private/letter.pdf".into(),
+        availability: Availability::OnDisk,
+        content_hash: None,
+    }));
+    let engine = Engine::from_snapshot(Arc::new(Snapshot::new(objects).unwrap()));
+    for json in [false, true] {
+        let mut args = vec!["ibis", "outline", "Example2026"];
+        if json {
+            args.push("--json");
+        }
+        let (code, output) = run(&engine, &args);
+        assert_eq!(code, 0, "{output}");
+        assert!(!output.contains("synthetic/private"), "{output}");
+        if json {
+            let value: Value = serde_json::from_str(&output).unwrap();
+            assert!(value["data"]["attachments"][0].get("title").is_none());
+            assert!(value["data"]["attachments"][0].get("media_type").is_none());
+        } else {
+            assert_eq!(
+                output.split('\t').count(),
+                4,
+                "the omitted fields keep their columns: {output}"
+            );
+        }
+    }
 }

@@ -339,7 +339,19 @@ fn attachments(db: &Connection, budget: &Budget) -> Result<Option<Vec<ClosedAtta
         &["itemID", "parentItemID", "linkMode", "contentType", "path"],
     )
     .is_err()
-        || validate_table(db, "fulltextItems", &["itemID", "indexedPages", "totalPages"]).is_err()
+        || validate_table(
+            db,
+            "fulltextItems",
+            &[
+                "itemID",
+                "indexedPages",
+                "totalPages",
+                "indexedChars",
+                "totalChars",
+                "version",
+            ],
+        )
+        .is_err()
     {
         return Ok(None);
     }
@@ -358,6 +370,16 @@ fn attachments(db: &Connection, budget: &Budget) -> Result<Option<Vec<ClosedAtta
                 .and_then(|count| u32::try_from(count).ok()))
         };
         found.push(ClosedAttachment {
+            revision: ibis_core::contract::Fingerprint::of_bytes(
+                &serde_json::to_vec(&(
+                    r.get::<_, Option<i64>>(9)?,
+                    text(10)?,
+                    r.get::<_, Option<i64>>(11)?,
+                    r.get::<_, Option<i64>>(12)?,
+                    r.get::<_, Option<i64>>(13)?,
+                ))
+                .map_err(|_| rusqlite::Error::InvalidQuery)?,
+            ),
             library_id: r.get(0)?,
             parent: text(1)?,
             key: text(2)?,
@@ -369,7 +391,7 @@ fn attachments(db: &Connection, budget: &Budget) -> Result<Option<Vec<ClosedAtta
                 total_pages: count(7)?,
             }),
             title: text(8)?,
-            path: text(9)?,
+            path: text(14)?,
         });
         Ok(())
     });
@@ -380,7 +402,7 @@ fn attachments(db: &Connection, budget: &Budget) -> Result<Option<Vec<ClosedAtta
     }
 }
 
-const ATTACHMENTS_SQL: &str = "SELECT I.libraryID,P.key,I.key,CASE WHEN typeof(A.contentType)='text' AND octet_length(A.contentType)<=255 THEN A.contentType ELSE '' END,A.linkMode,F.itemID IS NOT NULL,F.indexedPages,F.totalPages,(SELECT CASE WHEN typeof(V.value)='text' AND octet_length(V.value)<=1024 THEN V.value ELSE '' END FROM itemData D JOIN fieldsCombined C USING(fieldID) JOIN itemDataValues V USING(valueID) WHERE D.itemID=A.itemID AND C.fieldName='title' LIMIT 1),CASE WHEN typeof(A.path)='text' AND octet_length(A.path)<=4096 THEN A.path ELSE '' END FROM itemAttachments A JOIN items I USING(itemID) JOIN items P ON P.itemID=A.parentItemID JOIN libraries L ON L.libraryID=I.libraryID LEFT JOIN fulltextItems F ON F.itemID=A.itemID WHERE L.type IN ('user','group') AND typeof(P.key)='text' AND typeof(I.key)='text' AND octet_length(P.key)<=128 AND octet_length(I.key)<=128 AND NOT EXISTS(SELECT 1 FROM deletedItems X WHERE X.itemID=A.itemID)";
+const ATTACHMENTS_SQL: &str = "SELECT I.libraryID,P.key,I.key,CASE WHEN typeof(A.contentType)='text' AND octet_length(A.contentType)<=255 THEN A.contentType ELSE '' END,A.linkMode,F.itemID IS NOT NULL,F.indexedPages,F.totalPages,(SELECT CASE WHEN typeof(V.value)='text' AND octet_length(V.value)<=1024 THEN V.value ELSE '' END FROM itemData D JOIN fieldsCombined C USING(fieldID) JOIN itemDataValues V USING(valueID) WHERE D.itemID=A.itemID AND C.fieldName='title' LIMIT 1),I.version,CASE WHEN typeof(I.dateModified)='text' AND octet_length(I.dateModified)<=64 THEN I.dateModified ELSE '' END,F.indexedChars,F.totalChars,F.version,CASE WHEN typeof(A.path)='text' AND octet_length(A.path)<=4096 THEN A.path ELSE '' END FROM itemAttachments A JOIN items I USING(itemID) JOIN items P ON P.itemID=A.parentItemID JOIN libraries L ON L.libraryID=I.libraryID LEFT JOIN fulltextItems F ON F.itemID=A.itemID WHERE L.type IN ('user','group') AND typeof(P.key)='text' AND typeof(I.key)='text' AND octet_length(P.key)<=128 AND octet_length(I.key)<=128 AND NOT EXISTS(SELECT 1 FROM deletedItems X WHERE X.itemID=A.itemID)";
 
 /// Who the local API would say owns the personal library: it reads the owner
 /// from the first top-level item, which a trashed item, a child note or

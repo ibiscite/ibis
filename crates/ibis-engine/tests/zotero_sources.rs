@@ -442,3 +442,52 @@ fn a_running_zoteros_indexed_text_is_outlined_read_and_searched_by_page() {
     assert_eq!(refused.code, ErrorCode::SourceUnavailable);
     assert_eq!(refused.reason, Some(ErrorReason::NoAttachmentText));
 }
+
+#[test]
+fn attachment_reading_ids_expire_after_revision_index_text_or_generation_changes() {
+    let server = fixture::Server::new();
+    let engine = Engine::with_zotero_port(server.port).unwrap();
+    let cancel = Cancellation::default();
+    engine
+        .dispatch(Method::Libraries, &json!({"action":"open-zotero"}), &cancel)
+        .unwrap();
+    let current_id = || {
+        engine
+            .dispatch(
+                Method::Outline,
+                &json!({"item":{"by":"key","value":"Synthetic2026"}}),
+                &cancel,
+            )
+            .unwrap()
+            .data["attachments"][0]["id"]
+            .clone()
+    };
+    for change in ["version", "modified", "index", "text", "generation"] {
+        let old = current_id();
+        match change {
+            "version" => {
+                let mut attachment = server.attachment.lock().unwrap();
+                attachment["version"] = json!(2);
+                attachment["data"]["version"] = json!(2);
+            }
+            "modified" => server.attachment.lock().unwrap()["data"]["dateModified"] = json!("2026-11-15T13:00:00Z"),
+            "index" => server.fulltext.lock().unwrap()["indexedPages"] = json!(2),
+            "text" => server.fulltext.lock().unwrap()["content"] = json!("Invented replacement text."),
+            "generation" => {
+                engine
+                    .dispatch(Method::Libraries, &json!({"action":"reload"}), &cancel)
+                    .unwrap();
+            }
+            _ => unreachable!(),
+        }
+        let refused = engine
+            .dispatch(Method::Read, &json!({"attachment":old}), &cancel)
+            .unwrap_err();
+        assert_eq!(refused.code, ErrorCode::NotFound, "{change}");
+        assert_ne!(current_id(), old, "{change}");
+        // A fresh id always resolves the current text.
+        engine
+            .dispatch(Method::Read, &json!({"attachment":current_id()}), &cancel)
+            .unwrap();
+    }
+}

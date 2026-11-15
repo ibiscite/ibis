@@ -226,7 +226,7 @@ fn outline_summary(data: &Value) -> Option<String> {
                 "{}\t{}\t{}\t{text}",
                 field(attachment.get("id")?.as_str()?),
                 field(attachment.get("title").and_then(Value::as_str).unwrap_or_default()),
-                field(attachment.get("media_type")?.as_str()?),
+                field(attachment.get("media_type").and_then(Value::as_str).unwrap_or_default()),
             ))
         })
         .collect::<Option<Vec<_>>>()

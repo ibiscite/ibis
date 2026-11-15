@@ -52,6 +52,13 @@ struct Slot {
     loaded: Arc<LoadedLibrary>,
 }
 impl Registry {
+    pub(super) fn file_generation(&self, library: &LibraryId) -> Option<u64> {
+        self.slots
+            .values()
+            .find(|slot| slot.loaded.library == *library)
+            .map(|slot| slot.generation)
+    }
+
     /// Where a file library was read from; other sources have no file.
     pub(super) fn file_path(&self, library: &LibraryId) -> Option<PathBuf> {
         self.slots

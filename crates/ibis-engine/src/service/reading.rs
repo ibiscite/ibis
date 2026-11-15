@@ -5,8 +5,9 @@
 //! Zotero's index gives it where it has one; a PDF is otherwise read by the
 //! extractor's child process, an `ibis` executable this engine was given, and
 //! without one PDFs stay unread. An attachment id names one attachment of one
-//! reference while the library holds that reference unchanged; it never holds
-//! a path or file URL. A page number is the file's own page, and only when its
+//! reference while its library generation, attachment, index and PDF stay
+//! unchanged; it never holds a path or file URL. A page number is the file's
+//! own page, and only when its
 //! breaks were verified; `cite_page` comes only from the PDF's `/PageLabels`,
 //! never from the file's page number.
 use super::*;
@@ -35,13 +36,14 @@ pub struct OutlineResult {
 /// One attachment, without its text.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct AttachmentOutline {
-    /// Pass to `read` or `find-in`. It stays valid while the library holds
-    /// the reference unchanged.
+    /// Pass to `read` or `find-in` in this library generation, while the
+    /// reference, attachment revision and indexed text remain unchanged.
     pub id: String,
-    /// The attachment's title, as the library has it.
+    /// The attachment's title as safe bibliographic text, omitting private locations.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
-    pub media_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_type: Option<String>,
     pub text: TextAvailability,
     /// Pages the file has, as its source recorded them.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -148,12 +150,6 @@ pub struct Passage {
     pub text: String,
 }
 
-/// One attachment found for a reference, with how its text is read.
-struct Listed {
-    attachment: SourceAttachment,
-    id: String,
-}
-
 /// Where a reference's attachments come from.
 enum Owner {
     Zotero(ibis_sources::zotero_source::ZoteroReading, u16),
@@ -176,15 +172,17 @@ impl Engine {
             return Err(error(ErrorCode::NotFound));
         }
         let owner = self.owner(&state, &parent)?;
+        let generation = self.attachment_generation(&state, &parent.object.id().library)?;
         let mut attachments = Vec::new();
-        for listed in self.listed(&state, &owner, &parent)? {
+        for attachment in self.listed(&state, &owner, &parent)? {
             cancel.check()?;
             // One text too large to read leaves the others to list.
-            let text = match self.text(&owner, &parent, &listed.attachment) {
+            let text = match self.text(&owner, &parent, &attachment, cancel) {
                 Err(failure) if failure.code == ErrorCode::ResourceLimit => None,
                 text => Some(text?),
             };
             let cite_pages_known = matches!(&text, Some(TextState::Text(text)) if text.cite_pages.is_some());
+            let id = attachment_id(&parent, &attachment, generation, text.as_ref());
             let (availability, pages, pages_with_text, pages_known) = match &text {
                 None => (TextAvailability::TooLarge, None, None, false),
                 Some(TextState::Text(text)) => (
@@ -201,14 +199,20 @@ impl Engine {
                 Some(TextState::NotYet) => (TextAvailability::NotYet, None, None, false),
                 Some(TextState::Refused(refusal)) => ((*refusal).into(), None, None, false),
             };
-            let title = clean(&listed.attachment.title)
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ");
+            let projected = ibis_core::citable::CitableFields::new(serde_json::Map::from_iter([(
+                "title".into(),
+                json!(attachment.title),
+            )]));
+            let title = projected
+                .plain()
+                .get("title")
+                .and_then(Value::as_str)
+                .map(|title| title.split_whitespace().collect::<Vec<_>>().join(" "))
+                .filter(|title| !title.is_empty());
             attachments.push(AttachmentOutline {
-                id: listed.id,
-                title: (!title.is_empty()).then_some(title),
-                media_type: clean(&listed.attachment.media_type),
+                id,
+                title,
+                media_type: ibis_core::model::is_media_type(&attachment.media_type).then_some(attachment.media_type),
                 text: availability,
                 pages,
                 pages_with_text,
@@ -217,6 +221,13 @@ impl Engine {
             });
         }
         let result = OutlineResult { attachments };
+        cancel.check()?;
+        let current = self.state()?;
+        if !state.same_publication(&current)
+            || generation != self.attachment_generation(&current, &parent.object.id().library)?
+        {
+            return Err(error(ErrorCode::NotFound));
+        }
         ensure_budget(&result)?;
         Ok(health::Checked {
             source_health: consulted(&state, &request.item, &parent.object.id().library),
@@ -283,21 +294,12 @@ impl Engine {
         settings: &crate::settings::Settings,
         library: &LibraryId,
     ) -> Result<bool, EngineError> {
-        use crate::settings::TextLibrary;
         let state = self.state()?;
-        let Some(info) = state.libraries.get(library) else {
-            return Ok(false);
-        };
-        Ok(match (info.kind, info.zotero) {
-            (LibraryKind::Zotero, Some(zotero)) => settings.attachment_text(TextLibrary::Zotero(match zotero {
-                crate::request::ZoteroLibrary::Personal => crate::settings::ZoteroLibrary::User,
-                crate::request::ZoteroLibrary::Group(id) => crate::settings::ZoteroLibrary::Group(id),
-            })),
-            (LibraryKind::File, _) => self
-                .file_path(library)?
-                .is_some_and(|path| settings.attachment_text(TextLibrary::File(&path))),
-            _ => false,
-        })
+        Ok(state
+            .libraries
+            .get(library)
+            .is_some_and(|info| matches!(info.kind, LibraryKind::Zotero | LibraryKind::File))
+            && settings.attachment_text(library))
     }
 
     fn owner(&self, state: &State, parent: &SnapshotObject) -> Result<Owner, EngineError> {
@@ -319,7 +321,22 @@ impl Engine {
         })
     }
 
-    fn listed(&self, state: &State, owner: &Owner, parent: &SnapshotObject) -> Result<Vec<Listed>, EngineError> {
+    fn attachment_generation(&self, state: &State, library: &LibraryId) -> Result<u64, EngineError> {
+        Ok(self
+            .shared
+            .sources
+            .lock()
+            .map_err(|_| error(ErrorCode::Internal))?
+            .file_generation(library)
+            .unwrap_or(state.zotero_generation))
+    }
+
+    fn listed(
+        &self,
+        state: &State,
+        owner: &Owner,
+        parent: &SnapshotObject,
+    ) -> Result<Vec<SourceAttachment>, EngineError> {
         let id = parent.object.id();
         let found = match owner {
             Owner::Zotero(reading, port) => reading
@@ -334,6 +351,7 @@ impl Engine {
                     LibraryObject::Attachment(attachment) if attachment.parent.as_ref() == Some(id) => {
                         Some(SourceAttachment::new(
                             attachment.id.key.clone(),
+                            item.fingerprints.full.clone(),
                             attachment.title.clone(),
                             attachment.media_type.clone(),
                             attachment.availability == Availability::Online,
@@ -344,13 +362,7 @@ impl Engine {
                 .take(ibis_sources::reading::MAX_ATTACHMENTS)
                 .collect(),
         };
-        Ok(found
-            .into_iter()
-            .map(|attachment| Listed {
-                id: attachment_id(parent, &attachment.key),
-                attachment,
-            })
-            .collect())
+        Ok(found)
     }
 
     fn text(
@@ -358,23 +370,48 @@ impl Engine {
         owner: &Owner,
         parent: &SnapshotObject,
         attachment: &SourceAttachment,
+        cancel: &Cancellation,
     ) -> Result<TextState, EngineError> {
-        match owner {
+        let mut text = match owner {
             Owner::Zotero(reading, port) => reading
                 .text(
                     &mut ibis_sources::zotero_source::LocalZotero::on_port(*port),
                     parent.object.id(),
                     attachment,
                     self.pdf.as_ref(),
+                    {
+                        let cancel = cancel.clone();
+                        Arc::new(move || cancel.is_cancelled())
+                    },
                 )
                 .map_err(sources::zotero_error),
             _ if attachment.link_only => Ok(TextState::NoFile),
             Owner::File(library) => match self.pdf.as_ref().filter(|_| attachment.is_pdf()) {
-                Some(reader) => file_text(reader, library, parent, attachment),
+                Some(reader) => file_text(reader, library, parent, attachment, cancel),
                 None => Ok(TextState::NotYet),
             },
             Owner::Snapshot => Ok(TextState::NotYet),
+        }?;
+        if let TextState::Text(text) = &mut text
+            && let LibraryObject::Record(record) = &parent.object
+            && let Some(pages) = record.csl.get("page")
+            && !pages.as_str().is_some_and(|pages| pages.trim().is_empty())
+        {
+            // All three methods see the same filtered labels. Unconfirmed or
+            // unrecognized ranges cannot authorize a citation (0036).
+            text.cite_pages = text.cite_pages.take().and_then(|mut labels| {
+                for label in &mut labels {
+                    if label
+                        .as_ref()
+                        .is_some_and(|label| !label_in_reference_pages(label, pages))
+                    {
+                        *label = None;
+                    }
+                }
+                labels.iter().any(Option::is_some).then_some(labels)
+            });
         }
+        Ok(text)
     }
 
     /// The text of the attachment an id names, refused when there is none.
@@ -385,15 +422,25 @@ impl Engine {
     ) -> Result<(Arc<State>, SnapshotObject, DocumentText), EngineError> {
         cancel.check()?;
         let state = self.state()?;
-        let (parent, slot) = parse_id(&state, attachment)?;
+        let (parent, check) = parse_id(&state, attachment)?;
+        let generation = self.attachment_generation(&state, &parent.object.id().library)?;
+        let (slot, _) = check.split_once('.').ok_or_else(|| error(ErrorCode::NotFound))?;
         let owner = self.owner(&state, &parent)?;
         let listed = self
             .listed(&state, &owner, &parent)?
             .into_iter()
-            .find(|listed| listed.id.ends_with(&format!(".{slot}")))
+            .find(|listed| attachment_slot(&parent, listed, generation) == slot)
             .ok_or_else(|| error(ErrorCode::NotFound))?;
         cancel.check()?;
-        match self.text(&owner, &parent, &listed.attachment)? {
+        let text = self.text(&owner, &parent, &listed, cancel)?;
+        let current = self.state()?;
+        if attachment_id(&parent, &listed, generation, Some(&text)) != attachment
+            || !state.same_publication(&current)
+            || generation != self.attachment_generation(&current, &parent.object.id().library)?
+        {
+            return Err(error(ErrorCode::NotFound));
+        }
+        match text {
             TextState::Text(text) => {
                 cancel.check()?;
                 Ok((state, parent, text))
@@ -405,6 +452,35 @@ impl Engine {
     }
 }
 
+/// Only prove membership: exact labels or fully written decimal ranges.
+/// Abbreviated, Roman or prefixed ranges stay unknown pending confirmation.
+fn label_in_reference_pages(label: &str, pages: &Value) -> bool {
+    if let Some(page) = pages.as_u64() {
+        return label.parse::<u64>() == Ok(page);
+    }
+    let Some(pages) = pages.as_str().filter(|pages| pages.len() <= 1024) else {
+        return false;
+    };
+    pages.split(',').any(|range| {
+        let range = range.trim();
+        if range == label {
+            return true;
+        }
+        let range = range.replace("--", "-");
+        let Some((first, last)) = range.split_once(['-', '–', '—']) else {
+            return false;
+        };
+        match (
+            first.trim().parse::<u64>(),
+            last.trim().parse::<u64>(),
+            label.parse::<u64>(),
+        ) {
+            (Ok(first), Ok(last), Ok(page)) => (first..=last).contains(&page),
+            _ => false,
+        }
+    })
+}
+
 /// The text of a library file's PDF attachment, found from the file's folder
 /// while the file still holds the reference as the library read it.
 fn file_text(
@@ -412,17 +488,30 @@ fn file_text(
     library: &std::path::Path,
     parent: &SnapshotObject,
     attachment: &SourceAttachment,
+    cancel: &Cancellation,
 ) -> Result<TextState, EngineError> {
-    let file = ibis_sources::attachment_file(library, parent.object.id(), &parent.fingerprints.full, &attachment.key)
-        .map_err(|failure| match failure {
+    let file = ibis_sources::attachment_file(
+        library,
+        parent.object.id(),
+        &parent.fingerprints.full,
+        &attachment.key,
+        &|| cancel.is_cancelled(),
+    )
+    .map_err(|failure| match failure {
         // The reference changed since the library was read: the id is stale.
         ibis_sources::SourceError::Changing => error(ErrorCode::NotFound),
         failure => sources::source_error(failure),
     })?;
-    Ok(match file {
-        Some(file) => ibis_sources::reading::text_of(None, Some((reader, &file))),
+    cancel.check()?;
+    let cancelled = cancel.clone();
+    let text = match file {
+        Some(file) => {
+            ibis_sources::reading::text_of(None, Some((reader, &file)), Arc::new(move || cancelled.is_cancelled()))
+        }
         None => TextState::Refused(Refusal::Missing),
-    })
+    };
+    cancel.check()?;
+    Ok(text)
 }
 
 /// The health of the one library an attachment came from.
@@ -434,17 +523,45 @@ fn own_health(state: &State, parent: &SnapshotObject) -> health::SourceHealth {
     )
 }
 
-/// `att:` and the parent's opaque reference, then a check of the attachment
-/// and the parent as it is now.
-fn attachment_id(parent: &SnapshotObject, key: &str) -> String {
+/// One check selects the current attachment metadata and library generation;
+/// another binds the indexed text. Reading verifies both before publishing.
+fn attachment_id(
+    parent: &SnapshotObject,
+    attachment: &SourceAttachment,
+    generation: u64,
+    text: Option<&TextState>,
+) -> String {
     let reference = parent.object.id().opaque_reference();
-    let slot =
-        Fingerprint::of_bytes(format!("ibis attachment\0{}\0{key}", parent.fingerprints.full.as_str()).as_bytes());
+    let slot = attachment_slot(parent, attachment, generation);
+    let check = match text {
+        Some(TextState::Text(text)) => text.revision.clone(),
+        None => Fingerprint::of_bytes(b"too-large"),
+        Some(TextState::NoFile) => Fingerprint::of_bytes(b"no-file"),
+        Some(TextState::NotIndexed) => Fingerprint::of_bytes(b"not-indexed"),
+        Some(TextState::NotYet) => Fingerprint::of_bytes(b"not-yet"),
+        Some(TextState::Refused(refusal)) => Fingerprint::of_bytes(format!("refused:{refusal:?}").as_bytes()),
+    };
     format!(
-        "{ID_MARK}{}.{}",
+        "{ID_MARK}{}.{slot}.{}",
         reference.strip_prefix("id:").unwrap_or(&reference),
-        &slot.as_str()[..SLOT_LENGTH]
+        &check.as_str()[..SLOT_LENGTH]
     )
+}
+
+fn attachment_slot(parent: &SnapshotObject, attachment: &SourceAttachment, generation: u64) -> String {
+    let slot = Fingerprint::of_bytes(
+        format!(
+            "ibis attachment\0{}\0{generation}\0{:?}\0{}\0{:?}\0{:?}\0{}",
+            parent.fingerprints.full.as_str(),
+            attachment.key,
+            attachment.revision.as_str(),
+            attachment.title,
+            attachment.media_type,
+            attachment.link_only
+        )
+        .as_bytes(),
+    );
+    slot.as_str()[..SLOT_LENGTH].into()
 }
 
 /// The reference an id names, and its check, or not found.
@@ -453,7 +570,13 @@ fn parse_id<'a>(state: &State, id: &'a str) -> Result<(SnapshotObject, &'a str),
     let (reference, slot) = id
         .strip_prefix(ID_MARK)
         .and_then(|rest| rest.split_once('.'))
-        .filter(|(_, slot)| slot.len() == SLOT_LENGTH && slot.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .filter(|(_, check)| {
+            check.split_once('.').is_some_and(|(slot, text)| {
+                [slot, text]
+                    .iter()
+                    .all(|part| part.len() == SLOT_LENGTH && part.bytes().all(|byte| byte.is_ascii_hexdigit()))
+            })
+        })
         .ok_or_else(not_found)?;
     if reference.len() > 128 {
         return Err(not_found());
@@ -471,7 +594,11 @@ fn parse_id<'a>(state: &State, id: &'a str) -> Result<(SnapshotObject, &'a str),
 fn clean(text: &str) -> String {
     text.replace("\r\n", "\n")
         .chars()
-        .map(|character| if character == '\r' { '\n' } else { character })
+        .map(|character| match character {
+            '\r' => '\n',
+            '\u{c}' => ' ',
+            other => other,
+        })
         .filter(|character| !ibis_core::model::is_hidden(*character))
         .collect()
 }

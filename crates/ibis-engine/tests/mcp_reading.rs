@@ -36,6 +36,17 @@ fn call(engine: &Engine, session: &mut mcp::Session, name: &str, arguments: Valu
     .unwrap()
 }
 
+fn personal_consent(engine: &Engine) -> Value {
+    json!([engine
+        .libraries()
+        .unwrap()
+        .libraries
+        .into_iter()
+        .find(|library| library.zotero == Some(ibis_engine::request::ZoteroLibrary::Personal))
+        .unwrap()
+        .id])
+}
+
 fn settings(directory: &std::path::Path, chosen: Value) -> std::path::PathBuf {
     let path = directory.join("settings.json");
     std::fs::write(
@@ -62,14 +73,14 @@ fn the_reading_tools_are_listed_only_for_a_library_the_person_named() {
     for mut session in [
         mcp::Session::default(),
         mcp::Session::default().with_formats(directory.path().join("missing.json")),
-        mcp::Session::default().with_formats(settings(directory.path(), json!([{"zotero": {"group": 7}}]))),
-        mcp::Session::default().with_formats(settings(directory.path(), json!([{"bibtex": "/invented/refs.bib"}]))),
+        mcp::Session::default().with_formats(settings(directory.path(), json!(["lib_invented_unopened_group"]))),
+        mcp::Session::default().with_formats(settings(directory.path(), json!(["lib_invented_unopened_file"]))),
     ] {
         assert_eq!(names(&engine, &mut session), (base.clone(), json!("public")));
         let unknown = call(&engine, &mut session, "outline", json!({"ref":"Synthetic2026"}));
         assert_eq!(unknown["error"]["message"], "Unknown tool");
     }
-    let mut session = mcp::Session::default().with_formats(settings(directory.path(), json!([{"zotero": "user"}])));
+    let mut session = mcp::Session::default().with_formats(settings(directory.path(), personal_consent(&engine)));
     let (listed, scope) = names(&engine, &mut session);
     assert_eq!(listed[..4], base[..]);
     assert_eq!(listed[4..], ["outline", "read", "find_in"]);
@@ -137,7 +148,7 @@ fn each_answer_comes_only_from_a_library_the_person_named() {
         )
         .unwrap();
     let directory = tempfile::tempdir().unwrap();
-    let mut session = mcp::Session::default().with_formats(settings(directory.path(), json!([{"zotero": "user"}])));
+    let mut session = mcp::Session::default().with_formats(settings(directory.path(), personal_consent(&engine)));
     let hits =
         call(&engine, &mut session, "search", json!({"query":"atlas"}))["result"]["structuredContent"]["hits"].clone();
     let outlines: Vec<Value> = hits
@@ -153,4 +164,43 @@ fn each_answer_comes_only_from_a_library_the_person_named() {
     assert_eq!(error["code"], "invalid-attachment-text");
     assert_eq!(error["recovery"]["action"], "review-settings");
     assert!(!refused[0].to_string().contains("Invented atlas PDF"));
+}
+
+#[test]
+fn outline_projects_private_attachment_metadata_before_structured_content_and_summary() {
+    use ibis_core::contract::{Attachment, Availability, GoldenCase, ItemRef, LibraryObject, Snapshot};
+    let case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json")).unwrap();
+    let parent = case.library.objects()[0].object.id().clone();
+    let mut objects: Vec<_> = case
+        .library
+        .objects()
+        .iter()
+        .map(|object| object.object.clone())
+        .collect();
+    objects.push(LibraryObject::Attachment(Attachment {
+        id: ItemRef {
+            library: parent.library.clone(),
+            key: "invented-attachment".into(),
+        },
+        parent: Some(parent.clone()),
+        title: "file:///synthetic/private/letter.pdf".into(),
+        media_type: "/synthetic/private/letter.pdf".into(),
+        availability: Availability::OnDisk,
+        content_hash: None,
+    }));
+    let engine = Engine::new().unwrap();
+    engine
+        .publish_library(
+            parent.library.clone(),
+            ibis_sources::LibraryKind::File,
+            std::sync::Arc::new(Snapshot::new(objects).unwrap()),
+        )
+        .unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let mut session = mcp::Session::default().with_formats(settings(directory.path(), json!([parent.library])));
+    let response = call(&engine, &mut session, "outline", json!({"ref":"Example2026"}));
+    assert_eq!(response["result"]["isError"], false, "{response}");
+    let attachment = &response["result"]["structuredContent"]["attachments"][0];
+    assert!(attachment.get("title").is_none() && attachment.get("media_type").is_none());
+    assert!(!response.to_string().contains("synthetic/private"), "{response}");
 }

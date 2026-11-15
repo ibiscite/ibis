@@ -55,7 +55,7 @@ fn chosen() -> Settings {
             "writing_apps":{"macos:example.writer":"Atlas"},
             "app_outputs":[{"app":{"system":"macos","id":"example.writer"},"output":"ieee"}],
             "suggestion_reports":["keys"], "key_formats_used":true,
-            "attachment_text":[{"zotero":"user"},{"bibtex":"/invented/refs.bib"}]
+            "attachment_text":["lib_invented_profile_a","lib_invented_file"]
         }))
         .unwrap_or_else(|error| panic!("{error}")),
         unknown: serde_json::from_value(json!({"future_setting":{"choices":[true,null]}})).unwrap_or_default(),

@@ -64,6 +64,9 @@ a confirmed offset, never from the physical index. `cite_page` passes straight
 to `cite` as a locator; when it is missing the skill tells the agent to ask the
 person, not to guess. Attachment ids are engine-issued and valid for the current
 library generation, like the reader's; no path or file URL leaves the engine.
+When the reference has its own `page` field, only labels consistent with it are
+published. Exact labels and fully written decimal ranges can establish this;
+unrecognized ranges and labels outside them stay unknown pending confirmation.
 The three tools may fold into one `read` tool with modes if clients cope better
 with fewer tools; that is a detail for the first slice.
 
@@ -179,13 +182,25 @@ online wherever it appears, and its MCP results say so in `source_health`, so th
 4. Done: the PDF extractor in a child process, with page labels and fuzzing.
    `lopdf` (MIT, pure Rust, no `unsafe`) parses in `ibis __extract-pdf`, which
    gets the opened file as its standard input and no environment, within ten
-   seconds and, on Linux, 3 GiB of address space; the desktop app never parses.
+   seconds and a 3 GiB budget on live Rust allocation bytes. Unix AS and DATA
+   limits additionally bound memory where supported; Windows uses a job's
+   process-memory limit. Extraction refuses if installing these limits fails,
+   except Darwin's unsupported finite AS/DATA limits (`EINVAL`): the heap budget
+   still applies there. Unix core dumps are disabled. Only stdio survives exec;
+   the desktop app never parses. Label prefixes over 64 characters are refused,
+   and a 1 MiB total label budget is checked before expanding page ranges. The
+   parent's output-size bound remains independent.
    It reads `.bib` `file` attachments and Zotero PDFs with no index or a partial
    one; Zotero's complete, verified pages still win. `cite_page` comes only from
    `/PageLabels`, checked against 0036's label rules, and with Zotero's text only
    when the PDF's page count matches exactly. `ibis-fuzz` has a `damaged_pdf`
    target. `pdf-extract` was not chosen: it builds on an older `lopdf` and adds
    font crates for little gain at this step.
+
+   Review follow-up, 2026-11-15 (#1940): resolve links in the chosen Zotero data
+   root once, after cached mount classification; open every component below it
+   without following links. A `.bib` library's folder is already canonical.
+   Test temp roots use the same policy, including macOS's `/var` system link.
 5. Agent proposals for writes, after 0051's add-by-identifier slice.
 6. The Web API source, only after the maintainer's yes.
 

@@ -9,6 +9,15 @@ A boundary with no safe binding gets one scoped module allowance, a crate-level
 
 - The Windows closed-Zotero reader uses Win32 process, drive, attribute and ACL
   calls. It opens only its disposable database copy.
+- `ibis-sources/src/pdf/inheritance.rs` marks every non-stdio Unix descriptor
+  close-on-exec in an allocation-free post-fork callback, including descriptors
+  inherited from native callers. The exec-error pipe stays usable until exec.
+- `ibis-cli/src/pdf_text/windows_limits.rs` assigns only the extractor process
+  to an unnamed job with a process-memory limit before parsing. Its guard owns
+  the job handle; an unavailable limit refuses extraction.
+- `ibis-cli/src/pdf_text/heap_limit.rs` delegates allocations to `System` and
+  counts live Rust allocation bytes, with a hard budget enabled only in the
+  extractor. It also covers systems that reject finite Unix memory limits.
 - `paste/macos/secure_input.rs` reads Carbon's `IsSecureEventInputEnabled` on
   the main thread. It is a system-wide flag, not proof of a password field.
 - `paste/macos/focus/native.rs` owns public Accessibility calls and retained

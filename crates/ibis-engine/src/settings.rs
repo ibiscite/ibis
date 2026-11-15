@@ -427,18 +427,11 @@ pub struct Device {
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub picker_windows: BTreeMap<String, PickerWindow>,
     /// Libraries whose attachment text AI apps may read through `ibis mcp`,
-    /// written like `library`: `[{"zotero": "user"}, {"bibtex": "~/refs.bib"}]`.
+    /// stored as the complete opaque library ids from `ibis libraries --json`.
     /// A library not listed stays closed to them (decision 0055). It is a
     /// grant, so it stays on this computer, as paste approvals do (decision 0031).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub attachment_text: Vec<LibrarySetting>,
-}
-
-/// A library as the attachment text choice names it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TextLibrary<'a> {
-    Zotero(ZoteroLibrary),
-    File(&'a Path),
+    pub attachment_text: Vec<ibis_core::contract::LibraryId>,
 }
 
 /// The most libraries `attachment_text` may name.
@@ -446,15 +439,8 @@ const MAX_ATTACHMENT_TEXT: usize = 64;
 
 impl Settings {
     /// Whether the person let AI apps read `library`'s attachment text.
-    pub fn attachment_text(&self, library: TextLibrary<'_>) -> bool {
-        self.device
-            .attachment_text
-            .iter()
-            .any(|chosen| match (chosen, library) {
-                (LibrarySetting::Zotero(chosen), TextLibrary::Zotero(library)) => chosen.libraries().contains(&library),
-                (LibrarySetting::Bibtex(chosen), TextLibrary::File(path)) => writings::same_path(chosen, path),
-                _ => false,
-            })
+    pub fn attachment_text(&self, library: &ibis_core::contract::LibraryId) -> bool {
+        self.device.attachment_text.contains(library)
     }
 
     /// The format chosen for `app`, compared as the platform compares app ids.
@@ -1184,6 +1170,25 @@ impl From<&crate::settings::SettingsError> for Problem {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn attachment_text_settings_store_complete_library_ids() {
+        let id = ibis_core::contract::LibraryId::digest(b"invented-profile-a-personal");
+        let text = serde_json::json!({"schema_version": 2, "attachment_text": [id]}).to_string();
+        let settings = super::parse(&text).unwrap();
+        assert!(settings.attachment_text(&id));
+        assert_eq!(
+            serde_json::to_value(&settings).unwrap()["attachment_text"],
+            serde_json::json!([id])
+        );
+        for old in [
+            serde_json::json!({"zotero":"user"}),
+            serde_json::json!({"bibtex":"/invented/refs.bib"}),
+        ] {
+            assert!(
+                super::parse(&serde_json::json!({"schema_version":2,"attachment_text":[old]}).to_string()).is_err()
+            );
+        }
+    }
     use super::*;
 
     #[test]

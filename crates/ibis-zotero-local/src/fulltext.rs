@@ -12,6 +12,7 @@
 //! moves every break. So page breaks are trusted only when they separate exactly
 //! the number of pages Zotero recorded; otherwise the text has no pages.
 
+use ibis_core::contract::Fingerprint;
 use ibis_core::zotero::Library;
 use ibis_core::zotero::api::{Transport, TransportError};
 use serde_json::Value;
@@ -24,6 +25,7 @@ pub const MAX_ATTACHMENTS: usize = 50;
 /// What Zotero indexed for one attachment.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Indexed {
+    pub revision: Fingerprint,
     pub text: String,
     /// Pages Zotero read, from its first page.
     pub indexed_pages: Option<u32>,
@@ -38,6 +40,7 @@ impl std::fmt::Debug for Indexed {
 /// One attachment of an item, as Zotero lists it. Its title is library text.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Attachment {
+    pub revision: Fingerprint,
     pub key: String,
     pub title: String,
     pub content_type: String,
@@ -133,6 +136,7 @@ pub fn attachments(
                 _ => None,
             };
             Some(Attachment {
+                revision: Fingerprint::of_bytes(&serde_json::to_vec(row).ok()?),
                 key: key.to_owned(),
                 title: bounded("title", 1024),
                 content_type: bounded("contentType", 1024),
@@ -175,6 +179,7 @@ pub fn indexed(transport: &mut impl Transport, library: Library, key: &str) -> R
             .ok_or(TextError::Malformed),
     };
     Ok(Some(Indexed {
+        revision: Fingerprint::of_bytes(&serde_json::to_vec(&answer).map_err(|_| TextError::Malformed)?),
         text: text.to_owned(),
         indexed_pages: count("indexedPages")?,
         total_pages: count("totalPages")?,
@@ -215,6 +220,28 @@ mod tests {
                 body: body.into_bytes(),
             })
         }
+    }
+
+    #[test]
+    fn reading_live_attachment_revisions_include_version_and_date_modified() {
+        let mut row = serde_json::json!({"key":"PDF00001","version":1,"data":{"key":"PDF00001","version":1,"dateModified":"2026-11-15T12:00:00Z","itemType":"attachment","parentItem":"SYNTH001","title":"Invented PDF","contentType":"application/pdf","linkMode":"imported_file"}});
+        let read = |row: &Value| {
+            let mut transport = Fake(vec![(
+                "users/0/items/SYNTH001/children?itemType=attachment&limit=50",
+                200,
+                serde_json::json!([row]).to_string(),
+            )]);
+            attachments(&mut transport, Library::User, "SYNTH001")
+                .unwrap()
+                .remove(0)
+        };
+        let before = read(&row);
+        row["version"] = serde_json::json!(2);
+        row["data"]["version"] = serde_json::json!(2);
+        let after = read(&row);
+        assert_ne!(after, before);
+        row["data"]["dateModified"] = serde_json::json!("2026-11-15T13:00:00Z");
+        assert_ne!(read(&row), after);
     }
 
     #[test]

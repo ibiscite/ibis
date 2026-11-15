@@ -82,6 +82,111 @@ fn a_damaged_label_tree_gives_no_labels() {
 }
 
 #[test]
+fn page_label_prefixes_are_bounded_before_they_are_repeated() {
+    for prefix in ["x".repeat(65), "é".repeat(65), "x".repeat(8 * 1024 * 1024)] {
+        let pdf = invented_pdf(&["Invented", "Invented"], Some(&[(0, Some("D"), &prefix, 1)]));
+        assert_eq!(extract(&pdf, true).unwrap().labels, None);
+    }
+    let prefix = "é".repeat(64);
+    let pdf = invented_pdf(&["Invented"], Some(&[(0, None, &prefix, 1)]));
+    assert_eq!(labels(&extract(&pdf, true).unwrap()), [Some(prefix.as_str())]);
+}
+
+#[test]
+fn the_total_label_output_is_bounded_before_expansion() {
+    let pdf = invented_pdf(&["Invented"], Some(&[(0, None, &"界".repeat(64), 1)]));
+    let document = Document::load_mem(&pdf).unwrap();
+    // Even a caller supplying an excessive count cannot trigger expansion.
+    assert!(page_labels(&document, 10_000).is_none());
+}
+
+#[cfg(unix)]
+#[test]
+fn memory_limits_apply_in_an_isolated_child() {
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "pdf_text::tests::resource_limits_helper",
+            "--ignored",
+            "--nocapture",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[cfg(unix)]
+#[test]
+#[ignore = "subprocess helper; lowers limits only in its own process"]
+fn resource_limits_helper() {
+    use nix::sys::resource::{Resource, getrlimit};
+    limit_resources().unwrap();
+    for resource in [Resource::RLIMIT_AS, Resource::RLIMIT_DATA] {
+        let (soft, hard) = getrlimit(resource).unwrap();
+        #[cfg(target_os = "macos")]
+        if soft > MAX_MEMORY_BYTES || hard > MAX_MEMORY_BYTES {
+            // Darwin rejects finite limits on some systems; the allocation
+            // refusal test independently proves the heap budget there.
+            assert_eq!(
+                nix::sys::resource::setrlimit(resource, MAX_MEMORY_BYTES, MAX_MEMORY_BYTES),
+                Err(nix::errno::Errno::EINVAL)
+            );
+            continue;
+        }
+        assert!(
+            soft <= 3 * 1024 * 1024 * 1024 && hard <= 3 * 1024 * 1024 * 1024,
+            "{resource:?}"
+        );
+    }
+    let (soft, hard) = getrlimit(Resource::RLIMIT_CPU).unwrap();
+    assert!(soft <= MAX_CPU_SECONDS && hard <= MAX_CPU_SECONDS);
+}
+
+#[test]
+fn the_child_refuses_allocations_over_its_heap_budget() {
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "pdf_text::tests::heap_limit_helper",
+            "--ignored",
+            "--nocapture",
+        ])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("memory allocation of 2097152 bytes failed"));
+}
+
+#[test]
+#[ignore = "subprocess helper; exhausts only its own small heap budget"]
+fn heap_limit_helper() {
+    #[cfg(unix)]
+    nix::sys::resource::setrlimit(nix::sys::resource::Resource::RLIMIT_CORE, 0, 0).unwrap();
+    // Enabling a tiny budget in this helper proves enforcement without putting
+    // memory pressure on the shared machine. The real child installs 3 GiB.
+    heap_limit::set(1024 * 1024);
+    // Refused growth preserves the old allocation; shrinking and releasing it
+    // restore capacity. Repeated allocations cannot consume the budget forever.
+    let mut bytes = Vec::with_capacity(128 * 1024);
+    bytes.resize(128 * 1024, 7u8);
+    bytes.reserve_exact(256 * 1024);
+    assert!(bytes.try_reserve_exact(2 * 1024 * 1024).is_err());
+    assert!(bytes.iter().all(|byte| *byte == 7));
+    bytes.truncate(64 * 1024);
+    bytes.shrink_to_fit();
+    drop(bytes);
+    for _ in 0..16 {
+        std::hint::black_box(vec![0u8; 128 * 1024]);
+    }
+    std::hint::black_box(vec![0u8; 2 * 1024 * 1024]);
+}
+
+#[test]
 fn roman_and_letter_numbers_stay_short_enough_to_cite() {
     assert_eq!(roman(1994).as_deref(), Some("MCMXCIV"));
     assert_eq!(
