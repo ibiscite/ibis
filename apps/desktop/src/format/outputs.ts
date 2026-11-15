@@ -1,7 +1,7 @@
 // The engine's outputs, generated into the bindings from its one list (#1260).
 // Each has one id, stored and sent as it is, and one name, shown everywhere.
 import { DEFAULT_OUTPUT, DEFAULT_STYLE, OUTPUTS } from "../bindings";
-import type { DisplayTree, Notice } from "../bindings";
+import type { CitedWarning, DisplayTree, Notice } from "../bindings";
 
 export type OutputChoice = (typeof OUTPUTS)[number];
 export type OutputId = OutputChoice["id"];
@@ -73,7 +73,7 @@ export interface FormattedCitation {
   effective_output?: string | null;
   display: DisplayTree;
   text: string;
-  warnings: string[];
+  warnings: CitedWarning[];
   /** Why a key citation is refused: a key in the bibliography names a different work. */
   project_refusal?: string | null;
   /** The engine's notices about it, such as a full first note. */

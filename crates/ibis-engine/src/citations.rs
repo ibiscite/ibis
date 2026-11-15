@@ -1024,8 +1024,9 @@ fn session_key(snapshot: &Snapshot, id: &ItemRef) -> Option<String> {
     )
 }
 
-/// What the citation could not say in full, each naming its reference by key or title.
-fn citation_warnings_named(citation: &PreparedCitation) -> Vec<String> {
+/// What the citation could not say in full, each with the reference it is
+/// about, named in its words by key or title.
+fn citation_warnings_named(citation: &PreparedCitation) -> Vec<CitedWarning> {
     let labels: Vec<_> = (0..citation.items().len())
         .map(|item| citation.item_label(item))
         .collect();
@@ -1033,8 +1034,8 @@ fn citation_warnings_named(citation: &PreparedCitation) -> Vec<String> {
 }
 /// `labels` names each cited reference by key or title. Two references can
 /// share a key across libraries, so a shared name also says which one it is.
-fn citation_warnings(result: &CitationResult, labels: &[Option<String>]) -> Vec<String> {
-    use crate::catalogue::{self, Audience};
+fn citation_warnings(result: &CitationResult, labels: &[Option<String>]) -> Vec<CitedWarning> {
+    use crate::catalogue;
     let name = |item: usize| match labels.get(item).cloned().flatten() {
         Some(label) if labels.iter().filter(|other| other.as_ref() == Some(&label)).count() > 1 => {
             format!("{label} (reference {})", item + 1)
@@ -1042,31 +1043,35 @@ fn citation_warnings(result: &CitationResult, labels: &[Option<String>]) -> Vec<
         Some(label) => label,
         None => format!("Reference {}", item + 1),
     };
+    let warning = |item: Option<usize>, id: String, args: &[(&str, String)]| CitedWarning {
+        item,
+        message: Message {
+            id,
+            args: args
+                .iter()
+                .map(|(name, value)| ((*name).to_owned(), value.clone()))
+                .collect(),
+            context: None,
+        },
+    };
     let mut warnings = vec![];
-    for warning in &result.warnings {
-        let reference = name(warning.item);
-        warnings.push(catalogue::sentence(
-            "warning",
-            warning.code,
-            Audience::App,
-            &[("reference", &reference)],
+    for each in &result.warnings {
+        warnings.push(warning(
+            Some(each.item),
+            catalogue::id("warning", each.code),
+            &[("reference", name(each.item))],
         ));
     }
     if result.notices.contains(&Notice::YearSuffixWithheld) {
-        warnings.push(catalogue::sentence(
-            "notice",
-            Notice::YearSuffixWithheld,
-            Audience::App,
-            &[],
-        ));
+        warnings.push(warning(None, catalogue::id("notice", Notice::YearSuffixWithheld), &[]));
     }
     for loss in &result.losses {
         let what = catalogue::text(&catalogue::id("loss", loss.field), None, &[]).unwrap_or_default();
         let target = loss.item.map(|item| format!(" for {}", name(item))).unwrap_or_default();
-        warnings.extend(catalogue::text(
-            "app-loss",
-            None,
-            &[("what", &what), ("target", &target)],
+        warnings.push(warning(
+            loss.item,
+            "app-loss".into(),
+            &[("what", what), ("target", target)],
         ));
     }
     warnings
@@ -1162,7 +1167,7 @@ impl CheckedCitation {
             _bibliography: bibliography,
         })
     }
-    pub fn warnings(&self) -> Vec<String> {
+    pub fn warnings(&self) -> Vec<CitedWarning> {
         citation_warnings_named(&self.citation)
     }
 }

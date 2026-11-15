@@ -1,9 +1,11 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { notices, UpdateNotice } from "./Notices";
+import { missingKey } from "../../test-fixtures";
 
 afterEach(cleanup);
-const copied = { text: "[@example2026]", warnings: ["Missing year — 研究 العربية <literal>"] };
+// A key with mixed scripts and markup-like text is read as words, never as markup.
+const copied = { text: "[@example2026]", warnings: [missingKey("研究-العربية-<literal>")] };
 type Props = Parameters<typeof notices>[0];
 const Notices = (given: Props) => <>{notices(given)}</>;
 const props: Props = { library: null, failures: {}, error: null, copyError: null,
@@ -16,7 +18,7 @@ test.each(["Enter", " "])("warning dismissal uses shared states and activates on
   expect(button.getAttribute("data-variant")).toBe("secondary");
   expect(button.getAttribute("data-size")).toBe("small");
   expect(screen.getByRole("status", { name: "" }).textContent).toContain(copied.text);
-  expect(screen.getByLabelText("Copy warnings").textContent).toBe(copied.warnings[0]);
+  expect(screen.getByLabelText("Copy warnings").textContent).toBe("研究-العربية-<literal> is missing from thesis.bib.");
   button.focus();
   const code = key === " " ? "Space" : "Enter";
   fireEvent.keyDown(button, { key, code });
@@ -37,7 +39,7 @@ test("retiring a confirmation leaves its warnings without announcing Copied agai
   expect(screen.getByRole("status", { name: "" }).textContent).toContain("Copied");
   rerender(<Notices {...props} confirmation={null} />);
   expect(screen.queryByRole("status", { name: "" })).toBeNull();
-  expect(screen.getByLabelText("Copy warnings").textContent).toBe(copied.warnings[0]);
+  expect(screen.getByLabelText("Copy warnings").textContent).toBe("研究-العربية-<literal> is missing from thesis.bib.");
   expect(screen.queryByText("Copied")).toBeNull();
 });
 

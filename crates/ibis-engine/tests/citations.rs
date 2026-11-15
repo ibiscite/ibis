@@ -754,3 +754,49 @@ fn oversized_reference_fields_are_refused_before_formatting_without_echoing_them
         );
     }
 }
+
+/// Two invented works; only the second has a field that could not be converted.
+fn two_records_the_second_warned() -> Engine {
+    let LibraryObject::Record(first) = engine().snapshot().unwrap().objects()[0].object.clone() else {
+        panic!("record")
+    };
+    let mut second = first.clone();
+    second.id.key = "work-2".into();
+    second.citation_keys[0].value = "Second2026".into();
+    second.warnings = vec![CitationWarningCode::SourceField];
+    let objects = vec![LibraryObject::Record(first), LibraryObject::Record(second)];
+    Engine::from_snapshot(Arc::new(Snapshot::new(objects).unwrap()))
+}
+fn every_record(engine: &Engine, output: &str) -> Draft {
+    let snapshot = engine.snapshot().unwrap();
+    let items: Vec<_> = snapshot
+        .objects()
+        .iter()
+        .map(|record| json!({"id": record.object.id(), "cite": record.fingerprints.cite}))
+        .collect();
+    serde_json::from_value(json!({"items": items, "output": {"kind": "preset", "name": output}})).unwrap()
+}
+
+#[test]
+fn a_warning_names_the_reference_it_is_about() {
+    let engine = two_records_the_second_warned();
+    let shown = engine
+        .citations()
+        .preview(
+            SessionId::PICKER,
+            every_record(&engine, "pandoc"),
+            Cancellation::default(),
+        )
+        .unwrap()
+        .run()
+        .unwrap();
+    assert_eq!(shown.warnings.len(), 1);
+    assert_eq!(shown.warnings[0].item, Some(1));
+    assert_eq!(shown.warnings[0].message.id, "warning-source-field");
+    assert_eq!(shown.warnings[0].message.args["reference"], "Second2026");
+    let checked = engine
+        .citations()
+        .commit(SessionId::PICKER, &shown.ticket, &shown.content_hash)
+        .unwrap();
+    assert_eq!(checked.warnings(), shown.warnings);
+}

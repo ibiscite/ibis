@@ -1,6 +1,6 @@
 // One citation interaction. Pure transitions; I/O belongs to sessionController.
 import type { Copied, Locator, SearchResult } from "../../api";
-import type { Delivered } from "../../bindings";
+import type { CitedWarning, Delivered } from "../../bindings";
 import { afterCopy, noticeTitle, readDelivered } from "../../copyFeedback";
 import type { FormattedCitation } from "../../format/outputs";
 import { say } from "../../i18n";
@@ -28,14 +28,14 @@ export type SessionView = {
 };
 type Pending = { keepOrder: boolean; choice: string | null; selection: SessionState["selected"]; queryKey: string;
   format: OutputId | null; output: OutputToken; question?: "open" | "answered" };
-type Flight = { keepOrder: boolean; id: number; session: number; presentation: number; choice: string; format: OutputId; writingVersion?: string | null; opening: number; delivery: number; warnings: string[];
+type Flight = { keepOrder: boolean; id: number; session: number; presentation: number; choice: string; format: OutputId; writingVersion?: string | null; opening: number; delivery: number; warnings: CitedWarning[];
   shelf: CitationReference[]; replaces: readonly string[] | null; appId: string | null; writingId?: string | null;
   phase: "copy" | "hide" | "notice"; outcome?: Copied;
   owner: { context: number; session: number; visibility: number; output: OutputToken } };
 /** `earlier`: texts a change replaced only on the clipboard, so either may be in the document. */
 export type LastCitation = { text: string; earlier?: readonly string[]; references: CitationReference[]; format: OutputId; keepOrder: boolean; project?: string };
 export type RemovedReference = { token: number; reference: CitationReference; before: string[]; after: string[] };
-export type ShelfCopied = Copied & { closestMatches?: readonly string[] };
+export type ShelfCopied = Copied & { closestMatches?: readonly CitedWarning[] };
 export type SessionState = {
   keepOrder: boolean; query: string; interpretLocators: boolean; active: number; selected: Map<string, CitationReference>; selectionChanged: boolean;
   /** Advances when a window is about to appear (preparing or shown): what its first frame may show. */

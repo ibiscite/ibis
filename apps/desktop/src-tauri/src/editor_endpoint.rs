@@ -989,7 +989,12 @@ mod tests {
         );
         let check = request.bibliography();
         assert_eq!(
-            crate::project::preview_warnings(&file.engine, &preview.ticket, &preview.content_hash, check.as_ref())?,
+            crate::test_citations::said(&crate::project::preview_warnings(
+                &file.engine,
+                &preview.ticket,
+                &preview.content_hash,
+                check.as_ref()
+            )?),
             ["demo is missing from thesis.bib."]
         );
         let copied = crate::test_citations::copy(&file.engine, &preview.ticket, &preview.content_hash, |content| {

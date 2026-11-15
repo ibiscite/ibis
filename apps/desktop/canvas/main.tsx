@@ -99,13 +99,16 @@ const fixtures: Partial<Record<Scenario, {
     { key: "ArrowDown", [navigator.platform.startsWith("Mac") ? "metaKey" : "ctrlKey"]: true }, { key: "ArrowLeft", shiftKey: true }] },
   // A share output writes several lines per reference; the shelf keeps them in its one line.
   "share-bibtex": { preferences: { output: "bibtex" }, keys: [{ key: "Enter", shiftKey: true }, { key: "ArrowDown" }, { key: "Enter", shiftKey: true }] },
-  // The engine warns about the second reference; the first one's details are open.
-  "token-warnings": { keys: [{ key: "Enter", shiftKey: true }, { key: "ArrowDown" }, { key: "Enter", shiftKey: true }], click: 'button[aria-label^="Edit "]' },
+  // The engine warns about the second reference, and its details say so.
+  "token-warnings": { keys: [{ key: "Enter", shiftKey: true }, { key: "ArrowDown" }, { key: "Enter", shiftKey: true }], click: '.citation-token ~ .citation-token > button[aria-label^="Edit "]' },
   // The sample references with matching rows: the way out steps aside for them.
   sample: { rows: rows.slice(0, 3), library: { sample: true, name: "Sample references", snapshot_name: "Sample references" } },
   // A numbered style's words are numbers, so each token carries its author and year.
   "citation-handles": { preferences: { output: "ieee" }, keys: [{ key: "Enter", shiftKey: true }, { key: "ArrowDown" }, { key: "Enter", shiftKey: true }] },
 };
+
+/** One invented BibTeX entry, as the engine writes it. */
+const bibtex = (key: string) => `@article{${key},\n  title = {Invented reference},\n  author = {Aster, Ida},\n  year = {2026}\n}`;
 
 // Invented command replies for the real picker. The canvas intercepts IPC at
 // the same boundary as interface tests; App needs no alternate API or feature flags.
@@ -168,10 +171,10 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
       // BibTeX, as the engine writes it: one entry of several lines per reference.
       if (output === "bibtex") spans.splice(0, spans.length, ...items.flatMap((_, index) => [
         ...(index ? [{ item: null, text: "\n\n" }] : []),
-        { item: index, text: `@article{${key(index)},\n  title = {Invented reference},\n  author = {Aster, Ida},\n  year = {2026}\n}` },
+        { item: index, text: bibtex(key(index)) },
       ]));
       const text = spans.map((span) => span.text).join("");
-      const warnings = scenario === "token-warnings" && items.length > 1 ? [`${key(1)} has no date, so “n.d.” is written instead.`] : [];
+      const warnings = scenario === "token-warnings" && items.length > 1 ? [{ item: 1, message: { id: "warning-source-field", args: { reference: key(1) } } }] : [];
       receipts.set(ticket, { text, items, output, key: key(0) });
       return { ticket, content_hash: ticket, text, display: { nodes: spans.map(({ item, text }) => ({ item, blocks: [], content: [{ text, italic: false, bold: false, script: "normal" }] })) }, warnings, project_refusal: refusal };
     },

@@ -155,7 +155,7 @@ impl Engine {
                     cancel.check()?;
                     evidence.bibliography = read.fingerprint().cloned();
                     evidence.checked_at_ms = read.current_complete().then(now_ms);
-                    let keys = prepared.project_checks(&read);
+                    let keys = prepared.project_checks(&read).into_iter().map(|(_, key)| key).collect();
                     assessment = Some(prepared.project_evidence(&read));
                     Ok::<_, EngineError>(ProjectResult {
                         name: project_name(path),

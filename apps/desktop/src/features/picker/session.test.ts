@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { testStates, recordId } from "../../test-fixtures";
+import { missingKey, testStates, recordId } from "../../test-fixtures";
 import { enterLabel } from "./enterLabel";
 import { choiceKey, idKey, type CitationReference } from "./choice";
 import { arrangeView } from "../../testing/sessionView";
@@ -97,7 +97,7 @@ test.each(["before", "after"] as const)("a refreshed checked receipt cannot adop
   const first = { writingId: "a", writingVersion: "1:0" };
   s.send(s.view(first));
   s.send({ type: "enter", choice: choiceKey([a]) });
-  const checked = { writingId: "a", writingVersion: "1:1", shown: { ...prepared, fileTicket: "checked-ticket", warnings: ["Couldn't check a2026 against thesis.bib."] } };
+  const checked = { writingId: "a", writingVersion: "1:1", shown: { ...prepared, fileTicket: "checked-ticket", warnings: [{ item: 0, message: { id: "app-project-warning", args: { key: "a2026", name: "thesis.bib", state: "could-not-check" } } }] } };
   s.send(s.view(checked));
   if (oldResponse === "before") {
     s.complete(1);
@@ -396,7 +396,7 @@ test("a stale success never consumes the newer citation's copy or receipt", () =
   s.complete(1);
   expect(s.effects).toEqual([]);
   expect(s.state.activeCopy).toBe(2);
-  s.complete(2, { outcome: { text: "new citation", warnings: ["Invented warning"] } });
+  s.complete(2, { outcome: { text: "new citation", warnings: [missingKey("invented2026")] } });
   expect(s.state.copied?.text).toBe("new citation");
   const receipt = s.state.copied;
   s.complete(1);
@@ -471,9 +471,9 @@ test("an older confirmation timer cannot dismiss a newer copy's warnings", () =>
   const copied = s.state.copied!;
   s.send(s.view());
   s.send({ type: "enter", choice: choiceKey([a]) });
-  s.complete(2, { outcome: { text: "new citation", warnings: ["Invented warning"] } });
+  s.complete(2, { outcome: { text: "new citation", warnings: [missingKey("invented2026")] } });
   s.send({ type: "dismiss", copied });
-  expect(s.state.copied?.warnings).toEqual(["Invented warning"]);
+  expect(s.state.copied?.warnings).toEqual([missingKey("invented2026")]);
 });
 
 test("preparing clears an expired search before the window appears, and showing does not repeat it", () => {

@@ -12,7 +12,7 @@ use crate::library::{CommandError, Library, PreviewIntent};
 pub(crate) struct Copied {
     pub(crate) text: String,
     /// What the chosen syntax could not express, and other problems the user should see.
-    pub(crate) warnings: Vec<String>,
+    pub(crate) warnings: Vec<ibis_core::contract::CitedWarning>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) summary: Option<ReceiptSummary>,
     /// Unique clipboard-write identity for receipts, even without a native paste proof.

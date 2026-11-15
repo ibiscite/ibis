@@ -24,10 +24,18 @@ pub struct SessionBibliography {
     pub text: String,
     pub display: DisplayTree,
     pub content_hash: String,
-    pub warnings: Vec<String>,
+    pub warnings: Vec<CitedWarning>,
     /// References this style cannot write, by key or title. They are named so
     /// that the rest can still be used.
     pub left_out: Vec<String>,
+}
+/// What a citation cannot say in full, as the catalogue's message, and the
+/// reference it is about, so each front end shows it with that reference.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct CitedWarning {
+    /// The zero-based request item it is about; none for the whole citation.
+    pub item: Option<usize>,
+    pub message: Message,
 }
 /// What a person typed in a reference's locator field, with the type its pop-up
 /// shows. Only the engine reads it: a typed label (`ch. 3`) names the type.
@@ -55,7 +63,7 @@ pub struct Preview {
     pub ticket: String,
     pub content_hash: String,
     pub text: String,
-    pub warnings: Vec<String>,
+    pub warnings: Vec<CitedWarning>,
     pub display: DisplayTree,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub problem: Option<String>,

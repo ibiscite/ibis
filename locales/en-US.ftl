@@ -191,6 +191,13 @@ app-file-dialog-formats = { -library-formats }
 ## The app’s own sentence about a citation.
 
 app-loss = This output cannot fully show { $what }{ $target }.
+app-project-warning =
+    { $state ->
+        [missing] { $key } is missing from { $name }.
+        [repeated] { $key } appears more than once in { $name }.
+        [may-name-another] { $key } may name another reference in { $name }.
+       *[could-not-check] Couldn’t check { $key } against { $name }.
+    }
 app-tray-open = Open Ibis
 app-tray-open-shortcut = Open Ibis ({ $shortcut })
 app-tray-choose = Choose File…

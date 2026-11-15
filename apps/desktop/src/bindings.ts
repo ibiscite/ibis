@@ -329,6 +329,16 @@ export type CitationIntent = {
 /** Wording context only; operations choose their recovery before presentation. */
 export type CitationSurface = "bibliography";
 
+/**
+ * What a citation cannot say in full, as the catalogue's message, and the
+ * reference it is about, so each front end shows it with that reference.
+ */
+export type CitedWarning = {
+	/** The zero-based request item it is about; none for the whole citation. */
+	item: number | null;
+	message: Message;
+};
+
 /** The desktop and MCP receive this same shape, without pre-rendered English. */
 export type CommandError = {
 	code: string;
@@ -354,7 +364,7 @@ export type Copied = {
 	summary?: ReceiptSummary | null;
 	text: string;
 	/** What the chosen syntax could not express, and other problems the user should see. */
-	warnings: string[];
+	warnings: CitedWarning[];
 };
 
 /**
@@ -859,7 +869,7 @@ export type Preview = {
 	project_refusal?: string | null;
 	text: string;
 	ticket: string;
-	warnings: string[];
+	warnings: CitedWarning[];
 };
 
 /** The desktop and MCP receive this same shape, without pre-rendered English. */
@@ -1085,7 +1095,7 @@ export type SessionBibliography = {
 	 */
 	left_out: string[];
 	text: string;
-	warnings: string[];
+	warnings: CitedWarning[];
 };
 
 export type SessionEdit = {

@@ -5,6 +5,7 @@ import { App } from "./App";
 import { backend, prepared, receipt, resetApp, result } from "./testing/app";
 import type { Density } from "./api";
 import type { Preview } from "./bindings";
+import { warningText } from "./i18n";
 import samples from "../src-tauri/resources/samples.csljson?raw";
 
 afterEach(resetApp);
@@ -14,7 +15,7 @@ const lantern = bundledSamples[0];
 const title = lantern.title;
 const apa = "(Vale, 2024) [Sample]";
 const sampleKeys = `[@${lantern["citation-key"]}] [Sample]`;
-const apaWarnings = ["Year suffixes require the whole document; Ibis leaves them out."];
+const apaWarnings = [{ item: null, message: { id: "notice-year-suffix-withheld", args: {} } }];
 
 function press(row: HTMLElement) {
   act(() => row.focus());
@@ -83,7 +84,7 @@ test.each([true, false])("first citation: choose samples, search, Enter and rece
     expect(await screen.findByText("Copied", { selector: ".shelf-copied, .copy-notice strong" })).toBeTruthy();
     expect(prepared(copied.mock.calls[0]?.[0]).preview.text).toBe(apa);
     expect(notice).not.toHaveBeenCalled();
-    expect(screen.getByRole("list", { name: "Copy warnings" }).textContent).toContain(apaWarnings[0]);
+    expect(screen.getByRole("list", { name: "Copy warnings" }).textContent).toContain(warningText(apaWarnings[0]!));
   } else {
     await waitFor(() => expect(notice).toHaveBeenCalledWith({ text, delivery: null, summary: null }));
     expect(calls).toContain("hide_picker");

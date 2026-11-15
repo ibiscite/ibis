@@ -15,7 +15,7 @@ impl PreparedCitation {
     /// immutable context. Rechecking never consumes or changes the preview.
     /// A check is advice: only a key known to name a different work withholds the citation.
     pub fn project_evidence(&self, read: &ProjectRead) -> ProjectAssessment {
-        let checks = self.project_checks(read);
+        let checks = self.project_checks(read).into_iter().map(|(_, check)| check).collect();
         let conflicts: Vec<_> = if self.uses_citation_keys() {
             self.request
                 .items
@@ -59,22 +59,27 @@ impl PreparedCitation {
     }
     /// Check exactly the emitted keys and record fields that made this receipt,
     /// even if a later source snapshot has renamed or replaced a reference.
-    pub fn project_checks(&self, read: &ProjectRead) -> Vec<ProjectKey> {
+    /// Each check comes with the request item whose key it is.
+    pub fn project_checks(&self, read: &ProjectRead) -> Vec<(usize, ProjectKey)> {
         if !self.uses_citation_keys() {
             return Vec::new();
         }
         self.request
             .items
             .iter()
-            .filter_map(|pick| {
+            .enumerate()
+            .filter_map(|(item, pick)| {
                 let LibraryObject::Record(record) = &self.context.snapshot.get(&pick.item)?.object else {
                     return None;
                 };
                 let key = record.citation_key().ok().flatten()?;
-                Some(ProjectKey {
-                    key: key.to_owned(),
-                    check: read.check(key, Some(record)),
-                })
+                Some((
+                    item,
+                    ProjectKey {
+                        key: key.to_owned(),
+                        check: read.check(key, Some(record)),
+                    },
+                ))
             })
             .collect()
     }

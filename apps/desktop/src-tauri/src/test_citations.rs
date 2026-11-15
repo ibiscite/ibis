@@ -1,7 +1,14 @@
 //! Native tests build engine requests and exercise the actual native clipboard boundary.
 use crate::library::CommandError;
-use ibis_core::contract::{ClipboardContent, Draft, DraftItem, OutputSpec, Preview};
+use ibis_core::contract::{CitedWarning, ClipboardContent, Draft, DraftItem, OutputSpec, Preview};
 use ibis_engine::{Cancellation, Engine, citations::SessionId};
+/// Warnings in the app's words.
+pub(crate) fn said(warnings: &[CitedWarning]) -> Vec<String> {
+    warnings
+        .iter()
+        .map(|warning| ibis_engine::catalogue::message(&warning.message, ibis_engine::catalogue::Audience::App))
+        .collect()
+}
 pub(crate) fn preview(
     engine: &Engine,
     sample: bool,
