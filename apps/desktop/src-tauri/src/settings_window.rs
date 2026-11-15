@@ -86,18 +86,51 @@ fn fitted(area: Option<(f64, f64)>) -> ((f64, f64), (f64, f64)) {
     (size, (MIN_SIZE.0.min(size.0), MIN_SIZE.1.min(size.1)))
 }
 
-/// The work area Settings opens in, as logical (x, y, width, height): the
-/// picker's screen, else the main one. Settings is both sized for and centred
-/// in it, so the two never disagree about the screen. An empty area is unknown.
-pub(crate) fn work_area(app: &AppHandle) -> Option<(f64, f64, f64, f64)> {
+pub(crate) struct InitialFrame {
+    origin: (f64, f64),
+    size: (f64, f64),
+    minimum: (f64, f64),
+}
+
+/// Pick the display and a creation position before the native window's first
+/// size is converted using that display's DPI. No move after build is needed.
+pub(crate) fn initial_frame(app: &AppHandle) -> Option<InitialFrame> {
     let picker = app
         .get_webview_window("main")
         .and_then(|window| window.current_monitor().ok().flatten());
     let monitor = picker.or_else(|| app.primary_monitor().ok().flatten())?;
-    let area = monitor.work_area();
-    let origin = area.position.to_logical::<f64>(monitor.scale_factor());
-    let size = area.size.to_logical::<f64>(monitor.scale_factor());
-    (size.width >= 1.0 && size.height >= 1.0).then_some((origin.x, origin.y, size.width, size.height))
+    let monitors = checked(app.available_monitors(), NativeIssue::Monitor)?;
+    let target = monitors
+        .iter()
+        .position(|m| m.position() == monitor.position() && m.size() == monitor.size())?;
+    let screens: Vec<_> = monitors
+        .iter()
+        .map(|m| {
+            let area =
+                |position: tauri::PhysicalPosition<i32>, size: tauri::PhysicalSize<u32>| crate::placement::Area {
+                    x: f64::from(position.x),
+                    y: f64::from(position.y),
+                    width: f64::from(size.width),
+                    height: f64::from(size.height),
+                };
+            crate::placement::CreationDisplay {
+                bounds: area(*m.position(), *m.size()),
+                usable: area(m.work_area().position, m.work_area().size),
+                scale: m.scale_factor(),
+            }
+        })
+        .collect();
+    let room = monitor.work_area().size.to_logical::<f64>(monitor.scale_factor());
+    let (size, minimum) = fitted(Some((room.width, room.height)));
+    // Some Windows layouts have no unambiguous logical creation point. Keep
+    // the fitted target frame and the previous best-effort centre there; the
+    // builder needs a physical-position API to guarantee that remaining case.
+    let origin = crate::placement::creation_origin(&screens, target, size, MARGIN, cfg!(target_os = "windows"))
+        .unwrap_or_else(|| {
+            let at = monitor.work_area().position.to_logical::<f64>(monitor.scale_factor());
+            (at.x + (room.width - size.0) / 2.0, at.y + (room.height - size.1) / 2.0)
+        });
+    Some(InitialFrame { origin, size, minimum })
 }
 
 /// Where Settings opens.
@@ -215,8 +248,10 @@ pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>, p
         return;
     }
     let url = format!("settings.html?page={}", page.unwrap_or(Page::General).name());
-    let area = R::work_area(app);
-    let (size, min) = fitted(area.map(|(_, _, width, height)| (width, height)));
+    let frame = R::settings_frame(app);
+    let (size, min) = frame
+        .as_ref()
+        .map_or((SIZE, MIN_SIZE), |frame| (frame.size, frame.minimum));
     let mut builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(url.into()))
         .title(TITLE)
         .inner_size(size.0, size.1)
@@ -237,8 +272,8 @@ pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>, p
                 report(window.set_focus(), NativeIssue::Focus);
             }
         });
-    builder = match area {
-        Some((x, y, width, height)) => builder.position(x + (width - size.0) / 2.0, y + (height - size.1) / 2.0),
+    builder = match frame {
+        Some(frame) => builder.position(frame.origin.0, frame.origin.1),
         None => builder.center(),
     };
     FIRST_SHOW.begin();

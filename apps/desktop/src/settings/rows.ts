@@ -8,7 +8,7 @@ import type { InterfaceMessages, MessageId } from "../i18n";
 export const PAGES = ["general", "look", "citations", "shortcuts", "about"] as const;
 export type Page = typeof PAGES[number];
 type Control = { control: "switch" | "documents" | "keys" }
-  | { control: "choice" | "appearance"; options: readonly { value: string | boolean; label: MessageId; currentOnly?: boolean }[] }
+  | { control: "choice" | "appearance" | "menu"; options: readonly { value: string | boolean; label: MessageId; currentOnly?: boolean }[] }
   | { control?: undefined };
 /** A setting's declaration. Its help line is part of it: a row cannot be declared
  * without saying what it does, and search reads the same words. */
@@ -19,8 +19,9 @@ export type SettingRow = Control & {
 type PreferenceDeclaration<K extends keyof PickerPreferences> = SettingRow & { order: number; default: NonNullable<PickerPreferences[K]>; control: Exclude<Control["control"], undefined> };
 /** Exhaustive over the generated owner contract: a new preference needs its row. */
 export const PREFERENCES = {
+  picker_placement: { order: 4, id: "picker-placement", default: "centre", control: "menu", options: [{ value: "centre", label: "general-placement-centre" }, { value: "top-left", label: "general-placement-top-left" }, { value: "top-right", label: "general-placement-top-right" }, { value: "bottom-left", label: "general-placement-bottom-left" }, { value: "bottom-right", label: "general-placement-bottom-right" }], page: "general", group: "general-behavior-title", label: "general-placement", description: "general-placement-description", keywords: "general-placement-words" },
   menu_bar: { order: 3, id: "menu-bar", default: true, control: "switch", page: "general", group: "general-behavior-title", label: "general-menu-bar-label", description: "general-menu-bar-description" },
-  small_surprises: { order: 4, id: "small-surprises", default: true, control: "switch", page: "general", group: "general-behavior-title", label: "general-small-surprises-label", description: "general-small-surprises-description", keywords: "settings-surprises-words" },
+  small_surprises: { order: 5, id: "small-surprises", default: true, control: "switch", page: "general", group: "general-behavior-title", label: "general-small-surprises-label", description: "general-small-surprises-description", keywords: "settings-surprises-words" },
   paste: { order: 5, id: "paste-label", section: "paste", default: true, control: "switch", page: "general", group: "general-paste-title", label: "general-paste-label", description: "general-paste-description", keywords: "settings-paste-words" },
   appearance: { order: 1, id: "appearance", default: "system", control: "appearance", options: [{ value: "system", label: "look-system" }, { value: "light", label: "look-light" }, { value: "dark", label: "look-dark" }], page: "look", label: "look-appearance", description: "look-appearance-description", keywords: "settings-appearance-words" },
   accent: { order: 2, id: "accent", default: "system", control: "choice", options: [{ value: "system", label: "look-accent-system" }, { value: "ibis", label: "look-accent-ibis" }], page: "look", label: "look-accent", description: "look-accent-description", keywords: "look-accent-words" },

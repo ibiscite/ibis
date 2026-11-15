@@ -34,6 +34,8 @@ export function shortcutRefusalMessage(refusal: unknown): ShortcutProblem {
 }
 
 export const SETTINGS_IDS = [
+  "general-placement", "general-placement-description", "general-placement-words", "general-placement-centre",
+  "general-placement-top-left", "general-placement-top-right", "general-placement-bottom-left", "general-placement-bottom-right",
   "citations-unlisted",
   "citations-documents", "citations-keys", "citations-apps", "citations-forget", "citations-writings", "settings-open-file", "settings-open", "settings-file-description",
   "settings-shortcut-words", "settings-details", "settings-use-default", "settings-default-restored", "settings-undo-default",
