@@ -274,7 +274,10 @@ fn a_failed_program_add_prints_the_removed_entry_in_full() {
 }
 
 fn known_command(home: &mut Home) -> PathBuf {
-    let command = home.root.join("bin").join("ibis");
+    let command = home
+        .root
+        .join("bin")
+        .join(format!("ibis{}", std::env::consts::EXE_SUFFIX));
     fs::write(&command, "invented command").unwrap();
     #[cfg(unix)]
     {

@@ -93,7 +93,10 @@ fn desktop(home: &Home) -> PathBuf {
 }
 
 fn known_command(home: &mut Home) -> PathBuf {
-    let command = home.root.join("bin").join("ibis");
+    let command = home
+        .root
+        .join("bin")
+        .join(format!("ibis{}", std::env::consts::EXE_SUFFIX));
     fs::write(&command, "invented command").unwrap();
     #[cfg(unix)]
     {
