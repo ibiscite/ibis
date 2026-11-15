@@ -1,5 +1,24 @@
 use super::*;
+use serde_json::Value;
+use std::fs;
+use std::path::Path;
+const CHANGED: &str = "its settings changed while Ibis was working; nothing was written, so run the command again";
 use std::io::Cursor;
+
+#[test]
+fn agents_without_a_full_command_path_report_the_install_step() {
+    for id in ["claude-desktop", "lm-studio"] {
+        let home = home(&format!("install-first-{id}"));
+        for action in ["status", "setup"] {
+            let args = vec![action, "--client", id];
+            let result = run(&home, &args, "", false).0.ok().unwrap();
+            assert_eq!(outcome(&result, id), "blocked");
+            assert_eq!(result.data["apps"][0]["detail"], "Install the ibis command first");
+            assert_eq!(result.exit_code, ExitCode::Findings);
+            assert!(result.text.unwrap().contains("blocked: Install the ibis command first"));
+        }
+    }
+}
 
 /// An invented home with no real app settings in it.
 fn home(name: &str) -> Home {
@@ -40,6 +59,36 @@ fn outcome(result: &DispatchResult, id: &str) -> String {
         .unwrap_or_default()
 }
 
+#[test]
+fn status_and_dry_run_keep_the_terminal_and_json_report_bytes() {
+    let mut home = home("report-bytes");
+    known_command(&mut home);
+    let (status, questions) = run(&home, &["status", "--client", "cursor"], "", false);
+    let status = status.ok().unwrap();
+    assert_eq!(questions, "");
+    assert_eq!(status.exit_code, ExitCode::Ok);
+    assert_eq!(
+        status.text.unwrap(),
+        "Cursor           not connected: run: ibis agents setup"
+    );
+    assert_eq!(
+        serde_json::to_string(&status.data).unwrap(),
+        r#"{"action":"status","apps":[{"detail":"run: ibis agents setup","id":"cursor","name":"Cursor","outcome":"not-connected"}],"dry_run":false,"ibis_on_path":true,"server":{"args":["mcp","--app-libraries"],"command":"ibis"}}"#
+    );
+    let (preview, questions) = run(&home, &["setup", "--dry-run", "--client", "cursor"], "", false);
+    let preview = preview.ok().unwrap();
+    assert_eq!(questions, "");
+    assert_eq!(preview.exit_code, ExitCode::Ok);
+    assert_eq!(
+        preview.text.unwrap(),
+        "Cursor           would connect\n\nNothing was changed (--dry-run)."
+    );
+    assert_eq!(
+        serde_json::to_string(&preview.data).unwrap(),
+        r#"{"action":"setup","apps":[{"detail":"","id":"cursor","name":"Cursor","outcome":"would-connect"}],"dry_run":true,"ibis_on_path":true,"server":{"args":["mcp","--app-libraries"],"command":"ibis"}}"#
+    );
+}
+
 const DESKTOP: &str = "{\n    \"mcpServers\": {\n        \"other\": {\"command\": \"invented\", \"args\": []}\n    },\n    \"theme\": \"dark\"\n}\n";
 
 fn desktop(home: &Home) -> PathBuf {
@@ -51,119 +100,6 @@ fn desktop(home: &Home) -> PathBuf {
         .join("claude_desktop_config.json");
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     path
-}
-
-#[test]
-fn setup_merges_the_entry_and_keeps_every_other_setting_in_order() {
-    let home = home("merge");
-    let path = desktop(&home);
-    fs::write(&path, DESKTOP).unwrap();
-    let (result, _) = run(&home, &["setup", "--yes"], "", false);
-    let result = result.ok().unwrap();
-    assert_eq!(outcome(&result, "claude-desktop"), "connected");
-    let written = fs::read_to_string(&path).unwrap();
-    assert_eq!(
-        written,
-        "{\n    \"mcpServers\": {\n        \"other\": {\n            \"command\": \"invented\",\n            \"args\": []\n        },\n        \"ibis\": {\n            \"command\": \"ibis\",\n            \"args\": [\n                \"mcp\",\n                \"--app-libraries\"\n            ]\n        }\n    },\n    \"theme\": \"dark\"\n}\n"
-    );
-    assert_eq!(
-        fs::read_to_string(path.with_file_name("claude_desktop_config.json.ibis-backup-1")).unwrap(),
-        DESKTOP
-    );
-    // A second run finds it connected and writes nothing.
-    let (again, _) = run(&home, &["setup", "--yes"], "", false);
-    assert_eq!(outcome(&again.ok().unwrap(), "claude-desktop"), "connected");
-    assert_eq!(fs::read_to_string(&path).unwrap(), written);
-    // Removal takes out only Ibis's entry.
-    let (removed, _) = run(&home, &["remove", "--yes"], "", false);
-    assert_eq!(outcome(&removed.ok().unwrap(), "claude-desktop"), "removed");
-    let left: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
-    assert_eq!(
-        left,
-        json!({"mcpServers": {"other": {"command": "invented", "args": []}}, "theme": "dark"})
-    );
-}
-
-#[test]
-fn backups_keep_each_original_in_a_new_private_file() {
-    let home = home("backup-history");
-    let path = desktop(&home);
-    let original = json!({"mcpServers":{"ibis":{"command":"ibis","args":["mcp","--file","invented.bib"]}}}).to_string();
-    fs::write(&path, &original).unwrap();
-    let (setup, _) = run(
-        &home,
-        &["setup", "--yes", "--replace", "--client", "claude-desktop"],
-        "",
-        false,
-    );
-    assert_eq!(outcome(&setup.ok().unwrap(), "claude-desktop"), "replaced");
-    let connected = fs::read_to_string(&path).unwrap();
-    let (remove, _) = run(&home, &["remove", "--yes", "--client", "claude-desktop"], "", false);
-    assert_eq!(outcome(&remove.ok().unwrap(), "claude-desktop"), "removed");
-    for (number, expected) in [(1, original), (2, connected)] {
-        let backup = path.with_file_name(format!("claude_desktop_config.json.ibis-backup-{number}"));
-        assert_eq!(fs::read_to_string(&backup).unwrap(), expected);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            assert_eq!(fs::metadata(backup).unwrap().permissions().mode() & 0o777, 0o600);
-        }
-    }
-}
-
-#[cfg(unix)]
-fn change_during_staging(link: bool) {
-    let home = home(if link { "staging-link" } else { "staging-save" });
-    let path = desktop(&home);
-    // Give the other writer time to observe staging, without a production hook
-    // or file watcher. The replacement is ready before either writer starts.
-    let original = json!({"mcpServers":{},"padding":"x".repeat(8 * 1024 * 1024)}).to_string();
-    fs::write(&path, original).unwrap();
-    let saved = home.root.join("saved.json");
-    let changed = "{\"mcpServers\":{},\"theme\":\"new choice\"}\n";
-    fs::write(&saved, changed).unwrap();
-    let temporary = path.with_file_name("claude_desktop_config.json.tmp-1");
-    let result = std::thread::scope(|scope| {
-        let app = scope.spawn(|| {
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
-            while !temporary.exists() {
-                assert!(std::time::Instant::now() < deadline, "staging was never observed");
-                std::thread::yield_now();
-            }
-            if link {
-                fs::remove_file(&path).unwrap();
-                std::os::unix::fs::symlink(&saved, &path).unwrap();
-            } else {
-                fs::rename(&saved, &path).unwrap();
-            }
-        });
-        let result = edit_json(&path, "mcpServers", Some(entry(false, COMMAND)));
-        app.join().unwrap();
-        result
-    });
-    assert!(result.is_err(), "a concurrent change must abort: {result:?}");
-    assert_eq!(fs::read_to_string(&path).unwrap(), changed);
-    assert_eq!(fs::symlink_metadata(&path).unwrap().is_symlink(), link);
-    assert!(
-        fs::read_dir(path.parent().unwrap()).unwrap().all(|entry| {
-            let name = entry.unwrap().file_name();
-            let name = name.to_string_lossy();
-            !name.contains(".ibis-backup") && !name.contains(".tmp-")
-        }),
-        "an aborted edit leaves neither staging nor its backup"
-    );
-}
-
-#[cfg(unix)]
-#[test]
-fn an_app_save_during_staging_wins() {
-    change_during_staging(false);
-}
-
-#[cfg(unix)]
-#[test]
-fn a_link_swap_during_staging_is_refused() {
-    change_during_staging(true);
 }
 
 #[test]
@@ -199,7 +135,8 @@ fn a_different_ibis_entry_is_shown_and_replaced_only_on_a_yes() {
 
 #[test]
 fn without_a_person_to_ask_nothing_changes_unless_told_to() {
-    let home = home("unattended");
+    let mut home = home("unattended");
+    known_command(&mut home);
     let path = desktop(&home);
     fs::write(&path, DESKTOP).unwrap();
     let (result, _) = run(&home, &["setup"], "", false);
@@ -212,38 +149,15 @@ fn without_a_person_to_ask_nothing_changes_unless_told_to() {
 }
 
 #[test]
-fn files_that_are_not_plain_json_or_are_links_are_left_alone() {
-    let home = home("blocked");
-    let path = home.root.join(".gemini").join("settings.json");
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    let commented = "{\n  // invented comment\n  \"mcpServers\": {}\n}\n";
-    fs::write(&path, commented).unwrap();
-    let (result, _) = run(&home, &["setup", "--yes"], "", false);
-    let result = result.ok().unwrap();
-    assert_eq!(outcome(&result, "gemini"), "blocked");
-    assert!(result.text.unwrap().contains("https://ibiscite.org/setup"));
-    assert_eq!(fs::read_to_string(&path).unwrap(), commented);
-    #[cfg(unix)]
-    {
-        let target = home.root.join("dotfiles.json");
-        fs::write(&target, "{}").unwrap();
-        fs::remove_file(&path).unwrap();
-        std::os::unix::fs::symlink(&target, &path).unwrap();
-        let (result, _) = run(&home, &["setup", "--yes"], "", false);
-        assert_eq!(outcome(&result.ok().unwrap(), "gemini"), "blocked");
-        assert_eq!(fs::read_to_string(&target).unwrap(), "{}");
-    }
-}
-
-#[test]
 fn only_apps_found_here_are_set_up_and_a_missing_file_is_created() {
-    let home = home("found");
+    let mut home = home("found");
     assert!(
         run(&home, &["status"], "", false).0.ok().unwrap().data["apps"]
             .as_array()
             .unwrap()
             .is_empty()
     );
+    let command = known_command(&mut home);
     fs::create_dir_all(home.root.join(".lmstudio")).unwrap();
     let (result, _) = run(&home, &["setup", "--yes"], "", false);
     let result = result.ok().unwrap();
@@ -253,7 +167,7 @@ fn only_apps_found_here_are_set_up_and_a_missing_file_is_created() {
         serde_json::from_str(&fs::read_to_string(home.root.join(".lmstudio/mcp.json")).unwrap()).unwrap();
     assert_eq!(
         value,
-        json!({"mcpServers": {"ibis": {"command": "ibis", "args": ["mcp", "--app-libraries"]}}})
+        json!({"mcpServers": {"ibis": {"command": command, "args": ["mcp", "--app-libraries"]}}})
     );
     // VS Code's entries name their transport.
     fs::create_dir_all(home.config.clone().unwrap().join("Code").join("User")).unwrap();
@@ -324,7 +238,7 @@ fn a_failed_program_add_prints_the_removed_entry_in_full() {
             fs::create_dir_all(settings.parent().unwrap()).unwrap();
             fs::write(
                 &settings,
-                toml::to_string(&json!({"mcp_servers":{"ibis":old}})).unwrap(),
+                "[mcp_servers.ibis]\ncommand = \"ibis\"\nargs = [\"mcp\", \"--file\", \"invented.bib\"]\n[mcp_servers.ibis.env]\nINVENTED = \"keep this\"\n",
             )
             .unwrap();
             settings
@@ -338,7 +252,7 @@ fn a_failed_program_add_prints_the_removed_entry_in_full() {
         fs::write(
             &script,
             format!(
-                "#!/bin/sh\necho \"$@\" >> '{}'\ncase \"$2\" in\nremove) rm '{}' ;;\nadd) exit 1 ;;\nesac\n",
+                "#!/bin/sh\necho \"$@\" >> '{}'\ncase \"$2\" in\nremove) /bin/rm '{}' ;;\nadd) exit 1 ;;\nesac\n",
                 log.display(),
                 settings.display()
             ),
@@ -359,71 +273,11 @@ fn a_failed_program_add_prints_the_removed_entry_in_full() {
     }
 }
 
-#[test]
-fn indentation_follows_the_file_and_strings_are_untouched() {
-    assert_eq!(
-        indent(r#"{"a":[],"b":{"c":"x, {y}: [z]"}}"#, "\t"),
-        "{\n\t\"a\": [],\n\t\"b\": {\n\t\t\"c\": \"x, {y}: [z]\"\n\t}\n}"
-    );
-    assert_eq!(indent_unit("{\n    \"a\": 1\n}"), "    ");
-    assert_eq!(indent_unit("{}"), "  ");
-}
-
-/// The plugin, the setup guide and this command give every app the same
-/// server, so no one ends up with it twice under different settings.
-#[test]
-fn the_plugin_the_guide_and_setup_write_one_server_entry() {
-    let wanted = json!({"command": COMMAND, "args": ARGS});
-    for text in [
-        include_str!("../../../plugins/ibis/.mcp.json"),
-        include_str!("../../../plugins/ibis/mcp.json"),
-    ] {
-        let value: Value = serde_json::from_str(text).unwrap();
-        let mut server = value["mcpServers"]["ibis"].clone();
-        if let Some(server) = server.as_object_mut() {
-            server.remove("type");
-        }
-        assert_eq!(server, wanted, "{text}");
-    }
-    let guide = include_str!("../../../docs/agents.md");
-    assert!(guide.contains(r#"{"mcpServers":{"ibis":{"command":"ibis","args":["mcp","--app-libraries"]}}}"#));
-    assert!(guide.contains("claude mcp add --scope user --transport stdio ibis -- ibis mcp --app-libraries"));
-    assert!(guide.contains("codex mcp add ibis -- ibis mcp --app-libraries"));
-    let Store::Program { add, .. } = CLIENTS[0].store else {
-        panic!("Claude Code runs its own command")
-    };
-    assert_eq!(
-        add.join(" "),
-        "mcp add --scope user --transport stdio ibis -- ibis mcp --app-libraries"
-    );
-    assert_eq!(serde_json::from_str::<Value>(&entry(false, COMMAND)).unwrap(), wanted);
-}
-
-#[test]
-fn apps_opened_from_the_dock_get_the_full_path_and_line_endings_are_kept() {
-    let mut home = home("absolute");
-    let command = known_command(&mut home);
-    let path = desktop(&home);
-    fs::write(&path, "{\r\n  \"mcpServers\": { },\r\n  \"theme\": \"dark\"\r\n}\r\n").unwrap();
-    let (result, _) = run(&home, &["setup", "--yes", "--client", "claude-desktop"], "", false);
-    assert_eq!(outcome(&result.ok().unwrap(), "claude-desktop"), "connected");
-    let written = fs::read_to_string(&path).unwrap();
-    assert!(!written.replace("\r\n", "").contains('\n'), "{written:?}");
-    let value: Value = serde_json::from_str(&written).unwrap();
-    assert_eq!(value["mcpServers"]["ibis"]["command"], command.to_str().unwrap());
-    // A usable absolute ibis command is connected and is what removal takes out.
-    let (status, _) = run(&home, &["status", "--client", "claude-desktop"], "", false);
-    assert_eq!(outcome(&status.ok().unwrap(), "claude-desktop"), "connected");
-    run(&home, &["remove", "--yes", "--client", "claude-desktop"], "", false)
-        .0
-        .ok()
-        .unwrap();
-    let value: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
-    assert_eq!(value["mcpServers"], json!({}));
-}
-
 fn known_command(home: &mut Home) -> PathBuf {
-    let command = home.root.join("bin").join("ibis");
+    let command = home
+        .root
+        .join("bin")
+        .join(format!("ibis{}", std::env::consts::EXE_SUFFIX));
     fs::write(&command, "invented command").unwrap();
     #[cfg(unix)]
     {
@@ -458,11 +312,11 @@ fn stale_commands(home: &mut Home) -> Vec<String> {
 }
 
 fn absolute_settings(home: &Home, id: &str, command: &str) -> PathBuf {
-    let client = CLIENTS.iter().find(|client| client.id == id).unwrap();
-    let Store::Json { file, .. } = client.store else {
-        panic!("JSON client")
+    let path = match id {
+        "claude-desktop" => home.config.as_ref().unwrap().join("Claude/claude_desktop_config.json"),
+        "lm-studio" => home.root.join(".lmstudio/mcp.json"),
+        _ => panic!("absolute-path fixture"),
     };
-    let path = file(home).unwrap();
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(
         &path,
@@ -486,11 +340,13 @@ fn status_reports_an_unusable_absolute_client_command_as_stale() {
             assert!(result.text.unwrap().contains("ibis agents setup"));
             assert_eq!(fs::read(path).unwrap(), before);
         }
-        // Without a known command there is no better path to write.
+        // Without a known command, repair waits for the command installation.
         home.ibis = None;
         absolute_settings(&home, id, COMMAND);
         let (result, _) = run(&home, &["status", "--client", id], "", false);
-        assert_eq!(outcome(&result.ok().unwrap(), id), "connected");
+        let result = result.ok().unwrap();
+        assert_eq!(outcome(&result, id), "blocked");
+        assert_eq!(result.data["apps"][0]["detail"], "Install the ibis command first");
     }
 }
 
@@ -509,21 +365,10 @@ fn setup_repairs_a_stale_command_without_the_different_entry_question() {
             assert!(detail.contains(&format!("- \"ibis\": {old}")), "{detail}");
             assert!(detail.contains("+ \"ibis\":"), "{detail}");
             let written: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
-            assert_eq!(written["mcpServers"]["ibis"]["command"], home.command(true));
-        }
-    }
-}
-
-#[test]
-fn removal_takes_out_a_stale_entry_that_setup_owns() {
-    for id in ["claude-desktop", "lm-studio"] {
-        let mut home = home(&format!("stale-remove-{id}"));
-        for command in stale_commands(&mut home) {
-            let path = absolute_settings(&home, id, &command);
-            let (result, _) = run(&home, &["remove", "--yes", "--client", id], "", false);
-            assert_eq!(outcome(&result.ok().unwrap(), id), "removed");
-            let written: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
-            assert_eq!(written["mcpServers"], json!({}));
+            assert_eq!(
+                written["mcpServers"]["ibis"]["command"],
+                home.ibis.as_ref().unwrap().to_string_lossy().into_owned()
+            );
         }
     }
 }
@@ -574,78 +419,4 @@ fn a_stale_entry_changed_after_the_plan_is_left_alone() {
         assert!(result.text.unwrap().contains(CHANGED));
         assert_eq!(fs::read_to_string(path).unwrap(), saved);
     }
-}
-
-#[test]
-fn an_entry_with_settings_of_its_own_is_never_removed() {
-    let home = home("own-settings");
-    let path = desktop(&home);
-    let text = r#"{"mcpServers":{"ibis":{"command":"ibis","args":["mcp","--app-libraries"],"env":{"INVENTED":"1"}}}}"#;
-    fs::write(&path, text).unwrap();
-    let (result, _) = run(&home, &["remove", "--yes", "--client", "claude-desktop"], "", false);
-    assert_eq!(outcome(&result.ok().unwrap(), "claude-desktop"), "kept");
-    assert_eq!(fs::read_to_string(&path).unwrap(), text);
-}
-
-#[cfg(unix)]
-#[test]
-fn backup_names_taken_by_links_or_public_files_are_kept_and_skipped() {
-    use std::os::unix::fs::PermissionsExt;
-    let home = home("backup-link");
-    let path = desktop(&home);
-    fs::write(&path, DESKTOP).unwrap();
-    let elsewhere = home.root.join("elsewhere.txt");
-    fs::write(&elsewhere, "invented").unwrap();
-    let link = path.with_file_name("claude_desktop_config.json.ibis-backup-1");
-    std::os::unix::fs::symlink(&elsewhere, &link).unwrap();
-    let public = path.with_file_name("claude_desktop_config.json.ibis-backup-2");
-    fs::write(&public, "older backup").unwrap();
-    fs::set_permissions(&public, fs::Permissions::from_mode(0o644)).unwrap();
-    let (result, _) = run(&home, &["setup", "--yes", "--client", "claude-desktop"], "", false);
-    assert_eq!(outcome(&result.ok().unwrap(), "claude-desktop"), "connected");
-    assert_eq!(fs::read_to_string(&elsewhere).unwrap(), "invented");
-    assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
-    assert_eq!(fs::read_to_string(&public).unwrap(), "older backup");
-    assert_eq!(fs::metadata(public).unwrap().permissions().mode() & 0o777, 0o644);
-    let backup = path.with_file_name("claude_desktop_config.json.ibis-backup-3");
-    assert!(!fs::symlink_metadata(&backup).unwrap().file_type().is_symlink());
-    assert_eq!(fs::metadata(&backup).unwrap().permissions().mode() & 0o777, 0o600);
-    assert_eq!(fs::read_to_string(backup).unwrap(), DESKTOP);
-}
-
-#[cfg(unix)]
-#[test]
-fn an_app_whose_settings_cannot_be_read_is_left_alone() {
-    use std::os::unix::fs::PermissionsExt;
-    let home = home("unreadable-codex");
-    let log = home.root.join("codex-args.txt");
-    let script = home.root.join("bin").join("codex");
-    fs::write(&script, format!("#!/bin/sh\necho \"$@\" >> '{}'\n", log.display())).unwrap();
-    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
-    fs::create_dir_all(home.root.join(".codex")).unwrap();
-    fs::write(home.root.join(".codex/config.toml"), "[mcp_servers.ibis\ncommand = ").unwrap();
-    let (result, _) = run(&home, &["setup", "--yes", "--client", "codex"], "", false);
-    assert_eq!(outcome(&result.ok().unwrap(), "codex"), "blocked");
-    assert!(!log.exists(), "codex was never asked to add a server");
-    // A linked dotfile is only read, so it works.
-    let real = home.root.join("dotfiles-config.toml");
-    fs::write(
-        &real,
-        "[mcp_servers.ibis]\ncommand = \"ibis\"\nargs = [\"mcp\", \"--app-libraries\"]\n",
-    )
-    .unwrap();
-    fs::remove_file(home.root.join(".codex/config.toml")).unwrap();
-    std::os::unix::fs::symlink(&real, home.root.join(".codex/config.toml")).unwrap();
-    let (status, _) = run(&home, &["status", "--client", "codex"], "", false);
-    assert_eq!(outcome(&status.ok().unwrap(), "codex"), "connected");
-}
-
-#[test]
-fn a_command_on_path_must_be_an_absolute_executable() {
-    let mut home = home("path");
-    fs::write(home.root.join("bin").join("claude"), "not a program").unwrap();
-    home.path.push(PathBuf::from("relative-bin"));
-    #[cfg(unix)]
-    assert!(!home.on_path("claude"));
-    assert!(home.find("missing").is_none());
 }

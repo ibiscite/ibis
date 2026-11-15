@@ -3,6 +3,7 @@ import { filterPalette } from "../ui/Palette";
 import { Details } from "../ui/Details";
 import { useSettingUndo } from "../ui/useSettingUndo";
 import { useRowReveal } from "../ui/useRowReveal";
+import { AiApps } from "./AiApps";
 import { CliCommandRow } from "./CliCommand";
 import { StatusMark } from "../ui/StatusMark";
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
@@ -47,7 +48,7 @@ const LOGIN_PROBLEMS = {
 } as const satisfies Record<LoginItemProblem, MessageId>;
 
 /** A page asked for by name; "paste" is General, scrolled to pasting. */
-const PAGE_TILES: Record<Page, ReactNode> = { general: <PageIcon name="general" />, look: <PageIcon name="look" />, citations: <PageIcon name="citations" />, shortcuts: <PageIcon name="shortcuts" />, about: <PageIcon name="about" /> };
+const PAGE_TILES: Record<Page, ReactNode> = { general: <PageIcon name="general" />, look: <PageIcon name="look" />, citations: <PageIcon name="citations" />, "ai-apps": <PageIcon name="app-window" />, shortcuts: <PageIcon name="shortcuts" />, about: <PageIcon name="about" /> };
 
 export function pageOf(name: string | null): { page: Page; focus: "paste" | null } {
   if (name === "paste") return { page: "general", focus: "paste" };
@@ -67,6 +68,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const platform = currentPlatform();
   const start = pageOf(initialPage);
   const [page, setPage] = useState<Page>(start.page);
+  const [agentRefresh, setAgentRefresh] = useState(0);
   const [focus, setFocus] = useState<"top" | "paste" | null>(start.focus ?? "top");
   const pageRef = useRef<HTMLElement>(null);
   useScrollEdges(pageRef);
@@ -504,6 +506,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     && (row.id !== "open-settings-file" || Boolean(api.openSettingsFile))
     && (row.id !== "paste-label" || permission?.pastes === true)
     && ((row.id !== "automatic" && row.id !== "check-updates") || updates !== null || readProblems.has("automatic"))
+    && (row.id !== "agent-apps" || Boolean(api.agentApps && api.connectAgentApp && api.disconnectAgentApp))
     && (row.id !== "cli-command" || Boolean(api.cliStatus && api.setCliInstalled && api.copyCliProfile))
     && (row.id !== "editor-endpoint" || Boolean(api.editorEndpoint && api.setEditorEndpoint && api.copyEditorEndpoint)));
   const matchedIds = new Set(query.trim() ? filterPalette([{ id: "settings", items: availableRows.map((row) => ({ id: row.id,
@@ -578,9 +581,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
             {preferences?.paste && permission?.needed && permission.granted && !guided && <Row id="paste-allowed" label={text("general-paste-allowed", { list: permission.list })} description={text("general-paste-allowed-note")}><StatusMark kind="ok" /></Row>}
             {preferences?.paste && permission?.needed && (!permission.granted || guided) && <PasteGuide name={name} permission={permission} onOpen={() => { setGuided(true); void api.openPastePermission().then(() => readProblem("paste-label", false)).catch(() => readProblem("paste-label", true)); }} onDrag={api.dragPasteApp} />}
           </> })}
-          {/* Working with Ibis's files and from a terminal: one titled group. */}
-          {(api.cliStatus && api.setCliInstalled && api.copyCliProfile || formatSettings.openSettingsFile) && <Section id="advanced" title={text("settings-advanced-title")}><Group>
-            {api.cliStatus && api.setCliInstalled && api.copyCliProfile && <CliCommandRow api={{ cliStatus: api.cliStatus, setCliInstalled: api.setCliInstalled, copyCliProfile: api.copyCliProfile }} highlighted={highlighted === "cli-command"} />}
+          {formatSettings.openSettingsFile && <Section id="advanced" title={text("settings-advanced-title")}><Group>
             <SettingsFileRow settings={formatSettings} highlighted={highlighted} />
           </Group></Section>}
           <Details label={text("settings-details")} reveal={revealTarget}><BackupRows api={api} /></Details>
@@ -588,6 +589,12 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         </>}
         {page === "look" && preferences && renderRows("look")}
         {page === "citations" && <>{renderRows("citations")}<FormatSettings settings={formatSettings} /></>}
+        {page === "ai-apps" && <>
+          {api.cliStatus && api.setCliInstalled && api.copyCliProfile && <Section id="command-line" title={text("ai-apps-command-line")}><Group>
+            <CliCommandRow api={{ cliStatus: api.cliStatus, setCliInstalled: api.setCliInstalled, copyCliProfile: api.copyCliProfile }} highlighted={highlighted === "cli-command"} onChanged={() => setAgentRefresh((revision) => revision + 1)} />
+          </Group></Section>}
+          {api.agentApps && api.connectAgentApp && api.disconnectAgentApp && <AiApps api={{ agentApps: api.agentApps, connectAgentApp: api.connectAgentApp, disconnectAgentApp: api.disconnectAgentApp }} highlighted={highlighted} refresh={agentRefresh} />}
+        </>}
         {page === "shortcuts" && <ShortcutsPage opening={shortcutSetting} enterPastes={enterPastes} reveal={revealTarget} highlighted={highlighted} />}
         {page === "about" && (
           <>

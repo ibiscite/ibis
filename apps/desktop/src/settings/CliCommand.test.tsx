@@ -6,9 +6,9 @@ import { CliCommandRow } from "./CliCommand";
 afterEach(cleanup);
 const missing: CommandStatus = { state: "not-installed", version: null, used_path: null, profile_line: null, removable: false, installable: true };
 const matching: CommandStatus = { ...missing, state: "matching", version: "1.2.3", used_path: "/invented/.local/bin/ibis", removable: true, installable: false };
-function row(status: CommandStatus, extra = {}) {
+function row(status: CommandStatus, extra = {}, onChanged?: () => void) {
   const api = { cliStatus: vi.fn(async () => status), setCliInstalled: vi.fn(async (on: boolean) => on ? matching : missing), copyCliProfile: vi.fn(async () => {}), ...extra };
-  const view = render(<CliCommandRow api={api} highlighted={false} />);
+  const view = render(<CliCommandRow api={api} highlighted={false} onChanged={onChanged} />);
   return { api, ...view };
 }
 
@@ -20,6 +20,26 @@ test.each([
 ] as const)("Settings shows command state $state", async (status, label) => {
   row(status as CommandStatus);
   expect(await screen.findByText(label)).toBeTruthy();
+});
+
+test("only a successful command change on the current page notifies its owner", async () => {
+  const onChanged = vi.fn();
+  const first = row(missing, { setCliInstalled: vi.fn().mockRejectedValueOnce(new Error("denied")).mockResolvedValueOnce(matching) }, onChanged);
+  const install = await screen.findByRole("button", { name: "Install the ibis command" });
+  expect(onChanged).not.toHaveBeenCalled();
+  fireEvent.click(install);
+  await screen.findByRole("alert");
+  expect(onChanged).not.toHaveBeenCalled();
+  fireEvent.click(install);
+  await screen.findByText("ibis 1.2.3 — matches this app");
+  expect(onChanged).toHaveBeenCalledOnce();
+  first.unmount();
+  let finish!: (status: CommandStatus) => void;
+  const second = row(missing, { setCliInstalled: vi.fn(() => new Promise<CommandStatus>((resolve) => { finish = resolve; })) }, onChanged);
+  fireEvent.click(await screen.findByRole("button", { name: "Install the ibis command" }));
+  second.unmount();
+  await act(async () => finish(matching));
+  expect(onChanged).toHaveBeenCalledOnce();
 });
 
 test("install and remove update the row, and a fresh visit reads the saved result", async () => {

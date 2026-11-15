@@ -32,6 +32,6 @@ export function ChoiceIcon({ name }: { name: ChoiceIconName }) {
   return <Icon name={name} size="tile" className="type-icon" />;
 }
 
-export function PageIcon({ name }: { name: "general" | "look" | "citations" | "shortcuts" | "about" }) {
+export function PageIcon({ name }: { name: "app-window" | "general" | "look" | "citations" | "shortcuts" | "about" }) {
   return <Icon name={name} />;
 }

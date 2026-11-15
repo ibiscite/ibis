@@ -33,6 +33,89 @@ fn fixture_for(package: &str) -> (TempDir, CommandInstall) {
 }
 
 #[test]
+fn agent_temporary_bundles_need_a_durable_command() {
+    for location in [
+        ".mount_Ibis/usr/bin/ibis",
+        "AppTranslocation/invented/Ibis.app/Contents/MacOS/ibis",
+    ] {
+        let (dir, mut install) = fixture();
+        let temporary = dir.path().join(location);
+        fs::create_dir_all(temporary.parent().unwrap()).unwrap();
+        fs::rename(&install.bundled, &temporary).unwrap();
+        install.bundled = temporary;
+        assert!(
+            super::agent_environment(install.clone(), dir.path().join("config"), None)
+                .unwrap()
+                .ibis
+                .is_none()
+        );
+        let durable = install.home.join(".local/bin/ibis");
+        fs::create_dir_all(durable.parent().unwrap()).unwrap();
+        fs::write(&durable, "invented durable CLI").unwrap();
+        fs::set_permissions(&durable, fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(
+            super::agent_environment(install, dir.path().join("config"), None)
+                .unwrap()
+                .ibis,
+            Some(durable)
+        );
+    }
+}
+
+#[test]
+fn agent_full_path_is_the_cli_in_each_package_never_the_desktop_executable() {
+    for package in ["macos", "deb", "rpm", "appimage"] {
+        let (dir, mut install) = fixture_for(package);
+        let desktop = dir.path().join("Ibis.app/Contents/MacOS/ibis-desktop");
+        fs::create_dir_all(desktop.parent().unwrap()).unwrap();
+        fs::write(&desktop, b"invented desktop").unwrap();
+        install.path.clear();
+        assert_eq!(
+            super::agent_environment(install.clone(), dir.path().join("config"), None)
+                .unwrap()
+                .ibis,
+            (package != "appimage").then(|| install.bundled.clone())
+        );
+        assert_ne!(
+            super::agent_environment(install.clone(), dir.path().join("config"), None)
+                .unwrap()
+                .ibis,
+            Some(desktop)
+        );
+        install.install().unwrap();
+        assert_eq!(
+            super::agent_environment(install.clone(), dir.path().join("config"), None)
+                .unwrap()
+                .ibis
+                .unwrap(),
+            install.destination()
+        );
+        if package == "appimage" {
+            fs::set_permissions(install.destination(), fs::Permissions::from_mode(0o600)).unwrap();
+            assert_eq!(
+                super::agent_environment(install.clone(), dir.path().join("config"), None)
+                    .unwrap()
+                    .ibis,
+                None
+            );
+        }
+        install.remove().unwrap();
+        let foreign = dir.path().join("other-bin");
+        fs::create_dir_all(&foreign).unwrap();
+        fs::write(foreign.join("ibis"), b"invented command").unwrap();
+        fs::set_permissions(foreign.join("ibis"), fs::Permissions::from_mode(0o755)).unwrap();
+        install.path = vec![foreign.clone()];
+        assert_eq!(
+            super::agent_environment(install.clone(), dir.path().join("config"), None)
+                .unwrap()
+                .ibis
+                .unwrap(),
+            foreign.join("ibis")
+        );
+    }
+}
+
+#[test]
 fn command_install_and_remove_leave_no_command_or_receipt() {
     for package in ["macos", "deb", "rpm"] {
         let (_dir, install) = fixture_for(package);

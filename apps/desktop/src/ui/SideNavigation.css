@@ -16,6 +16,7 @@
 .ui-side-navigation-tile[data-page="general"] { --page: var(--page-general); }
 .ui-side-navigation-tile[data-page="look"] { --page: var(--page-look); }
 .ui-side-navigation-tile[data-page="citations"] { --page: var(--page-citations); }
+.ui-side-navigation-tile[data-page="ai-apps"] { --page: var(--page-ai-apps); }
 .ui-side-navigation-tile[data-page="shortcuts"] { --page: var(--page-shortcuts); }
 .ui-side-navigation-tile[data-page="about"] { --page: var(--page-about); }
 @media (hover: hover) {

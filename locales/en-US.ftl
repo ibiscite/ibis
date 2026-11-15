@@ -1734,3 +1734,26 @@ cli-greeting = Ibis { $version } finds references and cites them anywhere.
 
     With the Ibis app installed you can leave out --file.
     Add --json to any command for scripts and agents. All commands: ibis --help
+
+# Settings and ibis agents share these app connections.
+settings-ai-apps = AI Apps
+ai-apps-command-line = Command Line
+ai-apps-description = Connect Ibis to the AI apps on this computer.
+ai-apps-words = agents MCP Claude Codex Cursor VS Code Gemini Windsurf LM Studio ChatGPT AI apps
+command-words = command line terminal shell PATH agents MCP
+ai-apps-checking = Checking AI apps…
+ai-apps-not-connected = Not connected.
+ai-apps-connected = Connected. Start a new session in the app to use Ibis.
+ai-apps-stale = The ibis command has moved or is missing.
+ai-apps-different = This app has a different Ibis connection. Review the change below.
+ai-apps-plugin = Connected through the Ibis plugin.
+ai-apps-connect = Connect
+ai-apps-disconnect = Disconnect
+ai-apps-repair = Repair
+ai-apps-replace = Replace…
+ai-apps-command-needed = The ibis command is missing. Install it in Command Line above so this app can start Ibis.
+ai-apps-failed = Could not change the AI app connection. Check the app’s settings and folder permissions, then try again.
+ai-apps-kept = Other servers and settings are kept. A backup is kept beside each changed file, the same as ibis agents in a terminal.
+app-failure-agent-apps = { ai-apps-failed }
+app-failure-connect-agent-app = { ai-apps-failed }
+app-failure-disconnect-agent-app = { ai-apps-failed }

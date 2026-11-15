@@ -1,4 +1,5 @@
 //! Typed engine methods shared by the command line and desktop (ADR 0028).
+pub mod agent_apps;
 pub mod discovery;
 mod method;
 pub use method::Method;

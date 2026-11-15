@@ -1,4 +1,4 @@
-import type { DelightFact, PickerPreferences, ShortcutStatus, WindowSize } from "../bindings";
+import type { AgentApp, CommandStatus, DelightFact, PickerPreferences, ShortcutStatus, WindowSize } from "../bindings";
 import { DEFAULT_PICKER_SHORTCUT } from "../keys";
 import type { SettingsApi } from "./api";
 
@@ -16,6 +16,15 @@ export function demoApi(): SettingsApi {
   const listeners = new Set<(revision: number) => void>();
   const submitted = new Map<number, Partial<PickerPreferences>>();
   const noop = async () => undefined as never;
+  let command: CommandStatus = { state: "not-installed", version: null, used_path: null, profile_line: null, removable: false, installable: true };
+  const app = (id: string, name: string, state: AgentApp["state"], extra: Partial<AgentApp> = {}): AgentApp =>
+    ({ id, name, state, found: true, detail: "", diff: null, needs_command: false, ibis_on_path: true, revision: id as never, ...extra });
+  let agents: AgentApp[] = [
+    app("claude-desktop", "Claude Desktop", "not-connected", { needs_command: true }),
+    app("claude-code", "Claude Code", "connected"),
+    app("cursor", "Cursor", "different", { diff: '- "ibis": {"command":"ibis","args":["mcp","--file","invented.bib"]}\n+ "ibis": {"command":"ibis","args":["mcp","--app-libraries"]}' }),
+    app("chatgpt", "ChatGPT desktop", "by-hand", { detail: "In ChatGPT desktop: Settings › MCP servers › Add server › STDIO, command ibis, arguments mcp --app-libraries." }),
+  ];
   const subscribe = async () => () => undefined;
   return {
     delightView: async (_now, _presentation, _revision, click) => {
@@ -59,5 +68,11 @@ export function demoApi(): SettingsApi {
     onShortcutStatus: subscribe, onPage: subscribe, onUpdateChecks: async (changed) => { updateListeners.add(changed); return () => { updateListeners.delete(changed); }; }, onCloseRequested: subscribe,
     onPreferencesChanged: async (changed) => { listeners.add(changed); return () => { listeners.delete(changed); }; },
     onSettingsChanged: async (changed) => { listeners.add(changed); return () => { listeners.delete(changed); }; },
+    agentApps: async () => agents,
+    connectAgentApp: async (id) => { agents = agents.map((app) => app.id === id ? { ...app, state: "connected", diff: null, revision: `${app.revision}+` as never } : app); return agents; },
+    disconnectAgentApp: async (id) => { agents = agents.map((app) => app.id === id ? { ...app, state: "not-connected", revision: `${app.revision}-` as never } : app); return agents; },
+    cliStatus: async () => command,
+    setCliInstalled: async (installed) => (command = { ...command, state: installed ? "matching" : "not-installed", version: installed ? "0.2.1" : null, installable: !installed, removable: installed }),
+    copyCliProfile: noop,
   };
 }
