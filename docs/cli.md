@@ -599,7 +599,9 @@ the id; run `outline` again after a replacement or reindex. It holds no path
 or file location. Links have no text, and EPUB and web snapshots have text only from Zotero's index. Zotero shows
 Reindex Item for a file with no text.
 
-AI apps need a separate choice for each library. In the app's settings,
+AI apps need a separate choice for each library, off by default. In
+**Settings › AI Apps › Attachment text**, turn on **Let AI apps read attachment
+text** for the library. The app and CLI share this device-only setting:
 `"attachment_text": ["lib_example_library"]` names complete opaque library
 ids from `ibis libraries --json`, including the Zotero profile's identity.
 Choosing one profile's personal library or group never opens another profile's.

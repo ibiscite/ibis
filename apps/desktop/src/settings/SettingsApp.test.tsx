@@ -21,6 +21,23 @@ import { deferred } from "../testing/deferred";
 
 afterEach(() => { vi.useRealTimers(); localStorage.clear(); });
 
+test("AI Apps keeps Command Line and connections before Attachment text", async () => {
+  const { api } = fakeApi();
+  const app: AgentApp = { id: "cursor", name: "Cursor", found: true, revision: "invented-revision", state: "not-connected", detail: "", diff: null, needs_command: true, ibis_on_path: true };
+  api.cliStatus = async () => ({ state: "not-installed", version: null, used_path: null, profile_line: null, removable: false, installable: true });
+  api.setCliInstalled = vi.fn();
+  api.copyCliProfile = vi.fn();
+  api.agentApps = async () => [app];
+  api.connectAgentApp = vi.fn();
+  api.disconnectAgentApp = vi.fn();
+  api.attachmentTextLibraries = async () => [{ id: "lib_invented_library", name: "Invented references", on: false }];
+  render(<SettingsApp api={api} initialPage="ai-apps" />);
+  expect(await screen.findByRole("button", { name: "Install the ibis command" })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: "Connect Cursor" })).toBeTruthy();
+  expect(await screen.findByRole("switch", { name: "Let AI apps read attachment text Invented references" })).toHaveProperty("checked", false);
+  expect(within(screen.getByRole("main")).getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["Command Line", "AI Apps", "Attachment text"]);
+});
+
 test("command changes refresh AI Apps and retire older observations", async () => {
   const { api } = fakeApi();
   const missing: CommandStatus = { state: "not-installed", version: null, used_path: null, profile_line: null, removable: false, installable: true };
@@ -210,6 +227,8 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
   /** Each choice reaches the owner when made; how it went is asked for by receipt. */
   const submitted = new Map<number, Partial<PickerPreferences>>();
   const api: TestApi = {
+    attachmentTextLibraries: async () => [],
+    setAttachmentText: async (_id, on) => on,
     pickerPreferences: async () => state.preferences,
     windowSize: vi.fn(async (): Promise<WindowSize | null> => "medium"),
     setWindowSize: vi.fn(async (): Promise<number> => ++state.windowRevision),
@@ -407,11 +426,23 @@ test("a window size that cannot be read says so and offers no choice", async () 
 });
 
 test("pages are opened by name, and the paste guide is General's pasting group", () => {
+  expect(pageOf("ai-apps")).toEqual({ page: "ai-apps", focus: null });
   expect(pageOf("paste")).toEqual({ page: "general", focus: "paste" });
   expect(pageOf("about")).toEqual({ page: "about", focus: null });
   expect(pageOf("shortcuts")).toEqual({ page: "shortcuts", focus: null });
   expect(pageOf("unknown")).toEqual({ page: "general", focus: null });
   expect(pageOf(null)).toEqual({ page: "general", focus: null });
+});
+
+test.each(["attachment", "full text", "PDF"])("search for %s opens Attachment text in AI Apps", async (query) => {
+  const { api } = fakeApi({ granted: true });
+  api.attachmentTextLibraries = async () => [{ id: "lib_invented_library", name: "Invented references", on: false }];
+  render(<SettingsApp api={api} initialPage="general" />);
+  fireEvent.change(screen.getByRole("searchbox"), { target: { value: query } });
+  fireEvent.click(await screen.findByRole("option", { name: /Let AI apps read attachment text/ }));
+  expect(await screen.findByRole("heading", { name: "AI Apps", level: 1 })).toBeTruthy();
+  const control = await screen.findByRole("switch", { name: "Let AI apps read attachment text Invented references" });
+  await waitFor(() => expect(document.activeElement).toBe(control));
 });
 
 test.each([1, 2])("Wayland portal v%s shows the desktop trigger, never a recorder or reset", async (version) => {

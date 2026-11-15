@@ -117,6 +117,7 @@ fn main() {
     };
     let builder = builder
         .manage(Mutex::new(Library::default()))
+        .manage(library::attachment_text::AttachmentText::default())
         .manage(LoadRequests::default())
         .manage(SearchRequests::default())
         .manage(tray::SearchRequest::default())

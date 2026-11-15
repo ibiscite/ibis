@@ -185,6 +185,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
   const calls: string[] = [];
   const citationKeys = new Map<string, string>();
   let lastLibrary: Partial<api.LibraryStatus> = {};
+  let attachmentText = false;
   let activityTicket = 0;
   let preferences = { output: "pandoc", density: "comfortable", larger_text: false, paste: true, menu_bar: true } as api.PickerPreferences;
   let revision = 0;
@@ -192,6 +193,8 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
   const submitted = new Map<number, Partial<api.PickerPreferences>>();
   receipts.clear();
   const defaults: Record<string, Handler> = {
+    attachment_text_libraries: () => [{ id: "lib_invented_test_library", name: lastLibrary.snapshot_name ?? "refs.bib", on: attachmentText }],
+    set_attachment_text: ({ id, on }) => { if (id !== "lib_invented_test_library") throw new Error("Unknown library"); attachmentText = Boolean(on); return attachmentText; },
     "plugin:window|is_visible": () => true,
     agent_apps: () => [],
     connect_agent_app: () => [],

@@ -10,6 +10,9 @@ export const settingsApi = {
   agentApps: commands.agentApps,
   connectAgentApp: commands.connectAgentApp,
   disconnectAgentApp: commands.disconnectAgentApp,
+  attachmentTextLibraries: commands.attachmentTextLibraries,
+  setAttachmentText: commands.setAttachmentText,
+  onLibraryChanged: events.onLibraryChanged,
   cliStatus: commands.cliStatus,
   setCliInstalled: commands.setCliInstalled,
   copyCliProfile: commands.copyCliProfile,
@@ -64,5 +67,5 @@ export const settingsApi = {
   onCloseRequested: (handler: () => Promise<void>): Promise<Stop> => getCurrentWindow().onCloseRequested(handler),
 };
 
-type Optional = "agentApps" | "connectAgentApp" | "disconnectAgentApp" | "cliStatus" | "setCliInstalled" | "copyCliProfile" | "delightView" | "editorEndpoint" | "setEditorEndpoint" | "copyEditorEndpoint" | "onEditorEndpoint" | "formatSettings" | "forgetAppFormat" | "openSettingsFile";
+type Optional = "attachmentTextLibraries" | "setAttachmentText" | "onLibraryChanged" | "agentApps" | "connectAgentApp" | "disconnectAgentApp" | "cliStatus" | "setCliInstalled" | "copyCliProfile" | "delightView" | "editorEndpoint" | "setEditorEndpoint" | "copyEditorEndpoint" | "onEditorEndpoint" | "formatSettings" | "forgetAppFormat" | "openSettingsFile";
 export type SettingsApi = Omit<typeof settingsApi, Optional> & Partial<Pick<typeof settingsApi, Optional>>;
