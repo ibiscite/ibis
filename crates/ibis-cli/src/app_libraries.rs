@@ -7,8 +7,8 @@
 
 use crate::Failure;
 use ibis_core::contract::ErrorCode;
-use ibis_core::settings::{self, LibrarySetting, PrimaryRead, SettingsError, ZoteroLibrary as Chosen};
 use ibis_engine::request::ZoteroLibrary;
+use ibis_engine::settings::{self, LibrarySetting, PrimaryRead, SettingsError, ZoteroLibrary as Chosen};
 use std::path::{Path, PathBuf};
 
 /// The apps whose settings are read, in order: the first one with a settings
@@ -45,13 +45,31 @@ pub(crate) fn load() -> Result<AppLibraries, Failure> {
     Err(missing())
 }
 
+/// The app's settings, for the format it uses for each app (decision 0042):
+/// none yet means nothing is chosen, and settings that cannot be used as they
+/// are stop the command with their reason, never falling back.
+pub(crate) fn format_settings(nightly: bool) -> Result<settings::Settings, Failure> {
+    let (app, path) = crate::settings_backup::settings_file(nightly)?;
+    let loaded = settings::load(&path);
+    match loaded.cites() {
+        Err(problem) => Err(Failure::new(
+            problem_code(problem),
+            format!(
+                "cannot read the formats chosen in {app}: {}. Open {app} to repair its settings.",
+                problem_text(problem)
+            ),
+        )),
+        Ok(settings) => Ok(settings.clone()),
+    }
+}
+
 /// `None` when this app has no settings file at all, so the next app is tried.
 fn read(app: &'static str, path: &Path) -> Result<Option<AppLibraries>, Failure> {
     let loaded = settings::load(path);
     if loaded.primary_read == PrimaryRead::Missing && loaded.problem.is_none() && !loaded.from_backup {
         return Ok(None);
     }
-    if let Some(problem) = &loaded.problem {
+    let settings = loaded.cites().map_err(|problem| {
         let reason = if loaded.from_backup {
             format!("{}, and Ibis does not use its backup here", problem_text(problem))
         } else {
@@ -63,12 +81,12 @@ fn read(app: &'static str, path: &Path) -> Result<Option<AppLibraries>, Failure>
         } else {
             format!("Open {app} to repair its settings")
         };
-        return Err(Failure::new(
+        Failure::new(
             code,
             format!("cannot read the libraries chosen in {app}: {reason}. {fix}, or {NAME_ONE}."),
-        ));
-    }
-    let (files, zotero) = match loaded.settings.library {
+        )
+    })?;
+    let (files, zotero) = match settings.portable.library.clone() {
         None => {
             return Err(Failure::new(
                 ErrorCode::Usage,
@@ -99,13 +117,15 @@ fn read(app: &'static str, path: &Path) -> Result<Option<AppLibraries>, Failure>
         app,
         files,
         zotero,
-        zotero_profile: loaded.settings.zotero_profile,
+        zotero_profile: settings.device.zotero_profile.clone(),
     }))
 }
 
 /// A fixed description: never the settings' own text, which may hold private values.
 fn problem_text(problem: &SettingsError) -> String {
     match problem {
+        SettingsError::Changed => "its settings changed while saving; try again".into(),
+        SettingsError::Busy => ibis_engine::settings_backup::settings_message(problem),
         SettingsError::Unreadable(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
             "this program is not allowed to read its settings file; allow it to, or run it outside the sandbox".into()
         }
@@ -125,10 +145,5 @@ fn problem_text(problem: &SettingsError) -> String {
 }
 
 fn problem_code(problem: &SettingsError) -> ErrorCode {
-    match problem {
-        SettingsError::NewerVersion(_) => ErrorCode::NewerFormat,
-        SettingsError::Invalid(_) | SettingsError::InvalidZoteroLibraryEntry { .. } => ErrorCode::BadInput,
-        SettingsError::Backup(inner) => problem_code(inner),
-        SettingsError::Unreadable(_) => ErrorCode::SourceUnavailable,
-    }
+    ibis_engine::settings_backup::settings_code(problem)
 }

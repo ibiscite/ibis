@@ -6,6 +6,42 @@ import { backend, resetApp, result } from "./testing/app";
 
 afterEach(resetApp);
 
+test.each(["saved", "unreadable"])("reopening focuses Search while preferences wait and ignores an older opening after a %s read", async (outcome) => {
+  const initial = { output: "apa", density: "comfortable", larger_text: false, paste: true, menu_bar: true };
+  let finishOld!: (value: unknown) => void;
+  let finishNew!: (value: unknown) => void;
+  let failNew!: (reason: unknown) => void;
+  const old = new Promise((resolve) => { finishOld = resolve; });
+  const next = new Promise((resolve, reject) => { finishNew = resolve; failNew = reject; });
+  const read = vi.fn().mockResolvedValueOnce(initial).mockReturnValueOnce(old).mockReturnValueOnce(next);
+  const calls = backend({ picker_preferences: read, search: () => [result("a", "Invented reference")] });
+  render(<App />);
+  const search = screen.getByLabelText<HTMLInputElement>("Search references");
+  fireEvent.change(search, { target: { value: "previous query" } });
+  await screen.findByText("Invented reference");
+  await act(async () => { await emit("picker:hidden"); await emit("picker:preparing"); await emit("picker:shown", 41); });
+  await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+  expect(document.activeElement).toBe(search);
+  expect([search.selectionStart, search.selectionEnd]).toEqual([0, search.value.length]);
+  fireEvent.keyDown(search, { key: "Enter" });
+  await waitFor(() => expect(calls.filter((call) => call === "hide_picker")).toHaveLength(1));
+  await act(async () => { await emit("picker:hidden"); await emit("picker:preparing"); await emit("picker:shown", 43); });
+  await waitFor(() => expect(read).toHaveBeenCalledTimes(3));
+  await act(async () => {
+    if (outcome === "saved") finishNew({ ...initial, density: "compact", larger_text: true });
+    else failNew(new Error("invented preference read failure"));
+  });
+  const density = outcome === "saved" ? "compact" : "comfortable";
+  await waitFor(() => expect(document.documentElement.dataset.density).toBe(density));
+  await act(async () => { finishOld({ ...initial, density: density === "compact" ? "comfortable" : "compact" }); });
+  expect(document.documentElement.dataset.density).toBe(density);
+  expect(document.documentElement.dataset.textSize).toBe(outcome === "saved" ? "larger" : "normal");
+  expect(calls.filter((call) => call === "copy_file_citation")).toHaveLength(1);
+  fireEvent.keyDown(search, { key: "Enter" });
+  await waitFor(() => expect(calls.filter((call) => call === "hide_picker")).toHaveLength(2));
+  expect(calls).not.toContain("save_picker_preferences");
+});
+
 test("Enter waits for a reloaded picker's native identity before copying and pasting", async () => {
   let finish!: (value: number) => void;
   const reading = new Promise<number>((resolve) => { finish = resolve; });

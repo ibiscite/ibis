@@ -67,7 +67,14 @@ fn rpc(engine: &Engine, method: Method, params: &Value) -> Value {
 /// What the command line says, after checking that RPC says the same.
 fn asked(engine: &Engine, method: Method, params: &Value) -> Value {
     let answer = command_line(engine, method, params);
-    assert_eq!(rpc(engine, method, params), answer, "{}", method.as_str());
+    let mut underlying = answer.clone();
+    // CLI advice adds a next command; the lookup's code/reason must still
+    // match RPC exactly, including for source IDs that are not citation keys.
+    if let Some(error) = underlying.get_mut("error").and_then(Value::as_object_mut) {
+        error.remove("suggestions");
+        error.remove("next");
+    }
+    assert_eq!(rpc(engine, method, params), underlying, "{}", method.as_str());
     answer
 }
 
@@ -203,6 +210,8 @@ fn a_keyless_csl_record_formats_and_key_output_refuses_it() {
     // The source `id` was never a key, so looking it up finds nothing.
     let lookup = asked(&engine, Method::Show, &json!({"item":{"by":"key","value":"item-7"}}));
     assert_eq!(lookup["error"]["code"], "not-found");
+    assert_eq!(lookup["error"]["suggestions"], json!([]));
+    assert_eq!(lookup["error"]["next"], json!(["ibis", "search", "item-7"]));
     assert!(
         tool(&engine, "show", json!({"ref":"item-7"}))
             .unwrap_err()

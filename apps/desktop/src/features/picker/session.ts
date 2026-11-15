@@ -10,16 +10,16 @@ import { closestMatchWarnings } from "./rows";
 import { initialSearch, reduceSearch, type SearchEffect, type SearchEvent, type SearchState } from "./search";
 import { initialPreview, reducePreview, type PreviewEffect, type PreviewEvent, type PreviewState } from "./preview";
 import { deriveView, searchQuery, type PickerInputs } from "./view";
-import { initialDestination, projectVersion, reduceDestination, sameOutput, type DestinationEffect, type DestinationEvent, type DestinationState, type OutputToken } from "./destination";
+import { initialDestination, writingVersion, reduceDestination, sameOutput, type DestinationEffect, type DestinationEvent, type DestinationState, type OutputToken } from "./destination";
 
 export type { OutputToken };
 type Prepared = FormattedCitation & { fileTicket?: string; fileHash?: string };
 export type SessionView = {
   appId?: string | null;
-  writingProjectId?: string | null;
+  writingId?: string | null;
   /** Native activation and checked-read identity; retires old flights, while
    * a fresh Enter may still wait for the new checked preview. */
-  projectVersion?: string | null;
+  writingVersion?: string | null;
   queryKey: string; format: OutputId; snapshotRevision: string | undefined; defaultChoice: string;
   chosen: CitationReference[]; shown: Prepared | "failed" | "stale" | null;
   searchPending: boolean; ready: boolean; saving: boolean; shouldAsk: boolean; output: OutputToken;
@@ -28,8 +28,8 @@ export type SessionView = {
 };
 type Pending = { keepOrder: boolean; choice: string | null; selection: SessionState["selected"]; queryKey: string;
   format: OutputId | null; output: OutputToken; question?: "open" | "answered" };
-type Flight = { keepOrder: boolean; id: number; session: number; presentation: number; choice: string; format: OutputId; projectVersion?: string | null; opening: number; delivery: number; warnings: string[];
-  shelf: CitationReference[]; replaces: readonly string[] | null; appId: string | null; writingProjectId?: string | null;
+type Flight = { keepOrder: boolean; id: number; session: number; presentation: number; choice: string; format: OutputId; writingVersion?: string | null; opening: number; delivery: number; warnings: string[];
+  shelf: CitationReference[]; replaces: readonly string[] | null; appId: string | null; writingId?: string | null;
   phase: "copy" | "hide" | "notice"; outcome?: Copied;
   owner: { context: number; session: number; visibility: number; output: OutputToken } };
 /** `earlier`: texts a change replaced only on the clipboard, so either may be in the document. */
@@ -90,9 +90,11 @@ export type SessionEvent =
   | { type: "literal" | "escape-search" | "cancel" | "retire" | "sample" | "change-last" | "forget-last" }
   | { type: "dismiss"; copied?: Copied }
   | { type: "highlight"; index: number; cancel?: boolean }
-  | { type: "toggle"; result?: SearchResult; locator?: Readonly<Locator> | null }
+  | { type: "toggle"; result?: SearchResult; locator?: Readonly<Locator> | null; prefix?: string }
   | { type: "undo-reference" | "expire-removal"; removal: RemovedReference }
   | { type: "remove-reference"; reference: CitationReference }
+  /** Move one reference a place along `shown`, the line's order, which a style may have sorted. */
+  | { type: "move-reference"; reference: CitationReference; shown: readonly string[]; step: -1 | 1 }
   | { type: "reference"; reference: CitationReference; change: CitationDetailsChange; selectedOnly?: boolean; initialSelection?: readonly CitationReference[] }
   | { type: "enter"; choice: string | null; output?: OutputToken }
   | { type: "question"; format?: OutputId; output?: OutputToken; answer: "answered" | "cancel" }
@@ -191,18 +193,18 @@ function advance(s: SessionState, copies: boolean): [SessionState, SessionEffect
   if (v.shown.project_refusal) return [{ ...s, copyError: v.shown.project_refusal }, []];
   if (!v.shown.fileTicket || !v.shown.fileHash) return [{ ...s, copyError: say("picker-preview-error") }, []];
   const owner = { context: s.context, session: s.session, visibility: s.visibility, output: v.output };
-  const existing = s.flights.find((f) => f.keepOrder === s.keepOrder && (f.projectVersion ?? null) === (v.projectVersion ?? null) && f.choice === key && f.format === v.format && f.replaces === s.changing && f.opening === v.output.opening && f.delivery === v.output.delivery && f.owner.visibility === s.visibility && f.owner.session === s.session && f.appId === (v.remembersLast ? v.appId ?? null : null));
+  const existing = s.flights.find((f) => f.keepOrder === s.keepOrder && (f.writingVersion ?? null) === (v.writingVersion ?? null) && f.choice === key && f.format === v.format && f.replaces === s.changing && f.opening === v.output.opening && f.delivery === v.output.delivery && f.owner.visibility === s.visibility && f.owner.session === s.session && f.appId === (v.remembersLast ? v.appId ?? null : null));
   if (existing) return [{ ...s, activeCopy: existing.id, flights: s.flights.map((f) => f === existing ? { ...f, owner } : f) }, []];
   const id = s.nextCopy + 1;
-  const flight: Flight = { keepOrder: s.keepOrder, id, session: s.session, presentation, choice: key, format: v.format, projectVersion: v.projectVersion, opening: v.output.opening, delivery: v.output.delivery, owner, phase: "copy", warnings: closestMatchWarnings(v.chosen), shelf: v.chosen, replaces: s.changing, appId: v.remembersLast ? v.appId ?? null : null, writingProjectId: v.writingProjectId };
+  const flight: Flight = { keepOrder: s.keepOrder, id, session: s.session, presentation, choice: key, format: v.format, writingVersion: v.writingVersion, opening: v.output.opening, delivery: v.output.delivery, owner, phase: "copy", warnings: closestMatchWarnings(v.chosen), shelf: v.chosen, replaces: s.changing, appId: v.remembersLast ? v.appId ?? null : null, writingId: v.writingId };
   return [{ ...s, flights: [...s.flights, flight], activeCopy: id, nextCopy: id, copied: null, shelfCopied: null, copyNotice: null, copyError: null },
     [{ type: "copy", id, session: s.session, ticket: v.shown.fileTicket, hash: v.shown.fileHash, replaces: s.changing }]];
 }
 
 /** The project context changed: what was copied or asked for under the old one is retired. */
 function observeProject(s: SessionState, clearReplacement: boolean): [SessionState, SessionEffect[]] {
-  const view = s.view, version = projectVersion(s.destination), output = s.destination.output;
-  const changed = view && ((view.projectVersion ?? null) !== version || !sameOutput(view.output, output));
+  const view = s.view, version = writingVersion(s.destination), output = s.destination.output;
+  const changed = view && ((view.writingVersion ?? null) !== version || !sameOutput(view.output, output));
   return [{ ...s, context: s.context + (changed ? 1 : 0),
     changing: clearReplacement ? null : s.changing,
     shelfCopied: changed ? null : s.shelfCopied, copyNotice: changed ? null : s.copyNotice }, []];
@@ -215,10 +217,10 @@ function applyView(s: SessionState, copies: boolean): [SessionState, SessionEffe
   const same = old && Object.entries(v).every(([key, value]) => key === "chosen" ? choiceKey(old.chosen) === choiceKey(v.chosen) :
     key === "output" ? sameOutput(old.output, v.output) : old[key as keyof SessionView] === value);
   if (same) return advance(s, copies);
-  const projectChanged = old && (old.writingProjectId ?? null) !== (v.writingProjectId ?? null);
-  const contextChanged = old && (projectChanged || old.projectVersion !== v.projectVersion || old.format !== v.format || old.snapshotRevision !== v.snapshotRevision || s.selected.size === 0 && old.defaultChoice !== v.defaultChoice);
-  const newOutput = old && (projectChanged || old.format !== v.format || old.snapshotRevision !== v.snapshotRevision);
-  const abandonReplacement = projectChanged || old && v.writingProjectId && (old.format !== v.format || old.output.choice !== v.output.choice);
+  const writingChanged = old && (old.writingId ?? null) !== (v.writingId ?? null);
+  const contextChanged = old && (writingChanged || old.writingVersion !== v.writingVersion || old.format !== v.format || old.snapshotRevision !== v.snapshotRevision || s.selected.size === 0 && old.defaultChoice !== v.defaultChoice);
+  const newOutput = old && (writingChanged || old.format !== v.format || old.snapshotRevision !== v.snapshotRevision);
+  const abandonReplacement = writingChanged || old && v.writingId && (old.format !== v.format || old.output.choice !== v.output.choice);
   if (!v.remembersLast && (s.lastCitations.size || s.changing || s.flights.some((f) => f.appId))) s = reduceEvent(s, { type: "forget-last" })[0];
   return advance({ ...s, view: v, context: s.context + (contextChanged ? 1 : 0),
     changing: abandonReplacement ? null : s.changing,
@@ -286,7 +288,7 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
     case "sample": return [changed(s, { keepOrder: false, selected: new Map(), copied: null, removed: null, copyError: null, changing: null, lastCitations: new Map() }), []];
     case "change-last": {
       const last = s.lastCitations.get(s.view?.appId ?? "");
-      if (!last || (last.project ?? null) !== (s.view?.writingProjectId ?? null)
+      if (!last || (last.project ?? null) !== (s.view?.writingId ?? null)
         || last.project && last.format !== s.view?.format) return [s, []];
       return [changed(s, { selected: new Map(last.references.map((reference) => [idKey(reference.id), reference])), removed: null, selectionChanged: true,
         query: "", interpretLocators: true, fromDocument: false, active: 0, copyError: null, keepOrder: last.keepOrder, changing: [last.text, ...last.earlier ?? []] }), []];
@@ -307,7 +309,7 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
         selected.delete(key);
         removed = { token: s.context + 1, reference: previous, before: order.slice(0, index), after: order.slice(index + 1) };
       } else {
-        selected.set(key, { ...event.result, locator: event.locator ? { ...event.locator } : null });
+        selected.set(key, { ...event.result, locator: event.locator ? { ...event.locator } : null, ...event.prefix ? { prefix: event.prefix } : {} });
         if (removed && idKey(removed.reference.id) === key) removed = null;
       }
       return [changed(s, { selected, removed, selectionChanged: true, changing: selected.size > 0 ? s.changing : null }), []];
@@ -315,6 +317,16 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
     case "remove-reference": {
       if (s.selected.get(idKey(event.reference.id)) !== event.reference) return [s, []];
       return reduceEvent(s, { type: "toggle", result: event.reference });
+    }
+    case "move-reference": {
+      const key = idKey(event.reference.id), order = [...event.shown];
+      const index = order.indexOf(key), target = index + event.step;
+      // Only the line the person sees now can be moved: a stale order or reference does nothing.
+      if (s.selected.get(key) !== event.reference || order.length !== s.selected.size || !order.every((id) => s.selected.has(id))
+        || target < 0 || target >= order.length) return [s, []];
+      [order[index], order[target]] = [order[target]!, order[index]!];
+      // A move would not show in a style that sorts, so it keeps the person's order.
+      return [changed(s, { selected: new Map(order.map((id) => [id, s.selected.get(id)!])), keepOrder: true }), []];
     }
     case "expire-removal": return [s.removed === event.removal ? { ...s, removed: null } : s, []];
     case "undo-reference": {
@@ -397,7 +409,7 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
       if (f.phase !== "copy") return [s, []];
       const outcome = { ...event.outcome, warnings: [...event.outcome.warnings, ...f.warnings] };
       if (f.id > s.lastSuccessfulCopy) s = { ...s, lastSuccessfulCopy: f.id, lastOutcome: say("copied-notice-title"),
-        lastCitations: remembered(s.lastCitations, f.appId, { text: outcome.text, references: f.shelf, format: f.format, keepOrder: f.keepOrder, ...f.writingProjectId ? { project: f.writingProjectId } : {} }, s.view?.remembersLast === true) };
+        lastCitations: remembered(s.lastCitations, f.appId, { text: outcome.text, references: f.shelf, format: f.format, keepOrder: f.keepOrder, ...f.writingId ? { project: f.writingId } : {} }, s.view?.remembersLast === true) };
       // Consuming a built citation can reveal a different default reference.
       // Confirm on the shelf only when its next target is this exact output.
       const sameVisibleOutput = s.view?.defaultChoice === f.choice && s.view.shown && typeof s.view.shown === "object" && s.view.shown.text === outcome.text;

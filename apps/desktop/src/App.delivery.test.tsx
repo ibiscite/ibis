@@ -1,9 +1,9 @@
+import { recordId } from "./test-fixtures";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { App } from "./App";
-import type { Copied, Delivered, FilePreview } from "./bindings";
-import { resetApp, result } from "./testing/app";
+import { resetApp, result, inCitation } from "./testing/app";
 import { deliveryHarness } from "./testing/delivery";
 
 beforeEach(() => { vi.useFakeTimers(); });
@@ -185,7 +185,7 @@ test("Enter waits for a preview, then copies and replaces the document selection
   await enter(false, true);
   expect(harness.clipboard.owner).toBeNull();
   expect(harness.document.text).toBe("Draft: [citation].");
-  await act(async () => { harness.preview.pending[0]!.complete({ text: "[@a]", html: "<i>[@a]</i>" }); });
+  await act(async () => { harness.preview.pending[0]!.complete({ text: "[@a]", clipboardHtml: "<i>[@a]</i>" }); });
   expect(harness.copy.pending).toHaveLength(1);
   await finishCopy(harness);
   expect(harness.clipboard).toEqual({ text: "[@a]", html: "<i>[@a]</i>", owner: "ibis", sequence: 1 });
@@ -233,7 +233,7 @@ test("Shift+Enter cancels a queued Enter even when adding the same reference kee
   }
   expect(harness.document.text).toBe("Draft: [citation].");
   expect(harness.copy.calls).toHaveLength(0);
-  expect(screen.getByRole("button", { name: "Remove a from the selection" })).toBeTruthy();
+  expect(inCitation("a")).toBeTruthy();
   expect(harness.clipboard.owner).toBeNull();
   expect(harness.document.text).toBe("Draft: [citation].");
   expect(harness.receipt.textContent).toBe("");
@@ -283,7 +283,7 @@ test("a copy finishing after a selection edit writes the clipboard but cannot pa
   expect(harness.visible).toBe(true);
   expect(screen.getByRole("status", { name: "Citation selection" }).textContent).toBe("1 reference selected for citation");
   await act(async () => { harness.preview.pending[0]!.complete({ text: "[@b]" }); });
-  expect(screen.getByRole("button", { name: "Remove b from the selection" })).toBeTruthy();
+  expect(inCitation("b")).toBeTruthy();
   await enter();
   await finishCopy(harness);
   await finishDelivery(harness);
@@ -315,8 +315,8 @@ test.each(["before paste", "before response"])("reopening %s preserves the new c
   await act(async () => { recheck.complete({ revision: "1", results: [first] }); });
   if (when === "before paste") await act(async () => { harness.delivery.pending[0]!.complete(); });
   await act(async () => { harness.notice.pending[0]!.complete(); });
-  expect(screen.getByRole("button", { name: "Remove a from the selection" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Remove b from the selection" })).toBeTruthy();
+  expect(inCitation("a")).toBeTruthy();
+  expect(inCitation("b")).toBeTruthy();
   expect(harness.visible).toBe(true);
   expect(harness.document.text).toBe(when === "before paste" ? "Draft: [citation]." : "Draft: [@a].");
   expect(harness.document.pastes).toHaveLength(when === "before paste" ? 0 : 1);
@@ -384,6 +384,22 @@ test.each(["different text", "identical text"])("another clipboard owner's write
   expectReceipt(harness, "Copied. The clipboard changed since. Copy the citation again.", "[@a]");
 });
 
+test("hiding during recitation preserves newer clipboard content and never delivers the late copy", async () => {
+  const harness = await open();
+  await choose(harness, "first");
+  await enter();
+  expect(harness.copy.pending).toHaveLength(1);
+  await act(async () => { await invoke("hide_picker"); });
+  harness.copyElsewhere("Newer invented clipboard text");
+  await act(async () => { harness.copy.pending[0]!.complete(); });
+
+  expect(harness.clipboard).toMatchObject({ text: "Newer invented clipboard text", owner: "external", sequence: 1 });
+  expect(harness.document.text).toBe("Draft: [citation].");
+  expect(harness.document.pastes).toEqual([]);
+  expect(harness.delivery.calls).toHaveLength(0);
+  expect(harness.receipt.textContent).toBe("");
+});
+
 test.each(["preview", "copy"] as const)("a failed %s leaves the document and clipboard unchanged and gives no success receipt", async (stage) => {
   const harness = await open();
   await type("first");
@@ -400,31 +416,6 @@ test.each(["preview", "copy"] as const)("a failed %s leaves the document and cli
   expect(harness.delivery.calls).toHaveLength(0);
 });
 
-
-test("the fake captures a copy's app and presentation at its successful write", async () => {
-  const harness = deliveryHarness();
-  const pendingPreview = invoke<FilePreview>("preview_file_citation", {
-    items: [], format: "pandoc", style: null, expectedRevision: "1",
-    intent: { page: 1, request: 1, cancel: false },
-  });
-  await act(async () => { harness.preview.pending[0]!.complete({ text: "[@a]" }); });
-  const preview = await pendingPreview;
-  const pendingCopy = invoke<Copied>("copy_file_citation", { ticket: preview.ticket, contentHash: preview.content_hash });
-  harness.document.app = "Reopened Writer";
-  await act(async () => { await harness.reopen(); });
-  await act(async () => { harness.copy.pending[0]!.complete(); });
-  const copied = await pendingCopy;
-  // Bypass App's stale-completion guard to prove this native write can paste.
-  // A fake that freezes the old presentation would mask that UI regression.
-  await act(async () => { await invoke("hide_picker"); });
-  const pendingNotice = invoke<Delivered>("show_copied_notice", { text: copied.text, delivery: copied.delivery });
-  await finishDelivery(harness);
-  expect(await pendingNotice).toEqual({ outcome: "pasted", app: "Reopened Writer" });
-  expect(harness.document.text).toBe("Draft: [@a].");
-  expect(harness.document.pastes).toEqual([{ app: "Reopened Writer", text: "[@a]", start: 7, end: 17, delivery: 1 }]);
-  expectReceipt(harness, "Pasted into Reopened Writer", "[@a]");
-});
-
 test("reopening during a pending copy keeps the new query and selection without delivering the late copy", async () => {
   const harness = await open();
   await choose(harness, "first");
@@ -436,18 +427,18 @@ test("reopening during a pending copy keeps the new query and selection without 
   await finishSearch(harness, "second query", [second]);
   await enter(true);
   await act(async () => { harness.copy.pending[0]!.complete(); });
-  expect(harness.clipboard).toMatchObject({ text: "[@a]", owner: "ibis", sequence: 1 });
+  expect(harness.clipboard).toMatchObject({ text: "", owner: null, sequence: 0 });
   expect(harness.visible).toBe(true);
   expect((searchBox() as HTMLInputElement).value).toBe("second query");
   expect(screen.getByRole("status", { name: "Citation selection" }).textContent).toBe("2 references selected for citation");
   // Reopening can leave the old single-reference preview queued. Complete the
   // request for the current selection, independently of worker arrival order.
   const previews = harness.preview.pending.filter(({ args }) =>
-    args.items.length === 2 && args.items[0]!.id.key === "a" && args.items[1]!.id.key === "b");
+    args.items.length === 2 && args.items[0]!.id.key === recordId("a") && args.items[1]!.id.key === recordId("b"));
   expect(previews).toHaveLength(1);
   await act(async () => { previews[0]!.complete({ text: "[@a; @b]" }); });
-  expect(screen.getByRole("button", { name: "Remove a from the selection" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Remove b from the selection" })).toBeTruthy();
+  expect(inCitation("a")).toBeTruthy();
+  expect(inCitation("b")).toBeTruthy();
   expect(harness.delivery.calls).toHaveLength(0);
   expect(harness.document.text).toBe("Draft: [citation].");
   expect(harness.document.pastes).toEqual([]);
@@ -626,7 +617,7 @@ const pastedOnce = async () => {
 const changeLast = async () => {
   const more = screen.getByRole("button", { name: /^More/ });
   await act(async () => { fireEvent.click(more); });
-  await act(async () => { fireEvent.click(screen.getByRole("menuitem", { name: /Change Last Citation/ })); });
+  await act(async () => { fireEvent.click(screen.getByRole("option", { name: /Change Last Citation/ })); });
 };
 
 test("Change Last Citation replaces the old citation only when it is selected", async () => {
@@ -648,9 +639,9 @@ test("⌘E changes the last citation from inside More, and More closes", async (
   harness.document.selection = [7, 11];
   await act(async () => { await harness.reopen(); });
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^More/ })); });
-  expect(screen.getByRole("menuitem", { name: /Change Last Citation/ })).toBeTruthy();
+  expect(screen.getByRole("option", { name: /Change Last Citation/ })).toBeTruthy();
   await act(async () => { fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", code: "KeyE", ctrlKey: true }); });
-  expect(screen.queryByRole("menuitem", { name: /Change Last Citation/ })).toBeNull();
+  expect(screen.queryByRole("option", { name: /Change Last Citation/ })).toBeNull();
   expect(document.activeElement).toBe(searchBox());
   await act(async () => { harness.preview.pending.at(-1)!.complete({ text: "[@a, p. 3]" }); });
   await enter();
@@ -767,7 +758,7 @@ test("the shortcut alone never reopens the last citation", async () => {
 test("More offers no Change Last Citation until this app has one", async () => {
   await open();
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^More/ })); });
-  expect(screen.queryByRole("menuitem", { name: /Change Last Citation/ })).toBeNull();
+  expect(screen.queryByRole("option", { name: /Change Last Citation/ })).toBeNull();
 });
 
 test("the last citation is never written anywhere", async () => {

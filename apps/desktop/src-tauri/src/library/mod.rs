@@ -12,7 +12,7 @@
 //! - `commands`: the commands the interface calls.
 
 pub(crate) mod commands;
-pub(crate) mod engine_file;
+pub(crate) mod engine_library;
 mod error;
 mod load;
 pub(crate) mod open_source;
@@ -24,14 +24,22 @@ mod source;
 mod state;
 mod status;
 mod tasks;
+#[cfg(test)]
+#[path = "../../../../../crates/ibis-engine/tests/support/zotero.rs"]
+mod zotero_fixture;
 
 pub(crate) use error::{CommandError, LoadError};
-pub(crate) use search::{PreviewIntent, PreviewRequests, ProjectMark, SearchRequests, SearchResult};
+pub(crate) use search::{PreviewIntent, ProjectMark, SearchRequests, SearchResult};
 pub(crate) use source::Source;
 pub(crate) use state::{Library, LoadRequests};
 pub(crate) use status::{LibraryState, LibraryStatus, status as snapshot_status};
 pub(crate) use tasks::accepts_library_file;
 pub(crate) use tasks::{
-    choose_library_file, current_status, refresh_settings_notice, refresh_zotero, reload_library_file,
+    apply_file_settings, choose_library_file, current_status, refresh_settings_notice, refresh_zotero,
     retry_zotero_on_focus, start_open, use_zotero_library,
 };
+
+/// Local profile discovery for the tray; call off the main thread.
+pub(crate) fn zotero_detected() -> bool {
+    engine_library::zotero_profiles().is_ok()
+}

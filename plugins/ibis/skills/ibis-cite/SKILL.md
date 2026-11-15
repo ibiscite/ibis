@@ -1,12 +1,14 @@
 ---
 name: ibis-cite
 description: Find references in the user's own library (Zotero, BibTeX, BibLaTeX, CSL-JSON, RIS or CSV) and write citations or bibliography entries from real records with Ibis. Use when the user asks to cite, reference or look up a paper or book, add a citation key, or format a reference in a style such as APA, Chicago, IEEE or MLA.
-license: AGPL-3.0-or-later
+license: MIT
 compatibility: Needs a connected Ibis MCP server and the ibis command (https://github.com/ibiscite/ibis) on PATH with support for --app-libraries. Works offline and reads libraries only.
 metadata:
   author: ibiscite
   homepage: https://github.com/ibiscite/ibis/blob/main/docs/cli.md
 ---
+
+<!-- SPDX-License-Identifier: MIT -->
 
 # Cite from the user's library with Ibis
 

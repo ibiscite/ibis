@@ -1,48 +1,118 @@
 #!/usr/bin/env bash
-# Land the current branch's pull request the way AGENTS.md › Merging asks,
-# in one command: merge origin/main, check what the merge can break, push,
-# and turn on squash auto-merge. Stops at the first problem.
-#   bash scripts/land.sh
-# The checks follow `node scripts/check.mjs --plan`, the classes CI picks for
-# this change: native changes compile every test target, interface changes
-# type check and lint. Test suites are CI's job, apart from changed interface
-# tests and, for script or website changes, the script tests.
+# Fast local feedback; hosted CI result decides the squash merge (no merge queue).
 set -euo pipefail
+if [ "${1:-}" = start ] || [ "${1:-}" = end ]; then
+  action=$1 name=${2:-} issue=${3:-}
+  if [ "$#" -lt 2 ] || { [ "$action" = start ] && [ "$#" -gt 3 ]; } || { [ "$action" = end ] && [ "$#" -ne 2 ]; }; then
+    echo 'Usage: land.sh start NAME [ISSUE] | end NAME'; exit 2
+  fi
+  [[ "$name" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] && [ "$name" != main ] || { echo 'NAME must be lowercase letters or digits separated by hyphens, and not main.'; exit 2; }
+  [[ -z "$issue" || "$issue" =~ ^[0-9]+$ ]] || { echo 'ISSUE must be a number.'; exit 2; }
+  root=$(git rev-parse --show-toplevel)
+  worktree="$root/../ibis-work/$name"
+  if [ "$action" = start ]; then
+    title="chore: ${name//-/ }"
+    node "$root/scripts/pr-lint.mjs" --title "$title" --branch "$name"
+    git fetch -q origin main
+    git worktree add -b "$name" "$worktree" origin/main
+    (cd "$worktree"; pnpm -C apps/desktop install --frozen-lockfile --offline; git commit --allow-empty -s -m "$title"; git push -u origin "$name")
+    body='Handoff: implement the change; next run the focused check; blockers: none.'
+    [ -z "$issue" ] || body=$(printf 'Refs #%s\n\n%s' "$issue" "$body")
+    gh pr create --draft --base main --head "$name" --title "$title" --body "$body"
+  else
+    [ -d "$worktree" ] || { echo 'Worktree not found.'; exit 1; }
+    status=$(git -C "$worktree" status --porcelain --untracked-files=all)
+    [ -z "$status" ] || { echo 'Worktree has uncommitted changes.'; exit 1; }
+    current=$(git -C "$worktree" rev-parse --abbrev-ref HEAD)
+    head=$(git -C "$worktree" rev-parse HEAD)
+    if [ "$current" = "$name" ]; then
+      filter=".[] | select(.headRefOid == \"$head\") | .headRefOid"
+    elif [ "$current" = main ] && ! git show-ref --verify --quiet "refs/heads/$name"; then
+      # gh --delete-branch may already have checked out main and deleted the branch.
+      filter='.[0].headRefOid // empty'
+    else
+      echo 'Worktree branch does not match NAME.'; exit 1
+    fi
+    [ -n "$(gh pr list --head "$name" --base main --state merged --json headRefOid --jq "$filter")" ] || { echo 'No merged PR for this worktree head.'; exit 1; }
+    git worktree remove "$worktree"
+    if git show-ref --verify --quiet "refs/heads/$name"; then git branch -D "$name"; fi
+  fi
+  exit
+fi
+title_arg='' body_file=''
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --title|--body-file)
+      [ "$#" -ge 2 ] || { echo "Missing value for $1"; exit 2; }
+      if [ "$1" = --title ]; then title_arg=$2; else body_file=$2; fi
+      shift 2;;
+    *) echo 'Usage: bash scripts/land.sh [--title TITLE] [--body-file FILE]'; exit 2;;
+  esac
+done
 branch=$(git rev-parse --abbrev-ref HEAD)
-[ "$branch" != main ] && [ "$branch" != HEAD ] || { echo "Land a named branch, not main or detached HEAD."; exit 2; }
-export CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0
-export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$(git rev-parse --show-toplevel)/target}
-
-git fetch -q origin main "$branch" 2>/dev/null || git fetch -q origin main
-git merge -q --no-commit origin/main || { echo "Merge conflict with main: resolve it, commit, and rerun."; exit 1; }
-if git rev-parse -q --verify MERGE_HEAD >/dev/null; then
-  git commit -s --no-edit --trailer "Assisted-by: Ibis development tooling (AI-assisted)" >/dev/null
+[ "$branch" != main ] && [ "$branch" != HEAD ] || { echo 'Land a named branch, not main or detached HEAD.'; exit 2; }
+clean() {
+  local status
+  status=$(git status --porcelain --untracked-files=all) || return 1
+  [ -z "$status" ]
+}
+clean || { echo 'A clean HEAD is required: commit or remove outstanding work, then rerun.'; exit 2; }
+sha=$(git rev-parse HEAD)
+unchanged() {
+  if [ "$(git rev-parse HEAD)" = "$sha" ] && [ "$(git rev-parse --abbrev-ref HEAD)" = "$branch" ] && clean; then return; fi
+  echo 'HEAD or working files changed during landing. Rerun on a clean commit.'; return 1
+}
+[ "$(gh api user --jq .login)" = diyanko ] || { echo "Landing requires the maintainer's GitHub account."; exit 1; }
+repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+pr=$(gh pr list --repo "$repo" --head "$branch" --base main --state open --json number,author,isCrossRepository,isDraft \
+  --jq '.[0] | if . == null then empty else [.number, .author.login, .isCrossRepository, .isDraft] | @tsv end')
+number='' draft=false
+if [ -n "$pr" ]; then
+  read -r number author fork draft <<< "$pr"
+  case "$author:$fork" in
+    diyanko:false|'ibis-release[bot]:false') ;;
+    *) echo "Only the maintainer's or release app's in-repository PR can land."; exit 1;;
+  esac
 fi
-
-plan=" $(node scripts/check.mjs --plan) "
-changed=$(git diff --name-only origin/main...HEAD)
-web=$(grep -E '^apps/desktop/(src|canvas)/' <<<"$changed" || true)
-scripts=$(grep -E '^(scripts|website)/' <<<"$changed" || true)
-
-if [[ "$plan" == *" native "* ]]; then
-  cargo fmt --all --check
-  (cd apps/desktop/src-tauri && cargo fmt --check)
-  # A merge with no conflict can still fail to compile: build every test target.
-  cargo test --workspace --locked --no-run -q
+git fetch -q origin main
+commit=$(git rev-list --reverse --no-merges "origin/main..$sha" | sed -n '1p')
+[ -n "$commit" ] || { echo 'No non-merge commits to land.'; exit 2; }
+title=${title_arg:-$(git show -s --format=%s "$commit")}
+if [ -n "$number" ]; then title=$(gh pr view "$number" --repo "$repo" --json title --jq .title); fi
+node scripts/pr-lint.mjs --title "$title" --branch "$branch"
+root=$(git rev-parse --show-toplevel)
+export CARGO_TARGET_DIR="$root/target"
+export CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=1
+export CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-4}
+# Empty values override wrappers set in Cargo's config too.
+export RUSTC_WRAPPER='' RUSTC_WORKSPACE_WRAPPER=''
+cargo fmt --all --check
+cargo check --workspace --all-targets --locked
+pnpm -C apps/desktop exec tsc --noEmit
+pnpm -C apps/desktop lint
+node scripts/gen.mjs --check
+unchanged
+git push -q -u origin "$sha:refs/heads/$branch"
+body=$(mktemp)
+trap 'rm -f -- "$body"' EXIT
+if [ -n "$number" ]; then
+  gh pr view "$number" --repo "$repo" --json body --jq .body > "$body"
+elif [ -n "$body_file" ]; then cp "$body_file" "$body"
+else git show -s --format=%b "$commit" > "$body"
 fi
-if [[ "$plan" == *" interface "* ]]; then
-  (cd apps/desktop && pnpm install --frozen-lockfile >/dev/null && pnpm exec tsc --noEmit -p . && pnpm exec biome lint src canvas)
-  files=$(grep -E '\.test\.tsx?$' <<<"$web" | sed 's|^apps/desktop/||' || true)
-  [ -z "$files" ] || (cd apps/desktop && pnpm exec vitest run $files --maxWorkers=1)
-  (cd apps/desktop && pnpm exec vitest run src/design.test.ts src/ui/ownership.test.ts --maxWorkers=1)
+trailers=$(git log --format='%(trailers:key=Signed-off-by,key=Assisted-by,only,unfold)' "origin/main..$sha" | awk 'NF && !seen[$0]++')
+trailer_args=(--if-exists addIfDifferent)
+while IFS= read -r trailer; do
+  [ -z "$trailer" ] || trailer_args+=(--trailer "$trailer")
+done <<< "$trailers"
+body_text=$(git interpret-trailers "${trailer_args[@]}" < "$body")
+printf '%s\n' "$body_text" > "$body"
+if [ -z "$number" ]; then
+  url=$(gh pr create --repo "$repo" --base main --head "$branch" --title "$title" --body-file "$body")
+  number=$url
 fi
-[ -z "$scripts" ] || node --test scripts/*.test.mjs
-
-node scripts/check-agent-identity.mjs
-git push -q -u origin "$branch"
-pr=$(gh api "repos/{owner}/{repo}/pulls?head={owner}:$branch&state=open" --jq '.[0].number')
-if [ -n "$pr" ] && [ "$pr" != null ]; then
-  gh pr merge "$pr" --squash --auto && echo "Pushed; #$pr joins the merge queue once its CI is green."
-else
-  echo "Pushed $branch. Open its pull request, then rerun to turn on auto-merge."
-fi
+[ "$(gh pr view "$number" --repo "$repo" --json headRefOid --jq .headRefOid)" = "$sha" ] || { echo 'PR head moved; rerun.'; exit 1; }
+unchanged
+if [ "$draft" = true ]; then gh pr ready "$number" --repo "$repo"; fi
+gh pr merge "$number" --repo "$repo" --auto --squash --body-file "$body" --match-head-commit "$sha"
+printf 'Auto-merge requested for %s; it merges once hosted CI result passes.\n' "$number"

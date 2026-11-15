@@ -1,9 +1,9 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import * as api from "./api";
-import { backend, chooseFromMore, resetApp, result, openCitationDetails } from "./testing/app";
+import { backend, chooseFromMore, resetApp, result, openCitationDetails, toggleKeepOpen } from "./testing/app";
 
 afterEach(async () => { await resetApp(); vi.restoreAllMocks(); });
 
@@ -60,41 +60,32 @@ test.each(["error", "refusal"])("a window reset offers Undo without taking focus
   expect(calls).not.toContain("fit_picker");
 });
 
-test("More is gone before the probe's keys-sheet and Copy as steps", async () => {
+test("More is gone at once before the probe's keys-sheet and format steps", async () => {
   backend({ search: () => [] });
   render(<App />);
   await screen.findByText("Type to find a reference");
   const more = screen.getByRole("button", { name: "More" });
   const search = screen.getByRole("combobox");
   fireEvent.click(more);
-  const moreMenu = await screen.findByRole("menu", { name: "More" });
-  const popover = moreMenu.closest(".menu-popover")!;
-  let finishExit!: () => void;
-  const finished = new Promise<void>((resolve) => { finishExit = resolve; });
-  Object.defineProperty(popover, "getAnimations", { value: () => popover.hasAttribute("data-exiting")
-    ? [{ playState: "running", finished }] : [] });
-  try {
-    fireEvent.keyDown(moreMenu, { key: "End" });
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: /^Quit/ })));
-    fireEvent.keyDown(document.activeElement!, { key: "Home" });
-    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
-    expect(more.getAttribute("aria-expanded")).toBe("false");
-    expect(popover.isConnected).toBe(false);
-    // Playwright focuses its search locator before sending the shortcut.
-    act(() => search.focus());
-    fireEvent.keyDown(search, { key: "/", ctrlKey: true });
-    const keys = await screen.findByRole("dialog", { name: "Keyboard Shortcuts" });
-    fireEvent.keyDown(keys, { key: "Escape" });
-    const format = screen.getByRole("button", { name: /^Copy as/ });
-    fireEvent.click(format);
-    const formatMenu = await screen.findByRole("menu", { name: /^Copy as/ });
-    expect(document.querySelectorAll('[role="menu"]')).toHaveLength(1);
-    expect(more.getAttribute("aria-expanded")).toBe("false");
-    expect(format.getAttribute("aria-expanded")).toBe("true");
-    expect(formatMenu.isConnected).toBe(true);
-  } finally {
-    await act(async () => { finishExit(); });
-  }
+  const palette = await screen.findByRole("dialog", { name: "Actions" });
+  const field = within(palette).getByRole("combobox");
+  fireEvent.keyDown(field, { key: "End" });
+  expect(field.getAttribute("aria-activedescendant")).toBe(screen.getByRole("option", { name: /^Quit/ }).id);
+  fireEvent.keyDown(field, { key: "Escape" });
+  // Nothing waits on an exit: the palette is gone in the same frame.
+  expect(more.getAttribute("aria-expanded")).toBe("false");
+  expect(palette.isConnected).toBe(false);
+  // Playwright focuses its search locator before sending the shortcut.
+  act(() => search.focus());
+  fireEvent.keyDown(search, { key: "/", ctrlKey: true });
+  const keys = await screen.findByRole("dialog", { name: "Keyboard Shortcuts" });
+  fireEvent.keyDown(keys, { key: "Escape" });
+  const format = screen.getByRole("button", { name: /^Citation format/ });
+  fireEvent.click(format);
+  await screen.findByRole("dialog", { name: "Format" });
+  expect(screen.getAllByRole("dialog")).toHaveLength(1);
+  expect(more.getAttribute("aria-expanded")).toBe("false");
+  expect(format.getAttribute("aria-expanded")).toBe("true");
 });
 
 test.each([false, true])("empty, controls, results, selection, no matches and keys never measure or resize (Larger=%s)", async (larger) => {
@@ -108,12 +99,12 @@ test.each([false, true])("empty, controls, results, selection, no matches and ke
   const search = screen.getByRole("combobox");
   for (const layer of ["More", "output"]) {
     if (layer === "More") fireEvent.keyDown(search, { key: "k", ctrlKey: true });
-    else fireEvent.click(screen.getByRole("button", { name: /^Copy as/ }));
-    const menu = await screen.findByRole("menu");
-    fireEvent.keyDown(layer === "More" ? menu : screen.getByRole("searchbox"), { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    else fireEvent.click(screen.getByRole("button", { name: /^Citation format/ }));
+    const menu = await screen.findByRole("dialog");
+    fireEvent.keyDown(layer === "More" ? menu : screen.getByRole("combobox", { name: /^Search (formats|actions)$/ }), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   }
-  fireEvent.click(screen.getByRole("button", { name: "Keep Window Open" }));
+  await toggleKeepOpen();
   fireEvent.change(search, { target: { value: "work" } });
   await screen.findByRole("option", { name: /First invented work/ });
   fireEvent.keyDown(search, { key: "Enter", shiftKey: true });
@@ -130,73 +121,14 @@ test.each([false, true])("empty, controls, results, selection, no matches and ke
 test("a failed size save is visible and a later successful save clears it without sizing IPC", async () => {
   const calls = backend();
   let saved: (success: boolean) => void = () => {};
-  render(<App api={{ ...api, onWindowSizeSaved: async (handler) => { saved = handler; return () => {}; } }} />);
+  vi.spyOn(api, "onWindowSizeSaved").mockImplementation(async (handler) => { saved = handler; return () => {}; });
+  render(<App />);
   await screen.findByText("Type to find a reference");
   act(() => saved(false));
   expect(screen.getByRole("alert").textContent).toMatch(/save the window size/);
   act(() => saved(true));
   expect(screen.queryByRole("alert")).toBeNull();
   expect(calls).not.toContain("fit_picker");
-});
-
-test("clearing a settings notice keeps the pointer's newer place even before its scroll event", async () => {
-  const library: api.LibraryStatus = {
-    source_generation: "1", source_is_requested: true,
-    state: "loaded", revision: "1", has_snapshot: true, zotero: false, zotero_libraries: [],
-    name: "invented.bib", snapshot_name: "invented.bib", references: 14, source_counts: {},
-    warnings: 0, reading: [], live_updates_off: false, error: null, problem: null, note: null, settings_notice: null,
-    snapshot_zotero: false, stale: false, updated_at: null, checked_at: null,
-  };
-  const found = Array.from({ length: 14 }, (_, i) => result(`synthetic${i}`, `Invented reference ${i}`));
-  backend({ library_status: () => library, search: ({ query }) => query.text ? found : [] });
-  let changed!: (status: api.LibraryStatus) => void;
-  const hasNotice = (node: HTMLElement) => !!node.closest("main")?.querySelector(".notices [role=alert]");
-  const computed = window.getComputedStyle;
-  vi.spyOn(window, "getComputedStyle").mockImplementation((node) => {
-    if (!node.matches(".results-area, .picker-content")) return computed(node);
-    const style = document.createElement("div").style;
-    style.overflowY = node.matches(".results-area") && hasNotice(node as HTMLElement) ? "visible" : "auto";
-    return style;
-  });
-  const scrollTop = Object.getOwnPropertyDescriptor(Element.prototype, "scrollTop")!;
-  vi.spyOn(HTMLElement.prototype, "scrollTop", "get").mockImplementation(function (this: HTMLElement) {
-    if (this.matches(".results-area") && hasNotice(this) || this.matches(".picker-content") && !hasNotice(this)) scrollTop.set!.call(this, 0);
-    return scrollTop.get!.call(this);
-  });
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-    if (this.matches(".notices")) return new DOMRect(0, 53, 720, hasNotice(this) ? 42 : 0);
-    if (this.matches("[role=option]")) {
-      const middle = this.closest(".picker-content")!;
-      const area = middle.querySelector<HTMLElement>(".results-area")!;
-      return new DOMRect(8, 89 + Number(this.id.slice(7)) * 60 + (hasNotice(this) ? 42 : 0) - area.scrollTop - middle.scrollTop, 704, 58);
-    }
-    return new DOMRect();
-  });
-  render(<App api={{ ...api, onLibraryChanged: async (handler) => { changed = handler; return () => {}; } }} />);
-  await screen.findByText("Type to find a reference");
-  const search = screen.getByRole<HTMLInputElement>("combobox");
-  fireEvent.change(search, { target: { value: "invented" } });
-  const row = await screen.findByRole("option", { name: /Invented reference 8/ });
-  const area = document.querySelector<HTMLElement>(".results-area")!;
-  const middle = document.querySelector<HTMLElement>(".picker-content")!;
-  area.scrollTop = 380; fireEvent.scroll(area);
-  fireEvent.click(row, { detail: 1 });
-  search.setSelectionRange(2, 5);
-  expect(row.getBoundingClientRect().top).toBe(189);
-  await act(async () => changed({ ...library, settings_notice: "Synthetic asynchronous settings notice." }));
-  expect(row.getBoundingClientRect().top).toBe(189);
-  middle.scrollTop += 60;
-  expect(row.getBoundingClientRect().top).toBe(129);
-  await act(async () => changed(library));
-  // The unchanged asynchronous search/preview replies must preserve this too.
-  expect(screen.queryByRole("alert")).toBeNull();
-  expect(row.getAttribute("aria-selected")).toBe("true");
-  expect(row.getBoundingClientRect().top).toBe(129);
-  expect([area.scrollTop, middle.scrollTop]).toEqual([440, 0]);
-  expect(document.activeElement).toBe(search);
-  expect([search.selectionStart, search.selectionEnd]).toEqual([2, 5]);
-  fireEvent.scroll(middle);
-  expect(row.getBoundingClientRect().top).toBe(129);
 });
 
 test("resizing while editing keeps the selected title readable without moving Page focus", async () => {
@@ -236,15 +168,15 @@ test("resizing while editing keeps the selected title readable without moving Pa
   expect(document.activeElement).toBe(page);
 });
 
-test("startup shortcut notices belong to the middle scroller beside other notices", async () => {
+test("startup shortcut notices take the frame's notice place, outside the list", async () => {
   backend({ shortcut_status: () => ({ shortcut: "Alt+Y", registered: true, error: "Synthetic shortcut refusal" }) });
   render(<App />);
   const notice = await screen.findByText(/Your shortcut setting was not used/);
-  expect(notice.closest(".picker-content")).not.toBeNull();
-  expect(notice.closest(".notices")).not.toBeNull();
+  expect(notice.closest(".results-area")).toBeNull();
+  expect(notice.closest(".ui-notice-line")).not.toBeNull();
 });
 
-test.each([false, true])("desktop shortcut guidance appears once and its notice stays in the middle scroller (welcome=%s)", async (welcome) => {
+test.each([false, true])("desktop shortcut guidance appears once and its notice takes the frame's notice place (welcome=%s)", async (welcome) => {
   const guidance = "Use the desktop shortcut controls for Ibis.";
   backend({
     shortcut_status: () => ({ shortcut: "Alt+Y", registered: false, error: "Synthetic desktop shortcut refusal", desktop: { configurable: true, guidance } }),
@@ -256,6 +188,6 @@ test.each([false, true])("desktop shortcut guidance appears once and its notice 
   const notice = await screen.findByText(/Synthetic desktop shortcut refusal/);
   expect(screen.getAllByText(guidance, { exact: false })).toHaveLength(1);
   expect(notice.textContent?.includes(guidance)).toBe(!welcome);
-  expect(notice.closest(".notices")?.closest(".picker-content")).not.toBeNull();
+  expect(notice.closest(".ui-notice-line")).not.toBeNull();
   expect(document.querySelector("main")?.firstElementChild).toBe(document.querySelector(".search-bar"));
 });

@@ -1,0 +1,231 @@
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { App } from "./App";
+import { resetApp, result } from "./testing/app";
+import { deliveryHarness } from "./testing/delivery";
+
+beforeEach(() => vi.useFakeTimers());
+afterEach(resetApp);
+type Harness = ReturnType<typeof deliveryHarness>;
+const search = () => screen.getByRole("combobox", { name: "Search references" });
+const enter = async () => { await act(async () => { fireEvent.keyDown(search(), { key: "Enter" }); }); };
+
+async function open(configure?: (h: Harness) => void) {
+  const h = deliveryHarness();
+  h.target.verified = false;
+  configure?.(h);
+  await act(async () => { render(<App />); });
+  await act(async () => { h.search.pending[0]!.complete({ revision: "1", results: [result("a", "Invented reference")] }); });
+  await act(async () => { h.preview.pending[0]!.complete({ text: "[@a]" }); });
+  return h;
+}
+async function answer(label: string) {
+  await act(async () => { fireEvent.click(screen.getByRole("option", { name: label })); });
+}
+async function reopen(h: Harness) {
+  await act(async () => { await h.reopen(); });
+  // Reopening refreshes library status, which rechecks search and its preview.
+  await act(async () => { h.search.pending.at(-1)!.complete({ revision: "1", results: [result("a", "Invented reference")] }); });
+  await act(async () => { h.preview.pending.at(-1)!.complete({ text: "[@a]" }); });
+}
+async function finish(h: Harness) {
+  await act(async () => { h.copy.pending[0]!.complete(); });
+  await act(async () => { h.delivery.pending[0]!.complete(); });
+  await act(async () => { h.notice.pending[0]!.complete(); });
+}
+const receipt = (h: Harness) => within(h.receipt).getByRole("status").querySelector("strong")?.textContent;
+
+test("the first unknown-app Enter asks in the format chooser; approval needs fresh Enter and is remembered", async () => {
+  const h = await open();
+  await enter();
+  expect(screen.getByRole("option", { name: "APA" })).toBeTruthy();
+  expect(h.copy.calls).toHaveLength(0);
+  await answer("Paste into Example Writer from Now On");
+  expect(h.copy.calls).toHaveLength(0);
+  expect(h.document.text).toBe("Draft: [citation].");
+  expect(screen.queryByRole("dialog")).toBeNull();
+  await enter();
+  await finish(h);
+  expect(h.document.text).toBe("Draft: [@a].");
+  expect(h.document.pastes).toHaveLength(1);
+  expect(receipt(h)).toBe("Pasted into Example Writer");
+  await reopen(h);
+  await enter();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  await finish(h);
+  expect(h.document.pastes).toHaveLength(2);
+});
+
+test.each(["first Enter", "recognised app's format chooser"])("Copy only through %s is remembered across reopening and its receipt stays true", async (route) => {
+  const h = await open((h) => { h.target.verified = route !== "first Enter"; });
+  if (route === "first Enter") await enter();
+  else await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^Citation format / })); });
+  expect(screen.getByRole("option", { name: "Paste into Example Writer from Now On" })).toBeTruthy();
+  await answer("Copy Only");
+  expect(h.copy.calls).toHaveLength(0);
+  await enter();
+  await finish(h);
+  expect(h.clipboard.text).toBe("[@a]");
+  expect(h.document.pastes).toHaveLength(0);
+  expect(receipt(h)).toBe("Copied. Copy Only is set for this app. Press ⌘V to paste.");
+  await reopen(h);
+  await enter();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  await finish(h);
+  expect(h.document.pastes).toHaveLength(0);
+});
+
+test("saving Copy only while a paste-approved clipboard response is delayed cannot join or deliver that copy", async () => {
+  const h = await open((h) => {
+    h.appChoices.set("example.writer", { output: "pandoc", paste: "paste" });
+    h.holdCopyReplies = true;
+  });
+  await enter();
+  await act(async () => { h.copy.pending[0]!.complete(); });
+  expect(h.clipboard.text).toBe("[@a]");
+  expect(h.visible).toBe(true);
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^Citation format/ })); });
+  await answer("Copy Only");
+  await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+  await enter();
+  h.holdCopyReplies = false;
+  if (h.copy.pending.length) await act(async () => { h.copy.pending[0]!.complete(); });
+  await act(async () => { h.copyReplies.pending[0]!.complete(); });
+  if (h.delivery.pending.length) {
+    await act(async () => { h.delivery.pending[0]!.complete(); });
+    await act(async () => { h.notice.pending[0]!.complete(); });
+  }
+  expect(h.document.text).toBe("Draft: [citation].");
+  expect(h.document.pastes).toHaveLength(0);
+  expect(h.copy.calls).toHaveLength(2);
+  expect(receipt(h)).toBe("Copied. Copy Only is set for this app. Press ⌘V to paste.");
+});
+
+test("revoking paste after the write still confirms Copied when its delayed response arrives without another Enter", async () => {
+  const h = await open((h) => {
+    h.appChoices.set("example.writer", { output: "pandoc", paste: "paste" });
+    h.holdCopyReplies = true;
+  });
+  await enter();
+  await act(async () => { h.copy.pending[0]!.complete(); });
+  expect(h.clipboard.text).toBe("[@a]");
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^Citation format/ })); });
+  await answer("Copy Only");
+  await act(async () => { h.copyReplies.pending[0]!.complete(); });
+  expect(screen.getAllByRole("status").some((status) => status.textContent?.includes("Copied"))).toBe(true);
+  expect(within(screen.getByRole("region", { name: "Preview" })).getByRole("status", { name: "Copied" })).toBeTruthy();
+  expect(document.querySelector(".copy-notice")).toBeNull();
+  expect(h.visible).toBe(true);
+  expect(h.document.text).toBe("Draft: [citation].");
+  expect(h.document.pastes).toHaveLength(0);
+  expect(h.delivery.calls).toHaveLength(0);
+  expect(h.copy.calls).toHaveLength(1);
+});
+
+test("the format chooser can keep a recognised writing app to copying, with a fresh Enter", async () => {
+  const h = await open((h) => { h.target.verified = true; });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^Citation format/ })); });
+  await answer("Copy Only");
+  await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+  expect(h.copy.calls).toHaveLength(0);
+  await enter();
+  await finish(h);
+  expect(h.document.pastes).toHaveLength(0);
+  expect(receipt(h)).toBe("Copied. Copy Only is set for this app. Press ⌘V to paste.");
+});
+
+test("an unknown app without a proven target only copies and never asks for approval", async () => {
+  const h = await open((h) => { h.target.window = null; });
+  await enter();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  await finish(h);
+  expect(h.document.pastes).toHaveLength(0);
+  expect(h.appChoices.size).toBe(0);
+  expect(receipt(h)).toBe("Copied. Automatic paste is not approved for this app. Press ⌘V to paste.");
+});
+
+test("dismissing the unknown-app question or picking a format never grants paste", async () => {
+  const h = await open();
+  await enter();
+  await act(async () => { fireEvent.keyDown(screen.getByRole("combobox", { name: /^Search (formats|actions)$/ }), { key: "Escape" }); });
+  expect(h.copy.calls).toHaveLength(0);
+  await enter();
+  await act(async () => { fireEvent.click(screen.getByRole("option", { name: "Pandoc" })); });
+  expect(h.copy.calls).toHaveLength(0);
+  await enter();
+  expect(screen.getByRole("option", { name: "Copy Only" })).toBeTruthy();
+  expect(h.document.pastes).toHaveLength(0);
+});
+
+test("a format pick and paste approval are saved apart, and each keeps the other", async () => {
+  const h = await open();
+  await enter();
+  await act(async () => { fireEvent.click(screen.getByRole("option", { name: "Typst" })); });
+  await act(async () => { h.preview.pending[0]!.complete({ text: "@a" }); });
+  expect(h.copy.calls).toHaveLength(0);
+  expect(h.appChoices.get("example.writer")).toEqual({ output: "typst", paste: null });
+  await enter();
+  await answer("Paste into Example Writer from Now On");
+  expect(h.appChoices.get("example.writer")).toEqual({ output: "typst", paste: "paste" });
+  expect(h.copy.calls).toHaveLength(0);
+  await enter();
+  await finish(h);
+  expect(h.document.text).toBe("Draft: @a.");
+  expect(h.document.pastes).toHaveLength(1);
+  expect(receipt(h)).toBe("Pasted into Example Writer");
+});
+
+test.each(["terminal", "remote-desktop", "virtual-machine", "nonstandard-shortcut"] as const)("a refused %s app never asks, even with a saved paste choice", async (reason) => {
+  const h = await open((h) => { h.target.refusal = reason; h.appChoices.set("example.writer", { output: "pandoc", paste: "paste" }); });
+  await enter();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  await finish(h);
+  expect(h.document.pastes).toHaveLength(0);
+  expect(receipt(h)).toMatch(/^Copied\./);
+});
+
+test("a failed approval save keeps asking and cannot release the held Enter", async () => {
+  const h = await open((h) => { h.holdAppSaves = true; });
+  await enter();
+  await answer("Paste into Example Writer from Now On");
+  await act(async () => { h.appSaves.pending[0]!.fail(new Error("invented write failure")); });
+  expect(h.copy.calls).toHaveLength(0);
+  await enter();
+  expect(screen.getByRole("option", { name: "Paste into Example Writer from Now On" })).toBeTruthy();
+  expect(h.document.pastes).toHaveLength(0);
+});
+
+test("a delayed approval cannot replay its held citation after reopening in another app", async () => {
+  const h = await open((h) => { h.holdAppSaves = true; });
+  await enter();
+  await answer("Paste into Example Writer from Now On");
+  h.document.app = "Other Writer";
+  h.target.appId = "example.other";
+  h.target.verified = true;
+  await reopen(h);
+  await enter();
+  expect(h.copy.calls).toHaveLength(0);
+  await act(async () => { h.appSaves.pending[0]!.complete(); });
+  // The destination read waits for the old save. Its new app identity then
+  // refreshes that app's recent references before the held Enter can copy.
+  expect(h.copy.calls).toHaveLength(0);
+  await act(async () => { h.search.pending.at(-1)!.complete({ revision: "1", results: [result("a", "Invented reference")] }); });
+  await finish(h);
+  expect(h.document.pastes).toHaveLength(1);
+  expect(receipt(h)).toBe("Pasted into Other Writer");
+  expect(h.copy.calls).toHaveLength(1);
+  expect(h.appChoices.has("example.other")).toBe(false);
+});
+
+test("close and reopen while saving approval never replays Enter", async () => {
+  const h = await open((h) => { h.holdAppSaves = true; });
+  await enter();
+  await answer("Paste into Example Writer from Now On");
+  await reopen(h);
+  await act(async () => { h.appSaves.pending[0]!.complete(); });
+  expect(h.copy.calls).toHaveLength(0);
+  expect(h.document.pastes).toHaveLength(0);
+  await enter();
+  await finish(h);
+  expect(h.document.pastes).toHaveLength(1);
+});

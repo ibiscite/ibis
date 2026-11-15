@@ -128,7 +128,7 @@ pub(crate) fn start_shortcut(app: &AppHandle, setting: Option<&str>) {
     if let Ok(mut current) = app.state::<Mutex<ShortcutStatus>>().lock() {
         *current = status.clone();
     }
-    crate::tray::show_shortcut(app, status.registered.then_some(status.shortcut.as_str()));
+    crate::tray::show_shortcut(app);
 }
 
 /// Only Settings may request the desktop's configuration UI. It never saves.
@@ -156,12 +156,7 @@ mod linux {
         if let Ok(mut current) = app.state::<Mutex<ShortcutStatus>>().lock() {
             *current = next.clone();
         }
-        let handle = app.clone();
-        let label = next.registered.then_some(next.shortcut.clone());
-        report(
-            app.run_on_main_thread(move || crate::tray::show_shortcut(&handle, label.as_deref())),
-            NativeIssue::Shortcut,
-        );
+        crate::tray::show_shortcut(app);
         report(app.emit("shortcut:status", next), NativeIssue::Shortcut);
     }
 

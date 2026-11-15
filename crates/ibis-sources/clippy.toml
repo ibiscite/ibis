@@ -1,0 +1,13 @@
+disallowed-methods = [
+    { path = "std::fs::metadata", reason = "Filesystem metadata belongs to the source I/O owner." },
+    { path = "std::fs::symlink_metadata", reason = "Filesystem metadata belongs to the source I/O owner." },
+    { path = "std::path::Path::metadata", reason = "Filesystem metadata belongs to the source I/O owner." },
+    { path = "std::path::Path::symlink_metadata", reason = "Filesystem metadata belongs to the source I/O owner." },
+    { path = "std::path::Path::exists", reason = "Filesystem metadata belongs to the source I/O owner." },
+    { path = "std::path::Path::try_exists", reason = "Filesystem metadata belongs to the source I/O owner." },
+    { path = "std::path::Path::is_file", reason = "Filesystem metadata belongs to the source I/O owner." },
+    { path = "std::path::Path::is_dir", reason = "Filesystem metadata belongs to the source I/O owner." },
+    { path = "std::fs::exists", reason = "Filesystem metadata belongs to the source I/O owner." },
+    { path = "std::fs::File::metadata", reason = "Filesystem metadata belongs to the source I/O owner." },
+    { path = "std::fs::DirEntry::metadata", reason = "Filesystem metadata belongs to the source I/O owner." },
+]

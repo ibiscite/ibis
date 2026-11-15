@@ -2,6 +2,25 @@ use super::*;
 use crate::closed::tests::{edit, fixture, read_fixture};
 
 #[test]
+fn break_foundation_orphaned_library_is_not_silently_discarded() {
+    let dir = fixture(10);
+    edit(dir.path(), "UPDATE items SET libraryID=999 WHERE itemID=10;");
+    let result = read_fixture(dir.path());
+    assert!(
+        result.is_err(),
+        "orphaned bibliographic item disappeared in a successful snapshot: {:?}",
+        result.map(|snapshot| (
+            snapshot
+                .libraries
+                .iter()
+                .map(|library| library.items.len())
+                .sum::<usize>(),
+            snapshot.warnings
+        ))
+    );
+}
+
+#[test]
 fn multipart_dates_follow_typed_text_without_losing_timestamps() {
     for (source, wanted) in [
         ("2020-00-00 Spring 2020", "Spring 2020"),
@@ -28,6 +47,9 @@ fn rejects_views_virtual_tables_generated_columns_and_duplicate_identity() {
         "DROP TABLE fieldsCombined; CREATE VIRTUAL TABLE fieldsCombined USING fts5(fieldID,fieldName);",
         "ALTER TABLE fieldsCombined ADD COLUMN generated TEXT GENERATED ALWAYS AS (fieldName);",
         "UPDATE items SET key='SYNTH001' WHERE itemID=12; DELETE FROM deletedItems;",
+        "UPDATE items SET key='SYNTH001' WHERE itemID=13;",
+        "UPDATE items SET key='SYNTH001' WHERE itemID=12;",
+        "UPDATE libraries SET type='invented' WHERE libraryID=1;",
         "INSERT INTO itemData VALUES(10,1,1);",
         "UPDATE creators SET fieldMode=2;",
         "INSERT INTO itemCreators VALUES(10,1,1,0);",

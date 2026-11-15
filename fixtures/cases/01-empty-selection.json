@@ -1,7 +1,8 @@
 {
   "expected": {
     "error": {
-      "code": "bad-input"
+      "code": "bad-input",
+      "citation_error": "empty-selection"
     },
     "ibis": 1,
     "ok": false

@@ -1,9 +1,9 @@
+import type * as nativeApi from "../../api";
 import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
-import type { PickerApi } from "../../App";
 
 /** What the Mac asks of the picker: text from Search with Ibis, collected once
  * so a launch cannot lose it, and the trackpad's tick as a citation grows. */
-export function useNativeRequests(api: PickerApi, query: string, setQuery: (query: string) => void, input: RefObject<HTMLInputElement | null>, shelf: number) {
+export function useNativeRequests(api: typeof nativeApi, query: string, setQuery: (query: string) => void, input: RefObject<HTMLInputElement | null>, shelf: number) {
   const latest = useRef(setQuery);
   const typed = useRef(query);
   const incoming = useRef<string | null>(null);

@@ -1,13 +1,14 @@
 import { expect, test } from "vitest";
-import { testStates } from "../../test-fixtures";
+import { testStates, recordId } from "../../test-fixtures";
 import { enterLabel } from "./enterLabel";
 import { choiceKey, idKey, type CitationReference } from "./choice";
 import { arrangeView } from "../../testing/sessionView";
 import { initialSession, reduceSession, sessionQueryKey, type SessionEvent, type SessionView } from "./session";
+import type { CopiedReason } from "../../bindings";
 
-const a: CitationReference = { ...testStates[1]!.results[0]!, locator: { label: "page", value: "١٢–١٤" } };
+const a: CitationReference = { ...testStates[1]!.results[0]!, locator: { term: "page", value: "١٢–١٤" } };
 const b = testStates[1]!.results[1]!;
-const prepared = { text: "canonical engine text", html: "", markup: ["canonical engine text"], warnings: [], fileTicket: "ticket-b", fileHash: "hash-b" };
+const prepared = { display: { nodes: [] }, text: "canonical engine text", warnings: [], fileTicket: "ticket-b", fileHash: "hash-b" };
 function scenario() {
   let state = { ...initialSession(), presentation: 0 as number | null };
   let effects: ReturnType<typeof reduceSession>[1] = [];
@@ -51,38 +52,38 @@ test("a project switch keeps search, ordered references and pages but cancels pe
   const s = scenario();
   s.send({ type: "query", value: "synthetic" });
   s.send({ type: "toggle", result: a, locator: a.locator });
-  s.send(s.view({ writingProjectId: "a", shown: null, searchPending: true }));
+  s.send(s.view({ writingId: "a", shown: null, searchPending: true }));
   s.send({ type: "enter", choice: null });
   expect(s.state.pendingCopy).not.toBeNull();
-  s.send(s.view({ writingProjectId: "b", output: { opening: 0, choice: 1, delivery: 0 } }));
+  s.send(s.view({ writingId: "b", output: { opening: 0, choice: 1, delivery: 0 } }));
   expect(s.state.pendingCopy).toBeNull();
   expect(s.state.changing).toBeNull();
   expect(s.state.query).toBe("synthetic");
   expect([...s.state.selected.values()]).toMatchObject([{ key: a.key, locator: a.locator }]);
-  expect(s.send(s.view({ writingProjectId: "b", output: { opening: 0, choice: 1, delivery: 0 } }))).toEqual([]);
+  expect(s.send(s.view({ writingId: "b", output: { opening: 0, choice: 1, delivery: 0 } }))).toEqual([]);
 });
 
 test("a project switch does not offer another project's citation for replacement", () => {
   const s = scenario();
-  s.send(s.view({ appId: "example.editor", writingProjectId: "a" }));
+  s.send(s.view({ appId: "example.editor", writingId: "a" }));
   s.send({ type: "enter", choice: choiceKey([a]) });
   s.complete(1, { pinned: true });
   expect(s.state.lastCitations.has("example.editor")).toBe(true);
   s.send({ type: "change-last" });
   expect(s.state.changing).toEqual([prepared.text]);
-  s.send(s.view({ appId: "example.editor", writingProjectId: "b", output: { opening: 0, choice: 1, delivery: 0 } }));
+  s.send(s.view({ appId: "example.editor", writingId: "b", output: { opening: 0, choice: 1, delivery: 0 } }));
   expect(s.state.changing).toBeNull();
   s.send({ type: "change-last" });
   expect(s.state.changing).toBeNull();
 });
 
 test.each([
-  { writingProjectId: "project-b", format: "pandoc" as const },
-  { writingProjectId: "project-a", format: "typst" as const },
-  { writingProjectId: null, format: "pandoc" as const },
-])("a last citation cannot cross project or output identity even before its change event: $writingProjectId $format", (next) => {
+  { writingId: "project-b", format: "pandoc" as const },
+  { writingId: "project-a", format: "typst" as const },
+  { writingId: null, format: "pandoc" as const },
+])("a last citation cannot cross project or output identity even before its change event: $writingId $format", (next) => {
   const s = scenario();
-  s.send(s.view({ appId: "example.editor", writingProjectId: "project-a" }));
+  s.send(s.view({ appId: "example.editor", writingId: "project-a" }));
   s.send({ type: "enter", choice: choiceKey([a]) });
   s.complete(1, { pinned: true });
   expect(s.state.lastCitations.get("example.editor")?.project).toBe("project-a");
@@ -93,10 +94,10 @@ test.each([
 
 test.each(["before", "after"] as const)("a refreshed checked receipt cannot adopt an earlier copy or let its response hide the picker (%s new Enter)", (oldResponse) => {
   const s = scenario();
-  const first = { writingProjectId: "a", projectVersion: "1:0" };
+  const first = { writingId: "a", writingVersion: "1:0" };
   s.send(s.view(first));
   s.send({ type: "enter", choice: choiceKey([a]) });
-  const checked = { writingProjectId: "a", projectVersion: "1:1", shown: { ...prepared, fileTicket: "checked-ticket", warnings: ["Couldn't check a2026 against thesis.bib."] } };
+  const checked = { writingId: "a", writingVersion: "1:1", shown: { ...prepared, fileTicket: "checked-ticket", warnings: ["Couldn't check a2026 against thesis.bib."] } };
   s.send(s.view(checked));
   if (oldResponse === "before") {
     s.complete(1);
@@ -115,10 +116,10 @@ test.each(["before", "after"] as const)("a refreshed checked receipt cannot adop
 
 test("a stale checked copy cannot consume the one-time output a fresh Enter is waiting for", () => {
   const s = scenario();
-  const original = { format: "cite" as const, projectVersion: "1:0" };
+  const original = { format: "cite" as const, writingVersion: "1:0" };
   s.send(s.view(original));
   s.send({ type: "enter", choice: choiceKey([a]) });
-  const refreshing = { format: "cite" as const, projectVersion: "1:1", shown: null };
+  const refreshing = { format: "cite" as const, writingVersion: "1:1", shown: null };
   s.send(s.view(refreshing));
   s.send({ type: "enter", choice: choiceKey([a]) });
   expect(s.state.pendingCopy).not.toBeNull();
@@ -161,7 +162,7 @@ test("a minute away abandons the citation's fields and order choice", () => {
 
 test("removing a reference offers an owned Undo that restores its position and complete details", () => {
   const s = scenario();
-  const c = { ...b, id: { library: "synthetic", key: "third" }, key: "third" };
+  const c = { ...b, id: { library: "synthetic", key: recordId("third") }, key: "third" };
   s.send({ type: "toggle", result: a, locator: a.locator });
   s.send({ type: "reference", reference: s.state.selected.get(idKey(a.id))!, change: { form: "year-only" } });
   s.send({ type: "toggle", result: b });
@@ -187,7 +188,7 @@ test("Undo never overwrites a reference added again or crosses a cleared session
   s.send({ type: "toggle", result: a, locator: a.locator });
   s.send({ type: "toggle", result: a });
   const undo = s.state.removed!;
-  s.send({ type: "toggle", result: a, locator: { label: "page", value: "42" } });
+  s.send({ type: "toggle", result: a, locator: { term: "page", value: "42" } });
   s.send({ type: "undo-reference", removal: undo });
   expect(s.state.selected.get(idKey(a.id))?.locator?.value).toBe("42");
   s.send({ type: "toggle", result: a });
@@ -197,11 +198,11 @@ test("Undo never overwrites a reference added again or crosses a cleared session
   expect(s.state.selected.size).toBe(0);
 });
 
-test("a retired segment cannot remove a newly edited reference or add a removed one back", () => {
+test("a retired token cannot remove a newly edited reference or add a removed one back", () => {
   const s = scenario();
   s.send({ type: "toggle", result: a });
   const retired = s.state.selected.get(idKey(a.id))!;
-  s.send({ type: "reference", reference: retired, change: { locator: { label: "page", value: "42" } } });
+  s.send({ type: "reference", reference: retired, change: { locator: { term: "page", value: "42" } } });
   s.send({ type: "remove-reference", reference: retired });
   const current = s.state.selected.get(idKey(a.id))!;
   expect(current.locator?.value).toBe("42");
@@ -266,7 +267,7 @@ test("exhausted presentation reads refuse Enter and later readiness cannot repla
   expect(s.state.flights[0]?.presentation).toBe(41);
 });
 
-test.each([
+test.each<[CopiedReason, string]>([
   ["no-permission", "Copied. Ibis needs your OK to paste. Press Ctrl+V to paste."],
   ["accessibility-required", "Copied. Ibis needs Accessibility access to paste safely. Press Ctrl+V to paste."],
 ])("a %s refusal retains its reason and prepared shelf", (reason, message) => {
@@ -873,4 +874,27 @@ test("the picker counts as hidden until it is shown, and a visibility read never
   expect(s.shown).toBe(true);
   s = send(s, { type: "visibility-read", visible: false, events: started });
   expect(s.shown).toBe(true);
+});
+
+test("moving a reference follows the line's order, keeps the person's order, and refuses a stale line", () => {
+  const s = scenario();
+  s.send({ type: "toggle", result: a, locator: a.locator });
+  s.send({ type: "toggle", result: b });
+  const [first, second] = [...s.state.selected.values()];
+  // A sorting style shows b before a; moving a left puts it first, as the line shows.
+  const shown = [idKey(b.id), idKey(a.id)];
+  s.send({ type: "move-reference", reference: first!, shown, step: -1 });
+  expect([...s.state.selected.keys()]).toEqual([idKey(a.id), idKey(b.id)]);
+  expect(s.state.keepOrder).toBe(true);
+  // The end of the line, a line from before a removal, or a replaced reference do nothing.
+  const before = s.state;
+  s.send({ type: "move-reference", reference: first!, shown: [idKey(a.id), idKey(b.id)], step: -1 });
+  s.send({ type: "move-reference", reference: second!, shown: [idKey(b.id)], step: 1 });
+  s.send({ type: "move-reference", reference: { ...second! }, shown: [idKey(a.id), idKey(b.id)], step: -1 });
+  expect(s.state).toBe(before);
+  // Undo after a remove puts the reference back beside the neighbours it had after the move.
+  s.send({ type: "remove-reference", reference: first! });
+  s.send({ type: "undo-reference", removal: s.state.removed! });
+  expect([...s.state.selected.keys()]).toEqual([idKey(a.id), idKey(b.id)]);
+  expect(s.state.selected.get(idKey(a.id))?.locator).toEqual(a.locator);
 });

@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Condvar, Mutex};
 
-use ibis_core::settings::{LibrarySetting, ZoteroLibraries, ZoteroLibrary};
+use ibis_engine::settings::{LibrarySetting, ZoteroLibraries, ZoteroLibrary};
 #[cfg(debug_assertions)]
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
@@ -14,13 +14,14 @@ use tauri_plugin_dialog::DialogExt;
 use crate::diagnostics::{NativeIssue, application_message, report};
 use crate::picker::{ChooserOpen, reveal_picker};
 use crate::preferences::SettingsFile;
-use crate::tray::{LibraryMenuItem, library_line};
 
 use super::error::LoadError;
-use super::load::{Loaded, load_source};
+#[cfg(test)]
+use super::load::load_source;
+use super::load::{Loaded, load_source_guarded};
 use super::retry::{begin_check, begin_focus_retry, begin_zotero_retry, retry, zotero_choice, zotero_to_check};
 use super::source::Source;
-use super::state::{Library, LoadRequests, begin_open, dialog_path_error, install_automatic, install_loaded};
+use super::state::{Library, LoadRequests, begin_open, dialog_path_error, install_automatic_loaded, install_loaded};
 use super::status::{LibraryProblem, LibraryState, LibraryStatus, status};
 
 pub(super) fn publish<R: tauri::Runtime>(app: &AppHandle<R>, status: LibraryStatus) {
@@ -32,8 +33,21 @@ pub(super) fn publish<R: tauri::Runtime>(app: &AppHandle<R>, status: LibraryStat
 
 pub(crate) fn refresh_settings_notice<R: tauri::Runtime>(app: &AppHandle<R>, settings_file: &SettingsFile) {
     if let Some(library) = app.try_state::<Mutex<Library>>() {
-        update_notices(&library, |_| true, |library| settings_file.refresh_notice(library));
-        if let Ok(library) = library.lock() {
+        let Ok(previous) = library.lock().map(|library| library.settings_notice.clone()) else {
+            return;
+        };
+        let mut feedback = Library::default();
+        // File I/O stays outside the lock used by native copy commands.
+        settings_file.refresh_notice(&mut feedback);
+        // A settings read is not a library reload. Repeating unchanged status
+        // makes the picker prepare a replacement citation, cancelling a copy
+        // already using the shown ticket. Keep a newer notice if one arrived
+        // while reading this one.
+        if let Ok(mut library) = library.lock()
+            && library.settings_notice == previous
+            && library.settings_notice != feedback.settings_notice
+        {
+            library.settings_notice = feedback.settings_notice;
             publish(app, status(&library));
         }
     }
@@ -77,12 +91,7 @@ pub(super) fn refresh_tray(app: &AppHandle) {
     // library lock, then read fresh state so delayed menu work cannot go stale.
     report(
         app.run_on_main_thread(move || {
-            let current = current_status(&handle);
-            if let Some(item) = handle.try_state::<LibraryMenuItem>() {
-                report(item.0.set_text(library_line(&current)), NativeIssue::TrayLibrary);
-            }
-            #[cfg(target_os = "macos")]
-            crate::menu_bar::show_reading(&handle, current.state == LibraryState::Reloading);
+            crate::tray::refresh_library(&handle);
         }),
         NativeIssue::TrayLibrary,
     );
@@ -111,7 +120,7 @@ pub(super) fn publish_current_with(library: &Mutex<Library>, emit: impl FnOnce(L
 
 /// Apply an engine notification for `file`, accounting for each snapshot once.
 /// Returns whether `file` is still the open library.
-pub(super) fn engine_changed(library: &mut Library, file: &std::sync::Arc<super::engine_file::FileLibrary>) -> bool {
+pub(super) fn engine_changed(library: &mut Library, file: &std::sync::Arc<super::engine_library::FileLibrary>) -> bool {
     if !library
         .file
         .as_ref()
@@ -161,7 +170,7 @@ pub(super) fn watch_current(app: &AppHandle) {
 fn observe_current(
     library: &Mutex<Library>,
 ) -> Option<(
-    std::sync::Arc<super::engine_file::FileLibrary>,
+    std::sync::Arc<super::engine_library::FileLibrary>,
     ibis_engine::LibrarySubscription,
 )> {
     let mut library = library.lock().ok()?;
@@ -177,6 +186,7 @@ fn observe_current(
 enum OpenIntent {
     Remember,
     Read,
+    ReadOnly,
     Refresh,
 }
 
@@ -247,9 +257,33 @@ impl LoadRequests {
 /// finish. A newer choice cancels at once, so this only limits a lone stuck read.
 const LOAD_DEADLINE: std::time::Duration = std::time::Duration::from_secs(120);
 
+fn supervise_source_load<T: Send + 'static>(
+    source: &Source,
+    cancel: &OpenCancellation,
+    deadline: std::time::Duration,
+    operation: impl FnOnce() -> Result<T, LoadError> + Send + 'static,
+) -> Result<T, LoadError> {
+    use std::sync::atomic::AtomicUsize;
+    // An abandoned network/database call must never occupy a file-opening slot.
+    static FILE_READS: AtomicUsize = AtomicUsize::new(0);
+    static ZOTERO_READS: AtomicUsize = AtomicUsize::new(0);
+    let (in_flight, unavailable) = match source {
+        Source::Zotero(_) => (
+            &ZOTERO_READS,
+            LoadError::Zotero(ibis_core::contract::EngineError::new(
+                ibis_core::contract::ErrorCode::SourceUnavailable,
+            )),
+        ),
+        _ => (&FILE_READS, LoadError::FILE_UNAVAILABLE),
+    };
+    supervise_load(cancel, deadline, in_flight, unavailable, operation)
+}
+
 fn supervise_load<T: Send + 'static>(
     cancel: &OpenCancellation,
     deadline: std::time::Duration,
+    in_flight: &'static std::sync::atomic::AtomicUsize,
+    unavailable: LoadError,
     operation: impl FnOnce() -> Result<T, LoadError> + Send + 'static,
 ) -> Result<T, LoadError> {
     use std::sync::atomic::AtomicUsize;
@@ -258,21 +292,20 @@ fn supervise_load<T: Send + 'static>(
     // A driver call cannot be killed safely. Bound abandoned operations, while
     // leaving room for local B to open when remote A is stuck. Saturation fails
     // promptly, rather than queuing behind an indefinitely blocked OS call.
-    static IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
-    struct Permit;
+    struct Permit(&'static AtomicUsize);
     impl Drop for Permit {
         fn drop(&mut self) {
-            IN_FLIGHT.fetch_sub(1, Ordering::SeqCst);
+            self.0.fetch_sub(1, Ordering::SeqCst);
         }
     }
     if cancel.token.is_cancelled() {
         return Err(LoadError::Stopped);
     }
-    if IN_FLIGHT.fetch_add(1, Ordering::SeqCst) >= 4 {
-        IN_FLIGHT.fetch_sub(1, Ordering::SeqCst);
-        return Err(LoadError::FILE_UNAVAILABLE);
+    if in_flight.fetch_add(1, Ordering::SeqCst) >= 4 {
+        in_flight.fetch_sub(1, Ordering::SeqCst);
+        return Err(unavailable);
     }
-    let permit = Permit;
+    let permit = Permit(in_flight);
     let (send, result) = mpsc::sync_channel(1);
     let wake = Arc::clone(&cancel.wake);
     std::thread::Builder::new()
@@ -296,7 +329,7 @@ fn supervise_load<T: Send + 'static>(
         if remaining.is_zero() {
             drop(gate);
             cancel.cancel();
-            return Err(LoadError::FILE_UNAVAILABLE);
+            return Err(unavailable);
         }
         match result.try_recv() {
             Ok(result) => {
@@ -344,8 +377,7 @@ impl OpenIntent {
         loaded: Result<Loaded, LoadError>,
     ) -> Option<LibraryStatus> {
         match (self, loaded) {
-            (Self::Refresh, Ok(Loaded::New(new))) => install_automatic(library, requests, request, Ok(*new)),
-            (Self::Refresh, loaded) => install_loaded(library, requests, request, loaded),
+            (Self::Refresh, loaded) => install_automatic_loaded(library, requests, request, loaded),
             // An explicit request starts afresh even when the source is
             // unchanged: a remembered choice is saved again afterwards.
             (_, Ok(Loaded::Unchanged)) => {
@@ -378,6 +410,19 @@ pub(crate) fn start_open(app: &AppHandle, source: Source, remember: bool) {
         OpenIntent::Read
     };
     run_open(app, request, source, reload, intent, None);
+}
+
+/// Apply the explicit file choice through the normal replacement request path.
+/// This starts a read only; it never saves a second, guessed library choice.
+pub(crate) fn apply_file_settings(app: &AppHandle, source: Option<LibrarySetting>, profile: Option<String>) {
+    let Some(source) = source.map(Source::from) else {
+        super::state::clear(&app.state(), &app.state());
+        publish_current(app);
+        return;
+    };
+    if let Some((request, reload, _)) = begin_open(&app.state(), &app.state(), source.clone()) {
+        run_open(app, request, source, reload, OpenIntent::ReadOnly, profile);
+    }
 }
 
 /// Read Zotero with this profile from now on. The request is numbered here, so
@@ -455,17 +500,30 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
     let loading_app = app.clone();
     async move {
         let loaded = tauri::async_runtime::spawn_blocking(move || {
-            let file_io = matches!(source, Source::File(_) | Source::Samples(_));
+            let supervised_source = source.clone();
             let worker_cancel = cancel.token.clone();
-            let read_profile = if matches!(source, Source::Zotero(_)) {
-                reading_profile.or_else(|| loading_app.state::<SettingsFile>().zotero_profile())
-            } else {
-                None
-            };
             let operation = move || {
                 #[cfg(debug_assertions)]
                 let loading = std::time::Instant::now();
-                let loaded = load_source(
+                let read_profile = if matches!(source, Source::Zotero(_)) {
+                    if matches!(intent, OpenIntent::ReadOnly) {
+                        reading_profile
+                    } else {
+                        match reading_profile {
+                            Some(profile) => Some(profile),
+                            None => loading_app.state::<SettingsFile>().zotero_profile().map_err(|_| {
+                                LoadError::Zotero(ibis_core::contract::EngineError::new(
+                                    ibis_core::contract::ErrorCode::SourceUnavailable,
+                                ))
+                            })?,
+                        }
+                    }
+                } else {
+                    None
+                };
+                let expected_source = source.clone();
+                let expected_bridge = previous_file.clone();
+                let loaded = load_source_guarded(
                     source,
                     force,
                     previous_file,
@@ -474,6 +532,16 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
                     || {
                         worker_cancel.is_cancelled()
                             || loading_app.state::<LoadRequests>().0.load(Ordering::SeqCst) != request
+                    },
+                    |retire| {
+                        guard_zotero_read(
+                            &loading_app.state(),
+                            &loading_app.state(),
+                            request,
+                            &expected_source,
+                            expected_bridge.as_ref(),
+                            retire,
+                        )
                     },
                 );
                 #[cfg(debug_assertions)]
@@ -485,11 +553,7 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
                     loaded
                 }
             };
-            if file_io {
-                supervise_load(&cancel, LOAD_DEADLINE, operation)
-            } else {
-                operation()
-            }
+            supervise_source_load(&supervised_source, &cancel, LOAD_DEADLINE, operation)
         })
         .await;
         #[cfg(debug_assertions)]
@@ -538,11 +602,12 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
                         // then saves after this one, never before it.
                         let saved = app.state::<SettingsFile>().update(|s| {
                             if app.state::<LoadRequests>().0.load(Ordering::SeqCst) == request
-                                && (matches!(intent, OpenIntent::Remember) || s.library == refresh_source.setting())
+                                && (matches!(intent, OpenIntent::Remember)
+                                    || s.portable.library == refresh_source.setting())
                             {
-                                s.library = Some(chosen);
+                                s.portable.library = Some(chosen);
                                 if profile.is_some() {
-                                    s.zotero_profile = profile;
+                                    s.device.zotero_profile = profile;
                                 }
                             }
                         });
@@ -583,10 +648,36 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
     }
 }
 
+/// Detecting a full read retires old citations immediately, but only while
+/// this request still owns the retained bridge. Data and health stay private.
+pub(super) fn guard_zotero_read(
+    library: &Mutex<Library>,
+    requests: &LoadRequests,
+    request: u64,
+    source: &Source,
+    bridge: Option<&Arc<super::engine_library::FileLibrary>>,
+    retire: &mut dyn FnMut() -> Result<(), ibis_core::contract::EngineError>,
+) -> Result<(), ibis_core::contract::EngineError> {
+    use ibis_core::contract::{EngineError, ErrorCode};
+    let library = library.lock().map_err(|_| EngineError::new(ErrorCode::Internal))?;
+    if requests.0.load(Ordering::SeqCst) != request
+        || library.source.as_ref() != Some(source)
+        || !library
+            .file
+            .as_ref()
+            .zip(bridge)
+            .is_some_and(|(current, expected)| Arc::ptr_eq(current, expected))
+    {
+        return Err(EngineError::new(ErrorCode::Cancelled));
+    }
+    retire()
+}
+
 pub(super) fn remembered_choice(source: &Source, loaded: &Result<Loaded, LoadError>) -> Option<LibrarySetting> {
-    if let Ok(Loaded::Reload(reload)) = loaded {
-        return reload
-            .prepared
+    if let Ok(Loaded::Reload(reload)) = loaded
+        && let super::load::PreparedReload::File(prepared) = &reload.prepared
+    {
+        return prepared
             .source_path()
             .map(|path| LibrarySetting::Bibtex(path.to_path_buf()));
     }
@@ -717,13 +808,15 @@ pub(crate) fn current_status(app: &AppHandle) -> LibraryStatus {
             references: 0,
             source_counts: BTreeMap::new(),
             warnings: 0,
+            problem_library: None,
             reading: Vec::new(),
             live_updates_off: false,
             error: Some(super::error::words("app-library-state-unavailable", &[])),
             problem: Some(LibraryProblem::Other),
+            failure: Some(super::CommandError::NotPrepared.problem()),
+            retained_failure: None,
             error_reason: None,
             kept_references: false,
-            choice_not_saved: false,
             note: None,
             settings_notice: None,
             snapshot_zotero: false,
@@ -764,7 +857,7 @@ mod engine_read_cancellation {
         let replacement = ibis_engine::Cancellation::default();
         let request = |id, cancel| OpenRequest {
             request: id,
-            source: Source::Zotero(ibis_core::settings::ZoteroLibrary::User.into()),
+            source: Source::Zotero(ibis_engine::settings::ZoteroLibrary::User.into()),
             reload: true,
             intent: OpenIntent::Refresh,
             profile: None,

@@ -7,13 +7,14 @@ import { commands, type CommandError, type LibraryStatus, type PreferenceChange,
 export type { Sources } from "./bindings";
 export type {
   AppPaste, Copied, Density, EntryCopy, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PastedList, PickerDestination, PickerPreferences, ProjectStatus, SearchQuery, SearchResult, SessionBibliography, SessionEdit, SessionReferencesView, ShortcutStatus, ZoteroGroup, ZoteroLibrary, ZoteroProfiles,
-  WritingProjectView, WritingProjectsView, WritingProjectEdit,
+  WritingView, WritingsView, WritingEdit,
 } from "./bindings";
 /** What the notice after a copy says: pasted into an app, or copied and why. */
 export type NoticeMessage = NonNullable<Awaited<ReturnType<typeof commands.copiedNotice>>>;
 
 export const {
   delightView,
+  shorthandHint,
   chooseLibrary,
   useZotero,
   useSampleLibrary,
@@ -28,14 +29,11 @@ export const {
   chooseProject,
   stopProject,
   copyProjectEntry,
-  writingProjects,
-  editWritingProject,
+  writings,
+  editWriting,
   editorRequest,
   sessionReferences,
   editSessionReferences,
-  sessionBibliography,
-  copySessionBibliography,
-  exportSessionBibliography,
   openLibrarySource,
   librarySource,
   hidePicker,
@@ -44,11 +42,11 @@ export const {
   setPinned,
   quit,
   shortcutStatus,
-  citationDetails,
   recentReferences,
   pickerPreferences,
   pickerDestination,
   rememberAppOutput,
+  forgetAppOutput,
   loginItem,
   setLoginItem,
   findZotero,
@@ -96,6 +94,33 @@ export const { savePickerPreferences, pickerPreferencesSaved } = commands;
 const searchPage = crypto.getRandomValues(new Uint32Array(1))[0] ?? 0;
 let searchRequest = 0;
 let previewRequest = 0;
+let formattingRequest = 0;
+
+/** Closing an auxiliary view stops its formatter work, keeping its receipt. */
+function formatting<T>(run: (intent: Parameters<typeof commands.citationDetails>[3]) => Promise<T>, signal?: AbortSignal) {
+  const intent = { page: searchPage, request: ++formattingRequest, cancel: false, keep_order: false, context: null };
+  const pending = run(intent);
+  const cancel = () => { void run({ ...intent, cancel: true }).catch(() => {}); };
+  signal?.addEventListener("abort", cancel, { once: true });
+  if (signal?.aborted) cancel();
+  return pending.finally(() => signal?.removeEventListener("abort", cancel));
+}
+
+export function citationDetails(ticket: string, contentHash: string, item: number, signal?: AbortSignal) {
+  return formatting((intent) => commands.citationDetails(ticket, contentHash, item, intent), signal);
+}
+
+export function sessionBibliography(style: string, signal?: AbortSignal) {
+  return formatting((intent) => commands.sessionBibliography(style, intent), signal);
+}
+
+export function copySessionBibliography(style: string, contentHash: string, signal?: AbortSignal) {
+  return formatting((intent) => commands.copySessionBibliography(style, contentHash, intent), signal);
+}
+
+export function exportSessionBibliography(style: string, contentHash: string, signal?: AbortSignal) {
+  return formatting((intent) => commands.exportSessionBibliography(style, contentHash, intent), signal);
+}
 
 export function previewFileCitation(
   items: Parameters<typeof commands.previewFileCitation>[0],
@@ -154,7 +179,6 @@ export function onPickerHidden(handler: () => void): Promise<UnlistenFn> {
   return listen("picker:hidden", handler);
 }
 
-/** Called when a library finishes opening, or fails to open. */
 /** A native-accepted drop supersedes the explicit source chooser. */
 export function onLibraryFileDropped(handler: () => void): Promise<UnlistenFn> {
   return listen("library:file-dropped", handler);
@@ -169,17 +193,17 @@ export function onLibraryChanged(handler: (status: LibraryStatus) => void): Prom
   return listen<LibraryStatus>("library:changed", (event) => handler(event.payload));
 }
 
-/** The project bibliography's choice or its read changed. */
+/** The bibliography's choice or its read changed. */
 export function onProjectChanged(handler: (version: [number, number] | null) => void): Promise<UnlistenFn> {
   return listen<[number, number]>("project:changed", ({ payload }) => handler(payload ?? null));
 }
 
 /** Saved-definition metadata can change without retargeting the current task. */
-export function onWritingProjectsChanged(handler: () => void): Promise<UnlistenFn> {
-  return listen("writing-projects:changed", handler);
+export function onWritingsChanged(handler: () => void): Promise<UnlistenFn> {
+  return listen("writings:changed", handler);
 }
 
-/** A chosen project bibliography could not be saved, so the old choice stands. */
+/** A chosen bibliography could not be saved, so the old choice stands. */
 export function onProjectNotSaved(handler: () => void): Promise<UnlistenFn> {
   return listen("project:not-saved", () => handler());
 }
@@ -191,8 +215,9 @@ export function onEditorRequest(handler: () => void): Promise<UnlistenFn> {
 
 /** The citation key another record also has, when that is why citing by key failed. */
 export function sharedCitationKey(error: unknown): string | null {
-  const failed = typeof error === "object" && error !== null ? error as { code?: unknown; key?: unknown } : null;
-  return failed?.code === "shared_citation_key" && typeof failed.key === "string" ? failed.key : null;
+  const failed = typeof error === "object" && error !== null ? error as { code?: unknown; message?: { args?: { key?: unknown } } } : null;
+  const key = failed?.message?.args?.key;
+  return failed?.code === "ambiguous-key" && typeof key === "string" ? key : null;
 }
 
 /** Only the backend's snapshot rejection code becomes a recovery explanation. */
@@ -206,7 +231,7 @@ export function isCancelled(error: unknown): boolean {
 }
 
 export function isSnapshotChanged(error: unknown): boolean {
-  return typeof error === "object" && error !== null && (error as Partial<CommandError>).code === "snapshot_changed";
+  return typeof error === "object" && error !== null && ["snapshot_changed", "changed-item", "missing-item"].includes(String((error as Partial<CommandError>).code));
 }
 
 export type UpdateProgress = { attempt: number; revision: number; received: number; total: number | null; phase: "downloading" | "installing" | "failed" };

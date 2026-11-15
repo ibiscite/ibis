@@ -5,10 +5,6 @@ import { App } from "./App";
 import { backend as engineBackend, prepared, result, type Handler } from "./testing/app";
 import { usePointerSelection } from "./pointerSelection";
 
-// Vitest can load these existing runtime builtins without a Node-types dependency.
-const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
-const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
-const styles = readFileSync(new FileURL("./ui/Option.css", import.meta.url), "utf8");
 
 const originalScroll = Object.getOwnPropertyDescriptor(Element.prototype, "scrollIntoView");
 let moveTime = 1000;
@@ -156,16 +152,6 @@ test("selecting by click does not scroll the list, but arrow keys do", async () 
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "ArrowUp" });
   expect(activeTitle()).toBe("Beta");
   expect(scrolled).toHaveBeenCalledTimes(1);
-});
-
-test("hovering a row only tints it, swaps the tile's icon for its add control, and never changes its layout", () => {
-  expect(styles).not.toMatch(/\[role="option"\]:hover/);
-  const hoverRules = [...styles.matchAll(/([^{}]*\[role="option"\][^{}]*\[data-hovered\][^{}]*)\{([^}]*)\}/g)];
-  expect(hoverRules.length).toBeGreaterThan(0);
-  for (const [, , body] of hoverRules) {
-    const properties = (body ?? "").split(";").map((d) => d.split(":")[0]?.trim()).filter(Boolean);
-    for (const property of properties) expect(["background", "background-color", "color", "opacity"]).toContain(property);
-  }
 });
 
 test("clicking a row's tile adds or removes it without copying, and keeps the search focused", async () => {

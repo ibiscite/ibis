@@ -1,4 +1,4 @@
-import type { DelightFact, PickerPreferences, ShortcutStatus } from "../bindings";
+import type { DelightFact, PickerPreferences, ShortcutStatus, WindowSize } from "../bindings";
 import { DEFAULT_PICKER_SHORTCUT } from "../keys";
 import type { SettingsApi } from "./api";
 
@@ -9,6 +9,8 @@ export function demoApi(): SettingsApi {
   let enabled = false, automatic = false;
   let revision = 0;
   let factIndex = -1;
+  let windowSize: WindowSize = "medium", previousWindowSize: WindowSize = "medium", windowRevision = 0;
+  const windowListeners = new Set<(saved: boolean, revision: number) => void>();
   const facts: DelightFact[] = ["touch", "scarlet", "mummies", "national", "flight"];
   const updateListeners = new Set<(on: boolean) => void>();
   const listeners = new Set<(revision: number) => void>();
@@ -29,9 +31,17 @@ export function demoApi(): SettingsApi {
       for (const changed of listeners) changed(receipt);
       return { preferences };
     },
-    windowSize: async () => "medium",
-    setWindowSize: async () => null,
-    onWindowSaved: subscribe,
+    windowSize: async () => windowSize,
+    setWindowSize: async (size, undo = null) => {
+      if (undo !== null && undo !== windowRevision) throw new Error("Window choice superseded");
+      const previous = windowSize;
+      windowSize = undo === null ? size : previousWindowSize;
+      previousWindowSize = previous;
+      const revision = ++windowRevision;
+      for (const saved of windowListeners) saved(true, revision);
+      return revision;
+    },
+    onWindowSaved: async (saved) => { windowListeners.add(saved); return () => { windowListeners.delete(saved); }; },
     // The demo has no files: backing up and restoring are cancelled at once.
     backUpSettings: async () => null, chooseSettingsBackup: async () => null,
     restoreSettingsBackup: async () => null, cancelSettingsRestore: async () => null,
@@ -48,5 +58,6 @@ export function demoApi(): SettingsApi {
     configureShortcuts: async () => null, version: async () => "0.2.1",
     onShortcutStatus: subscribe, onPage: subscribe, onUpdateChecks: async (changed) => { updateListeners.add(changed); return () => { updateListeners.delete(changed); }; }, onCloseRequested: subscribe,
     onPreferencesChanged: async (changed) => { listeners.add(changed); return () => { listeners.delete(changed); }; },
+    onSettingsChanged: async (changed) => { listeners.add(changed); return () => { listeners.delete(changed); }; },
   };
 }

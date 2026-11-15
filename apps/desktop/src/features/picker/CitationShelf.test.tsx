@@ -1,3 +1,5 @@
+import { recordId } from "../../test-fixtures";
+import { displayTree } from "../../testing/app";
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { createRef, useState } from "react";
@@ -9,32 +11,33 @@ import { useCitationInspector } from "./useCitationInspector";
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 function record(key: string, first_author = "García", year: string | null = "2021"): SearchResult {
-  return { revision: "1", id: { library: "invented.bib", key }, key, cite: "1", source: "invented.bib", title: `Invented title ${key}`, authors: first_author,
+  return { revision: "1", id: { library: "invented.bib", key: recordId(key) }, key, cite: "1", source: "invented.bib", title: `Invented title ${key}`, authors: first_author,
     year, matched: ["title"], partial: false, first_author, author_count: 1, container: null, item_type: "book" };
 }
 const chosen = (records: CitationReference[]) => new Map(records.map((r) => [r.key, r]));
-const output = (text = "(García, 2021)") => ({ markup: [], text, html: "", warnings: [] });
+const output = (text = "(García, 2021)") => ({ display: displayTree([{ item: 0, text }]), text, warnings: [] });
 type ShelfProps = Partial<Parameters<typeof CitationShelf>[0]>;
 function Shelf(props: ShelfProps) {
   const inspector = useCitationInspector();
   return <CitationShelf inspector={inspector} announce={false} selected={new Map()}
-    removeLabel={(r) => `Remove ${r.key}`} onRemove={() => undefined} onChangeReference={() => undefined}
+    onRemove={() => undefined} onChangeReference={() => undefined}
     style="apa" keys={false} shown={undefined} focusable={false} outputWarnings={[]} {...props} />;
 }
 const shelf = (props: ShelfProps) => <Shelf {...props} />;
-const details = (name: RegExp | string) => screen.getByRole("region", { name });
+const details = (name: RegExp | string) => screen.getByRole("dialog", { name });
+const warningsPanel = () => screen.getByRole("region", { name: "Citation warnings" });
 const press = (node: HTMLElement, key: string) => {
   act(() => node.focus());
   fireEvent.keyDown(node, { key, code: key === " " ? "Space" : key });
   fireEvent.keyUp(node, { key, code: key === " " ? "Space" : key });
 };
 
-test("engine-owned segments retain punctuation, per-reference removal and arrow selection", () => {
+test("engine-owned tokens retain punctuation, per-reference removal and arrow selection", () => {
   const a = record("a", "Alpha"), b = record("b", "Beta"), remove = vi.fn();
-  const formatted = { ...output("(Beta, 2021; Alpha, 2021)"), spans: [
+  const formatted = { ...output("(Beta, 2021; Alpha, 2021)"), display: displayTree([
     { item: null, text: "(" }, { item: 1, text: "Beta, 2021" }, { item: null, text: "; " },
     { item: 0, text: "Alpha, 2021" }, { item: null, text: ")" },
-  ] };
+  ]) };
   render(shelf({ selected: chosen([a, b]), shown: formatted, onRemove: remove }));
   const beta = screen.getByRole("button", { name: "Edit Beta 2021" });
   const alpha = screen.getByRole("button", { name: "Edit Alpha 2021" });
@@ -44,46 +47,38 @@ test("engine-owned segments retain punctuation, per-reference removal and arrow 
   expect(document.activeElement).toBe(alpha);
   fireEvent.keyDown(alpha, { key: "Delete" });
   expect(remove).toHaveBeenCalledExactlyOnceWith(a);
-  expect(within(beta.closest(".shelf-segment")!).getByRole("button", { name: "Remove b" })).toBeTruthy();
 });
 
-test("↑ and ↓ on a segment go back to Search and move the list; the shelf itself is never a focus stop", () => {
-  const a = record("a", "Alpha"), b = record("b", "Beta");
-  const search = document.createElement("input");
-  const moves: string[] = [];
-  search.addEventListener("keydown", (event) => moves.push(event.key));
-  document.body.append(search);
-  const shown = { ...output("(Alpha, 2021; Beta, 2021)"), spans: [{ item: null, text: "(" }, { item: 0, text: "Alpha, 2021" }, { item: null, text: "; " }, { item: 1, text: "Beta, 2021" }, { item: null, text: ")" }] };
-  render(shelf({ selected: chosen([a, b]), shown, focusable: true, fallbackFocusRef: { current: search } }));
-  expect(document.querySelector(".shelf-output")?.hasAttribute("tabindex")).toBe(false);
-  const alpha = screen.getByRole("button", { name: "Edit Alpha 2021" });
-  act(() => alpha.focus());
-  fireEvent.keyDown(alpha, { key: "ArrowDown" });
-  expect(document.activeElement).toBe(search);
-  expect(moves).toEqual(["ArrowDown"]);
-  search.remove();
-});
-
-test("a segment is the reference's own words: brackets and separators are shared, for one reference too", () => {
+test("a token is the reference's own words: brackets and separators are shared, for one reference too", () => {
   const a = record("a", "Alpha");
-  render(shelf({ selected: chosen([a]), shown: { ...output("(Alpha, 2021, p. 4)"), spans: [{ item: null, text: "(" }, { item: 0, text: "Alpha, 2021, p. 4" }, { item: null, text: ")" }] } }));
-  const segment = screen.getByRole("button", { name: "Edit Alpha 2021" });
-  expect(segment.textContent).toBe("Alpha, 2021, p. 4");
+  render(shelf({ selected: chosen([a]), shown: { ...output("(Alpha, 2021, p. 4)"), display: displayTree([{ item: null, text: "(" }, { item: 0, text: "Alpha, 2021, p. 4" }, { item: null, text: ")" }]) } }));
+  const token = screen.getByRole("button", { name: "Edit Alpha 2021" });
+  expect(token.textContent).toBe("Alpha, 2021, p. 4");
   expect([...document.querySelectorAll(".shelf-shared")].map((node) => node.textContent)).toEqual(["(", ")"]);
 });
 
-test("formatted segments preserve engine emphasis and keep source strings inert", () => {
+test("formatted tokens preserve engine emphasis and keep source strings inert", () => {
   const a = record("a", "Alpha"), b = record("b", "Beta");
-  const text = "Alpha species; <script>literal</script>";
-  render(shelf({ selected: chosen([a, b]), shown: { ...output(text), spans: [
+  const text = "Alpha species; Beta <script>literal</script>";
+  render(shelf({ selected: chosen([a, b]), shown: { ...output(text), display: displayTree([
     { item: 0, text: "Alpha species", runs: [{ text: "Alpha species", italic: true, bold: false, script: "normal" }] },
     { item: null, text: "; " },
-    { item: 1, text: "<script>literal</script>", runs: [{ text: "<script>literal</script>", italic: false, bold: true, script: "normal" }] },
-  ] } }));
+    { item: 1, text: "Beta <script>literal</script>", runs: [{ text: "Beta <script>literal</script>", italic: false, bold: true, script: "normal" }] },
+  ]) } }));
   expect(document.querySelector(".shelf-citation")?.textContent).toBe(text);
   expect(document.querySelector(".shelf-citation i")?.textContent).toBe("Alpha species");
-  expect(document.querySelector(".shelf-citation b")?.textContent).toBe("<script>literal</script>");
+  expect(document.querySelector(".shelf-citation b")?.textContent).toBe("Beta <script>literal</script>");
   expect(document.querySelector(".shelf script")).toBeNull();
+});
+
+test("preview and rich-text drag preserve consecutive spaces", () => {
+  const text = "A  B";
+  render(shelf({ selected: chosen([record("a")]), shown: output(text) }));
+  expect(document.querySelector(".preview-text")?.textContent).toBe(text);
+  const setData = vi.fn();
+  fireEvent.dragStart(document.querySelector(".shelf-leading")!, { dataTransfer: { setData } });
+  expect(setData).toHaveBeenCalledWith("text/plain", text);
+  expect(setData).toHaveBeenCalledWith("text/html", '<span class="display-run">A &nbsp;B</span>');
 });
 
 test("short names distinguish identical author/year labels without using the citation key as identity", () => {
@@ -91,53 +86,71 @@ test("short names distinguish identical author/year labels without using the cit
   expect(referenceLabels([record("a"), record("b")])).toEqual(["García 2021 · a", "García 2021 · b"]);
 });
 
-test("formatted segments keep passive small caps and underline from the engine", () => {
-  render(shelf({ selected: chosen([record("a"), record("b")]), shown: { ...output("Caps; Under"), spans: [
+test("formatted tokens keep passive small caps and underline from the engine", () => {
+  render(shelf({ selected: chosen([record("a"), record("b")]), shown: { ...output("Caps; Under"), display: displayTree([
     { item: 0, text: "Caps", runs: [{ text: "Caps", bold: false, italic: false, script: "normal", small_caps: true }] },
     { item: null, text: "; " }, { item: 1, text: "Under", runs: [{ text: "Under", bold: false, italic: false, script: "normal", underline: true }] },
-  ] } }));
+  ]) } }));
   expect(document.querySelector<HTMLElement>('.shelf [style*="small-caps"]')?.textContent).toBe("Caps");
   expect(document.querySelector<HTMLElement>('.shelf [style*="underline"]')?.textContent).toBe("Under");
 });
 
-test("colliding keys from different libraries have distinct visible and screen-reader names", async () => {
-  const first = { ...record("shared"), id: { library: "invented-one", key: "shared" }, source: "invented-one", title: "First invented work" };
-  const second = { ...first, id: { library: "invented-two", key: "shared" }, source: "invented-two", title: "Second invented work" };
+test("colliding keys from different libraries have distinct visible and screen-reader names", () => {
+  const first = { ...record("shared"), id: { library: "invented-one", key: recordId("shared") }, source: "invented-one", title: "First invented work" };
+  const second = { ...first, id: { library: "invented-two", key: recordId("shared") }, source: "invented-two", title: "Second invented work" };
   const change = vi.fn();
   render(shelf({ selected: new Map([["first", first], ["second", second]]), onChangeReference: change,
-    referenceLibrary: (r) => r.source === "invented-one" ? "First library" : "Second library", shown: output() }));
-  fireEvent.click(screen.getByRole("button", { name: "2 references" }));
-  const menu = await screen.findByRole("menu");
-  expect(within(menu).getByRole("menuitemradio", { name: "García 2021 · shared · First library" })).toBeTruthy();
-  fireEvent.click(within(menu).getByRole("menuitemradio", { name: "García 2021 · shared · Second library" }));
+    referenceLibrary: (r) => r.source === "invented-one" ? "First library" : "Second library",
+    shown: { ...output("(García, 2021; García, 2021)"), display: displayTree([{ item: 0, text: "(García, 2021" }, { item: null, text: "; " }, { item: 1, text: "García, 2021)" }]) } }));
+  expect(screen.getByRole("button", { name: "Edit García 2021 · shared · First library" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Edit García 2021 · shared · Second library" }));
   expect(details("Citation details for Second invented work")).toBeTruthy();
   fireEvent.change(screen.getByRole("textbox", { name: "Page" }), { target: { value: "42" } });
-  expect(change).toHaveBeenCalledWith(second, { locator: { label: "page", value: "42", input: "page-editor" } });
+  expect(change).toHaveBeenCalledWith(second, { locator: { term: "page", value: "42", input: "editor" } });
 });
 
-test.each(["click", "Enter", " "])("a single reference is the whole citation segment; %s opens its details and focuses Page", (key) => {
+test.each(["click", "ArrowDown", " "])("a single reference is the whole citation token; %s opens its details and focuses Page", (key) => {
   render(shelf({ selected: chosen([record("a")]), shown: output() }));
-  const segment = screen.getByRole("button", { name: "Edit García 2021" });
-  expect(segment.textContent).toBe("(García, 2021)");
-  expect(document.getElementById(segment.getAttribute("aria-describedby")!)?.textContent).toBe("(García, 2021)");
+  const token = screen.getByRole("button", { name: "Edit García 2021" });
+  expect(token.textContent).toBe("(García, 2021)");
+  expect(document.getElementById(token.getAttribute("aria-describedby")!)?.textContent).toBe("(García, 2021)");
   expect(document.querySelector(".shelf-chips")).toBeNull();
-  if (key === "click") { act(() => segment.focus()); fireEvent.click(segment); } else press(segment, key);
+  if (key === "click") { act(() => token.focus()); fireEvent.click(token); } else if (key === "ArrowDown") { act(() => token.focus()); fireEvent.keyDown(token, { key }); } else press(token, key);
   const inspector = details("Citation details for Invented title a");
   // The full title, said once: no second heading repeats it below.
   expect(within(inspector).getByRole("heading", { level: 2 }).textContent).toBe("Invented title a");
   expect(within(inspector).queryAllByRole("heading", { level: 3 })).toHaveLength(0);
   expect(document.activeElement).toBe(within(inspector).getByRole("textbox", { name: "Page" }));
-  expect(within(inspector).getByRole("button", { name: /^Show as Name in brackets/ })).toBeTruthy();
-  expect(within(inspector).getByRole("button", { name: /Remove from Citation/ })).toBeTruthy();
-  expect(screen.queryByRole("dialog")).toBeNull();
-  fireEvent.click(within(inspector).getByRole("button", { name: "Close" }));
-  expect(screen.queryByRole("region", { name: /^Citation details for/ })).toBeNull();
-  expect(document.activeElement).toBe(segment);
+  // Pressed again, the token closes its details and takes focus back.
+  fireEvent.click(token);
+  expect(screen.queryByRole("dialog", { name: /^Citation details for/ })).toBeNull();
+  expect(document.activeElement).toBe(token);
 });
 
-test("pressing the open segment closes its details; another segment moves them", () => {
+test("Enter on a token pastes, as it does everywhere, and never opens its details", () => {
+  const submit = vi.fn();
+  render(shelf({ selected: chosen([record("a")]), shown: output(), onSubmit: submit }));
+  press(screen.getByRole("button", { name: "Edit García 2021" }), "Enter");
+  expect(submit).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("dialog", { name: /^Citation details for/ })).toBeNull();
+});
+
+test("Keep My Order is in the details only for a style with two or more references in the citation", () => {
+  const a = record("a", "Alpha"), b = record("b", "Beta"), keep = vi.fn();
+  const two = { ...output("(Alpha, 2021; Beta, 2021)"), display: displayTree([{ item: 0, text: "Alpha, 2021" }, { item: null, text: "; " }, { item: 1, text: "Beta, 2021" }]) };
+  const { rerender } = render(shelf({ selected: chosen([a, b]), shown: two, onKeepOrder: keep }));
+  fireEvent.click(screen.getByRole("button", { name: "Edit Alpha 2021" }));
+  fireEvent.click(within(details(/^Citation details for/)).getByRole("switch", { name: "Keep My Order" }));
+  expect(keep).toHaveBeenCalledExactlyOnceWith(true);
+  rerender(shelf({ selected: chosen([a, b]), shown: two, onKeepOrder: keep, style: null, keys: true }));
+  expect(within(details(/^Citation details for/)).queryByRole("switch")).toBeNull();
+  rerender(shelf({ selected: chosen([a]), shown: output("(Alpha, 2021)"), onKeepOrder: keep }));
+  expect(within(details(/^Citation details for/)).queryByRole("switch")).toBeNull();
+});
+
+test("pressing the open token closes its details; another token moves them", () => {
   const a = record("a", "Alpha"), b = record("b", "Beta");
-  render(shelf({ selected: chosen([a, b]), shown: { ...output("(Alpha, 2021; Beta, 2021)"), spans: [{ item: 0, text: "Alpha, 2021" }, { item: null, text: "; " }, { item: 1, text: "Beta, 2021" }] } }));
+  render(shelf({ selected: chosen([a, b]), shown: { ...output("(Alpha, 2021; Beta, 2021)"), display: displayTree([{ item: 0, text: "Alpha, 2021" }, { item: null, text: "; " }, { item: 1, text: "Beta, 2021" }]) } }));
   const alpha = screen.getByRole("button", { name: "Edit Alpha 2021" }), beta = screen.getByRole("button", { name: "Edit Beta 2021" });
   fireEvent.click(alpha);
   expect(details("Citation details for Invented title a")).toBeTruthy();
@@ -147,12 +160,12 @@ test("pressing the open segment closes its details; another segment moves them",
   expect(details("Citation details for Invented title b")).toBeTruthy();
   expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Page" }));
   fireEvent.click(beta);
-  expect(screen.queryByRole("region", { name: /^Citation details for/ })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: /^Citation details for/ })).toBeNull();
 });
 
 test("a pending preview can be edited before formatting finishes", () => {
   render(shelf({ selected: chosen([record("a")]), shown: null }));
-  expect(screen.getByRole("status", { name: "" }).textContent).toBe("Formatting…");
+  expect(screen.getByText("Formatting…")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
   expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Page" }));
 });
@@ -166,21 +179,12 @@ test("RTL citation text is isolated with automatic direction without changing ke
   expect(citation.getAttribute("title")).toBeNull();
 });
 
-test("a long single citation can be read in full from its keyboard-opened details without hover", () => {
-  const text = "An invented long reference with its complete meaning. ".repeat(30).trim();
-  render(shelf({ selected: chosen([record("a")]), shown: output(text) }));
-  press(screen.getByRole("button", { name: "Edit García 2021" }), "Enter");
-  const full = screen.getByRole("region", { name: "Full citation" });
-  expect(full.textContent).toBe(text);
-  expect(full.tabIndex).toBe(0);
-});
-
 test("pending retains dimmed old text for 300 ms, then Formatting without treating it as a new receipt", () => {
   vi.useFakeTimers();
   try {
     const reference = record("a");
     const { rerender } = render(shelf({ selected: chosen([reference]), shown: output("Original citation") }));
-    rerender(shelf({ selected: chosen([{ ...reference, locator: { label: "page", value: "9" } }]), shown: null }));
+    rerender(shelf({ selected: chosen([{ ...reference, locator: { term: "page", value: "9" } }]), shown: null }));
     expect(document.querySelector('.shelf-output[data-state="pending"] .preview-text')?.textContent).toBe("Original citation");
     act(() => vi.advanceTimersByTime(299));
     expect(screen.queryByText("Formatting…")).toBeNull();
@@ -208,55 +212,56 @@ test("a later refresh of unchanged reference details gets its own 300 ms retenti
   } finally { cleanup(); vi.useRealTimers(); }
 });
 
-test("a formatting reply cannot retire a segment while it is being activated", () => {
+test("a formatting reply cannot retire a token while it is being activated", () => {
   const selected = chosen([record("a")]);
   const { rerender } = render(shelf({ selected, shown: null }));
-  const segment = screen.getByRole("button", { name: "Edit García 2021" });
-  fireEvent.mouseDown(segment, { button: 0 });
+  const token = screen.getByRole("button", { name: "Edit García 2021" });
+  fireEvent.mouseDown(token, { button: 0 });
   rerender(shelf({ selected, shown: output() }));
-  fireEvent.mouseUp(segment, { button: 0 });
-  fireEvent.click(segment);
+  fireEvent.mouseUp(token, { button: 0 });
+  fireEvent.click(token);
   expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Page" }));
 });
 
 test("Page retains typed input, canonical pages from search, and independent reference details", () => {
-  const reference: CitationReference = { ...record("a"), locator: { label: "page", value: "S.12" }, form: "year-only" };
+  const reference: CitationReference = { ...record("a"), locator: { term: "page", value: "S.12" }, form: "year-only" };
   const change = vi.fn();
   render(shelf({ highlightedReference: reference, shown: output("(2021, S.12)"), onChangeReference: change }));
   fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
   const page = screen.getByRole<HTMLInputElement>("textbox", { name: "Page" });
   expect(page.value).toBe("S.12");
   fireEvent.change(page, { target: { value: "pp. ١٢–١٥" } });
-  expect(change).toHaveBeenCalledWith(reference, { locator: { label: "page", value: "pp. ١٢–١٥", input: "page-editor" } });
+  expect(change).toHaveBeenCalledWith(reference, { locator: { term: "page", value: "pp. ١٢–١٥", input: "editor" } });
   expect(document.activeElement).toBe(page);
   fireEvent.change(page, { target: { value: "" } });
   expect(change).toHaveBeenLastCalledWith(reference, { locator: null });
 });
 
-test.each(["Backspace", "Delete", "action", "badge"])("%s removes exactly once; removal never opens the details", (method) => {
+const removeOnce = (method: string) => {
   const reference = record("a"), remove = vi.fn();
   render(shelf({ selected: chosen([reference]), shown: output(), onRemove: remove }));
-  const segment = screen.getByRole("button", { name: "Edit García 2021" });
-  if (method === "action") {
-    fireEvent.click(segment);
-    fireEvent.click(screen.getByRole("button", { name: /Remove from Citation/ }));
-  } else if (method === "badge") fireEvent.click(screen.getByRole("button", { name: "Remove a" }));
-  else press(segment, method);
+  const token = screen.getByRole("button", { name: "Edit García 2021" });
+  if (method === "×") fireEvent.click(screen.getByRole("button", { name: "Remove García 2021" }));
+  else press(token, method);
   expect(remove).toHaveBeenCalledExactlyOnceWith(reference);
-  expect(screen.queryByRole("region", { name: /^Citation details for/ })).toBeNull();
-});
+  expect(screen.queryByRole("dialog", { name: /^Citation details for/ })).toBeNull();
+};
+test.each(["Backspace", "Delete", "×"])("%s removes a token exactly once and never opens the details", removeOnce);
 
-test("Backspace removes from the inspector, but only ever edits text in Page", () => {
+test("Backspace only edits in the details, including a held key on an empty field or a button", () => {
   const reference = record("a"), remove = vi.fn();
   render(shelf({ selected: chosen([reference]), shown: output(), onRemove: remove }));
   fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
   fireEvent.keyDown(screen.getByRole("textbox", { name: "Page" }), { key: "Backspace" });
   expect(remove).not.toHaveBeenCalled();
-  fireEvent.keyDown(screen.getByRole("button", { name: /^Show as / }), { key: "Backspace" });
+  fireEvent.keyDown(screen.getByRole("button", { name: "Locator type: Page" }), { key: "Backspace" });
+  fireEvent.keyDown(screen.getByRole("button", { name: "Locator type: Page" }), { key: "Backspace", repeat: true });
+  expect(remove).not.toHaveBeenCalled();
+  fireEvent.keyDown(screen.getByRole("button", { name: "Locator type: Page" }), { key: "Delete" });
   expect(remove).toHaveBeenCalledExactlyOnceWith(reference);
 });
 
-test("with details open, notes read in the panel and nothing comes and goes in the shelf", () => {
+test("with details open, notes read in them and nothing comes and goes in the shelf", () => {
   const warning = "Reference 1: Page is not included in this output.";
   const reference = record("a");
   const { rerender } = render(shelf({ selected: chosen([reference]), style: "ieee", shown: output() }));
@@ -268,42 +273,37 @@ test("with details open, notes read in the panel and nothing comes and goes in t
   expect(document.querySelector(".shelf-warnings")).toBeNull();
 });
 
-test("a key the segment does not use is handed on to the picker", () => {
+test("a key the token does not use is handed on to the picker", () => {
   const picker = vi.fn();
   render(<main onKeyDown={(event) => picker(event.key)}>{shelf({ selected: chosen([record("a")]), shown: output() })}</main>);
-  const segment = screen.getByRole("button", { name: "Edit García 2021" });
-  act(() => segment.focus());
-  fireEvent.keyDown(segment, { key: "Escape" });
+  const token = screen.getByRole("button", { name: "Edit García 2021" });
+  act(() => token.focus());
+  fireEvent.keyDown(token, { key: "Escape" });
   expect(picker).toHaveBeenCalledExactlyOnceWith("Escape");
 });
 
-test("hiding the output keeps the reference's one-click remove badge", () => {
+test("hiding the output keeps the token's one-click ×", () => {
   const reference = record("a"), remove = vi.fn();
   render(shelf({ selected: chosen([reference]), shown: undefined, onRemove: remove }));
-  const segment = screen.getByRole("button", { name: "Edit García 2021" });
-  const wrapper = segment.closest<HTMLElement>(".shelf-segment")!;
-  fireEvent.click(within(wrapper).getByRole("button", { name: "Remove a" }));
+  const token = screen.getByRole("button", { name: "Edit García 2021" });
+  const wrapper = token.closest<HTMLElement>(".citation-token")!;
+  fireEvent.click(within(wrapper).getByRole("button", { name: "Remove García 2021" }));
   expect(remove).toHaveBeenCalledExactlyOnceWith(reference);
-  expect(screen.queryByRole("region", { name: /^Citation details for/ })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: /^Citation details for/ })).toBeNull();
 });
 
-test.each([1, 2])("many references at the minimum frame and %s× text retain exact output and one-step access to every reference", async (scale) => {
+test.each([1, 2])("many references at the minimum frame and %s× text retain exact output and one-step access to every reference", (scale) => {
   vi.stubGlobal("innerWidth", 480); vi.stubGlobal("innerHeight", 360);
   document.documentElement.style.fontSize = `${16 * scale}px`;
   const records = Array.from({ length: 50 }, (_, i) => record(`synthetic${i}`, `Author${i}`));
-  const text = "An invented very long citation. ".repeat(40).trim();
-  render(shelf({ selected: chosen(records), shown: output(text) }));
-  const preview = screen.getByRole("region", { name: "Preview" });
-  expect(preview.querySelector(".preview-text")?.textContent).toBe(text);
-  const count = screen.getByRole("button", { name: "50 references" });
-  expect(count.textContent).toBe("50");
-  fireEvent.click(count);
-  const menu = await screen.findByRole("menu");
-  expect(document.querySelector(".shelf")!.contains(menu)).toBe(false);
-  expect(within(menu).getAllByRole("menuitemradio")).toHaveLength(50);
-  fireEvent.click(within(menu).getByRole("menuitemradio", { name: "Author49 2021" }));
-  expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("Invented title synthetic49");
-  expect(document.activeElement).toBe(await screen.findByRole("textbox", { name: "Page" }));
+  const spans = records.flatMap((r, item) => [...item ? [{ item: null, text: "; " }] : [], { item, text: `${r.first_author}, an invented very long citation, 2021` }]);
+  const text = spans.map((span) => span.text).join("");
+  render(shelf({ selected: chosen(records), shown: { ...output(text), display: displayTree(spans) } }));
+  expect(document.querySelector(".shelf-citation")?.textContent).toBe(text);
+  expect(screen.getAllByRole("button", { name: /^Edit Author\d+ 2021$/ })).toHaveLength(50);
+  fireEvent.click(screen.getByRole("button", { name: "Edit Author49 2021" }));
+  expect(within(details("Citation details for Invented title synthetic49")).getByRole("heading", { level: 2 }).textContent).toBe("Invented title synthetic49");
+  expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Page" }));
   document.documentElement.style.fontSize = "";
 });
 
@@ -312,10 +312,10 @@ test.each([true, false])("folded warnings and Closest matches keep a visible cou
   const reference = { ...record("near"), partial: true };
   const warning = "Reference 1: Check the invented year.";
   render(shelf({ selected: chosen([reference]), style: "ieee", outputWarnings: [warning], shown: preview ? output() : undefined }));
-  const warnings = screen.getByRole("button", { name: /2 warnings.*Reference entry.*Closest matches/ });
+  const warnings = screen.getByRole("button", { name: "2 warnings · Closest matches" });
   expect(warnings.textContent).toBe("! 2");
   press(warnings, " ");
-  const menu = details("Citation warnings");
+  const menu = warningsPanel();
   expect(document.activeElement).toBe(menu.querySelector(".inspector-column"));
   expect(within(menu).getByText(warning)).toBeTruthy();
   expect(within(menu).getByRole("heading", { name: "Closest matches" })).toBeTruthy();
@@ -323,16 +323,17 @@ test.each([true, false])("folded warnings and Closest matches keep a visible cou
   expect(within(menu).getByText(/IEEE numbers depend on your whole document/)).toBeTruthy();
 });
 
-test("a note style says why it copies the full first note, from the engine's notice", () => {
-  vi.stubGlobal("innerWidth", 1024); vi.stubGlobal("innerHeight", 720);
+test("a note style says in the details why it copies the full first note, from the engine's notice, and the line stays the citation", () => {
   // The picker's own format may differ from the output shown (an editor's request): the notice decides.
   render(shelf({ selected: chosen([record("a")]), style: "pandoc", outputWarnings: [], outputNotices: ["needs-document-context", "full-first-note"], shown: output() }));
-  fireEvent.click(screen.getByRole("button", { name: "Full first note" }));
-  expect(within(details("Citation warnings")).getByText(/Later notes to the same work are shortened/)).toBeTruthy();
+  expect(document.querySelector(".shelf-actions")?.textContent).toBe("");
+  fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
+  expect(within(details(/^Citation details for/)).getByText(/Later notes to the same work are shortened/)).toBeTruthy();
   cleanup();
   // A style without the notice says nothing of the kind.
   render(shelf({ selected: chosen([record("a")]), style: "apa", outputWarnings: [], shown: output() }));
-  expect(screen.queryByRole("button", { name: "Full first note" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
+  expect(screen.queryByText(/Later notes to the same work are shortened/)).toBeNull();
 });
 
 test("a formatting refusal stays beside the citation before its details open, even with the preview hidden", () => {
@@ -361,7 +362,7 @@ test("closing and reopening retires the old details, focuses Search, and keeps t
   expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Page" }).value).toBe("iv–vi");
 });
 
-test("removing a focused segment sends focus to Search before it disappears", () => {
+test("removing a focused token sends focus to Search before it disappears", () => {
   const search = createRef<HTMLInputElement>();
   function Picker() {
     const [selected, setSelected] = useState(chosen([record("a")]));
@@ -389,19 +390,21 @@ test("Copied shows the exact receipt between matching beaks, with one polite con
 test("a multi-reference Copied receipt has one complete read-only line for ellipsis", () => {
   const text = "(Alpha, 2021; Beta, 2021)";
   render(shelf({ selected: chosen([record("a", "Alpha"), record("b", "Beta")]), copied: { text, warnings: [] }, shown: {
-    ...output(text), spans: [{ item: null, text: "(" }, { item: 0, text: "Alpha, 2021" },
-      { item: null, text: "; " }, { item: 1, text: "Beta, 2021" }, { item: null, text: ")" }],
+    ...output(text), display: displayTree([{ item: null, text: "(" }, { item: 0, text: "Alpha, 2021" },
+      { item: null, text: "; " }, { item: 1, text: "Beta, 2021" }, { item: null, text: ")" }]),
   } }));
   expect(document.querySelector('.shelf[data-copied] .preview-text')?.textContent).toBe(text);
   expect(screen.queryByRole("button", { name: /^Edit / })).toBeNull();
 });
 
 test("Copied retains the citation's scientific script and emphasis", () => {
-  render(shelf({ selected: chosen([record("a")]), shown: { ...output("CO2"), markup: [
-    { tag: "i", children: ["CO", { tag: "sub", children: ["2"] }] },
-  ] }, copied: { text: "CO2", warnings: [] } }));
+  render(shelf({ selected: chosen([record("a")]), shown: { ...output("CO2"), display: displayTree([{ item: 0, text: "CO2", runs: [
+    { text: "CO", italic: true, bold: false, script: "normal" },
+    { text: "2", italic: true, bold: false, script: "subscript" },
+  ] }]) }, copied: { text: "CO2", warnings: [] } }));
   expect(document.querySelector('.shelf[data-copied] .preview-text')?.textContent).toBe("CO2");
-  expect(document.querySelector('.shelf[data-copied] i sub')?.textContent).toBe("2");
+  expect(document.querySelector('.shelf[data-copied] sub')?.textContent).toBe("2");
+  expect([...document.querySelectorAll('.shelf[data-copied] i')].map((node) => node.textContent).join(" ")).toBe("CO 2");
 });
 
 test("Copied warnings keep their count and one-step access; a newer receipt retires the old notes", () => {
@@ -411,7 +414,7 @@ test("Copied warnings keep their count and one-step access; a newer receipt reti
   const count = screen.getByRole("button", { name: "2 warnings · Closest matches" });
   expect(count.textContent).toBe("! 2");
   fireEvent.click(count);
-  const menu = details("Citation warnings");
+  const menu = warningsPanel();
   expect(within(menu).getByText("Check the invented year.")).toBeTruthy();
   expect(within(menu).getByRole("heading", { name: "Closest matches" })).toBeTruthy();
   expect(within(menu).getAllByText("Closest match: Invented title.")).toHaveLength(1);
@@ -423,4 +426,12 @@ test("an old receipt never replaces the live copy target or confirms a different
   render(shelf({ copied: { text: "Old citation", warnings: [] }, shown: output("New citation") }));
   expect(document.querySelector(".preview-text")?.textContent).toBe("New citation");
   expect(screen.queryByRole("status", { name: "Copied" })).toBeNull();
+});
+
+test("a token whose words don't name its reference shows a quiet first-author-and-year handle; one that names it shows none", () => {
+  const { rerender } = render(shelf({ selected: chosen([record("a")]), style: "ieee",
+    shown: { ...output("[1]"), display: displayTree([{ item: null, text: "[" }, { item: 0, text: "1" }, { item: null, text: "]" }]) } }));
+  expect(screen.getByRole("button", { name: "Edit García 2021" }).textContent).toBe("1García 2021");
+  rerender(shelf({ selected: chosen([record("a")]), shown: output() }));
+  expect(screen.getByRole("button", { name: "Edit García 2021" }).textContent).toBe("(García, 2021)");
 });

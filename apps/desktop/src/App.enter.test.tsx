@@ -1,8 +1,10 @@
+import { recordId } from "./test-fixtures";
+import { fixtureDestination, formatAnswer } from "./testing/format";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import { closeCitationDetails, backend, prepared, receipt, resetApp, result } from "./testing/app";
+import { closeCitationDetails, backend, prepared, receipt, resetApp, result, inCitation } from "./testing/app";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(resetApp);
@@ -17,7 +19,7 @@ test.each(["initial", "new query"])("Enter during %s loading waits for current r
   const calls = backend({
     search: ({ query }) => when === "new query" && !query.text ? [result("old", "Old result")]
       : new Promise((resolve) => { finishSearch = resolve; }),
-    preview_file_citation: ({ items }) => items[0]!.id.key === "old" ? receipt("@old")
+    preview_file_citation: ({ items }) => items[0]!.id.key === recordId("old") ? receipt("@old")
       : new Promise((resolve) => { finishPreview = resolve; }),
     copy_file_citation: (args) => { const { preview } = prepared(args); copied.push(preview.text); return { text: preview.text, warnings: [] }; },
   });
@@ -98,13 +100,13 @@ test("an empty search keeps the prepared citation, page and Enter available", as
   await act(async () => { closeCitationDetails(); });
   await act(async () => { fireEvent.change(searchBox(), { target: { value: "no matches" } }); });
   expect(screen.getByRole("group", { name: "Selected references" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Remove a from the selection" })).toBeTruthy();
+  expect(inCitation("a")).toBeTruthy();
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^Edit / })); });
   expect((screen.getByRole("textbox", { name: "Page" }) as HTMLInputElement).value).toBe("12");
   await act(async () => { closeCitationDetails(); });
   expect(keys().getByRole("button", { name: /Copy/ })).toBeTruthy();
   await enter();
-  expect(copied).toMatchObject([{ items: [{ id: { key: "a" }, locator: null, page_input: "12" }] }]);
+  expect(copied).toMatchObject([{ items: [{ id: { key: "a" }, locator: null, locator_input: { label: "page", text: "12" } }] }]);
 });
 
 test("a completed copy cannot be repeated while hidden; reopening requires fresh Enter", async () => {
@@ -123,7 +125,7 @@ test("a completed copy cannot be repeated while hidden; reopening requires fresh
 test.each([true, false])("the footer names action and output together (paste=%s)", async (canPaste) => {
   backend({
     search: () => [result("a", "First")],
-    picker_destination: () => ({ app: "Example Word", app_id: "example.word", app_identity: null, automatic: "apa", remembered: null, unreadable: false, can_paste: canPaste, output_question: null, paste: null, paste_question: false, can_choose_paste: false }),
+    picker_destination: () => (fixtureDestination({ app: "Example Word", app_id: "example.word", app_identity: null, unreadable: false, can_paste: canPaste, paste: null, paste_question: false, can_choose_paste: false, format: formatAnswer("apa", "suggestion") })),
   });
   await act(async () => { render(<App />); });
   expect(keys().getByRole("button", { name: canPaste ? "Paste into Example Word · APA" : "Copy as APA" })).toBeTruthy();

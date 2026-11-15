@@ -1,21 +1,17 @@
+import { renderDisplay } from "../../format/display";
+import type * as nativeApi from "../../api";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PickerApi } from "../../App";
 import type { SessionBibliography, SessionEdit, SessionReferencesView } from "../../api";
+import { isCancelled, isSnapshotChanged } from "../../api";
 import { outputName, type OutputId } from "../../format/outputs";
-import { isolate, say } from "../../i18n";
+import { isolate, problemText, say } from "../../i18n";
 import { Button } from "../../ui/Button";
-import { Sheet, SheetList, SheetRow } from "../../ui/Sheet";
+import { Group, Row, Section } from "../../ui/Layout";
+import { Sheet, SheetOutput } from "../../ui/Sheet";
 import { idKey } from "./choice";
 import { abbreviatedAuthors, tileName } from "./rows";
 
-type Api = Required<Pick<PickerApi, "sessionReferences" | "editSessionReferences" | "sessionBibliography" | "copySessionBibliography" | "exportSessionBibliography">>;
-
-const changed = (error: unknown) => typeof error === "object" && error !== null && (error as { code?: string }).code === "snapshot_changed";
-/** Native refusals name what to do; anything else gets this sheet's own sentence. */
-const said = (error: unknown, fallback: string) => {
-  const { code, message } = typeof error === "object" && error !== null ? error as { code?: unknown; message?: unknown } : {};
-  return code === "failed" && typeof message === "string" && message ? message : fallback;
-};
+type Api = Pick<typeof nativeApi, "sessionReferences" | "editSessionReferences" | "sessionBibliography" | "copySessionBibliography" | "exportSessionBibliography">;
 
 /** The references copied this session, editable, and their bibliography. Native
     code owns the list; each answer counts only if it is still the newest asked. */
@@ -24,39 +20,66 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
   const [view, setView] = useState<SessionReferencesView | null>(null);
   const [bibliography, setBibliography] = useState<SessionBibliography | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<{ text: string; retry: () => void } | null>(null);
   const listing = useRef(0);
   const formatting = useRef(0);
+  const activeFormatting = useRef<AbortController | null>(null);
+  const delivery = useRef(0);
+  const activeDelivery = useRef<AbortController | null>(null);
+  const pendingDelivery = useRef(false);
 
-  const show = useCallback((next: SessionReferencesView) => {
-    setView(next);
-    const request = ++formatting.current;
-    setBibliography(null);
-    sessionBibliography(style).then(
-      (formatted) => { if (request === formatting.current) setBibliography(formatted); },
-      (error) => { if (request === formatting.current) setProblem(said(error, say("session-not-formatted"))); });
-  }, [sessionBibliography, style]);
-  const load = useCallback((read: () => Promise<SessionReferencesView>) => {
+  const load = useCallback(function load(read: () => Promise<SessionReferencesView>, message: string | null = null) {
+    formatting.current += 1;
+    activeFormatting.current?.abort();
+    delivery.current += 1;
+    activeDelivery.current?.abort();
+    pendingDelivery.current = false;
     const request = ++listing.current;
-    setProblem(null);
-    read().then((next) => { if (request === listing.current) show(next); },
-      () => { if (request === listing.current) setProblem(say("session-not-read")); });
-  }, [show]);
+    const retry = () => load(sessionReferences);
+    setProblem(message ? { text: message, retry } : null);
+    read().then((next) => {
+      if (request !== listing.current) return;
+      setView(next);
+      const format = ++formatting.current;
+      const controller = new AbortController();
+      activeFormatting.current = controller;
+      setBibliography(null);
+      sessionBibliography(style, controller.signal).then(
+        (formatted) => { if (format === formatting.current) setBibliography(formatted); },
+        (error) => { if (format === formatting.current) setProblem({ text: problemText(error, say("session-not-formatted")), retry }); });
+    }, (error) => { if (request === listing.current) setProblem({ text: problemText(error, say("session-not-read")), retry }); });
+  }, [sessionBibliography, sessionReferences, style]);
   useEffect(() => {
     load(sessionReferences);
-    return () => { listing.current += 1; formatting.current += 1; };
+    return () => {
+      listing.current += 1; formatting.current += 1; delivery.current += 1;
+      activeFormatting.current?.abort(); activeDelivery.current?.abort();
+      pendingDelivery.current = false;
+    };
   }, [load, sessionReferences]);
 
   const edit = (change: SessionEdit) => {
     setStatus(null);
-    load(() => editSessionReferences(change));
+    const wasDelivering = pendingDelivery.current;
+    load(() => editSessionReferences(change), wasDelivering ? say("session-changed") : null);
   };
   /** Copy or save what is on screen; a list that moved on is shown again instead. */
-  const deliver = (act: () => Promise<string | null>, failure: string) => {
+  const deliver = (act: (signal: AbortSignal) => Promise<string | null>, failure: string) => {
+    const request = ++delivery.current;
+    activeDelivery.current?.abort();
+    const controller = new AbortController();
+    activeDelivery.current = controller;
+    const owns = () => {
+      if (request !== delivery.current) return false;
+      pendingDelivery.current = false;
+      return true;
+    };
     setStatus(null);
     setProblem(null);
-    act().then((done) => { if (done) setStatus(done); }, (error) => {
-      if (changed(error)) { setProblem(say("session-changed")); load(sessionReferences); } else setProblem(said(error, failure));
+    pendingDelivery.current = true;
+    act(controller.signal).then((done) => { if (owns() && done) setStatus(done); }, (error) => {
+      if (!owns() || isCancelled(error)) return;
+      if (isSnapshotChanged(error)) load(sessionReferences, say("session-changed")); else setProblem({ text: problemText(error, failure), retry: () => deliver(act, failure) });
     });
   };
   const hash = bibliography?.content_hash;
@@ -65,39 +88,36 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
     : (undo.reference ? say("session-undo-remove-named", { name: isolate(tileName(undo.reference)) }) : say("session-undo-remove"));
   const name = outputName(style);
   return <Sheet title={say("session-title")} closeLabel={say("session-close")} description={say("session-about")} onClose={onClose}
-    leadingActions={<>
-      {undoLabel && <Button label={undoLabel} onPress={() => edit({ kind: "undo" })} />}
-      {view && view.rows.length + view.absent > 0 && <Button label={say("session-reset")} onPress={() => edit({ kind: "reset" })} />}
-    </>}
-    actions={<>
-      <Button label={say("session-save")} isDisabled={!hash} onPress={() => deliver(async () => {
-        const saved = await exportSessionBibliography(style, hash!);
+    leadingActions={[
+      ...problem ? [{ label: say("setup-try-again"), onPress: problem.retry }] : [],
+      ...undoLabel ? [{ label: undoLabel, onPress: () => edit({ kind: "undo" }) }] : [],
+      ...view && view.rows.length + view.absent > 0 ? [{ label: say("session-reset"), onPress: () => edit({ kind: "reset" }) }] : [],
+    ]}
+    actions={[
+      { label: say("session-save"), disabled: !hash, onPress: () => deliver(async (signal) => {
+        const saved = await exportSessionBibliography(style, hash!, signal);
         return saved === null ? null : say("session-saved", { name: isolate(saved) });
-      }, say("session-not-saved"))} />
-      <Button variant="primary" label={say("session-copy")} isDisabled={!hash} onPress={() => deliver(async () => {
-        await copySessionBibliography(style, hash!);
+      }, say("session-not-saved")) },
+      { label: say("session-copy"), primary: true, disabled: !hash, onPress: () => deliver(async (signal) => {
+        await copySessionBibliography(style, hash!, signal);
         return say("session-copied");
-      }, say("session-not-copied"))} />
-    </>}>
+      }, say("session-not-copied")) },
+    ]}>
     {view && view.rows.length === 0 && view.absent === 0 && <p>{say("session-empty")}</p>}
-    {view && view.rows.length > 0 && <SheetList label={say("session-title")}>
-      {view.rows.map((row) => <SheetRow key={idKey(row.id)}>
-        <span>
-          <span dir="auto">{row.title}</span>
-          <span className="ui-sheet-note" dir="auto">{[abbreviatedAuthors(row) ? row.first_author : row.authors, row.year].filter((part) => part !== null && part !== "").join(", ")}</span>
-        </span>
+    {view && view.rows.length > 0 && <Group label={say("session-title")}>
+      {view.rows.map((row) => <Row item key={idKey(row.id)} label={row.title}
+        description={[abbreviatedAuthors(row) ? row.first_author : row.authors, row.year].filter((part) => part !== null && part !== "").join(", ")}>
         <Button size="small" label={say("session-remove")} aria-label={say("session-remove-named", { name: isolate(tileName(row)) })} onPress={() => edit({ kind: "remove", id: row.id })} />
-      </SheetRow>)}
-    </SheetList>}
+      </Row>)}
+    </Group>}
     {view && view.absent > 0 && <p role="status">{say("session-absent", { count: view.absent })}</p>}
     {view?.overflowed && <p role="status">{say("session-full")}</p>}
-    {bibliography && <>
-      <h3>{say("session-bibliography-in", { style: isolate(name) })}</h3>
-      <p className="ui-sheet-output" dir="auto">{bibliography.text}</p>
+    {bibliography && <Section title={say("session-bibliography-in", { style: isolate(name) })} id="session-bibliography" level={3}>
+      <SheetOutput>{renderDisplay(bibliography.display)}</SheetOutput>
       {bibliography.warnings.map((warning) => <p key={warning} role="status">{warning}</p>)}
       {bibliography.left_out.length > 0 && <p role="status">{say("session-left-out", { names: bibliography.left_out.map(isolate).join(", ") })}</p>}
-    </>}
-    {problem && <p role="alert">{problem}</p>}
+    </Section>}
+    {problem && <p role="alert">{problem.text}</p>}
     {status && <p role="status">{status}</p>}
   </Sheet>;
 }

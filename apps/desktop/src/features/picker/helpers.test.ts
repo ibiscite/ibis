@@ -1,3 +1,4 @@
+import { recordId } from "../../test-fixtures";
 import { expect, test } from "vitest";
 import type React from "react";
 import type { SearchResult } from "../../api";
@@ -8,7 +9,7 @@ import { abbreviatedAuthors, hiddenMatch, tileName } from "./rows";
 import { commandFor, isFormatShortcut, isKeysShortcut, isMenuShortcut, isPinShortcut, isQuitShortcut } from "./shortcuts";
 
 const record = (more: Partial<SearchResult> = {}): SearchResult => ({
-  revision: "1", id: { library: "refs.bib", key: "a" }, key: "a", cite: "1", source: "refs.bib", title: "T", authors: "García", year: "2021",
+  revision: "1", id: { library: "refs.bib", key: recordId("a") }, key: "a", cite: "1", source: "refs.bib", title: "T", authors: "García", year: "2021",
   matched: [], partial: false, first_author: "García", author_count: 1, container: null, item_type: "article-journal", ...more,
 });
 
@@ -31,8 +32,8 @@ test("selection identity is the record, not its key or position", () => {
   expect(idKey({ source: "a", native_key: "b" })).not.toBe(idKey({ source: "a\u0000b", native_key: "" }));
   expect(choiceKey([record()])).not.toBe(choiceKey([record({ revision: "2" })]));
   expect(choiceKey([record({ key: "x" })])).toBe(choiceKey([record({ key: "y" })]));
-  expect(choiceKey([{ ...record(), locator: { label: "page", value: "12" } }])).not.toBe(choiceKey([{ ...record(), locator: { label: "page", value: "9" } }]));
-  expect(choiceKey([{ ...record(), locator: { label: "page", value: "12" } }])).not.toBe(choiceKey([{ ...record(), locator: { label: "chapter", value: "12" } }]));
+  expect(choiceKey([{ ...record(), locator: { term: "page", value: "12" } }])).not.toBe(choiceKey([{ ...record(), locator: { term: "page", value: "9" } }]));
+  expect(choiceKey([{ ...record(), locator: { term: "page", value: "12" } }])).not.toBe(choiceKey([{ ...record(), locator: { term: "chapter", value: "12" } }]));
   expect(sameLibrary("user", "user")).toBe(true);
   expect(sameLibrary({ group: 3 }, { group: 3 })).toBe(true);
   expect(sameLibrary({ group: 3 }, "user")).toBe(false);
@@ -72,8 +73,8 @@ test("every command has one key on each system, and ⌘/ opens the keys wherever
     expect(commandFor(press("k", "KeyK", command), null, mac)).toBe("more");
     expect(commandFor(press(",", "Comma", command), null, mac)).toBe("settings");
     expect(commandFor(press("o", "KeyO", command), null, mac)).toBe("source");
-    expect(commandFor(press("o", "KeyO", { ...command, altKey: true }), null, mac)).toBe("revealSource");
-    expect(commandFor(press("o", "KeyO", { ...command, shiftKey: true }), null, mac)).toBe("chooseSource");
+    expect(commandFor(press("o", "KeyO", { ...command, altKey: true }), null, mac)).toBe(mac ? "revealSource" : null);
+    expect(commandFor(press("o", "KeyO", { ...command, shiftKey: true }), null, mac)).toBe(mac ? "chooseSource" : "revealSource");
     expect(commandFor(press("q", "KeyQ", command), null, mac)).toBe("quit");
     expect(commandFor(press("e", "KeyE", command), field, mac)).toBe("changeLast");
   }

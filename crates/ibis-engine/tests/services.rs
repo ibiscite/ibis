@@ -29,10 +29,9 @@ fn typed_methods_and_dispatch_share_one_snapshot() {
         })
         .unwrap();
     assert_eq!(shown, *case.library.objects()[0]);
-    assert_eq!(
-        engine.cite(&case.request, &cancel).unwrap(),
-        *case.expected.data().unwrap()
-    );
+    let mut cited = engine.cite(&case.request, &cancel).unwrap();
+    cited.receipt = None; // Formatting seeds predate request-specific evidence.
+    assert_eq!(cited, *case.expected.data().unwrap());
     assert_eq!(engine.libraries().unwrap().libraries.len(), 1);
     assert_eq!(
         engine
@@ -90,6 +89,7 @@ fn pasted_search_is_ordered_unlimited_and_reports_missing_keys() {
     };
     let cancel = Cancellation::default();
     let reply = engine.search(&request, &cancel).unwrap();
+    assert!(reply.complete);
     assert_eq!(reply.hits.len(), 205);
     assert_eq!(reply.hits[0].item.object.id().key, "key204");
     assert_eq!(reply.hits[204].item.object.id().key, "key0");
@@ -112,6 +112,43 @@ fn pasted_search_is_ordered_unlimited_and_reports_missing_keys() {
         .unwrap();
     assert!(empty.hits.is_empty());
     assert_eq!(empty.list.unwrap().missing.len(), 206);
+}
+
+#[test]
+fn search_reports_more_matches_at_the_maximum_limit_and_complete_empty_results() {
+    let LibraryObject::Record(base) = case().library.objects()[0].object.clone() else {
+        panic!("record")
+    };
+    let objects = (0..1001)
+        .map(|n| {
+            let mut record = base.clone();
+            record.id.key = format!("invented{n}");
+            record.citation_keys[0].value = record.id.key.clone();
+            LibraryObject::Record(record)
+        })
+        .collect();
+    let engine = Engine::from_snapshot(Arc::new(Snapshot::new(objects).unwrap()));
+    let request = SearchRequest {
+        query: "signals".into(),
+        limit: 1000,
+        libraries: None,
+        interpret_locator: false,
+    };
+    let found = engine.search(&request, &Cancellation::default()).unwrap();
+    assert_eq!(found.hits.len(), 1000);
+    assert!(!found.complete);
+    assert!(found.source_health.findings.is_empty());
+    let empty = engine
+        .search(
+            &SearchRequest {
+                query: "absent".into(),
+                ..request
+            },
+            &Cancellation::default(),
+        )
+        .unwrap();
+    assert!(empty.hits.is_empty());
+    assert!(empty.complete);
 }
 
 #[test]
@@ -171,7 +208,7 @@ fn exact_lists_win_over_closest_matches_and_trailing_locators() {
             "{query}"
         );
         assert_eq!(reply.data["list"]["missing"], json!(missing), "{query}");
-        assert!(reply.data.get("locator").is_none(), "{query}");
+        assert!(reply.data.get("shorthand").is_none(), "{query}");
     }
 }
 
@@ -229,7 +266,7 @@ fn pasted_syntax_and_identifier_tokens_keep_their_types_through_search() {
         );
         assert_eq!(reply.list.as_ref().unwrap().missing, missing, "{query}");
         assert!(reply.hits.iter().all(|hit| !hit.partial && !hit.typo));
-        assert!(reply.locator.is_none());
+        assert!(reply.shorthand.is_none());
         assert_eq!(
             serde_json::to_value(&reply).unwrap(),
             engine
@@ -293,7 +330,9 @@ fn human_key_arguments_are_resolved_only_inside_the_engine() {
         keys: vec!["Example2026".into()],
         output: case.request.output,
         form: CitationForm::Normal,
+        strict: false,
         output_locale: None,
+        keep_order: false,
     };
     let result = engine.cite_keys(&request, &Cancellation::default()).unwrap();
     assert_eq!(result.text, "[@Example2026]");
@@ -464,20 +503,20 @@ fn bundled_styles_are_available_and_unknown_styles_or_locales_refuse_the_request
 }
 
 #[test]
-fn search_reads_a_trailing_locator_only_when_asked() {
+fn search_reads_shorthand_only_when_asked() {
     let case = case();
     let engine = Engine::from_snapshot(Arc::new(case.library.clone()));
     let cancel = Cancellation::default();
     let read = engine
         .dispatch(
             Method::Search,
-            &json!({"query":"signals chap. 3","interpret_locator":true}),
+            &json!({"query":"see signals chap. 3","interpret_locator":true}),
             &cancel,
         )
         .unwrap();
     assert_eq!(
-        read.data["locator"],
-        json!({"search":"signals","locator":{"term":"chapter","value":"3"},"typed":"chap. 3"})
+        read.data["shorthand"],
+        json!({"search":"signals","prefix":"see","locator":{"search":"signals","locator":{"term":"chapter","value":"3"},"typed":"chap. 3"}})
     );
     let plain = engine
         .dispatch(Method::Search, &json!({"query":"signals"}), &cancel)
@@ -486,9 +525,9 @@ fn search_reads_a_trailing_locator_only_when_asked() {
     assert!(!plain.data["hits"].as_array().unwrap().is_empty());
     // Without the flag the whole query is searched and nothing is read.
     let literal = engine
-        .dispatch(Method::Search, &json!({"query":"signals chap. 3"}), &cancel)
+        .dispatch(Method::Search, &json!({"query":"see signals chap. 3"}), &cancel)
         .unwrap();
-    assert!(literal.data.get("locator").is_none());
+    assert!(literal.data.get("shorthand").is_none());
 }
 #[test]
 fn closing_an_idle_subscription_wakes_its_worker_and_preserves_other_subscribers() {

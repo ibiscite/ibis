@@ -1,4 +1,4 @@
-// The design system's one stylesheet check (decision 0035, #1678). Every stylesheet
+// The design system's stylesheet check. Every stylesheet
 // is parsed into the CSS object model, and each rule of the system
 // (docs/design.md, docs/design/foundations.md) is one entry in `rules`: run over
 // every declaration, and over a planted stylesheet it must catch, so a rule can
@@ -12,9 +12,11 @@ const { readFileSync, readdirSync } = await vi.importActual<{
 }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const root = new FileURL("./", import.meta.url);
+// Paths read with "/" on every system, so the allowlists below match on Windows too.
+const sources = () => readdirSync(root, { recursive: true }).map((name) => name.replaceAll("\\", "/"));
 const read = (name: string) => readFileSync(new FileURL(name, root), "utf8");
 const sheets = [
-  ...readdirSync(root, { recursive: true }).filter((name) => name.endsWith(".css")).sort().map((name) => [name, read(name)] as const),
+  ...sources().filter((name) => name.endsWith(".css")).sort().map((name) => [name, read(name)] as const),
   ...["style.css", "demo.css"].map((name) => [`website/${name}`, readFileSync(new FileURL(`../../../website/${name}`, import.meta.url), "utf8")] as const),
 ];
 const tokens = read("tokens.css").replace(/\/\*[^]*?\*\//g, "");
@@ -50,7 +52,7 @@ const outsideTokens = (file: string) => file !== "tokens.css";
 /** The app's own sheets: the website composes its own page from the shared tokens. */
 const app = (file: string) => outsideTokens(file) && !file.startsWith("website/");
 /** Parts read values; the token file and the two native skins state them. */
-const parts = (file: string) => !["tokens.css", "nativeAppearance.css", "nativeAccent.css"].includes(file) && !file.startsWith("website/");
+const parts = (file: string) => file !== "tokens.css" && !file.startsWith("website/");
 // A length written out, other than zero (which the object model reads as 0px).
 const length = /(^|[\s(,*/+-])-?(?!0+(\.0+)?(px|rem)\b)\d*\.?\d+(px|rem)\b/;
 const colour = /#[0-9a-f]{3,8}\b|\b(rgba?|hsla?|oklch|oklab|color)\(|\b(white|black)\b/i;
@@ -69,8 +71,16 @@ const rules: { says: string; applies?: (file: string) => boolean; breaks: (d: De
   { says: "literal type scale sizes are at least 12 px at normal text size",
     breaks: ({ property, value }) => /^--type-(base|[\w-]+-size)$/.test(property) && /^\d*\.?\d+rem$/.test(value) && parseFloat(value) < .75,
     planted: ":root { --type-label-size: .7rem; }" },
+  { says: "only Icon and Band's lead column size interface glyphs", applies: (file) => app(file) && file !== "ui/Icon.css",
+    breaks: ({ file, property, selector, value }) => /^(width|height|inline-size|block-size|min-width|min-height|max-width|max-height)$/.test(property)
+      && /(?:\bsvg\b|\.(?:ui-icon|type-icon|add-glyph|empty-icon|popup-indicator|ui-settings-search-glyph|copy-receipt-mark)(?![\w-]))/.test(selector)
+      && !(file === "ui/Band.css" && selector === ".ui-band-icon > .ui-icon" && /^(width|height)$/.test(property) && value === "var(--icon-tile)")
+      && !/search-mark|update-ring|ui-about-icon/.test(selector),
+    planted: ".planted svg { width: var(--space-3); }" },
+  { says: "the glyph stroke cannot be changed by a part", applies: (file) => app(file) && file !== "ui/Progress.css",
+    breaks: ({ property }) => property === "stroke-width", planted: ".planted svg { stroke-width: 2; }" },
   { says: "only the shared overlay paints the raised layer, its shadow and its material", applies: (file) => outsideTokens(file) && file !== "ui/Overlay.css",
-    breaks: ({ property, value }) => /backdrop-filter$/.test(property) || /var\(--(surface-overlay|shadow-overlay|blur)\)/.test(value),
+    breaks: ({ property, value }) => /backdrop-filter$/.test(property) || /var\(--(surface-overlay|shadow-overlay|blur|layer-overlay[\w-]*)\)/.test(value),
     planted: ".planted { background: var(--surface-overlay); }" },
   { says: "the floating layer is see-through or blurred only while Reduce Transparency, Increase Contrast and forced colours are all off",
     breaks: ({ property, value, conditions }) => (property === "--surface-overlay" && /\/\s*\d|transparent|color-mix/.test(value)
@@ -92,6 +102,9 @@ const rules: { says: string; applies?: (file: string) => boolean; breaks: (d: De
   { says: "tertiary ink stays on placeholders and resting glyphs, never words a person reads",
     breaks: ({ property, value, selector }) => property === "color" && value === "var(--text-tertiary)" && !/placeholder|-glyph|-icon|-remove/.test(selector),
     planted: ".planted-label { color: var(--text-tertiary); }" },
+  { says: "shadows and edges drawn as shadows take their lengths and colours from tokens", applies: parts,
+    breaks: ({ property, value }) => /^(box|text)-shadow$/.test(property) && (length.test(value) || colour.test(value)),
+    planted: ".planted { box-shadow: 0 2px 8px rgb(0 0 0 / 20%); }" },
   { says: "a one-shot movement takes the motion tokens; only a looping indicator keeps its own period", applies: parts,
     breaks: ({ property, value }) => /^(transition|animation)(-duration)?$/.test(property) && /(^|[\s,])(?!0m?s\b)\d*\.?\d+m?s\b/.test(value) && !/infinite/.test(value),
     planted: ".planted { transition: opacity 300ms ease; }" },
@@ -101,6 +114,17 @@ test.each(rules)("$says", (rule) => {
   expect(all.filter((found) => (rule.applies?.(found.file) ?? true) && rule.breaks(found))
     .map(({ file, selector, property, value }) => `${file}: ${selector} { ${property}: ${value} }`)).toEqual([]);
   expect(declarations("planted.css", rule.planted).some(rule.breaks), "the rule sees what it forbids").toBe(true);
+});
+
+// [C3] Alignment is decided once, by bands and tokens, never copied as arithmetic:
+// the count of calc() in the app's stylesheets may only fall. Lower the ceiling
+// when it does; a part that needs a column takes a Band or a token instead.
+const CALC_CEILING = 113;
+test(`calc() in the app's stylesheets stays at or under ${CALC_CEILING}`, () => {
+  const count = (css: string) => css.replace(/\/\*[^]*?\*\//g, "").match(/\bcalc\(/g)?.length ?? 0;
+  const found = sheets.filter(([file]) => !file.startsWith("website/")).reduce((sum, [, css]) => sum + count(css), 0);
+  expect(found).toBeLessThanOrEqual(CALC_CEILING);
+  expect(count("/* calc(1px) */ .planted { width: calc(1px + 1rem); }"), "the count sees what it limits").toBe(1);
 });
 
 /** Movements without a Reduce Motion answer: the same selector in the same file
@@ -120,7 +144,7 @@ function unanswered(found: readonly Declaration[]) {
 
 test("every movement has a Reduce Motion answer, nested groups included", () => {
   expect([...new Set(unanswered(all.filter((d) => !d.file.startsWith("website/"))))]).toEqual([]);
-  const motion = "@supports (display: grid) { @media (min-width: 1px) { .planted { transition: transform var(--dur); } } }";
+  const motion = "@supports (display: grid) { @media (min-width: 1px) { .planted { transition: transform var(--dur-1); } } }";
   expect(unanswered(declarations("planted.css", motion))).toEqual(["planted.css: .planted: transition"]);
   expect(unanswered(declarations("planted.css", `${motion} @media (prefers-reduced-motion: reduce) { .planted { transition: none; } }`))).toEqual([]);
 });
@@ -132,14 +156,14 @@ const fromScript = /^--(native-accent|scroll-fade-|choice-columns|footer-fix|tri
 test("every token a stylesheet reads is defined, and every token is read", () => {
   const reads = all.flatMap((d) => [...d.value.matchAll(/var\((--[\w-]+)/g)].map((match) => [d.file, match[1]!] as const));
   expect([...new Set(reads.filter(([, name]) => !defined.has(name) && !fromScript.test(name)).map(([file, name]) => `${file}: ${name}`))]).toEqual([]);
-  const scripts = readdirSync(root, { recursive: true }).filter((name) => name.endsWith(".tsx")).map(read).join("");
+  const scripts = sources().filter((name) => name.endsWith(".tsx")).map(read).join("");
   const used = new Set([...reads.map(([, name]) => name), ...[...scripts.matchAll(/var\((--[\w-]+)/g)].map((match) => match[1]!)]);
   const own = new Set(declarations("tokens.css", read("tokens.css")).filter((d) => d.property.startsWith("--")).map((d) => d.property));
   expect([...own].filter((token) => !token.startsWith("--website-") && !used.has(token))).toEqual([]);
 });
 
 test("the motion tokens stay within 280 ms", () => {
-  for (const name of ["--dur", "--dur-panel"]) {
+  for (const name of ["--dur-1", "--dur-2", "--dur-3"]) {
     const value = all.filter((d) => d.file === "tokens.css" && d.property === name).map((d) => Number.parseFloat(d.value));
     expect(value.length, name).toBeGreaterThan(0);
     for (const ms of value) expect(ms, name).toBeLessThanOrEqual(280);
@@ -148,28 +172,28 @@ test("the motion tokens stay within 280 ms", () => {
 
 /** The cascade fixes a shared part needs, read from the parsed rules: each was a bug when missing. */
 const required: [file: string, selector: string, property: string, value: string, condition?: string][] = [
+  ["tokens.css", ":root", "--icon", "16px"],
+  ["tokens.css", ":root", "--icon-tile", "20px"],
   // A keyboard-focused choice keeps its fill and outranks the global ring, whatever loads after it.
   ["ui/ChoiceList.css", ".choice-screen .choice-row[data-focus-visible]", "box-shadow", "none"],
   ["ui/ChoiceList.css", ".choice-row[data-focused]", "background", "var(--selected)"],
   ["ui/ChoiceList.css", ".choice-screen .choice-row", "color", "var(--text)"],
-  // The Settings search clear button outranks the shared button's position.
-  ["ui/SettingsGroup.css", ".ui-settings-search > .ui-settings-search-clear.ui-button", "position", "absolute"],
   // A key cap on the primary uses the pressed fill, so its label stays readable on every accent.
   ["ui/Button.css", ".ui-button[data-variant=\"primary\"] .key-caps kbd", "background", "var(--accent-pressed)"],
   // Problems and the copied mark read in the text colour, never a status hue.
-  ["ui/SettingsGroup.css", ".ui-settings-row-problem", "color", "var(--text)"],
-  ["features/picker/CitationShelf.css", ".shelf-copied", "color", "var(--text)"],
+  ["ui/Layout.css", ".ui-row-problem", "color", "var(--text)"],
+  ["ui/CitationShelf.css", ".shelf-copied", "color", "var(--text)"],
   // A found About line keeps 4.5:1 on its tint over the card.
   ["ui/Delights.css", ".ui-about-line[data-highlighted], .ui-about-hero .ui-about-line[data-highlighted]", "color", "var(--text)"],
   // Settings reserves the title bar only where macOS draws its buttons over the window.
   ["tokens.css", ":root[data-system=\"macos\"]", "--titlebar-height", "var(--touch-target)"],
   // The focus ring is solid accent text, so it keeps 3:1 on every surface.
   ["tokens.css", ":root", "--ring", "var(--accent-text)"],
-  ["styles.css", ":focus-visible:not(.ui-button, .menu-item)", "outline", "var(--ring-width) solid var(--ring)"],
+  ["ui/Window.css", ':focus-visible:not(.ui-button, .menu-item, [tabindex="-1"])', "outline", "var(--ring-width) solid var(--ring)"],
   ["tokens.css", ":root, :root[data-platform]", "--ring", "CanvasText", "forced-colors: active"],
   // The short frame at enlarged text drops hints while More stays reachable.
-  ["styles.css", ".enter-hints", "display", "none", "(max-height: 400px) (max-width: 20em)"],
-  ["styles.css", ".library-bar > .more", "display", "flex", "(max-height: 400px) (max-width: 20em)"],
+  ["ui/Footer.css", ".enter-hints", "display", "none", "(max-height: 400px) (max-width: 20em)"],
+  ["ui/Footer.css", ".library-bar > .more", "display", "flex", "(max-height: 400px) (max-width: 20em)"],
 ];
 
 test.each(required)("%s: %s keeps %s: %s", (file, selector, property, value, condition) => {
@@ -178,7 +202,7 @@ test.each(required)("%s: %s keeps %s: %s", (file, selector, property, value, con
 });
 
 test("scroll fades give way to the three accessibility preferences in both web views", () => {
-  const edge = ".scroll-area[data-more-above][data-more-below]";
+  const edge = ".scroll-area[data-more-below]";
   for (const property of ["mask-image", "-webkit-mask-image"]) {
     const fades = all.filter((d) => d.file === "ui/ScrollArea.css" && d.property === property
       && d.selector.split(",").some((selector) => selector.trim() === edge));
@@ -230,12 +254,11 @@ const over = (veil: readonly number[], under: number) => veil.slice(0, 3).map((c
 test("text keeps 7:1 over the veiled Mac material and 4.5:1 over Acrylic, on the brightest and darkest backdrops", () => {
   const text = pair("--text");
   const [light, dark] = tint(tokens, "--vibrancy-tint");
-  // A thin veil let a busy desktop show through the list (hands-on check, 2026-10-27).
   for (const veil of [light!, dark!]) expect(veil[3]).toBeGreaterThanOrEqual(.75);
   // CI's appearance probe (#232) saw the light material lift a black channel to 141.
   for (const under of [141, 255]) expect(contrast(flatten(text[0], 0, hexOf(over(light!, under))), hexOf(over(light!, under)))).toBeGreaterThanOrEqual(7);
   for (const under of [0, 120]) expect(contrast(flatten(text[1], 1, hexOf(over(dark!, under))), hexOf(over(dark!, under)))).toBeGreaterThanOrEqual(7);
-  const acrylic = tint(read("nativeAppearance.css"), "--acrylic-tint");
+  const acrylic = tint(read("tokens.css"), "--acrylic-tint");
   expect(acrylic).toHaveLength(2);
   for (const [mode, veil] of acrylic.entries()) for (const under of [0, 255]) {
     const backdrop = hexOf(over(veil, under));
@@ -311,7 +334,7 @@ test("Settings row labels are sentence case, except Apple's own name for a login
 });
 
 test("every icon is one shape, so translucent colours paint it once", () => {
-  const files = readdirSync(root, { recursive: true }).filter((name) => name.endsWith(".tsx") && !name.includes(".test."));
+  const files = sources().filter((name) => name.endsWith(".tsx") && !name.includes(".test."));
   const split = files.flatMap((name) => [...read(name).matchAll(/<svg[^]*?<\/svg>/g)]
     .filter((match) => (match[0].match(/<(path|circle|rect|line)\b/g) ?? []).length > 1).map(() => name));
   expect(split).toEqual([]);

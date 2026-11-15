@@ -1,0 +1,85 @@
+/* The picker's footer band: library status on the leading edge, then the
+   actions and More, whose last cap ends on --cap-end. */
+footer { display: flex; align-items: center; padding-block: 0; padding-inline: var(--row-start) var(--cap-end); font-size: var(--type-label-size); line-height: var(--type-label-line); min-height: var(--footer-h); }
+/* The divider is outside the 24 px actions and their two 8 px gaps.
+   Coarse targets grow the band instead of clipping; the grid below owns its columns. */
+.library-bar { flex: 1; min-width: 0; align-items: center; gap: var(--space-2); padding-block: var(--inset); }
+/* One line that never pushes the keys aside: the age after the problem
+   is cut first, and the tooltip and More keep the whole detail. */
+/* A problem adds its dot inline; healthy status is the library name alone. */
+.library-status { flex: 1; min-width: min(var(--status-min), 100%); display: flex; align-items: baseline; gap: var(--space-2); color: var(--text-secondary); }
+/* A healthy library is named, nothing more: no dot, no count (the library menu and More hold them). */
+/* The leading selector's plate starts on the row inset. Its inner row keeps
+   the same columns at rest, on hover and while the menu is open. */
+.library-bar .ui-button.library-status-trigger[data-variant] {
+  max-width: calc(100% + var(--row-pad)); margin-inline-start: calc(-1 * var(--row-pad));
+  padding-inline-start: calc(var(--row-pad) - var(--border-width)); justify-content: start;
+}
+.ui-button.library-status-trigger[data-variant]:is([data-pressed], [aria-expanded="true"]) > * { scale: none; }
+.library-words, .library-name { display: flex; min-width: 0; overflow: hidden; white-space: pre; }
+/* A long name is shortened before the state words; the age goes first of all. */
+.library-source { min-width: 3ch; flex-shrink: 100000; overflow: hidden; text-overflow: ellipsis; }
+/* Shrinks only once the name is as short as it gets, then ends with an ellipsis. */
+.library-state { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.library-separator { flex: none; }
+/* Takes only the room the name and state leave, so it is cut before them. */
+.library-age { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.library-status[data-health="stop"] .library-name, .library-status[data-health="look"] .library-name { color: var(--text); }
+/* Only the visible notice line; never the hidden spoken detail, which must keep
+   its 1 px .visually-hidden box or the page grows wider than the window. */
+.library-bar > p[role="status"] { width: 100%; margin: var(--space-1) 0; }
+/* The dot repeats what the words say, so colour is never the only signal. */
+.status-dot { translate: 0 calc(var(--status-dot) / 2 - .5ex); width: var(--status-dot); height: var(--status-dot); border-radius: var(--r-full); flex-shrink: 0; background: var(--text-secondary); }
+.status-dot[data-health="look"] { background: var(--status-warning); }
+.status-dot[data-health="stop"] { background: var(--status-error); }
+
+/* Whatever the leading slot holds, action, More: the action's column can only
+   shrink, so no label, and no action at all, can move More off the last column.
+   Quiet notes span a row of their own. */
+/* The leading column always keeps room for its fix (`--footer-fix`, measured). */
+.library-bar { --footer-lead: calc(var(--title-start) + var(--space-1) + var(--footer-fix, 0px)); --footer-status-min: max(var(--status-min), var(--footer-lead));
+  position: relative; display: grid; grid-template-columns: minmax(min(var(--footer-status-min), 100%), 1fr) minmax(0, auto) auto; }
+.library-bar[data-status-compact] { --footer-status-min: var(--footer-lead); }
+.library-bar[data-status-compact]:not([data-hints-compact]) { --footer-status-min: calc(var(--footer-lead) + var(--status-short)); }
+.library-bar > :not(.enter-hints, .more, .ui-quiet-status, .library-action-error) { grid-column: 1; min-width: 0; }
+/* One line always: the action truncates, and Alt's two actions fold to keys. */
+.library-bar > .enter-hints { grid-area: 1 / 2; flex-wrap: nowrap; }
+/* Only at the smallest window with very large text can even Alt's keys not fit:
+   they are cut at their column then, never drawn over More. */
+.library-bar[data-alt-compact][data-hints-compact] > .enter-hints { overflow: hidden; }
+.library-bar > .more { grid-area: 1 / 3; }
+.footer-fit-measure { position: absolute; visibility: hidden; pointer-events: none; display: flex; max-width: 100%; height: 0; overflow: hidden; }
+.footer-status-size { flex: none; width: var(--status-min); }
+.footer-status-minimum { flex: none; width: calc(var(--title-start) + var(--status-short)); }
+.footer-label-minimum { flex: none; width: 7rem; }
+.library-bar .footer-action .key-hint-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.library-bar[data-hints-compact] :is(.enter-hints, .more) .key-hint-label, .library-bar[data-alt-compact] .enter-hints .key-hint-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* More keeps the last column, so its menu opens inward. */
+.more { position: relative; }
+
+/* Footer key hints (#491): what Enter does now, or with Alt held the other
+   keys. They stay in narrow windows and truncate instead of overlapping. */
+.enter-hints:empty { display: none; }
+.enter-hints { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); min-width: 0; color: var(--text-secondary); font-size: var(--type-label-size); overflow-wrap: anywhere; }
+/* Corners nest: the key sits 4 px inside the action on three sides, and More
+   ends on the same edge as the rows, 8 px inside the window's corner. */
+/* At large system text sizes the label and caps may need separate lines;
+   their visible content must stay inside the button's actual hit target. */
+footer .key-hint-label { display: inline; }
+/* Width classes use the actual text size: at 200% the minimum frame keeps
+   one footer line of keys, leaving the middle readable (design C10). */
+@container (max-width: 28.75em) {
+  footer .key-hint-label { display: none; }
+}
+
+@media (max-height: 400px) {
+  /* The 480x360 frame at 200% text is 15em wide. Keep the normal shelf and
+     footer targets and their insets; omit only the footer hints, whose keys
+     still work and are listed in More. The search rows keep their controls
+     but give up vertical gaps. No second scroll owner is introduced. */
+  @container (max-width: 20em) {
+    .enter-hints { display: none; }
+    .library-bar > .more { display: flex; }
+  }
+}

@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import { focusLost } from "./ui/layers";
-import { backend, chooseFromMore, openCitationDetails, resetApp, result } from "./testing/app";
+import { backend, chooseFromMore, openCitationDetails, resetApp, result, findInCitation, citationDetails, paletteRow } from "./testing/app";
 
 // What a person sees of the layer stack: Esc from anywhere, a key and its menu
 // item doing the same thing, and nothing surviving a close and reopen.
@@ -25,14 +25,27 @@ const type = (text: string) => fireEvent.change(search(), { target: { value: tex
 const focusableControls = () => [...document.querySelectorAll<HTMLElement>("main button, main input, main [tabindex='0']")]
   .filter((node) => !node.closest("[hidden], [inert], [aria-hidden='true']") && !node.matches(":disabled") && node.tabIndex >= 0);
 
+test("Back shortcuts in Picker search leave the query and view alone", async () => {
+  const calls = backend({ search: () => [result("a", "Invented reference")] });
+  render(<App />);
+  await screen.findByText("Invented reference");
+  type("invented");
+  expect(fireEvent.keyDown(search(), { key: "ArrowLeft", altKey: true })).toBe(false);
+  press("Backspace", { repeat: true });
+  expect(fireEvent.mouseDown(search(), { button: 3 })).toBe(false);
+  expect(fireEvent.mouseUp(search(), { button: 3 })).toBe(false);
+  expect(search().value).toBe("invented");
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(hides(calls)).toBe(0);
+});
+
 async function chosenCitation(overrides = {}) {
   const calls = backend({ library_status: () => library, search: () => [result("picked", "Invented reference")], ...overrides });
   render(<App />);
   await screen.findByText("Invented reference");
   act(() => search().focus());
   press("Enter", { shiftKey: true });
-  const chip = await screen.findByRole("button", { name: /^Edit/ });
-  await screen.findByRole("button", { name: /^Remove/ });
+  const chip = await findInCitation("picked");
   return { calls, chip };
 }
 
@@ -53,12 +66,12 @@ test("Esc from a focused citation chip steps back, with no pointer click needed"
 test("Esc works from every focusable control in the picker", async () => {
   const { calls } = await chosenCitation();
   type("invented");
-  await screen.findByRole("button", { name: /^Clear search/i });
+  await waitFor(() => expect(search().value).toBe("invented"));
   const count = focusableControls().length;
   expect(count).toBeGreaterThan(5);
   for (let index = 0; index < count; index += 1) {
     type("invented");
-    await screen.findByRole("button", { name: /^Clear search/i });
+    await waitFor(() => expect(search().value).toBe("invented"));
     const control = focusableControls()[index]!;
     const name = control.getAttribute("aria-label") ?? control.id;
     act(() => control.focus());
@@ -75,7 +88,7 @@ test.each(["empty search", "choose library"])("every control of the %s screen hi
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
   act(() => search().focus());
   if (screenName === "choose library") {
-    press("o", { ctrlKey: true, shiftKey: true });
+    await chooseFromMore("Choose Library…");
     await screen.findByRole("option", { name: /^Use Zotero/ });
   }
   const before = hides(calls);
@@ -88,19 +101,17 @@ test.each(["empty search", "choose library"])("every control of the %s screen hi
   } else await waitFor(() => expect(hides(calls)).toBe(before + 1));
 });
 
-test("Esc walks the stack one layer at a time: submenu, menu, search, window", async () => {
+test("Esc walks the stack one layer at a time: palette, search, window", async () => {
   const { calls } = await chosenCitation();
   type("invented");
-  await chooseFromMore("Keep Window Open", "menuitemcheckbox");
-  fireEvent.click(await screen.findByRole("menuitem", { name: /^Rows: / }));
-  await screen.findByRole("menuitemradio", { name: "Compact" });
-  await waitFor(() => expect(screen.getAllByRole("menu")).toHaveLength(2));
-  act(() => screen.getByRole("menuitemradio", { name: "Compact" }).focus());
+  await chooseFromMore("Keep Window Open");
+  const more = screen.getByRole("button", { name: /^More/ });
+  act(() => more.focus());
+  fireEvent.click(more);
+  await screen.findByRole("dialog", { name: "Actions" });
   press("Escape");
-  await waitFor(() => expect(screen.getAllByRole("menu")).toHaveLength(1));
-  press("Escape");
-  expect(screen.queryByRole("menu")).toBeNull();
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: /^More/ }));
+  expect(screen.queryByRole("dialog", { name: "Actions" })).toBeNull();
+  expect(document.activeElement).toBe(more);
   expect(search().value).toBe("invented");
   press("Escape");
   expect(search().value).toBe("");
@@ -109,7 +120,44 @@ test("Esc walks the stack one layer at a time: submenu, menu, search, window", a
   await waitFor(() => expect(hides(calls)).toBe(1));
 });
 
-test("Esc closes the inspector back to its chip, and Search keeps focus if it was there", async () => {
+test.each(["palette", "sheet", "details"].flatMap((kind) => (kind === "details" ? ["Escape", "keyboard", "mouse"] : ["header", "Escape", "keyboard", "mouse"]).map((method) => [kind, method])))
+  ("Back from a %s by %s restores the parent's query, selection, scroll and focus", async (kind, method) => {
+  await chosenCitation({ search: ({ query }: { query: string }) => [result("picked", "Invented reference"), result("second", query ? "Filtered invented reference" : "Another invented reference"),
+    ...Array.from({ length: 24 }, (_, index) => result(`extra-${index}`, `Invented result ${index}`))] });
+  type("invented");
+  await screen.findByText("Filtered invented reference");
+  act(() => search().focus());
+  press("ArrowDown");
+  const active = search().getAttribute("aria-activedescendant");
+  const selected = screen.getByRole("button", { name: /^Remove/ }).getAttribute("aria-label");
+  const scroller = document.querySelector<HTMLElement>(".results-area")!;
+  scroller.scrollTop = 180;
+  // jsdom has no layout: model the browser scrolling a highlighted result
+  // back into view, so a focus-only jump cannot pass as restored scroll.
+  const reveal = vi.fn(function(this: HTMLElement) { if (this.closest(".results-area")) scroller.scrollTop = 0; });
+  const previousReveal = HTMLElement.prototype.scrollIntoView;
+  HTMLElement.prototype.scrollIntoView = reveal;
+  try {
+    const parent = kind === "palette" ? screen.getByRole("button", { name: /^More/ }) : kind === "details" ? screen.getByRole("button", { name: /^Edit/ }) : search();
+    act(() => parent.focus());
+    if (kind === "palette" || kind === "details") fireEvent.click(parent);
+    else press("/", { ctrlKey: true });
+    const view = await screen.findByRole("dialog");
+    if (kind === "palette") fireEvent.change(within(view).getByRole("combobox"), { target: { value: "quit" } });
+    // Use the header Back, shared by palettes and sheets; the footer is the keyboard stop.
+    if (method === "header") fireEvent.click(view.querySelector(".ui-view-back")!);
+    else if (method === "mouse") fireEvent.mouseDown(view, { button: 3 });
+    else press(method === "keyboard" ? "ArrowLeft" : "Escape", method === "keyboard" ? { altKey: true } : {});
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(search().value).toBe("invented");
+    expect(search().getAttribute("aria-activedescendant")).toBe(active);
+    expect(screen.getByRole("button", { name: /^Remove/ }).getAttribute("aria-label")).toBe(selected);
+    expect(scroller.scrollTop).toBe(180);
+    expect(document.activeElement).toBe(parent);
+  } finally { HTMLElement.prototype.scrollIntoView = previousReveal; }
+});
+
+test("Esc closes the details back to their token, and Search keeps focus if it was there", async () => {
   const { calls, chip } = await chosenCitation();
   act(() => chip.focus());
   fireEvent.click(chip);
@@ -127,17 +175,16 @@ test("Esc closes the inspector back to its chip, and Search keeps focus if it wa
   expect(hides(calls)).toBe(0);
 });
 
-test("Esc steps out of the inspector's menu, then the inspector, then the search", async () => {
+test("Esc steps out of the details' menu, then the details, then the search", async () => {
   const { calls, chip } = await chosenCitation();
   type("invented");
   fireEvent.click(chip);
   await screen.findByRole("textbox", { name: "Page" });
-  const form = await screen.findByRole("button", { name: /^Show as/ });
-  fireEvent.click(form);
+  fireEvent.click(await screen.findByRole("button", { name: "Locator type: Page" }));
   await screen.findByRole("menu");
   press("Escape");
   expect(screen.queryByRole("menu")).toBeNull();
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: /^Show as/ }));
+  expect(citationDetails()?.contains(document.activeElement)).toBe(true);
   press("Escape");
   expect(screen.queryByRole("textbox", { name: "Page" })).toBeNull();
   expect(search().value).toBe("invented");
@@ -149,7 +196,7 @@ test("Esc steps out of the inspector's menu, then the inspector, then the search
 test("the chooser comes after the sheet, and closing it leaves Search in charge", async () => {
   const { calls } = await chosenCitation();
   type("invented");
-  press("o", { ctrlKey: true, shiftKey: true });
+  await chooseFromMore("Choose Library…");
   await screen.findByRole("option", { name: /^Use Zotero/ });
   act(() => screen.getByRole("option", { name: /^Use Zotero/ }).focus());
   press("/", { ctrlKey: true });
@@ -209,8 +256,9 @@ test("the footer's Esc action steps back through the same stack", async () => {
   await screen.findByText("Invented reference");
   act(() => search().focus());
   type("invented");
-  await screen.findByRole("button", { name: /^Clear search/i });
-  fireEvent.keyDown(window, { key: "Alt", altKey: true });
+  await waitFor(() => expect(search().value).toBe("invented"));
+  fireEvent.pointerOver(document.querySelector("footer")!);
+  fireEvent.keyDown(window, { key: "Shift", shiftKey: true });
   fireEvent.click(await within(screen.getByRole("group", { name: /keys/i })).findByRole("button", { name: "Clear Search" }));
   expect(search().value).toBe("");
 });
@@ -229,7 +277,7 @@ test("after a blank click the next key goes to Search, keeping its native effect
   backend();
   render(<App />);
   await waitFor(() => expect(document.activeElement).toBe(search()));
-  for (const key of [{ key: "s" }, { key: "v", ctrlKey: true }, { key: "v", metaKey: true }, { key: "Backspace" }, { key: "Home" }, { key: "ArrowLeft", altKey: true }, { key: "å", altKey: true }, { key: "Process" }, { key: "Enter", keyCode: 229 }, { key: "?" }]) {
+  for (const key of [{ key: "s" }, { key: "v", ctrlKey: true }, { key: "v", metaKey: true }, { key: "Backspace" }, { key: "Home" }, { key: "å", altKey: true }, { key: "Process" }, { key: "Enter", keyCode: 229 }, { key: "?" }]) {
     act(() => search().blur());
     expect(document.activeElement).toBe(document.body);
     expect(fireEvent.keyDown(document.body, key)).toBe(true); // not cancelled
@@ -246,9 +294,11 @@ test("focus left on a hidden field moves to a visible control, so Esc and keys s
   await waitFor(() => expect(search().closest("[hidden]")).not.toBeNull());
   act(() => search().focus());
   press("k", { ctrlKey: true });
-  expect(await screen.findByRole("menu", { name: /^More/ })).toBeTruthy();
+  expect(await screen.findByRole("dialog", { name: "Actions" })).toBeTruthy();
   press("Escape");
-  expect(document.activeElement).toBe(more);
+  // Back to a visible control, so the next key still works.
+  expect(document.activeElement?.closest("[hidden]")).toBeNull();
+  expect([more, ...document.querySelectorAll(".choice-row")]).toContain(document.activeElement);
   press("Escape");
   await waitFor(() => expect(calls).toContain("hide_picker"));
 });
@@ -259,7 +309,7 @@ test("Esc from Choose Library over the welcome screen returns to a control that 
   await screen.findByRole("option", { name: /^Use Zotero/ });
   const more = await screen.findByRole("button", { name: /^More/ });
   act(() => more.focus());
-  press("o", { ctrlKey: true, shiftKey: true });
+  await chooseFromMore("Choose Library…");
   await act(async () => { await new Promise(requestAnimationFrame); });
   const row = screen.getAllByRole("option")[0]!;
   act(() => row.focus());
@@ -288,14 +338,14 @@ test.each(commands)("%s does the same by key and from More", async (name, role, 
     if (native) await waitFor(() => expect(calls).toContain(native));
     const seen = {
       native: native ? calls.filter((call) => call === native).length : 0,
-      menu: screen.queryAllByRole("menu", { name: /^More/ }).length, sheet: document.querySelectorAll(".ui-sheet").length,
+      menu: screen.queryAllByRole("dialog", { name: "Actions" }).length, sheet: document.querySelectorAll(".ui-sheet-body").length,
     };
     view.unmount();
     await resetApp();
     return seen;
   };
   const byKey = await outcome(() => { press(key, { ctrlKey: true, ...modifiers }); });
-  const byMenu = await outcome(() => chooseFromMore(new RegExp(`^${name}`) as unknown as string, role));
+  const byMenu = await outcome(() => chooseFromMore(new RegExp(`^${name}`)));
   // A toggle leaves its menu open so several can be changed; the key opened none.
   expect({ ...byMenu, menu: 0 }).toEqual({ ...byKey, menu: 0 });
   if (role === "menuitem") expect(byMenu.menu).toBe(0);
@@ -325,10 +375,13 @@ test("More names Keep Window Open the same way on and off, with a check", async 
   backend({ library_status: () => library });
   render(<App />);
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
-  await chooseFromMore("Keep Window Open", "menuitemcheckbox");
-  await waitFor(() => expect(screen.getByRole("menuitemcheckbox", { name: "Keep Window Open" }).getAttribute("aria-checked")).toBe("true"));
-  fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Keep Window Open" }));
-  await waitFor(() => expect(screen.getByRole("menuitemcheckbox", { name: "Keep Window Open" }).getAttribute("aria-checked")).toBe("false"));
+  const keep = async () => paletteRow(await screen.findByRole("dialog", { name: "Actions" }), "Keep Window Open");
+  await chooseFromMore("Keep Window Open");
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  expect((await keep()).getAttribute("aria-current")).toBe("true");
+  fireEvent.click(await keep());
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  await waitFor(async () => expect((await keep()).getAttribute("aria-current")).toBeNull());
 });
 
 test("Settings and a source name the opening that asked, so a late one cannot hide a newer one", async () => {
@@ -347,24 +400,24 @@ test("Settings and a source name the opening that asked, so a late one cannot hi
 test("a command clears every layer in its way, and the keys for an open layer close it", async () => {
   await chosenCitation();
   press("k", { ctrlKey: true });
-  await screen.findByRole("menu", { name: /^More/ });
+  await screen.findByRole("dialog", { name: "Actions" });
   press("/", { ctrlKey: true });
-  await waitFor(() => expect(document.querySelector(".ui-sheet")).not.toBeNull());
-  expect(screen.queryByRole("menu")).toBeNull();
+  await waitFor(() => expect(document.querySelector(".ui-sheet-body")).not.toBeNull());
+  expect(screen.queryByRole("dialog", { name: "Actions" })).toBeNull();
   press("k", { ctrlKey: true });
-  await screen.findByRole("menu", { name: /^More/ });
-  expect(document.querySelector(".ui-sheet")).toBeNull();
+  await screen.findByRole("dialog", { name: "Actions" });
+  expect(document.querySelector(".ui-sheet-body")).toBeNull();
   press("k", { ctrlKey: true });
-  expect(screen.queryByRole("menu")).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Actions" })).toBeNull();
   expect(document.activeElement).toBe(screen.getByRole("button", { name: /^More/ }));
   press("f", { ctrlKey: true, shiftKey: true });
-  await screen.findByRole("searchbox");
+  await screen.findByRole("dialog", { name: "Format" });
   press("f", { ctrlKey: true, shiftKey: true });
-  expect(screen.queryByRole("searchbox")).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Format" })).toBeNull();
   expect(document.activeElement).toBe(search());
 });
 
-test("the inspector stays live: a command opens over it and Esc comes back through it", async () => {
+test("a command opened over the details closes them, and Settings returns to Search", async () => {
   const opened = vi.fn(() => null);
   backend({ library_status: () => library, search: () => [result("picked", "Invented reference")], open_settings: opened });
   render(<App />);
@@ -373,8 +426,10 @@ test("the inspector stays live: a command opens over it and Esc comes back throu
   await waitFor(() => expect(document.activeElement).toBe(page));
   fireEvent.change(page, { target: { value: "12" } });
   press("k", { ctrlKey: true });
-  await screen.findByRole("menu", { name: /^More/ });
-  expect(page.isConnected).toBe(true);
+  const palette = await screen.findByRole("dialog", { name: "Actions" });
+  await waitFor(() => expect(page.isConnected).toBe(false));
+  expect(document.querySelectorAll(".ui-popover")).toHaveLength(0);
+  expect(palette.contains(document.activeElement)).toBe(true);
   press(",", { ctrlKey: true });
   await waitFor(() => expect(opened).toHaveBeenCalledOnce());
   expect(screen.queryByRole("menu")).toBeNull();
@@ -391,7 +446,7 @@ test("refused: a hide the native side declines leaves the stack working", async 
   await waitFor(() => expect(hides(calls)).toBe(1));
   await reopen();
   press("k", { ctrlKey: true });
-  await screen.findByRole("menu", { name: /^More/ });
+  await screen.findByRole("dialog", { name: "Actions" });
   press("Escape");
   expect(screen.queryByRole("menu")).toBeNull();
 });
@@ -402,7 +457,7 @@ test("failed I/O: Settings that cannot open says so and leaves the keyboard in S
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
   act(() => search().focus());
   press("k", { ctrlKey: true });
-  await screen.findByRole("menu", { name: /^More/ });
+  await screen.findByRole("dialog", { name: "Actions" });
   press(",", { ctrlKey: true });
   await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
   expect(await screen.findByText(/settings/i)).toBeTruthy();
@@ -421,7 +476,7 @@ test("delayed: a source open that fails after the picker reopened neither report
   await waitFor(() => expect(fail).toBeTypeOf("function"));
   await reopen();
   press("k", { ctrlKey: true });
-  const menu = await screen.findByRole("menu", { name: /^More/ });
+  const menu = await screen.findByRole("dialog", { name: "Actions" });
   await act(async () => { fail({ code: "failed" }); });
   expect(menu.isConnected).toBe(true);
   expect(screen.queryByText(/could not be opened/i)).toBeNull();
@@ -431,7 +486,7 @@ test("delayed: a key pressed while a menu closes acts on what is on screen now",
   await chosenCitation();
   type("invented");
   press("k", { ctrlKey: true });
-  await screen.findByRole("menu", { name: /^More/ });
+  await screen.findByRole("dialog", { name: "Actions" });
   press("Escape");
   press("Escape");
   expect(search().value).toBe("");
@@ -460,7 +515,7 @@ test("the chooser owns the middle area: the sample library's block leaves while 
   render(<App />);
   const exit = await screen.findByText(/your own library/i);
   act(() => search().focus());
-  press("o", { ctrlKey: true, shiftKey: true });
+  await chooseFromMore("Choose Library…");
   await screen.findByRole("option", { name: /^Use Zotero/ });
   expect(exit.isConnected).toBe(false);
   press("Escape");

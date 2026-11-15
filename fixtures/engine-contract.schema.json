@@ -47,7 +47,6 @@
           "type": "string"
         }
       },
-      "additionalProperties": false,
       "required": [
         "id",
         "parent",
@@ -103,13 +102,13 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "title": {
           "type": "string"
         }
       },
-      "additionalProperties": false,
       "required": [
         "id",
         "title",
@@ -130,27 +129,33 @@
       ]
     },
     "CitationError": {
-      "description": "Fixed citation diagnostics contain no source data, paths, keys or request text.\nA front-end boundary maps a wholly invalid/cancelled request to its envelope error.",
-      "type": "string",
-      "enum": [
-        "empty-selection",
-        "too-many-items",
-        "invalid-locator",
-        "invalid-rich-text",
-        "output-too-large",
-        "unsupported-form",
-        "missing-item",
-        "changed-item",
-        "missing-key",
-        "ambiguous-key",
-        "conflicting-key",
-        "invalid-key",
-        "unsupported-output",
-        "invalid-locale",
-        "cancelled",
-        "formatter-unavailable",
-        "annotation-mismatch",
-        "not-citable"
+      "description": "Fixed diagnostics never contain source data, paths or request text.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "empty-selection",
+            "too-many-items",
+            "invalid-locator",
+            "invalid-rich-text",
+            "output-too-large",
+            "unsupported-form",
+            "missing-item",
+            "changed-item",
+            "missing-key",
+            "missing-doi",
+            "ambiguous-key",
+            "conflicting-key",
+            "invalid-key",
+            "unsupported-output",
+            "invalid-locale",
+            "cancelled",
+            "formatter-unavailable",
+            "annotation-mismatch",
+            "not-citable",
+            "not-from-zotero"
+          ]
+        }
       ]
     },
     "CitationForm": {
@@ -262,7 +267,6 @@
           "type": "string"
         }
       },
-      "additionalProperties": false,
       "required": [
         "value",
         "source"
@@ -276,6 +280,102 @@
         "zotero",
         "extra",
         "better-bibtex"
+      ]
+    },
+    "CitationProjectCheck": {
+      "type": "object",
+      "properties": {
+        "bibliography": {
+          "description": "The checked bibliography's content, without its location or text.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Fingerprint"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "checked_at_ms": {
+          "description": "Present only for a complete successful read made by this citation call.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision"
+      ]
+    },
+    "CitationReceipt": {
+      "description": "Immutable citation evidence. Historical source material is not stored here.",
+      "type": "object",
+      "properties": {
+        "content_hash": {
+          "$ref": "#/$defs/Fingerprint"
+        },
+        "formatting": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FormattingProvenance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ibis_version": {
+          "type": "string"
+        },
+        "language": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "meaning_version": {
+          "description": "Citation meaning changes independently of package and wire versions.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "project": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CitationProjectCheck"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request": {
+          "description": "Resolved output and ordered records, with their actual cite fingerprints.",
+          "$ref": "#/$defs/CitationRequest"
+        },
+        "sample": {
+          "description": "The visible sample marker is part of the attested content.",
+          "type": "boolean"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CitationSourceCheck"
+          }
+        }
+      },
+      "required": [
+        "request",
+        "sources",
+        "content_hash",
+        "ibis_version",
+        "meaning_version"
       ]
     },
     "CitationRequest": {
@@ -314,6 +414,10 @@
             "null"
           ],
           "default": null
+        },
+        "strict": {
+          "description": "Refuse a citation with losses, refusals or unhealthy sources.",
+          "type": "boolean"
         }
       },
       "additionalProperties": false,
@@ -323,6 +427,7 @@
       ]
     },
     "CitationResult": {
+      "description": "Results, unlike requests, accept fields they do not know, so a client keeps\nworking when a newer engine adds one (decision 0028).",
       "type": "object",
       "properties": {
         "content_hash": {
@@ -375,6 +480,17 @@
             "$ref": "#/$defs/ItemOutcome"
           }
         },
+        "receipt": {
+          "description": "Evidence of the records and options actually used, not an archive.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CitationReceipt"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "rtf": {
           "type": [
             "string",
@@ -391,7 +507,6 @@
           }
         }
       },
-      "additionalProperties": false,
       "required": [
         "text",
         "display",
@@ -399,6 +514,49 @@
         "losses",
         "notices",
         "content_hash"
+      ]
+    },
+    "CitationSourceCheck": {
+      "type": "object",
+      "properties": {
+        "last_successful_read_ms": {
+          "description": "Absent for caller-supplied snapshots, which do not establish a source read.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "library": {
+          "$ref": "#/$defs/LibraryId"
+        },
+        "refresh_error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorCode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "warnings": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "library",
+        "warnings"
+      ]
+    },
+    "CitationSurface": {
+      "description": "Wording context only; operations choose their recovery before presentation.",
+      "type": "string",
+      "enum": [
+        "bibliography"
       ]
     },
     "CitationWarning": {
@@ -413,7 +571,6 @@
           "minimum": 0
         }
       },
-      "additionalProperties": false,
       "required": [
         "item",
         "code"
@@ -421,10 +578,14 @@
     },
     "CitationWarningCode": {
       "description": "Fixed codes only; source diagnostics never include field text or locations.",
-      "type": "string",
-      "enum": [
-        "source-field",
-        "sentence-case-expected"
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "source-field",
+            "sentence-case-expected"
+          ]
+        }
       ]
     },
     "Collection": {
@@ -450,10 +611,10 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         }
       },
-      "additionalProperties": false,
       "required": [
         "id",
         "name",
@@ -547,7 +708,7 @@
       ]
     },
     "Destination": {
-      "description": "What Ibis does for a named app: the output it uses and whether it pastes,\nwith pasting on and permitted, as they are by default. A choice remembered\nin the app for one app is that person's and stays out of this answer.",
+      "description": "What Ibis does for a named app: the format the engine chose for it from\nthe person's settings, and whether it pastes, with pasting on and\npermitted, as they are by default.",
       "type": "object",
       "properties": {
         "app": {
@@ -555,6 +716,10 @@
         },
         "delivery": {
           "$ref": "#/$defs/Decision"
+        },
+        "from": {
+          "description": "Which level chose `output`.",
+          "$ref": "#/$defs/FormatFrom"
         },
         "name": {
           "description": "The app's name, when Ibis knows it.",
@@ -566,11 +731,11 @@
         "output": {
           "$ref": "#/$defs/OutputSpec"
         },
-        "output_question": {
-          "description": "The app keeps `output` until a person answers this question in Ibis.",
+        "writing": {
+          "description": "The writing that chose it, when one did.",
           "anyOf": [
             {
-              "$ref": "#/$defs/OutputQuestion"
+              "$ref": "#/$defs/WritingName"
             },
             {
               "type": "null"
@@ -578,17 +743,58 @@
           ]
         }
       },
-      "additionalProperties": false,
       "required": [
         "app",
         "output",
+        "from",
         "delivery"
       ]
     },
-    "DisplayNode": {
-      "description": "One display group owns ordered text leaves; shared punctuation has no item.",
+    "DisplayBlock": {
+      "description": "A block covers content runs in [start, end). Blocks are in opening order;\nranges are nested or disjoint, never crossing. Equal ranges retain nesting.",
       "type": "object",
       "properties": {
+        "end": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "kind": {
+          "$ref": "#/$defs/DisplayBlockKind"
+        },
+        "start": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "kind",
+        "start",
+        "end"
+      ]
+    },
+    "DisplayBlockKind": {
+      "description": "Passive CSL layout, independent of HTML class names or CSS.",
+      "type": "string",
+      "enum": [
+        "entry",
+        "margin",
+        "inline",
+        "block",
+        "indent"
+      ]
+    },
+    "DisplayNode": {
+      "description": "One display group owns ordered text leaves and their block layout;\nshared punctuation has no item.",
+      "type": "object",
+      "properties": {
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DisplayBlock"
+          }
+        },
         "content": {
           "type": "array",
           "items": {
@@ -604,9 +810,9 @@
           "minimum": 0
         }
       },
-      "additionalProperties": false,
       "required": [
-        "content"
+        "content",
+        "blocks"
       ]
     },
     "DisplayRun": {
@@ -635,13 +841,12 @@
           "type": "boolean"
         }
       },
-      "additionalProperties": false,
       "required": [
         "text"
       ]
     },
     "DisplayTree": {
-      "description": "A bounded-depth tree: root -> ownership groups -> styled text leaves.",
+      "description": "Ownership groups with bounded-depth passive blocks and styled text leaves.",
       "type": "object",
       "properties": {
         "nodes": {
@@ -651,7 +856,6 @@
           }
         }
       },
-      "additionalProperties": false,
       "required": [
         "nodes"
       ]
@@ -659,8 +863,34 @@
     "EngineError": {
       "type": "object",
       "properties": {
+        "citation_error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CitationError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "code": {
           "$ref": "#/$defs/ErrorCode"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorDetail"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "focus": {
+          "$ref": "#/$defs/FocusTarget"
+        },
+        "message": {
+          "$ref": "#/$defs/Message"
         },
         "reason": {
           "anyOf": [
@@ -671,11 +901,26 @@
               "type": "null"
             }
           ]
+        },
+        "recovery": {
+          "$ref": "#/$defs/Recovery"
+        },
+        "strict_cause": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StrictCause"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
-      "additionalProperties": false,
       "required": [
-        "code"
+        "code",
+        "message",
+        "recovery",
+        "focus"
       ]
     },
     "Envelope": {
@@ -705,9 +950,25 @@
         "cancelled"
       ]
     },
+    "ErrorDetail": {
+      "type": "object",
+      "properties": {
+        "table": {
+          "$ref": "#/$defs/ZoteroTable"
+        }
+      },
+      "required": [
+        "table"
+      ]
+    },
     "ErrorReason": {
       "description": "Why a request failed, when the code alone cannot tell a caller what to change.\nFront ends choose their words from it; they never guess a reason from the code.",
       "oneOf": [
+        {
+          "description": "Strict citation policy found losses, refusals or unhealthy evidence.",
+          "type": "string",
+          "const": "strict-citation"
+        },
         {
           "description": "No style has the requested id; `styles` lists them.",
           "type": "string",
@@ -744,6 +1005,11 @@
           "const": "missing-key"
         },
         {
+          "description": "The selected library file was moved, renamed or removed.",
+          "type": "string",
+          "const": "missing-file"
+        },
+        {
           "description": "The program started as the Ibis app does not exist.",
           "type": "string",
           "const": "app-missing"
@@ -757,6 +1023,11 @@
           "description": "The Ibis app started but did not confirm the request in time.",
           "type": "string",
           "const": "no-answer"
+        },
+        {
+          "description": "The app's library settings did not finish loading in time.",
+          "type": "string",
+          "const": "settings-read-timeout"
         },
         {
           "description": "Zotero is running but does not let other applications read it.",
@@ -797,6 +1068,16 @@
           "description": "Neither the file's name nor its contents identify a supported library format.",
           "type": "string",
           "const": "unknown-format"
+        },
+        {
+          "description": "Two records a request sends share an `id`, `1` and `\"1\"` included.",
+          "type": "string",
+          "const": "duplicate-record"
+        },
+        {
+          "description": "A record a request sends was not valid CSL-JSON, so none is cited.",
+          "type": "string",
+          "const": "rejected-record"
         }
       ]
     },
@@ -827,7 +1108,6 @@
           "$ref": "#/$defs/FailureStatus"
         }
       },
-      "additionalProperties": false,
       "required": [
         "ibis",
         "ok",
@@ -852,10 +1132,71 @@
           "$ref": "#/$defs/Fingerprint"
         }
       },
-      "additionalProperties": false,
       "required": [
         "cite",
         "full"
+      ]
+    },
+    "FocusTarget": {
+      "type": "string",
+      "enum": [
+        "format-picker",
+        "library-picker",
+        "source-file",
+        "zotero-sharing-help",
+        "search",
+        "results",
+        "locator",
+        "citation",
+        "citation-form",
+        "session-references",
+        "language",
+        "recovery-action",
+        "project-name",
+        "project-menu",
+        "settings",
+        "request"
+      ]
+    },
+    "FormatFrom": {
+      "description": "Which level chose a citation's format (decision 0042); the engine decides.",
+      "oneOf": [
+        {
+          "description": "The writing chosen for this app.",
+          "type": "string",
+          "const": "writing"
+        },
+        {
+          "description": "The format this app was given when the person changed it there.",
+          "type": "string",
+          "const": "app"
+        },
+        {
+          "description": "Your format for this kind of app.",
+          "type": "string",
+          "const": "yours"
+        },
+        {
+          "description": "Nothing was chosen; the format suits the kind of app. The first\npaste with it says so, once.",
+          "type": "string",
+          "const": "suggestion"
+        }
+      ]
+    },
+    "FormattingProvenance": {
+      "description": "Hashes of the shipped processor and style/locale bundle used for CSL output.",
+      "type": "object",
+      "properties": {
+        "bundle": {
+          "$ref": "#/$defs/Fingerprint"
+        },
+        "processor": {
+          "$ref": "#/$defs/Fingerprint"
+        }
+      },
+      "required": [
+        "processor",
+        "bundle"
       ]
     },
     "GoldenCase": {
@@ -971,7 +1312,6 @@
               "const": "rendered"
             }
           },
-          "additionalProperties": false,
           "required": [
             "outcome",
             "item"
@@ -983,21 +1323,32 @@
             "error": {
               "$ref": "#/$defs/CitationError"
             },
+            "focus": {
+              "$ref": "#/$defs/FocusTarget"
+            },
             "item": {
               "type": "integer",
               "format": "uint",
               "minimum": 0
             },
+            "message": {
+              "$ref": "#/$defs/Message"
+            },
             "outcome": {
               "type": "string",
               "const": "refused"
+            },
+            "recovery": {
+              "$ref": "#/$defs/Recovery"
             }
           },
-          "additionalProperties": false,
           "required": [
             "outcome",
             "item",
-            "error"
+            "error",
+            "message",
+            "recovery",
+            "focus"
           ]
         }
       ]
@@ -1007,7 +1358,7 @@
       "type": "object",
       "properties": {
         "key": {
-          "type": "string"
+          "$ref": "#/$defs/RecordId"
         },
         "library": {
           "$ref": "#/$defs/LibraryId"
@@ -1037,6 +1388,8 @@
         "scannable-cite",
         "keys",
         "csl-json",
+        "bibtex",
+        "doi-links",
         "cayw-json"
       ]
     },
@@ -1058,7 +1411,6 @@
               "const": "record"
             }
           },
-          "additionalProperties": false,
           "required": [
             "kind",
             "data"
@@ -1075,7 +1427,6 @@
               "const": "attachment"
             }
           },
-          "additionalProperties": false,
           "required": [
             "kind",
             "data"
@@ -1092,7 +1443,6 @@
               "const": "note"
             }
           },
-          "additionalProperties": false,
           "required": [
             "kind",
             "data"
@@ -1109,7 +1459,6 @@
               "const": "annotation"
             }
           },
-          "additionalProperties": false,
           "required": [
             "kind",
             "data"
@@ -1126,7 +1475,6 @@
               "const": "collection"
             }
           },
-          "additionalProperties": false,
           "required": [
             "kind",
             "data"
@@ -1143,7 +1491,6 @@
               "const": "tag"
             }
           },
-          "additionalProperties": false,
           "required": [
             "kind",
             "data"
@@ -1160,7 +1507,6 @@
               "const": "saved-search"
             }
           },
-          "additionalProperties": false,
           "required": [
             "kind",
             "data"
@@ -1239,28 +1585,70 @@
           "$ref": "#/$defs/LossReason"
         }
       },
-      "additionalProperties": false,
       "required": [
         "field",
         "reason"
       ]
     },
     "LossField": {
-      "type": "string",
-      "enum": [
-        "locator",
-        "prefix",
-        "suffix",
-        "author-suppression",
-        "rich-text",
-        "order"
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "locator",
+            "prefix",
+            "suffix",
+            "author-suppression",
+            "rich-text",
+            "order"
+          ]
+        }
       ]
     },
     "LossReason": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "unsupported",
+            "flattened"
+          ]
+        }
+      ]
+    },
+    "Message": {
+      "type": "object",
+      "properties": {
+        "args": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "context": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CitationSurface"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "args"
+      ]
+    },
+    "NoRecoveryReason": {
       "type": "string",
       "enum": [
-        "unsupported",
-        "flattened"
+        "cancelled",
+        "in-progress"
       ]
     },
     "Note": {
@@ -1277,35 +1665,31 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "text": {
           "description": "Untrusted plain text; front ends must never inject this as HTML.",
           "type": "string"
         }
       },
-      "additionalProperties": false,
       "required": [
         "id",
         "text"
       ]
     },
     "Notice": {
-      "type": "string",
-      "enum": [
-        "needs-document-context",
-        "reference-entry",
-        "full-first-note",
-        "year-suffix-withheld",
-        "input-language-unsupported"
-      ]
-    },
-    "OutputQuestion": {
-      "description": "An app ID that cannot tell Ibis which output its document needs.",
-      "type": "string",
-      "enum": [
-        "browser",
-        "editor"
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "needs-document-context",
+            "reference-entry",
+            "full-first-note",
+            "year-suffix-withheld",
+            "input-language-unsupported"
+          ]
+        }
       ]
     },
     "OutputSpec": {
@@ -1419,10 +1803,406 @@
           }
         }
       },
-      "additionalProperties": false,
       "required": [
         "id",
         "csl"
+      ]
+    },
+    "RecordId": {
+      "type": "string",
+      "x-ibis-opaque": "RecordId"
+    },
+    "Recovery": {
+      "description": "Exactly one next action; absence must have an explicit, machine-readable reason.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "choose-output"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "choose-style"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "choose-form"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "locate-file"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "choose-library"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "open-zotero-sharing-help"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "open-zotero"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "retry"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "choose-project"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "rename-project"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "remove-project"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "reopen-project-menu"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "finish-editor-request"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "review-settings"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "edit-citation"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "edit-locator"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "edit-input"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "search-references"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "select-references"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "reduce-selection"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "remove-references"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "close"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "choose-locale"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "review-library"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "free-disk-space"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "upgrade-ibis"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "choose-backup"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "download-file"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "choose-shortcut"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "open-ibis"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "restart-session"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "none"
+            },
+            "reason": {
+              "$ref": "#/$defs/NoRecoveryReason"
+            }
+          },
+          "required": [
+            "action",
+            "reason"
+          ]
+        }
       ]
     },
     "SavedSearch": {
@@ -1442,7 +2222,6 @@
           "type": "string"
         }
       },
-      "additionalProperties": false,
       "required": [
         "id",
         "name",
@@ -1470,7 +2249,6 @@
           "type": "string"
         }
       },
-      "additionalProperties": false,
       "required": [
         "field",
         "operator",
@@ -1491,7 +2269,6 @@
           }
         }
       },
-      "additionalProperties": false,
       "required": [
         "objects",
         "fingerprints"
@@ -1507,10 +2284,84 @@
           "$ref": "#/$defs/LibraryObject"
         }
       },
-      "additionalProperties": false,
       "required": [
         "object",
         "fingerprints"
+      ]
+    },
+    "StrictCause": {
+      "description": "The fact that prevents a strict citation, retained for every client.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "loss"
+            },
+            "loss": {
+              "$ref": "#/$defs/Loss"
+            }
+          },
+          "required": [
+            "kind",
+            "loss"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "error": {
+              "$ref": "#/$defs/CitationError"
+            },
+            "kind": {
+              "type": "string",
+              "const": "refused"
+            }
+          },
+          "required": [
+            "kind",
+            "error"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "code": {
+              "$ref": "#/$defs/ErrorCode"
+            },
+            "kind": {
+              "type": "string",
+              "const": "source"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ErrorReason"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "code"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "source-warning"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        }
       ]
     },
     "Success": {
@@ -1526,7 +2377,6 @@
           "$ref": "#/$defs/SuccessStatus"
         }
       },
-      "additionalProperties": false,
       "required": [
         "ibis",
         "ok",
@@ -1563,7 +2413,6 @@
           "type": "string"
         }
       },
-      "additionalProperties": false,
       "required": [
         "id",
         "name"
@@ -1592,6 +2441,43 @@
       "additionalProperties": false,
       "required": [
         "text"
+      ]
+    },
+    "WritingName": {
+      "description": "The writing that chose a format.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "ZoteroTable": {
+      "description": "A fixed database identifier, never a name supplied by an untrusted source.",
+      "type": "string",
+      "enum": [
+        "version",
+        "libraries",
+        "groups",
+        "items",
+        "itemTypesCombined",
+        "fieldsCombined",
+        "itemData",
+        "itemDataValues",
+        "creators",
+        "creatorTypes",
+        "itemCreators",
+        "deletedItems",
+        "itemNotes",
+        "itemAttachments"
       ]
     }
   }

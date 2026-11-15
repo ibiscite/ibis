@@ -1,24 +1,23 @@
 import type React from "react";
 import type { MouseEvent } from "react";
 import { IbisMark } from "../../ui/IbisMark";
-import { IconButton } from "../../ui/IconButton";
 import { SearchBar, SearchField } from "../../ui/SearchBar";
 import { say } from "../../i18n";
-import { ariaKeys, keysFor } from "../../keys";
-import { currentPlatform } from "../../platform";
 import type { OutputId } from "../../format/outputs";
-import { FormatMenu } from "./FormatMenu";
-import type { MenuCloseReason } from "../../ui/ToolbarMenu";
+import { FormatMenu, type FormatPreview } from "./FormatMenu";
+import type { MenuCloseReason } from "./FormatMenu";
 import type { AppPaste } from "../../api";
 import type { FormatPick, FormatSource } from "./useDestination";
 
 /** The search bar: the search box and the copy format. */
-export function PickerHeader({ hidden = false, onResetPosition, inputRef, query, pageToken, onQueryChange, expanded, activeDescendant, format, formatButtonRef, app = null, formatSource = "default", formatPick = "default", onFormatOpenChange, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, pinned, onTogglePin, writingProject, onWritingProjects }: {
+export function PickerHeader({ hidden = false, onResetPosition, inputRef, query, pageToken, onQueryChange, expanded, activeDescendant, format, formatButtonRef, app = null, formatSource = "default", formatPick = "default", onFormatOpenChange, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, yours, preview, writing, onWritings, usualFormat, onUseUsual, formatLabel }: {
   /** Welcome has no search yet; the field stays mounted so focus can return to it. */
   hidden?: boolean;
   inputRef: React.RefObject<HTMLInputElement | null>;
-  pinned: boolean;
-  onTogglePin: () => void;
+  /** Your own format, the one the chooser offers to return to. */
+  yours?: OutputId;
+  /** The chosen references as another format would paste them. */
+  preview?: FormatPreview | null;
   query: string;
   pageToken?: React.ReactNode;
   onQueryChange: (query: string) => void;
@@ -27,13 +26,16 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
   /** The id of the highlighted row, when there is one. */
   activeDescendant: string | undefined;
   format: OutputId;
+  formatLabel?: string;
   formatButtonRef?: React.RefObject<HTMLButtonElement | null>;
   /** The app the picker was opened from, when Ibis knows it. */
   app?: string | null;
   formatSource?: FormatSource;
   formatPick?: FormatPick;
-  writingProject?: { name: string } | null;
-  onWritingProjects?: () => void;
+  writing?: { name: string } | null;
+  onWritings?: () => void;
+  usualFormat?: OutputId | null;
+  onUseUsual?: () => void;
   onFormatOpenChange?: (open: boolean, reason?: MenuCloseReason) => void;
   pasteChoices?: boolean;
   onPasteChange?: (paste: AppPaste) => void;
@@ -52,14 +54,11 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
     return twice;
   };
   return (
-    <SearchBar hidden={hidden} title={say("picker-drag-search-bar")}
+    <SearchBar hidden={hidden} title={say("picker-drag-search-bar")} mark={<IbisMark className="search-mark" size="search" />}
       onMouseDown={emptyArea} onMouseUp={(event) => { if (emptyArea(event)) onResetPosition?.(); }}>
-      <IbisMark className="search-mark" size="search" />
       <SearchField
         id="search"
         label={say("picker-search-label")}
-        clearLabel={say("picker-clear-search")}
-        onClear={() => { onQueryChange(""); inputRef.current?.focus(); }}
         trailing={pageToken}
         placeholder={say("picker-search-placeholder")}
         role="combobox"
@@ -88,9 +87,7 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
           });
         }}
       />
-      {showFormat && <FormatMenu format={format} buttonRef={formatButtonRef} app={app} source={formatSource} pick={formatPick} onOpenChange={onFormatOpenChange} pasteChoices={pasteChoices} onPasteChange={onPasteChange} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} writingProject={writingProject} onWritingProjects={onWritingProjects} />}
-      <IconButton icon="pin" size="large" className="pin-button" aria-label={say("picker-keep-open")} aria-keyshortcuts={ariaKeys(keysFor("pin"), currentPlatform() === "macos")}
-        isSelected={pinned} onChange={onTogglePin}/>
+      {showFormat && <FormatMenu format={format} buttonRef={formatButtonRef} app={app} source={formatSource} pick={formatPick} onOpenChange={onFormatOpenChange} pasteChoices={pasteChoices} onPasteChange={onPasteChange} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} writing={writing} onWritings={onWritings} usualFormat={usualFormat} onUseUsual={onUseUsual} formatLabel={formatLabel} yours={yours} preview={preview} />}
     </SearchBar>
   );
 }

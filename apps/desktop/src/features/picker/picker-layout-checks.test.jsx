@@ -1,16 +1,13 @@
-import { act, fireEvent, queryAllByRole, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { App } from "../../App";
-import { CitationShelf } from "./CitationShelf";
-import { useCitationInspector } from "./useCitationInspector";
-import { Notices } from "./Notices";
 import { say } from "../../i18n";
 import { backend, resetApp } from "../../testing/app";
-import { dismissMenu, hasMiddleViewport, isSeatedInspector, isWholeNotice, isWholeShelf, layoutGeometry, noticeText, refusalGeometry, refusalPresentation, shelfControl, waitForLayout } from "./picker-layout-checks.mjs";
+import { dismissMenu, hasMiddleViewport, isSeatedInspector, isWholeNotice, isWholeShelf, layoutGeometry, noticeText, waitForLayout } from "./picker-layout-checks.mjs";
 
 const { readFileSync } = await vi.importActual("node:fs");
 const { URL: FileURL } = await vi.importActual("node:url");
-const pickerStyles = readFileSync(new FileURL("../../styles.css", import.meta.url), "utf8");
+const pickerStyles = readFileSync(new FileURL("../../ui/Window.css", import.meta.url), "utf8") + readFileSync(new FileURL("../../ui/Footer.css", import.meta.url), "utf8");
 
 afterEach(async () => {
   await resetApp();
@@ -49,87 +46,6 @@ test("shared CSS reserves a readable middle viewport before allocating spare ban
   } finally { style.remove(); }
 });
 
-test("the refusal oracle distinguishes offscreen text, clipping and lost keyboard reach", () => {
-  vi.stubGlobal("innerWidth", 480); vi.stubGlobal("innerHeight", 360);
-  render(<div className="picker-content"><Notices library={null} failures={{}} startAtLogin={null} error={null} citationProblem={noticeText.formatting}
-    copyError={null} copied={null} onDismissCopied={() => {}} /></div>);
-  const refusal = screen.getByRole("alert"), middle = document.querySelector(".picker-content");
-  // jsdom has no layout. The probe supplies real boxes; this fixture proves
-  // that its individual diagnostics reject each failure without conflating them.
-  refusal.style.whiteSpace = "normal"; refusal.style.overflowY = "visible";
-  let top = 80, scrollWidth = 432, scrollHeight = 1176;
-  vi.spyOn(middle, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 80, 480, 96));
-  vi.spyOn(refusal, "getBoundingClientRect").mockImplementation(() => new DOMRect(24, top, 432, 1176));
-  Object.defineProperties(refusal, {
-    clientWidth: { get: () => 432 }, scrollWidth: { get: () => scrollWidth },
-    clientHeight: { get: () => 1176 }, scrollHeight: { get: () => scrollHeight },
-  });
-  const whole = { startsInView: true, wrapsInFull: true, keyboardReachable: true };
-  expect(refusalPresentation(refusal)).toEqual(whole);
-  top = -1824;
-  expect(refusalPresentation(refusal)).toEqual({ ...whole, startsInView: false });
-  middle.scrollTop = 1904;
-  expect(refusalGeometry(refusal)).toEqual({ rect: { top: -1824, bottom: -648, width: 432 }, bounds: { top: 80, bottom: 176 }, scrollTop: 1904,
-    viewport: { width: 480, height: 360 } });
-  top = 80; scrollWidth += 2;
-  expect(refusalPresentation(refusal)).toEqual({ ...whole, wrapsInFull: false });
-  scrollWidth = 432; scrollHeight += 2;
-  expect(refusalPresentation(refusal)).toEqual({ ...whole, wrapsInFull: false });
-  scrollHeight = 1176; refusal.style.whiteSpace = "nowrap";
-  expect(refusalPresentation(refusal)).toEqual({ ...whole, wrapsInFull: false });
-  refusal.style.whiteSpace = "normal"; refusal.style.overflowY = "hidden";
-  expect(refusalPresentation(refusal)).toEqual({ ...whole, wrapsInFull: false });
-  refusal.style.overflowY = "visible"; refusal.tabIndex = -1;
-  expect(refusalPresentation(refusal)).toEqual({ ...whole, keyboardReachable: false });
-});
-
-test.each([[720, 480, 1], [480, 360, 1], [480, 360, 2]])("the probe selects one rendered reference-count control at %s×%s/%s× text, including with its menu open", async (width, height, scale) => {
-  vi.stubGlobal("innerWidth", width); vi.stubGlobal("innerHeight", height);
-  const computed = window.getComputedStyle;
-  vi.spyOn(window, "getComputedStyle").mockImplementation((node) => {
-    const style = computed(node);
-    if (node === document.documentElement) Object.defineProperty(style, "fontSize", { value: `${16 * scale}px` });
-    return style;
-  });
-  const records = Array.from({ length: 9 }, (_, i) => ({
-    revision: "1", id: { source: "invented.bib", native_key: `reference${i}` }, key: `reference${i}`, title: `Invented reference ${i}`,
-    authors: "Aster", first_author: "Aster", author_count: 1, year: "2026", container: null, item_type: "book", partial: false, matched: ["title"],
-  }));
-  const Shelf = (props) => <CitationShelf inspector={useCitationInspector()} {...props} />;
-  render(<main><Shelf announce={false} selected={new Map(records.map((r) => [r.key, r]))} removeLabel={(r) => `Remove ${r.key} from the selection`}
-    onRemove={() => {}} style={null} keys focusable={false} outputWarnings={[]} shown={{ markup: [], text: "Synthetic citation", html: "", warnings: [] }} /><footer /></main>);
-  const band = document.querySelector("main > .shelf");
-  const name = "9 references";
-  const trigger = within(band).getByRole("button", { name, exact: true });
-  // Model just the Locator intersection and CSS visibility used by this probe.
-  // jsdom has no boxes; hidden/display/visibility exclude retained controls,
-  // while aria-hidden deliberately does not change physical visibility.
-  const locator = (read) => ({ get nodes() { return read(); }, and: (other) => locator(() => read().filter((node) => other.nodes.includes(node))) });
-  const page = {
-    getByRole: (role, { includeHidden, ...options }) => locator(() => queryAllByRole(document.body, role, { ...options, hidden: includeHidden })),
-    locator: (selector) => locator(() => [...document.querySelectorAll(selector.replaceAll(":visible", ""))].filter((node) => {
-      if (!selector.includes(":visible")) return true;
-      for (let part = node; part; part = part.parentElement) {
-        const style = getComputedStyle(part);
-        if (part.hidden || style.display === "none" || style.visibility === "hidden") return false;
-      }
-      return true;
-    })),
-  };
-  const control = shelfControl(page, name), foldedAnchor = shelfControl(page, /^\d+ references$/);
-  expect(control.nodes).toEqual([trigger]);
-  expect(foldedAnchor.nodes).toEqual([trigger]);
-  fireEvent.click(trigger);
-  const menu = await screen.findByRole("menu");
-  expect(within(menu).getAllByRole("menuitemradio")).toHaveLength(9);
-  expect(band.closest('[aria-hidden="true"]')).not.toBeNull();
-  expect(control.nodes).toEqual([trigger]);
-  expect(foldedAnchor.nodes).toEqual([trigger]);
-  fireEvent.keyDown(menu, { key: "Escape" });
-  await act(async () => { await new Promise(requestAnimationFrame); });
-  expect(within(band).getByRole("button", { name, exact: true })).toBe(trigger);
-});
-
 test.each([false, true])("the probe waits for menu exit before the next action (filter=%s)", async (filtered) => {
   let finishExit;
   const detached = new Promise((resolve) => { finishExit = resolve; });
@@ -151,13 +67,13 @@ test.each([false, true])("the probe waits for menu exit before the next action (
   if (filtered) expect(menu.press).not.toHaveBeenCalled();
 });
 
-test.each([false, true])("a failed search notice stays reachable in a steady frame (Larger=%s)", async (larger) => {
-  const frame = larger ? 552 : 480, noticeHeight = larger ? 64 : 32;
-  let clipTop = 0, clipBottom = 0, visibleHeight = noticeHeight;
+test.each([false, true])("a failed search notice takes the notice line in a steady frame (Larger=%s)", async (larger) => {
+  const noticeHeight = larger ? 36 : 32;
+  let clipTop = 0, clipBottom = 0, visibleHeight = noticeHeight - 8;
   // jsdom supplies an oracle regression; the browser probe checks real layout.
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function () {
-    if (this.matches('.notices [role="alert"]')) return new DOMRect(0, 53 - clipTop, 720, visibleHeight);
-    if (this.matches(".picker-content")) return new DOMRect(0, 53, 720, frame - 109 - clipBottom);
+    if (this.matches('.ui-notice-line [role="alert"]')) return new DOMRect(64, 57 - clipTop, 600, visibleHeight);
+    if (this.matches(".ui-notice-line")) return new DOMRect(0, 53, 720, noticeHeight - clipBottom);
     return new DOMRect();
   });
   const calls = backend({
@@ -171,9 +87,9 @@ test.each([false, true])("a failed search notice stays reachable in a steady fra
   expect(calls).not.toContain("fit_picker");
   expect(isWholeNotice(noticeText.failedSearch)).toBe(true);
   expect(isWholeNotice("Unrelated synthetic notice")).toBe(false);
-  clipBottom = frame - 109 - noticeHeight + 2;
+  clipBottom = 8;
   expect(isWholeNotice(noticeText.failedSearch)).toBe(false);
-  clipBottom = 0; clipTop = 2;
+  clipBottom = 0; clipTop = 6;
   expect(isWholeNotice(noticeText.failedSearch)).toBe(false);
   clipTop = 0; visibleHeight = 0;
   expect(isWholeNotice(noticeText.failedSearch)).toBe(false);

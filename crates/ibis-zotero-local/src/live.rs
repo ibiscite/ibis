@@ -6,11 +6,12 @@
 //! counters, so those releases conservatively reread every item.
 //! The transport supplies only loopback GETs; it never follows response links.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use ibis_core::source::IdentityClaims;
 pub use ibis_core::zotero::Library;
 use ibis_core::zotero::api::{Response, Transport, TransportError};
 use serde_json::Value;
@@ -25,15 +26,6 @@ pub struct ItemData {
     pub item_type: String,
     pub creators: Vec<CreatorData>,
     pub fields: BTreeMap<String, String>,
-    /// Classification only; no attachment locations or raw link metadata.
-    pub best_attachment: Option<AttachmentKind>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AttachmentKind {
-    Pdf,
-    WebPage,
-    Other,
 }
 impl fmt::Debug for ItemData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -361,7 +353,18 @@ impl LiveReader {
             if rows.len() != keys.len() || count(&response)? != keys.len() {
                 return Err(LiveError::Changing);
             }
-            let mut seen = BTreeSet::new();
+            let mut claims = IdentityClaims::default();
+            for row in &rows {
+                if let Some(key) = row_key(row)? {
+                    if !keys.iter().any(|requested| requested == key) {
+                        return Err(LiveError::Changing);
+                    }
+                    claims.claim(key.to_owned(), ());
+                }
+            }
+            if claims.duplicates().next().is_some() {
+                return Err(LiveError::Changing);
+            }
             let mut unkeyed = Vec::new();
             for row in rows {
                 let (key, entry, version) = entry(row)?;
@@ -369,17 +372,15 @@ impl LiveReader {
                     unkeyed.push(version);
                     continue;
                 };
-                if !keys.contains(&key)
-                    || !seen.insert(key.clone())
-                    || before.server.major == 10 && version.is_some_and(|version| before.versions[&key] != version)
-                {
+                if before.server.major == 10 && version.is_some_and(|version| before.versions[&key] != version) {
                     return Err(LiveError::Changing);
                 }
                 entries.insert(key, Arc::new(entry));
             }
             // Anonymous omissions account for exactly the unreturned keys.
             // Never associate bibliographic data with a guessed identity.
-            let mut missing: Vec<_> = keys.iter().filter(|key| !seen.contains(*key)).collect();
+            let mut missing: Vec<_> = keys.iter().filter(|key| !claims.is_unique(*key)).collect();
+            let missing_count = missing.len();
             if before.server.major == 10 {
                 for version in unkeyed.iter().flatten() {
                     let Some(index) = missing.iter().position(|key| before.versions[*key] == *version) else {
@@ -388,10 +389,10 @@ impl LiveReader {
                     missing.swap_remove(index);
                 }
             }
-            if unkeyed.len() != keys.len() - seen.len() {
+            if unkeyed.len() != missing_count {
                 return Err(LiveError::Changing);
             }
-            for key in keys.iter().filter(|key| !seen.contains(*key)) {
+            for key in keys.iter().filter(|key| !claims.is_unique(*key)) {
                 entries.insert(key.clone(), Arc::new(malformed_entry()));
             }
         }
@@ -555,26 +556,29 @@ fn malformed_entry() -> Entry {
     }
 }
 
+fn row_key(row: &Value) -> Result<Option<&str>, LiveError> {
+    let inner = row.pointer("/data/key");
+    if row.get("key").zip(inner).is_some_and(|(outer, inner)| outer != inner) {
+        return Err(LiveError::Incomplete);
+    }
+    Ok(row
+        .get("key")
+        .or(inner)
+        .and_then(Value::as_str)
+        .filter(|key| valid_key(key)))
+}
+
 fn entry(row: Value) -> Result<(Option<String>, Entry, Option<u64>), LiveError> {
     let data = row.get("data").and_then(Value::as_object);
-    let inner_key = data.and_then(|data| data.get("key"));
     let inner_version = data.and_then(|data| data.get("version"));
     if row
-        .get("key")
-        .zip(inner_key)
+        .get("version")
+        .zip(inner_version)
         .is_some_and(|(outer, inner)| outer != inner)
-        || row
-            .get("version")
-            .zip(inner_version)
-            .is_some_and(|(outer, inner)| outer != inner)
     {
         return Err(LiveError::Incomplete);
     }
-    let key = row
-        .get("key")
-        .or(inner_key)
-        .and_then(Value::as_str)
-        .filter(|key| valid_key(key));
+    let key = row_key(&row)?;
     if key.is_none()
         || data.is_none_or(|data| {
             data.keys()
@@ -620,10 +624,7 @@ fn entry(row: Value) -> Result<(Option<String>, Entry, Option<u64>), LiveError> 
         (None, None)
     } else {
         match item_data(data, key, kind) {
-            Ok(mut item) => {
-                item.best_attachment = best_attachment_kind(row.get("links"));
-                (Some(item), None)
-            }
+            Ok(item) => (Some(item), None),
             Err(LiveError::Limit) => (None, Some(LiveWarning::ItemTooLarge)),
             Err(error) => return Err(error),
         }
@@ -637,24 +638,6 @@ fn entry(row: Value) -> Result<(Option<String>, Entry, Option<u64>), LiveError> 
         },
         Some(version),
     ))
-}
-
-fn best_attachment_kind(links: Option<&Value>) -> Option<AttachmentKind> {
-    let mime = links?.get("attachment")?.get("attachmentType")?.as_str()?;
-    // Bound the entire untrimmed value, parameters included, in UTF-8 bytes.
-    if mime.len() > 256 {
-        return None;
-    }
-    let mime = mime.split(';').next()?.trim();
-    if mime.is_empty() {
-        None
-    } else if mime.eq_ignore_ascii_case("application/pdf") {
-        Some(AttachmentKind::Pdf)
-    } else if mime.eq_ignore_ascii_case("text/html") || mime.eq_ignore_ascii_case("application/xhtml+xml") {
-        Some(AttachmentKind::WebPage)
-    } else {
-        Some(AttachmentKind::Other)
-    }
 }
 
 fn item_data(data: &serde_json::Map<String, Value>, key: &str, kind: &str) -> Result<ItemData, LiveError> {
@@ -736,7 +719,6 @@ fn item_data(data: &serde_json::Map<String, Value>, key: &str, kind: &str) -> Re
         item_type: kind.into(),
         creators,
         fields,
-        best_attachment: None,
     })
 }
 

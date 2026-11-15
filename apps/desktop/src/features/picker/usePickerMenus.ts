@@ -1,5 +1,5 @@
+import type * as nativeApi from "../../api";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { PickerApi } from "../../App";
 import { closeOverlays, focusLost } from "../../ui/layers";
 import type { Operation } from "./Notices";
 import type { useOperations } from "./useOperations";
@@ -10,7 +10,7 @@ import { useWindowResetUndo } from "./useWindowResetUndo";
 /** The picker's own overlay: at most one is open, whichever way it was reached. */
 type Overlay = "more" | "library" | "format" | "keys" | "session" | "projects";
 
-export function usePickerMenus(api: PickerApi, { perform }: Pick<ReturnType<typeof useOperations>, "perform">,
+export function usePickerMenus(api: typeof nativeApi, { perform }: Pick<ReturnType<typeof useOperations>, "perform">,
   { welcomeShown }: Pick<ReturnType<typeof usePickerLibrary>, "welcomeShown">, cancelCopy: () => void) {
   const { setPinned } = api;
   const input = useRef<HTMLInputElement>(null);
@@ -37,22 +37,15 @@ export function usePickerMenus(api: PickerApi, { perform }: Pick<ReturnType<type
   useEffect(() => { if (windowUndo.ticket !== null) queueMicrotask(closeOverlays); }, [windowUndo.ticket]);
   // Where focus goes back to when a sheet closes.
   const sheetReturn = useRef<HTMLElement | null>(null);
+  // Opening one closes any other: ui/layers displaces what it is not inside.
+  // Opening anything over the picker ends a pending copy (usePickerKeys' key owner).
   const openMore = () => {
-    cancelCopy();
-    closeOverlays();
-    // React Aria records the invoker before mounting its modal focus scope.
-    moreButton.current?.focus();
+    // From a hidden field (the welcome hides Search), More itself is where Esc returns.
+    if (focusLost()) moreButton.current?.focus();
     setOverlay("more");
   };
-  const openLibrary = () => {
-    cancelCopy();
-    closeOverlays();
-    setOverlay("library");
-  };
-  const openFormat = () => {
-    closeOverlays();
-    formatButtonRef.current?.click();
-  };
+  const openLibrary = () => { setOverlay("library"); };
+  const openFormat = () => { formatButtonRef.current?.click(); };
   /** A command that acts on the picker or leaves it: nothing stays in its way. */
   const leaveOverlays = () => {
     cancelCopy();
@@ -64,8 +57,6 @@ export function usePickerMenus(api: PickerApi, { perform }: Pick<ReturnType<type
     void perform(operation, action);
   };
   const openSheet = (sheet: "keys" | "session" | "projects") => {
-    cancelCopy();
-    closeOverlays();
     const focused = document.activeElement;
     sheetReturn.current = focused instanceof HTMLElement && !focusLost() ? focused : null;
     setOverlay(sheet);
@@ -73,7 +64,7 @@ export function usePickerMenus(api: PickerApi, { perform }: Pick<ReturnType<type
   const closeSheet = (sheet: "keys" | "session" | "projects") => {
     closed(sheet);
     const back = sheetReturn.current;
-    if (back?.isConnected && !back.closest("[hidden]")) back.focus();
+    if (back?.isConnected && !back.closest("[hidden]")) back.focus({ preventScroll: true });
     else focusHome();
   };
   return { input, formatButtonRef, moreButton, overlay, menuOpen: overlay === "more", libraryMenuOpen: overlay === "library", formatOpen: overlay === "format", keysOpen: overlay === "keys", sessionOpen: overlay === "session", projectsOpen: overlay === "projects",

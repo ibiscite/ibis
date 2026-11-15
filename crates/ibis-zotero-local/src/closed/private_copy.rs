@@ -1,6 +1,7 @@
 //! Byte-only acquisition. This module never gives a source path to SQLite.
 use super::{ClosedError, ClosedSnapshot, ClosedWarning, Control, FileLease, database, keys, platform};
-use std::fs::{File, Metadata, OpenOptions};
+use platform::private_file;
+use std::fs::{File, Metadata};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -54,22 +55,7 @@ impl Store {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => platform::create_private(&root, control)?,
             Err(_) => return Err(ClosedError::PrivateStorage),
         }
-        let mut options = OpenOptions::new();
-        options.read(true).write(true).create(true).truncate(false);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options
-                .mode(0o600)
-                .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK);
-        }
-        let lock = options
-            .open(root.join(".lock"))
-            .map_err(|_| ClosedError::PrivateStorage)?;
-        if !lock.metadata().is_ok_and(|m| m.is_file()) {
-            return Err(ClosedError::PrivateStorage);
-        }
-        let lock = FileLease::acquire(lock).map_err(|_| ClosedError::StorageInUse)?;
+        let lock = platform::private_lock(&root.join(".lock"), control)?;
         platform::exclude_backups(&root, control)?;
         // Only marked candidates in our verified root are ours. Prefix
         // lookalikes, foreign files and symlinks are never traversed/deleted.
@@ -163,7 +149,7 @@ impl Store {
         // support: process checks and source validation must all remain quiet.
         for index in COPY_ORDER {
             if let Some(source) = &mut sources.files[index] {
-                let mut target = private_file(&copy.path.join(private_name(FILES[index])))?;
+                let mut target = private_file(&copy.path.join(private_name(FILES[index])), control)?;
                 source.file.rewind().map_err(|_| ClosedError::Unreadable)?;
                 let mut remaining = source.metadata.len();
                 let mut buffer = vec![0; CHUNK];
@@ -189,6 +175,21 @@ impl Store {
         control.check()?;
         sources.validate(input, data, &copy.path, control)?;
         check_closed()?;
+        #[cfg(windows)]
+        for (main, wal) in [(0, 1), (4, 5)] {
+            // SQLite opens WAL mode from header byte 19 even after a clean
+            // checkpoint removed the source WAL. Read-only connections can
+            // create both sidecars, so supply them with TokenUser ownership.
+            let wal_mode = sources.files[main]
+                .as_ref()
+                .is_some_and(|source| source.header.get(19) == Some(&2));
+            if wal_mode || sources.files[wal].is_some() {
+                if sources.files[wal].is_none() {
+                    private_file(&copy.path.join(FILES[wal]), control)?;
+                }
+                private_file(&copy.path.join(format!("{}-shm", FILES[main])), control)?;
+            }
+        }
         // Drop *every* source handle before SQLite is opened privately.
         let skipped = sources.skipped.contains(&true);
         drop(sources);
@@ -211,17 +212,6 @@ fn owned_marker(path: &Path) -> bool {
     };
     let mut bytes = Vec::new();
     file.take(MARKER.len() as u64 + 1).read_to_end(&mut bytes).is_ok() && bytes == MARKER
-}
-
-fn private_file(path: &Path) -> Result<File, ClosedError> {
-    let mut o = OpenOptions::new();
-    o.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        o.mode(0o600);
-    }
-    o.open(path).map_err(|_| ClosedError::PrivateStorage)
 }
 
 pub(super) struct Copy {
@@ -254,7 +244,7 @@ impl Copy {
         let result = Self { path };
         platform::exclude_backups(&result.path, control)?;
         control.check()?;
-        let mut marker = private_file(&result.path.join(".ibis-copy"))?;
+        let mut marker = private_file(&result.path.join(".ibis-copy"), control)?;
         marker.write_all(MARKER).map_err(|_| ClosedError::PrivateStorage)?;
         // The cleanup proof must reach stable storage before any library file.
         marker.sync_all().map_err(|_| ClosedError::PrivateStorage)?;

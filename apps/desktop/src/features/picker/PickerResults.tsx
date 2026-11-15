@@ -1,9 +1,12 @@
+import type * as nativeApi from "../../api";
 import type { RefObject } from "react";
-import type { PickerApi } from "../../App";
 import { LibrarySetup, SampleLibraryExit } from "../../LibrarySetup";
 import { say } from "../../i18n";
+import { keysFor } from "../../keys";
+import { FrameHeading, FrameNotices } from "../../ui/Frame";
+import { ResultsArea } from "../../ui/ResultsArea";
 import { ResultList } from "./ResultList";
-import { EmptyState } from "./EmptyState";
+import { EmptyState, useZoteroRecovery } from "./EmptyState";
 import { CommandList } from "./CommandList";
 import type { PickerCommandEntry } from "./commands";
 import type { usePickerLibrary } from "./usePickerLibrary";
@@ -21,15 +24,17 @@ const noLibrary = () => null;
 
 export function PickerResults({
   api, libraryState, searchState, state, source, scope, shortcut, perform, focusHome, pointer, rows, density,
-  resultArea, setQuery, peck, project, commands,
+  resultArea, setQuery, peck, project, commands, numbered,
 }: {
+  /** The rows ⌘1–9 picks (useShownRows). */
+  numbered?: { first: number; count: number };
   /** ">" in the search: the commands, in place of the references. */
   commands?: { list: readonly PickerCommandEntry[]; active: number; run: (command: PickerCommandEntry) => void } | null;
   /** The bibliography rows are marked against; null for formatted output. */
   project: ProjectStatus | null;
   setQuery: (value: string) => void;
   peck?: boolean;
-  api: PickerApi;
+  api: typeof nativeApi;
   libraryState: ReturnType<typeof usePickerLibrary>;
   searchState: ReturnType<typeof useLibrarySearch>;
   state: ReturnType<typeof usePickerSession>["state"];
@@ -50,6 +55,9 @@ export function PickerResults({
   const { narrowed, searchAllLibraries, severalLibraries, libraryOf } = scope;
   const { sourceChoice, performSourceChoice } = source;
   const { chooseLibrary, reloadLibrary } = api;
+  // EmptyState is absent when the retained library has matching rows (or a
+  // command is shown). Recovery belongs to the visible picker in those cases.
+  useZoteroRecovery(library?.has_snapshot ? library : null, api.checkZoteroSharing, !choosingLibrary);
   // A failed refresh keeps the older references searchable, so a search that
   // finds nothing there still says so; only a library with nothing to search
   // hands the middle area to its recovery screen.
@@ -59,7 +67,10 @@ export function PickerResults({
     <EmptyState library={library} query={query} narrowed={narrowed} peck={peck}
       unfiltered={unfiltered} missing={Boolean(list?.missing.length)}
       onRemoveFilter={(plain) => { setQuery(plain); focusHome(); }}
-      source={api.openLibrarySource && source.sourceInChoices ? sourceChoice : undefined}
+      source={source.sourceInChoices ? sourceChoice : undefined}
+      // With no reference highlighted, Zotero's own action is opening Zotero (decision 0047).
+      fallback={source.sourceAvailable ? source.sourceAction
+        : library?.zotero ? { label: say("picker-open-zotero"), keys: keysFor("source"), open: () => source.openSource(true) } : undefined}
       onChooseLibrary={() => void perform("choose", chooseLibrary)}
       onClearSearch={() => { setQuery(""); focusHome(); }}
       onSearchAll={searchAllLibraries}
@@ -71,21 +82,27 @@ export function PickerResults({
       } />
   ) : null);
 
-  if (commands) return <div className="results-area scroll-area" ref={resultArea}>
+  if (commands) return <ResultsArea options={commands.list.length > 0} ref={resultArea}>
     <CommandList commands={commands.list} active={commands.active} hoverAllowed={pointer.hoverAllowed} onRun={commands.run} />
-  </div>;
-  return <div className="results-area scroll-area" ref={resultArea}>
-    {library?.has_snapshot && results.length > 0 && !results.some((r) => r.recent) && library.state !== "loading" && showCitations && <div className="results-heading" aria-hidden="true">
-      <span>{list ? say("picker-pasted-list") : results.some((r) => r.partial) ? say("picker-closest-matches") : query ? say("picker-best-matches") : say("picker-references")}</span><bdi>{say("picker-result-count", { count: results.length })}</bdi>
-    </div>}
+  </ResultsArea>;
+  const recent = results[0]?.recent;
+  // A reloading library keeps its list and heading line: its notices stay in that line.
+  const listShown = showCitations && results.length > 0;
+  return <>{emptyState && !listShown && <FrameNotices />}<ResultsArea options={listShown} ref={resultArea}>
+    {/* The list's heading sits in the frame's line, where a notice can stand in for it. */}
+    {library?.has_snapshot && results.length > 0 && library.state !== "loading" && showCitations && <FrameHeading>{recent
+      ? <div className="ui-list-heading"><h2 id={`recent-${recent}`}>{recent === "cited" ? "Cited here recently" : "Recently added"}</h2></div>
+      : <div className="ui-list-heading" aria-hidden="true">
+        <span>{list ? say("picker-pasted-list") : results.some((r) => r.partial) ? say("picker-closest-matches") : query ? say("picker-best-matches") : say("picker-references")}</span><bdi>{say("picker-result-count", { count: results.length })}</bdi>
+      </div>}</FrameHeading>}
     <p className="visually-hidden" role="status" aria-label={say("picker-search-results")} aria-live="polite" aria-atomic="true">
       {showCitations ? announcement : ""}
     </p>
     {busy && emptyState}
     {showCitations && <ResultList results={results} active={active} selected={selected} density={density} hoverAllowed={pointer.hoverAllowed}
-      libraryOf={severalLibraries ? libraryOf : noLibrary} project={project} onMouseMove={pointer.onMouseMove}
+      libraryOf={severalLibraries ? libraryOf : noLibrary} project={project} numbered={numbered} onMouseMove={pointer.onMouseMove}
       onChoose={rows.onChoose} onContext={rows.onContext} onToggle={rows.onToggle} />}
     {!busy && emptyState}
     {library?.sample && !choosingLibrary && <SampleLibraryExit useSampleLibrary={api.useSampleLibrary} perform={perform} />}
-  </div>;
+  </ResultsArea></>;
 }

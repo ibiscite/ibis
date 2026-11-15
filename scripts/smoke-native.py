@@ -4,9 +4,40 @@
 Exit 1 means a failed assertion; exit 2 means the session lacks a required native
 capability. Only synthetic test text is recorded, never the accessibility tree or
 clipboard contents. See ../CONTRIBUTING.md before running on a personal desktop.
+
+Journeys (daily/manual CI and Preview run them on the installed nightly):
+
+`scripts/smoke-native.py` drives the real desktop app with invented data.
+Daily/manual CI runs installed nightly journeys; Preview checks package
+install/start and offline observation.
+Hosted runner coverage is listed in [compatibility](compatibility.md#platforms-tested-and-targeted).
+
+- **Linux/X11:** Xvfb/Openbox, one display and the default layout. Checks
+  shortcut/focus, search, citation clipboard text, hide/reopen, settings, reload
+  and recovery. After Enter copies, it checks the reason, explicitly pastes
+  with Shift+Insert into its xterm editor and reads the citation back.
+  Require passing `smoke.json`; 100k launch/memory figures are diagnostics.
+- **macOS journey:** `bash scripts/hands-on-macos.sh --journey` installs a
+  nightly in an isolated profile and invokes the harness. From TextEdit,
+  selected text becomes the search; Enter must replace it with the expected
+  citation exactly once, verified through Accessibility. A safe copy gets
+  one retry. A Terminal collector must receive no keys. Missing terminal
+  Accessibility permission or an already open TextEdit makes it unavailable.
+  Daily/manual CI runs this journey on the installed nightly.
+- **Windows journey:** `smoke-native.py --journey` uses Notepad and an inert
+  console collector. It types the search, checks selection replacement once
+  through `WM_GETTEXT`, and checks that the console gets no automatic input.
+  `journey.json` records the editor and console host. A locked/disconnected
+  desktop is unavailable. `scripts/windows-journey.ps1` supplies native control.
+
+The separate Windows paste primitive test bypasses the picker. Foreground
+denial can skip it. macOS/Windows notice text is checked only when native
+accessibility exposes it. These journeys do not establish every editor,
+keyboard layout, screen reader, cloud provider or Wayland compositor.
 """
 import argparse
-from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from contextlib import contextmanager, nullcontext, redirect_stderr, redirect_stdout
+from contextvars import ContextVar
 import io
 import json
 import math
@@ -26,8 +57,8 @@ import unittest
 from unittest.mock import Mock, call, patch
 # Contract subprocesses also load this file with runpy, outside Python's script path.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from native_test_settings import clean_settings, settings_exist
-from native_evidence import (ACTIVE, BundleError, Evidence, collect_metadata, failure,
+from native_test_settings import SettingsDirectory
+from native_evidence import (ACTIVE, BundleError, Evidence, FORMAT_APA, collect_metadata, failure,
                              load_bundle, observe_native, recording, unavailable)
 
 
@@ -69,6 +100,7 @@ EDITOR_TITLE = "Ibis synthetic editor"
 
 # Execution hang guard; C# compilation happens separately before timed calls.
 CONTRACT_TIMEOUT = 120
+WAIT_DEADLINE = ContextVar("native_wait_deadline", default=None)
 
 
 def run(*args, timeout=20):
@@ -149,14 +181,16 @@ def missing_library_evidence(snapshot, name):
 
 
 
-# Library actions live in the footer's Library menu; application actions in More.
-TREE_SETTLE_SECONDS = 10
+# Library actions live in the footer's Library menu; application actions in More,
+# whose palette lists them as options of a listbox (ui/Palette), not menu items.
 MENU_ACTIONS = {"Choose Library…": "Library", "Use Zotero": "Library",
                 "Reload Library": "Library", "Quit Ibis": "More"}
 # ATK_ROLE_PUSH_BUTTON_MENU is how AT-SPI exposes a button with aria-haspopup.
-# Both Library and More use the same native HTML button/MenuTrigger contract.
+# Library, More and the format pop-up use the same native HTML button contract.
 MENU_BUTTON_ROLES = {"button", "pushbutton", "pushbuttonmenu", "combobox"}
 MENU_ITEM_ROLES = {"menuitem", "checkmenuitem", "radiomenuitem", "menuitemcheckbox", "menuitemradio"}
+# ATK exposes a listbox option as a list item; newer AT-SPI names the role "option".
+PALETTE_ITEM_ROLES = {"listitem", "option"}
 
 
 class NativeControlUnavailable(AssertionError):
@@ -208,15 +242,15 @@ def menu_action(native, name):
         try:
             native.click(name)
             return True
-        except (AssertionError, RuntimeError, subprocess.CalledProcessError) as error:
-            if isinstance(native, Linux) and isinstance(error, native.accessibility_error):
+        except NativeControlUnavailable as error:
+            if error.facts["returned_false"]:
                 raise
             last_error = error
             return False
     try:
         native.click(trigger)
         stage = "item"
-        wait_for(pressed, f"{name} appears in the {trigger} menu", timeout=5)
+        wait_for(pressed, f"{name} appears in the {trigger} menu")
     except (AssertionError, RuntimeError, subprocess.CalledProcessError) as error:
         print("MENU ACTION FAILURE", json.dumps(menu_failure_facts(native, trigger, name, stage, last_error or error)),
               file=sys.stderr, flush=True)
@@ -309,42 +343,20 @@ def has_search_text(snapshot):
     return any(n.get("value") for n in named(snapshot, "Search references"))
 
 
-ESCAPE_STEP_TIMEOUT = 5
-
-
 def escape_to_hide(native, snapshot, description):
-    """Escape clears a search first and hides on the next press.
-
-    macOS can report a cleared search value late, so with a search each press
-    waits only briefly and a picker that is still visible gets one spare press.
-    """
+    """Wait for each Escape's state change before sending the next key."""
     last = {}
     if has_search_text(snapshot()):
-        for press in range(3):
-            if not snapshot()["visible"]:
-                return
-            native.key("Escape")
-            deadline = time.monotonic() + ESCAPE_STEP_TIMEOUT
-            unknown = False
-            while time.monotonic() < deadline:
-                try:
-                    last.update(snapshot())
-                except WindowObservationFailure:
-                    # Withdrawal can race the read. Keep this action's deadline
-                    # and require positive hiding evidence before returning.
-                    unknown = True
-                    time.sleep(min(.1, max(0, deadline - time.monotonic())))
-                    continue
-                unknown = False
-                if not last["visible"]:
-                    return
-                if press == 0 and not has_search_text(last):
-                    break
-                time.sleep(0.1)
-            if unknown:
-                raise AssertionError("Timed out: picker visibility unavailable after Escape")
-    else:
+        if not snapshot()["visible"]:
+            return
         native.key("Escape")
+        def cleared():
+            last.update(snapshot())
+            return not last["visible"] or not has_search_text(last)
+        wait_for(cleared, "Escape clears Search or hides picker")
+        if not last["visible"]:
+            return
+    native.key("Escape")
     def hidden():
         last.update(snapshot())
         return not last["visible"]
@@ -381,21 +393,11 @@ def query_failure_facts(snapshot, query, expected):
             "expected_result": expected in text, "one_result": "1 result" in text.splitlines()}
 
 
-TYPE_ATTEMPTS = 3
-TYPE_SETTLE_TIMEOUT = 5
-
-
 def type_query(native, snapshot, text, select_all):
-    """Type into the search field until it reads back exactly, bounded."""
-    for _attempt in range(TYPE_ATTEMPTS):
-        native.key(select_all)
-        native.text(text)
-        deadline = time.monotonic() + TYPE_SETTLE_TIMEOUT
-        while time.monotonic() < deadline:
-            if query_failure_facts(snapshot(), text, "")["exact_search_value"]:
-                return
-            time.sleep(0.1)
-    raise AssertionError(f"Search field did not hold the typed query after {TYPE_ATTEMPTS} attempts")
+    """Inject once; a delayed readback must never cause another input action."""
+    native.key(select_all)
+    native.text(text)
+    wait_for(lambda: query_failure_facts(snapshot(), text, "")["exact_search_value"], "Search holds the typed query")
 
 
 def verify_reopened_search(native, snapshot, text):
@@ -412,7 +414,8 @@ def verify_reopened_search(native, snapshot, text):
         return [node.get("value") for node in named(current, "Search references")
                 if node.get("role", "").lower().replace(" ", "") in EDITABLE_ROLES]
 
-    wait_for(values, "reopened picker visible, foreground and editable search")
+    wait_for(lambda: values() and native.picker_has_input_focus(),
+             "reopened picker visible with keyboard ownership and editable search")
     native.text(text)
 
     def replaced():
@@ -502,12 +505,14 @@ def answer_update_question(settings):
 
 
 def claim_settings(candidate):
-    if settings_exist(candidate):
-        raise Unavailable("Use a disposable desktop account without existing Ibis settings", "disposable-settings")
-    return candidate
+    try:
+        return SettingsDirectory(candidate)
+    except FileExistsError:
+        raise Unavailable("Use a disposable desktop account without existing Ibis settings", "disposable-settings") from None
 
 
 CLIPBOARD_SENTINEL = "Ibis native smoke clipboard sentinel"
+CLIPBOARD_READ_TIMEOUT = 3
 
 
 def prime_clipboard(native):
@@ -545,7 +550,7 @@ def quiet_key_window(key_window):
         return None
 
 
-def copy_with_diagnostics(native, report, key_window=None):
+def copy_with_diagnostics(native, report, key_window=None, *, expected="[@smoke000001]"):
     """Press Return once in the picker and require the exact citation.
 
     On macOS the search field's accessible focus is only the WebView's DOM
@@ -564,11 +569,15 @@ def copy_with_diagnostics(native, report, key_window=None):
             raise
     native.key("Return")
     started = time.monotonic()
-    clipboard = {"polls": 0, "expected": False, "sentinel": False, "empty": False}
+    clipboard = {"polls": 0, "stalled_reads": 0, "expected": False, "sentinel": False, "empty": False}
 
     def copied():
-        value = native.clipboard()
-        clipboard.update(polls=clipboard["polls"] + 1, expected=value == "[@smoke000001]",
+        try:
+            value = native.clipboard(timeout=CLIPBOARD_READ_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            clipboard["stalled_reads"] += 1
+            raise
+        clipboard.update(polls=clipboard["polls"] + 1, expected=value == expected,
                          sentinel=value == CLIPBOARD_SENTINEL, empty=value == "")
         return clipboard["expected"]
 
@@ -582,6 +591,15 @@ def copy_with_diagnostics(native, report, key_window=None):
                                   "after_timeout": copy_picker_observation(native)}
         if key_window is not None:
             report["copy_failure"]["key_window_after_timeout"] = quiet_key_window(key_window)
+        # Only Linux offers these X11 probes. Look on the type so an optional
+        # method on a plain Mock cannot manufacture non-JSON failure facts.
+        probe = getattr(type(native), "clipboard_facts", None)
+        if probe is not None:
+            try:
+                with open(os.devnull, "w") as quiet, redirect_stdout(quiet), redirect_stderr(quiet):
+                    clipboard["formats"] = probe(native)
+            except Exception:
+                clipboard["formats"] = {"available": False}
         print("NATIVE COPY FAILURE " + json.dumps(report["copy_failure"]), file=sys.stderr)
         raise
 
@@ -654,7 +672,7 @@ OPEN_TARGET_MS = 100
 def measure_picker_open(native, snapshot, shortcut, text=None, *, report=None):
     """Shortcut to visible, foreground, focused Search on the retained snapshot.
 
-    On X11, wait only for mapping before typing, never for input/Search focus.
+    On X11, wait for mapping and native keyboard ownership before typing.
     Earlier keys still belong to the previous window; Ibis cannot buffer them.
     Never retry typing or select-all: either would conceal dropped opening keys.
     Native injection and accessibility probe costs remain inside the timer.
@@ -677,7 +695,8 @@ def measure_picker_open(native, snapshot, shortcut, text=None, *, report=None):
     try:
         native.key(shortcut)
         if text is not None:
-            wait_for(native.picker_mapped, "picker mapped before opening typing", interval=.005)
+            wait_for(lambda: native.picker_mapped() and native.picker_has_input_focus(),
+                     "picker mapped with keyboard ownership before opening typing", interval=.005)
             native.text(text)
         wait_for(interactive, "shortcut opens interactive picker", interval=.005)
         elapsed = (time.monotonic() - started) * 1000
@@ -1016,7 +1035,7 @@ class Linux:
     def window(self, pid, title):
         # Same-process GTK auxiliaries can be viewable without being the app's
         # managed picker. Bind purpose and ownership before observing its hints.
-        deadline = time.monotonic() + 20
+        deadline = min(time.monotonic() + 20, WAIT_DEADLINE.get() or math.inf)
         def query(branch, *args):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -1073,23 +1092,15 @@ class Linux:
         # Mapping/withdrawal may cross them even for a direct snapshot caller.
         # Retry the whole observation within its original budget, never treat
         # an uncertain read as absence or carry a candidate into the next read.
-        reported = set()
-        while True:
-            try:
-                return observe()
-            except WindowObservationFailure as error:
-                if error.branch not in reported:
-                    print("LINUX WINDOW REOBSERVE " + error.branch, file=sys.stderr, flush=True)
-                    reported.add(error.branch)
-                remaining = deadline - time.monotonic()
-                if remaining > 0:
-                    time.sleep(min(.1, remaining))
-                if time.monotonic() >= deadline:
-                    # Fixed labels only: never include titles, XIDs or stderr.
-                    # Print here as a polling caller may replace the exception
-                    # with its own timeout, losing the failed branch again.
-                    print("LINUX WINDOW OBSERVATION FAILURE " + error.branch, file=sys.stderr, flush=True)
-                    raise
+        try:
+            # None is a completed observation of absence, not a pending poll.
+            return wait_for(lambda: (observe(),), "window identity", deadline=deadline)[0]
+        except AssertionError as timeout:
+            error = timeout.__cause__
+            if not isinstance(error, WindowObservationFailure):
+                error = WindowObservationFailure("query-deadline")
+            print("LINUX WINDOW OBSERVATION FAILURE " + error.branch, file=sys.stderr, flush=True)
+            raise error from None
 
     def named_control_facts(self, name):
         """Read roles and Action metadata only; never activate or echo native text.
@@ -1227,10 +1238,11 @@ class Linux:
     def click(self, name):
         named_target, matched_role, supported_action, returned_false = False, False, False, False
         # WebKitGTK can expose a click action on an enclosing named region.
-        # The footer and its menu used to share "Library"; activating the region
-        # could hit Find instead. Bind menu actions to their actual widget role,
-        # also avoiding a same-named menu left in the accessibility tree.
-        roles = MENU_BUTTON_ROLES if name in MENU_ACTIONS.values() else MENU_ITEM_ROLES if name in MENU_ACTIONS else None
+        # Bind menu actions to their widget role, avoiding enclosing regions
+        # and same-named menus left in the accessibility tree.
+        roles = (MENU_BUTTON_ROLES if name == FORMAT_APA or name in MENU_ACTIONS.values()
+                 else PALETTE_ITEM_ROLES if MENU_ACTIONS.get(name) == "More"
+                 else MENU_ITEM_ROLES if name in MENU_ACTIONS else None)
         def children(parent, *, owned=False):
             try:
                 count = parent.childCount
@@ -1273,6 +1285,7 @@ class Linux:
                 if action.doAction(0):
                     return
                 returned_false = True
+                break
             stack.extend(children(item))
         # A rejected role never queried Action. Do not report that as a button
         # with no action again: retain the fixed reason without native text.
@@ -1326,6 +1339,29 @@ class Linux:
         return subprocess.check_output(["xclip", "-selection", "clipboard", "-out"],
                                        text=True, stderr=subprocess.PIPE, timeout=timeout)
 
+    def clipboard_facts(self):
+        """Independent bounded X11 probes; retain target names, never content/errors."""
+        facts = {"offered_targets": []}
+        for target in ("TARGETS", "text/html"):
+            command = ["xclip", "-selection", "clipboard", "-out", "-target", target]
+            try:
+                if target == "TARGETS":
+                    names = subprocess.check_output(command, text=True, stderr=subprocess.PIPE,
+                                                    timeout=CLIPBOARD_READ_TIMEOUT)
+                    if type(names) is not str:
+                        raise ValueError("Invalid target names")
+                    facts["offered_targets"] = names.splitlines()
+                else:
+                    # HTML is not needed even transiently in Python or a diagnostic exception.
+                    subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                   check=True, timeout=CLIPBOARD_READ_TIMEOUT)
+                facts[target] = "succeeded"
+            except subprocess.TimeoutExpired:
+                facts[target] = "stalled"
+            except (OSError, subprocess.SubprocessError, ValueError):
+                facts[target] = "errored"
+        return facts
+
     def set_clipboard(self, text):
         subprocess.run(["xclip", "-selection", "clipboard", "-in"], input=text, text=True, check=True,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
@@ -1346,21 +1382,32 @@ class Linux:
         self.wm.terminate()
 
 
-def wait_for(predicate, description, timeout=20, *, interval=.1):
+def wait_for(predicate, description, timeout=20, *, interval=.1, deadline=None):
     # Source locations are stable IDs within the recorded harness hash. Never
     # serialize descriptions: callers may interpolate desktop observations.
-    with recording("request", f"wait-{sys._getframe(1).f_lineno}"):
+    parent = WAIT_DEADLINE.get()
+    if deadline is None:
         deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            try:
-                if predicate():
-                    return
-            except WindowObservationFailure:
-                # Mapping/withdrawal can race a query. Unknown is not a positive
-                # condition, including when the caller is waiting for hiding.
-                pass
-            time.sleep(interval)
-        raise AssertionError(f"Timed out: {description}")
+    deadline = min(deadline, parent if parent is not None else math.inf)
+    token = WAIT_DEADLINE.set(deadline)
+    # Nested observations share the guard and never record polling frequency.
+    trace = nullcontext() if parent is not None else recording("request", f"wait-{sys._getframe(1).f_lineno}")
+    try:
+        with trace:
+            unknown = None
+            while time.monotonic() < deadline:
+                try:
+                    result = predicate()
+                    if result:
+                        return result
+                    unknown = None
+                except WindowObservationFailure as error:
+                    # Unknown cannot prove mapping or hiding.
+                    unknown = error
+                time.sleep(min(interval, max(0, deadline - time.monotonic())))
+            raise AssertionError(f"Timed out: {description}") from unknown
+    finally:
+        WAIT_DEADLINE.reset(token)
 
 
 def saved_typst(settings):
@@ -1385,7 +1432,7 @@ def saved_typst(settings):
         raise AssertionError("Native preference JSON is malformed") from None
     assert (isinstance(value, dict) and type(value.get("schema_version")) is int
             and value["schema_version"] == 2), "Native preferences must use settings format 2"
-    return value.get("output") == "typst"
+    return value.get("key_output") == "typst"
 
 
 def quit_normally(native, app):
@@ -1407,9 +1454,6 @@ def quit_normally(native, app):
     assert app.wait(timeout=remaining()) == 0, "Normal Quit did not exit zero"
     # Use the same final sample for acceptance and elapsed-time evidence.
     return round(10 - remaining(), 3)
-
-
-NO_MATCH = "zzqx no such reference"
 
 
 def first_run_preferences_main(args):
@@ -1483,19 +1527,25 @@ def _first_run_preferences_main(args):
         launch("relaunch", with_library=True)
         wait_for(lambda: visible_text("3 references"), "synthetic references after relaunch")
         wait_for(lambda: picker_ready(typing=True), "restarted native search focus")
-        # The writing question needs a library chosen in the app; Copy as sets the same preference.
-        # The header has no stable native identifier; keep its action in the accessible name.
-        # With no match there is no footer copy action to invoke accidentally.
-        type_query(native, snapshot, NO_MATCH, "ctrl+a")
-        wait_for(lambda: visible_text("No matching references"), "no highlighted result to copy")
-        native.click("Copy as Pandoc")
-        wait_for(lambda: bool(named(snapshot(), "Typst")), "Copy as lists Typst")
+        type_query(native, snapshot, "smoke000000", "ctrl+a")
+        wait_for_query(snapshot, "smoke000000", "Ibis smoke reference 000000", report, settled=True)
+
+        def distinct_format_and_copy():
+            current = snapshot()
+            controls = [node.get("name") for node in current["nodes"]
+                        if node.get("role", "").lower().replace(" ", "") in MENU_BUTTON_ROLES]
+            return current["visible"] and current["foreground"] and controls.count(FORMAT_APA) == controls.count("Copy as APA") == 1
+
+        wait_for(distinct_format_and_copy, "citation format and copy have distinct accessible names")
+        passed("citation format and copy have distinct accessible names")
+        native.click(FORMAT_APA)
+        wait_for(lambda: bool(named(snapshot(), "Typst")), "citation format lists Typst")
         # Pick with the filter: accessibility exposes the menu's radio items
         # without a pattern the exact-name click helper accepts.
         # Not every platform reports focus on the filter; the filtered list proves where typing went.
         native.text("Typst")
-        # "LaTeX \cite" names only that menu item; "Pandoc" is also the header's visible text.
-        wait_for(lambda: not named(snapshot(), "LaTeX \\cite"), "Copy as filter leaves only Typst")
+        # "LaTeX \cite" names only that menu item; "APA" is also the header's visible text.
+        wait_for(lambda: not named(snapshot(), "LaTeX \\cite"), "citation format filter leaves only Typst")
         native.key("Down")
         native.key("Return")
         wait_for(lambda: saved_typst(settings), "Typst preferences saved before copying")
@@ -1539,7 +1589,7 @@ def _first_run_preferences_main(args):
                     app.kill()
                     app.wait(timeout=5)
         for cleanup in (stop, log.close if log else None, native.close if native else None,
-                        (lambda: clean_settings(owned_settings)) if owned_settings else None,
+                        owned_settings.close if owned_settings else None,
                         temporary.cleanup if temporary else None):
             try:
                 if cleanup:
@@ -1553,7 +1603,7 @@ def _first_run_preferences_main(args):
     return exit_code
 
 
-# The native journey (#1676, ROADMAP Consolidation step 2): the real app,
+# The native journey: the real app,
 # invented references, a real text app, and the document read back. macOS
 # and Windows; Linux runs the same journey inside smoke_main, where Ibis
 # copies and the person pastes.
@@ -2176,8 +2226,7 @@ def _journey_main(args):
         owned_settings = claim_settings(settings)
         # Folders this run creates are removed with all Ibis wrote in them,
         # so the next run on the same account starts clean too.
-        created = [path for path in (settings.parent, *driver.data_folders(args.identifier)) if not path.exists()]
-        settings.parent.mkdir(parents=True, exist_ok=True)
+        created = [path for path in driver.data_folders(args.identifier) if not path.exists()]
         settings.write_bytes(JOURNEY_SETTINGS)
         native = observe_native(driver(folder))
         editor, terminal = native.name, native.terminal
@@ -2292,7 +2341,7 @@ def _journey_main(args):
             report["app_running"] = bool(app) and app.poll() is None
     finally:
         for cleanup in (app.stop if app else None, log.close if log else None, native.close if native else None,
-                        (lambda: clean_settings(owned_settings)) if owned_settings else None,
+                        owned_settings.close if owned_settings else None,
                         remove_created, temporary.cleanup if temporary else None):
             try:
                 if cleanup:
@@ -2309,7 +2358,7 @@ def _journey_main(args):
 
 
 def evidence_main(args, scenario, scenario_id):
-    """Always persist the closed manifest, independently of legacy diagnostics."""
+    """Always persist the evidence manifest, including failures."""
     try:
         replay = getattr(args, "replay_bundle", None)
         options = {"identifier": args.identifier, "shortcut": args.shortcut or "ctrl+shift+y",
@@ -2339,7 +2388,7 @@ def evidence_main(args, scenario, scenario_id):
         recorder.failure(error)
         exit_code = 1
     except Exception as error:
-        # Includes setup/cleanup failures outside the legacy scenario handlers.
+        # Includes failures during setup and cleanup.
         recorder.failure(error)
         if isinstance(error, BundleError):
             # BundleError messages are fixed evidence refusals, safe to show.
@@ -2551,10 +2600,12 @@ def smoke_main(args):
             wait_for_query(snapshot, "smoke000001", "Ibis smoke reference 000001", report, settled=True)
 
             def copy():
+                # Linux captures no destination app, so it uses the document suggestion.
+                citation = "(Example, 2026)"
                 # Installed release builds never report the non-activating panel as the
                 # key window although Return still reaches it (#454), so the
                 # key-window wait stays out of the native copy check.
-                copy_with_diagnostics(native, report)
+                copy_with_diagnostics(native, report, expected=citation)
                 wait_for(lambda: not snapshot()["visible"], "copy hides picker")
                 try:
                     wait_for(native.editor_focused, "copy restores focus to previous editor")
@@ -2571,14 +2622,14 @@ def smoke_main(args):
                     before = native.editor_received()
                     assert before["available"], "Synthetic editor exited before the paste"
                     native.key("shift+Insert")
-                    wait_for(lambda: native.editor_received().get("text") == before["text"] + "[@smoke000001]",
+                    wait_for(lambda: native.editor_received().get("text") == before["text"] + citation,
                              "the person's paste puts exactly the citation into the editor", timeout=5)
 
             def live_settings_copy():
                 paths = [settings.with_suffix(suffix) for suffix in (".json", ".json.bak", ".json.tmp")]
                 prior = {path: path.read_bytes() if path.exists() else None for path in paths}
                 external = json.loads(prior[settings]) if prior[settings] is not None else {"schema_version": 1}
-                external["shortcut"] = "Control+Alt+F12"
+                external["larger_text"] = True
                 external.pop("output", None)  # Copying must not recreate a removed preference.
                 settings.parent.mkdir(parents=True, exist_ok=True)
                 with recording("action", "settings-live-edit"):
@@ -2587,7 +2638,7 @@ def smoke_main(args):
                 try:
                     copy()
                     saved = json.loads(settings.read_text(encoding="utf-8"))
-                    assert saved.get("shortcut") == external["shortcut"], "Native copy lost a live external settings edit"
+                    assert saved.get("larger_text") is True, "Native copy lost a live external settings edit"
                     assert settings.read_bytes() == external_bytes, "Native copy changed live settings"
                 finally:
                     with recording("action", "settings-restore"):
@@ -2742,7 +2793,7 @@ def smoke_main(args):
                 exit_code = 1
         if owned_settings:
             try:
-                clean_settings(owned_settings)
+                owned_settings.close()
             except OSError as error:
                 failure(error, "cleanup")
                 report.update(status="failed", reason="Disposable settings cleanup failed")
@@ -2905,7 +2956,11 @@ class ContractTests(unittest.TestCase):
             with self.subTest(name=name):
                 native, desktop, owned, target, foreign = self.linux_click_fixture()
                 target.name = name
-                menu = self.CensusNode(name=MENU_ACTIONS[name], role="menu", children=[target])
+                # More's actions are options of its palette's list box; the Library menu's are menu items.
+                palette = MENU_ACTIONS[name] == "More"
+                if palette:
+                    target.role = "list item"
+                menu = self.CensusNode(name=MENU_ACTIONS[name], role="list box" if palette else "menu", children=[target])
                 menu.queryAction = Mock()
                 trigger = self.CensusNode(name=MENU_ACTIONS[name], role="push button menu")
                 def opened(_index):
@@ -3007,7 +3062,8 @@ class ContractTests(unittest.TestCase):
                                               ("Choose Library…", "label", "menu item"),
                                               ("Choose Library…", "push button", "menu item"),
                                               ("Use Zotero", "list item", "menu item"),
-                                              ("Quit Ibis", "section", "menu item")):
+                                              ("Quit Ibis", "section", "list item"),
+                                              ("Quit Ibis", "menu item", "list item")):
             with self.subTest(name=name, wrong_role=wrong_role):
                 native, desktop, owned, target, foreign = self.linux_click_fixture()
                 target.name, target.role = name, right_role
@@ -3403,19 +3459,19 @@ class ContractTests(unittest.TestCase):
         def choose(name):
             if name == "Typst":
                 settings = Path(launches[0]["XDG_CONFIG_HOME"]) / "com.ibiscite.ibis/settings.json"
-                value = '{"schema_version":2,"output":"typst"}'
+                value = '{"schema_version":2,"key_output":"typst"}'
                 if failure == "wrong-format":
-                    value = '{"schema_version":2,"output":"pandoc"}'
+                    value = '{"schema_version":2,"key_output":"pandoc"}'
                 elif failure == "duplicate":
-                    value = '{"schema_version":2,"output":"pandoc","output":"typst"}'
+                    value = '{"schema_version":2,"key_output":"pandoc","key_output":"typst"}'
                 elif failure == "malformed":
                     value = '{invalid'
                 elif failure == "wrong-schema":
-                    value = '{"schema_version":true,"output":"typst"}'
+                    value = '{"schema_version":true,"key_output":"typst"}'
                 elif failure == "non-json":
-                    value = '{"schema_version":2,"output":"typst","invalid":NaN}'
+                    value = '{"schema_version":2,"key_output":"typst","invalid":NaN}'
                 elif failure == "oversized":
-                    value = json.dumps({"schema_version": 2, "output": "typst", "padding": "x" * 65536})
+                    value = json.dumps({"schema_version": 2, "key_output": "typst", "padding": "x" * 65536})
                 settings.write_text(value, encoding="utf-8")
 
         def click(name):
@@ -3430,15 +3486,16 @@ class ContractTests(unittest.TestCase):
                     raise RuntimeError("Synthetic uncertain activation")
             elif name == "More":
                 native.more_open = True
-            elif name == "Copy as Pandoc":
-                self.assertEqual(native.query, NO_MATCH, "Format selection needs no highlighted result")
+            elif name == FORMAT_APA:
+                self.assertEqual(native.query, "smoke000000", "Format selection keeps the highlighted result")
+                self.assertGreaterEqual(clock[0], native.query_ready_at)
                 native.format_filter = ""
             else:
                 raise AssertionError(f"No invokable accessibility control {name!r}")
 
         def key(chord):
             if chord == "Return" and native.format_filter is not None:
-                actions.append(("Return in Copy as", len(launches)))
+                actions.append(("Return in Citation format", len(launches)))
                 actions.append((native.format_filter, len(launches)))
                 choose(native.format_filter)
                 native.format_filter = None
@@ -3463,11 +3520,14 @@ class ContractTests(unittest.TestCase):
             if len(launches) == 1:
                 names += ["Where do your references live?"]
             else:
-                names += ["Copy as Pandoc", "3 references"]
+                names += [FORMAT_APA, "3 references"]
                 if native.format_filter is not None:
                     names += ["Typst"]
-                names += ["No matching references"] if native.query == NO_MATCH else [
-                    "Copy as Pandoc", "1 result" if clock[0] >= native.query_ready_at else "3 results", "Ibis smoke reference 000001"]
+                if native.query:
+                    names += ["Copy as APA", "1 result" if clock[0] >= native.query_ready_at else "3 results",
+                              f"Ibis smoke reference {native.query.removeprefix('smoke')}"]
+                if failure == "duplicate-format-name":
+                    names += [FORMAT_APA]
             result_focus = failure == "active-result-reopen" and native.reopened
             menu_open = native.format_filter is not None
             return {"visible": native.visible, "foreground": native.visible, "nodes": [
@@ -3545,9 +3605,9 @@ class ContractTests(unittest.TestCase):
         self.assertNotIn("IBIS_LIBRARY", launches[0])
         self.assertIn("IBIS_LIBRARY", launches[1])
         self.assertEqual(launches[0]["XDG_CONFIG_HOME"], launches[1]["XDG_CONFIG_HOME"])
-        self.assertEqual([action for action in actions if action[0] in ("Copy as Pandoc", "Typst")], [("Copy as Pandoc", 2), ("Typst", 2)])
+        self.assertEqual([action for action in actions if action[0] in (FORMAT_APA, "Typst")], [(FORMAT_APA, 2), ("Typst", 2)])
         pick = actions.index(("Typst", 2))
-        self.assertEqual(actions[pick - 2:pick], [("Down", 2), ("Return in Copy as", 2)], "Typst was not picked from the filter")
+        self.assertEqual(actions[pick - 2:pick], [("Down", 2), ("Return in Citation format", 2)], "Typst was not picked from the filter")
         self.assertEqual([action for action in actions if action[0] == "Quit Ibis"], [("Quit Ibis", 1), ("Quit Ibis", 2)])
 
     def test_first_run_bundle_replays_actions_and_failed_invariants(self):
@@ -3645,7 +3705,7 @@ class ContractTests(unittest.TestCase):
 
     def test_first_run_preferences_failures_cannot_pass_during_cleanup(self):
         for failure in ("wrong-format", "duplicate", "malformed", "wrong-schema", "non-json", "oversized",
-                        "late-driver", "late-wait", "nonzero-quit", "stuck-quit", "uncertain-quit", "wrong-copy", "cleanup"):
+                        "late-driver", "late-wait", "nonzero-quit", "stuck-quit", "uncertain-quit", "wrong-copy", "cleanup", "duplicate-format-name"):
             with self.subTest(failure=failure):
                 result, report, _launches, _actions = self.preference_probe(failure)
                 self.assertEqual((result, report["status"]), (1, "failed"))
@@ -3717,6 +3777,7 @@ class ContractTests(unittest.TestCase):
             self.addCleanup(native.close)
         self.assertEqual(events, ["openbox", "ready?", "ready?", "ready?", "xterm"])
 
+    @unittest.skipIf(sys.platform == "win32", "needs a POSIX pseudo-terminal")
     def test_editor_records_opening_keys_without_waiting_for_a_newline(self):
         import pty
         import termios
@@ -3796,16 +3857,18 @@ class ContractTests(unittest.TestCase):
         return patch.multiple(time, monotonic=clock.monotonic, sleep=clock.sleep)
 
     def test_native_copy_accepts_a_later_equality_poll_without_another_return(self):
-        native, report, clock = self.copy_setup(19)
-        sentinel = "Ibis native smoke clipboard sentinel"
-        native.clipboard.side_effect = [sentinel, sentinel, "[@smoke000001]"]
-        with self.copy_time(clock):
-            copy_with_diagnostics(native, report)
-        self.assertEqual(native.key.call_args_list, [call("Return")])
-        self.assertEqual(native.clipboard.call_count, 3)
-        self.assertEqual(native.snapshot.call_count, 1)
-        self.assertNotIn("copy_failure", report)
-        self.assertEqual(native.mock_calls[:4], [call.set_clipboard(sentinel), call.clipboard(), call.snapshot(), call.key("Return")])
+        for citation in ("[@smoke000001]", "(Example, 2026)"):
+            with self.subTest(citation=citation):
+                native, report, clock = self.copy_setup(19)
+                sentinel = "Ibis native smoke clipboard sentinel"
+                native.clipboard.side_effect = [sentinel, sentinel, citation]
+                with self.copy_time(clock):
+                    copy_with_diagnostics(native, report, expected=citation)
+                self.assertEqual(native.key.call_args_list, [call("Return")])
+                self.assertEqual(native.clipboard.call_count, 3)
+                self.assertEqual(native.snapshot.call_count, 1)
+                self.assertNotIn("copy_failure", report)
+                self.assertEqual(native.mock_calls[:4], [call.set_clipboard(sentinel), call.clipboard(), call.snapshot(), call.key("Return")])
 
     def test_return_waits_until_the_picker_owns_the_keyboard(self):
         native, report, clock = self.copy_setup(1)
@@ -3859,7 +3922,8 @@ class ContractTests(unittest.TestCase):
         self.assertFalse(facts["after_timeout"]["visible"])
         self.assertFalse(facts["after_timeout"]["search_focused"])
         self.assertTrue(facts["after_timeout"]["copy_error_present"])
-        self.assertEqual(facts["clipboard"], {"polls": 2, "elapsed_seconds": 20, "expected": False, "sentinel": True, "empty": False})
+        self.assertEqual(facts["clipboard"], {"polls": 2, "stalled_reads": 0, "elapsed_seconds": 20,
+                                             "expected": False, "sentinel": True, "empty": False})
         self.assertEqual(native.key.call_args_list, [call("Return")])
         self.assertEqual(native.clipboard.call_count, 3, "A late diagnostic read must not replace the failed final poll")
 
@@ -3887,7 +3951,9 @@ class ContractTests(unittest.TestCase):
                     self.assertFalse(facts["after_timeout"]["search_focused"])
                     self.assertTrue(facts["after_timeout"]["copy_error_present"])
                     self.assertEqual(facts["clipboard"], {"polls": completed, "expected": False,
-                                     "sentinel": bool(completed), "empty": False, "elapsed_seconds": completed * 10})
+                                     "sentinel": bool(completed), "empty": False, "elapsed_seconds": completed * 10,
+                                     "stalled_reads": int(isinstance(original, subprocess.TimeoutExpired))})
+                    self.assertEqual(native.clipboard.call_args_list[1:], [call(timeout=3)] * (completed + 1))
                     self.assertEqual(native.clipboard.call_count, completed + 2, "Never read again after the failed poll")
                     self.assertEqual(native.snapshot.call_count, 2)
                     self.assertEqual(native.key.call_args_list, [call("Return")])
@@ -3921,7 +3987,7 @@ class ContractTests(unittest.TestCase):
     def test_copy_keeps_success_from_a_poll_started_before_the_deadline(self):
         native, report, clock = self.copy_setup()
         reads = iter(["Ibis native smoke clipboard sentinel", "[@smoke000001]"])
-        def clipboard():
+        def clipboard(**_options):
             value = next(reads)
             if value == "[@smoke000001]":
                 clock.elapsed = 25  # The existing wait accepts this completed read.
@@ -3986,6 +4052,55 @@ class ContractTests(unittest.TestCase):
                     self.assertFalse(facts[stage]["copy_error_present"])
                     self.assertTrue(all(type(value) is bool for value in facts[stage].values()))
                 self.assertNotIn("private", errors.getvalue() + json.dumps(report))
+
+    def test_linux_copy_failure_adds_independent_format_facts_without_payloads(self):
+        native = Linux.__new__(Linux)
+        native.set_clipboard, native.key = Mock(), Mock()
+        original = subprocess.TimeoutExpired(["private command"], 3, output="private text")
+        native.snapshot = Mock(return_value=self.copy_snapshot())
+        report, clock, errors = {}, self.CopyClock(1), io.StringIO()
+        with self.copy_time(clock), patch("sys.stderr", errors), \
+             patch("subprocess.check_output", side_effect=[CLIPBOARD_SENTINEL, CLIPBOARD_SENTINEL, original,
+                   "TARGETS\nUTF8_STRING\ntext/html\n"]) as reads, \
+             patch("subprocess.run", return_value=subprocess.CompletedProcess([], 0, stdout="private HTML")) as html, \
+             self.assertRaises(subprocess.TimeoutExpired) as caught:
+            copy_with_diagnostics(native, report)
+        self.assertIs(caught.exception, original)
+        facts = report["copy_failure"]["clipboard"]
+        self.assertEqual((facts["polls"], facts["stalled_reads"], facts["expected"]), (1, 1, False))
+        self.assertEqual(facts["formats"], {"TARGETS": "succeeded", "text/html": "succeeded",
+                                          "offered_targets": ["TARGETS", "UTF8_STRING", "text/html"]})
+        self.assertEqual(reads.call_args.args[0], ["xclip", "-selection", "clipboard", "-out", "-target", "TARGETS"])
+        self.assertEqual(html.call_args.args[0], ["xclip", "-selection", "clipboard", "-out", "-target", "text/html"])
+        self.assertEqual([read.kwargs["timeout"] for read in reads.call_args_list[1:]], [3, 3, 3])
+        self.assertEqual(html.call_args.kwargs, {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL,
+                                               "check": True, "timeout": 3})
+        self.assertEqual(reads.call_count, 4, "Only TARGETS is read after the failed text poll")
+        native.key.assert_called_once_with("Return")
+        self.assertNotIn("private", errors.getvalue() + json.dumps(report))
+
+    def test_linux_clipboard_format_failures_are_bounded_independent_and_private(self):
+        private = "private clipboard and helper payload"
+        failures = [(subprocess.TimeoutExpired([private], 3, output=private, stderr=private), "stalled"),
+                    (subprocess.CalledProcessError(1, [private], output=private, stderr=private), "errored"),
+                    (OSError(private), "errored")]
+        target_outcomes = [("TARGETS\nUTF8_STRING\ntext/html\n", "succeeded"), (Mock(), "errored")] + failures
+        html_outcomes = [(subprocess.CompletedProcess([], 0, stdout=private), "succeeded")] + failures
+        for target_result, targets_status in target_outcomes:
+            for html_result, html_status in html_outcomes:
+                targets = Mock(side_effect=target_result) if isinstance(target_result, Exception) else Mock(return_value=target_result)
+                html = Mock(side_effect=html_result) if isinstance(html_result, Exception) else Mock(return_value=html_result)
+                with self.subTest(targets=targets_status, html=html_status), \
+                     patch("subprocess.check_output", targets), patch("subprocess.run", html):
+                    facts = Linux.__new__(Linux).clipboard_facts()
+                    self.assertEqual(facts, {"TARGETS": targets_status, "text/html": html_status,
+                                             "offered_targets": ["TARGETS", "UTF8_STRING", "text/html"]
+                                             if targets_status == "succeeded" else []})
+                    self.assertEqual(targets.call_count, 1)
+                    self.assertEqual(html.call_count, 1, "A TARGETS failure must not skip the HTML probe")
+                    self.assertEqual(targets.call_args.kwargs["timeout"], 3)
+                    self.assertEqual(html.call_args.kwargs["timeout"], 3)
+                    self.assertNotIn(private, json.dumps(facts))
 
     class InitialPickerModel:
         def __init__(self, visible=True, search_ready=True, accepts_escape=True, owns_keys=True):
@@ -4217,11 +4332,22 @@ class ContractTests(unittest.TestCase):
         def bounded(*args, timeout):
             remaining.append(timeout)
             return command(*args, timeout=timeout)
-        clock = iter([0, 0, 5, 10, 19])
+        clock = iter([0, 0, 0, 5, 10, 19])
         with patch("time.monotonic", side_effect=lambda: next(clock, 20)), \
              patch(__name__ + ".run", side_effect=bounded), self.assertRaises(WindowObservationFailure):
             linux.window(42, "Ibis")
         self.assertEqual(remaining, [20, 15, 10, 1])
+
+    def test_window_queries_use_the_enclosing_wait_budget(self):
+        linux, budgets = Linux.__new__(Linux), []
+        command = self.linux_window_query()
+        def bounded(*args, timeout):
+            budgets.append(timeout)
+            return command(*args, timeout=timeout)
+        with patch("time.monotonic", return_value=1), patch(__name__ + ".run", side_effect=bounded):
+            self.assertEqual(wait_for(lambda: linux.window(42, "Ibis"), "mapping", timeout=2), "2")
+        self.assertTrue(budgets and all(budget == 2 for budget in budgets))
+        self.assertIsNone(WAIT_DEADLINE.get())
 
     def test_linux_window_refuses_replaced_owner_and_subprocess_timeout(self):
         linux = Linux.__new__(Linux)
@@ -4366,16 +4492,14 @@ class ContractTests(unittest.TestCase):
         def sleep(seconds):
             clock.elapsed += seconds
         with patch("time.monotonic", clock.monotonic), patch("time.sleep", side_effect=sleep), \
-                self.assertRaisesRegex(AssertionError, "Timed out.*visibility"):
+                self.assertRaisesRegex(AssertionError, "Timed out: Escape clears Search"):
             escape_to_hide(native, snapshot, "synthetic picker hidden")
-        self.assertEqual(clock.elapsed, ESCAPE_STEP_TIMEOUT)
+        self.assertEqual(clock.elapsed, 20)
         native.key.assert_called_once_with("Escape")
 
     def test_pre_key_uncertainty_and_non_window_failures_still_refuse(self):
         visible = {"visible": True, "nodes": [{"name": "Search references", "value": "synthetic"}]}
-        cleared = {"visible": True, "nodes": [{"name": "Search references", "value": ""}]}
         for observations, error, actions in (([visible, WindowObservationFailure()], WindowObservationFailure, 0),
-                ([visible, visible, cleared, WindowObservationFailure()], WindowObservationFailure, 1),
                 ([visible, visible, RuntimeError("synthetic failure")], RuntimeError, 1)):
             native = Mock()
             with self.subTest(actions=actions, error=error.__name__), self.assertRaises(error):
@@ -4396,27 +4520,28 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(native.key.call_args_list, [call("Escape"), call("Escape")])
         self.assertFalse(state["visible"])
 
-    def test_escape_presses_again_when_a_cleared_search_is_reported_late(self):
-        state = {"visible": True, "presses": 0}
+    def test_escape_waits_for_a_late_cleared_search_before_pressing_again(self):
+        state = {"visible": True, "presses": 0, "reads": 0}
         native = Mock()
         def key(name):
             state["presses"] += 1
             state["visible"] = state["presses"] < 2
         native.key.side_effect = key
-        snapshot = lambda: {"visible": state["visible"], "nodes": [{"name": "Search references", "value": "stale"}]}
-        with patch(__name__ + ".ESCAPE_STEP_TIMEOUT", 0.05):
+        def snapshot():
+            state["reads"] += 1
+            return {"visible": state["visible"], "nodes": [{"name": "Search references",
+                    "value": "stale" if state["reads"] < 5 else ""}]}
+        with patch("time.sleep"):
             escape_to_hide(native, snapshot, "hidden")
         self.assertEqual(native.key.call_args_list, [call("Escape"), call("Escape")])
 
-    def test_escape_that_never_hides_fails_after_one_spare_press(self):
+    def test_escape_without_a_state_change_fails_without_repeating_input(self):
         native = Mock()
         snapshot = lambda: {"visible": True, "nodes": [{"name": "Search references", "value": "private query"}]}
-        with patch(__name__ + ".ESCAPE_STEP_TIMEOUT", 0.05), \
-             patch(__name__ + ".wait_for", side_effect=lambda predicate, description: self.assertTrue(predicate(), description)), \
-             patch("builtins.print") as printed, self.assertRaises(AssertionError):
+        with patch(__name__ + ".wait_for", side_effect=lambda predicate, description: self.assertTrue(predicate(), description)), \
+             self.assertRaises(AssertionError):
             escape_to_hide(native, snapshot, "hidden")
-        self.assertEqual(native.key.call_count, 3)
-        self.assertNotIn("private query", printed.call_args.args[0])
+        native.key.assert_called_once_with("Escape")
 
     def test_initial_escape_waits_for_native_keyboard_owner_after_accessible_focus(self):
         native = self.InitialPickerModel(owns_keys=False)
@@ -4459,23 +4584,21 @@ class ContractTests(unittest.TestCase):
                 prepare_initial_picker_show(native, native.snapshot)
         self.assertEqual(native.events, [("Escape", True)])
 
-    def test_typed_query_is_retyped_until_the_search_field_reads_back_exactly(self):
+    def test_typed_query_waits_for_readback_without_retyping(self):
         values = iter(["smoke00001", "smoke000001"])
         native = Mock()
         snapshot = lambda: {"nodes": [{"name": "Search references", "role": "AXTextField", "value": next(values)}]}
-        with patch(__name__ + ".time") as clock:
-            clock.monotonic.side_effect = [0, 0, 10, 0, 0]
+        with patch("time.sleep"):
             type_query(native, snapshot, "smoke000001", "super+a")
-        self.assertEqual(native.mock_calls, [call.key("super+a"), call.text("smoke000001")] * 2)
+        self.assertEqual(native.mock_calls, [call.key("super+a"), call.text("smoke000001")])
 
-    def test_typed_query_fails_clearly_after_bounded_attempts(self):
-        native = Mock()
+    def test_typed_query_fails_without_repeating_input(self):
+        native, clock = Mock(), self.CopyClock()
         snapshot = lambda: {"nodes": [{"name": "Search references", "role": "AXTextField", "value": "smoke"}]}
-        with patch(__name__ + ".time") as clock:
-            clock.monotonic.side_effect = [0, 0, 10] * TYPE_ATTEMPTS
-            with self.assertRaisesRegex(AssertionError, "did not hold the typed query after 3 attempts"):
+        with patch("time.monotonic", clock.monotonic), patch("time.sleep", clock.sleep):
+            with self.assertRaisesRegex(AssertionError, "Timed out: Search holds the typed query"):
                 type_query(native, snapshot, "smoke000001", "super+a")
-        self.assertEqual(native.text.call_count, TYPE_ATTEMPTS)
+        native.text.assert_called_once_with("smoke000001")
 
 
     def test_query_failure_facts_distinguish_empty_partial_and_exact_editable_values(self):
@@ -4552,9 +4675,9 @@ class ContractTests(unittest.TestCase):
         for error in (AssertionError(), RuntimeError(), subprocess.CalledProcessError(1, "synthetic")):
             native.click.reset_mock()
             native.click.side_effect = [None, error, None]
-            with patch("time.sleep"):
+            with patch("builtins.print"), self.assertRaises(type(error)):
                 menu_action(native, "Reload Library")
-            self.assertEqual(native.click.call_args_list, [call("Library"), call("Reload Library"), call("Reload Library")])
+            self.assertEqual(native.click.call_args_list, [call("Library"), call("Reload Library")])
 
     def test_library_reload_uses_the_real_evidence_wrapper_and_closed_schema(self):
         metadata = collect_metadata(Path("synthetic-unavailable-app"), {
@@ -4579,6 +4702,24 @@ class ContractTests(unittest.TestCase):
                          ["click-library", "click-reload"])
         self.assertEqual(bundle["request_completion_order"][-1], bundle["events"][0]["id"])
 
+    def test_nested_observation_poll_counts_do_not_change_replay(self):
+        metadata = collect_metadata(Path("synthetic-unavailable-app"), {
+            "small": fixture().encode(), "initial-settings": b"{}", "initial-document": b""})
+        bundle = None
+        for polls in (1, 3):
+            recorder = Evidence("native-smoke", {"identifier": "com.ibiscite.ibis", "shortcut": "ctrl+shift+y",
+                                                 "skip_performance": True, "seed": 0}, metadata, bundle)
+            observations = iter([False] * (polls - 1) + [True])
+            token = ACTIVE.set(recorder)
+            try:
+                with patch("time.sleep"):
+                    wait_for(lambda: wait_for(lambda: (next(observations),), "window identity")[0], "picker mapped")
+            finally:
+                ACTIVE.reset(token)
+            bundle = recorder.finish(0)
+            self.assertEqual(bundle["result"]["outcome"], "pass")
+            self.assertEqual(len(bundle["events"]), 2)
+
     def test_menu_failure_observes_the_current_menu_instead_of_reusing_the_prior_check(self):
         native = Mock()
         native.click.side_effect = [None, AssertionError("PRIVATE action error")]
@@ -4586,11 +4727,8 @@ class ContractTests(unittest.TestCase):
             {"name": "PRIVATE filename", "role": "file chooser", "value": "PRIVATE document"},
             {"name": "Search references", "role": "entry", "focused": False},
         ]}
-        def timeout(predicate, description, **options):
-            self.assertFalse(predicate())
-            raise AssertionError("Timed out: " + description)
-        with patch(__name__ + ".wait_for", side_effect=timeout), patch("builtins.print") as output:
-            with self.assertRaisesRegex(AssertionError, "Timed out: Reload Library appears in the Library menu"):
+        with patch("builtins.print") as output:
+            with self.assertRaises(AssertionError):
                 menu_action(native, "Reload Library")
         native.snapshot.assert_called_once_with()
         label, encoded = output.call_args.args
@@ -4613,10 +4751,7 @@ class ContractTests(unittest.TestCase):
             {"name": "Library", "role": "push button"}, {"name": "Library", "role": "menu"},
             {"name": "Reload Library", "role": "menu item"},
         ]})
-        def timeout(predicate, description, **options):
-            self.assertFalse(predicate())
-            raise AssertionError("Timed out: " + description)
-        with patch(__name__ + ".wait_for", side_effect=timeout), patch("builtins.print") as output:
+        with patch("builtins.print") as output:
             with self.assertRaises(AssertionError):
                 menu_action(native, "Reload Library")
         facts = json.loads(output.call_args.args[1])
@@ -4906,9 +5041,9 @@ class ContractTests(unittest.TestCase):
                 self.assertIn("maintainer hand test #79", summary["summary"])
                 self.assertIn("AT-SPI", summary["reason"])
 
-    def picker_open_probe(self, *, value="smoke", typed="smoke", readiness=None, focus_role=None, mapped=None):
+    def picker_open_probe(self, *, value="smoke", typed="smoke", readiness=None, focus_role=None, mapped=None, owns_keys=None):
         clock, events = self.CopyClock(), []
-        native = Mock(spec=["key", "text", "picker_mapped", "editor_received"])
+        native = Mock(spec=["key", "text", "picker_mapped", "picker_has_input_focus", "editor_received"])
         native.key.side_effect = lambda chord: (events.append(("key", chord)), setattr(clock, "elapsed", clock.elapsed + .002))
         native.text.side_effect = lambda text: (events.append(("text", text)), setattr(clock, "elapsed", clock.elapsed + .003))
         maps = iter(mapped or [True])
@@ -4917,6 +5052,7 @@ class ContractTests(unittest.TestCase):
             clock.elapsed += .001
             return next(maps, True)
         native.picker_mapped.side_effect = picker_mapped
+        native.picker_has_input_focus.side_effect = iter(owns_keys) if owns_keys else lambda: True
         native.editor_received.return_value = {"available": True, "text": "", "truncated": False}
         states = iter(readiness or [(True, True, True)])
         def snapshot():
@@ -4946,8 +5082,13 @@ class ContractTests(unittest.TestCase):
                          [("text", "smoke")] + [("snapshot",)] * 3)
         self.assertAlmostEqual(elapsed, 37)
 
+    def test_mapped_picker_waits_for_keyboard_ownership_before_typing(self):
+        _, events = self.picker_open_probe(owns_keys=[False, False, True])
+        typed = events.index(("text", "smoke"))
+        self.assertEqual(events[:typed], [("key", "ctrl+shift+y")] + [("mapped",)] * 3)
+
     def test_unmapped_picker_never_receives_opening_text_or_a_search_probe(self):
-        native = Mock(spec=["key", "text", "picker_mapped", "editor_received"])
+        native = Mock(spec=["key", "text", "picker_mapped", "picker_has_input_focus", "editor_received"])
         native.picker_mapped.return_value = False
         native.editor_received.return_value = {"available": False}
         snapshot, report = Mock(), {}
@@ -4955,7 +5096,7 @@ class ContractTests(unittest.TestCase):
             self.assertFalse(predicate())
             raise AssertionError("Timed out: " + description)
         with patch(__name__ + ".wait_for", side_effect=wait), patch("sys.stderr", io.StringIO()), \
-             self.assertRaisesRegex(AssertionError, "Timed out: picker mapped before opening typing"):
+             self.assertRaisesRegex(AssertionError, "Timed out: picker mapped with keyboard ownership before opening typing"):
             measure_picker_open(native, snapshot, "ctrl+shift+y", "smoke", report=report)
         native.text.assert_not_called()
         snapshot.assert_not_called()
@@ -4983,7 +5124,7 @@ class ContractTests(unittest.TestCase):
                 self.picker_open_probe(value=value)
 
     def test_unavailable_editor_diagnostic_preserves_the_opening_failure(self):
-        native = Mock(spec=["key", "text", "picker_mapped", "editor_received"])
+        native = Mock(spec=["key", "text", "picker_mapped", "picker_has_input_focus", "editor_received"])
         native.editor_received.side_effect = OSError("synthetic editor already gone")
         report = {}
         with patch(__name__ + ".wait_for", side_effect=AssertionError("synthetic opening failure")), \
@@ -4992,8 +5133,9 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(report["opening_text_failure"]["editor"], {"available": False})
 
     def test_opening_failure_reports_last_observed_field_and_editor_without_retry(self):
-        native = Mock(spec=["key", "text", "picker_mapped", "editor_received"])
+        native = Mock(spec=["key", "text", "picker_mapped", "picker_has_input_focus", "editor_received"])
         native.picker_mapped.return_value = True
+        native.picker_has_input_focus.return_value = True
         native.editor_received.return_value = {"available": True, "text": "s", "truncated": False}
         snapshots = iter({"visible": True, "foreground": True, "nodes": [
             {"name": "Search references", "role": "combo box", "value": value, "focused": True}]}
@@ -5149,7 +5291,7 @@ class ContractTests(unittest.TestCase):
             measure_startup(lambda: None, snapshot, phases)
         self.assertEqual(phases["snapshot_calls"], 2)
         self.assertEqual(phases["snapshot_ms"], 122000)
-        self.assertEqual(phases["readiness_ms"], 122200)
+        self.assertEqual(phases["readiness_ms"], 122100)
 
 
     def test_toggle_diagnostics_accept_only_exact_fixed_lines_from_current_run_logs(self):
@@ -5181,17 +5323,6 @@ class ContractTests(unittest.TestCase):
             settings.write_text("{invalid synthetic settings", encoding="utf-8")
             answer_update_question(settings)
             self.assertEqual(settings.read_text(encoding="utf-8"), "{invalid synthetic settings")
-
-    def test_settings_cleanup_removes_only_files_claimed_in_a_fresh_account(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            candidate = Path(temporary) / "settings.json"
-            owned = claim_settings(candidate)
-            for suffix in (".json", ".json.bak", ".json.tmp"):
-                owned.with_suffix(suffix).write_text("synthetic", encoding="utf-8")
-            unrelated = owned.parent / "unrelated.txt"
-            unrelated.write_text("preserved", encoding="utf-8")
-            clean_settings(owned)
-            self.assertEqual(list(owned.parent.iterdir()), [unrelated])
 
     def test_tree_rejects_names_without_editable_search_and_list_roles(self):
         bad = {"nodes": [{"role": "label", "name": n} for n in ("Search references", "Search results", "Results")]}

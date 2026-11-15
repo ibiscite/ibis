@@ -1,4 +1,4 @@
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { getRoles } from "@testing-library/dom";
 import { emit } from "@tauri-apps/api/event";
@@ -17,6 +17,7 @@ const library = (overrides: Partial<LibraryStatus> = {}): LibraryStatus => ({
 const stale = (overrides: Partial<LibraryStatus> = {}) => library({ state: "error", stale: true,
   error: "The library could not be refreshed; keeping the last loaded references.", problem: "zotero_closed", ...overrides });
 const status = () => screen.getByRole("status", { name: "Library status" });
+const detailTitle = () => document.querySelector(".library-status")?.getAttribute("title");
 const footer = () => document.querySelector("footer")!;
 const openKey = () => fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "o", ctrlKey: true });
 
@@ -38,7 +39,7 @@ test("an unknown file is a failed open with a chooser listing RIS and CSV", asyn
 });
 
 test.each([
-  ["loaded", {}, "thesis.bib · 12 references"],
+  ["loaded", {}, "thesis.bib"],
   ["missing with retained references", { state: "error", stale: true, problem: "missing", error: "the library file is unavailable; keeping the last loaded references" }, "thesis.bib moved"],
   ["empty after recovery", { references: 0 }, "thesis.bib · no references"],
 ] satisfies [string, Partial<LibraryStatus>, string][])("%s: Library uniquely names a non-empty menu button like More", async (_, overrides, summary) => {
@@ -53,7 +54,7 @@ test.each([
   expect(button.firstElementChild?.tagName).toBe(more.firstElementChild?.tagName);
   expect(button.firstElementChild?.hasAttribute("aria-hidden")).toBe(false);
   expect(button.firstElementChild?.textContent).toContain(summary);
-  for (const attribute of ["type", "aria-haspopup", "aria-expanded", "tabindex", "data-variant", "data-size", "data-react-aria-pressable"]) {
+  for (const attribute of ["type", "aria-expanded", "tabindex", "data-variant", "data-size", "data-react-aria-pressable"]) {
     expect(button.getAttribute(attribute)).toBe(more.getAttribute(attribute));
   }
   expect(button.closest('[aria-hidden="true"], [hidden], [inert], [role="presentation"], [role="none"]')).toBeNull();
@@ -67,18 +68,25 @@ test.each([
   expect(within(await screen.findByRole("menu", { name: "Library" })).getByRole("menuitem", { name: "Reload Library" })).toBeTruthy();
 });
 
-test("a fresh closed Zotero snapshot stays quiet and the footer opens its library menu", async () => {
+test.each(["macos", "windows", "linux"])("%s: a fresh closed Zotero snapshot stays quiet and the footer opens its library menu", async (platform) => {
+  const previous = document.documentElement.dataset.system;
+  document.documentElement.dataset.system = platform;
+  onTestFinished(() => {
+    if (previous === undefined) delete document.documentElement.dataset.system;
+    else document.documentElement.dataset.system = previous;
+  });
   const calls = backend({ library_status: () => library(), reload_library: () => null });
   render(<App />);
-  await waitFor(() => expect(status().textContent).toBe("Zotero · 12 references"));
-  expect(document.querySelector(".notices")?.textContent).toBe("");
+  await waitFor(() => expect(status().textContent).toBe("Zotero"));
+  expect(document.querySelector(".ui-line-notice, .notice-slot")).toBeNull();
   fireEvent.click(within(footer()).getByRole("button", { name: "Library" }));
   const menu = await screen.findByRole("menu", { name: "Library" });
-  // The spec's order: the library with its count and age, a separator, then Choose Library… ⇧⌘O and Reload Library.
+  // Library detail, separator, Choose Library and Reload Library. Only macOS
+  // has a Choose shortcut: Ctrl+Shift+O is the source alternate elsewhere.
   const heading = menu.querySelector(".menu-detail")!;
   expect(heading.textContent).toMatch(/^\u2068?Zotero\u2069? · 12 references.*checked 2 hours ago/);
   expect(heading.closest("section")?.nextElementSibling?.getAttribute("role")).toBe("separator");
-  expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Choose Library…Ctrl+Shift+O", "Reload Library"]);
+  expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([`Choose Library…${platform === "macos" ? "⇧⌘O" : ""}`, "Reload Library"]);
   // A keyboard user entering the actions hears what the menu is about.
   const actions = within(menu).getAllByRole("group").find((group) => group.contains(within(menu).getByRole("menuitem", { name: "Reload Library" })))!;
   expect(actions.getAttribute("aria-label")).toMatch(/^\u2068Zotero\u2069 · 12 references\. .*checked 2 hours ago/);
@@ -103,12 +111,12 @@ test.each(["virtual", "Enter", " "])("%s activation reloads missing, empty and r
     await emit("library:changed", current);
   } });
   render(<App />);
-  await waitFor(() => expect(status().textContent).toContain("4 references"));
+  await waitFor(() => expect(detailTitle()).toContain("4 references"));
   const libraryButton = within(footer()).getByRole("button", { name: "Library" });
   let finishExit!: () => void;
   const finished = new Promise<void>((resolve) => { finishExit = resolve; });
   try {
-    for (const [index, expected] of ["thesis.bib moved", "thesis.bib · no references", "thesis.bib · 3 references"].entries()) {
+    for (const [index, expected] of ["thesis.bib moved", "thesis.bib · no references", "thesis.bib"].entries()) {
       // Native name lookup must find the opener, never a same-named footer
       // region whose accessibility action can hit the neighbouring Find button.
       expect(screen.getAllByLabelText("Library")).toEqual([libraryButton]);
@@ -145,7 +153,7 @@ test.each(["virtual", "Enter", " "])("%s activation reloads missing, empty and r
 test.each([
   ["empty library", { references: 0 }, "thesis.bib · no references"],
   ["unreadable without a snapshot", { state: "error", has_snapshot: false, references: 0, problem: "unreadable", error: "The library file could not be read" }, "thesis.bib · not opened"],
-  ["damaged file with usable references", { warnings: 1, reading: [{ code: "syntax", line: 4, key: null }] }, "thesis.bib · 12 references · 1 entry skipped"],
+  ["damaged file with usable references", { warnings: 1, reading: [{ code: "syntax", line: 4, key: null }] }, "thesis.bib · 1 entry skipped"],
 ] satisfies [string, Partial<LibraryStatus>, string][])("Library remains a named footer button with Reload in %s", async (_, overrides, expected) => {
   const reload = vi.fn(() => null);
   const choose = vi.fn(() => null);
@@ -174,8 +182,8 @@ test.each([
   fireEvent.change(box, { target: { value: "nothing here" } });
   await screen.findByText("No matching references");
   expect(screen.getByText("Try a surname, year or fewer words.")).toBeTruthy();
-  // Its fix, beside the search field's own clear button.
-  expect(screen.getAllByRole("button", { name: "Clear Search" })).toHaveLength(2);
+  // Its recovery action leaves the query editable.
+  expect(screen.getAllByRole("button", { name: "Clear Search" })).toHaveLength(1);
   // The newer answer replaces it, and a later read keeps the screen honest.
   fireEvent.change(box, { target: { value: "invented" } });
   await screen.findByText("Invented reference");
@@ -190,10 +198,10 @@ test.each([
   // F6: what reading skipped, by key and line, as `ibis libraries` says it.
   ["a damaged file", { zotero: false, snapshot_zotero: false, zotero_libraries: [], name: "damaged.bib", snapshot_name: "damaged.bib", references: 3, warnings: 3, reading: [
     { code: "duplicate-key", line: 3, key: "good1" }, { code: "duplicate-key", line: 9, key: "good1" }, { code: "syntax", line: 21, key: null }] },
-    "damaged.bib · 3 references · 3 entries skipped", "3 entries skipped: 2 use the key good1 (lines 3 and 9), 1 could not be read (line 21)."],
+    "damaged.bib · 3 entries skipped", "3 entries skipped: 2 use the key good1 (lines 3 and 9), 1 could not be read (line 21)."],
   // F7: a source Ibis cannot watch is a problem in words, so never a green dot.
   ["a file Ibis cannot watch", { zotero: false, snapshot_zotero: false, zotero_libraries: [], name: "thesis.bib", snapshot_name: "thesis.bib", live_updates_off: true },
-    "thesis.bib · 12 references", "Live updates are unavailable. Reload the library after editing it."],
+    "thesis.bib", "Live updates are unavailable. Reload the library after editing it."],
 ] satisfies [string, Partial<LibraryStatus>, string, string][])("%s: the dot, the hover text and the library menu agree", async (_, overrides, line, words) => {
   backend({ library_status: () => library(overrides) });
   render(<App />);
@@ -217,20 +225,20 @@ test("a stale snapshot has one footer problem and action, and a successful read 
   expect(footer().textContent).toContain("2 h");
   // The older copy is still searched: a warning, never the stop of nothing to search.
   expect(document.querySelector(".status-dot")?.getAttribute("data-health")).toBe("look");
-  expect(document.querySelector(".notices")?.textContent).toBe("");
+  expect(document.querySelector(".ui-line-notice, .notice-slot")).toBeNull();
   // The fix shows its key, as More shows ⌘K, and does what its words say: open Zotero, not the row.
   const fix = within(footer()).getByRole("button", { name: "Open Zotero" });
   expect(fix.getAttribute("aria-keyshortcuts")).toBe("Control+O");
   fireEvent.click(fix);
   await waitFor(() => expect(opened).toHaveBeenCalledOnce());
-  expect(opened.mock.calls[0]).toEqual([{ item: null, expectedRevision: "1", expectedSourceGeneration: "1", zoteroOnly: true, reveal: false, presentation: 0 }]);
+  expect(opened.mock.calls[0]).toEqual([{ item: null, expectedRevision: "1", expectedSourceGeneration: "1", zoteroOnly: true, reveal: true, presentation: 0 }]);
   openKey();
   await waitFor(() => expect(opened).toHaveBeenCalledTimes(2));
   expect(opened.mock.calls[1]).toEqual(opened.mock.calls[0]);
   expect(status().textContent).toContain("not updated");
   current = library({ revision: "2", checked_at: Date.now() });
   await act(async () => { await emit("library:changed", current); });
-  expect(status().textContent).toBe("Zotero · 12 references");
+  expect(status().textContent).toBe("Zotero");
   expect(screen.getAllByRole("status", { name: "Library status" })).toHaveLength(1);
   expect(within(footer()).getByRole("button", { name: "Library" })).toBeTruthy();
   expect(within(footer()).queryByRole("button", { name: "Open Zotero" })).toBeNull();
@@ -243,7 +251,7 @@ test("a moved file keeps its usable references and offers Find once in the foote
   render(<App />);
   await screen.findByText("Retained reference");
   expect(status().textContent).toBe("thesis.bib moved");
-  expect(document.querySelector(".notices")?.textContent).toBe("");
+  expect(document.querySelector(".ui-line-notice, .notice-slot")).toBeNull();
   fireEvent.click(within(footer()).getByRole("button", { name: "Find ⁨thesis.bib⁩…" }));
   await waitFor(() => expect(choose).toHaveBeenCalledOnce());
 });
@@ -275,7 +283,7 @@ test("a refused switch keeps the file searchable and the engine's recovery instr
   expect(tooltip).toContain("Settings › Advanced");
   expect(tooltip).not.toContain("Open Zotero");
   expect(footer().querySelector(".library-detail")?.textContent).toContain(reason);
-  expect(document.querySelector(".notices")?.textContent).toBe("");
+  expect(document.querySelector(".ui-line-notice, .notice-slot")).toBeNull();
   expect(within(footer()).getByRole("button", { name: "Choose Library…" })).toBeTruthy();
 });
 
@@ -297,10 +305,10 @@ test("Command-O opens the searched source and More lists it first", async () => 
   await screen.findByText("Selected invented reference");
   openKey();
   await waitFor(() => expect(opened).toHaveBeenCalledOnce());
-  expect(opened.mock.calls[0]).toEqual([{ item: picked.id, expectedRevision: "1", expectedSourceGeneration: "1", zoteroOnly: false, reveal: false, presentation: 0 }]);
+  expect(opened.mock.calls[0]).toEqual([{ item: picked.id, expectedRevision: "1", expectedSourceGeneration: "1", zoteroOnly: false, reveal: true, presentation: 0 }]);
   fireEvent.click(screen.getByRole("button", { name: "More" }));
-  const menu = await screen.findByRole("menu");
-  expect(within(menu).getAllByRole("menuitem")[0]?.textContent).toContain("Show in Zotero");
+  const menu = await screen.findByRole("dialog", { name: "Actions" });
+  expect(within(menu).getAllByRole("option")[0]?.textContent).toContain("Show in Zotero");
 });
 
 test("Command-O works on a recovery screen and a missing source refuses with a visible outcome", async () => {
@@ -323,11 +331,11 @@ test("Command-O opens a file from every picker overlay, without passing a file p
   render(<App />);
   await screen.findByText("Invented file reference");
   fireEvent.click(screen.getByRole("button", { name: "More" }));
-  const menu = await screen.findByRole("menu");
-  expect(within(menu).getAllByRole("menuitem")[0]?.textContent).toBe("Open ⁨مراجع.bib⁩Ctrl+O");
+  const menu = await screen.findByRole("dialog", { name: "Actions" });
+  expect(within(menu).getAllByRole("option")[0]?.textContent).toBe("Open ⁨مراجع.bib⁩Ctrl+O");
   fireEvent.keyDown(menu, { key: "o", ctrlKey: true });
   await waitFor(() => expect(opened).toHaveBeenCalledTimes(1));
-  expect(screen.queryByRole("menu")).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Actions" })).toBeNull();
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "/", ctrlKey: true });
   fireEvent.keyDown(await screen.findByRole("dialog"), { key: "o", ctrlKey: true });
   await waitFor(() => expect(opened).toHaveBeenCalledTimes(2));
@@ -341,7 +349,7 @@ test("an older failed open cannot overwrite a later successful open or a reopene
   backend({ library_status: () => library(), open_library_source: () => pending
     ? new Promise((_, reject) => { rejected.push(reject); }) : null });
   render(<App />);
-  await waitFor(() => expect(status().textContent).toContain("12 references"));
+  await waitFor(() => expect(detailTitle()).toContain("12 references"));
   openKey();
   await waitFor(() => expect(rejected).toHaveLength(1));
   pending = false;
@@ -361,7 +369,7 @@ test("source opening waits for composition and ignores repeated or differently m
   const opened = vi.fn(() => null);
   backend({ library_status: () => library(), open_library_source: opened });
   render(<App />);
-  await waitFor(() => expect(status().textContent).toContain("12 references"));
+  await waitFor(() => expect(detailTitle()).toContain("12 references"));
   const box = screen.getByLabelText("Search references");
   for (const modifiers of [{ repeat: true }, { isComposing: true }]) {
     fireEvent.keyDown(box, { key: "o", ctrlKey: true, ...modifiers });
@@ -379,12 +387,12 @@ test("a delayed status A cannot replace event B, including across hide and reope
   render(<App />);
   await waitFor(() => expect(read).toHaveBeenCalledOnce());
   await act(async () => { await emit("library:changed", library({ references: 26, revision: "B" })); });
-  expect(status().textContent).toContain("26 references");
+  expect(detailTitle()).toContain("26 references");
   await act(async () => { await emit("picker:hidden"); });
   await act(async () => { await emit("picker:shown"); });
-  await waitFor(() => expect(status().textContent).toContain("27 references"));
+  await waitFor(() => expect(detailTitle()).toContain("27 references"));
   await act(async () => finish(stale({ references: 12, revision: "A" })));
-  expect(status().textContent).toContain("27 references");
+  expect(detailTitle()).toContain("27 references");
   expect(within(footer()).queryByRole("button", { name: "Open Zotero" })).toBeNull();
 });
 
@@ -424,7 +432,7 @@ test("a list that cannot be read leaves a healthy library alone and is said when
   await screen.findByRole("menu", { name: "Library" });
   await act(async () => { await Promise.resolve(); });
   expect(screen.queryByText(/could not list your Zotero profiles/)).toBeNull();
-  expect(document.querySelector(".status-dot")?.getAttribute("data-health")).toBe("done");
+  expect(document.querySelector(".status-dot")).toBeNull();
   healthy.unmount();
   backend({ library_status: () => stale({ problem: "zotero_profiles", error: "choose which Zotero profile to read" }), zotero_profiles: () => { throw new Error("synthetic"); } });
   render(<App />);
@@ -448,6 +456,6 @@ test("Zotero recovering by itself clears the failure that came before it", async
   render(<App />);
   await screen.findByText("Open Zotero to read your library");
   await act(async () => { await emit("library:changed", library()); });
-  await waitFor(() => expect(status().textContent).toBe("Zotero · 12 references"));
-  expect(document.querySelector(".status-dot")?.getAttribute("data-health")).toBe("done");
+  await waitFor(() => expect(status().textContent).toBe("Zotero"));
+  expect(document.querySelector(".status-dot")).toBeNull();
 });

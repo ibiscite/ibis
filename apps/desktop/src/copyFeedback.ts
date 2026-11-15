@@ -1,11 +1,13 @@
-import { iconPaths, iconStroke } from "./icon-paths";
+import { art } from "./icon-art";
+import "./ui/Icon.css";
 // What a copy says afterwards, and what a click on a result row does.
 // Pure decisions, kept apart from the picker so they can be tested alone.
 import type { Copied, NoticeMessage } from "./api";
-import type { Delivered as WireDelivered } from "./bindings";
+import type { CopiedReason, Delivered as WireDelivered } from "./bindings";
 import { englishMessages } from "./i18n";
 import { say } from "./i18n";
 import { currentPlatform, platformOf, type Platform } from "./platform";
+import { listedOutput, outputName } from "./format/outputs";
 
 /**
  * After a copy: hide the picker and say "Copied" in the small notice window,
@@ -50,18 +52,18 @@ export type NoticePlatform = Platform;
 export const noticePlatform: (platform: string) => NoticePlatform = platformOf;
 
 /**
- * Every reason Ibis gives for copying instead of pasting: ibis-core's
- * `CopyReason`, plus the paste delivery's own "key-release-failed". A test
- * checks this list against the Rust source and the notice wording, so a
- * reason without words cannot ship.
+ * Every reason Ibis gives for copying instead of pasting, exactly the ones
+ * Rust sends: a reason added or removed there does not compile here, and a
+ * test checks each has its words.
  */
-export const COPY_REASONS = [
-  "paste-off", "unsupported-system", "no-target", "unknown-app", "copy-only", "target-changed", "clipboard-changed",
-  "paste-expired", "secure-field", "secure-input", "paste-unavailable", "elevated-app", "terminal", "remote-desktop",
-  "virtual-machine", "nonstandard-shortcut", "no-permission", "accessibility-required", "selection-not-shown", "citation-not-selected",
-  "key-release-failed",
-] as const;
-export type CopyReason = typeof COPY_REASONS[number];
+export const COPY_REASONS = Object.keys({
+  "paste-off": true, "unsupported-system": true, "no-target": true, "unknown-app": true, "copy-only": true,
+  "target-changed": true, "clipboard-changed": true, "paste-expired": true, "secure-field": true, "secure-input": true,
+  "paste-unavailable": true, "elevated-app": true, terminal: true, "remote-desktop": true, "virtual-machine": true,
+  "nonstandard-shortcut": true, "no-permission": true, "accessibility-required": true, "selection-not-shown": true,
+  "citation-not-selected": true, "key-release-failed": true,
+} as const satisfies Record<CopiedReason, true>) as readonly CopiedReason[];
+export type CopyReason = CopiedReason;
 /** What happened to a copy, with its reason checked: an unknown or missing reason does not compile. */
 export type Delivered = Exclude<WireDelivered, { outcome: "copied" }> | { outcome: "copied"; reason: CopyReason };
 /** What the card shows; the window applies the appearance itself (notice.ts). */
@@ -85,13 +87,15 @@ export function noticeTitle({ delivered }: Pick<Notice, "delivered">, platform =
   return platform === "macos" ? text : text.replaceAll("⌘V", "Ctrl+V");
 }
 
+let receiptId = 0;
+
 /**
  * Draw one receipt card: a check tile, what happened, then the citation.
  * Text goes in as text, never as markup. The status region exists before its
  * text arrives, so screen readers that follow other windows announce it
  * politely without the notice taking focus.
  */
-export function renderNotice(root: HTMLElement, platform: NoticePlatform): (message: Notice) => void {
+export function renderNotice(root: HTMLElement, platform: NoticePlatform, onChangeFormat?: () => void): (message: Notice) => void {
   root.replaceChildren();
   const notice = document.createElement("div");
   notice.className = "copied-notice copy-receipt";
@@ -104,18 +108,37 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform): (mess
   source.textContent = say("copied-notice-source");
   const mark = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   mark.setAttribute("aria-hidden", "true");
-  mark.setAttribute("viewBox", "0 0 20 20");
-  mark.classList.add("copied-notice-mark", "copy-receipt-mark");
-  const tick = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  tick.setAttribute("d", iconPaths.check);
-  mark.setAttribute("stroke-width", String(iconStroke));
-  mark.append(tick);
+  mark.setAttribute("viewBox", art.viewBox);
+  mark.setAttribute("data-size", "tile");
+  mark.setAttribute("fill", "currentColor");
+  mark.classList.add("ui-icon", "copied-notice-mark", "copy-receipt-mark");
+  // Reveal the filled upstream glyph through a travelling mask; the art stays
+  // unchanged, and reduced motion shows the whole check immediately.
+  const mask = `copied-check-${++receiptId}`;
+  mark.innerHTML = `<defs><mask id="${mask}" mask-type="alpha" maskUnits="userSpaceOnUse" x="0" y="0" width="256" height="256"><rect class="copy-check-reveal" width="256" height="256" fill="white" /></mask></defs><g mask="url(#${mask})">${art.body.check}</g>`;
   const title = document.createElement("strong");
   const code = document.createElement("code");
   code.dir = "auto";
   root.append(notice);
   return (message: Notice) => {
-    title.textContent = noticeTitle(message, platform);
+    const suggested = listedOutput(message.suggested_format);
+    const pasted = message.delivered.outcome === "pasted";
+    title.textContent = suggested && pasted ? say("copied-notice-suggested", { format: outputName(suggested) }) : noticeTitle(message, platform);
+    const suggestion = suggested && !pasted ? document.createElement("span") : null;
+    if (suggestion && suggested) {
+      suggestion.className = "copy-receipt-note";
+      suggestion.textContent = say("copied-notice-suggestion", { format: outputName(suggested) });
+    }
+    if (suggested && onChangeFormat) {
+      const receipt = suggestion ?? title;
+      receipt.append(" · ");
+      const change = document.createElement("button");
+      change.type = "button";
+      change.className = "copy-receipt-change";
+      change.textContent = say("copied-notice-change");
+      change.onclick = onChangeFormat;
+      receipt.append(change);
+    }
     if (message.milestone) {
       const milestone = document.createElement("span");
       milestone.setAttribute("aria-hidden", "true");
@@ -135,6 +158,7 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform): (mess
     code.title = message.text;
     notice.dataset.outcome = message.delivered.outcome;
     notice.replaceChildren(source, mark, title, code);
+    if (suggestion) notice.append(suggestion);
     if (message.plugin_note) {
       const note = document.createElement("span");
       note.className = "copy-receipt-note";

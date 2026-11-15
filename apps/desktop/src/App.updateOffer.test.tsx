@@ -16,17 +16,17 @@ test("the format chooser blocks update readiness and closing rearms a fresh idle
     return value === null ? ++ticket : value;
   } });
   await act(async () => { render(<App />); });
-  const format = screen.getByRole("button", { name: /^Copy as/ });
+  const format = screen.getByRole("button", { name: /^Citation format/ });
   await act(async () => { fireEvent.click(format); });
-  expect(screen.getByRole("menu")).toBeTruthy();
+  expect(screen.getByRole("dialog")).toBeTruthy();
   reports.length = 0;
   await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
   expect(reports.filter((value) => value !== null)).toEqual([]);
   await act(async () => {
-    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape", code: "Escape" });
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape", code: "Escape" });
     fireEvent.keyUp(window, { key: "Escape", code: "Escape" });
   });
-  expect(screen.queryByRole("menu")).toBeNull();
+  expect(screen.queryByRole("dialog")).toBeNull();
   // React Aria restores focus on the next frame, which also rearms idle.
   await act(async () => { await vi.advanceTimersByTimeAsync(50); });
   const closeTicket = ticket;
@@ -53,11 +53,10 @@ test.each(["library menu", "source chooser"])("the %s blocks update readiness un
   } });
   await act(async () => { render(<App />); });
   await act(async () => {
-    if (layer === "library menu") fireEvent.click(screen.getByRole("button", { name: "Library" }));
-    else {
-      fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "o", code: "KeyO", ctrlKey: true, shiftKey: true });
-      fireEvent.keyUp(window, { key: "o", code: "KeyO" });
-    }
+    fireEvent.click(screen.getByRole("button", { name: layer === "library menu" ? "Library" : "More" }));
+  });
+  if (layer === "source chooser") await act(async () => {
+    fireEvent.click(screen.getByRole("option", { name: "Choose Library…" }));
   });
   reports.length = 0;
   await act(async () => { await vi.advanceTimersByTimeAsync(2000); });

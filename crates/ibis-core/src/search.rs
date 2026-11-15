@@ -9,7 +9,8 @@
 //! one typo at the start of a word (words of five or more Latin, Greek or
 //! Cyrillic letters, first letter right). `a:`, `t:`, `j:`, `k:`, `#` and `y:`
 //! limit a term to names, title, journal, key, tags or years. "et al." and
-//! "and" are ignored. Müller is also found as "mueller" and β as "beta". An
+//! "and" are ignored. Müller is also found as "mueller", β as "beta" and
+//! kana names by their deterministic romanised readings. An
 //! exact citation key always matches and ranks first, then an exact title.
 //! When nothing matches every term, the records matching most words are given
 //! instead, marked as partial.
@@ -25,6 +26,7 @@ use crate::identifier::{self, Identifier};
 use crate::model::{Name, is_cjk_char};
 
 mod pasted;
+mod readings;
 mod snapshot;
 pub use snapshot::{PastedList, RecordHit, SnapshotIndex};
 
@@ -271,6 +273,9 @@ fn name_text<'a>(names: impl Iterator<Item = &'a Name>) -> String {
         let display = normalize(&raw);
         push_words(&mut text, &display);
         push_apart(&mut aliases, &spelling_aliases(&raw));
+        if let Some(reading) = readings::alias(name) {
+            push_apart(&mut aliases, &reading);
+        }
         // "山田 太郎" is also written without the space.
         if display.contains(' ') && display.chars().any(is_cjk_char) {
             push_words(&mut text, &display.replace(' ', ""));
@@ -1704,32 +1709,6 @@ mod tests {
         assert_eq!(weighted_score(0, 24, 178_956_971), 8);
         assert_eq!(weighted_score(u32::MAX - 1, 2, 1), 0);
         assert_eq!(weighted_score(8, 2000, 1), 2008);
-    }
-
-    #[test]
-    #[ignore = "manual synthetic repetitive-query measurement; no timing assertion"]
-    fn repetitive_query_measurement() {
-        use std::time::{Duration, Instant};
-        let index = build_index(
-            (0..5_000)
-                .map(|n| reference(&format!("key{n}"), "Synthetic research", "Example", 2024))
-                .collect(),
-        );
-        for query in ["research".to_owned(), "research ".repeat(1_000)] {
-            let mut elapsed = Duration::ZERO;
-            for _ in 0..10 {
-                let started = Instant::now();
-                let hits = index.search(&query, 20, None, &|| false).unwrap_or_default();
-                elapsed += started.elapsed();
-                assert_eq!(hits.len(), 20);
-                assert_eq!(hits[0].score, 20 * query.split_whitespace().count() as u32);
-            }
-            eprintln!(
-                "records=5000 query_bytes={} samples=10 mean_us={}",
-                query.len(),
-                elapsed.as_micros() / 10
-            );
-        }
     }
 
     #[test]

@@ -147,7 +147,7 @@ fn unusable_settings_stop_with_their_reason_and_never_fall_back() {
             missing.as_str(),
             "source-unavailable",
             5,
-            "cannot open the library chosen in Ibis: there is no file",
+            "cannot open the library chosen in Ibis: The library file was moved",
         ),
         (
             "{\"schema_version\":2,\"library\":{\"bibtex\":\"private-project/refs.bib\"}}",

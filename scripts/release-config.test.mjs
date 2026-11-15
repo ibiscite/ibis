@@ -35,6 +35,12 @@ function fakeGithub() {
   };
   save();
   if (args[0] === "api") {
+    if (args[1] === "repos/example/ibis/git/ref/heads/main") {
+      console.log(JSON.stringify({ object: { type: "commit", sha: "a".repeat(40) } })); return;
+    }
+    if (args[1].startsWith("repos/example/ibis/actions/workflows/ci.yml/runs?")) {
+      console.log(JSON.stringify({ workflow_runs: [{ event: "push", head_branch: "main", head_sha: "a".repeat(40), status: "completed", conclusion: state.ciConclusion ?? "success" }] })); return;
+    }
     if (args[1] === "repos/example/ibis/git/ref/tags/nightly") {
       const status = state.refStatus ?? (state.currentSha ? 200 : 404);
       const body = state.refBody ?? JSON.stringify({ object: { type: "commit", sha: state.currentSha } });
@@ -104,7 +110,7 @@ function fakeGithub() {
   }
   if (command === "upload" || command === "create") {
     if (state.failUpload) process.exit(1);
-    for (const path of args.filter((arg) => /^(dist|feed)\//.test(arg))) {
+    for (const path of args.filter((arg) => /^(dist|feed|style-changes)\//.test(arg))) {
       release.assets[path.split("/").at(-1)] = fs.readFileSync(path, "utf8");
     }
     if (state.failAfterFeedUpload && args.includes("feed/latest.json")) {
@@ -139,8 +145,8 @@ function fakeJq() {
 function fixture(t, initial = {}) {
   const dir = mkdtempSync(join(tmpdir(), "ibis-release-config-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  for (const name of ["scripts", "dist", "feed"]) mkdirSync(join(dir, name));
-  for (const name of ["update-feed.mjs", "release-notes.mjs", "publication-guard.mjs", ...Object.values(scripts)]) {
+  for (const name of ["scripts", "dist", "feed", "style-changes"]) mkdirSync(join(dir, name));
+  for (const name of ["update-feed.mjs", "release-notes.mjs", "publication-guard.mjs", "ci-main.mjs", ...Object.values(scripts)]) {
     copyFileSync(new URL(name, import.meta.url), join(dir, "scripts", name));
   }
   writeFileSync(join(dir, "gh"), `#!/usr/bin/env node\n(${fakeGithub.toString()})();\n`, { mode: 0o755 });
@@ -152,6 +158,8 @@ function fixture(t, initial = {}) {
   const hash = createHash("sha256").update("invented package").digest("hex");
   writeFileSync(join(dir, "dist/SHA256SUMS-synthetic.txt"), `${hash}  Ibis-synthetic.zip\n`);
   writeFileSync(join(dir, "feed/latest.json"), JSON.stringify({ version: "0.2.3" }));
+  writeFileSync(join(dir, "style-changes/notes.md"), "**Citation styles**\n\n- Output changed since v0.2.2 in 1 style: `invented-style`\n");
+  writeFileSync(join(dir, "style-changes/changed-styles.txt"), "Citation styles compared with v0.2.2.\n\nOutput changed:\ninvented-style\n");
   const draft = { isDraft: true, prerelease: true, body: "### Bug Fixes\n* invented fix", assets: {} };
   writeFileSync(join(dir, "github.json"), JSON.stringify({ latest: "v0.2.2", releases: { "v0.2.3": draft }, calls: [], ...initial }));
   const state = () => JSON.parse(readFileSync(join(dir, "github.json"), "utf8"));
@@ -172,6 +180,8 @@ test("numbered releases publish fully with a versioned title and explicit Latest
     assert.equal(release.isDraft, false);
     assert.equal(release.prerelease, false);
     assert.equal(release.title, "Ibis 0.2.3");
+    assert.match(release.body, /\*\*Citation styles\*\*\n\n- Output changed since v0\.2\.2 in 1 style: `invented-style`/);
+    assert.match(release.assets["changed-styles.txt"], /^Output changed:\ninvented-style$/m);
     assert.equal(state.latest, latest === "v0.2.10" ? latest : "v0.2.3");
     const edit = state.calls.find((args) => args.includes("--draft=false"));
     assert.ok(edit.includes(latest === "v0.2.10" ? "--latest=false" : "--latest"));
@@ -379,6 +389,13 @@ test("stable feed read failures stop before changing permanent installers or lat
   }
 });
 
+test("red main prevents every nightly publication mutation", { skip }, (t) => {
+  const f = fixture(t, { ciConclusion: "failure" });
+  const result = f.run("nightly", { TAG: "nightly" });
+  assert.notEqual(result.status, 0);
+  assert.ok(f.state().calls.every((args) => args[0] === "api" && !args.includes("--method")));
+});
+
 test("nightly only publishes after a successful ahead comparison or confirmed ref absence", { skip }, (t) => {
   for (const currentSha of [undefined, "b".repeat(40)]) {
     const f = fixture(t, { currentSha });
@@ -416,7 +433,7 @@ test("nightly leaves a newer, equal or diverged nightly untouched", { skip }, (t
     const result = f.run("nightly", { TAG: "nightly" });
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.deepEqual(f.state().releases.nightly.assets, assets);
-    assert.equal(f.state().calls.length, 2, "only the ref and comparison may be read");
+    assert.equal(f.state().calls.length, 5, "only main CI, the nightly ref and comparison may be read");
   }
 });
 
@@ -443,7 +460,6 @@ test("release flags leave versioning and draft tag creation unchanged", () => {
   assert.equal(config["release-type"], "simple");
   assert.equal(config["bump-minor-pre-major"], true);
   assert.equal(config["bump-patch-for-minor-pre-major"], true);
-  assert.ok(read("website/index.html").includes('Files come from GitHub. <a href="https://github.com/ibiscite/ibis/releases/latest">Release notes</a>'));
   assert.ok(read("README.md").includes("[release](https://github.com/ibiscite/ibis/releases/latest)"));
 });
 

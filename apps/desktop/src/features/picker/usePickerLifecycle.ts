@@ -1,5 +1,5 @@
+import type * as nativeApi from "../../api";
 import { useEffect } from "react";
-import type { PickerApi } from "../../App";
 import type { Operation } from "./Notices";
 import { closeOverlays } from "../../ui/layers";
 import type { useOperations } from "./useOperations";
@@ -11,7 +11,7 @@ import { OPERATION_FAILURES } from "./Notices";
 import { say } from "../../i18n";
 
 export function usePickerLifecycle({ api, pickerSession, menus, destination, preferences, resetPointer, readShortcut, report, setAltHeld }: {
-  api: PickerApi;
+  api: typeof nativeApi;
   pickerSession: Pick<ReturnType<typeof usePickerSession>, "session" | "send">;
   menus: Pick<ReturnType<typeof usePickerMenus>, "input" | "focusHome">;
   destination: ReturnType<typeof useDestination>;
@@ -23,7 +23,7 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
 }) {
   const { session, send } = pickerSession;
   const { input, focusHome } = menus;
-  const { pickerVisible, onPickerPreparing, onPickerShown, onPickerHidden, onPreferencesChanged, onProjectChanged, onWritingProjectsChanged } = api;
+  const { pickerVisible, onPickerPreparing, onPickerShown, onPickerHidden, onPreferencesChanged, onProjectChanged, onWritingsChanged } = api;
   // When the picker is shown, put the cursor in the search box with the
   // previous query selected, so typing replaces it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: subscribes once on mount. The handlers only call setters, refs and native calls that never change, so the first render's copies are current.
@@ -62,6 +62,11 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
       if (!prepared) destination.read(true, keepsOutput());
       prepared = false;
       readShortcut();
+      // Reopening also sees file edits whose watch event has not arrived.
+      // The settings owner reads after prior saves; focus never waits for it,
+      // and a reply from an older presentation cannot replace this one.
+      const visibility = session.getSnapshot().visibility;
+      preferences.loadPreferences(() => mounted && session.getSnapshot().visibility === visibility);
       // On X11, showing can precede native activation. WebKit restores the
       // previous control then, so finish Search focus once activation arrives.
       focusAfterActivation = !document.hasFocus();
@@ -104,9 +109,9 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
       .catch(() => undefined);
     const unlistenProject = onProjectChanged?.((version) => {
       if (!mounted) return;
-      destination.projectChanged(version);
+      destination.writingChanged(version);
     }).catch(() => subscriptionFailure("project"));
-    const unlistenWritingProjects = onWritingProjectsChanged?.(() => {
+    const unlistenWritings = onWritingsChanged?.(() => {
       if (mounted) destination.read(false);
     }).catch(() => subscriptionFailure("project"));
     return () => {
@@ -118,7 +123,7 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
       void unlistenPreparing?.then((stop) => stop?.());
       void unlistenPreferences?.then((stop) => stop?.());
       void unlistenProject?.then((stop) => stop?.());
-      void unlistenWritingProjects?.then((stop) => stop?.());
+      void unlistenWritings?.then((stop) => stop?.());
     };
   }, [resetPointer]);
 }

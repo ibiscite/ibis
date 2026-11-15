@@ -211,6 +211,122 @@ mod tests {
     }
 
     #[test]
+    fn first_preview_uses_the_style_and_locale_compiled_without_a_library() {
+        on_worker_stack(|| {
+            let limits = Limits::default();
+            let mut session = Session::new(&limits, &control()).unwrap();
+            let warm = crate::input::warm("apa", Some("de-DE")).unwrap();
+            session.run(&warm, &limits, &control()).unwrap();
+            // Any style compilation or locale I/O during the first preview now
+            // fails, rather than relying on a wall-clock speed assertion.
+            session.context.with(|ctx| ctx.eval::<(), _>("CSL.Engine = new Proxy(CSL.Engine, { construct() { throw Error('unexpected compilation'); } }); globalThis.__ibisLocaleXml = function() { throw Error('unexpected locale read'); };")).unwrap();
+            let mut prepared = synthetic(1, false);
+            let mut json: serde_json::Value = serde_json::from_str(&prepared.json).unwrap();
+            json["locale"] = "de-DE".into();
+            json["sentence_titles"] = true.into();
+            prepared.json = json.to_string();
+            let result = session.run(&prepared, &limits, &control()).unwrap();
+            assert_eq!(result.text, "(Taylor, 2026)");
+            assert!(result.copy_content(1).is_some());
+        });
+    }
+
+    #[test]
+    #[ignore = "local cold-start breakdown; run alone with --nocapture --test-threads=1"]
+    fn startup_format_breakdown() {
+        on_worker_stack(|| {
+            use std::sync::Mutex;
+            let limits = Limits::default();
+            let start = Instant::now();
+            let formatter = crate::Formatter::new().unwrap();
+            let worker_start = start.elapsed();
+            drop(formatter);
+            let mut case: ibis_core::contract::GoldenCase =
+                serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json")).unwrap();
+            case.request.output = ibis_core::contract::OutputSpec::Csl { style: "apa".into() };
+            let start = Instant::now();
+            crate::Formatter::check_output(&case.request.output, None).unwrap();
+            let style_load = start.elapsed();
+            let start = Instant::now();
+            let prepared = crate::input::prepare(&case.library, &case.request, &limits).unwrap();
+            let input = start.elapsed();
+            let start = Instant::now();
+            let mut session = Session::new(&limits, &control()).unwrap();
+            let runtime = start.elapsed();
+            let compile = Arc::new(Mutex::new((None::<Instant>, Duration::ZERO, 0)));
+            let locale = Arc::new(Mutex::new(Duration::ZERO));
+            session.context.with(|ctx| {
+                let measured = compile.clone();
+                ctx.globals().set("__ibisMeasureCompile", Function::new(ctx.clone(), move |starting: bool| {
+                    let mut measured = measured.lock().unwrap();
+                    if starting { measured.0 = Some(Instant::now()); }
+                    else { let elapsed = measured.0.take().unwrap().elapsed(); measured.1 += elapsed; measured.2 += 1; }
+                }).unwrap()).unwrap();
+                let measured = locale.clone();
+                ctx.globals().set("__ibisLocaleXml", Function::new(ctx.clone(), move |tag: String| {
+                    let start = Instant::now();
+                    let xml = crate::catalog::locale_xml(&tag).unwrap();
+                    *measured.lock().unwrap() += start.elapsed();
+                    xml
+                }).unwrap()).unwrap();
+                ctx.eval::<(), _>("const OriginalEngine = CSL.Engine; CSL.Engine = function(...args) { __ibisMeasureCompile(true); try { return new OriginalEngine(...args); } finally { __ibisMeasureCompile(false); } }; CSL.Engine.prototype = OriginalEngine.prototype; Object.setPrototypeOf(CSL.Engine, OriginalEngine);").unwrap();
+            });
+            let start = Instant::now();
+            let cold = session.run(&prepared, &limits, &control()).unwrap();
+            let first_render = start.elapsed();
+            let compilation = compile.lock().unwrap().1;
+            let locale_load = *locale.lock().unwrap();
+            let mut warm = Vec::new();
+            for _ in 0..30 {
+                let start = Instant::now();
+                assert_eq!(session.run(&prepared, &limits, &control()).unwrap(), cold);
+                warm.push(start.elapsed());
+            }
+            warm.sort_unstable();
+            assert_eq!(
+                compile.lock().unwrap().2,
+                1,
+                "the style is already compiled for warm previews"
+            );
+            let start = Instant::now();
+            let mut startup = Session::new(&limits, &control()).unwrap();
+            startup
+                .run(
+                    &crate::input::warm("apa", case.request.output_locale.as_deref()).unwrap(),
+                    &limits,
+                    &control(),
+                )
+                .unwrap();
+            let background = start.elapsed();
+            let start = Instant::now();
+            assert_eq!(startup.run(&prepared, &limits, &control()).unwrap(), cold);
+            let warmed_first = start.elapsed();
+            eprintln!(
+                "startup-format profile={} worker-spawn={worker_start:?} style-load={style_load:?} input={input:?} runtime-bootstrap={runtime:?} style-compile={:?} locale-load={locale_load:?} first-render-excluding-compile={:?} cold-total={:?} warm-p50={:?} warm-p95={:?}",
+                if cfg!(debug_assertions) {
+                    "debug (optimized dependencies)"
+                } else {
+                    "release"
+                },
+                compilation.saturating_sub(locale_load),
+                first_render.saturating_sub(compilation),
+                worker_start + style_load + input + runtime + first_render,
+                warm[15],
+                warm[28]
+            );
+            eprintln!(
+                "startup-format background-runtime-and-compilation={background:?} first-render-after-startup-warmup={warmed_first:?}"
+            );
+            if std::env::var_os("IBIS_ENFORCE_BUDGETS").is_some() {
+                assert!(
+                    warm[28] <= Duration::from_millis(100),
+                    "warm preview p95 exceeds 100 ms"
+                );
+            }
+        });
+    }
+
+    #[test]
     fn bibliography_strips_numbers_through_shared_macros_without_changing_citations() {
         on_worker_stack(|| {
             let session = Session::new(&Limits::default(), &control()).unwrap();

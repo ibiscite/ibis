@@ -1,0 +1,59 @@
+/* C7: one band, on the result columns, regardless of selection or open menu. */
+/* One band, one padding, corner, hover and pressed fill for every control in it:
+   tokens and the count. Hover and open steps are even: band, tertiary, system fill.
+   At rest the count shows only its chevron, whose glyph is drawn inside its box, so
+   it takes no end padding and the glyph ends on the year column [C3]. */
+.shelf { --band-control-pad: var(--space-2); --band-control-pad-end: 0px; --band-control-radius: var(--r-small); --band-control-hover: var(--fill-control); --band-control-pressed: var(--fill-control-pressed); --shelf-target: var(--control-h); position: relative; flex: none; min-height: 0; overflow: visible; margin: 0 var(--inset) var(--inset); border-radius: var(--r-control); background: var(--layer-inset); }
+.shelf::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--status-ok-wash); opacity: 0; pointer-events: none; }
+main:has(> .shelf) > footer { border-top-color: transparent; }
+/* Text starts on the title column; trailing controls keep the same gap S to the
+   shelf's end as above and below them, so their corners nest in its own [C15]. */
+.shelf-output { position: relative; display: flex; align-items: center; height: max(calc(var(--control-small-h) + 2 * var(--inset)), var(--hit)); padding-inline: var(--row-pad) var(--inset); font-size: var(--type-body-size); }
+.shelf-leading { flex: 0 0 var(--tile); display: flex; justify-content: end; margin-inline-end: var(--row-gap); }
+.shelf-leading[draggable] { cursor: grab; -webkit-user-drag: element; }
+.shelf-mark { display: block; flex: none; height: var(--space-5); width: auto; color: var(--scarlet); }
+.shelf-output[data-state="pending"] .shelf-mark { opacity: .45; }
+[dir="rtl"] .shelf-mark { transform: scaleX(-1); }
+.shelf-mark-close { transform: rotate(180deg); }
+[dir="rtl"] .shelf-mark-close { transform: scaleX(-1) rotate(180deg); }
+.shelf-citation { display: flex; flex: 1; align-items: center; gap: 0; align-self: stretch; min-width: 0; white-space: nowrap; container-type: inline-size; }
+.shelf .preview-text, .shelf-citation > p { display: block; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.shelf-citation > .preview-text { flex: 1; }
+.shelf-citation > p { flex: 1; color: var(--text-secondary); }
+.shelf-output:is([data-state="failed"], [data-state="stale"]) .shelf-citation > p { color: var(--text); border: 0; padding: 0; }
+.shelf-state-icon { display: inline-flex; justify-content: center; align-items: center; flex: none; margin-inline-end: var(--space-1); border: var(--border-width) solid currentColor; border-radius: var(--r-full); font: var(--strong) var(--type-label-size) / 1 var(--font); }
+.shelf-state-icon[data-state="failed"] { color: var(--status-error); }
+.shelf-state-icon[data-state="stale"] { color: var(--status-warning); }
+.shelf-output[data-keys] .preview-text { font-family: var(--mono); }
+.shelf-output .preview-text .csl-entry { display: inline; }
+.shelf-output .preview-text .csl-entry + .csl-entry { margin-inline-start: var(--space-4); }
+.shelf-reference-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shelf-actions { display: flex; flex: none; align-items: center; gap: var(--space-1); margin-inline-start: var(--space-1); }
+.shelf-actions:empty { display: none; }
+/* The receipt text owns its intrinsic width: both beaks hug it symmetrically. */
+.shelf[data-copied] .shelf-citation { flex: 0 1 auto; gap: var(--row-gap); }
+.shelf[data-copied] .preview-text { flex: 0 1 auto; }
+.shelf[data-copied]::before { animation: shelf-copy-wash var(--dur-2) var(--ease-out); }
+.shelf-copied { display: inline-flex; flex: none; align-items: center; gap: var(--space-1); height: var(--control-small-h); padding-inline: var(--space-2); border-radius: var(--r-full); color: var(--text); background: var(--status-ok-fill); font: var(--strong) var(--type-label-size) / var(--type-label-line) var(--font); white-space: nowrap; }
+.shelf-copied svg { color: var(--status-ok); }
+@keyframes shelf-copy-wash { from { opacity: 1; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .shelf[data-copied]::before { animation: none; }
+}
+@media (prefers-contrast: more), (forced-colors: active) {
+  .shelf { outline: var(--border-width) solid CanvasText; outline-offset: var(--border-outside); }
+  .shelf-mark { color: CanvasText; }
+  .shelf-copied { color: CanvasText; border: var(--border-width) solid CanvasText; }
+}
+
+/* Room for the tokens' rings at the line's ends, never above or below the shelf: the rows above keep their own clicks. */
+.shelf-fragments { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; overflow: hidden; padding-inline: var(--band-control-pad); margin-inline: calc(-1 * var(--band-control-pad)); }
+.shelf-shared { flex: none; white-space: pre; }
+.shelf-punctuation { color: var(--text-secondary); }
+
+/* What will be pasted, in the column under the fields that change it: plain
+   text on the column's edge, no box, so nothing is framed twice. */
+.inspector-citation { display: block; margin: var(--space-2) 0 0; font-size: var(--type-body-size); line-height: var(--type-body-line); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.inspector-citation[data-keys] { font-family: var(--mono); }
+.inspector-problem svg { margin-inline-end: var(--space-1); color: var(--status-error); }
+

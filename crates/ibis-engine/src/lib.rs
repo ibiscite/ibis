@@ -9,10 +9,13 @@ pub mod catalogue;
 
 pub mod mcp;
 
+/// Which format a citation uses (decision 0042).
+pub mod format;
 pub mod outputs;
 
 pub mod settings;
 pub mod settings_backup;
+pub mod zotero_open;
 
 pub mod protocol;
 
@@ -38,3 +41,5 @@ pub mod wire;
 pub mod server;
 
 pub mod recents;
+
+pub mod citations;

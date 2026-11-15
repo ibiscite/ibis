@@ -16,6 +16,9 @@ thiserror = "2.0.21"
 unicode-normalization = "0.1.26"
 memchr = "2.8.3"
 
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31.3", default-features = false, features = ["fs"] }
+
 [dev-dependencies]
 tempfile = "3.27.0"
 proptest = "1.12.0"

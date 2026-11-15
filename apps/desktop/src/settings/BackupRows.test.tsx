@@ -50,10 +50,10 @@ test("a restore shows every change in words first, then restores that preview an
   expect(screen.getByText("Backup from Windows, made by Ibis 0.2.8")).toBeTruthy();
   const items = screen.getAllByRole("listitem").map((item) => item.textContent);
   expect(items).toEqual([
-    "Default format: APA → IEEE",
+    "In documents: APA → IEEE",
     "Library: Default → thesis.bib",
     "Rows: Comfortable → Compact",
-    "Larger text: Default → On",
+    "Text size: Default → On",
     "Opening shortcut on Windows: Default → Alt+Space",
   ]);
   expect(screen.getByText(/bibliography is not on this computer/)).toBeTruthy();
@@ -85,9 +85,13 @@ test.each([
   ["settings-file", /Ibis’s own settings file, not a backup/],
   ["newer", /newer version of Ibis/],
   ["invalid", /backup is damaged\. Nothing changed/],
+  ["busy", /Settings are being saved by another Ibis\. Wait for it to finish, then try again/],
   [new Error("private synthetic detail"), /couldn’t save\. Nothing changed/],
 ])("a refused backup (%s) is explained and nothing is restored", async (refusal, words) => {
-  const api = fakeApi({ chooseSettingsBackup: vi.fn().mockRejectedValueOnce(refusal) });
+  const api = fakeApi({ chooseSettingsBackup: vi.fn().mockRejectedValueOnce(typeof refusal === "string" ? {
+    code: refusal, message: { id: `backup-problem-${refusal}`, args: {} },
+    recovery: { action: refusal === "newer" ? "upgrade-ibis" : refusal === "not-downloaded" ? "download-file" : "choose-backup" }, focus: "recovery-action",
+  } : refusal) });
   render(<BackupRows api={api} />);
   fireEvent.click(screen.getByRole("button", { name: "Restore…" }));
   await act(async () => undefined);
@@ -97,7 +101,7 @@ test.each([
 });
 
 test("settings that changed after the preview refuse the restore and show why", async () => {
-  const api = fakeApi({ restoreSettingsBackup: vi.fn().mockRejectedValueOnce("changed") });
+  const api = fakeApi({ restoreSettingsBackup: vi.fn().mockRejectedValueOnce({ code: "changed", message: { id: "backup-problem-changed", args: {} }, recovery: { action: "choose-backup" }, focus: "recovery-action" }) });
   render(<BackupRows api={api} />);
   fireEvent.click(screen.getByRole("button", { name: "Restore…" }));
   await act(async () => undefined);

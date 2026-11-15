@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { zstdDecompressSync } from "node:zlib";
-import { pack, sha256, styleMetadata } from "./csl-bundle.mjs";
+import { pack, readStyles, sha256, styleMetadata } from "./csl-bundle.mjs";
 
 const independent = (id, extra = "") => `<?xml version="1.0"?><style xmlns="http://purl.org/net/xbiblio/csl" class="in-text" default-locale="de-DE">
 <info><title>Synthetic &amp; Style</title><id>http://www.zotero.org/styles/${id}</id><category citation-format="author-date"/><category field="biology"/><updated>2026-01-02T03:04:05+00:00</updated>${extra}</info></style>`;
@@ -49,4 +52,15 @@ test("a broken reference in the release stops the build", () => {
   assert.throws(() => pack({ ...options([file("a")]), curated: [{ id: "gone", title: "Gone", name: "Gone" }] }), /curated style/);
   assert.throws(() => pack({ ...options([file("a")]), curated: [{ id: "a", title: "A" }] }), /needs a short name/);
   assert.throws(() => pack({ ...options([file("a")]), curated: [{ id: "a", title: "A", name: "A".repeat(25) }] }), /needs a short name/);
+});
+
+test("a style file whose name is not a plain id stops the build", (t) => {
+  const tree = mkdtempSync(join(tmpdir(), "ibis-csl-bundle-test-"));
+  t.after(() => rmSync(tree, { recursive: true, force: true }));
+  mkdirSync(join(tree, "dependent"));
+  const xml = "<style><info><title>Invented</title><updated>2026-01-01</updated></info></style>";
+  writeFileSync(join(tree, "invented-journal.csl"), xml);
+  assert.deepEqual(readStyles(tree).map((style) => style.id), ["invented-journal"]);
+  writeFileSync(join(tree, "Invented `id`.csl"), xml);
+  assert.throws(() => readStyles(tree), /not a style id/);
 });

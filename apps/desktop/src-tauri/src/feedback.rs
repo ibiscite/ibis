@@ -60,12 +60,11 @@ pub(crate) fn open_in_browser(app: &AppHandle, url: String) {
         if !opened {
             let copied = app.clipboard().write_text(url.clone()).is_ok();
             let text = if copied {
-                "Ibis could not open your browser. The feedback link was copied: paste it into your browser."
-                    .to_string()
+                "Ibis could not open your browser. The link was copied: paste it into your browser.".to_string()
             } else {
-                format!("Ibis could not open your browser. Open this link to send feedback:\n{url}")
+                format!("Ibis could not open your browser. Open this link in your browser:\n{url}")
             };
-            app.dialog().message(text).title("Send feedback").show(|_| {});
+            app.dialog().message(text).title("Open Link").show(|_| {});
         }
     });
 }

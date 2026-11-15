@@ -1,6 +1,6 @@
 import * as nativeApi from "./api";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { idKey } from "./features/picker/choice";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { idKey, asTyped } from "./features/picker/choice";
 import { keysFor, matchesAccelerator } from "./keys";
 import { isMac } from "./platform";
 import { PeekCard } from "./ui/PeekCard";
@@ -10,11 +10,15 @@ import { usePointerSelection } from "./pointerSelection";
 import { usePickerAppearance } from "./ui/appearance";
 import { isStyle, styleOf } from "./format/outputs";
 import { PickerHeader } from "./features/picker/PickerHeader";
+import type { FormatPreview } from "./features/picker/FormatMenu";
+import { previewOf } from "./format/outputs";
 import { PickerScroll } from "./features/picker/PickerScroll";
-import { Notices } from "./features/picker/Notices";
+import { notices } from "./features/picker/Notices";
+import { Frame, LineNotice } from "./ui/Frame";
 import { PickerPageToken } from "./features/picker/PickerPageToken";
 import { PickerResults } from "./features/picker/PickerResults";
 import { PickerCitationShelf } from "./features/picker/PickerCitationShelf";
+import type { CitationLineActions } from "./features/picker/CitationShelf";
 import { PickerStatusFooter } from "./features/picker/PickerStatusFooter";
 import { PickerNotices, PickerOverlays } from "./features/picker/PickerOverlays";
 import { useOperations } from "./features/picker/useOperations";
@@ -30,27 +34,25 @@ import { useUpdateProgress } from "./features/picker/useUpdateProgress";
 import { usePickerLibrary } from "./features/picker/usePickerLibrary";
 import { usePickerMenus } from "./features/picker/usePickerMenus";
 import { useUpdateOfferActivity } from "./features/picker/useUpdateOfferActivity";
-import { usePickerSearchFocus } from "./features/picker/usePickerSearchFocus";
 import { useCitationCopy } from "./features/picker/useCitationCopy";
-import { useLibrarySetup } from "./features/picker/useLibrarySetup";
 import { usePickerMove } from "./features/picker/usePickerMove";
 import { useAltHeld } from "./features/picker/useAltHeld";
 import { HeldKeys } from "./ui/HeldKeys";
 import { useNativeRequests } from "./features/picker/useNativeRequests";
 import { usePickerLifecycle } from "./features/picker/usePickerLifecycle";
 import { useResultScroll } from "./features/picker/useResultScroll";
-import { useCitationFeedback } from "./features/picker/useCitationFeedback";
+import { useShownRows } from "./features/picker/useShownRows";
 import { useCitationRows } from "./features/picker/useCitationRows";
-import { projectDetail, useProjectBibliography } from "./features/picker/useProjectBibliography";
-import { ProjectCheckNotice } from "./features/picker/ProjectContextStatus";
+import { bibliographyDetail, useBibliography } from "./features/picker/useBibliography";
+import { bibliographyCheckNotice } from "./features/picker/BibliographyStatus";
 import { useEditorRequest } from "./features/picker/useEditorRequest";
 import { usePickerSource } from "./features/picker/usePickerSource";
 import { usePickerActions } from "./features/picker/usePickerActions";
 import { useCitationInspector } from "./features/picker/useCitationInspector";
+import { useShorthandHint } from "./features/picker/useShorthandHint";
 import { usePickerKeys } from "./features/picker/usePickerKeys";
 import { useCommandSearch } from "./features/picker/useCommandSearch";
 import { COMMAND_PREFIX } from "./features/picker/commands";
-import { useWindowSizeStatus } from "./features/picker/useWindowSizeStatus";
 import type { Copied } from "./api";
 import { usePickerDelights } from "./features/picker/usePickerDelights";
 import { useEmptyFeedback, useZoomFeedback } from "./ui/Delights";
@@ -58,18 +60,11 @@ import { useInterfaceMessages } from "./i18n";
 import { rowWords } from "./features/picker/ResultList";
 import { PickerShown } from "./features/picker/pickerShown";
 
-// A stable provider lets component tests use synthetic data without IPC.
-// Formatted citations are offered only when the provider can supply them.
-export type PickerApi = Pick<typeof nativeApi,
-  "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "pickerPreferences" | "savePickerPreferences" | "pickerPreferencesSaved" |
-  "hidePicker" | "pickerPresentation" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "pickerMoving" | "onLibraryFileDropped" | "onLibraryFileRefused" | "onFileDrag" | "delightView" | "onPickerPreparing" | "recentReferences" | "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "zoteroProfiles" | "useZoteroProfile" | "checkZoteroSharing" | "pickerDestination" | "writingProjects" | "editWritingProject" | "projectStatus" | "retryProject" | "chooseProject" | "stopProject" | "copyProjectEntry" | "onProjectChanged" | "onWritingProjectsChanged" | "onProjectNotSaved" | "rememberAppOutput" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findZotero" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged" | "takeSearchRequest" | "onSearchRequested" | "alignmentTick" | "resetWindowPosition" | "editorRequest" | "onEditorRequest" | "sessionReferences" | "editSessionReferences" | "sessionBibliography" | "copySessionBibliography" | "exportSessionBibliography">>;
-
 export type PickerPreview = { query?: string; copied?: Copied };
 
 // The picker: search, choose one or more references, copy them as a citation.
-export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; preview?: PickerPreview } = {}) {
-  const api = usePickerAppearance(sourceApi);
+export function App({ preview }: { preview?: PickerPreview } = {}) {
+  const api = usePickerAppearance(nativeApi);
   const pickerSession = usePickerSession(preview);
   const { session, state, send, setQuery, setActive, cancelCopy } = pickerSession;
   const { query, interpretLocators, active, selected, copied, copyError } = state;
@@ -95,13 +90,13 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const { density, quitAfterSaving: quitPreferences } = preferences;
   const destination = useDestination(session, state, api, { fallback: preferences.format, chooseDefault: preferences.chooseFormat, report });
   const { format } = destination;
-  const quitAfterSaving = () => destination.quitAfterSaving(quitPreferences);
-  const libraryState = usePickerLibrary(api, report, cancelCopy);
+  const quitAfterSaving = () => quitPreferences(session.afterSaves(2_000));
+  const libraryState = usePickerLibrary(api, operations, cancelCopy);
   const { library, settledLibrary, libraryVersion, refreshSnapshot, choosingLibrary, welcomeShown, libraryChoices, showCitations } = libraryState;
-  const project = useProjectBibliography(api, report, perform);
+  const project = useBibliography(api, report, perform);
   const editor = useEditorRequest(api);
   // A waiting editor's format replaces the picker's, so the same choice is asked again.
-  // A changed project bibliography asks the same questions of a new answer.
+  // A changed bibliography asks the same questions of a new answer.
   const checkVersion = libraryVersion + editor.version + project.version;
   const delights = usePickerDelights(api, state.presentation, library, preferences.smallSurprises);
   useEffect(() => { if (choosingLibrary) delights.dismiss(); }, [choosingLibrary, delights.dismiss]);
@@ -117,25 +112,23 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   // What the screen shows: the selection, otherwise the shown pasted list or
   // highlighted result. It stays put while a newer search runs.
   const shownChoice = !showCitations ? [] : selected.size > 0 ? [...selected.values()] : !sameSnapshot ? [] : list ? results
-    : results.slice(active, active + 1).map((r) => ({ ...r, locator: interpretation?.locator }));
+    : results.slice(active, active + 1).map((r) => asTyped(r, interpretation));
   // What may be copied: the same, once the shown results answer the current query.
   const chosen = selected.size > 0 || ready ? shownChoice : [];
   const output = useCitationOutput({
     session, state, chosen: shownChoice, library: settledLibrary, libraryVersion: checkVersion, format, style: styleOf(format),
-    previewFileCitation: api.previewFileCitation, projectContext: destination.contextVersion, contextReady: destination.ready && !project.reading,
+    previewFileCitation: api.previewFileCitation, writingContext: destination.contextVersion, contextReady: destination.ready && !project.reading,
   });
   const { formatted, shown, previewProblem, displayedOutput } = output;
   const checkedPreview = shown && typeof shown === "object" ? shown : null;
   const projectRefusal = checkedPreview?.project_refusal ?? null;
   // A file that can't be read is advice beside a key citation, never a gate.
   const projectProblem = checkedPreview && styleOf(format) === null && (project.status?.state === "failed" || project.status?.state === "damaged")
-    ? projectDetail(project.status) : null;
-  const contextNotice = projectRefusal ?? projectProblem ? `${projectRefusal ?? projectProblem}:${destination.projectVersion()}` : null;
+    ? bibliographyDetail(project.status) : null;
   const citationProblem = displayedOutput === "failed" ? previewProblem ?? say("picker-preview-error") : null;
   const menus = usePickerMenus(api, operations, libraryState, cancelCopy);
-  const { input, formatButtonRef, currentPin, pinned, setFormatOpen, focusHome } = menus;
+  const { input, formatButtonRef, currentPin, setFormatOpen, focusHome } = menus;
   useUpdateOfferActivity(api, state, menus, choosingLibrary);
-  const { searchFocused, setSearchFocused } = usePickerSearchFocus(input);
   const snapshotRevision = library?.revision;
   const { requestCopy, chooseFormat, onFormatOpenChange } = useCitationCopy({
     api, session, state, destination, currentPin, formatButtonRef, refreshSnapshot, report, setFormatOpen,
@@ -149,7 +142,14 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   // Last of App's layout effects: every input above has reached the session,
   // so an Enter waiting on an engine answer may copy now.
   useLayoutEffect(() => { send({ type: "committed" }); });
-  useLibrarySetup(library, setFailures, send, focusHome);
+  const sample = Boolean(library?.sample);
+  const previousSample = useRef(sample);
+  useEffect(() => {
+    if (previousSample.current === sample) return;
+    previousSample.current = sample;
+    send({ type: "sample" });
+    focusHome();
+  }, [sample, send, focusHome]);
   const { clearNotice } = project;
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new search is the trigger: the notice was about the row before it.
   useEffect(clearNotice, [queryKey, clearNotice]);
@@ -162,9 +162,14 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   usePickerLifecycle({ api, pickerSession, menus, destination, preferences, resetPointer, readShortcut, report, setAltHeld });
   usePickerMove(api, pickerSession.session);
   const { resultArea, followKeyboard } = useResultScroll({
-    input, active, selectAll: state.selectAll, pointer, selectedSize: selected.size, citationProblem, formatted, format, searchFocused,
+    input, active, selectAll: state.selectAll, pointer, selectedSize: selected.size, citationProblem, formatted, format,
   });
-  useCitationFeedback(copied, preview, send);
+  // Success is brief; warnings stay available until explicitly dismissed.
+  useEffect(() => {
+    if (preview || !copied || copied.warnings.length > 0) return;
+    const timer = window.setTimeout(() => send({ type: "dismiss", copied }), 2400);
+    return () => window.clearTimeout(timer);
+  }, [copied, preview, send]);
   const rows = useCitationRows({
     api, pickerSession, searchState, chosenKey: output.chosenKey, chosen, showCitations, format, snapshotRevision,
     focusHome, pointer, requestCopy, report,
@@ -176,34 +181,61 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     focusSearch: focusHome,
   });
   const source = usePickerSource({ api, pickerSession, libraryState, menus, results: sameSnapshot ? results : [], altHeld, perform, report });
-  const inspector = useCitationInspector();
+  const inspector = useCitationInspector(cancelCopy);
+  const shorthand = useShorthandHint(api, state.presentation, inspector.panel?.kind === "reference");
   // A failure stays beside the fields that can correct it, in one place, also
   // when the panel takes the list's place.
-  const listProblem = inspector.panel ? null : citationProblem;
   const actions = usePickerActions({
-    api, pickerSession, menus, libraryState, searchState, destination, shown, inspector,
+    api, pickerSession, menus, libraryState, searchState, destination, shown,
     // The footer names what Enter copies now, or after the running search.
     offered: chosen.length > 0 || searchPending ? shownChoice : [], canPaste: destination.canPaste,
     shortcut, perform, dismissChooser: source.dismissChooser, toggle: rows.toggle,
     // A waiting editor's output replaces the picker's.
     writesStyle: editor.label ? editor.style : isStyle(destination.format),
   });
+  // The format chooser's preview reads the chosen references' keys and never asks
+  // the engine: an engine preview would replace the ticket the shelf copies with.
+  // A reference's citation key, never its record ID (the engine's, e.g. Zotero's item key).
+  const previewKeys = !editor.label && output.ask ? shownChoice.map((item) => item.key).filter(Boolean).join("\u0000") : "";
+  const formatPreview = useCallback<FormatPreview>((other) => previewOf(other, shown && typeof shown === "object" && other === shown.effective_output ? shown : null, previewKeys ? previewKeys.split("\u0000") : []), [shown, previewKeys]);
   const commandKeys = useRef<((event: KeyboardEvent) => boolean) | null>(null);
+  // The command list (">") stands in for the results: ⌘1–9 has no row then.
+  const commandsShown = useRef(false);
+  // The citation line's tokens, for ⌘↓ in Search and the citation's commands in More.
+  const citationLine = useRef<CitationLineActions | null>(null);
+  // ⌘1–9 picks a row in view, as a double-click on it does, only while the list is shown.
+  const numbered = useShownRows(resultArea, results);
   const keys = usePickerKeys({
     api, pickerSession, menus, source, results, showCitations, copyChosen: rows.copyChosen, actions, pointer, followKeyboard,
-    quitAfterSaving, commandKeys,
+    quitAfterSaving, commandKeys, citationLine, findOpen: destination.findOpen,
+    pick: (number) => {
+      const index = numbered.first + number - 1, record = results[index];
+      // The list must be drawn: reading a PDF folds it away.
+      const drawn = resultArea.current?.checkVisibility?.() ?? true;
+      return ready && showCitations && drawn && !commandsShown.current && number <= numbered.count && record ? () => {
+        if (destination.findOpen) source.openReference(record.id, false);
+        else rows.onChoose(index, record, "copy");
+      } : null;
+    },
     onEmptyEnter: () => {
       if (chosen.length > 0 || searchPending || state.pendingCopy) return;
       delights.dismiss();
       emptyFeedback.refuse(text(library?.state === "loading" || library?.state === "reloading" ? "delight-loading" : !library?.has_snapshot ? "delight-no-library" : "delight-empty"));
     },
   });
-  useWindowSizeStatus(api.onWindowSizeSaved, report);
+  const { onWindowSizeSaved } = api;
+  useEffect(() => {
+    let current = true;
+    const subscription = onWindowSizeSaved?.((saved) => { if (current) report("windowSize", !saved); });
+    void subscription?.catch(() => { if (current) report("windowSize"); });
+    return () => { current = false; void subscription?.then((stop) => stop()).catch(() => {}); };
+  }, [onWindowSizeSaved, report]);
   // ">" in the search lists commands by name (docs/design/picker.md, Command search).
   const commands = useCommandSearch({
     query: showCitations ? query : "", run: keys.run, setQuery,
-    source: api.openLibrarySource && source.sourceAvailable ? source.sourceAction.label : null, changeLast: actions.canChangeLast,
+    source: source.sourceAvailable ? source.sourceAction.label : null, changeLast: actions.canChangeLast,
   });
+  commandsShown.current = commands.mode;
   // Peek (⌘Y): the highlighted reference's full details under its row, as Quick Look.
   const [peeked, setPeeked] = useState<string | null>(null);
   const peekRecord = !commands.mode && showCitations ? results[active] : undefined;
@@ -220,14 +252,26 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
 
   return (
     <PickerShown value={state.shown}>
-    <main
+    <Frame
       data-selection={showCitations && selected.size > 0 || undefined}
-      onFocus={(e) => setSearchFocused(e.target === input.current)}
-      onBlur={() => setSearchFocused(false)}
       onScrollCapture={pointer.resetHover}
-    >
-      <PickerHeader
-        hidden={welcomeShown} pinned={pinned} onTogglePin={() => { keys.run("pin"); focusHome(); }}
+      notice={[
+        // What passes (Undo, a remark, an update) first: it goes by itself.
+        <PickerNotices key="passing" state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? shorthand.hint ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && !shorthand.hint && delights.passive} onRemarkPassed={() => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else if (shorthand.hint) shorthand.dismiss(); else delights.dismiss(); }} />,
+        ...notices({ projectNotice: destination.readProblem ?? project.notice, editorNotice: editor.label, library, failures: { ...failures, recentHistory: recents.forgetFailed },
+          error, copyError: inspector.panel ? null : copyError, copied, missing: ready ? list?.missing : undefined,
+          confirmation: state.copyNotice, onDismissCopied: () => send({ type: "dismiss" }) }),
+        bibliographyCheckNotice({ refusal: projectRefusal, problem: projectProblem,
+          onRetry: project.retry ? () => { cancelCopy(); project.retry?.(); } : undefined,
+          onLocate: project.choose ? () => { cancelCopy(); project.choose?.(); } : undefined,
+          disabled: !destination.ready || destination.saving || !ready || searchPending }),
+        shortcut?.error && <LineNotice key="shortcut">
+          {`${shortcut.registered ? say("picker-shortcut-not-used", { reason: fullStop(shortcut.error) })
+            : say("picker-shortcut-unavailable", { shortcut: shortcut.shortcut, reason: fullStop(shortcut.error) })}${shortcut.desktop && !welcomeShown ? ` ${shortcut.desktop.guidance}` : ""}`}
+        </LineNotice>,
+      ].filter(Boolean)}
+      search={<PickerHeader
+        hidden={welcomeShown} yours={preferences.format} preview={formatPreview}
         onResetPosition={api.resetWindowPosition}
         inputRef={input} query={query}
         pageToken={<PickerPageToken
@@ -236,52 +280,40 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         onQueryChange={(value) => { delights.dismiss(); pointer.resetHover(); setQuery(value); }}
         expanded={results.length > 0 && showCitations}
         activeDescendant={commands.mode ? commands.list.length ? `command-${commands.active}` : undefined : showCitations && results[active] ? `result-${active}` : undefined}
-        format={format} formatButtonRef={formatButtonRef}
+        format={format} formatLabel={destination.formatLabel} formatButtonRef={formatButtonRef}
         app={destination.app} formatSource={destination.source} formatPick={destination.pick}
-        writingProject={destination.writingProject} onWritingProjects={api.writingProjects && !editor.label ? menus.openProjects : undefined}
+        writing={destination.writing} usualFormat={destination.usualFormat} onUseUsual={destination.useUsual} onWritings={!editor.label ? menus.openProjects : undefined}
         onFormatOpenChange={onFormatOpenChange}
         pasteChoices={destination.pasteChoices}
         onPasteChange={(paste) => { const asked = state.pendingCopy?.question === "open"; send({ type: "question", answer: "cancel" }); destination.choosePaste(paste, asked); }}
-        formatDisabled={!destination.ready || destination.saving}
+        formatDisabled={!destination.canChooseFormat}
         showFormat={!libraryChoices && (library === null || Boolean(library?.has_snapshot))}
         styles onFormatChange={chooseFormat}
-      />
-      <PickerScroll onFileDrag={api.onFileDrag} presentation={state.visibility} citationProblem={listProblem} citationProblemIdentity={listProblem ? formatted?.request : undefined}
-        contextNotice={contextNotice} contextNoticeIdentity={projectRefusal ? formatted?.request : undefined}>
-        {shortcut?.error && <div className="notices">
-          <p role="status">
-            {shortcut.registered ? say("picker-shortcut-not-used", { reason: fullStop(shortcut.error) })
-              : say("picker-shortcut-unavailable", { shortcut: shortcut.shortcut, reason: fullStop(shortcut.error) })}
-            {shortcut.desktop && !welcomeShown && ` ${shortcut.desktop.guidance}`}
-          </p>
-        </div>}
-        <ProjectCheckNotice refusal={projectRefusal} problem={projectProblem}
-          onRetry={project.retry ? () => { cancelCopy(); project.retry?.(); } : undefined}
-          onLocate={project.choose ? () => { cancelCopy(); project.choose?.(); } : undefined}
-          disabled={!destination.ready || destination.saving || !ready || searchPending} />
-        <Notices projectNotice={destination.readProblem ?? project.notice} editorNotice={editor.label} densityAnnouncement={preferences.densityAnnouncement} library={library} failures={{ ...failures, recentHistory: recents.forgetFailed }}
-          error={error} copyError={inspector.panel ? null : copyError} copied={copied} missing={ready ? list?.missing : undefined}
-          citationProblem={listProblem} confirmation={state.copyNotice}
-          onDismissCopied={() => send({ type: "dismiss" })} />
+      />}
+    >
+      <PickerScroll onFileDrag={api.onFileDrag} presentation={state.visibility}>
         <PickerResults
           api={api} libraryState={libraryState} searchState={searchState} state={state} source={source} scope={scope}
-          shortcut={shortcut} perform={perform} focusHome={focusHome} pointer={pointer} rows={rows}
+          shortcut={shortcut} perform={perform} focusHome={focusHome} pointer={pointer} rows={{ ...rows, onChoose: (index, reference, action) => {
+            if (destination.findOpen && action === "copy" && searchState.ready) source.openReference(reference.id, false);
+            else rows.onChoose(index, reference, action);
+          } }}
           density={density} resultArea={resultArea} setQuery={setQuery} peck={delights.peck}
-          project={styleOf(format) === null ? project.status : null} commands={commands.mode ? commands : null} />
+          project={styleOf(format) === null ? project.status : null} commands={commands.mode ? commands : null} numbered={numbered} />
       </PickerScroll>
       {/* Keep the selection live region mounted when choices remove citation controls. */}
       <PickerCitationShelf
         state={state} send={send} showCitations={showCitations && !commands.mode} results={results} output={output} chosen={shownChoice}
-        changeReference={rows.changeReference} copyChosen={rows.copyChosen} libraryOf={scope.libraryOf} format={format} input={input} sourceState={source} inspector={inspector}
+        changeReference={rows.changeReference} copyChosen={rows.copyChosen} libraryOf={scope.libraryOf} format={format} input={input} inspector={inspector} citationLine={citationLine}
         deliverable={!searchPending && preferences.ready && library?.state !== "reloading" && destination.ready && !destination.saving} />
       <PickerStatusFooter
         copyProblem={projectRefusal}
-        api={api} library={library} scope={scope} sourceState={source} menus={menus} actions={actions} run={keys.run}
-        copyChosen={rows.copyChosen} destination={destination} recents={recents} preferences={preferences}
-        operations={operations} altHeld={altHeld} notices={<PickerNotices state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && delights.passive} onRemarkPassed={() => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else delights.dismiss(); }} />} emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
+        api={api} library={library} scope={scope} sourceState={source} menus={menus} actions={actions} run={keys.run} citationLine={citationLine}
+        copyChosen={rows.copyChosen} recents={recents}
+        operations={operations} altHeld={altHeld}  emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
         project={project} highlighted={ready && styleOf(format) === null ? results[active] : undefined}
-        cancelCopy={cancelCopy} command={commands.footer} />
-      <PickerOverlays api={{ ...api, editWritingProject: destination.editProject }} format={format} style={styleOf(format)} menus={menus} bindings={actions.bindings} />
+        command={commands.footer} peek={peekRecord ? () => setPeeked(idKey(peekRecord.id)) : null} />
+      <PickerOverlays api={{ ...api, editWriting: destination.editWriting! }} format={format} style={styleOf(format)} menus={menus} bindings={actions.bindings} />
       <HeldKeys />
       {peekRecord && <PeekCard triggerRef={peekAnchor} open={peekOpen} onClose={() => setPeeked(null)}
         label={say("peek-label", { title: peekRecord.title || peekRecord.key })} title={peekRecord.title || peekRecord.key} byline={peekRecord.authors}
@@ -291,7 +323,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
           ...rowWords.itemType(peekRecord.item_type) ? [{ label: say("peek-type"), value: rowWords.itemType(peekRecord.item_type)! }] : [],
           { label: say("peek-key"), value: peekRecord.key, mono: true },
         ]} />}
-    </main>
+    </Frame>
     </PickerShown>
   );
 }

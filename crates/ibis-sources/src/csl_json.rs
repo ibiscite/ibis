@@ -1,11 +1,58 @@
 //! CSL-JSON 1.0.2 ingestion; malformed fields warn and locations stay private.
 //! Field vocabulary: citation-style-language/schema v1.0.2, schemas/input/csl-data.json.
+use crate::candidates::Candidates;
 use crate::{ParsedLibrary, SourceError, SourceWarning, WarningCause, WarningCode};
 use ibis_core::contract::{CitationKey, CitationKeySource, ItemRef, LibraryId, Record};
 use serde_json::Value;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::BTreeMap;
+
+/// CSL-JSON records a caller sent, requiring an `id` before applying the file
+/// reader's rules without touching a file. A `file` field is dropped unread:
+/// no path or `file:` URL is ever probed. Each warning's `line` is the record's place in
+/// the list, counted from one. Private links are removed as they are for files.
+pub fn request_records(library: &LibraryId, records: &[Value]) -> Result<RequestRecords, SourceError> {
+    // One record a line, after one opening line: each record's line is its place plus one.
+    let mut text = String::from("[\n");
+    for (index, record) in records.iter().enumerate() {
+        if index > 0 {
+            text.push_str(",\n");
+        }
+        text.push_str(&serde_json::to_string(record).map_err(|_| SourceError::InvalidData)?);
+    }
+    text.push_str("\n]");
+    // Even when no record is kept, each refusal names its record.
+    let parsed = read_str(library, &text, Input::Request)?;
+    Ok(RequestRecords {
+        records: parsed.records,
+        warnings: parsed
+            .warnings
+            .into_iter()
+            .map(|warning| SourceWarning {
+                line: warning.line.map(|line| line.saturating_sub(1)),
+                ..warning
+            })
+            .collect(),
+    })
+}
+
+/// What [`request_records`] read: the records it kept and why any were not.
+#[derive(Debug, Clone, Default)]
+pub struct RequestRecords {
+    pub records: Vec<Record>,
+    pub warnings: Vec<SourceWarning>,
+}
 
 pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary, SourceError> {
+    read_str(library, text, Input::Library)
+}
+
+#[derive(Clone, Copy)]
+enum Input {
+    Library,
+    Request,
+}
+
+fn read_str(library: &LibraryId, text: &str, input: Input) -> Result<ParsedLibrary, SourceError> {
     use serde_json::value::RawValue;
     if text.trim().is_empty() {
         return Ok(ParsedLibrary::default());
@@ -43,19 +90,24 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
     let nonempty = !items.is_empty();
     let spans = item_spans(text);
     let mut result = ParsedLibrary::default();
-    // Each `id` with the line of its first record, and those seen again.
-    let mut seen = HashMap::<String, Option<usize>>::new();
-    let mut repeated = HashSet::new();
-    for (index, raw) in items.into_iter().take(crate::MAX_LIBRARY_RECORDS).enumerate() {
+    let candidates = Candidates::collect(
+        items.into_iter().take(crate::MAX_LIBRARY_RECORDS).enumerate(),
+        |(index, raw)| {
+            let line = spans.get(index).map(|(_, _, line)| *line);
+            let fields = object_fields(raw.get());
+            let native_ids = fields
+                .as_ref()
+                .map(|fields| native_ids(fields, input))
+                .unwrap_or_default();
+            let claims = native_ids.iter().map(|id| (format!("record:{id}"), line)).collect();
+            (claims, (raw, line, fields, native_ids))
+        },
+    );
+    let mut duplicates = Vec::new();
+    for (raw, line, fields, native_ids) in candidates.finish(&mut result.duplicate_keys, &mut duplicates) {
         let warnings_before = result.warnings.len();
-        let line = spans.get(index).map(|(_, _, line)| *line);
         let warning = |code| SourceWarning::at(code, line);
-        let because = |code, cause, field: &str| warning(code).because(cause, Some(field));
-        if raw.get().len() > 1024 * 1024 {
-            result.warnings.push(warning(WarningCode::WorkLimit));
-            continue;
-        }
-        let Ok(mut fields) = object_fields(raw.get()) else {
+        let Some(mut fields) = fields.ok().and_then(unique_fields) else {
             result
                 .warnings
                 .push(warning(WarningCode::Syntax).because(WarningCause::Unreadable, None));
@@ -66,15 +118,27 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
                 .get(name)
                 .and_then(|value| serde_json::from_str::<Value>(value.get()).ok())
         };
-        let id = fields.get("id").and_then(|value| id_string(value));
-        let numeric_native = fields
-            .get("id")
-            .filter(|value| {
+        let label = ["citation-key", "title"].into_iter().find_map(|name| {
+            scalar(name).and_then(|value| {
                 value
-                    .get()
-                    .starts_with(|character: char| character.is_ascii_digit() || character == '-')
+                    .as_str()
+                    .filter(|value| !value.trim().is_empty())
+                    .map(str::to_owned)
             })
-            .map(|value| value.get().to_owned());
+        });
+        let warning = |code| SourceWarning::at(code, line).for_entry(label.as_deref());
+        let because = |code, cause, field: &str| warning(code).because(cause, Some(field));
+        let id = fields.get("id").and_then(|value| id_string(value));
+        // Only library files may use a citation key in place of an ID.
+        if matches!(input, Input::Request) && id.is_none() {
+            let cause = if fields.contains_key("id") {
+                WarningCause::Value
+            } else {
+                WarningCause::MissingField
+            };
+            result.warnings.push(because(WarningCode::Syntax, cause, "id"));
+            continue;
+        }
         if fields.contains_key("id") && id.is_none() {
             result
                 .warnings
@@ -89,17 +153,20 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
         }
         // A record's `id` names it inside this file; only `citation-key` is a key.
         // A number too large to stay exact can stand in only beside a real key.
-        let native = id.or_else(|| {
-            explicit
-                .as_ref()
-                .map(|key| numeric_native.unwrap_or_else(|| key.clone()))
-        });
-        let Some(native) = native else {
+        let Some(native) = native_ids.into_iter().next() else {
             result
                 .warnings
                 .push(because(WarningCode::Syntax, WarningCause::MissingField, "id"));
             continue;
         };
+        let item = ItemRef {
+            library: library.clone(),
+            key: format!("record:{native}"),
+        };
+        if raw.get().len() > 1024 * 1024 {
+            result.warnings.push(warning(WarningCode::WorkLimit));
+            continue;
+        }
         let kind = scalar("type");
         if native.trim().is_empty()
             || native.chars().any(char::is_control)
@@ -119,24 +186,6 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
             result.warnings.push(warning(WarningCode::WorkLimit));
             continue;
         }
-        // Ibis cannot know which record a repeated `id` means, whether written
-        // `1` or `"1"`, so none is kept. The first has its warning added below.
-        if seen.contains_key(&native) {
-            result.warnings.push(SourceWarning {
-                code: WarningCode::DuplicateKey,
-                line,
-                key: Some(native.clone()),
-                cause: None,
-                field: None,
-            });
-            repeated.insert(format!("record:{native}"));
-            continue;
-        }
-        seen.insert(native.clone(), line);
-        let item = ItemRef {
-            library: library.clone(),
-            key: format!("record:{native}"),
-        };
         if let Some(file) = fields.remove("file") {
             if let Ok(file) = serde_json::from_str::<String>(file.get()) {
                 result.attachments.push((item.clone(), file, line));
@@ -201,57 +250,80 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
             identifiers: vec![],
         });
     }
-    if !repeated.is_empty() {
-        result.records.retain(|record| !repeated.contains(&record.id.key));
-        result.attachments.retain(|(item, ..)| !repeated.contains(&item.key));
-        for (native, line) in seen {
-            if repeated.contains(&format!("record:{native}")) {
-                result.warnings.push(SourceWarning {
-                    code: WarningCode::DuplicateKey,
-                    line,
-                    key: Some(native),
-                    cause: None,
-                    field: None,
-                });
-            }
-        }
-    }
-    if nonempty && result.records.is_empty() && repeated.is_empty() {
+    // A file in which no record could be read is not a library; requests keep
+    // their diagnostics so the engine can explain why it refuses every record.
+    if matches!(input, Input::Library) && nonempty && result.records.is_empty() && duplicates.is_empty() {
         return Err(SourceError::InvalidData);
     }
+    result.warnings.extend(duplicates);
     if limited {
         result.cut_short = true;
         result.warnings.push(SourceWarning {
             code: WarningCode::WorkLimit,
             line: spans.get(crate::MAX_LIBRARY_RECORDS).map(|(_, _, line)| *line),
             key: None,
+            entry: None,
             cause: None,
             field: None,
         });
     }
     Ok(result)
 }
-fn object_fields(text: &str) -> serde_json::Result<BTreeMap<String, &serde_json::value::RawValue>> {
-    struct UniqueFields;
-    impl<'de> serde::de::Visitor<'de> for UniqueFields {
-        type Value = BTreeMap<String, &'de serde_json::value::RawValue>;
+type ObjectFields<'a> = BTreeMap<String, Vec<&'a serde_json::value::RawValue>>;
+
+fn object_fields(text: &str) -> serde_json::Result<ObjectFields<'_>> {
+    struct Fields;
+    impl<'de> serde::de::Visitor<'de> for Fields {
+        type Value = ObjectFields<'de>;
         fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            formatter.write_str("an object with unique property names")
+            formatter.write_str("an object")
         }
         fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
-            let mut fields = BTreeMap::new();
+            let mut fields = ObjectFields::new();
             while let Some((name, value)) = map.next_entry::<String, &serde_json::value::RawValue>()? {
-                if fields.insert(name, value).is_some() {
-                    return Err(serde::de::Error::custom("duplicate property"));
-                }
+                fields.entry(name).or_default().push(value);
             }
             Ok(fields)
         }
     }
     let mut parser = serde_json::Deserializer::from_str(text);
-    let result = serde::Deserializer::deserialize_map(&mut parser, UniqueFields)?;
+    let result = serde::Deserializer::deserialize_map(&mut parser, Fields)?;
     parser.end()?;
     Ok(result)
+}
+
+fn unique_fields(fields: ObjectFields<'_>) -> Option<BTreeMap<String, &serde_json::value::RawValue>> {
+    fields
+        .into_iter()
+        .map(|(name, values)| (values.len() == 1).then(|| (name, values[0])))
+        .collect()
+}
+
+/// Read every identity-bearing property, even when another property repeats.
+fn native_ids(fields: &ObjectFields<'_>, input: Input) -> Vec<String> {
+    let keys: Vec<String> = fields
+        .get("citation-key")
+        .into_iter()
+        .flatten()
+        .filter_map(|value| serde_json::from_str::<String>(value.get()).ok())
+        .filter(|key| !key.trim().is_empty())
+        .collect();
+    let mut ids = Vec::new();
+    for value in fields.get("id").into_iter().flatten() {
+        if let Some(id) = id_string(value) {
+            ids.push(id);
+        } else if matches!(input, Input::Library) && !keys.is_empty() {
+            if value.get().starts_with(|c: char| c.is_ascii_digit() || c == '-') {
+                ids.push(value.get().to_owned());
+            } else {
+                ids.extend(keys.iter().cloned());
+            }
+        }
+    }
+    if !fields.contains_key("id") && matches!(input, Input::Library) {
+        ids.extend(keys);
+    }
+    ids
 }
 
 #[derive(Clone, Copy)]
@@ -561,6 +633,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn request_records_require_ids_before_the_library_key_fallback() -> Result<(), SourceError> {
+        let parsed = request_records(
+            &LibraryId::digest(b"invented-csl"),
+            &[
+                serde_json::json!({"id": "valid", "type": "book"}),
+                serde_json::json!({"type": "book", "citation-key": "missing"}),
+            ],
+        )?;
+        assert_eq!(parsed.records.len(), 1);
+        assert_eq!(
+            parsed.warnings,
+            [SourceWarning::at(WarningCode::Syntax, Some(2))
+                .because(WarningCause::MissingField, Some("id"))
+                .for_entry(Some("missing"))]
+        );
+        Ok(())
+    }
+
+    #[test]
     fn warnings_name_only_known_csl_fields() -> Result<(), SourceError> {
         let parsed = load_str(
             &LibraryId::digest(b"invented-csl"),
@@ -572,8 +663,12 @@ mod tests {
         assert_eq!(
             parsed.warnings,
             [
-                SourceWarning::at(WarningCode::Field, Some(2)).because(WarningCause::UnknownField, None),
-                SourceWarning::at(WarningCode::Field, Some(2)).because(WarningCause::Value, Some("publisher")),
+                SourceWarning::at(WarningCode::Field, Some(2))
+                    .because(WarningCause::UnknownField, None)
+                    .for_entry(Some("Invented book")),
+                SourceWarning::at(WarningCode::Field, Some(2))
+                    .because(WarningCause::Value, Some("publisher"))
+                    .for_entry(Some("Invented book")),
             ]
         );
         Ok(())

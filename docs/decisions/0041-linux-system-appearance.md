@@ -1,19 +1,10 @@
-# 0041 System appearance follows the Linux desktop's dark preference
+# 0041 System appearance on Linux
 
-2026-11-07 (design pass 2, from the maintainer's Linux retest on #1731). On
-Linux, Appearance › System follows the desktop's dark preference. Before, Ibis
-stayed light under `GTK_THEME=Adwaita:dark`.
+Appearance › System follows the desktop portal's `org.freedesktop.appearance`
+`color-scheme` value of 1 or a GTK theme whose name/variant says dark, such as
+`Adwaita:dark` or `Breeze-Dark`. WebKitGTK does not derive its prefer-dark
+setting from these, so `desktop_theme.rs` reads them off the main thread at
+startup, within two seconds, and applies the app theme.
 
-- **What counts as dark:**
-  - the desktop portal's colour scheme (`org.freedesktop.appearance
-    color-scheme` is 1, prefer dark), which GNOME and KDE set;
-  - or a GTK theme whose variant or name says dark (`GTK_THEME=Adwaita:dark`,
-    `Breeze-Dark`).
-- **How:** WebKitGTK takes `prefers-color-scheme` from GTK's prefer-dark
-  setting, which neither of those changes. So Ibis reads them once at start,
-  off the main thread and within two seconds, and sets the app's theme to dark
-  when either says so (`desktop_theme.rs`).
-- **Light and Dark win.** Choosing Light or Dark in Appearance still sets
-  `color-scheme` on the page, so the desktop only decides System.
-- **Not yet:** a change of desktop preference while Ibis runs takes effect at
-  the next start. Following it live waits until someone needs it.
+An explicit Light or Dark choice wins. Changes to the desktop preference take
+effect at the next start.

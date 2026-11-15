@@ -51,8 +51,8 @@ test("the built scenario list renders, switches and reopens without Tauri or net
       expect(window.document.documentElement.dataset.appearance).toBe(theme);
       expect(window.document.querySelector("[src], [href]")).toBeNull();
       if (scenario.startsWith("settings-")) {
-        expect(host.querySelector('[aria-current="page"]')?.textContent?.toLowerCase()).toContain({ look: "appearance" }[scenario.slice(9)] ?? scenario.slice(9));
-        expect(host.querySelector(scenario === "settings-shortcuts" ? ".ui-shortcut-table" : ".ui-settings-row")).not.toBeNull();
+        expect(host.querySelector('[aria-current="page"]')?.textContent?.toLowerCase()).toContain({ look: "appearance", details: "general", newer: "general" }[scenario.slice(9)] ?? scenario.slice(9));
+        expect(host.querySelector(scenario === "settings-shortcuts" ? ".ui-shortcut-table" : ".ui-row")).not.toBeNull();
       } else if (scenario === "notice") {
         expect(host.querySelector('.copy-receipt[role="status"]')?.textContent).toContain("Copied");
         expect(host.querySelector("code")?.textContent).toBe("[Aster, 2026]");
@@ -67,6 +67,7 @@ test("the built scenario list renders, switches and reopens without Tauri or net
       }
       else if (scenario === "error") expect(host.textContent).toContain("Can’t open invented.bib");
       else if (scenario === "loading") expect(host.textContent).toContain("Opening invented.bib");
+      else if (scenario.startsWith("unknown-app")) expect(host.textContent).toContain("could not tell which app");
       else if (scenario === "tokens") for (const token of ["--accent", "--space-8", "--r-large", "--r-small"]) expect(host.textContent).toContain(token);
       else if (scenario === "shortcuts") expect(window.document.querySelector('[role="dialog"]')).not.toBeNull();
       else if (scenario === "parts") for (const part of ["Button: primary", "Settings rows", "Marks and icons"]) expect(host.textContent).toContain(part);
@@ -84,8 +85,22 @@ test("the built scenario list renders, switches and reopens without Tauri or net
       }
       else {
         expect(host.textContent).toContain("Invented reference 0");
-        if (scenario === "more") expect(window.document.querySelector('[role="menu"][aria-label="More"]')).not.toBeNull();
-        if (scenario === "format-menu") expect(window.document.querySelector('[role="menuitemradio"]')).not.toBeNull();
+        if (scenario === "more") expect(window.document.querySelector('.ui-palette [role="option"]')).not.toBeNull();
+        if (scenario === "format-menu") expect(window.document.querySelector('#format-palette-pandoc, .ui-palette [aria-current="true"]')).not.toBeNull();
+        if (["more", "format-menu"].includes(scenario)) {
+          const dialog = window.document.querySelector('[role="dialog"]');
+          expect(dialog?.getAttribute("aria-labelledby")).toBeTruthy();
+          expect(dialog?.querySelector(".ui-view-back")?.hasAttribute("title")).toBe(false);
+          expect(dialog?.querySelector("h2")).toBeNull();
+        }
+        if (["library-selector", "library-menu"].includes(scenario)) {
+          expect(host.querySelector(".library-status-trigger")?.textContent).toBe("Zotero");
+          expect(host.querySelector(".library-status-trigger")?.getAttribute("title")).toContain("190 references");
+          if (scenario === "library-menu") expect(window.document.querySelector("#library-menu")?.textContent).toContain("Field Notes");
+        }
+        if (scenario === "reference-details") expect(window.document.querySelector('.ui-popover [role="dialog"]')?.textContent).toContain("Page");
+        if (scenario === "show-as-menu") expect([...window.document.querySelectorAll('[role="menuitemradio"]')].some((item) => item.textContent.includes("[-@synthetic0]"))).toBe(true);
+        if (scenario === "reader") expect(host.textContent).toContain("Hide PDF");
       }
     });
   };

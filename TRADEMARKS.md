@@ -1,6 +1,28 @@
 # Name and logo
 
-The name "Ibis" for this citation tool and its logo identify the official project. The code is free software; this policy only prevents confusion.
+The name "Ibis" and its logo identify the official citation tool and are owned
+by Diyanko Bhowmik. The code is free software.
+
+## How to recognise official Ibis
+
+- GitHub organisation: [ibiscite](https://github.com/ibiscite).
+- Website: [ibiscite.org](https://ibiscite.org).
+- Homebrew tap: `ibiscite/tap`.
+- App identifier: `com.ibiscite.ibis`.
+
+[GitHub release downloads](https://github.com/ibiscite/ibis/releases) include
+build provenance. Verify a downloaded file with:
+
+```sh
+gh attestation verify <file> --repo ibiscite/ibis
+```
+
+Updates are signed; the app checks them against its built-in public keys.
+The stable public key lives at `plugins.updater.pubkey` in
+[tauri.conf.json](apps/desktop/src-tauri/tauri.conf.json). Stable and Nightly
+have [separate update keys](RELEASING.md#update-keys).
+
+## Using the name
 
 You may, without asking:
 
@@ -8,8 +30,13 @@ You may, without asking:
 - Redistribute unmodified official releases under the same name.
 - Package Ibis for a Linux distribution or package manager with only packaging changes needed for that platform.
 
-Please rename if you distribute a modified version with different functionality (a fork), so users know it is not the official project. Credit like "based on Ibis" is welcome.
+For extensions, "X for Ibis" is fine; "Ibis X" suggests an official product.
+Modified builds with different functionality use another name and icon.
+Credit like "based on Ibis" is welcome.
 
-Do not use the name or logo in a way that suggests endorsement or official status you do not have, or for paid products that imply they are Ibis.
+Present your own products under their own names. Endorsement and official
+status come from the Ibis project. In package listings, "Ibis (ibiscite)"
+helps people recognise the project.
 
-Questions: open an issue.
+For name and logo questions, contact
+[diyanko@ibiscite.org](mailto:diyanko@ibiscite.org).

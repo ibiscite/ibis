@@ -7,6 +7,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod bindings;
+mod cli_install;
 mod copy;
 mod delights;
 #[cfg(any(target_os = "linux", test))]
@@ -14,7 +15,10 @@ mod desktop_theme;
 mod destination;
 mod diagnostics;
 mod editor_endpoint;
+mod errors;
 mod feedback;
+mod format_settings;
+mod instance;
 mod library;
 mod login_item;
 #[cfg(target_os = "macos")]
@@ -38,67 +42,32 @@ mod project;
 mod row_context;
 mod session_references;
 mod settings_backup;
+#[cfg(test)]
+#[path = "../../../../crates/ibis-engine/tests/support/settings.rs"]
+mod settings_fixture;
 mod settings_window;
 mod setup;
 mod shortcut_setting;
 mod sizing;
 mod tray;
 mod updater;
-mod writing_projects;
+mod writings;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::atomic::Ordering;
 
-use ibis_core::settings;
+use ibis_engine::settings;
 use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_global_shortcut::ShortcutState;
 
 use crate::diagnostics::{NativeIssue, application_message, checked, report};
-use crate::library::{Library, LoadRequests, PreviewRequests, SearchRequests, Source, start_open};
+use crate::library::{Library, LoadRequests, SearchRequests, Source, start_open};
 use crate::picker::{
-    ChooserOpen, Pinned, ShortcutStatus, dismiss_picker, hides_on_blur, show_picker, start_shortcut, toggle_picker,
+    ChooserOpen, Pinned, ShortcutStatus, dismiss_picker, hides_on_blur, start_shortcut, toggle_picker,
 };
 use crate::preferences::SettingsFile;
 use crate::tray::create_tray;
-
-#[derive(Debug, PartialEq, Eq)]
-enum InstanceAction {
-    Show,
-    Hide,
-    Ignore,
-}
-
-fn is_toggle(args: &[String]) -> bool {
-    matches!(args, [_, command] if command == "toggle") || ibis_core::toggle::receipt_path(args).is_some()
-}
-
-/// Only a macOS toggle shares the shortcut's main thread; see the callback.
-fn acts_on_main_thread(args: &[String], macos: bool) -> bool {
-    macos && is_toggle(args)
-}
-
-fn act_on_instance(app: &tauri::AppHandle, args: &[String]) {
-    let visible = || {
-        app.get_webview_window("main")
-            .and_then(|window| checked(window.is_visible(), NativeIssue::Visibility))
-    };
-    match instance_action(args, visible) {
-        InstanceAction::Show => show_picker(app),
-        InstanceAction::Hide => dismiss_picker(app),
-        InstanceAction::Ignore => {}
-    }
-}
-
-fn instance_action(args: &[String], visible: impl FnOnce() -> Option<bool>) -> InstanceAction {
-    if args.iter().skip(1).any(|arg| arg == login_item::AT_LOGIN_ARG) {
-        InstanceAction::Ignore
-    } else if is_toggle(args) && visible() == Some(true) {
-        InstanceAction::Hide
-    } else {
-        InstanceAction::Show
-    }
-}
 
 fn main() {
     // Answer `ibis toggle` first, whether this copy opens the picker or hands
@@ -127,24 +96,7 @@ fn main() {
     let builder = builder.manage(initial_panel);
     #[cfg(target_os = "windows")]
     let builder = builder.manage(picker::FocusChanges::default());
-    let builder = builder
-        // Must be registered first: a second launch brings the running picker forward.
-        // A login entry starting a second copy leaves the running picker alone.
-        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            // macOS: the shortcut acts on the main thread, so a toggle decides
-            // and acts there too, or the two could interleave and lose one.
-            // Elsewhere, make the instance decision in the callback;
-            // show_picker serializes native preparation and presentation.
-            if acts_on_main_thread(&args, cfg!(target_os = "macos")) {
-                let handle = app.clone();
-                report(
-                    app.run_on_main_thread(move || act_on_instance(&handle, &args)),
-                    NativeIssue::PickerEvent,
-                );
-            } else {
-                act_on_instance(app, &args);
-            }
-        }))
+    let builder = instance::install(builder)
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build());
@@ -166,13 +118,12 @@ fn main() {
         .manage(LoadRequests::default())
         .manage(SearchRequests::default())
         .manage(tray::SearchRequest::default())
-        .manage(PreviewRequests::default())
         .manage(setup::Offered::default())
         .manage(ChooserOpen::default())
         .manage(settings_backup::PendingRestore::default())
         .manage(row_context::RowContext::default())
         .manage(project::ProjectBibliography::default())
-        .manage(writing_projects::Runtime::default())
+        .manage(writings::Runtime::default())
         .manage(editor_endpoint::Pending::default())
         .manage(editor_endpoint::Endpoint::default())
         .manage(session_references::SessionReferences::default())
@@ -284,10 +235,13 @@ fn main() {
             ibis_engine::identity::use_saved_key(true);
             let settings_path = app.path().app_config_dir()?.join("settings.json");
             let loaded = settings::load(&settings_path);
+            let interface = loaded.interface().unwrap_or_default();
+            let cites = loaded.cites().ok();
+            library::engine_library::warm_formatter(cites.and_then(|settings| settings.portable.output.clone()));
             app.manage(SettingsFile::new(settings_path.clone()));
-            let remember = loaded.problem.is_none() && loaded.settings.recent_citations.unwrap_or(true);
+            let remember = cites.is_some_and(|settings| settings.portable.recent_citations.unwrap_or(true));
             session_references::manage(app.handle(), &settings_path, remember);
-            app.state::<sizing::Sizing>().load(&loaded.settings);
+            app.state::<sizing::Sizing>().load(&interface);
             if !sizing::start(app.handle()) {
                 return Err("the picker settings worker could not start".into());
             }
@@ -346,24 +300,30 @@ fn main() {
                 Ok(Err(error)) => report(Err::<(), _>(error), NativeIssue::TrayCreation),
                 Err(_) => application_message("the menu bar item is not available on this system"),
             }
-            tray::show_in_menu_bar(app.handle(), loaded.settings.menu_bar.unwrap_or(true), 0);
-            start_shortcut(app.handle(), loaded.settings.shortcut.here());
+            tray::show_in_menu_bar(app.handle(), interface.menu_bar.unwrap_or(true), 0);
+            start_shortcut(app.handle(), interface.shortcut.as_deref());
             // After the tray, so the menu item shows the saved choice.
-            updater::start(app.handle(), loaded.settings.update_checks, loaded.problem.is_none());
+            updater::start(app.handle(), interface.update_checks, loaded.problem.is_none());
             // The library from settings; IBIS_LIBRARY overrides it for development.
-            project::start(app.handle(), loaded.settings.project_bibliography.clone());
             project::watch_openings(app.handle());
-            editor_endpoint::start(app.handle(), loaded.settings.editor_endpoint.clone());
+            editor_endpoint::start(
+                app.handle(),
+                cites.and_then(|settings| settings.device.editor_endpoint.clone()),
+            );
             let library = std::env::var_os("IBIS_LIBRARY")
                 .map(|path| Source::File(PathBuf::from(path)))
-                .or_else(|| loaded.settings.library.clone().map(Source::from));
+                .or_else(|| {
+                    cites
+                        .and_then(|settings| settings.portable.library.clone())
+                        .map(Source::from)
+                });
             if let Some(source) = library {
                 // Opened in the background so the window appears at once.
                 start_open(app.handle(), source, false);
             }
             // With no menu bar item, opening Ibis opens Settings, as reopening does.
             #[cfg(target_os = "macos")]
-            if loaded.settings.menu_bar == Some(false) && !login_item::launched_at_login(std::env::args_os()) {
+            if interface.menu_bar == Some(false) && !login_item::launched_at_login(std::env::args_os()) {
                 panel::cancel_initial_presentation(app.handle());
                 settings_window::open(app.handle(), None);
             }
@@ -375,6 +335,10 @@ fn main() {
             {
                 picker::present_window(&window, initial_picker.1, initial_picker_owner);
             }
+            // Install after startup effects: a newer file edit must never be
+            // undone by an older initial tray, shortcut or recording value.
+            let watching = app.state::<SettingsFile>().watch(app.handle().clone());
+            app.manage(std::sync::Mutex::new(watching));
             Ok(())
         });
     #[cfg(target_os = "macos")]
@@ -401,11 +365,7 @@ fn main() {
             #[cfg(target_os = "macos")]
             // A Dock click while Settings is open brings Settings forward.
             if let tauri::RunEvent::Reopen { .. } = event {
-                if settings_window::is_open(app) || tray::hidden() {
-                    settings_window::open(app, None);
-                } else {
-                    show_picker(app);
-                }
+                instance::reopen(app);
             }
             #[cfg(not(target_os = "macos"))]
             let _ = (app, event);
@@ -414,66 +374,6 @@ fn main() {
             report(Err::<(), _>(err), NativeIssue::Startup);
             std::process::exit(1);
         }
-    }
-}
-
-#[cfg(test)]
-mod toggle_tests {
-    use super::*;
-
-    #[test]
-    fn only_a_macos_toggle_waits_for_the_main_thread() {
-        let toggle: Vec<String> = ["ibis-desktop", "toggle"].map(String::from).to_vec();
-        let plain: Vec<String> = ["ibis-desktop"].map(String::from).to_vec();
-        let login: Vec<String> = ["ibis-desktop", "--at-login"].map(String::from).to_vec();
-        assert!(acts_on_main_thread(&toggle, true));
-        for (args, macos) in [(&toggle, false), (&plain, true), (&plain, false), (&login, true)] {
-            assert!(!acts_on_main_thread(args, macos));
-        }
-    }
-
-    #[test]
-    fn toggle_hides_a_visible_picker_and_shows_a_hidden_or_missing_one() {
-        let plain: Vec<String> = ["/synthetic/Ibis 文献 app/ibis-desktop", "toggle"]
-            .map(String::from)
-            .to_vec();
-        let receipt: Vec<String> = ["/synthetic/ibis-desktop", "toggle", "--receipt", "/synthetic/receipt"]
-            .map(String::from)
-            .to_vec();
-        for args in [plain, receipt] {
-            assert_eq!(instance_action(&args, || Some(true)), InstanceAction::Hide);
-            assert_eq!(instance_action(&args, || Some(false)), InstanceAction::Show);
-            assert_eq!(instance_action(&args, || None), InstanceAction::Show);
-        }
-    }
-
-    #[test]
-    fn ordinary_launches_show_and_login_launches_leave_the_picker_alone() {
-        for args in [
-            vec![],
-            vec!["toggle"],
-            vec!["ibis-desktop"],
-            vec!["ibis-desktop", "--toggle"],
-            vec!["ibis-desktop", "Toggle"],
-            vec!["ibis-desktop", "toggle", "extra"],
-            vec!["ibis-desktop", "", "toggle"],
-            vec!["ibis-desktop", "切り替え"],
-        ] {
-            let args: Vec<String> = args.into_iter().map(String::from).collect();
-            let action = instance_action(&args, || panic!("no toggle requested"));
-            assert_eq!(action, InstanceAction::Show);
-        }
-        for args in [
-            vec!["ibis-desktop", "--at-login"],
-            vec!["ibis-desktop", "toggle", "--at-login"],
-        ] {
-            let args: Vec<String> = args.into_iter().map(String::from).collect();
-            let action = instance_action(&args, || panic!("login must stay hidden"));
-            assert_eq!(action, InstanceAction::Ignore);
-        }
-        let huge = ["ibis-desktop".into(), "toggle".repeat(100_000)];
-        let action = instance_action(&huge, || panic!("exact command only"));
-        assert_eq!(action, InstanceAction::Show);
     }
 }
 
@@ -502,3 +402,6 @@ mod offline_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod test_citations;

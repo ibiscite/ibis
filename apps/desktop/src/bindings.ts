@@ -3,6 +3,9 @@
 import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 
 export const commands = {
+	cliStatus: () => __TAURI_INVOKE<CommandStatus>("cli_status"),
+	setCliInstalled: (installed: boolean) => __TAURI_INVOKE<CommandStatus>("set_cli_installed", { installed }),
+	copyCliProfile: () => __TAURI_INVOKE<null>("copy_cli_profile"),
 	/**
 	 * Choose a library with the system file dialog. The interface never passes
 	 * file paths; the result arrives as the `library:changed` event.
@@ -62,9 +65,9 @@ export const commands = {
 	/** The library as it is now, for the interface when it starts. */
 	libraryStatus: () => __TAURI_INVOKE<LibraryStatus>("library_status"),
 	/** Open the searched source or launch Zotero for a reported Zotero problem. */
-	openLibrarySource: (item: ItemRef | null, expectedRevision: string, expectedSourceGeneration: string, zoteroOnly: boolean, reveal: boolean, presentation: number | null) => __TAURI_INVOKE<null>("open_library_source", { item, expectedRevision, expectedSourceGeneration, zoteroOnly, reveal, presentation }),
+	openLibrarySource: (item: SourceItem | null, expectedRevision: string, expectedSourceGeneration: string, zoteroOnly: boolean, reveal: boolean, presentation: number | null) => __TAURI_INVOKE<null>("open_library_source", { item, expectedRevision, expectedSourceGeneration, zoteroOnly, reveal, presentation }),
 	/** Resolve the selected source and its system icon, never exposing its path. */
-	librarySource: (item: ItemRef | null, expectedRevision: string, expectedSourceGeneration: string, zoteroOnly: boolean, withStatusIcon: boolean) => __TAURI_INVOKE<SourcePresentation>("library_source", { item, expectedRevision, expectedSourceGeneration, zoteroOnly, withStatusIcon }),
+	librarySource: (item: SourceItem | null, expectedRevision: string, expectedSourceGeneration: string, zoteroOnly: boolean, withStatusIcon: boolean) => __TAURI_INVOKE<SourcePresentation>("library_source", { item, expectedRevision, expectedSourceGeneration, zoteroOnly, withStatusIcon }),
 	/**
 	 * Search the open library. An empty query returns no results. Async so it
 	 * runs off the main thread. `page` identifies the interface page and
@@ -76,9 +79,9 @@ export const commands = {
 	search: (query: SearchQuery, limit: number, page: number, request: number, scope: string[] | null) => __TAURI_INVOKE<SearchReply>("search", { query, limit, page, request, scope }),
 	/** Current destination's recents; Forget retires in-flight recording. */
 	recentReferences: (forget: boolean) => __TAURI_INVOKE<[SearchReply, boolean, boolean]>("recent_references", { forget }),
-	previewFileCitation: (items: FileSelection[], output: string, expectedRevision: string, intent: PreviewIntent) => __TAURI_INVOKE<FilePreview>("preview_file_citation", { items, output, expectedRevision, intent }),
+	previewFileCitation: (items: DraftItem[], output: string, expectedRevision: string, intent: CitationIntent) => __TAURI_INVOKE<Preview>("preview_file_citation", { items, output, expectedRevision, intent }),
 	/** Read-only examples owned by a prepared preview; never publishes a new ticket. */
-	citationDetails: (ticket: string, contentHash: string, item: number) => __TAURI_INVOKE<ReferenceDetails>("citation_details", { ticket, contentHash, item }),
+	citationDetails: (ticket: string, contentHash: string, item: number, intent: CitationIntent) => __TAURI_INVOKE<FormDetails>("citation_details", { ticket, contentHash, item, intent }),
 	/**
 	 * Copy the shown citation. Citing it again can wait for the formatter, so
 	 * that runs on a worker with no lock held; the short commit that writes the
@@ -97,8 +100,8 @@ export const commands = {
 	 * file. The text goes to the clipboard here and never through the web view.
 	 */
 	copyProjectEntry: (id: RecentIdentity, generation: number) => __TAURI_INVOKE<EntryCopy>("copy_project_entry", { id, generation }),
-	writingProjects: () => __TAURI_INVOKE<WritingProjectsView>("writing_projects"),
-	editWritingProject: (context: string, action: WritingProjectEdit) => __TAURI_INVOKE<WritingProjectsView>("edit_writing_project", { context, action }),
+	writings: () => __TAURI_INVOKE<WritingsView>("writings"),
+	editWriting: (context: string, action: WritingEdit) => __TAURI_INVOKE<WritingsView>("edit_writing", { context, action }),
 	/** `None` when no editor is waiting. */
 	editorRequest: () => __TAURI_INVOKE<EditorWaiting | null>("editor_request"),
 	editorEndpoint: () => __TAURI_INVOKE<EndpointStatus>("editor_endpoint"),
@@ -115,18 +118,18 @@ export const commands = {
 	 * The list as a formatted bibliography, for the person to look at before
 	 * copying it. `None` when nothing listed is in the open library.
 	 */
-	sessionBibliography: (style: string) => __TAURI_INVOKE<SessionBibliography | null>("session_bibliography", { style }),
+	sessionBibliography: (style: string, intent: CitationIntent) => __TAURI_INVOKE<SessionBibliography | null>("session_bibliography", { style, intent }),
 	/**
 	 * Copy what was shown. Prepared again from the list as it is now, and refused
 	 * unless that is exactly what the person saw.
 	 */
-	copySessionBibliography: (style: string, contentHash: string) => __TAURI_INVOKE<null>("copy_session_bibliography", { style, contentHash }),
+	copySessionBibliography: (style: string, contentHash: string, intent: CitationIntent) => __TAURI_INVOKE<null>("copy_session_bibliography", { style, contentHash, intent }),
 	/**
 	 * Save what was shown, as rich text, a web page or plain text. This is the one
 	 * way the list leaves memory, and only because the person asked. `None` when
 	 * the dialog was cancelled; otherwise the file's name.
 	 */
-	exportSessionBibliography: (style: string, contentHash: string) => __TAURI_INVOKE<string | null>("export_session_bibliography", { style, contentHash }),
+	exportSessionBibliography: (style: string, contentHash: string, intent: CitationIntent) => __TAURI_INVOKE<string | null>("export_session_bibliography", { style, contentHash, intent }),
 	/** The preferences the picker starts with. */
 	pickerPreferences: () => __TAURI_INVOKE<PickerPreferences>("picker_preferences"),
 	/**
@@ -138,6 +141,11 @@ export const commands = {
 	savePickerPreferences: (preferences: PickerPreferencesPatch) => __TAURI_INVOKE<number>("save_picker_preferences", { preferences }),
 	/** One request per visible presentation/snapshot. Settings passes no presentation. */
 	delightView: (now: LocalMoment, presentation: number | null, revision: string | null, aboutClick: boolean | null) => __TAURI_INVOKE<DelightView>("delight_view", { now, presentation, revision, aboutClick }),
+	/**
+	 * Asked when a person reaches for a citation's details by hand; true while the
+	 * hint has been shown fewer than [`SHORTHAND_HINTS`] times.
+	 */
+	shorthandHint: () => __TAURI_INVOKE<boolean>("shorthand_hint"),
 	/** The saved preferences once a submitted change has run. */
 	pickerPreferencesSaved: (receipt: number) => __TAURI_INVOKE<PickerSave>("picker_preferences_saved", { receipt }),
 	/** The app the picker was opened from, its output and what Ibis remembers for it. */
@@ -149,6 +157,15 @@ export const commands = {
 	 * to the per-app file; a delivery that fails after its format saved says so.
 	 */
 	rememberAppOutput: (appId: string, output: string | null, paste: AppPaste | null, identity: string | null) => __TAURI_INVOKE<null>("remember_app_output", { appId, output, paste, identity }),
+	/** Forget only the current app's format, after checking the captured target. */
+	forgetAppOutput: (appId: string, identity: string | null) => __TAURI_INVOKE<null>("forget_app_output", { appId, identity }),
+	formatSettings: () => __TAURI_INVOKE<FormatSettingsView>("format_settings"),
+	forgetAppFormat: (id: string) => __TAURI_INVOKE<null>("forget_app_format", { id }),
+	/**
+	 * Open the native-owned settings path in its registered editor. An absent
+	 * file is created through the owner; unreadable existing bytes stay intact.
+	 */
+	openSettingsFile: () => __TAURI_INVOKE<null>("open_settings_file"),
 	/** Whether Ibis starts when the person logs in, read from the system now. */
 	loginItem: () => __TAURI_INVOKE<LoginItem>("login_item"),
 	/** Start Ibis when the person logs in, or stop doing so. */
@@ -192,6 +209,8 @@ export const commands = {
 	 * the event that announced it.
 	 */
 	copiedNotice: () => __TAURI_INVOKE<NoticeMessage | null>("copied_notice"),
+	/** The one-time suggestion receipt opens the matching choices in Settings. */
+	changeSuggestedFormat: () => __TAURI_INVOKE<void>("change_suggested_format"),
 	/** Initial command runs asynchronously; native mutations stay on the main thread. */
 	nativeAppearance: () => __TAURI_INVOKE<string>("native_appearance"),
 	/** Show only native Copy and Add/Remove actions. Cancellation returns no action. */
@@ -199,9 +218,8 @@ export const commands = {
 	/** Whether update checks run on their own; `None` when this build has no updates. */
 	updateChecks: () => __TAURI_INVOKE<boolean | null>("update_checks"),
 	/**
-	 * Turn automatic checks on or off, as asked in More. The saved answer
-	 * arrives as the `update:automatic` event. Not async, so it runs on the main
-	 * thread and is queued in click order with the tray's clicks.
+	 * Turn automatic checks on or off from Settings. The saved answer arrives
+	 * as the `update:automatic` event; changes are queued in click order.
 	 */
 	setUpdateChecks: (enabled: boolean) => __TAURI_INVOKE<void>("set_update_checks", { enabled }),
 	/**
@@ -253,11 +271,11 @@ export const commands = {
 	/**
 	 * Kept like a dragged size: the one writer saves it and reports the outcome.
 	 * Hidden, the next `prepare` applies it before the window appears.
+	 * Returns the save revision. An Undo ticket restores that revision's exact
+	 * previous frame on the same display; later geometry invalidates it.
 	 */
-	setWindowSize: (size: WindowSize) => __TAURI_INVOKE<null>("set_window_size", { size }),
-	/** The picker collects text from Search with Ibis once. */
+	setWindowSize: (size: WindowSize, undo: number | null) => __TAURI_INVOKE<number>("set_window_size", { size, undo }),
 	takeSearchRequest: () => __TAURI_INVOKE<string | null>("take_search_request"),
-	/** A citation segment took its place: the trackpad's alignment tick. */
 	alignmentTick: () => __TAURI_INVOKE<void>("alignment_tick"),
 	/** Double-clicking the search bar's empty area returns Ibis to its place. */
 	resetWindowPosition: () => __TAURI_INVOKE<void>("reset_window_position"),
@@ -266,26 +284,23 @@ export const commands = {
 	dismissWindowPositionUndo: (revision: number) => __TAURI_INVOKE<void>("dismiss_window_position_undo", { revision }),
 };
 
+export const CITATION_FORMS = ["normal","narrative","author-only","year-only","full","bibliography-only"] as const;
+
 export const DEFAULT_OUTPUT = "pandoc" as const;
 
 export const DEFAULT_STYLE = "apa" as const;
 
-export const OUTPUTS = [{"description":null,"entries":false,"example":"[@key]","id":"pandoc","name":"Pandoc","style":false},{"description":null,"entries":false,"example":"@key","id":"pandoc-bare","name":"Pandoc without brackets","style":false},{"description":null,"entries":false,"example":"\\autocite{key}","id":"autocite","name":"BibLaTeX \\autocite","style":false},{"description":null,"entries":false,"example":"\\parencite{key}","id":"parencite","name":"BibLaTeX \\parencite","style":false},{"description":null,"entries":false,"example":"\\textcite{key}","id":"textcite","name":"BibLaTeX \\textcite","style":false},{"description":null,"entries":false,"example":"\\citep{key}","id":"natbib","name":"natbib","style":false},{"description":null,"entries":false,"example":"\\cite{key}","id":"cite","name":"LaTeX \\cite","style":false},{"description":null,"entries":false,"example":"\\cite[key]","id":"context","name":"ConTeXt","style":false},{"description":null,"entries":false,"example":"@key","id":"typst","name":"Typst","style":false},{"description":null,"entries":false,"example":"[cite:@key]","id":"org-cite","name":"Org mode","style":false},{"description":null,"entries":false,"example":"{cite:p}`key`","id":"myst","name":"MyST","style":false},{"description":null,"entries":false,"example":"[#key][]","id":"multi-markdown","name":"MultiMarkdown","style":false},{"description":null,"entries":false,"example":"cite:[key]","id":"ascii-doc","name":"AsciiDoc","style":false},{"description":null,"entries":false,"example":"<cite data-cite=\"key\">key</cite>","id":"jupyter","name":"Jupyter","style":false},{"description":null,"entries":false,"example":"{% cite key %}","id":"jekyll-scholar","name":"Jekyll Scholar","style":false},{"description":null,"entries":false,"example":"[{\"citationKey\":\"key\"}]","id":"cayw-json","name":"CAYW JSON","style":false},{"description":null,"entries":false,"example":"key","id":"keys","name":"Keys only","style":false},{"description":null,"entries":false,"example":null,"id":"csl-json","name":"CSL-JSON","style":false},{"description":"APA (7th edition)","entries":false,"example":"(García, 2021)","id":"apa","name":"APA","style":true},{"description":null,"entries":false,"example":"(García 2021)","id":"chicago-author-date","name":"Chicago (author-date)","style":true},{"description":"Chicago (notes and bibliography)","entries":false,"example":"Ana García, “Synthetic Sleep Study,” Journal of Tests 4 (2021).","id":"chicago-notes-bibliography","name":"Chicago (notes)","style":true},{"description":"MLA (9th edition)","entries":false,"example":"(García)","id":"modern-language-association","name":"MLA","style":true},{"description":"Harvard (Cite Them Right)","entries":false,"example":"(García, 2021)","id":"harvard-cite-them-right","name":"Harvard","style":true},{"description":null,"entries":true,"example":"A. García, “Synthetic sleep study,” Journal of Tests, vol. 4, 2021.","id":"ieee","name":"IEEE","style":true},{"description":null,"entries":true,"example":"García A. Synthetic sleep study. Journal of Tests. 2021;4.","id":"vancouver-nlm","name":"Vancouver","style":true},{"description":null,"entries":true,"example":"García, A. Synthetic sleep study. Journal of Tests 4, (2021).","id":"nature","name":"Nature","style":true},{"description":null,"entries":true,"example":"García A. Synthetic sleep study. Journal of Tests. 2021;4.","id":"american-medical-association","name":"AMA","style":true},{"description":null,"entries":true,"example":"García, A. Synthetic Sleep Study. Journal of Tests 2021, 4.","id":"american-chemical-society","name":"ACS","style":true},{"description":"GB/T 7714-2025 (numeric)","entries":true,"example":"García A. Synthetic sleep study[J]. Journal of Tests，2021，4.","id":"china-national-standard-gb-t-7714-2025-numeric","name":"GB/T 7714 (numeric)","style":true},{"description":"GB/T 7714-2025 (author-date)","entries":false,"example":"（García，2021）","id":"china-national-standard-gb-t-7714-2025-author-date","name":"GB/T 7714 (author-date)","style":true},{"description":"GB/T 7714-2025 (notes)","entries":false,"example":"García A. Synthetic sleep study[J]. Journal of Tests，2021，4.","id":"china-national-standard-gb-t-7714-2025-note","name":"GB/T 7714 (notes)","style":true}] as const;
+export const OUTPUTS = [{"description":null,"entries":false,"example":"[@key]","id":"pandoc","name":"Pandoc","style":false},{"description":null,"entries":false,"example":"@key","id":"pandoc-bare","name":"Pandoc without brackets","style":false},{"description":null,"entries":false,"example":"\\autocite{key}","id":"autocite","name":"BibLaTeX \\autocite","style":false},{"description":null,"entries":false,"example":"\\parencite{key}","id":"parencite","name":"BibLaTeX \\parencite","style":false},{"description":null,"entries":false,"example":"\\textcite{key}","id":"textcite","name":"BibLaTeX \\textcite","style":false},{"description":null,"entries":false,"example":"\\citep{key}","id":"natbib","name":"natbib","style":false},{"description":null,"entries":false,"example":"\\cite{key}","id":"cite","name":"LaTeX \\cite","style":false},{"description":null,"entries":false,"example":"\\cite[key]","id":"context","name":"ConTeXt","style":false},{"description":null,"entries":false,"example":"@key","id":"typst","name":"Typst","style":false},{"description":null,"entries":false,"example":"[cite:@key]","id":"org-cite","name":"Org mode","style":false},{"description":null,"entries":false,"example":"{cite:p}`key`","id":"myst","name":"MyST","style":false},{"description":null,"entries":false,"example":"[#key][]","id":"multi-markdown","name":"MultiMarkdown","style":false},{"description":null,"entries":false,"example":"cite:[key]","id":"ascii-doc","name":"AsciiDoc","style":false},{"description":null,"entries":false,"example":"<cite data-cite=\"key\">key</cite>","id":"jupyter","name":"Jupyter","style":false},{"description":null,"entries":false,"example":"{% cite key %}","id":"jekyll-scholar","name":"Jekyll Scholar","style":false},{"description":null,"entries":false,"example":"[{\"citationKey\":\"key\"}]","id":"cayw-json","name":"CAYW JSON","style":false},{"description":null,"entries":false,"example":"key","id":"keys","name":"Keys only","style":false},{"description":null,"entries":false,"example":null,"id":"csl-json","name":"CSL-JSON","style":false},{"description":null,"entries":false,"example":null,"id":"bibtex","name":"BibTeX","style":false},{"description":null,"entries":false,"example":null,"id":"doi-links","name":"DOI links","style":false},{"description":null,"entries":false,"example":"{ | Example, 2026 | | | zu:0:ABCD2345 }","id":"scannable-cite","name":"Zotero RTF/ODF Scan","style":false},{"description":"APA (7th edition)","entries":false,"example":"(García, 2021)","id":"apa","name":"APA","style":true},{"description":null,"entries":false,"example":"(García 2021)","id":"chicago-author-date","name":"Chicago (author-date)","style":true},{"description":"Chicago (notes and bibliography)","entries":false,"example":"Ana García, “Synthetic Sleep Study,” Journal of Tests 4 (2021).","id":"chicago-notes-bibliography","name":"Chicago (notes)","style":true},{"description":"MLA (9th edition)","entries":false,"example":"(García)","id":"modern-language-association","name":"MLA","style":true},{"description":"Harvard (Cite Them Right)","entries":false,"example":"(García, 2021)","id":"harvard-cite-them-right","name":"Harvard","style":true},{"description":null,"entries":true,"example":"A. García, “Synthetic sleep study,” Journal of Tests, vol. 4, 2021.","id":"ieee","name":"IEEE","style":true},{"description":null,"entries":true,"example":"García A. Synthetic sleep study. Journal of Tests. 2021;4.","id":"vancouver-nlm","name":"Vancouver","style":true},{"description":null,"entries":true,"example":"García, A. Synthetic sleep study. Journal of Tests 4, (2021).","id":"nature","name":"Nature","style":true},{"description":null,"entries":true,"example":"García A. Synthetic sleep study. Journal of Tests. 2021;4.","id":"american-medical-association","name":"AMA","style":true},{"description":null,"entries":true,"example":"García, A. Synthetic Sleep Study. Journal of Tests 2021, 4.","id":"american-chemical-society","name":"ACS","style":true},{"description":"GB/T 7714-2025 (numeric)","entries":true,"example":"García A. Synthetic sleep study[J]. Journal of Tests，2021，4.","id":"china-national-standard-gb-t-7714-2025-numeric","name":"GB/T 7714 (numeric)","style":true},{"description":"GB/T 7714-2025 (author-date)","entries":false,"example":"（García，2021）","id":"china-national-standard-gb-t-7714-2025-author-date","name":"GB/T 7714 (author-date)","style":true},{"description":"GB/T 7714-2025 (notes)","entries":false,"example":"García A. Synthetic sleep study[J]. Journal of Tests，2021，4.","id":"china-national-standard-gb-t-7714-2025-note","name":"GB/T 7714 (notes)","style":true}] as const;
 
 /** A fixed page linked from About. The web page never chooses the address. */
 export type AboutLink = "website" | "source" | "problem" | "licences";
 
 export type Accent = "system" | "ibis";
 
-/**
- * Why a choice for an app was not saved, so the picker can say which part
- * was kept without reading the words.
- */
-export type AppChoiceError = {
-	code: "not_saved";
-	message: string;
-} | {
-	code: "delivery_not_saved";
+export type AppFormat = {
+	app: string;
+	format: string;
+	id: string;
 };
 
 /** A deliberate delivery choice for one captured app, independent of its format. */
@@ -295,33 +310,42 @@ export type AppPaste = "paste" | "copy-only";
 export type Appearance = "system" | "light" | "dark";
 
 /** Why a backup or restore did not happen; the Settings window words it. */
-export type BackupProblem = "not-downloaded" | "unreadable" | "not-a-backup" | "settings-file" | "newer" | "invalid" | "not-saved" | "settings-unusable" | "changed";
+export type BackupProblem = "not-downloaded" | "unreadable" | "not-a-backup" | "settings-file" | "newer" | "invalid" | "not-saved" | "settings-unusable" | "busy" | "changed";
 
 /** How a check ended. Whoever asked says so in its own place. */
 export type CheckResult = "failed" | "newest" | "offered" | "not_run";
 
-export type CitationSpan = {
-	item: number | null;
-	runs?: DisplayRun[] | null;
-	text: string;
+export type CitationForm = "normal" | "narrative" | "author-only" | "year-only" | "full" | "bibliography-only";
+
+/** A transport operation's identity, including an abort that can arrive first. */
+export type CitationIntent = {
+	cancel: boolean;
+	context?: [number, number] | null;
+	keep_order?: boolean;
+	page: number;
+	request: number;
 };
 
-/**
- * A failed command as the interface receives it: the interface decides
- * from `code`, never from the text in `message`.
- */
+/** Wording context only; operations choose their recovery before presentation. */
+export type CitationSurface = "bibliography";
+
+/** The desktop and MCP receive this same shape, without pre-rendered English. */
 export type CommandError = {
-	code: "snapshot_changed";
-} | {
-	code: "library_loading";
-} | {
-	code: "cancelled";
-} | {
-	code: "shared_citation_key";
-	key: string;
-} | {
-	code: "failed";
-	message: string;
+	code: string;
+	focus: FocusTarget;
+	message: Message;
+	recovery: Recovery;
+};
+
+export type CommandState = "not-installed" | "matching" | "different" | "foreign";
+
+export type CommandStatus = {
+	installable: boolean;
+	profile_line: string | null;
+	removable: boolean;
+	state: CommandState;
+	used_path: string | null;
+	version: string | null;
 };
 
 export type Copied = {
@@ -332,6 +356,15 @@ export type Copied = {
 	/** What the chosen syntax could not express, and other problems the user should see. */
 	warnings: string[];
 };
+
+/**
+ * Why a citation was copied: the engine's decision before pasting, or a
+ * paste that failed once it began.
+ */
+export type CopiedReason = CopyReason | DeliveryFailure;
+
+/** Why a citation was copied instead of pasted. */
+export type CopyReason = "paste-off" | "unsupported-system" | "no-target" | "copy-only" | "target-changed" | "clipboard-changed" | "paste-expired" | "secure-field" | "elevated-app" | "terminal" | "remote-desktop" | "virtual-machine" | "nonstandard-shortcut" | "no-permission" | "unknown-app" | "secure-input" | "paste-unavailable" | "accessibility-required" | "selection-not-shown" | "citation-not-selected";
 
 export type DelightFact = "touch" | "scarlet" | "mummies" | "national" | "flight";
 
@@ -354,12 +387,12 @@ export type Delivered = {
 	outcome: "pasted";
 } | {
 	outcome: "copied";
-	/**
-	 * Why Ibis did not paste: a `CopyReason` code such as `terminal`, or
-	 * `key-release-failed`. Every copy says why (docs/design/delivery.md).
-	 */
-	reason: string;
+	/** Why Ibis did not paste. Every copy says why (docs/design/delivery.md). */
+	reason: CopiedReason;
 };
+
+/** A paste that began and could not finish. */
+export type DeliveryFailure = "key-release-failed";
 
 /** How much each result row shows (ADR 0020). */
 export type Density = "compact" | "comfortable";
@@ -367,6 +400,29 @@ export type Density = "compact" | "comfortable";
 export type DesktopShortcut = {
 	configurable: boolean;
 	guidance: string;
+};
+
+/**
+ * A block covers content runs in [start, end). Blocks are in opening order;
+ * ranges are nested or disjoint, never crossing. Equal ranges retain nesting.
+ */
+export type DisplayBlock = {
+	end: number;
+	kind: DisplayBlockKind;
+	start: number;
+};
+
+/** Passive CSL layout, independent of HTML class names or CSS. */
+export type DisplayBlockKind = "entry" | "margin" | "inline" | "block" | "indent";
+
+/**
+ * One display group owns ordered text leaves and their block layout;
+ * shared punctuation has no item.
+ */
+export type DisplayNode = {
+	blocks: DisplayBlock[];
+	content: DisplayRun[];
+	item: number | null;
 };
 
 /**
@@ -380,6 +436,27 @@ export type DisplayRun = {
 	small_caps?: boolean;
 	text: string;
 	underline?: boolean;
+};
+
+/** Ownership groups with bounded-depth passive blocks and styled text leaves. */
+export type DisplayTree = {
+	nodes: DisplayNode[];
+};
+
+export type DraftItem = {
+	cite: string;
+	form?: CitationForm | null;
+	id: ItemRef;
+	/** A canonical locator captured from search; its value is never parsed again. */
+	locator?: Locator | null;
+	/**
+	 * Raw locator field text and its chosen type, mutually exclusive with a
+	 * captured locator.
+	 */
+	locator_input?: LocatorInput | null;
+	/** Literal text; only the engine escapes and formats it. */
+	prefix?: string | null;
+	suffix?: string | null;
 };
 
 /**
@@ -409,43 +486,41 @@ export type EndpointStatus = {
 /** How an entry copy ended; a refusal says how to get the entry another way. */
 export type EntryCopy = "copied" | "no-original" | "repeated" | "dependency" | "changed";
 
-export type FilePreview = {
-	content_hash: string;
-	html: string | null;
-	/**
-	 * What the engine says about this citation that is no warning, such as a
-	 * full first note; the web view words each from the catalogue.
-	 */
-	notices?: Notice[];
-	problem?: string | null;
-	/**
-	 * Why this key citation is refused: a key in the project bibliography
-	 * names a different work.
-	 */
-	project_refusal?: string | null;
-	spans: CitationSpan[];
-	text: string;
-	ticket: string;
-	warnings: string[];
-};
+export type FocusTarget = "format-picker" | "library-picker" | "source-file" | "zotero-sharing-help" | "search" | "results" | "locator" | "citation" | "citation-form" | "session-references" | "language" | "recovery-action" | "project-name" | "project-menu" | "settings" | "request";
 
-export type FileSelection = {
-	cite: string;
-	form?: ReferenceForm | null;
-	id: ItemRef;
-	/** A canonical locator captured from search; its value is never parsed again. */
-	locator?: Locator | null;
-	/** Raw Page editor text, mutually exclusive with a captured locator. */
-	page_input?: string | null;
-	/** Literal text; only the engine escapes and formats it. */
-	prefix?: string | null;
-	suffix?: string | null;
+export type FormDetails = {
+	current_form: CitationForm | null;
+	forms: FormOption[];
 };
 
 export type FormOption = {
 	example: string | null;
-	form: ReferenceForm;
+	form: CitationForm;
 	reason: string | null;
+};
+
+/** The format a citation for one app uses, and why. */
+export type FormatChoice = {
+	from: FormatFrom;
+	/** Its id in the engine's `outputs` list, when it is listed there. */
+	id?: string | null;
+	kind: FormatKind;
+	/** The output written. */
+	output: OutputSpec;
+	writing?: WritingName | null;
+};
+
+/** Which level chose a citation's format (decision 0042); the engine decides. */
+export type FormatFrom = "writing" | "app" | "yours" | "suggestion";
+
+/** The kinds of app a format is chosen for. People never see the word. */
+export type FormatKind = "documents" | "keys";
+
+export type FormatSettingsView = {
+	apps: AppFormat[];
+	key_output_visible: boolean;
+	unknown?: { [key: string]: unknown } | null;
+	writings: WritingView[];
 };
 
 /** A `.bib` file found on this computer. */
@@ -462,9 +537,11 @@ export type FoundFile = {
  * source tags and collections cannot collide with native item keys.
  */
 export type ItemRef = {
-	key: string;
+	key: RecordId;
 	library: LibraryId;
 };
+
+export type KeySyntax = "pandoc" | "biblatex" | "natbib" | "latex" | "context" | "typst" | "org-cite" | "myst" | "multi-markdown" | "ascii-doc" | "jupyter" | "jekyll-scholar" | "scannable-cite" | "keys" | "csl-json" | "bibtex" | "doi-links" | "cayw-json";
 
 /**
  * A library's opaque token. It says nothing about the library: its kind and
@@ -487,6 +564,8 @@ export type LibraryStatus = {
 	 */
 	checked_at: number | null;
 	error: string | null;
+	/** Canonical engine failure. Rendering and recovery use these facts. */
+	failure?: Problem | null;
 	/** A successfully opened snapshot, including a valid empty library. */
 	has_snapshot: boolean;
 	/** A searched source cannot be watched, so edits show only after a reload. */
@@ -503,6 +582,7 @@ export type LibraryStatus = {
 	 */
 	reading: ReadingNotice[];
 	references: number;
+	retained_failure?: Problem | null;
 	revision: string;
 	/** The searchable snapshot contains only bundled invented references. */
 	sample?: boolean;
@@ -545,20 +625,33 @@ export type LocalMoment = {
 	year: number;
 };
 
-/** Picker wire names over the engine's canonical locator vocabulary. */
 export type Locator = {
-	label: LocatorTerm;
-	/** Canonical value, including literal text preserved by the engine. */
+	term: LocatorTerm;
+	/** Literal range or pinpointer, never interpreted as markup. */
 	value: string;
 };
 
-/** The engine's interpretation, shown so the person can search as typed. */
+/**
+ * What a person typed in a reference's locator field, with the type its pop-up
+ * shows. Only the engine reads it: a typed label (`ch. 3`) names the type.
+ */
+export type LocatorInput = {
+	label: LocatorTerm;
+	text: string;
+};
+
+/**
+ * The engine's interpretation, shown so the person can search as typed: a
+ * signal read off the start (`see`) and a locator read off the end (`417`).
+ */
 export type LocatorQuery = {
-	locator: Locator;
+	locator?: Locator | null;
+	/** The signal exactly as typed, to become the reference's prefix. */
+	prefix?: string | null;
 	/** What remains to search for. */
 	search: string;
 	/** The text read as the locator, exactly as typed. */
-	typed: string;
+	typed?: string | null;
 };
 
 /**
@@ -581,6 +674,14 @@ export type LoginItemProblem = "unsupported" | "needs_approval" | "refused" | "u
 /** Which part of a record matched a query term. */
 export type MatchField = "citekey" | "title" | "author" | "year" | "doi" | "keyword" | "container" | "abstract" | "identifier";
 
+export type Message = {
+	args: { [key: string]: string };
+	context?: CitationSurface | null;
+	id: string;
+};
+
+export type NoRecoveryReason = "cancelled" | "in-progress";
+
 /** Something the person should know before restoring. */
 export type Note = "library-not-found" | "shortcut-kept" | "repairs-settings";
 
@@ -601,11 +702,22 @@ export type NoticeMessage = {
 	 * document uses one.
 	 */
 	plugin_note?: boolean;
+	suggested_format?: string | null;
 	text: string;
 };
 
-/** An app ID that cannot tell Ibis which output its document needs. */
-export type OutputQuestion = "browser" | "editor";
+export type OutputSpec = {
+	/** A command name for syntaxes that support it; engines validate its grammar. */
+	command: string | null;
+	kind: "key";
+	syntax: KeySyntax;
+} | {
+	kind: "csl";
+	style: string;
+} | {
+	kind: "preset";
+	name: string;
+};
 
 /** Where Settings opens. */
 export type Page = "general" | "look" | "libraries" | "advanced" | "shortcuts" | "citations" | "about" | "paste";
@@ -626,9 +738,6 @@ export type PastedList = {
 	missing: string[];
 };
 
-/** Command identifiers shared with KEY_TABLE and the refusal's translated name. */
-export type PickerCommand = "format" | "pin" | "keys" | "more" | "change-last" | "source" | "settings" | "quit";
-
 /** What the picker needs to know about the app it was opened from. */
 export type PickerDestination = {
 	/** The app's own name; `None` when no app was captured. */
@@ -637,25 +746,27 @@ export type PickerDestination = {
 	app_id: string | null;
 	/** Opaque app-location fingerprint; no path crosses IPC. */
 	app_identity: string | null;
-	/** The app suggestion, an engine output id; `None` follows the saved default. */
-	automatic: string | null;
 	/** A proven ordinary target can accept an explicit delivery choice, including recovery. */
 	can_choose_paste: boolean;
 	/** The current paste policy permits an attempt; final delivery checks still apply. */
 	can_paste: boolean;
 	context_version?: [number, number] | null;
-	/** The app cannot identify document syntax; ask until an output is remembered. */
-	output_question: OutputQuestion | null;
+	find_open: boolean;
+	/**
+	 * The engine's answer: the format the next citation uses and which level
+	 * chose it (decision 0042). The picker shows it as it is.
+	 */
+	format: FormatChoice;
 	/** The separate delivery choice; never inferred from a remembered format. */
 	paste: AppPaste | null;
 	/** An unrecognised app has a proven target but no delivery choice yet. */
 	paste_question: boolean;
-	/** The output the person chose to always use for this app. */
-	remembered: string | null;
 	/** This app needs a delivery choice after an unreadable per-app file; formats use defaults. */
 	unreadable: boolean;
+	/** Your format for this kind, used by the return-to-usual action. */
+	usual_format: string;
+	writing?: WritingView | null;
 	writing_context?: string | null;
-	writing_project?: WritingProjectView | null;
 };
 
 /**
@@ -666,6 +777,7 @@ export type PickerPreferences = {
 	accent?: Accent | null;
 	appearance?: Appearance | null;
 	density: Density;
+	key_output?: string | null;
 	larger_text: boolean;
 	/** The menu bar item; on by default. */
 	menu_bar: boolean;
@@ -686,6 +798,7 @@ export type PickerPreferencesPatch = {
 	accent?: Accent | null;
 	appearance?: Appearance | null;
 	density?: Density | null;
+	key_output?: string | null;
 	larger_text?: boolean | null;
 	menu_bar?: boolean | null;
 	/** Only an id the engine lists; any other refuses the whole change. */
@@ -710,6 +823,7 @@ export type PreferenceChange = {
 	 * unchanged value in the snapshot.
 	 */
 	fields: string[];
+	key_output?: string | null;
 	larger_text: boolean;
 	/** The menu bar item; on by default. */
 	menu_bar: boolean;
@@ -726,12 +840,34 @@ export type PreferenceChange = {
 	small_surprises?: boolean | null;
 };
 
-export type PreviewIntent = {
-	cancel: boolean;
-	context?: [number, number] | null;
-	keep_order?: boolean;
-	page: number;
-	request: number;
+export type Preview = {
+	content_hash: string;
+	display: DisplayTree;
+	/** The effective output after an editor request overrides the picker. */
+	effective_output: string | null;
+	failure?: Problem | null;
+	/**
+	 * What the engine says about this citation that is no warning, such as a
+	 * full first note; the web view words each from the catalogue.
+	 */
+	notices?: Notice[];
+	problem?: string | null;
+	/**
+	 * Why this key citation is refused: a key in the project bibliography
+	 * names a different work.
+	 */
+	project_refusal?: string | null;
+	text: string;
+	ticket: string;
+	warnings: string[];
+};
+
+/** The desktop and MCP receive this same shape, without pre-rendered English. */
+export type Problem = {
+	code: string;
+	focus: FocusTarget;
+	message: Message;
+	recovery: Recovery;
 };
 
 /** The state of one emitted key in the project bibliography, for the row. */
@@ -782,12 +918,75 @@ export type RecentGroup = "cited" | "added";
 
 export type RecentIdentity = unknown;
 
-export type ReferenceDetails = {
-	current_form: ReferenceForm | null;
-	forms: FormOption[];
-};
+export type RecordId = { readonly __RecordId: unique symbol };
 
-export type ReferenceForm = "normal" | "narrative" | "year-only";
+/** Exactly one next action; absence must have an explicit, machine-readable reason. */
+export type Recovery = {
+	action: "choose-output";
+} | {
+	action: "choose-style";
+} | {
+	action: "choose-form";
+} | {
+	action: "locate-file";
+} | {
+	action: "choose-library";
+} | {
+	action: "open-zotero-sharing-help";
+} | {
+	action: "open-zotero";
+} | {
+	action: "retry";
+} | {
+	action: "choose-project";
+} | {
+	action: "rename-project";
+} | {
+	action: "remove-project";
+} | {
+	action: "reopen-project-menu";
+} | {
+	action: "finish-editor-request";
+} | {
+	action: "review-settings";
+} | {
+	action: "edit-citation";
+} | {
+	action: "edit-locator";
+} | {
+	action: "edit-input";
+} | {
+	action: "search-references";
+} | {
+	action: "select-references";
+} | {
+	action: "reduce-selection";
+} | {
+	action: "remove-references";
+} | {
+	action: "close";
+} | {
+	action: "choose-locale";
+} | {
+	action: "review-library";
+} | {
+	action: "free-disk-space";
+} | {
+	action: "upgrade-ibis";
+} | {
+	action: "choose-backup";
+} | {
+	action: "download-file";
+} | {
+	action: "choose-shortcut";
+} | {
+	action: "open-ibis";
+} | {
+	action: "restart-session";
+} | {
+	action: "none";
+	reason: NoRecoveryReason;
+};
 
 /**
  * One setting a restore changes. Values are as the settings file writes
@@ -879,7 +1078,7 @@ export type SearchResult = {
  */
 export type SessionBibliography = {
 	content_hash: string;
-	html: string | null;
+	display: DisplayTree;
 	/**
 	 * References this style cannot write, by key or title. They are named so
 	 * that the rest can still be used.
@@ -912,11 +1111,6 @@ export type SessionReferencesView = {
 	undo: UndoView | null;
 };
 
-/** Why a shortcut change failed. Only NotSaved changes the working shortcut. */
-export type ShortcutRefusal = "invalid" | "needs-modifier" | "app-shortcut" | {
-	"picker-shortcut": PickerCommand;
-} | "alt-gr" | "in-use" | "unavailable" | "not-saved";
-
 /** Whether the global shortcut is working, shown in the interface. */
 export type ShortcutStatus = {
 	/** Present on Wayland, including when the portal is unavailable. */
@@ -925,6 +1119,8 @@ export type ShortcutStatus = {
 	registered: boolean;
 	shortcut: string;
 };
+
+export type SourceItem = ItemRef;
 
 export type SourceKind = "zotero" | "file";
 
@@ -968,7 +1164,7 @@ export type UndoView = {
 /** Settings › Look's window size. Any other dragged size is Custom. */
 export type WindowSize = "small" | "medium" | "large" | "custom";
 
-export type WritingProjectEdit = {
+export type WritingEdit = {
 	kind: "create";
 	name: string;
 	output: string;
@@ -988,21 +1184,27 @@ export type WritingProjectEdit = {
 	output: string;
 };
 
-export type WritingProjectView = {
+/** The writing that chose a format. */
+export type WritingName = {
+	id: string;
+	name: string;
+};
+
+export type WritingView = {
 	bibliography: string | null;
 	id: string;
 	name: string;
-	/** A CLI project can name outputs not yet available in the picker. */
+	/** A writing can name outputs not yet available in the picker. */
 	output: string | null;
 };
 
-export type WritingProjectsView = {
-	active?: WritingProjectView | null;
+export type WritingsView = {
+	active?: WritingView | null;
 	/** Owns one picker opening and captured destination; never a path or title. */
 	context: string;
-	projects: WritingProjectView[];
 	selected: string | null;
 	session_only: boolean;
+	writings: WritingView[];
 };
 
 /** A Zotero group library the user can choose. */

@@ -63,15 +63,6 @@ impl RecordSummary {
             item_type: text("type"),
         }
     }
-
-    /// The authors' reading names, joined with commas.
-    pub fn author_names(&self) -> String {
-        self.authors
-            .iter()
-            .map(|author| author.name.as_str())
-            .collect::<Vec<_>>()
-            .join(", ")
-    }
 }
 
 fn author(value: &Value) -> Option<Author> {
@@ -251,10 +242,6 @@ mod tests {
                 ("国立研究所", "国立"),
                 ("et al.", "et al."),
             ]
-        );
-        assert_eq!(
-            found.author_names(),
-            "Ana García, Invented Group, Mononym, 国立研究所, et al."
         );
     }
 

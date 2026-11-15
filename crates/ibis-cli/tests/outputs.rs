@@ -36,10 +36,34 @@ fn run(args: &[&str]) -> Result<(u8, String, String)> {
     Ok((code, String::from_utf8(output)?, String::from_utf8(errors)?))
 }
 
+fn citation_without_read_times(text: &str) -> Result<Value> {
+    let mut result: Value = serde_json::from_str(text)?;
+    for source in result["data"]["receipt"]["sources"]
+        .as_array_mut()
+        .ok_or("source checks")?
+    {
+        // These invocations each read the same file at a different time.
+        assert!(source["last_successful_read_ms"].as_u64().ok_or("read time")? > 0);
+        source["last_successful_read_ms"] = Value::Null;
+    }
+    Ok(result)
+}
+
 #[test]
 fn format_takes_every_listed_id_and_writes_its_output() -> Result {
     for output in outputs::outputs() {
         let (code, text, errors) = run(&["cite", "key", "--format", &output.id, "--json"])?;
+        // Zotero's markers refuse a reference not read from Zotero, saying why.
+        if output.zotero_items {
+            assert_eq!(code, 1, "{}: {errors}", output.id);
+            assert!(text.contains("\"not-from-zotero\""), "{text}");
+            continue;
+        }
+        if output.id == "doi-links" {
+            assert_eq!(code, 1, "{errors}");
+            assert!(text.contains("\"missing-doi\""), "{text}");
+            continue;
+        }
         assert_eq!(code, 0, "{}: {errors}", output.id);
         let envelope: Value = serde_json::from_str(&text)?;
         if let Some(example) = &output.example {
@@ -48,13 +72,21 @@ fn format_takes_every_listed_id_and_writes_its_output() -> Result {
         // A style named by --format is the same style --style names.
         if let ibis_core::contract::OutputSpec::Csl { style } = &output.output {
             let (_, styled, _) = run(&["cite", "key", "--style", style, "--json"])?;
-            assert_eq!(styled, text, "{}", output.id);
+            assert_eq!(
+                citation_without_read_times(&styled)?,
+                citation_without_read_times(&text)?,
+                "{}",
+                output.id
+            );
         }
     }
     // Without --format, the listed default.
     let (_, default, _) = run(&["cite", "key", "--json"])?;
     let (_, named, _) = run(&["cite", "key", "--format", outputs::DEFAULT, "--json"])?;
-    assert_eq!(default, named);
+    assert_eq!(
+        citation_without_read_times(&default)?,
+        citation_without_read_times(&named)?
+    );
     Ok(())
 }
 
@@ -66,7 +98,7 @@ fn format_refuses_any_other_name_with_the_listed_ones() -> Result {
         assert_eq!(code, 2, "{wrong}");
         assert_eq!(
             serde_json::from_str::<Value>(&text)?,
-            json!({"ibis":1,"ok":false,"error":{"code":"usage"}})
+            json!({"ibis":1,"ok":false,"error":{"code":"usage","message":{"id":"error-usage","args":{}},"recovery":{"action":"edit-input"},"focus":"request"}})
         );
         assert!(
             errors.contains("pandoc") && errors.contains("textcite") && errors.contains("apa"),

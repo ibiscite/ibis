@@ -17,13 +17,13 @@ class BrandDrift(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
             BUILD["ui_icons"](output)
-            name = Path("apps/desktop/src/icon-paths.ts")
+            name = Path("apps/desktop/src/icon-art.ts")
             self.assertEqual((output / name).read_text(), (root / name).read_text())
             self.assertIn(name, BUILD["generated_files"](output))
-            from xml.etree import ElementTree
             for source in (root / "brand/icons").glob("*.svg"):
-                path = ElementTree.parse(source).getroot()[0].attrib["d"]
-                self.assertIn(json.dumps(path), (output / name).read_text())
+                svg = source.read_text()
+                body = svg[svg.index(">") + 1:svg.rindex("</svg>")].strip()
+                self.assertIn(json.dumps(body), (output / name).read_text())
 
     def test_readme_uses_the_current_public_headline(self):
         root = Path(__file__).resolve().parents[1]

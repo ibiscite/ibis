@@ -1,26 +1,19 @@
 /* The picker's search bar: the window's drag region, the large frameless search field
    and the controls beside it. Welcome has no search yet, so the bar can be hidden. */
-main > .search-bar { grid-area: search; }
-.search-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-height: calc(calc(var(--field-h) + 2 * var(--inset)) + var(--border-width)); padding: var(--inset); border-bottom: var(--border-width) solid var(--separator); cursor: move; user-select: none; }
+.search-bar { --band-gap: var(--space-1); flex-wrap: wrap; min-height: var(--header-h); padding-block: var(--inset); border-bottom: var(--border-width) solid var(--separator); cursor: move; user-select: none; }
 .search-bar[hidden] { display: none; }
-/* A glyph is centred over the tile column and the query starts where row titles
-   start (docs/design/foundations.md, "Two columns"). The Ibis mark is the logo, so
-   it keeps brand scarlet; contrast modes make it CanvasText (#1293). */
-.search-bar > svg { width: var(--icon); flex-shrink: 0; margin-inline: var(--lead) calc(var(--lead-gap) - var(--space-1)); color: var(--text-secondary); pointer-events: none; }
-.search-bar > svg.search-mark { width: var(--control-small-h); height: var(--control-small-h); color: var(--scarlet);
-  margin-inline: calc(var(--lead) - calc((var(--control-small-h) - var(--icon)) / 2)) calc(var(--lead-gap) - var(--space-1) - calc((var(--control-small-h) - var(--icon)) / 2));
-}
+/* The mark centres in the band's icon column and the query starts on the label
+   column, where row titles start (ui/Band). The Ibis mark is the logo, so it keeps
+   brand scarlet; contrast modes make it CanvasText (#1293). */
+.search-bar svg.search-mark { width: var(--mark-search); height: var(--mark-search); color: var(--scarlet); pointer-events: none; }
 /* Reserve readable query space before wrapping controls, at every text size. */
-.search-field { --search-clear-size: var(--action-h); position: relative; display: flex; flex: 1; min-width: min(12rem, calc(100% - var(--lead) - var(--icon) - var(--lead-gap))); }
+.search-field { position: relative; display: flex; flex: 1; min-width: min(12rem, calc(100% + var(--inset) - var(--label-start))); }
 .query-input { position: relative; display: flex; flex: 1; min-width: 0; }
 /* The search box never shows a ring: it always has focus, and the caret is the
    cue. Contrast and forced colours restore it below. */
 #search { width: 100%; min-width: 0; height: var(--field-h); font-size: var(--type-search-size); line-height: var(--type-search-line); letter-spacing: -.025em; background: transparent; border: 0; border-radius: var(--r-control); padding: 0; outline-offset: 4px; cursor: text; user-select: text; }
-:root[data-platform] #search { padding-inline-end: calc(var(--search-clear-size) + var(--space-1)); }
-#search::placeholder { color: var(--text-placeholder); }
 #search:focus-visible { outline: none; box-shadow: none; }
 #search::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
-.search-clear.ui-button { --ring-offset: var(--ring-inside); position: absolute; inset-inline-end: var(--border-width); top: 50%; transform: translateY(-50%); }
 /* Controls fill the field's height, so their gap to the window's top and side is
    one --inset and their corners nest in the window's (docs/design/foundations.md, Corners). */
 .search-bar .pin-button { flex: none; margin-inline-start: auto; }
@@ -31,7 +24,6 @@ main > .search-bar { grid-area: search; }
 .search-page-token bdi { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (pointer: coarse) {
   :root, :root[data-platform] { --field-h: var(--touch-target); }
-  .search-field { --search-clear-size: var(--touch-target); }
 }
 @media (prefers-contrast: more) {
   :root[data-platform] #search { border-color: var(--separator); }
@@ -43,7 +35,7 @@ main > .search-bar { grid-area: search; }
 }
 /* Keep an editable search row when enlarged text leaves no room for controls; the
    480x360 frame at 200% text (15em wide) keeps the controls but gives up vertical gaps. */
-@media (max-width: 460px) { .search-field { flex-basis: calc(100% - var(--lead) - var(--icon) - var(--lead-gap)); } }
+@media (max-width: 460px) { .search-field { flex-basis: calc(100% + var(--inset) - var(--label-start)); } }
 @media (max-height: 400px) { @container (max-width: 20em) {
   .search-bar { padding-block: 0; row-gap: 0; }
   .search-bar .toolbar-menu-control { min-width: 0; max-width: calc(100% - var(--field-h) - var(--space-1)); }

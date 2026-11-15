@@ -201,7 +201,7 @@ pub(crate) async fn choose_settings_backup(window: WebviewWindow) -> Result<Opti
         .file()
         .set_parent(&window)
         .set_title("Restore Settings")
-        .add_filter("Ibis settings backup", &["json"]);
+        .add_filter("Ibis settings backup", &["json", "bak"]);
     let chosen = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_file())
         .await
         .map_err(|_| BackupProblem::Unreadable)?;
@@ -227,9 +227,8 @@ pub(crate) async fn restore_settings_backup(app: AppHandle, ticket: u32) -> Resu
     let file = app.state::<SettingsFile>().inner().clone();
     // The locked read, write and flush run off the interface thread and are
     // waited for to the end, so the result shown is the one on disk.
-    tauri::async_runtime::spawn_blocking(move || file.exclusive(|path| backup::restore(path, &plan)))
+    tauri::async_runtime::spawn_blocking(move || file.owner.restore(&plan))
         .await
-        .map_err(|_| BackupProblem::NotSaved)?
         .map_err(|_| BackupProblem::NotSaved)?
         .map_err(|error| backup::problem(&error))?;
     app.request_restart();
@@ -247,8 +246,8 @@ pub(crate) fn cancel_settings_restore(pending: State<'_, PendingRestore>, ticket
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ibis_core::settings::backup as rules;
-    use ibis_core::settings::{LibrarySetting, Settings};
+    use ibis_engine::settings::backup as rules;
+    use ibis_engine::settings::{LibrarySetting, Settings};
 
     fn plan(settings: &Settings) -> Plan {
         let text = rules::export(settings, "0.0.0").unwrap_or_else(|error| panic!("{error}"));
@@ -329,9 +328,12 @@ mod tests {
     #[test]
     fn a_preview_shows_a_bibliography_by_its_name_and_values_as_text() {
         let settings = Settings {
-            library: Some(LibrarySetting::Bibtex(PathBuf::from("/invented/private/thesis.bib"))),
-            larger_text: Some(true),
-            ..Settings::default()
+            portable: ibis_engine::settings::Portable {
+                library: Some(LibrarySetting::Bibtex(PathBuf::from("/invented/private/thesis.bib"))),
+                larger_text: Some(true),
+                ..Default::default()
+            },
+            ..Default::default()
         };
         let text = rules::export(&settings, "0.0.0").unwrap_or_else(|error| panic!("{error}"));
         let backup = rules::parse(&text).unwrap_or_else(|error| panic!("{error}"));

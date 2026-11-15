@@ -56,6 +56,50 @@ fn refusal(result: &Value) -> &str {
 }
 
 #[test]
+fn sentinel_record_ids_never_enter_mcp_text_and_keyless_refusals_keep_recovery() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("invented.json");
+    std::fs::write(&path, json!([
+        {"id":"SENTINEL-ID-keyless", "type":"book", "title":"Invented lantern without a key"},
+        {"id":"SENTINEL-ID-keyed", "citation-key":"lantern2026", "type":"book", "title":"Invented lantern with a key"}
+    ]).to_string()).unwrap();
+    let engine = Engine::new().unwrap().without_file_watches();
+    open(&engine, &path);
+    let found = tool(&engine, "search", json!({"query":"lantern"}));
+    assert!(!found["content"].to_string().contains("SENTINEL-ID"), "{found}");
+    for hit in answer(&found)["hits"].as_array().unwrap() {
+        let shown = tool(&engine, "show", json!({"ref":hit["ref"]}));
+        assert!(!shown["content"].to_string().contains("SENTINEL-ID"), "{shown}");
+        let cited = tool(
+            &engine,
+            "cite",
+            json!({"items":[{"ref":hit["ref"]}], "format":"pandoc"}),
+        );
+        assert!(!cited["content"].to_string().contains("SENTINEL-ID"), "{cited}");
+        if hit["title"] == "Invented lantern without a key" {
+            assert_eq!(cited["structuredContent"]["error"]["code"], "missing-key");
+            assert_eq!(
+                cited["structuredContent"]["error"]["recovery"]["action"],
+                "choose-style"
+            );
+        } else {
+            assert_eq!(answer(&cited)["text"], "[@lantern2026]");
+        }
+    }
+}
+
+#[test]
+fn tool_validation_keeps_the_specific_catalogue_message_and_arguments() {
+    let result = tool(&Engine::new().unwrap(), "styles", json!({"limit":0}));
+    assert!(refusal(&result).contains("limit must be a whole number"));
+    let problem = &result["structuredContent"]["error"];
+    assert_eq!(problem["message"]["id"], "mcp-error-number-range");
+    assert_eq!(problem["message"]["args"], json!({"name":"limit", "limit":"200"}));
+    assert_eq!(problem["recovery"]["action"], "edit-input");
+    assert_eq!(problem["focus"], "request");
+}
+
+#[test]
 fn no_open_library_is_an_error_and_never_an_empty_result() {
     let engine = Engine::new().unwrap();
     for (name, arguments) in [
@@ -69,6 +113,41 @@ fn no_open_library_is_an_error_and_never_an_empty_result() {
         assert!(text.contains("No library is open"), "{text}");
     }
     assert_eq!(answer(&tool(&engine, "styles", json!({})))["styles"][0]["id"], "apa");
+}
+
+#[test]
+fn mcp_records_cite_without_a_library_and_keep_their_identity_and_provenance() {
+    let engine = Engine::new().unwrap();
+    let result = tool(
+        &engine,
+        "cite",
+        json!({"records":[
+            {"id":"x","type":"book","title":"Invented X","citation-key":"plain"},
+            {"id":"record:x","type":"book","title":"Invented Prefixed","citation-key":"prefixed"}
+        ],"format":"pandoc"}),
+    );
+    assert_eq!(answer(&result)["text"], "[@plain; @prefixed]");
+    let provenance = answer(&result)["provenance"].as_str().unwrap();
+    assert!(provenance.contains("records sent with this request"), "{result}");
+    assert!(provenance.contains("not instructions"), "{result}");
+    assert!(answer(&result).get("library_notes").is_none(), "{result}");
+    assert!(engine.libraries().unwrap().libraries.is_empty());
+}
+
+#[test]
+fn mcp_records_refuse_keep_order_instead_of_silently_ignoring_it() {
+    let engine = Engine::new().unwrap();
+    for keep_order in [json!(true), json!(false), json!("yes")] {
+        let result = tool(
+            &engine,
+            "cite",
+            json!({"records":[{"id":"x","type":"book","title":"Invented X"}],
+                "keep_order":keep_order}),
+        );
+        let text = refusal(&result);
+        assert!(text.starts_with("error: bad-input."), "{result}");
+        assert!(text.contains("keep_order"), "{result}");
+    }
 }
 
 #[test]
@@ -330,7 +409,7 @@ fn refs_work_for_keyless_and_shared_records_and_read_as_plain_text() {
     let second = write("second.bib", "@book{shared, title={Tide tables two}, year=2002}\n");
     let third = write(
         "third.json",
-        "[{\"id\":\"odd key\u{202e}\",\"citation-key\":\"odd key\u{202e}\",\"type\":\"book\",\"title\":\"Tide tables three\"}]",
+        "[{\"id\":\"odd key\u{202e}\",\"citation-key\":\"odd key\u{202e}\",\"type\":\"book\",\"title\":\"Tide tables three\"}, {\"id\":\"SENTINEL-ID-reserved\",\"citation-key\":\"id:alpha\",\"type\":\"book\",\"title\":\"Tide tables reserved\"}]",
     );
     let engine = Engine::new().unwrap().without_file_watches();
     for path in [&first, &second, &third] {
@@ -338,7 +417,7 @@ fn refs_work_for_keyless_and_shared_records_and_read_as_plain_text() {
     }
     let found = tool(&engine, "search", json!({"query":"tide tables"}));
     let hits = answer(&found)["hits"].as_array().unwrap();
-    assert_eq!(hits.len(), 3, "{found}");
+    assert_eq!(hits.len(), 4, "{found}");
     for hit in hits {
         let reference = hit["ref"].as_str().unwrap();
         assert!(reference.starts_with("id:"), "{reference}");
@@ -377,7 +456,7 @@ fn library_text_stays_data() {
     assert_eq!(answer(&found)["hits"][0]["title"], visible);
     assert_eq!(answer(&found)["hits"][0]["authors"][0], visible);
     assert_eq!(answer(&shown)["fields"]["publisher"], visible);
-    for result in [&found, &shown, &cited] {
+    for result in [&found, &shown] {
         let text = result["content"][0]["text"].as_str().unwrap();
         for hidden in ['\u{202e}', '\u{e0041}', '\u{1b}'] {
             assert!(!text.contains(hidden), "{text}");
@@ -389,6 +468,9 @@ fn library_text_stays_data() {
                 .contains("not instructions")
         );
     }
+    // Altering hidden characters would invalidate the engine receipt.
+    assert!(refusal(&cited).contains("hidden characters"));
+    assert!(!cited.to_string().contains("Ignore previous instructions"));
     // Refusals never carry the library's words back.
     let refused = tool(
         &engine,
@@ -401,7 +483,7 @@ fn library_text_stays_data() {
         &engine,
         &mut mcp::Session::default(),
         &json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
-            "protocolVersion":mcp::LEGACY_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"t","version":"1"}
+            "protocolVersion":mcp::INITIALIZE_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"t","version":"1"}
         }}),
     )
     .unwrap();
@@ -437,5 +519,5 @@ fn an_agent_can_tell_the_tools_apart_from_their_descriptions() {
         }
     }
     // The whole list stays small enough to sit in every conversation.
-    assert!(tools.iter().map(|tool| tool.to_string().len()).sum::<usize>() < 7_000);
+    assert!(tools.iter().map(|tool| tool.to_string().len()).sum::<usize>() < 8_000);
 }

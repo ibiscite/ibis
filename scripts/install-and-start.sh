@@ -18,6 +18,15 @@ show() {
   return "$rc"
 }
 stays_up=scripts/stays-up.py
+# The journey needs an account with no Ibis settings, and starting the app
+# writes them, so on macOS and Windows it runs before the startup check.
+
+journey() {
+  [ "${IBIS_INSTALLED_JOURNEY:-0}" = 1 ] || return 0
+  local python=python3
+  if [ "$RUNNER_OS" = Windows ]; then python=python; fi
+  bash scripts/ci-native-journey.sh "$python" scripts/smoke-native.py --journey --app "$app" --output "screenshots/journey-$RUNNER_OS" --identifier "$IDENTIFIER"
+}
 
 linux() {
   sudo apt-get update
@@ -28,7 +37,9 @@ linux() {
   app=$(dpkg -L "$package" | grep -m1 '^/usr/bin/')
   echo "installed $package at $app"
   display() { xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- "$@"; }
-  show display /usr/bin/python3 scripts/smoke-native.py --app "$app" --output screenshots/install-Linux --identifier "$IDENTIFIER" --skip-performance
+  if [ "${IBIS_INSTALLED_JOURNEY:-0}" = 1 ]; then
+    show display bash scripts/ci-native-journey.sh /usr/bin/python3 scripts/smoke-native.py --app "$app" --output screenshots/install-Linux --identifier "$IDENTIFIER" --skip-performance
+  fi
   show display /usr/bin/python3 "$stays_up" "$app"
   sudo apt-get remove -y "$package"
   test ! -e "$app"
@@ -52,8 +63,12 @@ macos() {
   ditto "$bundle" "$installed"
   hdiutil detach "$mount"
   codesign --verify --deep --strict "$installed"
-  app=$(find "$installed/Contents/MacOS" -type f -perm -u+x | head -n 1)
+  executable=$(plutil -extract CFBundleExecutable raw -o - "$installed/Contents/Info.plist")
+  app="$installed/Contents/MacOS/$executable"
+  test -f "$app"
+  test -x "$app"
   echo "installed at $app"
+  journey
   show python3 "$stays_up" "$app"
   rm -rf "$installed"
 }
@@ -68,9 +83,10 @@ windows() {
   test -n "$key" || { echo "::error::The setup executable registered no uninstall entry"; exit 1; }
   uninstaller=$(KEY="$key" pwsh -NoProfile -Command '(Get-ItemProperty ("HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\" + $env:KEY)).UninstallString' | tr -d '"\r')
   dir=$(dirname "$(cygpath -u "$uninstaller")")
-  app=$(find "$dir" -maxdepth 1 -iname '*.exe' ! -iname 'uninstall*' | head -n 1)
-  test -n "$app" || { echo "::error::The setup executable installed no app in $dir"; exit 1; }
+  app="$dir/ibis-desktop.exe"
+  test -f "$app" || { echo "::error::The setup executable installed no desktop app in $dir"; exit 1; }
   echo "installed at $app"
+  journey
   show python "$stays_up" "$app"
   "$dir/uninstall.exe" //S
   # The uninstaller copies itself and returns early; wait for removal.
@@ -95,8 +111,8 @@ windows() {
     show sh -c 'grep -a "Property(S): .*\(DIR\|FOLDER\) = " | tail -n 40; exit 1' msiexec < <(msi_log i)
   fi
   dir=$(cygpath -u "$installdir")
-  app=$(find "$dir" -maxdepth 1 -iname '*.exe' ! -iname 'uninstall*' | head -n 1)
-  test -n "$app" || { echo "::error::The MSI installed no app in $dir"; exit 1; }
+  app="$dir/ibis-desktop.exe"
+  test -f "$app" || { echo "::error::The MSI installed no desktop app in $dir"; exit 1; }
   echo "installed at $app"
   show python "$stays_up" "$app"
   if ! msiexec x; then

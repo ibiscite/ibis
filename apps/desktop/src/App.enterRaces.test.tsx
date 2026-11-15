@@ -1,8 +1,9 @@
+import { fixtureDestination, formatAnswer } from "./testing/format";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import { backend, prepared, resetApp, result } from "./testing/app";
+import { backend, prepared, resetApp, result, inCitation } from "./testing/app";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(resetApp);
@@ -106,7 +107,7 @@ test.each(["row", "tile"])("an add activation on a stale %s cancels queued Enter
     else fireEvent.click(screen.getByTitle(/^Add /));
   });
   await act(async () => { found.resolve([result("a", "Fresh reference")]); });
-  expect(screen.queryByRole("button", { name: "Remove old from the selection" })).toBeNull();
+  expect(inCitation("old")).toBeNull();
   expect(calls).not.toContain("copy_file_citation");
 });
 
@@ -127,7 +128,7 @@ test.each(["copy", "hide", "delivery"])("changing only the search cannot repeat 
   await enter(true);
   await enter();
   await act(async () => { fireEvent.change(box(), { target: { value: "another search" } }); });
-  expect(screen.getByRole("button", { name: "Remove a from the selection" })).toBeTruthy();
+  expect(inCitation("a")).toBeTruthy();
   await enter();
   const copiesWhilePending = copies;
   await act(async () => { paused.resolve(); });
@@ -156,7 +157,7 @@ test.each(["copy", "hide", "delivery"])("a fresh Enter after picking the same fo
   let copies = 0;
   const calls = backend({
     search: () => [result("a", "Prepared reference")],
-    picker_destination: () => ({ app: "Example Writer", app_id: "example.writer", app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: true, output_question: null, paste: null, paste_question: false, can_choose_paste: false }),
+    picker_destination: () => (fixtureDestination({ app: "Example Writer", app_id: "example.writer", app_identity: null, unreadable: false, can_paste: true, paste: null, paste_question: false, can_choose_paste: false, format: formatAnswer("pandoc", "yours") })),
     copy_file_citation: async (args) => {
       const { preview } = prepared(args);
       if (++copies === 1 && stage === "copy") await paused.promise;
@@ -167,8 +168,8 @@ test.each(["copy", "hide", "delivery"])("a fresh Enter after picking the same fo
   });
   await act(async () => { render(<App />); });
   await enter();
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Copy as Pandoc" })); });
-  await act(async () => { fireEvent.click(screen.getByRole("menuitemradio", { name: "Pandoc" })); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Citation format Pandoc" })); });
+  await act(async () => { fireEvent.click(screen.getByRole("option", { name: "Pandoc" })); });
   await act(async () => { await vi.advanceTimersByTimeAsync(300); });
   await enter();
   const copiesWhilePending = calls.filter((call) => call === "copy_file_citation").length;

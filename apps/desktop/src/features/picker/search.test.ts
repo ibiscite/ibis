@@ -1,10 +1,10 @@
 import { expect, test } from "vitest";
-import { testStates } from "../../test-fixtures";
+import { testStates, recordId } from "../../test-fixtures";
 import { initialSession, reduceSession, type SessionEffect, type SessionEvent, type SessionState } from "./session";
 import type { SearchInputs, SearchReply } from "./search";
 
 const library = { ...testStates[0]!.library, revision: "1" };
-const row = (key: string) => ({ ...testStates[1]!.results[0]!, id: { ...testStates[1]!.results[0]!.id, key }, revision: "1" });
+const row = (key: string) => ({ ...testStates[1]!.results[0]!, id: { ...testStates[1]!.results[0]!.id, key: recordId(key) }, revision: "1" });
 const inputs = (query: string, overrides: Partial<SearchInputs> = {}): SearchInputs =>
   ({ queryKey: JSON.stringify([query, true]), query, interpretLocators: true, library, version: 0, recent: undefined, app: null, ...overrides });
 

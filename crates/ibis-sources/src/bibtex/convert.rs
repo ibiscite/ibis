@@ -34,7 +34,7 @@ pub(crate) fn convert(
             .get(field)
             .map(|v| v.split_whitespace().collect::<Vec<_>>().join(" "))
     };
-    let text = |field: &str| {
+    let text = |field: &'static str| {
         entry
             .get(field)
             .map(|c| {
@@ -43,24 +43,24 @@ pub(crate) fn convert(
                 if found.is_empty() {
                     plain
                 } else {
-                    unknown.borrow_mut().extend(found);
+                    unknown.borrow_mut().insert(field);
                     raw_text(field).unwrap_or(plain)
                 }
             })
             .filter(|s| !s.is_empty())
     };
-    let field_pieces = |field: &str| -> Option<Vec<Piece>> {
+    let field_pieces = |field: &'static str| -> Option<Vec<Piece>> {
         let mut found = BTreeSet::new();
         let pieces = pieces_from_chunks(entry.get(field)?.iter().map(|c| &c.v), &mut found);
         if found.is_empty() {
             return Some(pieces);
         }
-        unknown.borrow_mut().extend(found);
+        unknown.borrow_mut().insert(field);
         Some(vec![Piece::Text {
             text: raw_encoded(field).unwrap_or_default(),
         }])
     };
-    let rich = |main: &str, sub: &[(&str, &str)]| -> Option<Vec<Piece>> {
+    let rich = |main: &'static str, sub: &[(&'static str, &str)]| -> Option<Vec<Piece>> {
         let mut pieces = field_pieces(main)?;
         for (field, separator) in sub {
             if let Some(more) = field_pieces(field) {
@@ -187,7 +187,7 @@ pub(crate) fn convert(
     }
 
     let mut variables = BTreeMap::new();
-    let mut set = |csl: &str, fields: &[&str]| {
+    let mut set = |csl: &str, fields: &[&'static str]| {
         if let Some(value) = fields.iter().find_map(|f| text(f)) {
             variables.insert(csl.to_string(), value);
         }
@@ -290,7 +290,9 @@ pub(crate) fn convert(
         .unwrap_or_default();
     let unknown = unknown.into_inner();
     if !unknown.is_empty() {
-        problems.push(Problem::new(WarningCause::TexCommand, None));
+        // Keep one finding per entry, naming the first affected field.
+        let field = unknown.first().copied();
+        problems.push(Problem::new(WarningCause::TexCommand, field));
     }
 
     let mut csl: BTreeMap<String, Value> = variables
@@ -393,14 +395,7 @@ fn date_json(date: Issued) -> Value {
     }
     result
 }
-pub(super) fn days_in_month(year: i32, month: u8) -> u8 {
-    match month {
-        2 if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 => 29,
-        2 => 28,
-        4 | 6 | 9 | 11 => 30,
-        _ => 31,
-    }
-}
+pub(super) use crate::days_in_month;
 
 // ---------- Names ----------
 
@@ -752,7 +747,7 @@ fn lenient_date(text: &str) -> Option<(PartialDate, bool)> {
 
 // ---------- Language ----------
 
-/// BCP 47 tag from `langid`, its legacy `hyphenation` alias, or `language`.
+/// BCP 47 tag from `langid`, its `hyphenation` alias, or `language`.
 /// Unknown names are reported and become `und`, never implicit English.
 fn language_tag(entry: &Entry, problems: &mut Vec<Problem>) -> Option<String> {
     let (field, raw) = ["langid", "hyphenation", "language"].into_iter().find_map(|field| {
@@ -1282,6 +1277,10 @@ fn render(pieces: &[Piece]) -> String {
 /// URL fields are verbatim, with a small set of exporter escapes. Never run
 /// general TeX typography or commands over a path (notably `--` and `~`).
 fn decode_url(value: &str) -> String {
+    // Use the same literal-symbol decoder as ordinary fields, once, without
+    // running general TeX typography over an identifier or URL.
+    let protected = super::resolve::protect_backslashes(value);
+    let value = protected.as_ref();
     let mut out = String::with_capacity(value.len());
     let mut chars = value.chars().peekable();
     while let Some(ch) = chars.next() {

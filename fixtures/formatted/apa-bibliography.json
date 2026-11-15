@@ -5,6 +5,13 @@
       "display": {
         "nodes": [
           {
+            "blocks": [
+              {
+                "end": 3,
+                "kind": "entry",
+                "start": 0
+              }
+            ],
             "content": [
               {
                 "bold": false,

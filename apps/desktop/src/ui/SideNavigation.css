@@ -10,10 +10,9 @@
   background: transparent; color: var(--text); font-size: var(--type-body-size); line-height: var(--type-body-line); text-align: start; cursor: default; outline: none;
 }
 .ui-side-navigation-tile {
-  flex: none; display: grid; place-items: center; width: var(--icon); height: var(--icon); border-radius: var(--r-icon);
+  flex: none; display: grid; place-items: center; width: var(--icon-tile); height: var(--icon-tile); border-radius: var(--r-icon);
   background: var(--page); color: var(--thumb); font-size: var(--type-label-size); font-weight: var(--strong); line-height: 1;
 }
-.ui-side-navigation-tile svg { display: block; width: var(--icon-compact); height: var(--icon-compact); }
 .ui-side-navigation-tile[data-page="general"] { --page: var(--page-general); }
 .ui-side-navigation-tile[data-page="look"] { --page: var(--page-look); }
 .ui-side-navigation-tile[data-page="citations"] { --page: var(--page-citations); }
@@ -27,9 +26,11 @@
 /* The accent ring would vanish on the accent fill, so the selected row's ring takes its text colour, inside the fill. */
 .ui-side-navigation-item[data-focus-visible][aria-selected="true"] { outline-color: var(--selected-text); outline-offset: calc(-2 * var(--ring-width)); }
 .ui-side-navigation-empty { margin: 0; padding: var(--row-spacing) var(--space-2); color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
+.ui-side-results-group { display: flex; flex-direction: column; gap: var(--row-spacing); }
+.ui-side-results-heading { padding: var(--space-2); }
 /* About sits at the foot of the sidebar. */
 .ui-side-navigation-item[data-gap-before] { margin-block-start: auto; }
 @media (prefers-contrast: more), (forced-colors: active) {
-  .ui-side-navigation-tile { forced-color-adjust: none; background: Canvas; color: CanvasText; box-shadow: inset 0 0 0 1px CanvasText; }
+  .ui-side-navigation-tile { forced-color-adjust: none; background: Canvas; color: CanvasText; box-shadow: inset 0 0 0 var(--border-width) CanvasText; }
   .ui-side-navigation-item[aria-current="page"] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
 }

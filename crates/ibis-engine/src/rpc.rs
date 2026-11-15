@@ -112,9 +112,7 @@ pub fn failure(id: Option<&RequestId>, error: EngineError) -> Value {
         ErrorCode::Cancelled => (-32800, "Request cancelled"),
     };
     let mut response = error_response(id, code, message, error.code);
-    if let Some(reason) = error.reason {
-        response["error"]["data"]["reason"] = json!(reason);
-    }
+    response["error"]["data"] = json!(error);
     response
 }
 pub fn invalid_request(id: Option<&RequestId>) -> Value {
@@ -127,5 +125,5 @@ pub fn busy(id: &RequestId) -> Value {
     error_response(Some(id), -32000, "Server busy", ErrorCode::ResourceLimit)
 }
 fn error_response(id: Option<&RequestId>, code: i32, message: &'static str, ibis_code: ErrorCode) -> Value {
-    json!({"jsonrpc":"2.0","id":id.map(RequestId::value).unwrap_or(Value::Null),"error":{"code":code,"message":message,"data":{"code":ibis_code}}})
+    json!({"jsonrpc":"2.0","id":id.map(RequestId::value).unwrap_or(Value::Null),"error":{"code":code,"message":message,"data":EngineError::new(ibis_code)}})
 }

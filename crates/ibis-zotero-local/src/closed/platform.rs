@@ -1,5 +1,5 @@
 //! Native boundaries used only by the closed reader. No source lock is acquired.
-use super::{ClosedError, Control};
+use super::{ClosedError, Control, FileLease};
 use std::fs::{File, Metadata};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -150,11 +150,12 @@ pub(super) fn resident(metadata: &Metadata) -> bool {
 pub(super) fn open_source(path: &Path) -> Result<File, ClosedError> {
     #[cfg(unix)]
     let file = {
-        use rustix::fs::{Mode, OFlags, open};
+        use nix::fcntl::{OFlag, open};
+        use nix::sys::stat::Mode;
         File::from(
             open(
                 path,
-                OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
+                OFlag::O_RDONLY | OFlag::O_NOFOLLOW | OFlag::O_NONBLOCK | OFlag::O_CLOEXEC,
                 Mode::empty(),
             )
             .map_err(|_| ClosedError::Unreadable)?,
@@ -259,6 +260,52 @@ pub(super) fn create_private(path: &Path, control: &Control) -> Result<(), Close
     Ok(())
 }
 
+/// Create a new private file without replacing an existing entry.
+pub(super) fn private_file(path: &Path, control: &Control) -> Result<File, ClosedError> {
+    control.check()?;
+    #[cfg(windows)]
+    {
+        windows::private_file(path, control)
+    }
+    #[cfg(not(windows))]
+    {
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        options.open(path).map_err(|_| ClosedError::PrivateStorage)
+    }
+}
+
+/// Acquire the reusable lock, retaining the same file and lease through validation.
+pub(super) fn private_lock(path: &Path, control: &Control) -> Result<FileLease, ClosedError> {
+    control.check()?;
+    #[cfg(windows)]
+    {
+        windows::private_lock(path, control)
+    }
+    #[cfg(not(windows))]
+    {
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true).write(true).create(true).truncate(false);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options
+                .mode(0o600)
+                .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK);
+        }
+        let file = options.open(path).map_err(|_| ClosedError::PrivateStorage)?;
+        if !file.metadata().is_ok_and(|m| m.is_file()) {
+            return Err(ClosedError::PrivateStorage);
+        }
+        FileLease::acquire(file).map_err(|_| ClosedError::StorageInUse)
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn clear_inherited_acl(path: &Path, control: &Control) -> Result<(), ClosedError> {
     output(Command::new("/bin/chmod").args(["-h", "-N"]).arg(path), control)
@@ -274,7 +321,7 @@ pub(super) fn secure(path: &Path, control: &Control) -> Result<(), ClosedError> 
         let m = std::fs::symlink_metadata(path).map_err(|_| ClosedError::PrivateStorage)?;
         if !m.is_dir()
             || m.file_type().is_symlink()
-            || m.uid() != rustix::process::geteuid().as_raw()
+            || m.uid() != nix::unistd::geteuid().as_raw()
             || m.mode() & 0o777 != 0o700
         {
             return Err(ClosedError::PrivateStorage);
@@ -305,20 +352,14 @@ pub(super) fn exclude_backups(path: &Path, control: &Control) -> Result<(), Clos
     use std::io::Write;
     const TAG: &[u8] = b"Signature: 8a477f597d28d172789f06886806bc55\n# Disposable Ibis Zotero copies.\n";
     let tag = path.join("CACHEDIR.TAG");
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    match options.open(&tag) {
-        Ok(mut file) => {
+    match std::fs::symlink_metadata(&tag) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let mut file = private_file(&tag, control)?;
             file.write_all(TAG)
                 .and_then(|_| file.sync_all())
                 .map_err(|_| ClosedError::PrivateStorage)?;
         }
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+        Ok(_) => {
             // Never overwrite or follow a pre-existing tag, including a link
             // inserted before inherited ACLs were removed from a new directory.
             let file = open_source(&tag).map_err(|_| ClosedError::PrivateStorage)?;
@@ -348,8 +389,11 @@ pub(super) fn space(path: &Path, needed: u64, control: &Control) -> Result<(), C
     control.check()?;
     #[cfg(unix)]
     {
-        let fs = rustix::fs::statvfs(path).map_err(|_| ClosedError::NoSpace)?;
-        if fs.f_bavail.saturating_mul(fs.f_frsize) < needed {
+        let fs = nix::sys::statvfs::statvfs(path).map_err(|_| ClosedError::NoSpace)?;
+        // These counts are u64 on Linux but narrower on macOS.
+        #[allow(clippy::useless_conversion)]
+        let available = u64::from(fs.blocks_available()).saturating_mul(u64::from(fs.fragment_size()));
+        if available < needed {
             return Err(ClosedError::NoSpace);
         }
     }

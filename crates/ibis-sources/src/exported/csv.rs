@@ -36,7 +36,7 @@ pub(crate) fn load(library: &LibraryId, text: &str, previous: Option<&Snapshot>)
     }
     let mut records = Records::new(library, previous, "csv");
     if text.trim().is_empty() {
-        return Ok(records.parsed);
+        return Ok(records.finish());
     }
     let first = text.lines().next().unwrap_or_default();
     // A spreadsheet set to a comma decimal separates cells with semicolons.
@@ -94,7 +94,7 @@ pub(crate) fn load(library: &LibraryId, text: &str, previous: Option<&Snapshot>)
             Err(problem) => records.skip(line, problem),
         }
     }
-    Ok(records.parsed)
+    Ok(records.finish())
 }
 
 /// One row's CSL data, and whether a cell was dropped.

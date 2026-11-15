@@ -11,6 +11,10 @@ use std::{
 const MAX_FILES: usize = 64;
 const MAX_RELOAD_ATTEMPTS: usize = 3;
 const MAX_WARNING_DETAILS: usize = 256;
+#[cfg(test)]
+#[path = "../../tests/support/zotero.rs"]
+#[allow(dead_code)]
+mod zotero_fixture;
 #[derive(Default)]
 pub(super) struct Owners {
     operation: Mutex<()>,
@@ -67,6 +71,18 @@ pub struct PreparedFileReload {
     read: Result<FileReloadRead, EngineError>,
     cancel: Cancellation,
 }
+
+/// Zotero data and health kept private until the client accepts them under its
+/// current selection guard. A guarded full read retires citations immediately.
+pub struct PreparedZoteroReload {
+    origin: Weak<Shared>,
+    base: Arc<State>,
+    next: State,
+    source: ZoteroSource,
+    closed_groups: Option<Vec<ibis_sources::zotero_source::Group>>,
+    outcome: Result<(), EngineError>,
+    cancel: Cancellation,
+}
 struct FileReloadRead {
     loaded: LoadedLibrary,
     observation: ibis_sources::SourceSnapshot,
@@ -80,11 +96,36 @@ impl PreparedFileReload {
     }
 }
 
+fn zotero_error(failure: ZoteroError) -> EngineError {
+    let code = if failure.cancelled() {
+        ErrorCode::Cancelled
+    } else if failure.limited() {
+        ErrorCode::ResourceLimit
+    } else if failure.newer() {
+        ErrorCode::NewerFormat
+    } else if failure == ZoteroError::InvalidData || failure == ZoteroError::Selection {
+        ErrorCode::BadInput
+    } else if failure == ZoteroError::LibraryNotFound {
+        ErrorCode::NotFound
+    } else {
+        ErrorCode::SourceUnavailable
+    };
+    EngineError {
+        code,
+        reason: failure.reason(),
+        detail: failure.schema_table().map(|table| ErrorDetail { table }),
+        strict_cause: None,
+        citation_error: None,
+    }
+}
+
 pub(super) fn source_error(error: SourceError) -> EngineError {
     use ibis_core::contract::ErrorReason;
     super::error(match error {
+        SourceError::Missing => return EngineError::because(ErrorCode::SourceUnavailable, ErrorReason::MissingFile),
         SourceError::UnknownFormat => return EngineError::because(ErrorCode::BadInput, ErrorReason::UnknownFormat),
         SourceError::CsvTemplate => return EngineError::because(ErrorCode::BadInput, ErrorReason::CsvTemplate),
+        SourceError::Cancelled => ErrorCode::Cancelled,
         SourceError::TooLarge => ErrorCode::ResourceLimit,
         SourceError::NotRegular | SourceError::Unreadable | SourceError::Incomplete | SourceError::InvalidData => {
             ErrorCode::BadInput
@@ -107,17 +148,169 @@ fn info(loaded: &LoadedLibrary) -> LibraryInfo {
         updated_at_ms: now_ms(),
         watch_warning: None,
         zotero: None,
-        duplicate_keys: loaded
-            .warnings
-            .iter()
-            .filter(|warning| warning.code == ibis_sources::WarningCode::DuplicateKey)
-            .filter_map(|warning| warning.key.clone())
-            .collect(),
+        duplicate_keys: loaded.duplicate_keys.clone(),
         damaged_keys: loaded.damaged_keys.clone(),
         cut_short: loaded.cut_short,
     }
 }
 impl Engine {
+    /// Read on a private source clone. No source or operation lock is held
+    /// during acquisition, so an abandoned read cannot block the next choice.
+    pub fn prepare_zotero_reload(
+        &self,
+        reload: bool,
+        libraries: Option<&[ZoteroLibrary]>,
+        profile: Option<&str>,
+        cancel: &Cancellation,
+    ) -> Result<PreparedZoteroReload, EngineError> {
+        self.prepare_zotero_reload_guarded(reload, libraries, profile, cancel, |retire| retire())
+    }
+
+    /// The client invokes `retire` while holding its current request/source
+    /// guard. Only citation readiness changes during acquisition; data and
+    /// health remain private until acceptance. An obsolete read must refuse
+    /// retirement, including when it fails before its full read begins.
+    pub fn prepare_zotero_reload_guarded(
+        &self,
+        reload: bool,
+        libraries: Option<&[ZoteroLibrary]>,
+        profile: Option<&str>,
+        cancel: &Cancellation,
+        mut guard: impl FnMut(&mut dyn FnMut() -> Result<(), EngineError>) -> Result<(), EngineError>,
+    ) -> Result<PreparedZoteroReload, EngineError> {
+        cancel.check()?;
+        let (base, resources) = {
+            let _operation = self
+                .resources
+                .operation
+                .lock()
+                .map_err(|_| error(ErrorCode::Internal))?;
+            let source = self
+                .resources
+                .zotero
+                .lock()
+                .map_err(|_| error(ErrorCode::Internal))?
+                .clone();
+            let groups = self
+                .resources
+                .closed_groups
+                .lock()
+                .map_err(|_| error(ErrorCode::Internal))?
+                .clone();
+            (
+                self.state()?,
+                Owners {
+                    zotero: Mutex::new(source),
+                    zotero_port: self.resources.zotero_port,
+                    closed_groups: Mutex::new(groups),
+                    ..Owners::default()
+                },
+            )
+        };
+        // Reuse the complete read policy against isolated publication state.
+        // Retire the active engine only while the client still owns this read.
+        let candidate = Engine {
+            shared: Arc::new(Shared::new(base.clone())),
+            formatting: self.formatting.clone(),
+            resources: Arc::new(resources),
+            watch_files: false,
+        };
+        let mut expected = base;
+        let mut retirement_error = None;
+        let outcome = candidate.read_zotero_observed(reload, libraries, profile, cancel, || {
+            let retirement = (|| {
+                let mut retired = None;
+                guard(&mut || {
+                    if retired.is_some() {
+                        return Ok(());
+                    }
+                    let _publication = self.shared.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
+                    let mut state = self.shared.state.write().map_err(|_| error(ErrorCode::Internal))?;
+                    cancel.check()?;
+                    if !expected.same_publication(&state) {
+                        return Err(error(ErrorCode::Cancelled));
+                    }
+                    let mut next = (**state).clone();
+                    next.zotero_generation = next
+                        .zotero_generation
+                        .checked_add(1)
+                        .ok_or_else(|| error(ErrorCode::ResourceLimit))?;
+                    next.zotero_ready = false;
+                    let next = Arc::new(next);
+                    *state = next.clone();
+                    retired = Some(next);
+                    Ok(())
+                })?;
+                // A guard that does not perform retirement cannot authorize
+                // acquisition to make a known-uncertain source copyable.
+                expected = retired.ok_or_else(|| error(ErrorCode::Cancelled))?;
+                Ok(())
+            })();
+            if let Err(failure) = retirement {
+                retirement_error = Some(failure);
+            }
+            retirement
+        });
+        if let Some(failure) = retirement_error {
+            return Err(failure);
+        }
+        cancel.check()?;
+        let next = (*candidate.state()?).clone();
+        let resources = Arc::try_unwrap(candidate.resources).map_err(|_| error(ErrorCode::Internal))?;
+        Ok(PreparedZoteroReload {
+            origin: Arc::downgrade(&self.shared),
+            base: expected,
+            next,
+            source: resources.zotero.into_inner().map_err(|_| error(ErrorCode::Internal))?,
+            closed_groups: resources
+                .closed_groups
+                .into_inner()
+                .map_err(|_| error(ErrorCode::Internal))?,
+            outcome,
+            cancel: cancel.clone(),
+        })
+    }
+
+    /// Accept data and health together. Another accepted publication or a
+    /// cancellation retires this candidate, even when its fingerprints match.
+    pub fn accept_zotero_reload(&self, mut prepared: PreparedZoteroReload) -> Result<(), EngineError> {
+        prepared.cancel.check()?;
+        if !Weak::ptr_eq(&prepared.origin, &Arc::downgrade(&self.shared)) {
+            return Err(error(ErrorCode::BadInput));
+        }
+        let _operation = self
+            .resources
+            .operation
+            .lock()
+            .map_err(|_| error(ErrorCode::Internal))?;
+        let mut source = self.resources.zotero.lock().map_err(|_| error(ErrorCode::Internal))?;
+        let mut groups = self
+            .resources
+            .closed_groups
+            .lock()
+            .map_err(|_| error(ErrorCode::Internal))?;
+        let _publication = self.shared.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
+        let mut state = self.shared.state.write().map_err(|_| error(ErrorCode::Internal))?;
+        prepared.cancel.check()?;
+        if !prepared.base.same_publication(&state) {
+            return Err(error(ErrorCode::Cancelled));
+        }
+        // A concurrent file-health update does not retire this Zotero read.
+        for (id, info) in &mut prepared.next.libraries {
+            if info.kind != LibraryKind::Zotero
+                && let Some(current) = state.libraries.get(id)
+            {
+                *info = current.clone();
+            }
+        }
+        *state = Arc::new(prepared.next);
+        *source = prepared.source;
+        *groups = prepared.closed_groups;
+        drop(state);
+        self.shared.notify()?;
+        prepared.outcome
+    }
+
     pub(super) fn open_file(&self, path: &Path, cancel: &Cancellation) -> Result<(), EngineError> {
         self.open_file_observed(path, cancel).map(|_| ())
     }
@@ -131,7 +324,8 @@ impl Engine {
             .lock()
             .map_err(|_| error(ErrorCode::Internal))?;
         let path = std::path::absolute(path).map_err(|_| error(ErrorCode::BadInput))?;
-        let (loaded, observation) = ibis_sources::load_file_snapshot(&path).map_err(source_error)?;
+        let (loaded, observation) =
+            ibis_sources::load_file_snapshot(&path, &|| cancel.is_cancelled()).map_err(source_error)?;
         let source = observation.source_path().to_path_buf();
         cancel.check()?;
         self.install_file(path, loaded, Some(observation), cancel)?;
@@ -175,7 +369,8 @@ impl Engine {
         };
         let read = (|| {
             let (loaded, observation) =
-                ibis_sources::reload_file_snapshot_reusing(&path, base.index.snapshot()).map_err(source_error)?;
+                ibis_sources::reload_file_snapshot(&path, Some(base.index.snapshot()), &|| cancel.is_cancelled())
+                    .map_err(source_error)?;
             cancel.check()?;
             let library = loaded.library.clone();
             let mut next = State::replacement(&base, vec![(info(&loaded), &loaded.snapshot)], |old| {
@@ -482,6 +677,17 @@ impl Engine {
         profile: Option<&str>,
         cancel: &Cancellation,
     ) -> Result<(), EngineError> {
+        self.read_zotero_observed(reload, libraries, profile, cancel, || Ok(()))
+    }
+
+    fn read_zotero_observed(
+        &self,
+        reload: bool,
+        libraries: Option<&[ZoteroLibrary]>,
+        profile: Option<&str>,
+        cancel: &Cancellation,
+        mut on_begin: impl FnMut() -> Result<(), EngineError>,
+    ) -> Result<(), EngineError> {
         cancel.check()?;
         let _operation = self
             .resources
@@ -507,7 +713,7 @@ impl Engine {
         let mut began = false;
         let mut on_full = || {
             if !began {
-                if let Err(failure) = self.shared.begin_zotero_read() {
+                if let Err(failure) = on_begin().and_then(|()| self.shared.begin_zotero_read()) {
                     guard_error = Some(failure);
                     return Err(LiveError::Cancelled);
                 }
@@ -550,28 +756,14 @@ impl Engine {
                 Ok(())
             }
             Err(failure) => {
-                let code = if failure.cancelled() {
-                    ErrorCode::Cancelled
-                } else if failure.limited() {
-                    ErrorCode::ResourceLimit
-                } else if failure.newer() {
-                    ErrorCode::NewerFormat
-                } else if failure == ZoteroError::InvalidData || failure == ZoteroError::Selection {
-                    ErrorCode::BadInput
-                } else if failure == ZoteroError::LibraryNotFound {
-                    ErrorCode::NotFound
-                } else {
-                    ErrorCode::SourceUnavailable
-                };
-                let failure = EngineError {
-                    code,
-                    reason: failure.reason(),
-                };
+                let failure = zotero_error(failure);
+                let code = failure.code;
                 // Any failed read retires prepared Zotero copies until a read
                 // succeeds, even when only a new choice failed: its full read
                 // already began, and the copy guard does not tell them apart.
                 if code != ErrorCode::Cancelled {
                     if !began {
+                        on_begin()?;
                         self.shared.begin_zotero_read()?;
                     }
                     // A new choice that fails says nothing about the old one.
@@ -610,6 +802,9 @@ impl Engine {
                 return Err(EngineError {
                     code: ErrorCode::SourceUnavailable,
                     reason: failure.reason(),
+                    detail: None,
+                    strict_cause: None,
+                    citation_error: None,
                 });
             }
         };
@@ -688,7 +883,131 @@ impl Shared {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+    #[test]
+    fn incompatible_newer_zotero_schema_names_only_the_fixed_table_in_json() {
+        let failure = zotero_error(ZoteroError::Closed(ibis_sources::zotero_source::ClosedError::TooNew {
+            table: ZoteroTable::FieldsCombined,
+        }));
+        assert_eq!(
+            serde_json::to_value(failure).unwrap(),
+            serde_json::json!({
+                "code":"newer-format", "detail":{"table":"fieldsCombined"},
+                "message":{"id":"error-newer-format","args":{}},
+                "recovery":{"action":"upgrade-ibis"},"focus":"recovery-action"
+            })
+        );
+    }
+
+    #[test]
+    fn compatible_newer_zotero_warning_stays_in_library_status_without_search_findings() {
+        let engine = Engine::new().unwrap();
+        let case: GoldenCase = serde_json::from_str(include_str!("../../../../fixtures/cases/02-pandoc.json")).unwrap();
+        let snapshot = case.library;
+        let mut library = LibraryInfo::clean(
+            snapshot.objects()[0].object.id().library.clone(),
+            LibraryKind::Zotero,
+            snapshot.objects().len(),
+        );
+        library.warnings = vec![ibis_sources::SourceWarning::at(
+            ibis_sources::WarningCode::ZoteroNewerThanTested,
+            None,
+        )];
+        library.warnings_total = 1;
+        engine.shared.install(library, &snapshot, None).unwrap();
+        let listed = engine
+            .dispatch(
+                Method::Libraries,
+                &serde_json::json!({"action":"list"}),
+                &Cancellation::default(),
+            )
+            .unwrap();
+        assert_eq!(
+            listed.data["libraries"][0]["warnings"][0]["code"],
+            "zotero-newer-than-tested"
+        );
+        let searched = engine
+            .dispatch(
+                Method::Search,
+                &serde_json::json!({"query":"signals"}),
+                &Cancellation::default(),
+            )
+            .unwrap();
+        assert_eq!(searched.data["hits"].as_array().unwrap().len(), 1);
+        assert!(!searched.source_findings);
+        assert_eq!(searched.exit_code, ExitCode::Ok);
+        assert!(
+            searched.data["source_health"]["findings"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+
+        let mut library = engine.libraries().unwrap().libraries.remove(0);
+        library
+            .warnings
+            .push(ibis_sources::SourceWarning::at(ibis_sources::WarningCode::Field, None));
+        library.warnings_total = 2;
+        engine.shared.install(library.clone(), &snapshot, None).unwrap();
+        let searched = engine
+            .dispatch(
+                Method::Search,
+                &serde_json::json!({"query":"signals"}),
+                &Cancellation::default(),
+            )
+            .unwrap();
+        assert!(searched.source_findings);
+        assert_eq!(searched.data["source_health"]["findings"][0]["count"], 1);
+        library.warnings.pop();
+        library.warnings_total = 1;
+        library.refresh_error = Some(ErrorCode::SourceUnavailable);
+        engine.shared.install(library, &snapshot, None).unwrap();
+        let searched = engine
+            .dispatch(
+                Method::Search,
+                &serde_json::json!({"query":"signals"}),
+                &Cancellation::default(),
+            )
+            .unwrap();
+        assert!(searched.source_findings);
+        assert_eq!(searched.data["source_health"]["findings"][0]["code"], "refresh-failed");
+    }
+
     use super::*;
+
+    #[test]
+    fn owner_probe_refusal_names_sharing_off_and_the_same_engine_recovers() {
+        use ibis_sources::zotero_source::discovery::{DiscoveryRoots, Platform, discover};
+        let home = tempfile::tempdir().unwrap();
+        let roots = DiscoveryRoots::new(Platform::Linux, home.path().into(), None);
+        let registry = home.path().join(".zotero/zotero");
+        std::fs::create_dir_all(&registry).unwrap();
+        std::fs::write(registry.join("profiles.ini"), "invalid registry").unwrap();
+        let unresolved = discover(&roots);
+        let mut ini = String::new();
+        for n in 0..2 {
+            let profile = registry.join(format!("p{n}"));
+            std::fs::create_dir_all(&profile).unwrap();
+            std::fs::write(profile.join("prefs.js"), format!("user_pref(\"extensions.zotero.useDataDir\", true);\nuser_pref(\"extensions.zotero.dataDir\", \"/invented/directory{n}\");")).unwrap();
+            ini.push_str(&format!("[Profile{n}]\nIsRelative=1\nPath=p{n}\n"));
+        }
+        std::fs::write(registry.join("profiles.ini"), ini).unwrap();
+        for found in [unresolved, discover(&roots)] {
+            let server = zotero_fixture::Server::new();
+            let engine = Engine::with_zotero_port(server.port).unwrap();
+            engine.resources.zotero.lock().unwrap().use_discovery(&found);
+            let cancel = Cancellation::default();
+            let open = serde_json::json!({"action":"open-zotero"});
+            server.sharing_off.store(true, Ordering::SeqCst);
+            let failure = engine.dispatch(Method::Libraries, &open, &cancel).unwrap_err();
+            assert_eq!(failure.reason, Some(ibis_core::contract::ErrorReason::ZoteroSharingOff));
+            server.sharing_off.store(false, Ordering::SeqCst);
+            engine.dispatch(Method::Libraries, &open, &cancel).unwrap();
+            let libraries = engine.libraries().unwrap();
+            assert_eq!(libraries.libraries[0].objects, 1);
+            assert!(libraries.libraries[0].refresh_error.is_none());
+            assert!(libraries.libraries[0].refresh_reason.is_none());
+        }
+    }
     #[test]
     fn lost_registration_warns_until_a_new_watch_succeeds() {
         let dir = tempfile::tempdir().unwrap();
@@ -744,6 +1063,15 @@ mod tests {
         assert_eq!(info.libraries[0].objects, 1);
         assert_eq!(info.libraries[0].refresh_error, Some(ErrorCode::BadInput));
         assert_eq!(info.libraries[0].refresh_reason, Some(ErrorReason::UnknownFormat));
+        // A missing file must stay missing through a watcher publication too.
+        std::fs::rename(&path, dir.path().join("moved.bak")).unwrap();
+        let refused = ibis_sources::load_file(&path).map(|_| ()).unwrap_err();
+        engine.shared.file_changed(id, generation, Err(refused));
+        let info = engine.libraries().unwrap();
+        let health = serde_json::to_value(crate::health::SourceHealth::of(&info.libraries)).unwrap();
+        assert_eq!(info.libraries[0].objects, 1);
+        assert_eq!(health["findings"][0]["reason"], "missing-file");
+        assert_eq!(health["findings"][0]["recovery"]["action"], "locate-file");
     }
 
     #[test]
@@ -784,7 +1112,7 @@ mod tests {
         activation.send(()).unwrap();
         assert!(worker.join().unwrap().is_some());
         assert_ne!(engine.snapshot().unwrap().fingerprints(), accepted.fingerprints());
-        // A previously activated watcher still retires when the source reopens.
+        // Reopening retires the active watcher.
         let (activation, callback) = engine.reload_watch_callback(id, generation);
         activation.send(()).unwrap();
         let late = ibis_sources::load_file(&path).unwrap();
@@ -901,7 +1229,9 @@ mod tests {
             engine.accept_file_reload(prepared),
             Err(EngineError {
                 code: ErrorCode::Cancelled,
-                reason: None
+                reason: None,
+                detail: None,
+                ..
             })
         ));
         assert_eq!(engine.snapshot().unwrap().fingerprints(), &newer);
@@ -985,7 +1315,9 @@ mod tests {
             engine.accept_file_reload(prepared),
             Err(EngineError {
                 code: ErrorCode::Cancelled,
-                reason: None
+                reason: None,
+                detail: None,
+                ..
             })
         ));
     }
@@ -1006,7 +1338,9 @@ mod tests {
             engine.accept_file_reload(prepared),
             Err(EngineError {
                 code: ErrorCode::Cancelled,
-                reason: None
+                reason: None,
+                detail: None,
+                ..
             })
         ));
         assert_eq!(engine.snapshot().unwrap().fingerprints(), original.fingerprints());
@@ -1016,7 +1350,9 @@ mod tests {
             other.accept_file_reload(prepared),
             Err(EngineError {
                 code: ErrorCode::BadInput,
-                reason: None
+                reason: None,
+                detail: None,
+                ..
             })
         ));
         assert_eq!(engine.snapshot().unwrap().fingerprints(), original.fingerprints());
@@ -1064,7 +1400,9 @@ mod tests {
             engine.recite(&old, &cancel),
             Err(CitationCommitError::Engine(EngineError {
                 code: ErrorCode::SourceUnavailable,
-                reason: None
+                reason: None,
+                detail: None,
+                ..
             }))
         ));
         assert_eq!(engine.recite(&file, &cancel).unwrap().text, "[@Example2026]");
@@ -1124,7 +1462,7 @@ mod tests {
         assert_eq!(listed.exit_code, ExitCode::Ok);
         assert_eq!(listed.data["libraries"][0]["watch_warning"], "live-refresh-off");
         let cited = engine
-            .cite_keys(
+            .cite_keys_checked(
                 &KeyCitationRequest {
                     keys: vec!["demo".into()],
                     output: OutputSpec::Key {
@@ -1132,14 +1470,17 @@ mod tests {
                         command: None,
                     },
                     form: CitationForm::Normal,
+                    strict: false,
                     output_locale: None,
+                    keep_order: false,
                 },
                 &cancel,
             )
             .unwrap();
         assert_eq!(
-            engine
-                .finalize(DispatchResult::citation(cited, 1).unwrap())
+            DispatchResult::citation(cited.value, 1, &OutputSpec::Preset { name: "pandoc".into() })
+                .unwrap()
+                .with_health(&cited.source_health)
                 .unwrap()
                 .text
                 .as_deref(),
@@ -1198,6 +1539,7 @@ mod tests {
                 code: ibis_sources::WarningCode::Field,
                 line: None,
                 key: None,
+                entry: None,
                 cause: None,
                 field: None,
             };

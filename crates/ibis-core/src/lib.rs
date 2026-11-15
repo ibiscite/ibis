@@ -1,6 +1,9 @@
 //! Shared contracts and pure rules for sources, search and citation output.
 
+pub mod atomic_file;
 pub mod citable;
+pub mod citation;
+pub mod command_install;
 pub mod contract;
 pub mod destination;
 pub mod identifier;
@@ -9,7 +12,7 @@ pub mod model;
 pub mod panic_guard;
 mod scan;
 pub mod search;
-pub mod settings;
+pub mod shorthand;
 pub mod source;
 pub mod summary;
 pub mod syntax;

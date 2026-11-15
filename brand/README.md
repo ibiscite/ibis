@@ -33,7 +33,7 @@ M is the height of the bird.
 - **In a container.** The bird is 62% of the height of an app icon, avatar or maskable icon. Favicons use the largest bird that fits.
 - **Optical centre.** The bird's weight is in its head, so its outline's centre looks too far left. Square files and containers move it sideways halfway toward its centre of mass (which `build.py` measures from the master) and, vertically, keep the outline's centre lifted 0.75% of the container, just above the middle.
 - **Eye.** The bird has an eye, cut out so the background shows through it. It is cut crisply after the depth, and `eye_depth` in `settings.json` (0 for flat, 1 for full) sets how much soft shading shows inside it. Favicons leave it out, because it would be under a pixel.
-- **Picker.** The generated `welcomeMark` in `apps/desktop/src/brand.ts` keeps the light or dark gradient, selected by the app's colour scheme; the small `mark` and `pickerMark` are flat and take the page's `--scarlet`. The 24 px `pickerMark` opens the eye to at least 2 px across; welcome (56 px, with depth) and opening (40 px) use the master's eye. Below 48 px the bird stays flat, with its gradient and no depth effects.
+- **Picker.** The generated `welcomeMark` in `apps/desktop/src/brand.ts` keeps the light or dark gradient, selected by the app's colour scheme; the small `mark` and `pickerMark` are flat and take the page's `--scarlet`. The 32 px `pickerMark` opens the eye to 2 px across (`picker` in `settings.json`); welcome (56 px, with depth) and opening (40 px) use the master's eye. Below 48 px the bird stays flat, with its gradient and no depth effects.
 - **Depth.** A soft light along the top edge, a shade along the bottom, a tight contact shadow and a wide, faint ambient shadow, all set in `settings.json`. The soft depth is for 48 px and up; smaller uses the flat bird. Favicons use a slightly thicker neck so the bird still reads at 16 px.
 - **Colour.** Scarlet 600 `#C23A1C` on light backgrounds and Scarlet 400 `#F2552F` on dark (the darker stop of the dark gradient, so a white check still reads on it). Text is Ink `#171717` or Slate `#525252` on light, and near-white on dark. The full Scarlet scale (50 to 900) is for websites and videos: tints for backgrounds, 600 to 800 for text and links on light. Never stretch, outline or recolour the bird in other hues, or add effects.
 - **Themes.** `brand/build.py` generates website colour roles in the app’s `tokens.css` and the portable `colors.css`: light by default, dark when the system is dark, and an optional dim theme (`data-theme="dim"`) for a softer charcoal. Each theme names the same roles: `bg`, `surface`, `line`, `text`, `muted`, `accent`, `accent-soft`.
@@ -42,12 +42,16 @@ M is the height of the bird.
 
 ## Interface icons
 
-`icons/*.svg` is the editable outline set: 20 pt grid, 16 pt live area,
-one 1.5 pt stroke with round caps and joins, one path per glyph. The build
-writes `apps/desktop/src/icon-paths.ts`; never edit that output by hand.
-`node scripts/check-icons.mjs` enforces the drawing contract. Inspect every
-source at 1× and 2× after a change. App and file icons supplied by the system
-are not part of this set; no Zotero artwork ships with Ibis.
+`icons/*.svg` are Phosphor Regular drawings from `@phosphor-icons/core@2.1.1`,
+under MIT ([`icons/LICENSE-phosphor`](icons/LICENSE-phosphor)), vendored
+unchanged. Each file is named for what it means in Ibis (`peek`, `settings`,
+`reset`), and [`icons/SOURCES.json`](icons/SOURCES.json) names the upstream glyph,
+so updating is a copy. One meaning, one glyph. A glyph Phosphor lacks is drawn on
+its 256-unit grid at Regular weight (16-unit stroke, round caps and joins,
+outlined to a fill). The build writes `apps/desktop/src/icon-art.ts`; never edit it
+by hand. `Icon` draws 16 px in controls and menus and 20 px in a list's lead
+column ([decision 0053](../docs/decisions/0053-window-grid-and-icons.md)). The
+Ibis bird and logos remain our artwork and never stand in an icon's place.
 
 ## Changing the brand
 
@@ -70,8 +74,7 @@ matches the font check, rather than the host's native font substitutions.
 Never edit generated SVGs, PNGs, icon containers or `src/brand.ts`
 by hand.
 
-`node scripts/check.mjs` includes the drift check; Linux CI runs it with
-`--brand-assets`. It rebuilds into a temporary folder and names every stale,
+`python3 brand/build.py --check` is the drift check; Linux CI runs it. It rebuilds into a temporary folder and names every stale,
 missing or unexpected generated file, without changing the checkout.
 
 Design explorations (the design canvas, rejected options, screenshots) stay outside the repository. When one is chosen, record it in `docs/design.md` and here.

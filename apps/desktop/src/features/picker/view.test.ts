@@ -1,11 +1,12 @@
 import { expect, test } from "vitest";
 import { testStates } from "../../test-fixtures";
 import { arrangeView } from "../../testing/sessionView";
+import { formatAnswer } from "../../testing/format";
 import { choiceKey } from "./choice";
 import { initialSession, reduceSession, sessionQueryKey, type SessionEvent, type SessionState, type SessionView } from "./session";
 
 const a = testStates[1]!.results[0]!;
-const prepared = { text: "canonical engine text", html: "", markup: [], warnings: [], fileTicket: "ticket-a", fileHash: "hash-a" };
+const prepared = { display: { nodes: [] }, text: "canonical engine text", warnings: [], fileTicket: "ticket-a", fileHash: "hash-a" };
 const base = (state: SessionState): SessionView => ({ queryKey: sessionQueryKey(state), format: "pandoc", snapshotRevision: "synthetic", defaultChoice: choiceKey([a]),
   chosen: [a], shown: prepared, searchPending: false, ready: true, saving: false, shouldAsk: false, remembersLast: true, output: { opening: 0, choice: 0, delivery: 0 } });
 
@@ -60,7 +61,8 @@ test.each([false, true])("a destination read that answers before the screen catc
   let [state] = reduceSession(arranged, heard);
   [state] = reduceSession(state, { type: "read-destination", reset: false });
   [state] = reduceSession(state, enter);
-  const [read, readEffects] = reduceSession(state, { type: "destination-read", request: state.destination.reads, destination: state.destination.destination! });
+  const [read, readEffects] = reduceSession(state, { type: "destination-read", request: state.destination.reads,
+    destination: { ...state.destination.destination!, format: formatAnswer(changed ? "typst" : "pandoc", "yours") } });
   expect(readEffects.filter((effect) => effect.type === "copy")).toEqual([]);
   // A new default format may still be on its way from the screen; the commit brings it first.
   const [newer] = changed ? reduceSession(read, { type: "picker-inputs", inputs: { ...read.inputs!, fallback: "typst" } }) : [read];

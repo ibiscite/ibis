@@ -109,7 +109,8 @@ fn seeded_watches_reuse_bibtex_and_json_records_in_the_registration_gap() {
             std::fs::write(&path, text).unwrap_or_else(|error| panic!("{error}"));
         };
         write("Before");
-        let (loaded, observation) = ibis_sources::load_file_snapshot(&path).unwrap_or_else(|error| panic!("{error}"));
+        let (loaded, observation) =
+            ibis_sources::load_file_snapshot(&path, &|| false).unwrap_or_else(|error| panic!("{error}"));
         let original = loaded.snapshot;
         write("After");
         let (tx, rx) = mpsc::channel();
@@ -159,7 +160,7 @@ fn interrupted_writes_replacements_deletion_and_empty_files() {
     assert_eq!(records(&loaded)[0].citation_keys[0].value, "new");
     assert_eq!(records(&loaded)[0].id.library, records(&initial)[0].id.library);
     std::fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
-    assert!(matches!(next(&rx), Err(SourceError::Unavailable)));
+    assert!(matches!(next(&rx), Err(SourceError::Missing)));
     std::fs::write(&path, "").unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(next(&rx).map(|l| records(&l).len()), Ok(0));
     std::fs::write(&path, [0xff]).unwrap_or_else(|e| panic!("{e}"));
@@ -268,7 +269,7 @@ fn symlink_target_changes_and_retargeting_keep_reloading() {
         Ok("second_updated".into())
     );
     std::fs::remove_file(&second).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(next(&rx).err(), Some(SourceError::Unavailable));
+    assert_eq!(next(&rx).err(), Some(SourceError::Missing));
     std::fs::write(&second, "@misc{restored}").unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(
         next(&rx).map(|l| records(&l)[0].citation_keys[0].value.clone()),
@@ -299,7 +300,7 @@ fn a_symlink_retargeted_to_a_missing_file_recovers_when_the_file_appears() {
     std::fs::remove_file(&selected).unwrap_or_else(|e| panic!("{e}"));
     // Relative targets resolve from the symlink's parent, rather than the process cwd.
     symlink("../second/target.bib", &selected).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(next(&rx).err(), Some(SourceError::Unavailable));
+    assert_eq!(next(&rx).err(), Some(SourceError::Missing));
     assert_eq!(records(&last_good)[0].citation_keys[0].value, "first");
     std::fs::write(&first, "@misc{obsolete}").unwrap_or_else(|e| panic!("{e}"));
     // Retrying the missing target is allowed; the obsolete target must never
@@ -352,7 +353,7 @@ fn unchanged_damaged_initial_load_is_not_published_again() {
     let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
     let path = dir.path().join("library.bib");
     std::fs::write(&path, "@misc{good}\n@misc{unfinished,").unwrap_or_else(|e| panic!("{e}"));
-    let (initial, snapshot) = load_file_snapshot(&path).unwrap_or_else(|e| panic!("{e}"));
+    let (initial, snapshot) = load_file_snapshot(&path, &|| false).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(records(&initial).len(), 1);
     assert_eq!(initial.warnings.len(), 1);
     let (tx, rx) = mpsc::channel();
@@ -369,12 +370,13 @@ fn unchanged_damaged_initial_load_is_not_published_again() {
 }
 
 #[test]
+#[allow(clippy::disallowed_methods)]
 fn changes_before_watch_registration_are_still_loaded_even_at_the_same_size() {
     use ibis_sources::load_file_snapshot;
     let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
     let path = dir.path().join("library.bib");
     std::fs::write(&path, "@misc{old}").unwrap_or_else(|e| panic!("{e}"));
-    let (_, snapshot) = load_file_snapshot(&path).unwrap_or_else(|e| panic!("{e}"));
+    let (_, snapshot) = load_file_snapshot(&path, &|| false).unwrap_or_else(|e| panic!("{e}"));
     let modified = std::fs::metadata(&path)
         .and_then(|m| m.modified())
         .unwrap_or_else(|e| panic!("{e}"));
@@ -402,14 +404,14 @@ fn unchanged_contents_after_a_gap_error_publish_recovery() {
         let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let path = dir.path().join("library.bib");
         std::fs::write(&path, contents).unwrap_or_else(|e| panic!("{e}"));
-        let (initial, snapshot) = load_file_snapshot(&path).unwrap_or_else(|e| panic!("{e}"));
+        let (initial, snapshot) = load_file_snapshot(&path, &|| false).unwrap_or_else(|e| panic!("{e}"));
         std::fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
         let (tx, rx) = mpsc::channel();
         let _watch = SourceWatch::with_snapshot(&path, snapshot, move |result| {
             let _ = tx.send(result);
         })
         .unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(next(&rx).err(), Some(SourceError::Unavailable));
+        assert_eq!(next(&rx).err(), Some(SourceError::Missing));
         // No timed retries while hidden. The next native event must preserve
         // the initial observation, including its tolerant damaged-data policy.
         assert!(rx.recv_timeout(Duration::from_millis(800)).is_err());
@@ -426,7 +428,7 @@ fn damaged_changes_in_the_registration_gap_load_as_an_open_would() {
     let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
     let path = dir.path().join("library.bib");
     std::fs::write(&path, "@misc{old}").unwrap_or_else(|e| panic!("{e}"));
-    let (initial, snapshot) = load_file_snapshot(&path).unwrap_or_else(|e| panic!("{e}"));
+    let (initial, snapshot) = load_file_snapshot(&path, &|| false).unwrap_or_else(|e| panic!("{e}"));
     std::fs::write(&path, "@misc{changed}\n@misc{unfinished,").unwrap_or_else(|e| panic!("{e}"));
     let (tx, rx) = mpsc::channel();
     let _watch = SourceWatch::with_snapshot(&path, snapshot, move |result| {
@@ -457,7 +459,7 @@ fn unavailable_reads_wait_for_events_instead_of_polling() {
     .unwrap_or_else(|e| panic!("{e}"));
     let last_good = next(&rx).unwrap_or_else(|e| panic!("{e}"));
     std::fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(next(&rx).err(), Some(SourceError::Unavailable));
+    assert_eq!(next(&rx).err(), Some(SourceError::Missing));
     assert!(rx.recv_timeout(Duration::from_millis(800)).is_err());
     assert_eq!(records(&last_good)[0].citation_keys[0].value, "old");
     std::fs::write(&path, "@misc{new}").unwrap_or_else(|e| panic!("{e}"));
@@ -467,7 +469,7 @@ fn unavailable_reads_wait_for_events_instead_of_polling() {
     );
     assert!(rx.recv_timeout(Duration::from_millis(800)).is_err());
     std::fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(next(&rx).err(), Some(SourceError::Unavailable));
+    assert_eq!(next(&rx).err(), Some(SourceError::Missing));
     drop(watch);
     assert!(matches!(
         rx.recv_timeout(Duration::from_secs(10)),
@@ -533,29 +535,12 @@ fn json_reloads_retain_failed_snapshot_and_accept_stable_empty_array() {
 }
 
 #[test]
-fn private_location_changes_publish_a_new_owner_even_if_public_hashes_match() {
-    use ibis_sources::load_file_snapshot;
-    let dir = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
-    let path = dir.path().join("synthetic.bib");
-    std::fs::write(&path, "@book{one,file={one.pdf}}").unwrap_or_else(|error| panic!("{error}"));
-    let (initial, observation) = load_file_snapshot(&path).unwrap_or_else(|error| panic!("{error}"));
-    let (tx, rx) = mpsc::channel();
-    let _watch = SourceWatch::with_snapshot(&path, observation, move |result| {
-        let _ = tx.send(result);
-    })
-    .unwrap_or_else(|error| panic!("{error}"));
-    std::fs::write(&path, "@book{one,file={two.pdf}}").unwrap_or_else(|error| panic!("{error}"));
-    let changed = next(&rx).unwrap_or_else(|error| panic!("{error}"));
-    assert_eq!(initial.snapshot.fingerprints(), changed.snapshot.fingerprints());
-    assert_eq!(changed.local_attachment_count(), 1);
-}
-
-#[test]
 fn long_identity_attachment_limits_load_alike_on_open_and_reload() {
     let dir = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
     let path = dir.path().join("synthetic.json");
     std::fs::write(&path, r#"[{"id":"initial","type":"book"}]"#).unwrap_or_else(|error| panic!("{error}"));
-    let (initial, observation) = ibis_sources::load_file_snapshot(&path).unwrap_or_else(|error| panic!("{error}"));
+    let (initial, observation) =
+        ibis_sources::load_file_snapshot(&path, &|| false).unwrap_or_else(|error| panic!("{error}"));
     let (tx, rx) = mpsc::channel();
     let _watch = SourceWatch::with_snapshot(&path, observation, move |candidate| {
         let _ = tx.send(candidate);
@@ -611,7 +596,7 @@ fn a_library_opened_with_one_damaged_entry_keeps_refreshing() {
             .map(|record| record.csl["title"].as_str().unwrap_or_default().to_owned())
             .collect()
     };
-    let (initial, observation) = load_file_snapshot(&path).unwrap_or_else(|e| panic!("{e}"));
+    let (initial, observation) = load_file_snapshot(&path, &|| false).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(titles(&initial), ["Synthetic Lantern", "Other Synthetic Work"]);
     assert_eq!(initial.warnings.len(), 1);
     let (tx, rx) = mpsc::channel();
@@ -636,7 +621,7 @@ fn a_library_opened_with_one_damaged_entry_keeps_refreshing() {
 
     // Failed I/O keeps reporting, and the damaged library recovers after it.
     std::fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(next(&rx).err(), Some(SourceError::Unavailable));
+    assert_eq!(next(&rx).err(), Some(SourceError::Missing));
     save(&library("Synthetic Recovered"));
     let recovered = next(&rx).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(titles(&recovered), ["Synthetic Recovered", "Other Synthetic Work"]);

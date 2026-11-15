@@ -4,7 +4,7 @@
 use std::sync::Mutex;
 use std::sync::atomic::Ordering;
 
-use ibis_core::settings::ZoteroLibraries;
+use ibis_engine::settings::ZoteroLibraries;
 
 use super::source::Source;
 use super::state::{Library, LoadRequests, record_open};
@@ -37,7 +37,7 @@ pub(super) fn begin_check(library: &Mutex<Library>, requests: &LoadRequests) -> 
 fn begin_check_with(
     library: &Mutex<Library>,
     requests: &LoadRequests,
-    file_needs_check: impl FnOnce(&super::engine_file::FileLibrary) -> bool,
+    file_needs_check: impl FnOnce(&super::engine_library::FileLibrary) -> bool,
 ) -> Option<(u64, Source)> {
     let mut library = library.lock().ok()?;
     let source = library.source.clone()?;
@@ -113,7 +113,7 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    use ibis_core::settings::ZoteroLibrary;
+    use ibis_engine::settings::ZoteroLibrary;
 
     use crate::library::error::{LoadError, ZOTERO_OFFLINE};
     use crate::library::load::Loaded;
@@ -170,7 +170,7 @@ mod tests {
         let library = Mutex::new(Library {
             source: Some(Source::File(path)),
             file: Some(std::sync::Arc::new(
-                super::super::engine_file::FileLibrary::from_engine(engine),
+                super::super::engine_library::FileLibrary::from_engine(engine),
             )),
             ..Library::default()
         });

@@ -56,6 +56,7 @@ impl Computer {
     fn run(&self, args: &[&str]) -> (i32, String, String) {
         let output = Command::new(env!("CARGO_BIN_EXE_ibis"))
             .args(args)
+            .current_dir(&self.root)
             .env("HOME", &self.root)
             .env("USERPROFILE", &self.root)
             .env("APPDATA", self.root.join("AppData"))
@@ -292,4 +293,20 @@ fn only_nightly_settings_are_used_when_the_stable_app_has_none() {
     assert_eq!(report["data"]["app"], "Ibis Nightly");
     assert_eq!(report["data"]["backup"]["settings"]["larger_text"], true);
     assert!(!Path::new(&computer.settings_path(STABLE)).exists());
+}
+
+#[test]
+fn import_previews_and_restores_the_owners_automatic_recovery_copy() {
+    let computer = Computer::new("automatic-recovery");
+    let target = computer.settings(STABLE, &serde_json::json!({"output":"ieee", "density":"compact"}));
+    let source = target.with_extension("json.bak");
+    std::fs::rename(&target, &source).unwrap();
+    let source = source.strip_prefix(&computer.root).unwrap().to_str().unwrap();
+    let (code, stdout, stderr) = computer.run(&["settings", "import", source, "--dry-run"]);
+    assert_eq!(code, 0, "{stderr}");
+    assert!(stdout.contains("damaged or missing"), "{stdout}");
+    assert!(!target.exists());
+    let (code, _, stderr) = computer.run(&["settings", "import", source]);
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(computer.saved(STABLE)["output"], "ieee");
 }

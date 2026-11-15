@@ -1,5 +1,5 @@
 import { useInterfaceMessages } from "../i18n";
-import { type KeyBinding } from "../keys";
+import { bindingKeys, type KeyBinding } from "../keys";
 import { SHORTCUT_GROUPS, ShortcutGroup } from "./ShortcutTable";
 import { Sheet } from "./Sheet";
 import "./KeysSheet.css";
@@ -12,12 +12,13 @@ const SPLIT = GROUPS.indexOf("picker");
 /** The picker's keys in two compact columns of groups, as a sheet. */
 export function KeysDialog({ bindings, isMac, onClose }: { bindings: readonly KeyBinding[]; isMac: boolean; onClose: () => void }) {
   const { text } = useInterfaceMessages();
+  const available = bindings.filter((binding) => bindingKeys(binding, isMac).length > 0);
   return <Sheet title={text("keys-title")} closeLabel={text("keys-close")} onClose={onClose}>
     <div className="keys-groups">
       {/* The groups in their one order, read down the first column, then the second. */}
       {[GROUPS.slice(0, SPLIT), GROUPS.slice(SPLIT)].map((regions, column) => <table key={column}>
         <thead className="visually-hidden"><tr><th scope="col">{text("keys-action")}</th><th scope="col">{text("keys-shortcut")}</th></tr></thead>
-        {regions.filter((region) => bindings.some((binding) => binding.region === region)).map((region) => <ShortcutGroup key={region} region={region} bindings={bindings} isMac={isMac} />)}
+        {regions.filter((region) => available.some((binding) => binding.region === region)).map((region) => <ShortcutGroup key={region} region={region} bindings={available} isMac={isMac} />)}
       </table>)}
     </div>
   </Sheet>;

@@ -4,7 +4,7 @@ use std::{
     io::{Read, Write},
     net::TcpListener,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
     thread,
@@ -20,6 +20,10 @@ pub struct Server {
     /// Zotero's "Allow other applications" setting, on by default.
     #[allow(dead_code)]
     pub sharing_off: Arc<AtomicBool>,
+    #[allow(dead_code)] // Used by the desktop's mixed-library recovery scenario.
+    pub group_warning: Arc<AtomicBool>,
+    #[allow(dead_code)]
+    pub title: Arc<Mutex<String>>,
     stop: Arc<AtomicBool>,
     worker: Option<thread::JoinHandle<()>>,
 }
@@ -36,6 +40,10 @@ impl Server {
         let empty = empty_group.clone();
         let sharing_off = Arc::new(AtomicBool::new(false));
         let off = sharing_off.clone();
+        let group_warning = Arc::new(AtomicBool::new(false));
+        let warn_group = group_warning.clone();
+        let title = Arc::new(Mutex::new("Invented atlas".to_owned()));
+        let item_title = title.clone();
         let (id, wait, seen, stopping) = (instance.clone(), pause.clone(), paused.clone(), stop.clone());
         let worker = thread::spawn(move || {
             while !stopping.load(Ordering::Relaxed) {
@@ -64,15 +72,18 @@ impl Server {
                         thread::sleep(Duration::from_millis(1));
                     }
                 }
-                let body = if empty && inventory {
+                let mut body = if empty && inventory {
                     json!({})
                 } else if empty {
                     json!([])
                 } else if inventory {
-                    json!({"SYNTH001":1})
+                    json!({"SYNTH234":1})
                 } else {
-                    json!([{"key":"SYNTH001","version":1,"data":{"key":"SYNTH001","version":1,"itemType":"book","title":"Invented atlas","date":"2026","citationKey":"Synthetic2026","creators":[],"dateModified":"2026-10-26T12:00:00Z"}}])
+                    json!([{"key":"SYNTH234","version":1,"data":{"key":"SYNTH234","version":1,"itemType":"book","title":*item_title.lock().unwrap(),"date":"2026","citationKey":"Synthetic2026","creators":[],"dateModified":"2026-10-26T12:00:00Z"}}])
                 };
+                if !inventory && request.contains("groups/7/") && warn_group.load(Ordering::Relaxed) {
+                    body[0]["data"]["inventedField"] = json!("invented value");
+                }
                 let body = serde_json::to_vec(&body).unwrap();
                 let id = id.load(Ordering::Relaxed);
                 let status = if off.load(Ordering::Relaxed) {
@@ -98,6 +109,8 @@ impl Server {
             paused,
             empty_group,
             sharing_off,
+            group_warning,
+            title,
             stop,
             worker: Some(worker),
         }

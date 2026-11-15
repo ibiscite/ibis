@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import type { BackupProblem, System as BackupSystem, RestoreChange, Note as RestoreNote, RestorePreview } from "../bindings";
-import { type MessageId, useInterfaceMessages } from "../i18n";
+import type { System as BackupSystem, RestoreChange, Note as RestoreNote, RestorePreview } from "../bindings";
+import { type MessageId, problemText, useInterfaceMessages } from "../i18n";
 import { currentPlatform } from "../platform";
+import { ROWS, rowDetails } from "./rows";
 import { Button } from "../ui/Button";
-import { SettingsGroup as Group, SettingsRow as Row } from "../ui/SettingsGroup";
+import { Buttons, Group, Note, Row, Section } from "../ui/Layout";
 import { listedOutput, outputName } from "../format/outputs";
 
 export type BackupApi = {
@@ -13,32 +14,11 @@ export type BackupApi = {
   cancelSettingsRestore: (ticket: number) => Promise<null>;
 };
 
-const PROBLEMS: Record<BackupProblem, MessageId> = {
-  "not-downloaded": "backup-problem-not-downloaded", unreadable: "backup-problem-unreadable",
-  "not-a-backup": "backup-problem-not-a-backup", "settings-file": "backup-problem-settings-file",
-  newer: "backup-problem-newer", invalid: "backup-problem-invalid", "settings-unusable": "backup-problem-settings-unusable",
-  changed: "backup-problem-changed", "not-saved": "backup-problem-not-saved",
-};
 const SYSTEMS: Record<BackupSystem, string> = { macos: "macOS", windows: "Windows", linux: "Linux" };
-const SETTINGS: Record<string, MessageId> = {
-  library: "backup-setting-library", output: "citations-default",
-  density: "general-rows", larger_text: "backup-setting-larger-text",
-  paste: "general-paste-label", menu_bar: "general-menu-bar-label", recent_citations: "citations-recent",
-  small_surprises: "general-small-surprises-label", appearance: "look-appearance", accent: "look-accent",
-};
 const NOTES: Record<RestoreNote, MessageId> = { "library-not-found": "backup-note-library", "shortcut-kept": "backup-note-shortcut", "repairs-settings": "backup-note-repairs" };
-const VALUES: Record<string, Record<string, MessageId>> = {
-  density: { compact: "general-density-compact", comfortable: "general-density-comfortable" },
-  appearance: { system: "look-system", light: "look-light", dark: "look-dark" },
-  accent: { ibis: "look-accent-ibis" },
-};
-
 /** Something to write: a changed setting, or a damaged settings file to replace. */
 const restorable = (preview: RestorePreview) => preview.changes.length > 0 || preview.notes.includes("repairs-settings");
 
-function problemOf(error: unknown): MessageId {
-  return typeof error === "string" && Object.hasOwn(PROBLEMS, error) ? PROBLEMS[error as BackupProblem] : "backup-problem-not-saved";
-}
 
 /** Settings › General › Another computer: a backup file out, a checked restore in (#1561).
  * A restore shows every change first; only the latest preview can be applied, and Ibis
@@ -47,7 +27,7 @@ export function BackupRows({ api }: { api: BackupApi }) {
   const { text } = useInterfaceMessages();
   const [busy, setBusy] = useState<"backup" | "restore" | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
-  const [problem, setProblem] = useState<{ row: "backup" | "restore"; id: MessageId } | null>(null);
+  const [problem, setProblem] = useState<{ row: "backup" | "restore"; message: string } | null>(null);
   const [preview, setPreview] = useState<RestorePreview | null>(null);
   const [restarting, setRestarting] = useState(false);
   const operation = useRef(0);
@@ -61,16 +41,17 @@ export function BackupRows({ api }: { api: BackupApi }) {
   const label = (setting: string) => {
     const system = setting.startsWith("shortcut.") ? setting.slice("shortcut.".length) : null;
     if (system !== null) return text("backup-setting-shortcut", { system: SYSTEMS[system as BackupSystem] ?? system });
-    const id = SETTINGS[setting];
+    const id = setting === "library" ? "backup-setting-library" : ROWS.find((row) => row.preference === setting)?.label;
     return id ? text(id) : setting;
   };
   const value = (setting: string, written: string | null) => {
     if (written === null) return text("backup-value-default");
     if (written === "on" || written === "off") return text(written === "on" ? "backup-value-on" : "backup-value-off");
-    const output = setting === "output" ? listedOutput(written) : null;
+    const output = setting === "output" || setting === "key_output" ? listedOutput(written) : null;
     if (output) return outputName(output);
-    const known = VALUES[setting]?.[written];
-    if (known) return text(known);
+    const row = ROWS.find((row) => row.preference === setting);
+    const known = row && "options" in row ? row.options.find((option) => option.value === written)?.label : undefined;
+    if (known) return text(known, { platform: currentPlatform() });
     if (setting === "library") {
       if (written === "zotero") return text("backup-value-zotero");
       const [kind, count] = written.split(":");
@@ -92,7 +73,7 @@ export function BackupRows({ api }: { api: BackupApi }) {
     setBusy("backup"); setProblem(null); setSaved(null);
     void api.backUpSettings()
       .then((file) => { if (current === operation.current && file) setSaved(file); })
-      .catch((error: unknown) => { if (current === operation.current) setProblem({ row: "backup", id: problemOf(error) }); })
+      .catch((error: unknown) => { if (current === operation.current) setProblem({ row: "backup", message: problemText(error, text("backup-problem-not-saved"), text) }); })
       .finally(() => { if (current === operation.current) setBusy(null); });
   };
   const choose = () => {
@@ -106,7 +87,7 @@ export function BackupRows({ api }: { api: BackupApi }) {
         shown.current = next?.ticket ?? null;
         setPreview(next);
       })
-      .catch((error: unknown) => { if (current === operation.current) setProblem({ row: "restore", id: problemOf(error) }); })
+      .catch((error: unknown) => { if (current === operation.current) setProblem({ row: "restore", message: problemText(error, text("backup-problem-not-saved"), text) }); })
       .finally(() => { if (current === operation.current) setBusy(null); });
   };
   const restore = () => {
@@ -120,38 +101,38 @@ export function BackupRows({ api }: { api: BackupApi }) {
       .catch((error: unknown) => {
         if (current !== operation.current) return;
         setPreview(null);
-        setProblem({ row: "restore", id: problemOf(error) });
+        setProblem({ row: "restore", message: problemText(error, text("backup-problem-not-saved"), text) });
         setBusy(null);
       });
   };
 
   return (
-    <Group id="another-computer" title={text("backup-title")}>
-      <Row id="backup-settings" label={text("backup-label")} description={text("backup-description", { platform: currentPlatform() })}
-        problem={problem?.row === "backup" ? text(problem.id) : undefined}>
+    <Section id="another-computer" title={text("backup-title")}><Group>
+      <Row id="backup-settings" {...rowDetails("backup-settings", text)}
+        problem={problem?.row === "backup" ? problem.message : undefined}>
         <Button aria-describedby="backup-settings-description" isDisabled={busy !== null || restarting} onPress={backUp}>{text("backup-button")}</Button>
-        {saved && <span role="status" className="ui-settings-description">{text("backup-saved", { file: saved })}</span>}
+        {saved && <Note role="status">{text("backup-saved", { file: saved })}</Note>}
       </Row>
-      <Row id="restore-settings" label={text("restore-label")} description={text("restore-description")}
-        problem={problem?.row === "restore" ? text(problem.id) : undefined}>
+      <Row id="restore-settings" {...rowDetails("restore-settings", text)}
+        problem={problem?.row === "restore" ? problem.message : undefined}>
         <Button aria-describedby="restore-settings-description" isDisabled={busy !== null || restarting} onPress={choose}>{text("restore-button")}</Button>
       </Row>
       {preview && (
         <Row id="restore-preview" label={text("restore-from", { system: SYSTEMS[preview.made_on], version: preview.made_by })}>
-          <div className="settings-restore" role="group" aria-labelledby="restore-preview">
+          <Section label={text("restore-from", { system: SYSTEMS[preview.made_on], version: preview.made_by })}>
             {preview.changes.length
-              ? <ul className="ui-settings-description">{preview.changes.map((item) => <li key={item.setting}>{change(item)}</li>)}</ul>
-              : !restorable(preview) && <p className="ui-settings-description">{text("restore-same")}</p>}
-            {preview.notes.map((note) => <p key={note} className="ui-settings-description">{text(NOTES[note])}</p>)}
+              ? <Note list>{preview.changes.map((item) => <li key={item.setting}>{change(item)}</li>)}</Note>
+              : !restorable(preview) && <Note>{text("restore-same")}</Note>}
+            {preview.notes.map((note) => <Note key={note}>{text(NOTES[note])}</Note>)}
             {restarting
-              ? <p role="status" className="ui-settings-description">{text("restore-restarting")}</p>
-              : <div className="settings-restore-actions">
+              ? <Note role="status">{text("restore-restarting")}</Note>
+              : <Buttons end>
                   <Button onPress={forget} isDisabled={busy !== null}>{text("restore-cancel")}</Button>
                   {restorable(preview) && <Button variant="primary" onPress={restore} isDisabled={busy !== null}>{text("restore-confirm")}</Button>}
-                </div>}
-          </div>
+                </Buttons>}
+          </Section>
         </Row>
       )}
-    </Group>
+    </Group></Section>
   );
 }

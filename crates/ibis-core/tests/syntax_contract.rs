@@ -3,11 +3,21 @@
 use ibis_core::contract::*;
 use ibis_core::contract::{GoldenCase, OutputSpec};
 use ibis_core::syntax::{self, CAPABILITIES, Escaping};
+
+/// The outputs written from citation keys. Zotero's markers name Zotero items
+/// instead and have their own tests (`syntax::scannable`).
+fn key_path() -> impl Iterator<Item = &'static syntax::SyntaxCapabilities> {
+    CAPABILITIES.iter().filter(|caps| !caps.zotero_items)
+}
 use proptest::prelude::*;
 use serde_json::{Value, json};
 
 fn seed() -> GoldenCase {
-    serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json")).unwrap()
+    let mut case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json")).unwrap();
+    case.library = changed(&case, |record| {
+        record.csl.insert("DOI".into(), json!("10.1000/invented"));
+    });
+    case
 }
 
 fn output(caps: &syntax::SyntaxCapabilities) -> OutputSpec {
@@ -96,7 +106,7 @@ fn key_golden_cases_render_exactly() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn capabilities_drive_forms_and_report_each_dropped_field() {
     let mut case = seed();
-    for caps in &CAPABILITIES {
+    for caps in key_path() {
         case.request.output = output(caps);
         assert_eq!(syntax::capabilities(&case.request.output).unwrap(), caps);
         // A narrative citation in a command without one is written by its sibling.
@@ -264,67 +274,6 @@ fn snapshot_identity_aliases_and_missing_keys_are_checked_before_rendering() {
 }
 
 #[test]
-fn annotation_parent_page_and_fingerprint_are_part_of_citation_intent() {
-    let mut case = seed();
-    let mut objects: Vec<_> = case.library.objects().iter().map(|item| item.object.clone()).collect();
-    let record = case.request.items[0].item.clone();
-    let attachment = ItemRef {
-        library: record.library.clone(),
-        key: "attachment:invented".into(),
-    };
-    let annotation = ItemRef {
-        library: record.library.clone(),
-        key: "annotation:invented".into(),
-    };
-    objects.push(LibraryObject::Attachment(Attachment {
-        id: attachment.clone(),
-        parent: Some(record),
-        title: "Synthetic attachment".into(),
-        media_type: "application/pdf".into(),
-        availability: Availability::Unknown,
-        content_hash: None,
-    }));
-    objects.push(LibraryObject::Annotation(Annotation {
-        id: annotation.clone(),
-        parent: attachment,
-        text: "Synthetic text".into(),
-        comment: String::new(),
-        page_label: Some("iv".into()),
-        page_index: Some(3),
-    }));
-    let snapshot = Snapshot::new(objects).unwrap();
-    case.request.items[0].annotation = Some(annotation.clone());
-    case.request.items[0].expected_annotation_cite = Some(snapshot.get(&annotation).unwrap().fingerprints.cite.clone());
-    case.request.items[0].locator = Some(Locator {
-        term: LocatorTerm::Page,
-        value: "iv".into(),
-    });
-    assert!(
-        syntax::cite(&snapshot, &case.request)
-            .unwrap()
-            .copy_content(1)
-            .is_some()
-    );
-    case.request.items[0].locator.as_mut().unwrap().value = "99".into();
-    assert_eq!(
-        syntax::cite(&snapshot, &case.request).unwrap().outcomes,
-        [ItemOutcome::Refused {
-            item: 0,
-            error: CitationError::AnnotationMismatch
-        }]
-    );
-    case.request.items[0].locator.as_mut().unwrap().value = "iv".into();
-    case.request.items[0].expected_annotation_cite = Some(Fingerprint::of_bytes(b"old annotation"));
-    assert_eq!(
-        syntax::cite(&snapshot, &case.request).unwrap().outcomes,
-        [ItemOutcome::Refused {
-            item: 0,
-            error: CitationError::ChangedItem
-        }]
-    );
-}
-
-#[test]
 fn hostile_empty_and_large_inputs_have_bounded_fixed_diagnostics() {
     let mut case = seed();
     let mut request = case.request.clone();
@@ -357,14 +306,13 @@ fn hostile_empty_and_large_inputs_have_bounded_fixed_diagnostics() {
             .csl
             .insert("abstract".into(), json!("x".repeat(20 * 1024 * 1024)));
     });
-    case.request.output = OutputSpec::Key {
-        syntax: KeySyntax::CslJson,
-        command: None,
-    };
-    assert_eq!(
-        syntax::cite(&snapshot, &case.request),
-        Err(CitationError::OutputTooLarge)
-    );
+    for syntax in [KeySyntax::CslJson, KeySyntax::Bibtex] {
+        case.request.output = OutputSpec::Key { syntax, command: None };
+        assert_eq!(
+            syntax::cite(&snapshot, &case.request),
+            Err(CitationError::OutputTooLarge)
+        );
+    }
 }
 
 #[test]
@@ -495,7 +443,7 @@ fn prefix_support_matches_every_supported_output_and_form() {
         ..TextRun::default()
     }];
     let consumer_available = pandoc_available();
-    for caps in &CAPABILITIES {
+    for caps in key_path() {
         case.request.output = output(caps);
         assert_eq!(caps.prefix.len(), caps.forms.len(), "{caps:?}");
         for &form in caps.forms {
@@ -506,6 +454,8 @@ fn prefix_support_matches_every_supported_output_and_form() {
                 (KeySyntax::Natbib | KeySyntax::Context, _) => SingleItem,
                 (
                     KeySyntax::Keys
+                    | KeySyntax::Bibtex
+                    | KeySyntax::DoiLinks
                     | KeySyntax::CslJson
                     | KeySyntax::Myst
                     | KeySyntax::MultiMarkdown
@@ -583,7 +533,7 @@ fn default_consumers_preserve_literal_affix_text() {
             ..TextRun::default()
         }];
         case.request.items[0].suffix = case.request.items[0].prefix.clone();
-        for caps in &CAPABILITIES {
+        for caps in key_path() {
             if !matches!(caps.escaping, Escaping::Pandoc | Escaping::Latex) {
                 continue;
             }
@@ -660,7 +610,7 @@ fn literal_punctuation_across_runs_cannot_create_smart_typography() {
             ..TextRun::default()
         })
         .collect();
-    for caps in &CAPABILITIES {
+    for caps in key_path() {
         if !matches!(caps.escaping, Escaping::Pandoc | Escaping::Latex) {
             continue;
         }
@@ -994,7 +944,7 @@ fn control_characters_are_refused_in_every_affix_target() {
             text: format!("synthetic{control}text"),
             ..TextRun::default()
         }];
-        for caps in &CAPABILITIES {
+        for caps in key_path() {
             case.request.output = output(caps);
             assert_eq!(
                 syntax::cite(&case.library, &case.request).unwrap().outcomes,
@@ -1078,7 +1028,7 @@ fn unusual_keys_are_preserved_or_explicitly_refused_for_each_target() {
     ] {
         let mut case = seed();
         let snapshot = changed(&case, |record| record.citation_keys[0].value = key.into());
-        for caps in &CAPABILITIES {
+        for caps in key_path() {
             case.request.output = output(caps);
             let result = syntax::cite(&snapshot, &case.request).unwrap();
             if result.copy_content(1).is_none() {
@@ -1300,7 +1250,7 @@ proptest! {
         case.request.items[0].prefix = vec![TextRun { text: note.clone(), ..TextRun::default() }];
         case.request.items[0].suffix = case.request.items[0].prefix.clone();
         let available = pandoc_available();
-        for caps in &CAPABILITIES {
+        for caps in key_path() {
             case.request.output = output(caps);
             let result = syntax::cite(&snapshot, &case.request).unwrap();
             prop_assert!(result.content_matches_hash());

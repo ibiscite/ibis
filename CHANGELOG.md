@@ -1,5 +1,89 @@
 # Changelog
 
+## [0.3.6](https://github.com/ibiscite/ibis/compare/v0.3.5...v0.3.6) (2026-11-13)
+
+
+### Features
+
+* search every setting and restore any change with Use Default ([#1887](https://github.com/ibiscite/ibis/issues/1887)) ([a3c18d6](https://github.com/ibiscite/ibis/commit/a3c18d69ce449b671d78b0f801df8de1ded089c7))
+
+
+### Bug Fixes
+
+* **windows:** the MSI installs and uninstalls with its PATH steps ([#1889](https://github.com/ibiscite/ibis/issues/1889)) ([f5d16a8](https://github.com/ibiscite/ibis/commit/f5d16a8d3f51a67d52c9ba207aca5d95e44fd348))
+
+## [0.3.5](https://github.com/ibiscite/ibis/compare/v0.3.4...v0.3.5) (2026-11-13)
+
+
+### Bug Fixes
+
+* **windows:** the MSI declares the system folder for its PATH steps ([#1885](https://github.com/ibiscite/ibis/issues/1885)) ([14cf46d](https://github.com/ibiscite/ibis/commit/14cf46d9ff8617fc4be6a6eeaa59aa85ea81fa2d))
+
+## [0.3.4](https://github.com/ibiscite/ibis/compare/v0.3.3...v0.3.4) (2026-11-12)
+
+
+### Features
+
+* a shorter menu bar menu: the library live, problems with their fix ([#1871](https://github.com/ibiscite/ibis/issues/1871)) ([33e8f14](https://github.com/ibiscite/ibis/commit/33e8f14702623120f720dcb09b7abc82591543a8))
+* Backspace in an empty palette search goes back, as Esc does ([#1876](https://github.com/ibiscite/ibis/issues/1876)) ([74f84d8](https://github.com/ibiscite/ibis/commit/74f84d88b4ef750ab94a5c6d020fa8dff5c080e9))
+* build a citation as tokens, typed shorthand and its one-time hint ([#1845](https://github.com/ibiscite/ibis/issues/1845)) ([e7805da](https://github.com/ibiscite/ibis/commit/e7805da8aac35154669737b1308e30f72f4c79a6))
+* **cli:** readable terminal output, --keys, suggestions and more ([#1866](https://github.com/ibiscite/ibis/issues/1866)) ([8a843cf](https://github.com/ibiscite/ibis/commit/8a843cfe05f26ad075475d99b01b558e69c39efd))
+* install Ibis with Nix again (CLI everywhere, desktop on Linux) ([#1864](https://github.com/ibiscite/ibis/issues/1864)) ([152b9d9](https://github.com/ibiscite/ibis/commit/152b9d94c5412388787dd60833b57e062c29770e))
+* one Icon primitive on Lucide, two sizes, one stroke ([#1858](https://github.com/ibiscite/ibis/issues/1858)) ([358b688](https://github.com/ibiscite/ibis/commit/358b6887fa8661e907e98511d95160afb92ea7e4))
+* the app ships the matching ibis command and puts it on PATH ([#1877](https://github.com/ibiscite/ibis/issues/1877)) ([dec921d](https://github.com/ibiscite/ibis/commit/dec921dcea7fb2fc8f00ef5375cf0e479832780c))
+* the picker opens at the upper quarter of your writing screen ([#1883](https://github.com/ibiscite/ibis/issues/1883)) ([1f3933e](https://github.com/ibiscite/ibis/commit/1f3933ecac83c907440fb04a5c10481e27cc8e13))
+* **website:** a stable setup address for AI assistants, and llms.txt ([#1875](https://github.com/ibiscite/ibis/issues/1875)) ([df1193c](https://github.com/ibiscite/ibis/commit/df1193ce8f375adbd7f8686c5eb96d203c87d802))
+* **website:** connect your AI assistant with one line or one prompt ([#1870](https://github.com/ibiscite/ibis/issues/1870)) ([ec05906](https://github.com/ibiscite/ibis/commit/ec05906f5125623690a47e3d2ac9996174990cff))
+
+
+### Bug Fixes
+
+* a late copy never overwrites newer clipboard contents ([#1859](https://github.com/ibiscite/ibis/issues/1859)) ([6628089](https://github.com/ibiscite/ibis/commit/662808955cf63e75730679ce6803f9a3ff7c83dc))
+* closing a panel or cancelling a tool frees the formatter ([#1860](https://github.com/ibiscite/ibis/issues/1860)) ([9616c24](https://github.com/ibiscite/ibis/commit/9616c248ba05de4cd66b62ff751ec521a0a88997))
+* Show in Finder never opens Zotero; distinct icons; one Back ([#1881](https://github.com/ibiscite/ibis/issues/1881)) ([5ca7d0e](https://github.com/ibiscite/ibis/commit/5ca7d0e39d590e2787e4b53cbeec3a8543664a80))
+* switching between a .bib file and Zotero never gets stuck ([#1854](https://github.com/ibiscite/ibis/issues/1854)) ([a1c5d92](https://github.com/ibiscite/ibis/commit/a1c5d92bf2b02b50fc9d766e556a65f2f9f24deb))
+* **website:** pills fit their text, the demo format menu opens, and a polish pass ([#1863](https://github.com/ibiscite/ibis/issues/1863)) ([c667fd7](https://github.com/ibiscite/ibis/commit/c667fd785176f82a42a820c285bffd38bd81e2d9))
+* **website:** the shorthand demo never jumps, the caret follows the citation, and AI setup is plain per app ([#1869](https://github.com/ibiscite/ibis/issues/1869)) ([20d700d](https://github.com/ibiscite/ibis/commit/20d700d6962b09a573cb19fe235cde8518848125))
+* **website:** writing-app tabs and Try buttons keep their names on hover ([#1865](https://github.com/ibiscite/ibis/issues/1865)) ([d111012](https://github.com/ibiscite/ibis/commit/d111012892f7dbd81c8c019e5fdd5af0aa283dd7))
+* **zotero:** read Zotero 10.0.9, and newer Zotero versions whose tables still fit ([#1868](https://github.com/ibiscite/ibis/issues/1868)) ([bc0f813](https://github.com/ibiscite/ibis/commit/bc0f8138a08a511f7ca413d92fdc82b8ff5f9cff))
+
+
+### Documentation
+
+* decide opening references, picker placement and going back ([#1879](https://github.com/ibiscite/ibis/issues/1879)) ([6c4afea](https://github.com/ibiscite/ibis/commit/6c4afea106863dcbdac9e2dacf34bf080704ac2b))
+* explain website interest and download counts ([#1884](https://github.com/ibiscite/ibis/issues/1884)) ([228a6ba](https://github.com/ibiscite/ibis/commit/228a6ba8ee33ceb881601d078e2ae49102c3d8c4))
+* recognising official Ibis, contributing code, contract promise ([#1874](https://github.com/ibiscite/ibis/issues/1874)) ([e5d7ea2](https://github.com/ibiscite/ibis/commit/e5d7ea2d29052f029e169a435618daae08cbbe70))
+* say how the website's visits are counted ([#1873](https://github.com/ibiscite/ibis/issues/1873)) ([c3a8ca2](https://github.com/ibiscite/ibis/commit/c3a8ca2910d0d047b1417d9aa57f8c87a5914559))
+
+## [0.3.3](https://github.com/ibiscite/ibis/compare/v0.3.2...v0.3.3) (2026-11-11)
+
+
+### Features
+
+* agents get source health, receipts and caller records ([#1848](https://github.com/ibiscite/ibis/issues/1848)) ([546fc46](https://github.com/ibiscite/ibis/commit/546fc469e420b56b9fe1f47e0530cbb8f05c7422))
+* carry every locator type, each form and kept order to the engine ([#1803](https://github.com/ibiscite/ibis/issues/1803)) ([95068bc](https://github.com/ibiscite/ibis/commit/95068bca7bb35f36527e2a8aac3ee2e4212405f5))
+* one design system: palettes as views, layout decided once ([#1846](https://github.com/ibiscite/ibis/issues/1846)) ([3710238](https://github.com/ibiscite/ibis/commit/371023822fa724734ecd0b93beca4308d5fc53ad))
+* one motion foundation for every part ([#1797](https://github.com/ibiscite/ibis/issues/1797)) ([7a42fed](https://github.com/ibiscite/ibis/commit/7a42fed93b82bbc74d877f31d2f8ade32fcec0fe))
+* show Appearance as one live picture and centre About ([#1813](https://github.com/ibiscite/ibis/issues/1813)) ([50a20a0](https://github.com/ibiscite/ibis/commit/50a20a0fd16c3d4141de8942839738188bef130c))
+* **website:** four pages on the original look, with real CLI output ([#1843](https://github.com/ibiscite/ibis/issues/1843)) ([d8a817e](https://github.com/ibiscite/ibis/commit/d8a817e972c28ea1fc98f402f125b14a00ff06d3))
+* write Zotero RTF/ODF Scan markers for references from Zotero ([#1827](https://github.com/ibiscite/ibis/issues/1827)) ([854719f](https://github.com/ibiscite/ibis/commit/854719f8d019ab8c828068a5fe674d76e6280104))
+
+
+### Bug Fixes
+
+* a result row's spoken parts never run together ([#1828](https://github.com/ibiscite/ibis/issues/1828)) ([5cbb54c](https://github.com/ibiscite/ibis/commit/5cbb54c16ba6a9f97f87b75a6d751ac6a56f330f))
+* don't report a printed locator lost when the style shows the page ([#1817](https://github.com/ibiscite/ibis/issues/1817)) ([eb2ecab](https://github.com/ibiscite/ibis/commit/eb2ecabe917c99716f65a4212035499f2c39b141))
+* keep footer status words whole at the smallest window ([#1802](https://github.com/ibiscite/ibis/issues/1802)) ([6d9fd2c](https://github.com/ibiscite/ibis/commit/6d9fd2c77298d83f355dc1d10ff8108257d39212))
+* update rustix past RUSTSEC-2026-0486 ([#1842](https://github.com/ibiscite/ibis/issues/1842)) ([4652953](https://github.com/ibiscite/ibis/commit/46529535fc357fe69bc369e0418d3527bef36691))
+
+
+### Documentation
+
+* describe only what has shipped; plans live in ROADMAP.md ([#1850](https://github.com/ibiscite/ibis/issues/1850)) ([c6e64d0](https://github.com/ibiscite/ibis/commit/c6e64d08d2a6a22876ed437f4b6d4081eff91d46))
+* renumber the RIS and CSV decision to 0043 ([#1800](https://github.com/ibiscite/ibis/issues/1800)) ([020c4c3](https://github.com/ibiscite/ibis/commit/020c4c3735764f32dad3098ea31aa16e15ab5c43))
+* two cloud lanes and a five-wide merge queue ([#1804](https://github.com/ibiscite/ibis/issues/1804)) ([8ef356a](https://github.com/ibiscite/ibis/commit/8ef356a99020e3cd9b4c2c8be5d52dde348cd200))
+* your format applies to apps of its own kind ([#1801](https://github.com/ibiscite/ibis/issues/1801)) ([38af895](https://github.com/ibiscite/ibis/commit/38af895bc655987fb42d0b7077f3a1d084db2276))
+
 ## [0.3.2](https://github.com/ibiscite/ibis/compare/v0.3.1...v0.3.2) (2026-11-10)
 
 

@@ -1,6 +1,6 @@
 import type { PickerPreferences } from "../bindings";
 
-type Refusal = { row: string | null; message: "settings-read-only" | "settings-choice-failed" };
+type Refusal = { row: string | null; message: string };
 export type PreferenceState =
   | { status: "known"; value: PickerPreferences }
   | { status: "refused"; value: PickerPreferences; problem: Refusal }

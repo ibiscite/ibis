@@ -13,6 +13,8 @@ concurrency:
 
 jobs:
   conventions:
+    # land.sh checks trusted branches; outside contributors still get title feedback.
+    if: github.event.pull_request.head.repo.full_name != github.repository || (github.event.pull_request.user.login != 'diyanko' && github.event.pull_request.user.login != 'ibis-release[bot]')
     name: Pull request conventions
     runs-on: ubuntu-24.04
     timeout-minutes: 5

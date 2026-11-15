@@ -1,6 +1,6 @@
+import type * as nativeApi from "../../api";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
-import type { PickerApi } from "../../App";
 import type { LibraryStatus } from "../../api";
 import { useLibraryStatus } from "./useLibraryStatus";
 
@@ -15,7 +15,7 @@ function setup(first: LibraryStatus) {
     libraryStatus: vi.fn(async () => first),
     onLibraryChanged: vi.fn(async (handler: typeof changed) => { changed = handler; return () => undefined; }),
     onPickerHidden: vi.fn(async () => () => undefined), onPickerShown: vi.fn(async () => () => undefined),
-  } as unknown as PickerApi;
+  } as unknown as typeof nativeApi;
   const hook = renderHook(() => useLibraryStatus(api, vi.fn(), vi.fn()));
   return { ...hook, change: (next: LibraryStatus) => act(async () => changed(next)) };
 }

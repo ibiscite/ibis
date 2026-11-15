@@ -17,7 +17,33 @@ const INJECTED: [&str; 5] = ["AppHandle", "State", "Window", "WebviewWindow", "W
 
 #[proc_macro_attribute]
 pub fn command(_: TokenStream, item: TokenStream) -> TokenStream {
-    let function = parse_macro_input!(item as ItemFn);
+    let mut function = parse_macro_input!(item as ItemFn);
+    // The IPC boundary requires a catalogue diagnostic and recovery; native
+    // implementation errors stay local. Each command names its operation.
+    if let ReturnType::Type(_, ty) = &function.sig.output
+        && let Some((ok, error)) = result_types(ty)
+        && !last_segment(error).is_some_and(|name| name == "CommandError")
+    {
+        let original = ty.clone();
+        let ok = ok.clone();
+        let operation = format_ident!("{}", pascal_case(&function.sig.ident.to_string()));
+        let body = &function.block;
+        let conversion = if last_segment(error).is_some_and(|name| name == "String" || name == "str") {
+            quote! { |_| crate::errors::NativeOperation::#operation.failure() }
+        } else {
+            quote! { crate::library::CommandError::from }
+        };
+        let run = if function.sig.asyncness.is_some() {
+            quote! { (async #body).await }
+        } else {
+            quote! { (|| #body)() }
+        };
+        function.block = syn::parse_quote!({
+            let result: #original = #run;
+            result.map_err(#conversion)
+        });
+        function.sig.output = syn::parse_quote!(-> Result<#ok, crate::library::CommandError>);
+    }
     let name = &function.sig.ident;
     let schema = format_ident!("__schema_{}", name);
     let visibility = &function.vis;
@@ -140,6 +166,18 @@ fn camel_case(name: &str) -> String {
         }
     }
     out
+}
+
+fn pascal_case(name: &str) -> String {
+    name.split('_')
+        .map(|part| {
+            let mut chars = part.chars();
+            chars
+                .next()
+                .map(|first| first.to_uppercase().collect::<String>() + chars.as_str())
+                .unwrap_or_default()
+        })
+        .collect()
 }
 
 fn error(spanned: impl quote::ToTokens, message: &str) -> TokenStream {

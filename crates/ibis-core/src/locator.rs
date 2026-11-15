@@ -6,8 +6,9 @@
 //! - a full label word joined to its value, as Zotero accepts: `page123`,
 //!   `chapter3`, `chap12` (short labels never join: `p53` is a protein);
 //! - a label and quoted text, for textual locators: `note "the epigraph"`;
-//! - plain page numbers after a comma: `garcia, 12-14`, never a four-digit
-//!   number, which is most likely a year.
+//! - plain page numbers at the end: after a comma (`garcia, 5`), or after a
+//!   space when they have two digits or more or are a range (`vale 417`,
+//!   `garcia 12-14`); never a four-digit number, which is most likely a year.
 //!
 //! Abbreviations that are also ordinary words (`no`, `art`, `para`, `n`, `op`)
 //! count only with a period. The caller shows what was read (`typed`) so the
@@ -152,34 +153,48 @@ pub fn read_given(text: &str) -> Option<Locator> {
         .map(|split| split.locator)
 }
 
-/// Why a Page field cannot become a locator value.
+/// Why a locator field cannot become a locator, and the type that needs a
+/// value: the field's own, or the one its typed label names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PageValueError {
-    MissingValue,
-    InvalidValue,
+pub enum FieldError {
+    MissingValue(LocatorTerm),
+    InvalidValue(LocatorTerm),
 }
 
-/// Read a Page field without leaving a recognised page label in its value.
-/// Bare printed labels stay literal; a recognised page prefix must parse fully.
-pub fn page_value(text: &str) -> Result<String, PageValueError> {
+/// Read a locator field whose type is `term`, as the picker's locator field
+/// sends it. A recognised label at its start names the type itself (`chap. 3`
+/// in a Page field is chapter 3) and must read fully; anything else is the
+/// value as written, so printed labels such as `xii` or `S12` stay literal. A
+/// type whose value is text (`sub verbo`) takes any text, label words included.
+pub fn read_field(term: LocatorTerm, text: &str) -> Result<Locator, FieldError> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
-        return Err(PageValueError::MissingValue);
+        return Err(FieldError::MissingValue(term));
     }
     if trimmed.len() > MAX_LOCATOR_LEN {
-        return Err(PageValueError::InvalidValue);
+        return Err(FieldError::InvalidValue(term));
     }
-    if let Some((label, rest)) = find_label(trimmed)
-        && label.term == LocatorTerm::Page
-    {
-        if rest.trim().is_empty() {
-            return Err(PageValueError::MissingValue);
+    let takes_text = LABELS
+        .iter()
+        .any(|label| label.term == term && label.value == Value::Text);
+    if !takes_text {
+        if let Some((label, rest)) = find_label(trimmed) {
+            if rest.trim().is_empty() {
+                return Err(FieldError::MissingValue(label.term));
+            }
+            return parse(trimmed).ok_or(FieldError::InvalidValue(label.term));
         }
-        return parse(trimmed)
-            .map(|locator| locator.value)
-            .ok_or(PageValueError::InvalidValue);
+        // A label that needs a space after it (`s.v.`, `sub verbo`) still names
+        // its type when written alone, and still needs its value.
+        let spaced = format!("{trimmed} ");
+        if let Some((label, _)) = find_label(&spaced).filter(|(_, rest)| rest.trim().is_empty()) {
+            return Err(FieldError::MissingValue(label.term));
+        }
     }
-    Ok(text.to_owned())
+    Ok(Locator {
+        term,
+        value: text.to_owned(),
+    })
 }
 
 /// Split a trailing locator off `query`, or `None` when there is none or
@@ -198,11 +213,22 @@ pub fn parse_trailing(query: &str) -> Option<TrailingLocator> {
         let search = q[..i].trim_end();
         let after_comma = search.ends_with(',');
         let search = search.trim_end_matches(',').trim_end();
-        if search.is_empty() {
+        // Never start inside a range that did not read whole (`2019 - 21`).
+        if search.is_empty() || search.ends_with(['-', '–', '—']) {
             continue;
         }
         let tail = &q[i..];
-        if let Some(locator) = read(tail, after_comma) {
+        // After a space a bare number is a page only when it looks like one:
+        // two digits or more, or a range (`vale 417`, never `modern art 3`).
+        // A label word just before it ("p 45", "decreto n 50") makes it that
+        // label's value, which the label rules above decide, never a bare page.
+        let last = search.rsplit(char::is_whitespace).next().unwrap_or(search);
+        let labelled = [format!("{last} 1"), format!("{last}. 1")]
+            .iter()
+            .any(|text| find_label(text).is_some_and(|(_, rest)| rest.trim() == "1"));
+        let bare =
+            (tail.chars().filter(|c| c.is_numeric()).count() >= 2 || tail.contains(['-', '–', '—'])) && !labelled;
+        if let Some(locator) = read(tail, after_comma || bare) {
             if continues_before(q, i, floor) {
                 return None;
             }
@@ -348,7 +374,7 @@ fn is_value(text: &str, kind: Value) -> bool {
     text.split([',', '&']).all(|item| is_range(item.trim(), kind))
 }
 
-/// Plain page numbers after a comma: no letters, and no four-digit numbers.
+/// Plain page numbers: no letters, and no four-digit numbers.
 fn is_plain_pages(text: &str) -> bool {
     !text.is_empty()
         && text.split([',', '&']).all(|item| {
@@ -516,9 +542,23 @@ mod tests {
     }
 
     #[test]
-    fn page_fields_distinguish_literal_values_from_incomplete_or_invalid_labels() {
+    fn locator_fields_distinguish_literal_values_from_incomplete_or_invalid_labels() {
+        let page = |text: &str| read_field(LocatorTerm::Page, text);
         for value in ["", " ", "p", "p.", "PP", "pp.", "page", "pages", "pgs.", "S."] {
-            assert_eq!(page_value(value), Err(PageValueError::MissingValue), "{value:?}");
+            assert_eq!(
+                page(value),
+                Err(FieldError::MissingValue(LocatorTerm::Page)),
+                "{value:?}"
+            );
+        }
+        assert_eq!(page("chap."), Err(FieldError::MissingValue(LocatorTerm::Chapter)));
+        assert_eq!(page("§"), Err(FieldError::MissingValue(LocatorTerm::Section)));
+        for alone in ["s.v.", "S.V.", "s.vv.", "sub verbo", "sub verbis"] {
+            assert_eq!(
+                page(alone),
+                Err(FieldError::MissingValue(LocatorTerm::SubVerbo)),
+                "{alone:?}"
+            );
         }
         for value in [
             "pp. \"\"",
@@ -527,21 +567,44 @@ mod tests {
             "p. --",
             "pp. ١٢٣٤٥٦٧٨٩٠",
         ] {
-            assert_eq!(page_value(value), Err(PageValueError::InvalidValue), "{value:?}");
+            assert_eq!(
+                page(value),
+                Err(FieldError::InvalidValue(LocatorTerm::Page)),
+                "{value:?}"
+            );
         }
         assert_eq!(
-            page_value(&"1".repeat(MAX_LOCATOR_LEN + 1)),
-            Err(PageValueError::InvalidValue)
+            page(&"1".repeat(MAX_LOCATOR_LEN + 1)),
+            Err(FieldError::InvalidValue(LocatorTerm::Page))
         );
-        for (typed, value) in [
-            ("pp. ١٢–١٥", "١٢–١٥"),
-            (" P. iv ", "iv"),
-            ("pp. \"the epigraph\"", "the epigraph"),
-            ("p53", "p53"),
-            ("S12", "S12"),
-            ("chap. 3", "chap. 3"),
+        let read = |term: LocatorTerm, value: &str| {
+            Ok(Locator {
+                term,
+                value: value.into(),
+            })
+        };
+        for (term, typed, expected) in [
+            (LocatorTerm::Page, "pp. ١٢–١٥", read(LocatorTerm::Page, "١٢–١٥")),
+            (LocatorTerm::Page, " P. iv ", read(LocatorTerm::Page, "iv")),
+            (
+                LocatorTerm::Page,
+                "pp. \"the epigraph\"",
+                read(LocatorTerm::Page, "the epigraph"),
+            ),
+            // Printed labels with no recognised label stay as written.
+            (LocatorTerm::Page, "p53", read(LocatorTerm::Page, "p53")),
+            (LocatorTerm::Page, "S12", read(LocatorTerm::Page, "S12")),
+            (LocatorTerm::Page, "xii–xiv", read(LocatorTerm::Page, "xii–xiv")),
+            // A typed label names the type, whatever the field said.
+            (LocatorTerm::Page, "chap. 3", read(LocatorTerm::Chapter, "3")),
+            (LocatorTerm::Page, "§ 2", read(LocatorTerm::Section, "2")),
+            (LocatorTerm::Chapter, "3–5", read(LocatorTerm::Chapter, "3–5")),
+            (LocatorTerm::Line, "12-14", read(LocatorTerm::Line, "12-14")),
+            (LocatorTerm::Folio, "12r", read(LocatorTerm::Folio, "12r")),
+            // Text values keep label words: this is the entry "line", not a line number.
+            (LocatorTerm::SubVerbo, "line", read(LocatorTerm::SubVerbo, "line")),
         ] {
-            assert_eq!(page_value(typed), Ok(value.into()));
+            assert_eq!(read_field(term, typed), expected, "{term:?} {typed:?}");
         }
     }
 
@@ -584,7 +647,6 @@ mod tests {
         for query in [
             "smith 2020",
             "smith, 2020",
-            "garcia 12-14",
             "p 45",
             ", 12",
             "tumour suppressor p53",
@@ -605,6 +667,8 @@ mod tests {
             "agenda para 2030",
             "cartas para mi",
             "decreto n 50",
+            "Taylor 2019 - 21",
+            "Taylor p 1 - 2 - 34",
             "smith p civil",
             "people v. mill",
             "smith p iiii",

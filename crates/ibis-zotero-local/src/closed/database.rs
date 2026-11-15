@@ -1,13 +1,17 @@
-//! Query only the disposable copy. No CSL/legacy model adapters live here.
+//! Query only the disposable database copy.
 use super::{
     ClosedError, ClosedItem, ClosedLibrary, ClosedSnapshot, ClosedWarning, Control, RawCreator, RawItem,
-    SourceMetadata, StoredValue,
+    SourceMetadata, StoredValue, ZoteroTable,
 };
+use ibis_core::source::IdentityClaims;
 use rusqlite::config::DbConfig;
 use rusqlite::limits::Limit;
 use rusqlite::{Connection, OpenFlags, Row};
 use std::cell::Cell;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+
+// Verified against Zotero 10.0.9; see fixtures/closed/README.md.
+const TESTED_SCHEMA: i64 = 131;
 
 const MAX_ITEMS: usize = 1_000_000;
 const MAX_VALUE: usize = 256 * 1024;
@@ -16,8 +20,14 @@ const MAX_CREATORS: usize = 4096;
 // Retained strings plus conservative container overhead. Separate from the
 // source-file cap: allow room for a 512MiB live payload's allocation overhead.
 const MAX_RETAINED_BYTES: usize = 1024 * 1024 * 1024;
-// Independent work ceiling; only retained bibliographic rows consume it.
+// Global work ceiling, including excluded item identities.
 const MAX_ROWS: usize = MAX_ITEMS * 64;
+
+enum Membership {
+    Included(ClosedLibrary),
+    Excluded,
+    Invalid,
+}
 
 /// The snapshot and the major version of the Zotero that last opened the
 /// database, when it recorded one.
@@ -65,11 +75,11 @@ pub(super) fn read(
     if version < 123 {
         return Err(ClosedError::TooOld);
     }
-    if version > 130 {
-        return Err(ClosedError::TooNew);
-    }
-    for (table, fields) in TABLES {
-        validate_table(&db, table, fields)?;
+    for &(table, fields) in TABLES {
+        validate_table(&db, table.name(), fields).map_err(|error| match error {
+            ClosedError::Damaged if version > TESTED_SCHEMA => ClosedError::TooNew { table },
+            error => error,
+        })?;
     }
     let settings = validate_table(&db, "settings", &["setting", "key", "value"]).is_ok();
     let zotero = settings
@@ -103,44 +113,58 @@ pub(super) fn read(
         {
             return Err(rusqlite::Error::InvalidQuery);
         }
-        if libraries
-            .insert(
-                id,
-                ClosedLibrary {
-                    library_id: id,
-                    group_id,
-                    name,
-                    items: Vec::new(),
-                },
-            )
-            .is_some()
-        {
+        let membership = match kind.as_str() {
+            "user" | "group" => Membership::Included(ClosedLibrary {
+                library_id: id,
+                group_id,
+                name,
+                items: Vec::new(),
+            }),
+            "feed" => Membership::Excluded,
+            _ => Membership::Invalid,
+        };
+        if libraries.insert(id, membership).is_some() {
             return Err(rusqlite::Error::InvalidQuery);
         }
         Ok(())
     })?;
     let mut items = BTreeMap::<i64, ClosedItem>::new();
-    let mut warnings = Vec::new();
-    let mut identities = BTreeSet::new();
+    let mut warnings = if version > TESTED_SCHEMA {
+        vec![ClosedWarning::NewerThanTested]
+    } else {
+        Vec::new()
+    };
+    let mut identities = IdentityClaims::default();
     each(&db, READ_SQL[1], &budget, |r| {
         let id: i64 = r.get(0)?;
         let library: i64 = r.get(1)?;
-        if !libraries.contains_key(&library) {
-            return Ok(());
-        }
-        if items.len() >= MAX_ITEMS {
-            return budget.limit();
+        match libraries.get(&library).unwrap_or(&Membership::Invalid) {
+            Membership::Included(_) => (),
+            Membership::Excluded => return Ok(()),
+            Membership::Invalid => return Err(rusqlite::Error::InvalidQuery),
         }
         let key = budget.text(r, 2)?;
-        let item_type = budget.text(r, 4)?;
+        identities.claim((library, key.clone()), ());
         if id < 1
             || key.is_empty()
             || key.len() > 128
             || key.chars().any(|c| c.is_whitespace() || c.is_control())
-            || item_type.is_empty()
-            || !identities.insert((library, key.clone()))
+            || !identities.is_unique(&(library, key.clone()))
         {
             return Err(rusqlite::Error::InvalidQuery);
+        }
+        if r.get::<_, bool>(7)? {
+            return Ok(());
+        }
+        let item_type = budget.text(r, 4)?;
+        if matches!(item_type.as_str(), "note" | "attachment" | "annotation") {
+            return Ok(());
+        }
+        if item_type.is_empty() {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        if items.len() >= MAX_ITEMS {
+            return budget.limit();
         }
         let item = ClosedItem {
             data: RawItem {
@@ -280,17 +304,22 @@ pub(super) fn read(
             }
             item.data.creators = ordered.into_values().collect();
         }
-        libraries
-            .get_mut(&item.metadata.library_id)
-            .ok_or(ClosedError::Damaged)?
-            .items
-            .push(item);
+        match libraries.get_mut(&item.metadata.library_id) {
+            Some(Membership::Included(library)) => library.items.push(item),
+            _ => return Err(ClosedError::Damaged),
+        }
     }
     control.check()?;
     Ok((
         ClosedSnapshot {
             schema_version: version,
-            libraries: libraries.into_values().collect(),
+            libraries: libraries
+                .into_values()
+                .filter_map(|membership| match membership {
+                    Membership::Included(library) => Some(library),
+                    Membership::Excluded | Membership::Invalid => None,
+                })
+                .collect(),
             warnings,
             better_bibtex_unknown: false,
             owner,
@@ -371,19 +400,19 @@ pub(super) fn configure(db: &mut Connection, control: &Control) -> Result<(), Cl
 }
 
 const READ_SQL: [&str; 4] = [
-    "SELECT L.libraryID,L.type,G.groupID,CASE WHEN typeof(G.name)='text' AND octet_length(G.name)<=1024 THEN G.name ELSE '' END FROM libraries L LEFT JOIN groups G USING(libraryID) WHERE L.type IN ('user','group')",
-    "SELECT I.itemID,I.libraryID,I.key,I.version,T.typeName,I.dateAdded,I.dateModified FROM items I LEFT JOIN itemTypesCombined T USING(itemTypeID) WHERE (T.typeName IS NULL OR T.typeName NOT IN ('note','attachment','annotation')) AND NOT EXISTS(SELECT 1 FROM deletedItems D WHERE D.itemID=I.itemID)",
+    "SELECT L.libraryID,L.type,G.groupID,CASE WHEN typeof(G.name)='text' AND octet_length(G.name)<=1024 THEN G.name ELSE '' END FROM libraries L LEFT JOIN groups G USING(libraryID)",
+    "SELECT I.itemID,I.libraryID,I.key,I.version,T.typeName,I.dateAdded,I.dateModified,EXISTS(SELECT 1 FROM deletedItems D WHERE D.itemID=I.itemID) FROM items I LEFT JOIN itemTypesCombined T USING(itemTypeID)",
     "SELECT D.itemID,F.fieldName,CASE WHEN octet_length(V.value)>:max_value THEN NULL ELSE V.value END,V.valueID,octet_length(V.value) FROM itemData D LEFT JOIN fieldsCombined F USING(fieldID) LEFT JOIN itemDataValues V USING(valueID) WHERE EXISTS(SELECT 1 FROM items I JOIN libraries L USING(libraryID) JOIN itemTypesCombined T USING(itemTypeID) WHERE I.itemID=D.itemID AND L.type IN ('user','group') AND T.typeName NOT IN ('note','attachment','annotation') AND NOT EXISTS(SELECT 1 FROM deletedItems X WHERE X.itemID=I.itemID))",
     "SELECT IC.itemID,CT.creatorType,CASE WHEN octet_length(C.firstName)>:max_value THEN NULL ELSE C.firstName END,CASE WHEN octet_length(C.lastName)>:max_value THEN NULL ELSE C.lastName END,C.fieldMode,IC.orderIndex,octet_length(C.firstName),octet_length(C.lastName) FROM itemCreators IC LEFT JOIN creators C USING(creatorID) LEFT JOIN creatorTypes CT USING(creatorTypeID) WHERE EXISTS(SELECT 1 FROM items I JOIN libraries L USING(libraryID) JOIN itemTypesCombined T USING(itemTypeID) WHERE I.itemID=IC.itemID AND L.type IN ('user','group') AND T.typeName NOT IN ('note','attachment','annotation') AND NOT EXISTS(SELECT 1 FROM deletedItems X WHERE X.itemID=I.itemID))",
 ];
 
 const OWNER_SQL: &str = "SELECT EXISTS(SELECT 1 FROM items I JOIN libraries L USING(libraryID) LEFT JOIN itemTypesCombined T USING(itemTypeID) WHERE L.type='user' AND T.typeName IS NOT 'annotation' AND NOT EXISTS(SELECT 1 FROM deletedItems D WHERE D.itemID=I.itemID) AND NOT EXISTS(SELECT 1 FROM itemNotes N WHERE N.itemID=I.itemID AND N.parentItemID IS NOT NULL) AND NOT EXISTS(SELECT 1 FROM itemAttachments A WHERE A.itemID=I.itemID AND A.parentItemID IS NOT NULL))";
 
-const TABLES: &[(&str, &[&str])] = &[
-    ("libraries", &["libraryID", "type"]),
-    ("groups", &["groupID", "libraryID", "name"]),
+const TABLES: &[(ZoteroTable, &[&str])] = &[
+    (ZoteroTable::Libraries, &["libraryID", "type"]),
+    (ZoteroTable::Groups, &["groupID", "libraryID", "name"]),
     (
-        "items",
+        ZoteroTable::Items,
         &[
             "itemID",
             "libraryID",
@@ -394,16 +423,22 @@ const TABLES: &[(&str, &[&str])] = &[
             "dateModified",
         ],
     ),
-    ("itemTypesCombined", &["itemTypeID", "typeName"]),
-    ("fieldsCombined", &["fieldID", "fieldName"]),
-    ("itemData", &["itemID", "fieldID", "valueID"]),
-    ("itemDataValues", &["valueID", "value"]),
-    ("creators", &["creatorID", "firstName", "lastName", "fieldMode"]),
-    ("creatorTypes", &["creatorTypeID", "creatorType"]),
-    ("itemCreators", &["itemID", "creatorID", "creatorTypeID", "orderIndex"]),
-    ("deletedItems", &["itemID"]),
-    ("itemNotes", &["itemID", "parentItemID"]),
-    ("itemAttachments", &["itemID", "parentItemID"]),
+    (ZoteroTable::ItemTypesCombined, &["itemTypeID", "typeName"]),
+    (ZoteroTable::FieldsCombined, &["fieldID", "fieldName"]),
+    (ZoteroTable::ItemData, &["itemID", "fieldID", "valueID"]),
+    (ZoteroTable::ItemDataValues, &["valueID", "value"]),
+    (
+        ZoteroTable::Creators,
+        &["creatorID", "firstName", "lastName", "fieldMode"],
+    ),
+    (ZoteroTable::CreatorTypes, &["creatorTypeID", "creatorType"]),
+    (
+        ZoteroTable::ItemCreators,
+        &["itemID", "creatorID", "creatorTypeID", "orderIndex"],
+    ),
+    (ZoteroTable::DeletedItems, &["itemID"]),
+    (ZoteroTable::ItemNotes, &["itemID", "parentItemID"]),
+    (ZoteroTable::ItemAttachments, &["itemID", "parentItemID"]),
 ];
 fn validate_table(db: &Connection, name: &str, columns: &[&str]) -> Result<(), ClosedError> {
     let sql: String = db
@@ -417,16 +452,73 @@ fn validate_table(db: &Connection, name: &str, columns: &[&str]) -> Result<(), C
         return Err(ClosedError::Damaged);
     }
     let mut statement = db
-        .prepare("SELECT name,hidden FROM pragma_table_xinfo(?1)")
+        .prepare("SELECT name,hidden,type,pk FROM pragma_table_xinfo(?1)")
         .map_err(failure)?;
     let names = statement
-        .query_map([name], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))
+        .query_map([name], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, i64>(3)?,
+            ))
+        })
         .and_then(Iterator::collect::<rusqlite::Result<Vec<_>>>)
         .map_err(failure)?;
-    if names.iter().any(|(_, hidden)| *hidden != 0) || columns.iter().any(|c| !names.iter().any(|(n, _)| n == c)) {
+    if names.iter().any(|(_, hidden, _, _)| *hidden != 0)
+        || columns.iter().any(|column| {
+            !names
+                .iter()
+                .any(|(n, _, ty, _)| n == column && column_shape(name, column, ty))
+        })
+    {
+        return Err(ClosedError::Damaged);
+    }
+    // These joins must name one row, including when an otherwise empty
+    // library would not exercise them. Do not trust a future lookup layout
+    // that could silently duplicate or overwrite fields and item types.
+    let lookup_id = match name {
+        "itemTypesCombined" => Some("itemTypeID"),
+        "fieldsCombined" => Some("fieldID"),
+        "creatorTypes" => Some("creatorTypeID"),
+        "itemDataValues" => Some("valueID"),
+        "creators" => Some("creatorID"),
+        _ => None,
+    };
+    if let Some(id) = lookup_id
+        && (names.iter().filter(|(_, _, _, pk)| *pk != 0).count() != 1
+            || !names.iter().any(|(n, _, _, pk)| n == id && *pk == 1))
+    {
         return Err(ClosedError::Damaged);
     }
     Ok(())
+}
+
+fn column_shape(table: &str, column: &str, declared: &str) -> bool {
+    // SQLite's declared affinities, in its precedence order. Dates are TEXT
+    // in some stored layouts and TIMESTAMP (numeric affinity) in Zotero.
+    let ty = declared.to_ascii_uppercase();
+    let affinity = if ty.contains("INT") {
+        "integer"
+    } else if ["CHAR", "CLOB", "TEXT"].iter().any(|part| ty.contains(part)) {
+        "text"
+    } else if ty.is_empty() || ty.contains("BLOB") {
+        "blob"
+    } else if ["REAL", "FLOA", "DOUB"].iter().any(|part| ty.contains(part)) {
+        "real"
+    } else {
+        "numeric"
+    };
+    match column {
+        // These are intentionally untyped in Zotero. Values are checked
+        // again while reading; itemDataValues preserves numeric storage.
+        "value" => affinity == "blob",
+        "valueID" if table == "itemData" => matches!(affinity, "integer" | "blob"),
+        "dateAdded" | "dateModified" => matches!(affinity, "text" | "numeric"),
+        "schema" | "type" | "name" | "key" | "typeName" | "fieldName" | "firstName" | "lastName" | "creatorType"
+        | "setting" => affinity == "text",
+        _ => affinity == "integer",
+    }
 }
 fn each(
     db: &Connection,

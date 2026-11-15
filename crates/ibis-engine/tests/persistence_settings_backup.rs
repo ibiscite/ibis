@@ -1,0 +1,597 @@
+//! Taking settings to another computer (#1561): portable paths, shortcuts per
+//! system, and backups that are checked whole before anything changes.
+#[path = "support/settings.rs"]
+mod fixture;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use ibis_core::destination::System;
+use ibis_engine::settings::backup::{self, BackupError, Note};
+use ibis_engine::settings::{self, Density, LibrarySetting, PickerWindow, Settings, SettingsError, ZoteroLibrary};
+use serde_json::{Value, json};
+
+fn folder() -> tempfile::TempDir {
+    tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"))
+}
+
+fn write(path: &Path, text: &str) {
+    fs::write(path, text).unwrap_or_else(|error| panic!("{error}"));
+}
+
+fn read(path: &Path) -> String {
+    fs::read_to_string(path).unwrap_or_default()
+}
+
+fn other_system() -> System {
+    if System::HERE == System::Windows {
+        System::Macos
+    } else {
+        System::Windows
+    }
+}
+
+fn system_name(system: System) -> String {
+    serde_json::to_value(system)
+        .unwrap_or_default()
+        .as_str()
+        .unwrap_or_default()
+        .to_owned()
+}
+
+fn chosen() -> Settings {
+    let mut settings = Settings {
+        portable: ibis_engine::settings::Portable {
+            library: Some(LibrarySetting::Zotero(ZoteroLibrary::Group(42).into())),
+            output: Some("ieee".into()),
+            density: Some(Density::Compact),
+            ..Default::default()
+        },
+        device: serde_json::from_value(json!({
+            "update_checks": true, "zotero_profile":"Invented elsewhere",
+            "editor_endpoint":{"port":23124,"token":"invented-device-token"},
+            "delights":{"paste_count":7},
+            "writings":[{"name":"Atlas","format":"pandoc"}],
+            "writing_apps":{"macos:example.writer":"Atlas"},
+            "app_outputs":[{"app":{"system":"macos","id":"example.writer"},"output":"ieee"}],
+            "suggestion_reports":["keys"], "key_formats_used":true
+        }))
+        .unwrap_or_else(|error| panic!("{error}")),
+        unknown: serde_json::from_value(json!({"future_setting":{"choices":[true,null]}})).unwrap_or_default(),
+    };
+    settings.portable.shortcut.set_here(Some("Alt+Shift+K".into()));
+    settings.device.picker_windows.insert(
+        "display-1".into(),
+        PickerWindow {
+            width: 640,
+            height: 420,
+            custom_size: true,
+            position: Some((0.1, 0.2)),
+        },
+    );
+    settings.portable.accent = Some(settings::Accent::Ibis);
+    settings
+}
+
+#[test]
+fn home_paths_are_written_from_the_home_folder_and_read_on_any_computer() {
+    let home = if cfg!(windows) {
+        Path::new(r"C:\Users\Invented")
+    } else {
+        Path::new("/home/invented")
+    };
+    let inside = home.join("Documents").join("Thesis").join("refs.bib");
+    assert_eq!(
+        settings::portable_path(&inside, Some(home)).as_deref(),
+        Some("~/Documents/Thesis/refs.bib")
+    );
+    assert_eq!(
+        settings::resolve_path("~/Documents/Thesis/refs.bib", Some(home)),
+        inside
+    );
+    // Another computer's home folder holds the same file under another name.
+    let elsewhere = if cfg!(windows) {
+        Path::new(r"D:\Profiles\other")
+    } else {
+        Path::new("/Users/other")
+    };
+    assert_eq!(
+        settings::resolve_path("~/Documents/Thesis/refs.bib", Some(elsewhere)),
+        elsewhere.join("Documents").join("Thesis").join("refs.bib")
+    );
+    // Outside the home folder, the home folder itself, and no home folder: as written.
+    let outside = if cfg!(windows) {
+        PathBuf::from(r"E:\Shared\refs.bib")
+    } else {
+        PathBuf::from("/srv/shared/refs.bib")
+    };
+    assert_eq!(settings::portable_path(&outside, Some(home)), None);
+    assert_eq!(settings::portable_path(home, Some(home)), None);
+    assert_eq!(settings::portable_path(&inside, None), None);
+    assert_eq!(settings::resolve_path("~/refs.bib", None), PathBuf::from("~/refs.bib"));
+    assert_eq!(
+        settings::resolve_path("~other/refs.bib", Some(home)),
+        PathBuf::from("~other/refs.bib")
+    );
+    assert_eq!(
+        settings::resolve_path("~/a//b.bib", Some(home)),
+        home.join("a").join("b.bib")
+    );
+}
+
+#[test]
+fn a_library_in_the_home_folder_is_saved_with_a_tilde_and_reopens_as_the_same_file() {
+    let Some(home) = std::env::home_dir() else { return };
+    let (_directory, path) = fixture::file();
+    let library = home.join("Invented Folder").join("refs.bib");
+    fixture::edit(&path, |s| {
+        s.portable.library = Some(LibrarySetting::Bibtex(library.clone()));
+    })
+    .unwrap_or_else(|error| panic!("{error}"));
+    let saved: Value = serde_json::from_str(&read(&path)).unwrap_or_default();
+    assert_eq!(saved["library"]["bibtex"], "~/Invented Folder/refs.bib");
+    assert_eq!(
+        fixture::read(&path).portable.library,
+        Some(LibrarySetting::Bibtex(library))
+    );
+    // A full path written by hand is kept as it was.
+    write(&path, r#"{"library":{"bibtex":"/srv/invented/refs.bib"}}"#);
+    fixture::edit(&path, |s| {
+        s.portable.larger_text = Some(true);
+    })
+    .unwrap_or_else(|error| panic!("{error}"));
+    let saved: Value = serde_json::from_str(&read(&path)).unwrap_or_default();
+    assert_eq!(saved["library"]["bibtex"], "/srv/invented/refs.bib");
+}
+
+#[test]
+fn shortcuts_are_kept_and_written_per_system() {
+    let (_directory, path) = fixture::file();
+    let here = system_name(System::HERE);
+    let other = system_name(other_system());
+    write(&path, r#"{"shortcut":"Alt+Space"}"#);
+    assert_eq!(fixture::read(&path).portable.shortcut.here(), Some("Alt+Space"));
+    write(
+        &path,
+        &json!({"shortcut": {other.clone(): "Control+Command+R"}}).to_string(),
+    );
+    let loaded = settings::load(&path);
+    assert!(loaded.problem.is_none());
+    assert_eq!(
+        loaded
+            .cites()
+            .unwrap_or_else(|error| panic!("{error}"))
+            .clone()
+            .portable
+            .shortcut
+            .here(),
+        None,
+        "another system's shortcut is not this one's"
+    );
+    // Choosing this system's shortcut keeps the other system's.
+    fixture::edit(&path, |s| {
+        s.portable.shortcut.set_here(Some("Alt+K".into()));
+    })
+    .unwrap_or_else(|error| panic!("{error}"));
+    let saved: Value = serde_json::from_str(&read(&path)).unwrap_or_default();
+    assert_eq!(
+        saved["shortcut"],
+        json!({here.clone(): "Alt+K", other.clone(): "Control+Command+R"})
+    );
+    // Back to the default here: the other system's stays.
+    fixture::edit(&path, |s| {
+        s.portable.shortcut.set_here(None);
+    })
+    .unwrap_or_else(|error| panic!("{error}"));
+    let saved: Value = serde_json::from_str(&read(&path)).unwrap_or_default();
+    assert_eq!(saved["shortcut"], json!({other: "Control+Command+R"}));
+    // Only this system's: still written per system, so a shared file never
+    // hands it to another system.
+    write(&path, "{}");
+    fixture::edit(&path, |s| {
+        s.portable.shortcut.set_here(Some("Alt+K".into()));
+    })
+    .unwrap_or_else(|error| panic!("{error}"));
+    let saved: Value = serde_json::from_str(&read(&path)).unwrap_or_default();
+    assert_eq!(saved["shortcut"], json!({here: "Alt+K"}));
+    // A system Ibis does not know makes the file invalid, as any wrong value does.
+    write(&path, r#"{"shortcut":{"amiga":"Alt+K"}}"#);
+    assert!(matches!(settings::load(&path).problem, Some(SettingsError::Invalid(_))));
+}
+
+#[test]
+#[cfg(unix)]
+fn a_link_to_a_file_beside_it_stays_linked_unless_ibis_owns_that_file() {
+    let (directory, path) = fixture::file();
+    let shared = directory.path().join("settings.synced.json");
+    write(&shared, r#"{"paste":false}"#);
+    std::os::unix::fs::symlink(&shared, &path).unwrap_or_else(|error| panic!("{error}"));
+    fixture::edit(&path, |s| {
+        s.portable.larger_text = Some(true);
+    })
+    .unwrap_or_else(|error| panic!("{error}"));
+    assert!(fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.file_type().is_symlink()));
+    assert_eq!(fixture::read(&shared).portable.larger_text, Some(true));
+}
+
+#[test]
+#[cfg(unix)]
+fn a_settings_file_linked_into_a_synced_folder_stays_linked() {
+    let directory = folder();
+    let synced = directory.path().join("Cloud Drive");
+    fs::create_dir(&synced).unwrap_or_else(|error| panic!("{error}"));
+    let target = synced.join("settings.json");
+    write(&target, r#"{"paste":false}"#);
+    let path = directory.path().join("settings.json");
+    std::os::unix::fs::symlink(&target, &path).unwrap_or_else(|error| panic!("{error}"));
+    fixture::edit(&path, |s| {
+        s.portable.larger_text = Some(true);
+    })
+    .unwrap_or_else(|error| panic!("{error}"));
+    assert!(fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.file_type().is_symlink()));
+    let saved = fixture::read(&target);
+    assert_eq!(
+        (saved.portable.paste, saved.portable.larger_text),
+        (Some(false), Some(true))
+    );
+    assert_eq!(read(&directory.path().join("settings.json.bak")), r#"{"paste":false}"#);
+    // No temporary file is left in either folder.
+    for folder in [directory.path(), synced.as_path()] {
+        let names: Vec<_> = fs::read_dir(folder)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|e| e.file_name())
+            .collect();
+        assert!(
+            names.iter().all(|name| !name.to_string_lossy().contains(".tmp")),
+            "{names:?}"
+        );
+    }
+}
+
+#[test]
+fn sync_conflict_copies_are_named_and_ordinary_files_are_not() {
+    let (directory, path) = fixture::file();
+    write(&path, "{}");
+    for name in [
+        "settings 2.json",
+        "settings-INVENTED-PC.json",
+        "settings (Invented's conflicted copy 2026-11-02).json",
+        "settings (1).json",
+        "settings.sync-conflict-20261102-101500-ABCDEFG.json",
+        "settings.json.bak",
+        "settings.json.invalid-1",
+        "settings.json.tmp-1",
+        "apps.json",
+        "settings 2.txt",
+        "settings (copy).json",
+        "settings-x.y.json",
+    ] {
+        write(&directory.path().join(name), "{}");
+    }
+    assert_eq!(
+        settings::sync_conflicts(&path),
+        [
+            "settings (1).json",
+            "settings (Invented's conflicted copy 2026-11-02).json",
+            "settings 2.json",
+            "settings-INVENTED-PC.json",
+            "settings.sync-conflict-20261102-101500-ABCDEFG.json",
+        ]
+    );
+    let empty = folder();
+    assert!(settings::sync_conflicts(&empty.path().join("settings.json")).is_empty());
+}
+
+#[test]
+fn a_backup_holds_what_travels_and_names_the_system_of_each_shortcut() {
+    let text = backup::export(&chosen(), "0.2.8").unwrap_or_else(|error| panic!("{error}"));
+    let written: Value = serde_json::from_str(&text).unwrap_or_default();
+    assert_eq!(written["ibis_settings_backup"], 1);
+    assert_eq!(written["made_by"], "0.2.8");
+    assert_eq!(written["made_on"], system_name(System::HERE));
+    let settings = &written["settings"];
+    assert_eq!(settings.as_object().map(|settings| settings.len()), Some(6));
+    assert_eq!(settings["shortcut"], json!({system_name(System::HERE): "Alt+Shift+K"}));
+    assert_eq!(settings["library"], json!({"zotero": {"group": 42}}));
+    assert_eq!(settings["accent"], "ibis");
+    let read = backup::parse(&text).unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(read.made_on, System::HERE);
+    assert_eq!(read.settings.output.as_deref(), Some("ieee"));
+}
+
+#[test]
+fn damaged_foreign_and_newer_backups_are_refused_with_their_reason() {
+    let good: Value = serde_json::from_str(&backup::export(&chosen(), "0.2.8").unwrap_or_default()).unwrap_or_default();
+    let with = |change: &dyn Fn(&mut Value)| {
+        let mut text = good.clone();
+        change(&mut text);
+        backup::parse(&text.to_string())
+    };
+    assert!(matches!(backup::parse("{"), Err(BackupError::NotABackup)));
+    assert!(matches!(backup::parse("[]"), Err(BackupError::NotABackup)));
+    assert!(matches!(
+        backup::parse(r#"{"title":"Invented"}"#),
+        Err(BackupError::NotABackup)
+    ));
+    assert!(matches!(
+        backup::parse(r#"{"paste":false}"#),
+        Err(BackupError::SettingsFile)
+    ));
+    assert!(matches!(
+        backup::parse(r#"{"schema_version":2}"#),
+        Err(BackupError::SettingsFile)
+    ));
+    assert!(matches!(
+        with(&|b| b["ibis_settings_backup"] = json!(2)),
+        Err(BackupError::NewerFormat(2))
+    ));
+    assert!(matches!(
+        with(&|b| b["ibis_settings_backup"] = json!("1")),
+        Err(BackupError::Invalid(_))
+    ));
+    assert!(matches!(
+        with(&|b| b["made_on"] = json!("amiga")),
+        Err(BackupError::Invalid(_))
+    ));
+    assert!(matches!(
+        with(&|b| b["made_by"] = json!(7)),
+        Err(BackupError::Invalid(_))
+    ));
+    assert!(matches!(
+        with(&|b| b["extra"] = json!(true)),
+        Err(BackupError::Invalid(_))
+    ));
+    assert!(matches!(
+        with(&|b| b["settings"] = json!([])),
+        Err(BackupError::Invalid(_))
+    ));
+    assert!(matches!(
+        with(&|b| b["settings"]["schema_version"] = json!(3)),
+        Err(BackupError::Settings(SettingsError::NewerVersion(3)))
+    ));
+    assert!(matches!(
+        with(&|b| b["settings"]["density"] = json!("roomy")),
+        Err(BackupError::Settings(SettingsError::Invalid(_)))
+    ));
+    let large = format!("{{\"ibis_settings_backup\":1,\"pad\":\"{}\"}}", " ".repeat(1024 * 1024));
+    assert!(matches!(backup::parse(&large), Err(BackupError::Invalid(_))));
+    // A shortcut written as text belongs to the system that made the backup.
+    let text = with(&|b| {
+        b["made_on"] = json!(system_name(other_system()));
+        b["settings"]["shortcut"] = json!("Control+Command+R");
+    })
+    .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(text.settings.shortcut.here(), None);
+    assert_eq!(
+        text.settings
+            .shortcut
+            .by_system()
+            .get(&other_system())
+            .map(String::as_str),
+        Some("Control+Command+R")
+    );
+}
+
+#[test]
+fn a_backup_file_that_is_missing_or_not_downloaded_is_reported_and_read_whole_otherwise() {
+    let directory = folder();
+    let missing = backup::read(&directory.path().join("Ibis settings.json"), false);
+    assert!(matches!(missing, Err(BackupError::Unreadable(error)) if error.kind() == std::io::ErrorKind::NotFound));
+    let placeholder = directory.path().join(".Ibis settings.json.icloud");
+    write(&placeholder, "bplist00");
+    assert!(matches!(
+        backup::read(&placeholder, false),
+        Err(BackupError::NotDownloaded)
+    ));
+    assert!(matches!(
+        backup::read(directory.path(), false),
+        Err(BackupError::Unreadable(_))
+    ));
+    let file = directory.path().join("Ibis settings.json");
+    write(&file, &backup::export(&chosen(), "0.2.8").unwrap_or_default());
+    assert!(backup::read(&file, false).is_ok());
+    fs::write(&file, [0xff, 0xfe]).unwrap_or_else(|error| panic!("{error}"));
+    assert!(matches!(backup::read(&file, false), Err(BackupError::Invalid(_))));
+}
+
+#[test]
+fn restoring_on_another_computer_keeps_its_local_settings_and_shortcut() {
+    let made_elsewhere = {
+        let mut text: Value =
+            serde_json::from_str(&backup::export(&chosen(), "0.2.8").unwrap_or_default()).unwrap_or_default();
+        text["settings"]["future_setting"] = json!("foreign value");
+        text["settings"]["editor_endpoint"] = json!({"port":9,"token":"foreign-token"});
+        text["made_on"] = json!(system_name(other_system()));
+        text["settings"]["shortcut"] = json!({system_name(other_system()): "Control+Command+R"});
+        backup::parse(&text.to_string()).unwrap_or_else(|error| panic!("{error}"))
+    };
+    let mut here = Settings {
+        portable: ibis_engine::settings::Portable {
+            density: Some(Density::Comfortable),
+            ..Default::default()
+        },
+        device: ibis_engine::settings::Device {
+            update_checks: Some(false),
+            zotero_profile: Some("Invented here".into()),
+            ..chosen().device
+        },
+        unknown: chosen().unknown,
+    };
+    here.portable.shortcut.set_here(Some("Alt+Space".into()));
+    here.device.picker_windows.insert(
+        "display-9".into(),
+        PickerWindow {
+            width: 500,
+            height: 400,
+            custom_size: false,
+            position: Some((0.0, 0.0)),
+        },
+    );
+    let plan = backup::plan(&here, &made_elsewhere, |_| true);
+    let (_directory, path) = fixture::file();
+    fixture::edit(&path, |settings| *settings = here.clone()).unwrap_or_else(|error| panic!("{error}"));
+    settings::Owner::open(path.clone())
+        .restore(&plan)
+        .unwrap_or_else(|error| panic!("{error}"));
+    let reopened = fixture::read(&path);
+    assert_eq!(reopened.device, here.device);
+    assert_eq!(reopened.unknown, here.unknown);
+    assert_eq!(plan.restored.portable.shortcut.here(), Some("Alt+Space"));
+    assert_eq!(
+        plan.restored
+            .portable
+            .shortcut
+            .by_system()
+            .get(&other_system())
+            .map(String::as_str),
+        Some("Control+Command+R")
+    );
+    assert_eq!(plan.notes, [Note::ShortcutKept]);
+    let changed: Vec<_> = plan.changes.iter().map(|change| change.setting.as_str()).collect();
+    let other_shortcut = format!("shortcut.{}", system_name(other_system()));
+    let mut expected = vec!["accent", "density", "library", "output", other_shortcut.as_str()];
+    expected.sort_unstable();
+    assert_eq!(changed, expected);
+    let density = plan.changes.iter().find(|change| change.setting == "density");
+    assert_eq!(
+        density.map(|change| (change.from.clone(), change.to.clone())),
+        Some((Some(json!("comfortable")), Some(json!("compact"))))
+    );
+}
+
+#[test]
+fn a_bibliography_missing_on_this_computer_is_restored_and_noted() {
+    let mut chosen = chosen();
+    chosen.portable.library = Some(LibrarySetting::Bibtex(PathBuf::from("/invented/elsewhere/refs.bib")));
+    let backup =
+        backup::parse(&backup::export(&chosen, "0.2.8").unwrap_or_default()).unwrap_or_else(|error| panic!("{error}"));
+    let plan = backup::plan(&Settings::default(), &backup, |_| false);
+    assert_eq!(plan.notes, [Note::LibraryNotFound]);
+    assert_eq!(plan.restored.portable.library, chosen.portable.library);
+}
+
+#[test]
+fn restore_saves_the_backup_and_keeps_the_settings_it_replaced() {
+    let (directory, path) = fixture::file();
+    let original =
+        r#"{"paste":false,"picker_windows":{"display-1":{"width":500,"height":400,"custom_size":false,"x":1,"y":2}}}"#;
+    write(&path, original);
+    let backup = backup::parse(&backup::export(&chosen(), "0.2.8").unwrap_or_default())
+        .unwrap_or_else(|error| panic!("{error}"));
+    let plan = backup::plan(&fixture::read(&path), &backup, |_| true);
+    let restored = settings::Owner::open(path.clone())
+        .restore(&plan)
+        .unwrap_or_else(|error| panic!("{error}"));
+    // Close and reopen: the restored settings are what loads.
+    let reopened = fixture::read(&path);
+    assert_eq!(reopened, restored);
+    assert_eq!(reopened.portable.output.as_deref(), Some("ieee"));
+    assert_eq!(
+        reopened.portable.paste, None,
+        "the backup's choices replace this computer's"
+    );
+    assert_eq!(reopened.device.picker_windows.len(), 1, "window places stay");
+    assert_eq!(read(&directory.path().join("settings.json.bak")), original);
+    // Restoring the same backup again changes nothing and writes nothing.
+    let again = backup::plan(&reopened, &backup, |_| true);
+    assert!(again.is_empty());
+    let before = read(&path);
+    settings::Owner::open(path.clone())
+        .restore(&again)
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(read(&path), before);
+    assert_eq!(read(&directory.path().join("settings.json.bak")), original);
+}
+
+#[test]
+fn a_restore_shown_before_another_change_is_refused_and_changes_nothing() {
+    let (_directory, path) = fixture::file();
+    write(&path, r#"{"density":"comfortable"}"#);
+    let backup = backup::parse(&backup::export(&chosen(), "0.2.8").unwrap_or_default())
+        .unwrap_or_else(|error| panic!("{error}"));
+    let plan = backup::plan(&fixture::read(&path), &backup, |_| true);
+    // Another window changes a setting after the restore was shown.
+    fixture::edit(&path, |s| {
+        s.portable.larger_text = Some(true);
+    })
+    .unwrap_or_else(|error| panic!("{error}"));
+    let changed = read(&path);
+    assert!(matches!(
+        settings::Owner::open(path.clone()).restore(&plan),
+        Err(BackupError::Changed)
+    ));
+    assert_eq!(read(&path), changed);
+}
+
+#[test]
+fn restore_replaces_damaged_settings_but_never_newer_or_unreadable_ones() {
+    for primary in [None, Some("{ damaged"), Some(r#"{"schema_version":99}"#)] {
+        for recovered in [false, true] {
+            let (directory, path) = fixture::file();
+            if let Some(text) = primary {
+                write(&path, text);
+            }
+            if recovered {
+                write(
+                    &path.with_extension("json.bak"),
+                    &serde_json::to_string(&chosen()).unwrap_or_default(),
+                );
+            }
+            let source = directory.path().join("backup.json");
+            write(&source, &backup::export(&chosen(), "0.2.8").unwrap_or_default());
+            let preview = ibis_engine::settings_backup::prepare(path.clone(), source);
+            if primary == Some(r#"{"schema_version":99}"#) {
+                assert!(matches!(
+                    preview,
+                    Err(BackupError::Current(SettingsError::NewerVersion(99)))
+                ));
+                assert_eq!(read(&path), primary.unwrap_or_default());
+                continue;
+            }
+            let (_, plan) = preview.unwrap_or_else(|error| panic!("{error}"));
+            if recovered {
+                assert!(plan.changes.is_empty() && !plan.is_empty());
+                assert!(plan.notes.contains(&Note::RepairsSettings));
+            }
+            settings::Owner::open(path.clone())
+                .restore(&plan)
+                .unwrap_or_else(|error| panic!("{error}"));
+            assert_eq!(fixture::read(&path).portable, chosen().portable);
+            if primary.is_some() {
+                assert_eq!(read(&path.with_extension("json.invalid-1")), "{ damaged");
+            }
+        }
+    }
+}
+
+#[test]
+fn an_interrupted_backup_never_blocks_the_next_one() {
+    let directory = folder();
+    let path = directory.path().join("Ibis settings.json");
+    write(&path.with_file_name("Ibis settings.json.tmp-1"), "half");
+    backup::save(&path, "{}\n", false).unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(read(&path), "{}\n");
+    backup::save(&path, "{ }\n", true).unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(read(&path), "{ }\n");
+    assert!(
+        matches!(backup::save(&path, "{}\n", false), Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists)
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&path)
+            .map(|m| m.permissions().mode() & 0o777)
+            .unwrap_or_default();
+        assert_eq!(mode, 0o600, "a backup names a private path, so only its owner reads it");
+    }
+}
+
+#[test]
+fn the_editor_endpoints_token_never_appears_in_debug_output() {
+    let endpoint = settings::EditorEndpoint {
+        port: 23_124,
+        token: "0123456789abcdef0123456789abcdef".into(),
+    };
+    assert!(!format!("{endpoint:?}").contains("0123456789abcdef"));
+}

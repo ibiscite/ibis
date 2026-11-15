@@ -11,7 +11,7 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(async () => { document.documentElement.style.removeProperty("zoom"); await resetApp(); });
 const view = (status: string | null, peck = false) => ({ status, peck, fun: true, fact: null, revision: 1, anniversary: false, build: "0.0.0 · invented · 2026-11-01" });
 
-test("a claimed tip stands in for library status and never copies or changes focus", async () => {
+test("a claimed tip takes the notice line and never copies or changes focus", async () => {
   const calls = backend({ delight_view: () => view("paste-tip") });
   await act(async () => { render(<App />); });
   expect(screen.getByText(tip).closest(".notice-slot")).toBeTruthy();

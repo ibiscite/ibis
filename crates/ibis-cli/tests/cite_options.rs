@@ -49,6 +49,38 @@ fn picked(key: &str, options: &Value) -> Result<Value> {
 }
 
 #[test]
+fn strict_prints_only_complete_lossless_citations_and_json_errors_have_no_text() -> Result {
+    let (code, text, errors) = run(&["cite", "--strict", "taylor2026"], b"")?;
+    assert_eq!((code, text.as_str(), errors.as_str()), (0, "[@taylor2026]\n", ""));
+    let (code, text, errors) = run(
+        &["cite", "--strict", "--format", "keys", "taylor2026", "--locator", "12"],
+        b"",
+    )?;
+    assert_eq!(code, 3);
+    assert!(text.is_empty());
+    assert!(errors.contains("Strict"), "{errors}");
+    let (code, output, _) = run(
+        &[
+            "cite",
+            "--strict",
+            "--format",
+            "keys",
+            "taylor2026",
+            "--locator",
+            "12",
+            "--json",
+        ],
+        b"",
+    )?;
+    assert_eq!(code, 3);
+    let error: Value = serde_json::from_str(&output)?;
+    assert_eq!(error["ok"], false);
+    assert_eq!(error["error"]["reason"], "strict-citation");
+    assert!(error.get("data").is_none());
+    Ok(())
+}
+
+#[test]
 fn per_key_flags_match_the_picker_request_in_every_output() -> Result {
     let plain = |text: &str| json!([{"text":text,"italic":false,"bold":false,"script":"normal"}]);
     // Each key, the flags typed after it, and the options the picker attaches to that item.
@@ -141,8 +173,20 @@ fn per_key_flags_match_the_picker_request_in_every_output() -> Result {
             let (code, from_flags, _) = run(&human, b"")?;
             let (request_code, from_request, _) =
                 run(&["cite", "--request", "--json"], &serde_json::to_vec(&request)?)?;
-            assert_eq!((code, &from_flags), (request_code, &from_request), "{human:?}");
-            let envelope: Value = serde_json::from_str(&from_flags)?;
+            let mut envelope: Value = serde_json::from_str(&from_flags)?;
+            let mut requested: Value = serde_json::from_str(&from_request)?;
+            // Each CLI invocation performs a separate successful source read.
+            for result in [&mut envelope, &mut requested] {
+                for source in result["data"]["receipt"]["sources"]
+                    .as_array_mut()
+                    .into_iter()
+                    .flatten()
+                {
+                    assert!(source["last_successful_read_ms"].as_u64().ok_or("read time")? > 0);
+                    source["last_successful_read_ms"] = Value::Null;
+                }
+            }
+            assert_eq!((code, &envelope), (request_code, &requested), "{human:?}");
             assert_eq!(envelope["ok"], true, "{human:?}: {from_flags}");
         }
     }
@@ -173,6 +217,47 @@ fn flags_print_what_each_output_shows_and_report_what_it_cannot() -> Result {
     let (code, text, errors) = run(&["cite", "--style", "apa", "taylor2026", "--prefix", "see"], b"")?;
     assert_eq!((code, text.as_str()), (0, "(see Taylor, 2026)\n"));
     assert!(errors.is_empty(), "{errors}");
+    // A style sorts unless the order is kept; the request says the same.
+    let (code, text, _) = run(&["cite", "--style", "apa", "taylor2026", "morgan2025"], b"")?;
+    assert_eq!((code, text.as_str()), (0, "(Morgan & Lee, 2025; Taylor, 2026)\n"));
+    let (code, text, _) = run(
+        &["cite", "--style", "apa", "--keep-order", "taylor2026", "morgan2025"],
+        b"",
+    )?;
+    assert_eq!((code, text.as_str()), (0, "(Taylor, 2026; Morgan & Lee, 2025)\n"));
+    let request = json!({"items": [picked("taylor2026", &json!({}))?, picked("morgan2025", &json!({}))?],
+        "output": {"kind":"csl","style":"apa"}, "keep_order": true});
+    let (_, from_request, _) = run(&["cite", "--request"], &serde_json::to_vec(&request)?)?;
+    assert_eq!(from_request, text);
+    // The name alone has no place for a page, and says so instead of dropping it.
+    let (code, json_text, _) = run(
+        &[
+            "cite",
+            "--style",
+            "apa",
+            "--form",
+            "author-only",
+            "taylor2026",
+            "--locator",
+            "12",
+            "--json",
+        ],
+        b"",
+    )?;
+    let envelope: Value = serde_json::from_str(&json_text)?;
+    // A reported loss exits 1, as the Keys case below does, with the text still written.
+    assert_eq!((code, &envelope["data"]["text"]), (1, &json!("Taylor")));
+    assert_eq!(
+        envelope["data"]["losses"],
+        json!([{"item":0,"field":"locator","reason":"unsupported"}])
+    );
+    // One reference asking for its full entry gets it, as the whole citation's form does.
+    let (_, entry, _) = run(&["cite", "--style", "apa", "--form", "full", "taylor2026"], b"")?;
+    let request =
+        json!({"items": [picked("taylor2026", &json!({"form":"full"}))?], "output": {"kind":"csl","style":"apa"}});
+    let (code, from_request, _) = run(&["cite", "--request"], &serde_json::to_vec(&request)?)?;
+    assert_eq!((code, from_request.as_str()), (0, entry.as_str()));
+    assert!(entry.starts_with("Taylor, A. (2026)."), "{entry}");
     let (code, _, errors) = run(&["cite", "--format", "keys", "taylor2026", "--locator", "12"], b"")?;
     assert_eq!(code, 1);
     assert!(
@@ -227,5 +312,28 @@ fn a_line_break_in_a_bad_argument_cannot_forge_a_diagnostic_line() -> Result {
     assert_eq!(code, 2);
     assert!(!errors.lines().any(|line| line.starts_with("ibis: forged")), "{errors}");
     assert!(errors.contains("--bad\\nibis: forged"), "{errors}");
+    Ok(())
+}
+
+#[test]
+fn search_reads_the_same_shorthand_as_the_picker() -> Result {
+    // A signal before the words and a page after them, read only when asked for.
+    let (code, text, _) = run(&["search", "--shorthand", "see taylor 417"], b"")?;
+    assert_eq!(code, 0);
+    assert!(
+        text.starts_with("Cited with: see · 417; searched for: taylor\n"),
+        "{text}"
+    );
+    assert!(text.contains("Synthetic signals"), "{text}");
+    let (_, json_text, _) = run(&["search", "--shorthand", "see taylor ch 2", "--json"], b"")?;
+    let envelope: Value = serde_json::from_str(&json_text)?;
+    assert_eq!(
+        envelope["data"]["shorthand"],
+        json!({"search":"taylor","prefix":"see","locator":{"search":"taylor","locator":{"term":"chapter","value":"2"},"typed":"ch 2"}})
+    );
+    // Without it, the same words are searched as typed.
+    let (_, plain, _) = run(&["search", "see taylor 417", "--json"], b"")?;
+    let envelope: Value = serde_json::from_str(&plain)?;
+    assert!(envelope["data"].get("shorthand").is_none());
     Ok(())
 }

@@ -15,14 +15,33 @@ mod doctor;
 #[cfg(test)]
 mod generated;
 mod human;
+mod keys;
+mod out;
 mod settings_backup;
 mod toggle;
-mod writing_projects;
+mod writings;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputMode {
     Terminal,
     Plain,
+    /// Native streams are detected independently; tests may select both with Terminal.
+    Streams {
+        stdout: bool,
+        stderr: bool,
+        stdin: bool,
+    },
+}
+impl OutputMode {
+    fn stdout_terminal(self) -> bool {
+        matches!(self, Self::Terminal | Self::Streams { stdout: true, .. })
+    }
+    fn stderr_terminal(self) -> bool {
+        matches!(self, Self::Terminal | Self::Streams { stderr: true, .. })
+    }
+    fn stdin_terminal(self) -> bool {
+        matches!(self, Self::Terminal | Self::Streams { stdin: true, .. })
+    }
 }
 
 const LIBRARIES: &str = "Libraries";
@@ -99,6 +118,31 @@ fn command() -> Command {
                 .action(ArgAction::SetTrue)
                 .help("Print the versioned JSON envelope, including errors and findings"),
         )
+        .arg(
+            Arg::new("color")
+                .long("color")
+                .global(true)
+                .value_name("WHEN")
+                .value_parser(["auto", "always", "never"])
+                .default_value("auto")
+                .help("Colour human output: auto, always or never; auto respects each terminal, NO_COLOR and TERM"),
+        )
+        .arg(
+            Arg::new("width")
+                .long("width")
+                .global(true)
+                .value_name("N")
+                .value_parser(clap::value_parser!(u16).range(1..))
+                .help("Use N columns for human terminal output instead of the detected width"),
+        )
+        .arg(
+            Arg::new("contract")
+                .long("contract")
+                .global(true)
+                .value_name("VERSION")
+                .value_parser([ibis_core::contract::CONTRACT_VERSION.to_string()])
+                .help("The JSON contract version your client expects; one this Ibis does not speak is refused"),
+        )
         .arg(file.clone());
     root = root.arg(
         Arg::new("zotero")
@@ -120,12 +164,16 @@ fn command() -> Command {
                 "Read the libraries chosen in the Ibis app, read-only; search, show, cite and libraries do this when no library is named",
             ),
     );
-    for method in Method::ALL {
+    // `records` is `cite --records` here, and `ibis call records`.
+    for method in Method::ALL.into_iter().filter(|method| *method != Method::Records) {
         let subcommand = Command::new(method.as_str());
         root = root.subcommand(match method {
+            Method::Records => subcommand,
             Method::Libraries => subcommand.about("List the libraries and their warnings"),
             Method::Search => subcommand
                 .about("Find references")
+                .arg(Arg::new("keys").long("keys").action(ArgAction::SetTrue)
+                    .conflicts_with("json").help("Print only citation keys, one per line in rank order"))
                 .after_help("Examples:\n  ibis search lantern --file refs.bib\n  ibis search lantern --file refs.bib --json | jq '.data.hits[].item.object.data.csl.title'")
                 .arg(
                     Arg::new("query")
@@ -142,6 +190,12 @@ fn command() -> Command {
                         .allow_negative_numbers(true)
                         .default_value("10")
                         .help("Return at most N results, from 1 to 1000"),
+                )
+                .arg(
+                    Arg::new("shorthand")
+                        .long("shorthand")
+                        .action(ArgAction::SetTrue)
+                        .help("Read a signal before the words (\"see\") and a page after them (\"417\"), as the picker does"),
                 ),
             Method::Show => subcommand
                 .about("Show one reference")
@@ -174,8 +228,14 @@ fn command() -> Command {
                         .value_name("KEY")
                         .help("Citation keys, in the order they appear in the citation")
                         .num_args(1..)
-                        .required_unless_present("request")
-                        .conflicts_with("request"),
+                        .required_unless_present_any(["request", "records", "keys-from"])
+                        .conflicts_with_all(["request", "records", "keys-from"]),
+                )
+                .arg(
+                    Arg::new("keys-from").long("keys-from").value_name("FILE")
+                        .value_parser(clap::value_parser!(PathBuf))
+                        .conflicts_with_all(["keys", "request", "records", "locator", "prefix", "suffix", "omit-author"])
+                        .help("Read one citation key per line from FILE, or - for stdin; ignore blanks and # comments"),
                 )
                 .arg(
                     Arg::new("request")
@@ -186,7 +246,7 @@ fn command() -> Command {
                             "format",
                             "style",
                             "for-app",
-                            "project",
+                            "writing",
                             "form",
                             "locale",
                             "bibliography",
@@ -194,8 +254,26 @@ fn command() -> Command {
                             "prefix",
                             "suffix",
                             "omit-author",
+                            "keep-order",
                         ])
                         .help("Read the whole request from stdin as JSON; see: ibis schema cite"),
+                )
+                .arg(
+                    Arg::new("records")
+                        .long("records")
+                        .action(ArgAction::SetTrue)
+                        .conflicts_with_all([
+                            "request",
+                            "writing",
+                            "document",
+                            "for-app",
+                            "locator",
+                            "prefix",
+                            "suffix",
+                            "omit-author",
+                            "keep-order",
+                        ])
+                        .help("Cite every CSL-JSON record in the array on stdin, with no library; see: ibis schema records"),
                 )
                 .arg(
                     Arg::new("format")
@@ -218,22 +296,27 @@ fn command() -> Command {
                         .help("Format with any CSL style instead; list them with: ibis styles"),
                 )
                 .arg(
-                    Arg::new("project").long("project").value_name("PROJECT_ID")
+                    Arg::new("writing").long("writing").value_name("NAME")
                         .help_heading(OUTPUT)
                         .conflicts_with_all(["format", "style", "for-app", "request"])
-                        .help("Use this writing project's output and bibliography; list IDs with: ibis projects list"),
+                        .help("Use this writing's output and bibliography; list names with: ibis writings list"),
                 )
                 .arg(Arg::new("nightly").long("nightly").action(ArgAction::SetTrue)
-                    .requires("project").help("Read the writing project from Ibis Nightly's settings"))
-                .arg(Arg::new("strict-project").long("strict-project").action(ArgAction::SetTrue)
-                    .requires("project").help("Require a current complete bibliography read for project key citations"))
+                    .requires("from-app-settings").help("Read the writing or the app's formats from Ibis Nightly's settings"))
+                .group(clap::ArgGroup::new("from-app-settings").args(["writing", "for-app", "document"]).multiple(false))
+                .arg(Arg::new("document").long("document").value_name("PATH")
+                    .value_parser(clap::value_parser!(PathBuf))
+                    .conflicts_with_all(["writing", "request", "for-app"])
+                    .help("Use an explicit document's bibliography/csl front matter to select a writing"))
+                .arg(Arg::new("strict").long("strict").action(ArgAction::SetTrue)
+                    .help(ibis_engine::catalogue::text("cli-strict-help", None, &[]).unwrap_or_default()))
                 .arg(
                     Arg::new("for-app")
                         .long("for-app")
                         .value_name("APP_ID")
                         .value_parser(clap::builder::NonEmptyStringValueParser::new())
                         .help_heading(OUTPUT)
-                        .help("Use the output Ibis uses for this app, a macOS bundle ID or Windows executable; --style and --format apply when it has none of its own"),
+                        .help("Use the format Ibis uses for this app from its settings, a macOS bundle ID or Windows executable; --style or --format stands in for your usual format"),
                 )
                 .arg(
                     Arg::new("bibliography")
@@ -251,6 +334,13 @@ fn command() -> Command {
                     "full",
                     "bibliography-only",
                 ]))
+                .arg(
+                    Arg::new("keep-order")
+                        .long("keep-order")
+                        .action(ArgAction::SetTrue)
+                        .help_heading(OUTPUT)
+                        .help("Keep the keys in the order given where a style would sort them"),
+                )
                 .arg(
                     Arg::new("locale")
                         .long("locale")
@@ -423,7 +513,7 @@ fn command() -> Command {
                 ),
         )
         .subcommand(settings_backup::command())
-        .subcommand(writing_projects::command())
+        .subcommand(writings::command())
         .subcommand(
             Command::new("completions").about("Print shell completions").arg(
                 Arg::new("shell")
@@ -476,7 +566,7 @@ pub fn run<R: BufRead, W: Write + Send, E: Write>(
             json_before_options_end(&arguments),
             Err(error.into()),
             None,
-            "",
+            Presentation::default(),
             &mut output,
             &mut errors,
             mode,
@@ -515,13 +605,21 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
     defaults: Defaults,
 ) -> u8 {
     // A person at a terminal gets a start; a script still gets the usage error.
-    if arguments.len() < 2 && mode == OutputMode::Terminal {
-        let greeting = format!("Ibis {} {GREETING}\n", ibis_core::VERSION);
-        return if output.write_all(greeting.as_bytes()).is_ok() {
-            0
-        } else {
-            70
-        };
+    if arguments.len() < 2 && mode.stdout_terminal() {
+        return emit(
+            false,
+            Ok(DispatchResult {
+                data: Value::Null,
+                text: Some(format!("Ibis {} {GREETING}", ibis_core::VERSION)),
+                source_findings: false,
+                exit_code: ExitCode::Ok,
+            }),
+            None,
+            Presentation::default(),
+            &mut output,
+            &mut errors,
+            mode,
+        );
     }
     let program = program_name(arguments.first());
     let matches = match command().bin_name(&program).try_get_matches_from(arguments.iter()) {
@@ -532,30 +630,24 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
                 error.kind(),
                 clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion
             ) {
-                if json {
-                    return emit(
-                        true,
-                        Ok(DispatchResult {
-                            data: if error.kind() == clap::error::ErrorKind::DisplayVersion {
-                                json!({"version":ibis_core::VERSION})
-                            } else {
-                                json!({"help":error.to_string()})
-                            },
-                            text: None,
-                            source_findings: false,
-                            exit_code: ibis_core::contract::ExitCode::Ok,
-                        }),
-                        None,
-                        "",
-                        &mut output,
-                        &mut errors,
-                        mode,
-                    );
-                }
-                return match write!(output, "{error}") {
-                    Err(failure) if failure.kind() != std::io::ErrorKind::BrokenPipe => 70,
-                    _ => 0,
-                };
+                return emit(
+                    json,
+                    Ok(DispatchResult {
+                        data: if error.kind() == clap::error::ErrorKind::DisplayVersion {
+                            json!({"version":ibis_core::VERSION})
+                        } else {
+                            json!({"help":error.to_string()})
+                        },
+                        text: Some(error.to_string().trim_end().to_owned()),
+                        source_findings: false,
+                        exit_code: ExitCode::Ok,
+                    }),
+                    None,
+                    Presentation::default(),
+                    &mut output,
+                    &mut errors,
+                    mode,
+                );
             }
             // clap names the argument and prints the usage line; keep its words,
             // but a line break typed in an argument must not start a forged line.
@@ -577,7 +669,7 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
                     message.trim_start_matches("error: ").trim_end(),
                 )),
                 None,
-                "",
+                Presentation::default(),
                 &mut output,
                 &mut errors,
                 mode,
@@ -596,11 +688,35 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
     };
     if let Some(("help", args)) = matches.subcommand() {
         let help = command_help(&program, args.get_one::<String>("command"));
-        return emit(json, Ok(help), None, "", &mut output, &mut errors, mode);
+        return emit(
+            json,
+            Ok(help),
+            None,
+            Presentation::default(),
+            &mut output,
+            &mut errors,
+            mode,
+        );
     }
     let libraries = library_options(&matches);
     match execute(&engine, &matches, defaults, &mut input, &mut output, &mut errors, mode) {
         Ok(Execution::Stdio(code)) => code,
+        Ok(Execution::Search(result, notes)) => emit(
+            json,
+            Ok(result),
+            None,
+            Presentation {
+                libraries: &libraries,
+                terminal_summary: true,
+                notes: &notes,
+                keys_only: matches
+                    .subcommand_matches("search")
+                    .is_some_and(|args| args.get_flag("keys")),
+            },
+            &mut output,
+            &mut errors,
+            mode,
+        ),
         Ok(Execution::Result(mut result, citing)) => {
             // `ibis libraries` lists the warnings itself; no note to run it.
             result.source_findings &= matches.subcommand_name() != Some("libraries");
@@ -608,7 +724,12 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
                 json,
                 Ok(result),
                 citing.as_ref(),
-                &libraries,
+                Presentation {
+                    libraries: &libraries,
+                    terminal_summary: matches.subcommand_name() == Some("libraries"),
+                    notes: &[],
+                    keys_only: false,
+                },
                 &mut output,
                 &mut errors,
                 mode,
@@ -622,24 +743,42 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
                 error.code.exit_code().value()
             }
         }
-        Err(failure) => emit(json, Err(failure), None, "", &mut output, &mut errors, mode),
+        Err(failure) => emit(
+            json,
+            Err(failure),
+            None,
+            Presentation::default(),
+            &mut output,
+            &mut errors,
+            mode,
+        ),
     }
 }
 
 /// The library options of this run, as they would be typed again.
 fn library_options(matches: &ArgMatches) -> String {
-    let mut options = String::new();
+    library_arguments(matches)
+        .iter()
+        .map(|arg| format!(" {}", human::quoted(arg)))
+        .collect()
+}
+
+fn library_arguments(matches: &ArgMatches) -> Vec<String> {
+    let mut options = Vec::new();
     for path in source_values::<PathBuf>(matches, "file") {
-        options.push_str(&format!(" --file {}", human::quoted(&path.display().to_string())));
+        options.extend(["--file".into(), path.display().to_string()]);
     }
     if matches.get_flag("zotero") {
-        options.push_str(" --zotero");
+        options.push("--zotero".into());
     }
     for group in source_values::<u64>(matches, "zotero-group") {
-        options.push_str(&format!(" --zotero-group {group}"));
+        options.extend(["--zotero-group".into(), group.to_string()]);
+    }
+    if let Some(profile) = source_values::<String>(matches, "zotero-profile").last() {
+        options.extend(["--zotero-profile".into(), profile.clone()]);
     }
     if matches.get_flag("app-libraries") {
-        options.push_str(" --app-libraries");
+        options.push("--app-libraries".into());
     }
     options
 }
@@ -673,6 +812,7 @@ fn command_help(program: &str, target: Option<&String>) -> DispatchResult {
 }
 
 enum Execution {
+    Search(DispatchResult, Vec<String>),
     Result(DispatchResult, Option<human::Citing>),
     Stdio(u8),
 }
@@ -721,8 +861,7 @@ fn bounded_for<T: Send + 'static>(timeout: Duration, operation: impl FnOnce() ->
 struct Failure {
     error: EngineError,
     message: Option<String>,
-    /// The sentence for readers who must not see the file it names, when `message` names one.
-    unnamed: Option<String>,
+    recovery: Option<(Vec<String>, Vec<String>)>,
 }
 impl Failure {
     fn new(code: ErrorCode, message: impl Into<String>) -> Self {
@@ -732,7 +871,7 @@ impl Failure {
         Self {
             error,
             message: Some(message.into()),
-            unnamed: None,
+            recovery: None,
         }
     }
     fn sentence(&self) -> String {
@@ -742,40 +881,39 @@ impl Failure {
     }
     /// What an agent reads when its libraries did not open. Agents never see paths.
     fn refusal(&self) -> ibis_engine::mcp::Refusal {
-        let reason = self.unnamed.clone().unwrap_or_else(|| self.sentence());
-        ibis_engine::mcp::Refusal::new(
-            self.error.code,
-            format!(
-                "The library could not be opened: {reason} Pass this on to the user; once it is fixed, start a new session."
-            ),
-        )
+        ibis_engine::mcp::Refusal::startup(self.error)
     }
 }
 impl From<EngineError> for Failure {
     fn from(error: EngineError) -> Self {
         Self {
             error,
-            message: error.reason.map(human::reason_sentence),
-            unnamed: None,
+            message: if error.citation_error.is_some() {
+                Some(ibis_engine::catalogue::error(
+                    &error,
+                    ibis_engine::catalogue::Audience::Cli,
+                ))
+            } else {
+                error.reason.map(human::reason_sentence)
+            },
+            recovery: None,
         }
     }
 }
 /// Why Zotero did not open. Profile names are the person's own choosing, so
 /// an agent reads the sentence without them, as it reads none of their paths.
 fn zotero_open_failure(error: EngineError, profiles: &[String]) -> Failure {
-    let mut failure = Failure::explained(error, human::zotero_failure(error, profiles));
-    failure.unnamed = Some(human::zotero_failure(error, &[]));
-    failure
+    Failure::explained(error, human::zotero_failure(error, profiles))
 }
 /// Why a citation key selected no single reference, with every line that
 /// repeats it or the damaged entry that names it.
-fn key_failure(engine: &Engine, key: &str, error: EngineError, libraries_open: bool) -> Failure {
+fn key_failure(engine: &Engine, matches: &ArgMatches, key: &str, error: EngineError, libraries_open: bool) -> Failure {
     let libraries = engine.libraries().map(|result| result.libraries).unwrap_or_default();
     let warnings: Vec<_> = match error.reason {
         Some(ErrorReason::DuplicateKey) => libraries
             .iter()
-            .flat_map(|library| &library.warnings)
-            .filter(|warning| warning.key.as_deref() == Some(key))
+            .filter_map(|library| library.duplicate_keys.get(key))
+            .flatten()
             .cloned()
             .collect(),
         Some(ErrorReason::DamagedEntry) => libraries
@@ -785,7 +923,90 @@ fn key_failure(engine: &Engine, key: &str, error: EngineError, libraries_open: b
             .collect(),
         _ => vec![],
     };
-    Failure::explained(error, human::key_failure(key, error, libraries_open, &warnings))
+    let mut failure = Failure::explained(error, human::key_failure(key, error, libraries_open, &warnings));
+    if error.code == ErrorCode::NotFound && error.reason.is_none() && libraries_open {
+        let suggestions = keys::suggestions(engine, key);
+        let unique = suggestions.first().filter(|key| {
+            engine
+                .show(&ShowRequest {
+                    item: ItemSelector::Key((*key).clone()),
+                })
+                .is_ok()
+        });
+        let (command, argument) = match unique {
+            Some(key) => ("show", key.as_str()),
+            None => ("search", suggestions.first().map_or(key, String::as_str)),
+        };
+        let mut next = vec!["ibis".into(), command.into()];
+        if unique.is_none() && !suggestions.is_empty() {
+            next.push("--json".into());
+        }
+        if argument.starts_with('-') {
+            next.extend(library_arguments(matches));
+            next.extend(["--".into(), argument.into()]);
+        } else {
+            next.push(argument.into());
+            next.extend(library_arguments(matches));
+        }
+        let choices = if suggestions.is_empty() {
+            String::new()
+        } else {
+            let keys = suggestions
+                .iter()
+                .map(|key| format!("'{}'", human::field(key)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            ibis_engine::catalogue::text("cli-key-suggestions", None, &[("keys", &keys)])
+                .map(|text| format!("\n{text}"))
+                .unwrap_or_default()
+        };
+        let command = next.iter().map(|arg| human::quoted(arg)).collect::<Vec<_>>().join(" ");
+        let route = if unique.is_none() && !suggestions.is_empty() {
+            ibis_engine::catalogue::text("cli-ambiguous-suggestion", None, &[])
+                .map(|text| format!("\n{text}"))
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        failure.message = ibis_engine::catalogue::text(
+            "cli-key-not-found",
+            None,
+            &[
+                ("key", &human::field(key)),
+                ("choices", &choices),
+                ("command", &command),
+                ("route", &route),
+            ],
+        );
+        failure.recovery = Some((suggestions, next));
+    }
+    failure
+}
+
+fn failed_citation_key(engine: &Engine, matches: &ArgMatches, keys: &[KeyItem], error: EngineError) -> Failure {
+    // The error names no key; the first key that fails the same way is the one.
+    keys.iter()
+        .map(|item| &item.key)
+        .find(|key| {
+            engine
+                .show(&ShowRequest {
+                    item: ItemSelector::Key((*key).clone()),
+                })
+                .err()
+                == Some(error)
+        })
+        .map_or_else(
+            || Failure::from(error),
+            |key| {
+                key_failure(
+                    engine,
+                    matches,
+                    key,
+                    error,
+                    engine.libraries().is_ok_and(|result| !result.libraries.is_empty()),
+                )
+            },
+        )
 }
 /// Attach a sentence to an engine error without changing its code or reason.
 /// A reason has its own sentence; front ends never guess one from the code.
@@ -812,8 +1033,8 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
     if name == "settings" {
         return Ok(Execution::Result(settings_backup::run(args)?, None));
     }
-    if name == "projects" {
-        return Ok(Execution::Result(writing_projects::run(engine, args)?, None));
+    if name == "writings" {
+        return Ok(Execution::Result(writings::run(engine, args)?, None));
     }
     if name == "completions" {
         let shell = args
@@ -850,9 +1071,18 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
         let session = match opened {
             Ok(_) => ibis_engine::mcp::Session::default(),
             Err(failure) => {
-                let _ = writeln!(errors, "ibis: {}", terminal_display(&failure.sentence()));
+                write_stream(
+                    errors,
+                    format!("ibis: {}\n", terminal_display(&failure.sentence())).as_bytes(),
+                )
+                .map_err(|error| Failure::new(ErrorCode::Internal, human::write_failure(&error)))?;
                 ibis_engine::mcp::Session::without_libraries(failure.refusal())
             }
+        };
+        // for_app reads the formats chosen in the app, as `cite --for-app` does.
+        let session = match settings_backup::settings_file(false) {
+            Ok((_, path)) => session.with_formats(path),
+            Err(failure) => session.without_formats(failure.refusal()),
         };
         return Ok(Execution::Stdio(
             match ibis_engine::mcp::serve(engine, session, input, output) {
@@ -871,7 +1101,16 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
             },
         ));
     }
-    run_method(engine, matches, name, args, names, input)
+    if name == "cite"
+        && args
+            .get_one::<PathBuf>("keys-from")
+            .is_some_and(|path| path == Path::new("-"))
+        && mode.stdin_terminal()
+    {
+        write_stream(errors, b"ibis: waiting for keys, one per line; end with Ctrl-D.\n")
+            .map_err(|error| Failure::new(ErrorCode::Internal, human::write_failure(&error)))?;
+    }
+    run_method(engine, matches, name, args, names, input, mode)
 }
 
 /// Opens the libraries this run names, or the app's choice when it names none,
@@ -897,6 +1136,20 @@ fn open_libraries(
             "--app-libraries is not available here; name the libraries to read.",
         ));
     }
+    // Records sent on stdin are cited with no library: none is opened.
+    if matches
+        .subcommand_matches("cite")
+        .is_some_and(|cite| cite.get_flag("records"))
+    {
+        return if named || asked {
+            Err(Failure::new(
+                ErrorCode::Usage,
+                "--records cites only the records on stdin; leave out the library options.",
+            ))
+        } else {
+            Ok(names)
+        };
+    }
     // `call` of search, show or cite reads what those commands would read.
     let called = matches
         .subcommand_matches("call")
@@ -905,8 +1158,8 @@ fn open_libraries(
         || called.is_some_and(|called| matches!(called.as_str(), "search" | "show" | "cite"));
     let app = if asked || (defaults == Defaults::App && !named && reads_app) {
         Some(bounded(app_libraries::load).unwrap_or_else(|| {
-            Err(Failure::new(
-                ErrorCode::SourceUnavailable,
+            Err(Failure::explained(
+                EngineError::because(ErrorCode::SourceUnavailable, ErrorReason::SettingsReadTimeout),
                 format!(
                     "the Ibis app's settings could not be read in time; try again, or {}.",
                     app_libraries::NAME_ONE
@@ -958,13 +1211,7 @@ fn open_libraries(
         };
         engine
             .dispatch(Method::Libraries, &params, &cancel)
-            .map_err(|error| Failure::explained(error, message(error)))
-            .map_err(|mut failure| {
-                if chosen.is_none() {
-                    failure.unnamed = Some(human::file_reason(&path, failure.error));
-                }
-                failure
-            })?;
+            .map_err(|error| Failure::explained(error, message(error)))?;
         // Library ids are digests, never locations; people see the path they gave.
         for library in engine.libraries()?.libraries {
             if !before.iter().any(|old| old.id == library.id) {
@@ -1038,7 +1285,9 @@ fn run_method<R: BufRead>(
     args: &ArgMatches,
     names: std::collections::BTreeMap<String, String>,
     input: &mut R,
+    mode: OutputMode,
 ) -> Result<Execution, Failure> {
+    let out = out::Out::configured(mode, matches);
     let cancel = Cancellation::default();
     let method = Method::parse(name).map_err(EngineError::new)?;
     let libraries_open = || engine.libraries().is_ok_and(|result| !result.libraries.is_empty());
@@ -1056,6 +1305,7 @@ fn run_method<R: BufRead>(
         _ => human::Holdings::NoLibrary,
     };
     let params = match method {
+        Method::Records => return Err(EngineError::new(ErrorCode::Usage).into()),
         Method::Libraries => json!({"action":"list"}),
         Method::Search => {
             let query = args.get_one::<String>("query").map_or("", String::as_str);
@@ -1067,16 +1317,89 @@ fn run_method<R: BufRead>(
                 ));
             }
             let result = explain(
-                engine.dispatch(Method::Search, &json!({"query":query,"limit":limit}), &cancel),
+                engine.dispatch(
+                    Method::Search,
+                    &json!({"query":query,"limit":limit,"interpret_locator":args.get_flag("shorthand")}),
+                    &cancel,
+                ),
                 |EngineError { code, .. }| match code {
                     ErrorCode::BadInput => "the search words are too long; use fewer.".into(),
                     code => human::code_sentence(code),
                 },
             )?;
-            return Ok(Execution::Result(
-                human::with_summary(result, method, matches.get_flag("json"), holdings(), &names),
-                None,
-            ));
+            let libraries = engine.libraries().map_err(Failure::from)?;
+            let libraries =
+                serde_json::to_value(libraries.libraries).map_err(|_| EngineError::new(ErrorCode::Internal))?;
+            let mut notes = human::search_notes(&result.data, libraries.as_array().map_or(&[], Vec::as_slice), &names);
+            let mut result = if args.get_flag("keys") {
+                let hits = result.data["hits"]
+                    .as_array()
+                    .ok_or_else(|| EngineError::new(ErrorCode::Internal))?;
+                let keys: Vec<_> = hits
+                    .iter()
+                    .filter_map(|hit| {
+                        hit.pointer("/item/object/data/citation_keys/0/value")
+                            .and_then(Value::as_str)
+                            .filter(|key| !key.is_empty())
+                    })
+                    .collect();
+                let missing = hits.len() - keys.len();
+                let mut ambiguous = 0;
+                let mut emitted = std::collections::BTreeSet::new();
+                let keys: Vec<_> = keys
+                    .into_iter()
+                    .filter(|key| {
+                        if engine
+                            .show(&ShowRequest {
+                                item: ItemSelector::Key((*key).to_owned()),
+                            })
+                            .is_err()
+                        {
+                            ambiguous += 1;
+                            false
+                        } else {
+                            emitted.insert(*key)
+                        }
+                    })
+                    .collect();
+                if ambiguous > 0 {
+                    notes.push(
+                        ibis_engine::catalogue::text(
+                            "cli-ambiguous-search-keys",
+                            None,
+                            &[("count", &ambiguous.to_string())],
+                        )
+                        .unwrap_or_default(),
+                    );
+                }
+                if missing > 0 {
+                    notes.push(format!(
+                        "note: {missing} {} no citation key; see ibis search {}{} --json",
+                        if missing == 1 { "hit has" } else { "hits have" },
+                        human::quoted(query),
+                        library_options(matches)
+                    ));
+                }
+                let text = keys.join("\n");
+                let mut result = result;
+                result.text = Some(text);
+                result
+            } else {
+                human::with_summary(result, method, matches.get_flag("json"), holdings(), &names, out)
+            };
+            if mode.stderr_terminal() && result.data["complete"] == false {
+                notes.push(if limit < 1000 {
+                    format!(
+                        "note: showing the first {limit} {}; see more with --limit {}",
+                        if limit == 1 { "match" } else { "matches" },
+                        (limit * 2).min(1000)
+                    )
+                } else {
+                    format!("note: showing the first {limit} matches; use more distinctive search words")
+                });
+            }
+            result.source_findings = false;
+            return Ok(Execution::Search(result, notes));
         }
         Method::Show => {
             let (params, key) = match args.get_one::<String>("id") {
@@ -1090,7 +1413,7 @@ fn run_method<R: BufRead>(
                 }
             };
             let result = engine.dispatch(method, &params, &cancel).map_err(|error| match &key {
-                Some(key) => key_failure(engine, key, error, libraries_open()),
+                Some(key) => key_failure(engine, matches, key, error, libraries_open()),
                 None if error.code == ErrorCode::NotFound => {
                     Failure::explained(error, "no open library holds the reference that --id names.")
                 }
@@ -1098,27 +1421,71 @@ fn run_method<R: BufRead>(
                 None => Failure::from(error),
             })?;
             return Ok(Execution::Result(
-                human::with_summary(result, method, matches.get_flag("json"), holdings(), &names),
+                human::with_summary(result, method, matches.get_flag("json"), holdings(), &names, out),
                 None,
             ));
         }
         Method::Cite if args.get_flag("request") => {
             const REQUEST_HELP: &str = "stdin must hold one CitationRequest JSON object; see: ibis schema cite";
-            let params = explain(stdin_json(input), |_| REQUEST_HELP.into())?;
+            let mut params = explain(stdin_json(input), |_| REQUEST_HELP.into())?;
+            if args.get_flag("strict") {
+                params
+                    .as_object_mut()
+                    .ok_or_else(|| Failure::new(ErrorCode::BadInput, REQUEST_HELP))?
+                    .insert("strict".into(), json!(true));
+            }
             let citing = request_citing(&params).ok_or_else(|| Failure::new(ErrorCode::BadInput, REQUEST_HELP))?;
-            let result = explain(
-                engine.dispatch(method, &params, &cancel),
-                |EngineError { code, .. }| match code {
-                    ErrorCode::BadInput => REQUEST_HELP.into(),
-                    code => human::code_sentence(code),
-                },
-            )?;
+            let result = explain(engine.dispatch(method, &params, &cancel), |error| {
+                if error.reason.is_some() {
+                    ibis_engine::catalogue::error(&error, ibis_engine::catalogue::Audience::Cli)
+                } else if error.code == ErrorCode::BadInput {
+                    REQUEST_HELP.into()
+                } else {
+                    human::code_sentence(error.code)
+                }
+            })?;
+            return Ok(Execution::Result(result, Some(citing)));
+        }
+        Method::Cite if args.get_flag("records") => {
+            const RECORDS_HELP: &str = "stdin must hold one JSON array of CSL-JSON records; see: ibis schema records";
+            let records = explain(stdin_records(input), |error| match error.code {
+                ErrorCode::ResourceLimit => "the records on stdin are more than 1 MiB; send fewer at a time.".into(),
+                _ => RECORDS_HELP.into(),
+            })?;
+            let Value::Array(list) = &records else {
+                return Err(Failure::new(ErrorCode::BadInput, RECORDS_HELP));
+            };
+            let output = chosen_output(args)?;
+            let form = chosen_form(args, &output)?;
+            let params = json!({
+                "records": records,
+                "strict": args.get_flag("strict"),
+                "output": output,
+                "form": form,
+                "output_locale": args.get_one::<String>("locale"),
+            });
+            let result = engine
+                .dispatch(Method::Records, &params, &cancel)
+                .map_err(|error| records_failure(error, list))?;
+            let citing = human::Citing {
+                labels: list
+                    .iter()
+                    .map(|record| match &record["id"] {
+                        Value::String(id) => id.clone(),
+                        id => id.to_string(),
+                    })
+                    .collect(),
+                flags: vec![],
+                output: output_name(&output),
+                form,
+            };
             return Ok(Execution::Result(result, Some(citing)));
         }
         Method::Cite => {
-            let project = writing_projects::chosen(args)?;
-            let output = if let Some(project) = &project {
-                ibis_engine::outputs::resolve(&project.output)?
+            let context = writings::chosen(args)?;
+            let writing = context.writing;
+            let output = if let Some(writing) = &writing {
+                ibis_engine::outputs::resolve(&writing.format)?
             } else {
                 match (args.get_one::<String>("style"), args.get_one::<String>("format")) {
                     (Some(style), _) => OutputSpec::Csl { style: style.clone() },
@@ -1135,13 +1502,20 @@ fn run_method<R: BufRead>(
                     "--bibliography needs a style: give --style, or a --format that is a style.",
                 ));
             }
-            let destination = args.get_one::<String>("for-app").map(|app| {
-                let style = match &output {
-                    OutputSpec::Csl { style } => style.as_str(),
-                    _ => ibis_engine::outputs::DEFAULT_STYLE,
-                };
-                destination(app, System::HERE, &output, style)
-            });
+            let destination = match args.get_one::<String>("for-app") {
+                Some(app) => {
+                    // The app's own settings decide, as in the picker (decision 0042).
+                    let settings = context
+                        .settings
+                        .as_ref()
+                        .ok_or_else(|| EngineError::new(ErrorCode::Internal))?;
+                    let named = (args.contains_id("style") || args.contains_id("format")).then_some(&output);
+                    Some(destination(app, System::HERE, |app| {
+                        ibis_engine::format::choose_with(settings, Some(app), named)
+                    }))
+                }
+                None => None,
+            };
             let output = destination
                 .as_ref()
                 .map_or(output, |destination| destination.output.clone());
@@ -1153,7 +1527,11 @@ fn run_method<R: BufRead>(
                 ))
                 .map_err(|_| EngineError::new(ErrorCode::Usage))?
             };
-            let keys = key_items(args)?;
+            let keys = match args.get_one::<PathBuf>("keys-from") {
+                Some(path) if path == Path::new("-") => keys::read(input)?,
+                Some(path) => keys::file(path)?,
+                None => key_items(args)?,
+            };
             if keys.len() > ibis_core::syntax::MAX_CITATION_ITEMS {
                 return Err(Failure::new(
                     ErrorCode::BadInput,
@@ -1182,31 +1560,41 @@ fn run_method<R: BufRead>(
                 output: output_name(&output),
                 form,
             };
-            let writing_project = project
+            let mut writing_result = writing
                 .as_ref()
-                .map(|project| {
-                    engine.cite_writing_project_keys_with_policy(
-                        project,
+                .map(|writing| {
+                    engine.cite_writing_keys(
+                        writing,
                         &KeyCitationRequest {
                             keys: keys.clone(),
                             output: output.clone(),
                             form,
+                            strict: args.get_flag("strict"),
                             output_locale: args.get_one::<String>("locale").cloned(),
+                            keep_order: args.get_flag("keep-order"),
                         },
-                        writing_projects::policy(args),
                         &cancel,
                     )
                 })
-                .transpose()?;
-            let mut result = if let Some(project) = &writing_project {
-                Ok(project.citation.clone())
+                .transpose()
+                .map_err(|error| failed_citation_key(engine, matches, &keys, error))?;
+            if let Some(writing) = &mut writing_result {
+                writing.citation.destination = destination.clone();
+            }
+            let mut result = if let Some(writing) = &writing_result {
+                Ok(ibis_engine::health::Checked {
+                    value: writing.citation.clone(),
+                    source_health: writing.source_health.clone(),
+                })
             } else {
-                engine.cite_keys(
+                engine.cite_keys_checked(
                     &KeyCitationRequest {
                         keys: keys.clone(),
-                        output,
+                        output: output.clone(),
                         form,
+                        strict: args.get_flag("strict"),
                         output_locale: args.get_one::<String>("locale").cloned(),
+                        keep_order: args.get_flag("keep-order"),
                     },
                     &cancel,
                 )
@@ -1227,23 +1615,12 @@ fn run_method<R: BufRead>(
                     ),
                 ),
                 // The error names no key; the first key that fails the same way is the one.
-                _ => keys
-                    .iter()
-                    .map(|item| &item.key)
-                    .find(|key| {
-                        engine
-                            .dispatch(Method::Show, &json!({"item":{"by":"key","value":key}}), &cancel)
-                            .err()
-                            == Some(error)
-                    })
-                    .map_or_else(
-                        || Failure::from(error),
-                        |key| key_failure(engine, key, error, libraries_open()),
-                    ),
+                _ => failed_citation_key(engine, matches, &keys, error),
             })?;
-            result.destination = destination;
-            let result = engine.finalize(DispatchResult::citation(result, keys.len())?)?;
-            let result = writing_projects::with_check(result, writing_project)?;
+            result.value.destination = destination;
+            let result =
+                DispatchResult::citation(result.value, keys.len(), &output)?.with_health(&result.source_health)?;
+            let result = writings::with_check(result, writing_result)?;
             return Ok(Execution::Result(result, Some(citing)));
         }
         Method::Project => {
@@ -1257,7 +1634,7 @@ fn run_method<R: BufRead>(
                 },
             )?;
             return Ok(Execution::Result(
-                human::with_summary(result, method, matches.get_flag("json"), holdings(), &names),
+                human::with_summary(result, method, matches.get_flag("json"), holdings(), &names, out),
                 None,
             ));
         }
@@ -1265,9 +1642,9 @@ fn run_method<R: BufRead>(
             let key = args.get_one::<String>("key").cloned().unwrap_or_default();
             let result = engine
                 .dispatch(method, &json!({"item":{"by":"key","value":key}}), &cancel)
-                .map_err(|error| key_failure(engine, &key, error, libraries_open()))?;
+                .map_err(|error| key_failure(engine, matches, &key, error, libraries_open()))?;
             return Ok(Execution::Result(
-                human::with_summary(result, method, matches.get_flag("json"), holdings(), &names),
+                human::with_summary(result, method, matches.get_flag("json"), holdings(), &names, out),
                 None,
             ));
         }
@@ -1305,13 +1682,28 @@ fn run_method<R: BufRead>(
                     .transpose()?
                     .unwrap_or(Value::Null)
             };
-            let result = explain(
-                engine.dispatch(method, &json!({"method":called,"params":params}), &cancel),
-                |EngineError { code, .. }| match code {
-                    ErrorCode::BadInput => params_help(),
-                    code => human::code_sentence(code),
-                },
-            )?;
+            let result = engine
+                .dispatch(method, &json!({"method":called,"params":params}), &cancel)
+                .map_err(|error| {
+                    if matches!(called, Method::Show | Method::Entry)
+                        && params.pointer("/item/by") == Some(&json!("key"))
+                        && let Some(key) = params.pointer("/item/value").and_then(Value::as_str)
+                    {
+                        return key_failure(engine, matches, key, error, libraries_open());
+                    }
+                    if error.reason.is_some() {
+                        Failure::from(error)
+                    } else {
+                        Failure::explained(
+                            error,
+                            if error.code == ErrorCode::BadInput {
+                                params_help()
+                            } else {
+                                human::code_sentence(error.code)
+                            },
+                        )
+                    }
+                })?;
             let citing = (called == Method::Cite).then(|| request_citing(&params)).flatten();
             return Ok(Execution::Result(result, citing));
         }
@@ -1332,7 +1724,7 @@ fn run_method<R: BufRead>(
         return Ok(Execution::Result(human::locale_list(result), None));
     }
     Ok(Execution::Result(
-        human::with_summary(result, method, matches.get_flag("json"), holdings(), &names),
+        human::with_summary(result, method, matches.get_flag("json"), holdings(), &names, out),
         None,
     ))
 }
@@ -1345,6 +1737,53 @@ fn request_citing(params: &Value) -> Option<human::Citing> {
         output: output_name(&request.output),
         form: request.form,
     })
+}
+/// The output `--style` or `--format` names, or the default.
+fn chosen_output(args: &ArgMatches) -> Result<OutputSpec, Failure> {
+    Ok(
+        match (args.get_one::<String>("style"), args.get_one::<String>("format")) {
+            (Some(style), _) => OutputSpec::Csl { style: style.clone() },
+            (None, format) => ibis_engine::outputs::find(format.map_or(ibis_engine::outputs::DEFAULT, String::as_str))
+                .map(|output| output.output.clone())
+                .ok_or_else(|| EngineError::new(ErrorCode::Internal))?,
+        },
+    )
+}
+/// The form `--form` or `--bibliography` asks for; a bibliography needs a style.
+fn chosen_form(args: &ArgMatches, output: &OutputSpec) -> Result<CitationForm, Failure> {
+    if args.get_flag("bibliography") {
+        if !matches!(output, OutputSpec::Csl { .. }) {
+            return Err(Failure::new(
+                ErrorCode::Usage,
+                "--bibliography needs a style: give --style, or a --format that is a style.",
+            ));
+        }
+        return Ok(CitationForm::BibliographyOnly);
+    }
+    serde_json::from_value(json!(
+        args.get_one::<String>("form").map(String::as_str).unwrap_or("normal")
+    ))
+    .map_err(|_| Failure::from(EngineError::new(ErrorCode::Usage)))
+}
+/// Why records on stdin were refused, naming the first record at fault.
+fn records_failure(error: EngineError, records: &[Value]) -> Failure {
+    let mut sentence = error
+        .reason
+        .map_or_else(|| human::code_sentence(error.code), human::reason_sentence);
+    if error.reason == Some(ErrorReason::RejectedRecord)
+        // Only a record-level problem drops a record; a field warning leaves it in.
+        && let Some(warning) = Engine::record_problems(records).into_iter().find(|warning| {
+            warning.line.is_some()
+                && matches!(
+                    warning.code,
+                    ibis_engine::WarningCode::Syntax | ibis_engine::WarningCode::WorkLimit
+                )
+        })
+    {
+        let why = ibis_engine::catalogue::cause(&warning).unwrap_or_default();
+        sentence = format!("{sentence}\nrecord {}: {why}", warning.line.unwrap_or_default());
+    }
+    Failure::explained(error, sentence)
 }
 /// An output's one name from the engine's list; a style outside it is named by its id.
 fn output_name(output: &OutputSpec) -> String {
@@ -1450,6 +1889,18 @@ fn method_named(name: &str) -> Result<Method, Failure> {
 fn parse_json(bytes: &[u8]) -> Result<Value, EngineError> {
     protocol::parse_json(bytes).map_err(|_| EngineError::new(ErrorCode::BadInput))
 }
+/// Records on stdin: more than a request may hold is a resource limit (#1539).
+fn stdin_records(input: &mut impl BufRead) -> Result<Value, EngineError> {
+    let mut bytes = vec![];
+    input
+        .take(protocol::MAX_REQUEST_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| EngineError::new(ErrorCode::BadInput))?;
+    if bytes.len() > protocol::MAX_REQUEST_BYTES {
+        return Err(EngineError::new(ErrorCode::ResourceLimit));
+    }
+    parse_json(&bytes)
+}
 fn stdin_json(input: &mut impl BufRead) -> Result<Value, EngineError> {
     let mut bytes = vec![];
     input
@@ -1458,109 +1909,145 @@ fn stdin_json(input: &mut impl BufRead) -> Result<Value, EngineError> {
         .map_err(|_| EngineError::new(ErrorCode::BadInput))?;
     parse_json(&bytes)
 }
+#[derive(Default)]
+struct Presentation<'a> {
+    libraries: &'a str,
+    // Only search/libraries: every source field was escaped before styling.
+    terminal_summary: bool,
+    notes: &'a [String],
+    keys_only: bool,
+}
+
 fn emit(
     json: bool,
     result: Result<DispatchResult, Failure>,
     citing: Option<&human::Citing>,
-    libraries: &str,
+    presentation: Presentation<'_>,
     output: &mut impl Write,
     errors: &mut impl Write,
     mode: OutputMode,
 ) -> u8 {
     // Continuation lines are indented, so no text inside a message can pass
     // for a separate `ibis:` diagnostic.
+    let mut diagnostics = String::new();
     let mut say = |line: &str| {
         let text = terminal_display(line);
         let mut lines = text.split('\n');
-        let _ = writeln!(errors, "ibis: {}", lines.next().unwrap_or_default());
+        diagnostics.push_str("ibis: ");
+        diagnostics.push_str(lines.next().unwrap_or_default());
+        diagnostics.push('\n');
         for line in lines {
-            let _ = if line.is_empty() {
-                writeln!(errors)
-            } else {
-                writeln!(errors, "  {line}")
-            };
+            if !line.is_empty() {
+                diagnostics.push_str("  ");
+                diagnostics.push_str(line);
+            }
+            diagnostics.push('\n');
         }
     };
-    if result.as_ref().is_ok_and(|result| result.source_findings) {
-        let json_flag = if json { " --json" } else { "" };
-        say(&format!(
-            "note: a library has warnings or could not refresh; see: ibis libraries{libraries}{json_flag}"
-        ));
-    }
-    if !json && let (Ok(result), Some(citing)) = (&result, citing) {
-        let citation = result.data.get("citation").unwrap_or(&result.data);
-        let project_blocked = result
-            .data
-            .pointer("/assessment/state")
-            .and_then(Value::as_str)
-            .is_some_and(|state| matches!(state, "paused" | "conflict"));
-        if !project_blocked {
-            for line in human::citation_report(citation, citing, result.text.is_some()) {
-                say(&line);
+    let (mut code, encoded) = (|| {
+        if result.as_ref().is_ok_and(|result| result.source_findings) {
+            let json_flag = if json { " --json" } else { "" };
+            say(&format!(
+                "note: a library has warnings or could not refresh; see: ibis libraries{}{json_flag}",
+                presentation.libraries
+            ));
+        }
+        if !json {
+            for note in presentation.notes {
+                say(note);
             }
         }
-        if let Some(project) = result.data.get("project").filter(|value| !value.is_null())
-            && let Some(report) = human::project_report(project)
-        {
-            say(&report);
-        }
-        if let Some(message) = result.data.pointer("/assessment/message").and_then(Value::as_str) {
-            say(message);
-        }
-        if result.text.is_none() {
-            // Refused citations print their reasons above and nothing to stdout.
-            return result.exit_code.value();
-        }
-    }
-    let (code, envelope, text) = match result.and_then(|result| result.bounded().map_err(Failure::from)) {
-        Ok(result) => (result.exit_code, Envelope::success(result.data), result.text),
-        Err(failure) => {
-            // The sentence goes to stderr in both modes; --json adds the stable code on stdout.
-            say(&failure
-                .message
-                .clone()
-                .unwrap_or_else(|| human::code_sentence(failure.error.code)));
-            if !json {
-                return failure.error.code.exit_code().value();
+        if !json && let (Ok(result), Some(citing)) = (&result, citing) {
+            let citation = result.data.get("citation").unwrap_or(&result.data);
+            let project_blocked = result
+                .data
+                .pointer("/assessment/state")
+                .and_then(Value::as_str)
+                .is_some_and(|state| state == "conflict");
+            if !project_blocked {
+                for line in human::citation_report(citation, citing, result.text.is_some()) {
+                    say(&line);
+                }
             }
-            (failure.error.code.exit_code(), Envelope::failure(failure.error), None)
+            if let Some(project) = result.data.get("bibliography").filter(|value| !value.is_null())
+                && let Some(report) = human::project_report(project)
+            {
+                say(&report);
+            }
+            if let Some(message) = result.data.pointer("/assessment/message").and_then(Value::as_str) {
+                say(message);
+            }
+            if result.text.is_none() {
+                // Refused citations print their reasons above and nothing to stdout.
+                return (result.exit_code.value(), Vec::new());
+            }
         }
-    };
-    let encoded = if json {
-        serde_json::to_value(&envelope)
-            .ok()
-            .and_then(|value| ibis_engine::wire::encode(&value, protocol::MAX_RESPONSE_BYTES).ok())
-    } else if let Some(text) = text {
-        Some(text.into_bytes())
-    } else {
-        envelope.data().and_then(|data| serde_json::to_vec_pretty(data).ok())
-    };
-    let Some(mut encoded) = encoded else {
-        if json
-            && output
-                .write_all(b"{\"error\":{\"code\":\"internal\"},\"ibis\":1,\"ok\":false}\n")
-                .is_err()
-        {
-            return 70;
+        let (code, envelope, text) = match result.and_then(|result| result.bounded().map_err(Failure::from)) {
+            Ok(result) => (result.exit_code, json!(Envelope::success(result.data)), result.text),
+            Err(failure) => {
+                // The sentence goes to stderr in both modes; --json adds the stable code on stdout.
+                say(&failure
+                    .message
+                    .clone()
+                    .unwrap_or_else(|| human::code_sentence(failure.error.code)));
+                if !json {
+                    return (failure.error.code.exit_code().value(), Vec::new());
+                }
+                let mut envelope = json!(Envelope::<Value>::failure(failure.error));
+                if let Some((suggestions, next)) = failure.recovery {
+                    envelope["error"]["suggestions"] = json!(suggestions);
+                    envelope["error"]["next"] = json!(next);
+                }
+                (failure.error.code.exit_code(), envelope, None)
+            }
+        };
+        let encoded = if json {
+            serde_json::to_value(&envelope)
+                .ok()
+                .and_then(|value| ibis_engine::wire::encode(&value, protocol::MAX_RESPONSE_BYTES).ok())
+        } else if let Some(text) = text {
+            Some(text.into_bytes())
+        } else {
+            envelope
+                .get("data")
+                .and_then(|data| serde_json::to_vec_pretty(data).ok())
+        };
+        let Some(mut encoded) = encoded else {
+            return (
+                ExitCode::Internal.value(),
+                if json {
+                    b"{\"error\":{\"code\":\"internal\"},\"ibis\":1,\"ok\":false}\n".to_vec()
+                } else {
+                    Vec::new()
+                },
+            );
+        };
+        if !json && mode.stdout_terminal() && !presentation.terminal_summary {
+            encoded = terminal_display(&String::from_utf8_lossy(&encoded)).into_bytes();
         }
-        return ibis_core::contract::ExitCode::Internal.value();
-    };
-    if !json && mode == OutputMode::Terminal {
-        encoded = terminal_display(&String::from_utf8_lossy(&encoded)).into_bytes();
-    }
-    if let Err(error) = output
-        .write_all(&encoded)
-        .and_then(|()| output.write_all(b"\n"))
-        .and_then(|()| output.flush())
-    {
+        // An empty keys-only selection has no lines, including no trailing newline.
+        if json || !presentation.keys_only || !encoded.is_empty() {
+            encoded.push(b'\n');
+        }
+        (code.value(), encoded)
+    })();
+    if let Err(error) = write_stream(output, &encoded) {
         // A reader that closed the pipe early (`| head`) asked for no more, so nothing went wrong.
-        if error.kind() == std::io::ErrorKind::BrokenPipe {
-            return code.value();
+        if error.kind() != std::io::ErrorKind::BrokenPipe {
+            say(human::write_failure(&error));
+            code = 70;
         }
-        say(human::write_failure(&error));
-        return 70;
     }
-    code.value()
+    if let Err(error) = write_stream(errors, diagnostics.as_bytes())
+        && error.kind() != std::io::ErrorKind::BrokenPipe
+    {
+        code = 70;
+    }
+    code
+}
+
+fn write_stream(stream: &mut impl Write, bytes: &[u8]) -> std::io::Result<()> {
+    stream.write_all(bytes).and_then(|()| stream.flush())
 }
 
 /// Terminal presentation escapes control sequences and invisible direction overrides;
@@ -1579,6 +2066,54 @@ fn terminal_display(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn searching_a_newer_compatible_zotero_library_prints_results_without_a_note() {
+        let case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json"))
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let engine = Engine::from_snapshot(std::sync::Arc::new(case.library));
+        let mut library = engine
+            .libraries()
+            .unwrap_or_else(|e| panic!("{e:?}"))
+            .libraries
+            .remove(0);
+        library.kind = ibis_engine::LibraryKind::Zotero;
+        library.warnings = vec![ibis_engine::SourceWarning::at(
+            ibis_engine::WarningCode::ZoteroNewerThanTested,
+            None,
+        )];
+        library.warnings_total = 1;
+        let health = ibis_engine::health::SourceHealth::of(std::iter::once(&library));
+        let result = engine
+            .dispatch(Method::Search, &json!({"query":"signals"}), &Cancellation::default())
+            .unwrap_or_else(|e| panic!("{e:?}"))
+            .with_health(&health)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let result = human::with_summary(
+            result,
+            Method::Search,
+            false,
+            human::Holdings::References,
+            &Default::default(),
+            out::Out::new(OutputMode::Plain),
+        );
+        let (mut output, mut errors) = (Vec::new(), Vec::new());
+        let code = emit(
+            false,
+            Ok(result),
+            None,
+            Presentation::default(),
+            &mut output,
+            &mut errors,
+            OutputMode::Plain,
+        );
+        assert_eq!(code, 0);
+        assert_eq!(
+            String::from_utf8(output).unwrap_or_else(|e| panic!("{e:?}")),
+            "Example2026\tAvery Taylor\t2026\tSynthetic signals\n"
+        );
+        assert!(errors.is_empty());
+    }
+
     use super::*;
     #[test]
     fn a_stalled_wait_gives_up_at_its_deadline() {
@@ -1586,6 +2121,30 @@ mod tests {
         let (release, held) = std::sync::mpsc::channel::<()>();
         assert!(bounded_for(Duration::ZERO, move || held.recv_timeout(Duration::from_secs(5))).is_none());
         drop(release);
+    }
+
+    #[test]
+    fn a_startup_timeout_keeps_its_context_and_requires_a_new_session() {
+        let failure = Failure::from(EngineError::because(
+            ErrorCode::SourceUnavailable,
+            ErrorReason::SettingsReadTimeout,
+        ));
+        let mut session = ibis_engine::mcp::Session::without_libraries(failure.refusal());
+        let engine = Engine::new().unwrap_or_else(|error| panic!("{error:?}"));
+        let reply = ibis_engine::mcp::handle(&engine, &mut session, &json!({
+            "jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{
+                "name":"show", "arguments":{"ref":"invented"},
+                "_meta":{"io.modelcontextprotocol/protocolVersion":ibis_engine::mcp::PROTOCOL_VERSION, "io.modelcontextprotocol/clientCapabilities":{}}
+            }
+        })).unwrap_or_default();
+        let problem = &reply["result"]["structuredContent"]["error"];
+        assert_eq!(problem["code"], "settings-read-timeout");
+        assert_eq!(problem["recovery"]["action"], "restart-session");
+        let words = reply["result"]["content"][0]["text"].as_str().unwrap_or_default();
+        assert!(words.contains("when this session started"), "{reply}");
+        assert!(words.contains("start a new MCP session"), "{reply}");
+        assert!(words.contains("timed out"), "{reply}");
+        assert!(!words.contains("Try again shortly"), "{reply}");
     }
 
     #[test]
@@ -1597,9 +2156,9 @@ mod tests {
         assert!(!refusal.contains("Invented"), "{refusal}");
         assert!(!refusal.contains("Profiles"), "{refusal}");
         assert!(refusal.contains("--zotero-profile"), "{refusal}");
-        // Without names to hide, both readers get the same sentence.
+        // Without profile names, the agent still receives the engine diagnostic.
         let plain = zotero_open_failure(EngineError::new(ErrorCode::SourceUnavailable), &[]);
-        assert!(format!("{:?}", plain.refusal()).contains(&plain.sentence()));
+        assert!(format!("{:?}", plain.refusal()).contains("source-unavailable"));
     }
 
     #[test]
@@ -1664,7 +2223,7 @@ mod tests {
                     json,
                     Ok(result()),
                     None,
-                    "",
+                    Presentation::default(),
                     &mut Failing(kind),
                     &mut errors,
                     OutputMode::Plain,
@@ -1697,7 +2256,7 @@ mod tests {
                 true,
                 Ok(result),
                 None,
-                "",
+                Presentation::default(),
                 &mut Broken,
                 &mut Vec::new(),
                 OutputMode::Plain

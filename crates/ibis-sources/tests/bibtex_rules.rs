@@ -73,7 +73,7 @@ fn non_english_titles_keep_their_capitalization() {
 }
 
 #[test]
-fn legacy_hyphenation_is_the_langid_fallback_and_unknown_languages_are_undetermined() {
+fn hyphenation_is_the_langid_fallback_and_unknown_languages_are_undetermined() {
     for (fields, language) in [
         ("hyphenation={german}", "de-DE"),
         ("hyphenation={german},language={english}", "de-DE"),
@@ -491,7 +491,7 @@ fn inheritance_precedence_survives_large_graphs() {
 }
 
 #[test]
-fn legacy_conference_alias_inherits_its_proceedings_title() {
+fn conference_alias_inherits_its_proceedings_title() {
     let r = load(
         "@proceedings{volume,title={Synthetic Proceedings},year={2024}}\n@conference{paper,title={Synthetic Paper},crossref={volume}}",
     );

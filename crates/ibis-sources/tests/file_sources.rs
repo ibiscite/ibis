@@ -384,7 +384,6 @@ fn preserved_parser_keeps_exact_csl_meaning_of_invented_examples() -> Result<(),
         "@string{press={Invented Press}}\n@book{four,title={Synthetic},publisher=press,date={2001/2003},origdate={1900~},urldate={2026-10-26}}",
         "@book{five,title={Étude fictive},language={fr-FR},author={范, 明},shorttitle={Fictive},abstract={Invented abstract}}",
     ];
-    // Fixed CSL expectations keep this regression independent of the removed parser.
     let expected = [
         serde_json::json!({"ISBN":"9780000000002","author":[{"family":"Example","given":"Ada"},{"literal":"Synthetic Organization"},{"literal":"others"}],"citation-key":"one","id":"one","issued":{"date-parts":[[2024,2,29]]},"language":"en-US","publisher":"Invented Press","title":"An Invented <span class=\"nocase\">DNA</span> Study","type":"book"}),
         serde_json::json!({"DOI":"10.0000/synthetic","URL":"https://example.invalid/synthetic","author":[{"dropping-particle":"van","family":"Example","given":"Ada"}],"citation-key":"two","container-title":"Invented Journal","id":"two","issue":"3","issued":{"date-parts":[[2023,2]]},"keyword":"one, two","page":"12–20","title":"Synthetic <i>in vivo</i> Study","type":"article-journal","volume":"2"}),
@@ -512,7 +511,6 @@ fn remote_and_ambiguous_attachment_locations_never_become_local_paths() -> Resul
         r#"[{"id":"one","type":"book","file":"https://example.invalid/synthetic.pdf;\\\\synthetic.invalid\\share\\file.pdf;ambiguous:thing:else"}]"#,
     )?;
     let loaded = ibis_sources::load_file(&path)?;
-    assert_eq!(loaded.local_attachment_count(), 0);
     let states: Vec<_> = loaded
         .snapshot
         .objects()

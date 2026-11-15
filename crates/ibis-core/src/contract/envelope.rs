@@ -4,17 +4,22 @@
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
+/// The wire contract this engine speaks, the envelope's `ibis` field. It is
+/// separate from the package version and from what a citation means; the rules
+/// for changing it are in decision 0028.
+pub const CONTRACT_VERSION: u8 = 1;
+
 /// Literal wire constants keep contradictory envelopes unrepresentable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Version;
 impl Serialize for Version {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_u8(1)
+        serializer.serialize_u8(CONTRACT_VERSION)
     }
 }
 impl<'de> Deserialize<'de> for Version {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        if u8::deserialize(deserializer)? == 1 {
+        if u8::deserialize(deserializer)? == CONTRACT_VERSION {
             Ok(Self)
         } else {
             Err(de::Error::custom("unsupported ibis envelope version"))
@@ -26,7 +31,7 @@ impl JsonSchema for Version {
         "EnvelopeVersion".into()
     }
     fn json_schema(_: &mut SchemaGenerator) -> Schema {
-        json_schema!({"type": "integer", "const": 1})
+        json_schema!({"type": "integer", "const": CONTRACT_VERSION})
     }
 }
 
@@ -60,19 +65,38 @@ impl<const OK: bool> JsonSchema for Status<OK> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct Success<T> {
     ibis: Version,
     ok: Status<true>,
     pub data: T,
+    /// `error` contradicts success even though additive response fields are allowed.
+    #[serde(
+        rename = "error",
+        default,
+        skip_serializing,
+        deserialize_with = "reject_contradiction"
+    )]
+    #[schemars(skip)]
+    error: (),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct Failure {
     ibis: Version,
     ok: Status<false>,
     pub error: EngineError,
+    #[serde(
+        rename = "data",
+        default,
+        skip_serializing,
+        deserialize_with = "reject_contradiction"
+    )]
+    #[schemars(skip)]
+    data: (),
+}
+
+fn reject_contradiction<'de, D: Deserializer<'de>>(_: D) -> Result<(), D::Error> {
+    Err(de::Error::custom("contradictory ibis envelope field"))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -88,6 +112,7 @@ impl<T> Envelope<T> {
             ibis: Version,
             ok: Status,
             data,
+            error: (),
         })
     }
     pub fn failure(error: impl Into<EngineError>) -> Self {
@@ -95,6 +120,7 @@ impl<T> Envelope<T> {
             ibis: Version,
             ok: Status,
             error: error.into(),
+            data: (),
         })
     }
     pub fn data(&self) -> Option<&T> {
@@ -129,6 +155,8 @@ pub enum ErrorCode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum ErrorReason {
+    /// Strict citation policy found losses, refusals or unhealthy evidence.
+    StrictCitation,
     /// No style has the requested id; `styles` lists them.
     UnknownStyle,
     /// No output has the requested id; `outputs` lists them.
@@ -144,12 +172,16 @@ pub enum ErrorReason {
     AmbiguousKey,
     /// A key output needs a citation key this reference does not have.
     MissingKey,
+    /// The selected library file was moved, renamed or removed.
+    MissingFile,
     /// The program started as the Ibis app does not exist.
     AppMissing,
     /// The program started as the Ibis app is not Ibis.
     NotIbis,
     /// The Ibis app started but did not confirm the request in time.
     NoAnswer,
+    /// The app's library settings did not finish loading in time.
+    SettingsReadTimeout,
     /// Zotero is running but does not let other applications read it.
     ZoteroSharingOff,
     /// Zotero is closed and which profile to read is not settled; name one.
@@ -166,23 +198,153 @@ pub enum ErrorReason {
     LibraryCutShort,
     /// Neither the file's name nor its contents identify a supported library format.
     UnknownFormat,
+    /// Two records a request sends share an `id`, `1` and `"1"` included.
+    DuplicateRecord,
+    /// A record a request sends was not valid CSL-JSON, so none is cited.
+    RejectedRecord,
+}
+
+/// A fixed database identifier, never a name supplied by an untrusted source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum ZoteroTable {
+    Version,
+    Libraries,
+    Groups,
+    Items,
+    ItemTypesCombined,
+    FieldsCombined,
+    ItemData,
+    ItemDataValues,
+    Creators,
+    CreatorTypes,
+    ItemCreators,
+    DeletedItems,
+    ItemNotes,
+    ItemAttachments,
+}
+impl ZoteroTable {
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Version => "version",
+            Self::Libraries => "libraries",
+            Self::Groups => "groups",
+            Self::Items => "items",
+            Self::ItemTypesCombined => "itemTypesCombined",
+            Self::FieldsCombined => "fieldsCombined",
+            Self::ItemData => "itemData",
+            Self::ItemDataValues => "itemDataValues",
+            Self::Creators => "creators",
+            Self::CreatorTypes => "creatorTypes",
+            Self::ItemCreators => "itemCreators",
+            Self::DeletedItems => "deletedItems",
+            Self::ItemNotes => "itemNotes",
+            Self::ItemAttachments => "itemAttachments",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
+pub struct ErrorDetail {
+    pub table: ZoteroTable,
+}
+
+/// The fact that prevents a strict citation, retained for every client.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum StrictCause {
+    Loss {
+        loss: super::Loss,
+    },
+    Refused {
+        error: super::CitationError,
+    },
+    Source {
+        code: ErrorCode,
+        reason: Option<ErrorReason>,
+    },
+    SourceWarning,
+}
+
+/// Like every result, an error accepts fields it does not know (decision 0028).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(into = "PresentedError")]
 pub struct EngineError {
     pub code: ErrorCode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<ErrorReason>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<ErrorDetail>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strict_cause: Option<StrictCause>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub citation_error: Option<super::CitationError>,
+}
+#[derive(Serialize, JsonSchema)]
+struct PresentedError {
+    code: ErrorCode,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<ErrorReason>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    detail: Option<ErrorDetail>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    strict_cause: Option<StrictCause>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    citation_error: Option<super::CitationError>,
+    #[serde(flatten)]
+    info: super::RecoveryInfo,
+}
+impl From<EngineError> for PresentedError {
+    fn from(error: EngineError) -> Self {
+        Self {
+            code: error.code,
+            reason: error.reason,
+            detail: error.detail,
+            strict_cause: error.strict_cause,
+            citation_error: error.citation_error,
+            info: error.recovery_info(),
+        }
+    }
+}
+impl JsonSchema for EngineError {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "EngineError".into()
+    }
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        PresentedError::json_schema(generator)
+    }
 }
 impl EngineError {
     pub const fn new(code: ErrorCode) -> Self {
-        Self { code, reason: None }
+        Self {
+            code,
+            reason: None,
+            detail: None,
+            strict_cause: None,
+            citation_error: None,
+        }
     }
     pub const fn because(code: ErrorCode, reason: ErrorReason) -> Self {
         Self {
             code,
             reason: Some(reason),
+            detail: None,
+            strict_cause: None,
+            citation_error: None,
+        }
+    }
+    pub const fn citation(error: super::CitationError) -> Self {
+        Self {
+            code: if matches!(
+                error,
+                super::CitationError::OutputTooLarge | super::CitationError::TooManyItems
+            ) {
+                ErrorCode::ResourceLimit
+            } else {
+                ErrorCode::BadInput
+            },
+            citation_error: Some(error),
+            ..Self::new(ErrorCode::BadInput)
         }
     }
 }
@@ -303,13 +465,27 @@ mod tests {
     }
 
     #[test]
+    fn additive_response_fields_preserve_success_and_failure() -> Result<(), serde_json::Error> {
+        let success = json!({"ibis":1,"ok":true,"data":[],"added":true});
+        assert_eq!(
+            serde_json::from_value::<Envelope<Value>>(success)?.data(),
+            Some(&json!([]))
+        );
+        let failure = json!({"ibis":1,"ok":false,"error":{"code":"internal","added":true},"added":true});
+        assert!(matches!(
+            serde_json::from_value::<Envelope<Value>>(failure)?,
+            Envelope::Failure(_)
+        ));
+        Ok(())
+    }
+
+    #[test]
     fn contradictory_and_future_envelopes_are_refused() {
         for wire in [
             json!({"ibis":2,"ok":true,"data":[]}),
             json!({"ibis":1,"ok":false,"data":[]}),
             json!({"ibis":1,"ok":true,"error":{"code":"internal"}}),
             json!({"ibis":1,"ok":true,"data":[],"error":{"code":"internal"}}),
-            json!({"ibis":1,"ok":false,"error":{"code":"bad-input","raw":"untrusted text"}}),
             json!({"ibis":1,"ok":false,"error":{"code":"unknown"}}),
             json!({"ibis":1,"ok":true}),
         ] {

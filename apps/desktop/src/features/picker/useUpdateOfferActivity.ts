@@ -1,10 +1,10 @@
+import type * as nativeApi from "../../api";
 import { useEffect, useRef } from "react";
-import type { PickerApi } from "../../App";
 import type { SessionState } from "./session";
 import type { usePickerMenus } from "./usePickerMenus";
 import { monitorUpdateOfferInput } from "./updateOfferInput";
 
-export function useUpdateOfferActivity(api: PickerApi, state: SessionState,
+export function useUpdateOfferActivity(api: typeof nativeApi, state: SessionState,
   { overlay }: Pick<ReturnType<typeof usePickerMenus>, "overlay">, choosingLibrary: boolean) {
   const { query, pendingCopy, selected } = state;
   const updateInputBlocked = useRef(false);

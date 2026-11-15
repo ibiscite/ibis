@@ -1,14 +1,20 @@
+import { displayTree } from "../test-fixtures";
+export { displayTree } from "../test-fixtures";
 // The lightweight mocked Rust side and shared steps for whole-picker tests.
 // For clipboard/document outcomes and reordered workers, use ./delivery instead.
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
-import { vi } from "vitest";
-import { listen } from "@tauri-apps/api/event";
+import { expect, vi } from "vitest";
+import { emit, listen } from "@tauri-apps/api/event";
 import type * as api from "../api";
-import type { Density, FilePreview, FileSelection, PreviewIntent } from "../bindings";
+import type { Density, DisplayTree, Preview, DraftItem, CitationIntent } from "../bindings";
+import { recordId } from "../test-fixtures";
 import { isStyle, listedOutput } from "../format/outputs";
+import { fixtureDestination, formatAnswer } from "./format";
+import { forgetRecentFormats } from "../features/picker/FormatMenu";
 
 export async function resetApp() {
+  forgetRecentFormats();
   cleanup();
   // Unmount effects and React Aria's focus restoration must finish on the clock
   // that created them, before discarding fake timers or the mocked native API.
@@ -26,23 +32,42 @@ export async function resetApp() {
   delete document.documentElement.dataset.pickerHidden;
 }
 
-/** Opens the More menu and picks an action from it, as a user would. */
-export async function chooseFromMore(name: string, role: "menuitem" | "menuitemcheckbox" = "menuitem") {
-  if (!screen.queryByRole("menu")) fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  const item = await screen.findByRole(role, { name });
-  // fireEvent.click omits the focus a real pointer/keyboard activation gives
-  // the row; the shortcuts dialog uses it to choose its return destination.
-  act(() => item.focus());
-  fireEvent.click(item);
+let changeSaved: ((patch: Partial<api.PickerPreferences>) => void) | null = null;
+
+/** Rows changed in Settings, the one place it lives, as the picker hears of it. */
+export async function chooseRows(density: Density) {
+  changeSaved?.({ density });
+  await act(async () => { await emit("preferences:changed"); });
 }
 
-/** Choose a named row density from More's submenu, without cycling values. */
-export async function chooseRows(density: Density) {
-  if (!screen.queryByRole("menu")) fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  fireEvent.click(await screen.findByRole("menuitem", { name: /^Rows: / }));
-  const item = await screen.findByRole("menuitemradio", { name: density.charAt(0).toUpperCase() + density.slice(1) });
-  act(() => item.focus());
-  fireEvent.click(item);
+/** A palette row by its name, as a person reads it (the label, not the detail or keys). */
+export function paletteRow(palette: HTMLElement, name: string | RegExp): HTMLElement {
+  const label = (option: HTMLElement) => option.querySelector(".ui-palette-label")?.textContent ?? "";
+  const row = within(palette).queryAllByRole("option").find((option) => typeof name === "string" ? label(option) === name : name.test(label(option)));
+  if (!row) throw new Error(`No palette row named ${name}: ${within(palette).queryAllByRole("option").map((option) => option.querySelector(".ui-palette-label")?.textContent).join(", ")}`);
+  return row;
+}
+
+/** Opens More (the actions palette) and runs an action from it, as a user would. */
+export async function chooseFromMore(name: string | RegExp) {
+  if (!screen.queryByRole("dialog", { name: "Actions" })) fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  const palette = await screen.findByRole("dialog", { name: "Actions" });
+  fireEvent.click(await waitFor(() => paletteRow(palette, name)));
+}
+
+/** Turns Keep Window Open on from More, or off from the footer's pin, as a person would. */
+export async function toggleKeepOpen() {
+  const pinned = screen.queryByRole("button", { name: "Keep Window Open", pressed: true });
+  if (pinned) fireEvent.click(pinned);
+  else await chooseFromMore("Keep Window Open");
+}
+
+/** Opens the format chooser, finds a format by typing its name, and picks it. */
+export async function chooseFormatNamed(name: string) {
+  if (!screen.queryByRole("dialog", { name: "Format" })) fireEvent.click(screen.getByRole("button", { name: /^Citation format/ }));
+  const palette = await screen.findByRole("dialog", { name: "Format" });
+  fireEvent.change(within(palette).getByRole("combobox"), { target: { value: name } });
+  fireEvent.click(await waitFor(() => paletteRow(palette, name)));
 }
 
 export function libraryButton(): HTMLButtonElement {
@@ -74,41 +99,83 @@ export async function openCitationDetails(): Promise<HTMLInputElement> {
   return screen.findByRole<HTMLInputElement>("textbox", { name: "Page" });
 }
 
-/** Picks a form from the inspector's Form pop-up. */
-export async function chooseForm(name: string) {
-  fireEvent.click(await waitFor(() => within(document.querySelector<HTMLElement>(".inspector")!).getByRole("button", { name: /^Show as / })));
-  const menu = await waitFor(() => { const list = document.querySelector<HTMLElement>('[role="menu"]'); if (!list) throw new Error("The Form menu is not open"); return list; });
-  fireEvent.click(within(menu).getByRole("menuitemradio", { name }));
+/** The open popover of a token's details, or null. */
+export function citationDetails(): HTMLElement | null {
+  return screen.queryByRole("dialog", { name: /^Citation details/ });
 }
 
-export function closeCitationDetails() {
-  const details = document.querySelector(".inspector");
-  if (details) fireEvent.keyDown(details, { key: "Escape" });
+/** Picks how the citation shows, by what its choice reads: the engine's example
+ * for that form (default backend: "(Smith, 2020)", "Smith (2020)", "(2020)"), or
+ * the form's name before the engine answers. */
+export async function chooseForm(name: string) {
+  const details = await waitFor(() => within(citationDetails()!));
+  fireEvent.click(await waitFor(() => details.getByRole("button", { name: /^Show as / })));
+  fireEvent.click(await screen.findByRole("menuitemradio", { name }));
 }
+
+/** The text each form in Show as would paste, read from its menu, which closes again. */
+export async function formExamples(): Promise<string[]> {
+  const details = await waitFor(() => within(citationDetails()!));
+  fireEvent.click(await waitFor(() => details.getByRole("button", { name: /^Show as / })));
+  const rows = await screen.findAllByRole("menuitemradio");
+  const examples = rows.map((row) => row.querySelector(".toolbar-menu-sample")?.textContent ?? "");
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  return examples;
+}
+
+/** The details' Text before or Text after field, asked for if it is not shown yet. */
+export function textField(name: "Text before" | "Text after"): HTMLInputElement {
+  const details = within(citationDetails()!);
+  if (!details.queryByRole("textbox", { name })) fireEvent.click(details.getByRole("button", { name }));
+  return details.getByRole<HTMLInputElement>("textbox", { name });
+}
+
+/** Esc from inside the details, as a person closes them. */
+export function closeCitationDetails() {
+  const details = citationDetails();
+  if (details) fireEvent.keyDown(details.contains(document.activeElement) ? document.activeElement! : details, { key: "Escape" });
+}
+
+const fixtureKeys = new Map<string, string>();
+export const fixtureCitationKey = (id: DraftItem["id"]) => fixtureKeys.get(JSON.stringify(id)) ?? "";
 
 export function result(key: string, title: string, source = "refs.bib") {
+  const id = { library: source, key: recordId(key) };
+  fixtureKeys.set(JSON.stringify(id), key);
   return {
-    revision: "1", id: { library: source, key }, cite: `synthetic-cite-${key}`, source, key, title, authors: "Smith", year: "2020", matched: ["title" as const],
+    revision: "1", id, cite: `synthetic-cite-${key}`, source, key, title, authors: "Smith", year: "2020", matched: ["title" as const],
     first_author: "Smith", author_count: 1, container: null as string | null, item_type: "article-journal", partial: false,
   };
 }
 
-export type SyntheticId = { library: string; key: string };
+export type SyntheticId = DraftItem["id"];
 export type PreviewRequest = {
-  items: (Omit<FileSelection, "id"> & { id: SyntheticId })[];
+  items: (Omit<DraftItem, "id"> & { id: SyntheticId })[];
   /** The engine output id the picker asked for. */
   output: string;
   expectedRevision: string;
-  intent: PreviewIntent;
+  intent: CitationIntent;
 };
-type Prepared = { request: PreviewRequest; preview: FilePreview };
+type Prepared = { request: PreviewRequest; preview: Preview };
 const receipts = new Map<string, Prepared>();
 let receiptNumber = 0;
 
 /** A synthetic engine result. Tests choose output; no renderer runs in the browser. */
-export function receipt(text: string, html: string | null = null, warnings: string[] = []): FilePreview {
+export function receipt(text: string, display: DisplayTree | null = null, warnings: string[] = []): Preview {
   const number = ++receiptNumber;
-  return { ticket: `synthetic-ticket-${number}`, content_hash: `synthetic-hash-${number}`, text, html, warnings, spans: [{ item: 0, text }] };
+  return { effective_output: null, ticket: `synthetic-ticket-${number}`, content_hash: `synthetic-hash-${number}`, text, display: display ?? displayTree([{ item: 0, text }]), warnings };
+}
+
+/** A synthetic result with each reference's own words as its own token, joined by "; ". */
+export function lineReceipt(words: readonly string[], warnings: string[] = []): Preview {
+  const spans = words.flatMap((text, item) => [...(item ? [{ item: null, text: "; " }] : []), { item, text }]);
+  return { ...receipt(spans.map((span) => span.text).join(""), null, warnings), display: displayTree(spans) };
+}
+
+/** The keys of the references in the citation being built, in the line's order. */
+export function citationKeys(): string[] {
+  return [...document.querySelectorAll<HTMLElement>(".citation-token[data-built]")].map((token) => token.dataset.referenceKey!);
 }
 
 /** Resolve the exact native copy receipt, including its content hash. */
@@ -124,9 +191,11 @@ export type Handler = (args: Record<string, unknown> & PreviewRequest & { query:
 /** Mock the Rust commands; returns the list of commands called. */
 export function backend(overrides: Record<string, Handler> = {}): string[] {
   const calls: string[] = [];
+  const citationKeys = new Map<string, string>();
   let lastLibrary: Partial<api.LibraryStatus> = {};
   let activityTicket = 0;
   let preferences = { output: "pandoc", density: "comfortable", larger_text: false, paste: true, menu_bar: true } as api.PickerPreferences;
+  changeSaved = (patch) => { preferences = { ...preferences, ...patch }; };
   let revision = 0;
   const written = new Map<string, number>();
   const submitted = new Map<number, Partial<api.PickerPreferences>>();
@@ -150,8 +219,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     dismiss_window_position_undo: () => null,
     preview_file_citation: ({ items, output }) => {
       const style = isStyle(listedOutput(output as string) ?? "pandoc");
-      const spans = items.flatMap(({ id }, item) => [...(item ? [{ item: null, text: "; " }] : []), { item, text: style ? "(Smith, 2020)" : `@${id.key}` }]);
-      return { ...receipt(spans.map((span) => span.text).join("")), spans };
+      return lineReceipt(items.map(({ id }) => style ? "(Smith, 2020)" : `@${citationKeys.get(JSON.stringify(id)) ?? ""}`));
     },
     recent_references: (args) => overrides.search?.({ ...args, query: { text: "", interpret_locators: true } }) ?? [],
     citation_details: (args) => ({ current_form: prepared(args).request.items[Number(args.item)]?.form ?? "normal", forms: [
@@ -167,10 +235,14 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     save_picker_preferences: ({ preferences: patch }) => { const receipt = ++revision; submitted.set(receipt, patch as Partial<api.PickerPreferences>); return receipt; },
     picker_preferences_saved: () => null,
     // Opened from no app Ibis knows: the default format applies.
-    picker_destination: () => ({ app: null, app_id: null, app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false }),
+    picker_destination: async () => {
+      await Promise.resolve();
+      return { app: null, app_id: null, app_identity: null, format: formatAnswer(preferences.key_output ?? preferences.output, "yours"), unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false };
+    },
     remember_app_output: () => null,
     login_item: () => ({ name: "Ibis", enabled: false, problem: null }),
     set_login_item: ({ enabled }) => ({ name: "Ibis", enabled, problem: null }),
+    cli_status: () => ({ state: "not-installed", version: null, used_path: null, profile_line: null, removable: false, installable: true }),
     // Builds without an update key have no update controls.
     update_checks: () => null,
     update_available: () => false,
@@ -191,7 +263,11 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
       // A test's save handler sees the choice the receipt stands for.
       const receipt = cmd === "picker_preferences_saved" ? (args as { receipt: number }).receipt : 0;
       const value = handler((receipt ? { ...args as object, preferences: submitted.get(receipt) } : args ?? {}) as Parameters<Handler>[0]);
-      if (cmd === "picker_preferences") return Promise.resolve(value).then((loaded) => { preferences = { ...preferences, ...loaded as api.PickerPreferences }; return preferences; });
+      if (cmd === "picker_destination") return Promise.resolve(value).then((destination) => fixtureDestination(destination as api.PickerDestination));
+      if (cmd === "picker_preferences") {
+        if (value && typeof value === "object" && !("then" in value)) preferences = { ...preferences, ...value as api.PickerPreferences };
+        return Promise.resolve(value).then((loaded) => { preferences = { ...preferences, ...loaded as api.PickerPreferences }; return preferences; });
+      }
       if (cmd === "picker_preferences_saved") return Promise.resolve(value).then(() => {
         // The owner applies choices in the order they were submitted: a field
         // a later choice already saved keeps that later value.
@@ -204,12 +280,16 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
         return { preferences };
       });
       if (cmd === "preview_file_citation") return Promise.resolve(value).then((preview) => {
-        const result = preview as FilePreview;
+        const result = preview as Preview;
+        result.effective_output ??= (args as PreviewRequest).output;
         receipts.set(result.ticket, { request: args as PreviewRequest, preview: result });
         return result;
       });
       if (cmd === "library_status") return Promise.resolve(value).then((status) => { lastLibrary = status as api.LibraryStatus; return { revision: "1", source_generation: "1", source_is_requested: true, ...status as object }; });
       if (cmd === "search" || cmd === "recent_references") return Promise.resolve(value).then((reply) => {
+        const found = cmd === "recent_references" && Array.isArray(reply) && typeof reply[1] === "boolean" ? reply[0] : reply;
+        const records: api.SearchResult[] = Array.isArray(found) ? found : (found as { results?: api.SearchResult[] })?.results ?? [];
+        for (const record of records) citationKeys.set(JSON.stringify(record.id), record.key);
         if (cmd === "recent_references" && Array.isArray(reply) && typeof reply[1] === "boolean") return reply;
         const rows = Array.isArray(reply) ? { revision: reply[0]?.revision ?? "1", results: reply } : reply;
         return cmd === "recent_references" ? [rows, Boolean((rows as { results?: unknown[] }).results?.length), false] : rows;
@@ -220,4 +300,21 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
   );
   void listen<api.LibraryStatus>("library:changed", (event) => { lastLibrary = event.payload; });
   return calls;
+}
+
+/** The token of a reference in the citation being built, by its key; null when it is not in it. */
+export function inCitation(key: string): HTMLButtonElement | null {
+  return document.querySelector<HTMLButtonElement>(`.citation-token[data-built][data-reference-key="${CSS.escape(key)}"] > button`);
+}
+
+/** Waits for a reference's token to be in the citation being built. */
+export function findInCitation(key: string): Promise<HTMLButtonElement> {
+  return waitFor(() => { const token = inCitation(key); if (!token) throw new Error(`${key} is not in the citation`); return token; });
+}
+
+/** Removes a reference from the citation as a person does: ⌫ on its token. */
+export function removeFromCitation(token: HTMLElement | null) {
+  if (!token) throw new Error("That reference is not in the citation");
+  act(() => token.focus());
+  fireEvent.keyDown(token, { key: "Backspace" });
 }

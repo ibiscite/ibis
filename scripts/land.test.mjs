@@ -1,181 +1,145 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-// Run the real landing script without a repository, network or build. Only its
-// Git and GitHub boundaries are replaced; every command is recorded in order.
+const sha = "a".repeat(40), posix = { skip: process.platform === "win32" };
 function fixture(t) {
-  const dir = mkdtempSync(join(tmpdir(), "ibis-land-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const bin = join(dir, "bin"), calls = join(dir, "calls");
-  mkdirSync(bin);
-  mkdirSync(join(dir, "apps/desktop/src-tauri"), { recursive: true });
-  const stubs = {
-    git: `printf 'git %s\\n' "$*" >> "$CALLS"
-case "$1" in
-  rev-parse)
-    if [ "$2" = --abbrev-ref ]; then echo "$BRANCH"
-    elif [ "$4" = MERGE_HEAD ]; then [ "$MERGE_PENDING" = 1 ]
-    else pwd; fi ;;
-  diff) echo README.md ;;
-  commit) exit "$COMMIT_STATUS" ;;
-  push) exit "$PUSH_STATUS" ;;
-esac`,
-    gh: `printf 'gh %s\\n' "$*" >> "$CALLS"
-if [ "$1" = api ] && [ "$2" != -X ]; then
-  [ "$LOOKUP_STATUS" = 0 ] || exit "$LOOKUP_STATUS"
-  echo "$PR_NUMBER"
-elif [ "$*" = 'pr merge 42 --squash --auto' ]; then exit "$MERGE_STATUS"
-else echo 'unsupported GitHub command' >&2; exit 44
-fi`,
-    node: `printf 'node %s\\n' "$*" >> "$CALLS"
-if [ "$*" = "scripts/check.mjs --plan" ]; then echo "$PLAN"; exit "$PLAN_STATUS"; fi
-[ "$*" = scripts/check-agent-identity.mjs ] || exit 99
-exit "$IDENTITY_STATUS"`,
-    cargo: `printf 'cargo %s\\n' "$*" >> "$CALLS"`,
-    pnpm: `printf 'pnpm %s\\n' "$*" >> "$CALLS"`,
-  };
-  for (const [name, body] of Object.entries(stubs)) writeFileSync(join(bin, name), `#!/usr/bin/env bash\n${body}\n`, { mode: 0o755 });
-  return (overrides = {}) => {
+  const root = mkdtempSync(join(tmpdir(), "ibis-land-")), bin = join(root, "bin"), calls = join(root, "calls");
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  for (const path of ["bin", "scripts", "checkout/scripts"]) mkdirSync(join(root, path), { recursive: true });
+  copyFileSync(fileURLToPath(new URL("./pr-lint.mjs", import.meta.url)), join(root, "scripts/pr-lint.mjs"));
+  copyFileSync(fileURLToPath(new URL("./pr-lint.mjs", import.meta.url)), join(root, "checkout/scripts/pr-lint.mjs"));
+  writeFileSync(join(root, "supplied-body"), "Caller supplied body.\n");
+  for (const [name, body] of Object.entries({
+    git: `if [ "$1" = -C ]; then shift 2; fi
+    case "$1" in
+      rev-parse) case "$2" in --abbrev-ref) echo "$BRANCH";; --show-toplevel) echo "$ROOT/checkout";; *) if [ -f "$ROOT/changed" ]; then echo bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb; else echo "$SHA"; fi;; esac;;
+      status) [ "$STATUS_ERROR" = 0 ] || exit "$STATUS_ERROR"; if [ "$DIRTY" = 1 ]; then echo ' M synthetic'; fi;;
+      rev-list) echo "$SHA";;
+      show) if [ "$3" = --format=%s ]; then echo 'ci: simplify the pipeline'; else printf 'Synthetic change.\\n\\nCloses #7\\n\\nSigned-off-by: Synthetic <synthetic@example.org>\\nAssisted-by: Codex\\n'; fi;;
+      interpret-trailers) exec /usr/bin/git "$@";;
+      log) printf 'Signed-off-by: Synthetic <synthetic@example.org>\\nAssisted-by: Codex\\n';;
+      show-ref) [ "$BRANCH_EXISTS" = 1 ];;
+      worktree) if [ "$2" = add ]; then mkdir -p "$5"; else rm -rf "$3"; fi;;
+      push) exit "$PUSH_STATUS";;
+    esac`,
+    cargo: `[ "$*" != "$FAIL_CHECK" ]`,
+    pnpm: `[ "$*" != "$FAIL_CHECK" ]`,
+    node: `case "$1" in
+      *pr-lint.mjs) exec "$REAL_NODE" "$@";;
+      scripts/gen.mjs) if [ "$MOVE_HEAD" = 1 ]; then touch "$ROOT/changed"; fi;;
+    esac
+    [ "$*" != "$FAIL_CHECK" ]`,
+    gh: `case "$1 $2" in
+      'api user') echo "$GH_ACTOR";;
+      'repo view') echo example/ibis;;
+      'pr list') if [[ "$*" == *'--state merged'* ]]; then [ "$MERGED" = 0 ] || echo "$SHA"; elif [ "$HAS_PR" = 1 ]; then printf '42\\t%s\\t%s\\t%s\\n' "$AUTHOR" "$FORK" "$DRAFT"; fi;;
+      'pr view') case "$*" in *--json\\ title*) echo "$PR_TITLE";; *--json\\ body*) printf 'Reviewed body.\\n\\n## Handoff\\nExisting instructions.\\n';; *--json\\ headRefOid*) echo "$PR_SHA";; *) echo https://example.invalid/pull/42;; esac;;
+      'pr create'|'pr edit') while [ "$#" -gt 0 ]; do if [ "$1" = --body-file ]; then cp "$2" "$ROOT/body"; fi; shift; done; echo https://example.invalid/pull/42;;
+      'pr ready') exit "$READY_STATUS";;
+      'pr merge') while [ "$#" -gt 0 ]; do if [ "$1" = --body-file ]; then cp "$2" "$ROOT/merge-body"; fi; shift; done; exit "$MERGE_STATUS";;
+    esac`,
+  })) writeFileSync(join(bin, name), `#!/usr/bin/env bash\nprintf '${name} %s\\n' "$*" >> "$CALLS"\n${body}\n`, { mode: 0o755 });
+  return (overrides = {}, args = []) => {
+    for (const path of ["changed", "body", "merge-body"]) rmSync(join(root, path), { force: true });
     writeFileSync(calls, "");
-    const result = spawnSync("bash", [fileURLToPath(new URL("./land.sh", import.meta.url))], {
-      cwd: dir, encoding: "utf8", timeout: 5000,
-      env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, CALLS: calls, BRANCH: "fix/synthetic", MERGE_PENDING: "0", COMMIT_STATUS: "0", IDENTITY_STATUS: "0", PUSH_STATUS: "0", PR_NUMBER: "42", LOOKUP_STATUS: "0", MERGE_STATUS: "0", PLAN: "", PLAN_STATUS: "0", ...overrides },
-    });
-    return { ...result, calls: readFileSync(calls, "utf8").trim().split("\n") };
+    const result = spawnSync("bash", [fileURLToPath(new URL("./land.sh", import.meta.url)), ...args], { cwd: root, encoding: "utf8", timeout: 15000,
+      env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, ROOT: root, CALLS: calls, REAL_NODE: process.execPath, BRANCH: "ci/synthetic", BRANCH_EXISTS: "1", SHA: sha, PR_SHA: sha, PR_TITLE: "fix: preserve the reviewed title", DIRTY: "0", MOVE_HEAD: "0", STATUS_ERROR: "0", GH_ACTOR: "diyanko", PUSH_STATUS: "0", HAS_PR: "1", MERGED: "1", AUTHOR: "diyanko", FORK: "false", DRAFT: "false", READY_STATUS: "0", MERGE_STATUS: "0", FAIL_CHECK: "", ...overrides } });
+    let body = ""; try { body = readFileSync(join(root, "body"), "utf8"); } catch {}
+    let mergeBody = ""; try { mergeBody = readFileSync(join(root, "merge-body"), "utf8"); } catch {}
+    return { ...result, calls: readFileSync(calls, "utf8"), body, mergeBody };
   };
 }
 
-test("landing pushes before requesting squash auto-merge through gh", { skip: process.platform === "win32" }, (t) => {
+test("fast checks precede push and a new PR requests hosted auto-merge", posix, (t) => {
+  const result = fixture(t)({ HAS_PR: "0" });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  for (const command of ["cargo fmt --all --check", "cargo check --workspace --all-targets --locked", "pnpm -C apps/desktop exec tsc --noEmit", "pnpm -C apps/desktop lint", "node scripts/gen.mjs --check"]) {
+    assert.ok(result.calls.includes(command), result.calls);
+    assert.ok(result.calls.indexOf(command) < result.calls.indexOf("git push"));
+  }
+  assert.match(result.calls, new RegExp(`git push -q -u origin ${sha}:refs/heads/ci/synthetic`));
+  assert.match(result.calls, new RegExp(`gh pr merge .*--auto --squash --body-file .* --match-head-commit ${sha}`));
+  assert.doesNotMatch(result.calls, /ssh |statuses\/|--admin|--delete-branch|cargo (clippy|test|deny)|vitest|pnpm .* install/);
+  assert.match(result.body, /Synthetic change\.[\s\S]*Closes #7/);
+  assert.match(result.mergeBody, /Signed-off-by: Synthetic <synthetic@example.org>\nAssisted-by: Codex/);
+  assert.equal(result.mergeBody.match(/Signed-off-by:/g).length, 1);
+  assert.match(result.stdout, /Auto-merge requested/);
+});
+
+test("invalid titles fail before checks or push start", posix, (t) => {
   const run = fixture(t);
-  // A second invocation uses the same safe command: no approval or bypass.
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const result = run();
-    assert.equal(result.status, 0, result.stderr);
-    assert.ok(result.calls.indexOf("git push -q -u origin fix/synthetic") < result.calls.indexOf("gh pr merge 42 --squash --auto"));
-    assert.equal(result.calls.at(-1), "gh pr merge 42 --squash --auto");
-    assert.match(result.stdout, /#42 joins the merge queue once its CI is green/);
+  for (const [env, args] of [[{ PR_TITLE: `fix: ${"a".repeat(68)}` }, []], [{ HAS_PR: "0" }, ["--title", `fix: ${"a".repeat(68)}`]]]) {
+    const result = run(env, args);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stdout, /73 characters/);
+    assert.doesNotMatch(result.calls, /cargo |git push/);
   }
 });
 
-test("landing refuses main or detached HEAD and never requests a merge after a failed push", { skip: process.platform === "win32" }, (t) => {
+test("start claims a branch in a worktree and end removes only a clean merged head", posix, (t) => {
   const run = fixture(t);
-  for (const branch of ["main", "HEAD"]) {
-    const refused = run({ BRANCH: branch });
-    assert.equal(refused.status, 2);
-    assert.equal(refused.calls.length, 1);
+  const started = run({}, ["start", "fix-shelf", "7"]);
+  assert.equal(started.status, 0, started.stdout + started.stderr);
+  assert.match(started.calls, /worktree add -b fix-shelf .*\/ibis-work\/fix-shelf origin\/main/);
+  assert.match(started.calls, /pnpm -C apps\/desktop install --frozen-lockfile --offline/);
+  assert.match(started.calls, /commit --allow-empty -s -m chore: fix shelf/);
+  assert.match(started.calls, /pr create --draft .*--title chore: fix shelf --body Refs #7/);
+  for (const env of [{ DIRTY: "1" }, { MERGED: "0" }, { BRANCH: "other" }]) {
+    const result = run({ BRANCH: "fix-shelf", ...env }, ["end", "fix-shelf"]);
+    assert.notEqual(result.status, 0);
+    assert.doesNotMatch(result.calls, /worktree remove|branch -D/);
   }
-  const failed = run({ PUSH_STATUS: "73" });
-  assert.equal(failed.status, 73);
-  assert.ok(!failed.calls.some(call => call.startsWith("gh ")));
+  const ended = run({ BRANCH: "fix-shelf" }, ["end", "fix-shelf"]);
+  assert.equal(ended.status, 0, ended.stdout + ended.stderr);
+  assert.match(ended.calls, /worktree remove .*\/ibis-work\/fix-shelf/);
+  assert.match(ended.calls, /branch -D fix-shelf/);
+  assert.equal(run({}, ["start", "fix-shelf"]).status, 0);
+  const alreadyDeleted = run({ BRANCH: "main", BRANCH_EXISTS: "0" }, ["end", "fix-shelf"]);
+  assert.equal(alreadyDeleted.status, 0, alreadyDeleted.stdout + alreadyDeleted.stderr);
+  assert.doesNotMatch(alreadyDeleted.calls, /branch -D/);
+  assert.notEqual(run({}, ["start", "../bad"]).status, 0);
 });
 
-test("a main integration is signed off and disclosed before push; a failed commit stops landing", { skip: process.platform === "win32" }, (t) => {
+test("each failed local check stops before push or PR changes", posix, (t) => {
   const run = fixture(t);
-  const integrated = run({ MERGE_PENDING: "1" });
-  assert.equal(integrated.status, 0, integrated.stderr);
-  const commit = integrated.calls.findIndex(call => call.startsWith("git commit -s --no-edit --trailer Assisted-by:"));
-  assert.ok(commit > 0, "the integration has a sign-off and assistance trailer");
-  assert.ok(commit < integrated.calls.indexOf("git push -q -u origin fix/synthetic"));
-  const unchanged = run();
-  assert.equal(unchanged.status, 0, unchanged.stderr);
-  assert.ok(!unchanged.calls.some(call => call.startsWith("git commit")));
-  const failed = run({ MERGE_PENDING: "1", COMMIT_STATUS: "76" });
-  assert.equal(failed.status, 76);
-  assert.ok(!failed.calls.some(call => call.startsWith("git push") || call.startsWith("gh ")));
-});
-
-test("landing preserves GitHub failures and explains a branch without a PR", { skip: process.platform === "win32" }, (t) => {
-  const run = fixture(t);
-  const failed = run({ MERGE_STATUS: "74" });
-  assert.equal(failed.status, 74);
-  assert.doesNotMatch(failed.stdout, /joins the merge queue/);
-  const unavailable = run({ LOOKUP_STATUS: "75" });
-  assert.equal(unavailable.status, 75);
-  assert.doesNotMatch(unavailable.stdout, /Open its pull request|joins the merge queue/);
-  for (const number of ["", "null"]) {
-    const missing = run({ PR_NUMBER: number });
-    assert.equal(missing.status, 0, missing.stderr);
-    assert.match(missing.stdout, /Open its pull request/);
-    assert.ok(!missing.calls.some(call => call.startsWith("gh pr merge")));
+  for (const FAIL_CHECK of ["fmt --all --check", "check --workspace --all-targets --locked", "-C apps/desktop exec tsc --noEmit", "-C apps/desktop lint", "scripts/gen.mjs --check"]) {
+    const result = run({ FAIL_CHECK });
+    assert.notEqual(result.status, 0, result.stdout + result.stderr);
+    assert.doesNotMatch(result.calls, /git push|gh pr (create|edit|ready|merge)/);
   }
+  assert.equal(run({}, ["--skip", "mac"]).status, 2);
 });
 
-test("landing checks what CI's plan selects and leaves test suites to CI", { skip: process.platform === "win32" }, (t) => {
+test("existing PR text survives caller overrides; drafts become ready for auto-merge", posix, (t) => {
   const run = fixture(t);
-  const native = run({ PLAN: "core interface native scripts web" });
-  assert.equal(native.status, 0, native.stderr);
-  assert.ok(native.calls.includes("cargo test --workspace --locked --no-run -q"), "a merge that no longer compiles stops here");
-  assert.ok(native.calls.includes("pnpm exec tsc --noEmit -p ."));
-  assert.ok(!native.calls.some((call) => /^cargo test (?!--workspace --locked --no-run)/.test(call)), "the test suites run in CI");
-  const docs = run({ PLAN: "" });
-  assert.equal(docs.status, 0, docs.stderr);
-  assert.ok(!docs.calls.some((call) => /^(cargo|pnpm) /.test(call)), docs.calls.join("\n"));
-  const front = run({ PLAN: "interface web" });
-  assert.ok(front.calls.includes("pnpm exec tsc --noEmit -p .") && !front.calls.some((call) => call.startsWith("cargo ")));
-  const failed = run({ PLAN_STATUS: "1" });
-  assert.equal(failed.status, 1);
-  assert.ok(!failed.calls.some((call) => call.startsWith("git push") || call.startsWith("gh ")));
+  for (const author of ["diyanko", "ibis-release[bot]"]) {
+    const result = run({ AUTHOR: author, DRAFT: "true" }, ["--title", "ci: caller title", "--body-file", "supplied-body"]);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.mergeBody, /^Reviewed body\.\n\n## Handoff\nExisting instructions\./);
+    assert.match(result.mergeBody, /Signed-off-by: Synthetic <synthetic@example.org>\nAssisted-by: Codex/);
+    assert.match(result.calls, /gh pr ready 42/);
+    assert.match(result.calls, /pr-lint.mjs --title fix: preserve the reviewed title/);
+    assert.doesNotMatch(result.calls, /gh pr (create|edit)/);
+    assert.doesNotMatch(result.mergeBody, /Caller supplied body/);
+  }
+  const created = run({ HAS_PR: "0" }, ["--title", "ci: caller title", "--body-file", "supplied-body"]);
+  assert.equal(created.status, 0, created.stdout + created.stderr);
+  assert.match(created.body, /^Caller supplied body\./);
+  assert.match(created.calls, /pr create .*--title ci: caller title/);
 });
 
-test("a rejected public commit identity stops before publishing anything", { skip: process.platform === "win32" }, (t) => {
-  const result = fixture(t)({ IDENTITY_STATUS: "77" });
-  assert.equal(result.status, 77);
-  assert.ok(!result.calls.some(call => call.startsWith("git push") || call.startsWith("gh ")));
-});
-
-test("a real Git integration preserves both changes and publishes signed, disclosed metadata once", { skip: process.platform === "win32" }, (t) => {
-  const root = mkdtempSync(join(tmpdir(), "ibis-land-git-"));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
-  const repo = join(root, "repo"), origin = join(root, "origin.git"), bin = join(root, "bin");
-  mkdirSync(repo); mkdirSync(bin);
-  // Inherited Git source/config overrides must never redirect fixture commands
-  // into the caller's repository, identity, hooks or credential helpers.
-  const env = { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^GIT(HUB)?_/.test(key))), GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
-  const git = (...args) => {
-    const result = spawnSync("git", args, { cwd: repo, env, encoding: "utf8", timeout: 10_000 });
-    assert.equal(result.status, 0, result.stderr);
-    return result.stdout.trim();
-  };
-  git("init", "-b", "main");
-  git("config", "user.name", "Synthetic Maintainer");
-  git("config", "user.email", "noreply@github.com");
-  writeFileSync(join(repo, "README.md"), "initial main\n");
-  git("add", "."); git("commit", "-m", "initial fixture");
-  git("clone", "--bare", repo, origin);
-  git("remote", "add", "origin", origin);
-  git("switch", "-c", "fix/synthetic");
-  writeFileSync(join(repo, "feature.md"), "branch work\n");
-  git("add", "."); git("commit", "-m", "fixture branch");
-  git("switch", "main");
-  writeFileSync(join(repo, "README.md"), "upstream main\n");
-  git("commit", "-am", "fixture upstream");
-  git("--git-dir", origin, "fetch", repo, "main:main");
-  git("switch", "fix/synthetic");
-  mkdirSync(join(repo, "scripts"));
-  for (const name of ["check-agent-identity.mjs", "check.mjs", "ci-paths.mjs"]) writeFileSync(join(repo, "scripts", name), readFileSync(new URL(`./${name}`, import.meta.url)));
-  writeFileSync(join(repo, ".git/info/exclude"), "scripts/\n"); // The landing tools are not the branch's change.
-  writeFileSync(join(bin, "gh"), "#!/bin/sh\nif [ \"$1\" = api ]; then echo 42; else [ \"$*\" = 'pr merge 42 --squash --auto' ]; fi\n", { mode: 0o755 });
-  const land = () => {
-    const result = spawnSync("bash", [fileURLToPath(new URL("./land.sh", import.meta.url))], {
-      cwd: repo, encoding: "utf8", timeout: 10_000,
-      env: { ...env, PATH: `${bin}${delimiter}${env.PATH}` },
-    });
-    assert.equal(result.status, 0, result.stderr);
-  };
-  land();
-  const head = git("rev-parse", "HEAD");
-  assert.equal(git("show", "-s", "--format=%P").split(" ").length, 2);
-  const message = git("log", "-1", "--format=%B");
-  assert.match(message, /^Signed-off-by: Synthetic Maintainer <noreply@github\.com>$/m);
-  assert.match(message, /^Assisted-by: .+AI-assisted.+$/m);
-  assert.equal(readFileSync(join(repo, "README.md"), "utf8"), "upstream main\n");
-  assert.equal(readFileSync(join(repo, "feature.md"), "utf8"), "branch work\n");
-  assert.equal(git("--git-dir", origin, "rev-parse", "refs/heads/fix/synthetic"), head);
-  land();
-  assert.equal(git("rev-parse", "HEAD"), head, "an up-to-date branch gains no empty commit");
+test("dirty files, moving heads, wrong owners and failed push refuse auto-merge", posix, (t) => {
+  const run = fixture(t);
+  for (const env of [{ BRANCH: "main" }, { BRANCH: "HEAD" }, { DIRTY: "1" }, { STATUS_ERROR: "74" }, { MOVE_HEAD: "1" }, { PUSH_STATUS: "73" }, { GH_ACTOR: "someone" }, { AUTHOR: "someone" }, { FORK: "true" }, { PR_SHA: "b".repeat(40) }]) {
+    const result = run(env);
+    assert.notEqual(result.status, 0, JSON.stringify(env) + result.stdout + result.stderr);
+    assert.doesNotMatch(result.calls, /gh pr merge/);
+  }
+  assert.doesNotMatch(run({ DRAFT: "true", READY_STATUS: "74" }).calls, /gh pr merge/);
+  assert.equal(run({ MERGE_STATUS: "74" }).status, 74);
 });

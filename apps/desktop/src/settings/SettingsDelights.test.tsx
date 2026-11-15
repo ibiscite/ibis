@@ -1,12 +1,18 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import { SettingsApp } from "./SettingsApp";
 import { demoApi } from "./demo";
 
 afterEach(() => vi.useRealTimers());
 const details = { fun: true, fact: null, revision: 1, status: null, peck: false, anniversary: true, build: "0.0.0+invented · invented-build · 2026-11-01" } as const;
 
-test("About reveals full build with Option and uses the same copy path, including failed I/O", async () => {
+test.each(["macos", "windows", "linux"])("%s: About reveals full build with Option/Alt and uses the same copy path, including failed I/O", async (platform) => {
+  const previous = document.documentElement.dataset.system;
+  document.documentElement.dataset.system = platform;
+  onTestFinished(() => {
+    if (previous === undefined) delete document.documentElement.dataset.system;
+    else document.documentElement.dataset.system = previous;
+  });
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const write = vi.fn().mockResolvedValue(undefined);
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: write } });
@@ -14,8 +20,13 @@ test("About reveals full build with Option and uses the same copy path, includin
   const mounted = render(<SettingsApp api={api} initialPage="about" />);
   expect(await screen.findByText("One year with Ibis today.")).toBeTruthy();
   expect(screen.queryByText(/invented-build/)).toBeNull();
+  fireEvent.keyDown(window, { key: "Shift", shiftKey: true });
+  expect(screen.queryByText(/invented-build/)).toBeNull();
+  fireEvent.keyUp(window, { key: "Shift" });
   fireEvent.keyDown(window, { key: "Alt", altKey: true });
   const row = await screen.findByRole("button", { name: `Version ${details.build}` });
+  fireEvent.pointerOver(row, { altKey: true });
+  expect(screen.getByRole("button", { name: `Version ${details.build}` })).toBe(row);
   fireEvent.click(row);
   await waitFor(() => expect(write).toHaveBeenLastCalledWith(`Ibis ${details.build}`));
   await screen.findByRole("button", { name: "Copied" });

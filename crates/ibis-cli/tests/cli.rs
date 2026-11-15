@@ -69,7 +69,7 @@ fn toggle_succeeds_only_when_ibis_answers() {
     assert_eq!(output.status.code(), Some(3));
     assert_eq!(
         json(&output),
-        serde_json::json!({"ibis":1,"ok":false,"error":{"code":"bad-input","reason":"not-ibis"}})
+        serde_json::json!({"ibis":1,"ok":false,"error":{"code":"bad-input","reason":"not-ibis","message":{"id":"reason-not-ibis","args":{}},"recovery":{"action":"upgrade-ibis"},"focus":"recovery-action"}})
     );
     assert!(String::from_utf8_lossy(&output.stderr).contains("is not Ibis"));
 
@@ -82,7 +82,7 @@ fn toggle_succeeds_only_when_ibis_answers() {
     assert_eq!(output.status.code(), Some(4));
     assert_eq!(
         json(&output),
-        serde_json::json!({"ibis":1,"ok":false,"error":{"code":"not-found","reason":"app-missing"}})
+        serde_json::json!({"ibis":1,"ok":false,"error":{"code":"not-found","reason":"app-missing","message":{"id":"reason-app-missing","args":{}},"recovery":{"action":"upgrade-ibis"},"focus":"recovery-action"}})
     );
     // macOS starts a named app through Launch Services, which refuses a plain program.
     let output = run(&["--app", "/bin/true"]);

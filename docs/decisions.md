@@ -40,7 +40,7 @@ the anchor older links use.
 [0016](decisions/0016-settings.md): `settings.json`, atomic saves, no migrations before 1.0, backups and restore.
 
 ## 0031 What Ibis remembers per app
-[0031](decisions/0031-what-ibis-remembers-per-app.md): writing projects, a format per app, `apps.json`, recent citations and app-ID evidence.
+[0031](decisions/0031-what-ibis-remembers-per-app.md): `apps.json`, recent citations and app-ID evidence. Format and writing rules are replaced by 0042.
 
 ## 0019 Updates
 [0019](decisions/0019-updates.md): Tauri's updater, opt-in, signed; offers never take Enter; release naming.
@@ -87,5 +87,41 @@ the anchor older links use.
 ## 0042 Formats, apps and writings
 [0042](decisions/0042-formats-apps-and-writings.md): one visible format; a writing you chose beats this app's format beats your format; Ibis finds inside Zotero; Settings and a live settings file stay in step.
 
+## 0043 RIS and CSV libraries
+[0043](decisions/0043-ris-and-csv-libraries.md): RIS exports and the CSV template are read-only libraries with no citation keys; a record's identity is a hash of its CSL data.
+
+## 0044 One Lucide icon primitive
+[0044](decisions/0044-lucide-icon-primitive.md) (superseded by 0053): Lucide 1.72.0 under ISC, two fixed pixel sizes with a 1.5px rendered stroke, and Lucide's drawing rules for missing glyphs.
+
+## 0045 The citation line is a token field
+[0045](decisions/0045-citation-line-token-field.md): each reference in the shelf's line is a token whose details open in a popover above it; the side panel keeps the Reader and warnings.
+
+## 0046 Official names and listings
+[0046](decisions/0046-official-names-and-listings.md): useful MIT clients under `ibiscite`, official listings before 1.0, build provenance, and the name and logo owner and contact.
+
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
-[0027](decisions/0027-process-until-1-0.md): agents' merge authority, auto-merge on green and the testing rhythm.
+[0027](decisions/0027-process-until-1-0.md): agents' merge authority and the testing rhythm.
+
+## 0047 Opening references, where the picker appears, and going back
+[0047](decisions/0047-opening-references-placement-and-back.md): the search row at the upper quarter of the writing app's screen, one table for Esc, Backspace and Back, and what ⌘O and its alternate do for every library type, configurable under Libraries.
+
+## 0048 Nix install
+[0048](decisions/0048-nix-install.md): the CLI builds from source on Linux and macOS, the desktop on Linux; independent CI reports hash repairs for agents.
+
+## 0049 Local machines gate merges
+[0049](decisions/0049-local-gate.md): superseded; hosted CI's fast Ubuntu tier is the required merge check, without a merge queue, and macOS and Windows confirm on main and nightly.
+
+## 0050 The menu bar menu
+[0050](decisions/0050-menu-bar-menu.md): one native menu on every system, with one-click library switching, Copy Again for the frontmost app, a spoken state and text drops; no custom card.
+
+## 0051 References in and out
+[0051](decisions/0051-references-in-and-out.md): six lasting concepts with one owner each; share a selection first (offline), then paste a DOI to cite, then add through Zotero's write API; attachments only when ticked for a share.
+
+## 0052 The engine owns the library and citations
+[0052](decisions/0052-engine-owns-library-and-citations.md): one engine per process with a library owner and citation sessions by id; one validator, one display contract and one vocabulary; front ends keep platform effects. Lands in six slices.
+
+## 0053 One window grid, and icons by meaning
+[0053](decisions/0053-window-grid-and-icons.md): a leading edge, a 32 px lead column, a title column and a trailing edge, drawn by `ui/Band`; headings and status start on the leading edge; held ⌘ marks rows only; no clear button; Use Default follows the setting's name; Phosphor Regular, named by meaning, replaces Lucide.
+
+## 0054 Owners and boundaries
+[0054](decisions/0054-owners-and-boundaries.md): three exclusive engine owners that accept intents and publish observations, one native delivery owner, and typed boundaries (checked artifacts, `Problem`, executable actions); ten stages, the gate first.

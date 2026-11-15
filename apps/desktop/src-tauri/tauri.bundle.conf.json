@@ -1,0 +1,25 @@
+{
+  "bundle": {
+    "externalBin": [
+      "binaries/ibis"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerHooks": "packaging/path.nsh"
+      },
+      "wix": {
+        "fragmentPaths": [
+          "packaging/path.wxs"
+        ],
+        "componentRefs": [
+          "IbisUserPath"
+        ]
+      }
+    },
+    "resources": [
+      "resources/samples.csljson",
+      "packaging/path.ps1"
+    ]
+  }
+}

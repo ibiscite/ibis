@@ -5,9 +5,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
-use super::engine_file::FileLibrary;
+use super::engine_library::FileLibrary;
 use super::error::LoadError;
-use super::load::{FileReload, Loaded};
+use super::load::{LibraryReload, Loaded};
 use super::source::Source;
 use super::status::{LibraryStatus, status};
 
@@ -89,7 +89,25 @@ pub(super) fn leave_samples(library: &Mutex<Library>, requests: &LoadRequests) {
     }
     requests.0.fetch_add(1, Ordering::SeqCst);
     if let Some(file) = &library.file {
-        file.invalidate();
+        file.engine
+            .citations()
+            .invalidate(ibis_engine::citations::SessionId::PICKER);
+    }
+    *library = Library {
+        settings_notice: library.settings_notice.take(),
+        ..Library::default()
+    };
+    library.advance_source_generation();
+}
+
+/// Removing the saved source retires in-flight opens and prepared citations.
+pub(super) fn clear(library: &Mutex<Library>, requests: &LoadRequests) {
+    let Ok(mut library) = library.lock() else { return };
+    requests.0.fetch_add(1, Ordering::SeqCst);
+    if let Some(file) = &library.file {
+        file.engine
+            .citations()
+            .invalidate(ibis_engine::citations::SessionId::PICKER);
     }
     *library = Library {
         settings_notice: library.settings_notice.take(),
@@ -188,7 +206,7 @@ pub(super) fn install_loaded(
 ) -> Option<LibraryStatus> {
     match loaded {
         Ok(Loaded::New(new)) => install(library, requests, request, Ok(*new)),
-        Ok(Loaded::Reload(reload)) => install_reload(library, requests, request, *reload),
+        Ok(Loaded::Reload(reload)) => install_reload(library, requests, request, *reload, false),
         Err(error) => install(library, requests, request, Err(error)),
         Ok(Loaded::Unchanged) => {
             let mut library = library.lock().ok()?;
@@ -208,13 +226,27 @@ pub(super) fn install_loaded(
     }
 }
 
+pub(super) fn install_automatic_loaded(
+    library: &Mutex<Library>,
+    requests: &LoadRequests,
+    request: u64,
+    loaded: Result<Loaded, LoadError>,
+) -> Option<LibraryStatus> {
+    match loaded {
+        Ok(Loaded::New(new)) => install_automatic(library, requests, request, Ok(*new)),
+        Ok(Loaded::Reload(reload)) => install_reload(library, requests, request, *reload, true),
+        loaded => install_loaded(library, requests, request, loaded),
+    }
+}
+
 /// Publication and status reconciliation share the immutable request's selection
 /// guard. No cancelled completion can alter the engine retained by a failed choice.
 fn install_reload(
     library: &Mutex<Library>,
     requests: &LoadRequests,
     request: u64,
-    reload: FileReload,
+    reload: LibraryReload,
+    automatic: bool,
 ) -> Option<LibraryStatus> {
     let mut library = library.lock().ok()?;
     if requests.0.load(Ordering::SeqCst) != request
@@ -226,7 +258,7 @@ fn install_reload(
     {
         return None;
     }
-    match reload.file.accept_reload(reload.prepared) {
+    match reload.accept() {
         Ok(()) => {
             library.opening = false;
             library.checking = false;
@@ -236,7 +268,9 @@ fn install_reload(
             let now = SystemTime::now();
             library.checked_at = Some(now);
             library.observe_revision(now);
-            library.choice_save_warning = None;
+            if !automatic {
+                library.choice_save_warning = None;
+            }
         }
         Err(error) => {
             library.opening = false;
@@ -268,7 +302,9 @@ pub(super) fn record_open(
     let reload = library.source.as_ref() == Some(&source);
     library.observe_revision(SystemTime::now());
     if let Some(file) = &library.file {
-        file.invalidate();
+        file.engine
+            .citations()
+            .invalidate(ibis_engine::citations::SessionId::PICKER);
     }
     library.requested = Some(source);
     library.opening = true;
@@ -289,7 +325,8 @@ pub(crate) fn candidate(source: impl Into<Source>, bib: &str) -> Library {
         checked_at: Some(SystemTime::now()),
         source: Some(source.into()),
         file: Some(Arc::new(
-            FileLibrary::open(&path).unwrap_or_else(|e| panic!("synthetic library: {e}")),
+            FileLibrary::open(&path, &ibis_engine::Cancellation::default())
+                .unwrap_or_else(|e| panic!("synthetic library: {e}")),
         )),
         ..Library::default()
     };
@@ -303,6 +340,29 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
+    fn removing_the_saved_source_leaves_no_library_and_a_late_open_cannot_restore_it() {
+        let library = Mutex::new(candidate(PathBuf::from("first.bib"), "@misc{first,title={First}}"));
+        let requests = LoadRequests::default();
+        let (request, _, _) = begin_open(&library, &requests, Source::File(PathBuf::from("second.bib")))
+            .unwrap_or_else(|| panic!("starts"));
+        clear(&library, &requests);
+        assert!(
+            install(
+                &library,
+                &requests,
+                request,
+                Ok(candidate(PathBuf::from("second.bib"), "@misc{second,title={Second}}"))
+            )
+            .is_none()
+        );
+        let library = library.lock().unwrap_or_else(|error| panic!("{error}"));
+        let shown = status(&library);
+        assert!(matches!(shown.state, super::super::LibraryState::None));
+        assert_eq!(shown.references, 0);
+        assert!(!shown.has_snapshot);
+    }
+
+    #[test]
     fn a_preview_refused_during_a_quiet_check_waits_and_refuses_again_after_it() {
         use crate::library::CommandError;
         use tauri::Manager;
@@ -311,7 +371,6 @@ mod tests {
                 PathBuf::from("synthetic.bib"),
                 "@misc{synthetic,title={Synthetic}}",
             )))
-            .manage(super::super::PreviewRequests::default())
             .manage(crate::project::ProjectBibliography::default())
             .manage(crate::editor_endpoint::Pending::default())
             .build(tauri::test::mock_context(tauri::test::noop_assets()))
@@ -332,7 +391,6 @@ mod tests {
                 app.state(),
                 app.state(),
                 app.state(),
-                app.state(),
             ))
             .err()
         };
@@ -346,12 +404,12 @@ mod tests {
         assert_eq!(preview(1), Some(CommandError::LibraryLoading));
         checking(false);
         assert_eq!(
-            preview(2),
-            Some(CommandError::from("The citation could not be prepared. Try again."))
+            preview(2).map(|error| error.problem()),
+            Some(ibis_core::contract::CitationError::EmptySelection.problem())
         );
     }
 
-    use ibis_core::settings::ZoteroLibrary;
+    use ibis_engine::settings::ZoteroLibrary;
 
     use crate::library::error::ZOTERO_OFFLINE;
     use crate::library::load::{load_library, load_source};
@@ -368,7 +426,6 @@ mod tests {
             std::fs::write(&path, format!("@book{{{key},title={{Synthetic stars}}}}")).unwrap();
             let app = tauri::test::mock_builder()
                 .manage(Mutex::new(Library::default()))
-                .manage(super::super::PreviewRequests::default())
                 .manage(crate::project::ProjectBibliography::default())
                 .manage(crate::editor_endpoint::Pending::default())
                 .build(tauri::test::mock_context(tauri::test::noop_assets()))
@@ -416,18 +473,16 @@ mod tests {
                 app.state(),
                 app.state(),
                 app.state(),
-                app.state(),
             ))
             .unwrap();
             let expected = format!("[@{key}]");
             assert_eq!(preview.text, expected);
             let mut written = String::new();
-            active
-                .copy(&preview.ticket, &preview.content_hash, |content| {
-                    written = content.text.to_owned();
-                    Ok(())
-                })
-                .unwrap();
+            crate::test_citations::copy(&active.engine, &preview.ticket, &preview.content_hash, |content| {
+                written = content.text.to_owned();
+                Ok(())
+            })
+            .unwrap();
             assert_eq!(written, expected);
         }
     }
@@ -582,7 +637,6 @@ mod tests {
         )
         .unwrap_or_else(|| panic!("automatic install"));
         assert_eq!(unavailable.error, rejected.error);
-        assert!(unavailable.choice_not_saved);
         let note = unavailable.note.unwrap_or_else(|| panic!("retained source note"));
         assert!(note.starts_with(original_note));
         assert!(note.contains("retained.bib could not be updated"));
@@ -594,7 +648,6 @@ mod tests {
             .unwrap_or_else(|| panic!("empty update"));
         assert_eq!(empty.references, 0);
         assert!(empty.has_snapshot);
-        assert!(empty.choice_not_saved);
         assert_eq!(
             empty.error.as_deref(),
             Some("the library file is not UTF-8 text; save it as UTF-8")
@@ -641,7 +694,6 @@ mod tests {
         assert_eq!(loaded.references, 0);
         assert!(loaded.error.is_none());
         assert!(loaded.note.is_none());
-        assert!(!loaded.choice_not_saved);
         assert_eq!(loaded.settings_notice.as_deref(), Some("settings recovered"));
     }
 
@@ -680,7 +732,6 @@ mod tests {
             let refreshed = install_automatic(&library, &requests, request, Ok(changed))
                 .unwrap_or_else(|| panic!("the refresh is current"));
             assert_eq!(refreshed.references, 2);
-            assert!(refreshed.choice_not_saved);
             assert_eq!(
                 refreshed.note.as_deref(),
                 Some(saved),
@@ -737,7 +788,7 @@ mod tests {
         assert_eq!(failed.name.as_deref(), Some("missing.bib"));
         assert_eq!(
             failed.error.as_deref(),
-            Some("the library file is unavailable; download any online-only file to this computer first")
+            Some("The library file was moved, renamed or removed.")
         );
         assert!(!failed.has_snapshot);
         assert!(
@@ -786,9 +837,7 @@ mod tests {
         assert_eq!(failed.warnings, before.warnings);
         assert_eq!(failed.note.as_deref(), Some("the library choice was not saved"));
         assert_eq!(failed.error.as_deref(), Some("the chosen file is not on this computer"));
-        assert!(
-            library_line(&failed).starts_with("Library could not be opened: the chosen file is not on this computer")
-        );
+        assert_eq!(library_line(&failed), "synthetic.bib could not be read");
         let file = library.file.clone().unwrap_or_else(|| panic!("file"));
         super::super::tasks::engine_changed(&mut library, &file);
         assert_eq!(library.error, Some(LoadError::NotLocal));

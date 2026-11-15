@@ -1,11 +1,11 @@
+import type * as nativeApi from "../../api";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PickerApi } from "../../App";
 import type { LibraryStatus } from "../../api";
 import type { Operation } from "./Notices";
 
 /** Events and reads share one request generation. Hiding retires pending
  * reads; reopening reads once. There is no library-status polling. */
-export function useLibraryStatus(api: PickerApi, report: (operation: Operation, failed?: boolean) => void, cancelCopy: () => void) {
+export function useLibraryStatus(api: typeof nativeApi, report: (operation: Operation, failed?: boolean) => void, cancelCopy: () => void) {
   const [library, setLibrary] = useState<LibraryStatus | null>();
   // A reload is not a new library: search and citations keep this one, and
   // the version stays, until it ends. Only the footer follows the live status.

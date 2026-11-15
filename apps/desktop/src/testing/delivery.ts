@@ -4,8 +4,9 @@
  * for its queue's pending[n].complete(value), inside React act(). Searches and
  * previews take invented engine fixtures; copy validates the returned ticket/hash
  * and writes that exact preview to the clipboard, never a supplied copy receipt.
- * Like macOS, its successful write captures the current app and presentation;
- * App must suppress stale completion feedback even after that native write.
+ * A copy captures its presentation and clipboard sequence before its worker
+ * starts, and refuses a superseded write. App also suppresses stale feedback
+ * when a successful native write's response arrives after reopening.
  *
  * show_copied_notice queues delivery first: completing it consumes a matching
  * one-use proof, checks clipboard ownership/sequence and picker presentation,
@@ -19,9 +20,10 @@
  * deadlines, engine formatting or hashing. Their Rust tests remain necessary.
  */
 import { emit } from "@tauri-apps/api/event";
-import type { AppPaste, Copied, Delivered, FilePreview, NoticeMessage, SearchQuery, SearchReply } from "../bindings";
+import type { AppPaste, CopiedReason, Copied, Delivered, Preview, NoticeMessage, SearchQuery, SearchReply } from "../bindings";
 import { readNotice, renderNotice } from "../copyFeedback";
-import { backend, prepared, receipt, type PreviewRequest } from "./app";
+import { backend, prepared, receipt, displayTree, type PreviewRequest } from "./app";
+import { formatAnswer } from "./format";
 
 type Job<Args, Input> = {
   args: Args;
@@ -54,15 +56,16 @@ class Work<Args, Input = void, Output = void> {
   }
 }
 
-type PreviewContent = Pick<FilePreview, "text"> & Partial<Pick<FilePreview, "html" | "warnings" | "spans">>;
+type PreviewContent = Pick<Preview, "text"> & Partial<Pick<Preview, "display" | "warnings">> & { clipboardHtml?: string };
 type DeliveryRequest = { text: string; delivery: number | null };
-type Capture = { window: number | null; surface: number | null; reason: string | null; selection: string | null; unread: boolean };
+type Capture = { window: number | null; surface: number | null; reason: CopiedReason | null; selection: string | null; unread: boolean };
 type Proof = DeliveryRequest & Capture & { replaces: string[] | null; delivery: number; sequence: number; presentation: number; app: string; epoch: number; written: number; paste: AppPaste | null };
 type AppChoice = { output: string | null; paste: AppPaste | null };
 
 export function deliveryHarness(text = "Draft: [citation].", selection: [number, number] = [7, 17]) {
   const search = new Work<SearchQuery, SearchReply, SearchReply>();
-  const preview = new Work<PreviewRequest, PreviewContent, FilePreview>();
+  const citationKeys = new Map<string, string>();
+  const preview = new Work<PreviewRequest, PreviewContent, Preview>();
   const copy = new Work<{ ticket: string; contentHash: string; replaces: string[] }, void, Copied>();
   const copyReplies = new Work<Copied, void, Copied>();
   let holdCopyReplies = false;
@@ -71,6 +74,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
   const appSaves = new Work<{ appId: string; output: string | null; paste: AppPaste | null }>();
   const appChoices = new Map<string, AppChoice>();
   let holdAppSaves = false;
+  const clipboardHtml = new Map<string, string | null>();
   const clipboard = { text: "", html: null as string | null, owner: null as "ibis" | "external" | null, sequence: 0 };
   const document = {
     app: "Example Writer", text, selection,
@@ -89,6 +93,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
   const receiptRoot = globalThis.document.createElement("div");
   const showReceipt = renderNotice(receiptRoot, "macos");
   let presentation = 0;
+  let copyGeneration = 0;
   let visible = true;
   let nextDelivery = 0;
   let proof: Proof | null = null;
@@ -144,9 +149,9 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
       captured ??= capture();
       const choice = appChoices.get(target.appId);
       const paste = target.refusal ? null : choice?.paste ?? null;
-      return { app: document.app, app_id: target.appId, app_identity: target.appId, automatic: "pandoc", remembered: choice?.output ?? null, unreadable: false,
+      return { app: document.app, app_id: target.appId, app_identity: target.appId, format: formatAnswer(choice?.output ?? "pandoc", choice?.output ? "app" : "suggestion"), unreadable: false,
         can_paste: !target.refusal && (target.verified || paste === "paste") && paste !== "copy-only" && captured.reason === null && (!captured.selection || shows(captured.selection)),
-        output_question: null, paste, can_choose_paste: !target.refusal && captured.reason === null, paste_question: !target.refusal && !target.verified && paste === null && captured.reason === null };
+        paste, can_choose_paste: !target.refusal && captured.reason === null, paste_question: !target.refusal && !target.verified && paste === null && captured.reason === null };
     },
     remember_app_output: ({ appId, output, paste }) => {
       if (appId !== target.appId || paste === "paste" && target.refusal) throw new Error("The app cannot receive that choice");
@@ -159,18 +164,21 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
       if (!holdAppSaves) appSaves.pending.at(-1)!.complete();
       return saving;
     },
-    search: ({ query }) => search.enqueue(query, (reply) => reply),
+    search: ({ query }) => search.enqueue(query, (reply) => {
+      for (const record of reply.results) citationKeys.set(JSON.stringify(record.id), record.key);
+      return reply;
+    }),
     preview_file_citation: (args) => {
       const request = ++latestPreview;
       return preview.enqueue(args, (content) => {
-        const value = receipt(content.text, content.html ?? null, content.warnings ?? []);
-        const bodies = args.items.map((item) => `@${item.id.key}`);
-        if (content.spans) value.spans = content.spans;
-        else if (content.text === `[${bodies.join("; ")}]`) value.spans = [
+        const value = receipt(content.text, content.display ?? null, content.warnings ?? []);
+        clipboardHtml.set(value.ticket, content.clipboardHtml ?? null);
+        const bodies = args.items.map((item) => `@${citationKeys.get(JSON.stringify(item.id)) ?? ""}`);
+        if (!content.display && content.text === `[${bodies.join("; ")}]`) value.display = displayTree([
           { item: null, text: "[" },
           ...bodies.flatMap((text, item) => [...(item ? [{ item: null, text: "; " }] : []), { item, text }]),
           { item: null, text: "]" },
-        ];
+        ]);
         if (request === latestPreview) activeTicket = value.ticket;
         return value;
       });
@@ -178,16 +186,18 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
     copy_file_citation: (args) => {
       const replaces = (args.replaces ?? []) as string[];
       const request = { ...args, replaces };
+      const generation = copyGeneration, sequence = clipboard.sequence;
       return copy.enqueue(request, () => {
+        if (generation !== copyGeneration || sequence !== clipboard.sequence) throw { code: "cancelled" };
         const { preview } = prepared(args);
         if (args.ticket !== activeTicket) throw { code: "snapshot_changed" };
-        Object.assign(clipboard, { text: preview.text, html: preview.html, owner: "ibis", sequence: clipboard.sequence + 1 });
+        Object.assign(clipboard, { text: preview.text, html: clipboardHtml.get(preview.ticket) ?? null, owner: "ibis", sequence: clipboard.sequence + 1 });
         const token = ++nextDelivery;
         proof = { ...(captured ?? capture()), replaces: replaces.length > 0 ? replaces : null, presentation, app: document.app, text: preview.text, delivery: token, sequence: clipboard.sequence, epoch: lifecycle.epoch, written: lifecycle.elapsed, paste: appChoices.get(target.appId)?.paste ?? null };
         return { text: clipboard.text, warnings: preview.warnings, delivery: token };
       }).then((outcome) => holdCopyReplies ? copyReplies.enqueue(outcome, () => outcome) : outcome);
     },
-    hide_picker: async () => { visible = false; await emit("picker:hidden"); return null; },
+    hide_picker: async () => { copyGeneration += 1; visible = false; await emit("picker:hidden"); return null; },
     show_copied_notice: (args) => {
       const request = args as unknown as DeliveryRequest;
       const noticeOwner = ++latestNotice;
@@ -208,6 +218,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
     get visible() { return visible; },
     async reopen() {
       presentation += 1;
+      copyGeneration += 1;
       proof = null;
       captured = capture();
       visible = true;

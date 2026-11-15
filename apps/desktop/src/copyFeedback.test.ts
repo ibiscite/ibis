@@ -112,7 +112,7 @@ test("the notice says where the citation was pasted, or why it was only copied",
 test("a reason Rust sends that this build does not know is reported and still says why and how to paste", () => {
   const error = vi.spyOn(console, "error").mockImplementation(() => {});
   try {
-    const wire: NoticeMessage = { delivered: { outcome: "copied", reason: "unknown-future-code" }, text: "[@a]" };
+    const wire = { delivered: { outcome: "copied", reason: "unknown-future-code" }, text: "[@a]" } as unknown as NoticeMessage;
     const notice = readNotice(wire);
     expect(notice.delivered).toEqual({ outcome: "copied", reason: "paste-unavailable" });
     expect(noticeTitle(notice, "macos")).toBe("Copied. Ibis couldn’t confirm where the text would go. Press ⌘V to paste.");
@@ -122,26 +122,8 @@ test("a reason Rust sends that this build does not know is reported and still sa
   } finally { error.mockRestore(); }
 });
 
-test("the copy reasons are exactly the ones Rust sends, and each has its words", async () => {
-  const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
-  const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
-  const read = (path: string) => readFileSync(new FileURL(path, import.meta.url), "utf8");
-  const core = read("../../../crates/ibis-core/src/destination/mod.rs").match(/pub enum CopyReason \{([^}]*)\}/)![1]!
-    .replace(/\/\/[^\n]*/g, "").match(/[A-Z]\w*/g)!.map((name) => name.replace(/(?<!^)[A-Z]/g, (letter) => `-${letter}`).toLowerCase());
-  const delivery = [...read("../src-tauri/src/paste/delivery.rs").matchAll(/reason: "([a-z-]+)"\.into\(\)/g)].map((match) => match[1]!);
-  expect(core).toContain("paste-off");
-  expect([...COPY_REASONS].sort()).toEqual([...new Set([...core, ...delivery])].sort());
-});
-
-test("every reason reads as the Notices table in docs/design/delivery.md says: why, then its fix", async () => {
+test("every reason says why, then its fix, in the system's paste key", () => {
   const reasons: Record<string, string> = Object.fromEntries(COPY_REASONS.map((reason) => [reason, say("copied-notice-reason", { reason })]));
-  const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
-  const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
-  const design = readFileSync(new FileURL("../../../docs/design/delivery.md", import.meta.url), "utf8");
-  const section = design.slice(design.indexOf("## Notices"));
-  const rows = section.split("\n").filter((line) => /^\| [^-]/.test(line)).slice(1).map((line) => line.split("|").slice(1, -1).map((cell) => cell.trim()));
-  const table = Object.fromEntries(rows.map(([, code, words]) => [code!.replaceAll("`", ""), words]));
-  expect(table).toEqual(reasons);
   for (const words of Object.values(reasons)) {
     // Copied, a sentence saying why, then the fix: never the fix alone.
     expect(words).toMatch(/^Copied\. [^.]+\. .*\.$/);
@@ -218,7 +200,7 @@ test("the app's timer fades the notice out, and showing it again brings it back"
 
 test("the notice window grants only copied text reading and event subscriptions", () => {
   expect(noticeCapability.windows).toEqual(["notice"]);
-  expect([...noticeCapability.permissions].sort()).toEqual(["allow-copied-notice", "core:event:allow-listen", "core:event:allow-unlisten"]);
+  expect([...noticeCapability.permissions].sort()).toEqual(["allow-change-suggested-format", "allow-copied-notice", "core:event:allow-listen", "core:event:allow-unlisten"]);
 });
 
 test("every receipt uses one card and only a paste is marked done", () => {

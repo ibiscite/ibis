@@ -26,13 +26,13 @@ pub(crate) use full_screen::FullScreenGuard;
 pub(crate) use layout::{character, us_character};
 #[cfg(target_os = "macos")]
 pub(crate) use layout::{command_key, typing};
-#[cfg(target_os = "macos")]
-pub(crate) use registration::follow_layout;
 #[cfg(test)]
 pub(crate) use registration::replace_with;
 pub(crate) use registration::{
     Registered, SHORTCUT_BACKEND_UNAVAILABLE, on_layout_with, register_shortcut, replace_shortcut,
 };
+#[cfg(target_os = "macos")]
+pub(crate) use registration::{follow_layout, registered_shortcut};
 
 /// Whether the global shortcut is working, shown in the interface.
 #[derive(Default, Clone, Serialize, schemars::JsonSchema)]
@@ -286,11 +286,18 @@ fn show_picker_on_thread(app: &AppHandle, owner: u64) {
             #[cfg(target_os = "windows")]
             report(window.set_always_on_top(true), NativeIssue::AlwaysOnTop);
             present_window(&window, true, owner);
-            crate::updater::picker_presented(app);
+            presented(app);
         }
         report(window.emit("picker:shown", owner), NativeIssue::PickerEvent);
     }
     crate::library::refresh_zotero(app);
+}
+
+/// Both native adapters report an actual show here. Recovery notices claim
+/// dialog ownership before the updater can offer another native dialog.
+pub(crate) fn presented(app: &AppHandle) {
+    crate::instance::picker_presented(app);
+    crate::updater::picker_presented(app);
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -340,7 +347,7 @@ fn focus_after_show(window: &tauri::WebviewWindow, owner: u64) {
             &pending.state::<ChooserOpen>(),
             || native.get_visible() && native.is_mapped(),
             // This is the same GTK activation request as tao's Focus handler,
-            // including Wayland's previously supplied one-use startup token.
+            // including Wayland's one-use startup token.
             || native.present_with_time(0),
         );
     });
@@ -455,6 +462,20 @@ pub(crate) fn focused_for_shortcut(window: &tauri::WebviewWindow) -> Option<bool
 
 /// Toggle the picker: hide it if it is visible and focused, show it otherwise.
 pub(crate) fn toggle_picker(app: &AppHandle) {
+    #[cfg(target_os = "linux")]
+    {
+        // global-hotkey invokes us on its X11 worker. GTK may be replacing a
+        // shortcut after a live settings edit and waiting for that same worker.
+        // Dispatch before even querying visibility/focus or retiring the notice;
+        // dispatching only the final show leaves a synchronous GTK getter here.
+        let handle = app.clone();
+        on_picker_thread_with(
+            gtk::is_initialized_main_thread(),
+            move || toggle_picker_with(&handle, || {}),
+            |toggle| report(app.run_on_main_thread(toggle), NativeIssue::Show),
+        );
+    }
+    #[cfg(not(target_os = "linux"))]
     toggle_picker_with(app, || {});
 }
 
@@ -974,8 +995,7 @@ mod tests {
 
     #[test]
     fn revealing_a_visible_picker_keeps_its_presentation() {
-        // A new presentation would start a new picker session, so the open
-        // library chooser could no longer close itself after its selection.
+        // Revealing keeps the current library chooser's presentation identity.
         assert!(!reveal_shows(Some(true)));
         assert!(reveal_shows(Some(false)));
         // Unknown visibility shows: a dialog must never open without its picker.
@@ -1574,6 +1594,55 @@ mod tests {
         native.settle(&visits);
         assert_eq!(*native.activations.borrow(), [(840, 600)]);
         assert!(native.owns_keyboard.get());
+    }
+
+    #[test]
+    fn picker_reopens_after_copy_while_native_shortcut_replacement_waits_for_its_worker() {
+        use std::cell::{Cell, RefCell};
+
+        // A file edit can replace the shortcut while its X11 callback is in
+        // flight. Registration on GTK waits for the callback's worker; a
+        // synchronous visibility getter on that worker would wait for GTK.
+        // Model that cycle without hanging the test on a blocking recv().
+        for notice_visible in [false, true] {
+            let native = GtkPresentation::default();
+            let visits = PickerGeneration::default();
+            let notice = Cell::new(notice_visible);
+            let registration_waiting = Cell::new(true);
+            let stalled = Cell::new(false);
+            let tasks = RefCell::new(Vec::new());
+            on_picker_thread_with(
+                false,
+                || {
+                    if registration_waiting.get() {
+                        stalled.set(true);
+                        return;
+                    }
+                    // Read the hidden picker's state only once GTK is free.
+                    assert_eq!(toggle_action(Some(native.mapped.get()), None), ToggleAction::Show);
+                    notice.set(false);
+                    let owner = visits.advance();
+                    present_with(
+                        true,
+                        || native.allow_focus(),
+                        || native.show(),
+                        || native.focus_after_show(owner),
+                    );
+                },
+                |toggle| tasks.borrow_mut().push(toggle),
+            );
+            // Returning from the callback lets the X11 worker acknowledge the
+            // replacement, then GTK can handle the queued opening.
+            registration_waiting.set(false);
+            for toggle in tasks.into_inner() {
+                toggle();
+            }
+            native.settle(&visits);
+            assert!(!stalled.get(), "shortcut replacement and opening both finish");
+            assert!(!notice.get(), "the old receipt cannot cover the reopened search");
+            assert!(native.mapped.get(), "the shortcut maps the picker after copying");
+            assert!(native.owns_keyboard.get(), "opening typing reaches the picker");
+        }
     }
 
     #[test]

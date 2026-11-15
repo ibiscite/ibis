@@ -17,8 +17,6 @@ let dist = URL(fileURLWithPath: CommandLine.arguments[1]).standardizedFileURL
 let out = URL(fileURLWithPath: CommandLine.arguments[2])
 let accents = ["system", "ibis"]
 let screens = ["results", "settings-look"]
-// Picker screens whose layout rules are checked; the list grows with the canvas.
-let geometryScreens = ["results", "first-run", "shelf", "reference-details", "show-as-menu", "reader", "commands", "page-in-search", "peek", "update", "undo-notice", "larger-text", "right-to-left", "compact", "long-titles", "stale", "more", "format-menu", "library-menu"]
 // The Mac's appearance, then Ibis's own Appearance setting.
 let modes: [(mac: NSAppearance.Name, name: String, chosen: String)] = [
   (.aqua, "light", "system"), (.darkAqua, "dark", "system"), (.aqua, "dark", "dark"), (.darkAqua, "light", "light"),
@@ -88,21 +86,28 @@ func accentRGB(_ appearance: NSAppearance) -> [Double] {
     }
     window.orderOut(nil); window.contentView = nil
   } } }
-  // The layout rules (canvas/geometry.ts), once per screen: they hold in every mode.
-  for screen in geometryScreens {
-    // More is also checked in a window so short that its list scrolls: a scroll
-    // bar must never take its width from the labels [C9].
-    let size = screen == "more" ? NSSize(width: 640, height: 240) : NSSize(width: 720, height: 480)
-    let window = NSWindow(contentRect: NSRect(origin: NSPoint(x: -30000, y: -30000), size: size), styleMask: .borderless, backing: .buffered, defer: false)
-    let view = WKWebView(frame: NSRect(origin: .zero, size: size))
+  // The layout rules and guards (canvas/geometry.ts, driven by canvas/audit.ts):
+  // every scenario at the default window, words and covers at the narrowest,
+  // and the floating layers wherever the Mac's appearance and Ibis's differ.
+  // More is also checked in a window so short that its list scrolls: a scroll
+  // bar must never take its width from the labels [C9].
+  let passes: [(size: NSSize, mac: NSAppearance.Name, pass: String, theme: String)] = [
+    (NSSize(width: 720, height: 480), .aqua, "frame", "light"),
+    (NSSize(width: 480, height: 360), .aqua, "narrow", "light"),
+    (NSSize(width: 640, height: 240), .aqua, "short", "light"),
+  ] + modes.map { (NSSize(width: 720, height: 480), $0.mac, "layers", $0.chosen == "system" ? $0.name : $0.chosen) }
+  for run in passes {
+    let window = NSWindow(contentRect: NSRect(origin: NSPoint(x: -30000, y: -30000), size: run.size), styleMask: .borderless, backing: .buffered, defer: false)
+    window.appearance = NSAppearance(named: run.mac)!
+    let view = WKWebView(frame: NSRect(origin: .zero, size: run.size))
     window.contentView = view; window.orderBack(nil)
     let loaded = Loaded(); view.navigationDelegate = loaded
     await withCheckedContinuation { loaded.done = $0; view.loadFileURL(page, allowingReadAccessTo: dist) }
-    _ = try? await view.evaluateJavaScript("IbisCanvas.mount(document.getElementById('host'), { scenario: '\(screen)', theme: 'light' }); 0")
-    try? await Task.sleep(nanoseconds: 900_000_000)
-    let raw = (try? await view.evaluateJavaScript("JSON.stringify(IbisCanvas.geometry())")) as? String ?? "[\"geometry did not run\"]"
+    let script = "return JSON.stringify(await IbisCanvas.audit(document.getElementById('host'), { pass, theme }))"
+    let raw = (try? await view.callAsyncJavaScript(script, arguments: ["pass": run.pass, "theme": run.theme], contentWorld: .page)) as? String ?? "[\"the guards did not run\"]"
     let broken = (try? JSONSerialization.jsonObject(with: Data(raw.utf8))) as? [String] ?? [raw]
-    failures += broken.map { "\(screen): \($0)" }
+    let mode = run.pass == "layers" ? " (\(run.mac == .aqua ? "Mac light" : "Mac dark"), \(run.theme))" : ""
+    failures += broken.map { "\($0)\(mode)" }
     window.orderOut(nil); window.contentView = nil
   }
   print(failures.isEmpty ? "WebKit colours and layout: every accent, mode and screen passes." : failures.joined(separator: "\n"))

@@ -1,84 +1,166 @@
 # Command line reference
 
-`ibis` is the Ibis engine as a command. It does everything the app does with your
-libraries, for people in a terminal, for scripts and for AI agents. The app is one
-client of the same engine; nothing here needs the app to be installed or running.
+`ibis` searches libraries and prepares citations without the desktop app.
+`ibis --help` and `ibis COMMAND --help` describe the installed version.
 
 ## Install
 
-On macOS and Linux, install it with [Homebrew](https://brew.sh):
+The desktop app includes the matching `ibis` built from the same commit.
 
-```sh
-brew install ibiscite/tap/ibis
-```
+- **macOS and Linux deb/rpm:** Settings › General › **Install the ibis command**
+  links `~/.local/bin/ibis` to the command inside the app's bundle or package.
+  Keep the macOS app in its permanent location. Install creates the link even
+  when the app's PATH omits it. If that directory is missing from the app's
+  PATH, copy this line into your shell profile, then reopen your terminal:
+  `export PATH="$HOME/.local/bin:$PATH"`. Ibis never requests administrator
+  access or changes your profile. Linux packages install no command on PATH
+  as root. On macOS, Finder's PATH can differ from your terminal; Homebrew's
+  standard locations are also checked for conflicts.
+- **Windows:** the per-user NSIS installer adds the app folder to your user
+  PATH without elevation. MSI also adds a user PATH entry. Open a new terminal
+  after installation. Channel installs serialize their PATH updates and refuse
+  additions that exceed Windows's expanded PATH limit. Successful uninstall
+  removes the installer's entry; cancellation preserves it, and MSI rollback
+  preserves later PATH edits.
+- **Linux AppImage:** the same Settings action offers the command as an owned
+  copy in `~/.local/bin`, so it keeps working after the image unmounts. It shows
+  the same profile line when that directory is missing from PATH. Install again
+  after an app update to update this copy (remove the old command first).
 
-It comes with bash, zsh and fish completions, and `brew upgrade` brings each new release
-within a day of publication. Or download `ibis` from the [nightly](https://github.com/ibiscite/ibis/releases/tag/nightly)
-or a [release](https://github.com/ibiscite/ibis/releases/latest):
-`ibis-macOS-Apple-silicon.tar.gz`, `ibis-macOS-Intel.tar.gz`, `ibis-Windows.zip` or
-`ibis-Linux.tar.gz`. Unpack it and put `ibis` on your PATH. The macOS binary is not
-signed yet; if macOS refuses to run it, run `xattr -d com.apple.quarantine ibis` once.
-From a checkout, `cargo run -p ibis -- <command>` runs the same program.
+Settings shows the command's location, version and whether it matches this app.
+Another command (including Homebrew) is never overwritten or run to inspect
+its version; its location is shown with version unavailable. Unix PATH lookup
+skips files without executable access. **Remove Command**
+removes only an unchanged Ibis-owned installation and its receipt. Removing the
+app itself on macOS cannot run cleanup: remove the command in Settings first.
+The shared installation operation is available for `ibis agents setup` in
+issue #1867's next slice; that command is not part of this slice.
 
-`ibis --help` and `ibis <command> --help` describe every command and option.
+Standalone downloads, Homebrew and winget remain available. Download the CLI
+archive from a [release](https://github.com/ibiscite/ibis/releases/latest) or
+[Nightly](https://github.com/ibiscite/ibis/releases/tag/nightly):
+`ibis-macOS-Apple-silicon.tar.gz`, `ibis-macOS-Intel.tar.gz`,
+`ibis-Windows.zip` or `ibis-Linux.tar.gz`. Unpack it onto PATH. From a checkout:
+`cargo run -p ibis -- --help`.
+
+With Nix on Linux or macOS (x86_64 and aarch64),
+`nix profile add github:ibiscite/ibis` installs the CLI and shell completions.
+See [Nix installation](nix.md) for version pins and declarative configuration.
+
+The standalone macOS CLI is unsigned; the bundled command follows the app's
+signing. If a trusted standalone download is quarantined,
+`xattr -d com.apple.quarantine ibis` removes that attribute.
+Shell completions and an fzf recipe are in the
+[terminal kit](../crates/ibis-cli/README.md).
 
 ## Libraries
 
-Each run reads the libraries you name and nothing else:
-
 | Option | Reads |
 | --- | --- |
-| `--file PATH` | A BibTeX, BibLaTeX, CSL-JSON or RIS file, or a CSV file in [the template](compatibility.md#csv-template). Repeat for several. |
-| `--zotero` | The local Zotero personal library, whether Zotero is open or closed. |
-| `--zotero-group GROUP_ID` | A local Zotero group library. Repeat for several. |
-| `--zotero-profile NAME` | Which Zotero profile to read while Zotero is closed, when there are several. A refusal lists their names; `ibis mcp` tells an agent only that one is needed. |
-| `--app-libraries` | The library chosen in the Ibis app. |
+| `--file PATH` | A [supported file](compatibility.md#library-files); repeat for several. |
+| `--zotero` | Local Zotero personal library, open or closed. |
+| `--zotero-group ID` | A group library; repeat for several. |
+| `--zotero-profile NAME` | A named closed profile when there are several. |
+| `--app-libraries` | Libraries chosen in the desktop app. |
 
-Library options may come before or after the command; they add up in that order and
-duplicates are ignored. Reading never writes to a library, and one-shot commands
-watch no files. Library IDs in the output are opaque tokens: they say nothing about
-the library (`libraries` reports its `kind` and `capabilities`), never reveal a path
-and last across runs on one computer, thanks to a private key Ibis saves once in its
-configuration folder. Library commands write only that key; explicit `settings`
-and `projects` commands also write the app settings you choose.
+Library options before or after the command combine in order; duplicates are ignored. One-shot reads install no watches
+and never change library files. Library IDs are opaque and repeatable on one
+computer; [architecture](architecture.md#data-and-identity) explains identity.
+Library commands save only the private identity key; explicit `settings` and
+`writings` commands also write the settings you choose.
 
-When you name no library, `search`, `show`, `cite`, `libraries` and `call` of the first
-three read the one chosen in the Ibis app, as if you had given `--app-libraries`. They read the stable app's
-settings, or Ibis Nightly's when only Nightly is installed, and never change them.
-`ibis libraries` says which app the library came from. Messages never show the path
-or contents of the app's settings, because agents read them too. If those settings
-cannot be used as they are (missing, damaged, from a newer Ibis, not readable by this
-program, or naming a file by a relative path), the command stops and says why; it
-never falls back to a backup or to the other app. Naming any library replaces the app's choice. `serve` and `mcp` read the
-app's choice only when given `--app-libraries`.
+Without explicit libraries, `search`, `show`, `cite`, `libraries` and `call`
+of the first three use the app's choice. Stable settings take precedence;
+Nightly is used when only it has settings. Missing, damaged, newer or unusable
+settings fail without backup or other-channel fallback. `serve` and `mcp`
+use app libraries only with `--app-libraries`.
 
 ## Commands
 
-`ibis` alone at a terminal prints a short start and exits 0. With its output piped,
-it stays a usage error (exit 2) that lists the commands on stderr, so a script that
-forgets its command fails loudly. `ibis settings` alone lists its own commands the same way.
+```sh
+ibis search lantern --file refs.bib --limit 5
+ibis cite vale2024lanterns --file refs.bib --style apa
+ibis cite vale2024lanterns --locator "p. 12" fen2023clouds --omit-author --file refs.bib
+ibis cite --request --file refs.bib < request.json
+ibis outputs
+ibis schema cite
+```
 
-| Command | Does |
-| --- | --- |
-| `search WORDS [--limit N]` | Find references by author, title, year or key. An empty result is a success. |
-| `show KEY` or `show --id ID_JSON` | One reference's main fields; `--json` gives all of its data. |
-| `cite KEY…` | A citation. `--format ID` writes one of the outputs `outputs` lists (default `pandoc`): a key syntax, or a common style; `--style` writes any CSL style (see `styles`); `--bibliography` writes bibliography entries in a style. `--for-app ID` uses the output for that app ([below](#output-for-an-app)). `--locator`, `--prefix`, `--suffix` and `--omit-author` apply to the key before them. |
-| `cite --request` | A citation from one canonical `CitationRequest` JSON object on stdin. |
-| `project BIB KEY…` | Check exact keys against one project `.bib`, read-only ([below](#a-projects-own-bibliography)). |
-| `projects list\|create\|rename\|update\|remove` | Manage local writing projects; `cite KEY --project ID` uses one for this request ([below](#writing-projects)). |
-| `entry KEY` | A reference's original BibTeX entry, with what it needs to stand alone. |
-| `libraries` | The open libraries, their item counts and each warning in words. |
-| `outputs` | Every output `cite` writes, each with its id, its one short name (a style's full title is its `description`) and a short example: the key syntaxes, then the common styles. The app, `--format` and MCP's `format` take these ids. |
-| `styles [WORDS]` | Every official CSL style, with each one's updated date, the common ones first; `--locales` lists the citation languages. |
-| `schema [METHOD]` | The JSON Schema of each engine method's parameters and result. |
-| `call METHOD --params JSON` or `--stdin` | Any engine method with raw JSON parameters. |
-| `serve --stdio` | A JSON-RPC 2.0 server for programs ([below](#json-rpc-server)). |
-| `mcp` | A Model Context Protocol server for AI agents ([below](#ai-agents-mcp)). |
-| `doctor` | An offline check of the named libraries and the settings file ([terminal kit](../crates/ibis-cli/README.md#offline-diagnosis)). |
-| `completions bash\|zsh\|fish` | Shell completions ([terminal kit](../crates/ibis-cli/README.md#shell-completions)). |
-| `toggle [--app PATH]` | Show or hide the desktop picker. |
-| `settings export [FILE] [--force]` | Back up the app's settings for another computer, to FILE or stdout; never replaces FILE without `--force`. Paste approvals and window places are left out. |
-| `settings import FILE [--dry-run]` | Restore a backup into the app's settings after checking all of it, listing every change; `--dry-run` only lists them. The replaced settings become `settings.json.bak`. Both use the stable app's settings, or Nightly's with `--nightly` or when only Nightly is installed ([moving to a new computer](moving-to-a-new-computer.md)). |
+Options after a key apply to that key. `--format` uses an ID from `outputs`;
+`--style` selects any bundled CSL style. Bibliography entries use
+`--bibliography` with a style. With no command at a terminal, Ibis prints a
+start guide; without a command in a pipe, it reports a usage error.
+
+At a terminal, search aligns the **key**, dim author/year and title. Titles
+end with `…` at the terminal width (80 columns if unavailable). Keys wider
+than a third of the screen get their own line, with the details indented;
+keys wider than the screen stay intact. This leaves useful title space
+at both 80 and 120 columns. Lists of three or more authors use the first
+author followed by “et al.”. An empty search suggests a shorter query.
+`--width 60` overrides detected width for human terminal rows. Citation keys
+and citation text are never shortened; only titles and author lists shrink.
+`--color auto` (the default) styles only a terminal stream, when `NO_COLOR`
+(including an empty value) is unset and `TERM` is not `dumb`. stdout and
+stderr are detected separately. `--color never` disables colour;
+`--color always` explicitly requests coloured human rows even through a pipe.
+For example: `ibis search lantern --file refs.bib --width 60 --color never`.
+
+By default, redirected or piped stdout keeps the original uncoloured, untruncated TSV
+and plain summaries; `--json` keeps the engine's full results and
+`source_health`. Source notes on search stderr report only failed refreshes, naming the
+library and the local time of the retained read, for example:
+`ibis: note: Zotero could not be refreshed; showing results from 2:14 PM`.
+Entry warnings stay in `libraries` and the diagnostic counts in `doctor`.
+Terminal `libraries` groups actionable warnings under aligned library names,
+shows the entry key (or title) and any known field, and lists the first 10
+per library followed by `and N more; see --json`. Warning JSON adds an
+optional `entry` display label and supplies known `field` names; existing
+fields keep their meanings.
+
+### Keys and more matches
+
+`ibis search lantern --file refs.bib --keys` prints only citation keys, one
+per line in rank order, including at a terminal. Keyless hits are skipped
+and counted in one stderr note pointing to the same search with `--json`.
+Keys that do not identify exactly one record across all open libraries are
+also omitted, with an ambiguity count and the `--json`/`--id` route. A duplicate
+beyond the requested search page still makes a bare key ambiguous.
+An empty selection prints no bytes. `--keys` conflicts with `--json`;
+both machine forms always omit decoration.
+
+Search probes one extra candidate. When more matches exist, terminal stderr
+says `note: showing the first 10 matches; see more with --limit 20` for the default limit of 10.
+At the maximum of 1,000 it asks for more distinctive words instead.
+`ibis search lantern --file refs.bib --limit 1 --json` includes
+`"complete": false` if a second match exists, and true otherwise. This is
+separate from `source_health`, has the same meaning in MCP, and changes no
+exit code. Exact pasted key lists still return the whole selection.
+
+Unknown keys give up to three close spelling suggestions from the same open
+libraries, with bounded work. `ibis show vale2024lantern --file refs.bib`
+might say `Did you mean 'vale2024lanterns'?` and
+`Try: ibis show vale2024lanterns --file refs.bib`. Without a close key the
+next command searches that library. JSON errors retain `code` and `reason`
+and add `suggestions` (keys) and `next` (an argument array beginning with
+`"ibis"`). `show`, `cite` and `entry` never substitute a suggested key.
+The suggested `show KEY` must select one record in the whole open scope.
+Otherwise `next` searches that key with `--json`; choose a result and use
+`show --id ID_JSON` with the same library arguments.
+
+### Citation keys from a list
+
+```sh
+ibis cite --keys-from keys.txt --file refs.bib --style apa
+printf 'vale2024lanterns\n# another mention\nvale2024lanterns\n' | ibis cite --keys-from - --file refs.bib
+```
+
+`--keys-from FILE` reads UTF-8 keys, one per line. It trims surrounding
+spaces and ignores blank lines and lines starting with `#`. Order and
+duplicates are kept. `--keys-from -` explicitly reads stdin; when stdin is
+a terminal, stderr says it is waiting for keys and to end with Ctrl-D.
+Positional keys, `--request`, `--records` and per-key options conflict with
+`--keys-from`. Input is at most 1 MiB and uses the existing citation item
+limit; an unknown key or a refusal still withholds the whole citation.
 
 <!-- Generated by node scripts/gen.mjs from the command line's own options. -->
 ### Every option
@@ -90,6 +172,9 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | Option | Does |
 | --- | --- |
 | `--json` | Print the versioned JSON envelope, including errors and findings |
+| `--color WHEN` | Colour human output: auto, always or never; auto respects each terminal, NO_COLOR and TERM |
+| `--width N` | Use N columns for human terminal output instead of the detected width |
+| `--contract VERSION` | The JSON contract version your client expects; one this Ibis does not speak is refused |
 | `--zotero` | Read the local Zotero personal library, open or closed |
 | `--app-libraries` | Read the libraries chosen in the Ibis app, read-only; search, show, cite and libraries do this when no library is named |
 
@@ -99,8 +184,10 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 
 | Option | Does |
 | --- | --- |
+| `--keys` | Print only citation keys, one per line in rank order |
 | `WORDS` | Words from the author, title, year or citation key; quote several words |
 | `--limit N` | Return at most N results, from 1 to 1000 |
+| `--shorthand` | Read a signal before the words ("see") and a page after them ("417"), as the picker does |
 
 **`ibis show`**: Show one reference
 
@@ -114,15 +201,19 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | Option | Does |
 | --- | --- |
 | `KEY…` | Citation keys, in the order they appear in the citation |
+| `--keys-from FILE` | Read one citation key per line from FILE, or - for stdin; ignore blanks and # comments |
 | `--request` | Read the whole request from stdin as JSON; see: ibis schema cite |
+| `--records` | Cite every CSL-JSON record in the array on stdin, with no library; see: ibis schema records |
 | `--format FORMAT` | Output to write: a key syntax or a common style [default: pandoc]; list them with: ibis outputs |
 | `--style STYLE_ID` | Format with any CSL style instead; list them with: ibis styles |
-| `--project PROJECT_ID` | Use this writing project's output and bibliography; list IDs with: ibis projects list |
-| `--nightly` | Read the writing project from Ibis Nightly's settings |
-| `--strict-project` | Require a current complete bibliography read for project key citations |
-| `--for-app APP_ID` | Use the output Ibis uses for this app, a macOS bundle ID or Windows executable; --style and --format apply when it has none of its own |
+| `--writing NAME` | Use this writing's output and bibliography; list names with: ibis writings list |
+| `--nightly` | Read the writing or the app's formats from Ibis Nightly's settings |
+| `--document PATH` | Use an explicit document's bibliography/csl front matter to select a writing |
+| `--strict` | Refuse citations with losses, refusals or source problems |
+| `--for-app APP_ID` | Use the format Ibis uses for this app from its settings, a macOS bundle ID or Windows executable; --style or --format stands in for your usual format |
 | `--bibliography` | Format bibliography entries, in --style or a style --format names |
 | `--form FORM` | Citation form [default: normal] |
+| `--keep-order` | Keep the keys in the order given where a style would sort them |
 | `--locale LOCALE` | Language for --style output, such as de-DE; default the style's own. List them with: ibis styles --locales |
 | `--locator LOCATOR` | Pinpoint the key before it, such as "p. 12", "ch. 3" or "12-14" |
 | `--prefix TEXT` | Text before the key before it, such as "see" |
@@ -205,43 +296,43 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | `--dry-run` | Show what would change and change nothing |
 | `--nightly` | Use Ibis Nightly's settings instead of the stable app's |
 
-**`ibis projects`**: Remember a writing project's citation output and optional bibliography
+**`ibis writings`**: Remember a writing's citation output and optional bibliography
 
-**`ibis projects list`**: List project IDs, names, outputs and bibliography file names
+**`ibis writings list`**: List writing names, formats and bibliography file names
 
-**`ibis projects schema`**: The JSON Schema of cite --project's result
+**`ibis writings schema`**: The JSON Schema of cite --writing's result
 
-**`ibis projects create`**: Create a writing project
+**`ibis writings create`**: Create a writing
 
 | Option | Does |
 | --- | --- |
-| `NAME` | A unique name for this writing project |
+| `NAME` | A unique name for this writing |
 | `--format FORMAT` | Output ID from ibis outputs: a key syntax or a common style |
 | `--style STYLE_ID` | Any bundled CSL style ID; list them with: ibis styles |
-| `--bibliography FILE` | The read-only project bibliography to check, as a .bib file |
+| `--bibliography FILE` | The read-only writing bibliography to check, as a .bib file |
 
-**`ibis projects rename`**: Rename a project, keeping its ID
-
-| Option | Does |
-| --- | --- |
-| `PROJECT_ID` | The stable project ID printed by ibis projects list |
-| `NAME` | A unique name for this writing project |
-
-**`ibis projects remove`**: Remove a project and its app selections; keep its bibliography file
+**`ibis writings rename`**: Rename a writing
 
 | Option | Does |
 | --- | --- |
-| `PROJECT_ID` | The stable project ID printed by ibis projects list |
+| `NAME` | The writing name printed by ibis writings list |
+| `NAME` | A unique name for this writing |
 
-**`ibis projects update`**: Change a project's output or bibliography
+**`ibis writings remove`**: Remove a writing and its app selections; keep its bibliography file
 
 | Option | Does |
 | --- | --- |
-| `PROJECT_ID` | The stable project ID printed by ibis projects list |
+| `NAME` | The writing name printed by ibis writings list |
+
+**`ibis writings update`**: Change a writing's output or bibliography
+
+| Option | Does |
+| --- | --- |
+| `NAME` | The writing name printed by ibis writings list |
 | `--format FORMAT` | Output ID from ibis outputs: a key syntax or a common style |
 | `--style STYLE_ID` | Any bundled CSL style ID; list them with: ibis styles |
-| `--bibliography FILE` | The read-only project bibliography to check, as a .bib file |
-| `--no-bibliography` | Stop checking a bibliography in this project |
+| `--bibliography FILE` | The read-only writing bibliography to check, as a .bib file |
+| `--no-bibliography` | Stop checking a bibliography in this writing |
 
 **`ibis completions`**: Print shell completions
 
@@ -258,280 +349,285 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 
 ## Output for scripts and agents
 
-Without `--json`, commands print short lines for people. Add `--json` to any
-command, including `--help`, `--version` and argument errors, and stdout holds exactly
-one JSON envelope followed by a newline. The exceptions are `serve` and `mcp`, which
-stream their own protocols on stdout (below); their help and argument errors still use
-the envelope. When a library fails to open, `serve` writes one framed JSON-RPC error
-whose `data.code` is the `error.code`, with nothing on stderr, and exits with the code
-from the table below. `mcp` still starts: it says why on stderr and in every tool that
-needs a library, so an agent can tell the person.
-
-The envelope looks like this:
+`--json` writes one envelope and newline to stdout, including help and
+argument errors. Human explanations and warnings go to stderr. `serve` and
+`mcp` stream their own protocols instead. Plain terminal output escapes
+control characters; JSON preserves source strings.
 
 ```json
-{"ibis":1,"ok":true,"data":{…}}
+{"ibis":1,"ok":true,"data":{}}
 {"ibis":1,"ok":false,"error":{"code":"not-found"}}
 ```
 
-- `ibis` is the envelope version. It changes only when the envelope itself changes.
-- `data` is the method's result, described by `ibis schema METHOD`; `cite --project`
-  uses the wrapper described by `ibis projects schema`.
-- `error.code` is stable and is the thing to branch on. The sentence that explains it,
-  naming the argument, key or file at fault, goes to stderr as one `ibis: …` line, in
-  both modes. Sentences may be reworded; codes are not.
-- stderr also carries notes, for example when a library has warnings. stdout never
-  carries anything but the envelope or the plain result.
-- In terminal output, control characters and invisible direction marks from library
-  data are escaped; `--json` strings are exactly what the library holds.
+`ibis` is the contract version, now 1. `--contract 1` selects it; unsupported
+versions are refused with the supported versions. Within a version, results
+may gain fields and codes: ignore unknown fields and review unknown codes.
+Other changes require a new version ([decision 0028](decisions/0028-engine-first.md)).
+Unknown request fields are `bad-input`.
 
-| Exit | `error.code` | Meaning |
-| --- | --- | --- |
-| 0 | | Success, including a search that finds nothing. |
-| 1 | | Done with findings: refusals, losses, source warnings or a failed refresh. `ok` is `true` and `data` says what. |
-| 2 | `usage` | The command line is not valid. |
-| 3 | `bad-input` | The input JSON or a value is not valid. |
-| 4 | `not-found` | A named key, item or library is not there. |
-| 5 | `source-unavailable` | A library could not be read right now. |
-| 5 | `resource-limit` | The request or its result is too large. |
-| 6 | `newer-format` | A newer Ibis wrote this data. |
-| 70 | `internal` | The output could not be written (stderr says why), or a bug in Ibis; please [report it](https://github.com/ibiscite/ibis/issues). A reader that closes the pipe early, as `\| head` does, is not an error. |
-| 130 | `cancelled` | The request was cancelled. |
+Older contracts stay supported for at least two minor releases.
 
-Some errors add `reason` beside `code`, for example
-`{"error":{"code":"bad-input","reason":"unknown-style"}}`: `unknown-style`,
-`unknown-locale`, `unknown-output` (a wrong request, refused before anything is formatted),
-`duplicate-key` (the library repeats the key, so every entry under it is skipped;
-`ibis libraries --json` lists each line with the key), `ambiguous-key`, and for
-`toggle`, `app-missing`, `not-ibis` or `no-answer`. `toggle` succeeds only when
-the program it starts confirms that it is Ibis.
+`ibis schema METHOD` describes `data`; `cite --writing` uses
+`ibis writings schema`. Branch on `error.code` and optional
+`reason`, not wording. Exit 1 has `ok: true` with findings; inspect outcomes
+before using citation text. Empty search is success.
 
-Input JSON is at most 1 MiB and duplicate members are refused. A response is at most
-16 MiB; a larger one is a `resource-limit` error, so ask for fewer results.
+Errors also require `message: {id, args}`, one `recovery: {action, ...}` and
+`focus`. Citation refusal outcomes and failed-refresh findings carry the same
+presentation fields. Message ids resolve through `locales/en-US.ftl`; arguments
+are data, never pre-rendered explanations. A recovery of `none` must give its
+reason (`cancelled` or `in-progress`). Missing citation keys request
+`choose-style` / `format-picker`; a moved or removed library requests
+`locate-file` / `library-picker`. MCP tool errors expose these facts under
+`structuredContent.error` in addition to their text explanation.
 
-Until 1.0, fields inside `data` may still change between releases; the release notes
-say when they do, and `ibis schema` always describes the version you have.
+Library results (`libraries`, `search`, `show`, `cite`, `entry`, `project`)
+carry `source_health` in JSON, RPC and MCP: `{"status":"ok","findings":[]}`
+or status `findings` with one entry per problem. It describes the same
+published state and only the libraries read: search's selected libraries,
+every library for a key, or the item's own library.
 
-### Examples
+`refresh-failed` means the result used the last good read; it gives `error`
+and `last_successful_read_ms`. `source-warnings` gives the `count` of entries
+skipped or read with problems. Later refreshes cannot change a result's health.
 
-```sh
-# Titles of the first five matches
-ibis search "lantern" --file refs.bib --limit 5 --json | jq -r '.data.hits[].item.object.data.csl.title'
+Exit 0 means success, including empty results. Exit 1 means findings: refusals,
+losses, source warnings or `source_health` problems in libraries read.
+An output-write failure is `internal`; a closed reader pipe is not an error.
 
-# Cite the first hit in APA
-key=$(ibis search "vale 2024" --file refs.bib --json | jq -r '.data.hits[0].item.object.data.citation_keys[0].value')
-ibis cite "$key" --file refs.bib --style apa
+<!-- gen:errors -->
 
-# Branch on the exit status, not on the wording; 1 may still hold a citation
-out=$(ibis cite vale2024lanterns --file refs.bib --json)
-case $? in
-  0 | 1) jq -er '.data.text | select(. != "")' <<<"$out" || echo "refused; see .data.outcomes" ;;
-  4) echo "no such key" ;;
-  *) jq -r .error.code <<<"$out" ;;
-esac
-```
+| Exit | Error code |
+| --- | --- |
+| 2 | `usage` |
+| 3 | `bad-input` |
+| 4 | `not-found` |
+| 5 | `source-unavailable` |
+| 5 | `resource-limit` |
+| 6 | `newer-format` |
+| 70 | `internal` |
+| 130 | `cancelled` |
+
+<!-- /gen:errors -->
+
+[Release notes](https://github.com/ibiscite/ibis/releases) call out contract changes;
+`ibis schema` describes the version you have.
+
+Input JSON is at most 1 MiB; duplicate members are refused. Responses are
+bounded to 16 MiB. Ask for fewer results on `resource-limit`.
 
 ### Canonical citation requests
 
-`cite --request` and `call cite` take the same `CitationRequest` the app uses: items by
-`ItemRef` (from `search --json` or `show --json`) with their cite fingerprints, typed
-locators, styled prefixes and suffixes, a form and an output. `ibis schema cite` lists
-every field. Order and repeated items are kept. The result carries the citation text,
-HTML and RTF where the output has them, a display tree, per-item outcomes, losses,
-notices and a content hash. A changed, deleted or ambiguous item is refused instead of
-guessed. Incomplete results stay inspectable in `--json`; plain output prints citation
-text only when the citation is complete, and reports notices and omitted fields on
-stderr.
+`cite --request` reads a `CitationRequest` from stdin; `call cite` takes it
+as parameters. Items carry `ItemRef` and cite fingerprints from search/show,
+with typed locators, affixes, form and output. Order and duplicates are kept.
+See `ibis schema cite` for fields.
 
-An output is `{"kind":"key","syntax":…}`, `{"kind":"csl","style":…}`, or
-`{"kind":"preset","name":ID}` with an id from `ibis outputs`, which is written as
-that entry's own output. Each entry also lists the `forms` it can write. In BibLaTeX,
-`autocite` and `parencite` write a citation that is narrative throughout with
-`\textcite`, so their entries list the narrative form.
+Outputs are key syntax, CSL style or preset (an `outputs` ID). Results include
+text, supported HTML/RTF, display markup, outcomes, losses, notices and content
+hash. Changed/deleted/ambiguous items are refused. JSON retains partial results;
+plain output prints text only for a complete citation. See
+[citation limits](compatibility.md#writing-apps) and
+[supported editing](parity.md#shaping-one-citation).
 
-Styles that need a whole document return a full reference entry with that
-explanation. An output Ibis cannot write correctly is an explicit per-item
-`unsupported-output` refusal.
+### Records you send
+
+`ibis cite --records` cites the CSL-JSON array on stdin without opening a
+library, changing or remembering data, or needing a temporary file.
+
+```sh
+ibis cite --records --format apa < refs.json
+ibis cite --records --style apa --bibliography < refs.json
+```
+
+It cites every record in order, with `cite`'s format, style, form, bibliography
+and locale options; `--keep-order` is refused. The `records` method (`ibis call
+records` or RPC) also takes `items`: record IDs with locators, prefixes and
+suffixes. `ibis schema records` lists the fields. MCP's `cite` with `records`
+cites every supplied record and refuses `items`, `for_app` and `keep_order`.
+
+- Each record needs its own `id` and a CSL `type`; numeric IDs are preserved.
+  Only `citation-key` is a key: without one, style formatting works but key
+  output refuses the record with `missing-key`.
+- A record that isn't valid CSL-JSON refuses the whole request (`bad-input`,
+  `rejected-record`), and stderr names it, so no record is left out unseen. Two
+  records with one `id`, `1` and `"1"` included, give `duplicate-record`.
+- A `file` field is dropped unread: a path or `file:` URL is never looked at. Links
+  with a login and local links are removed, as they are from library files. Fields
+  outside CSL are dropped.
+- At most 1,000 records, 512 KiB of them, nested at most 16 deep; beyond that is
+  `resource-limit`, as is input over 1 MiB. JSON nested more than 128 levels can't be
+  read at all and is `bad-input`.
+- A field that can't be read as sent, a field outside CSL or a removed link is
+  dropped with a warning, and the citation exits 1, as it does for a library file.
+
+Input is one UTF-8 JSON value, read to EOF with a 1 MiB limit. stdout holds
+the citation or `--json` envelope; reasons go to stderr. RPC cancellation
+answers `cancelled` without affecting the next request.
 
 ### A project's own bibliography
 
-`ibis project thesis.bib vale2024lanterns fen2023clouds` says, for each exact key, one of: In
-thesis.bib; Missing from thesis.bib; Couldn't check thesis.bib; Key appears more than
-once; or Key may name another reference. Exit 0 means every key is in the file; 1 means
-at least one is not. `--json` gives each key's `check` with its `status` and lines.
-
-The file stays out of the libraries that are searched and is never changed. It is read
-twice, so a file still being written cannot pass. "Missing" needs a complete scan of
-that read: unreadable, damaged or changing data is "Couldn't check", as is any text that
-looks like an entry Ibis does not recognise, such as `@my-type{…}`. A key differing only by
-letter case, an `ids` alias, an `@xdata` key and a key inside `@comment` (Biber skips it;
-classic BibTeX reads it) are each a doubt, not a match. Name a library too and an entry
-that disagrees with it on DOI, title or year is one as well.
-"In thesis.bib" means the key is written there. It does not show that the fields match,
-that the export is current or that the document compiles.
-
-`ibis entry vale2024lanterns --file refs.bib` prints the original entry, key included, with
-the `@string`, `crossref`, `xdata`, `xref`, `related` and `entryset` it needs, and nothing rewritten. Check it before adding
-it to a shared file, because the original can hold fields such as `file` or `note`. It
-is refused, with how to export it instead, when the reference has no BibTeX original
-(Zotero, CSL-JSON), the file changed since it was read, the key repeats, or a dependency
-is missing or redefined. Ibis never invents a key or uses a similar record's key.
-
-To use the file with other tools, point them at the same `.bib`: Overleaf projects
-upload it beside the document, Quarto names it under `bibliography:` in the front matter,
-and Typst uses `#bibliography("thesis.bib")`. Quarto and Typst can use several files; the
-check covers only the one you name.
-### Writing projects
-
-A writing project remembers its citation output and an optional bibliography to
-check, separately from the libraries searched. The CLI uses a project only when
-you name its stable ID; it never inherits the project's selection in a GUI app.
-
 ```sh
-ibis projects create "Field Guide" --format autocite --bibliography refs.bib
-ibis projects list --json
-ibis cite vale2024lanterns --file library.bib --project PROJECT_ID
-ibis projects rename PROJECT_ID "Revised Field Guide"
-ibis projects update PROJECT_ID --style apa --no-bibliography
-ibis projects remove PROJECT_ID
+ibis project thesis.bib vale2024lanterns fen2023clouds --file library.bib
+ibis entry vale2024lanterns --file library.bib
 ```
 
-`create` requires `--format` (an output ID from `ibis outputs`, including common
-styles) or `--style` (any bundled CSL style). `update` keeps the fields you omit;
-`--no-bibliography` clears its check. Renaming keeps the ID. Removing a project
-removes its app selections and keeps every bibliography file. Definitions and
-app selections stay on this computer and are excluded from settings backups.
-Use `--nightly` on a `projects` command or alongside `cite --project` to choose
-Nightly's definitions; otherwise the stable app wins, or Nightly when only it has
-settings. A busy settings writer refuses immediately; retry the command after
-the other save finishes. Failed saves leave the old definitions intact.
+`project` checks exact keys without adding the bibliography to searched
+libraries or changing it. It reports in-file, missing, repeated, doubtful or
+uncheckable keys. Exit 0 means every key is present; 1 means findings. JSON
+includes status and lines. In-file is not proof of matching fields or a
+compiling document. A changing/damaged file cannot establish missing keys;
+case variants, aliases and data-only entries are not exact matches. A named
+source library also enables metadata comparison.
 
-`--project` conflicts with `--format`, `--style`, `--for-app` and `--request`, so a
-script cannot accidentally mix two output authorities. For a project's formatted
-bibliography, use `--form bibliography-only`. Outputs that emit citation keys check
-the named bibliography; formatted outputs and record exports do not. The check is
-advice: a missing, uncertain or unreadable entry still gives the citation and
-reports findings with exit 1. Only a key whose entry in the bibliography names a
-different work (another DOI) withholds the copyable citation. `--strict-project`
-also withholds it until the bibliography has a complete current read; it never
-changes a saved project. No project or CLI action grants paste permission.
+`entry` prints the original BibTeX entry and required strings/dependencies.
+It refuses unavailable originals, changed files, repeated keys and missing or
+redefined dependencies. Original entries may include private `file`/`note`
+fields; inspect them before sharing.
 
-With `--json`, `cite --project` returns a typed wrapper in `data`: `id`, `name`,
-`revision`, the ordinary `citation`, `assessment` (`ready`, `paused` for a strict
-request or `conflict`), and `project` (the bibliography check, or `null`). A paused or conflicting
-assessment returns typed refusals and no copyable citation text. The definition's opaque `revision` changes when its name, output or
-bibliography changes. `ibis projects schema --json` describes the wrapper.
-Project lists and results show only bibliography file names, never their folders.
-Plain `cite` keeps its existing result shape.
+To use the same `.bib` elsewhere, upload it beside an Overleaf document, name it
+under Quarto's `bibliography:` or use Typst's `#bibliography("thesis.bib")`.
+The check covers only the file you name.
+
+### Writings
+
+A writing saves a name, format and optional read-only `.bib` in `settings.json`
+([decision 0042](decisions/0042-formats-apps-and-writings.md)). CLI citations use
+only an explicitly named writing or supplied document context; `--for-app ID`
+explicitly uses that app's writing and bibliography.
+
+```sh
+ibis writings create "Field Guide" --format autocite --bibliography refs.bib
+ibis writings list --json
+ibis cite vale2024lanterns --file library.bib --writing "Field Guide"
+ibis cite vale2024lanterns --file library.bib --document chapter.qmd
+ibis writings rename "Field Guide" "Revised Field Guide"
+ibis writings update "Revised Field Guide" --style apa --no-bibliography
+ibis writings remove "Revised Field Guide"
+```
+
+Create requires `--format` or `--style`; update retains omitted fields.
+Rename updates app selections; remove leaves files intact. Definitions and
+selections stay on this computer, outside backups. `--nightly` selects Nightly's
+settings. Busy or failed saves preserve the old file. Handwritten definitions
+need no ID or revision:
+
+```json
+{"name":"Thesis","format":"apa","bibliography":"/invented/work/refs.bib"}
+```
+
+`--writing` conflicts with `--format`, `--style`, `--for-app` and `--request`.
+`--document PATH` reads only the supplied Markdown/Quarto document's `bibliography`
+and `csl` front matter, using plain or quoted scalars. It selects a unique matching
+writing; ambiguity refuses. Nearby files, names, titles and URLs never select one.
+
+Only key outputs check the bibliography. Missing, uncertain or unreadable entries
+keep citation text with exit 1; a known conflicting DOI withholds it. `--strict`
+returns an error unless a complete current read finds every emitted key
+unambiguously. It changes no setting and grants no paste permission.
+
+Writing JSON wraps `citation` with `name`, `assessment` (`ready` or `conflict`),
+`bibliography` (the check or null) and `source_health`. Conflicts have typed refusals
+and no copyable text; strict failures return an error envelope.
+`ibis writings schema --json` describes it. Only bibliography file names are shown.
+Plain `cite` has no wrapper.
+
+### Receipts and strict citations
+
+Complete citations in JSON, RPC and MCP carry `receipt`: ordered opaque record
+identities, cite fingerprints, resolved options, source read times/findings,
+content hash and formatting versions. Caller snapshots have no source read time;
+caller-record receipts list no library reads and have clean `source_health`.
+CSL adds the actual language and processor/style/locale bundle digests. Writings
+add an opaque definition hash, bibliography fingerprint and successful check time.
+Record and annotation identities contain no native keys or paths and cannot
+select records later. Receipts describe evidence; they do not archive records
+or promise historical recreation.
+
+`ibis cite --strict` returns an error without text for any loss, refusal,
+source warning or failed refresh. `--request` accepts the flag or `"strict": true`,
+as do RPC requests; MCP's `cite` accepts `strict`. Caller records apply it to
+supplied data, including unreadable-field warnings. Writing key outputs also
+require a complete current bibliography check finding every emitted key
+unambiguously. Strict mode changes no saved setting. Failures have reason
+`strict-citation` and exit 3 (`bad-input`), or 5 (`source-unavailable`) for a
+failed refresh.
 
 ### Output for an app
 
-`ibis cite KEY --for-app ID` gives what Ibis gives that app: `com.microsoft.Word` or
-`WINWORD.EXE` the formatted citation, `md.obsidian` Pandoc, `TeXShop` BibLaTeX. `ID` is a
-macOS bundle ID or a Windows executable, with or without its folder, on any system.
-A style named by `--style` or `--format` is the style a formatted app gets (APA without one). `--format` or `--style`
-is what an app with no output of its own gets; the table comes first, so `--format`
-does not change what Word gets.
+`ibis cite KEY --for-app ID` reads the app's settings: its selected writing,
+then its remembered format, your format for its kind, then a suggestion.
+Documents use styles; Markdown, LaTeX, Typst and code editors use key syntaxes.
+IDs are macOS bundle IDs or Windows executable names, with or without folders,
+on any OS (for example `com.microsoft.Word` or `WINWORD.EXE` suggests APA,
+`md.obsidian` Pandoc, `TeXShop` BibLaTeX). `--format`/`--style` stands in for
+your usual format of that kind; `--nightly` selects Nightly settings.
+Unreadable settings stop the command. MCP's `for_app` follows the same rule.
 
-The answer comes from the same table as the app, not from the choices remembered in
-it. `--json` adds `data.destination`: the app, its `name` when Ibis knows it, the
-`output`, `delivery` (`paste`, or `copy` and its `reason`, with pasting on and
-permitted) and `output_question` for an app that asks which output a document needs.
-Plain output is the citation alone, with a note on stderr.
+JSON adds `destination`: app, known `name`, `output`, `from` (`writing`, `app`,
+`yours` or `suggestion`), selected `writing`, and `delivery` (`paste` or `copy`
+with its reason, with pasting on and permitted). Writing citations put this
+under `citation.destination`. This describes policy, not a paste action.
+Plain output remains the citation with a stderr note.
 
 ## JSON-RPC server
 
-`ibis serve --stdio --file refs.bib` speaks JSON-RPC 2.0 with LSP-style
-`Content-Length` framing on stdin and stdout, for editors and long-running programs.
-It offers the same methods and results as the command line, sends library-change
-notifications, honours `$/cancelRequest` and writes nothing else to stdout. Errors are
-JSON-RPC errors whose `data.code` is the `error.code` above. Requests run in order
-behind a queue of eight; a long request delays the ones after it.
+`ibis serve --stdio --file refs.bib` uses JSON-RPC 2.0 with LSP
+`Content-Length` framing. It sends library-change notifications and handles
+`$/cancelRequest`, including queued work. Requests execute in order behind
+an eight-request queue. Arrays receive Invalid Request, not batch execution.
+Errors put Ibis codes in `error.data`; stdout contains only protocol frames.
+If libraries fail at startup, it writes a framed error and exits.
+
+Every method in `ibis schema` is served. Replies are written whole or not at
+all. Frames over 1 MiB get a parse error and stop the server; invalid JSON
+in a complete frame gets a parse error and reading continues. At EOF, read
+requests finish before exit. Process exit codes do not apply per request.
 
 ## AI agents (MCP)
 
-`ibis mcp` serves the Model Context Protocol over stdio with four read-only tools:
+Follow the [assistant setup guide](https://ibiscite.org/setup) to connect your app
+to Ibis, or paste this prompt into your assistant:
 
-| Tool | Takes | Returns |
-| --- | --- | --- |
-| `search` | `query`, `limit` (1 to 25, default 10) | Short `hits`, each with a `ref`. `complete` is false when more references match. |
-| `show` | `ref` | One reference's fields. |
-| `cite` | `items`, each a `ref` with any `locator`, `prefix`, `suffix` or `omit_author`, then `format` (an id from `ibis outputs`; CSL-JSON is left out because it would carry whole records) or any `style` (`apa` without either), `form`, and `for_app`, the [ID above](#output-for-an-app) | The citation `text`, with `notices`, `losses` and `warnings`. |
-| `styles` | nothing | The style ids `cite` accepts. |
-
-A `ref` is the citation key, or an `id:` string when no key selects that record alone,
-then `#` and a short check. If the record changes after `search`, the ref is refused
-instead of citing whatever now holds that key.
-Answers holding library text carry a `provenance` line saying it is data, not
-instructions, and `library_notes` when results may be missing or out of date, for
-example when entries were skipped or a library could no longer be read.
-
-It speaks revision 2026-07-28, in which every
-request names its revision and the client's capabilities and `server/discover`
-describes the server, and it still answers clients that start with `initialize` on
-2025-11-25 or 2025-06-18. A request that names any other revision is refused with
-the list of revisions Ibis supports. An `initialize` that asks for another revision is
-answered with 2025-11-25, and the client decides whether to go on, as MCP specifies.
-A failed tool call names its error code and says what to change, never quoting the
-library. An argument the tool does not know is refused, not ignored. With no library
-open, a tool says so instead of finding nothing.
-
-The Ibis plugin for Claude Code and Codex adds the server and a skill that tells the
-agent to cite only what Ibis returns. It reads the library chosen in the Ibis app and
-needs a current `ibis` on your PATH. Check `ibis mcp --help`: it must list
-`--app-libraries`. If that option is missing, the command predates the plugin;
-use a newer nightly or build the command from the current source. Installing the
-plugin does not install the command.
-
-Then install the plugin and start a new session:
-
-```sh
-# Claude Code
-/plugin marketplace add ibiscite/ibis
-/plugin install ibis@ibiscite
-
-# Codex
-codex plugin marketplace add ibiscite/ibis
-codex plugin add ibis@ibiscite
+```text
+Set up Ibis for me: https://ibiscite.org/setup
 ```
 
-Or add the server by hand with the libraries it may read:
+`ibis mcp --file refs.bib`, or `ibis mcp --app-libraries`, serves four
+read-only tools over stdio:
 
-```sh
-# Claude Code
-claude mcp add ibis -- ibis mcp --app-libraries
+| Tool | Input and result |
+| --- | --- |
+| `search` | `query`, optional `limit` (1–25, default 10), `shorthand` for a signal and locator; short hits with checked `ref` values, `complete` and `source_health`; shorthand adds `cited_with` and `searched_for`. |
+| `show` | `ref`; bibliographic fields and `source_health`. |
+| `cite` | Items with `ref` and optional locator/affixes/author omission, or caller [records](#records-you-send); format or style, locale, form, order, optional `for_app` and `strict`; citation text, notices, losses, warnings, receipt and `source_health`. |
+| `styles` | Optional `query`, `limit` and `offset`; matching styles, total and locales. |
 
-# Codex: ~/.codex/config.toml
-# [mcp_servers.ibis]
-# command = "ibis"
-# args = ["mcp", "--file", "/path/to/refs.bib"]
-```
+Refs contain identity and a short content check; changed records are refused.
+When a key is missing or shared, the ref uses an opaque digest. It contains no
+native record key and remains usable with `show` and `cite` in the open snapshot.
+Unknown arguments fail. Failed library startup leaves MCP running with an
+explanation on each library-dependent tool. Library text carries provenance
+marking it as data, and source-health notes report incomplete/stale results.
 
-The skill on its own is
-[plugins/ibis/skills/ibis-cite](../plugins/ibis/skills/ibis-cite/SKILL.md), in the
-open Agent Skills format; copy that folder into an agent's skills folder to use it
-without the plugin.
+Supported protocol revisions are `2026-07-28`, `2025-11-25` and `2025-06-18`.
+The newest uses per-request metadata and `server/discover`; older clients use
+`initialize`. Unsupported explicit revisions are refused; initialize negotiates
+an available legacy revision.
 
-Through MCP, agents see bibliographic fields and citations only: never notes, annotations, source
-paths, file locations, local links or addresses with a login. A note's field lines, such
-as `original-title: …`, count as bibliographic fields, because citations print them.
-`search` and `show` remove markup, direction overrides and invisible tag characters,
-because anyone can write a title; a library is treated as untrusted text. `cite` text is
-the citation as it prints, so a title's own words stay in it. Long values are shortened
-and each answer is at most 256 KiB. Nothing connects beyond your computer; reading a running Zotero uses
-its local API on `127.0.0.1` only.
+MCP excludes notes, annotations, source paths, local links and credentialed
+addresses. Bibliographic field overrides in Extra still count as fields.
+Search/show remove markup and unsafe invisible characters; cite returns the
+printed citation. Values and answers are bounded (256 KiB per answer). Raw
+CLI search/show JSON is not this privacy projection. MCP opens no external
+connection; an AI client can send received data to its own service.
 
-Search results preserve `partial` (only some query words matched) and `typo`
-(spelling was corrected). The skill asks the user to choose those suggestions
-before citing them.
+The repository's [plugin](../plugins/ibis/skills/ibis-cite/SKILL.md) supplies
+MCP configuration and a citation skill for Claude Code/Codex. It requires
+`ibis` on PATH and does not install the executable. It reads app libraries,
+stops if MCP is unavailable and requires confirmation of partial/typo matches.
+The skill directory can also be copied to a client's skill folder. Marketplace
+or directory approval is not established by the repository configuration.
 
-Raw command-line `search` and `show` JSON includes source records and is not the
-MCP privacy projection. The plugin stops when MCP is unavailable; it never falls
-back to those commands or reads the library files itself.
-
-Directory publication is separate from marketplace installation. See
-[Anthropic's publishing guide](https://claude.com/docs/directory/publish) and
-[OpenAI's desktop-only submission requirements](https://developers.openai.com/plugins/deploy/desktop-only).
-OpenAI requires developer verification and partner approval for local MCP
-submissions. The plugin declares desktop execution and reuses the Ibis brand icon
-for its listing.
+Settings backup/restore instructions live in
+[moving to a new computer](moving-to-a-new-computer.md).

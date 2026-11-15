@@ -1,37 +1,12 @@
 use super::*;
 use std::path::Path;
 
-use crate::library::engine_file::FileLibrary;
-
-#[test]
-fn preview_aborts_stop_only_the_named_engine_request_in_any_delivery_order() {
-    let requests = PreviewRequests::default();
-    let intent = |request, cancel| PreviewIntent {
-        keep_order: false,
-        page: 1,
-        request,
-        cancel,
-        context: None,
-    };
-    let first = requests.start(intent(1, false)).unwrap_or_else(|| panic!("first"));
-    let second = requests.start(intent(2, false)).unwrap_or_else(|| panic!("second"));
-    assert!(first.is_cancelled());
-    assert!(requests.start(intent(1, true)).is_none());
-    assert!(!second.is_cancelled(), "late abort cannot cancel a replacement");
-    assert!(requests.start(intent(3, true)).is_none());
-    assert!(second.is_cancelled());
-    let aborted = requests
-        .start(intent(3, false))
-        .unwrap_or_else(|| panic!("aborted start"));
-    assert!(aborted.is_cancelled(), "abort before start still stops engine work");
-    let current = requests.start(intent(4, false)).unwrap_or_else(|| panic!("current"));
-    assert!(!current.is_cancelled());
-}
+use crate::library::engine_library::FileLibrary;
 
 fn library(directory: &Path, bib: &str) -> FileLibrary {
     let path = directory.join("synthetic.bib");
     std::fs::write(&path, bib).unwrap_or_else(|e| panic!("{e}"));
-    FileLibrary::open(&path).unwrap_or_else(|e| panic!("synthetic library: {e}"))
+    FileLibrary::open(&path, &ibis_engine::Cancellation::default()).unwrap_or_else(|e| panic!("synthetic library: {e}"))
 }
 
 fn query(text: &str, interpret_locators: bool) -> SearchQuery {
@@ -309,7 +284,8 @@ fn the_picker_reads_a_record_as_every_front_end_does() {
     let path = directory.path().join("invented.json");
     std::fs::write(&path, include_str!("../../../../../../fixtures/record-summary.json"))
         .unwrap_or_else(|e| panic!("{e}"));
-    let file = FileLibrary::open(&path).unwrap_or_else(|e| panic!("synthetic library: {e}"));
+    let file = FileLibrary::open(&path, &ibis_engine::Cancellation::default())
+        .unwrap_or_else(|e| panic!("synthetic library: {e}"));
     let reply = search(&file, "tide", None);
     let rows: Vec<_> = reply
         .results

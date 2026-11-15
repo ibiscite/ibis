@@ -1,6 +1,7 @@
 // Real built picker + invented IPC. Browser layout evidence, not native input/engine proof.
 // Serve `pnpm build` with `pnpm exec vite preview`; reuse an installed Playwright.
 import assert from "node:assert/strict";
+import { citationPreview } from "../../test-fixtures.ts";
 import { dismissMenu, hasMiddleViewport, isSeatedInspector, isWholeNotice, isWholeShelf, noticeText, refusalGeometry, refusalPresentation, shelfControl, waitForLayout } from "./picker-layout-checks.mjs";
 const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
 const base = new URL(process.argv[2] || "http://127.0.0.1:4173");
@@ -28,10 +29,11 @@ try {
     const errors = [], resizes = [];
     // Exit must finish even if a modal temporarily hides the old menu from ARIA.
     const moreMenu = page.getByRole("menu", { name: "More", exact: true, includeHidden: true });
-    const formatMenu = page.getByRole("menu", { name: /^Copy as/, includeHidden: true });
+    const formatMenu = page.getByRole("menu", { name: /^Citation format/, includeHidden: true });
     const keysDialog = page.getByRole("dialog", { name: "Keyboard Shortcuts", exact: true });
     page.setDefaultTimeout(5000);
     page.on("pageerror", (error) => errors.push(error.message));
+    await page.exposeFunction("fixturePreview", citationPreview);
     await page.exposeFunction("fixtureSizing", (command) => { resizes.push(command); });
     await page.addInitScript(({ larger, scale, startupNotice, largeNotice, pointerNotice, viewState, shortcutNotice, shelfDetails, formatFailure, entryWarning }) => {
       if (scale !== 1) document.addEventListener("DOMContentLoaded", () => { document.documentElement.style.fontSize = `${scale * 100}%`; });
@@ -82,7 +84,7 @@ try {
           if (command === "picker_preferences") return preferences;
           if (command === "save_picker_preferences") { Object.assign(preferences, args.preferences); return 1; }
           if (command === "picker_preferences_saved") return { preferences };
-          if (command === "picker_destination") return { app: shelfDetails === "recents" ? "Invented Writer" : null, app_id: shelfDetails === "recents" ? "invented.writer" : null, app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false };
+          if (command === "picker_destination") return { app: shelfDetails === "recents" ? "Invented Writer" : null, app_id: shelfDetails === "recents" ? "invented.writer" : null, app_identity: null, find_open: false, usual_format: "apa", format: { output: { kind: "key", syntax: "pandoc", command: null }, id: "pandoc", from: "yours", kind: "keys" }, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false };
           if (command === "shortcut_status") return { shortcut: "CommandOrControl+Shift+Y", registered: true, error: shortcutNotice ? "Synthetic shortcut refusal" : null };
           if (command === "library_status") return library;
           if (command === "search" && args.query.text === "refuse") throw Error("synthetic search refusal");
@@ -91,26 +93,27 @@ try {
             return [{ revision: "1", results: recentHistory ? Array.from({ length: 6 }, (_, i) => row(i, i < 3 ? "cited" : "added")) : [] }, recentHistory, false];
           }
           if (command === "search") return { revision: "1", results: args.query.text && args.query.text !== "no-match" ? Array.from({ length: 14 }, (_, i) => row(i)) : [],
-            ...(args.query.interpret_locators && / p12$/.test(args.query.text) ? { interpretation: { search: "invented", locator: { label: "page", value: "12" }, typed: "p12" } } : {}) };
+            ...(args.query.interpret_locators && / p12$/.test(args.query.text) ? { interpretation: { search: "invented", locator: { term: "page", value: "12" }, typed: "p12" } } : {}) };
           if (command === "preview_file_citation" && args.intent.cancel) throw { code: "cancelled" };
           if (command === "preview_file_citation" && shelfDetails === "failed") throw { code: "failed", message: formatFailure };
           if (command === "preview_file_citation") {
             const ticket = `synthetic-ticket-${++previewNumber}`;
-            const spans = [{ item: null, text: "[" }];
+            const style = ["ieee", "apa"].includes(args.output) ? args.output : null;
+            const segments = [{ item: null, text: "[" }];
             args.items.forEach((item, index) => {
-              if (index) spans.push({ item: null, text: "; " });
-              const page = item.page_input || item.locator?.value;
+              if (index) segments.push({ item: null, text: "; " });
+              const page = item.locator_input?.text || item.locator?.value;
               const key = shelfDetails === "rtl" ? `${"مثال-".repeat(48)}${index}` : ["single", "receipt"].includes(shelfDetails) ? `${"invented-long-key-".repeat(16)}${index}` : item.id.key;
-              const text = args.style === "ieee" ? "Aster, Invented reference, 2026."
-                : args.style === "apa" ? item.form === "year-only" ? `(2026${page ? `, p. ${page}` : ""})` : item.form === "narrative" ? `Aster (2026${page ? `, p. ${page}` : ""})` : `(Aster, 2026${page ? `, p. ${page}` : ""})`
+              const text = style === "ieee" ? "Aster, Invented reference, 2026."
+                : style === "apa" ? item.form === "year-only" ? `(2026${page ? `, p. ${page}` : ""})` : item.form === "narrative" ? `Aster (2026${page ? `, p. ${page}` : ""})` : `(Aster, 2026${page ? `, p. ${page}` : ""})`
                 : `${item.form === "year-only" ? "-" : ""}@${key}${page ? `, p. ${page}` : ""}`;
-              spans.push({ item: index, text });
+              segments.push({ item: index, text });
             });
-            spans.push({ item: null, text: "]" });
-            if (args.style) { spans.shift(); spans.pop(); }
-            const text = spans.map((span) => span.text).join("");
-            prepared.set(ticket, { text, items: args.items, style: args.style });
-            return { ticket, content_hash: "synthetic-hash", text, spans, html: null, warnings: shelfDetails === "warnings" ? [entryWarning] : [] };
+            segments.push({ item: null, text: "]" });
+            if (style) { segments.shift(); segments.pop(); }
+            const preview = await window.fixturePreview(segments, { ticket, content_hash: "synthetic-hash", warnings: shelfDetails === "warnings" ? [entryWarning] : [] });
+            prepared.set(ticket, { text: preview.text, items: args.items, style });
+            return preview;
           }
           if (command === "citation_details") {
             const saved = prepared.get(args.ticket), item = saved.items[args.item];
@@ -243,10 +246,8 @@ try {
     const wholeNotice = async (check, text) => {
       // Both the locator and geometry oracle must select the exact same notice.
       const notice = page.getByRole("alert").and(page.getByText(text, { exact: true })).first();
-      await notice.scrollIntoViewIfNeeded();
       await waitForCheck(check, isWholeNotice, text);
       assert.equal(await notice.isVisible(), true, `${caseLabel}: ${check} visible`);
-      assert.equal(await notice.evaluate((node) => /auto|scroll/.test(getComputedStyle(node.closest(".notices")).overflowY)), false, "notices use the middle scroll owner");
       await checkScan("whole notice keeps search/footer and one scroller");
     };
     if (startupNotice) await wholeNotice("startup-notice-whole", noticeText.startup);
@@ -265,7 +266,7 @@ try {
     assert.deepEqual(page.viewportSize(), frame, "the keys sheet keeps the opening frame");
     await keysDialog.press("Escape");
     await keysDialog.waitFor({ state: "detached" });
-    await page.getByRole("button", { name: /^Copy as/ }).click();
+    await page.getByRole("button", { name: /^Citation format/ }).click();
     await formatMenu.waitFor();
     await dismissMenu(formatMenu, page.getByRole("searchbox", { name: "Filter formats", exact: true }));
     assert.deepEqual(page.viewportSize(), frame, "the format pop-up keeps the opening frame");
@@ -335,20 +336,13 @@ try {
     assert.deepEqual(page.viewportSize(), frame, "typing results keeps the opening frame");
     const seated = () => waitForCheck("inspector-seated-beside-the-list", isSeatedInspector);
     const openEditor = async () => {
-      const open = async () => {
-        const edit = shelfControl(page, /^Edit /).first();
-        if (await edit.count()) { await edit.click(); return; }
-        await shelfControl(page, /^\d+ references$/).click();
-        await page.getByRole("menuitemradio").first().click();
-      };
-      await open();
-      const inspector = page.getByRole("region", { name: /^Citation details for/ });
+      await shelfControl(page, /^Edit /).first().click();
+      const inspector = page.getByRole("dialog", { name: /^Citation details for/ });
       await inspector.waitFor();
       const pageField = inspector.getByRole("textbox", { name: "Page", exact: true });
-      assert.equal(await pageField.evaluate((node) => document.activeElement === node), true, "opening a segment focuses Page");
-      await seated();
+      assert.equal(await pageField.evaluate((node) => document.activeElement === node), true, "opening a token focuses Page");
       await pageField.press("Tab");
-      assert.equal(await page.evaluate(() => document.activeElement?.closest(".inspector") !== null), true, "Tab moves through the inspector");
+      assert.equal(await page.evaluate(() => document.activeElement?.closest('[role="dialog"]') !== null), true, "Tab moves through the details");
       await inspector.waitFor();
       return inspector;
     };
@@ -460,14 +454,14 @@ try {
     if (shelfDetails === "single" || shelfDetails === "rtl") {
       await search.press("Shift+Enter");
       const band = await page.locator("main > .shelf").boundingBox();
-      const segment = shelfControl(page, /^Edit /).first();
-      await segment.hover();
+      const token = shelfControl(page, /^Edit /).first();
+      await token.hover();
       const remove = shelfControl(page, "Remove synthetic0 from the selection");
       await remove.waitFor({ state: "visible" });
       await page.waitForTimeout(300); // The chip grows to make room for it.
       assert.equal(await remove.evaluate((node) => {
         const rect = node.getBoundingClientRect();
-        const text = node.closest(".shelf-segment").querySelector(".preview-text").getBoundingClientRect();
+        const text = node.closest(".citation-token").querySelector(".preview-text").getBoundingClientRect();
         const size = rect.width * 2 / 3;
         const top = rect.top + (rect.height - size) / 2, left = rect.left + (rect.width - size) / 2;
         return Math.abs(rect.width - rect.height) <= 1 && rect.width >= 16 &&
@@ -479,7 +473,7 @@ try {
       assert.equal(await page.locator('[role="option"][data-citation-selected]').count(), 1, "Undo restores the removed reference");
       const dialog = await openEditor();
       const fullCitation = dialog.getByRole("region", { name: "Full citation", exact: true });
-      assert.equal(await fullCitation.textContent(), await segment.locator(".preview-text").textContent(), "the single-reference menu keeps the entire citation available without hover");
+      assert.equal(await fullCitation.textContent(), await token.locator(".preview-text").textContent(), "the single-reference menu keeps the entire citation available without hover");
       assert.equal(await fullCitation.getAttribute("tabindex"), "0", "Tab reaches the complete citation without hover");
       assert.equal(await reachable(fullCitation), true, "the complete long/RTL citation is reachable in the panel");
       await dialog.getByRole("textbox", { name: "Page", exact: true }).fill("iv–vi");
@@ -492,9 +486,9 @@ try {
       const reopened = await openEditor();
       assert.equal(await reopened.getByRole("textbox", { name: "Page", exact: true }).inputValue(), "iv–vi", "close/reopen keeps the page");
       await closeEditor(reopened);
-      await segment.focus();
+      await token.focus();
       assert.equal(await remove.isVisible(), false, "keyboard focus never shows the hover badge");
-      await segment.press("Backspace");
+      await token.press("Backspace");
       await page.getByRole("button", { name: /^Undo/ }).waitFor();
       await checkScan("long/RTL text and removal keep the shelf whole");
       assert.deepEqual(resizes, [], "no native size requests from the shelf");
@@ -507,12 +501,12 @@ try {
       if (shelfDetails === "expanded") {
         for (let i = 0; i < 9; i++) { if (i) await search.press("ArrowDown"); await search.press("Shift+Enter"); }
         beforeShelf = await page.locator("main > .shelf").boundingBox();
-        const segments = page.locator("main > .shelf .shelf-segment-button");
-        await segments.nth(8).waitFor({ state: "attached" });
-        assert.equal(await segments.count(), 9, "the citation has one engine-owned segment per reference");
-        await segments.first().focus(); await segments.first().press("ArrowRight");
-        assert.equal(await segments.nth(1).evaluate((node) => document.activeElement === node), true, "arrow selection follows citation order");
-        await segments.nth(1).press("Space");
+        const tokens = page.locator("main > .shelf .citation-token-button");
+        await tokens.nth(8).waitFor({ state: "attached" });
+        assert.equal(await tokens.count(), 9, "the citation has one engine-owned token per reference");
+        await tokens.first().focus(); await tokens.first().press("ArrowRight");
+        assert.equal(await tokens.nth(1).evaluate((node) => document.activeElement === node), true, "arrow selection follows citation order");
+        await tokens.nth(1).press("Space");
         await page.getByRole("textbox", { name: "Page", exact: true }).waitFor();
         await closeEditor(page.getByRole("region", { name: /^Citation details for/ }));
         const count = shelfControl(page, "9 references");
@@ -543,18 +537,11 @@ try {
           assert.equal(await reachable(meaning), true, "every warning, reference-entry explanation and closest-match provenance is reachable");
         }
       } else {
-        const refusal = page.locator(".notices").getByRole("alert").and(page.getByText(noticeText.formatting, { exact: true }));
-        await refusal.waitFor();
-        const refusalState = await refusal.evaluate(refusalPresentation);
-        const refusalDiagnostic = await refusal.evaluate(refusalGeometry);
-        assert.deepEqual(refusalState, {
-          startsInView: true, wrapsInFull: true, keyboardReachable: true,
-        }, `${caseLabel}: a new refusal starts in view, wraps in full and is keyboard reachable before Details; geometry=${JSON.stringify(refusalDiagnostic)}`);
-        assert.equal(await search.evaluate((node) => document.activeElement === node), true, "a refusal never takes focus from Search");
-        assert.equal(await reachable(refusal), true, "the full refusal is readable before opening Details");
         const shelfReason = page.locator("main > .shelf .shelf-output p");
         await shelfReason.waitFor();
         assert.equal(await shelfReason.textContent(), noticeText.formatting, "the reason appears beside the failed citation before Details opens");
+        assert.equal(await shelfReason.getAttribute("role"), "alert", "the shelf announces the refusal once, before Details");
+        assert.equal(await search.evaluate((node) => document.activeElement === node), true, "a refusal never takes focus from Search");
         assert.equal(await reachable(shelfReason), true, "the refusal line stays visible in the fixed shelf");
         await shelfControl(page, "Details").click();
         dialog = page.getByRole("region", { name: /^Citation details for/ });
@@ -594,18 +581,18 @@ try {
       const owners = () => page.evaluate(() => [document.querySelector("main"), document.querySelector(".picker-content"), document.querySelector(".results-area")]
         .flatMap((node, index) => /auto|scroll/.test(getComputedStyle(node).overflowY) && node.clientHeight > 0 && node.scrollHeight > node.clientHeight + 1 ? [index] : []));
       await page.evaluate(() => window.fixtureNotice(true));
-      await waitForCheck("pointer-notice-appeared", () => document.querySelector(".notices").childElementCount > 0);
+      await waitForCheck("pointer-notice-appeared", () => document.querySelector(".ui-notice-line .ui-line-notice") !== null);
       await waitForCheck("pointer-notice-appear-anchor", anchored, top);
-      assert.deepEqual(await owners(), [1], "notice uses only the middle scroller");
+      assert.deepEqual(await owners(), [2], "a notice takes its own line and leaves the results scroller as it was");
       await checkScan("pointer notice keeps search/footer whole and one scroller");
       // Progress has no clear event. Settings notices exercise the real appear /
       // clear path, including browsing to a newer place before they clear.
       if (pointerNotice === "settings") {
-        await page.locator(".picker-content").evaluate((node) => { node.scrollTop += 60; });
+        await page.locator(".results-area").evaluate((node) => { node.scrollTop += 60; });
         top -= 60;
         await waitForCheck("pointer-notice-browsed", anchored, top);
         await page.evaluate(() => window.fixtureNotice(false));
-        await waitForCheck("pointer-notice-cleared", () => document.querySelector(".notices").childElementCount === 0);
+        await waitForCheck("pointer-notice-cleared", () => document.querySelector(".ui-notice-line .ui-line-notice") === null);
         await waitForCheck("pointer-notice-clear-anchor", anchored, top);
         assert.deepEqual(await owners(), [2], "clearing restores only the results scroller");
         await checkScan("cleared notice keeps search/footer whole and one scroller");
@@ -631,9 +618,9 @@ try {
       await search.press("Shift+Enter");
       await search.press("ArrowDown");
       await search.press("Shift+Enter");
-      await waitForCheck("large-notice-two-selected", () => document.querySelector(".shelf-count")?.getAttribute("aria-label") === "2 references");
+      await waitForCheck("large-notice-two-selected", () => document.querySelectorAll(".citation-token").length === 2);
       assert.deepEqual(page.viewportSize(), { width: 720, height: 480 }, "large-notice fixture uses the reported frame");
-      assert.ok(await page.locator(".notices").evaluate((node) => node.getBoundingClientRect().height >= 300), "warnings consume at least 300px");
+      assert.equal(await page.locator(".ui-notice-line").evaluate((node) => node.scrollHeight <= node.clientHeight + 1), true, "warnings keep to the one notice line");
       assert.equal(await page.evaluate(isWholeShelf), true, "the shelf stays outside the overflowing notice region");
       await search.evaluate((node) => { node.focus({ preventScroll: true }); node.setSelectionRange(2, 5); });
       const selection = () => search.evaluate((node) => ({ focused: document.activeElement === node, range: [node.selectionStart, node.selectionEnd],
@@ -643,18 +630,17 @@ try {
         .filter((node) => /auto|scroll/.test(getComputedStyle(node).overflowY) && node.clientHeight > 0 && node.scrollHeight > node.clientHeight + 1)
         .map((node) => node.className));
       await checkScan("large notice with selection");
-      assert.deepEqual(await owners(), ["picker-content scroll-area"], "large notices and results share the middle scroller");
+      assert.deepEqual(await owners(), ["results-area scroll-area"], "a notice keeps to its line; the results keep their scroller");
       for (const height of [360, 480, 800, 480]) {
         await page.setViewportSize({ width, height });
         await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
         assert.deepEqual(await selection(), chosen, "layout changes preserve focus, query range and selected references");
         {
-          await checkScan("growing the viewport restores the bounded middle");
-          assert.deepEqual(await owners(), ["picker-content scroll-area"], "notice fallback survives viewport growth");
+          await checkScan("resizing keeps the notice line and one scroller");
         }
       }
-      for (const control of [page.getByRole("list", { name: "Copy warnings" }).locator("li").first(), page.getByRole("list", { name: "Copy warnings" }).locator("li").last(), page.getByRole("region", { name: "Preview" })]) {
-        assert.equal(await reachable(control), true, "notice ends and the fixed preview remain reachable");
+      for (const control of [page.getByRole("list", { name: "Copy warnings" }), page.getByRole("region", { name: "Preview" })]) {
+        assert.equal(await reachable(control), true, "the notice line and the fixed preview remain reachable");
         await checkScan("revealing a notice keeps all three bands whole");
       }
       const editor = await openEditor();

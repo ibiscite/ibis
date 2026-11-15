@@ -51,6 +51,9 @@ macro_rules! registry {
 }
 
 registry![
+    crate::cli_install::cli_status,
+    crate::cli_install::set_cli_installed,
+    crate::cli_install::copy_cli_profile,
     crate::library::commands::choose_library,
     crate::library::commands::reload_library,
     crate::library::commands::use_zotero,
@@ -76,8 +79,8 @@ registry![
     crate::project::choose_project,
     crate::project::stop_project,
     crate::project::copy_project_entry,
-    crate::writing_projects::writing_projects,
-    crate::writing_projects::edit_writing_project,
+    crate::writings::writings,
+    crate::writings::edit_writing,
     crate::editor_endpoint::editor_request,
     crate::editor_endpoint::editor_endpoint,
     crate::editor_endpoint::set_editor_endpoint,
@@ -90,9 +93,14 @@ registry![
     crate::preferences::picker_preferences,
     crate::preferences::save_picker_preferences,
     crate::delights::delight_view,
+    crate::delights::shorthand_hint,
     crate::preferences::picker_preferences_saved,
     crate::destination::picker_destination,
     crate::destination::remember_app_output,
+    crate::destination::forget_app_output,
+    crate::format_settings::format_settings,
+    crate::format_settings::forget_app_format,
+    crate::settings_window::open_settings_file,
     crate::login_item::login_item,
     crate::login_item::set_login_item,
     crate::picker::hide_picker,
@@ -104,6 +112,7 @@ registry![
     crate::picker::wayland::configure_shortcuts,
     crate::notice::show_copied_notice,
     crate::notice::copied_notice,
+    crate::notice::change_suggested_format,
     crate::native_feel::native_appearance,
     crate::row_context::row_context,
     crate::updater::setting::update_checks,
@@ -165,6 +174,7 @@ fn contract() -> Value {
         "input": schemas.input.take_definitions(true),
         "output": schemas.output.take_definitions(true),
         "constants": {
+            "CITATION_FORMS": ibis_core::contract::CitationForm::ALL,
             "OUTPUTS": crate::output::choices(),
             "DEFAULT_OUTPUT": ibis_engine::outputs::DEFAULT,
             "DEFAULT_STYLE": ibis_engine::outputs::DEFAULT_STYLE,
@@ -176,10 +186,43 @@ fn contract() -> Value {
 mod tests {
     use std::collections::BTreeSet;
 
+    #[test]
+    fn every_command_failure_is_data_with_required_recovery() {
+        let contract = super::contract();
+        let definitions = contract["output"].as_object().unwrap_or_else(|| panic!("definitions"));
+        for command in contract["commands"].as_array().unwrap_or_else(|| panic!("commands")) {
+            let mut error = &command["error"];
+            if error.is_null() {
+                continue;
+            }
+            if let Some(reference) = error["$ref"].as_str() {
+                error = &definitions[reference.trim_start_matches("#/$defs/")];
+            }
+            assert_ne!(
+                error["type"], "string",
+                "{} throws a plain string: {error}",
+                command["name"]
+            );
+            let required = error["required"]
+                .as_array()
+                .unwrap_or_else(|| panic!("{} needs structured error data: {error}", command["name"]));
+            for field in ["code", "message", "recovery", "focus"] {
+                assert!(
+                    required.iter().any(|name| name == field),
+                    "{} lacks {field}: {error}",
+                    command["name"]
+                );
+            }
+        }
+    }
+
     include!("../app_commands.rs");
 
     /// What the Settings window may call: saved choices, never the library or copies.
     const SETTINGS_COMMANDS: &[&str] = &[
+        "format_settings",
+        "forget_app_format",
+        "open_settings_file",
         "picker_preferences",
         "save_picker_preferences",
         "editor_endpoint",
@@ -206,11 +249,17 @@ mod tests {
         "choose_settings_backup",
         "restore_settings_backup",
         "cancel_settings_restore",
+        "cli_status",
+        "set_cli_installed",
+        "copy_cli_profile",
     ];
 
     /// Only Settings asks about paste permission, changes the global shortcut
     /// or chooses a window size.
     const SETTINGS_ONLY: &[&str] = &[
+        "format_settings",
+        "forget_app_format",
+        "open_settings_file",
         "editor_endpoint",
         "set_editor_endpoint",
         "copy_editor_endpoint",
@@ -227,6 +276,9 @@ mod tests {
         "choose_settings_backup",
         "restore_settings_backup",
         "cancel_settings_restore",
+        "cli_status",
+        "set_cli_installed",
+        "copy_cli_profile",
     ];
 
     #[test]
@@ -267,7 +319,8 @@ mod tests {
             serde_json::json!([
                 "core:event:allow-listen",
                 "core:event:allow-unlisten",
-                "allow-copied-notice"
+                "allow-copied-notice",
+                "allow-change-suggested-format"
             ])
         );
         let mut settings_expected = [
@@ -297,7 +350,10 @@ mod tests {
         expected.extend(
             APP_COMMANDS
                 .iter()
-                .filter(|command| **command != "copied_notice" && !SETTINGS_ONLY.contains(command))
+                .filter(|command| {
+                    !matches!(**command, "copied_notice" | "change_suggested_format")
+                        && !SETTINGS_ONLY.contains(command)
+                })
                 .map(|command| format!("allow-{}", command.replace('_', "-"))),
         );
         assert_eq!(picker["permissions"], serde_json::json!(expected));
@@ -361,8 +417,11 @@ mod tests {
                     let allowed = origin == local
                         && APP_COMMANDS.contains(&command)
                         && match label {
-                            "main" => command != "copied_notice" && !SETTINGS_ONLY.contains(&command),
-                            "notice" => command == "copied_notice",
+                            "main" => {
+                                !matches!(command, "copied_notice" | "change_suggested_format")
+                                    && !SETTINGS_ONLY.contains(&command)
+                            }
+                            "notice" => matches!(command, "copied_notice" | "change_suggested_format"),
                             "settings" => SETTINGS_COMMANDS.contains(&command),
                             _ => false,
                         };

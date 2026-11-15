@@ -1,12 +1,12 @@
 -- Invented minimal subset of Zotero's physical userdata tables (AGPL-3.0-or-later).
--- Layout verified against upstream 7.0.0, 8.0, 9.0 and 10.0.6; no user data.
+-- Layout verified against upstream 7.0.0, 8.0, 9.0 and 10.0.9; no user data.
 CREATE TABLE version(schema TEXT PRIMARY KEY,version INTEGER);
 CREATE TABLE libraries(libraryID INTEGER PRIMARY KEY,type TEXT);
 CREATE TABLE groups(groupID INTEGER PRIMARY KEY,libraryID INTEGER UNIQUE,name TEXT);
 CREATE TABLE itemTypesCombined(itemTypeID INTEGER PRIMARY KEY,typeName TEXT);
 CREATE TABLE fieldsCombined(fieldID INTEGER PRIMARY KEY,fieldName TEXT);
-CREATE TABLE items(itemID INTEGER PRIMARY KEY,libraryID INTEGER,key TEXT,version INTEGER,itemTypeID INTEGER,dateAdded TEXT,dateModified TEXT);
-CREATE TABLE itemData(itemID INTEGER,fieldID INTEGER,valueID INTEGER);
+CREATE TABLE items(itemID INTEGER PRIMARY KEY,libraryID INTEGER,key TEXT,version INTEGER,itemTypeID INTEGER,dateAdded TIMESTAMP,dateModified TIMESTAMP);
+CREATE TABLE itemData(itemID INTEGER,fieldID INTEGER,valueID);
 CREATE TABLE itemDataValues(valueID INTEGER PRIMARY KEY,value UNIQUE);
 CREATE TABLE creators(creatorID INTEGER PRIMARY KEY,firstName TEXT,lastName TEXT,fieldMode INTEGER);
 CREATE TABLE creatorTypes(creatorTypeID INTEGER PRIMARY KEY,creatorType TEXT);

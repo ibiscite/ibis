@@ -1,5 +1,6 @@
 use super::*;
 use crate::closed::tests::{control, edit, fixture};
+use std::fs::OpenOptions;
 
 fn scratch() -> tempfile::TempDir {
     tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic scratch"))
@@ -204,7 +205,7 @@ fn backup_marker_and_owner_only_modes_are_set_before_library_data() {
             .unwrap_or_default()
             .starts_with(b"Signature: 8a477f597d28d172789f06886806bc55")
     );
-    let file = private_file(&copy.path.join("zotero.sqlite")).unwrap_or_else(|e| panic!("{e}"));
+    let file = private_file(&copy.path.join("zotero.sqlite"), &control()).unwrap_or_else(|e| panic!("{e}"));
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;

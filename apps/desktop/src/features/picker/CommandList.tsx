@@ -2,9 +2,9 @@ import { Icon } from "../../icons";
 import { keyLabel } from "../../keys";
 import { say } from "../../i18n";
 import { currentPlatform } from "../../platform";
+import { FrameHeading } from "../../ui/Frame";
 import { Option } from "../../ui/Option";
 import type { PickerCommandEntry } from "./commands";
-import "./CommandList.css";
 
 /** ">" in the search: the commands as one-line result rows, highlighted from the
  * search as references are, so ↑ ↓ and Enter work the same and the pointer can
@@ -15,14 +15,14 @@ export function CommandList({ commands, active, hoverAllowed, onRun }: {
   onRun: (command: PickerCommandEntry) => void;
 }) {
   const mac = currentPlatform() === "macos";
-  if (!commands.length) return <div className="results-heading" role="status"><span>{say("picker-no-commands")}</span></div>;
+  // The heading sits in the frame's line, as the results' does, where a notice can stand in for it.
+  if (!commands.length) return <FrameHeading><div className="ui-list-heading" role="status"><span>{say("picker-no-commands")}</span></div></FrameHeading>;
   return <>
-    <div className="results-heading" aria-hidden="true"><span>{say("picker-commands")}</span></div>
+    <FrameHeading><div className="ui-list-heading" aria-hidden="true"><span>{say("picker-commands")}</span></div></FrameHeading>
     <ul id="results" role="listbox" aria-label={say("picker-commands")}>
       {commands.map((command, i) => <Option key={command.id} id={`command-${i}`} className="command-row" role="option" aria-selected={i === active}
         aria-keyshortcuts={command.keys || undefined} aria-description={command.about} data-density="compact" data-active={i === active || undefined}
-        hoverAllowed={hoverAllowed} onClick={() => onRun(command)}>
-        <span className="result-tile"><Icon name={command.icon} /></span>
+        hoverAllowed={hoverAllowed} onClick={() => onRun(command)} icon={<span className="result-tile"><Icon name={command.icon} size="tile" /></span>}>
         <span className="result-body">
           <span className="result-line">
             <strong className="result-title">{command.title}</strong>

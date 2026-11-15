@@ -20,29 +20,42 @@
   /* Space, on the grid. S = --inset keeps every fill S from a window edge or divider. */
   --space-1: var(--unit); --space-2: calc(2 * var(--unit)); --space-3: calc(3 * var(--unit)); --space-4: calc(4 * var(--unit));
   --space-5: calc(5 * var(--unit)); --space-6: calc(6 * var(--unit)); --space-8: calc(8 * var(--unit)); --space-10: calc(10 * var(--unit));
+  /* Layout: where things sit, decided here once. Only ui/
+     parts read these; a screen never sets a margin, padding, gap, inset or width
+     (ui/ownership.test.ts). The window inset, on both sides of every band and body. */
   --inset: var(--space-2);
+  /* The space between sections, columns and groups. */
+  --gutter: var(--space-4);
+  /* A row: its own padding, the gap after its icon slot (--tile), its spacing in a
+     list, and its two heights. Rows without an icon start their words at
+     --inset + --row-pad; rows with one start them on the label column after the slot. */
   --row-pad: var(--space-3); --row-gap: var(--space-3); --row-spacing: 2px;
   --row-compact: var(--space-10); --row-comfortable: 3.625rem;
   --row-height: var(--row-comfortable);
+  /* The longest a sheet's text and cards run before the window has more room. */
+  --content-max: 42rem;
   --larger-text-scale: 1.15;
 
   /* Sizes. */
-  --tile: var(--space-8); --icon: var(--space-5); --icon-small: var(--space-4); --icon-stroke: 1.5; --icon-compact: .875rem; --key: var(--space-5);
+  /* --tile is the icon slot: every row's icon, the bird and the back chevron centre on it. */
+  --tile: var(--space-8); --icon: 16px; --icon-tile: 20px; --icon-stroke: 1.5; --key: var(--space-5);
   --control-h: var(--space-8); --action-h: 1.75rem; --control-small-h: var(--space-6); --field-h: 2.25rem; --touch-target: 2.75rem; --border-width: 1px;
   --status-dot: var(--space-2);
   /* A control's hit area: 32 px, 44 px under a coarse pointer. */
   --hit: var(--control-h);
   /* The narrowest a status line (library, project) shrinks before it wraps. */
   --status-min: 14rem;
+  /* The shortest a status gets before the footer folds its hint labels to keys:
+     about a word, never a stub such as "Z…". */
+  --status-short: 6rem;
   /* Measured from NSSwitch on macOS 26: a wide capsule with a pill thumb. */
   --switch-w: 54px; --switch-h: 24px; --switch-thumb-w: 32px; --switch-thumb-h: 20px;
-  /* The search glyph sits on the tile column and the query on the title column. */
-  --lead: calc(var(--row-pad) + (var(--tile) - var(--icon)) / 2);
-  --lead-gap: calc((var(--tile) - var(--icon)) / 2 + var(--row-gap));
   /* [C3] From a row's content edge: where its title starts, and the inset that
-     centres a mark of width W on the tile column is (--tile - W) / 2. The footer
-     and its notices use the same two columns as the rows above them. */
+     centres a mark of width W on the tile column is (--tile - W) / 2. Bands
+     (ui/Band) hold the same two columns, so no part computes them. */
   --title-start: calc(var(--tile) + var(--row-gap));
+  /* The label column from the window's leading edge, for words that are not in a band. */
+  --label-start: calc(var(--row-start) + var(--title-start));
   /* [C20] The reader: a page at Fit Width and its thumbnail. Paper is drawn as the
      PDF draws it, white in either mode, with ink to match. */
   --page-w: 34rem; --thumb-w: 4rem;
@@ -52,7 +65,7 @@
      the native mask [C15]), a capsule and the app icon's. Nested shapes are
      concentric: a shape --space-2 inside a --r-large one takes --r-control, a mark
      a few pixels inside a control takes --r-small.
-       window 16 -8-> row, field, control 8 -2-> segment, key cap 6
+       window 16 -8-> row, field, control 8 -2-> token, key cap 6
        menu, card, sheet 12 -4-> menu item 8     row 8 -> tile 6 */
   --r-small: calc(.75 * var(--radius)); --r-control: var(--radius); --r-large: calc(1.5 * var(--radius));
   --r-win: 16px; --r-full: 999px; --r-icon: 22.5%;
@@ -69,9 +82,16 @@
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
 
-  /* Motion: feedback and panels. No bounce. */
-  --dur: 120ms; --dur-panel: 200ms;
-  --ease: cubic-bezier(.2, .8, .2, 1); --ease-in: cubic-bezier(.4, 0, 1, 1);
+  /* Motion (docs/design/foundations.md, "Motion"): three steps. --dur-1 answers a
+     touch (hover, press, a check drawing); --dur-2 brings something in (a menu
+     growing from its button, a line appearing); --dur-3 moves a region (a sheet,
+     a panel). Entrances ease out, exits ease in, and something that follows the
+     pointer or the keys settles on a spring with no overshoot. */
+  --dur-1: 120ms; --dur-2: 180ms; --dur-3: 240ms;
+  --ease-out: cubic-bezier(.2, .8, .2, 1); --ease-in: cubic-bezier(.4, 0, 1, 1);
+  --ease-spring: linear(0, .25 7%, .54 16%, .77 27%, .9 39%, .97 53%, .995 70%, 1);
+  /* A pressed control gives a little, as a key does. */
+  --press-scale: .97;
 
   /* Layers. */
   --z-chrome: 1; --z-overlay: 10; --z-modal: 30;
@@ -89,7 +109,7 @@
   /* Focus: one ring, keyboard only. */
   --ring-width: 2px; --ring-offset: 1px;
   /* A ring drawn inside a control that sits flush with its neighbours. */
-  --ring-inside: calc(-1 * var(--ring-width));
+  --ring-inside: calc(-1 * var(--ring-width)); --border-outside: calc(-1 * var(--border-width));
 
   /* Colour: Apple's semantic ladders as measured from AppKit on macOS 27.2
      (docs/design/foundations.md, "Exact macOS values"), raised only where Ibis's floors need it.
@@ -119,7 +139,6 @@
   --on-selected-fill: color-mix(in srgb, var(--selected-text) 22%, transparent);
   --status-ok-wash: color-mix(in srgb, var(--status-ok) 9%, transparent);
   --status-ok-fill: color-mix(in srgb, var(--status-ok) 14%, transparent);
-  --scrim: rgb(0 0 0 / 30%);
   --scrollbar-thumb: var(--text-tertiary);
   --scroll-fade: 14px;
 
@@ -133,13 +152,16 @@
   --highlight: var(--accent-wash);
   /* Previews: the real part at one size each. The window picture keeps Medium's shape. */
   --preview-window-w: 45rem; --preview-window-h: 30rem;
-  --preview-window: .21;
+  --preview-window: .21; --preview-thumb: .09; --preview-live: .75;
   /* The bird: the app icon names Ibis; the depth mark greets. */
   --mark-app: 6rem; --mark-greeting: 3.5rem;
+  /* The search bar's bird fills the lead column, so its ink is the query's line height. */
+  --mark-search: var(--tile);
 
 }
 
-@media (prefers-reduced-motion: reduce) { :root { --dur: 100ms; --dur-panel: 1ms; } }
+/* Reduce Motion: feedback becomes a short fade, and anything that moves ends at once. */
+@media (prefers-reduced-motion: reduce) { :root { --dur-1: 100ms; --dur-2: 1ms; --dur-3: 1ms; --press-scale: 1; } }
 @media (pointer: coarse) { :root { --hit: var(--touch-target); } }
 :root[data-system="macos"] { --titlebar-height: var(--touch-target); }
 
@@ -151,7 +173,6 @@
     --accent: #007aff; --accent-text: light-dark(#0068da, #419cff);
     --selected: light-dark(#0064e1, #0059d1); --selected-text: #fff; --text-on-accent: var(--selected-text);
     --selected-text-secondary: var(--selected-text);
-    --scrim: light-dark(rgb(0 0 0 / 20%), rgb(0 0 0 / 40%));
   }
 }
 @supports (color: light-dark(white, black)) {
@@ -182,7 +203,7 @@
   }
 }
 
-/* The accent is blue until the Mac's own arrives (nativeAccent.css) or Look chooses one. */
+/* The accent is blue until the Mac's own arrives (nativeAccent.ts) or Look chooses one. */
 /* WKWebView resolves AccentColorText to black, so macOS uses its list colours. */
 @supports (background: -apple-system-selected-content-background) and (color: -apple-system-alternate-selected-text) {
   :root[data-system="macos"] { --selected: -apple-system-selected-content-background; --selected-text: -apple-system-alternate-selected-text; }
@@ -221,7 +242,7 @@
     --surface: Canvas; --surface-overlay: Canvas; --surface-grouped: Canvas;
     --text: CanvasText; --text-secondary: CanvasText; --text-tertiary: CanvasText; --separator: CanvasText; --stroke-field: CanvasText;
     --selected: Highlight; --selected-text: HighlightText; --selected-text-secondary: currentColor;
-    --ring: CanvasText; --ring-offset: 2px; --scrollbar-thumb: CanvasText; --scrim: Canvas;
+    --ring: CanvasText; --ring-offset: 2px; --scrollbar-thumb: CanvasText;
     --scarlet: CanvasText; --on-scarlet: Canvas;
     --status-ok: CanvasText; --status-warning: CanvasText; --status-error: CanvasText;
   }
@@ -247,7 +268,7 @@
 /* One accent, three roles, both modes: the accent colours controls and the focus
    ring; the selection is a deeper shade that keeps its text at 4.5:1; accent text
    passes 4.5:1 on the surface. Follow the Mac reaches these roles from
-   nativeAccent.css; Ibis scarlet is the one fixed choice, following the same rule:
+   the native accent below; Ibis scarlet is the one fixed choice, following the same rule:
    selection and filled controls carry white, and the bright scarlet stays for
    accent text, the ring and marks in dark. */
 @supports (color: light-dark(white, black)) {
@@ -267,10 +288,32 @@
 /* Layer 3: components, derived from the layers above. */
 :root {
   --key-gap: calc((var(--control-small-h) - var(--key)) / 2);
+  /* A band that ends in a key cap's button ends here, so the cap's fill lands on the
+     trailing edge (--row-start from the window), where years and counts end. */
+  --cap-end: calc(var(--row-start) - var(--key-gap));
+  /* Layout: the header (the search field's band) and the footer band, and where a
+     section's heading and words start: on the text of the rows in its card. */
+  --header-h: calc(var(--field-h) + 2 * var(--inset) + var(--border-width));
   --footer-h: calc(var(--control-small-h) + 2 * var(--inset));
+  /* [C24] Layer roles: every surface is one of four, each with one fill, one edge
+     and one material, which the colours above answer for light, dark, Increase
+     Contrast and forced colours. A part names its role, never a colour.
+     base: the window itself. inset: a band set into it (the shelf, a chip).
+     overlay: anchored to what it is about (menus, popovers, Peek, held keys).
+     view: replaces the window's content (palettes, sheets); it is the window's
+     own material, so a view never reads as a card over the list. */
+  --layer-base: var(--surface);
+  --layer-inset: var(--fill-control);
+  --layer-overlay: var(--surface-overlay); --layer-overlay-edge: var(--shadow-overlay); --layer-overlay-material: var(--blur);
+  --layer-view: transparent;
+  /* [C24] The list's heading line, where a notice stands in for the heading (ui/Frame). */
+  --notice-line-h: calc(var(--control-small-h) + var(--space-2));
+  /* What floats stays --inset inside the window on every side ([D15]). */
+  --overlay-max-inline: calc(100vw - 2 * var(--inset)); --overlay-max-block: calc(100vh - 2 * var(--inset));
+  /* Where a row's icon column starts: the window inset, then the row's own padding. */
+  --row-start: calc(var(--inset) + var(--row-pad));
+  --heading-offset: calc(var(--row-pad) + var(--border-width));
   --inspector-width: 18rem; --inspector-column: 15rem;
-  /* One Settings row, in every group and the shortcuts list. */
-  --settings-row-h: var(--touch-target); --settings-row-pad: var(--space-4);
   /* Measured from NSSegmentedControl: the chosen fill lands at 19% of the text colour. */
   --segment-selected: color-mix(in srgb, var(--text) 12%, transparent);
   --primary: var(--accent);
@@ -285,9 +328,48 @@
   --website-margin: 17rem; --website-gap: clamp(2rem, 4.5vw, 4rem);
   --website-pad: clamp(1.25rem, 3.5vw, 3.5rem);
   --website-paragraph-gap: 1.1rem; --website-block-gap: 1.25rem;
-  --website-section-pad: clamp(2rem, 4vw, 2.75rem);
+  --website-section-pad: clamp(1.5rem, 3vw, 2.25rem);
   --website-chip-radius: 5px; --website-press: .96; --website-reveal: 12px;
   --website-button-height: 2.25rem;
+}
+
+/* The Mac's own accent (nativeAccent.ts), once a validated native snapshot arrives,
+   unless Look chose Ibis scarlet: that choice wins whatever the order of the rules. */
+/* Private inputs are unset until a validated native snapshot arrives. These
+   guards preserve all system pairs, in high contrast. */
+:root { --native-accent-fill: initial; --native-accent-on: initial; --native-accent-light: initial; --native-accent-dark: initial; }
+@supports (color: light-dark(white, black)) {
+  @media (prefers-contrast: no-preference) and (forced-colors: none) {
+    :root[data-native-accent="true"][data-platform="macos"]:not(.notice-window, [data-accent="ibis"]) {
+      --accent: var(--native-accent-fill);
+      --accent-text: light-dark(var(--native-accent-light), var(--native-accent-dark));
+      --text-on-accent: var(--native-accent-on);
+      --selected: var(--accent); --selected-text: var(--text-on-accent);
+    }
+    /* macOS keeps WebKit's selection pair: deeper than the accent, and it follows it. */
+    @supports (background: -apple-system-selected-content-background) and (color: -apple-system-alternate-selected-text) {
+      :root[data-native-accent="true"][data-system="macos"]:not(.notice-window, [data-accent="ibis"]) {
+        --selected: -apple-system-selected-content-background;
+        --selected-text: -apple-system-alternate-selected-text;
+      }
+      /* An accent too bright for white text fills the primary with that deeper pair. */
+      :root[data-native-accent-deep="true"][data-system="macos"]:not(.notice-window, [data-accent="ibis"]) {
+        --primary: var(--selected); --text-on-accent: var(--selected-text);
+      }
+    }
+  }
+}
+@media (prefers-contrast: more), (forced-colors: active) {
+  :root, :root[data-platform] { --accent: Highlight; --accent-text: CanvasText; --text-on-accent: HighlightText; }
+}
+
+/* Windows Acrylic: a guarded veil, so text keeps its roles over any backdrop (ui/Material.css). */
+@supports (color: light-dark(white, black)) {
+  @media (forced-colors: none) and (prefers-contrast: no-preference) {
+    :root[data-system="windows"][data-native-appearance="acrylic"]:not(.notice-window) {
+      --acrylic-tint: light-dark(rgb(249 249 249 / 92%), rgb(40 40 40 / 92%));
+    }
+  }
 }
 
 /* BEGIN generated website palette: brand/build.py */

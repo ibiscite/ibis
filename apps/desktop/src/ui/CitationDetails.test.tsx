@@ -2,73 +2,91 @@ import { afterEach, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import axe from "axe-core";
-import type { ReferenceForm } from "../bindings";
+import type { Locator, CitationForm } from "../bindings";
 import { CitationDetails } from "./CitationDetails";
 
 afterEach(cleanup);
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 
-function Editor() {
-  const [page, setPage] = useState("");
-  const [form, setForm] = useState<ReferenceForm>("normal");
-  return <CitationDetails prefix="" suffix="" onPrefixChange={vi.fn()} onSuffixChange={vi.fn()} page={page} form={form} choices={{ current_form: form, forms: [
-    { form: "normal", example: "(Example, 2026)", reason: null },
-    { form: "narrative", example: "Example (2026)", reason: null },
-    { form: "year-only", example: "(2026)", reason: null },
-  ] }} onPageChange={setPage} onFormChange={setForm} />;
+const answer = (forms: Partial<Record<CitationForm, string | { reason: string }>>, current: CitationForm | null = "normal") => ({ current_form: current,
+  forms: (["normal", "narrative", "author-only", "year-only", "full"] as const).map((form) => {
+    const value = forms[form];
+    return { form, example: typeof value === "string" ? value : null, reason: typeof value === "object" ? value.reason : value === undefined ? "Not in this output." : null };
+  }) });
+const examples = { normal: "(Example, 2026)", narrative: "Example (2026)", "year-only": "(2026)" };
+
+function Editor({ choices = answer(examples) }: { choices?: ReturnType<typeof answer> }) {
+  const [locator, setLocator] = useState<Locator | null>(null);
+  const [form, setForm] = useState<CitationForm>("normal");
+  const [prefix, setPrefix] = useState("");
+  return <CitationDetails prefix={prefix} suffix="" onPrefixChange={setPrefix} onSuffixChange={vi.fn()} locator={locator} form={form}
+    choices={{ ...choices, current_form: form }} onLocatorChange={setLocator} onFormChange={setForm} />;
+}
+/** Show as's menu, opened: each row's form name and the text it would paste. */
+async function forms() {
+  fireEvent.click(screen.getByRole("button", { name: /^Show as / }));
+  const rows = await screen.findAllByRole("menuitemradio");
+  return rows.map((row) => [row.querySelector(".menu-label")?.textContent, row.querySelector(".toolbar-menu-sample")?.textContent]);
 }
 
-test("the Form pop-up names the current form, and a pick changes it", async () => {
+test("Show as names each form this output can print, with the text it would paste, and a pick changes it", async () => {
   render(<Editor />);
-  fireEvent.click(screen.getByRole("button", { name: "Show as Name in brackets" }));
-  const item = await screen.findByRole("menuitemradio", { name: "Year only" });
-  expect(item.textContent).toContain("(2026)");
-  fireEvent.click(item);
-  expect(await screen.findByRole("button", { name: "Show as Year only" })).toBeTruthy();
-});
-
-test("Year only uses its own engine form and an unavailable form says why under its label", async () => {
-  const change = vi.fn();
-  render(<CitationDetails prefix="" suffix="" onPrefixChange={vi.fn()} onSuffixChange={vi.fn()} page="12" form="normal" onPageChange={vi.fn()} onFormChange={change} choices={{ current_form: "normal", forms: [
-    { form: "normal", example: "(Example, 2026)", reason: null },
-    { form: "narrative", example: null, reason: "Cite it alone or choose another output." },
-    { form: "year-only", example: "(2026)", reason: null },
-  ] }} />);
-  fireEvent.click(screen.getByRole("button", { name: /^Show as / }));
-  const narrative = await screen.findByRole("menuitemradio", { name: "Name in the sentence" });
-  expect(narrative.getAttribute("aria-disabled")).toBe("true");
-  expect(document.getElementById(narrative.getAttribute("aria-describedby")!)?.textContent).toBe("Cite it alone or choose another output.");
-  fireEvent.click(narrative);
-  expect(change).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: /^Show as / }).textContent).toBe("Name in brackets");
+  expect(await forms()).toEqual([["Name in brackets", "(Example, 2026)"], ["Name in the sentence", "Example (2026)"], ["Year only", "(2026)"]]);
   fireEvent.click(screen.getByRole("menuitemradio", { name: "Year only" }));
-  expect(change).toHaveBeenCalledExactlyOnceWith("year-only");
+  expect(screen.getByRole("button", { name: /^Show as / }).textContent).toBe("Year only");
 });
 
-test("before the engine answers the reference's own form shows and every form can be tried", async () => {
+test("forms this output cannot print are left out, and the menu says why once", async () => {
+  render(<Editor choices={answer({ normal: "(Example, 2026)" })} />);
+  expect(await forms()).toEqual([["Name in brackets", "(Example, 2026)"]]);
+  expect(screen.getAllByText(/Not in this output/)).toHaveLength(1);
+  expect(screen.getByText("Name in the sentence, Name only, Year only, and Full reference: Not in this output.")).toBeTruthy();
+});
+
+test("before the engine answers, every form can be tried from the pop-up by name", async () => {
   const change = vi.fn();
-  render(<CitationDetails prefix="" suffix="" onPrefixChange={vi.fn()} onSuffixChange={vi.fn()} page="" form="narrative" onPageChange={vi.fn()} onFormChange={change} />);
-  fireEvent.click(screen.getByRole("button", { name: "Show as Name in the sentence" }));
-  fireEvent.click(await screen.findByRole("menuitemradio", { name: "Name in brackets" }));
-  expect(change).toHaveBeenCalledExactlyOnceWith("normal");
+  render(<CitationDetails prefix="" suffix="" onPrefixChange={vi.fn()} onSuffixChange={vi.fn()} locator={null} form="narrative" onLocatorChange={vi.fn()} onFormChange={change} />);
+  expect(screen.getByRole("button", { name: /^Show as / }).textContent).toBe("Name in the sentence");
+  expect(await forms()).toHaveLength(6);
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "Reference list" }));
+  expect(change).toHaveBeenCalledExactlyOnceWith("bibliography-only");
 });
 
-test("with no form to choose, one quiet line replaces the pop-up", () => {
+test("an output with no forms says the shared reason once, in place of the pop-up", () => {
   const reason = "Reference entries have no name forms. Choose another style.";
-  render(<CitationDetails prefix="" suffix="" onPrefixChange={vi.fn()} onSuffixChange={vi.fn()} page="" form="normal" onPageChange={vi.fn()} onFormChange={vi.fn()} choices={{ current_form: null, forms: [
-    { form: "normal", example: null, reason }, { form: "narrative", example: null, reason }, { form: "year-only", example: null, reason },
-  ] }} />);
-  expect(screen.getAllByText(reason)).toHaveLength(1);
+  const none = { reason };
+  render(<CitationDetails prefix="" suffix="" onPrefixChange={vi.fn()} onSuffixChange={vi.fn()} locator={null} form="normal" onLocatorChange={vi.fn()} onFormChange={vi.fn()}
+    choices={answer({ normal: none, narrative: none, "author-only": none, "year-only": none, full: none }, null)} />);
   expect(screen.queryByRole("button", { name: /^Show as / })).toBeNull();
+  expect(screen.getAllByText(reason)).toHaveLength(1);
 });
 
-test("an explicit answer of no form selects none, where forms have their own reasons", async () => {
-  render(<CitationDetails prefix="" suffix="" onPrefixChange={vi.fn()} onSuffixChange={vi.fn()} page="" form="normal" onPageChange={vi.fn()} onFormChange={vi.fn()} choices={{ current_form: null, forms: [
-    { form: "normal", example: null, reason: "First invented reason." }, { form: "narrative", example: null, reason: "Second invented reason." }, { form: "year-only", example: "(2026)", reason: null },
-  ] }} />);
-  fireEvent.click(screen.getByRole("button", { name: "Show as None" }));
-  const items = await screen.findAllByRole("menuitemradio");
-  expect(items.filter((item) => item.getAttribute("aria-checked") === "true")).toEqual([]);
+test("the locator's type is a pop-up inside the field: a new type keeps the value, and a cleared value keeps the type", async () => {
+  render(<Editor />);
+  fireEvent.change(screen.getByRole("textbox", { name: "Page" }), { target: { value: "4" } });
+  const type = screen.getByRole("button", { name: "Locator type: Page" });
+  expect(type.textContent).toBe("p.");
+  fireEvent.click(type);
+  fireEvent.click(await screen.findByRole("menuitemradio", { name: /^Chapter/ }));
+  expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Chapter" }).value).toBe("4");
+  fireEvent.change(screen.getByRole("textbox", { name: "Chapter" }), { target: { value: "" } });
+  expect(screen.getByRole("button", { name: "Locator type: Chapter" })).toBeTruthy();
+  expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Chapter" }).value).toBe("");
+});
+
+test("text before and after are asked for, and text already there shows from the start", () => {
+  const { unmount } = render(<Editor />);
+  expect(screen.queryByRole("textbox", { name: "Text before" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Text before" }));
+  const before = screen.getByRole("textbox", { name: "Text before" });
+  expect(document.activeElement).toBe(before);
+  expect(screen.queryByRole("textbox", { name: "Text after" })).toBeNull();
+  unmount();
+  render(<CitationDetails prefix="see" suffix="" onPrefixChange={vi.fn()} onSuffixChange={vi.fn()} locator={null} form="normal" onLocatorChange={vi.fn()} onFormChange={vi.fn()} />);
+  expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Text before" }).value).toBe("see");
+  expect(screen.getByRole("button", { name: "Text after" })).toBeTruthy();
 });
 
 test("an empty Page with the caret in it shows no placeholder", () => {

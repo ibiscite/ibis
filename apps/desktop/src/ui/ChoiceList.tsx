@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, type ComponentPropsWithRef, type ReactNode } 
 import { ListBox, ListBoxItem } from "react-aria-components";
 import { ariaKeys, keyLabel } from "../keys";
 import { currentPlatform } from "../platform";
+import { useResultsLayout } from "./ResultsArea";
 import "./ChoiceList.css";
 import "./Option.css";
 
@@ -35,6 +36,8 @@ export function ChoiceList({ title, line, choices, onChoose, footnote, autoFocus
   focusId?: string;
 }) {
   const heading = useId();
+  useResultsLayout("choices");
+  useResultsLayout("options", choices.length > 0);
   const mac = currentPlatform() === "macos";
   const list = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -54,16 +57,17 @@ export function ChoiceList({ title, line, choices, onChoose, footnote, autoFocus
       <ListBox ref={list} className="choice-list" layout={grid ? "grid" : "stack"} aria-labelledby={heading} selectionMode="none" autoFocus={autoFocus && !focusId ? "first" : undefined}
         onAction={(id) => onChoose(String(id))}>
         {choices.map((choice) => (
-          <ListBoxItem key={choice.id} id={choice.id} textValue={choice.title} className="choice-row"
+          <ListBoxItem key={choice.id} id={choice.id} textValue={choice.title} className="ui-option choice-row"
             render={(props) => <div {...props as ComponentPropsWithRef<"div">} aria-keyshortcuts={choice.keys ? ariaKeys(choice.keys, mac) : undefined} />}
             data-suggested={choice.suggested || undefined}>
             <span className="result-tile choice-tile" aria-hidden="true">{choice.icon}</span>
             <span className="result-body">
-              <span className="result-title" dir="auto">{choice.title}</span>
+              {/* The key follows its title's words, on their line, so it never floats at the card's far edge. */}
+              <span className="result-line choice-line-title"><span className="result-title" dir="auto">{choice.title}</span>
+                {choice.keys && <span className="result-year choice-keys" aria-hidden="true"><bdi dir="ltr">{keyLabel(choice.keys, mac)}</bdi></span>}</span>
               {choice.help && <span className="result-meta choice-help" dir="auto">{choice.help}</span>}
             </span>
             {choice.tag && <span className="result-year choice-tag" dir="auto" title={choice.tag}>{choice.tag}</span>}
-            {choice.keys && <span className="result-year choice-tag" aria-hidden="true"><bdi dir="ltr">{keyLabel(choice.keys, mac)}</bdi></span>}
           </ListBoxItem>
         ))}
       </ListBox>

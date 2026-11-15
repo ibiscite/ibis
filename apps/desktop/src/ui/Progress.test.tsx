@@ -56,7 +56,7 @@ test("indeterminate motion becomes a full-width dashed indicator with reduced mo
 });
 
 test("indeterminate progress and the opening mark pause while the picker is hidden", () => {
-  const empty = readFileSync(new FileURL("../features/picker/EmptyState.css", import.meta.url), "utf8");
+  const empty = readFileSync(new FileURL("./EmptyState.css", import.meta.url), "utf8");
   expect(css).toMatch(/:root\[data-picker-hidden\] \.update-progress\[data-indeterminate\][^{]*\{ animation-play-state: paused; \}/);
   expect(empty).toMatch(/:root\[data-picker-hidden\] \.opening-mark[^}]*animation-play-state: paused;/);
 });

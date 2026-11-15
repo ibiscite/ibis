@@ -3,19 +3,24 @@ import { memo, useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import type { Density, ProjectStatus, SearchResult } from "../../api";
 import { rowClickAction } from "../../copyFeedback";
 import { isMac } from "../../platform";
+import { PICK_KEYS, ariaKeys } from "../../keys";
 import { AddGlyph, TypeIcon } from "../../icons";
 import { say } from "../../i18n";
 import { PointerButton } from "../../ui/Button";
+import { Band } from "../../ui/Band";
+import { KeyMark } from "../../ui/HeldKeys";
 import { Option } from "../../ui/Option";
 import { idKey } from "./choice";
 import { abbreviatedAuthors, hiddenMatch, tileName } from "./rows";
-import { projectText } from "./useProjectBibliography";
+import { bibliographyText } from "./useBibliography";
 
 /** Words that tell similar result rows apart (#492): a CSL item type as a short word, or none. */
 export const rowWords = { itemType: (type: string): string | null => say("row-item-type", { type }) || null };
 
 /** "et al." in its own isolate, so it keeps its reading order beside a right-to-left name. */
 const etAl = <bdi>{say("row-et-al")}</bdi>;
+/** A spoken pause between parts that sit apart on screen but make one accessible name. */
+const pause = <span className="visually-hidden">, </span>;
 
 type RowHandlers = {
   onPointerDown: (e: React.PointerEvent) => void;
@@ -26,8 +31,10 @@ type RowHandlers = {
 
 /** The result list: one option per search result, the highlighted one active.
  * Rows are memoised; moving the highlight re-renders only the rows it leaves and reaches. */
-export function ResultList({ results, active, selected, density, hoverAllowed = false, libraryOf, project = null, onMouseMove, onChoose, onToggle, onContext }: {
+export function ResultList({ results, active, selected, density, hoverAllowed = false, libraryOf, project = null, numbered = { first: 0, count: 0 }, onMouseMove, onChoose, onToggle, onContext }: {
   results: SearchResult[];
+  /** The rows ⌘1–9 picks: the first one's index and how many (useShownRows). */
+  numbered?: { first: number; count: number };
   project?: ProjectStatus | null;
   active: number;
   selected: Map<string, SearchResult>;
@@ -77,20 +84,22 @@ export function ResultList({ results, active, selected, density, hoverAllowed = 
     <ul id="results" role="listbox" aria-label={say("picker-results")} onMouseMove={onMouseMove}>
       {results.map((r, i) => <ResultGroup key={idKey(r.id)} record={r} previous={results[i - 1]}>
         <ResultRow record={r} index={i} active={i === active} added={selected.has(idKey(r.id))}
-          density={density} hoverAllowed={hoverAllowed} library={libraryOf(r.source ?? "")} project={projectText(r, project)} handlers={handlers} />
+          density={density} hoverAllowed={hoverAllowed} library={libraryOf(r.source ?? "")} project={bibliographyText(r, project)} handlers={handlers}
+          pick={i >= numbered.first && i < numbered.first + numbered.count ? i - numbered.first + 1 : undefined} />
       </ResultGroup>)}
     </ul>
   );
 }
 
 function ResultGroup({ record, previous, children }: { record: SearchResult; previous?: SearchResult; children: React.ReactNode }) {
-  return <>{record.recent && record.recent !== previous?.recent && <li role="presentation" className="results-heading recent-heading">
+  // The first group's heading is the list's, in the frame's line (PickerResults).
+  return <>{record.recent && previous && record.recent !== previous.recent && <Band as="li" role="presentation" className="ui-list-heading">
     <h2 id={`recent-${record.recent}`}>{record.recent === "cited" ? "Cited here recently" : "Recently added"}</h2>
-  </li>}{children}</>;
+  </Band>}{children}</>;
 }
 
 /** One search result as an option of the result list. */
-export const ResultRow = memo(function ResultRow({ record: r, index: i, active, added, density, hoverAllowed, library, project, handlers }: {
+export const ResultRow = memo(function ResultRow({ record: r, index: i, active, added, density, hoverAllowed, library, project, pick, handlers }: {
   record: SearchResult;
   index: number;
   active: boolean;
@@ -99,10 +108,13 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
   density: Density;
   hoverAllowed: boolean;
   library: string | null;
-  /** This row's key against the project bibliography, in words. */
+  /** This row's key against the bibliography, in words. */
   project?: string | null;
+  /** Its number for ⌘1–9, while it is one of the first nine rows in view. */
+  pick?: number;
   handlers: RowHandlers;
 }) {
+  const pickKeys = pick ? PICK_KEYS[pick - 1]! : undefined;
   const compact = density === "compact";
   // A match in the container is always named: the row may shorten the container.
   const why = hiddenMatch(r.matched);
@@ -112,6 +124,7 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
       role="option"
       aria-selected={active}
       aria-describedby={r.recent ? `recent-${r.recent}` : undefined}
+      aria-keyshortcuts={pickKeys && ariaKeys(pickKeys, isMac)}
       data-density={density}
       data-citation-selected={added || undefined}
       data-active={active || undefined}
@@ -122,20 +135,21 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
       }}
       onContextMenu={(e) => handlers.onContext(i, r, e)}
       onClick={(e) => handlers.onClick(i, r, e)}
-    >
-      {/* The leading tile: the type icon, which gives way to the add
-          (or remove) control on hover and on the active row. An option's
-          children are presentational (ARIA) and must not be focusable, so
-          the control is for the pointer only: no Tab stop, no role, its
-          name in the tooltip. Keyboards use Shift+Enter. */}
-      <span className="result-tile">
+      // The leading tile: the type icon, which gives way to the add (or remove)
+      // control on hover and on the active row. An option's children are
+      // presentational (ARIA) and must not be focusable, so the control is for
+      // the pointer only: no Tab stop, no role, its name in the tooltip.
+      // Keyboards use Shift+Enter. While the command key is held, the row's key
+      // takes the tile's place (ui/HeldKeys); the year stays.
+      icon={<><span className="result-tile">
         <TypeIcon itemType={r.item_type} />
         <PointerButton className="tile-button" hoverAllowed={hoverAllowed}
           title={added ? say("picker-remove-named", { name: tileName(r) }) : say("picker-add-named", { name: tileName(r) })}
           onPress={() => handlers.onTileClick(i, r)}>
           <AddGlyph added={added} />
         </PointerButton>
-      </span>
+      </span><KeyMark keys={pickKeys} /></>}
+    >
       <span className="result-body" title={r.key || undefined}>
         <span className="result-line">
           <strong className="result-title">{r.sample && <><bdi>{say("setup-sample-label")}</bdi>{" · "}</>}{r.title}</strong>
@@ -152,22 +166,22 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
             <span className="result-authors" dir="auto">
               {abbreviatedAuthors(r) ? <><span aria-hidden="true">{r.first_author} {etAl}</span><span className="visually-hidden">{r.authors}</span></> : r.authors}
             </span>
-            {!compact && r.container && r.authors && <span className="result-separator" aria-hidden="true">{" · "}</span>}
+            {!compact && r.container && r.authors && <><span className="result-separator" aria-hidden="true">{" · "}</span>{pause}</>}
             {!compact && r.container && <span className="result-container" dir="auto">{r.container}</span>}
           </span>
-          {library && <span className="result-library">{library}</span>}
+          {library && <>{pause}<span className="result-library">{library}</span></>}
         </span>
-        {why && <span className="result-why">{say("picker-matched-in", { field: why })}</span>}
+        {why && <>{pause}<span className="result-why">{say("picker-matched-in", { field: why })}</span></>}
         {/* Only some search words matched this row: it says so itself, not only its group. */}
-        {r.partial && <span className="result-why">{say("picker-closest-match")}</span>}
+        {r.partial && <>{pause}<span className="result-why">{say("picker-closest-match")}</span></>}
         {/* The engine decides a word matched only with a spelling change; the row says so. */}
-        {r.typo && !r.partial && <span className="result-why">{say("picker-spelling-match")}</span>}
-        {project && <span className="result-project">{project}</span>}
+        {r.typo && !r.partial && <>{pause}<span className="result-why">{say("picker-spelling-match")}</span></>}
+        {project && <>{pause}<span className="result-project">{project}</span></>}
         {/* The type in words; the tile's icon is decorative. */}
-        {rowWords.itemType(r.item_type) && <span className="visually-hidden">{rowWords.itemType(r.item_type)}</span>}
-        {added && <span className="visually-hidden">{say("picker-added-to-citation")}</span>}
+        {rowWords.itemType(r.item_type) && <span className="visually-hidden">, {rowWords.itemType(r.item_type)}</span>}
+        {added && <span className="visually-hidden">, {say("picker-added-to-citation")}</span>}
         {/* The key is searchable and spoken but not drawn: the shelf shows the citation (C4). */}
-        <span className="result-key visually-hidden" dir="ltr">{r.key}</span>
+        {pause}<span className="result-key visually-hidden" dir="ltr">{r.key}</span>
       </span>
     </Option>
   );

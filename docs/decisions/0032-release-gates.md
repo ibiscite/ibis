@@ -1,49 +1,31 @@
 # 0032 Release gates
 
-From 0.3 a release ships only when the whole citation (search, choose, page,
-paste or copy as that platform supports, back in the document) works with
-VoiceOver and NVDA and with Chinese,
-Japanese and Korean input methods; Orca joins for 1.0. Interface text goes
-through the translation layer from 0.4, with German and one right-to-left
-language (maintainer, 2026-11-07: 0.3 ships without waiting for it; consolidation
-step 4 builds the one catalogue). The speed and resource budgets in
-[architecture](../architecture.md#desktop-app) are limits: search and bundle
-checks fail pull request CI; checks with too little margin on shared runners
-report there and are enforced on the release machines before each release.
-The reader inside Ibis no longer waits for citing from Zotero's annotations
-(maintainer, 2026-11-04, replacing the 2026-10-28 order; see 0036).
+A numbered release needs the complete search → choose → page → paste/copy
+journey with VoiceOver, NVDA and Chinese, Japanese and Korean input methods.
+Orca joins for 1.0. Translation uses the shared catalogue; German and one
+right-to-left language are planned for 0.4.
 
-2026-10-31 (maintainer): limits come from what a person notices, at the size real
-libraries reach. They block a release at 10,000 generated realistic records
-(abstracts, long author lists, Chinese, Japanese and Korean text): shortcut to a
-typeable picker p95 ≤ 100 ms; keystroke to results p95 ≤ 50 ms (engine search
-≤ 20 ms); warm formatted preview p95 ≤ 100 ms and the first after launch ≤ 1 s;
-first results ≤ 1 s after launch; citable again about 2 s after a source edit, with
-search never interrupted; hidden whole-app memory ≤ 200 MiB, web view included;
-hidden idle ≤ 0.2 % of one core and ≤ 1 wakeup a second; picker JS and CSS ≤ 400 KiB
-gzipped. A 50,000-record check reports on nightly against the same numbers as a stretch
-goal and must not grow faster than the library; a miss is studied, not blocking. The 100k limits and the 400-entry bibliography timing are dropped; document
-tools set their own later. Where each check runs: #1536.
+Limits apply at 10,000 realistic generated references, including abstracts,
+long author lists and mixed scripts:
 
-2026-11-01 (maintainer): every planned feature ships before 1.0, including ideas once
-listed after it; the version numbers before 1.0 are working steps and may be
-renumbered. 1.0 adds no features: people test everything and the maintainer
-moves to 1.0 by hand. Until signing is decided, macOS keeps the stable
-self-signed identity and Windows installers stay unsigned with first-launch
-steps ([ROADMAP](../../ROADMAP.md)).
+| Outcome | Limit |
+| --- | --- |
+| Shortcut to typeable picker | p95 ≤ 100 ms |
+| Keystroke to results | p95 ≤ 50 ms; engine search ≤ 20 ms |
+| Warm formatted preview | p95 ≤ 100 ms |
+| First preview / first results after launch | ≤ 1 s |
+| Citable after a source edit | About 2 s, without interrupting search |
+| Hidden whole-process memory, webview included | ≤ 200 MiB |
+| Hidden idle | ≤ 0.2% of one core and ≤ 1 wakeup/s |
+| Picker JavaScript and CSS | ≤ 400 KiB gzipped |
 
-2026-11-02 (maintainer): every planned milestone through 0.7 stays in 1.0. The
-PDF opens in a panel inside the picker that widens, shared with the citation
-editor. Delights are quiet, with rare moments. Approved cuts: two accents only, a
-trimmed Look page, and one format memory rule. First run asks first, with Zotero
-highlighted when found. Agents may use the Windows laptop over ssh and a Linux VM
-on the Mac for release checks, not only for bugs. Once 0.3 is released it is
-announced publicly to open early adopters, with Report a Problem collecting
-feedback. Paid Mac signing is undecided: it is revisited near 1.0 and stays an
-open question for the 1.0 gate.
+Release machines enforce timing and resource limits; shared runners report
+measurements with insufficient margin. A 50,000-record nightly check reports
+against the same limits as a nonblocking stretch goal. Current checks are in
+[architecture](../architecture.md#performance-checks).
 
-2026-11-02 (maintainer): both channels stay. Each finished milestone (0.3, 0.4 and
-so on) becomes one numbered release with the maintainer's one-click approval. The
-numbered release is the roughly stable version for early adopters, and every
-distribution stays on it, including the Claude plugin, Homebrew and the command
-line. Nightly is where daily testing happens.
+Each finished milestone becomes a numbered release with the maintainer's
+approval. Distributions use that release; Nightly carries daily testing.
+1.0 adds no features: people qualify the planned work, then the maintainer
+promotes it. macOS uses a stable self-signed identity and Windows installers
+are unsigned. Paid signing remains a 1.0 decision.

@@ -15,9 +15,23 @@ use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 
+/// Identify the exact shipped formatting material, without unpacking the catalogue.
+pub fn provenance() -> ibis_core::contract::FormattingProvenance {
+    use ibis_core::contract::{Fingerprint, FormattingProvenance};
+    static PROVENANCE: std::sync::OnceLock<FormattingProvenance> = std::sync::OnceLock::new();
+    PROVENANCE
+        .get_or_init(|| FormattingProvenance {
+            processor: Fingerprint::of_bytes(include_bytes!("../vendor/citeproc.mjs")),
+            bundle: Fingerprint::of_bytes(include_bytes!("../vendor/csl-bundle.bin")),
+        })
+        .clone()
+}
+
 /// Fixed diagnostics never include reference content or JavaScript exceptions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum FormatError {
+    #[error("citation request refused")]
+    Citation(ibis_core::contract::CitationError),
     #[error("invalid citation request")]
     InvalidRequest,
     #[error("unsupported citation style")]
@@ -99,6 +113,8 @@ pub fn style_writes_entries(id: &str) -> Result<bool, FormatError> {
 pub struct Formatter {
     service: Arc<service::Service>,
 }
+pub use input::ResolvedOutput;
+
 impl Formatter {
     pub fn new() -> Result<Self, FormatError> {
         Self::with_limits(Limits::default())
@@ -121,9 +137,31 @@ impl Formatter {
     pub fn check_output(output: &OutputSpec, locale: Option<&str>) -> Result<(), FormatError> {
         input::check_output(output, locale)
     }
+    /// An engine request has already resolved and validated output and locale.
+    pub fn submit_resolved(
+        &self,
+        snapshot: Arc<Snapshot>,
+        request: CitationRequest,
+        output: &ResolvedOutput,
+    ) -> Result<FormatTask, FormatError> {
+        self.service.submit(input::prepare_resolved(
+            &snapshot,
+            &request,
+            self.service.limits(),
+            output,
+        )?)
+    }
     pub fn submit(&self, snapshot: Arc<Snapshot>, request: CitationRequest) -> Result<FormatTask, FormatError> {
         self.service
             .submit(input::prepare(&snapshot, &request, self.service.limits())?)
+    }
+    /// Best-effort startup work. Call off the UI thread; no library is read and
+    /// no citation is published. A foreground request retires late warm-ups.
+    pub fn warm(&self, style: &str, locale: Option<&str>) -> Result<(), FormatError> {
+        if let Some(task) = self.service.warm(input::warm(style, locale)?)? {
+            task.wait()?;
+        }
+        Ok(())
     }
 }
 

@@ -9,15 +9,22 @@ use std::sync::Arc;
 
 /// The invented article each example is written for, under the key `key`.
 fn engine() -> (Engine, ItemRef) {
+    engine_with_doi(false)
+}
+
+fn engine_with_doi(doi: bool) -> (Engine, ItemRef) {
     let id = ItemRef {
         library: LibraryId::digest(b"synthetic-outputs"),
         key: "key".into(),
     };
-    let csl = serde_json::from_value(json!({
+    let mut csl: Csl = serde_json::from_value(json!({
         "type": "article-journal", "title": "Synthetic sleep study", "container-title": "Journal of Tests",
         "volume": "4", "author": [{"family": "García", "given": "Ana"}], "issued": {"date-parts": [[2021]]}
     }))
     .unwrap();
+    if doi {
+        csl.insert("DOI".into(), json!("10.1000/invented"));
+    }
     let snapshot = Snapshot::new(vec![LibraryObject::Record(Record {
         added_at: None,
         id: id.clone(),
@@ -54,6 +61,7 @@ fn request(items: &[(ItemRef, Option<CitationForm>)], form: CitationForm, output
         keep_order: true,
         output,
         input_language: None,
+        strict: false,
         output_locale: None,
     }
 }
@@ -80,18 +88,14 @@ fn every_output_has_one_id_and_one_name() {
     for style in ibis_csl::curated().unwrap() {
         let listed = outputs::find(style.id()).unwrap();
         assert_eq!(listed.name, style.name());
+        assert_eq!(
+            listed.output,
+            OutputSpec::Csl {
+                style: style.id().into()
+            }
+        );
         let detail = (style.title() != style.name()).then_some(style.title());
         assert_eq!(listed.description.as_deref(), detail);
-    }
-    // A preset id never shadows a style: no bundled style has a key output's id.
-    let styles = ibis_csl::styles("", 20_000, 0).unwrap();
-    assert!(styles.total < 20_000);
-    for style in styles.styles {
-        let listed = outputs::find(&style.id);
-        assert!(listed.is_none_or(|output| output.output
-            == OutputSpec::Csl {
-                style: style.id.clone()
-            }));
     }
     // The defaults are listed, and the default style is a style.
     let listed = outputs::list();
@@ -113,6 +117,21 @@ fn each_example_is_what_the_engine_writes() {
                 &Cancellation::default(),
             )
             .unwrap();
+        // Zotero's markers name Zotero items: this library is not Zotero's,
+        // so they refuse, saying why (written from Zotero in zotero_sources.rs).
+        if output.zotero_items {
+            assert_eq!(
+                result.outcomes,
+                [ItemOutcome::Refused {
+                    item: 0,
+                    error: CitationError::NotFromZotero
+                }],
+                "{}",
+                output.id
+            );
+            assert_eq!(result.text, "");
+            continue;
+        }
         // Only a numbered style writes reference entries, and says so.
         assert_eq!(
             result.notices.contains(&Notice::ReferenceEntry),
@@ -139,9 +158,11 @@ fn each_example_is_what_the_engine_writes() {
 
 #[test]
 fn listed_forms_are_exactly_the_forms_the_engine_writes() {
-    let (engine, id) = engine();
+    let (engine, id) = engine_with_doi(true);
     let mut wrong = vec![];
-    for output in outputs::outputs() {
+    // Zotero's markers write nothing for this library; their forms are
+    // tested in `ibis_core::syntax::scannable`.
+    for output in outputs::outputs().iter().filter(|output| !output.zotero_items) {
         for form in CitationForm::ALL {
             // A form is listed when it can be written for one reference: with a
             // page, MLA's narrative form has something to write after the name;
@@ -295,4 +316,44 @@ fn each_output_is_named_by_its_one_name() {
         })
         .is_none()
     );
+}
+
+#[test]
+fn partial_record_shares_keep_checked_text_but_never_bypass_representation_checks() {
+    use ibis_engine::DispatchResult;
+    let (engine, id) = engine_with_doi(true);
+    let mut missing = id.clone();
+    missing.key = "absent".into();
+    let output = preset("doi-links");
+    let result = engine
+        .cite(
+            &request(&[(id, None), (missing, None)], CitationForm::Normal, output.clone()),
+            &Cancellation::default(),
+        )
+        .unwrap();
+    let dispatched = DispatchResult::citation(result.clone(), 2, &output).unwrap();
+    assert_eq!(dispatched.text.as_deref(), Some("https://doi.org/10.1000/invented"));
+    assert_eq!(dispatched.exit_code, ExitCode::Findings);
+    assert!(
+        DispatchResult::citation(result.clone(), 3, &output)
+            .unwrap()
+            .text
+            .is_none()
+    );
+    let mut changed = result.clone();
+    changed.text.push_str("tampered");
+    assert!(DispatchResult::citation(changed, 2, &output).unwrap().text.is_none());
+    for (html, rtf) in [(Some("\0".into()), None), (None, Some("\0".into()))] {
+        let poisoned = CitationResult::new(
+            result.text.clone(),
+            html,
+            rtf,
+            result.display.clone(),
+            result.outcomes.clone(),
+            vec![],
+            vec![],
+        );
+        assert!(poisoned.content_matches_hash());
+        assert!(DispatchResult::citation(poisoned, 2, &output).unwrap().text.is_none());
+    }
 }

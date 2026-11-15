@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { ariaKeys, DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, keysFor, matchesAccelerator, shortcutLabel } from "./keys";
+import { ariaKeys, bindingKeys, DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, keysFor, matchesAccelerator, shortcutLabel } from "./keys";
 import { say } from "./i18n";
 import pickerCommands from "./testing/picker-command-shortcuts.json";
 import { SHORTCUT_ACTIONS, SHORTCUT_REGIONS } from "./i18n/settings";
@@ -44,15 +44,25 @@ test("key labels follow the platform", () => {
 });
 
 test("every key in the table has words and a region, and none is listed twice", () => {
-  const seen = new Set<string>();
-  for (const binding of KEY_TABLE) {
-    expect(say(SHORTCUT_ACTIONS[binding.action])).toBeTruthy();
-    expect(say(SHORTCUT_REGIONS[binding.region])).toBeTruthy();
-    for (const keys of binding.keys) {
-      const where = `${binding.region}:${keys}`;
-      expect(seen.has(where), where).toBe(false);
-      seen.add(where);
+  for (const mac of [true, false]) {
+    const seen = new Set<string>();
+    for (const binding of KEY_TABLE) {
+      expect(say(SHORTCUT_ACTIONS[binding.action])).toBeTruthy();
+      expect(say(SHORTCUT_REGIONS[binding.region])).toBeTruthy();
+      for (const keys of bindingKeys(binding, mac)) {
+        const where = `${binding.region}:${keys}`;
+        expect(seen.has(where), where).toBe(false);
+        seen.add(where);
+      }
     }
+  }
+});
+
+test("source opening and its alternate avoid AltGr on Windows and Linux", () => {
+  for (const mac of [true, false]) {
+    expect(keyLabel(keysFor("source", mac), mac)).toBe(mac ? "⌘O" : "Ctrl+O");
+    expect(keyLabel(keysFor("revealSource", mac), mac)).toBe(mac ? "⌥⌘O" : "Ctrl+Shift+O");
+    expect(keysFor("chooseSource", mac)).toBe(mac ? "CmdOrCtrl+Shift+O" : "");
   }
 });
 

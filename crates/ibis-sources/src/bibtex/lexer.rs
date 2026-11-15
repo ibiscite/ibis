@@ -400,7 +400,7 @@ pub(crate) fn parse_entry<'s>(block: &Block<'s>) -> Result<RawEntry<'s>, Problem
     })
 }
 
-/// BibLaTeX's canonical name for legacy entry-type aliases.
+/// BibLaTeX's canonical name for entry-type aliases.
 fn canonical_kind(kind: &str) -> &str {
     match kind {
         "conference" => "inproceedings",

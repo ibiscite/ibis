@@ -1,15 +1,16 @@
-import { Component, createRef, useEffect, useRef, type ReactNode } from "react";
+import { Component, createRef, type ReactNode } from "react";
 
 import { useFileDrag } from "../../ui/useFileDrag";
 
-type Props = { onFileDrag?: (change: (active: boolean) => void) => Promise<() => void>; presentation?: number; drag?: ReturnType<typeof useFileDrag>; children: ReactNode; citationProblem?: string | null; citationProblemIdentity?: unknown; contextNotice?: string | null; contextNoticeIdentity?: unknown };
-type Place = { node: HTMLElement; owner: HTMLElement; top: number; noticeHeight: number };
+type Props = { onFileDrag?: (change: (active: boolean) => void) => Promise<() => void>; presentation?: number; drag?: ReturnType<typeof useFileDrag>; children: ReactNode };
+type Place = { node: HTMLElement; owner: HTMLElement; top: number };
 
-/** Preserve browsing place across notices and scroll-owner changes. The commit
- * snapshot reads the old DOM before layout can clamp its scroll offset, even
- * when the browser has not delivered the person's latest scroll event yet.
- * A refusal owns the reading place while present. This geometry never chooses
- * or changes a window size. */
+/** The content slot's one scroller. Notices live in the frame's own line
+ * (ui/Frame), so nothing is inserted above the rows; only a window too short
+ * for the list's own viewport hands scrolling to the middle region, and then
+ * the first row keeps its place. The commit snapshot reads the old DOM before
+ * layout can clamp its scroll offset. This geometry never chooses or changes a
+ * window size. */
 class PickerScrollFrame extends Component<Props> {
   private middle = createRef<HTMLDivElement>();
   private anchor: Place | null = null;
@@ -19,24 +20,18 @@ class PickerScrollFrame extends Component<Props> {
     const middle = this.middle.current;
     if (!middle?.isConnected) return null;
     const area = middle.querySelector<HTMLElement>(":scope > .results-area");
-    // Preserve the refusal's reading place; otherwise anchor the first row of
-    // the unchanged list, even offscreen. DOM identity excludes replaced rows.
-    const problem = middle.querySelector<HTMLElement>(":scope > .notices > .citation-problem");
-    const context = this.props.contextNotice ? middle.querySelector<HTMLElement>(":scope > .project-context-status") : null;
-    const node = problem ?? context ?? area?.querySelector<HTMLElement>('[role="option"]');
-    const owner = problem || context ? middle : [area, middle].find((part) => part && /auto|scroll/.test(getComputedStyle(part).overflowY));
+    // DOM identity excludes replaced rows.
+    const node = area?.querySelector<HTMLElement>('[role="option"]');
+    const owner = [area, middle].find((part) => part && /auto|scroll/.test(getComputedStyle(part).overflowY));
     if (!node || !owner) return null;
-    const noticeHeight = [...middle.querySelectorAll(":scope > .notices")]
-      .reduce((height, part) => height + part.getBoundingClientRect().height, 0);
-    return { node, owner, top: node.getBoundingClientRect().top, noticeHeight };
+    return { node, owner, top: node.getBoundingClientRect().top };
   };
 
   private restore = (before: Place | null) => {
     let after = this.capture();
-    if (before && after?.node === before.node && (before.owner !== after.owner || before.noticeHeight !== after.noticeHeight)) {
+    if (before && after?.node === before.node && before.owner !== after.owner) {
       // The former owner's offset may already be clamped by the new layout.
-      // Transfer the visual position before paint, independently of selection.
-      if (before.owner !== after.owner) before.owner.scrollTop = 0;
+      before.owner.scrollTop = 0;
       after.owner.scrollTop += after.node.getBoundingClientRect().top - before.top;
       after = this.capture();
     }
@@ -46,26 +41,6 @@ class PickerScrollFrame extends Component<Props> {
   private update = () => { this.restore(this.anchor); };
   private scrolled = (event: Event) => {
     if (event.target === this.anchor?.owner) this.update();
-  };
-
-  revealCitationProblem = (notice: string, identity?: unknown) => {
-    if (this.props.citationProblem !== notice || this.props.citationProblemIdentity !== identity) return;
-    const middle = this.middle.current;
-    const problem = middle?.querySelector<HTMLElement>(":scope > .notices > .citation-problem");
-    if (!middle || !problem) return;
-    // Reveal the new notice after the commit's layout has settled. Only the
-    // middle scroller moves, instantly; Search and its selection keep focus.
-    middle.scrollTop = middle.scrollTop + problem.getBoundingClientRect().top - middle.getBoundingClientRect().top - middle.clientTop;
-    this.anchor = this.capture();
-  };
-
-  revealContextNotice = (notice: string, identity?: unknown) => {
-    if (this.props.contextNotice !== notice || this.props.contextNoticeIdentity !== identity) return;
-    const middle = this.middle.current;
-    const context = middle?.querySelector<HTMLElement>(":scope > .project-context-status");
-    if (!middle || !context) return;
-    middle.scrollTop = middle.scrollTop + context.getBoundingClientRect().top - middle.getBoundingClientRect().top - middle.clientTop;
-    this.anchor = this.capture();
   };
 
   componentDidMount() {
@@ -96,17 +71,6 @@ class PickerScrollFrame extends Component<Props> {
 }
 
 export function PickerScroll(props: Props) {
-  const frame = useRef<PickerScrollFrame>(null);
   const drag = useFileDrag(props.onFileDrag, props.presentation);
-  const { citationProblem, citationProblemIdentity, contextNotice, contextNoticeIdentity } = props;
-  // Arrival has one owner, separate from preserving an existing reading place.
-  // Equal wording from a newer format request is still a new notice. Renders
-  // and later layout changes for the same notice never repeat this scroll.
-  useEffect(() => {
-    if (citationProblem) frame.current?.revealCitationProblem(citationProblem, citationProblemIdentity);
-  }, [citationProblem, citationProblemIdentity]);
-  useEffect(() => {
-    if (contextNotice) frame.current?.revealContextNotice(contextNotice, contextNoticeIdentity);
-  }, [contextNotice, contextNoticeIdentity]);
-  return <PickerScrollFrame {...props} drag={drag} ref={frame} />;
+  return <PickerScrollFrame {...props} drag={drag} />;
 }

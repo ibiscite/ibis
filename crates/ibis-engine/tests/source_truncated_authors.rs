@@ -25,7 +25,9 @@ fn bibtex_truncated_authors_never_become_a_copyable_author_named_others() {
                         keys: vec!["truncated".into()],
                         output: OutputSpec::Csl { style: style.into() },
                         form,
+                        strict: false,
                         output_locale: None,
+                        keep_order: false,
                     },
                     &cancel,
                 )
@@ -49,7 +51,9 @@ fn bibtex_truncated_authors_never_become_a_copyable_author_named_others() {
                         keys: vec!["truncated".into(), "complete".into()],
                         output: OutputSpec::Csl { style: style.into() },
                         form,
+                        strict: false,
                         output_locale: None,
+                        keep_order: false,
                     },
                     &cancel,
                 )
@@ -78,7 +82,9 @@ fn bibtex_truncated_authors_never_become_a_copyable_author_named_others() {
                     command: None,
                 },
                 form: CitationForm::Normal,
+                strict: false,
                 output_locale: None,
+                keep_order: false,
             },
             &cancel,
         )
@@ -110,7 +116,9 @@ fn bibtex_truncated_authors_never_become_a_copyable_author_named_others() {
                 keys: vec!["complete".into()],
                 output: OutputSpec::Csl { style: "apa".into() },
                 form: CitationForm::Normal,
+                strict: false,
                 output_locale: None,
+                keep_order: false,
             },
             &cancel,
         )

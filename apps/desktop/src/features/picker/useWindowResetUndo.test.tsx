@@ -1,6 +1,6 @@
+import type * as nativeApi from "../../api";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
-import type { PickerApi } from "../../App";
 import { useWindowResetUndo } from "./useWindowResetUndo";
 
 afterEach(cleanup);
@@ -13,7 +13,7 @@ test.each([true, false])("old reset reads, action completions (%s) and expiry ca
   let actions!: ReturnType<typeof useWindowResetUndo>;
   const api = { readWindowPositionUndo: () => new Promise<number | null>((resolve) => { read = resolve; }),
     onWindowReset: async (handler: typeof changed) => { changed = handler; return () => {}; },
-    undoWindowPosition: restore, dismissWindowPositionUndo: dismiss } as unknown as PickerApi;
+    undoWindowPosition: restore, dismissWindowPositionUndo: dismiss } as unknown as typeof nativeApi;
   function Picker() { actions = useWindowResetUndo(api); return <p>{actions.ticket ?? "none"}</p>; }
   render(<Picker />);
   await act(async () => {});
@@ -43,7 +43,7 @@ test("a delayed reset event cannot replace a newer ticket read from the native o
   const api = {
     readWindowPositionUndo: async () => 5,
     onWindowReset: async (handler: typeof changed) => { changed = handler; return () => {}; },
-  } as unknown as PickerApi;
+  } as unknown as typeof nativeApi;
   function Picker() { actions = useWindowResetUndo(api); return <p>{actions.ticket ?? "none"}</p>; }
   render(<Picker />);
   await act(async () => {});

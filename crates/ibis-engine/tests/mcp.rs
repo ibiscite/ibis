@@ -65,11 +65,11 @@ fn initialized(engine: &Engine) -> mcp::Session {
         &request(
             0,
             "initialize",
-            json!({"protocolVersion":mcp::LEGACY_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"t","version":"1"}}),
+            json!({"protocolVersion":mcp::INITIALIZE_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"t","version":"1"}}),
         ),
     )
     .unwrap();
-    assert_eq!(opened["result"]["protocolVersion"], mcp::LEGACY_VERSIONS[0]);
+    assert_eq!(opened["result"]["protocolVersion"], mcp::INITIALIZE_VERSIONS[0]);
     session
 }
 
@@ -93,15 +93,17 @@ fn a_session_runs_over_newline_delimited_stdio() {
         + "not json\n";
     let mut output = Vec::new();
     mcp::serve(&engine, mcp::Session::default(), input.as_bytes(), &mut output).unwrap();
-    let replies: Vec<Value> = String::from_utf8(output)
+    let mut replies: Vec<Value> = String::from_utf8(output)
         .unwrap()
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
+    // Tool replies can follow later protocol replies; JSON-RPC pairs by ID.
+    replies.sort_by_key(|reply| reply["id"].as_u64().unwrap_or(u64::MAX));
     // The notification gets no answer; everything else gets exactly one.
     assert_eq!(replies.len(), 5);
     // An unknown requested revision is answered with the newest handshake revision.
-    assert_eq!(replies[0]["result"]["protocolVersion"], mcp::LEGACY_VERSIONS[0]);
+    assert_eq!(replies[0]["result"]["protocolVersion"], mcp::INITIALIZE_VERSIONS[0]);
     assert!(replies[0]["result"].get("resultType").is_none());
     assert_eq!(replies[0]["result"]["serverInfo"]["name"], "ibis");
     let names: Vec<&str> = replies[1]["result"]["tools"]
@@ -140,7 +142,7 @@ fn agents_never_see_private_notes_and_long_text_is_cut() {
     assert_eq!(summary.chars().count(), mcp::MAX_TEXT + 1);
     assert!(summary.ends_with('…'));
 
-    // CSL-JSON output would carry the whole record, notes included.
+    // Record sharing stays outside MCP, even with share-safe metadata.
     let exported = tool(
         &engine,
         "cite",
@@ -158,10 +160,11 @@ fn cite_offers_exactly_the_engines_outputs() {
     let (_dir, engine) = engine();
     let tools = handle(&engine, &modern(3, "tools/list", json!({}))).unwrap();
     let formats = &tools["result"]["tools"][2]["inputSchema"]["properties"]["format"]["enum"];
-    // Every listed output but those that export whole records, in the list's order.
+    // Every listed output but those that export whole records and Zotero's
+    // scan markers, in the list's order.
     let listed: Vec<_> = ibis_engine::outputs::outputs()
         .iter()
-        .filter(|output| !output.exports_records)
+        .filter(|output| !output.exports_records && !output.zotero_items)
         .map(|output| output.id.as_str())
         .collect();
     assert_eq!(formats, &json!(listed));
@@ -261,6 +264,38 @@ fn cite_formats_by_key_or_by_id() {
     );
     let by_id = tool(&engine, "cite", json!({"items":[{"ref":id}],"style":"apa"}));
     assert_eq!(by_id["structuredContent"]["text"], "(Author, 2025)");
+    // A style sorts the items unless the agent keeps their order.
+    let both = json!([{"ref":"demo2026"},{"ref":id}]);
+    let sorted = tool(&engine, "cite", json!({"items":both,"style":"apa"}));
+    assert_eq!(
+        sorted["structuredContent"]["text"],
+        "(Author, 2025; Researcher & Writer, 2026)"
+    );
+    let kept = tool(&engine, "cite", json!({"items":both,"style":"apa","keep_order":true}));
+    assert_eq!(
+        kept["structuredContent"]["text"],
+        "(Researcher & Writer, 2026; Author, 2025)"
+    );
+    let wrong = tool(&engine, "cite", json!({"items":both,"keep_order":"yes"}));
+    assert_eq!(wrong["isError"], true);
+}
+
+#[test]
+fn search_reads_shorthand_as_cite_item_fields() {
+    let (_dir, engine) = engine();
+    let read = tool(
+        &engine,
+        "search",
+        json!({"query":"see researcher 417","shorthand":true}),
+    );
+    assert_eq!(
+        read["structuredContent"]["cited_with"],
+        json!({"prefix":"see","locator":"417"})
+    );
+    assert_eq!(read["structuredContent"]["searched_for"], "researcher");
+    assert!(!read["structuredContent"]["hits"].as_array().unwrap().is_empty());
+    let plain = tool(&engine, "search", json!({"query":"see researcher 417"}));
+    assert!(plain["structuredContent"].get("cited_with").is_none());
 }
 
 #[test]
@@ -309,6 +344,25 @@ fn cite_for_an_app_uses_that_apps_output_and_says_how_it_arrives() {
 }
 
 #[test]
+fn for_app_is_refused_when_the_apps_settings_cannot_be_found() {
+    let (_dir, engine) = engine();
+    let mut session =
+        mcp::Session::default().without_formats(mcp::Refusal::from(ibis_core::contract::EngineError::because(
+            ibis_core::contract::ErrorCode::SourceUnavailable,
+            ibis_core::contract::ErrorReason::SettingsReadTimeout,
+        )));
+    let mut cite = |arguments: Value| {
+        let message = modern(9, "tools/call", json!({"name":"cite","arguments":arguments}));
+        mcp::handle(&engine, &mut session, &message).unwrap()["result"].clone()
+    };
+    // Defaults would be a guess about the person's formats, so nothing is cited.
+    let refused = cite(json!({"items":[{"ref":"demo2026"}],"for_app":"md.obsidian"}));
+    assert_eq!(refused["isError"], true, "{refused}");
+    assert!(refused["content"][0]["text"].as_str().unwrap().contains("settings"));
+    assert_eq!(cite(json!({"items":[{"ref":"demo2026"}]}))["isError"], false);
+}
+
+#[test]
 fn cite_preserves_both_item_warning_codes_by_key_and_by_id() {
     use ibis_core::contract::*;
     use ibis_engine::request::KeyCitationRequest;
@@ -322,7 +376,9 @@ fn cite_preserves_both_item_warning_codes_by_key_and_by_id() {
                 keys: vec!["protected2020".into()],
                 output: OutputSpec::Csl { style: "apa".into() },
                 form: CitationForm::BibliographyOnly,
+                strict: false,
                 output_locale: None,
+                keep_order: false,
             },
             &Cancellation::default(),
         )
@@ -560,7 +616,11 @@ fn a_2026_client_works_without_a_handshake() {
     assert_eq!(result["resultType"], "complete");
     assert_eq!(
         result["supportedVersions"],
-        json!([mcp::PROTOCOL_VERSION, mcp::LEGACY_VERSIONS[0], mcp::LEGACY_VERSIONS[1]])
+        json!([
+            mcp::PROTOCOL_VERSION,
+            mcp::INITIALIZE_VERSIONS[0],
+            mcp::INITIALIZE_VERSIONS[1]
+        ])
     );
     assert_eq!(result["capabilities"], json!({"tools": {}}));
     assert_eq!(result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"], "ibis");
@@ -572,9 +632,9 @@ fn a_2026_client_works_without_a_handshake() {
     assert!(list["result"]["ttlMs"].as_u64().is_some());
     assert_eq!(list["result"]["cacheScope"], "public");
     // The same tools in the same order as for older clients, so caches agree.
-    let legacy = mcp::handle(&engine, &mut initialized(&engine), &request(3, "tools/list", json!({}))).unwrap();
-    assert_eq!(list["result"]["tools"], legacy["result"]["tools"]);
-    assert!(legacy["result"].get("ttlMs").is_none());
+    let handshake = mcp::handle(&engine, &mut initialized(&engine), &request(3, "tools/list", json!({}))).unwrap();
+    assert_eq!(list["result"]["tools"], handshake["result"]["tools"]);
+    assert!(handshake["result"].get("ttlMs").is_none());
 
     let call = handle(
         &engine,
@@ -644,7 +704,7 @@ fn a_request_without_the_fields_its_revision_requires_is_refused() {
 #[test]
 fn older_clients_negotiate_a_revision_they_asked_for() {
     let (_dir, engine) = engine();
-    for version in mcp::LEGACY_VERSIONS {
+    for version in mcp::INITIALIZE_VERSIONS {
         let reply = handle(
             &engine,
             &request(
@@ -669,7 +729,7 @@ fn older_clients_negotiate_a_revision_they_asked_for() {
         ),
     )
     .unwrap();
-    assert_eq!(reply["result"]["protocolVersion"], mcp::LEGACY_VERSIONS[0]);
+    assert_eq!(reply["result"]["protocolVersion"], mcp::INITIALIZE_VERSIONS[0]);
     assert_eq!(
         mcp::handle(&engine, &mut session, &request(3, "ping", json!({}))).unwrap()["result"],
         json!({})
@@ -684,10 +744,10 @@ fn only_a_complete_handshake_opens_the_process_to_older_requests() {
     for params in [
         json!({}),
         json!({"protocolVersion":20250618,"capabilities":{},"clientInfo":client}),
-        json!({"protocolVersion":mcp::LEGACY_VERSIONS[0],"clientInfo":client}),
-        json!({"protocolVersion":mcp::LEGACY_VERSIONS[0],"capabilities":{}}),
-        json!({"protocolVersion":mcp::LEGACY_VERSIONS[0],"capabilities":{},"clientInfo":{}}),
-        json!({"protocolVersion":mcp::LEGACY_VERSIONS[0],"capabilities":{},"clientInfo":{"name":5,"version":[]}}),
+        json!({"protocolVersion":mcp::INITIALIZE_VERSIONS[0],"clientInfo":client}),
+        json!({"protocolVersion":mcp::INITIALIZE_VERSIONS[0],"capabilities":{}}),
+        json!({"protocolVersion":mcp::INITIALIZE_VERSIONS[0],"capabilities":{},"clientInfo":{}}),
+        json!({"protocolVersion":mcp::INITIALIZE_VERSIONS[0],"capabilities":{},"clientInfo":{"name":5,"version":[]}}),
     ] {
         let mut session = mcp::Session::default();
         let reply = mcp::handle(&engine, &mut session, &request(1, "initialize", params.clone())).unwrap();
@@ -736,6 +796,7 @@ fn every_tool_answer_has_the_fields_its_output_schema_requires() {
             .unwrap()["outputSchema"]
             .clone();
         assert_eq!(schema["type"], "object", "{name}");
+        let schema = &schema["oneOf"][0];
         let answer = tool(&engine, name, arguments);
         assert_eq!(answer["isError"], false, "{name}: {answer}");
         let content = &answer["structuredContent"];
@@ -749,6 +810,72 @@ fn every_tool_answer_has_the_fields_its_output_schema_requires() {
                     "hit lacks {field}"
                 );
             }
+        }
+    }
+}
+
+#[test]
+fn an_app_writing_checks_its_bibliography_and_conflicting_keys_are_not_handed_to_an_agent() {
+    let (directory, engine) = library(
+        "library.bib",
+        "@book{invented,title={Intended Work},doi={10.1000/intended}}\n",
+    );
+    let bibliography = directory.path().join("writing.bib");
+    std::fs::write(
+        &bibliography,
+        "@book{invented,title={Other Work},doi={10.1000/other}}\n",
+    )
+    .unwrap();
+    let settings = directory.path().join("settings.json");
+    std::fs::write(
+        &settings,
+        json!({"schema_version":2,
+            "writings":[{"name":"Thesis","format":"pandoc","bibliography":bibliography}],
+            "writing_apps":{"macos:com.microsoft.word":"Thesis"}
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let mut session = mcp::Session::default().with_formats(settings);
+    let request = modern(
+        9,
+        "tools/call",
+        json!({"name":"cite","arguments":{"items":[{"ref":"invented"}],"for_app":"com.microsoft.word"}}),
+    );
+    let refused = mcp::handle(&engine, &mut session, &request).unwrap();
+    assert_eq!(refused["result"]["isError"], true, "{refused}");
+    assert!(!refused.to_string().contains("[@invented]"));
+    std::fs::remove_file(&bibliography).unwrap();
+    let warning = mcp::handle(&engine, &mut session, &request).unwrap();
+    assert_eq!(warning["result"]["structuredContent"]["text"], "[@invented]");
+    assert_eq!(
+        warning["result"]["structuredContent"]["bibliography"]["keys"][0]["check"]["status"],
+        "could-not-check"
+    );
+    assert!(!warning.to_string().contains(directory.path().to_str().unwrap()));
+}
+
+#[test]
+fn an_apps_or_writings_record_export_never_bypasses_the_agents_citation_boundary() {
+    let (directory, engine) = engine();
+    let settings = directory.path().join("settings.json");
+    let mut session = mcp::Session::default().with_formats(settings.clone());
+    let request = modern(
+        9,
+        "tools/call",
+        json!({"name":"cite","arguments":{"items":[{"ref":"demo2026"}],"for_app":"com.microsoft.word"}}),
+    );
+    for output in ["csl-json", "scannable-cite"] {
+        for selected in [false, true] {
+            let mut value = json!({"schema_version":2,"app_outputs":[{"app":{"system":"macos","id":"com.microsoft.word"},"output":output}]});
+            if selected {
+                value["writings"] = json!([{"name":"Export","format":output}]);
+                value["writing_apps"] = json!({"macos:com.microsoft.word":"Export"});
+            }
+            std::fs::write(&settings, value.to_string()).unwrap();
+            let result = mcp::handle(&engine, &mut session, &request).unwrap();
+            assert_eq!(result["result"]["isError"], true, "{result}");
+            assert!(!result.to_string().contains("private reading note"));
         }
     }
 }

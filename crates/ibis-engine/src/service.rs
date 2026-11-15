@@ -4,6 +4,9 @@ use ibis_core::{
     contract::*,
     search::{MatchField, SnapshotIndex},
 };
+pub use ibis_csl::{
+    LocaleEntry as LocaleInfo, Release as UpstreamRelease, StyleEntry as StyleInfo, StylePage as StylesResult,
+};
 pub use ibis_sources::{LibraryKind, SourceCapability, SourceWarning, WarningCause, WarningCode};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -20,17 +23,17 @@ use std::{
 #[path = "health.rs"]
 pub mod health;
 mod sources;
-pub use sources::PreparedFileReload;
+pub use sources::{PreparedFileReload, PreparedZoteroReload};
 
-mod formatting;
-pub use formatting::Cancellation;
+pub(crate) mod formatting;
+pub use formatting::{Cancellation, Formatting};
 mod prepared;
+mod receipt;
 pub use prepared::{CitationCommitError, PreparedCitation};
 mod project;
 pub use ibis_sources::project::{Doubt, EntryRefusal, KeyCheck, ProjectProblem, ProjectRead};
 pub use project::{
-    EntryResult, ProjectAssessment, ProjectAssessmentState, ProjectKey, ProjectPolicy, ProjectResult,
-    WritingProjectCitation, project_name,
+    EntryResult, ProjectAssessment, ProjectAssessmentState, ProjectKey, ProjectResult, WritingCitation, project_name,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -62,7 +65,7 @@ pub struct LibraryInfo {
     /// say why the key selects nothing.
     #[serde(skip)]
     #[schemars(skip)]
-    pub duplicate_keys: std::collections::BTreeSet<String>,
+    pub duplicate_keys: std::collections::BTreeMap<String, Vec<ibis_sources::SourceWarning>>,
     /// Each skipped entry whose header names its key, with why it was skipped.
     #[serde(skip)]
     #[schemars(skip)]
@@ -130,75 +133,76 @@ pub struct PastedList {
 pub struct SearchResult {
     pub snapshot: Fingerprints,
     pub hits: Vec<SearchHit>,
+    /// True when every match is included; independent of library source health.
+    pub complete: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub list: Option<PastedList>,
-    /// The locator read off the end of the query, when one was asked for and found.
+    /// What was read around the query when asked for: a signal off its start
+    /// (`see`) and a locator off its end (`417`), with what remains to search.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub locator: Option<ibis_core::locator::TrailingLocator>,
-}
-#[derive(Debug, Clone, Serialize, JsonSchema)]
-pub struct StylesResult {
-    pub styles: Vec<StyleInfo>,
-    /// How many styles match the request, beyond this page.
-    pub total: usize,
-    /// Every language a style can be written in.
-    pub locales: Vec<LocaleInfo>,
-    /// Styles change only with an Ibis release; these say which release.
-    pub styles_release: UpstreamRelease,
-    pub locales_release: UpstreamRelease,
-}
-#[derive(Debug, Clone, Serialize, JsonSchema)]
-pub struct StyleInfo {
-    pub id: String,
-    pub title: String,
-    /// The style's own last-changed date: its only version marker.
-    pub updated: String,
-    /// One of the styles offered first.
-    pub curated: bool,
-    /// The independent style whose rules this one uses.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub parent: Option<String>,
-    /// The language this style is written in unless a request names another.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub default_locale: Option<String>,
-    /// CSL's citation format, such as `author-date`, `numeric` or `note`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub format: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub fields: Vec<String>,
-}
-#[derive(Debug, Clone, Serialize, JsonSchema)]
-pub struct LocaleInfo {
-    pub tag: String,
-    pub native: String,
-    pub english: String,
-}
-#[derive(Debug, Clone, Serialize, JsonSchema)]
-pub struct UpstreamRelease {
-    pub repo: String,
-    pub tag: String,
-    pub commit: String,
+    pub shorthand: Option<ibis_core::shorthand::Shorthand>,
+    /// The libraries searched, as they were when these hits were found.
+    pub source_health: health::SourceHealth,
 }
 #[derive(Debug)]
 pub struct DispatchResult {
     pub data: Value,
     pub exit_code: ExitCode,
-    /// Literal terminal citation only after the canonical completeness/hash gate.
+    /// Checked terminal content; record exports may report refused records beside it.
     pub text: Option<String>,
     pub source_findings: bool,
 }
 impl DispatchResult {
+    /// Put the health of the sources this result consulted beside its data. A
+    /// problem with one makes an otherwise clean result a finding.
+    pub fn with_health(mut self, health: &health::SourceHealth) -> Result<Self, EngineError> {
+        let Value::Object(data) = &mut self.data else {
+            return Err(error(ErrorCode::Internal));
+        };
+        data.insert("source_health".into(), value(health)?);
+        self.source_findings = !health.is_ok();
+        if self.source_findings && self.exit_code == ExitCode::Ok {
+            self.exit_code = ExitCode::Findings;
+        }
+        self.bounded()
+    }
     /// Every frontend shares the same serialized result budget.
     pub fn bounded(self) -> Result<Self, EngineError> {
         crate::wire::encode(&self.data, crate::protocol::MAX_RESULT_BYTES)
             .map_err(|_| error(ErrorCode::ResourceLimit))?;
         Ok(self)
     }
-    pub fn citation(result: CitationResult, expected_items: usize) -> Result<Self, EngineError> {
+    pub fn citation(result: CitationResult, expected_items: usize, output: &OutputSpec) -> Result<Self, EngineError> {
+        let source_findings = result.receipt.as_ref().is_some_and(receipt::source_findings);
         let text = result
             .copy_content(expected_items)
-            .map(|content| content.text.to_owned());
-        let exit_code = if result.losses.is_empty() && text.is_some() {
+            .map(|content| content.text.to_owned())
+            .or_else(|| {
+                // Sharing can keep usable records while naming those refused.
+                // A citation still requires the canonical completeness gate.
+                (crate::outputs::named(output).is_some_and(|output| output.exports_records)
+                    && result.outcomes.len() == expected_items
+                    && result
+                        .outcomes
+                        .iter()
+                        .enumerate()
+                        .all(|(index, outcome)| match outcome {
+                            ItemOutcome::Rendered { item } => *item == index,
+                            ItemOutcome::Refused { item, error } => *item == index && *error != CitationError::Unknown,
+                            ItemOutcome::Unknown => false,
+                        })
+                    && result
+                        .outcomes
+                        .iter()
+                        .any(|outcome| matches!(outcome, ItemOutcome::Rendered { .. }))
+                    && result.html.is_none()
+                    && result.rtf.is_none()
+                    && !result.text.trim().is_empty()
+                    && !result.text.contains('\0')
+                    && result.content_matches_hash())
+                .then(|| result.text.clone())
+            });
+        let exit_code = if result.is_complete() && result.losses.is_empty() && text.is_some() && !source_findings {
             ExitCode::Ok
         } else {
             ExitCode::Findings
@@ -207,7 +211,7 @@ impl DispatchResult {
             data: value(result)?,
             exit_code,
             text,
-            source_findings: false,
+            source_findings,
         }
         .bounded()
     }
@@ -263,6 +267,7 @@ impl Drop for LibrarySubscription {
         }
     }
 }
+#[derive(Clone)]
 struct State {
     /// Accepted data/diagnostic identity; read errors alone do not replace it.
     accepted: Arc<()>,
@@ -271,8 +276,8 @@ struct State {
     index: Arc<SnapshotIndex>,
     libraries: BTreeMap<LibraryId, LibraryInfo>,
 }
-struct Shared {
-    formatter: Mutex<Option<ibis_csl::Formatter>>,
+pub(crate) struct Shared {
+    pub(crate) citations: crate::citations::Registry,
     state: RwLock<Arc<State>>,
     /// Serializes publications without blocking readers during index building.
     publication: Mutex<()>,
@@ -280,9 +285,22 @@ struct Shared {
     next_subscription: AtomicU64,
     sources: Mutex<sources::Registry>,
 }
+impl Shared {
+    fn new(state: Arc<State>) -> Self {
+        Self {
+            citations: crate::citations::Registry::default(),
+            state: RwLock::new(state),
+            publication: Mutex::new(()),
+            subscribers: Mutex::new(BTreeMap::new()),
+            next_subscription: AtomicU64::new(0),
+            sources: Mutex::new(sources::Registry::default()),
+        }
+    }
+}
 #[derive(Clone)]
 pub struct Engine {
-    shared: Arc<Shared>,
+    pub(crate) shared: Arc<Shared>,
+    formatting: Formatting,
     resources: Arc<sources::Owners>,
     watch_files: bool,
 }
@@ -297,6 +315,11 @@ impl Engine {
         self.watch_files = false;
         self
     }
+    /// Reuse a session's compiled style when replacing its library.
+    pub fn with_formatting(mut self, formatting: Formatting) -> Self {
+        self.formatting = formatting;
+        self
+    }
     pub fn from_snapshot(snapshot: Arc<Snapshot>) -> Self {
         let mut libraries = BTreeMap::<LibraryId, LibraryInfo>::new();
         for item in snapshot.objects() {
@@ -307,20 +330,14 @@ impl Engine {
                 .objects += 1;
         }
         Self {
-            shared: Arc::new(Shared {
-                formatter: Mutex::new(None),
-                state: RwLock::new(Arc::new(State {
-                    accepted: Arc::new(()),
-                    zotero_generation: 0,
-                    zotero_ready: true,
-                    index: Arc::new(SnapshotIndex::new(snapshot)),
-                    libraries,
-                })),
-                publication: Mutex::new(()),
-                subscribers: Mutex::new(BTreeMap::new()),
-                next_subscription: AtomicU64::new(0),
-                sources: Mutex::new(sources::Registry::default()),
-            }),
+            formatting: Formatting::default(),
+            shared: Arc::new(Shared::new(Arc::new(State {
+                accepted: Arc::new(()),
+                zotero_generation: 0,
+                zotero_ready: true,
+                index: Arc::new(SnapshotIndex::new(snapshot)),
+                libraries,
+            }))),
             resources: Arc::new(sources::Owners::default()),
             watch_files: true,
         }
@@ -367,29 +384,26 @@ impl Engine {
             None,
         )
     }
-    /// Apply source health to the process outcome while preserving canonical data.
-    pub fn finalize(&self, mut result: DispatchResult) -> Result<DispatchResult, EngineError> {
-        result.source_findings = self
-            .state()?
-            .libraries
-            .values()
-            .any(|library| library.warnings_total > 0 || library.refresh_error.is_some());
-        if result.source_findings && result.exit_code == ExitCode::Ok {
-            result.exit_code = ExitCode::Findings;
-        }
-        result.bounded()
-    }
+
     /// Whether Zotero's references here came from its closed database, the
     /// only read a profile choice affects.
     pub fn zotero_read_closed(&self) -> bool {
         self.resources.read_closed()
     }
     pub fn libraries(&self) -> Result<LibrariesResult, EngineError> {
-        Ok(LibrariesResult {
-            libraries: self.state()?.libraries.values().cloned().collect(),
-            zotero_profiles: None,
-            zotero_installed: None,
-            zotero_groups: None,
+        Ok(self.libraries_checked()?.value)
+    }
+    /// The libraries, with the health of every one of them.
+    pub fn libraries_checked(&self) -> Result<health::Checked<LibrariesResult>, EngineError> {
+        let state = self.state()?;
+        Ok(health::Checked {
+            source_health: health::SourceHealth::of(state.libraries.values()),
+            value: LibrariesResult {
+                libraries: state.libraries.values().cloned().collect(),
+                zotero_profiles: None,
+                zotero_installed: None,
+                zotero_groups: None,
+            },
         })
     }
     pub fn search(&self, request: &SearchRequest, cancel: &Cancellation) -> Result<SearchResult, EngineError> {
@@ -408,29 +422,42 @@ impl Engine {
         {
             return Err(error(ErrorCode::NotFound));
         }
+        let source_health = health::SourceHealth::of(state.libraries.values().filter(|library| {
+            request
+                .libraries
+                .as_ref()
+                .is_none_or(|scope| scope.contains(&library.id))
+        }));
         let pasted = state
             .index
             .pasted_list(&request.query, request.libraries.as_deref(), &|| cancel.is_cancelled())
             .ok_or_else(|| error(ErrorCode::Cancelled))?;
-        // Exact lists win before locator parsing or closest-match search.
-        let locator = (request.interpret_locator && pasted.is_none())
-            .then(|| ibis_core::locator::parse_trailing(&request.query))
+        // Exact lists win before reading what is typed around the search
+        // (`see vale 417`) or closest-match search.
+        let shorthand = (request.interpret_locator && pasted.is_none())
+            .then(|| ibis_core::shorthand::read(&request.query))
             .flatten();
-        let query = locator
+        let query = shorthand
             .as_ref()
             .map_or(request.query.as_str(), |read| read.search.as_str());
-        let (hits, list) = match pasted {
+        let (mut hits, list) = match pasted {
             Some(list) => (list.hits, Some(PastedList { missing: list.missing })),
             None => (
                 state
                     .index
-                    .search(query, request.limit, request.libraries.as_deref(), &|| {
+                    .search(query, request.limit + 1, request.libraries.as_deref(), &|| {
                         cancel.is_cancelled()
                     })
                     .ok_or_else(|| error(ErrorCode::Cancelled))?,
                 None,
             ),
         };
+        // Pasted lists deliberately return the whole exact selection. Ordinary
+        // searches probe one extra candidate, then expose only the requested page.
+        let complete = list.is_some() || hits.len() <= request.limit;
+        if list.is_none() {
+            hits.truncate(request.limit);
+        }
         #[derive(Serialize)]
         struct HitView<'a> {
             item: &'a SnapshotObject,
@@ -441,17 +468,21 @@ impl Engine {
         }
         #[derive(Serialize)]
         struct SearchView<'a> {
+            complete: bool,
             snapshot: &'a Fingerprints,
             hits: Vec<HitView<'a>>,
             #[serde(skip_serializing_if = "Option::is_none")]
             list: Option<&'a PastedList>,
             #[serde(skip_serializing_if = "Option::is_none")]
-            locator: Option<&'a ibis_core::locator::TrailingLocator>,
+            shorthand: Option<&'a ibis_core::shorthand::Shorthand>,
+            source_health: &'a health::SourceHealth,
         }
         let view = SearchView {
+            complete,
+            source_health: &source_health,
             snapshot: state.index.snapshot().fingerprints(),
             list: list.as_ref(),
-            locator: locator.as_ref(),
+            shorthand: shorthand.as_ref(),
             hits: hits
                 .iter()
                 .map(|hit| HitView {
@@ -467,6 +498,7 @@ impl Engine {
         drop(view);
         cancel.check()?;
         Ok(SearchResult {
+            complete,
             snapshot: state.index.snapshot().fingerprints().clone(),
             list,
             hits: hits
@@ -479,21 +511,39 @@ impl Engine {
                     partial: hit.partial,
                 })
                 .collect(),
-            locator,
+            shorthand,
+            source_health,
         })
     }
     pub fn show(&self, request: &ShowRequest) -> Result<SnapshotObject, EngineError> {
+        Ok(self.show_checked(request)?.value)
+    }
+    /// The object, with the health of the libraries the lookup read.
+    pub fn show_checked(&self, request: &ShowRequest) -> Result<health::Checked<SnapshotObject>, EngineError> {
         let state = self.state()?;
         let selected = select(state.index.snapshot(), &state.libraries, &request.item)?;
         ensure_budget(selected)?;
-        Ok(selected.clone())
+        Ok(health::Checked {
+            source_health: consulted(&state, &request.item, &selected.object.id().library),
+            value: selected.clone(),
+        })
     }
     pub fn cite_keys(
         &self,
         request: &KeyCitationRequest,
         cancel: &Cancellation,
     ) -> Result<CitationResult, EngineError> {
-        self.cite(&self.key_citation_request(request, cancel)?, cancel)
+        Ok(self.cite_keys_checked(request, cancel)?.value)
+    }
+    /// The citation, with the health of every library: finding a key reads them all.
+    pub fn cite_keys_checked(
+        &self,
+        request: &KeyCitationRequest,
+        cancel: &Cancellation,
+    ) -> Result<health::Checked<CitationResult>, EngineError> {
+        Ok(self
+            .prepare_consulting(&self.key_citation_request(request, cancel)?, true, cancel)?
+            .into_checked())
     }
     fn key_citation_request(
         &self,
@@ -527,13 +577,124 @@ impl Engine {
             })
             .collect::<Result<Vec<_>, EngineError>>()?;
         Ok(CitationRequest {
+            strict: request.strict,
+            items,
+            keep_order: request.keep_order || matches!(output, OutputSpec::Key { .. }),
+            output,
+            form: request.form,
+            input_language: None,
+            output_locale: request.output_locale.clone(),
+        })
+    }
+    /// Cite or export records sent with the request (#1539). No library is
+    /// opened or changed: the records live only for this call.
+    pub fn cite_records(&self, request: &RecordsRequest, cancel: &Cancellation) -> Result<CitationResult, EngineError> {
+        cancel.check()?;
+        if request.records.is_empty() {
+            return Err(error(ErrorCode::BadInput));
+        }
+        // Records are far shallower than any transport limit allows, so the
+        // same records meet the same limits however they arrive.
+        if request.records.len() > ibis_core::syntax::MAX_CITATION_ITEMS
+            || request.records.iter().any(|record| depth(record) > MAX_RECORD_DEPTH)
+            || crate::wire::serialized_size(&request.records, MAX_RECORDS_BYTES).is_err()
+        {
+            return Err(error(ErrorCode::ResourceLimit));
+        }
+        let library = LibraryId::digest(b"records sent with a request");
+        let read = ibis_sources::request_records(&library, &request.records)
+            .map_err(|_| EngineError::because(ErrorCode::BadInput, ErrorReason::RejectedRecord))?;
+        if read
+            .warnings
+            .iter()
+            .any(|warning| warning.code == ibis_sources::WarningCode::DuplicateKey)
+        {
+            return Err(EngineError::because(ErrorCode::BadInput, ErrorReason::DuplicateRecord));
+        }
+        // Clean output never leaves a record out without saying so.
+        if read.records.len() != request.records.len() {
+            return Err(EngineError::because(ErrorCode::BadInput, ErrorReason::RejectedRecord));
+        }
+        cancel.check()?;
+        let item = |id: &str| ItemRef {
+            library: library.clone(),
+            key: format!("record:{id}"),
+        };
+        let picks: Vec<RecordItem> = match &request.items {
+            Some(items) => items.clone(),
+            None => read
+                .records
+                .iter()
+                .map(|record| RecordItem {
+                    // Exactly one prefix: an id may itself start with `record:`.
+                    id: record
+                        .id
+                        .key
+                        .strip_prefix("record:")
+                        .unwrap_or(&record.id.key)
+                        .to_owned(),
+                    ..RecordItem::default()
+                })
+                .collect(),
+        };
+        if picks.is_empty() || picks.len() > ibis_core::syntax::MAX_CITATION_ITEMS {
+            return Err(error(ErrorCode::BadInput));
+        }
+        let snapshot = Arc::new(
+            Snapshot::new(read.records.into_iter().map(LibraryObject::Record).collect())
+                .map_err(|_| error(ErrorCode::BadInput))?,
+        );
+        let items = picks
+            .into_iter()
+            .map(|pick| {
+                let id = item(&pick.id);
+                let expected_cite = snapshot
+                    .get(&id)
+                    .ok_or_else(|| error(ErrorCode::NotFound))?
+                    .fingerprints
+                    .cite
+                    .clone();
+                Ok(CitationItem {
+                    item: id,
+                    expected_cite: Some(expected_cite),
+                    form: None,
+                    locator: pick.locator,
+                    prefix: pick.prefix,
+                    suffix: pick.suffix,
+                    suppress_author: pick.suppress_author,
+                    annotation: None,
+                    expected_annotation_cite: None,
+                })
+            })
+            .collect::<Result<Vec<_>, EngineError>>()?;
+        let output = crate::outputs::resolve(&request.output)?;
+        let citation = CitationRequest {
+            strict: request.strict,
             items,
             keep_order: matches!(output, OutputSpec::Key { .. }),
             output,
             form: request.form,
             input_language: None,
             output_locale: request.output_locale.clone(),
-        })
+        };
+        self.cite_snapshot(
+            &receipt::CitationContext {
+                source_failure: None,
+                snapshot,
+                sources: Vec::new(),
+                zotero: BTreeMap::new(),
+            },
+            &citation,
+            cancel,
+        )
+    }
+    /// Why records sent with a request would not all be cited: each warning's
+    /// `line` is a record's place in the list, from one. Nothing is opened.
+    pub fn record_problems(records: &[Value]) -> Vec<SourceWarning> {
+        ibis_sources::request_records(&LibraryId::digest(b"records sent with a request"), records).map_or_else(
+            |_| vec![SourceWarning::at(ibis_sources::WarningCode::Syntax, None)],
+            |read| read.warnings,
+        )
     }
     pub fn cite(&self, request: &CitationRequest, cancel: &Cancellation) -> Result<CitationResult, EngineError> {
         self.prepare_citation(request, cancel)
@@ -541,38 +702,51 @@ impl Engine {
     }
     fn cite_snapshot(
         &self,
-        snapshot: &Arc<Snapshot>,
+        context: &receipt::CitationContext,
         request: &CitationRequest,
         cancel: &Cancellation,
     ) -> Result<CitationResult, EngineError> {
-        if request.items.is_empty() || request.items.len() > ibis_core::syntax::MAX_CITATION_ITEMS {
-            return Err(error(ErrorCode::BadInput));
-        }
+        let resolved = crate::outputs::resolve_request(request)?;
+        self.cite_resolved(context, &resolved, cancel)
+    }
+    fn cite_resolved(
+        &self,
+        context: &receipt::CitationContext,
+        resolved: &crate::outputs::ResolvedRequest,
+        cancel: &Cancellation,
+    ) -> Result<CitationResult, EngineError> {
+        let request = &resolved.request;
+        let snapshot = &context.snapshot;
         crate::wire::serialized_size(request, crate::protocol::MAX_REQUEST_BYTES)
             .map_err(|_| error(ErrorCode::ResourceLimit))?;
-        let resolved;
-        let request = match &request.output {
-            OutputSpec::Preset { .. } => {
-                resolved = CitationRequest {
-                    output: crate::outputs::resolve(&request.output)?,
-                    ..request.clone()
-                };
-                &resolved
-            }
-            _ => request,
-        };
-        let result = match &request.output {
-            OutputSpec::Key { .. } => ibis_core::syntax::cite(snapshot, request).map_err(|failure| {
-                error(if failure == CitationError::OutputTooLarge {
-                    ErrorCode::ResourceLimit
-                } else {
-                    ErrorCode::BadInput
+        let key_error = EngineError::citation;
+        let mut result = match &request.output {
+            OutputSpec::Key {
+                syntax: KeySyntax::ScannableCite,
+                ..
+            } => {
+                // Which Zotero library each reference came from is the engine's
+                // own record of what it read; an id names one library for good.
+                ibis_core::syntax::scannable::cite(snapshot, request, |library| {
+                    use ibis_core::syntax::scannable::ZoteroOrigin;
+                    context.zotero.get(library).map(|zotero| match zotero {
+                        crate::request::ZoteroLibrary::Personal => ZoteroOrigin::Personal,
+                        crate::request::ZoteroLibrary::Group(id) => ZoteroOrigin::Group(*id),
+                    })
                 })
-            })?,
-            OutputSpec::Csl { .. } => self.formatted(snapshot, request, cancel)?,
+                .map_err(key_error)?
+            }
+            OutputSpec::Key { .. } => ibis_core::syntax::cite(snapshot, request).map_err(key_error)?,
+            OutputSpec::Csl { .. } => self.formatted(
+                snapshot,
+                request,
+                cancel,
+                resolved.formatted.as_ref().ok_or_else(|| error(ErrorCode::Internal))?,
+            )?,
             OutputSpec::Preset { .. } => return Err(error(ErrorCode::Internal)),
         };
         cancel.check()?;
+        receipt::attach(&mut result, request, context)?;
         ensure_budget(&result)?;
         Ok(result)
     }
@@ -585,71 +759,91 @@ impl Engine {
         cancel.check()?;
         crate::protocol::validate_shape(params).map_err(|_| error(ErrorCode::BadInput))?;
         let data = match method {
-            Method::Libraries => match if params.is_null() {
-                LibrariesRequest::List
-            } else {
-                parameters::<LibrariesRequest>(params)?
-            } {
-                LibrariesRequest::List => value(self.libraries()?)?,
-                LibrariesRequest::OpenZotero {
-                    libraries,
-                    profile,
-                    reload,
-                } => {
-                    self.read_zotero(reload, libraries.as_deref(), profile.as_deref(), cancel)?;
-                    value(self.libraries()?)?
+            Method::Libraries => {
+                let request = if params.is_null() {
+                    LibrariesRequest::List {}
+                } else {
+                    parameters::<LibrariesRequest>(params)?
+                };
+                let (profiles, groups) = match request {
+                    LibrariesRequest::List {} => (None, None),
+                    LibrariesRequest::OpenZotero {
+                        libraries,
+                        profile,
+                        reload,
+                    } => {
+                        self.read_zotero(reload, libraries.as_deref(), profile.as_deref(), cancel)?;
+                        (None, None)
+                    }
+                    LibrariesRequest::ZoteroProfiles {} => (Some(self.zotero_profiles().unwrap_or_default()), None),
+                    LibrariesRequest::ZoteroGroups {} => (None, Some(self.zotero_groups()?)),
+                    LibrariesRequest::OpenFile { path } => {
+                        self.open_file(&path, cancel)?;
+                        (None, None)
+                    }
+                    LibrariesRequest::Reload { library } => {
+                        self.reload_files(library.as_ref(), cancel)?;
+                        (None, None)
+                    }
+                };
+                let mut listed = self.libraries_checked()?;
+                listed.value.zotero_installed = profiles.is_some().then(ibis_sources::zotero_source::installed);
+                listed.value.zotero_profiles = profiles;
+                listed.value.zotero_groups = groups;
+                cancel.check()?;
+                return checked(listed, ExitCode::Ok);
+            }
+            Method::Search => {
+                let result = self.search(&parameters(params)?, cancel)?;
+                return DispatchResult {
+                    data: value(&result)?,
+                    exit_code: ExitCode::Ok,
+                    text: None,
+                    source_findings: false,
                 }
-                LibrariesRequest::ZoteroProfiles => value(LibrariesResult {
-                    zotero_profiles: Some(self.zotero_profiles().unwrap_or_default()),
-                    zotero_installed: Some(ibis_sources::zotero_source::installed()),
-                    ..self.libraries()?
-                })?,
-                LibrariesRequest::ZoteroGroups => value(LibrariesResult {
-                    zotero_groups: Some(self.zotero_groups()?),
-                    ..self.libraries()?
-                })?,
-                LibrariesRequest::OpenFile { path } => {
-                    self.open_file(&path, cancel)?;
-                    value(self.libraries()?)?
-                }
-                LibrariesRequest::Reload { library } => {
-                    self.reload_files(library.as_ref(), cancel)?;
-                    value(self.libraries()?)?
-                }
-            },
-            Method::Search => value(self.search(&parameters(params)?, cancel)?)?,
-            Method::Show => value(self.show(&parameters(params)?)?)?,
+                .with_health(&result.source_health);
+            }
+            Method::Show => return checked(self.show_checked(&parameters(params)?)?, ExitCode::Ok),
+
             Method::Cite => {
                 let request: CitationRequest = parameters(params)?;
-                let result = self.cite(&request, cancel)?;
-                return self.finalize(DispatchResult::citation(result, request.items.len())?);
+                let checked = self.prepare_citation(&request, cancel)?.into_checked();
+                return DispatchResult::citation(checked.value, request.items.len(), &request.output)?
+                    .with_health(&checked.source_health);
+            }
+            Method::Records => {
+                let request: RecordsRequest = parameters(params)?;
+                let count = request.items.as_ref().map_or(request.records.len(), Vec::len);
+                // No library is read, so no library's health bears on it. A
+                // field that could not be read as sent is a finding, as it is
+                // in a library file, so the citation never reads as clean.
+                let result = self.cite_records(&request, cancel)?;
+                let unread = result
+                    .warnings
+                    .iter()
+                    .any(|warning| warning.code == CitationWarningCode::SourceField);
+                let mut dispatched = DispatchResult::citation(result, count, &request.output)?;
+                if unread {
+                    dispatched.exit_code = ExitCode::Findings;
+                }
+                return dispatched.with_health(&health::SourceHealth::of(std::iter::empty()));
             }
             Method::Project => {
                 let result = self.project(&parameters(params)?, cancel)?;
-                let exit_code = if result.settled() {
+                let exit_code = if result.value.settled() {
                     ExitCode::Ok
                 } else {
                     ExitCode::Findings
                 };
-                return self.finalize(DispatchResult {
-                    data: value(result)?,
-                    exit_code,
-                    text: None,
-                    source_findings: false,
-                });
+                return checked(result, exit_code);
             }
             Method::Entry => {
-                let result = self.entry(&parameters(params)?, cancel)?;
-                let exit_code = match result {
+                let result = self.entry_checked(&parameters(params)?, cancel)?;
+                let exit_code = match result.value {
                     EntryResult::Entry { .. } => ExitCode::Ok,
                     EntryResult::Refused { .. } => ExitCode::Findings,
                 };
-                return self.finalize(DispatchResult {
-                    data: value(result)?,
-                    exit_code,
-                    text: None,
-                    source_findings: false,
-                });
+                return checked(result, exit_code);
             }
             Method::Styles => value(self.styles(&parameters(params)?)?)?,
             Method::Outputs => {
@@ -661,7 +855,19 @@ impl Engine {
                 let methods: Vec<_> = request
                     .method
                     .map_or_else(|| Method::ALL.to_vec(), |method| vec![method]);
-                Value::Array(methods.into_iter().map(|method|json!({"method":method,"params":request_schema(method),"result":response_schema(method)})).collect())
+                Value::Array(
+                    methods
+                        .into_iter()
+                        .map(|method| {
+                            json!({
+                                "method": method,
+                                "contract": ibis_core::contract::CONTRACT_VERSION,
+                                "params": request_schema(method),
+                                "result": response_schema(method),
+                            })
+                        })
+                        .collect(),
+                )
             }
             Method::Call => {
                 let request: CallRequest = parameters(params)?;
@@ -672,13 +878,34 @@ impl Engine {
             }
         };
         cancel.check()?;
-        self.finalize(DispatchResult {
+        // Styles, outputs and schemas read no library, so no library's health bears on them.
+        DispatchResult {
             data,
             exit_code: ExitCode::Ok,
             text: None,
             source_findings: false,
-        })
+        }
+        .bounded()
     }
+}
+/// A result and its sources' health, as dispatch sends them.
+fn checked<T: Serialize>(result: health::Checked<T>, exit_code: ExitCode) -> Result<DispatchResult, EngineError> {
+    DispatchResult {
+        data: value(&result.value)?,
+        exit_code,
+        text: None,
+        source_findings: false,
+    }
+    .with_health(&result.source_health)
+}
+/// The libraries a lookup read: every one for a key, the record's own for an id.
+fn consulted(state: &State, selector: &ItemSelector, library: &LibraryId) -> health::SourceHealth {
+    health::SourceHealth::of(
+        state
+            .libraries
+            .values()
+            .filter(|info| matches!(selector, ItemSelector::Key(_)) || &info.id == library),
+    )
 }
 impl State {
     fn with_failure(&self, library: &LibraryId, failure: EngineError) -> Result<Self, EngineError> {
@@ -809,6 +1036,24 @@ impl Shared {
         self.notify()
     }
 }
+/// The deepest a record sent with a request may nest: CSL names and dates
+/// need four levels.
+const MAX_RECORD_DEPTH: usize = 16;
+/// The most JSON the records of one request may take.
+const MAX_RECORDS_BYTES: usize = 512 * 1024;
+fn depth(value: &Value) -> usize {
+    let mut deepest = 0;
+    let mut pending = vec![(value, 1)];
+    while let Some((value, level)) = pending.pop() {
+        deepest = deepest.max(level);
+        match value {
+            Value::Array(values) => pending.extend(values.iter().map(|value| (value, level + 1))),
+            Value::Object(values) => pending.extend(values.values().map(|value| (value, level + 1))),
+            _ => {}
+        }
+    }
+    deepest
+}
 fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -839,7 +1084,10 @@ fn select<'a>(
                 record.answers_to(key)
             });
             let found = matches.next().ok_or_else(|| {
-                if libraries.values().any(|library| library.duplicate_keys.contains(key)) {
+                if libraries
+                    .values()
+                    .any(|library| library.duplicate_keys.contains_key(key))
+                {
                     EngineError::because(ErrorCode::NotFound, ErrorReason::DuplicateKey)
                 } else if libraries.values().any(|library| library.damaged_keys.contains_key(key)) {
                     EngineError::because(ErrorCode::NotFound, ErrorReason::DamagedEntry)
@@ -868,12 +1116,13 @@ pub(crate) fn error(code: ErrorCode) -> EngineError {
 }
 fn response_schema(method: Method) -> Value {
     match method {
-        Method::Libraries => schema_for!(LibrariesResult),
+        Method::Libraries => schema_for!(health::Checked<LibrariesResult>),
         Method::Search => schema_for!(SearchResult),
-        Method::Show => schema_for!(SnapshotObject),
-        Method::Cite => schema_for!(CitationResult),
-        Method::Project => schema_for!(ProjectResult),
-        Method::Entry => schema_for!(EntryResult),
+        Method::Show => schema_for!(health::Checked<SnapshotObject>),
+        Method::Cite => schema_for!(health::Checked<CitationResult>),
+        Method::Project => schema_for!(health::Checked<ProjectResult>),
+        Method::Entry => schema_for!(health::Checked<EntryResult>),
+        Method::Records => schema_for!(health::Checked<CitationResult>),
         Method::Styles => schema_for!(StylesResult),
         Method::Outputs => schema_for!(crate::outputs::OutputsResult),
         _ => schema_for!(Value),

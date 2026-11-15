@@ -20,7 +20,7 @@ pub(crate) fn load_library(path: PathBuf, reload: bool) -> Result<Library, LoadE
 fn load_file(
     path: PathBuf,
     reload: bool,
-    previous: Option<std::sync::Arc<super::engine_file::FileLibrary>>,
+    previous: Option<std::sync::Arc<super::engine_library::FileLibrary>>,
     cancel: &ibis_engine::Cancellation,
     cancelled: &impl Fn() -> bool,
 ) -> Result<Loaded, LoadError> {
@@ -31,10 +31,10 @@ fn load_file(
             if reload {
                 let prepared = file.prepare_reload(&path, cancel)?;
                 check_cancelled(cancelled)?;
-                return Ok(Loaded::Reload(Box::new(FileReload {
+                return Ok(Loaded::Reload(Box::new(LibraryReload {
                     source: Source::File(path),
                     file,
-                    prepared,
+                    prepared: PreparedReload::File(prepared),
                 })));
             }
             // An unreadable snapshot has no revision and never counts as unchanged.
@@ -42,7 +42,7 @@ fn load_file(
             (file, unchanged)
         }
         None => (
-            std::sync::Arc::new(super::engine_file::FileLibrary::open(&path)?),
+            std::sync::Arc::new(super::engine_library::FileLibrary::open(&path, cancel)?),
             false,
         ),
     };
@@ -68,22 +68,57 @@ pub(crate) enum Loaded {
     /// A reread found nothing changed; keep the current references.
     Unchanged,
     /// A strict read outcome, including failure, still private until acceptance.
-    Reload(Box<FileReload>),
+    Reload(Box<LibraryReload>),
 }
 
-pub(super) struct FileReload {
+pub(super) struct LibraryReload {
     pub(super) source: Source,
-    pub(super) file: std::sync::Arc<super::engine_file::FileLibrary>,
-    pub(super) prepared: ibis_engine::PreparedFileReload,
+    pub(super) file: std::sync::Arc<super::engine_library::FileLibrary>,
+    pub(super) prepared: PreparedReload,
 }
 
+pub(super) enum PreparedReload {
+    File(ibis_engine::PreparedFileReload),
+    Zotero(ibis_engine::PreparedZoteroReload),
+}
+
+impl LibraryReload {
+    pub(super) fn accept(self) -> Result<(), LoadError> {
+        match self.prepared {
+            PreparedReload::File(prepared) => self.file.accept_reload(prepared),
+            PreparedReload::Zotero(prepared) => self
+                .file
+                .engine
+                .accept_zotero_reload(prepared)
+                .map_err(LoadError::Zotero),
+        }
+    }
+}
+
+#[cfg(test)]
 pub(super) fn load_source(
     source: Source,
     reload: bool,
-    previous_file: Option<std::sync::Arc<super::engine_file::FileLibrary>>,
+    previous_file: Option<std::sync::Arc<super::engine_library::FileLibrary>>,
     profile: Option<&str>,
     cancel: &ibis_engine::Cancellation,
     cancelled: impl Fn() -> bool,
+) -> Result<Loaded, LoadError> {
+    load_source_guarded(source, reload, previous_file, profile, cancel, cancelled, |retire| {
+        retire()
+    })
+}
+
+pub(super) fn load_source_guarded(
+    source: Source,
+    reload: bool,
+    previous_file: Option<std::sync::Arc<super::engine_library::FileLibrary>>,
+    profile: Option<&str>,
+    cancel: &ibis_engine::Cancellation,
+    cancelled: impl Fn() -> bool,
+    guard: impl FnMut(
+        &mut dyn FnMut() -> Result<(), ibis_core::contract::EngineError>,
+    ) -> Result<(), ibis_core::contract::EngineError>,
 ) -> Result<Loaded, LoadError> {
     check_cancelled(&cancelled)?;
     if cancel.is_cancelled() {
@@ -94,7 +129,7 @@ pub(super) fn load_source(
         Source::Samples(path) => {
             // A separate engine, using the normal CSL-JSON file reader. The
             // bundled immutable file needs neither a watch nor a saved choice.
-            let file = super::engine_file::FileLibrary::open_samples(&path)?;
+            let file = super::engine_library::FileLibrary::open_samples(&path, cancel)?;
             check_cancelled(&cancelled)?;
             Ok(Loaded::New(Box::new(Library {
                 source: Some(Source::Samples(path)),
@@ -104,23 +139,22 @@ pub(super) fn load_source(
             })))
         }
         Source::Zotero(chosen) => {
-            let (bridge, unchanged) = if let Some(bridge) = previous_file {
-                let before = bridge.revision();
-                let same_choice = bridge.refresh_zotero(&chosen, profile, reload, cancel)?;
-                let unchanged = same_choice && before == bridge.revision();
-                (bridge, unchanged)
-            } else {
-                (
-                    std::sync::Arc::new(super::engine_file::FileLibrary::open_zotero(&chosen, profile, cancel)?),
-                    false,
-                )
-            };
+            if let Some(bridge) = previous_file {
+                let prepared = bridge.prepare_zotero_reload(&chosen, profile, reload, cancel, guard)?;
+                check_cancelled(&cancelled)?;
+                cancel.check().map_err(LoadError::Zotero)?;
+                return Ok(Loaded::Reload(Box::new(LibraryReload {
+                    source: Source::Zotero(chosen),
+                    file: bridge,
+                    prepared: PreparedReload::Zotero(prepared),
+                })));
+            }
+            let bridge = std::sync::Arc::new(super::engine_library::FileLibrary::open_zotero(
+                &chosen, profile, cancel,
+            )?);
             check_cancelled(&cancelled)?;
             if cancel.is_cancelled() {
                 return Err(LoadError::Stopped);
-            }
-            if unchanged {
-                return Ok(Loaded::Unchanged);
             }
             Ok(Loaded::New(Box::new(Library {
                 source: Some(Source::Zotero(chosen)),
@@ -135,7 +169,23 @@ pub(super) fn load_source(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ibis_core::settings::ZoteroLibrary;
+    use ibis_engine::settings::ZoteroLibrary;
+
+    #[test]
+    fn initial_file_open_keeps_cancellation_received_after_the_entry_check() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let path = dir.path().join("synthetic.bib");
+        std::fs::write(&path, "@book{synthetic}").unwrap_or_else(|e| panic!("{e}"));
+        let cancel = ibis_engine::Cancellation::default();
+        // A newer choice arrives just after the desktop's entry check. Only
+        // the request token can stop the engine's initial file acquisition.
+        let loaded = load_file(path.clone(), false, None, &cancel, &|| {
+            cancel.cancel();
+            false
+        });
+        assert!(matches!(loaded, Err(LoadError::Stopped)));
+        assert!(load_library(path, false).is_ok());
+    }
 
     #[test]
     fn cancelled_loads_stop_before_source_acquisition() {

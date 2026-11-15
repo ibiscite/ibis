@@ -127,6 +127,7 @@ fn saved(path: &Path, create: bool) -> io::Result<Key> {
 }
 
 /// `None` when the file holds no usable key.
+#[allow(clippy::disallowed_methods)]
 fn read(path: &Path) -> io::Result<Option<Key>> {
     if !std::fs::symlink_metadata(path)?.is_file() {
         return Err(io::ErrorKind::InvalidInput.into());
@@ -174,6 +175,7 @@ fn write_private(path: &Path, bytes: &[u8]) -> io::Result<()> {
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
 

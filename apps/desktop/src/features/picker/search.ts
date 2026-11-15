@@ -1,4 +1,4 @@
-// The search for the current query, as part of the picker session (decision 0035):
+// The search for the current query, as part of the picker session:
 // one numbered request at a time, and only the newest may answer.
 import type * as nativeApi from "../../api";
 import type { LibraryStatus, LocatorQuery, PastedList, SearchResult } from "../../api";

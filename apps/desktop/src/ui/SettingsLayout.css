@@ -25,10 +25,22 @@
   /* Hidden radio inputs must stay inside this scroller's coordinate space. */
   position: relative;
   grid-area: 1 / 2 / 3 / 3; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; box-sizing: border-box;
-  display: grid; align-content: start; grid-auto-rows: max-content; gap: var(--space-4);
-  /* Below the drag band, so scrolled controls stay clickable. */
-  margin-block-start: var(--space-6); padding: 0 var(--space-6) var(--space-6);
+  display: grid; align-content: start; grid-auto-rows: max-content; gap: var(--gutter);
+  /* Below the drag band, so scrolled controls stay clickable. The window inset on
+     both sides, as every body: cards on it, words on the row text. */
+  margin-block-start: var(--space-6); padding: 0 var(--inset) var(--gutter);
   scrollbar-gutter: stable; scroll-padding-block: var(--space-6); overscroll-behavior: contain;
 }
 /* Notices take one line under the page, with words where row labels start. */
-.settings > .notice-slot { --notice-start: var(--space-4); grid-area: 3 / 2 / 4 / 3; padding: var(--space-2) var(--space-6); border-block-start: var(--border-width) solid var(--separator); }
+.settings > .notice-slot { --notice-start: var(--heading-offset); grid-area: 3 / 2 / 4 / 3; padding: var(--space-2) var(--inset); border-block-start: var(--border-width) solid var(--separator); }
+
+/* The title stays put while the page scrolls under it, as System Settings keeps its
+   title in the toolbar; a hairline appears once something is beneath it. */
+.ui-settings-page-title {
+  position: sticky; inset-block-start: 0; z-index: 1; background: var(--surface);
+  margin: 0 calc(-1 * var(--inset)); padding: 0 calc(var(--inset) + var(--heading-offset)) var(--space-2); overflow-wrap: anywhere;
+  font-size: var(--type-display-size); line-height: var(--type-display-line); font-weight: 700;
+}
+.settings-page[data-more-above] > .ui-settings-page-title { box-shadow: 0 var(--border-width) 0 var(--separator); }
+/* Words of the page itself (a problem, a note) start on the row text, as a section's do. */
+.settings-page > .ui-note { padding-inline: var(--heading-offset); }

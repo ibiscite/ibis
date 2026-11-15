@@ -1,3 +1,5 @@
+import { CITATION_FORMS } from "../bindings";
+import type { Problem } from "../bindings";
 import { FluentBundle, FluentResource } from "@fluent/bundle";
 import { parse } from "@fluent/syntax";
 import { createContext, type ReactNode, useContext } from "react";
@@ -10,16 +12,16 @@ export const INTERFACE_LOCALE = "en-US";
 const IDS = [
   ...SETTINGS_IDS,
   ...PICKER_IDS,
-  "choice-use-file", "choice-back", "choice-use-zotero", "choice-zotero-help", "choice-library-file", "choice-library-file-help", "choice-drop-file", "shelf-references",
+  "choice-use-file", "choice-back", "choice-use-zotero", "choice-zotero-help", "choice-library-file", "choice-library-file-help", "choice-drop-file",
   "keys-title", "keys-close", "keys-action", "keys-shortcut", "shortcuts-filter", "shortcuts-empty",
   "general-small-surprises-label", "general-small-surprises-description", "delight-name", "delight-fact-touch", "delight-fact-scarlet", "delight-fact-mummies", "delight-fact-national", "delight-fact-flight", "undo-action", "undo-remove", "undo-removed", "undo-reset-window", "undo-shortcut",
   "delight-ibis", "delight-tip", "delight-library100", "delight-library1000", "delight-library10000", "delight-empty", "delight-loading", "delight-no-library", "delight-zoom", "delight-citation", "delight-anniversary", "delight-about-words", "canvas-hovered", "canvas-pressed", "canvas-focused",
-  "form-normal", "form-narrative", "form-year-only",
+  ...CITATION_FORMS.map((form) => `form-${form}` as const),
   "settings-pages", "settings-general", "settings-shortcuts", "settings-about",
   "general-login-label", "general-login-description", "general-login-place", "general-login-when",
   "general-login-unsupported", "general-login-needs-approval", "general-login-refused", "general-login-unreadable",
   "general-menu-bar-label", "general-menu-bar-description",
-  "general-paste-title", "general-paste-label", "general-paste-key", "general-paste-description", "general-paste-allowed", "general-paste-allowed-note",
+  "general-paste-title", "general-behavior-title", "general-paste-label", "general-paste-key", "general-paste-description", "general-paste-allowed", "general-paste-allowed-note",
   "general-paste-guide-title", "general-paste-guide-why", "general-paste-step-open", "general-paste-step-allow", "general-paste-step-return",
   "general-paste-pane", "general-paste-open", "general-paste-drag", "general-paste-drag-keyboard", "general-paste-drag-fallback",
   "general-paste-drag-failed", "general-paste-waiting", "general-paste-granted", "general-paste-unreadable", "general-paste-return-failed", "general-paste-stale",
@@ -31,18 +33,18 @@ const IDS = [
   "shortcuts-command-format", "shortcuts-command-pin", "shortcuts-command-keys", "shortcuts-command-more",
   "shortcuts-command-source", "shortcuts-command-change-last", "shortcuts-command-settings", "shortcuts-command-quit", "shortcuts-picker-conflict",
   "shortcuts-region-search", "shortcuts-region-library", "shortcuts-region-picker", "shortcuts-region-menu", "shortcuts-region-system", "shortcuts-region-citation",
-  "shortcuts-action-choose-source", "shortcuts-action-reveal-source", "shortcuts-action-source", "shortcuts-action-change-last", "shortcuts-action-open", "shortcuts-action-copy", "shortcuts-action-paste", "shortcuts-action-copy-only", "shortcuts-action-add", "shortcuts-action-move", "shortcuts-action-peek", "shortcuts-action-escape",
-  "shortcuts-action-format", "shortcuts-action-more", "shortcuts-action-pin", "shortcuts-action-keys", "shortcuts-action-settings", "shortcuts-action-quit", "shortcuts-action-undo", "shortcuts-action-text-size", "shortcuts-action-citation-move", "shortcuts-action-citation-remove",
+  "shortcuts-action-choose-source", "shortcuts-action-reveal-source", "shortcuts-action-source", "shortcuts-action-change-last", "shortcuts-action-open", "shortcuts-action-copy", "shortcuts-action-paste", "shortcuts-action-copy-only", "shortcuts-action-add", "shortcuts-action-move", "shortcuts-action-pick", "shortcuts-action-peek", "shortcuts-action-escape",
+  "shortcuts-action-format", "shortcuts-action-more", "shortcuts-action-pin", "shortcuts-action-keys", "shortcuts-action-settings", "shortcuts-action-quit", "shortcuts-action-undo", "shortcuts-action-text-size", "shortcuts-action-citation-move", "shortcuts-action-citation-remove", "shortcuts-action-citation-reorder", "shortcuts-action-citation-open", "shortcuts-action-citation-focus",
   "shortcuts-action-menu-move", "shortcuts-action-menu-ends", "shortcuts-action-menu-choose", "shortcuts-action-menu-leave", "shortcuts-or",
   "about-automatic", "about-automatic-description", "about-check", "about-check-label", "about-checking", "about-check-failed", "about-check-newest", "about-check-busy", "about-mission", "about-updates", "about-links", "about-website", "about-source", "about-problem", "about-licences", "about-free", "about-copied", "about-copy-failed", "about-version", "about-unavailable",
 ] as const;
 export type MessageId = typeof IDS[number];
-/** Messages the Rust front ends own: engine codes, then the command line's and the app's native words. */
-const RUST = /^(error|reason|refusal|warning|loss|notice|form|cause|cli|app)-/;
+/** Messages Rust owns: engine codes and the CLI, MCP and native app's words. */
+const RUST = /^(error|reason|refusal|problem|warning|source-warning|loss|notice|form|cause|cli|mcp|app)-/;
 type Variables = Readonly<Record<string, string | number>>;
 export type InterfaceMessages = Readonly<{
   locale: typeof INTERFACE_LOCALE;
-  text: (id: MessageId, variables?: Variables) => string;
+  text: (id: MessageId, variables?: Variables, audience?: "app" | "bibliography") => string;
 }>;
 
 /** Visible expansion for build/test use; variables stay untouched. */
@@ -76,17 +78,22 @@ export function createInterfaceMessages(source: string, pseudo = false): Interfa
     transform: pseudo ? pseudolocalize : undefined,
   });
   if (bundle.addResource(new FluentResource(source)).length) throw invalid();
-  const text = (id: MessageId, variables?: Variables): string => {
+  const text = (id: MessageId, variables?: Variables, audience?: "app" | "bibliography"): string => {
     const message = bundle.getMessage(id);
     const errors: Error[] = [];
     if (!message?.value) throw new Error("Invalid interface message");
-    const value = bundle.formatPattern(message.value, variables, errors);
+    const named = variables?.reference ? (variables.form ? message.attributes["app-named"] : undefined) ?? message.attributes.named : undefined;
+    const value = bundle.formatPattern(named ?? message.value, variables, errors);
     if (errors.length) throw new Error("Invalid interface message");
-    return value;
+    const advice = audience ? message.attributes[audience] : undefined;
+    if (!advice) return value;
+    const fix = bundle.formatPattern(advice, variables, errors);
+    if (errors.length) throw new Error("Invalid interface message");
+    return `${value} ${fix}`;
   };
   // Only the variables the interface passes; a message naming another fails here.
   const synthetic = Object.fromEntries(
-    [...PICKER_VARIABLES, "list", "keys", "action", "reference", "command", "file", "setting", "from", "to", "system"].map((name) => [name, "Synthetic"]),
+    [...PICKER_VARIABLES, "list", "keys", "action", "reference", "command", "file", "setting", "from", "to", "system", "query", "path"].map((name) => [name, "Synthetic"]),
   );
   // Exercise all platform branches before publishing the immutable owner.
   // Errors remain fixed text and cannot disclose variables or source content.
@@ -118,4 +125,12 @@ export function InterfaceMessagesProvider({ messages, children }: { messages: In
 }
 export function useInterfaceMessages(): InterfaceMessages {
   return useContext(InterfaceContext);
+}
+
+/** Render a native IPC diagnostic through the shared catalogue. */
+export function problemText(error: unknown, fallback: string, text = say): string {
+  const problem = typeof error === "object" && error !== null ? error as Partial<Problem> : null;
+  if (!problem?.message || typeof problem.message.id !== "string" || !problem.recovery || !problem.focus) return fallback;
+  try { return text(problem.message.id as MessageId, problem.message.args, problem.message.context === "bibliography" ? "bibliography" : "app"); }
+  catch { return fallback; }
 }

@@ -1,6 +1,6 @@
-# Dependency policy, enforced in CI by `cargo deny check`.
-# Every dependency must be AGPL-compatible, free of known vulnerabilities,
-# and come from crates.io.
+# Licenses, bans and sources block every CI run. Advisories block dependency
+# changes, releases/tags and the weekly check; other changes report warnings.
+# A weekly main run tracks advisory failures in one issue (docs/testing.md).
 
 [graph]
 all-features = true

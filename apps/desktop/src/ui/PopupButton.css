@@ -5,7 +5,7 @@
 :root[data-platform="macos"] .ui-popup-button { min-height: calc(var(--control-h) - var(--space-1)); }
 :root[data-platform="macos"] .ui-popup-button[data-size="small"] { min-height: var(--control-small-h); }
 
-.ui-popup-button .popup-indicator { flex: none; width: var(--icon-small); height: var(--icon-small); color: var(--text-secondary); }
+.ui-popup-button .popup-indicator { flex: none; color: var(--text-secondary); }
 /* Quiet: no fill or edge at rest. A band that is itself a fill (the shelf; "Quiet
    bands") sets its controls' padding, corner and fills (--band-control-pad, -pad-end,
    -radius, -hover, -pressed); any other quiet pop-up keeps a pop-up's own padding,

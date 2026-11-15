@@ -1,20 +1,23 @@
+import type { RecordId } from "../bindings";
 import { createRef, useLayoutEffect, useRef, type CSSProperties } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Density, SearchResult } from "../bindings";
 import { PickerHeader } from "../features/picker/PickerHeader";
 import { ResultRow } from "../features/picker/ResultList";
 import { useInterfaceMessages } from "../i18n";
-import pickerStyles from "../styles.css?raw";
+import pickerStyles from "../ui/Window.css?raw";
 import foundationStyles from "../ui/Foundation.css?raw";
 import buttonStyles from "../ui/Button.css?raw";
 import iconButtonStyles from "../ui/IconButton.css?raw";
+import iconStyles from "../ui/Icon.css?raw";
 import optionStyles from "../ui/Option.css?raw";
 import searchBarStyles from "../ui/SearchBar.css?raw";
+import bandStyles from "../ui/Band.css?raw";
 
 const ignore = () => undefined;
 // The real styles stay isolated from Settings, in the app's own order. Each host inherits the current
 // appearance or owns its explicitly requested scheme, never the system default.
-const styles = (foundationStyles + buttonStyles + iconButtonStyles + optionStyles + searchBarStyles + pickerStyles).replace(/@import[^;]+;/g, "")
+const styles = (foundationStyles + iconStyles + buttonStyles + iconButtonStyles + optionStyles + bandStyles + searchBarStyles + pickerStyles).replace(/@import[^;]+;/g, "")
   .replace(/:root(\[[^\]]+\])?/g, (_, attribute: string | undefined) => attribute ? `:host(${attribute})` : ":host");
 /** `frame` is the window's size in CSS pixels; the picture is that window scaled (the default size otherwise). */
 export function PickerPicture({ density = "comfortable", appearance, split = false, frame }: {
@@ -23,22 +26,22 @@ export function PickerPicture({ density = "comfortable", appearance, split = fal
   const { text } = useInterfaceMessages();
   const record: SearchResult = {
     revision: "sample", partial: false,
-    id: { library: "sample", key: "vale2021" }, key: "vale2021", cite: "sample", source: "sample", title: text("look-sample-title"),
+    id: { library: "sample", key: "SENTINEL-ID-settings-preview" as unknown as RecordId }, key: "vale2021", cite: "sample", source: "sample", title: text("look-sample-title"),
     authors: text("look-sample-authors"), first_author: text("look-sample-authors"), author_count: 2,
     container: text("look-sample-journal"), year: "2021", item_type: "article-journal", matched: [],
   };
   const html = renderToStaticMarkup(<>
     <PickerHeader inputRef={createRef()} query="" onQueryChange={ignore}
       expanded={false} activeDescendant={undefined} format="pandoc" showFormat={false} styles={false}
-      onFormatChange={ignore} pinned={false} onTogglePin={ignore} />
+      onFormatChange={ignore} />
     <div className="results-area"><ul id="results">{(["look-sample-title", "look-sample-title-2", "look-sample-title-3"] as const).map((title, index) =>
       <ResultRow key={title} record={{ ...record, title: text(title) }} index={index} active={index === 0} added={false} density={density} hoverAllowed={false} library={null}
         handlers={{ onPointerDown: ignore, onClick: ignore, onContext: ignore, onTileClick: ignore }} />
     )}</ul></div>
   </>);
   const scheme = split ? "light" : appearance === "light" || appearance === "dark" ? appearance : undefined;
-  const shape = frame && { "--preview-window-w": `${frame[0] / 16}rem`, "--preview-window-h": `${frame[1] / 16}rem` } as CSSProperties;
-  return <span className="ui-picker-picture" style={shape} data-density={density} data-split={split || undefined} aria-hidden="true" inert>
+  // The window's shape as two custom properties; without a frame they are unset and the default applies.
+  return <span className="ui-picker-picture" style={{ "--preview-window-w": frame && `${frame[0] / 16}rem`, "--preview-window-h": frame && `${frame[1] / 16}rem` } as CSSProperties} data-density={density} data-split={split || undefined} aria-hidden="true" inert>
     <Snapshot html={html} density={density} scheme={scheme} />
     {split && <Snapshot html={html} density={density} scheme="dark" dark />}
   </span>;

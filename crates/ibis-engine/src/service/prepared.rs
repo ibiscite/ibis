@@ -1,30 +1,27 @@
 //! Native-only preparation/commit; the serialized method surface has no clipboard operation.
-use super::{
-    Cancellation, Engine, ProjectAssessment, ProjectAssessmentState, ProjectKey, ProjectPolicy, ProjectRead, error,
-};
+use super::{Cancellation, Engine, ProjectAssessment, ProjectAssessmentState, ProjectKey, ProjectRead, error};
 use ibis_core::contract::*;
-use std::sync::Arc;
 
 pub struct PreparedCitation {
+    context: super::receipt::CitationContext,
     zotero_generation: Option<u64>,
-    snapshot: Arc<Snapshot>,
     request: CitationRequest,
     result: CitationResult,
     sample: bool,
+    source_health: super::health::SourceHealth,
 }
 impl PreparedCitation {
     /// Caller owns the selected bibliography and binds it to this task's
     /// immutable context. Rechecking never consumes or changes the preview.
-    /// A check is advice: only a key known to name a different work, or a
-    /// strict request without a complete current read, withholds the citation.
-    pub fn project_evidence(&self, read: &ProjectRead, policy: ProjectPolicy) -> ProjectAssessment {
+    /// A check is advice: only a key known to name a different work withholds the citation.
+    pub fn project_evidence(&self, read: &ProjectRead) -> ProjectAssessment {
         let checks = self.project_checks(read);
         let conflicts: Vec<_> = if self.uses_citation_keys() {
             self.request
                 .items
                 .iter()
                 .filter_map(|pick| {
-                    let LibraryObject::Record(record) = &self.snapshot.get(&pick.item)?.object else {
+                    let LibraryObject::Record(record) = &self.context.snapshot.get(&pick.item)?.object else {
                         return None;
                     };
                     let key = record.citation_key().ok().flatten()?;
@@ -42,13 +39,6 @@ impl PreparedCitation {
                     "A key in {name} identifies a different work. Resolve the conflict before citing it."
                 )),
             )
-        } else if policy == ProjectPolicy::Strict && self.uses_citation_keys() && !read.current_complete() {
-            (
-                ProjectAssessmentState::Paused,
-                Some(format!(
-                    "A current successful check of {name} is required. Retry before citing."
-                )),
-            )
         } else {
             (ProjectAssessmentState::Ready, None)
         };
@@ -60,10 +50,12 @@ impl PreparedCitation {
             conflicts,
         }
     }
-    /// Record exports do not emit citation keys even though they share the
-    /// key-output request family; their target needs no project bibliography.
+    /// Record exports and Zotero's markers emit no citation keys even though
+    /// they share the key-output request family; their target needs no
+    /// project bibliography.
     pub fn uses_citation_keys(&self) -> bool {
-        ibis_core::syntax::capabilities(&self.request.output).is_ok_and(|capabilities| !capabilities.exports_records)
+        ibis_core::syntax::capabilities(&self.request.output)
+            .is_ok_and(|capabilities| !capabilities.exports_records && !capabilities.zotero_items)
     }
     /// Check exactly the emitted keys and record fields that made this receipt,
     /// even if a later source snapshot has renamed or replaced a reference.
@@ -75,7 +67,7 @@ impl PreparedCitation {
             .items
             .iter()
             .filter_map(|pick| {
-                let LibraryObject::Record(record) = &self.snapshot.get(&pick.item)?.object else {
+                let LibraryObject::Record(record) = &self.context.snapshot.get(&pick.item)?.object else {
                     return None;
                 };
                 let key = record.citation_key().ok().flatten()?;
@@ -88,6 +80,18 @@ impl PreparedCitation {
     }
     pub fn result(&self) -> &CitationResult {
         &self.result
+    }
+    /// The health of the libraries this citation was made from, as they were
+    /// when it was made.
+    pub fn source_health(&self) -> &super::health::SourceHealth {
+        &self.source_health
+    }
+    /// The citation with that health.
+    pub fn into_checked(self) -> super::health::Checked<CitationResult> {
+        super::health::Checked {
+            value: self.result,
+            source_health: self.source_health,
+        }
     }
     pub fn into_result(self) -> CitationResult {
         self.result
@@ -111,7 +115,8 @@ impl PreparedCitation {
     /// A short diagnostic name from this receipt's immutable source, never a
     /// later library snapshot. It is presentation text, not citation markup.
     pub fn item_label(&self, item: usize) -> Option<String> {
-        let LibraryObject::Record(record) = &self.snapshot.get(&self.request.items.get(item)?.item)?.object else {
+        let LibraryObject::Record(record) = &self.context.snapshot.get(&self.request.items.get(item)?.item)?.object
+        else {
             return None;
         };
         let value = record
@@ -142,7 +147,31 @@ impl PreparedCitation {
         let pick = request.items.get_mut(item).ok_or_else(|| error(ErrorCode::BadInput))?;
         pick.form = (form != CitationForm::Normal).then_some(form);
         pick.suppress_author = false;
-        engine.cite_snapshot(&self.snapshot, &request, cancel)
+        engine.cite_snapshot(&self.context, &request, cancel)
+    }
+
+    /// Whether `item` can take `form` when it is the only reference cited, so a
+    /// form refused in a group can say "only when cited alone" truthfully.
+    pub fn form_alone(
+        &self,
+        engine: &Engine,
+        original_output: &OutputSpec,
+        item: usize,
+        form: CitationForm,
+        cancel: &Cancellation,
+    ) -> Result<bool, EngineError> {
+        let mut request = self.request.clone();
+        request.output = original_output.clone();
+        let mut pick = request
+            .items
+            .get(item)
+            .cloned()
+            .ok_or_else(|| error(ErrorCode::BadInput))?;
+        pick.form = (form != CitationForm::Normal).then_some(form);
+        pick.suppress_author = false;
+        request.items = vec![pick];
+        let result = engine.cite_snapshot(&self.context, &request, cancel)?;
+        Ok(result.outcomes.contains(&ItemOutcome::Rendered { item: 0 }))
     }
 
     /// Bind sample provenance to every representation before preview or commit.
@@ -164,6 +193,9 @@ impl PreparedCitation {
             losses,
             notices,
             warnings,
+            language,
+            destination,
+            receipt,
             ..
         } = self.result;
         let rtf = rtf
@@ -179,6 +211,7 @@ impl PreparedCitation {
             })
             .transpose()?;
         display.nodes.push(DisplayNode {
+            blocks: vec![],
             item: None,
             content: vec![DisplayRun {
                 text: " [Sample]".into(),
@@ -195,6 +228,13 @@ impl PreparedCitation {
             notices,
         )
         .with_warnings(warnings);
+        self.result.language = language;
+        self.result.destination = destination;
+        self.result.receipt = receipt.map(|mut receipt| {
+            receipt.content_hash = self.result.content_hash.clone();
+            receipt.sample = true;
+            receipt
+        });
         self.sample = true;
         Ok(self)
     }
@@ -219,8 +259,25 @@ impl Engine {
         request: &CitationRequest,
         cancel: &Cancellation,
     ) -> Result<PreparedCitation, EngineError> {
+        self.prepare_consulting(request, false, cancel)
+    }
+    /// `every_library` when the items were found by key: a lookup by key reads
+    /// every library, so each one's health bears on the answer.
+    pub(crate) fn prepare_consulting(
+        &self,
+        request: &CitationRequest,
+        every_library: bool,
+        cancel: &Cancellation,
+    ) -> Result<PreparedCitation, EngineError> {
         cancel.check()?;
         let state = self.state()?;
+        let context = super::receipt::CitationContext::capture(&state, request);
+        let source_health = super::health::SourceHealth::of(
+            state
+                .libraries
+                .values()
+                .filter(|library| every_library || context.sources.iter().any(|source| source.library == library.id)),
+        );
         let uses_zotero = request.items.iter().any(|pick| {
             state
                 .libraries
@@ -230,14 +287,13 @@ impl Engine {
         if uses_zotero && !state.zotero_ready {
             return Err(error(ErrorCode::SourceUnavailable));
         }
-        let snapshot = state.index.snapshot().clone();
+        let snapshot = &context.snapshot;
         // The receipt keeps the output the preset means, and the exact objects
         // it cites: citing it again refuses a changed reference even when its
         // text would come out alike.
-        let mut request = CitationRequest {
-            output: crate::outputs::resolve(&request.output)?,
-            ..request.clone()
-        };
+        let mut resolved = crate::outputs::resolve_request(request)?;
+        let request = &mut resolved.request;
+        request.keep_order |= matches!(request.output, OutputSpec::Key { .. });
         for pick in &mut request.items {
             let held = |id: &ItemRef| snapshot.get(id).map(|object| object.fingerprints.cite.clone());
             pick.expected_cite = pick.expected_cite.take().or_else(|| held(&pick.item));
@@ -246,13 +302,14 @@ impl Engine {
                 .take()
                 .or_else(|| pick.annotation.as_ref().and_then(held));
         }
-        let result = self.cite_snapshot(&snapshot, &request, cancel)?;
+        let result = self.cite_resolved(&context, &resolved, cancel)?;
         let prepared = PreparedCitation {
+            context,
             zotero_generation: uses_zotero.then_some(state.zotero_generation),
-            snapshot,
-            request,
+            request: resolved.request,
             result,
             sample: false,
+            source_health,
         };
         // Formatting takes time, and a Zotero read can begin or finish during it.
         prepared
@@ -281,14 +338,25 @@ impl Engine {
         if fresh.zotero_generation != prepared.zotero_generation {
             return Err(CitationCommitError::PreviewChanged);
         }
-        if fresh.result.copy_content(items).is_none() {
-            return Err(refusal(&fresh.result));
-        }
-        // An annotation's page means its file as it was shown.
-        for (item, pick) in prepared.request.items.iter().enumerate() {
-            if let Some(error) = annotation_error(&fresh.snapshot, pick, Some(&prepared.snapshot)) {
+        // Check the shown identities and annotation files before any later
+        // locator or form refusal from the fresh rendering.
+        let checked = ibis_core::citation::check(
+            &fresh.context.snapshot,
+            Some(&prepared.context.snapshot),
+            &prepared.request,
+            |_| ibis_core::citation::ItemSupport::ALL,
+        )
+        .map_err(EngineError::citation)?;
+        for (item, (checked, rendered)) in checked.into_iter().zip(&fresh.result.outcomes).enumerate() {
+            if let Err(error) = checked {
                 return Err(CitationCommitError::Refused { item, error });
             }
+            if let ItemOutcome::Refused { item, error } = *rendered {
+                return Err(CitationCommitError::Refused { item, error });
+            }
+        }
+        if fresh.result.copy_content(items).is_none() {
+            return Err(refusal(&fresh.result));
         }
         let fresh = if prepared.sample { fresh.mark_sample()? } else { fresh };
         if fresh.result.content_hash != prepared.result.content_hash {
@@ -302,7 +370,19 @@ impl Engine {
     /// Zotero read. Cheap, with no formatting: a copy checks it right before
     /// it writes, because a full read can begin while the copy waits.
     pub fn still_current(&self, prepared: &PreparedCitation) -> Result<(), CitationCommitError> {
-        prepared.check_zotero(self.state()?.as_ref())
+        let state = self.state()?;
+        prepared.check_zotero(state.as_ref())?;
+        let snapshot = state.index.snapshot();
+        let checks = ibis_core::citation::check(snapshot, Some(&prepared.context.snapshot), &prepared.request, |_| {
+            ibis_core::citation::ItemSupport::ALL
+        })
+        .map_err(EngineError::citation)?;
+        for (item, checked) in checks.into_iter().enumerate() {
+            if let Err(error) = checked {
+                return Err(CitationCommitError::Refused { item, error });
+            }
+        }
+        Ok(())
     }
 }
 impl PreparedCitation {
@@ -336,54 +416,5 @@ fn refusal(result: &CitationResult) -> CitationCommitError {
 impl std::fmt::Debug for PreparedCitation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PreparedCitation").finish_non_exhaustive()
-    }
-}
-
-pub(super) fn annotation_error(
-    snapshot: &Snapshot,
-    pick: &CitationItem,
-    original: Option<&Snapshot>,
-) -> Option<CitationError> {
-    let Some(id) = &pick.annotation else {
-        return pick
-            .expected_annotation_cite
-            .as_ref()
-            .map(|_| CitationError::AnnotationMismatch);
-    };
-    let invalid = || Some(CitationError::AnnotationMismatch);
-    let Some(object) = snapshot.get(id) else {
-        return invalid();
-    };
-    if pick
-        .expected_annotation_cite
-        .as_ref()
-        .is_some_and(|expected| expected != &object.fingerprints.cite)
-        || original.is_some_and(|old| {
-            old.get(id)
-                .is_none_or(|old| old.fingerprints.cite != object.fingerprints.cite)
-        })
-    {
-        return invalid();
-    }
-    let LibraryObject::Annotation(annotation) = &object.object else {
-        return invalid();
-    };
-    let Some(parent) = snapshot.get(&annotation.parent) else {
-        return invalid();
-    };
-    let LibraryObject::Attachment(attachment) = &parent.object else {
-        return invalid();
-    };
-    if attachment.parent.as_ref() != Some(&pick.item)
-        || original.is_some_and(|old| {
-            old.get(&annotation.parent)
-                .is_none_or(|old| old.fingerprints.cite != parent.fingerprints.cite)
-        })
-    {
-        return invalid();
-    }
-    match (&annotation.page_label, &pick.locator) {
-        (Some(page), Some(locator)) if locator.term == LocatorTerm::Page && page.trim() == locator.value.trim() => None,
-        _ => invalid(),
     }
 }

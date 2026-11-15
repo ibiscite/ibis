@@ -1,0 +1,11 @@
+# Ibis
+
+> Ibis searches your reference libraries and gives you citations where you write.
+
+## Guides
+
+- [Connect an AI assistant](https://ibiscite.org/setup): Set up read-only access to your chosen Ibis libraries.
+- [Command line and engine contract](https://github.com/ibiscite/ibis/blob/main/docs/cli.md): Commands, JSON and JSON-RPC.
+- [MCP tools](https://github.com/ibiscite/ibis/blob/main/docs/cli.md#ai-agents-mcp): Read-only search, reference details, citations and styles.
+- [Privacy](https://github.com/ibiscite/ibis/blob/main/PRIVACY.md): Local data and optional connections.
+- [How to recognise official Ibis](https://github.com/ibiscite/ibis/blob/main/TRADEMARKS.md): Name and logo policy.

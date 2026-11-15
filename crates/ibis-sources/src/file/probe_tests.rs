@@ -1,0 +1,154 @@
+use super::*;
+use ibis_core::contract::{Availability, ItemRef, LibraryId, LibraryObject, Snapshot};
+
+fn references() -> (Vec<LibraryObject>, Vec<(usize, String)>) {
+    let mut objects = Vec::new();
+    let fields = (0..500)
+        .map(|index| {
+            (
+                ItemRef {
+                    library: LibraryId::digest(b"invented"),
+                    key: format!("record:item{index:03}"),
+                },
+                "blocked.pdf".into(),
+                None,
+            )
+        })
+        .collect();
+    let references = crate::attachments::append(fields, &mut objects, &mut Vec::new());
+    (objects, references)
+}
+
+// The subprocess watchdog is Unix-only, like the other blocked-filesystem tests.
+#[cfg(unix)]
+#[test]
+fn repeated_blocked_attachment_batches_leave_room_for_a_healthy_library() {
+    const CHILD: &str = "IBIS_ATTACHMENT_CAPACITY_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        subprocess_watchdog::assert_finishes(
+            "file::io::probe_tests::repeated_blocked_attachment_batches_leave_room_for_a_healthy_library",
+            CHILD,
+            "blocked attachment probes prevented a healthy library from opening",
+        );
+        return;
+    }
+    let mut releases = Vec::new();
+    for _ in 0..MAX_IN_FLIGHT {
+        let (mut objects, mut references) = references();
+        references.truncate(1);
+        let (release, blocked) = mpsc::channel::<()>();
+        releases.push(release);
+        let mut scope = Scope::new(&|| false);
+        scope.until = Instant::now() + Duration::from_millis(30);
+        scope
+            .attachments_with(&mut objects, references, move |_| {
+                let _ = blocked.recv();
+                Availability::OnDisk
+            })
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert!(objects.iter().all(|object| matches!(
+            object,
+            LibraryObject::Attachment(attachment) if attachment.availability == Availability::Unknown
+        )));
+    }
+    let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+    let path = dir.path().join("healthy.bib");
+    std::fs::write(&path, "@book{healthy, title={Healthy library}}").unwrap_or_else(|e| panic!("{e}"));
+    let (loaded, _) = load_file_snapshot(&path, &|| false).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(loaded.snapshot.objects().len(), 1);
+    // All started probes remain blocked while the healthy file opens.
+    drop(releases);
+}
+
+#[test]
+fn five_hundred_blocked_attachments_share_the_sources_remaining_deadline() {
+    let (mut objects, references) = references();
+    let time = Arc::new(Mutex::new(Instant::now()));
+    let mut scope = Scope::new(&|| false);
+    scope.until = *time.lock().unwrap_or_else(|e| panic!("{e}")) + Duration::from_millis(300);
+    let clock = time.clone();
+    scope.now = Arc::new(move || *clock.lock().unwrap_or_else(|e| panic!("{e}")));
+    // Earlier source I/O consumes the same deadline as the attachment batch.
+    let clock = time.clone();
+    scope
+        .run(move || {
+            *clock.lock().unwrap_or_else(|e| panic!("{e}")) += Duration::from_millis(200);
+            Ok(())
+        })
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(scope.remaining(), Ok(Duration::from_millis(100)));
+    let until = scope.until;
+    let (probed, probes) = mpsc::channel();
+    let (release, blocked) = mpsc::channel::<()>();
+    let mut first = true;
+    scope
+        .attachments_with(&mut objects, references, move |_| {
+            let mut now = time.lock().unwrap_or_else(|e| panic!("{e}"));
+            probed
+                .send(until.saturating_duration_since(*now))
+                .unwrap_or_else(|e| panic!("{e}"));
+            // Each stat consumes 50 ms; the second stays blocked at the deadline.
+            *now += Duration::from_millis(50);
+            drop(now);
+            if first {
+                first = false;
+            } else {
+                let _ = blocked.recv();
+            }
+            Availability::OnDisk
+        })
+        .unwrap_or_else(|e| panic!("{e}"));
+    let snapshot = Snapshot::new(objects).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(snapshot.objects().len(), 500);
+    for (index, entry) in snapshot.objects().iter().enumerate() {
+        let LibraryObject::Attachment(attachment) = &entry.object else {
+            panic!("attachment")
+        };
+        assert_eq!(attachment.id.key, format!("attachment:record:item{index:03}:0"));
+        assert_eq!(
+            attachment.availability,
+            if index == 0 {
+                Availability::OnDisk
+            } else {
+                Availability::Unknown
+            }
+        );
+    }
+    assert_eq!(Scope::new(&|| false).run(|| Ok("local B")), Ok("local B"));
+    // A late stat must not start the next probe or change the published result.
+    drop(release);
+    assert_eq!(
+        probes.iter().collect::<Vec<_>>(),
+        [Duration::from_millis(100), Duration::from_millis(50)]
+    );
+}
+
+#[test]
+fn cancellation_during_a_blocked_probe_returns_without_waiting_for_the_mount() {
+    let (mut objects, references) = references();
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let signal = cancelled.clone();
+    let (release, blocked) = mpsc::channel::<()>();
+    let (started, probing) = mpsc::channel();
+    std::thread::scope(|threads| {
+        let load = threads.spawn(|| {
+            let check = || cancelled.load(Ordering::Acquire);
+            Scope::new(&check).attachments_with(&mut objects, references, move |_| {
+                let _ = started.send(());
+                let _ = blocked.recv();
+                Availability::OnDisk
+            })
+        });
+        probing
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap_or_else(|e| panic!("{e}"));
+        let start = Instant::now();
+        signal.store(true, Ordering::Release);
+        assert_eq!(
+            load.join().unwrap_or_else(|e| std::panic::resume_unwind(e)),
+            Err(SourceError::Cancelled)
+        );
+        assert!(start.elapsed() < Duration::from_millis(200));
+        release.send(()).unwrap_or_else(|e| panic!("{e}"));
+    });
+}

@@ -4,7 +4,7 @@
 //! opens a database, executes preferences or writes files. Candidates need not
 //! exist and must be validated by the offline reader before use. Multiple
 //! candidates require an explicit choice; discovery does not select a library.
-//! Missing profile configuration falls back to `home/Zotero`. Legacy profile
+//! Missing profile configuration falls back to `home/Zotero`. Unsupported profile
 //! data and interrupted migrations require manual override; no database or
 //! migration marker is inspected here. See Zotero's directory selection:
 //! <https://github.com/zotero/zotero/blob/main/chrome/content/zotero/xpcom/dataDirectory.js>.
@@ -38,6 +38,28 @@ pub enum Platform {
     MacOs,
     Windows,
     Linux,
+}
+
+/// Lexical directory identity; never probes or canonicalizes a candidate.
+pub fn path_identity(path: &Path, platform: Platform) -> Vec<u8> {
+    let bytes = path.as_os_str().as_encoded_bytes();
+    if platform != Platform::Windows {
+        return bytes.to_vec();
+    }
+    let mut identity = Vec::with_capacity(bytes.len());
+    // Fold Unicode case without expanding one filename character to several.
+    // Preserve non-Unicode OS units: lossy conversion could merge distinct paths.
+    for chunk in bytes.utf8_chunks() {
+        for character in chunk.valid().chars() {
+            let mut upper = character.to_uppercase();
+            let first = upper.next().unwrap_or(character);
+            let folded = if upper.next().is_none() { first } else { character };
+            let normalized = if folded == '\\' { '/' } else { folded };
+            identity.extend_from_slice(normalized.encode_utf8(&mut [0; 4]).as_bytes());
+        }
+        identity.extend_from_slice(chunk.invalid());
+    }
+    identity
 }
 
 /// Caller-supplied roots; Debug deliberately omits personal paths.
@@ -77,19 +99,10 @@ impl fmt::Debug for DiscoveryRoots {
     }
 }
 
-/// How a candidate was found; this does not establish database availability.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Origin {
-    Manual,
-    Preferences,
-    Default,
-}
-
 /// A path for explicit downstream use, never included in Debug output.
 #[derive(Clone, PartialEq, Eq)]
 pub struct DataDirectory {
     path: PathBuf,
-    origin: Origin,
     name: String,
 }
 
@@ -103,17 +116,12 @@ impl DataDirectory {
     pub fn name(&self) -> &str {
         &self.name
     }
-
-    pub fn origin(&self) -> Origin {
-        self.origin
-    }
 }
 
 impl fmt::Debug for DataDirectory {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DataDirectory")
             .field("path", &"[redacted]")
-            .field("origin", &self.origin)
             .field("name", &self.name)
             .finish()
     }
@@ -156,12 +164,17 @@ pub struct Discovery {
 }
 
 impl Discovery {
-    fn add(&mut self, path: PathBuf, origin: Origin, name: Option<&str>) {
-        if self.directories.iter().any(|candidate| candidate.path == path) {
+    fn add(&mut self, path: PathBuf, name: Option<&str>, platform: Platform) {
+        let identity = path_identity(&path, platform);
+        if self
+            .directories
+            .iter()
+            .any(|candidate| path_identity(&candidate.path, platform) == identity)
+        {
             return;
         }
         let name = self.unique_name(name.map(clean_name).filter(|name| !name.is_empty()));
-        self.directories.push(DataDirectory { path, origin, name });
+        self.directories.push(DataDirectory { path, name });
     }
 
     /// Profile names are the file's to choose, so two can look alike.
@@ -181,19 +194,10 @@ impl Discovery {
     }
 }
 
-/// Discover configured candidates without probing their contents. An absolute
-/// manual override is returned alone and bypasses all profile reads, even when
-/// the roots are unavailable. Bad configuration never silently becomes default.
-pub fn discover(roots: &DiscoveryRoots, manual: Option<&Path>) -> Discovery {
+/// Discover configured candidates without probing their contents. Bad
+/// configuration never silently becomes default.
+pub fn discover(roots: &DiscoveryRoots) -> Discovery {
     let mut result = Discovery::default();
-    if let Some(path) = manual {
-        if absolute(path, roots.platform) {
-            result.add(path.to_path_buf(), Origin::Manual, None);
-        } else {
-            result.warn(Warning::InvalidPath);
-        }
-        return result;
-    }
     if !roots.home.is_absolute() || !roots.profiles.is_absolute() {
         result.warn(Warning::InvalidPath);
         return result;
@@ -202,7 +206,7 @@ pub fn discover(roots: &DiscoveryRoots, manual: Option<&Path>) -> Discovery {
     let profiles = match registry.and_then(|text| text.map(|text| profile_paths(&text, roots)).transpose()) {
         Ok(Some(profiles)) => profiles,
         Ok(None) => {
-            result.add(roots.home.join("Zotero"), Origin::Default, None);
+            result.add(roots.home.join("Zotero"), None, roots.platform);
             return result;
         }
         Err(warning) => {
@@ -216,10 +220,10 @@ pub fn discover(roots: &DiscoveryRoots, manual: Option<&Path>) -> Discovery {
                 .map_err(|()| Warning::UnsupportedPreferences)
         }) {
             Ok(Some(path)) if absolute(Path::new(&path), roots.platform) => {
-                result.add(PathBuf::from(path), Origin::Preferences, name.as_deref())
+                result.add(PathBuf::from(path), name.as_deref(), roots.platform)
             }
             Ok(Some(_)) => result.warn(Warning::InvalidPath),
-            Ok(None) => result.add(roots.home.join("Zotero"), Origin::Default, name.as_deref()),
+            Ok(None) => result.add(roots.home.join("Zotero"), name.as_deref(), roots.platform),
             Err(warning) => result.warn(warning),
         }
     }

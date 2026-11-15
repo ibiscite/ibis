@@ -1,5 +1,5 @@
 // The picker's saved formatting and view preferences.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type * as nativeApi from "../../api";
 import type { Density, PickerPreferences } from "../../api";
 import { defaultOutput, isStyle, listedOutput, type OutputId } from "../../format/outputs";
@@ -10,9 +10,9 @@ type PreferencesApi = Pick<typeof nativeApi, "pickerPreferences" | "savePickerPr
 
 export function usePickerPreferences(
   { pickerPreferences, savePickerPreferences, pickerPreferencesSaved, quit }: PreferencesApi,
-  { styles, report, perform, presentation }: {
+  { styles, report, perform }: {
     /** Immutable picker visibility identity; old feedback never enters a new presentation. */
-    presentation: number;
+    presentation?: number;
     /** Whether formatted citation styles can be offered. */
     styles: boolean;
     report: (operation: Operation, failed?: boolean) => void;
@@ -25,8 +25,8 @@ export function usePickerPreferences(
   const [ready, setReady] = useState(false);
   const [available, setAvailable] = useState(false);
   const [format, setFormat] = useState<OutputId>(defaultOutput);
+  const formatField = useRef<"output" | "key_output">("output");
   const [density, setDensity] = useState<Density>("comfortable");
-  const [densityFeedback, setDensityFeedback] = useState<{ presentation: number; density: Density } | null>(null);
   const [largerText, setLargerText] = useState(false);
   const [queue] = useState(() => new PreferencePatchQueue({
     read: async () => ({ preferences: await pickerPreferences().catch(() => null) }),
@@ -37,8 +37,6 @@ export function usePickerPreferences(
     setSmallSurprises(value.small_surprises ?? true);
     setRecentCitations(value.recent_citations ?? true);
     setDensity(value.density);
-    // A silent external view change retires its label so the next user choice can repeat it.
-    setDensityFeedback((current) => current?.density === value.density ? current : null);
     setLargerText(value.larger_text);
   }, []);
   useEffect(() => queue.subscribe((event) => {
@@ -47,7 +45,7 @@ export function usePickerPreferences(
     } else if (event.type === "saved") {
       setAvailable(true);
       applyView(event.value.preferences);
-      setFormat(listedOutput(event.value.preferences.output) ?? defaultOutput);
+      setFormat(listedOutput(event.value.preferences[formatField.current]) ?? defaultOutput);
     } else if (event.type === "read") {
       const { preferences: saved } = event.value;
       setReady(true);
@@ -60,28 +58,19 @@ export function usePickerPreferences(
       }
       if (event.pendingOutput) return;
       // A style waits for the formatter; until then the default is what copies.
-      const savedOutput = listedOutput(saved?.output);
+      const savedOutput = listedOutput(saved?.[formatField.current]);
       if (savedOutput && (styles || !isStyle(savedOutput))) setFormat(savedOutput);
     }
   }), [queue, styles, report, perform, applyView]);
   const savePreferences = (change: Partial<PickerPreferences>) => queue.change(change);
-  const quitAfterSaving = async () => {
-    await queue.finishSaving();
+  const quitAfterSaving = async (destinationSaves?: Promise<void>) => {
+    await Promise.all([queue.finishSaving(), destinationSaves]);
     await quit();
   };
   const chooseFormat = (output: OutputId) => {
+    formatField.current = isStyle(output) ? "output" : "key_output";
     setFormat(output);
-    savePreferences({ output });
-  };
-  const changeDensity = (next: Density) => {
-    if (next === density) return;
-    setDensity(next);
-    setDensityFeedback({ presentation, density: next });
-    savePreferences({ density: next });
-  };
-  const toggleLargerText = () => {
-    setLargerText(!largerText);
-    savePreferences({ larger_text: !largerText });
+    return savePreferences(isStyle(output) ? { output } : { key_output: output });
   };
   useEffect(() => {
     document.documentElement.dataset.density = density;
@@ -97,5 +86,5 @@ export function usePickerPreferences(
   /** A choice saved in Settings: older replies and failed choices of its fields give way, then the picker reads. */
   const preferencesChanged = (revision: number | undefined, fields: string[] | undefined, mounted: () => boolean) => { void queue.refresh(revision ?? -1, mounted, fields); };
 
-  return { preferencesChanged, ready, available, smallSurprises, recentCitations, format, density, densityAnnouncement: densityFeedback?.presentation === presentation ? densityFeedback.density : undefined, largerText, chooseFormat, changeDensity, toggleLargerText, quitAfterSaving, loadPreferences };
+  return { preferencesChanged, ready, available, smallSurprises, recentCitations, format, density, largerText, chooseFormat, quitAfterSaving, loadPreferences };
 }

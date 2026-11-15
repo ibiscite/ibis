@@ -70,13 +70,10 @@ pub struct StoredKey {
     pub citation_key: String,
 }
 
-/// Reads the `citationkey` table of a private copy of `better-bibtex.sqlite` for a
-/// Zotero of major version `zotero`. Only Better BibTeX 7, for Zotero 7, serves
-/// these keys; a store without that table is an older layout Ibis does not read.
-pub fn read_store(copy: &rusqlite::Connection, zotero: u32) -> Result<Vec<StoredKey>, BbtError> {
-    if zotero != 7 {
-        return Err(BbtError::Unavailable);
-    }
+/// Reads the `citationkey` table of a private copy of `better-bibtex.sqlite`.
+/// Only Better BibTeX 7, for Zotero 7, serves these keys; a store without that
+/// table is an older layout Ibis does not read.
+pub fn read_store(copy: &rusqlite::Connection) -> Result<Vec<StoredKey>, BbtError> {
     let has_table: bool = copy
         .query_row(
             "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'citationkey')",

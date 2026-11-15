@@ -1,5 +1,5 @@
+import type * as nativeApi from "../../api";
 import { useEffect } from "react";
-import type { PickerApi } from "../../App";
 import type { usePickerSession } from "./usePickerSession";
 
 /** How close to the window's edge a press starts a native resize. */
@@ -19,10 +19,9 @@ function startsDrag(target: Element | null) {
  * cancellation, or the first unpressed pointer movement once the compositor
  * gives the pointer back; the native side bounds a move whose end is lost.
  */
-export function usePickerMove(api: Pick<PickerApi, "pickerMoving">, session: ReturnType<typeof usePickerSession>["session"]) {
+export function usePickerMove(api: Pick<typeof nativeApi, "pickerMoving">, session: ReturnType<typeof usePickerSession>["session"]) {
   const { pickerMoving } = api;
   useEffect(() => {
-    if (!pickerMoving) return;
     let moving: { presentation: number; id: number } | null = null;
     const end = () => {
       if (moving === null) return;

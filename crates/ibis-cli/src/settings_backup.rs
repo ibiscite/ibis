@@ -139,8 +139,7 @@ fn import(args: &ArgMatches) -> Result<DispatchResult, Failure> {
     if !dry_run && !plan.is_empty() {
         // Through the one settings owner, in turn with any other change (decision 0040).
         ibis_engine::settings::Owner::open(path.clone())
-            .in_turn(|path| backup::restore(path, &plan))
-            .unwrap_or_else(|| Err(BackupError::NotSaved(std::io::Error::other("settings are closing"))))
+            .restore(&plan)
             .map_err(|error| backup_failure(&error))?;
     }
     let restored = !dry_run && !plan.is_empty();

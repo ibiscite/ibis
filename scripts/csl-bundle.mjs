@@ -191,6 +191,8 @@ export function readStyles(tree) {
     for (const name of readdirSync(directory).sort()) {
       if (!name.endsWith(".csl")) continue;
       const id = name.slice(0, -4);
+      // Ids reach file names, menus and release notes as written.
+      if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) throw new Error(`${JSON.stringify(id)}: not a style id`);
       const bytes = checkedFile(join(directory, name));
       const style = { ...styleMetadata(id, bytes.toString("utf8")), bytes, path: `styles/${dependent ? "dependent/" : ""}${name}` };
       if (Boolean(style.parent) !== dependent) throw new Error(`${id}: parent link does not match its folder`);

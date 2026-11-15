@@ -140,10 +140,9 @@ fn encode_literals(text: &str) -> Cow<'_, str> {
     Cow::Owned(out)
 }
 
-/// `biblatex` decodes this symbol before our TeX conversion; protect it until
-/// final cleaning. Apply only to parser input, retaining resolved source text
-/// for the unchanged fallback used when a field has an unknown command.
-fn protect_backslashes(text: &str) -> Cow<'_, str> {
+/// Protect literal symbol commands until final cleaning, before upstream TeX
+/// parsing or verbatim identifier decoding. Unknown commands stay unchanged.
+pub(super) fn protect_backslashes(text: &str) -> Cow<'_, str> {
     if !text.as_bytes().contains(&b'\\') {
         return Cow::Borrowed(text);
     }
@@ -169,7 +168,10 @@ fn protect_backslashes(text: &str) -> Cow<'_, str> {
             .then(|| {
                 [
                     ("textbackslash", BACKSLASH),
+                    ("textbraceleft", LEFT_BRACE),
+                    ("textbraceright", RIGHT_BRACE),
                     ("textasciitilde", '~'),
+                    ("textasciicircum", '^'),
                     ("textasciigrave", '`'),
                     ("textquotesingle", '\''),
                 ]
@@ -181,7 +183,7 @@ fn protect_backslashes(text: &str) -> Cow<'_, str> {
             })
             .flatten();
         if let Some((name, symbol)) = symbol {
-            if symbol != BACKSLASH {
+            if !matches!(symbol, BACKSLASH | LEFT_BRACE | RIGHT_BRACE) {
                 out.push(ESCAPE);
             }
             out.push(symbol);
@@ -436,7 +438,7 @@ impl<'a, 's> Resolver<'a, 's> {
                     return Rc::default();
                 }
                 let missing = cached.keys().filter(|key| !walk.memo.contains_key(key)).count();
-                // Falling back at the boundary preserves even the old quota's memo-edge cuts.
+                // Reevaluate at the boundary to apply the per-walk evaluation limit.
                 if walk.evaluations.saturating_add(missing) < MAX_EVALUATIONS {
                     for (key, fields) in cached.iter() {
                         walk.memo.entry(*key).or_insert_with(|| Rc::clone(fields));
@@ -1215,10 +1217,7 @@ mod tests {
 
         // Golden transcripts include exact canonical bytes, diagnostics, remaining
         // work credits and the final records/fingerprints published to consumers.
-        // Title casing and source-warning fingerprints were updated for #1530, and
-        // library ids for #1535;
-        // subsequent allocation changes must preserve them. Pinned hashes keep the many
-        // partial-budget outcomes small without keeping a second resolver.
+        // Pinned hashes keep partial-budget outcomes small without a second resolver.
         let cases = [
             (
                 "plain",
@@ -1233,13 +1232,13 @@ mod tests {
                     "\u{E000}\u{E001}\u{E002}\u{E003}",
                     r"},note={\i nt \item \j and \\{group\\}}}",
                 ),
-                "6fcd6d2e966899d4d3a82ffe2b3f4ebe9d2c514cf378b38ed4038c1dd94259f7",
+                "832b854d8b5b317a7e3168349995c35c274c7b8c386d17c7807009c020e1dac9",
             ),
             (
                 "unicode-and-verbatim-url",
                 r"@book{unicode,title={২০২০ পর্যবেক্ষণ},year={۲۰۲۴},month=mar,day={৫},
                   url={https://example.invalid/\textbackslash/a\{kept\}},urldate={２０２５-０２-０３}}",
-                "9a92d30ec60b94f47fb3d9a68aec263241de569c93c5d95c8eb984ff67045310",
+                "1df4e0fd99004c92fe12ef9c5d6c66077e76c026cfde255e4417e122bfb25fcd",
             ),
             (
                 "epochs-and-shared-inheritance",
@@ -1255,7 +1254,7 @@ mod tests {
                 "@proceedings(parent,title=\"x}, date = {1999-01-01}, author = {Injected Person}\",year=2024)\n\
                  @inproceedings{safe,title={First},title={Safe},crossref={parent},note=undefined}\n\
                  @book{broken,title={Unclosed\n@book{last,title={Still Visible}}",
-                "0a40c563f092cc77eeda30f26fd9f8a27d77015e5b1c7d50a7e1f9dabaa43686",
+                "2caff5a1f320c4f1f3304a631203faf5a82d1d8db9a1409947395e304cfb3a65",
             ),
         ];
         let mut mismatches = Vec::new();

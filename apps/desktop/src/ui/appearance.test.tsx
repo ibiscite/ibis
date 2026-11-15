@@ -2,8 +2,7 @@ import { act, render, waitFor } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { afterEach, expect, test } from "vitest";
 import { App } from "../App";
-import { backend, chooseRows, resetApp } from "../testing/app";
-import * as nativeApi from "../api";
+import { backend, chooseFormatNamed, resetApp } from "../testing/app";
 import type { PickerPreferences, PickerSave } from "../bindings";
 
 afterEach(resetApp);
@@ -55,11 +54,11 @@ test("a failed refresh keeps the last saved picker appearance usable", async () 
 test("a Settings notification invalidates a queued old save even when its newer refresh fails", async () => {
   let reads = 0, resolve!: (value: PickerSave) => void;
   const saving = new Promise<PickerSave>((yes) => { resolve = yes; });
-  backend({ picker_preferences: () => ++reads === 1 ? saved : Promise.reject(new Error("synthetic newer read failure")) });
-  const api = { ...nativeApi, pickerPreferencesSaved: async () => saving };
-  render(<App api={api} />);
+  backend({ picker_preferences: () => ++reads === 1 ? saved : Promise.reject(new Error("synthetic newer read failure")),
+    picker_preferences_saved: () => saving });
+  render(<App />);
   await waitFor(() => expect(document.documentElement.dataset.accent).toBe("ibis"));
-  await chooseRows("compact");
+  await chooseFormatNamed("APA");
   await act(async () => { await emit("preferences:changed", {}); });
   await act(async () => resolve({ preferences: { ...saved, accent: "ibis" } }));
   await waitFor(() => expect(reads).toBe(2));

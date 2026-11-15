@@ -1,4 +1,4 @@
-//! The old loader's bounded Zotero tag allowlist, preserving escaped entities.
+//! Bounded Zotero rich text, preserving allowed tags and escaped entities.
 pub(super) fn normalize(title: &str) -> String {
     let mut out = String::with_capacity(title.len());
     let mut rest = title;
@@ -30,7 +30,7 @@ pub(super) fn normalize(title: &str) -> String {
 
 fn rich_text_tag(rest: &str) -> Option<(&'static str, usize)> {
     // A comparison such as `a < b > c` must stay literal. Bound the scan so
-    // long runs of `<` or spaces take linear work, as in the old loader.
+    // long runs of `<` or spaces take linear work.
     if rest.as_bytes().get(1).is_some_and(u8::is_ascii_whitespace) {
         return None;
     }

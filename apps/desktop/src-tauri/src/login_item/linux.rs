@@ -1,6 +1,5 @@
 //! The Linux login entry: an XDG autostart `.desktop` file.
 
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use super::{AT_LOGIN_ARG, Entry, Failed};
@@ -125,21 +124,9 @@ impl DesktopFile {
     fn write(&self, contents: &str) -> Result<(), Failed> {
         let folder = self.path.parent().ok_or(Failed)?;
         std::fs::create_dir_all(folder).map_err(|_| Failed)?;
-        let partial = self.path.with_extension("desktop.partial");
-        let mut output = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&partial)
-            .map_err(|_| Failed)?;
-        let result = (|| {
-            output.write_all(contents.as_bytes()).map_err(|_| Failed)?;
-            output.sync_all().map_err(|_| Failed)?;
-            std::fs::rename(&partial, &self.path).map_err(|_| Failed)
-        })();
-        if result.is_err() {
-            let _ = std::fs::remove_file(&partial);
-        }
-        result
+        ibis_core::atomic_file::AtomicFile::new(&self.path, contents.as_bytes())
+            .and_then(|file| file.replace())
+            .map_err(|_| Failed)
     }
 }
 
@@ -350,47 +337,6 @@ mod tests {
     }
 
     #[test]
-    fn a_concurrent_stage_is_preserved_and_only_our_failed_stage_is_removed() -> Result<(), Box<dyn std::error::Error>>
-    {
-        let root = tempfile::tempdir()?;
-        let program = root.path().join("ibis");
-        std::fs::write(&program, b"program")?;
-        let path = root.path().join("ibis.desktop");
-        let entry = file(path.clone(), "Ibis", &program.to_string_lossy());
-        std::fs::write(&path, "original")?;
-        let partial = path.with_extension("desktop.partial");
-        let gate = std::sync::Barrier::new(2);
-        std::thread::scope(|scope| -> Result<(), Box<dyn std::error::Error>> {
-            let writer = scope.spawn(|| -> std::io::Result<()> {
-                let mut stage = std::fs::OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .open(&partial)?;
-                stage.write_all(b"other writer")?;
-                gate.wait();
-                gate.wait();
-                std::fs::remove_file(&partial)
-            });
-            gate.wait();
-            let outcome = entry.enable();
-            let staged = std::fs::read(&partial);
-            let original = std::fs::read(&path);
-            gate.wait();
-            writer.join().unwrap_or_else(|e| panic!("{e:?}"))?;
-            assert_eq!(outcome, Err(Failed));
-            assert_eq!(staged?, b"other writer");
-            assert_eq!(original?, b"original");
-            Ok(())
-        })?;
-        std::fs::remove_file(&path)?;
-        std::fs::create_dir(&path)?; // Rename fails after this invocation owns the stage.
-        assert_eq!(entry.enable(), Err(Failed));
-        assert!(path.is_dir());
-        assert!(!partial.exists());
-        Ok(())
-    }
-
-    #[test]
     fn appimage_counts_only_from_inside_its_own_mount() {
         let p = |s: &str| Some(PathBuf::from(s));
         // Ibis's own AppImage: the entry names the .AppImage file.
@@ -539,7 +485,6 @@ mod tests {
             "{written}"
         );
         assert!(!stable.exists(), "Nightly must not write the stable entry");
-        assert!(!path.with_extension("desktop.partial").exists());
 
         // Switched off in the desktop's settings: shown as off, and turning it
         // on again writes a fresh entry.
