@@ -111,6 +111,14 @@ fn keys_held() -> bool {
     HELD.into_iter().any(w::GetAsyncKeyState)
 }
 
+/// Another process has the clipboard open, such as clipboard history reading
+/// the copy. An app that cannot open it on Ctrl+V drops the paste without a
+/// sign, so the paste waits for it as it waits for held keys. Opening and
+/// closing without a change notifies no one and keeps the sequence number.
+fn clipboard_busy() -> bool {
+    clipboard_win::Clipboard::new().is_err()
+}
+
 fn foreground_pid() -> Option<i32> {
     let window = w::HWND::GetForegroundWindow()?;
     i32::try_from(window.GetWindowThreadProcessId().1).ok()
@@ -138,13 +146,15 @@ fn password_focused(pid: i32) -> Option<bool> {
 }
 
 /// Ctrl+V to whatever has the keyboard, in one call, so no other input lands
-/// between the four events.
+/// between the four events, and only while the app can open the clipboard.
 fn send_paste(ready: impl Fn() -> bool) -> bool {
     let Ok(mut keys) = KEYS.lock() else {
         warn_key_release();
         return false;
     };
-    keys.paste(send_inputs, std::thread::sleep, warn_key_release, ready)
+    keys.paste(send_inputs, std::thread::sleep, warn_key_release, || {
+        ready() && !clipboard_busy()
+    })
 }
 
 fn send_inputs(events: &[PasteEvent]) -> u32 {
@@ -269,10 +279,11 @@ impl TicketDesk for Win {
     fn ask_to_post(&self) {}
 
     /// `None` also while another window, even of the same app, is in front,
-    /// and while a key from the picker is still held, so the paste waits for
-    /// the keyboard to be free as it waits for the window.
+    /// while a key from the picker is still held and while another process
+    /// has the clipboard open, so the paste waits for the keyboard and the
+    /// clipboard to be free as it waits for the window.
     fn frontmost(&self) -> Option<Front> {
-        if keys_held() {
+        if keys_held() || clipboard_busy() {
             return None;
         }
         front(&w::HWND::GetForegroundWindow()?, false)
@@ -994,7 +1005,9 @@ mod tests {
                         last = failure;
                         return None;
                     }
-                    (password_focused(front.pid) == Some(false)).then_some(())
+                    // Wait as delivery does: a clipboard reader reacting to the
+                    // copy, such as clipboard history, would make Notepad drop it.
+                    (password_focused(front.pid) == Some(false) && !clipboard_busy()).then_some(())
                 })
                 .ok_or(last)
             },
