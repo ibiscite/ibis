@@ -1,7 +1,7 @@
 // The engine's outputs, generated into the bindings from its one list (#1260).
 // Each has one id, stored and sent as it is, and one name, shown everywhere.
 import { DEFAULT_OUTPUT, DEFAULT_STYLE, OUTPUTS } from "../bindings";
-import type { DisplayTree, Notice } from "../bindings";
+import type { CitedWarning, DisplayTree, Notice } from "../bindings";
 
 export type OutputChoice = (typeof OUTPUTS)[number];
 export type OutputId = OutputChoice["id"];
@@ -57,8 +57,15 @@ export function previewOf(id: OutputId, formatted: Pick<FormattedCitation, "text
   return { text: output.example, more: 0, example: true };
 }
 
-/** The outputs in the engine's order: key syntaxes, then common styles. */
-export const keyOutputs = OUTPUTS.filter((output) => !output.style);
+/** It shares references (BibTeX, DOI links) rather than citing them: a one-off
+ * output for this copy, never remembered as a format (decision 0051). */
+export function sharesReferences(id: OutputId): boolean {
+  return outputOf(id).shares;
+}
+
+/** The outputs in the engine's order: key syntaxes, then ways to share, then common styles. */
+export const keyOutputs = OUTPUTS.filter((output) => !output.style && !output.shares);
+export const shareOutputs = OUTPUTS.filter((output) => output.shares);
 export const styleOutputs = OUTPUTS.filter((output) => output.style);
 
 /** The engine result displayed by the picker. */
@@ -66,7 +73,7 @@ export interface FormattedCitation {
   effective_output?: string | null;
   display: DisplayTree;
   text: string;
-  warnings: string[];
+  warnings: CitedWarning[];
   /** Why a key citation is refused: a key in the bibliography names a different work. */
   project_refusal?: string | null;
   /** The engine's notices about it, such as a full first note. */

@@ -22,6 +22,7 @@ pub const APP_COMMANDS: &[&str] = &[
     "recent_references",
     "preview_file_citation",
     "citation_details",
+    "citation_example",
     "copy_file_citation",
     "picker_preferences",
     "save_picker_preferences",

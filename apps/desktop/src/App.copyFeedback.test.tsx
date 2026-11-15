@@ -5,6 +5,7 @@ import { App } from "./App";
 import { backend, prepared, resetApp, result, type PreviewRequest } from "./testing/app";
 import { emit } from "@tauri-apps/api/event";
 import type { PickerDestination } from "./api";
+import type { CitedWarning } from "./bindings";
 
 // Keep the 2.4-second confirmation alive while assertions run, even when other
 // workers are busy. Use one clock from mount through unmount; switching clocks
@@ -137,8 +138,10 @@ test("a preferences event superseding the permission return keeps the prepared o
   expect(calls).not.toContain("picker_preferences_saved");
 });
 
+const lostPage: CitedWarning = { item: 0, message: { id: "app-loss", args: { what: "the page or location", target: "" } } };
+
 test.each(["Enter", " "])("copy confirmation expires, but copy warnings remain until dismissed with %s", async (key) => {
-  let warnings: string[] = [];
+  let warnings: CitedWarning[] = [];
   const calls = await openPicker({ copy_file_citation: () => ({ text: "@a", warnings }) });
   await copy();
   expect(screen.getByText("Copied", { selector: ".shelf-copied, .copy-notice strong" })).toBeTruthy();
@@ -147,10 +150,10 @@ test.each(["Enter", " "])("copy confirmation expires, but copy warnings remain u
   await act(() => vi.advanceTimersByTimeAsync(1));
   expect(document.querySelector(".shelf-copied, .copy-notice")).toBeNull();
 
-  warnings = ["A warning to read"];
+  warnings = [lostPage];
   await copy();
   await act(() => vi.advanceTimersByTimeAsync(3000));
-  expect(screen.getByText("A warning to read")).toBeTruthy();
+  expect(screen.getByText("This output cannot fully show the page or location.")).toBeTruthy();
   const dismiss = screen.getByRole("button", { name: "Dismiss copy warnings" });
   const actions = () => calls.filter((command) => command === "copy_file_citation" || command === "hide_picker");
   const previousActions = actions();
@@ -270,7 +273,7 @@ test("a copy carries its write token through hiding to the notice", async () => 
 });
 
 test("copies with warnings, pinned copies and failed hides show no Copied notice window", async () => {
-  let warnings = ["bare keys cannot carry page numbers"];
+  let warnings: CitedWarning[] = [lostPage];
   let hideFails = false;
   const calls = await openPicker({
     copy_file_citation: () => ({ text: "a", warnings }),

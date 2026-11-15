@@ -1,7 +1,7 @@
 import * as nativeApi from "./api";
 import { useNativeEvent } from "./nativeEvents";
 import { useTimeout } from "./ui/timers";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { idKey, asTyped } from "./features/picker/choice";
 import { keysFor, matchesAccelerator } from "./keys";
 import { isMac } from "./platform";
@@ -12,7 +12,7 @@ import { usePointerSelection } from "./pointerSelection";
 import { usePickerAppearance } from "./ui/appearance";
 import { isStyle, styleOf } from "./format/outputs";
 import { PickerHeader } from "./features/picker/PickerHeader";
-import type { FormatPreview } from "./features/picker/FormatMenu";
+import type { FormatExample, FormatPreview } from "./features/picker/FormatMenu";
 import { previewOf } from "./format/outputs";
 import { PickerScroll } from "./features/picker/PickerScroll";
 import { notices } from "./features/picker/Notices";
@@ -177,7 +177,9 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
   });
   const source = usePickerSource({ api, pickerSession, libraryState, menus, results: sameSnapshot ? results : [], altHeld, perform, report });
   const inspector = useCitationInspector(cancelCopy);
-  const shorthand = useShorthandHint(api, state.presentation, inspector.panel?.kind === "reference");
+  // The tip's example finds the first cited reference, so it is always the person's own.
+  const shorthand = useShorthandHint(api, state.presentation, inspector.panel?.kind === "reference",
+    (chosen[0]?.first_author || chosen[0]?.key)?.toLocaleLowerCase() ?? null);
   // A failure stays beside the fields that can correct it, in one place, also
   // when the panel takes the list's place.
   const actions = usePickerActions({
@@ -188,11 +190,14 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     // A waiting editor's output replaces the picker's.
     writesStyle: editor.label ? editor.style : isStyle(destination.format),
   });
-  // The format chooser's preview reads the chosen references' keys and never asks
-  // the engine: an engine preview would replace the ticket the shelf copies with.
+  // The format chooser's preview reads the chosen references' keys; it never asks
+  // for a preview, which would replace the ticket the shelf copies with. A way to
+  // share them asks the engine what the shown citation would copy in it, read-only.
   // A reference's citation key, never its record ID (the engine's, e.g. Zotero's item key).
   const previewKeys = !editor.label && output.ask ? shownChoice.map((item) => item.key).filter(Boolean).join("\u0000") : "";
   const formatPreview = useCallback<FormatPreview>((other) => previewOf(other, shown && typeof shown === "object" && other === shown.effective_output ? shown : null, previewKeys ? previewKeys.split("\u0000") : []), [shown, previewKeys]);
+  const receipt = !editor.label ? output.previewReceipt : undefined;
+  const formatExample = useMemo<FormatExample | null>(() => receipt ? (other, signal) => nativeApi.citationExample(receipt.ticket, receipt.content_hash, other, signal) : null, [receipt]);
   const commandKeys = useRef<((event: KeyboardEvent) => boolean) | null>(null);
   // The command list (">") stands in for the results: ⌘1–9 has no row then.
   const commandsShown = useRef(false);
@@ -260,7 +265,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
         </LineNotice>,
       ].filter(Boolean)}
       search={<PickerHeader
-        hidden={welcomeShown} yours={preferences.format} preview={formatPreview}
+        hidden={welcomeShown} yours={preferences.format} preview={formatPreview} example={formatExample}
         onResetPosition={api.resetWindowPosition}
         inputRef={input} query={query}
         pageToken={<PickerPageToken

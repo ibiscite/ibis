@@ -46,10 +46,11 @@ export function Palette({ id, title, subtitle, description, placeholder, section
   id: string;
   /** The palette's accessible name ("Format", "Actions"). */
   title: string;
-  /** Whose choice this is ("For Word", "Default format"), in the footer's status place. */
-  subtitle?: string | null;
+  /** Whose choice this is ("For Word", "Default format"), in the footer's status place;
+   * from the highlighted row when rows differ, as the action's words do. */
+  subtitle?: string | null | ((item: PaletteItem | undefined) => string | null);
   /** Why the choice stands as it does, read with the palette and shown under the preview. */
-  description?: string;
+  description?: string | ((item: PaletteItem | undefined) => string);
   placeholder: string;
   sections: readonly PaletteSection[];
   onAction: (id: string) => void;
@@ -123,8 +124,10 @@ export function Palette({ id, title, subtitle, description, placeholder, section
     // Tab leaves the palette for Search, as Tab leaves a menu.
     else if (event.key === "Tab") { event.preventDefault(); acted.current = true; leave(); onClose("tab"); }
   };
-  return <ViewFrame title={title} titleId={titleId} role="dialog" aria-modal="true" aria-describedby={description ? descriptionId : undefined}
-    back={{ label: say("palette-back"), onBack: dismiss }} layer={layer} status={subtitle}
+  const whose = typeof subtitle === "function" ? subtitle(current) : subtitle;
+  const why = typeof description === "function" ? description(current) : description;
+  return <ViewFrame title={title} titleId={titleId} role="dialog" aria-modal="true" aria-describedby={why ? descriptionId : undefined}
+    back={{ label: say("palette-back"), onBack: dismiss }} layer={layer} status={whose}
     onKeyDown={keyDown}
     onPointerMove={(event) => {
       if (event.pointerType === "touch") return;
@@ -164,9 +167,9 @@ export function Palette({ id, title, subtitle, description, placeholder, section
       </ul>
       {preview && <div className="ui-palette-preview">
         <div aria-live="polite">{current && preview(current)}</div>
-        {description && <p id={descriptionId} className="ui-palette-preview-note">{description}</p>}
+        {why && <p id={descriptionId} className="ui-palette-preview-note">{why}</p>}
       </div>}
-      {!preview && description && <p id={descriptionId} className="visually-hidden">{description}</p>}
+      {!preview && why && <p id={descriptionId} className="visually-hidden">{why}</p>}
     </div>
   </ViewFrame>;
 }

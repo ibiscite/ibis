@@ -1,5 +1,5 @@
 import type { LibraryStatus, SearchResult } from "./api";
-import type { RecordId } from "./bindings";
+import type { CitedWarning, RecordId } from "./bindings";
 
 /** Only invented fixture inputs mint wire IDs in frontend code. */
 export const recordId = (value: string) => value as unknown as RecordId;
@@ -39,6 +39,11 @@ export const testStates = [
 /** Invented engine display nodes for presentation tests. */
 export function displayTree(spans: readonly { item: number | null; text: string; runs?: readonly (Partial<import("./bindings").DisplayRun> & { text: string })[] }[]): import("./bindings").DisplayTree {
   return { nodes: spans.map((span) => ({ item: span.item, blocks: [], content: (span.runs ?? [{ text: span.text }]).map((run) => ({ italic: false, bold: false, small_caps: false, underline: false, script: "normal", ...run })) })) };
+}
+
+/** A warning that `key`, the reference at `item`, is missing from the invented thesis.bib. */
+export function missingKey(key: string, item = 0): CitedWarning {
+  return { item, message: { id: "app-project-warning", args: { key, name: "thesis.bib", state: "missing" } } };
 }
 
 /** One typed wire preview for Vitest and the real-browser layout probe. */

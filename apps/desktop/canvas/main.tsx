@@ -35,9 +35,9 @@ import "../src/ui/CopyReceipt.css";
 import "../src/ui/CopiedNotice.css";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/ui/Window.css?inline";
-import { noFormatChosen } from "../src/testing/format";
+import { formatAnswer, noFormatChosen } from "../src/testing/format";
 
-export const scenarios = ["notice", "results", "unknown-app", "unknown-app-empty", "first-run", "more", "format-menu", "writings", "writings-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "reference-details-more", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-selector", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "citation-order", "citation-handles", "citation-details-larger", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about", "settings-details", "settings-newer"] as const;
+export const scenarios = ["notice", "results", "unknown-app", "unknown-app-empty", "first-run", "more", "format-menu", "writings", "writings-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "reference-details-more", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-selector", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "citation-order", "citation-handles", "share-bibtex", "token-warnings", "sample", "citation-details-larger", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about", "settings-details", "settings-newer"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -97,9 +97,18 @@ const fixtures: Partial<Record<Scenario, {
   // APA sorts the two; moving the later token first keeps the person's order and says so.
   "citation-order": { preferences: { output: "apa" }, keys: [{ key: "ArrowDown" }, { key: "Enter", shiftKey: true }, { key: "ArrowUp" }, { key: "Enter", shiftKey: true },
     { key: "ArrowDown", [navigator.platform.startsWith("Mac") ? "metaKey" : "ctrlKey"]: true }, { key: "ArrowLeft", shiftKey: true }] },
+  // A share output writes several lines per reference; the shelf keeps them in its one line.
+  "share-bibtex": { preferences: { output: "bibtex" }, keys: [{ key: "Enter", shiftKey: true }, { key: "ArrowDown" }, { key: "Enter", shiftKey: true }] },
+  // The engine warns about the second reference, and its details say so.
+  "token-warnings": { keys: [{ key: "Enter", shiftKey: true }, { key: "ArrowDown" }, { key: "Enter", shiftKey: true }], click: '.citation-token ~ .citation-token > button[aria-label^="Edit "]' },
+  // The sample references with matching rows: the way out steps aside for them.
+  sample: { rows: rows.slice(0, 3), library: { sample: true, name: "Sample references", snapshot_name: "Sample references" } },
   // A numbered style's words are numbers, so each token carries its author and year.
   "citation-handles": { preferences: { output: "ieee" }, keys: [{ key: "Enter", shiftKey: true }, { key: "ArrowDown" }, { key: "Enter", shiftKey: true }] },
 };
+
+/** One invented BibTeX entry, as the engine writes it. */
+const bibtex = (key: string) => `@article{${key},\n  title = {Invented reference},\n  author = {Aster, Ida},\n  year = {2026}\n}`;
 
 // Invented command replies for the real picker. The canvas intercepts IPC at
 // the same boundary as interface tests; App needs no alternate API or feature flags.
@@ -117,6 +126,8 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
   // "unknown-app" is the one whose app could not be read, over results and over an empty search.
   const knownApp = !scenario.startsWith("unknown-app");
   const project = writings.active!;
+  // A fixture's format is the one remembered for the app, as the engine would answer.
+  const format = fixed?.preferences?.output ? formatAnswer(fixed.preferences.output) : noFormatChosen;
   const refusal = scenario === "project-check-conflict" ? "A key in thesis.bib identifies a different work. Resolve the conflict before citing it." : null;
   const library: LibraryStatus = {
     source_generation: "1", source_is_requested: true,
@@ -157,9 +168,20 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
       ]);
       spans.unshift({ item: null, text: !style || numbered ? "[" : "(" });
       spans.push({ item: null, text: !style || numbered ? "]" : ")" });
+      // BibTeX, as the engine writes it: one entry of several lines per reference.
+      if (output === "bibtex") spans.splice(0, spans.length, ...items.flatMap((_, index) => [
+        ...(index ? [{ item: null, text: "\n\n" }] : []),
+        { item: index, text: bibtex(key(index)) },
+      ]));
       const text = spans.map((span) => span.text).join("");
+      const warnings = scenario === "token-warnings" && items.length > 1 ? [{ item: 1, message: { id: "warning-source-field", args: { reference: key(1) } } }] : [];
       receipts.set(ticket, { text, items, output, key: key(0) });
-      return { ticket, content_hash: ticket, text, display: { nodes: spans.map(({ item, text }) => ({ item, blocks: [], content: [{ text, italic: false, bold: false, script: "normal" }] })) }, warnings: [], project_refusal: refusal };
+      return { ticket, content_hash: ticket, text, display: { nodes: spans.map(({ item, text }) => ({ item, blocks: [], content: [{ text, italic: false, bold: false, script: "normal" }] })) }, warnings, project_refusal: refusal };
+    },
+    // What a way to share would copy of the shown citation, as the engine writes it.
+    citation_example: ({ ticket, output }) => {
+      const receipt = receipts.get(ticket);
+      return receipt && output === "bibtex" ? receipt.items.map((item) => bibtex(rows.find((row) => row.id.key === item.id.key)?.key ?? "")).join("\n\n") : null;
     },
     copy_file_citation: ({ ticket }) => {
       const receipt = receipts.get(ticket);
@@ -185,9 +207,9 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
       ] } satisfies FormDetails;
     },
     picker_destination: () => knownApp && !writingContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
-      find_open: false, usual_format: "apa", format: noFormatChosen, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false,
+      find_open: false, usual_format: "apa", format, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false,
       writing: null, writing_context: null, context_version: [1, 0] } : writingContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
-      find_open: false, usual_format: "apa", format: noFormatChosen, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false,
+      find_open: false, usual_format: "apa", format, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false,
       writing: project, writing_context: "invented-opening", context_version: [1, 0] } : null,
     writings: () => writings,
     edit_writing: () => writings,

@@ -44,7 +44,7 @@ export const slotMessages: Record<keyof typeof slots, { id: MessageId; args?: Re
     { id: "delight-library100" }, { id: "delight-library1000" }, { id: "delight-library10000" },
     { id: "delight-empty" }, { id: "delight-loading" }, { id: "delight-no-library" },
     { id: "delight-zoom", args: { percent: 200 } },
-    { id: "picker-shorthand-hint" },
+    { id: "picker-shorthand-hint", args: { word: "featherstonehaugh" } },
     { id: "update-failed" },
   ],
   noticeLine: [

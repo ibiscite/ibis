@@ -107,6 +107,11 @@ export function citationDetails(ticket: string, contentHash: string, item: numbe
   return formatting((intent) => commands.citationDetails(ticket, contentHash, item, intent), signal);
 }
 
+/** The shown citation in another output, exactly as choosing that output would copy it. */
+export function citationExample(ticket: string, contentHash: string, output: OutputId, signal?: AbortSignal) {
+  return formatting((intent) => commands.citationExample(ticket, contentHash, output, intent), signal);
+}
+
 export function sessionBibliography(style: string, signal?: AbortSignal) {
   return formatting((intent) => commands.sessionBibliography(style, intent), signal);
 }

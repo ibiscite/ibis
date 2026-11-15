@@ -10,7 +10,8 @@
 //! Cyrillic letters, first letter right). `a:`, `t:`, `j:`, `k:`, `#` and `y:`
 //! limit a term to names, title, journal, key, tags or years. "et al." and
 //! "and" are ignored. Müller is also found as "mueller", β as "beta" and
-//! kana names by their deterministic romanised readings. An
+//! kana names by their deterministic romanised readings, which a kana query
+//! is read through too, so it finds the same names written in romaji. An
 //! exact citation key always matches and ranks first, then an exact title.
 //! When nothing matches every term, the records matching most words are given
 //! instead, marked as partial.
@@ -473,6 +474,33 @@ struct Term {
     /// A `#tag` names a whole tag word once it is typed out.
     whole_only: bool,
     typo: Typo,
+    /// An all-kana term's romanised reading, matched in names only: the
+    /// reading every kana name is also indexed under, so `たなか` finds
+    /// Tanaka as `tanaka` finds たなか.
+    reading: Option<Box<Term>>,
+}
+
+impl Term {
+    fn new(text: String, fields: u8, tag: bool, whole_only: bool, typo: Typo) -> Term {
+        let chars: Vec<char> = text.chars().collect();
+        let names = fields & MatchField::Author.bit();
+        let reading = (names != 0)
+            .then(|| readings::reading(text.chars()))
+            .flatten()
+            .map(|reading| Box::new(Term::new(reading, names, false, false, Typo::Never)));
+        Term {
+            finder: Finder::new(text.as_bytes()).into_owned(),
+            // Tags are matched from their start, like short words.
+            starts_only: tag || chars.len() < 3 && !chars.iter().copied().any(is_cjk_char),
+            whole_only,
+            chars,
+            text,
+            count: 1,
+            fields,
+            typo,
+            reading,
+        }
+    }
 }
 
 /// A `y:` hint: an exact year or range, or the digits typed so far.
@@ -622,17 +650,7 @@ impl Query {
                     slot.insert(terms.len());
                 }
             }
-            terms.push(Term {
-                finder: Finder::new(text.as_bytes()).into_owned(),
-                // Tags are matched from their start, like short words.
-                starts_only: tag || chars.len() < 3 && !chars.iter().copied().any(is_cjk_char),
-                whole_only,
-                chars,
-                text,
-                count: 1,
-                fields,
-                typo,
-            });
+            terms.push(Term::new(text, fields, tag, whole_only, typo));
         }
         // Longer terms are rarer, so records fail sooner on them.
         terms.sort_by_key(|term| std::cmp::Reverse(term.text.len()));
@@ -1103,6 +1121,15 @@ fn unpack(packed: u16) -> (u32, usize) {
 fn scan(term: &Term, texts: &Texts, abstracts: bool, packed: &mut Vec<u16>, stop: &dyn Fn() -> bool) -> Option<()> {
     packed.clear();
     packed.resize(texts.records.len(), 0);
+    scan_into(term, texts, abstracts, packed, stop)?;
+    match &term.reading {
+        Some(reading) => scan_into(reading, texts, false, packed, stop),
+        None => Some(()),
+    }
+}
+
+/// Raise `packed[n]` to the best match of `term` alone in record `n`.
+fn scan_into(term: &Term, texts: &Texts, abstracts: bool, packed: &mut [u16], stop: &dyn Fn() -> bool) -> Option<()> {
     let buffers: &[(bool, &str)] = if abstracts {
         &[(false, &texts.meta), (true, &texts.abstracts)]
     } else {
@@ -1148,6 +1175,14 @@ fn occurrences<'a>(finder: &'a Finder<'static>, bytes: &'a [u8]) -> impl Iterato
 
 /// The best match of `term` in record `n` alone, packed. `None` means cancellation.
 fn best_in(term: &Term, texts: &Texts, n: usize, abstracts: bool, stop: &dyn Fn() -> bool) -> Option<u16> {
+    let best = best_alone(term, texts, n, abstracts, stop)?;
+    match &term.reading {
+        Some(reading) => Some(best.max(best_alone(reading, texts, n, false, stop)?)),
+        None => Some(best),
+    }
+}
+
+fn best_alone(term: &Term, texts: &Texts, n: usize, abstracts: bool, stop: &dyn Fn() -> bool) -> Option<u16> {
     let (meta, abstract_start) = texts.starts(n);
     let bounds = &texts.records[n];
     let mut best = 0;

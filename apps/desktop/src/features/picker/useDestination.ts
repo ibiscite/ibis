@@ -4,7 +4,7 @@
 import { useLayoutEffect, useRef } from "react";
 import type * as nativeApi from "../../api";
 import type { AppPaste } from "../../api";
-import { listedOutput, type OutputId } from "../../format/outputs";
+import { listedOutput, sharesReferences, type OutputId } from "../../format/outputs";
 import { asksPaste, destinationFormat, destinationReady, writingVersion, sameOutput, shouldAsk, type OutputToken } from "./destination";
 import { say } from "../../i18n";
 import type { Operation } from "./Notices";
@@ -56,7 +56,11 @@ export function useDestination(session: ReturnType<typeof createSessionControlle
   // An app that could not be read may still be a real one, so a pick cannot change the default.
   const pick: FormatPick = app ? "app" : !pickerDestination || destination ? "default" : "paste";
   const canChooseFormat = pick === "default" && held !== null || ready && !saving;
+  /** This citation's format, and only this one: held, never saved, consumed by the copy. */
+  const chooseOnce = (choice: OutputId) => session.dispatch({ type: "choose-once", choice });
+  // Every pick passes here: a way to share references is for this copy only, never remembered.
   const choose = (choice: OutputId) => {
+    if (sharesReferences(choice)) return chooseOnce(choice);
     if (writing && destination?.writing_context && editWriting) {
       void editWriting(destination.writing_context, { kind: "output", id: writing.id, output: choice })
         .then(() => report("appChoice", false), () => report("appChoice"));
@@ -64,8 +68,6 @@ export function useDestination(session: ReturnType<typeof createSessionControlle
     }
     session.dispatch({ type: "choose-format", choice, pick });
   };
-  /** This citation's format, and only this one: held, never saved, consumed by the copy. */
-  const chooseOnce = (choice: OutputId) => session.dispatch({ type: "choose-once", choice });
   const choosePaste = (paste: AppPaste, _asked = false) => {
     if (!rememberAppOutput) return;
     session.dispatch({ type: "choose-paste", paste, output: null });

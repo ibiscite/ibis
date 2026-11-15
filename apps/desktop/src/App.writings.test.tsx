@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import type { PickerDestination, WritingsView } from "./api";
-import type { Preview } from "./bindings";
+import type { CitedWarning, Preview } from "./bindings";
 import { backend, prepared, receipt, resetApp, result } from "./testing/app";
 
 afterEach(resetApp);
@@ -232,8 +232,8 @@ test("a same-format writing switch starts a new copy and an older copy cannot de
 test("a checked bibliography warning still copies the waiting citation once and keeps the picker open", async () => {
   let destination = writingDestination("Writing A", "cite", [1, 0]);
   const earlier = pending<Preview>(), checked = pending<Preview>();
-  const warning = "synthetic2026 is missing from refs.bib.";
-  const copied: { text: string; warnings: string[] }[] = [];
+  const warning = { item: 0, message: { id: "app-project-warning", args: { key: "synthetic2026", name: "refs.bib", state: "missing" } } };
+  const copied: { text: string; warnings: CitedWarning[] }[] = [];
   let earlierStarted = false, checkedStarted = false, hidden = 0;
   backend({
     search: () => [result("a", "Synthetic source")], picker_destination: () => destination,
@@ -259,7 +259,7 @@ test("a checked bibliography warning still copies the waiting citation once and 
   await waitFor(() => expect(checkedStarted).toBe(true));
   await act(async () => { checked.resolve(receipt("cite:checked warning", null, [warning])); });
   await waitFor(() => expect(copied).toEqual([{ text: "cite:checked warning", warnings: [warning] }]));
-  await waitFor(() => expect(document.body.textContent).toContain(warning));
+  await waitFor(() => expect(document.body.textContent).toContain("synthetic2026 is missing from refs.bib."));
   expect(hidden).toBe(0);
   expect(screen.getByLabelText("Search references")).toBeTruthy();
   await act(async () => { earlier.resolve(receipt("cite:unchecked older citation")); });

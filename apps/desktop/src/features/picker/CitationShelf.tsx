@@ -2,10 +2,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { Icon } from "../../icons";
 import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type Ref, type RefObject } from "react";
 import type { SearchResult } from "../../api";
-import type { Preview, Notice } from "../../bindings";
+import type { CitedWarning, Preview, Notice } from "../../bindings";
 import { outputName, writesEntries, type FormattedCitation, type OutputId } from "../../format/outputs";
 import { renderDisplay, renderNode } from "../../format/display";
-import { say } from "../../i18n";
+import { say, warningText } from "../../i18n";
 import { choiceKey, idKey, type CitationDetailsChange, type CitationReference } from "./choice";
 import { closestMatchWarnings } from "./rows";
 import type { ShelfCopied } from "./session";
@@ -75,7 +75,7 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
   style: OutputId | null;
   keys: boolean;
   shown: FormattedCitation | "failed" | "stale" | null | undefined;
-  outputWarnings: readonly string[];
+  outputWarnings: readonly CitedWarning[];
   /** The engine's notices about the shown citation. */
   outputNotices?: readonly Notice[];
   problem?: string;
@@ -194,7 +194,8 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
   });
   const fromPrevious = !ready && retainedTokens;
   const referenceAt = (item: number) => fromPrevious ? references.find((reference) => idKey(reference.id) === retainedIds[item]) : references[item];
-  const keyText = (value: string) => keys ? value.split(/([^\p{L}\p{N}\s]+)/u).map((part, index) => index % 2 ? <span className="shelf-punctuation" key={index}>{part}</span> : part) : value;
+  // The shelf is one line: an output written on several (BibTeX) reads as one here, its words in full in the tooltip.
+  const keyText = (written: string) => { const value = written.replace(/\s*\n\s*/g, " "); return keys ? value.split(/([^\p{L}\p{N}\s]+)/u).map((part, index) => index % 2 ? <span className="shelf-punctuation" key={index}>{part}</span> : part) : value; };
   const tokens = visible?.display.nodes.map((node) => ({ item: node.item, text: node.content.map((run) => run.text).join(""), node })) ?? (shown === undefined || shown === null && !previous ? references.map((_, item) => ({ item, text: `${item ? "; " : ""}${labels[item]}` })) : undefined);
   // The line's order, which a style may have sorted: moves follow what the person sees.
   const shownOrder = [...new Set(tokens?.flatMap((span) => span.item === null ? [] : [referenceAt(span.item)]).filter((r) => r !== undefined).map((r) => idKey(r.id)))];
@@ -317,7 +318,7 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
     : null;
   return <>
     <p className="visually-hidden" role="status" aria-label={say("picker-citation-selection")} aria-live="polite" aria-atomic="true">
-      {announce ? [say("picker-selection-count", { count: selected.size }), ...partialWarnings].join(" ") : ""}
+      {announce ? [say("picker-selection-count", { count: selected.size }), ...partialWarnings.map((w) => warningText(w))].join(" ") : ""}
     </p>
     <p className="visually-hidden" role="status" aria-live="polite">{keepOrder ? orderNote : ""}</p>
     {panel && hasShelf && <CitationInspector key={panel.reference ?? panel.kind} ref={returnFocus} id={inspectorId} panel={panel} anchor={anchor} heading={labels[editedIndex] ?? say("picker-citation-details")}
@@ -356,7 +357,7 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
         </div>
         <div className="shelf-actions">
           {copied && <span role="status" aria-label={say("picker-copied")} className="shelf-copied"><Icon name="check" />{say("picker-copied")}</span>}
-          {statusLabel && !detailsOpen && <Button variant="quiet" className="shelf-warnings" aria-label={statusLabel} title={statusLabel}
+          {statusLabel && <Button variant="quiet" className="shelf-warnings" aria-label={statusLabel} title={statusLabel}
             aria-expanded={panel?.kind === "warnings"} aria-controls={panel?.kind === "warnings" ? inspectorId : undefined}
             onPress={(event) => toggle("warnings", event.target as HTMLElement)}>{compact ? warnings.length > 0 ? `! ${warnings.length}` : "i" : <>
               {warnings.length > 0 && <span>{say("picker-warning-count", { count: warnings.length })}</span>}

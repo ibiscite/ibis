@@ -83,6 +83,12 @@ export const commands = {
 	/** Read-only examples owned by a prepared preview; never publishes a new ticket. */
 	citationDetails: (ticket: string, contentHash: string, item: number, intent: CitationIntent) => __TAURI_INVOKE<FormDetails>("citation_details", { ticket, contentHash, item, intent }),
 	/**
+	 * The prepared preview in another output, as choosing that output would copy
+	 * it; like the details, it never publishes a new ticket. `None` when that
+	 * output cannot write every reference.
+	 */
+	citationExample: (ticket: string, contentHash: string, output: string, intent: CitationIntent) => __TAURI_INVOKE<string | null>("citation_example", { ticket, contentHash, output, intent }),
+	/**
 	 * Copy the shown citation. Citing it again can wait for the formatter, so
 	 * that runs on a worker with no lock held; the short commit that writes the
 	 * clipboard stays on the main thread, as the native clipboard needs.
@@ -290,7 +296,7 @@ export const DEFAULT_OUTPUT = "pandoc" as const;
 
 export const DEFAULT_STYLE = "apa" as const;
 
-export const OUTPUTS = [{"description":null,"entries":false,"example":"[@key]","id":"pandoc","name":"Pandoc","style":false},{"description":null,"entries":false,"example":"@key","id":"pandoc-bare","name":"Pandoc without brackets","style":false},{"description":null,"entries":false,"example":"\\autocite{key}","id":"autocite","name":"BibLaTeX \\autocite","style":false},{"description":null,"entries":false,"example":"\\parencite{key}","id":"parencite","name":"BibLaTeX \\parencite","style":false},{"description":null,"entries":false,"example":"\\textcite{key}","id":"textcite","name":"BibLaTeX \\textcite","style":false},{"description":null,"entries":false,"example":"\\citep{key}","id":"natbib","name":"natbib","style":false},{"description":null,"entries":false,"example":"\\cite{key}","id":"cite","name":"LaTeX \\cite","style":false},{"description":null,"entries":false,"example":"\\cite[key]","id":"context","name":"ConTeXt","style":false},{"description":null,"entries":false,"example":"@key","id":"typst","name":"Typst","style":false},{"description":null,"entries":false,"example":"[cite:@key]","id":"org-cite","name":"Org mode","style":false},{"description":null,"entries":false,"example":"{cite:p}`key`","id":"myst","name":"MyST","style":false},{"description":null,"entries":false,"example":"[#key][]","id":"multi-markdown","name":"MultiMarkdown","style":false},{"description":null,"entries":false,"example":"cite:[key]","id":"ascii-doc","name":"AsciiDoc","style":false},{"description":null,"entries":false,"example":"<cite data-cite=\"key\">key</cite>","id":"jupyter","name":"Jupyter","style":false},{"description":null,"entries":false,"example":"{% cite key %}","id":"jekyll-scholar","name":"Jekyll Scholar","style":false},{"description":null,"entries":false,"example":"[{\"citationKey\":\"key\"}]","id":"cayw-json","name":"CAYW JSON","style":false},{"description":null,"entries":false,"example":"key","id":"keys","name":"Keys only","style":false},{"description":null,"entries":false,"example":null,"id":"csl-json","name":"CSL-JSON","style":false},{"description":null,"entries":false,"example":null,"id":"bibtex","name":"BibTeX","style":false},{"description":null,"entries":false,"example":null,"id":"doi-links","name":"DOI links","style":false},{"description":null,"entries":false,"example":"{ | Example, 2026 | | | zu:0:ABCD2345 }","id":"scannable-cite","name":"Zotero RTF/ODF Scan","style":false},{"description":"APA (7th edition)","entries":false,"example":"(García, 2021)","id":"apa","name":"APA","style":true},{"description":null,"entries":false,"example":"(García 2021)","id":"chicago-author-date","name":"Chicago (author-date)","style":true},{"description":"Chicago (notes and bibliography)","entries":false,"example":"Ana García, “Synthetic Sleep Study,” Journal of Tests 4 (2021).","id":"chicago-notes-bibliography","name":"Chicago (notes)","style":true},{"description":"MLA (9th edition)","entries":false,"example":"(García)","id":"modern-language-association","name":"MLA","style":true},{"description":"Harvard (Cite Them Right)","entries":false,"example":"(García, 2021)","id":"harvard-cite-them-right","name":"Harvard","style":true},{"description":null,"entries":true,"example":"A. García, “Synthetic sleep study,” Journal of Tests, vol. 4, 2021.","id":"ieee","name":"IEEE","style":true},{"description":null,"entries":true,"example":"García A. Synthetic sleep study. Journal of Tests. 2021;4.","id":"vancouver-nlm","name":"Vancouver","style":true},{"description":null,"entries":true,"example":"García, A. Synthetic sleep study. Journal of Tests 4, (2021).","id":"nature","name":"Nature","style":true},{"description":null,"entries":true,"example":"García A. Synthetic sleep study. Journal of Tests. 2021;4.","id":"american-medical-association","name":"AMA","style":true},{"description":null,"entries":true,"example":"García, A. Synthetic Sleep Study. Journal of Tests 2021, 4.","id":"american-chemical-society","name":"ACS","style":true},{"description":"GB/T 7714-2025 (numeric)","entries":true,"example":"García A. Synthetic sleep study[J]. Journal of Tests，2021，4.","id":"china-national-standard-gb-t-7714-2025-numeric","name":"GB/T 7714 (numeric)","style":true},{"description":"GB/T 7714-2025 (author-date)","entries":false,"example":"（García，2021）","id":"china-national-standard-gb-t-7714-2025-author-date","name":"GB/T 7714 (author-date)","style":true},{"description":"GB/T 7714-2025 (notes)","entries":false,"example":"García A. Synthetic sleep study[J]. Journal of Tests，2021，4.","id":"china-national-standard-gb-t-7714-2025-note","name":"GB/T 7714 (notes)","style":true}] as const;
+export const OUTPUTS = [{"description":null,"entries":false,"example":"[@key]","id":"pandoc","name":"Pandoc","shares":false,"style":false},{"description":null,"entries":false,"example":"@key","id":"pandoc-bare","name":"Pandoc without brackets","shares":false,"style":false},{"description":null,"entries":false,"example":"\\autocite{key}","id":"autocite","name":"BibLaTeX \\autocite","shares":false,"style":false},{"description":null,"entries":false,"example":"\\parencite{key}","id":"parencite","name":"BibLaTeX \\parencite","shares":false,"style":false},{"description":null,"entries":false,"example":"\\textcite{key}","id":"textcite","name":"BibLaTeX \\textcite","shares":false,"style":false},{"description":null,"entries":false,"example":"\\citep{key}","id":"natbib","name":"natbib","shares":false,"style":false},{"description":null,"entries":false,"example":"\\cite{key}","id":"cite","name":"LaTeX \\cite","shares":false,"style":false},{"description":null,"entries":false,"example":"\\cite[key]","id":"context","name":"ConTeXt","shares":false,"style":false},{"description":null,"entries":false,"example":"@key","id":"typst","name":"Typst","shares":false,"style":false},{"description":null,"entries":false,"example":"[cite:@key]","id":"org-cite","name":"Org mode","shares":false,"style":false},{"description":null,"entries":false,"example":"{cite:p}`key`","id":"myst","name":"MyST","shares":false,"style":false},{"description":null,"entries":false,"example":"[#key][]","id":"multi-markdown","name":"MultiMarkdown","shares":false,"style":false},{"description":null,"entries":false,"example":"cite:[key]","id":"ascii-doc","name":"AsciiDoc","shares":false,"style":false},{"description":null,"entries":false,"example":"<cite data-cite=\"key\">key</cite>","id":"jupyter","name":"Jupyter","shares":false,"style":false},{"description":null,"entries":false,"example":"{% cite key %}","id":"jekyll-scholar","name":"Jekyll Scholar","shares":false,"style":false},{"description":null,"entries":false,"example":"[{\"citationKey\":\"key\"}]","id":"cayw-json","name":"CAYW JSON","shares":false,"style":false},{"description":null,"entries":false,"example":"key","id":"keys","name":"Keys only","shares":false,"style":false},{"description":null,"entries":false,"example":null,"id":"csl-json","name":"CSL-JSON","shares":true,"style":false},{"description":null,"entries":false,"example":null,"id":"bibtex","name":"BibTeX","shares":true,"style":false},{"description":null,"entries":false,"example":null,"id":"doi-links","name":"DOI links","shares":true,"style":false},{"description":null,"entries":false,"example":"{ | Example, 2026 | | | zu:0:ABCD2345 }","id":"scannable-cite","name":"Zotero RTF/ODF Scan","shares":false,"style":false},{"description":"APA (7th edition)","entries":false,"example":"(García, 2021)","id":"apa","name":"APA","shares":false,"style":true},{"description":null,"entries":false,"example":"(García 2021)","id":"chicago-author-date","name":"Chicago (author-date)","shares":false,"style":true},{"description":"Chicago (notes and bibliography)","entries":false,"example":"Ana García, “Synthetic Sleep Study,” Journal of Tests 4 (2021).","id":"chicago-notes-bibliography","name":"Chicago (notes)","shares":false,"style":true},{"description":"MLA (9th edition)","entries":false,"example":"(García)","id":"modern-language-association","name":"MLA","shares":false,"style":true},{"description":"Harvard (Cite Them Right)","entries":false,"example":"(García, 2021)","id":"harvard-cite-them-right","name":"Harvard","shares":false,"style":true},{"description":null,"entries":true,"example":"A. García, “Synthetic sleep study,” Journal of Tests, vol. 4, 2021.","id":"ieee","name":"IEEE","shares":false,"style":true},{"description":null,"entries":true,"example":"García A. Synthetic sleep study. Journal of Tests. 2021;4.","id":"vancouver-nlm","name":"Vancouver","shares":false,"style":true},{"description":null,"entries":true,"example":"García, A. Synthetic sleep study. Journal of Tests 4, (2021).","id":"nature","name":"Nature","shares":false,"style":true},{"description":null,"entries":true,"example":"García A. Synthetic sleep study. Journal of Tests. 2021;4.","id":"american-medical-association","name":"AMA","shares":false,"style":true},{"description":null,"entries":true,"example":"García, A. Synthetic Sleep Study. Journal of Tests 2021, 4.","id":"american-chemical-society","name":"ACS","shares":false,"style":true},{"description":"GB/T 7714-2025 (numeric)","entries":true,"example":"García A. Synthetic sleep study[J]. Journal of Tests，2021，4.","id":"china-national-standard-gb-t-7714-2025-numeric","name":"GB/T 7714 (numeric)","shares":false,"style":true},{"description":"GB/T 7714-2025 (author-date)","entries":false,"example":"（García，2021）","id":"china-national-standard-gb-t-7714-2025-author-date","name":"GB/T 7714 (author-date)","shares":false,"style":true},{"description":"GB/T 7714-2025 (notes)","entries":false,"example":"García A. Synthetic sleep study[J]. Journal of Tests，2021，4.","id":"china-national-standard-gb-t-7714-2025-note","name":"GB/T 7714 (notes)","shares":false,"style":true}] as const;
 
 /** A fixed page linked from About. The web page never chooses the address. */
 export type AboutLink = "website" | "source" | "problem" | "licences";
@@ -329,6 +335,16 @@ export type CitationIntent = {
 /** Wording context only; operations choose their recovery before presentation. */
 export type CitationSurface = "bibliography";
 
+/**
+ * What a citation cannot say in full, as the catalogue's message, and the
+ * reference it is about, so each front end shows it with that reference.
+ */
+export type CitedWarning = {
+	/** The zero-based request item it is about; none for the whole citation. */
+	item: number | null;
+	message: Message;
+};
+
 /** The desktop and MCP receive this same shape, without pre-rendered English. */
 export type CommandError = {
 	code: string;
@@ -354,7 +370,7 @@ export type Copied = {
 	summary?: ReceiptSummary | null;
 	text: string;
 	/** What the chosen syntax could not express, and other problems the user should see. */
-	warnings: string[];
+	warnings: CitedWarning[];
 };
 
 /**
@@ -859,7 +875,7 @@ export type Preview = {
 	project_refusal?: string | null;
 	text: string;
 	ticket: string;
-	warnings: string[];
+	warnings: CitedWarning[];
 };
 
 /** The desktop and MCP receive this same shape, without pre-rendered English. */
@@ -1085,7 +1101,7 @@ export type SessionBibliography = {
 	 */
 	left_out: string[];
 	text: string;
-	warnings: string[];
+	warnings: CitedWarning[];
 };
 
 export type SessionEdit = {

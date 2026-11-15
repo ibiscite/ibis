@@ -15,7 +15,7 @@ impl PreparedCitation {
     /// immutable context. Rechecking never consumes or changes the preview.
     /// A check is advice: only a key known to name a different work withholds the citation.
     pub fn project_evidence(&self, read: &ProjectRead) -> ProjectAssessment {
-        let checks = self.project_checks(read);
+        let checks = self.project_checks(read).into_iter().map(|(_, check)| check).collect();
         let conflicts: Vec<_> = if self.uses_citation_keys() {
             self.request
                 .items
@@ -59,22 +59,27 @@ impl PreparedCitation {
     }
     /// Check exactly the emitted keys and record fields that made this receipt,
     /// even if a later source snapshot has renamed or replaced a reference.
-    pub fn project_checks(&self, read: &ProjectRead) -> Vec<ProjectKey> {
+    /// Each check comes with the request item whose key it is.
+    pub fn project_checks(&self, read: &ProjectRead) -> Vec<(usize, ProjectKey)> {
         if !self.uses_citation_keys() {
             return Vec::new();
         }
         self.request
             .items
             .iter()
-            .filter_map(|pick| {
+            .enumerate()
+            .filter_map(|(item, pick)| {
                 let LibraryObject::Record(record) = &self.context.snapshot.get(&pick.item)?.object else {
                     return None;
                 };
                 let key = record.citation_key().ok().flatten()?;
-                Some(ProjectKey {
-                    key: key.to_owned(),
-                    check: read.check(key, Some(record)),
-                })
+                Some((
+                    item,
+                    ProjectKey {
+                        key: key.to_owned(),
+                        check: read.check(key, Some(record)),
+                    },
+                ))
             })
             .collect()
     }
@@ -181,63 +186,97 @@ impl PreparedCitation {
         if self.sample {
             return Ok(self);
         }
-        if self.result.copy_content(self.request.items.len()).is_none() {
-            return Err(error(ErrorCode::BadInput));
-        }
-        let CitationResult {
-            text,
-            html,
-            rtf,
-            mut display,
-            outcomes,
-            losses,
-            notices,
-            warnings,
-            language,
-            destination,
-            receipt,
-            ..
-        } = self.result;
-        let rtf = rtf
-            .map(|rtf| {
-                // The formatter owns the RTF document. Keep its header and content,
-                // and put a plain, visible marker inside its final root brace.
-                let rtf = rtf.trim_end();
-                let body = rtf
-                    .strip_suffix('}')
-                    .filter(|_| rtf.starts_with("{\\rtf1"))
-                    .ok_or_else(|| error(ErrorCode::Internal))?;
-                Ok::<_, EngineError>(format!("{body} {{\\plain [Sample]}}}}"))
-            })
-            .transpose()?;
-        display.nodes.push(DisplayNode {
-            blocks: vec![],
-            item: None,
-            content: vec![DisplayRun {
-                text: " [Sample]".into(),
-                ..DisplayRun::default()
-            }],
-        });
-        self.result = CitationResult::new(
-            format!("{text} [Sample]"),
-            html.map(|html| format!("{html}<span> [Sample]</span>")),
-            rtf,
-            display,
-            outcomes,
-            losses,
-            notices,
-        )
-        .with_warnings(warnings);
-        self.result.language = language;
-        self.result.destination = destination;
-        self.result.receipt = receipt.map(|mut receipt| {
-            receipt.content_hash = self.result.content_hash.clone();
-            receipt.sample = true;
-            receipt
-        });
+        self.result = sample_marked(self.result, self.request.items.len())?;
         self.sample = true;
         Ok(self)
     }
+
+    /// This citation in another output, against the exact snapshot and group
+    /// that made this receipt, and marked as it is: what choosing that output
+    /// would show and copy. No preview is published and no ticket changes.
+    pub fn in_output(
+        &self,
+        engine: &Engine,
+        output: &OutputSpec,
+        cancel: &Cancellation,
+    ) -> Result<CitationResult, EngineError> {
+        let request = CitationRequest {
+            output: output.clone(),
+            ..self.request.clone()
+        };
+        let result = engine.cite_resolved(&self.context, &resolve(&request)?, cancel)?;
+        if self.sample && result.copy_content(request.items.len()).is_some() {
+            sample_marked(result, request.items.len())
+        } else {
+            Ok(result)
+        }
+    }
+}
+/// The sample marker on every representation, as [`PreparedCitation::mark_sample`] binds it.
+fn sample_marked(result: CitationResult, items: usize) -> Result<CitationResult, EngineError> {
+    if result.copy_content(items).is_none() {
+        return Err(error(ErrorCode::BadInput));
+    }
+    let CitationResult {
+        text,
+        html,
+        rtf,
+        mut display,
+        outcomes,
+        losses,
+        notices,
+        warnings,
+        language,
+        destination,
+        receipt,
+        ..
+    } = result;
+    let rtf = rtf
+        .map(|rtf| {
+            // The formatter owns the RTF document. Keep its header and content,
+            // and put a plain, visible marker inside its final root brace.
+            let rtf = rtf.trim_end();
+            let body = rtf
+                .strip_suffix('}')
+                .filter(|_| rtf.starts_with("{\\rtf1"))
+                .ok_or_else(|| error(ErrorCode::Internal))?;
+            Ok::<_, EngineError>(format!("{body} {{\\plain [Sample]}}}}"))
+        })
+        .transpose()?;
+    display.nodes.push(DisplayNode {
+        blocks: vec![],
+        item: None,
+        content: vec![DisplayRun {
+            text: " [Sample]".into(),
+            ..DisplayRun::default()
+        }],
+    });
+    let mut marked = CitationResult::new(
+        format!("{text} [Sample]"),
+        html.map(|html| format!("{html}<span> [Sample]</span>")),
+        rtf,
+        display,
+        outcomes,
+        losses,
+        notices,
+    )
+    .with_warnings(warnings);
+    marked.language = language;
+    marked.destination = destination;
+    marked.receipt = receipt.map(|mut receipt| {
+        receipt.content_hash = marked.content_hash.clone();
+        receipt.sample = true;
+        receipt
+    });
+    Ok(marked)
+}
+
+/// Resolution plus what every citation of a request shares: a key output keeps
+/// the order it was given.
+fn resolve(request: &CitationRequest) -> Result<crate::outputs::ResolvedRequest, EngineError> {
+    let mut resolved = crate::outputs::resolve_request(request)?;
+    resolved.request.keep_order |= matches!(resolved.request.output, OutputSpec::Key { .. });
+    Ok(resolved)
 }
 #[derive(Debug, thiserror::Error)]
 pub enum CitationCommitError {
@@ -291,9 +330,8 @@ impl Engine {
         // The receipt keeps the output the preset means, and the exact objects
         // it cites: citing it again refuses a changed reference even when its
         // text would come out alike.
-        let mut resolved = crate::outputs::resolve_request(request)?;
+        let mut resolved = resolve(request)?;
         let request = &mut resolved.request;
-        request.keep_order |= matches!(request.output, OutputSpec::Key { .. });
         for pick in &mut request.items {
             let held = |id: &ItemRef| snapshot.get(id).map(|object| object.fingerprints.cite.clone());
             pick.expected_cite = pick.expected_cite.take().or_else(|| held(&pick.item));
