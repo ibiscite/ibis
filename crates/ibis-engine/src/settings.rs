@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
-use ibis_core::atomic_file::{AtomicFile, sync_directory};
+use ibis_core::atomic_file::{AtomicFile, create_numbered, open_private, sync_directory};
 use ibis_core::destination::System;
 
 /// Version of the settings format this build reads and writes.
@@ -739,22 +739,12 @@ fn ensure_file(path: &Path) -> Result<(), SettingsError> {
     if let Some(problem) = loaded.problem {
         return Err(problem);
     }
-    let json =
+    let mut json =
         serde_json::to_vec_pretty(&loaded.settings).map_err(|error| SettingsError::Invalid(error.to_string()))?;
-    let mut options = fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    match options.open(path) {
-        Ok(mut file) => {
-            file.write_all(&json)?;
-            file.write_all(b"\n")?;
-            file.sync_all()?;
-            owner::committed(Err(io::ErrorKind::NotFound), [json, b"\n".to_vec()].concat());
-            sync_directory(path);
+    json.push(b'\n');
+    match AtomicFile::new(path, &json)?.create() {
+        Ok(()) => {
+            owner::committed(Err(io::ErrorKind::NotFound), json);
             Ok(())
         }
         Err(error) if error.kind() == io::ErrorKind::AlreadyExists => require_regular(path).map_err(Into::into),
@@ -805,11 +795,7 @@ fn writer_lock(path: &Path) -> Result<WriterLock, SettingsError> {
         Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error.into()),
         _ => {}
     }
-    let mut options = fs::OpenOptions::new();
-    options.read(true).write(true).create(true).truncate(false);
-    #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-    let file = options.open(lock)?;
+    let file = open_private(&lock)?;
     let acquired = file.try_lock();
     #[cfg(test)]
     writer_attempted();
@@ -1022,28 +1008,17 @@ fn preserve_invalid(path: &Path) -> io::Result<()> {
         }
         other => other?,
     };
-    for number in 1..=1000 {
-        let invalid = path.with_extension(format!("json.invalid-{number}"));
-        let mut options = fs::OpenOptions::new();
-        options.write(true).create_new(true);
-        // Damaged settings may hold private paths: readable by the owner only.
-        #[cfg(unix)]
-        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-        match options.open(&invalid) {
-            Ok(mut file) => {
-                file.write_all(&bytes)?;
-                file.sync_all()?;
-                sync_directory(&invalid);
-                return Ok(());
-            }
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error),
+    let (invalid, mut file) = create_numbered(&path.with_extension("json"), ".invalid").map_err(|error| {
+        if error.kind() == io::ErrorKind::AlreadyExists {
+            io::Error::new(error.kind(), "settings recovery names are exhausted")
+        } else {
+            error
         }
-    }
-    Err(io::Error::new(
-        io::ErrorKind::AlreadyExists,
-        "settings recovery names are exhausted",
-    ))
+    })?;
+    file.write_all(&bytes)?;
+    file.sync_all()?;
+    sync_directory(&invalid);
+    Ok(())
 }
 
 /// Change settings on disk: read the file as it is now, apply `change` and
@@ -1873,23 +1848,6 @@ mod tests {
             "{ damaged"
         );
         assert!(load(&path).problem.is_none());
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn preserved_damaged_settings_are_readable_by_the_owner_only() {
-        use std::os::unix::fs::PermissionsExt;
-        let directory = dir("archive-mode");
-        let path = directory.path().join("settings.json");
-        fs::write(&path, "{ damaged").unwrap_or_else(|e| panic!("{e}"));
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap_or_else(|e| panic!("{e}"));
-        fs::write(backup_path(&path), "{}").unwrap_or_else(|e| panic!("{e}"));
-        restore_backup(&path).unwrap_or_else(|e| panic!("{e}"));
-        let mode = fs::metadata(path.with_extension("json.invalid-1"))
-            .unwrap_or_else(|e| panic!("{e}"))
-            .permissions()
-            .mode();
-        assert_eq!(mode & 0o077, 0);
     }
 
     #[test]

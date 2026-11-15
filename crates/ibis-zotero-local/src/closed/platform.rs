@@ -269,14 +269,7 @@ pub(super) fn private_file(path: &Path, control: &Control) -> Result<File, Close
     }
     #[cfg(not(windows))]
     {
-        let mut options = std::fs::OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        options.open(path).map_err(|_| ClosedError::PrivateStorage)
+        ibis_core::atomic_file::create_private(path).map_err(|_| ClosedError::PrivateStorage)
     }
 }
 
@@ -289,16 +282,7 @@ pub(super) fn private_lock(path: &Path, control: &Control) -> Result<FileLease, 
     }
     #[cfg(not(windows))]
     {
-        let mut options = std::fs::OpenOptions::new();
-        options.read(true).write(true).create(true).truncate(false);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options
-                .mode(0o600)
-                .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK);
-        }
-        let file = options.open(path).map_err(|_| ClosedError::PrivateStorage)?;
+        let file = ibis_core::atomic_file::open_private(path).map_err(|_| ClosedError::PrivateStorage)?;
         if !file.metadata().is_ok_and(|m| m.is_file()) {
             return Err(ClosedError::PrivateStorage);
         }

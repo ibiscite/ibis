@@ -2,8 +2,6 @@
 //! arbitrary URI, executable or shell command.
 
 use std::path::{Path, PathBuf};
-#[cfg(not(target_os = "windows"))]
-use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -295,107 +293,14 @@ fn source_file(path: &Path) -> Result<PathBuf, CommandError> {
     Ok(path)
 }
 
-#[cfg(not(target_os = "windows"))]
-fn command(target: Target, reveal: bool) -> Result<Command, CommandError> {
-    #[cfg(target_os = "macos")]
-    let zotero = matches!(&target, Target::Zotero(_) | Target::ZoteroItem(_));
-    let argument = match target {
-        Target::Zotero(library) => zotero_library_uri(library)?.into(),
-        Target::ZoteroItem(uri) => uri.into(),
-        Target::File(path) => source_file(&path)?.into_os_string(),
-    };
-    #[cfg(target_os = "macos")]
-    let mut command = {
-        let mut command = Command::new("/usr/bin/open");
-        if zotero {
-            command.args(["-b", "org.zotero.zotero"]);
-        }
-        if reveal && !zotero {
-            command.arg("-R");
-        }
-        command.arg("--");
-        command
-    };
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let mut command = Command::new("xdg-open");
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let argument = if reveal && !argument.to_string_lossy().starts_with("zotero:") {
-        Path::new(&argument)
-            .parent()
-            .ok_or_else(failed)?
-            .as_os_str()
-            .to_os_string()
-    } else {
-        argument
-    };
-    command
-        .arg(argument)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    Ok(command)
-}
-
-#[cfg(target_os = "windows")]
 fn launch(target: Target, reveal: bool) -> Result<(), CommandError> {
-    use windows::{
-        Foundation::Uri,
-        Storage::{IStorageItem, StorageFile, StorageFolder},
-        System::{FolderLauncherOptions, Launcher},
-        core::{HSTRING, Interface},
-    };
-    // Storage objects keep filenames literal, including commas and spaces.
-    // Launcher's boolean reports an absent handler; no URL-handler shell or
-    // command-line parser can hide a failed open or reinterpret the path.
-    let fault = |_| failed();
-    let open_uri = |uri: String| {
-        let uri = Uri::CreateUri(&HSTRING::from(uri)).map_err(fault)?;
-        Launcher::LaunchUriAsync(&uri).map_err(fault)?.join().map_err(fault)
-    };
-    let opened = match target {
-        Target::File(path) => {
-            let canonical = source_file(&path)?;
-            let path = dunce::simplified(&canonical);
-            let location = path.to_str().ok_or_else(failed)?;
-            let file = StorageFile::GetFileFromPathAsync(&HSTRING::from(location))
-                .map_err(fault)?
-                .join()
-                .map_err(fault)?;
-            if reveal {
-                let parent = path.parent().and_then(Path::to_str).ok_or_else(failed)?;
-                let folder = StorageFolder::GetFolderFromPathAsync(&HSTRING::from(parent))
-                    .map_err(fault)?
-                    .join()
-                    .map_err(fault)?;
-                let options = FolderLauncherOptions::new().map_err(fault)?;
-                let item = file.cast::<IStorageItem>().map_err(fault)?;
-                options.ItemsToSelect().map_err(fault)?.Append(&item).map_err(fault)?;
-                Launcher::LaunchFolderWithOptionsAsync(&folder, &options)
-                    .map_err(fault)?
-                    .join()
-                    .map_err(fault)?
-            } else {
-                Launcher::LaunchFileAsync(&file).map_err(fault)?.join().map_err(fault)?
-            }
-        }
-        Target::Zotero(library) => open_uri(zotero_library_uri(library)?)?,
-        Target::ZoteroItem(uri) => open_uri(uri)?,
-    };
-    if opened { Ok(()) } else { Err(failed()) }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn launch(target: Target, reveal: bool) -> Result<(), CommandError> {
-    run(&mut command(target, reveal)?)
-}
-
-#[cfg(not(target_os = "windows"))]
-fn run(command: &mut Command) -> Result<(), CommandError> {
-    if command.status().is_ok_and(|status| status.success()) {
-        Ok(())
-    } else {
-        Err(failed())
+    use crate::system_open;
+    match target {
+        Target::File(path) => system_open::open(source_file(&path)?.as_os_str(), reveal),
+        Target::Zotero(library) => system_open::open(zotero_library_uri(library)?.as_ref(), reveal),
+        Target::ZoteroItem(uri) => system_open::open(uri.as_ref(), reveal),
     }
+    .map_err(|()| failed())
 }
 
 #[cfg(test)]
@@ -442,10 +347,7 @@ mod tests {
             &status.source_generation,
             false,
         )?;
-        assert_eq!(
-            command(target, false)?.get_args().last(),
-            Some(std::ffi::OsStr::new("zotero://select/groups/7"))
-        );
+        assert_eq!(target, Target::Zotero(ibis_engine::request::ZoteroLibrary::Group(7)));
         Ok(())
     }
 
@@ -460,10 +362,7 @@ mod tests {
         library.requested = library.source.take();
         library.source = Some(Source::File("retained.bib".into()));
         let selected = target(&library, None, "", &generation, true)?;
-        assert_eq!(
-            command(selected, false)?.get_args().last(),
-            Some(std::ffi::OsStr::new("zotero://select/groups/7"))
-        );
+        assert_eq!(selected, Target::Zotero(ZoteroLibrary::Group(7)));
         Ok(())
     }
 
@@ -569,69 +468,17 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
     #[test]
-    fn failed_launches_return_only_the_fixed_failure() {
-        assert!(run(&mut Command::new("/usr/bin/true")).is_ok());
-        for mut command in [
-            Command::new("/usr/bin/false"),
-            Command::new("/invented/unavailable-launcher"),
-        ] {
-            assert_eq!(
-                run(&mut command).err().map(|error| error.to_string()).as_deref(),
-                Some("The source could not be opened. Try again.")
-            );
-        }
-    }
-
-    #[test]
-    fn only_existing_library_files_are_opened_and_the_path_is_one_literal_argument()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn only_existing_library_files_are_opened() -> Result<(), Box<dyn std::error::Error>> {
         let directory = tempfile::tempdir()?;
         let path = directory.path().join("-invented ; $(touch nope) & 'library'.bib");
         std::fs::write(&path, "@misc{synthetic}")?;
-        #[cfg(not(target_os = "windows"))]
-        {
-            let command = command(Target::File(path.clone()), false).map_err(|e| e.to_string())?;
-            assert_eq!(command.get_args().last(), Some(path.canonicalize()?.as_os_str()));
-        }
-        assert!(!directory.path().join("nope").exists());
         let executable = directory.path().join("invented.command");
         std::fs::write(&executable, "@misc{synthetic}")?;
         assert!(source_file(&executable).is_err());
         assert!(source_file(directory.path()).is_err());
         std::fs::remove_file(&path)?;
         assert!(source_file(&path).is_err());
-        Ok(())
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    #[test]
-    fn revealing_uses_the_native_file_manager_with_one_literal_path() -> Result<(), Box<dyn std::error::Error>> {
-        let directory = tempfile::tempdir()?;
-        let path = directory.path().join("invented & reference.bib");
-        std::fs::write(&path, "@misc{synthetic}")?;
-        let reveal = command(Target::File(path.clone()), true).map_err(|e| e.to_string())?;
-        #[cfg(target_os = "macos")]
-        {
-            assert_eq!(reveal.get_program(), "/usr/bin/open");
-            assert_eq!(
-                reveal.get_args().collect::<Vec<_>>(),
-                [
-                    std::ffi::OsStr::new("-R"),
-                    std::ffi::OsStr::new("--"),
-                    path.canonicalize()?.as_os_str()
-                ]
-            );
-            let zotero = command(Target::Zotero(ZoteroLibrary::Personal), true).map_err(|e| e.to_string())?;
-            assert!(!zotero.get_args().any(|arg| arg == "-R"));
-            assert!(zotero.get_args().any(|arg| arg == "org.zotero.zotero"));
-        }
-        #[cfg(target_os = "linux")]
-        assert_eq!(
-            reveal.get_args().last(),
-            path.canonicalize()?.parent().map(Path::as_os_str)
-        );
         Ok(())
     }
 }

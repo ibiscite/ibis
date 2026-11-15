@@ -48,6 +48,7 @@ mod settings_window;
 mod setup;
 mod shortcut_setting;
 mod sizing;
+mod system_open;
 mod tray;
 mod updater;
 mod writings;

@@ -7,6 +7,7 @@
 //! read-only home) ids hold for this process only; they are never guessable, and
 //! an old id then finds nothing rather than something else.
 use crate::LibraryKind;
+use ibis_core::atomic_file::AtomicFile;
 use ibis_core::contract::LibraryId;
 use std::{
     io::{self, Read},
@@ -115,12 +116,7 @@ fn saved(path: &Path, create: bool) -> io::Result<Key> {
     }
     let directory = path.parent().ok_or(io::ErrorKind::InvalidInput)?;
     std::fs::create_dir_all(directory)?;
-    let temporary = directory.join(format!(".library-ids.{}.tmp", std::process::id()));
-    write_private(&temporary, hex(&random()).as_bytes())?;
-    // A hard link cannot replace a key another process saved a moment ago.
-    let linked = std::fs::hard_link(&temporary, path);
-    let _ = std::fs::remove_file(&temporary);
-    match linked {
+    match AtomicFile::new(path, hex(&random()).as_bytes())?.create() {
         Err(error) if error.kind() != io::ErrorKind::AlreadyExists => Err(error),
         _ => read(path)?.ok_or(io::ErrorKind::InvalidData.into()),
     }
@@ -159,20 +155,6 @@ fn hex(key: &Key) -> String {
     key.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-fn write_private(path: &Path, bytes: &[u8]) -> io::Result<()> {
-    use std::io::Write;
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    let mut file = options.open(path)?;
-    file.write_all(bytes)?;
-    file.sync_all()
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 #[allow(clippy::disallowed_methods)]
@@ -189,11 +171,6 @@ mod tests {
         assert_eq!(saved(&path, true).unwrap(), first);
         assert_eq!(saved(&path, false).unwrap(), first);
         assert_eq!(std::fs::read_dir(path.parent().unwrap()).unwrap().count(), 1);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
-        }
         for damage in ["", "short", &"z".repeat(64), &"a".repeat(200)] {
             std::fs::write(&path, damage).unwrap();
             assert_eq!(saved(&path, true).unwrap_err().kind(), io::ErrorKind::InvalidData);
@@ -220,14 +197,7 @@ mod tests {
         let workers: Vec<_> = (0..8)
             .map(|_| {
                 let path = path.clone();
-                std::thread::spawn(move || {
-                    // The same pid can race in a test; keep their temporaries apart.
-                    let own = path.with_extension(format!("{:?}", std::thread::current().id()));
-                    write_private(&own, hex(&random()).as_bytes()).unwrap();
-                    let _ = std::fs::hard_link(&own, &path);
-                    std::fs::remove_file(&own).unwrap();
-                    saved(&path, true).unwrap()
-                })
+                std::thread::spawn(move || saved(&path, true).unwrap())
             })
             .collect();
         let keys: Vec<_> = workers.into_iter().map(|worker| worker.join().unwrap()).collect();

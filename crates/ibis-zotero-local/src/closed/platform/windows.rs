@@ -1,5 +1,4 @@
-//! Win32 calls for the closed reader on Windows: the only unsafe code in
-//! Ibis (decision 0006). Each call sits in a small wrapper with a SAFETY note.
+//! Win32 calls for the closed reader on Windows, with a SAFETY note at each call.
 
 use super::{ClosedError, Control, FileLease, drive_path};
 use std::ffi::{OsString, c_void};
@@ -25,12 +24,12 @@ use windows_sys::Win32::Security::{
     TOKEN_QUERY, TOKEN_USER, TokenUser,
 };
 use windows_sys::Win32::Storage::FileSystem::{
-    BY_HANDLE_FILE_INFORMATION, CREATE_NEW, CreateDirectoryW, CreateFileW, DELETE, FILE_ALL_ACCESS,
-    FILE_ATTRIBUTE_NOT_CONTENT_INDEXED, FILE_DISPOSITION_INFO, FILE_FLAG_BACKUP_SEMANTICS,
-    FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
-    FileDispositionInfo, GetDiskFreeSpaceExW, GetDriveTypeW, GetFileAttributesW, GetFileInformationByHandle,
-    GetFullPathNameW, GetLongPathNameW, GetTempPathW, INVALID_FILE_ATTRIBUTES, MoveFileExW, OPEN_ALWAYS, OPEN_EXISTING,
-    READ_CONTROL, RemoveDirectoryW, SetFileAttributesW, SetFileInformationByHandle, WRITE_DAC, WRITE_OWNER,
+    BY_HANDLE_FILE_INFORMATION, CreateDirectoryW, CreateFileW, FILE_ALL_ACCESS, FILE_ATTRIBUTE_NOT_CONTENT_INDEXED,
+    FILE_DISPOSITION_INFO, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES,
+    FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, FileDispositionInfo, GetDiskFreeSpaceExW, GetDriveTypeW,
+    GetFileAttributesW, GetFileInformationByHandle, GetFullPathNameW, GetLongPathNameW, GetTempPathW,
+    INVALID_FILE_ATTRIBUTES, MoveFileExW, OPEN_EXISTING, READ_CONTROL, RemoveDirectoryW, SetFileAttributesW,
+    SetFileInformationByHandle, WRITE_DAC, WRITE_OWNER,
 };
 use windows_sys::Win32::System::Com::CoTaskMemFree;
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
@@ -300,46 +299,17 @@ fn open(path: &Path, access: u32, control: &Control) -> Result<Handle, ClosedErr
     })
 }
 
-/// Disposable files get TokenUser ownership at creation, even when elevated.
-/// CREATE_NEW refuses existing entries; inherit the verified user-only DACL.
 pub(super) fn private_file(path: &Path, control: &Control) -> Result<File, ClosedError> {
     control.check()?;
-    let value = checked_path(path).map_err(|error| error.context(ClosedError::PrivateStorage))?;
+    checked_path(path).map_err(|error| error.context(ClosedError::PrivateStorage))?;
     let parent = path.parent().ok_or(ClosedError::PrivateStorage)?;
     verify(parent, true, control).map_err(|error| error.context(ClosedError::PrivateStorage))?;
     let user = user(control)?;
-    let mut descriptor = SECURITY_DESCRIPTOR::default();
-    let sd = addr_of_mut!(descriptor).cast::<c_void>();
     control.check()?;
-    // SAFETY: sd points to writable, aligned SECURITY_DESCRIPTOR storage.
-    succeeded(unsafe { InitializeSecurityDescriptor(sd, 1) })?;
-    control.check()?;
-    // SAFETY: sd is initialized and user owns the live, validated TokenUser SID.
-    succeeded(unsafe { SetSecurityDescriptorOwner(sd, user.sid(), 0) })?;
-    // Leave SE_DACL_PRESENT unset, so Windows inherits the parent's DACL.
-    // A present NULL DACL would instead grant unrestricted access.
-    let attributes = SECURITY_ATTRIBUTES {
-        nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
-        lpSecurityDescriptor: sd,
-        bInheritHandle: 0,
-    };
-    control.check()?;
-    // SAFETY: path, descriptor and SID remain live throughout creation.
-    // CREATE_NEW never replaces an entry, including a reparse point.
-    let handle = Handle::new(unsafe {
-        CreateFileW(
-            value.as_ptr(),
-            GENERIC_READ | GENERIC_WRITE | DELETE,
-            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-            &attributes,
-            CREATE_NEW,
-            FILE_FLAG_OPEN_REPARSE_POINT,
-            null_mut(),
-        )
-    })?;
+    let file = ibis_core::atomic_file::create_private(path).map_err(|_| ClosedError::PrivateStorage)?;
     let result = (|| {
-        verify_file(&handle, control)?;
-        verify_acl(&handle, &user, false, control)
+        verify_file(&file, control)?;
+        verify_acl(&file, &user, false, control)
     })();
     if let Err(error) = result {
         let mut disposition = FILE_DISPOSITION_INFO { DeleteFile: true };
@@ -348,7 +318,7 @@ pub(super) fn private_file(path: &Path, control: &Control) -> Result<File, Close
         // This also leaves a cancelled root-tag creation retryable.
         unsafe {
             SetFileInformationByHandle(
-                handle.0,
+                file.as_raw_handle(),
                 FileDispositionInfo,
                 addr_of_mut!(disposition).cast(),
                 size_of::<FILE_DISPOSITION_INFO>() as u32,
@@ -356,55 +326,26 @@ pub(super) fn private_file(path: &Path, control: &Control) -> Result<File, Close
         };
         return Err(error);
     }
-    Ok(handle.into_file())
+    Ok(file)
 }
 
 /// A persistent lock is never unlinked. Repair old elevated TokenOwner files
 /// on the very handle holding the exclusive lease, then verify before use.
 pub(super) fn private_lock(path: &Path, control: &Control) -> Result<FileLease, ClosedError> {
     control.check()?;
-    let value = checked_path(path).map_err(|error| error.context(ClosedError::LockPermissions))?;
+    checked_path(path).map_err(|error| error.context(ClosedError::LockPermissions))?;
     let parent = path.parent().ok_or(ClosedError::PrivateStorage)?;
     verify(parent, true, control).map_err(|error| error.context(ClosedError::PrivateStorage))?;
     let user = user(control)?;
-    let mut descriptor = SECURITY_DESCRIPTOR::default();
-    let sd = addr_of_mut!(descriptor).cast::<c_void>();
     control.check()?;
-    // SAFETY: sd points to writable, aligned SECURITY_DESCRIPTOR storage.
-    succeeded(unsafe { InitializeSecurityDescriptor(sd, 1) })?;
-    // SAFETY: descriptor is initialized and the validated TokenUser SID is live.
-    succeeded(unsafe { SetSecurityDescriptorOwner(sd, user.sid(), 0) })?;
-    let attributes = SECURITY_ATTRIBUTES {
-        nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
-        lpSecurityDescriptor: sd,
-        bInheritHandle: 0,
-    };
-    control.check()?;
-    // SAFETY: all path/descriptor/SID storage is live. OPEN_ALWAYS preserves
-    // existing bytes and security. WRITE_OWNER/WRITE_DAC ask Windows to check
-    // this token's authority to repair; no ownership privilege is enabled here.
-    // Omitting delete sharing keeps this lock's name in place until release.
-    let raw = unsafe {
-        CreateFileW(
-            value.as_ptr(),
-            GENERIC_READ | GENERIC_WRITE | WRITE_OWNER | WRITE_DAC,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            &attributes,
-            OPEN_ALWAYS,
-            FILE_FLAG_OPEN_REPARSE_POINT,
-            null_mut(),
-        )
-    };
-    if raw == INVALID_HANDLE_VALUE {
-        // SAFETY: read immediately after failed CreateFileW.
-        return Err(if unsafe { GetLastError() } == ERROR_SHARING_VIOLATION {
+    let file = ibis_core::atomic_file::open_private(path).map_err(|error| {
+        if error.raw_os_error() == Some(ERROR_SHARING_VIOLATION as i32) {
             ClosedError::StorageInUse
         } else {
             ClosedError::LockPermissions
-        });
-    }
-    let handle = Handle::new(raw).map_err(|error| error.context(ClosedError::LockPermissions))?;
-    let lease = FileLease::acquire(handle.into_file()).map_err(|error| match error {
+        }
+    })?;
+    let lease = FileLease::acquire(file).map_err(|error| match error {
         std::fs::TryLockError::WouldBlock => ClosedError::StorageInUse,
         _ => ClosedError::LockPermissions,
     })?;
