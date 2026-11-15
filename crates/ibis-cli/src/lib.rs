@@ -1,5 +1,6 @@
 //! The CLI parses arguments and presents typed engine results; no source or citation rules live here.
 use clap::{Arg, ArgAction, ArgMatches, Command};
+use human::cli;
 use ibis_core::contract::*;
 use ibis_core::destination::{System, destination};
 use ibis_engine::{Cancellation, DispatchResult, Engine, Method, protocol, request::*};
@@ -58,17 +59,6 @@ mcp speak their own protocols instead). Messages go to stderr. Exit codes: 0 ok,
 5 source unavailable or resource limit, 6 newer format, 70 internal, 130 cancelled.
 
 Reference for scripts and agents: https://github.com/ibiscite/ibis/blob/main/docs/cli.md";
-const GREETING: &str = "\
-finds references and cites them anywhere.
-
-Try it:
-  ibis search lantern --file refs.bib       find a reference
-  ibis cite vale2024lanterns --file refs.bib --style apa
-                                            make a citation
-  ibis doctor --file refs.bib               check a library
-
-With the Ibis app installed you can leave out --file.
-Add --json to any command for scripts and agents. All commands: ibis --help";
 
 /// A number of search results a person can ask for.
 fn search_limit(text: &str) -> Result<usize, String> {
@@ -610,7 +600,7 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
             false,
             Ok(DispatchResult {
                 data: Value::Null,
-                text: Some(format!("Ibis {} {GREETING}", ibis_core::VERSION)),
+                text: Some(cli("cli-greeting", &[("version", ibis_core::VERSION)])),
                 source_findings: false,
                 exit_code: ExitCode::Ok,
             }),
@@ -877,7 +867,7 @@ impl Failure {
     fn sentence(&self) -> String {
         self.message
             .clone()
-            .unwrap_or_else(|| human::code_sentence(self.error.code))
+            .unwrap_or_else(|| ibis_engine::catalogue::error(&self.error, ibis_engine::catalogue::Audience::Cli))
     }
     /// What an agent reads when its libraries did not open. Agents never see paths.
     fn refusal(&self) -> ibis_engine::mcp::Refusal {
@@ -888,14 +878,7 @@ impl From<EngineError> for Failure {
     fn from(error: EngineError) -> Self {
         Self {
             error,
-            message: if error.citation_error.is_some() {
-                Some(ibis_engine::catalogue::error(
-                    &error,
-                    ibis_engine::catalogue::Audience::Cli,
-                ))
-            } else {
-                error.reason.map(human::reason_sentence)
-            },
+            message: None,
             recovery: None,
         }
     }
@@ -984,6 +967,9 @@ fn key_failure(engine: &Engine, matches: &ArgMatches, key: &str, error: EngineEr
 }
 
 fn failed_citation_key(engine: &Engine, matches: &ArgMatches, keys: &[KeyItem], error: EngineError) -> Failure {
+    if error.citation_error.is_some() {
+        return error.into();
+    }
     // The error names no key; the first key that fails the same way is the one.
     keys.iter()
         .map(|item| &item.key)
@@ -1011,9 +997,12 @@ fn failed_citation_key(engine: &Engine, matches: &ArgMatches, keys: &[KeyItem], 
 /// Attach a sentence to an engine error without changing its code or reason.
 /// A reason has its own sentence; front ends never guess one from the code.
 fn explain<T>(result: Result<T, EngineError>, message: impl FnOnce(EngineError) -> String) -> Result<T, Failure> {
-    result.map_err(|error| match error.reason {
-        Some(reason) => Failure::explained(error, human::reason_sentence(reason)),
-        None => Failure::explained(error, message(error)),
+    result.map_err(|error| {
+        if error.reason.is_some() || error.citation_error.is_some() {
+            error.into()
+        } else {
+            Failure::explained(error, message(error))
+        }
     })
 }
 
@@ -1054,7 +1043,7 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
     if name == "toggle" {
         explain(
             toggle::run(args.get_one::<PathBuf>("app").map(PathBuf::as_path)),
-            |_| "could not prepare the toggle; check that the temporary folder can be written, then try again.".into(),
+            |_| cli("cli-toggle-unprepared", &[]),
         )?;
         return Ok(Execution::Result(
             DispatchResult {
@@ -1107,7 +1096,7 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
             .is_some_and(|path| path == Path::new("-"))
         && mode.stdin_terminal()
     {
-        write_stream(errors, b"ibis: waiting for keys, one per line; end with Ctrl-D.\n")
+        write_stream(errors, format!("ibis: {}\n", cli("cli-keys-waiting", &[])).as_bytes())
             .map_err(|error| Failure::new(ErrorCode::Internal, human::write_failure(&error)))?;
     }
     run_method(engine, matches, name, args, names, input, mode)
@@ -1133,7 +1122,7 @@ fn open_libraries(
     if asked && defaults == Defaults::None {
         return Err(Failure::new(
             ErrorCode::Usage,
-            "--app-libraries is not available here; name the libraries to read.",
+            cli("cli-app-libraries-unavailable", &[]),
         ));
     }
     // Records sent on stdin are cited with no library: none is opened.
@@ -1142,10 +1131,7 @@ fn open_libraries(
         .is_some_and(|cite| cite.get_flag("records"))
     {
         return if named || asked {
-            Err(Failure::new(
-                ErrorCode::Usage,
-                "--records cites only the records on stdin; leave out the library options.",
-            ))
+            Err(Failure::new(ErrorCode::Usage, cli("cli-records-with-libraries", &[])))
         } else {
             Ok(names)
         };
@@ -1160,10 +1146,7 @@ fn open_libraries(
         Some(bounded(app_libraries::load).unwrap_or_else(|| {
             Err(Failure::explained(
                 EngineError::because(ErrorCode::SourceUnavailable, ErrorReason::SettingsReadTimeout),
-                format!(
-                    "the Ibis app's settings could not be read in time; try again, or {}.",
-                    app_libraries::NAME_ONE
-                ),
+                cli("cli-app-settings-timeout", &[]),
             ))
         })?)
     } else {
@@ -1191,9 +1174,9 @@ fn open_libraries(
         let params = serde_json::to_value(LibrariesRequest::OpenFile { path: path.clone() }).map_err(|_| {
             Failure::new(
                 ErrorCode::BadInput,
-                format!(
-                    "cannot open {}: its name is not valid text; rename it.",
-                    human::field(&path.display().to_string())
+                cli(
+                    "cli-file-name-invalid",
+                    &[("path", &human::field(&path.display().to_string()))],
                 ),
             )
         })?;
@@ -1202,10 +1185,9 @@ fn open_libraries(
         // A path the app chose is never shown: agents read these messages too.
         // The file is named even when the engine gives a reason: several may be open.
         let message = |error| match chosen {
-            Some(app) => format!(
-                "cannot open the library chosen in {app}: {} Choose it again there, or {}.",
-                human::file_reason(&path, error),
-                app_libraries::NAME_ONE
+            Some(app) => cli(
+                "cli-chosen-library-unopened",
+                &[("app", app), ("reason", &human::file_reason(&path, error))],
             ),
             None => human::file_failure(&path, error),
         };
@@ -1311,10 +1293,7 @@ fn run_method<R: BufRead>(
             let query = args.get_one::<String>("query").map_or("", String::as_str);
             let limit = args.get_one::<usize>("limit").copied().unwrap_or(10);
             if query.trim().is_empty() {
-                return Err(Failure::new(
-                    ErrorCode::Usage,
-                    "give some words to search for: an author, title words, a year or a key.",
-                ));
+                return Err(Failure::new(ErrorCode::Usage, cli("cli-search-words-needed", &[])));
             }
             let result = explain(
                 engine.dispatch(
@@ -1323,7 +1302,7 @@ fn run_method<R: BufRead>(
                     &cancel,
                 ),
                 |EngineError { code, .. }| match code {
-                    ErrorCode::BadInput => "the search words are too long; use fewer.".into(),
+                    ErrorCode::BadInput => cli("cli-search-words-too-long", &[]),
                     code => human::code_sentence(code),
                 },
             )?;
@@ -1373,11 +1352,14 @@ fn run_method<R: BufRead>(
                     );
                 }
                 if missing > 0 {
-                    notes.push(format!(
-                        "note: {missing} {} no citation key; see ibis search {}{} --json",
-                        if missing == 1 { "hit has" } else { "hits have" },
-                        human::quoted(query),
-                        library_options(matches)
+                    notes.push(cli(
+                        "cli-search-keyless",
+                        &[
+                            ("count", &missing.to_string()),
+                            ("plural", if missing == 1 { "one" } else { "other" }),
+                            ("query", &human::quoted(query)),
+                            ("libraries", &library_options(matches)),
+                        ],
                     ));
                 }
                 let text = keys.join("\n");
@@ -1389,13 +1371,16 @@ fn run_method<R: BufRead>(
             };
             if mode.stderr_terminal() && result.data["complete"] == false {
                 notes.push(if limit < 1000 {
-                    format!(
-                        "note: showing the first {limit} {}; see more with --limit {}",
-                        if limit == 1 { "match" } else { "matches" },
-                        (limit * 2).min(1000)
+                    cli(
+                        "cli-search-more",
+                        &[
+                            ("count", &limit.to_string()),
+                            ("plural", if limit == 1 { "one" } else { "other" }),
+                            ("next", &(limit * 2).min(1000).to_string()),
+                        ],
                     )
                 } else {
-                    format!("note: showing the first {limit} matches; use more distinctive search words")
+                    cli("cli-search-narrow", &[("count", &limit.to_string())])
                 });
             }
             result.source_findings = false;
@@ -1404,7 +1389,7 @@ fn run_method<R: BufRead>(
         Method::Show => {
             let (params, key) = match args.get_one::<String>("id") {
                 Some(id) => (
-                    json!({"item":{"by":"id","value":explain(parse_json(id.as_bytes()), |_| ITEM_REF_HELP.into())?}}),
+                    json!({"item":{"by":"id","value":explain(parse_json(id.as_bytes()), |_| cli("cli-id-help", &[]))?}}),
                     None,
                 ),
                 None => {
@@ -1414,10 +1399,8 @@ fn run_method<R: BufRead>(
             };
             let result = engine.dispatch(method, &params, &cancel).map_err(|error| match &key {
                 Some(key) => key_failure(engine, matches, key, error, libraries_open()),
-                None if error.code == ErrorCode::NotFound => {
-                    Failure::explained(error, "no open library holds the reference that --id names.")
-                }
-                None if error.code == ErrorCode::BadInput => Failure::explained(error, ITEM_REF_HELP),
+                None if error.code == ErrorCode::NotFound => Failure::explained(error, cli("cli-id-not-found", &[])),
+                None if error.code == ErrorCode::BadInput => Failure::explained(error, cli("cli-id-help", &[])),
                 None => Failure::from(error),
             })?;
             return Ok(Execution::Result(
@@ -1426,20 +1409,18 @@ fn run_method<R: BufRead>(
             ));
         }
         Method::Cite if args.get_flag("request") => {
-            const REQUEST_HELP: &str = "stdin must hold one CitationRequest JSON object; see: ibis schema cite";
-            let mut params = explain(stdin_json(input), |_| REQUEST_HELP.into())?;
+            let request_help = cli("cli-request-help", &[]);
+            let mut params = explain(stdin_json(input), |_| request_help.clone())?;
             if args.get_flag("strict") {
                 params
                     .as_object_mut()
-                    .ok_or_else(|| Failure::new(ErrorCode::BadInput, REQUEST_HELP))?
+                    .ok_or_else(|| Failure::new(ErrorCode::BadInput, &request_help))?
                     .insert("strict".into(), json!(true));
             }
-            let citing = request_citing(&params).ok_or_else(|| Failure::new(ErrorCode::BadInput, REQUEST_HELP))?;
+            let citing = request_citing(&params).ok_or_else(|| Failure::new(ErrorCode::BadInput, &request_help))?;
             let result = explain(engine.dispatch(method, &params, &cancel), |error| {
-                if error.reason.is_some() {
-                    ibis_engine::catalogue::error(&error, ibis_engine::catalogue::Audience::Cli)
-                } else if error.code == ErrorCode::BadInput {
-                    REQUEST_HELP.into()
+                if error.code == ErrorCode::BadInput {
+                    request_help.clone()
                 } else {
                     human::code_sentence(error.code)
                 }
@@ -1447,13 +1428,13 @@ fn run_method<R: BufRead>(
             return Ok(Execution::Result(result, Some(citing)));
         }
         Method::Cite if args.get_flag("records") => {
-            const RECORDS_HELP: &str = "stdin must hold one JSON array of CSL-JSON records; see: ibis schema records";
+            let records_help = cli("cli-records-help", &[]);
             let records = explain(stdin_records(input), |error| match error.code {
-                ErrorCode::ResourceLimit => "the records on stdin are more than 1 MiB; send fewer at a time.".into(),
-                _ => RECORDS_HELP.into(),
+                ErrorCode::ResourceLimit => cli("cli-records-too-large", &[]),
+                _ => records_help.clone(),
             })?;
             let Value::Array(list) = &records else {
-                return Err(Failure::new(ErrorCode::BadInput, RECORDS_HELP));
+                return Err(Failure::new(ErrorCode::BadInput, &records_help));
             };
             let output = chosen_output(args)?;
             let form = chosen_form(args, &output)?;
@@ -1487,21 +1468,9 @@ fn run_method<R: BufRead>(
             let output = if let Some(writing) = &writing {
                 ibis_engine::outputs::resolve(&writing.format)?
             } else {
-                match (args.get_one::<String>("style"), args.get_one::<String>("format")) {
-                    (Some(style), _) => OutputSpec::Csl { style: style.clone() },
-                    (None, format) => {
-                        ibis_engine::outputs::find(format.map_or(ibis_engine::outputs::DEFAULT, String::as_str))
-                            .map(|output| output.output.clone())
-                            .ok_or_else(|| EngineError::new(ErrorCode::Internal))?
-                    }
-                }
+                chosen_output(args)?
             };
-            if args.get_flag("bibliography") && !matches!(output, OutputSpec::Csl { .. }) {
-                return Err(Failure::new(
-                    ErrorCode::Usage,
-                    "--bibliography needs a style: give --style, or a --format that is a style.",
-                ));
-            }
+            let form = chosen_form(args, &output)?;
             let destination = match args.get_one::<String>("for-app") {
                 Some(app) => {
                     // The app's own settings decide, as in the picker (decision 0042).
@@ -1519,28 +1488,11 @@ fn run_method<R: BufRead>(
             let output = destination
                 .as_ref()
                 .map_or(output, |destination| destination.output.clone());
-            let form = if args.get_flag("bibliography") {
-                CitationForm::BibliographyOnly
-            } else {
-                serde_json::from_value(json!(
-                    args.get_one::<String>("form").map(String::as_str).unwrap_or("normal")
-                ))
-                .map_err(|_| EngineError::new(ErrorCode::Usage))?
-            };
             let keys = match args.get_one::<PathBuf>("keys-from") {
                 Some(path) if path == Path::new("-") => keys::read(input)?,
                 Some(path) => keys::file(path)?,
                 None => key_items(args)?,
             };
-            if keys.len() > ibis_core::syntax::MAX_CITATION_ITEMS {
-                return Err(Failure::new(
-                    ErrorCode::BadInput,
-                    format!(
-                        "one citation can hold at most {} keys.",
-                        ibis_core::syntax::MAX_CITATION_ITEMS
-                    ),
-                ));
-            }
             let citing = human::Citing {
                 labels: keys.iter().map(|item| item.key.clone()).collect(),
                 flags: keys
@@ -1602,16 +1554,22 @@ fn run_method<R: BufRead>(
             .map_err(|error| match error.reason {
                 Some(ErrorReason::UnknownStyle) => Failure::explained(
                     error,
-                    format!(
-                        "there is no style '{}'; list the styles with: ibis styles",
-                        human::field(args.get_one::<String>("style").map_or("", String::as_str))
+                    cli(
+                        "cli-style-unknown",
+                        &[(
+                            "style",
+                            &human::field(args.get_one::<String>("style").map_or("", String::as_str)),
+                        )],
                     ),
                 ),
                 Some(ErrorReason::UnknownLocale) => Failure::explained(
                     error,
-                    format!(
-                        "there is no locale '{}'; list them with: ibis styles --locales",
-                        human::field(args.get_one::<String>("locale").map_or("", String::as_str))
+                    cli(
+                        "cli-locale-unknown",
+                        &[(
+                            "locale",
+                            &human::field(args.get_one::<String>("locale").map_or("", String::as_str)),
+                        )],
                     ),
                 ),
                 // The error names no key; the first key that fails the same way is the one.
@@ -1629,7 +1587,7 @@ fn run_method<R: BufRead>(
             let result = explain(
                 engine.dispatch(method, &json!({"path":path,"keys":keys}), &cancel),
                 |EngineError { code, .. }| match code {
-                    ErrorCode::BadInput => "at most 1000 keys can be checked at once.".into(),
+                    ErrorCode::BadInput => cli("cli-project-too-many-keys", &[]),
                     code => human::code_sentence(code),
                 },
             )?;
@@ -1667,13 +1625,7 @@ fn run_method<R: BufRead>(
         }
         Method::Call => {
             let called = method_named(args.get_one::<String>("method").map_or("", String::as_str))?;
-            let params_help = || {
-                format!(
-                    "--params must be the JSON parameters of {}; see: ibis schema {}",
-                    called.as_str(),
-                    called.as_str()
-                )
-            };
+            let params_help = || cli("cli-params-help", &[("method", called.as_str())]);
             let params = if args.get_flag("stdin") {
                 explain(stdin_json(input), |_| params_help())?
             } else {
@@ -1691,7 +1643,7 @@ fn run_method<R: BufRead>(
                     {
                         return key_failure(engine, matches, key, error, libraries_open());
                     }
-                    if error.reason.is_some() {
+                    if error.reason.is_some() || error.citation_error.is_some() {
                         Failure::from(error)
                     } else {
                         Failure::explained(
@@ -1714,9 +1666,9 @@ fn run_method<R: BufRead>(
             ErrorCode::BadInput
                 if method == Method::Styles && params["query"].as_str().is_some_and(|query| query.len() > 1024) =>
             {
-                "the search words are too long; use fewer.".into()
+                cli("cli-search-words-too-long", &[])
             }
-            ErrorCode::BadInput if method == Method::Styles => "--limit must be between 1 and 20000.".into(),
+            ErrorCode::BadInput if method == Method::Styles => cli("cli-styles-limit", &[]),
             code => human::code_sentence(code),
         },
     )?;
@@ -1753,10 +1705,7 @@ fn chosen_output(args: &ArgMatches) -> Result<OutputSpec, Failure> {
 fn chosen_form(args: &ArgMatches, output: &OutputSpec) -> Result<CitationForm, Failure> {
     if args.get_flag("bibliography") {
         if !matches!(output, OutputSpec::Csl { .. }) {
-            return Err(Failure::new(
-                ErrorCode::Usage,
-                "--bibliography needs a style: give --style, or a --format that is a style.",
-            ));
+            return Err(Failure::new(ErrorCode::Usage, cli("cli-bibliography-needs-style", &[])));
         }
         return Ok(CitationForm::BibliographyOnly);
     }
@@ -1767,9 +1716,7 @@ fn chosen_form(args: &ArgMatches, output: &OutputSpec) -> Result<CitationForm, F
 }
 /// Why records on stdin were refused, naming the first record at fault.
 fn records_failure(error: EngineError, records: &[Value]) -> Failure {
-    let mut sentence = error
-        .reason
-        .map_or_else(|| human::code_sentence(error.code), human::reason_sentence);
+    let mut sentence = ibis_engine::catalogue::error(&error, ibis_engine::catalogue::Audience::Cli);
     if error.reason == Some(ErrorReason::RejectedRecord)
         // Only a record-level problem drops a record; a field warning leaves it in.
         && let Some(warning) = Engine::record_problems(records).into_iter().find(|warning| {
@@ -1818,7 +1765,7 @@ fn key_items(args: &ArgMatches) -> Result<Vec<KeyItem>, Failure> {
         items
             .iter()
             .rposition(|(start, _)| *start < index)
-            .ok_or_else(|| Failure::new(ErrorCode::Usage, format!("--{flag} must follow the key it belongs to.")))
+            .ok_or_else(|| Failure::new(ErrorCode::Usage, cli("cli-key-option-owner", &[("flag", flag)])))
     };
     let mut options: Vec<(usize, &str, Option<&String>)> = vec![];
     for flag in ["locator", "prefix", "suffix"] {
@@ -1858,7 +1805,10 @@ fn key_items(args: &ArgMatches) -> Result<Vec<KeyItem>, Failure> {
         if repeated {
             return Err(Failure::new(
                 ErrorCode::Usage,
-                format!("--{flag} is given twice for '{}'.", human::field(&item.key)),
+                cli(
+                    "cli-key-option-repeated",
+                    &[("flag", flag), ("key", &human::field(&item.key))],
+                ),
             ));
         }
     }
@@ -1869,20 +1819,19 @@ fn locator(text: &str) -> Result<Locator, Failure> {
     ibis_core::locator::read_given(text).ok_or_else(|| {
         Failure::new(
             ErrorCode::Usage,
-            format!(
-                "--locator '{}' is not a locator Ibis reads; write it like \"p. 12\", \"ch. 3\" or \"12-14\".",
-                human::field(text)
-            ),
+            cli("cli-locator-unreadable", &[("locator", &human::field(text))]),
         )
     })
 }
-const ITEM_REF_HELP: &str = "--id must be a reference's id, the JSON that ibis search --json prints.";
 fn method_named(name: &str) -> Result<Method, Failure> {
     Method::parse(name).map_err(|code| {
         let names = Method::ALL.map(Method::as_str).join(", ");
         Failure::new(
             code,
-            format!("there is no method '{}'; choose one of: {names}", human::field(name)),
+            cli(
+                "cli-method-unknown",
+                &[("method", &human::field(name)), ("names", &names)],
+            ),
         )
     })
 }
@@ -1947,9 +1896,9 @@ fn emit(
     let (mut code, encoded) = (|| {
         if result.as_ref().is_ok_and(|result| result.source_findings) {
             let json_flag = if json { " --json" } else { "" };
-            say(&format!(
-                "note: a library has warnings or could not refresh; see: ibis libraries{}{json_flag}",
-                presentation.libraries
+            say(&cli(
+                "cli-source-findings",
+                &[("libraries", presentation.libraries), ("json", json_flag)],
             ));
         }
         if !json {
@@ -1986,10 +1935,7 @@ fn emit(
             Ok(result) => (result.exit_code, json!(Envelope::success(result.data)), result.text),
             Err(failure) => {
                 // The sentence goes to stderr in both modes; --json adds the stable code on stdout.
-                say(&failure
-                    .message
-                    .clone()
-                    .unwrap_or_else(|| human::code_sentence(failure.error.code)));
+                say(&failure.sentence());
                 if !json {
                     return (failure.error.code.exit_code().value(), Vec::new());
                 }
@@ -2034,7 +1980,7 @@ fn emit(
     if let Err(error) = write_stream(output, &encoded) {
         // A reader that closed the pipe early (`| head`) asked for no more, so nothing went wrong.
         if error.kind() != std::io::ErrorKind::BrokenPipe {
-            say(human::write_failure(&error));
+            say(&human::write_failure(&error));
             code = 70;
         }
     }

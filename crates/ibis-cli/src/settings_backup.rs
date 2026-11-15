@@ -13,7 +13,7 @@ use ibis_engine::DispatchResult;
 use ibis_engine::settings_backup::{self as backup, Backup, BackupError, Note};
 use serde_json::{Value, json};
 
-use crate::{Failure, app_libraries, bounded};
+use crate::{Failure, app_libraries, bounded, human::cli};
 
 pub(crate) fn command() -> clap::Command {
     use clap::{Arg, ArgAction, Command};
@@ -65,12 +65,8 @@ pub(crate) fn command() -> clap::Command {
 /// The settings file a command uses: Nightly's when asked; otherwise the
 /// stable app's, or Nightly's when only Nightly has settings here.
 pub(crate) fn settings_file(nightly: bool) -> Result<(&'static str, PathBuf), Failure> {
-    let directory = ibis_engine::identity::config_dir().ok_or_else(|| {
-        Failure::new(
-            ErrorCode::Usage,
-            "this computer has no folder for app settings (HOME or APPDATA is not set).",
-        )
-    })?;
+    let directory = ibis_engine::identity::config_dir()
+        .ok_or_else(|| Failure::new(ErrorCode::Usage, cli("cli-settings-no-folder", &[])))?;
     let [stable, night] =
         app_libraries::APPS.map(|(identifier, app)| (app, directory.join(identifier).join("settings.json")));
     if nightly {
@@ -81,9 +77,8 @@ pub(crate) fn settings_file(nightly: bool) -> Result<(&'static str, PathBuf), Fa
     };
     let (stable_path, night_path) = (stable.1.clone(), night.1.clone());
     // A stalled settings folder is reported after the deadline, never taken as absent.
-    let only_nightly = within("the settings folder", move || {
-        !present(&stable_path) && present(&night_path)
-    })?;
+    let only_nightly = bounded(move || !present(&stable_path) && present(&night_path))
+        .ok_or_else(|| Failure::new(ErrorCode::SourceUnavailable, cli("cli-settings-folder-timeout", &[])))?;
     Ok(if only_nightly { night } else { stable })
 }
 
@@ -91,20 +86,8 @@ pub(crate) fn run(matches: &ArgMatches) -> Result<DispatchResult, Failure> {
     match matches.subcommand() {
         Some(("export", args)) => export(args),
         Some(("import", args)) => import(args),
-        _ => Err(Failure::new(
-            ErrorCode::Usage,
-            "choose export or import; see: ibis settings --help",
-        )),
+        _ => Err(Failure::new(ErrorCode::Usage, cli("cli-settings-action-needed", &[]))),
     }
-}
-
-fn within<T: Send + 'static>(what: &str, operation: impl FnOnce() -> T + Send + 'static) -> Result<T, Failure> {
-    bounded(operation).ok_or_else(|| {
-        Failure::new(
-            ErrorCode::SourceUnavailable,
-            format!("{what} did not respond in time; try again."),
-        )
-    })
 }
 
 fn export(args: &ArgMatches) -> Result<DispatchResult, Failure> {
@@ -123,7 +106,8 @@ fn export(args: &ArgMatches) -> Result<DispatchResult, Failure> {
     Ok(result(
         json!({"app": app, "written": name}),
         Some(format!(
-            "Backed up {app}'s settings to {name}.\nPaste approvals and window places stay on this computer.\n"
+            "{}\n",
+            cli("cli-settings-exported", &[("app", app), ("name", &name)])
         )),
     ))
 }
@@ -133,7 +117,7 @@ fn import(args: &ArgMatches) -> Result<DispatchResult, Failure> {
     let chosen = args
         .get_one::<PathBuf>("backup")
         .cloned()
-        .ok_or_else(|| Failure::new(ErrorCode::Usage, "name the backup file to restore."))?;
+        .ok_or_else(|| Failure::new(ErrorCode::Usage, cli("cli-settings-backup-needed", &[])))?;
     let (backup, plan) = backup::prepare(path.clone(), chosen).map_err(|error| backup_failure(&error))?;
     let dry_run = args.get_flag("dry-run");
     if !dry_run && !plan.is_empty() {
@@ -156,18 +140,23 @@ fn import(args: &ArgMatches) -> Result<DispatchResult, Failure> {
 }
 
 fn import_text(app: &str, backup: &Backup, plan: &backup::Plan, dry_run: bool) -> String {
-    let made = format!(
-        "a backup made on {} by Ibis {}",
-        system_label(backup.made_on),
-        backup.made_by
+    let made = cli(
+        "cli-settings-backup-made",
+        &[("system", system_label(backup.made_on)), ("version", &backup.made_by)],
     );
     if plan.is_empty() {
-        return format!("{app} already has the settings in {made}. Nothing changed.\n");
+        return format!(
+            "{}\n",
+            cli("cli-settings-unchanged", &[("app", app), ("backup", &made)])
+        );
     }
     let mut text = if dry_run {
-        format!("Restoring {made} would change {app}'s settings:\n")
+        format!(
+            "{}\n",
+            cli("cli-settings-would-restore", &[("app", app), ("backup", &made)])
+        )
     } else {
-        format!("Restored {made} into {app}:\n")
+        format!("{}\n", cli("cli-settings-restored", &[("app", app), ("backup", &made)]))
     };
     for change in plan.changes.iter().map(backup::shown) {
         text.push_str(&format!(
@@ -178,21 +167,23 @@ fn import_text(app: &str, backup: &Backup, plan: &backup::Plan, dry_run: bool) -
         ));
     }
     for note in &plan.notes {
-        text.push_str(match note {
-            Note::LibraryNotFound => {
-                "Note: the backup's bibliography file is not on this computer. It is kept, and Ibis finds it once the file is there.\n"
-            }
-            Note::ShortcutKept => "Note: the backup has no opening shortcut for this system, so this computer's is kept.\n",
-            Note::RepairsSettings => {
-                "Note: the settings file on this computer is damaged or missing. Restoring writes it again, and keeps any damaged file beside it.\n"
-            }
-        });
+        let id = match note {
+            Note::LibraryNotFound => "cli-settings-library-not-found",
+            Note::ShortcutKept => "cli-settings-shortcut-kept",
+            Note::RepairsSettings => "cli-settings-repairs-settings",
+        };
+        text.push_str(&cli(id, &[]));
+        text.push('\n');
     }
-    text.push_str(if dry_run {
-        "Nothing changed. Run it again without --dry-run to restore.\n"
-    } else {
-        "The replaced settings are kept as settings.json.bak. Paste approvals and window places stay as they were.\nIbis uses the restored settings the next time it opens; quit and reopen it if it is running.\n"
-    });
+    text.push_str(&cli(
+        if dry_run {
+            "cli-settings-dry-run"
+        } else {
+            "cli-settings-restored-next"
+        },
+        &[],
+    ));
+    text.push('\n');
     text
 }
 

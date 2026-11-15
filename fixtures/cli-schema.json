@@ -4558,6 +4558,10 @@
                 "enum": [
                   "empty-selection",
                   "too-many-items",
+                  "too-many-keys",
+                  "too-many-records",
+                  "too-many-record-items",
+                  "invalid-too-many-items",
                   "invalid-locator",
                   "invalid-rich-text",
                   "output-too-large",
@@ -6616,6 +6620,10 @@
                 "enum": [
                   "empty-selection",
                   "too-many-items",
+                  "too-many-keys",
+                  "too-many-records",
+                  "too-many-record-items",
+                  "invalid-too-many-items",
                   "invalid-locator",
                   "invalid-rich-text",
                   "output-too-large",

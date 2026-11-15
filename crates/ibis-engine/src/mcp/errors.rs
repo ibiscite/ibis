@@ -12,7 +12,6 @@ pub(super) enum ToolProblem {
     Reference,
     StaleReference,
     Items,
-    TooManyItems,
     App,
     KeepOrder,
     Strict,
@@ -43,7 +42,6 @@ impl ToolProblem {
             Self::NoLibrary => (ErrorCode::SourceUnavailable, R::ChooseLibrary),
             Self::StaleReference => (ErrorCode::NotFound, R::SearchReferences),
             Self::Query | Self::StyleQuery => (ErrorCode::BadInput, R::EditInput),
-            Self::TooManyItems => (ErrorCode::BadInput, R::ReduceSelection),
             Self::CitationFormat
             | Self::Format
             | Self::Style

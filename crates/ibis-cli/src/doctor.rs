@@ -1,6 +1,7 @@
 //! One-shot, read-only diagnostics. No source watches, discovery, API requests,
 //! database copies, settings recovery writes, or raw errors belong here.
 use super::{OutputMode, source_values};
+use crate::human::cli;
 use clap::ArgMatches;
 use ibis_core::contract::*;
 use ibis_engine::settings;
@@ -122,8 +123,8 @@ fn report_text(data: &Value, now_ms: u64) -> String {
             result["freshness"]["updated_at_ms"].as_u64(),
         ) {
             text.push_str(&format!(
-                "      Last good read: {}.\n",
-                age(now_ms.saturating_sub(time))
+                "      {}\n",
+                cli("cli-doctor-last-read", &[("age", &age(now_ms.saturating_sub(time)))])
             ));
         }
     }
@@ -133,15 +134,16 @@ fn report_text(data: &Value, now_ms: u64) -> String {
         .count();
     text.push('\n');
     text.push_str(&match problems {
-        0 => "All good.".to_owned(),
-        1 => "1 thing to look at.".to_owned(),
-        count => format!("{count} things to look at."),
+        0 => cli("cli-doctor-all-good", &[]),
+        1 => cli("cli-doctor-one-finding", &[]),
+        count => cli("cli-doctor-findings", &[("count", &count.to_string())]),
     });
     text
 }
 
 fn summary(label: &str, result: &Value) -> String {
-    let message = result["message"].as_str().unwrap_or("Check failed.");
+    let fallback = cli("cli-doctor-check-failed", &[]);
+    let message = result["message"].as_str().unwrap_or(&fallback);
     let code = result["code"].as_str().unwrap_or("internal");
     match result["status"].as_str() {
         Some("ok") => format!("ok    {label}: {message}\n"),
