@@ -272,39 +272,19 @@ pub fn read_text_cache(
     if !crate::fulltext::valid_key(key) {
         return Err(ClosedError::UnsafeSource);
     }
-    let control = Control::within(cancelled, Duration::from_secs(10));
-    let (data, key) = (trusted_folder(data), key.to_owned());
-    cache_text(&control, move |control| {
-        let file = platform::local_file(&data.join("storage").join(key).join(".zotero-ft-cache"), control)?;
-        if let Some(file) = &file
-            && file.metadata().map_err(|_| ClosedError::Unreadable)?.len() > crate::fulltext::MAX_TEXT_BYTES as u64
-        {
-            return Err(ClosedError::TooLarge);
-        }
-        Ok(file)
-    })
-}
-
-fn cache_text<R: std::io::Read + Send + 'static>(
-    control: &Control,
-    open: impl FnOnce(&Control) -> Result<Option<R>, ClosedError> + Send + 'static,
-) -> Result<Option<String>, ClosedError> {
     use std::io::Read;
-    control.io(move |control| {
-        let Some(reader) = open(control)? else { return Ok(None) };
-        control.check()?;
-        let limit = crate::fulltext::MAX_TEXT_BYTES as u64;
+    let path = trusted_folder(data).join("storage").join(key).join(".zotero-ft-cache");
+    let limit = crate::fulltext::MAX_TEXT_BYTES as u64;
+    let read = with_local_file(&path, cancelled, LOCAL_FILE_BUDGET, move |file| {
         let mut bytes = Vec::new();
-        reader
-            .take(limit + 1)
-            .read_to_end(&mut bytes)
-            .map_err(|_| ClosedError::Unreadable)?;
-        control.check()?;
-        if bytes.len() as u64 > limit {
-            return Err(ClosedError::TooLarge);
-        }
-        String::from_utf8(bytes).map(Some).map_err(|_| ClosedError::Unreadable)
-    })
+        file.take(limit + 1).read_to_end(&mut bytes).map(|_| bytes)
+    })?;
+    let Some(bytes) = read else { return Ok(None) };
+    let bytes = bytes.map_err(|_| ClosedError::Unreadable)?;
+    if bytes.len() as u64 > limit {
+        return Err(ClosedError::TooLarge);
+    }
+    String::from_utf8(bytes).map(Some).map_err(|_| ClosedError::Unreadable)
 }
 
 const LOCAL_FILE_BUDGET: Duration = Duration::from_secs(10);

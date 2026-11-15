@@ -182,14 +182,10 @@ online wherever it appears, and its MCP results say so in `source_health`, so th
 4. Done: the PDF extractor in a child process, with page labels and fuzzing.
    `lopdf` (MIT, pure Rust, no `unsafe`) parses in `ibis __extract-pdf`, which
    gets the opened file as its standard input and no environment, within ten
-   seconds and a 3 GiB budget on live Rust allocation bytes. Unix AS and DATA
-   limits additionally bound memory where supported; Windows uses a job's
-   process-memory limit. Extraction refuses if installing these limits fails,
-   except Darwin's unsupported finite AS/DATA limits (`EINVAL`): the heap budget
-   still applies there. Unix core dumps are disabled. Only stdio survives exec;
-   the desktop app never parses. Label prefixes over 64 characters are refused,
-   and a 1 MiB total label budget is checked before expanding page ranges. The
-   parent's output-size bound remains independent.
+   seconds. It drops core dumps and has 20 processor seconds on Unix and 3 GiB of
+   address space on Linux; each stream inflates to at most 64 MiB. Only stdio
+   survives exec, and the desktop app never parses. Label prefixes over 64
+   characters and label trees over 1 MiB are refused.
    It reads `.bib` `file` attachments and Zotero PDFs with no index or a partial
    one; Zotero's complete, verified pages still win. `cite_page` comes only from
    `/PageLabels`, checked against 0036's label rules, and with Zotero's text only

@@ -102,7 +102,7 @@ fn the_total_label_output_is_bounded_before_expansion() {
 
 #[cfg(unix)]
 #[test]
-fn memory_limits_apply_in_an_isolated_child() {
+fn resource_limits_apply_in_an_isolated_child() {
     let output = std::process::Command::new(std::env::current_exe().unwrap())
         .args([
             "--exact",
@@ -126,64 +126,14 @@ fn memory_limits_apply_in_an_isolated_child() {
 fn resource_limits_helper() {
     use nix::sys::resource::{Resource, getrlimit};
     limit_resources().unwrap();
-    for resource in [Resource::RLIMIT_AS, Resource::RLIMIT_DATA] {
-        let (soft, hard) = getrlimit(resource).unwrap();
-        #[cfg(target_os = "macos")]
-        if soft > MAX_MEMORY_BYTES || hard > MAX_MEMORY_BYTES {
-            // Darwin rejects finite limits on some systems; the allocation
-            // refusal test independently proves the heap budget there.
-            assert_eq!(
-                nix::sys::resource::setrlimit(resource, MAX_MEMORY_BYTES, MAX_MEMORY_BYTES),
-                Err(nix::errno::Errno::EINVAL)
-            );
-            continue;
-        }
-        assert!(
-            soft <= 3 * 1024 * 1024 * 1024 && hard <= 3 * 1024 * 1024 * 1024,
-            "{resource:?}"
-        );
-    }
     let (soft, hard) = getrlimit(Resource::RLIMIT_CPU).unwrap();
     assert!(soft <= MAX_CPU_SECONDS && hard <= MAX_CPU_SECONDS);
-}
-
-#[test]
-fn the_child_refuses_allocations_over_its_heap_budget() {
-    let output = std::process::Command::new(std::env::current_exe().unwrap())
-        .args([
-            "--exact",
-            "pdf_text::tests::heap_limit_helper",
-            "--ignored",
-            "--nocapture",
-        ])
-        .output()
-        .unwrap();
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("memory allocation of 2097152 bytes failed"));
-}
-
-#[test]
-#[ignore = "subprocess helper; exhausts only its own small heap budget"]
-fn heap_limit_helper() {
-    #[cfg(unix)]
-    nix::sys::resource::setrlimit(nix::sys::resource::Resource::RLIMIT_CORE, 0, 0).unwrap();
-    // Enabling a tiny budget in this helper proves enforcement without putting
-    // memory pressure on the shared machine. The real child installs 3 GiB.
-    heap_limit::set(1024 * 1024);
-    // Refused growth preserves the old allocation; shrinking and releasing it
-    // restore capacity. Repeated allocations cannot consume the budget forever.
-    let mut bytes = Vec::with_capacity(128 * 1024);
-    bytes.resize(128 * 1024, 7u8);
-    bytes.reserve_exact(256 * 1024);
-    assert!(bytes.try_reserve_exact(2 * 1024 * 1024).is_err());
-    assert!(bytes.iter().all(|byte| *byte == 7));
-    bytes.truncate(64 * 1024);
-    bytes.shrink_to_fit();
-    drop(bytes);
-    for _ in 0..16 {
-        std::hint::black_box(vec![0u8; 128 * 1024]);
+    assert_eq!(getrlimit(Resource::RLIMIT_CORE).unwrap(), (0, 0));
+    #[cfg(target_os = "linux")]
+    {
+        let (soft, hard) = getrlimit(Resource::RLIMIT_AS).unwrap();
+        assert!(soft <= MAX_MEMORY_BYTES && hard <= MAX_MEMORY_BYTES);
     }
-    std::hint::black_box(vec![0u8; 2 * 1024 * 1024]);
 }
 
 #[test]

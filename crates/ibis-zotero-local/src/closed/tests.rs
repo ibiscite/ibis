@@ -322,19 +322,6 @@ fn stopped_cache_read(cancel: bool) {
         atomic::{AtomicBool, Ordering},
         mpsc,
     };
-    struct HeldReader {
-        started: Option<mpsc::Sender<()>>,
-        released: mpsc::Receiver<()>,
-    }
-    impl std::io::Read for HeldReader {
-        fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
-            if let Some(started) = self.started.take() {
-                started.send(()).unwrap();
-                self.released.recv().unwrap();
-            }
-            Ok(0)
-        }
-    }
     let cancelled = Arc::new(AtomicBool::new(false));
     let token = cancelled.clone();
     let control = Control::within(
@@ -349,11 +336,11 @@ fn stopped_cache_read(cancel: bool) {
     let (release, released) = mpsc::channel();
     let (finished, result) = mpsc::channel();
     let caller = std::thread::spawn(move || {
-        let answer = cache_text(&control, move |_| {
-            Ok(Some(HeldReader {
-                started: Some(started),
-                released,
-            }))
+        // A read that stalls in the kernel until released.
+        let answer = control.io(move |_| {
+            started.send(()).unwrap();
+            released.recv().unwrap();
+            Ok(())
         });
         finished.send(answer).unwrap();
     });
