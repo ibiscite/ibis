@@ -1775,7 +1775,7 @@ fn a_new_bibliography_answer_revokes_even_a_detached_delivery_before_it_can_post
         .unwrap_or_else(|error| panic!("initial bibliography: {error}"));
     let project = app.state::<crate::project::ProjectBibliography>();
     let first = ibis_engine::ProjectRead::read(&path, None);
-    assert!(project.finish_read(app.handle(), 0, first.clone()));
+    assert_eq!(project.finish_read(app.handle(), 0, first.clone()), Some(true));
     let target = app.state::<super::LastTarget>();
     target.begin_presentation(Some(writer("com.microsoft.word")));
     let token = target
@@ -1784,7 +1784,7 @@ fn a_new_bibliography_answer_revokes_even_a_detached_delivery_before_it_can_post
     let detached = target
         .take_copy(TEXT, token)
         .unwrap_or_else(|| panic!("detached proof"));
-    assert!(!project.finish_read(app.handle(), 0, first.clone()));
+    assert_eq!(project.finish_read(app.handle(), 0, first.clone()), Some(false));
     assert!(
         detached.policy.current(),
         "an unchanged check preserves the pending delivery"
@@ -1792,12 +1792,12 @@ fn a_new_bibliography_answer_revokes_even_a_detached_delivery_before_it_can_post
     std::fs::write(&path, "@book{synthetic,title={Other work},doi={10.5555/other}}\n")
         .unwrap_or_else(|error| panic!("updated bibliography: {error}"));
     let conflicting = ibis_engine::ProjectRead::read(&path, Some(&first));
-    assert!(!project.finish_read(app.handle(), 99, conflicting.clone()));
+    assert_eq!(project.finish_read(app.handle(), 99, conflicting.clone()), None);
     assert!(
         detached.policy.current(),
         "a stale other-context read cannot revoke the current operation"
     );
-    assert!(project.finish_read(app.handle(), 0, conflicting));
+    assert_eq!(project.finish_read(app.handle(), 0, conflicting), Some(true));
     let mut posted = false;
     let request = PostRequest::new(
         DeliveryRequest {

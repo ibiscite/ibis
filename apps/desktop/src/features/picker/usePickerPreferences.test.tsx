@@ -4,6 +4,7 @@ import { usePickerPreferences } from "./usePickerPreferences";
 import type { PickerPreferences } from "../../api";
 import type { PickerPreferencesPatch } from "../../bindings";
 import { deferred } from "../../testing/deferred";
+import { useOperations } from "./useOperations";
 
 /** The settings owner as the picker sees it: each choice gets a receipt when
  * made, and `save` answers for it by patch and receipt. */
@@ -95,4 +96,26 @@ test("a failed later output stays applied in the picker and is never sent again"
   // The failed choice stays applied here, and nothing sends it again.
   expect(result.current.format).toBe("typst");
   expect(setPickerPreferences).toHaveBeenCalledTimes(3);
+});
+
+test("reopening after a failed first read applies the saved choices and clears the failure", async () => {
+  let readable = false;
+  const saved = { ...preferences, output: "ieee", density: "compact" } as PickerPreferences;
+  const { result } = renderHook(() => {
+    const operations = useOperations();
+    const picker = usePickerPreferences({
+      pickerPreferences: async () => { if (!readable) throw new Error("synthetic read failure"); return saved; },
+      ...owner(vi.fn(async () => ({ preferences: saved }))), quit: async () => undefined,
+    }, { ...context, report: operations.report, perform: operations.perform });
+    return { picker, failures: operations.failures };
+  });
+  await act(async () => { result.current.picker.loadPreferences(() => true); });
+  expect(result.current.failures.preferences).toBe(true);
+  expect(result.current.picker.format).not.toBe("ieee");
+  // The file can be read again, and the picker reads it when it is shown.
+  readable = true;
+  await act(async () => { result.current.picker.loadPreferences(() => true); });
+  expect(result.current.picker.format).toBe("ieee");
+  expect(result.current.picker.density).toBe("compact");
+  expect(result.current.failures.preferences).toBeFalsy();
 });
