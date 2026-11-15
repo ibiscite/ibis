@@ -4,10 +4,6 @@ use std::fs::{self, File, Permissions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-#[cfg(windows)]
-#[allow(unsafe_code)]
-mod windows;
-
 /// A staged write. Dropping it leaves the destination alone and removes only
 /// its own temporary file. Callers may check a transaction before committing.
 pub struct AtomicFile {
@@ -91,33 +87,25 @@ fn permissions(path: &Path) -> io::Result<Option<Permissions>> {
     }
 }
 
-/// Create an owner-only file, refusing every existing entry.
+/// Create a new file with Unix mode 0600 and otherwise default security.
+/// Refuse every existing entry.
 pub fn create_private(path: &Path) -> io::Result<File> {
-    #[cfg(windows)]
-    return windows::open(path, true);
-    #[cfg(not(windows))]
     private_options().create_new(true).open(path)
 }
 
 /// Open a reusable private lock without changing existing bytes or permissions.
-/// Refuse Unix symlinks; Windows keeps the lock's name in place while it is open.
+/// Refuse Unix symlinks.
 pub fn open_private(path: &Path) -> io::Result<File> {
-    #[cfg(windows)]
-    return windows::open(path, false);
-    #[cfg(not(windows))]
-    {
-        let mut options = private_options();
-        options.create(true).truncate(false);
-        #[cfg(unix)]
-        std::os::unix::fs::OpenOptionsExt::custom_flags(&mut options, nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK);
-        options.open(path)
-    }
+    let mut options = private_options();
+    options.read(true).create(true).truncate(false);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::custom_flags(&mut options, nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK);
+    options.open(path)
 }
 
-#[cfg(not(windows))]
 fn private_options() -> fs::OpenOptions {
     let mut options = fs::OpenOptions::new();
-    options.read(true).write(true);
+    options.write(true);
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
     options

@@ -60,3 +60,21 @@ fn numbered_creation_skips_existing_files_without_overwriting() -> io::Result<()
     }
     Ok(())
 }
+
+#[cfg(windows)]
+#[test]
+fn private_files_and_locks_support_long_paths() -> io::Result<()> {
+    let directory = tempfile::tempdir()?;
+    let mut parent = directory.path().to_path_buf();
+    for _ in 0..3 {
+        parent.push("invented".repeat(12));
+    }
+    fs::create_dir_all(&parent)?;
+    let path = parent.join("settings.lock");
+    create_private(&path)?.write_all(b"keep")?;
+    drop(open_private(&path)?);
+    assert_eq!(fs::read(&path)?, b"keep");
+    AtomicFile::new(&path, b"replacement")?.replace()?;
+    assert_eq!(fs::read(&path)?, b"replacement");
+    Ok(())
+}
