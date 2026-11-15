@@ -1,4 +1,5 @@
 import * as nativeApi from "./api";
+import { useNativeEvent } from "./nativeEvents";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { idKey, asTyped } from "./features/picker/choice";
 import { keysFor, matchesAccelerator } from "./keys";
@@ -220,13 +221,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
       emptyFeedback.refuse(text(library?.state === "loading" || library?.state === "reloading" ? "delight-loading" : !library?.has_snapshot ? "delight-no-library" : "delight-empty"));
     },
   });
-  const { onWindowSizeSaved } = api;
-  useEffect(() => {
-    let current = true;
-    const subscription = onWindowSizeSaved?.((saved) => { if (current) report("windowSize", !saved); });
-    void subscription?.catch(() => { if (current) report("windowSize"); });
-    return () => { current = false; void subscription?.then((stop) => stop()).catch(() => {}); };
-  }, [onWindowSizeSaved, report]);
+  useNativeEvent(api.onWindowSizeSaved, (saved) => report("windowSize", !saved), { failed: () => report("windowSize") });
   // ">" in the search lists commands by name (docs/design/picker.md, Command search).
   const commands = useCommandSearch({
     query: showCitations ? query : "", run: keys.run, setQuery,

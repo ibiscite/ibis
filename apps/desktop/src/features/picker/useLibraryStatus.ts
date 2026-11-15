@@ -2,6 +2,7 @@ import type * as nativeApi from "../../api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LibraryStatus } from "../../api";
 import type { Operation } from "./Notices";
+import { useNativeEvent } from "../../nativeEvents";
 
 /** Events and reads share one request generation. Hiding retires pending
  * reads; reopening reads once. There is no library-status polling. */
@@ -39,26 +40,20 @@ export function useLibraryStatus(api: typeof nativeApi, report: (operation: Oper
     });
   }, [publish]);
   const { onLibraryChanged, onPickerHidden, onPickerShown } = api;
+  useNativeEvent(onLibraryChanged, (status) => {
+    generation.current += 1;
+    publish(status);
+    report("status", false);
+  }, { failed: () => report("libraryEvents"), subject: "Library" });
+  useNativeEvent(onPickerHidden, () => { generation.current += 1; }, { failed: () => report("pickerEvents"), subject: "Picker" });
+  useNativeEvent(onPickerShown, refreshSnapshot, { failed: () => report("pickerEvents"), subject: "Picker" });
   useEffect(() => {
-    let alive = true;
     mounted.current = true;
-    const subscribe = (operation: Operation) => () => { if (alive) current.current.report(operation); return () => {}; };
-    const changed = onLibraryChanged((status) => {
-      if (!alive) return;
-      generation.current += 1;
-      publish(status);
-      current.current.report("status", false);
-    }).catch(subscribe("libraryEvents"));
-    const hidden = onPickerHidden(() => { if (alive) generation.current += 1; }).catch(subscribe("pickerEvents"));
-    const shown = onPickerShown(() => { if (alive) refreshSnapshot(); }).catch(subscribe("pickerEvents"));
     refreshSnapshot();
     return () => {
       mounted.current = false;
-      alive = false;
       generation.current += 1;
-      void changed.then((stop) => stop()).catch(() => console.error("Library event cleanup failed."));
-      for (const subscription of [hidden, shown]) void subscription.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
     };
-  }, [onLibraryChanged, onPickerHidden, onPickerShown, refreshSnapshot, publish]);
+  }, [refreshSnapshot]);
   return { library, settledLibrary, libraryVersion, refreshSnapshot };
 }

@@ -33,6 +33,7 @@ import { EditorEndpointRow } from "./EditorEndpoint";
 import { PasteGuide, usePastePermission } from "./PasteGuide";
 import { BackupRows } from "./BackupRows";
 import type { SettingsApi } from "./api";
+import { listening } from "../nativeEvents";
 import "../ui/SettingsLayout.css";
 
 import { PAGES, ROWS, settingsRows, rowDetails, type Page } from "./rows";
@@ -281,23 +282,20 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         if (active && updateRequest === updateReads.current) readProblem("automatic", true);
       });
     };
-    const preferenceEvents = api.onPreferencesChanged((revision, fields) => {
+    const preferenceEvents = listening(api.onPreferencesChanged, (revision, fields) => {
       void queue.refresh(revision, () => active, fields);
-    });
+    }, { ready: () => void queue.load(() => active), failed: () => dispatchPreference({ type: "read-failed" }) });
     readAll(false);
-    void preferenceEvents.then(() => { if (active) void queue.load(() => active); }).catch(() => { if (active) dispatchPreference({ type: "read-failed" }); });
     api.version().then((next) => { if (active) setVersion(next); }).catch(() => undefined);
     // Changes made in the picker or the menu bar while Settings was open.
     window.addEventListener("focus", readAll);
     window.addEventListener("focus", readShortcut);
-    const shortcuts = api.onShortcutStatus((next) => {
+    const shortcuts = listening(api.onShortcutStatus, (next) => {
       shortcutReads.current += 1;
-      if (active) { latestShortcut.current = next; setShortcut(next); clearShortcutUndo(); }
-    });
-    void shortcuts.catch(() => { if (active) setShortcutProblem({ id: "shortcuts-read-failed" }); }).then(() => { if (active) readShortcut(); });
-    const page = api.onPage((name) => { setRevealTarget(null); highlightOperation.current += 1; setHighlighted(null); setQuery(""); const next = pageOf(name); setDetour(name === "paste"); setDip(0); setPage(next.page); setFocus(next.focus ?? "top"); });
-    const automatic = api.onUpdateChecks((next) => {
-      if (!active) return;
+      latestShortcut.current = next; setShortcut(next); clearShortcutUndo();
+    }, { ready: readShortcut, failed: () => { setShortcutProblem({ id: "shortcuts-read-failed" }); readShortcut(); } });
+    const page = listening(api.onPage, (name) => { setRevealTarget(null); highlightOperation.current += 1; setHighlighted(null); setQuery(""); const next = pageOf(name); setDetour(name === "paste"); setDip(0); setPage(next.page); setFocus(next.focus ?? "top"); });
+    const automatic = listening(api.onUpdateChecks, (next) => {
       updateReads.current += 1;
       if (!updateWrite.current) clearSettingUndo();
       latestUpdates.current = next;
@@ -311,17 +309,13 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       }
       setUpdatesSaving(false);
     });
-    const close = api.onCloseRequested(() => queue.finishSaving());
+    const close = listening(api.onCloseRequested, () => queue.finishSaving());
     return () => {
       active = false;
       updateWrite.current?.reject(); updateWrite.current = null;
       window.removeEventListener("focus", readAll);
       window.removeEventListener("focus", readShortcut);
-      void preferenceEvents.then((stop) => stop()).catch(() => undefined);
-      void shortcuts.then((stop) => stop()).catch(() => undefined);
-      void page.then((stop) => stop()).catch(() => undefined);
-      void automatic.then((stop) => stop()).catch(() => undefined);
-      void close.then((stop) => stop()).catch(() => undefined);
+      for (const stop of [preferenceEvents, shortcuts, page, automatic, close]) stop();
     };
   }, [api, queue, readProblem, clearShortcutUndo, clearSettingUndo]);
   useEffect(() => {
@@ -446,7 +440,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     if (focused && page === "look") void readWindowSize(++windowSizes.current);
   }, [focused, page, readWindowSize]);
   useEffect(() => {
-    const stop = api.onWindowSaved((saved, revision) => {
+    const stop = listening(api.onWindowSaved, (saved, revision) => {
       windowSaved.current = { revision, saved };
       if (windowUndoRevision.current !== null && revision > windowUndoRevision.current) clearSettingUndo();
       const pending = windowSaveWaiter.current;
@@ -456,7 +450,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       }
       if (live.current && !saved) setProblemRow({ id: "window-size", message: "settings-choice-failed" });
     });
-    return () => { windowSaveWaiter.current?.reject(); windowSaveWaiter.current = null; void stop.then((unlisten) => unlisten()); };
+    return () => { windowSaveWaiter.current?.reject(); windowSaveWaiter.current = null; stop(); };
   }, [api, clearSettingUndo]);
   const chooseWindowSize = async (size: WindowSize, undo: number | null = null, waitForSave = false, restoring = false): Promise<number> => {
     if (!restoring) clearSettingUndo();

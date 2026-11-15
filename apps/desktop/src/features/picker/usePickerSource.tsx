@@ -3,6 +3,7 @@ import { useCallback, useEffect } from "react";
 import { keysFor } from "../../keys";
 import { isolate, say } from "../../i18n";
 import { currentPlatform } from "../../platform";
+import { useNativeEvent } from "../../nativeEvents";
 import { SourceIcon, type SourceActionProps } from "../../ui/SourceAction";
 import type { usePickerLibrary } from "./usePickerLibrary";
 import type { usePickerMenus } from "./usePickerMenus";
@@ -44,20 +45,8 @@ export function usePickerSource({ api, pickerSession, libraryState, menus, resul
     chooserRequest.current = null;
     setChoosingLibrary(false);
   }, [chooserRequest, setChoosingLibrary]);
-  useEffect(() => {
-    let active = true;
-    const subscription = onLibraryFileDropped?.(() => {
-      if (active) { report("dropRefused", false); dismissChooser(); }
-    }).catch(() => () => undefined);
-    const refusal = onLibraryFileRefused?.(() => {
-      if (active) report("dropRefused");
-    }).catch(() => () => undefined);
-    return () => {
-      active = false;
-      void subscription?.then((stop) => stop()).catch(() => undefined);
-      void refusal?.then((stop) => stop()).catch(() => undefined);
-    };
-  }, [onLibraryFileDropped, onLibraryFileRefused, dismissChooser, report]);
+  useNativeEvent(onLibraryFileDropped, () => { report("dropRefused", false); dismissChooser(); });
+  useNativeEvent(onLibraryFileRefused, () => report("dropRefused"));
   // biome-ignore lint/correctness/useExhaustiveDependencies: a refusal belongs to the opening it happened in.
   useEffect(() => { report("dropRefused", false); }, [state.visibility, report]);
   const performSourceChoice: typeof perform = (operation, action, isCurrent) => {

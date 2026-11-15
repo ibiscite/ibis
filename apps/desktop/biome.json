@@ -10,14 +10,23 @@
       "correctness": {
         "useExhaustiveDependencies": "error",
         "useHookAtTopLevel": "error"
+      },
+      "style": {
+        "noRestrictedImports": {
+          "level": "error",
+          "options": { "paths": { "@tauri-apps/api/event": { "importNames": ["listen", "once"], "message": "Subscribe through events, listening or useNativeEvent in src/nativeEvents.ts." } } }
+        }
       }
     }
   },
-  "overrides": [{
-    "includes": ["src/ui/**", "!src/ui/**/*.test.ts", "!src/ui/**/*.test.tsx"],
-    "linter": { "rules": { "style": { "noRestrictedImports": { "level": "error", "options": { "patterns": [{
-      "group": ["**/features/**", "**/settings/**", "**/App", "**/App.*"],
-      "message": "ui/ parts can't depend on screens: move the shared piece into ui/ or pass it as a prop."
-    }] } } } } }
-  }]
+  "overrides": [
+    { "includes": ["src/nativeEvents.ts", "src/**/*.test.*", "src/testing/**"], "linter": { "rules": { "style": { "noRestrictedImports": "off" } } } },
+    {
+      "includes": ["src/ui/**", "!src/ui/**/*.test.ts", "!src/ui/**/*.test.tsx"],
+      "linter": { "rules": { "style": { "noRestrictedImports": { "level": "error", "options": {
+        "paths": { "@tauri-apps/api/event": { "importNames": ["listen", "once"], "message": "Subscribe through events, listening or useNativeEvent in src/nativeEvents.ts." } },
+        "patterns": [{ "group": ["**/features/**", "**/settings/**", "**/App", "**/App.*"], "message": "ui/ parts can't depend on screens: move the shared piece into ui/ or pass it as a prop." }]
+      } } } } }
+    }
+  ]
 }

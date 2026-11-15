@@ -7,6 +7,7 @@ import { Progress } from "../../ui/Progress";
 import { Buttons, ChoiceRow, Group, Note, Row, Section } from "../../ui/Layout";
 import { Sheet, SheetStatus, type SheetMemory } from "../../ui/Sheet";
 import { listedOutput, outputName, type OutputId } from "../../format/outputs";
+import { useNativeEvent } from "../../nativeEvents";
 
 export type WritingsApi = {
   writings: () => Promise<WritingsView>;
@@ -60,18 +61,15 @@ export function WritingsDialog({ api, format, onClose, draft }: { api: WritingsA
   useEffect(() => {
     alive.current = true;
     read();
-    const listening = onProjectChanged?.(read);
-    const writingsChanged = onWritingsChanged?.(read);
-    // A bibliography choice may finish before subscription setup completes.
-    void listening?.then(read);
     return () => {
       alive.current = false;
       reads.current += 1;
       mutation.current = null;
-      void listening?.then((stop) => stop());
-      void writingsChanged?.then((stop) => stop());
     };
-  }, [read, onProjectChanged, onWritingsChanged]);
+  }, [read]);
+  // A bibliography choice may finish before subscription setup completes.
+  useNativeEvent(onProjectChanged, read, { ready: read });
+  useNativeEvent(onWritingsChanged, read);
 
   const edit = (change: WritingEdit, leave = false) => {
     if (mutation.current !== null || !view) return;
