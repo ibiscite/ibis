@@ -317,6 +317,14 @@ general-login-refused = The system did not let { $name } change this. You can ch
 general-login-unreadable = { $name } could not check whether it starts when you { general-login-when }. Look in { general-login-place }.
 
 general-menu-bar-label = Show in menu bar
+general-placement = Where Ibis opens
+general-placement-description = On the display you’re working on, unless you’ve moved Ibis there.
+general-placement-words = position screen display corner centre center opens
+general-placement-centre = Centre
+general-placement-top-left = Top left
+general-placement-top-right = Top right
+general-placement-bottom-left = Bottom left
+general-placement-bottom-right = Bottom right
 general-menu-bar-description = If hidden, open Ibis from Applications to come back here.
 general-paste-title = Pasting
 general-behavior-title = Behavior

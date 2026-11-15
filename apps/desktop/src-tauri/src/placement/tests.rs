@@ -5,10 +5,109 @@ const fn rect(x: f64, y: f64, width: f64, height: f64) -> Area {
 }
 
 #[test]
+fn settings_creation_selects_the_200_percent_display_beside_a_100_percent_display() {
+    let screens = [
+        CreationDisplay {
+            bounds: rect(0.0, 0.0, 1920.0, 1080.0),
+            usable: rect(0.0, 0.0, 1920.0, 1040.0),
+            scale: 1.0,
+        },
+        CreationDisplay {
+            bounds: rect(1920.0, 0.0, 3840.0, 2160.0),
+            usable: rect(1920.0, 0.0, 3840.0, 2080.0),
+            scale: 2.0,
+        },
+    ];
+    for target in [0, 1] {
+        let point = creation_origin(&screens, target, (920.0, 560.0), 32.0, true).unwrap();
+        // Tao's Windows creation path tests the logical point with each
+        // monitor's scale and takes the FIRST matching display.
+        let chosen = screens
+            .iter()
+            .position(|screen| screen.logical(screen.bounds).distance(point) == 0.0);
+        assert_eq!(
+            chosen,
+            Some(target),
+            "{point:?} must choose the target before its first size uses that DPI"
+        );
+        let area = screens[target].logical(screens[target].usable);
+        assert!(area.holds(&rect(point.0, point.1, 920.0, 560.0)));
+    }
+}
+
+#[test]
+fn settings_creation_centres_on_a_mac_external_display_with_a_negative_origin() {
+    let screens = [
+        CreationDisplay {
+            bounds: rect(0.0, 0.0, 3456.0, 2234.0),
+            usable: rect(0.0, 76.0, 3456.0, 2030.0),
+            scale: 2.0,
+        },
+        CreationDisplay {
+            bounds: rect(-2560.0, -200.0, 2560.0, 1440.0),
+            usable: rect(-2560.0, -175.0, 2560.0, 1360.0),
+            scale: 1.0,
+        },
+    ];
+    assert_eq!(
+        creation_origin(&screens, 1, (920.0, 560.0), 32.0, false),
+        Some((-1740.0, 225.0))
+    );
+    assert_eq!(
+        creation_origin(&screens, 0, (920.0, 560.0), 32.0, false),
+        Some((404.0, 265.5))
+    );
+    assert_eq!(creation_origin(&[], 0, (920.0, 560.0), 32.0, false), None);
+}
+
+#[test]
+fn settings_creation_reports_a_target_fully_shadowed_in_logical_coordinates() {
+    let screens = [
+        CreationDisplay {
+            bounds: rect(0.0, 0.0, 1920.0, 1080.0),
+            usable: rect(0.0, 0.0, 1920.0, 1040.0),
+            scale: 1.0,
+        },
+        CreationDisplay {
+            bounds: rect(1920.0, 0.0, 1920.0, 1080.0),
+            usable: rect(1920.0, 0.0, 1920.0, 1040.0),
+            scale: 2.0,
+        },
+    ];
+    assert_eq!(creation_origin(&screens, 1, (896.0, 456.0), 32.0, true), None);
+}
+
+#[test]
+fn picker_corners_respect_the_work_area_and_small_displays() {
+    use ibis_engine::settings::PickerPlacement::*;
+    let area = rect(-1200.0, 25.0, 1200.0, 800.0);
+    for (placement, expected) in [
+        (TopLeft, (-1184.0, 41.0)),
+        (TopRight, (-736.0, 41.0)),
+        (BottomLeft, (-1184.0, 329.0)),
+        (BottomRight, (-736.0, 329.0)),
+    ] {
+        let point = launcher_position(area, 720.0, 480.0, 26.5, placement);
+        assert_eq!(point, expected);
+        assert!(area.holds(&rect(point.0, point.1, 720.0, 480.0)));
+        assert_eq!(
+            launcher_position(rect(10.0, 20.0, 300.0, 200.0), 720.0, 480.0, 26.5, placement),
+            (10.0, 20.0)
+        );
+    }
+}
+
+#[test]
 fn search_anchor_excludes_menu_notch_and_dock_and_ignores_frame_height() {
     let usable = rect(0.0, 38.0, 1728.0, 1015.0);
     for height in [400.0, 480.0, 600.0] {
-        let (x, y) = launcher_position(usable, 720.0, height, 26.5);
+        let (x, y) = launcher_position(
+            usable,
+            720.0,
+            height,
+            26.5,
+            ibis_engine::settings::PickerPlacement::Centre,
+        );
         assert_eq!(x, 504.0);
         assert_eq!(y + 26.5, 38.0 + 1015.0 / 4.0);
         assert!(usable.holds(&rect(x, y, 720.0, height)));
@@ -30,7 +129,13 @@ fn taskbars_on_every_edge_at_150_percent_dpi_leave_the_whole_picker_visible() {
         rect(0.0, 0.0, 1860.0, 1080.0),
     ] {
         let (width, height, search) = (720.0 * scale, 480.0 * scale, 26.5 * scale);
-        let (x, y) = launcher_position(work, width, height, search);
+        let (x, y) = launcher_position(
+            work,
+            width,
+            height,
+            search,
+            ibis_engine::settings::PickerPlacement::Centre,
+        );
         assert_eq!(x + width / 2.0, work.x + work.width / 2.0);
         assert_eq!(y + search, work.y + work.height / 4.0);
         assert!(work.holds(&rect(x, y, width, height)));
@@ -90,11 +195,23 @@ fn focused_window_spanning_screens_uses_its_largest_overlap() {
 #[test]
 fn small_work_area_clamps_default_anchor_and_oversized_window() {
     assert_eq!(
-        launcher_position(rect(10.0, 20.0, 800.0, 500.0), 720.0, 480.0, 26.5),
+        launcher_position(
+            rect(10.0, 20.0, 800.0, 500.0),
+            720.0,
+            480.0,
+            26.5,
+            ibis_engine::settings::PickerPlacement::Centre
+        ),
         (50.0, 40.0)
     );
     assert_eq!(
-        launcher_position(rect(10.0, 20.0, 300.0, 200.0), 720.0, 480.0, 26.5),
+        launcher_position(
+            rect(10.0, 20.0, 300.0, 200.0),
+            720.0,
+            480.0,
+            26.5,
+            ibis_engine::settings::PickerPlacement::Centre
+        ),
         (10.0, 20.0)
     );
 }

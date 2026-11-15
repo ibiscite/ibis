@@ -2156,3 +2156,25 @@ test("a setting whose value is not known yet paints neither on nor off, then its
   await act(async () => answer({ enabled: true, name: "Ibis", problem: null }));
   expect((within(row as HTMLElement).getByRole("switch") as HTMLInputElement).checked).toBe(true);
 });
+
+test("Where Ibis opens saves every placement, reopens it and resets with Undo", async () => {
+  const { api, state } = fakeApi();
+  const submit = vi.spyOn(api, "savePickerPreferences");
+  const view = render(<SettingsApp api={api} initialPage="general" />);
+  for (const [label, value] of [["Top left", "top-left"], ["Top right", "top-right"], ["Bottom left", "bottom-left"], ["Bottom right", "bottom-right"], ["Centre", "centre"]]) {
+    fireEvent.click(await screen.findByRole("button", { name: /^Where Ibis opens / }));
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: label }));
+    await waitFor(() => expect(submit).toHaveBeenLastCalledWith({ picker_placement: value }));
+    await waitFor(() => expect(state.preferences).toMatchObject({ picker_placement: value }));
+  }
+  fireEvent.click(screen.getByRole("button", { name: /^Where Ibis opens / }));
+  fireEvent.click(await screen.findByRole("menuitemradio", { name: "Bottom right" }));
+  await waitFor(() => expect(state.preferences).toMatchObject({ picker_placement: "bottom-right" }));
+  view.unmount();
+  render(<SettingsApp api={api} initialPage="general" />);
+  expect(await screen.findByRole("button", { name: "Where Ibis opens Bottom right" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Use Default for Where Ibis opens" }));
+  await waitFor(() => expect(state.preferences).toMatchObject({ picker_placement: "centre" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Undo Restore Default for Where Ibis opens" }));
+  await waitFor(() => expect(state.preferences).toMatchObject({ picker_placement: "bottom-right" }));
+});

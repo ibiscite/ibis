@@ -462,6 +462,28 @@ mod tests {
         })
     }
 
+    #[test]
+    fn picker_placement_is_a_known_portable_choice_that_survives_an_owned_save() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("settings.json");
+        for placement in ["centre", "top-left", "top-right", "bottom-left", "bottom-right"] {
+            std::fs::write(&path, serde_json::json!({ "picker_placement": placement }).to_string()).unwrap();
+            let owner = Owner::open(path.clone());
+            assert!(!owner.read().settings.unknown.contains_key("picker_placement"));
+            let (saved, ()) = density(&owner, settings::Density::Compact).unwrap();
+            assert_eq!(
+                serde_json::to_value(saved.portable).unwrap()["picker_placement"],
+                placement
+            );
+            drop(owner);
+            let reopened = Owner::open(path.clone());
+            assert_eq!(
+                serde_json::to_value(&reopened.read().settings.portable).unwrap()["picker_placement"],
+                placement
+            );
+        }
+    }
+
     /// The next edit the watch reports, within a bound so a lost event fails.
     fn next(edits: &mpsc::Receiver<Loaded>) -> Loaded {
         edits
