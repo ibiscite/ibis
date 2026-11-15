@@ -15,6 +15,27 @@ fn draft(engine: &Engine, output: &str) -> Draft {
     serde_json::from_value(json!({"items":[{"id":record.object.id(),"cite":record.fingerprints.cite}],"output":{"kind":"preset","name":output}})).unwrap()
 }
 #[test]
+fn an_over_limit_desktop_draft_keeps_the_shared_count_diagnostic() {
+    let engine = engine();
+    let mut draft = draft(&engine, "pandoc");
+    draft.items = vec![draft.items[0].clone(); ibis_core::syntax::MAX_CITATION_ITEMS + 1];
+    let error = engine
+        .citations()
+        .preview(SessionId::PICKER, draft, Cancellation::default())
+        .unwrap()
+        .run()
+        .err()
+        .unwrap();
+    let problem = error.problem();
+    assert_eq!(problem.code, "too-many-items");
+    assert_eq!(problem.info.message.args["count"], "1000");
+    assert_eq!(
+        ibis_engine::catalogue::problem(&problem, ibis_engine::catalogue::Audience::App),
+        "A citation can hold at most 1000 references."
+    );
+}
+
+#[test]
 fn typing_fast_then_enter_cannot_commit_an_older_preview() {
     let engine = engine();
     let shown = engine

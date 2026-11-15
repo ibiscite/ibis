@@ -305,7 +305,11 @@ macro_rules! citation_diagnostics {
                     $(Self::$variant => ($code, $recovery),)*
                     Self::Unknown => ("unknown", Recovery::Retry),
                 };
-                Problem { code: code.into(), info: RecoveryInfo::new(self.message_id(), recovery) }
+                let mut info = RecoveryInfo::new(self.message_id(), recovery);
+                if self == Self::TooManyItems {
+                    info = info.argument("count", crate::syntax::MAX_CITATION_ITEMS.to_string());
+                }
+                Problem { code: code.into(), info }
             }
         }
     }

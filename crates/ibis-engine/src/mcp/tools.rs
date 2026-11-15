@@ -641,12 +641,7 @@ fn cite_submitted(
         .and_then(Value::as_array)
         .filter(|items| !items.is_empty())
         .ok_or_else(|| Refusal::bad(ToolProblem::Items, &[]))?;
-    if items.len() > ibis_core::syntax::MAX_CITATION_ITEMS {
-        return Err(Refusal::bad(
-            ToolProblem::TooManyItems,
-            &[("limit", &ibis_core::syntax::MAX_CITATION_ITEMS.to_string())],
-        ));
-    }
+    ibis_core::citation::check_item_limit(items.len()).map_err(EngineError::citation)?;
     let output = chosen_output(arguments)?;
     let mut writing = None;
     let destination = match arguments.get("for_app") {
@@ -913,13 +908,8 @@ fn refusal(result: &CitationResult) -> Refusal {
             ItemOutcome::Refused { item, error } => {
                 let reference = crate::catalogue::text("mcp-item-name", None, &[("number", &(item + 1).to_string())])
                     .unwrap_or_default();
-                let limit = ibis_core::syntax::MAX_CITATION_ITEMS.to_string();
                 let output = crate::catalogue::text("mcp-output-name", None, &[]).unwrap_or_default();
-                let args = [
-                    ("reference", reference.as_str()),
-                    ("output", output.as_str()),
-                    ("limit", &limit),
-                ];
+                let args = [("reference", reference.as_str()), ("output", output.as_str())];
                 Some(crate::catalogue::citation(*error, Audience::Agent, &args))
             }
             ItemOutcome::Rendered { .. } | ItemOutcome::Unknown => None,

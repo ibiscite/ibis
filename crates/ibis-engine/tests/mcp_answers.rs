@@ -89,6 +89,27 @@ fn sentinel_record_ids_never_enter_mcp_text_and_keyless_refusals_keep_recovery()
 }
 
 #[test]
+fn over_limit_citations_use_the_shared_count_diagnostic_before_resolving_references() {
+    let (_dir, _path, engine) = library(BIB.as_bytes());
+    let result = tool(
+        &engine,
+        "cite",
+        json!({"items":vec![json!({"ref":"unresolved"}); ibis_core::syntax::MAX_CITATION_ITEMS + 1]}),
+    );
+    assert_eq!(
+        refusal(&result),
+        "error: bad-input. A citation can hold at most 1000 references."
+    );
+    let problem = &result["structuredContent"]["error"];
+    assert_eq!(problem["code"], "too-many-items");
+    assert_eq!(
+        problem["message"],
+        json!({"id":"problem-too-many-items", "args":{"count":"1000"}})
+    );
+    assert_eq!(problem["recovery"]["action"], "reduce-selection");
+}
+
+#[test]
 fn tool_validation_keeps_the_specific_catalogue_message_and_arguments() {
     let result = tool(&Engine::new().unwrap(), "styles", json!({"limit":0}));
     assert!(refusal(&result).contains("limit must be a whole number"));

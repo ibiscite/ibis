@@ -673,6 +673,7 @@ impl Worker {
         // A late-starting worker stops before building a request. A running
         // worker shares this token with the engine and QuickJS interrupt handler.
         let cancel = self.preview_cancellation(reservation)?;
+        ibis_core::citation::check_item_limit(items.len())?;
         // Bound raw native field input before parsing or constructing rich text.
         // The engine owns its own rich-text accounting and validation.
         let bytes = items
@@ -687,7 +688,7 @@ impl Worker {
             })
             .flatten()
             .fold(0_usize, |sum, text| sum.saturating_add(text.len()));
-        if items.len() > ibis_core::syntax::MAX_CITATION_ITEMS || bytes > ibis_core::syntax::MAX_CITATION_BYTES {
+        if bytes > ibis_core::syntax::MAX_CITATION_BYTES {
             return Err(SessionError::CitationTooLarge);
         }
         let literal = |text: Option<String>| {

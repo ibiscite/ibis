@@ -335,6 +335,70 @@ fn color_is_explicit_and_machine_streams_stay_undecorated() -> Result {
 }
 
 #[test]
+fn over_limit_citations_use_the_engine_error_and_catalogue_text() -> Result {
+    use ibis_core::contract::{CitationError, Envelope, GoldenCase};
+    use ibis_engine::{Cancellation, catalogue, request::KeyCitationRequest};
+
+    let (_dir, file) = library()?;
+    let count = ibis_core::syntax::MAX_CITATION_ITEMS + 1;
+    let keys = vec!["vale2024lanterns"; count];
+    let request = KeyCitationRequest {
+        keys: keys.iter().map(|key| (*key).into()).collect(),
+        output: ibis_engine::outputs::find("pandoc").ok_or("output")?.output.clone(),
+        form: Default::default(),
+        strict: false,
+        keep_order: false,
+        output_locale: None,
+    };
+    let error = Engine::new()
+        .map_err(|_| "engine")?
+        .cite_keys(&request, &Cancellation::default())
+        .err()
+        .ok_or("over-limit citation must fail")?;
+    let message = catalogue::error(&error, catalogue::Audience::Cli);
+    assert_eq!(message, "A citation can hold at most 1000 references.");
+    assert_eq!(error.citation_error, Some(CitationError::TooManyItems));
+    let expected = serde_json::to_value(Envelope::<Value>::failure(error))?;
+    let input = keys.join("\n");
+    let key_file = std::path::Path::new(&file).with_file_name("keys.txt");
+    std::fs::write(&key_file, &input)?;
+    let mut positional = vec!["cite"];
+    positional.extend_from_slice(&keys);
+    let mut invalid_key = positional.clone();
+    invalid_key[1] = "";
+    let mut case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json"))?;
+    case.request.items = vec![case.request.items[0].clone(); count];
+    let canonical = serde_json::to_string(&case.request)?;
+    for (args, input) in [
+        (positional, input.as_bytes()),
+        (invalid_key, input.as_bytes()),
+        (vec!["cite", "--keys-from", "-"], input.as_bytes()),
+        (
+            vec!["cite", "--keys-from", key_file.to_str().ok_or("path")?],
+            input.as_bytes(),
+        ),
+        (vec!["cite", "--request"], canonical.as_bytes()),
+        (vec!["call", "cite", "--stdin"], canonical.as_bytes()),
+    ] {
+        for json in [false, true] {
+            let mut args = args.clone();
+            if json {
+                args.push("--json");
+            }
+            let (code, output, errors) = run(&file, &args, input, ibis::OutputMode::Plain)?;
+            assert_eq!(code, 3);
+            assert_eq!(errors, format!("ibis: {message}\n"));
+            if json {
+                assert_eq!(serde_json::from_str::<Value>(&output)?, expected);
+            } else {
+                assert!(output.is_empty());
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn explicit_key_input_keeps_order_duplicates_and_whole_citation_refusals() -> Result {
     let (_dir, file) = library()?;
     let input = b" # invented list\n vale2024lanterns \n\nfen2023clouds\nvale2024lanterns\n";
@@ -364,19 +428,14 @@ fn explicit_key_input_keeps_order_duplicates_and_whole_citation_refusals() -> Re
         ibis::OutputMode::Plain,
     )?;
     assert_eq!((code, output.as_str()), (4, ""));
-    for input in [
-        b"".to_vec(),
-        b"vale2024lanterns\n".repeat(ibis_core::syntax::MAX_CITATION_ITEMS + 1),
-    ] {
-        let (code, output, _) = run(
-            &file,
-            &["cite", "--keys-from", "-", "--json"],
-            &input,
-            ibis::OutputMode::Plain,
-        )?;
-        assert_eq!(code, 3);
-        assert_eq!(serde_json::from_str::<Value>(&output)?["error"]["code"], "bad-input");
-    }
+    let (code, output, _) = run(
+        &file,
+        &["cite", "--keys-from", "-", "--json"],
+        b"",
+        ibis::OutputMode::Plain,
+    )?;
+    assert_eq!(code, 3);
+    assert_eq!(serde_json::from_str::<Value>(&output)?["error"]["code"], "bad-input");
     let (code, output, _) = run(
         &file,
         &["cite", "--keys-from", "-", "--json"],

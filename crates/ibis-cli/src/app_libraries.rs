@@ -5,7 +5,7 @@
 //! as they are stop the command with their reason: Ibis never falls back to a
 //! backup, a default or another app's settings when the chosen one is unusable.
 
-use crate::Failure;
+use crate::{Failure, human::cli};
 use ibis_core::contract::ErrorCode;
 use ibis_engine::request::ZoteroLibrary;
 use ibis_engine::settings::{self, LibrarySetting, PrimaryRead, SettingsError, ZoteroLibrary as Chosen};
@@ -18,8 +18,6 @@ pub(crate) const APPS: [(&str, &str); 2] = [
     ("com.ibiscite.ibis.nightly", "Ibis Nightly"),
 ];
 
-pub(crate) const NAME_ONE: &str = "name one with --file PATH, --zotero or --zotero-group ID";
-
 /// What the app chose, and where that choice was read.
 #[derive(Debug)]
 pub(crate) struct AppLibraries {
@@ -30,12 +28,7 @@ pub(crate) struct AppLibraries {
 }
 
 pub(crate) fn load() -> Result<AppLibraries, Failure> {
-    let missing = || {
-        Failure::new(
-            ErrorCode::Usage,
-            format!("no library is named and the Ibis app has no settings here; {NAME_ONE}."),
-        )
-    };
+    let missing = || Failure::new(ErrorCode::Usage, cli("cli-app-settings-missing", &[]));
     let directory = ibis_engine::identity::config_dir().ok_or_else(missing)?;
     for (identifier, app) in APPS {
         if let Some(chosen) = read(app, &directory.join(identifier).join("settings.json"))? {
@@ -53,10 +46,10 @@ pub(crate) fn format_settings(nightly: bool) -> Result<settings::Settings, Failu
     let loaded = settings::load(&path);
     match loaded.cites() {
         Err(problem) => Err(Failure::new(
-            problem_code(problem),
-            format!(
-                "cannot read the formats chosen in {app}: {}. Open {app} to repair its settings.",
-                problem_text(problem)
+            ibis_engine::settings_backup::settings_code(problem),
+            cli(
+                "cli-app-formats-unreadable",
+                &[("app", app), ("reason", &problem_text(problem))],
             ),
         )),
         Ok(settings) => Ok(settings.clone()),
@@ -71,33 +64,36 @@ fn read(app: &'static str, path: &Path) -> Result<Option<AppLibraries>, Failure>
     }
     let settings = loaded.cites().map_err(|problem| {
         let reason = if loaded.from_backup {
-            format!("{}, and Ibis does not use its backup here", problem_text(problem))
+            cli("cli-app-settings-backup-unused", &[("reason", &problem_text(problem))])
         } else {
             problem_text(problem)
         };
-        let code = problem_code(problem);
+        let code = ibis_engine::settings_backup::settings_code(problem);
         let fix = if code == ErrorCode::NewerFormat {
-            format!("Update this ibis command to match {app}")
+            cli("cli-app-settings-update", &[("app", app)])
         } else {
-            format!("Open {app} to repair its settings")
+            cli("cli-app-settings-repair", &[("app", app)])
         };
         Failure::new(
             code,
-            format!("cannot read the libraries chosen in {app}: {reason}. {fix}, or {NAME_ONE}."),
+            cli(
+                "cli-app-libraries-unreadable",
+                &[("app", app), ("reason", &reason), ("fix", &fix)],
+            ),
         )
     })?;
     let (files, zotero) = match settings.portable.library.clone() {
         None => {
             return Err(Failure::new(
                 ErrorCode::Usage,
-                format!("no library is chosen in {app} yet; choose one there, or {NAME_ONE}."),
+                cli("cli-app-library-unchosen", &[("app", app)]),
             ));
         }
         // A relative path would mean a different file in every folder; ask again instead.
         Some(LibrarySetting::Bibtex(file)) if !file.is_absolute() => {
             return Err(Failure::new(
                 ErrorCode::BadInput,
-                format!("the library chosen in {app} is not a full path; choose it again there, or {NAME_ONE}."),
+                cli("cli-app-library-relative", &[("app", app)]),
             ));
         }
         Some(LibrarySetting::Bibtex(file)) => (vec![file], Vec::new()),
@@ -124,26 +120,21 @@ fn read(app: &'static str, path: &Path) -> Result<Option<AppLibraries>, Failure>
 /// A fixed description: never the settings' own text, which may hold private values.
 fn problem_text(problem: &SettingsError) -> String {
     match problem {
-        SettingsError::Changed => "its settings changed while saving; try again".into(),
+        SettingsError::Changed => cli("cli-app-settings-changed", &[]),
         SettingsError::Busy => ibis_engine::settings_backup::settings_message(problem),
         SettingsError::Unreadable(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
-            "this program is not allowed to read its settings file; allow it to, or run it outside the sandbox".into()
+            cli("cli-app-settings-permission", &[])
         }
         SettingsError::Unreadable(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            "its settings file is missing".into()
+            cli("cli-app-settings-file-missing", &[])
         }
-        SettingsError::Unreadable(_) => "its settings file could not be read".into(),
-        SettingsError::Invalid(_) => "its settings file is not valid".into(),
-        SettingsError::InvalidZoteroLibraryEntry { position } => {
-            format!("its settings file is not valid (Zotero library entry {position})")
-        }
-        SettingsError::NewerVersion(version) => {
-            format!("its settings were written by a newer version of Ibis (format {version})")
-        }
+        SettingsError::Unreadable(_) => cli("cli-app-settings-unreadable", &[]),
+        SettingsError::Invalid(_) => cli("cli-app-settings-invalid", &[]),
+        SettingsError::InvalidZoteroLibraryEntry { position } => cli(
+            "cli-app-settings-zotero-invalid",
+            &[("position", &position.to_string())],
+        ),
+        SettingsError::NewerVersion(version) => cli("cli-app-settings-newer", &[("version", &version.to_string())]),
         SettingsError::Backup(inner) => problem_text(inner),
     }
-}
-
-fn problem_code(problem: &SettingsError) -> ErrorCode {
-    ibis_engine::settings_backup::settings_code(problem)
 }

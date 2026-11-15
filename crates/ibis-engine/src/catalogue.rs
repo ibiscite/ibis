@@ -99,7 +99,17 @@ pub fn sentence(group: &str, code: impl Serialize, audience: Audience, args: &[(
 
 /// The same diagnostic with the reference named where the client knows it.
 pub fn citation(error: ibis_core::contract::CitationError, audience: Audience, args: &[(&str, &str)]) -> String {
-    render(error.message_id(), audience, None, args)
+    let problem = error.problem();
+    let mut arguments = args.to_vec();
+    arguments.extend(
+        problem
+            .info
+            .message
+            .args
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.as_str())),
+    );
+    render(error.message_id(), audience, None, &arguments)
 }
 
 fn render(
