@@ -50,36 +50,36 @@ artifacts. If `~/.local/bin` is absent from PATH on macOS or Linux, show the exa
 shell-profile line with **Copy**; no elevation or profile editing. Refresh only on a visit or
 window focus, never while hidden. All controls use `ui/Layout` and `ui/Button`.
 
-**AI Apps.** The app and the command line are one product with one set of
-settings (decision 0055, maintainer direction confirmed 2026-11-15). The
-**Command Line** group holds the ibis command row above. The **AI Apps** group
-lists every supported app, found ones first, from the same engine module as
-`ibis agents setup|status|remove`. Each row names the app, says its state in
-plain words and offers one action: **Connect**, **Disconnect**, **Repair** for
-a stale command path, or **Replace…** for a different entry. A different entry
-shows its before/after text in a Note; pressing Replace is the confirmation,
-with no second dialog. Mutations carry the shown observation’s fingerprint, so a
-changed entry cannot be replaced or disconnected before its new observation
-is reviewed. Blocked
-files show their reason, plugins say they already connect Ibis, and apps set up
-in their own window show their steps.
-A failed change says so and keeps the previous list. If an app's own command
-removed an entry before its replacement failed, a Note under that row shows
-the recovery detail and entry in code, only in the requesting window and never
-in logs. Each action's accessible name includes its app. Apps needing the
-`ibis` command point to Command Line above when it is missing. One Note under
-the group explains that other servers and settings stay, a backup is kept
-beside each changed file, and the terminal does the same. The engine owns
-merging, private numbered backups and the change re-check. Desktop connections
-use the installer's PATH locations plus `~/.local/bin`, and a full CLI path for
-Claude Desktop and LM Studio, never the desktop executable or a temporary
-AppImage, disk-image or translocated path. Without a durable full path, connecting
-or repairing those apps is blocked with **Install the ibis command first**.
-Refresh on a visit, window focus while visible, or a successful command
-install/remove on this page; a late read cannot overwrite a newer change.
-Search finds both groups by agents, MCP, app names and command line.
+**AI Apps.** Settings and `ibis agents setup|status|remove` share the engine
+and saved app settings (decision 0055, maintainer direction 2026-11-15).
+**Command Line** comes first, then every supported AI app, found ones first.
+Rows offer **Connect**, **Disconnect**, **Repair** for stale paths or **Replace…**
+for different entries. Replace shows the before/after Note; pressing it confirms
+without another dialog. The shown entry and proposed command are fingerprinted
+so changed settings require review. Blocked files show why; plugins explain the
+existing connection; apps configured in their own window show steps.
 
-**Attachment text.** The **Attachment text** group follows the **AI Apps** group, after the **Command Line** group. `settings/AttachmentText` owns its library choices separately from the connection rows in `settings/AiApps`. One switch per open library says **Let AI apps read attachment text**, with the library’s display name as context. It is off by default. AI apps then read the text of that library’s attachments with page numbers, never the files; `ibis read` in a terminal does not need this choice. With no open library, one row says **No library is open.** The app and CLI share the device-only `attachment_text` setting; a saved change reaches the running MCP gate. Only complete LibraryIds returned by the open-library list can be changed. Search finds it by “attachment”, “full text” and “PDF”.
+Failed changes keep the list. If a client removes an entry before adding its
+replacement fails, recovery text appears under that app only, never in logs.
+Action names include the app for accessibility. Apps needing `ibis` on PATH
+point to Command Line. One Note explains preserved settings, private numbered
+backups and the shared terminal behavior. The engine rechecks changes and uses
+`ibis_core::atomic_file` for writes. Desktop discovery includes installer PATH
+locations and `~/.local/bin`; full paths name the CLI, never the desktop or a
+temporary mount/translocation. Without a durable CLI, full-path apps say
+**Install the ibis command first**. Visit, visible focus and successful command
+changes refresh the list. A shared Settings request hook rejects late reads
+and completions after closing; refreshes during an AI app change wait for it.
+Search finds agents, MCP, app names and command line.
+
+**Attachment text.** After AI Apps, one switch per open library says **Let AI
+apps read attachment text**, with its display name. It is off by default:
+AI apps receive text with page numbers, never files; terminal `ibis read` needs
+no opt-in. No library shows **No library is open.** The app and CLI share the
+device-only `attachment_text` setting, applied to the running MCP gate. Only
+complete IDs previously listed and still open can change. Failed saves restore
+the saved choice; late saves cannot undo newer choices. Search finds attachment,
+full text and PDF.
 
 **Another computer.** Settings › General’s **Details…** holds **Back up settings** (Back Up…, a save dialog that starts in iCloud Drive on macOS, OneDrive on Windows, otherwise Documents) and **Restore settings** (Restore…). A chosen backup is checked whole, then the row lists every change as "Setting: before → after" with notes (a bibliography not on this computer, a shortcut kept for this system), **Cancel** and the primary **Restore and Restart**. Nothing changes before that button; a bibliography shows by its file name only. Refusals say why in one line and change nothing ([moving to a new computer](../moving-to-a-new-computer.md)).
 

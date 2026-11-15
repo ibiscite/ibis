@@ -67,15 +67,13 @@ async fn operation(app: tauri::AppHandle, step: Step) -> Result<Vec<AgentApp>, S
 }
 
 fn apply(home: &agent_apps::Home, step: Step) -> Result<Vec<AgentApp>, String> {
-    let apps = agent_apps::list(home);
     let (id, expected, replace, connect) = match step {
-        Step::Status => return Ok(apps),
+        Step::Status => return Ok(agent_apps::list(home)),
         Step::Connect { id, replace, expected } => (id, expected, replace, true),
         Step::Disconnect { id, expected } => (id, expected, false, false),
     };
-    let app = apps
-        .iter()
-        .find(|item| item.id == id)
+    let app = agent_apps::plan(home, &[&id])
+        .pop()
         .ok_or("Could not find that AI app.")?;
     if app.revision.as_str() != expected {
         return Err("The AI app settings changed. Check the connection and try again.".into());

@@ -127,11 +127,7 @@ pub(crate) async fn set_cli_installed(app: tauri::AppHandle, installed: bool) ->
     operation(app, if installed { Step::Install } else { Step::Remove }).await
 }
 
-/// Installing the app is all it takes to get `ibis` on macOS and Linux: the
-/// first launch of an installed release puts the command in `~/.local/bin`
-/// (Settings shows the profile line when that is not on PATH) unless another
-/// installer owns that place; afterwards the choice in Settings stands
-/// (Windows's installer adds it to PATH itself). Development builds never do.
+/// Release launches maintain the per-user command; Windows's installer owns it.
 pub(crate) fn keep_at_launch(app: &tauri::AppHandle) {
     if cfg!(debug_assertions) || cfg!(windows) {
         return;
@@ -142,7 +138,6 @@ pub(crate) fn keep_at_launch(app: &tauri::AppHandle) {
     });
 }
 
-#[derive(Clone, Copy)]
 enum Step {
     Status,
     Install,
@@ -152,8 +147,7 @@ enum Step {
 
 async fn operation(app: tauri::AppHandle, step: Step) -> Result<CommandStatus, String> {
     static OWNER: tauri::async_runtime::Mutex<()> = tauri::async_runtime::Mutex::const_new(());
-    // Acquire the FIFO owner before scheduling blocking work, including reads
-    // after a close/reopen. Moving the lock into that work permits reordering.
+    // Lock before scheduling workers so a later removal cannot overtake an install.
     with_owner(&OWNER, move || {
         let install = installer(&app)?;
         match step {

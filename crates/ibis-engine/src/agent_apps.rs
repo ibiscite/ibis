@@ -1,16 +1,6 @@
-//! Shared agent-app connections for Settings and `ibis agents`: connect Ibis's read-only MCP server to
-//! the AI apps on this computer in one step, and undo it.
-//!
-//! Every app gets the same server entry the plugin ships
-//! (`plugins/ibis/.mcp.json`): `ibis mcp --app-libraries`. Apps with their own
-//! command for adding a server (Claude Code, Codex) are changed through that
-//! command; for the others Ibis merges the entry into the app's JSON file and
-//! leaves every other server and setting as it was. A different `ibis` entry
-//! is shown before and after and replaced only when the person says yes.
-//! Removal takes out only the entry setup writes. Ibis never reads or
-//! writes anything else in these files, and a file that changes while Ibis
-//! works on it, is a symbolic link or is not plain JSON is left alone with the
-//! step to do by hand.
+//! Shared read-only MCP setup for Settings and `ibis agents`.
+//! Client commands own their formats; JSON edits preserve other settings,
+//! keep private backups and refuse changed files, links and non-JSON.
 
 use std::fs;
 use std::io::Write;
@@ -44,7 +34,7 @@ enum Store {
         program: &'static str,
         add: &'static [&'static str],
         remove: &'static [&'static str],
-        file: fn(&Home) -> Option<PathBuf>,
+        file: fn(&Home) -> PathBuf,
         read: fn(&str) -> Result<Value, String>,
     },
     /// Set up in the app's own window.
@@ -79,7 +69,7 @@ const CLIENTS: [Client; 9] = [
                 "--app-libraries",
             ],
             remove: &["mcp", "remove", "--scope", "user", "ibis"],
-            file: |home| Some(home.root.join(".claude.json")),
+            file: |home| home.root.join(".claude.json"),
             read: |text| json_servers(text, "mcpServers"),
         },
         found: |home| home.on_path("claude") || home.root.join(".claude.json").is_file(),
@@ -105,7 +95,7 @@ const CLIENTS: [Client; 9] = [
             program: "codex",
             add: &["mcp", "add", "ibis", "--", "ibis", "mcp", "--app-libraries"],
             remove: &["mcp", "remove", "ibis"],
-            file: |home| Some(home.codex().join("config.toml")),
+            file: |home| home.codex().join("config.toml"),
             read: toml_servers,
         },
         found: |home| home.on_path("codex") || home.codex().is_dir(),
@@ -187,14 +177,6 @@ pub struct Home {
 }
 
 impl Home {
-    /// The command an app is given: the full path where the app needs one.
-    fn command(&self, absolute: bool) -> String {
-        match &self.ibis {
-            Some(path) if absolute => path.to_string_lossy().into_owned(),
-            _ => COMMAND.to_owned(),
-        }
-    }
-
     fn app_config(&self, app: &str) -> Option<PathBuf> {
         self.config.as_ref().map(|dir| dir.join(app))
     }
@@ -255,15 +237,13 @@ enum Found {
     Blocked(String),
 }
 
-/// A server entry that runs `ibis mcp`, wherever `ibis` lives.
-fn runs_ibis(entry: &Value) -> bool {
-    let program = entry["command"].as_str().map(Path::new).and_then(Path::file_stem);
-    program.is_some_and(|stem| stem.eq_ignore_ascii_case(COMMAND)) && entry["args"].get(0) == Some(&json!("mcp"))
-}
-
 /// The entry setup writes, from any `ibis`: nothing added that removal would lose.
 fn ours(entry: &Value) -> bool {
-    runs_ibis(entry)
+    entry["command"]
+        .as_str()
+        .map(Path::new)
+        .and_then(Path::file_stem)
+        .is_some_and(|stem| stem.eq_ignore_ascii_case(COMMAND))
         && entry["args"] == json!(ARGS)
         && entry.as_object().is_some_and(|fields| {
             fields.iter().all(|(name, value)| match name.as_str() {
@@ -344,11 +324,10 @@ fn state(client: &Client, home: &Home) -> Found {
         }
         Store::Program { file, read, .. } => {
             // Only read, so a linked dotfile is fine; the app's own command writes it.
-            let servers = match file(home).map(fs::read_to_string) {
-                None => Value::Null,
-                Some(Err(error)) if error.kind() == std::io::ErrorKind::NotFound => Value::Null,
-                Some(Err(_)) => return Found::Blocked("its settings file can't be read".into()),
-                Some(Ok(text)) => match read(&text) {
+            let servers = match fs::read_to_string(file(home)) {
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Value::Null,
+                Err(_) => return Found::Blocked("its settings file can't be read".into()),
+                Ok(text) => match read(&text) {
                     Ok(servers) => servers,
                     Err(reason) => return Found::Blocked(reason),
                 },
@@ -458,15 +437,22 @@ pub struct Change {
     pub detail: String,
 }
 
-impl From<(Outcome, String)> for Change {
-    fn from((outcome, detail): (Outcome, String)) -> Self {
+impl Change {
+    fn new(outcome: Outcome, detail: String) -> Self {
         Self { outcome, detail }
     }
 }
 
 fn wanted(client: &Client, home: &Home) -> String {
     match client.store {
-        Store::Json { typed, absolute, .. } => entry(typed, &home.command(absolute)),
+        Store::Json { typed, absolute, .. } => {
+            let command = home
+                .ibis
+                .as_ref()
+                .filter(|_| absolute)
+                .map(|path| path.to_string_lossy());
+            entry(typed, command.as_deref().unwrap_or(COMMAND))
+        }
         _ => entry(false, COMMAND),
     }
 }
@@ -570,140 +556,130 @@ impl AgentApp {
         }
     }
 
-    /// Connect this plan. Replacement is explicit; no module operation prompts.
+    /// Replacement is explicit; operations never prompt.
     pub fn connect(&self, home: &Home, write: bool, dry_run: bool, replace: bool) -> Change {
-        connect(self.client, self.planned.clone(), home, write, dry_run, replace).into()
-    }
-
-    /// Remove only the entry setup owns, after rechecking the plan.
-    pub fn disconnect(&self, home: &Home, write: bool, dry_run: bool) -> Change {
-        disconnect(self.client, self.planned.clone(), home, write, dry_run).into()
-    }
-}
-
-fn connect(
-    client: &'static Client,
-    found: Found,
-    home: &Home,
-    write: bool,
-    dry_run: bool,
-    replace: bool,
-) -> (Outcome, String) {
-    let planned = found.clone();
-    let replacing = match found {
-        Found::Connected(_) => return (Outcome::Connected, "already connected".into()),
-        Found::Plugin => {
-            return (
-                Outcome::Connected,
-                "the Ibis plugin already connects it; nothing added, so it isn't there twice".into(),
+        let client = self.client;
+        let planned = &self.planned;
+        let replacing = match planned {
+            Found::Connected(_) => return Change::new(Outcome::Connected, "already connected".into()),
+            Found::Plugin => {
+                return Change::new(
+                    Outcome::Connected,
+                    "the Ibis plugin already connects it; nothing added, so it isn't there twice".into(),
+                );
+            }
+            Found::Blocked(reason) => {
+                return Change::new(Outcome::Blocked, format!("{reason}. Set it up by hand: {GUIDE}"));
+            }
+            Found::Missing => None,
+            Found::Different(old) | Found::Stale(old) => Some(old),
+        };
+        if let Store::ByHand { steps } = client.store {
+            return Change::new(Outcome::ByHand, steps.to_owned());
+        }
+        if missing_full_path(client, home) {
+            return Change::new(Outcome::Blocked, "Install the ibis command first".into());
+        }
+        let wanted = wanted(client, home);
+        let diff = replacing
+            .as_ref()
+            .map(|old| format!("- \"ibis\": {old}\n+ \"ibis\": {wanted}"));
+        if dry_run {
+            return match diff {
+                Some(diff) => Change::new(Outcome::WouldReplace, diff),
+                None => Change::new(Outcome::WouldConnect, String::new()),
+            };
+        }
+        if !write {
+            return Change::new(Outcome::Unchanged, String::new());
+        }
+        if let Some(diff) = &diff
+            && matches!(planned, Found::Different(_))
+            && !replace
+        {
+            return Change::new(
+                Outcome::Kept,
+                format!("its own ibis entry was kept; replace it with --replace\n{diff}"),
             );
         }
-        Found::Blocked(reason) => return (Outcome::Blocked, format!("{reason}. Set it up by hand: {GUIDE}")),
-        Found::Missing => None,
-        Found::Different(old) | Found::Stale(old) => Some(old),
-    };
-    if let Store::ByHand { steps } = client.store {
-        return (Outcome::ByHand, steps.to_owned());
-    }
-    if missing_full_path(client, home) {
-        return (Outcome::Blocked, "Install the ibis command first".into());
-    }
-    let wanted = wanted(client, home);
-    let diff = replacing
-        .as_ref()
-        .map(|old| format!("- \"ibis\": {old}\n+ \"ibis\": {wanted}"));
-    if dry_run {
-        return match diff {
-            Some(diff) => (Outcome::WouldReplace, diff),
-            None => (Outcome::WouldConnect, String::new()),
-        };
-    }
-    if !write {
-        return (Outcome::Unchanged, String::new());
-    }
-    if let Some(diff) = &diff
-        && matches!(planned, Found::Different(_))
-        && !replace
-    {
-        return (
-            Outcome::Kept,
-            format!("its own ibis entry was kept; replace it with --replace\n{diff}"),
-        );
-    }
-    if state(client, home) != planned {
-        return (Outcome::Failed, CHANGED.into());
-    }
-    let done = match client.store {
-        Store::Json { file, key, .. } => file(home)
-            .ok_or_else(|| "its settings folder is unknown here".to_owned())
-            .and_then(|path| edit_json(&path, key, Some(wanted))),
-        Store::Program {
-            program, add, remove, ..
-        } => {
-            let removed = if replacing.is_some() {
-                run_program(home, program, remove)
-            } else {
-                Ok(())
-            };
-            removed.and_then(|()| {
-                run_program(home, program, add).map_err(|reason| match &replacing {
+        if state(client, home) != *planned {
+            return Change::new(Outcome::Failed, CHANGED.into());
+        }
+        let done =
+            match client.store {
+                Store::Json { file, key, .. } => file(home)
+                    .ok_or_else(|| "its settings folder is unknown here".to_owned())
+                    .and_then(|path| edit_json(&path, key, Some(wanted))),
+                Store::Program {
+                    program, add, remove, ..
+                } => {
+                    let removed = if replacing.is_some() {
+                        run_program(home, program, remove)
+                    } else {
+                        Ok(())
+                    };
+                    removed.and_then(|()| {
+                        run_program(home, program, add).map_err(|reason| match &replacing {
                     Some(old) => {
                         format!("{reason}; the old ibis entry was taken out. To restore it, put back:\n\"ibis\": {old}")
                     }
                     None => reason,
                 })
-            })
+                    })
+                }
+                Store::ByHand { .. } => Ok(()),
+            };
+        match (done, replacing) {
+            (Ok(()), Some(_)) => Change::new(Outcome::Replaced, diff.unwrap_or_default()),
+            (Ok(()), None) => Change::new(Outcome::Connected, "added; start a new session in the app".into()),
+            (Err(reason), _) => Change::new(Outcome::Failed, format!("{reason}. Set it up by hand: {GUIDE}")),
         }
-        Store::ByHand { .. } => Ok(()),
-    };
-    match (done, replacing) {
-        (Ok(()), Some(_)) => (Outcome::Replaced, diff.unwrap_or_default()),
-        (Ok(()), None) => (Outcome::Connected, "added; start a new session in the app".into()),
-        (Err(reason), _) => (Outcome::Failed, format!("{reason}. Set it up by hand: {GUIDE}")),
     }
-}
 
-fn disconnect(client: &'static Client, found: Found, home: &Home, write: bool, dry_run: bool) -> (Outcome, String) {
-    let planned = found.clone();
-    match found {
-        Found::Missing => return (Outcome::NotConnected, String::new()),
-        Found::Plugin => {
-            return (
-                Outcome::Kept,
-                "connected through the Ibis plugin; remove it with: claude plugin uninstall ibis@ibiscite".into(),
-            );
+    /// Remove only the entry setup owns, after rechecking the plan.
+    pub fn disconnect(&self, home: &Home, write: bool, dry_run: bool) -> Change {
+        let client = self.client;
+        let planned = &self.planned;
+        match planned {
+            Found::Missing => return Change::new(Outcome::NotConnected, String::new()),
+            Found::Plugin => {
+                return Change::new(
+                    Outcome::Kept,
+                    "connected through the Ibis plugin; remove it with: claude plugin uninstall ibis@ibiscite".into(),
+                );
+            }
+            Found::Different(old) => {
+                return Change::new(
+                    Outcome::Kept,
+                    format!("its ibis entry is not the one setup adds, so it was kept: {old}"),
+                );
+            }
+            Found::Blocked(reason) => return Change::new(Outcome::Blocked, reason.clone()),
+            Found::Connected(_) | Found::Stale(_) => {}
         }
-        Found::Different(old) => {
-            return (
-                Outcome::Kept,
-                format!("its ibis entry is not the one setup adds, so it was kept: {old}"),
-            );
+        if let Store::ByHand { steps } = client.store {
+            return Change::new(Outcome::ByHand, steps.to_owned());
         }
-        Found::Blocked(reason) => return (Outcome::Blocked, reason),
-        Found::Connected(_) | Found::Stale(_) => {}
-    }
-    if let Store::ByHand { steps } = client.store {
-        return (Outcome::ByHand, steps.to_owned());
-    }
-    if dry_run {
-        return (Outcome::WouldRemove, String::new());
-    }
-    if !write {
-        return (Outcome::Unchanged, String::new());
-    }
-    if state(client, home) != planned {
-        return (Outcome::Failed, CHANGED.into());
-    }
-    let done = match client.store {
-        Store::Json { file, key, .. } => file(home)
-            .ok_or_else(|| "its settings folder is unknown here".to_owned())
-            .and_then(|path| edit_json(&path, key, None)),
-        Store::Program { program, remove, .. } => run_program(home, program, remove),
-        Store::ByHand { .. } => Ok(()),
-    };
-    match done {
-        Ok(()) => (Outcome::Removed, String::new()),
-        Err(reason) => (Outcome::Failed, reason),
+        if dry_run {
+            return Change::new(Outcome::WouldRemove, String::new());
+        }
+        if !write {
+            return Change::new(Outcome::Unchanged, String::new());
+        }
+        if state(client, home) != *planned {
+            return Change::new(Outcome::Failed, CHANGED.into());
+        }
+        let done = match client.store {
+            Store::Json { file, key, .. } => file(home)
+                .ok_or_else(|| "its settings folder is unknown here".to_owned())
+                .and_then(|path| edit_json(&path, key, None)),
+            Store::Program { program, remove, .. } => run_program(home, program, remove),
+            Store::ByHand { .. } => Ok(()),
+        };
+        match done {
+            Ok(()) => Change::new(Outcome::Removed, String::new()),
+            Err(reason) => Change::new(Outcome::Failed, reason),
+        }
     }
 }
 
@@ -733,8 +709,7 @@ fn run_program(home: &Home, program: &str, args: &[&str]) -> Result<(), String> 
     finish_program(child, program, args, deadline)
 }
 
-/// Own the spawned child until it exits or the absolute deadline requires
-/// killing and reaping it. Tests use the same lifetime with a shorter deadline.
+/// Kill and reap a client that hangs, so later changes can proceed.
 fn finish_program(
     mut child: std::process::Child,
     program: &str,
@@ -781,17 +756,16 @@ fn edit_json(path: &Path, key: &str, entry: Option<String>) -> Result<(), String
         Some(raw) => serde_json::from_str(raw.get()).map_err(|_| format!("its \"{key}\" setting is not an object"))?,
         None => IndexMap::new(),
     };
-    match &entry {
+    match entry {
         Some(entry) => {
-            let raw = RawValue::from_string(entry.clone()).map_err(|_| "the entry could not be written")?;
+            let raw = RawValue::from_string(entry).map_err(|_| "the entry could not be written")?;
             servers.insert(COMMAND.to_owned(), raw);
         }
         None => {
             servers.shift_remove(COMMAND);
         }
     }
-    let raw = RawValue::from_string(serde_json::to_string(&servers).map_err(|_| "the entry could not be written")?)
-        .map_err(|_| "the entry could not be written")?;
+    let raw = serde_json::value::to_raw_value(&servers).map_err(|_| "the entry could not be written")?;
     top.insert(key.to_owned(), raw);
     let compact = serde_json::to_string(&top).map_err(|_| "the file could not be written")?;
     let mut written = indent(&compact, &indent_unit(text));
@@ -817,9 +791,8 @@ fn edit_json(path: &Path, key: &str, entry: Option<String>) -> Result<(), String
     } else {
         None
     };
-    // Another program's save wins, including one during staging or backup.
-    // read_file also refuses a newly substituted link. A noncooperating app
-    // can still save in the tiny window between this check and the rename.
+    // Recheck after staging/backup, including link swaps. An external writer
+    // can still race the rename.
     let checked = read_file(path).and_then(|latest| {
         if latest == before {
             Ok(())
