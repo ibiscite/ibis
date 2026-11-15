@@ -111,12 +111,14 @@ fn keys_held() -> bool {
     HELD.into_iter().any(w::GetAsyncKeyState)
 }
 
-/// Another process has the clipboard open, such as clipboard history reading
-/// the copy. An app that cannot open it on Ctrl+V drops the paste without a
-/// sign, so the paste waits for it as it waits for held keys. Opening and
-/// closing without a change notifies no one and keeps the sequence number.
-fn clipboard_busy() -> bool {
-    clipboard_win::Clipboard::new().is_err()
+/// The app behind `window` could open the clipboard now. A reader reacting to
+/// the copy, such as clipboard history, may hold it open; an app given Ctrl+V
+/// then cannot open it and drops the paste without a sign, so the paste waits
+/// as it waits for held keys. The probe opens it for that window, never for
+/// no window: such an open succeeds over another open without a window and,
+/// closing, ends it. Opening and closing changes no content or sequence number.
+fn clipboard_free(window: &w::HWND) -> bool {
+    clipboard_win::Clipboard::new_for(window.ptr()).is_ok()
 }
 
 fn foreground_pid() -> Option<i32> {
@@ -146,14 +148,14 @@ fn password_focused(pid: i32) -> Option<bool> {
 }
 
 /// Ctrl+V to whatever has the keyboard, in one call, so no other input lands
-/// between the four events, and only while the app can open the clipboard.
+/// between the four events, and only while the app in front can open the clipboard.
 fn send_paste(ready: impl Fn() -> bool) -> bool {
     let Ok(mut keys) = KEYS.lock() else {
         warn_key_release();
         return false;
     };
     keys.paste(send_inputs, std::thread::sleep, warn_key_release, || {
-        ready() && !clipboard_busy()
+        ready() && w::HWND::GetForegroundWindow().is_some_and(|window| clipboard_free(&window))
     })
 }
 
@@ -283,10 +285,11 @@ impl TicketDesk for Win {
     /// has the clipboard open, so the paste waits for the keyboard and the
     /// clipboard to be free as it waits for the window.
     fn frontmost(&self) -> Option<Front> {
-        if keys_held() || clipboard_busy() {
+        let window = w::HWND::GetForegroundWindow()?;
+        if keys_held() || !clipboard_free(&window) {
             return None;
         }
-        front(&w::HWND::GetForegroundWindow()?, false)
+        front(&window, false)
     }
 
     fn secure_field(&self, pid: i32) -> Option<bool> {
@@ -1007,7 +1010,7 @@ mod tests {
                     }
                     // Wait as delivery does: a clipboard reader reacting to the
                     // copy, such as clipboard history, would make Notepad drop it.
-                    (password_focused(front.pid) == Some(false) && !clipboard_busy()).then_some(())
+                    (password_focused(front.pid) == Some(false) && clipboard_free(window)).then_some(())
                 })
                 .ok_or(last)
             },
