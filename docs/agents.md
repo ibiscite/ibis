@@ -87,8 +87,10 @@ claude plugin install ibis@ibiscite
 
 Merge the shared JSON into
 `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS, or
-`%APPDATA%\Claude\claude_desktop_config.json` on Windows. Tell the person to
-fully quit and reopen Claude Desktop.
+`%APPDATA%\Claude\claude_desktop_config.json` on Windows. Claude Desktop does not see the terminal's PATH, so
+replace `"ibis"` with the full path that `command -v ibis` (Windows:
+`where ibis`) prints. Tell the person to fully quit and reopen Claude
+Desktop.
 
 ### ChatGPT desktop
 
@@ -136,7 +138,8 @@ Merge this entry into `context_servers` in Zed's user settings:
 
 ### LM Studio
 
-Merge the shared JSON into LM Studio's `mcp.json`.
+Merge the shared JSON into LM Studio's `mcp.json`, with the full path of `ibis`
+as the command, as for Claude Desktop.
 
 After configuring any client, check whether it exposes Ibis's tools in the
 current session. If it needs a restart or a new session, tell the person exactly

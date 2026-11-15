@@ -433,7 +433,11 @@ fn doctor_reports_broken_requested_app_settings_even_with_a_healthy_named_file()
     for (settings, code, words) in [
         ("{\"schema_version\":99}", "newer-format", "Update this ibis command"),
         ("{not json", "bad-input", "Open Ibis to repair"),
-        ("{\"schema_version\":2}", "usage", "no library is chosen in Ibis yet"),
+        (
+            "{\"schema_version\":2}",
+            "no-library",
+            "no library is chosen in Ibis yet",
+        ),
     ] {
         home.settings(STABLE, settings);
         let (status, stdout, stderr) = home.run(&["doctor", "--app-libraries", "--file", file, "--json"]);

@@ -78,7 +78,9 @@ pub(super) fn run(
         // Why the app's libraries could not be read, in the words other commands use.
         Some(failure) if asked || failure.error.code != ErrorCode::Usage => {
             let mut result = check("failed", "no-library");
-            result["code"] = serde_json::to_value(failure.error.code).unwrap_or(Value::Null);
+            if failure.error.code != ErrorCode::Usage {
+                result["code"] = serde_json::to_value(failure.error.code).unwrap_or(Value::Null);
+            }
             result["message"] = json!(failure.sentence());
             result
         }
