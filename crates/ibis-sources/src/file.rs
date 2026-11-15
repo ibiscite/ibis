@@ -422,7 +422,43 @@ pub fn attachment_file(
         return Err(SourceError::Changing);
     }
     let base = source.parent().ok_or(SourceError::Unavailable)?;
-    Ok(location.map(|location| base.join(location)))
+    Ok(location.map(|location| attachment_path(base, &location)))
+}
+
+/// A file field's location beside its library. On Windows the canonical
+/// library folder is a `\\?\C:\` path, where `/` is no separator and which
+/// the local-file checks refuse, so it becomes the plain `C:\` form first.
+fn attachment_path(base: &Path, location: &str) -> PathBuf {
+    let location = Path::new(location);
+    if location.is_absolute() {
+        return location.to_path_buf();
+    }
+    let mut path = plain_disk(base);
+    for part in location.components() {
+        path.push(part);
+    }
+    path
+}
+
+#[cfg(windows)]
+fn plain_disk(path: &Path) -> PathBuf {
+    use std::path::{Component, Prefix};
+    let mut parts = path.components();
+    if let Some(Component::Prefix(prefix)) = parts.next()
+        && let Prefix::VerbatimDisk(letter) = prefix.kind()
+    {
+        let mut plain = PathBuf::from(format!("{}:\\", char::from(letter)));
+        for part in parts.filter(|part| !matches!(part, Component::RootDir)) {
+            plain.push(part);
+        }
+        return plain;
+    }
+    path.to_path_buf()
+}
+
+#[cfg(not(windows))]
+fn plain_disk(path: &Path) -> PathBuf {
+    path.to_path_buf()
 }
 
 /// One read: damaged entries warn while complete entries load.
@@ -712,6 +748,20 @@ mod subprocess_watchdog;
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn attachment_locations_join_their_library_folder() {
+        let base = std::env::temp_dir().join("invented-library");
+        assert_eq!(
+            attachment_path(&base, "papers/atlas.pdf"),
+            base.join("papers").join("atlas.pdf")
+        );
+        #[cfg(windows)]
+        assert_eq!(
+            attachment_path(Path::new(r"\\?\D:\invented\library"), "papers/atlas.pdf"),
+            PathBuf::from(r"D:\invented\library\papers\atlas.pdf")
+        );
+    }
     #[test]
     fn manual_sources_report_live_refresh_off_without_starting_a_worker() {
         let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
