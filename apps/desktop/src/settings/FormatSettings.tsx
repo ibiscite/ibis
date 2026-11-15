@@ -57,10 +57,17 @@ export function useFormatSettings(api: SettingsApi) {
     dismissForget: () => setForgetFailed(false), dismissOpen: () => setOpenFailed(false) };
 }
 
+/** settings.json itself is broken (the engine's typed Problem whose one recovery
+ * is reviewing the file), as opposed to a read that merely failed. */
+export function brokenSettingsFile(problem: unknown): boolean {
+  return typeof problem === "object" && problem !== null && (problem as Partial<Problem>).recovery?.action === "review-settings";
+}
+
 export function FormatSettings({ settings }: { settings: ReturnType<typeof useFormatSettings> }) {
   const { text } = useInterfaceMessages();
-  const { view, busy, forget, forgetFailed, dismissForget } = settings;
+  const { view, problem, busy, forget, forgetFailed, dismissForget } = settings;
   return <>
+    {problem !== null && !brokenSettingsFile(problem) && <Status role="alert">{text("settings-read-failed")}</Status>}
     {view && view.apps.length > 0 && <Section id="remembered-formats" title={text("citations-apps")}><Group>
       {view.apps.map((app) => <Row key={app.id} id={`format-${app.id}`} label={app.app} description={listedOutput(app.format) ? outputName(listedOutput(app.format)!) : text("citations-unlisted")}>
         <Button isDisabled={busy} onPress={() => forget(app.id)}>{text("citations-forget")}</Button>
@@ -79,10 +86,9 @@ export function FormatSettings({ settings }: { settings: ReturnType<typeof useFo
 export function SettingsFileProblem({ settings }: { settings: ReturnType<typeof useFormatSettings> }) {
   const { text } = useInterfaceMessages();
   const { problem, openSettingsFile } = settings;
-  if (problem === null) return null;
-  const review = typeof problem === "object" && (problem as Partial<Problem>).recovery?.action === "review-settings";
+  if (!brokenSettingsFile(problem)) return null;
   return <Status tone="warning" role="alert">{problemText(problem, text("settings-read-failed"), text, "settings")}
-    {review && openSettingsFile && <> <Button size="small" onPress={openSettingsFile}>{text("settings-open")}</Button></>}</Status>;
+    {openSettingsFile && <> <Button size="small" onPress={openSettingsFile}>{text("settings-open")}</Button></>}</Status>;
 }
 
 /** Opening settings.json, in General's Advanced group. */
