@@ -51,8 +51,9 @@ test("the built scenario list renders, switches and reopens without Tauri or net
       expect(window.document.documentElement.dataset.appearance).toBe(theme);
       expect(window.document.querySelector("[src], [href]")).toBeNull();
       if (scenario.startsWith("settings-")) {
-        expect(host.querySelector('[aria-current="page"]')?.textContent?.toLowerCase()).toContain({ look: "appearance", details: "general", newer: "general" }[scenario.slice(9)] ?? scenario.slice(9));
+        expect(host.querySelector('[aria-current="page"]')?.textContent?.toLowerCase()).toContain({ look: "appearance", details: "general", newer: "general", broken: "general" }[scenario.slice(9)] ?? scenario.slice(9));
         expect(host.querySelector(scenario === "settings-shortcuts" ? ".ui-shortcut-table" : ".ui-row")).not.toBeNull();
+        if (scenario === "settings-broken") expect(host.querySelector('[role="alert"]')?.textContent).toContain("The settings file is not valid.");
       } else if (scenario === "notice") {
         expect(host.querySelector('.copy-receipt[role="status"]')?.textContent).toContain("Copied");
         expect(host.querySelector("code")?.textContent).toBe("[Aster, 2026]");
