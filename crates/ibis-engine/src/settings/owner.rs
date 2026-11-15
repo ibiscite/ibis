@@ -363,6 +363,9 @@ impl Owner {
         })
     }
 
+    /// Run `work` in its own turn. One that has not started within
+    /// [`TURN_LIMIT`], as behind a read that stopped responding, fails instead:
+    /// its work never runs, so nothing it would have written lands later.
     fn in_turn<T>(&self, work: impl FnOnce(Result<&Path, SettingsError>) -> T) -> T {
         let (start, turn) = mpsc::channel::<()>();
         let (finished, done) = mpsc::channel::<Vec<Commit>>();
@@ -381,8 +384,14 @@ impl Owner {
                 }
             }),
         );
-        if queued.is_none() || turn.recv().is_err() {
+        if queued.is_none() {
             return work(Err(closed()));
+        }
+        if let Err(waited) = turn.recv_timeout(TURN_LIMIT) {
+            return work(Err(match waited {
+                mpsc::RecvTimeoutError::Timeout => busy(),
+                mpsc::RecvTimeoutError::Disconnected => closed(),
+            }));
         }
         let (result, written) = tracking(|| work(Ok(&self.path)));
         let _ = finished.send(written);
@@ -409,6 +418,15 @@ impl Drop for Owner {
 }
 fn closed() -> SettingsError {
     SettingsError::Unreadable(std::io::Error::other("settings are closing"))
+}
+/// How long a turn may wait for the ones before it. Settings work takes
+/// milliseconds; this only ends a wait that would otherwise never end.
+const TURN_LIMIT: Duration = Duration::from_secs(3);
+fn busy() -> SettingsError {
+    SettingsError::Unreadable(std::io::Error::new(
+        std::io::ErrorKind::TimedOut,
+        "settings did not answer in time",
+    ))
 }
 fn rebind(
     path: &Path,
@@ -474,6 +492,52 @@ mod tests {
         let replacement = path.with_extension("replacement");
         std::fs::write(&replacement, bytes).unwrap_or_else(|error| panic!("{error}"));
         std::fs::rename(replacement, path).unwrap_or_else(|error| panic!("{error}"));
+    }
+
+    #[test]
+    fn a_choice_behind_a_stalled_read_fails_in_bounded_time_and_never_lands_later() {
+        let (directory, owner) = owner();
+        density(&owner, settings::Density::Compact).unwrap_or_else(|error| panic!("{error}"));
+        let owner = Arc::new(owner);
+        // A read that stops responding holds its turn.
+        let (release, released) = mpsc::channel::<()>();
+        let (held, holding) = mpsc::channel();
+        let stalled = std::thread::spawn({
+            let owner = Arc::clone(&owner);
+            move || {
+                owner.read_with(|_| {
+                    let _ = held.send(());
+                    let _ = released.recv();
+                })
+            }
+        });
+        holding
+            .recv_timeout(CHANNEL_LIMIT)
+            .unwrap_or_else(|error| panic!("the read never started: {error}"));
+
+        // A format choice made meanwhile is refused instead of waiting.
+        let (answer, answered) = mpsc::channel();
+        std::thread::spawn({
+            let owner = Arc::clone(&owner);
+            move || {
+                let _ = answer.send(density(&owner, settings::Density::Comfortable).is_err());
+            }
+        });
+        let refused = answered.recv_timeout(CHANNEL_LIMIT);
+        let _ = release.send(());
+        let _ = stalled.join();
+        assert_eq!(refused, Ok(true), "the choice waited for the stalled read");
+
+        // Released, the old turn lets later work run, and the refused choice
+        // never lands over what is saved now.
+        assert_eq!(owner.read().settings.portable.density, Some(settings::Density::Compact));
+        let saved = settings::load(&directory.path().join("settings.json"));
+        assert_eq!(saved.settings.portable.density, Some(settings::Density::Compact));
+        density(&owner, settings::Density::Comfortable).unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(
+            owner.read().settings.portable.density,
+            Some(settings::Density::Comfortable)
+        );
     }
 
     #[test]
