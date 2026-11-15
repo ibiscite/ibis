@@ -3,7 +3,7 @@ import { commandKey, keysFor, matchesAccelerator, type KeyPress } from "../../ke
 import { currentPlatform } from "../../platform";
 
 /** Everything the picker does by name. A key and its menu item run the same one. */
-export type PickerCommand = "format" | "more" | "pin" | "source" | "revealSource" | "chooseSource" | "keys" | "changeLast" | "settings" | "quit";
+export type PickerCommand = "format" | "inspector" | "more" | "pin" | "source" | "revealSource" | "chooseSource" | "keys" | "changeLast" | "settings" | "quit";
 
 type Press = KeyPress & Pick<KeyboardEvent, "target" | "getModifierState">;
 
@@ -42,9 +42,6 @@ export function isPinShortcut(e: Press, mac = currentPlatform() === "macos"): bo
   return matchesAccelerator(e, keysFor("pin"), mac);
 }
 
-/** Logical I with the platform command modifier; punctuation on the physical
- * I key must not become a command on another keyboard layout. */
-
 /** Settings, as in every Mac app: ⌘, (Ctrl+, elsewhere). */
 export function isSettingsShortcut(e: Press, mac = currentPlatform() === "macos"): boolean {
   return matchesAccelerator(e, keysFor("settings"), mac);
@@ -72,6 +69,7 @@ export function commandFor(e: Press, focused: EventTarget | null, mac = currentP
   if (!e.getModifierState("AltGraph") && matchesAccelerator(e, keysFor("revealSource", mac), mac)) return "revealSource";
   if (isSourceShortcut(e, mac)) return "source";
   if (isFormatShortcut(e, mac)) return "format";
+  if (matchesAccelerator(e, keysFor("inspector", mac), mac)) return "inspector";
   if (isPinShortcut(e, mac)) return "pin";
   if (isChangeLastShortcut(e, mac)) return "changeLast";
   if (isKeysShortcut(e, mac, focused)) return "keys";

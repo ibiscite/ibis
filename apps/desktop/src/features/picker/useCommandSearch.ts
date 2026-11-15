@@ -7,12 +7,13 @@ import { say } from "../../i18n";
 /** ">" leading the search turns the list into the picker's commands, as in
  * Raycast: ↑ ↓ move, Enter or a click runs one and clears the search, Esc steps
  * back as it always does. Commands run through the same path as their keys. */
-export function useCommandSearch({ query, run, setQuery, source, changeLast }: {
+export function useCommandSearch({ query, run, setQuery, source, changeLast, canChooseFormat = true }: {
   query: string; run: (command: PickerCommand) => void; setQuery: (value: string) => void;
   source: string | null; changeLast: boolean;
+  canChooseFormat?: boolean;
 }) {
   const mode = query.startsWith(COMMAND_PREFIX);
-  const list = useMemo(() => mode ? matchCommands(query, pickerCommands({ source, changeLast })) : [], [mode, query, source, changeLast]);
+  const list = useMemo(() => mode ? matchCommands(query, pickerCommands({ source, changeLast, canChooseFormat })) : [], [mode, query, source, changeLast, canChooseFormat]);
   // The highlight belongs to one typed query; a new one starts at the top.
   const [highlight, setHighlight] = useState({ query, index: 0 });
   const active = highlight.query === query ? Math.min(highlight.index, Math.max(list.length - 1, 0)) : 0;

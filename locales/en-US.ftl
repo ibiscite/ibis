@@ -409,6 +409,8 @@ shortcuts-action-citation-remove = Remove the reference
 shortcuts-action-citation-reorder = Move the reference
 shortcuts-action-citation-open = Show its details
 shortcuts-action-citation-focus = Go to the citation
+shortcuts-action-inspector = Show citation details
+shortcuts-action-send = Send to your editor
 shortcuts-action-menu-move = Move through the menu
 shortcuts-action-menu-ends = Go to the first or last item
 shortcuts-action-menu-choose = Choose the item
@@ -1032,6 +1034,10 @@ picker-project-entry =
        *[dependency] This entry relies on a crossref, xdata or @string that can’t come with it. Export it from your reference manager, keeping its key.
     }
 picker-editor-waiting = Citing for your editor in { $format }. Esc cancels.
+picker-send = Send · { $format }
+picker-delivery-editor = Editor
+picker-delivery-clipboard = Clipboard
+picker-delivery-paste = Automatic paste
 picker-find-source = Find { $name }…
 picker-find-source-unnamed = Find…
 picker-show-source-folder =

@@ -17,10 +17,12 @@ export type FormatSource = "remembered" | "suggested" | "default" | "held";
 /** Where a format pick goes: this app, the default, or only the next paste. */
 export type FormatPick = "app" | "default" | "paste";
 
-export function useDestination(session: ReturnType<typeof createSessionController>, state: SessionState, api: DestinationApi, { fallback, chooseDefault, report }: {
+export function useDestination(session: ReturnType<typeof createSessionController>, state: SessionState, api: DestinationApi, { fallback, chooseDefault, report, editorFormat = null }: {
   fallback: OutputId;
   chooseDefault: (choice: OutputId) => void | Promise<void>;
   report: (operation: Operation, failed?: boolean) => void;
+  /** An endpoint request owns its format until it ends. */
+  editorFormat?: string | null;
 }) {
   const { pickerDestination, rememberAppOutput, editWriting: saveWriting, forgetAppOutput } = api;
   useLayoutEffect(() => {
@@ -31,7 +33,7 @@ export function useDestination(session: ReturnType<typeof createSessionControlle
   const { destination, held, saves } = d;
   const ready = destinationReady(d);
   // Whether Enter pastes into the app: unknown, so no, while it is being read.
-  const canPaste = d.ready && Boolean(destination?.can_paste);
+  const canPaste = !editorFormat && d.ready && Boolean(destination?.can_paste);
   const saving = saves > 0;
   const app = rememberAppOutput ? destination?.app ?? null : null;
   // Ids the engine no longer lists are as good as none.
@@ -55,11 +57,12 @@ export function useDestination(session: ReturnType<typeof createSessionControlle
   const editWriting = saveWriting ? session.editWriting : undefined;
   // An app that could not be read may still be a real one, so a pick cannot change the default.
   const pick: FormatPick = app ? "app" : !pickerDestination || destination ? "default" : "paste";
-  const canChooseFormat = pick === "default" && held !== null || ready && !saving;
+  const canChooseFormat = !editorFormat && (pick === "default" && held !== null || ready && !saving);
   /** This citation's format, and only this one: held, never saved, consumed by the copy. */
-  const chooseOnce = (choice: OutputId) => session.dispatch({ type: "choose-once", choice });
+  const chooseOnce = (choice: OutputId) => { if (!editorFormat) session.dispatch({ type: "choose-once", choice }); };
   // Every pick passes here: a way to share references is for this copy only, never remembered.
   const choose = (choice: OutputId) => {
+    if (editorFormat) return;
     if (sharesReferences(choice)) return chooseOnce(choice);
     if (writing && destination?.writing_context && editWriting) {
       void editWriting(destination.writing_context, { kind: "output", id: writing.id, output: choice })
@@ -69,7 +72,7 @@ export function useDestination(session: ReturnType<typeof createSessionControlle
     session.dispatch({ type: "choose-format", choice, pick });
   };
   const choosePaste = (paste: AppPaste, _asked = false) => {
-    if (!rememberAppOutput) return;
+    if (!rememberAppOutput || editorFormat) return;
     session.dispatch({ type: "choose-paste", paste, output: null });
   };
   const copyToken = (): OutputToken => current().output;
@@ -86,9 +89,9 @@ export function useDestination(session: ReturnType<typeof createSessionControlle
   const remembering = { ...d, remembers: Boolean(rememberAppOutput) };
   const askPaste = asksPaste(remembering);
   const pasteChoices = Boolean(rememberAppOutput && destination?.can_choose_paste);
-  return { appId: destination?.app_id ?? null, app, format, ready, saving, canChooseFormat, source, pick, shouldAsk: shouldAsk(remembering), read, choose,
-    findOpen: Boolean(ready && destination?.find_open),
-    formatLabel: unlisted ? say("citations-unlisted") : undefined,
+  return { appId: destination?.app_id ?? null, app, format, editorFormat, ready, saving, canChooseFormat, source, pick, shouldAsk: !editorFormat && shouldAsk(remembering), read, choose,
+    findOpen: Boolean(!editorFormat && ready && destination?.find_open),
+    formatLabel: editorFormat ?? (unlisted ? say("citations-unlisted") : undefined),
     writing, writingContext: destination?.writing_context ?? null, readProblem: d.editProblem ?? d.readProblem ?? (unlisted ? say("writing-unsupported") : null), contextVersion: destination?.context_version ?? null, writingChanged, editWriting,
     usualFormat: listedOutput(destination?.usual_format), useUsual,
     writingVersion: () => writingVersion(current()),

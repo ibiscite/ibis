@@ -18,6 +18,6 @@ export function QuietNotice({ children, passive = false, role = "status", onExpi
   children: ReactNode; passive?: boolean; role?: "status" | "alert"; onExpire?: () => void; paused?: boolean;
 }) {
   // A new remark starts its own time.
-  useTimeout(() => onExpire?.(), onExpire && !paused ? 8000 : null, children);
+  useTimeout(() => onExpire?.(), onExpire ? 8000 : null, children, paused);
   return <div className="notice-band"><Status as="span" role={passive ? null : role}>{children}</Status></div>;
 }

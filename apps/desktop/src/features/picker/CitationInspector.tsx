@@ -107,7 +107,7 @@ export function CitationInspector({ ref, id, panel, anchor, keepOrder, heading, 
       footer={<div className="inspector-actions"><hr /><Button variant="quiet" className="inspector-action" aria-expanded onPress={() => setReading(false)}><span>{say("reader-hide")}</span></Button></div>}
       document={<Reader key={pdf.id} source={pdf} title={reference.title || reference.key} page={reference.locator?.term === "page" ? reference.locator.value : ""}
         onPageChange={(value) => onChange(reference, { locator: value ? { term: "page", value, input: "editor" } : null })} />}
-      onKeyDown={removeKeys}>{fields}</Inspector>;
+      onKeyDown={removeKeys}>{fields}{problem}{notesShown}</Inspector>;
   }
   return <Popover triggerRef={anchor} label={reference ? say("citation-details-details", { reference: reference.title || reference.key }) : say("picker-citation-details")}
     className="citation-popover" onClose={onClose}>

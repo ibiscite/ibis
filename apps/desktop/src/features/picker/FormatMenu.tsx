@@ -25,9 +25,10 @@ const remember = (output: OutputId) => { recent.splice(0, recent.length, output,
  * the palette: the way back to your format first, your recent formats, the
  * app's own choices, then every format by typing, with a key citation or a
  * labelled style example beside the list. Focus returns to Search. */
-export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpenChange, pasteChoices, onPasteChange, disabled, styles, onChange, searchRef, writing, onWritings, preview, example, usualFormat, onUseUsual, formatLabel }: {
+export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpenChange, pasteChoices, onPasteChange, disabled, styles, onChange, searchRef, writing, onWritings, preview, example, usualFormat, onUseUsual, formatLabel, deliveryLabel }: {
   format: OutputId;
   formatLabel?: string;
+  deliveryLabel?: string;
   usualFormat?: OutputId | null;
   onUseUsual?: () => void;
   /** Your own format, the one a "back" row returns to. */
@@ -56,7 +57,7 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
 }) {
   const [open, setOpen] = useState(false);
   const name = formatLabel ?? outputName(format);
-  const value = writing ? say("picker-format-for-app", { format: name, app: writing.name }) : source === "held" ? say("picker-format-this-paste", { format: name }) : source === "default" || !app ? name : say("picker-format-for-app", { format: name, app });
+  const value = deliveryLabel ? say("picker-format-for-app", { format: name, app: deliveryLabel }) : writing ? say("picker-format-for-app", { format: name, app: writing.name }) : source === "held" ? say("picker-format-this-paste", { format: name }) : source === "default" || !app ? name : say("picker-format-for-app", { format: name, app });
   const why = writing ? say("writing-remembered", { name: isolate(writing.name) }) : source === "held" ? say("picker-format-held", { format: name }) : source === "default" ? app ? say("picker-format-app-default", { app }) : say("picker-format-no-app")
     : app ? source === "remembered" ? say("picker-format-remembered", { app }) : say("picker-format-suggested", { app }) : source === "suggested" ? say("picker-format-suggestion") : say("picker-format-no-app");
   const next = writing ? say("writing-pick") : source === "held" ? pick === "app" ? say("picker-pick-to-remember") : pick === "default" ? say("picker-pick-to-set-default") : ""

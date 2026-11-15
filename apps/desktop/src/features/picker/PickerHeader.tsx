@@ -9,7 +9,7 @@ import type { AppPaste } from "../../api";
 import type { FormatPick, FormatSource } from "./useDestination";
 
 /** The search bar: the search box and the copy format. */
-export function PickerHeader({ hidden = false, onResetPosition, inputRef, query, pageToken, onQueryChange, expanded, activeDescendant, format, formatButtonRef, app = null, formatSource = "default", formatPick = "default", onFormatOpenChange, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, yours, preview, example, writing, onWritings, usualFormat, onUseUsual, formatLabel }: {
+export function PickerHeader({ hidden = false, onResetPosition, inputRef, query, pageToken, onQueryChange, expanded, activeDescendant, format, formatButtonRef, app = null, formatSource = "default", formatPick = "default", onFormatOpenChange, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, yours, preview, example, writing, onWritings, usualFormat, onUseUsual, formatLabel, delivery }: {
   /** Welcome has no search yet; the field stays mounted so focus can return to it. */
   hidden?: boolean;
   inputRef: React.RefObject<HTMLInputElement | null>;
@@ -27,6 +27,7 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
   activeDescendant: string | undefined;
   format: OutputId;
   formatLabel?: string;
+  delivery?: ReturnType<typeof import("./enterLabel").citationDelivery>;
   formatButtonRef?: React.RefObject<HTMLButtonElement | null>;
   /** The app the picker was opened from, when Ibis knows it. */
   app?: string | null;
@@ -81,7 +82,7 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
           });
         }}
       />
-      {showFormat && <FormatMenu format={format} buttonRef={formatButtonRef} app={app} source={formatSource} pick={formatPick} onOpenChange={onFormatOpenChange} pasteChoices={pasteChoices} onPasteChange={onPasteChange} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} writing={writing} onWritings={onWritings} usualFormat={usualFormat} onUseUsual={onUseUsual} formatLabel={formatLabel} yours={yours} preview={preview} example={example} />}
+      {showFormat && (delivery?.editorFormat ? <span className="search-format-label">{delivery.editorFormat} · {delivery.label}</span> : <FormatMenu format={format} buttonRef={formatButtonRef} app={app} source={formatSource} pick={formatPick} onOpenChange={onFormatOpenChange} pasteChoices={pasteChoices} onPasteChange={onPasteChange} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} writing={writing} onWritings={onWritings} usualFormat={usualFormat} onUseUsual={onUseUsual} formatLabel={formatLabel} yours={yours} preview={preview} example={example} deliveryLabel={app ? delivery?.label : undefined} />)}
     </SearchBar>
   );
 }

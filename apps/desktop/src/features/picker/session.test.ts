@@ -15,7 +15,7 @@ function scenario() {
   const send = (event: SessionEvent) => { [state, effects] = reduceSession(state, event); return effects; };
   const view = (change: Partial<SessionView> = {}): SessionEvent => {
     const [arranged, event] = arrangeView(state, { queryKey: sessionQueryKey(state), format: "pandoc", snapshotRevision: "synthetic", defaultChoice: choiceKey([a]),
-      chosen: [a], shown: prepared, searchPending: false, ready: true, saving: false, shouldAsk: false, remembersLast: true,
+      offered: [a], chosen: [a], shown: prepared, searchPending: false, ready: true, saving: false, shouldAsk: false, remembersLast: true,
       output: { opening: 0, choice: 0, delivery: 0 }, ...change });
     // The screen sends what it shows, then commits it.
     [state] = reduceSession(arranged, event);

@@ -6,8 +6,10 @@ Search, list, shelf and footer ([design](../design.md#the-model)). The Inspector
 
 - Order: the bird in the lead column, the query on the title column, the format pop-up ending on the trailing edge. No clear button: Esc clears, as in Spotlight and Raycast, and every search field (the picker's and a view's) is the same frameless field. The header is its tallest control plus 2S, with a divider below [C2]. Its controls take the field's height, so the gap above and beside them is S and their corners nest in the window's (`--r-control`).
 - `#tag`, `y:2019-2022` and `a:name` plus a space become removable chips; Backspace in an empty box removes the last.
+  Remaining (F9): expose the engine tokenizer's filter identities and spans to
+  the picker, then use them for chips and the shared empty-Backspace path.
 - **Keep Window Open** [C6] (⇧⌘P, or in More): a choice for this session, so it has no button of its own in the header (control placement, maintainer 2026-11-10). While it is on, a pressed pin sits beside More in the footer, and a click on it turns it off. Esc never unpins.
-- The format pop-up names the exact output and, when the format belongs to something, whose it is (`APA · Word`, `APA · Thesis`); the default carries no suffix. One output has one name everywhere, the engine's (decision 0035). Hidden until a library is chosen. It opens the **format palette** ([decision 0042](../decisions/0042-formats-apps-and-writings.md)): the way back first when the format isn't yours, recent formats, the app's own choices, Writings…, then the catalogue (key formats, citation styles, and the ways to share references, which hold for one copy: [delivery](delivery.md#copying-and-pasting)), also found by typing; More's Change Format… is found by "share", "export", "BibTeX" and "DOI" too. Beside the list, key formats preview the chosen references, citation styles show a labelled example, and a way to share references shows exactly what it would copy of the shown citation, asked of the engine without replacing what Enter copies. Writings directly in the list and real style previews remain the decision's target.
+- The format pop-up names the exact output and its delivery destination when an app is known (`APA · Word` for a paste, `APA · Clipboard` for a copy); the default without an app carries no suffix. Its palette explains whose remembered format it is. One output has one name everywhere, the engine's (decision 0035). Hidden until a library is chosen. It opens the **format palette** ([decision 0042](../decisions/0042-formats-apps-and-writings.md)): the way back first when the format isn't yours, recent formats, the app's own choices, Writings…, then the catalogue (key formats, citation styles, and the ways to share references, which hold for one copy: [delivery](delivery.md#copying-and-pasting)), also found by typing; More's Change Format… is found by "share", "export", "BibTeX" and "DOI" too. Beside the list, key formats preview the chosen references, citation styles show a labelled example, and a way to share references shows exactly what it would copy of the shown citation, asked of the engine without replacing what Enter copies. Writings directly in the list and real style previews remain the decision's target.
 
 ## Results
 
@@ -46,6 +48,10 @@ Built in `ibis-core` so every front end shares them (#1204).
 - The line holds one line in its own box: an output written on several lines (BibTeX) reads as one, its words in full in each token's tooltip, and the slot clips anything taller, so nothing reaches the footer. A token's details say only what is about that reference: the output's note and that reference's own warnings (its closest match, a field the output cannot show, a key missing from the writing's bibliography). Each warning carries the reference it is about from the engine, so none shows under another token; the shelf's warning count keeps them all together and stays put while details are open.
 - Pending output dims, then "Formatting…"; Enter waits. A failed format says why and offers another style; refusals stay visible until corrected. Every preview ends in a result or a stated failure: an engine stop is asked again once (after the destination read, when one is running), and a second stop says the citation could not be prepared, so Copy is never left waiting on "Formatting…".
 - The shelf keeps the last citation through a running search and when the next search finds nothing.
+  The picker session owns that offer independently of result rows, including its
+  prepared result. Enter waits for a running search, then delivers the retained
+  offer after an ordinary no-match reply. A failed search, missing pasted list or
+  changed library snapshot cannot revive an earlier offer.
 
 ## Footer
 
@@ -57,6 +63,13 @@ Built in `ibis-core` so every front end shares them (#1204).
 - **Quiet bands**: nothing in the shelf or footer is a filled button. The main action (Copy or Paste) reads as Raycast's: its words in the text colour at medium weight and the footer's one accent on its ↵ cap, so the eye rests on the results, not on the bottom edge. The library status, the source action, More, the reference count, notes and Details are quiet.
 - Never show an action twice on one screen. With ⌥ held on macOS, or Shift held over the footer on Windows and Linux: "Add to citation ⇧↵", the Esc step, then More. Shift in Search keeps typing capitals without changing the footer. Source opening is ⌘O / ⌥⌘O on macOS and Ctrl+O / Ctrl+Shift+O elsewhere ([decision 0047](../decisions/0047-opening-references-placement-and-back.md)).
 - **One place for each status**: library state lives only in the footer status; a citation refusal lives in the shelf; settings notices, failed actions and anything passing stand in for the list's heading line (see [Notices](delivery.md#notices)).
+- **Delivery agrees**: the header's format and the footer read one delivery
+  description. For a known app the header names the app for a paste, or
+  Clipboard for a copy (including Keep Window Open and warnings); the mode
+  (Automatic paste, Clipboard or Editor) is written beside the footer action. The format palette still explains whose
+  remembered format it is. An editor request shows its own format as plain
+  words, with **Send** in the footer; format and writing choices, including their
+  commands and keys, stay hidden or inactive until that request ends.
 - **One reading of a library's health**: the dot, the hover text and the library menu all draw from `libraryCondition`. A problem in words is never a green dot: anything the menu reports makes the dot at least Look.
 
 | Case | Footer |
@@ -82,6 +95,9 @@ Built in `ibis-core` so every front end shares them (#1204).
 - Numbered-result shortcuts act on the first nine rows wholly in view, renumbered on scroll. Holding the command key for one second writes each row’s key where its type icon was, as plain secondary text ending at the tile column: no cap and no plate, nothing moves, and the year stays. A cited row’s check gives way for the hold too (the shelf shows the citation) and returns when the command key is let go. They work only while the result list is shown, not over a command list, palette, sheet or empty state.
 - Escape steps back one layer from any control: sheet, menu, inspector, library chooser, then clears search (the shelf stays), then hides. A held key takes one step.
 - The question-mark shortcut works only outside a field. Typing outside a field goes into search, except in the reader’s pages.
+- ⌘I opens the focused citation token's details, or the last offered token's
+  details from Search. The key registry supplies its binding in More and the
+  shortcut catalogue.
 
 ## Window behaviour
 

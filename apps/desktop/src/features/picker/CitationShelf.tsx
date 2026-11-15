@@ -325,7 +325,7 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
     {panel && hasShelf && <CitationInspector key={panel.reference ?? panel.kind} ref={returnFocus} id={inspectorId} panel={panel} anchor={anchor} heading={labels[editedIndex] ?? say("picker-citation-details")}
       keepOrder={style && onKeepOrder && references.length > 1 && edited && isSelected(edited) ? { checked: keepOrder, onChange: onKeepOrder } : null}
       reference={panel.kind === "warnings" ? undefined : edited} index={editedIndex} selected={Boolean(edited && isSelected(edited))} previewReceipt={previewReceipt} output={`${style}:${keys}`}
-      failure={shown === "failed" ? fullProblem : copyProblem ?? null} notes={{ entry: entryNotice, output: currentWarnings, closest: partialWarnings }}
+      failure={shown === "failed" ? fullProblem : ready?.project_refusal ?? copyProblem ?? null} notes={{ entry: entryNotice, output: currentWarnings, closest: partialWarnings }}
       onChange={onChangeReference} onSubmit={onSubmit} onRemove={remove} onClose={close} />}
     {hasShelf ? <div className="shelf" data-folded={compact || undefined} data-copied={copied ? "" : undefined} ref={preserveFocus}>
       <section ref={(node) => { output.current = node; }} aria-label={shown !== undefined || copied ? say("picker-preview") : say("picker-citation-details")}

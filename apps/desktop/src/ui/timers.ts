@@ -1,16 +1,24 @@
 // What waits in the interface. Each timer belongs to the component that set
 // it: a new start replaces it, and unmounting clears it, so none fires late.
-import { useCallback, useEffect, useEffectEvent, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 
-/** Runs `run` once, `ms` after it is armed or `key` changes; null disarms it. */
-export function useTimeout(run: () => void, ms: number | null, key?: unknown): void {
+/** Runs once after `ms` active milliseconds. A new duration or identity starts
+ * fresh; null disarms it. Pausing keeps this identity's remaining time. */
+export function useTimeout(run: () => void, ms: number | null, key?: unknown, paused = false): void {
   const fire = useEffectEvent(run);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: key restarts the wait by design.
+  const budget = useRef<{ ms: number; key: unknown; remaining: number; fired: boolean } | null>(null);
   useEffect(() => {
-    if (ms === null) return;
-    const timer = window.setTimeout(() => fire(), ms);
-    return () => window.clearTimeout(timer);
-  }, [ms, key]);
+    if (ms === null) { budget.current = null; return; }
+    if (!budget.current || budget.current.ms !== ms || !Object.is(budget.current.key, key)) budget.current = { ms, key, remaining: ms, fired: false };
+    const current = budget.current;
+    if (paused || current.fired) return;
+    const start = performance.now();
+    const timer = window.setTimeout(() => { current.fired = true; fire(); }, current.remaining);
+    return () => {
+      window.clearTimeout(timer);
+      current.remaining = Math.max(0, current.remaining - (performance.now() - start));
+    };
+  }, [ms, key, paused]);
 }
 
 /** True once `on` has held for `ms` since it began or `key` last changed, such

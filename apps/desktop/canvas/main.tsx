@@ -37,7 +37,7 @@ import "../src/ui/CopiedNotice.css";
 import pickerStyles from "../src/ui/Window.css?inline";
 import { formatAnswer, noFormatChosen } from "../src/testing/format";
 
-export const scenarios = ["notice", "results", "unknown-app", "unknown-app-empty", "first-run", "more", "format-menu", "writings", "writings-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "reference-details-more", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-selector", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "citation-order", "citation-handles", "citation-details-larger", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about", "settings-details", "settings-newer", "settings-broken", "text-80", "text-120", "share-bibtex", "token-warnings", "sample"] as const;
+export const scenarios = ["notice", "results", "unknown-app", "unknown-app-empty", "first-run", "more", "format-menu", "writings", "writings-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "reference-details-more", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-selector", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "citation-order", "citation-handles", "citation-details-larger", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about", "settings-details", "settings-newer", "settings-broken", "text-80", "text-120", "share-bibtex", "token-warnings", "sample", "editor-request", "picker-refusal", "retained-citation"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -67,6 +67,9 @@ const fixtures: Partial<Record<Scenario, {
   /** Clicked in order, each once the one before has drawn what it opens. */
   click?: string | string[]; keys?: KeyboardEventInit[];
 }>> = {
+  "editor-request": { preferences: { output: "apa" } },
+  "picker-refusal": { click: 'button[aria-label^="Edit "]' },
+  "retained-citation": {},
   "settings-details": { click: "button.ui-details-toggle" },
   more: { library: zoteroLibrary },
   "format-menu": { library: zoteroLibrary },
@@ -132,7 +135,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
   const project = writings.active!;
   // A fixture's format is the one remembered for the app, as the engine would answer.
   const format = fixed?.preferences?.output ? formatAnswer(fixed.preferences.output) : noFormatChosen;
-  const refusal = scenario === "project-check-conflict" ? "A key in thesis.bib identifies a different work. Resolve the conflict before citing it." : null;
+  const refusal = ["project-check-conflict", "picker-refusal"].includes(scenario) ? "A key in thesis.bib identifies a different work. Resolve the conflict before citing it." : null;
   const library: LibraryStatus = {
     source_generation: "1", source_is_requested: true,
     state: firstRun ? "none" : scenario === "loading" ? "loading" : scenario === "error" ? "error" : "loaded", revision: "1", has_snapshot: !firstRun && !["loading", "error"].includes(scenario),
@@ -150,7 +153,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
     // As the engine does: a trailing page number is read as the page.
     search: ({ query }) => {
       const page = query.interpret_locators ? /^(.*\S)\s+(?:pp?\.\s*)?(\d+(?:[-–]\d+)?)$/.exec(query.text) : null;
-      return { revision: "1", results: query.text && !fixture ? shown : [],
+      return { revision: "1", results: query.text && query.text !== "unmatched" && !fixture ? shown : [],
         ...page ? { interpretation: { search: page[1]!, locator: { term: "page", value: page[2]!.replace("-", "–") }, typed: page[2]! } } : {} };
     },
     recent_references: () => [{ revision: "1", results: [] }, false, false],
@@ -210,6 +213,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
         { form: "year-only", example: "(2026)", reason: null },
       ] } satisfies FormDetails;
     },
+    editor_request: () => scenario === "editor-request" ? { request: 1, format: "LaTeX", style: false } : null,
     picker_destination: () => knownApp && !writingContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
       find_open: false, usual_format: "apa", format, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false,
       writing: null, writing_context: null, context_version: [1, 0] } : writingContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
@@ -242,7 +246,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
     session_bibliography: () => null,
   };
   for (const command of ["quit", "set_pinned", "picker_moving", "open_library_source", "alignment_tick", "take_search_request",
-    "project_status", "editor_request", "forget_app_output", "update_checks", "update_picker_activity", "remember_app_output", "retry_project", "choose_project",
+    "project_status", "forget_app_output", "update_checks", "update_picker_activity", "remember_app_output", "retry_project", "choose_project",
     "open_found_library", "reload_library", "dismiss_window_position_undo"]) handlers[command] = () => null;
   mockWindows("main");
   mockIPC((command, payload) => {
