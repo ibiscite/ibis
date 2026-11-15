@@ -3,15 +3,21 @@ name: CI
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+    # Adding the full-ci label reruns the check with every platform.
+    types: [opened, synchronize, reopened, labeled]
   schedule:
     - cron: "17 5 * * *"
     - cron: "43 5 * * 1" # Weekly full advisory check and one issue on failure.
   workflow_dispatch:
 
-# Main confirms each merged revision; local machines gate the merge.
+# Pull requests run the fast tier (Ubuntu) unless they touch platform code or
+# carry the full-ci label; main pushes and daily/manual runs use all three
+# systems. A newer push replaces a pull request's running check.
 concurrency:
   group: ci-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -23,7 +29,29 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
+  scope:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    name: Choose platforms
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      os: ${{ steps.scope.outputs.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2 # A pull request's merge commit and its base.
+
+      - name: Choose the platform matrix
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          FULL_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}
+        run: bash scripts/ci-scope.sh >> "$GITHUB_OUTPUT"
+
   interface:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Build the web interface
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -62,13 +90,15 @@ jobs:
           retention-days: 1
 
   test:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Test (${{ matrix.os }})
+    needs: scope
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15, windows-2025]
+        os: ${{ fromJSON(needs.scope.outputs.os) }}
     defaults:
       run:
         shell: bash
@@ -113,6 +143,7 @@ jobs:
         run: cargo test -p ibis --test fidelity --locked
 
   web:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Web interface
     runs-on: ubuntu-24.04
     container:
@@ -175,13 +206,16 @@ jobs:
           node ../../scripts/picker-budget.mjs dist
 
   desktop:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Desktop (${{ matrix.os }})
-    needs: interface
+    needs: [scope, interface]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
+        # Every system on every PR: a warm desktop lint and test takes 2-4 minutes
+        # and catches code that compiles on one system only.
         os: [ubuntu-24.04, macos-15, windows-2025]
     defaults:
       run:
@@ -336,6 +370,7 @@ jobs:
           retention-days: 14
 
   dependencies:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Dependency policy and commit identities
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -357,7 +392,7 @@ jobs:
 
       - name: Public commit identities
         env:
-          BASE_SHA: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.sha }}
         run: node scripts/check-agent-identity.mjs
 
@@ -378,7 +413,7 @@ jobs:
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
           SCHEDULE: ${{ github.event.schedule }}
-          BASE_SHA: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.sha }}
         run: bash scripts/ci-advisories.sh policy >> "$GITHUB_OUTPUT"
 
@@ -527,11 +562,12 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  # Publication still requires successful confirmation, including daily qualification.
+  # The required merge check and publication evidence; daily/manual runs add
+  # qualification. A fork's PR skips every job above, so its result fails.
   result:
     name: CI result
     if: always()
-    needs: [interface, test, web, desktop, webkit, dependencies, release-checks, bibtex-fuzz, installed]
+    needs: [scope, interface, test, web, desktop, webkit, dependencies, release-checks, bibtex-fuzz, installed]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -542,10 +578,11 @@ jobs:
           persist-credentials: false
           sparse-checkout: scripts
 
-      - name: Require every confirmation job to pass
+      - name: Require every CI job to pass
         env:
-          RESULTS: ${{ needs.interface.result }} ${{ needs.test.result }} ${{ needs.web.result }} ${{ needs.desktop.result }} ${{ needs.dependencies.result }}
+          RESULTS: ${{ needs.scope.result }} ${{ needs.interface.result }} ${{ needs.test.result }} ${{ needs.web.result }} ${{ needs.desktop.result }} ${{ needs.dependencies.result }}
           QUALIFICATION: ${{ needs.webkit.result }} ${{ needs.release-checks.result }} ${{ needs.bibtex-fuzz.result }} ${{ needs.installed.result }}
+          PLATFORMS: ${{ needs.scope.outputs.os }}
           EVENT: ${{ github.event_name }}
         run: scripts/ci-result.sh
 
