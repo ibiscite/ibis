@@ -39,6 +39,17 @@ test("the first frame uses every snapshot source without startup fetches", async
   for (const command of ["library_status", "recent_references", "picker_destination", "picker_preferences"]) expect(calls).not.toContain(command);
 });
 
+test("an unread app in the opening snapshot is a failure notice", async () => {
+  const opening = snapshot(1, "First reference");
+  opening.destination = { Err: { code: "destination-unavailable", message: { id: "operation-failures-app-read", args: {} }, recovery: { action: "retry" }, focus: "search" } };
+  backend({ picker_snapshot: () => opening });
+  render(<App />);
+  const notice = await screen.findByText("Ibis could not tell which app this is. Your default applies.");
+  expect(notice.getAttribute("role")).toBe("alert");
+  expect(notice.classList.contains("ui-line-words")).toBe(true);
+  expect(notice.closest(".ui-line-notice")?.getAttribute("data-role")).toBe("alert");
+});
+
 test("a picker opened while its library loads shows the loaded count and rows without reopening", async () => {
   const opening = snapshot(1, "Unused opening row");
   opening.library = { ...opening.library, state: "loading", has_snapshot: false, references: 0 };

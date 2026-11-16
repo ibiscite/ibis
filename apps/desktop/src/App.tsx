@@ -256,8 +256,8 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
       notice={[
         // What passes (Undo, a remark, an update) first: it goes by itself.
         <PickerNotices key="passing" state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? shorthand.hint ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && !shorthand.hint && delights.passive} onRemarkPassed={() => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else if (shorthand.hint) shorthand.dismiss(); else delights.dismiss(); }} />,
-        ...notices({ projectNotice: destination.readProblem ?? project.notice, editorNotice: editor.label, library, failures: { ...failures, recentHistory: recents.forgetFailed },
-          error, copyError: inspector.panel ? null : copyError, copied, missing: ready ? list?.missing : undefined,
+        ...notices({ projectNotice: project.notice, editorNotice: editor.label, library, failures: { ...failures, recentHistory: recents.forgetFailed },
+          error: error ?? destination.readProblem, copyError: inspector.panel ? null : copyError, copied, missing: ready ? list?.missing : undefined,
           confirmation: state.copyNotice, onDismissCopied: () => send({ type: "dismiss" }) }),
         bibliographyCheckNotice({ refusal: inspector.panel ? null : projectRefusal, problem: projectProblem,
           onRetry: project.retry ? () => { cancelCopy(); project.retry?.(); } : undefined,
