@@ -39,10 +39,12 @@ pub(super) enum ToolProblem {
     AttachmentText,
     Writes,
     Proposal,
+    Busy,
 }
 impl ToolProblem {
     pub(super) fn problem(self, args: &[(&str, &str)]) -> (ErrorCode, Problem) {
         let (code, recovery) = match self {
+            Self::Busy => (ErrorCode::SourceUnavailable, R::Retry),
             Self::NoLibrary => (ErrorCode::SourceUnavailable, R::ChooseLibrary),
             Self::AttachmentText | Self::Writes => (ErrorCode::SourceUnavailable, R::ReviewSettings),
             Self::Proposal => (ErrorCode::BadInput, R::EditInput),
