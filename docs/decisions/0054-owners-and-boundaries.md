@@ -67,7 +67,12 @@ Each is one pull request that deletes the path it replaces:
 10. Picker actions are executable declarations; accelerators are parsed types.
 
 Two small deletion passes (front end; Rust and tooling) run once their paths
-are free.
+are free. The maintainer directed the Rust deletion pass on 2026-11-16:
+filesystem reads share the core bounded worker and absolute deadline, with
+capacity and cancellation domains kept by their owners; Zotero library identity
+is the core enum everywhere (the personal library is written as `user`). Native
+callers retain typed engine replies until serialization. Removed settings choices
+have no migration, and native evidence recording has no replay mode.
 
 ## Not doing
 

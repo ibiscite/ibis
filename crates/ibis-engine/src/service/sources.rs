@@ -708,7 +708,7 @@ impl Engine {
             .map_err(|_| error(ErrorCode::Internal))?;
         let mut source = self.resources.zotero.lock().map_err(|_| error(ErrorCode::Internal))?;
         let wanted: Vec<Library> = match libraries {
-            Some(libraries) => libraries.iter().copied().map(Into::into).collect(),
+            Some(libraries) => libraries.to_vec(),
             None => source.libraries(),
         };
         let profile = profile.or(source.profile()).map(str::to_owned);
@@ -752,7 +752,7 @@ impl Engine {
                     .zip(read)
                     .map(|(loaded, library)| {
                         let mut info = info(loaded);
-                        info.zotero = Some(library.into());
+                        info.zotero = Some(library);
                         (info, &loaded.snapshot)
                     })
                     .collect();
@@ -1504,9 +1504,9 @@ mod tests {
             )
             .unwrap();
         assert_eq!(
-            DispatchResult::citation(cited.value, 1, &OutputSpec::Preset { name: "pandoc".into() })
+            DispatchResult::citation(cited, 1, &OutputSpec::Preset { name: "pandoc".into() })
                 .unwrap()
-                .with_health(&cited.source_health)
+                .wire()
                 .unwrap()
                 .text
                 .as_deref(),

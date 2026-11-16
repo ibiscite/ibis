@@ -206,13 +206,11 @@
       "properties": {
         "identifier": {"enum": ["com.ibiscite.ibis", "com.ibiscite.ibis.nightly", "com.ibiscite.ibis.development"]},
         "shortcut": {"type": "string", "pattern": "^(?:(?:(?:ctrl|shift|alt|super)\\+){1,3}(?:[a-z]|F[1-9]|F1[0-2]))$"},
-        "skip_performance": {"type": "boolean"},
-        "seed": {"type": "integer", "minimum": 0, "maximum": 4294967295}
+        "skip_performance": {"type": "boolean"}
       },
-      "required": ["identifier", "shortcut", "skip_performance", "seed"],
+      "required": ["identifier", "shortcut", "skip_performance"],
       "additionalProperties": false
     },
-    "seed_reason": {"const": "deterministic-scenario"},
     "events": {
       "type": "array",
       "items": {
@@ -252,7 +250,6 @@
             null,
             "invariant-failed",
             "native-capability-unavailable",
-            "replay-diverged",
             "timeout",
             "interrupted",
             "native-io-failed",
@@ -265,7 +262,7 @@
               "anyOf": [
                 {"$ref": "#/$defs/action"},
                 {"$ref": "#/$defs/request"},
-                {"enum": ["scenario", "replay-sequence", "cleanup"]}
+                {"enum": ["scenario", "cleanup"]}
               ]
             },
             {"type": "null"}
@@ -291,8 +288,6 @@
       "maxItems": 1,
       "minItems": 0
     },
-    "replay_command": {"const": "python3 scripts/smoke-native.py --app BUILD --output REPLAY --replay BUNDLE/manifest.json"},
-    "replay_of": {"anyOf": [{"type": "string", "pattern": "^(?:[0-9a-f]{32})$"}, {"type": "null"}]},
     "build_unavailable_reason": {"const": "not-observed"}
   },
   "required": [
@@ -305,14 +300,11 @@
     "environment",
     "environment_unavailable_reason",
     "options",
-    "seed_reason",
     "events",
     "request_completion_order",
     "app_request_order",
     "result",
     "missing_capabilities",
-    "replay_command",
-    "replay_of",
     "build_unavailable_reason"
   ],
   "additionalProperties": false

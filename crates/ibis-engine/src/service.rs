@@ -148,35 +148,64 @@ pub struct SearchResult {
     pub source_health: health::SourceHealth,
 }
 #[derive(Debug)]
-pub struct DispatchResult {
-    pub data: Value,
+pub struct DispatchResult<T = Value> {
+    pub data: T,
     pub exit_code: ExitCode,
     /// Checked terminal content; record exports may report refused records beside it.
     pub text: Option<String>,
     pub source_findings: bool,
 }
-impl DispatchResult {
-    /// Put the health of the sources this result consulted beside its data. A
-    /// problem with one makes an otherwise clean result a finding.
-    pub fn with_health(mut self, health: &health::SourceHealth) -> Result<Self, EngineError> {
-        let Value::Object(data) = &mut self.data else {
-            return Err(error(ErrorCode::Internal));
-        };
-        data.insert("source_health".into(), value(health)?);
-        self.source_findings = !health.is_ok();
-        if self.source_findings && self.exit_code == ExitCode::Ok {
-            self.exit_code = ExitCode::Findings;
-        }
-        self.bounded()
-    }
+impl<T: Serialize> DispatchResult<T> {
     /// Every frontend shares the same serialized result budget.
     pub fn bounded(self) -> Result<Self, EngineError> {
-        crate::wire::encode(&self.data, crate::protocol::MAX_RESULT_BYTES)
+        crate::wire::encode(&value(&self.data)?, crate::protocol::MAX_RESULT_BYTES)
             .map_err(|_| error(ErrorCode::ResourceLimit))?;
         Ok(self)
     }
-    pub fn citation(result: CitationResult, expected_items: usize, output: &OutputSpec) -> Result<Self, EngineError> {
-        let source_findings = result.receipt.as_ref().is_some_and(receipt::source_findings);
+
+    pub fn map_data<U>(self, map: impl FnOnce(T) -> U) -> DispatchResult<U> {
+        DispatchResult {
+            data: map(self.data),
+            exit_code: self.exit_code,
+            text: self.text,
+            source_findings: self.source_findings,
+        }
+    }
+    pub fn wire(self) -> Result<DispatchResult, EngineError> {
+        let data = value(&self.data)?;
+        Ok(self.map_data(|_| data))
+    }
+}
+
+/// Native callers retain the engine's result types until their output boundary.
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub enum Reply {
+    Libraries(health::Checked<LibrariesResult>),
+    Search(Box<SearchResult>),
+    Show(Box<health::Checked<SnapshotObject>>),
+    Citation(Box<health::Checked<CitationResult>>),
+    Project(health::Checked<ProjectResult>),
+    Entry(health::Checked<EntryResult>),
+    Outline(health::Checked<OutlineResult>),
+    Read(health::Checked<ReadResult>),
+    FindIn(health::Checked<FindInResult>),
+    Styles(StylesResult),
+    Outputs(crate::outputs::OutputsResult),
+    Schema(Value),
+}
+impl DispatchResult<Reply> {
+    pub fn citation(
+        result: health::Checked<CitationResult>,
+        expected_items: usize,
+        output: &OutputSpec,
+    ) -> Result<Self, EngineError> {
+        let health::Checked {
+            value: result,
+            source_health,
+        } = result;
+        let source_findings = !source_health.is_ok();
+        let receipt_findings = result.receipt.as_ref().is_some_and(receipt::source_findings);
         let text = result
             .copy_content(expected_items)
             .map(|content| content.text.to_owned())
@@ -205,13 +234,21 @@ impl DispatchResult {
                     && result.content_matches_hash())
                 .then(|| result.text.clone())
             });
-        let exit_code = if result.is_complete() && result.losses.is_empty() && text.is_some() && !source_findings {
+        let exit_code = if result.is_complete()
+            && result.losses.is_empty()
+            && text.is_some()
+            && !source_findings
+            && !receipt_findings
+        {
             ExitCode::Ok
         } else {
             ExitCode::Findings
         };
         Self {
-            data: value(result)?,
+            data: Reply::Citation(Box::new(health::Checked {
+                value: result,
+                source_health,
+            })),
             exit_code,
             text,
             source_findings,
@@ -753,14 +790,8 @@ impl Engine {
             } => {
                 // Which Zotero library each reference came from is the engine's
                 // own record of what it read; an id names one library for good.
-                ibis_core::syntax::scannable::cite(snapshot, request, |library| {
-                    use ibis_core::syntax::scannable::ZoteroOrigin;
-                    context.zotero.get(library).map(|zotero| match zotero {
-                        crate::request::ZoteroLibrary::Personal => ZoteroOrigin::Personal,
-                        crate::request::ZoteroLibrary::Group(id) => ZoteroOrigin::Group(*id),
-                    })
-                })
-                .map_err(key_error)?
+                ibis_core::syntax::scannable::cite(snapshot, request, |library| context.zotero.get(library).copied())
+                    .map_err(key_error)?
             }
             OutputSpec::Key { .. } => ibis_core::syntax::cite(snapshot, request).map_err(key_error)?,
             OutputSpec::Csl { .. } => self.formatted(
@@ -782,6 +813,15 @@ impl Engine {
         params: &Value,
         cancel: &Cancellation,
     ) -> Result<DispatchResult, EngineError> {
+        self.reply(method, params, cancel)?.wire()
+    }
+
+    pub fn reply(
+        &self,
+        method: Method,
+        params: &Value,
+        cancel: &Cancellation,
+    ) -> Result<DispatchResult<Reply>, EngineError> {
         cancel.check()?;
         crate::protocol::validate_shape(params).map_err(|_| error(ErrorCode::BadInput))?;
         let data = match method {
@@ -817,25 +857,33 @@ impl Engine {
                 listed.value.zotero_profiles = profiles;
                 listed.value.zotero_groups = groups;
                 cancel.check()?;
-                return checked(listed, ExitCode::Ok);
+                return checked(listed, ExitCode::Ok, Reply::Libraries);
             }
             Method::Search => {
                 let result = self.search(&parameters(params)?, cancel)?;
+                let source_findings = !result.source_health.is_ok();
                 return DispatchResult {
-                    data: value(&result)?,
-                    exit_code: ExitCode::Ok,
+                    data: Reply::Search(Box::new(result)),
+                    exit_code: if source_findings {
+                        ExitCode::Findings
+                    } else {
+                        ExitCode::Ok
+                    },
                     text: None,
-                    source_findings: false,
+                    source_findings,
                 }
-                .with_health(&result.source_health);
+                .bounded();
             }
-            Method::Show => return checked(self.show_checked(&parameters(params)?)?, ExitCode::Ok),
+            Method::Show => {
+                return checked(self.show_checked(&parameters(params)?)?, ExitCode::Ok, |value| {
+                    Reply::Show(Box::new(value))
+                });
+            }
 
             Method::Cite => {
                 let request: CitationRequest = parameters(params)?;
                 let checked = self.prepare_citation(&request, cancel)?.into_checked();
-                return DispatchResult::citation(checked.value, request.items.len(), &request.output)?
-                    .with_health(&checked.source_health);
+                return DispatchResult::citation(checked, request.items.len(), &request.output);
             }
             Method::Records => {
                 let request: RecordsRequest = parameters(params)?;
@@ -848,11 +896,18 @@ impl Engine {
                     .warnings
                     .iter()
                     .any(|warning| warning.code == CitationWarningCode::SourceField);
-                let mut dispatched = DispatchResult::citation(result, count, &request.output)?;
+                let mut dispatched = DispatchResult::citation(
+                    health::Checked {
+                        value: result,
+                        source_health: health::SourceHealth::of(std::iter::empty()),
+                    },
+                    count,
+                    &request.output,
+                )?;
                 if unread {
                     dispatched.exit_code = ExitCode::Findings;
                 }
-                return dispatched.with_health(&health::SourceHealth::of(std::iter::empty()));
+                return Ok(dispatched);
             }
             Method::Project => {
                 let result = self.project(&parameters(params)?, cancel)?;
@@ -861,7 +916,7 @@ impl Engine {
                 } else {
                     ExitCode::Findings
                 };
-                return checked(result, exit_code);
+                return checked(result, exit_code, Reply::Project);
             }
             Method::Entry => {
                 let result = self.entry_checked(&parameters(params)?, cancel)?;
@@ -869,22 +924,34 @@ impl Engine {
                     EntryResult::Entry { .. } => ExitCode::Ok,
                     EntryResult::Refused { .. } => ExitCode::Findings,
                 };
-                return checked(result, exit_code);
+                return checked(result, exit_code, Reply::Entry);
             }
-            Method::Outline => return checked(self.outline(&parameters(params)?, cancel)?, ExitCode::Ok),
-            Method::Read => return checked(self.read_attachment(&parameters(params)?, cancel)?, ExitCode::Ok),
-            Method::FindIn => return checked(self.find_in(&parameters(params)?, cancel)?, ExitCode::Ok),
-            Method::Styles => value(self.styles(&parameters(params)?)?)?,
+            Method::Outline => {
+                return checked(
+                    self.outline(&parameters(params)?, cancel)?,
+                    ExitCode::Ok,
+                    Reply::Outline,
+                );
+            }
+            Method::Read => {
+                return checked(
+                    self.read_attachment(&parameters(params)?, cancel)?,
+                    ExitCode::Ok,
+                    Reply::Read,
+                );
+            }
+            Method::FindIn => return checked(self.find_in(&parameters(params)?, cancel)?, ExitCode::Ok, Reply::FindIn),
+            Method::Styles => Reply::Styles(self.styles(&parameters(params)?)?),
             Method::Outputs => {
                 let OutputsRequest {} = parameters(params)?;
-                value(crate::outputs::list())?
+                Reply::Outputs(crate::outputs::list())
             }
             Method::Schema => {
                 let request: SchemaRequest = parameters(params)?;
                 let methods: Vec<_> = request
                     .method
                     .map_or_else(|| Method::ALL.to_vec(), |method| vec![method]);
-                Value::Array(
+                Reply::Schema(Value::Array(
                     methods
                         .into_iter()
                         .map(|method| {
@@ -896,14 +963,14 @@ impl Engine {
                             })
                         })
                         .collect(),
-                )
+                ))
             }
             Method::Call => {
                 let request: CallRequest = parameters(params)?;
                 if request.method == Method::Call {
                     return Err(error(ErrorCode::BadInput));
                 }
-                return self.dispatch(request.method, &request.params, cancel);
+                return self.reply(request.method, &request.params, cancel);
             }
         };
         cancel.check()?;
@@ -918,15 +985,25 @@ impl Engine {
     }
 }
 /// A result and its sources' health, as dispatch sends them.
-fn checked<T: Serialize>(result: health::Checked<T>, exit_code: ExitCode) -> Result<DispatchResult, EngineError> {
+fn checked<T>(
+    result: health::Checked<T>,
+    exit_code: ExitCode,
+    wrap: impl FnOnce(health::Checked<T>) -> Reply,
+) -> Result<DispatchResult<Reply>, EngineError> {
+    let source_findings = !result.source_health.is_ok();
     DispatchResult {
-        data: value(&result.value)?,
-        exit_code,
+        data: wrap(result),
+        exit_code: if source_findings && exit_code == ExitCode::Ok {
+            ExitCode::Findings
+        } else {
+            exit_code
+        },
         text: None,
-        source_findings: false,
+        source_findings,
     }
-    .with_health(&result.source_health)
+    .bounded()
 }
+
 /// The libraries a lookup read: every one for a key, the record's own for an id.
 fn consulted(state: &State, selector: &ItemSelector, library: &LibraryId) -> health::SourceHealth {
     health::SourceHealth::of(

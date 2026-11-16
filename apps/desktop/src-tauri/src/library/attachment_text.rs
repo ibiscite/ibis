@@ -50,7 +50,7 @@ impl AttachmentText {
             .into_iter()
             .map(|library| {
                 let name = match library.zotero {
-                    Some(ZoteroLibrary::Personal) => "Zotero library".into(),
+                    Some(ZoteroLibrary::User) => "Zotero library".into(),
                     Some(ZoteroLibrary::Group(id)) => groups
                         .iter()
                         .find(|group| group.id == id)

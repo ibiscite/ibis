@@ -3,7 +3,8 @@
 //! Bound the caller's wait and the number of detached calls; never join one.
 use super::*;
 use ibis_core::contract::Availability;
-use std::sync::{Condvar, OnceLock};
+use std::sync::OnceLock;
+#[cfg(test)]
 use std::time::Instant;
 
 const DEADLINE: Duration = Duration::from_secs(2);
@@ -11,125 +12,39 @@ const MAX_IN_FLIGHT: usize = 8;
 const MAX_PROBE_BATCHES: usize = MAX_IN_FLIGHT / 2;
 const MAX_ATTACHMENT_PROBES: usize = 256;
 
-#[derive(Default)]
-struct InFlight {
-    total: usize,
-    probes: usize,
+use ibis_core::file_io::{Admission, Pool};
+
+fn pool() -> &'static Pool {
+    static POOL: OnceLock<Pool> = OnceLock::new();
+    POOL.get_or_init(|| Pool::new(MAX_IN_FLIGHT, MAX_PROBE_BATCHES))
 }
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Work {
-    Read,
-    Probe,
-}
-
-#[derive(Clone, Default)]
-struct Budget(Arc<(Mutex<InFlight>, Condvar)>);
-
-struct Permit(Budget, Work);
-impl Drop for Permit {
-    fn drop(&mut self) {
-        let (count, available) = &*self.0.0;
-        let mut count = count.lock().unwrap_or_else(|e| e.into_inner());
-        count.total -= 1;
-        if self.1 == Work::Probe {
-            count.probes -= 1;
-        }
-        available.notify_one();
+fn io_error(error: ibis_core::file_io::Error) -> SourceError {
+    match error {
+        ibis_core::file_io::Error::Cancelled => SourceError::Cancelled,
+        _ => SourceError::Unavailable,
     }
 }
-
-impl Budget {
-    fn shared() -> &'static Self {
-        static BUDGET: OnceLock<Budget> = OnceLock::new();
-        BUDGET.get_or_init(Budget::default)
-    }
-
-    fn run<T: Send + 'static>(
-        &self,
-        scope: &Scope<'_>,
-        work: Work,
-        operation: impl FnOnce() -> Result<T, SourceError> + Send + 'static,
-    ) -> Result<T, SourceError> {
-        let (count, available) = &*self.0;
-        let mut count = count.lock().map_err(|_| SourceError::Unavailable)?;
-        // Optional metadata never queues behind I/O or occupies the four
-        // slots reserved for library reads, even after its caller times out.
-        if work == Work::Probe && (count.probes >= MAX_PROBE_BATCHES || count.total >= MAX_IN_FLIGHT) {
-            return Err(SourceError::Unavailable);
-        }
-        while count.total >= MAX_IN_FLIGHT {
-            let remaining = scope.remaining()?;
-            count = available
-                .wait_timeout(count, remaining.min(Duration::from_millis(10)))
-                .map_err(|_| SourceError::Unavailable)?
-                .0;
-        }
-        scope.remaining()?;
-        count.total += 1;
-        if work == Work::Probe {
-            count.probes += 1;
-        }
-        drop(count);
-        let permit = Permit(self.clone(), work);
-        let (send, result) = mpsc::sync_channel(1);
-        std::thread::Builder::new()
-            .name("ibis-file-io".into())
-            .spawn(move || {
-                let _permit = permit;
-                let _ = send.send(operation());
-            })
-            .map_err(|_| SourceError::Unavailable)?;
-        loop {
-            let remaining = scope.remaining()?;
-            match result.recv_timeout(remaining.min(Duration::from_millis(10))) {
-                Ok(result) => return result,
-                Err(RecvTimeoutError::Timeout) => {}
-                Err(RecvTimeoutError::Disconnected) => return Err(SourceError::Unavailable),
-            }
-        }
-    }
-}
-
-/// One source load shares this absolute deadline, including capacity waits.
-pub(super) struct Scope<'a> {
-    until: Instant,
-    now: Arc<dyn Fn() -> Instant + Send + Sync>,
-    cancelled: &'a dyn Fn() -> bool,
-}
-
+pub(super) struct Scope<'a>(ibis_core::file_io::Scope<'a>);
 impl<'a> Scope<'a> {
     pub(super) fn new(cancelled: &'a dyn Fn() -> bool) -> Self {
-        Self {
-            until: Instant::now() + DEADLINE,
-            now: Arc::new(Instant::now),
-            cancelled,
-        }
+        Self(ibis_core::file_io::Scope::new(cancelled, DEADLINE))
     }
-
     fn check_cancelled(&self) -> Result<(), SourceError> {
-        if (self.cancelled)() {
+        if (self.0.cancelled)() {
             Err(SourceError::Cancelled)
         } else {
             Ok(())
         }
     }
-
+    #[cfg(test)]
     fn remaining(&self) -> Result<Duration, SourceError> {
-        self.check_cancelled()?;
-        let remaining = self.until.saturating_duration_since((self.now)());
-        if remaining.is_zero() {
-            Err(SourceError::Unavailable)
-        } else {
-            Ok(remaining)
-        }
+        self.0.remaining().map_err(io_error)
     }
-
     pub(super) fn run<T: Send + 'static>(
         &self,
         operation: impl FnOnce() -> Result<T, SourceError> + Send + 'static,
     ) -> Result<T, SourceError> {
-        Budget::shared().run(self, Work::Read, operation)
+        pool().run(&self.0, Admission::Wait, operation).map_err(io_error)?
     }
 
     pub(super) fn attachments(
@@ -160,10 +75,10 @@ impl<'a> Scope<'a> {
         }
         references.truncate(MAX_ATTACHMENT_PROBES);
         references.shrink_to_fit();
-        let until = self.until;
-        let now = self.now.clone();
+        let until = self.0.until;
+        let now = self.0.now.clone();
         let (send, results) = mpsc::channel();
-        let outcome = Budget::shared().run(self, Work::Probe, move || {
+        let outcome = pool().run(&self.0, Admission::Optional, move || {
             for (index, path) in references {
                 if now() >= until {
                     break;
@@ -182,10 +97,13 @@ impl<'a> Scope<'a> {
                 attachment.availability = availability;
             }
         }
-        outcome.or_else(|error| match error {
-            SourceError::Cancelled => Err(error),
-            _ => self.check_cancelled(),
-        })?;
+        outcome
+            .map_err(io_error)
+            .and_then(|answer| answer)
+            .or_else(|error| match error {
+                SourceError::Cancelled => Err(error),
+                _ => self.check_cancelled(),
+            })?;
         self.check_cancelled()
     }
 }
@@ -376,7 +294,7 @@ mod tests {
     use super::*;
     fn test_scope(duration: Duration) -> Scope<'static> {
         let mut scope = Scope::new(&|| false);
-        scope.until = Instant::now() + duration;
+        scope.0.until = Instant::now() + duration;
         scope
     }
 
@@ -418,25 +336,25 @@ mod tests {
 
     #[test]
     fn stuck_calls_have_a_fixed_resource_limit() {
-        let budget = Budget::default();
+        let pool = Pool::new(MAX_IN_FLIGHT, MAX_PROBE_BATCHES);
         let mut releases = Vec::new();
         for _ in 0..MAX_IN_FLIGHT {
             let (release, stuck) = mpsc::channel::<()>();
             releases.push(release);
             assert_eq!(
-                budget.run(&test_scope(Duration::from_millis(10)), Work::Read, move || {
+                pool.run(&test_scope(Duration::from_millis(10)).0, Admission::Wait, move || {
                     stuck.recv().map_err(|_| SourceError::Unavailable)
                 }),
-                Err(SourceError::Unavailable)
+                Err(ibis_core::file_io::Error::TimedOut)
             );
         }
         assert_eq!(
-            budget.run(
-                &test_scope(Duration::from_secs(1)),
-                Work::Read,
+            pool.run(
+                &test_scope(Duration::from_secs(1)).0,
+                Admission::Wait,
                 || -> Result<(), SourceError> { panic!("the detached I/O limit was exceeded") }
             ),
-            Err(SourceError::Unavailable)
+            Err(ibis_core::file_io::Error::TimedOut)
         );
         drop(releases);
     }

@@ -6,6 +6,7 @@ pub mod citation;
 pub mod command_install;
 pub mod contract;
 pub mod destination;
+pub mod file_io;
 pub mod identifier;
 pub mod locator;
 pub mod model;

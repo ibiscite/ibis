@@ -11,16 +11,16 @@
             "type": "string"
           },
           "ZoteroLibrary": {
-            "description": "A Zotero library: the personal library (\"My Library\") or a group by its\nZotero group ID.",
+            "description": "Which Zotero library items belong to. Identity is the library plus the\nitem key, never a citation key (ADR 0006).",
             "oneOf": [
               {
-                "enum": [
-                  "personal"
-                ],
+                "const": "user",
+                "description": "The personal library (\"My Library\").",
                 "type": "string"
               },
               {
                 "additionalProperties": false,
+                "description": "A group library, by its numeric group ID.",
                 "properties": {
                   "group": {
                     "format": "uint64",
@@ -1237,16 +1237,16 @@
             "type": "object"
           },
           "ZoteroLibrary": {
-            "description": "A Zotero library: the personal library (\"My Library\") or a group by its\nZotero group ID.",
+            "description": "Which Zotero library items belong to. Identity is the library plus the\nitem key, never a citation key (ADR 0006).",
             "oneOf": [
               {
-                "enum": [
-                  "personal"
-                ],
+                "const": "user",
+                "description": "The personal library (\"My Library\").",
                 "type": "string"
               },
               {
                 "additionalProperties": false,
+                "description": "A group library, by its numeric group ID.",
                 "properties": {
                   "group": {
                     "format": "uint64",

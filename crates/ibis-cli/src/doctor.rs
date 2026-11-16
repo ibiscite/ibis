@@ -106,9 +106,7 @@ pub(super) fn run(
             })
         })
         .collect();
-    let styles = engine
-        .dispatch(Method::Styles, &json!({}), &Cancellation::default())?
-        .data;
+    let styles = engine.styles(&ibis_engine::request::StylesRequest::default())?;
     let library_ids = if ids_last {
         check("ok", "ids-last")
     } else {
@@ -119,8 +117,8 @@ pub(super) fn run(
         "cli_version": ibis_core::VERSION,
         "stdout_tty": mode.stdout_terminal(),
         "capabilities": {"methods":Method::ALL, "key_outputs":key_outputs, "csl_styles":{
-            "count":styles["total"], "locales":styles["locales"].as_array().map_or(0, Vec::len),
-            "styles_release":styles["styles_release"], "locales_release":styles["locales_release"],
+            "count":styles.total, "locales":styles.locales.len(),
+            "styles_release":styles.styles_release, "locales_release":styles.locales_release,
         }},
         "config":config,
         "library_check":library_check,
@@ -172,7 +170,9 @@ fn report_text(data: &Value, now_ms: u64) -> String {
     for (label, result) in &checks {
         text.push_str(&summary(label, result));
         for warning in result["warnings"].as_array().into_iter().flatten() {
-            text.push_str(&super::human::warning_line(warning));
+            if let Ok(warning) = serde_json::from_value(warning.clone()) {
+                text.push_str(&super::human::warning_line(&warning));
+            }
             text.push('\n');
         }
         if let (Some("stale"), Some(time)) = (

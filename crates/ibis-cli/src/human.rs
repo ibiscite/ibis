@@ -2,16 +2,18 @@
 mod projection;
 mod record;
 use super::out::{self, Out};
+use crate::{DispatchResult, Response};
 pub(super) use ibis_core::model::is_hidden;
 use ibis_core::{
     contract::*,
     destination::{CopyReason, Decision, Destination},
 };
 use ibis_engine::catalogue::{self, Audience};
+use ibis_engine::{Doubt, EntryRefusal, EntryResult, KeyCheck, ProjectKey, ProjectProblem, ProjectResult};
 use ibis_engine::{
-    DispatchResult, Doubt, EntryRefusal, EntryResult, KeyCheck, Method, ProjectKey, ProjectProblem, ProjectResult,
+    LibraryInfo, Reply, SourceWarning,
+    health::{SourceFinding, SourceHealth},
 };
-use serde_json::Value;
 use std::{collections::BTreeMap, path::Path};
 
 /// What the open libraries hold, so an empty result can be told truthfully.
@@ -25,13 +27,12 @@ pub(super) enum Holdings {
 /// Without --json, search, show, libraries and styles print short lines for people.
 pub(super) fn with_summary(
     mut result: DispatchResult,
-    method: Method,
     json: bool,
     holdings: Holdings,
     names: &BTreeMap<String, String>,
     out: Out,
 ) -> DispatchResult {
-    if !json && let Some(text) = summary(method, &result.data, holdings, names, out) {
+    if !json && let Some(text) = summary_reply(&result.data, holdings, names, out) {
         result.text = Some(text);
     }
     result
@@ -62,26 +63,27 @@ fn search_summary(hits: &[record::Row], holdings: Holdings, out: Out) -> Option<
     Some(rows)
 }
 
-fn summary(
-    method: Method,
-    data: &Value,
+fn summary_reply(
+    response: &Response,
     holdings: Holdings,
     names: &BTreeMap<String, String>,
     out: Out,
 ) -> Option<String> {
-    match method {
-        Method::Show => Some(record::reference(&projection::row(
-            data.pointer("/object/data")?,
-            false,
-            false,
-        )?)),
-        Method::Search => {
-            let hits = data.get("hits")?.as_array()?;
+    let Response::Engine(reply) = response else {
+        return None;
+    };
+    match reply {
+        Reply::Show(data) => match &data.value.object {
+            LibraryObject::Record(record) => Some(record::reference(&projection::row(record, false, false))),
+            _ => None,
+        },
+        Reply::Search(data) => {
+            let hits = &data.hits;
             // What was read around the words, said once before the rows, as the picker shows it.
-            let read = data.get("shorthand").map(|read| {
-                let prefix = read.get("prefix").and_then(Value::as_str);
-                let locator = read.pointer("/locator/typed").and_then(Value::as_str);
-                let words = read.get("search").and_then(Value::as_str).unwrap_or_default();
+            let read = data.shorthand.as_ref().map(|read| {
+                let prefix = read.prefix.as_deref();
+                let locator = read.locator.as_ref().map(|locator| locator.typed.as_str());
+                let words = read.search.as_str();
                 let cited = [prefix, locator].into_iter().flatten().collect::<Vec<_>>().join(" · ");
                 format!(
                     "{}\n",
@@ -95,8 +97,8 @@ fn summary(
             let summary = search_summary(&rows, holdings, out)?;
             Some(format!("{}{summary}", read.unwrap_or_default()))
         }
-        Method::Libraries => {
-            let libraries = data.get("libraries")?.as_array()?;
+        Reply::Libraries(data) => {
+            let libraries = &data.value.libraries;
             if libraries.is_empty() {
                 return Some(cli("cli-libraries-empty", &[]));
             }
@@ -109,11 +111,11 @@ fn summary(
                 if libraries.len() == 1 { "library" } else { "libraries" }
             )];
             for library in libraries {
-                let count = library.get("objects")?.as_u64()?;
-                let warnings = library.get("warnings_total").and_then(Value::as_u64).unwrap_or(0);
+                let count = library.objects;
+                let warnings = library.warnings_total;
                 lines.push(format!(
                     "{}\t{} {}{}{}{}",
-                    library_name(library, names)?,
+                    library_name(library, names),
                     count,
                     if count == 1 { "item" } else { "items" },
                     match warnings {
@@ -121,66 +123,65 @@ fn summary(
                         1 => ", 1 warning".into(),
                         n => format!(", {n} warnings"),
                     },
-                    if library.get("refresh_error").is_some_and(|value| !value.is_null()) {
+                    if library.refresh_error.is_some() {
                         format!(" {}", cli("cli-library-stale-note", &[]))
                     } else {
                         String::new()
                     },
-                    if library.get("watch_warning").is_some_and(|value| !value.is_null()) {
+                    if library.watch_warning.is_some() {
                         format!(" {}", cli("cli-library-watch-note", &[]))
                     } else {
                         String::new()
                     }
                 ));
-                let shown = library.get("warnings").and_then(Value::as_array);
-                lines.extend(shown.into_iter().flatten().map(warning_line));
-                let listed = shown.map_or(0, |shown| shown.len() as u64);
+                let shown = &library.warnings;
+                lines.extend(shown.iter().map(warning_line));
+                let listed = shown.len();
                 if warnings > listed {
                     lines.push(format!("  and {} more", warnings - listed));
                 }
             }
             Some(lines.join("\n"))
         }
-        Method::Outputs => data
-            .get("outputs")?
-            .as_array()?
-            .iter()
-            .map(|output| {
-                let example = output.get("example").and_then(Value::as_str).unwrap_or_default();
-                Some(format!(
-                    "{}\t{}\t{}",
-                    field(output.get("id")?.as_str()?),
-                    field(output.get("name")?.as_str()?),
-                    field(example)
-                ))
-            })
-            .collect::<Option<Vec<_>>>()
-            .map(|lines| lines.join("\n")),
-        Method::Project => project_report(data),
-        Method::Entry => match serde_json::from_value(data.clone()).ok()? {
+        Reply::Outputs(data) => Some(
+            data.outputs
+                .iter()
+                .map(|output| {
+                    format!(
+                        "{}\t{}\t{}",
+                        field(&output.id),
+                        field(&output.name),
+                        field(output.example.as_deref().unwrap_or_default())
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        ),
+        Reply::Project(data) => Some(project_report(&data.value)),
+        Reply::Entry(data) => match &data.value {
             EntryResult::Entry { text, .. } => Some(text.trim_end().to_owned()),
-            EntryResult::Refused { reason } => Some(entry_refusal(reason)),
+            EntryResult::Refused { reason } => Some(entry_refusal(*reason)),
         },
-        Method::Outline => outline_summary(data),
-        Method::Read => read_summary(data),
-        Method::FindIn => find_in_summary(data),
-        Method::Styles => {
-            let styles = data.get("styles")?.as_array()?;
-            let total = data.get("total")?.as_u64()?;
+        Reply::Outline(data) => Some(outline_summary(&data.value)),
+        Reply::Read(data) => Some(read_summary(&data.value)),
+        Reply::FindIn(data) => Some(find_in_summary(&data.value)),
+        Reply::Styles(data) => {
+            let styles = &data.styles;
+            let total = data.total;
             let mut lines = styles
                 .iter()
                 .map(|style| {
-                    Some(format!(
+                    format!(
                         "{}\t{}\t{}",
-                        field(style.get("id")?.as_str()?),
-                        field(style.get("title")?.as_str()?),
-                        field(style.get("updated")?.as_str()?)
-                    ))
+                        field(&style.id),
+                        field(&style.title),
+                        field(&style.updated)
+                    )
                 })
-                .collect::<Option<Vec<_>>>()?;
+                .collect::<Vec<_>>();
             if total == 0 {
                 lines.push(cli("cli-styles-no-match", &[]));
-            } else if styles.len() as u64 != total {
+            } else if styles.len() != total {
                 lines.push(cli(
                     "cli-styles-showing",
                     &[("shown", &styles.len().to_string()), ("total", &total.to_string())],
@@ -188,118 +189,112 @@ fn summary(
             }
             Some(lines.join("\n"))
         }
-        _ => None,
+        Reply::Citation(_) | Reply::Schema(_) => None,
     }
 }
 
 /// One line per attachment: its id, title, type and whether its text can be read.
-fn outline_summary(data: &Value) -> Option<String> {
-    let attachments = data.get("attachments")?.as_array()?;
+fn outline_summary(data: &ibis_engine::OutlineResult) -> String {
+    let attachments = &data.attachments;
     if attachments.is_empty() {
-        return Some(cli("cli-outline-none", &[]));
+        return cli("cli-outline-none", &[]);
     }
     attachments
         .iter()
         .map(|attachment| {
-            let pages = attachment.get("pages").and_then(Value::as_u64);
-            let text = match attachment.get("text")?.as_str()? {
-                "available" if attachment.get("pages_known") == Some(&Value::Bool(true)) => cli(
-                    if attachment.get("cite_pages_known") == Some(&Value::Bool(true)) {
+            let pages = attachment.pages;
+            let text = match attachment.text {
+                ibis_engine::TextAvailability::Available if attachment.pages_known => cli(
+                    if attachment.cite_pages_known {
                         "cli-outline-printed-pages"
                     } else {
                         "cli-outline-pages"
                     },
                     &[("count", &pages.unwrap_or_default().to_string())],
                 ),
-                "available" => cli("cli-outline-text", &[]),
-                "not-indexed" => cli("cli-outline-not-indexed", &[]),
-                "no-file" => cli("cli-outline-no-file", &[]),
-                "too-large" => cli("cli-outline-too-large", &[]),
-                "missing" => cli("cli-outline-missing", &[]),
-                "not-local" => cli("cli-outline-not-local", &[]),
-                "not-pdf" => cli("cli-outline-not-pdf", &[]),
-                "damaged" => cli("cli-outline-damaged", &[]),
-                "timed-out" => cli("cli-outline-timed-out", &[]),
-                _ => cli("cli-outline-not-yet", &[]),
+                ibis_engine::TextAvailability::Available => cli("cli-outline-text", &[]),
+                ibis_engine::TextAvailability::NotIndexed => cli("cli-outline-not-indexed", &[]),
+                ibis_engine::TextAvailability::NoFile => cli("cli-outline-no-file", &[]),
+                ibis_engine::TextAvailability::TooLarge => cli("cli-outline-too-large", &[]),
+                ibis_engine::TextAvailability::Missing => cli("cli-outline-missing", &[]),
+                ibis_engine::TextAvailability::NotLocal => cli("cli-outline-not-local", &[]),
+                ibis_engine::TextAvailability::NotPdf => cli("cli-outline-not-pdf", &[]),
+                ibis_engine::TextAvailability::Damaged => cli("cli-outline-damaged", &[]),
+                ibis_engine::TextAvailability::TimedOut => cli("cli-outline-timed-out", &[]),
+                ibis_engine::TextAvailability::NotYet => cli("cli-outline-not-yet", &[]),
             };
-            Some(format!(
+            format!(
                 "{}\t{}\t{}\t{text}",
-                field(attachment.get("id")?.as_str()?),
-                field(attachment.get("title").and_then(Value::as_str).unwrap_or_default()),
-                field(attachment.get("media_type").and_then(Value::as_str).unwrap_or_default()),
-            ))
+                field(&attachment.id),
+                field(attachment.title.as_deref().unwrap_or_default()),
+                field(attachment.media_type.as_deref().unwrap_or_default()),
+            )
         })
-        .collect::<Option<Vec<_>>>()
-        .map(|lines| lines.join("\n"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Attachment text as it reads, each page under its number, then how to go on.
-fn read_summary(data: &Value) -> Option<String> {
+fn read_summary(data: &ibis_engine::ReadResult) -> String {
     let mut parts = Vec::new();
-    for page in data.get("pages")?.as_array()? {
-        let text: Vec<String> = page
-            .get("text")?
-            .as_str()?
-            .lines()
-            .map(super::terminal_display)
-            .collect();
-        if let Some(mark) = page_mark(page) {
+    for page in &data.pages {
+        let text: Vec<String> = page.text.lines().map(super::terminal_display).collect();
+        if let Some(mark) = page_mark(page.pdf_page, page.cite_page.as_deref()) {
             parts.push(mark);
         }
         parts.push(text.join("\n"));
     }
-    if let Some(next) = data.get("next") {
-        let attachment = field(data.get("attachment")?.as_str()?);
+    if let Some(next) = &data.next {
+        let attachment = field(&data.attachment);
         let mut command = format!("ibis read {attachment}");
-        if let Some(page) = next.get("first_page").and_then(Value::as_u64) {
+        if let Some(page) = next.first_page {
             command.push_str(&format!(" --pages {page}-{}", page + 4));
         }
-        if let Some(offset) = next.get("offset").and_then(Value::as_u64) {
+        if let Some(offset) = next.offset {
             command.push_str(&format!(" --offset {offset}"));
         }
         parts.push(cli("cli-read-more", &[("command", &command)]));
     }
-    Some(parts.join("\n"))
+    parts.join("\n")
 }
 
 /// The file's page, and the printed page to cite when its label is known.
-fn page_mark(item: &Value) -> Option<String> {
-    let page = item.get("pdf_page")?.as_u64()?.to_string();
-    Some(match item.get("cite_page").and_then(Value::as_str) {
+fn page_mark(page: Option<u32>, label: Option<&str>) -> Option<String> {
+    let page = page?.to_string();
+    Some(match label {
         Some(label) => cli("cli-read-printed-page", &[("page", &page), ("label", &field(label))]),
         None => cli("cli-read-page", &[("page", &page)]),
     })
 }
 
 /// One line per passage, after its page when pages are known.
-fn find_in_summary(data: &Value) -> Option<String> {
-    let passages = data.get("passages")?.as_array()?;
+fn find_in_summary(data: &ibis_engine::FindInResult) -> String {
+    let passages = &data.passages;
     if passages.is_empty() {
-        return Some(cli("cli-find-in-none", &[]));
+        return cli("cli-find-in-none", &[]);
     }
     let mut lines = passages
         .iter()
         .map(|passage| {
-            let text = field(passage.get("text")?.as_str()?);
-            Some(match page_mark(passage) {
+            let text = field(&passage.text);
+            match page_mark(passage.pdf_page, passage.cite_page.as_deref()) {
                 Some(mark) => format!("{mark}\t{text}"),
                 None => text,
-            })
+            }
         })
-        .collect::<Option<Vec<_>>>()?;
-    if data.get("complete") == Some(&Value::Bool(false)) {
+        .collect::<Vec<_>>();
+    if !data.complete {
         lines.push(cli("cli-find-in-more", &[("count", &passages.len().to_string())]));
     }
-    Some(lines.join("\n"))
+    lines.join("\n")
 }
 
 /// One line per key, the file's own state first, in the words the app uses.
-pub(super) fn project_report(data: &Value) -> Option<String> {
-    let result: ProjectResult = serde_json::from_value(data.clone()).ok()?;
+pub(super) fn project_report(result: &ProjectResult) -> String {
     let name = field(&result.name);
     let lines = |lines: &[usize]| lines.iter().map(usize::to_string).collect::<Vec<_>>().join(", ");
     let mut report = vec![];
-    if let Some(problem) = result.problem {
+    if let Some(problem) = &result.problem {
         let why = match problem {
             ProjectProblem::Unavailable => cli("cli-project-unavailable", &[]),
             ProjectProblem::NotAFile => cli("cli-project-not-file", &[]),
@@ -341,7 +336,7 @@ pub(super) fn project_report(data: &Value) -> Option<String> {
         };
         report.push(format!("{}\t{status}", field(key)));
     }
-    Some(report.join("\n"))
+    report.join("\n")
 }
 
 fn entry_refusal(reason: EntryRefusal) -> String {
@@ -355,39 +350,33 @@ fn entry_refusal(reason: EntryRefusal) -> String {
 
 /// Citation languages for `ibis styles --locales`.
 pub(super) fn locale_list(mut result: DispatchResult) -> DispatchResult {
-    let lines: Option<Vec<String>> = result.data.get("locales").and_then(Value::as_array).map(|locales| {
-        locales
-            .iter()
-            .filter_map(|locale| {
-                Some(format!(
-                    "{}\t{}",
-                    field(locale.get("tag")?.as_str()?),
-                    field(locale.get("english")?.as_str()?)
-                ))
-            })
-            .collect()
-    });
-    result.text = lines.map(|lines| lines.join("\n"));
+    if let Response::Engine(Reply::Styles(data)) = &result.data {
+        result.text = Some(
+            data.locales
+                .iter()
+                .map(|locale| format!("{}\t{}", field(&locale.tag), field(&locale.english)))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
+    }
     result
 }
 
-fn library_name(library: &Value, names: &BTreeMap<String, String>) -> Option<String> {
-    let id = library.get("id")?.as_str()?;
-    Some(field(&names.get(id).cloned().unwrap_or_else(
-        || match library.pointer("/zotero/group").and_then(Value::as_u64) {
-            Some(group) => format!("Zotero group {group}"),
-            None if library.get("kind").and_then(Value::as_str) == Some("zotero") => "Zotero".into(),
-            None => id.into(),
-        },
-    )))
+fn library_name(library: &LibraryInfo, names: &BTreeMap<String, String>) -> String {
+    let id = library.id.as_str();
+    field(&names.get(id).cloned().unwrap_or_else(|| match library.zotero {
+        Some(ibis_core::zotero::Library::Group(group)) => format!("Zotero group {group}"),
+        _ if library.kind == ibis_engine::LibraryKind::Zotero => "Zotero".into(),
+        _ => id.into(),
+    }))
 }
 
-fn terminal_libraries(libraries: &[Value], names: &BTreeMap<String, String>, out: Out) -> Option<String> {
+fn terminal_libraries(libraries: &[LibraryInfo], names: &BTreeMap<String, String>, out: Out) -> Option<String> {
     let width = out.width?;
     let labels = libraries
         .iter()
         .map(|library| library_name(library, names))
-        .collect::<Option<Vec<_>>>()?;
+        .collect::<Vec<_>>();
     let columns = labels
         .iter()
         .map(|name| out::width(name))
@@ -400,8 +389,8 @@ fn terminal_libraries(libraries: &[Value], names: &BTreeMap<String, String>, out
         if libraries.len() == 1 { "library" } else { "libraries" }
     )];
     for (library, name) in libraries.iter().zip(labels) {
-        let count = library.get("objects")?.as_u64()?;
-        let total = library.get("warnings_total").and_then(Value::as_u64).unwrap_or(0);
+        let count = library.objects;
+        let total = library.warnings_total;
         let name = out::truncate(&name, columns);
         let counts = format!(
             "{count} {}{}",
@@ -418,19 +407,19 @@ fn terminal_libraries(libraries: &[Value], names: &BTreeMap<String, String>, out
             " ".repeat(columns - out::width(&name)),
             out.dim(&out::truncate(&counts, width.saturating_sub(columns + 3)))
         ));
-        for (property, message) in [
-            ("refresh_error", cli("cli-library-refresh-failed", &[])),
-            ("watch_warning", cli("cli-library-not-watched", &[])),
+        for (present, message) in [
+            (library.refresh_error.is_some(), cli("cli-library-refresh-failed", &[])),
+            (library.watch_warning.is_some(), cli("cli-library-not-watched", &[])),
         ] {
-            if library.get(property).is_some_and(|value| !value.is_null()) {
+            if present {
                 lines.extend(wrap_warning(&message, width));
             }
         }
-        let shown = library.get("warnings").and_then(Value::as_array);
-        for warning in shown.into_iter().flatten().take(10) {
+        let shown = &library.warnings;
+        for warning in shown.iter().take(10) {
             lines.extend(wrap_warning(&entry_warning(warning), width));
         }
-        let listed = shown.map_or(0, |shown| shown.len().min(10) as u64);
+        let listed = shown.len().min(10);
         if total > listed {
             lines.extend(wrap_warning(&format!("and {} more; see --json", total - listed), width));
         }
@@ -460,50 +449,45 @@ fn wrap_warning(text: &str, width: usize) -> Vec<String> {
     lines
 }
 
-fn entry_warning(warning: &Value) -> String {
+fn entry_warning(warning: &SourceWarning) -> String {
     let label = warning
-        .get("entry")
-        .or_else(|| warning.get("key"))
-        .and_then(Value::as_str)
+        .entry
+        .as_deref()
+        .or(warning.key.as_deref())
         .map(field)
-        .or_else(|| {
-            warning
-                .get("line")
-                .and_then(Value::as_u64)
-                .map(|line| format!("entry on line {line}"))
-        });
-    let field = warning.get("field").and_then(Value::as_str).map(field);
+        .or_else(|| warning.line.map(|line| format!("entry on line {line}")));
+    let field = warning.field.as_deref().map(field);
     let subject = field.map_or_else(|| "a field".into(), |field| format!("the \"{field}\" field"));
-    let what = match warning.get("code").and_then(Value::as_str) {
-        Some("field" | "work-limit")
-            if warning.get("cause").and_then(Value::as_str) == Some("too-large")
+    let what = match warning.code {
+        ibis_engine::WarningCode::Field | ibis_engine::WarningCode::WorkLimit
+            if warning.cause == Some(ibis_engine::WarningCause::TooLarge)
                 && warning
-                    .get("field")
-                    .and_then(Value::as_str)
+                    .field
+                    .as_deref()
                     .is_some_and(|field| matches!(field, "issued" | "accessed" | "original-date" | "date")) =>
         {
             cli("cli-warning-text-kept", &[("subject", &subject)])
         }
-        Some("field") => match warning.get("cause").and_then(Value::as_str) {
-            Some("tex-command") => cli("cli-warning-text-kept", &[("subject", &subject)]),
-            Some("date") => cli("cli-warning-date", &[("subject", &subject)]),
-            Some("unknown-field") => cli("cli-warning-unknown-field", &[]),
-            Some("unknown-type") => cli("cli-warning-unknown-type", &[]),
-            Some("link") => cli("cli-warning-link", &[("subject", &subject)]),
-            Some("names") => cli("cli-warning-names", &[("subject", &subject)]),
+        ibis_engine::WarningCode::Field => match warning.cause {
+            Some(ibis_engine::WarningCause::TexCommand) => cli("cli-warning-text-kept", &[("subject", &subject)]),
+            Some(ibis_engine::WarningCause::Date) => cli("cli-warning-date", &[("subject", &subject)]),
+            Some(ibis_engine::WarningCause::UnknownField) => cli("cli-warning-unknown-field", &[]),
+            Some(ibis_engine::WarningCause::UnknownType) => cli("cli-warning-unknown-type", &[]),
+            Some(ibis_engine::WarningCause::Link) => cli("cli-warning-link", &[("subject", &subject)]),
+            Some(ibis_engine::WarningCause::Names) => cli("cli-warning-names", &[("subject", &subject)]),
             _ => cli("cli-warning-fields-kept", &[("subject", &subject)]),
         },
-        Some("duplicate-key") => cli("cli-warning-duplicate-key", &[]),
-        Some("syntax") => {
-            if warning.get("field").and_then(Value::as_str).is_some() {
+        ibis_engine::WarningCode::DuplicateKey => cli("cli-warning-duplicate-key", &[]),
+        ibis_engine::WarningCode::Syntax => {
+            if warning.field.as_deref().is_some() {
                 cli("cli-warning-syntax-field", &[("subject", &subject)])
             } else {
                 cli("cli-warning-syntax-entry", &[])
             }
         }
-        Some("work-limit") if label.is_some() => cli("cli-warning-entry-too-large", &[]),
-        Some("work-limit") => cli("cli-warning-library-incomplete", &[]),
-        Some("invalid-attachment") => cli("cli-warning-attachment-skipped", &[]),
+        ibis_engine::WarningCode::WorkLimit if label.is_some() => cli("cli-warning-entry-too-large", &[]),
+        ibis_engine::WarningCode::WorkLimit => cli("cli-warning-library-incomplete", &[]),
+        ibis_engine::WarningCode::InvalidAttachment => cli("cli-warning-attachment-skipped", &[]),
         _ => warning_line(warning).trim().to_owned(),
     };
     match label {
@@ -512,62 +496,67 @@ fn entry_warning(warning: &Value) -> String {
     }
 }
 
-pub(super) fn search_notes(data: &Value, libraries: &[Value], names: &BTreeMap<String, String>) -> Vec<String> {
-    data.pointer("/source_health/findings")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter(|finding| finding.get("code").and_then(Value::as_str) == Some("refresh-failed"))
-        .map(|finding| {
-            let library = libraries
+pub(super) fn search_notes(
+    health: &SourceHealth,
+    libraries: &[LibraryInfo],
+    names: &BTreeMap<String, String>,
+) -> Vec<String> {
+    health
+        .findings
+        .iter()
+        .filter_map(|finding| {
+            let SourceFinding::RefreshFailed {
+                library,
+                last_successful_read_ms,
+                ..
+            } = finding
+            else {
+                return None;
+            };
+            let name = libraries
                 .iter()
-                .find(|library| library.get("id") == finding.get("library"));
-            let name = library
-                .and_then(|library| library_name(library, names))
+                .find(|info| &info.id == library)
+                .map(|info| library_name(info, names))
                 .unwrap_or_else(|| "A library".into());
-            let time = finding
-                .get("last_successful_read_ms")
-                .and_then(Value::as_u64)
-                .and_then(|ms| i64::try_from(ms).ok())
+            let time = i64::try_from(*last_successful_read_ms)
+                .ok()
                 .and_then(chrono::DateTime::from_timestamp_millis)
                 .map(|time| time.with_timezone(&chrono::Local).format("%-I:%M %p").to_string());
-            match time {
+            Some(match time {
                 Some(time) => cli("cli-search-stale-at", &[("name", &name), ("time", &time)]),
                 None => cli("cli-search-stale", &[("name", &name)]),
-            }
+            })
         })
         .collect()
 }
 
 /// A source warning as a sentence.
-pub(super) fn warning_line(warning: &Value) -> String {
-    let key = warning.get("key").and_then(Value::as_str).map(field);
-    let what = match (warning.get("code").and_then(Value::as_str), key) {
-        (Some("duplicate-key"), Some(key)) => {
+pub(super) fn warning_line(warning: &SourceWarning) -> String {
+    let key = warning.key.as_deref().map(field);
+    let what = match (warning.code, key) {
+        (ibis_engine::WarningCode::DuplicateKey, Some(key)) => {
             // In CSL-JSON this is the record's `id`, which is never a citation key.
             cli("cli-warning-duplicate-key-named", &[("key", &key)])
         }
-        (Some("zotero-newer-than-tested"), _) => catalogue::sentence(
+        (ibis_engine::WarningCode::ZoteroNewerThanTested, _) => catalogue::sentence(
             "source-warning",
             ibis_engine::WarningCode::ZoteroNewerThanTested,
             Audience::Cli,
             &[],
         ),
-        (Some("syntax"), _) => cli("cli-warning-syntax", &[]),
-        (Some("field"), _) => cli("cli-warning-field", &[]),
-        (Some("work-limit"), _) => cli("cli-warning-work-limit", &[]),
-        (Some("invalid-attachment"), _) => cli("cli-warning-invalid-attachment", &[]),
-        (Some("cloud-synced-directory"), _) => cli("cli-warning-cloud-directory", &[]),
-        (Some("citation-keys-unavailable"), _) => cli("cli-warning-keys-unavailable", &[]),
+        (ibis_engine::WarningCode::Syntax, _) => cli("cli-warning-syntax", &[]),
+        (ibis_engine::WarningCode::Field, _) => cli("cli-warning-field", &[]),
+        (ibis_engine::WarningCode::WorkLimit, _) => cli("cli-warning-work-limit", &[]),
+        (ibis_engine::WarningCode::InvalidAttachment, _) => cli("cli-warning-invalid-attachment", &[]),
+        (ibis_engine::WarningCode::CloudSyncedDirectory, _) => cli("cli-warning-cloud-directory", &[]),
+        (ibis_engine::WarningCode::CitationKeysUnavailable, _) => cli("cli-warning-keys-unavailable", &[]),
         _ => cli("cli-warning-unknown", &[]),
     };
     // Why, from the engine's words for the warning's cause, when it gives one.
-    let why = serde_json::from_value::<ibis_engine::SourceWarning>(warning.clone())
-        .ok()
-        .and_then(|warning| catalogue::cause(&warning))
+    let why = catalogue::cause(warning)
         .map(|cause| format!(" ({cause})"))
         .unwrap_or_default();
-    match warning.get("line").and_then(Value::as_u64) {
+    match warning.line {
         Some(line) => format!("  line {line}: {what}{why}"),
         None => format!("  {what}{why}"),
     }
@@ -613,12 +602,11 @@ impl Citing {
 }
 
 /// Sentences for a citation's refusals, losses and notices, without repeats.
-pub(super) fn citation_report(data: &Value, citing: &Citing, printed: bool) -> Vec<String> {
-    let parse = |name| data.get(name).cloned().unwrap_or(Value::Null);
-    let outcomes: Vec<ItemOutcome> = serde_json::from_value(parse("outcomes")).unwrap_or_default();
-    let losses: Vec<Loss> = serde_json::from_value(parse("losses")).unwrap_or_default();
-    let notices: Vec<Notice> = serde_json::from_value(parse("notices")).unwrap_or_default();
-    let warnings: Vec<CitationWarning> = serde_json::from_value(parse("warnings")).unwrap_or_default();
+pub(super) fn citation_report(data: &CitationResult, citing: &Citing, printed: bool) -> Vec<String> {
+    let outcomes = &data.outcomes;
+    let losses = &data.losses;
+    let notices = &data.notices;
+    let warnings = &data.warnings;
     let output = field(&citing.output);
     let mut lines = Vec::new();
     for warning in warnings {
@@ -631,9 +619,9 @@ pub(super) fn citation_report(data: &Value, citing: &Citing, printed: bool) -> V
         lines.push(format!("{kind}: {said}"));
     }
     let refused: Vec<_> = outcomes
-        .into_iter()
+        .iter()
         .filter_map(|outcome| match outcome {
-            ItemOutcome::Refused { item, error } => Some((item, error)),
+            ItemOutcome::Refused { item, error } => Some((*item, *error)),
             ItemOutcome::Rendered { .. } | ItemOutcome::Unknown => None,
         })
         .collect();
@@ -673,7 +661,7 @@ pub(super) fn citation_report(data: &Value, citing: &Citing, printed: bool) -> V
         lines.push(cli(id, &[("output", &output), ("what", &what), ("target", &target)]));
     }
     // Notices describe printed text; a refused citation printed none.
-    for notice in notices.into_iter().filter(|_| printed) {
+    for notice in notices.iter().copied().filter(|_| printed) {
         lines.push(format!(
             "note: {}",
             catalogue::sentence("notice", notice, Audience::Cli, &[])
@@ -681,14 +669,14 @@ pub(super) fn citation_report(data: &Value, citing: &Citing, printed: bool) -> V
     }
     // A person reading English output needs no note; any other language is a choice to see.
     if let Some(language) = data
-        .get("language")
-        .and_then(Value::as_str)
+        .language
+        .as_deref()
         .filter(|language| printed && *language != "en-US")
     {
         lines.push(cli("cli-citation-language", &[("language", &field(language))]));
     }
-    if printed && let Ok(destination) = serde_json::from_value(parse("destination")) {
-        lines.push(destination_note(&destination));
+    if printed && let Some(destination) = &data.destination {
+        lines.push(destination_note(destination));
     }
     let mut seen = std::collections::BTreeSet::new();
     lines.retain(|line| seen.insert(line.clone()));
@@ -856,15 +844,57 @@ pub(super) fn reason_sentence(reason: ErrorReason) -> String {
 }
 
 #[cfg(test)]
+fn test_library(id: &str, objects: usize) -> LibraryInfo {
+    LibraryInfo {
+        id: LibraryId::new(id).unwrap(),
+        kind: ibis_engine::LibraryKind::Zotero,
+        capabilities: vec![],
+        objects,
+        warnings: vec![],
+        warnings_total: 0,
+        refresh_error: None,
+        refresh_reason: None,
+        updated_at_ms: 0,
+        watch_warning: None,
+        zotero: None,
+        duplicate_keys: Default::default(),
+        damaged_keys: Default::default(),
+        cut_short: false,
+    }
+}
+#[cfg(test)]
+fn test_libraries(libraries: Vec<LibraryInfo>) -> Response {
+    Response::Engine(Reply::Libraries(ibis_engine::health::Checked {
+        value: ibis_engine::LibrariesResult {
+            libraries,
+            zotero_profiles: None,
+            zotero_groups: None,
+            zotero_installed: None,
+        },
+        source_health: SourceHealth::of(std::iter::empty()),
+    }))
+}
+#[cfg(test)]
+fn test_search(hits: Vec<ibis_engine::SearchHit>) -> Response {
+    Response::Engine(Reply::Search(Box::new(ibis_engine::SearchResult {
+        snapshot: Snapshot::new(vec![]).unwrap().fingerprints().clone(),
+        hits,
+        complete: true,
+        list: None,
+        shorthand: None,
+        source_health: SourceHealth::of(std::iter::empty()),
+    })))
+}
+
+#[cfg(test)]
 mod tests {
     #[test]
     fn newer_zotero_warning_is_shown_in_libraries_text() {
-        let data = serde_json::json!({"libraries":[{
-            "id":"lib_synthetic", "kind":"zotero", "objects":1, "warnings_total":1,
-            "warnings":[{"code":"zotero-newer-than-tested","line":null}]
-        }]});
-        let said = summary(
-            Method::Libraries,
+        let mut library = test_library("lib_synthetic", 1);
+        library.warnings = vec![SourceWarning::at(ibis_engine::WarningCode::ZoteroNewerThanTested, None)];
+        library.warnings_total = 1;
+        let data = test_libraries(vec![library]);
+        let said = summary_reply(
             &data,
             Holdings::References,
             &BTreeMap::new(),
@@ -887,7 +917,19 @@ mod tests {
         };
         let data = serde_json::json!({"losses": [{"item": 0, "field": "invented-field", "reason": "invented-reason"}]});
         assert_eq!(
-            citation_report(&data, &citing, true),
+            citation_report(
+                &CitationResult::new(
+                    String::new(),
+                    None,
+                    None,
+                    DisplayTree::default(),
+                    vec![],
+                    serde_json::from_value(data["losses"].clone()).unwrap(),
+                    vec![]
+                ),
+                &citing,
+                true
+            ),
             [
                 "APA changed part of the citation for 'vale2024' in a way this version of Ibis can’t name. Check the citation."
             ]
@@ -900,15 +942,25 @@ mod terminal_tests {
     use super::*;
     use serde_json::json;
 
-    fn wire_hit(key: &str, title: &str) -> Value {
-        json!({"item":{"object":{"data":{
-            "citation_keys":[{"value":key}],
-            "csl":{"title":title, "author":[{"family":"Valé"},{"family":"Fen"},{"family":"Ng"},{"family":"Park"}], "issued":{"date-parts":[[2024]]}}
-        }}}})
+    fn search_hit(key: &str, title: &str) -> ibis_engine::SearchHit {
+        let record = Record {
+            id: ItemRef { library: LibraryId::new("invented").unwrap(), key: "record:invented".into() },
+            added_at: None,
+            csl: serde_json::from_value(json!({"title":title, "author":[{"family":"Valé"},{"family":"Fen"},{"family":"Ng"},{"family":"Park"}], "issued":{"date-parts":[[2024]]}})).unwrap(),
+            citation_keys: vec![CitationKey { value: key.into(), source: CitationKeySource::Zotero }],
+            aliases: vec![], warnings: vec![], identifiers: vec![],
+        };
+        ibis_engine::SearchHit {
+            item: SnapshotObject::new(LibraryObject::Record(record)).unwrap(),
+            score: 1,
+            matched: vec![],
+            partial: false,
+            typo: false,
+        }
     }
 
     fn hit(key: &str, title: &str) -> record::Row {
-        projection::hit(&wire_hit(key, title)).unwrap_or_else(|| panic!("synthetic row"))
+        projection::hit(&search_hit(key, title)).unwrap_or_else(|| panic!("synthetic row"))
     }
 
     #[test]
@@ -917,18 +969,18 @@ mod terminal_tests {
             width: Some(40),
             color: false,
         };
-        let mut data = json!({
-            "hits": [wire_hit("vale2024", &"Lantern gardens ".repeat(10))],
-            "shorthand": {"prefix":"see", "locator":{"typed":"417"}, "search":"vale"}
-        });
+        let mut data = test_search(vec![search_hit("vale2024", &"Lantern gardens ".repeat(10))]);
+        let Response::Engine(Reply::Search(search)) = &mut data else {
+            panic!("search fixture")
+        };
+        search.shorthand = ibis_core::shorthand::read("see vale 417");
         let reading = "Cited with: see · 417; searched for: vale\n";
-        let text = summary(Method::Search, &data, Holdings::References, &BTreeMap::new(), out).unwrap_or_default();
+        let text = summary_reply(&data, Holdings::References, &BTreeMap::new(), out).unwrap_or_default();
         let rows = text.strip_prefix(reading).unwrap_or_default();
         assert!(rows.starts_with("vale2024  Valé… 2024  "), "{text}");
         assert!(rows.ends_with('…'), "{text}");
         assert!(out::width(rows) <= 40, "{text}");
-        let plain = summary(
-            Method::Search,
+        let plain = summary_reply(
             &data,
             Holdings::References,
             &BTreeMap::new(),
@@ -942,9 +994,12 @@ mod terminal_tests {
             plain.starts_with(&format!("{reading}vale2024\tValé, Fen, Ng, et al.\t2024\t")),
             "{plain}"
         );
-        data["hits"] = json!([]);
+        let Response::Engine(Reply::Search(search)) = &mut data else {
+            panic!("search fixture")
+        };
+        search.hits.clear();
         assert_eq!(
-            summary(Method::Search, &data, Holdings::References, &BTreeMap::new(), out),
+            summary_reply(&data, Holdings::References, &BTreeMap::new(), out),
             Some(format!("{reading}No references matched. Try a shorter query."))
         );
     }
@@ -1021,12 +1076,18 @@ mod terminal_tests {
         let warnings: Vec<_> = (0..12)
             .map(|i| json!({"code":"field","entry":format!("vale{i}"),"field":"title","cause":"tex-command"}))
             .collect();
-        let data = json!({"libraries":[{"id":"invented", "kind":"zotero","objects":165,"warnings_total":12,"warnings":warnings}]});
+        let mut library = test_library("invented", 165);
+        library.warnings = warnings
+            .into_iter()
+            .map(|warning| serde_json::from_value(warning).unwrap())
+            .collect();
+        library.warnings_total = 12;
+        let data = test_libraries(vec![library]);
         let out = Out {
             width: Some(80),
             color: false,
         };
-        let text = summary(Method::Libraries, &data, Holdings::References, &BTreeMap::new(), out).unwrap_or_default();
+        let text = summary_reply(&data, Holdings::References, &BTreeMap::new(), out).unwrap_or_default();
         assert!(
             text.starts_with("1 library\nZotero — 165 items, 12 warnings\n"),
             "{text}"
@@ -1047,11 +1108,15 @@ mod terminal_tests {
         assert!(text.ends_with("and 2 more; see --json"), "{text}");
         assert!(text.lines().all(|line| out::width(line) <= 80));
         assert_eq!(
-            entry_warning(&json!({"code":"field","entry":"Invented keyless title","field":"issued","cause":"value"})),
+            entry_warning(
+                &serde_json::from_value(
+                    json!({"code":"field","entry":"Invented keyless title","field":"issued","cause":"value"})
+                )
+                .unwrap()
+            ),
             "Invented keyless title: the \"issued\" field could not be fully converted; Ibis kept the reference with the fields it could read"
         );
-        let plain = summary(
-            Method::Libraries,
+        let plain = summary_reply(
             &data,
             Holdings::References,
             &BTreeMap::new(),
@@ -1069,32 +1134,24 @@ mod terminal_tests {
             )
         );
         assert_eq!(
-            summary(
-                Method::Search,
-                &json!({"hits":[]}),
-                Holdings::References,
-                &BTreeMap::new(),
-                out
-            )
-            .as_deref(),
+            summary_reply(&test_search(vec![]), Holdings::References, &BTreeMap::new(), out).as_deref(),
             Some("No references matched. Try a shorter query.")
         );
-        let libraries = json!({"libraries":[{"id":"one","objects":1},{"id":"two","objects":165}]});
+        let libraries = test_libraries(vec![test_library("one", 1), test_library("two", 165)]);
         let names = BTreeMap::from([("one".into(), "甲文".into()), ("two".into(), "Zotero".into())]);
         assert_eq!(
-            summary(Method::Libraries, &libraries, Holdings::References, &names, out).as_deref(),
+            summary_reply(&libraries, Holdings::References, &names, out).as_deref(),
             Some("2 libraries\n甲文   — 1 item\nZotero — 165 items")
         );
     }
 
     #[test]
     fn only_refresh_failures_get_search_notes_with_the_library_name() {
-        let libraries = vec![json!({"id":"invented","kind":"zotero"})];
-        let notes = search_notes(
-            &json!({"source_health":{"findings":[{"code":"source-warnings","library":"invented","count":2},{"code":"refresh-failed","library":"invented","last_successful_read_ms":0}]}}),
-            &libraries,
-            &BTreeMap::new(),
-        );
+        let mut library = test_library("invented", 0);
+        library.refresh_error = Some(ErrorCode::SourceUnavailable);
+        library.warnings_total = 2;
+        let libraries = vec![library];
+        let notes = search_notes(&SourceHealth::of(libraries.iter()), &libraries, &BTreeMap::new());
         assert_eq!(notes.len(), 1);
         assert!(notes[0].starts_with("note: Zotero could not be refreshed; showing results from "));
     }

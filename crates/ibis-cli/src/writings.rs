@@ -287,9 +287,9 @@ pub(crate) fn run(engine: &Engine, args: &ArgMatches) -> Result<DispatchResult, 
 }
 
 pub(crate) fn with_check(
-    mut result: DispatchResult,
+    mut result: crate::DispatchResult,
     writing: Option<WritingCitation>,
-) -> Result<DispatchResult, Failure> {
+) -> Result<crate::DispatchResult, Failure> {
     let Some(writing) = writing else {
         return Ok(result);
     };
@@ -301,7 +301,6 @@ pub(crate) fn with_check(
     {
         result.exit_code = ExitCode::Findings;
     }
-    result.data = serde_json::to_value(writing)
-        .map_err(|_| Failure::new(ErrorCode::Internal, cli("cli-writing-citation-unavailable", &[])))?;
+    result.data = crate::Response::Writing(Box::new(writing));
     Ok(result.bounded()?)
 }

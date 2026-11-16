@@ -233,15 +233,7 @@ pub fn resolve_path(written: &str, home: Option<&Path>) -> PathBuf {
     }
 }
 
-/// Which Zotero library to read.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum ZoteroLibrary {
-    /// The personal library ("My Library").
-    User,
-    /// A group library, by its numeric group ID.
-    Group(u64),
-}
+pub use ibis_core::zotero::Library as ZoteroLibrary;
 
 /// Where the editor endpoint listens, and the token that opens it. The token
 /// is a capability, so it never prints and never leaves in a backup.
@@ -622,35 +614,14 @@ pub(crate) fn parse(text: &str) -> Result<Settings, SettingsError> {
     parse_value(serde_json::from_str(text).map_err(|e| SettingsError::Invalid(e.to_string()))?)
 }
 
-/// Choices removed before 1.0. Each reads as its default, so a file that still
-/// names one stays valid and keeps the library and shortcut beside it.
-const REMOVED_CHOICES: [(&str, &str); 9] = [
-    ("density", "spacious"),
-    ("accent", "blue"),
-    ("accent", "purple"),
-    ("accent", "pink"),
-    ("accent", "red"),
-    ("accent", "orange"),
-    ("accent", "yellow"),
-    ("accent", "green"),
-    ("accent", "graphite"),
-];
-
 fn parse_value(value: Value) -> Result<Settings, SettingsError> {
     let settings = parse_fields(value)?;
     validate_settings(&settings)?;
     Ok(settings)
 }
 
-fn parse_fields<T: serde::de::DeserializeOwned>(mut value: Value) -> Result<T, SettingsError> {
+fn parse_fields<T: serde::de::DeserializeOwned>(value: Value) -> Result<T, SettingsError> {
     let invalid = |e: serde_json::Error| SettingsError::Invalid(e.to_string());
-    if let Value::Object(fields) = &mut value {
-        for (key, choice) in REMOVED_CHOICES {
-            if fields.get(key).and_then(Value::as_str) == Some(choice) {
-                fields.remove(key);
-            }
-        }
-    }
     // The version is checked before any other field: a newer format may
     // change field types, and must still be recognised as newer.
     let version = match value.get("schema_version") {
@@ -1736,18 +1707,13 @@ mod tests {
     }
 
     #[test]
-    fn a_removed_choice_keeps_the_file_loadable_and_the_rest_of_its_settings() {
-        let settings =
-            parse(r#"{"density": "spacious", "accent": "purple", "larger_text": true, "search_icon": "none"}"#)
-                .unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(settings.portable.density, None);
-        assert!(!settings.unknown.contains_key("accent"));
-        assert_eq!(settings.portable.larger_text, Some(true));
-    }
-
-    #[test]
     fn unknown_picker_preference_values_are_refused_or_read_as_no_choice() {
-        for text in [r#"{"density": "tiny"}"#, r#"{"larger_text": "yes"}"#] {
+        for text in [
+            r#"{"density": "tiny"}"#,
+            r#"{"density": "spacious"}"#,
+            r#"{"accent": "purple"}"#,
+            r#"{"larger_text": "yes"}"#,
+        ] {
             assert!(matches!(parse(text), Err(SettingsError::Invalid(_))), "{text}");
         }
         // An output id is the engine's to read: one this Ibis does not list

@@ -2,6 +2,7 @@
 //! Libraries are invented files and an invented local Zotero.
 
 use super::*;
+use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, channel};
 
 use crate::service::sources::zotero_fixture;
@@ -336,12 +337,12 @@ fn a_failed_zotero_choice_is_retried_when_the_person_comes_back() -> Result<(), 
 
 #[test]
 fn a_stuck_read_gives_way_to_cancellation_and_to_its_deadline() {
-    let reads = Arc::new(AtomicUsize::new(0));
+    let reads = Pool::new(4, 0);
     let cancel = OpenCancellation::default();
     let (release, held) = mpsc::channel::<()>();
     let waiting = {
         let cancel = cancel.clone();
-        let reads = Arc::clone(&reads);
+        let reads = reads.clone();
         std::thread::spawn(move || {
             supervise_with(
                 &cancel,

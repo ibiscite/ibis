@@ -221,7 +221,7 @@ fn zotero_group_flags_choose_the_libraries_read() {
         .map(|library| library["zotero"].to_string())
         .collect();
     chosen.sort();
-    assert_eq!(chosen, [r#""personal""#, r#"{"group":7}"#]);
+    assert_eq!(chosen, [r#""user""#, r#"{"group":7}"#]);
     // Both libraries hold the fixture's key, so it names neither.
     let mut errors = vec![];
     let code = ibis::run_with(

@@ -195,10 +195,7 @@ fn target(
                 Source::File(_) | Source::Samples(_) => None,
             });
         return Ok(Target::Zotero(
-            chosen
-                .map(selected_zotero)
-                .transpose()?
-                .unwrap_or(ZoteroLibrary::Personal),
+            chosen.map(selected_zotero).transpose()?.unwrap_or(ZoteroLibrary::User),
         ));
     }
     if library.generation.to_string() != expected_source_generation
@@ -246,15 +243,14 @@ fn target(
 
 fn selected_zotero(chosen: &ibis_engine::settings::ZoteroLibraries) -> Result<ZoteroLibrary, CommandError> {
     match chosen.libraries().first() {
-        Some(ibis_engine::settings::ZoteroLibrary::User) => Ok(ZoteroLibrary::Personal),
-        Some(ibis_engine::settings::ZoteroLibrary::Group(id)) if *id > 0 => Ok(ZoteroLibrary::Group(*id)),
+        Some(library @ ZoteroLibrary::User) | Some(library @ ZoteroLibrary::Group(1..)) => Ok(*library),
         _ => Err(failed()),
     }
 }
 
 fn zotero_library_uri(library: ZoteroLibrary) -> Result<String, CommandError> {
     match library {
-        ZoteroLibrary::Personal => Ok("zotero://select/library".into()),
+        ZoteroLibrary::User => Ok("zotero://select/library".into()),
         ZoteroLibrary::Group(id) if id > 0 => Ok(format!("zotero://select/groups/{id}")),
         _ => Err(failed()),
     }
@@ -375,7 +371,7 @@ mod tests {
     #[test]
     fn links_use_native_item_keys_and_exact_library_identity() {
         assert_eq!(
-            zotero_uri(ZoteroLibrary::Personal, "AB12CD34").ok().as_deref(),
+            zotero_uri(ZoteroLibrary::User, "AB12CD34").ok().as_deref(),
             Some("zotero://select/library/items/AB12CD34")
         );
         assert_eq!(
@@ -390,7 +386,7 @@ mod tests {
             "abcd1234",
             "ABCD1234/extra",
         ] {
-            assert!(zotero_uri(ZoteroLibrary::Personal, key).is_err());
+            assert!(zotero_uri(ZoteroLibrary::User, key).is_err());
         }
     }
 
@@ -433,7 +429,7 @@ mod tests {
         assert!(target(&library, Some(&SourceItem::Item(forged)), &revision, &generation, false).is_err());
         assert_eq!(
             target(&View::default(), None, "", "", true).ok(),
-            Some(Target::Zotero(ZoteroLibrary::Personal))
+            Some(Target::Zotero(ZoteroLibrary::User))
         );
     }
 

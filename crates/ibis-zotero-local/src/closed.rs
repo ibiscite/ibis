@@ -320,52 +320,24 @@ impl Control {
         &self,
         operation: impl FnOnce(&Control) -> Result<T, ClosedError> + Send + 'static,
     ) -> Result<T, ClosedError> {
-        use std::sync::{
-            atomic::{AtomicUsize, Ordering},
-            mpsc,
+        use ibis_core::file_io::{Admission, Pool, Scope};
+        static POOL: std::sync::OnceLock<Pool> = std::sync::OnceLock::new();
+        let check = || (self.cancelled)();
+        let scope = Scope {
+            until: self.deadline,
+            now: Arc::new(Instant::now),
+            cancelled: &check,
         };
-        static IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
-        struct Permit;
-        impl Drop for Permit {
-            fn drop(&mut self) {
-                IN_FLIGHT.fetch_sub(1, Ordering::Relaxed);
-            }
-        }
-        loop {
-            self.check()?;
-            let count = IN_FLIGHT.load(Ordering::Relaxed);
-            if count < 8
-                && IN_FLIGHT
-                    .compare_exchange(count, count + 1, Ordering::Relaxed, Ordering::Relaxed)
-                    .is_ok()
-            {
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(5));
-        }
-        let permit = Permit;
         let worker = self.clone();
-        let (send, result) = mpsc::sync_channel(1);
-        std::thread::Builder::new()
-            .name("ibis-zotero-file-io".into())
-            .spawn(move || {
-                let _permit = permit;
-                let answer = worker.check().and_then(|()| operation(&worker));
-                let _ = send.send(answer);
+        POOL.get_or_init(|| Pool::new(8, 0))
+            .run(&scope, Admission::Wait, move || {
+                worker.check().and_then(|()| operation(&worker))
             })
-            .map_err(|_| ClosedError::Unreadable)?;
-        loop {
-            self.check()?;
-            let remaining = self.deadline.saturating_duration_since(Instant::now());
-            match result.recv_timeout(remaining.min(Duration::from_millis(5))) {
-                Ok(answer) => {
-                    self.check()?;
-                    return answer;
-                }
-                Err(mpsc::RecvTimeoutError::Timeout) => (),
-                Err(mpsc::RecvTimeoutError::Disconnected) => return Err(ClosedError::Unreadable),
-            }
-        }
+            .map_err(|error| match error {
+                ibis_core::file_io::Error::Cancelled => ClosedError::Cancelled,
+                ibis_core::file_io::Error::TimedOut => ClosedError::TimedOut,
+                _ => ClosedError::Unreadable,
+            })?
     }
 
     fn new(cancelled: Arc<dyn Fn() -> bool + Send + Sync>) -> Self {
