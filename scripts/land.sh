@@ -121,12 +121,11 @@ fi
 [ "$(gh pr view "$number" --repo "$repo" --json headRefOid --jq .headRefOid)" = "$sha" ] || { echo 'PR head moved; rerun.'; exit 1; }
 unchanged
 if [ "$draft" = true ]; then gh pr ready "$number" --repo "$repo"; fi
-# Updater, signing, publishing, workflow, app-permission and pipeline-script changes
-# merge only after another session records its review of this exact head on the PR.
-guarded='^(\.github/|scripts/land\.sh$|apps/desktop/src-tauri/(src/updater|capabilities/|permissions/|tauri\.))'
-pipeline=$(git grep -ohE 'scripts/[A-Za-z0-9._/-]+' origin/main "$sha" -- .github/workflows | sort -u)
-if git diff --no-renames --name-only "origin/main...$sha" | grep -Eq "$guarded" ||
-   git diff --no-renames --name-only "origin/main...$sha" | grep -Fxq -f <(printf '%s\n' "$pipeline"); then
+# Workflow, script, updater and app-permission changes merge only after another
+# session records its review of this exact head on the PR. Scripts call one another,
+# so every file under scripts/ counts.
+guarded='^(\.github/|scripts/|apps/desktop/src-tauri/(src/updater|capabilities/|permissions/|tauri\.))'
+if git diff --no-renames --name-only "origin/main...$sha" | grep -Eq "$guarded"; then
   marker="Independent review: no P1 or P2 at $sha"
   if ! gh pr view "$number" --repo "$repo" --json comments \
     --jq '.comments[] | select(.author.login == "diyanko") | .body' | grep -Fq "$marker"; then
