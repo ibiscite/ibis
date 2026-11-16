@@ -19,7 +19,7 @@ fn fixture() -> Fixture {
     fs::write(&bib, BIB).unwrap();
     let engine = Engine::new().unwrap().without_file_watches();
     engine.open_file(&bib, &Cancellation::default()).unwrap();
-    // The engine names the file by its canonical path.
+    // The path as the engine holds it: on macOS, through the /var link.
     let bib = engine
         .file_path(&engine.libraries().unwrap().libraries[0].id)
         .unwrap()
@@ -393,6 +393,7 @@ fn proposals_are_bounded_in_number_and_size() {
     let target = Target {
         library,
         path: fixture.bib.clone(),
+        resolved: fs::canonicalize(&fixture.bib).unwrap(),
     };
     let add = |key: &str| Change::Add {
         key: key.into(),
