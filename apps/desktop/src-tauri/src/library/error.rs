@@ -415,6 +415,7 @@ mod tests {
             "app-library-not-refreshed",
             "app-library-retained-not-refreshed",
             "app-library-state-unavailable",
+            "app-library-not-saved",
             "app-command-snapshot-changed",
             "app-command-library-loading",
             "app-command-cancelled",

@@ -14,7 +14,7 @@ const MAX_WARNING_DETAILS: usize = 256;
 #[cfg(test)]
 #[path = "../../tests/support/zotero.rs"]
 #[allow(dead_code)]
-mod zotero_fixture;
+pub(crate) mod zotero_fixture;
 #[derive(Default)]
 pub(super) struct Owners {
     operation: Mutex<()>,
