@@ -39,6 +39,26 @@ test("the first frame uses every snapshot source without startup fetches", async
   for (const command of ["library_status", "recent_references", "picker_destination", "picker_preferences"]) expect(calls).not.toContain(command);
 });
 
+test("a picker opened while its library loads shows the loaded count and rows without reopening", async () => {
+  const opening = snapshot(1, "Unused opening row");
+  opening.library = { ...opening.library, state: "loading", has_snapshot: false, references: 0 };
+  opening.recents = { Ok: [{ revision: "1", results: [] }, false, false] };
+  const loaded = snapshot(2, "Loaded reference");
+  loaded.library.references = 3;
+  const painted = vi.fn();
+  backend({ picker_snapshot: () => opening, picker_rendered: painted, recent_references: () => {
+    if (!("Ok" in loaded.recents)) throw new Error("Missing invented recents");
+    return loaded.recents.Ok;
+  } });
+  render(<App />);
+  await waitFor(() => expect(painted).toHaveBeenCalledOnce());
+  expect(screen.queryByText("Loaded reference")).toBeNull();
+  await act(async () => { await emit("library:changed", loaded.library); });
+  await screen.findByText("Loaded reference");
+  expect(document.querySelector(".library-detail")?.textContent).toContain("3 references");
+  expect(painted).toHaveBeenCalledOnce();
+});
+
 test("a newer snapshot replaces the current frame and beats a late startup snapshot", async () => {
   const startup = deferred<PickerSnapshot>();
   const painted = vi.fn();

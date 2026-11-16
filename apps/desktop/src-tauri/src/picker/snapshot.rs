@@ -26,6 +26,7 @@ pub(crate) struct Presentation(Mutex<Pending>);
 struct Pending {
     listening: bool,
     snapshot: Option<Arc<PickerSnapshot>>,
+    captured: Option<String>,
     reveal: Option<(u64, bool)>,
 }
 
@@ -68,6 +69,7 @@ pub(super) fn prepare(app: &AppHandle, presentation: u64, selection: Option<Stri
     let mut pending = state.0.lock().unwrap_or_else(|e| e.into_inner());
     pending.reveal = Some((presentation, focus));
     pending.snapshot = Some(Arc::clone(&snapshot));
+    pending.captured = captured;
     if pending.listening {
         report(
             app.emit_to("main", "picker:preparing", &snapshot),
@@ -77,17 +79,30 @@ pub(super) fn prepare(app: &AppHandle, presentation: u64, selection: Option<Stri
 }
 
 impl Presentation {
-    fn subscribe(&self, owner: u64) -> (Option<Arc<PickerSnapshot>>, bool) {
+    fn subscribe<R: tauri::Runtime>(&self, app: &AppHandle<R>, owner: u64) -> (Option<Arc<PickerSnapshot>>, bool) {
         let mut pending = self.0.lock().unwrap_or_else(|e| e.into_inner());
         pending.listening = true;
-        (
-            pending
-                .snapshot
-                .as_ref()
-                .filter(|snapshot| snapshot.presentation == owner)
-                .cloned(),
-            pending.reveal.map(|(presentation, _)| presentation) == Some(owner),
-        )
+        let snapshot = pending
+            .snapshot
+            .as_ref()
+            .filter(|snapshot| snapshot.presentation == owner)
+            .cloned();
+        let preparing = pending.reveal.map(|(presentation, _)| presentation) == Some(owner);
+        let captured = pending.captured.clone();
+        drop(pending);
+        // The library can finish opening before the webview can hear its event.
+        // Subscribe first, then refresh its status and rows together while keeping
+        // the selection and destination captured before the picker took focus.
+        let snapshot = snapshot.filter(|_| preparing).map(|snapshot| {
+            Arc::new(build(
+                app,
+                owner,
+                snapshot.selection.clone(),
+                captured.as_deref(),
+                snapshot.destination.clone(),
+            ))
+        });
+        (snapshot, preparing)
     }
 }
 
@@ -96,7 +111,7 @@ impl Presentation {
 #[ibis_desktop_macros::command]
 pub(crate) fn picker_snapshot(app: AppHandle, state: State<'_, Presentation>) -> Option<Arc<PickerSnapshot>> {
     let owner = app.state::<PickerGeneration>().current();
-    let (snapshot, preparing) = state.subscribe(owner);
+    let (snapshot, preparing) = state.subscribe(&app, owner);
     if preparing {
         return snapshot;
     }
@@ -148,8 +163,8 @@ mod tests {
     use ibis_engine::settings::Density;
 
     #[test]
-    fn picker_snapshot_reflects_library_recents_destination_and_preferences() -> Result<(), Box<dyn std::error::Error>>
-    {
+    fn picker_snapshot_refreshes_a_library_loaded_before_subscription_and_keeps_its_destination()
+    -> Result<(), Box<dyn std::error::Error>> {
         let directory = tempfile::tempdir()?;
         let settings = SettingsFile::new(directory.path().join("settings.json"));
         settings.update(|saved| {
@@ -157,26 +172,32 @@ mod tests {
             saved.portable.density = Some(Density::Compact);
             saved.portable.larger_text = Some(true);
         })?;
-        let library = crate::library::tests::owner(settings.clone());
         let path = directory.path().join("invented.bib");
         std::fs::write(
             &path,
             "@book{one,title={Invented first}}\n@book{two,title={Invented second}}",
         )?;
-        crate::library::tests::open(&library, path);
-        let file = library.current().ok_or("library")?;
-        let rows = file.search(
-            &serde_json::from_value(serde_json::json!({"text":"Invented", "interpret_locators":false}))?,
-            20,
-            None,
-            &ibis_engine::Cancellation::default(),
-        )?;
-        let rows = serde_json::to_value(rows)?;
-        let id = serde_json::from_value::<ibis_core::contract::ItemRef>(rows["results"][1]["id"].clone())?;
+        let (finish, loading) = std::sync::mpsc::channel();
+        let loading = Mutex::new(loading);
+        let library = ibis_engine::library::Owner::new(
+            Arc::new(settings.clone()),
+            move || {
+                loading
+                    .lock()
+                    .unwrap()
+                    .recv_timeout(std::time::Duration::from_secs(10))
+                    .unwrap();
+                Ok(ibis_engine::Engine::new()?.without_file_watches())
+            },
+            |_| {},
+        );
+        library.submit(ibis_engine::library::Intent::Open {
+            source: path.into(),
+            save: ibis_engine::library::Save::Never,
+            profile: None,
+        });
         let session = SessionReferences::default();
         session.set_enabled(true)?;
-        let epoch = session.lock().epoch();
-        session.record(&epoch, Some("invented.writer"), std::slice::from_ref(&id));
         let app = tauri::test::mock_builder()
             .manage(settings)
             .manage(library)
@@ -207,59 +228,61 @@ mod tests {
             context_version: None,
             writing_context: None,
         };
-        let snapshot = build(
+        // The first observation can precede the load and the webview's event
+        // listeners. Its destination and selection still belong to this summon.
+        let opening = Arc::new(build(
             app.handle(),
             7,
             Some("Invented selection".into()),
             Some("invented.writer"),
             Ok(destination.clone()),
-        );
-        assert_eq!(snapshot.presentation, 7);
-        assert_eq!(snapshot.selection.as_deref(), Some("Invented selection"));
-        assert_eq!(snapshot.library.references, 2);
-        let (recents, history, failed) = snapshot.recents?;
-        let recents = serde_json::to_value(recents)?;
-        assert_eq!(recents["revision"], snapshot.library.revision);
-        assert_eq!(recents["results"][0]["id"], serde_json::to_value(id)?);
-        assert!(history && !failed);
-        assert_eq!(snapshot.destination?, destination);
-        let preferences = snapshot.preferences?;
-        assert_eq!(preferences.output.id(), "apa");
-        assert_eq!(preferences.density, Density::Compact);
-        assert!(preferences.larger_text);
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-mod bootstrap_tests {
-    use super::*;
-
-    #[test]
-    fn picker_bootstrap_retains_the_observation_across_webview_lifetimes_and_retires_old_presentations() {
-        let state = Presentation::default();
-        let snapshot = Arc::new(PickerSnapshot {
-            presentation: 7,
-            selection: None,
-            library: LibraryStatus::unavailable(),
-            recents: Err(CommandError::RecentReferencesFailed),
-            destination: Err(CommandError::SnapshotChanged),
-            preferences: Err(CommandError::SettingsUnavailable),
-        });
+        ));
+        assert_eq!(opening.library.state, crate::library::LibraryState::Loading);
+        assert!(!opening.library.has_snapshot);
         {
+            let state = app.state::<Presentation>();
             let mut pending = state.0.lock().unwrap_or_else(|e| e.into_inner());
-            pending.snapshot = Some(Arc::clone(&snapshot));
+            pending.snapshot = Some(opening);
+            pending.captured = Some("invented.writer".into());
             pending.reveal = Some((7, true));
         }
+        let library = app.state::<ibis_engine::library::Owner>();
+        finish.send(())?;
+        assert!(library.wait_idle(std::time::Duration::from_secs(10)));
+        let file = library.current().ok_or("library")?;
+        let rows = file.search(
+            &serde_json::from_value(serde_json::json!({"text":"Invented", "interpret_locators":false}))?,
+            20,
+            None,
+            &ibis_engine::Cancellation::default(),
+        )?;
+        let rows = serde_json::to_value(rows)?;
+        let id = serde_json::from_value::<ibis_core::contract::ItemRef>(rows["results"][1]["id"].clone())?;
+        let session = app.state::<SessionReferences>();
+        let epoch = session.lock().epoch();
+        session.record(&epoch, Some("invented.writer"), std::slice::from_ref(&id));
+        // Reloading the webview before reveal must refresh the library each time.
         for _ in 0..2 {
-            let (observed, preparing) = state.subscribe(7);
+            let (observed, preparing) = app.state::<Presentation>().subscribe(app.handle(), 7);
             assert!(preparing);
-            assert!(Arc::ptr_eq(
-                &observed.unwrap_or_else(|| panic!("retained snapshot")),
-                &snapshot
-            ));
+            let snapshot = observed.ok_or("opening snapshot")?;
+            assert_eq!(snapshot.library.state, crate::library::LibraryState::Loaded);
+            assert_eq!(snapshot.presentation, 7);
+            assert_eq!(snapshot.selection.as_deref(), Some("Invented selection"));
+            assert_eq!(snapshot.library.references, 2);
+            let (recents, history, failed) = snapshot.recents.as_ref().map_err(Clone::clone)?;
+            let recents = serde_json::to_value(recents)?;
+            assert_eq!(recents["revision"], snapshot.library.revision);
+            assert_eq!(recents["results"][0]["id"], serde_json::to_value(&id)?);
+            assert!(*history && !failed);
+            assert_eq!(snapshot.destination.as_ref().map_err(Clone::clone)?, &destination);
+            let preferences = snapshot.preferences.as_ref().map_err(Clone::clone)?;
+            assert_eq!(preferences.output.id(), "apa");
+            assert_eq!(preferences.density, Density::Compact);
+            assert!(preferences.larger_text);
         }
-        let (observed, preparing) = state.subscribe(8);
+        let (observed, preparing) = app.state::<Presentation>().subscribe(app.handle(), 8);
         assert!(observed.is_none() && !preparing);
+        Ok(())
     }
 }
