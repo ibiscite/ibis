@@ -1,9 +1,10 @@
+// @vitest-environment node
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { test } from "node:test";
+import { onTestFinished, test } from "vitest";
 import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
 
@@ -15,9 +16,9 @@ const picture = (changed = 0, value = 0, width = 100) => {
   return PNG.sync.write(png);
 };
 
-test("picture gate compares decoded pixels, enforces tolerance and writes a readable diff", async (t) => {
+test("picture gate compares decoded pixels, enforces tolerance and writes a readable diff", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ibis-pictures-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
   const [baseline, actual, diffs] = ["baseline", "actual", "diffs"].map((name) => path.join(root, name));
   await Promise.all([mkdir(baseline), mkdir(actual)]);
   const run = () => spawnSync(process.execPath, [script, baseline, actual, diffs], { encoding: "utf8", timeout: 5000 });

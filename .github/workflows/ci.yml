@@ -158,7 +158,6 @@ jobs:
       - name: Build and render the canvas in WebKit
         run: |
           pnpm -C apps/desktop install --frozen-lockfile
-          node --test apps/desktop/gallery/check-pictures.test.mjs
           pnpm -C apps/desktop exec vite build --config vite.canvas.config.ts
           node apps/desktop/gallery/canvas.mjs apps/desktop/dist-canvas picture-actual webkit
 
