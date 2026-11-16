@@ -616,7 +616,7 @@ fn cite_input() -> Value {
             "format": {"type": "string", "enum": key_syntax_ids(), "description": "Citation keys for a document processor, instead of style."},
             "style": {"type": "string", "description": "A CSL style id, such as apa, ieee or one from styles. Default: apa."},
             "locale": {"type": "string", "description": "A style's language, such as de-DE."},
-            "form": {"type": "string", "enum": ["normal", "narrative", "author-only", "year-only", "full", "bibliography-only"], "description": "narrative: one reference, not in numbered styles; one author in APA-like styles. bibliography-only: reference-list entries."},
+            "form": {"type": "string", "enum": ["normal", "narrative", "author-only", "year-only", "full", "bibliography-only"], "description": "narrative: one reference, one author in APA-like styles, no numbered styles. bibliography-only: entries."},
             "keep_order": {"type": "boolean", "description": "Keep this order where a style would sort."},
             "strict": {"type": "boolean", "description": crate::catalogue::text("mcp-strict-help", None, &[]).unwrap_or_default()},
             "for_app": {"type": "string", "description": "A macOS bundle ID or Windows executable: use the output Ibis uses there."},
