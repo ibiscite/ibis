@@ -346,12 +346,19 @@ fn a_page_reaches_the_citation_or_the_call_is_refused() {
 }
 
 #[test]
+fn a_search_limit_over_the_most_gives_the_most() {
+    let (_dir, _path, engine) = library(BIB.as_bytes());
+    let result = tool(&engine, "search", json!({"query":"fen","limit":100}));
+    assert_ne!(result["isError"], true, "{result}");
+}
+
+#[test]
 fn each_refusal_says_what_to_change() {
     let (_dir, _path, engine) = library(BIB.as_bytes());
     for (name, arguments, expected) in [
         ("search", json!({"query":"   "}), "query must be"),
         ("search", json!({}), "query must be"),
-        ("search", json!({"query":"x","limit":26}), "from 1 to 25"),
+        ("search", json!({"query":"x","limit":0}), "1 or more"),
         ("search", json!({"query":"x","libraries":[]}), "'libraries'"),
         ("show", json!({"key":"fen2023clouds"}), "'key'"),
         ("show", json!({"ref":7}), "ref must be"),

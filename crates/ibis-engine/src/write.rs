@@ -66,7 +66,10 @@ pub enum Via {
 #[serde(deny_unknown_fields)]
 pub struct Target {
     pub library: LibraryId,
+    /// The path the library was opened at.
     pub path: PathBuf,
+    /// Where that path led when the proposal was made, with links resolved.
+    pub resolved: PathBuf,
 }
 
 impl Target {
@@ -414,8 +417,8 @@ impl Engine {
             .filter(|info| info.kind == LibraryKind::File)
             .find(|info| self.file_path(&info.id).ok().flatten().as_deref() == Some(path.as_path()))
             .ok_or(WriteProblem::NotOpen)?;
-        // A linked folder could point the write somewhere else.
-        if std::fs::canonicalize(path).ok().as_deref() != Some(path.as_path()) {
+        // A folder swapped for a link since the proposal could point the write elsewhere.
+        if std::fs::canonicalize(path).ok().as_ref() != Some(&proposal.target.resolved) {
             return Err(WriteProblem::NotOpen.into());
         }
         let text = bib::read(path)?;
@@ -455,7 +458,12 @@ impl Engine {
             .flatten()
             .filter(|path| bib::is_bib(path))
             .ok_or(WriteProblem::LibraryKind)?;
-        Ok(Target { library: info.id, path })
+        let resolved = std::fs::canonicalize(&path).map_err(|_| WriteProblem::Unreadable)?;
+        Ok(Target {
+            library: info.id,
+            path,
+            resolved,
+        })
     }
 }
 
