@@ -6,7 +6,6 @@
 //! library. Text comes from the open library each time it is shown.
 
 use ibis_engine::citations::{Operation, SessionId};
-use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, WebviewWindow};
@@ -14,9 +13,10 @@ use tauri_plugin_dialog::DialogExt;
 
 use crate::library::commands::RecentIdentity;
 use crate::library::engine_library::FileLibrary;
-use crate::library::{CommandError, Library, SearchResult};
+use crate::library::{CommandError, SearchResult};
 use crate::picker::ChooserOpen;
 use ibis_core::contract::SessionBibliography;
+use ibis_engine::library::{Current, Owner};
 
 pub(crate) use ibis_engine::recents::SessionReferences;
 use ibis_engine::recents::{List, Undo};
@@ -50,11 +50,7 @@ pub(crate) enum SessionEdit {
     Undo,
 }
 
-fn open_file(library: &Mutex<Library>) -> Option<std::sync::Arc<FileLibrary>> {
-    library.lock().ok()?.file.clone()
-}
-
-fn view(list: &List, file: Option<&FileLibrary>) -> Result<SessionReferencesView, CommandError> {
+fn view(list: &List, file: Option<&Current>) -> Result<SessionReferencesView, CommandError> {
     let rows = file
         .map(|file| file.session_rows(&list.items))
         .transpose()?
@@ -81,9 +77,9 @@ fn view(list: &List, file: Option<&FileLibrary>) -> Result<SessionReferencesView
 #[ibis_desktop_macros::command]
 pub(crate) fn session_references(
     session: State<'_, SessionReferences>,
-    library: State<'_, Mutex<Library>>,
+    library: State<'_, Owner>,
 ) -> Result<SessionReferencesView, CommandError> {
-    let file = open_file(&library);
+    let file = library.current();
     view(&session.lock(), file.as_deref())
 }
 
@@ -92,9 +88,9 @@ pub(crate) fn session_references(
 pub(crate) fn edit_session_references(
     edit: SessionEdit,
     session: State<'_, SessionReferences>,
-    library: State<'_, Mutex<Library>>,
+    library: State<'_, Owner>,
 ) -> Result<SessionReferencesView, CommandError> {
-    let file = open_file(&library);
+    let file = library.current();
     let mut list = session.lock();
     match edit {
         // An identity from before the library changed names nothing listed.
@@ -129,10 +125,10 @@ pub(crate) async fn session_bibliography(
     style: String,
     intent: crate::library::PreviewIntent,
     session: State<'_, SessionReferences>,
-    library: State<'_, Mutex<Library>>,
+    library: State<'_, Owner>,
 ) -> Result<Option<SessionBibliography>, CommandError> {
     // With no library open nothing listed can be written, which is no failure.
-    let Some(file) = open_file(&library) else {
+    let Some(file) = library.current() else {
         return Ok(None);
     };
     let cancel = file
@@ -144,7 +140,7 @@ pub(crate) async fn session_bibliography(
     let task = file
         .engine
         .citations()
-        .bibliography(SessionId::PICKER, items, style, cancel, file.sample)?;
+        .bibliography(SessionId::PICKER, items, style, cancel, file.sample())?;
     tauri::async_runtime::spawn_blocking(move || task.run().map_err(CommandError::from))
         .await
         .map_err(|_| CommandError::BibliographyUnavailable)?
@@ -160,12 +156,12 @@ pub(crate) async fn copy_session_bibliography(
     intent: crate::library::PreviewIntent,
     app: AppHandle,
     session: State<'_, SessionReferences>,
-    library: State<'_, Mutex<Library>>,
+    library: State<'_, Owner>,
 ) -> Result<(), CommandError> {
     // Formatting can take a while: anything copied meanwhile is newer and stays.
     let began = crate::copy::clipboard_mark();
     let style = style_of(&style)?;
-    let file = open_file(&library).ok_or(CommandError::SnapshotChanged)?;
+    let file = library.current().ok_or(CommandError::SnapshotChanged)?;
     let cancel = file
         .engine
         .citations()
@@ -188,7 +184,7 @@ pub(crate) async fn copy_session_bibliography(
     app.run_on_main_thread(move || {
         let result = cancel.check().map_err(CommandError::from).and_then(|()| {
             commit_list_copy(&main.state(), revision, || {
-                let file = open_file(&main.state()).ok_or(CommandError::SnapshotChanged)?;
+                let file = main.state::<Owner>().current().ok_or(CommandError::SnapshotChanged)?;
                 let guard = checked.check(&file.engine)?;
                 crate::copy::write_copy_only_unless_written(
                     &main,
@@ -251,10 +247,10 @@ pub(crate) async fn export_session_bibliography(
     intent: crate::library::PreviewIntent,
     window: WebviewWindow,
     session: State<'_, SessionReferences>,
-    library: State<'_, Mutex<Library>>,
+    library: State<'_, Owner>,
 ) -> Result<Option<String>, CommandError> {
     let style = style_of(&style)?;
-    let file = open_file(&library).ok_or(CommandError::SnapshotChanged)?;
+    let file = library.current().ok_or(CommandError::SnapshotChanged)?;
     let cancel = file
         .engine
         .citations()
@@ -308,7 +304,7 @@ pub(crate) async fn export_session_bibliography(
             file.engine
                 .citations()
                 .commit_bibliography(SessionId::PICKER, &items, &style, &content_hash, &cancel)?;
-        let current = open_file(&app.state()).ok_or(CommandError::SnapshotChanged)?;
+        let current = app.state::<Owner>().current().ok_or(CommandError::SnapshotChanged)?;
         let guard = result.check(&current.engine)?;
         let content = guard.content();
         let text = export_text(extension, &content)?;
@@ -408,8 +404,15 @@ mod tests {
             &path,
             "@book{taylor,title={Synthetic signals},author={Taylor, Alex},year={2026}}",
         )?;
-        let file =
-            FileLibrary::open(&path, &ibis_engine::Cancellation::default()).map_err(|_| "open invented library")?;
+        let file = ibis_engine::library::Current::open(
+            ibis_engine::Engine::new()
+                .unwrap_or_else(|_| panic!("engine"))
+                .with_formatting(crate::library::engine_library::FORMATTING.clone()),
+            ibis_engine::library::Source::File(path.clone()),
+            None,
+            &ibis_engine::Cancellation::default(),
+        )
+        .map_err(|_| "open invented library")?;
         let query = serde_json::from_value(serde_json::json!({"text":"signals","interpret_locators":false}))?;
         let rows = serde_json::to_value(file.search(&query, 10, None, &ibis_engine::Cancellation::default())?)?;
         let id = serde_json::from_value(rows["results"][0]["id"].clone())?;
@@ -427,7 +430,7 @@ mod tests {
                 items.clone(),
                 "apa".into(),
                 ibis_engine::Cancellation::default(),
-                file.sample,
+                file.sample(),
             )?
             .run()?
             .ok_or("bibliography")?;

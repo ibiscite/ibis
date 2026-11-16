@@ -13,7 +13,15 @@ fn app_outputs_and_remembered_key_workflows_copy_the_exact_preview() -> Result<(
         &path,
         "@article{demo,title={Synthetic research},author={Researcher, Synthetic},year={2026}}\n",
     )?;
-    let file = FileLibrary::open(&path, &ibis_engine::Cancellation::default()).map_err(|_| "open invented library")?;
+    let file = ibis_engine::library::Current::open(
+        ibis_engine::Engine::new()
+            .unwrap_or_else(|_| panic!("engine"))
+            .with_formatting(crate::library::engine_library::FORMATTING.clone()),
+        ibis_engine::library::Source::File(path.clone()),
+        None,
+        &ibis_engine::Cancellation::default(),
+    )
+    .map_err(|_| "open invented library")?;
     let rows = serde_json::to_value(
         file.search(
             &serde_json::from_value(json!({"text":"research","interpret_locators":false}))?,
@@ -70,7 +78,7 @@ fn app_outputs_and_remembered_key_workflows_copy_the_exact_preview() -> Result<(
             .ok_or("remembered output")?;
         assert_eq!(remembered, output);
         let selection: DraftItem = serde_json::from_value(json!({"id":row["id"],"cite":row["cite"],"locator":null}))?;
-        let preview = crate::test_citations::preview(&file.engine, file.sample, vec![selection], remembered.id())
+        let preview = crate::test_citations::preview(&file.engine, file.sample(), vec![selection], remembered.id())
             .map_err(|_| "native preview")?;
         assert_eq!(preview.text, expected, "{output:?}");
         // APA's HTML for this fixture equals its text; key outputs have no HTML.

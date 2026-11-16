@@ -66,12 +66,7 @@ fn waiting(store: &Proposals) -> Result<Vec<WaitingProposal>, String> {
 #[ibis_desktop_macros::command]
 pub(crate) async fn apply_proposal(app: tauri::AppHandle, id: String) -> Result<ProposalResult, String> {
     crate::cli_install::with_owner(&OWNER, move || {
-        let file = app
-            .state::<std::sync::Mutex<crate::library::Library>>()
-            .lock()
-            .map_err(|_| "Could not read the open library.".to_owned())?
-            .file
-            .clone();
+        let file = app.state::<ibis_engine::library::Owner>().current();
         Ok(apply(&store(&app), file.as_ref().map(|file| &file.engine), &id))
     })
     .await

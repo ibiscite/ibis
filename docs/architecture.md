@@ -16,6 +16,10 @@ describes this checkout. Plans live in [ROADMAP.md](../ROADMAP.md).
 | `apps/desktop/src-tauri` | Native windows, clipboard, paste, shortcuts, settings dialogs and updates. Depends on core, engine and its command macro crate. |
 | `apps/desktop/src` | React interface, shared controls in `ui/`, tokens in `tokens.css`. |
 
+The desktop manages `ibis_engine::library::Owner`: commands submit intents and
+read its current library or view. The owner publishes library status; the app
+adds its settings notice and schedules picker and tray effects on the main thread.
+
 The desktop links the engine in process, with generated TypeScript bindings;
 it is given no PDF reader, so PDF parsing never runs in the app ([0055](decisions/0055-agent-layers-full-text-writes-remote.md)).
 Contracts for the CLI, JSON-RPC and MCP are in [the CLI reference](cli.md); the

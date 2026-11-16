@@ -78,9 +78,8 @@ fn needs_settings(app: &AppHandle) -> bool {
     if crate::tray::hidden() {
         return true;
     }
-    app.state::<Mutex<crate::library::Library>>()
-        .lock()
-        .is_ok_and(|library| library.source.is_none() && library.requested.is_none())
+    let view = app.state::<ibis_engine::library::Owner>().view();
+    view.current.is_none() && view.requested.is_none()
 }
 
 /// An OS reopen and an ordinary second launch share the same destination.

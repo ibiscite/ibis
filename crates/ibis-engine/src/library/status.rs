@@ -14,7 +14,7 @@ use crate::LibraryKind;
 use crate::request::ZoteroLibrary as EngineZoteroLibrary;
 use crate::settings::ZoteroLibrary;
 
-/// The library as it is now, published whole on every change.
+/// Sent to the interface with the `library:changed` event.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct LibraryStatus {
     pub state: LibraryState,
@@ -57,7 +57,7 @@ pub struct LibraryStatus {
     pub kept_references: bool,
     /// Something to tell the user that is not a failure to open.
     pub note: Option<String>,
-    /// Startup settings recovery, which the app fills in; never library state.
+    /// Startup settings recovery, separate from transient library status.
     pub settings_notice: Option<String>,
     /// Whether the searchable references are Zotero's, which can differ from
     /// `zotero` (the requested source) after a failed switch.

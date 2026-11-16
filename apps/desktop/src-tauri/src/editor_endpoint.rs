@@ -22,8 +22,8 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::diagnostics::{NativeIssue, report};
-use crate::library::Library;
 use crate::preferences::SettingsFile;
+use ibis_engine::library::Owner;
 
 /// Zotero's own port is 23119; this one is Ibis's alone.
 const DEFAULT_PORT: u16 = 23_124;
@@ -376,10 +376,10 @@ impl Host for AppHost {
         self.0.state::<Pending>().inner()
     }
     fn ready(&self) -> bool {
-        self.0
-            .state::<Mutex<Library>>()
-            .lock()
-            .is_ok_and(|library| library.file.is_some() && !library.opening)
+        {
+            let view = self.0.state::<Owner>().view();
+            view.current.is_some() && !view.opening
+        }
     }
     fn style(&self) -> Result<String, cayw::Refusal> {
         let loaded = settings::load(&self.0.state::<SettingsFile>().path);
@@ -391,12 +391,7 @@ impl Host for AppHost {
     }
     fn retire(&self) {
         // A ticket made under one output must not be copied under another.
-        let file = self
-            .0
-            .state::<Mutex<Library>>()
-            .lock()
-            .ok()
-            .and_then(|library| library.file.clone());
+        let file = self.0.state::<Owner>().current();
         if let Some(file) = file {
             file.engine
                 .citations()
@@ -970,8 +965,15 @@ mod tests {
             .begin_context(&pick, "apa", Some(writing), &AtomicBool::new(false), || {})
             .ok_or("editor request missing")?;
         let request = pending.current().ok_or("editor request missing")?;
-        let file =
-            FileLibrary::open(&source, &ibis_engine::Cancellation::default()).unwrap_or_else(|error| panic!("{error}"));
+        let file = ibis_engine::library::Current::open(
+            ibis_engine::Engine::new()
+                .unwrap_or_else(|_| panic!("engine"))
+                .with_formatting(crate::library::engine_library::FORMATTING.clone()),
+            ibis_engine::library::Source::File(source.clone()),
+            None,
+            &ibis_engine::Cancellation::default(),
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
         let query = serde_json::from_value(json!({"text":"demo","interpret_locators":false}))?;
         let rows = serde_json::to_value(file.search(&query, 10, None, &ibis_engine::Cancellation::default())?)?;
         let row = &rows["results"][0];

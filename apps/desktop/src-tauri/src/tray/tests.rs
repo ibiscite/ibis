@@ -2,7 +2,10 @@ use super::*;
 use ibis_core::contract::{EngineError, ErrorCode};
 
 fn loaded(name: &str, zotero: bool) -> LibraryStatus {
-    let mut status = crate::library::snapshot_status(&Library::default());
+    let mut status = crate::library::tests::owner(crate::preferences::SettingsFile::new(
+        tempfile::tempdir().unwrap().path().join("settings.json"),
+    ))
+    .status();
     status.state = LibraryState::Loaded;
     status.name = Some(name.into());
     status.snapshot_name = status.name.clone();
@@ -32,7 +35,10 @@ fn expected(library: &[&str]) -> Vec<String> {
 
 #[test]
 fn no_library_offers_a_file_and_only_offers_zotero_when_detected() {
-    let status = crate::library::snapshot_status(&Library::default());
+    let status = crate::library::tests::owner(crate::preferences::SettingsFile::new(
+        tempfile::tempdir().unwrap().path().join("settings.json"),
+    ))
+    .status();
     let mut choices = LibraryChoices::default();
     assert_eq!(labels(&status, &choices), expected(&["No library yet", "Choose File…"]));
     choices.zotero_detected = true;
@@ -156,7 +162,10 @@ fn help_groups_shortcuts_news_feedback_reset_and_the_copyable_build() {
         .into_iter()
         .map(|row| {
             row.label(
-                &crate::library::snapshot_status(&Library::default()),
+                &crate::library::tests::owner(crate::preferences::SettingsFile::new(
+                    tempfile::tempdir().unwrap().path().join("settings.json"),
+                ))
+                .status(),
                 &LibraryChoices::default(),
                 "Ibis Nightly",
             )
@@ -289,22 +298,16 @@ fn a_file_radio_event_opens_its_exact_file_and_a_retired_event_cannot_open_the_r
     let LibraryAction::Open(opened) = library_target(&id, targets).ok_or("radio choice")? else {
         return Err("radio choice must open the named library".into());
     };
-    let Source::File(path) = &opened else {
-        return Err("file choice".into());
-    };
-    let file = crate::library::engine_library::FileLibrary::open(path, &ibis_engine::Cancellation::default())
-        .map_err(|e| e.to_string())?;
-    let mut library = Library::default();
-    library.file = Some(std::sync::Arc::new(file));
-    library.source = Some(opened);
+    let library = crate::library::tests::owner(crate::preferences::SettingsFile::new(
+        directory.path().join("settings.json"),
+    ));
+    crate::library::tests::open(&library, opened);
     let mut choices = LibraryChoices::default();
-    choices.observe(library.requested.as_ref(), library.source.as_ref());
+    let view = library.view();
+    choices.observe(view.requested.as_ref(), view.source());
     assert!(choices.checked(Row::File(0)));
     assert!(!choices.checked(Row::Zotero));
-    assert_eq!(
-        library_line(&crate::library::snapshot_status(&library)),
-        "thesis.bib · 1 reference"
-    );
+    assert_eq!(library_line(&library.status()), "thesis.bib · 1 reference");
     Ok(())
 }
 
@@ -374,7 +377,10 @@ fn reading_problems_offer_their_fix_instead_of_a_dead_count() {
 
 #[test]
 fn spoken_state_names_reading_failure_and_readiness_without_reference_counts() {
-    let mut status = crate::library::snapshot_status(&Library::default());
+    let mut status = crate::library::tests::owner(crate::preferences::SettingsFile::new(
+        tempfile::tempdir().unwrap().path().join("settings.json"),
+    ))
+    .status();
     assert_eq!(spoken_title(&status), "Ibis, no library yet");
     status = loaded("thesis.bib", false);
     assert_eq!(spoken_title(&status), "Ibis, ready");
