@@ -103,6 +103,67 @@ impl Proposals {
         Ok(file)
     }
 
+    /// Commit one library replacement and retain its newest backups together.
+    /// The apply transaction already holds this store's writer lock.
+    pub(super) fn replace_library(
+        &self,
+        target: &Target,
+        before: &[u8],
+        after: &[u8],
+        check: impl FnOnce() -> Result<(), WriteProblem>,
+    ) -> Result<PathBuf, WriteError> {
+        let staged = AtomicFile::new(&target.path, after).map_err(|_| WriteProblem::NotWritten)?;
+        let backup = self.backup_path(target)?;
+        AtomicFile::new(&backup, before)
+            .and_then(AtomicFile::create)
+            .map_err(|_| WriteProblem::BackupFailed)?;
+        if let Err(problem) = check() {
+            let _ = fs::remove_file(&backup);
+            return Err(problem.into());
+        }
+        staged.replace().map_err(|_| {
+            let _ = fs::remove_file(&backup);
+            WriteProblem::NotWritten
+        })?;
+        self.prune_backups(&backup);
+        Ok(backup)
+    }
+
+    /// Backups live in Ibis's data folder, isolated by resolved library identity.
+    fn backup_path(&self, target: &Target) -> Result<PathBuf, WriteError> {
+        let identity = Fingerprint::of_bytes(target.resolved.as_os_str().as_encoded_bytes());
+        let dir = self.dir.with_file_name("library-backups").join(identity.as_str());
+        private_folder(&dir).map_err(|_| WriteProblem::BackupFailed)?;
+        let next = backups(&dir)?
+            .last()
+            .map_or(Some(1), |(number, _)| number.checked_add(1))
+            .ok_or(WriteProblem::BackupFailed)?;
+        let mut name = target
+            .resolved
+            .file_name()
+            .ok_or(WriteProblem::BackupFailed)?
+            .to_os_string();
+        name.push(format!(".ibis-backup-{next}"));
+        Ok(dir.join(name))
+    }
+
+    /// Only called after replacement, while holding the proposal writer lock.
+    fn prune_backups(&self, backup: &Path) {
+        if let Some(dir) = backup.parent() {
+            match backups(dir) {
+                Ok(backups) => {
+                    let excess = backups.len().saturating_sub(MAX_BACKUPS);
+                    for (_, path) in backups.into_iter().take(excess) {
+                        if fs::remove_file(path).is_err() {
+                            crate::sync::log(format_args!("Ibis could not remove an old library backup"));
+                        }
+                    }
+                }
+                Err(_) => crate::sync::log(format_args!("Ibis could not list old library backups")),
+            }
+        }
+    }
+
     /// Save a new pending proposal, within the bounds.
     pub(super) fn create(
         &self,
@@ -180,15 +241,7 @@ impl Proposals {
 
     /// The folder, private to this person when Ibis makes it.
     fn folder(&self) -> Result<(), WriteError> {
-        let mut builder = fs::DirBuilder::new();
-        builder.recursive(true);
-        #[cfg(unix)]
-        std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
-        builder.create(&self.dir).map_err(|_| WriteProblem::NotSaved)?;
-        match fs::symlink_metadata(&self.dir) {
-            Ok(metadata) if metadata.is_dir() => Ok(()),
-            _ => Err(WriteProblem::NotSaved.into()),
-        }
+        private_folder(&self.dir).map_err(|_| WriteProblem::NotSaved.into())
     }
 }
 
@@ -226,4 +279,37 @@ fn now_ms() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|time| u64::try_from(time.as_millis()).unwrap_or(u64::MAX))
         .unwrap_or(0)
+}
+
+/// Applied library versions retained per library.
+pub const MAX_BACKUPS: usize = 5;
+
+fn private_folder(dir: &Path) -> std::io::Result<()> {
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder.create(dir)?;
+    if fs::symlink_metadata(dir)?.is_dir() {
+        Ok(())
+    } else {
+        Err(std::io::ErrorKind::InvalidInput.into())
+    }
+}
+
+fn backups(dir: &Path) -> Result<Vec<(u64, PathBuf)>, WriteError> {
+    let mut found = Vec::new();
+    for entry in fs::read_dir(dir).map_err(|_| WriteProblem::BackupFailed)? {
+        let entry = entry.map_err(|_| WriteProblem::BackupFailed)?;
+        if let Some(number) = entry
+            .file_name()
+            .to_str()
+            .and_then(|name| name.rsplit_once(".ibis-backup-").map(|(_, number)| number))
+            .and_then(|number| number.parse::<u64>().ok())
+        {
+            found.push((number, entry.path()));
+        }
+    }
+    found.sort_by_key(|(number, _)| *number);
+    Ok(found)
 }

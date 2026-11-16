@@ -3,6 +3,7 @@ pub const APP_COMMANDS: &[&str] = &[
     "waiting_proposals",
     "apply_proposal",
     "reject_proposal",
+    "reject_app_proposals",
     "agent_apps",
     "connect_agent_app",
     "disconnect_agent_app",

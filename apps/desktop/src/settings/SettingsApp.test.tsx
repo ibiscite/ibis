@@ -25,7 +25,7 @@ test.each(["proposals", "changes", "add reference"])("search finds proposed chan
   api.agentApps = vi.fn(async () => []);
   api.connectAgentApp = vi.fn(); api.disconnectAgentApp = vi.fn();
   api.waitingProposals = vi.fn(async () => exampleProposals());
-  api.applyProposal = vi.fn(); api.rejectProposal = vi.fn();
+  api.applyProposal = vi.fn(); api.rejectProposal = vi.fn(); api.rejectAppProposals = vi.fn();
   render(<SettingsApp api={api} initialPage="general" />);
   fireEvent.change(screen.getByRole("searchbox", { name: "Search Settings" }), { target: { value: query } });
   fireEvent.click(await screen.findByRole("option", { name: /^Proposed changes/ }));
@@ -47,7 +47,7 @@ test("AI Apps keeps Command Line, connections and Attachment text before Propose
   api.disconnectAgentApp = vi.fn();
   api.attachmentTextLibraries = async () => [{ id: "lib_invented_library", name: "Invented references", on: false }];
   api.waitingProposals = async () => [];
-  api.applyProposal = vi.fn(); api.rejectProposal = vi.fn();
+  api.applyProposal = vi.fn(); api.rejectProposal = vi.fn(); api.rejectAppProposals = vi.fn();
   render(<SettingsApp api={api} initialPage="ai-apps" />);
   expect(await screen.findByRole("button", { name: "Install the ibis command" })).toBeTruthy();
   expect(await screen.findByRole("button", { name: "Connect Cursor" })).toBeTruthy();

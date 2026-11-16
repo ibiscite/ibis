@@ -16,7 +16,7 @@
 //! local write API (0051). Applying refuses when the entry changed since the
 //! proposal or the file is reached through a link, edits only that entry's
 //! text or adds the new entry at the end, keeps every other byte, writes
-//! atomically and keeps the file it replaced as `refs.bib.ibis-backup-N`.
+//! atomically and keeps the last five replaced versions in Ibis’s data folder.
 //! Applies run one at a time, across Ibis processes.
 
 mod bib;
@@ -26,7 +26,7 @@ mod store;
 mod tests;
 
 pub use key::citation_key;
-pub use store::{MAX_KEPT, MAX_PENDING, MAX_PROPOSAL_BYTES, Proposals};
+pub use store::{MAX_BACKUPS, MAX_KEPT, MAX_PENDING, MAX_PROPOSAL_BYTES, Proposals};
 
 use crate::request::{ItemSelector, ShowRequest};
 use crate::{Cancellation, Engine, LibraryKind};
@@ -427,18 +427,7 @@ impl Engine {
             Ok(latest) if latest == text => Ok(()),
             _ => Err(WriteProblem::Changed),
         };
-        use ibis_core::atomic_file::{BackupReplaceError, replace_keeping_backup};
-        let backup = match replace_keeping_backup(path, Some(text.as_bytes()), plan.text.as_bytes(), check) {
-            Ok(Some(backup)) => backup,
-            Ok(None) => return Err(WriteProblem::NotWritten.into()),
-            Err(BackupReplaceError::Backup) => return Err(WriteProblem::BackupFailed.into()),
-            Err(BackupReplaceError::Check(problem) | BackupReplaceError::BackupLeft(problem)) => {
-                return Err(problem.into());
-            }
-            Err(BackupReplaceError::Stage(_) | BackupReplaceError::Write(_)) => {
-                return Err(WriteProblem::NotWritten.into());
-            }
-        };
+        let backup = store.replace_library(&proposal.target, text.as_bytes(), plan.text.as_bytes(), check)?;
         let proposal = store.decide(id, Status::Applied)?;
         // The file watch would see it too; reading now shows the change at once.
         let _ = self.reload_files(Some(&open.id), &Cancellation::default());
@@ -470,7 +459,52 @@ impl Engine {
 impl Proposals {
     /// The proposal with its preview, read against the library as it is now.
     pub fn show(&self, id: &str) -> Result<Preview, WriteError> {
-        Ok(preview(self.get(id)?))
+        let proposal = self.get(id)?;
+        let text = bib::read(&proposal.target.path);
+        Ok(preview(proposal, text.as_deref()))
+    }
+
+    /// Pending previews, with one bounded read per library and no library writes.
+    pub fn waiting(&self) -> Result<Vec<Preview>, WriteError> {
+        let mut libraries = std::collections::BTreeMap::<PathBuf, Vec<Proposal>>::new();
+        for proposal in self
+            .list()?
+            .into_iter()
+            .filter(|proposal| proposal.status == Status::Pending)
+        {
+            libraries
+                .entry(proposal.target.path.clone())
+                .or_default()
+                .push(proposal);
+        }
+        let mut previews = Vec::new();
+        for (path, proposals) in libraries {
+            let text = bib::read(&path);
+            previews.extend(proposals.into_iter().map(|proposal| preview(proposal, text.as_deref())));
+        }
+        previews.sort_by(|a, b| {
+            b.proposal
+                .created_ms
+                .cmp(&a.proposal.created_ms)
+                .then_with(|| a.proposal.id.cmp(&b.proposal.id))
+        });
+        Ok(previews)
+    }
+
+    /// Reject this app's pending proposals across libraries, under one writer lock.
+    /// The source is the app's claimed name, not an authenticated identity.
+    pub fn reject_from(&self, source: &Source) -> Result<usize, WriteError> {
+        let _lock = self.lock()?;
+        let mut rejected = 0;
+        for proposal in self
+            .list()?
+            .into_iter()
+            .filter(|proposal| proposal.status == Status::Pending && &proposal.source == source)
+        {
+            self.decide(&proposal.id, Status::Rejected)?;
+            rejected += 1;
+        }
+        Ok(rejected)
     }
 
     /// Mark a pending proposal rejected. Nothing else changes.
@@ -483,7 +517,7 @@ impl Proposals {
     }
 }
 
-fn preview(proposal: Proposal) -> Preview {
+fn preview(proposal: Proposal, text: Result<&str, &WriteError>) -> Preview {
     let mut preview = Preview {
         library: proposal.target.name(),
         summary: summary(&proposal),
@@ -493,7 +527,10 @@ fn preview(proposal: Proposal) -> Preview {
         refusal: None,
         proposal,
     };
-    match bib::read(&preview.proposal.target.path).and_then(|text| bib::plan(&text, &preview.proposal)) {
+    match text
+        .map_err(Clone::clone)
+        .and_then(|text| bib::plan(text, &preview.proposal))
+    {
         Ok(plan) => {
             preview.before = plan.before;
             preview.after = Some(plan.after);

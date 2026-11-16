@@ -11,6 +11,7 @@
 //! files in the home folder are written as `~/…`, and the opening shortcut is
 //! kept per system. [`backup`] makes and restores a backup file from it.
 
+use crate::sync::MutexExt;
 pub mod backup;
 mod owner;
 pub use owner::{Owner, Pending, Watching};
@@ -811,7 +812,7 @@ fn writer_lock(path: &Path) -> Result<WriterLock, SettingsError> {
     if WRITER.try_lock().is_err() {
         writer_attempted();
     }
-    let local = WRITER.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let local = WRITER.recover_lock();
     let target = match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.file_type().is_symlink() => {
             let linked = fs::canonicalize(path)?;

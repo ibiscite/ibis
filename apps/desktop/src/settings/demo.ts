@@ -38,6 +38,7 @@ export function demoApi(initialPreferences: Partial<PickerPreferences> = {}): Se
     onLibraryChanged: subscribe,
     waitingProposals: async () => proposals,
     applyProposal: async (id) => { proposals = proposals.filter((proposal) => proposal.id !== id); return { status: "applied", backup: "signals.bib.ibis-backup-1" }; },
+    rejectAppProposals: async (id) => { const app = proposals.find((proposal) => proposal.id === id)?.source_app; proposals = proposals.filter((proposal) => proposal.source_app !== app); return { status: "rejected" }; },
     rejectProposal: async (id) => { proposals = proposals.filter((proposal) => proposal.id !== id); return { status: "rejected" }; },
     delightView: async (_now, _presentation, _revision, click) => {
       const fun = preferences.small_surprises ?? true;

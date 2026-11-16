@@ -51,7 +51,7 @@ fn quit_continues_without_a_persistence_acknowledgement() -> Result<(), Box<dyn 
 type SaveBarrier = (PathBuf, std::sync::mpsc::SyncSender<()>, std::sync::mpsc::Receiver<()>);
 static SAVE_BARRIER: Mutex<Option<SaveBarrier>> = Mutex::new(None);
 pub(super) fn before_save(path: Option<&std::path::Path>) {
-    let mut barrier = SAVE_BARRIER.lock().unwrap_or_else(|e| panic!("{e:?}"));
+    let mut barrier = SAVE_BARRIER.recover_lock();
     if barrier
         .as_ref()
         .is_some_and(|(expected, _, _)| Some(expected.as_path()) == path)
@@ -72,7 +72,7 @@ fn stalled_storage_does_not_hold_enter_and_forget_wins_after_restart() -> Result
     let epoch = history.lock().epoch();
     let (entered, waiting) = mpsc::sync_channel(1);
     let (release, blocked) = mpsc::sync_channel(1);
-    *SAVE_BARRIER.lock().unwrap_or_else(|e| panic!("{e:?}")) = Some((path.clone(), entered, blocked));
+    *SAVE_BARRIER.recover_lock() = Some((path.clone(), entered, blocked));
     let (returned, copied) = mpsc::sync_channel(1);
     let worker = Arc::clone(&history);
     let old = Arc::clone(&epoch);

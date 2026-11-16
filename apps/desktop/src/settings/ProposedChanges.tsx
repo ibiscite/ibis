@@ -5,7 +5,7 @@ import { Button } from "../ui/Button";
 import { Buttons, Group, Note, Row, Section } from "../ui/Layout";
 import { useSettingsRequests } from "./useSettingsRequests";
 
-type Api = Pick<typeof commands, "waitingProposals" | "applyProposal" | "rejectProposal">;
+type Api = Pick<typeof commands, "waitingProposals" | "applyProposal" | "rejectProposal" | "rejectAppProposals">;
 type Shown = WaitingProposal & { result?: ProposalResult; error?: string };
 
 /** Applied rows keep their receipt until leaving this page. */
@@ -34,16 +34,16 @@ export function ProposedChanges({ api, highlighted }: { api: Api; highlighted: s
     document.addEventListener("visibilitychange", read);
     return () => { window.removeEventListener("focus", read); document.removeEventListener("visibilitychange", read); };
   }, [read]);
-  const change = (proposal: Shown, action: "apply" | "reject") => {
+  const change = (proposal: Shown, action: "apply" | "reject" | "reject-app") => {
     if (isPending()) return;
     const request = begin(proposal.id);
     setBusy(true);
     const update = (patch: Partial<Shown>) => setProposals((rows) => rows?.map((row) => row.id === proposal.id ? { ...row, ...patch } : row) ?? null);
     update({ error: undefined });
-    const operation = action === "apply" ? api.applyProposal(proposal.id) : api.rejectProposal(proposal.id);
+    const operation = action === "apply" ? api.applyProposal(proposal.id) : action === "reject" ? api.rejectProposal(proposal.id) : api.rejectAppProposals(proposal.id);
     void operation.then((result) => {
       if (!request.current()) return;
-      if (result.status === "rejected") setProposals((rows) => rows?.filter((row) => row.id !== proposal.id) ?? null);
+      if (result.status === "rejected") setProposals((rows) => rows?.filter((row) => (action === "reject-app" ? row.source_app !== proposal.source_app || row.result?.status === "applied" : row.id !== proposal.id)) ?? null);
       else update({ result });
     }, (error: unknown) => {
       if (request.current()) update({ error: typeof error === "string" ? error : text("proposals-failed") });
@@ -69,6 +69,7 @@ export function ProposedChanges({ api, highlighted }: { api: Api; highlighted: s
           description={<>{proposal.summary} · {new Date(proposal.created_ms).toLocaleString(locale)}</>} highlighted={highlighted === "proposed-changes"}>
           {!applied && <Buttons>
             <Button aria-labelledby={`${id}-apply ${id}`} isDisabled={busy} onPress={() => change(proposal, "apply")}><span id={`${id}-apply`}>{text("proposals-apply")}</span></Button>
+            <Button aria-labelledby={`${id}-reject-app ${id}`} isDisabled={busy} onPress={() => change(proposal, "reject-app")}><span id={`${id}-reject-app`}>{text("proposals-reject-app")}</span></Button>
             <Button aria-labelledby={`${id}-reject ${id}`} isDisabled={busy} onPress={() => change(proposal, "reject")}><span id={`${id}-reject`}>{text("proposals-reject")}</span></Button>
           </Buttons>}
           {preview && <Note><code dir="ltr">{preview.split("\n").map((line, index) => <Fragment key={`${index}:${line}`}>{index > 0 && <br />}<span>{line}</span></Fragment>)}</code></Note>}

@@ -1,5 +1,6 @@
 //! Source handles stay outside Shared: callbacks upgrade only publication state.
 use super::*;
+use crate::sync::MutexExt;
 use ibis_core::zotero::api::TransportError;
 use ibis_sources::zotero_source::{Library, LiveError, ZoteroError, ZoteroSource};
 use ibis_sources::{LoadedLibrary, SourceError, SourceWatch};
@@ -38,7 +39,7 @@ impl Owners {
         }
     }
     pub(super) fn read_closed(&self) -> bool {
-        self.closed_groups.lock().is_ok_and(|groups| groups.is_some())
+        self.closed_groups.recover_lock().is_some()
     }
 }
 #[derive(Default)]
@@ -190,23 +191,9 @@ impl Engine {
     ) -> Result<PreparedZoteroReload, EngineError> {
         cancel.check()?;
         let (base, resources) = {
-            let _operation = self
-                .resources
-                .operation
-                .lock()
-                .map_err(|_| error(ErrorCode::Internal))?;
-            let source = self
-                .resources
-                .zotero
-                .lock()
-                .map_err(|_| error(ErrorCode::Internal))?
-                .clone();
-            let groups = self
-                .resources
-                .closed_groups
-                .lock()
-                .map_err(|_| error(ErrorCode::Internal))?
-                .clone();
+            let _operation = self.resources.operation.recover_lock();
+            let source = self.resources.zotero.recover_lock().clone();
+            let groups = self.resources.closed_groups.recover_lock().clone();
             (
                 self.state()?,
                 Owners {
@@ -236,7 +223,7 @@ impl Engine {
                     if retired.is_some() {
                         return Ok(());
                     }
-                    let _publication = self.shared.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
+                    let _publication = self.shared.publication.recover_lock();
                     let mut state = self.shared.state.write().map_err(|_| error(ErrorCode::Internal))?;
                     cancel.check()?;
                     if !expected.same_publication(&state) {
@@ -273,11 +260,8 @@ impl Engine {
             origin: Arc::downgrade(&self.shared),
             base: expected,
             next,
-            source: resources.zotero.into_inner().map_err(|_| error(ErrorCode::Internal))?,
-            closed_groups: resources
-                .closed_groups
-                .into_inner()
-                .map_err(|_| error(ErrorCode::Internal))?,
+            source: crate::sync::recover(resources.zotero.into_inner()),
+            closed_groups: crate::sync::recover(resources.closed_groups.into_inner()),
             outcome,
             cancel: cancel.clone(),
         })
@@ -290,18 +274,10 @@ impl Engine {
         if !Weak::ptr_eq(&prepared.origin, &Arc::downgrade(&self.shared)) {
             return Err(error(ErrorCode::BadInput));
         }
-        let _operation = self
-            .resources
-            .operation
-            .lock()
-            .map_err(|_| error(ErrorCode::Internal))?;
-        let mut source = self.resources.zotero.lock().map_err(|_| error(ErrorCode::Internal))?;
-        let mut groups = self
-            .resources
-            .closed_groups
-            .lock()
-            .map_err(|_| error(ErrorCode::Internal))?;
-        let _publication = self.shared.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
+        let _operation = self.resources.operation.recover_lock();
+        let mut source = self.resources.zotero.recover_lock();
+        let mut groups = self.resources.closed_groups.recover_lock();
+        let _publication = self.shared.publication.recover_lock();
         let mut state = self.shared.state.write().map_err(|_| error(ErrorCode::Internal))?;
         prepared.cancel.check()?;
         if !prepared.base.same_publication(&state) {
@@ -330,11 +306,7 @@ impl Engine {
     /// Return the canonical identity from the observation that supplied the bytes.
     pub fn open_file_observed(&self, path: &Path, cancel: &Cancellation) -> Result<PathBuf, EngineError> {
         cancel.check()?;
-        let operation = self
-            .resources
-            .operation
-            .lock()
-            .map_err(|_| error(ErrorCode::Internal))?;
+        let operation = self.resources.operation.recover_lock();
         let path = std::path::absolute(path).map_err(|_| error(ErrorCode::BadInput))?;
         let (loaded, observation) =
             ibis_sources::load_file_snapshot(&path, &|| cancel.is_cancelled()).map_err(source_error)?;
@@ -359,7 +331,7 @@ impl Engine {
         cancel.check()?;
         let path = std::path::absolute(path).map_err(|_| error(ErrorCode::BadInput))?;
         let (slot, generation, base, previous, other_owners) = {
-            let registry = self.shared.sources.lock().map_err(|_| error(ErrorCode::Internal))?;
+            let registry = self.shared.sources.recover_lock();
             let (&id, slot) = registry
                 .slots
                 .iter()
@@ -430,12 +402,8 @@ impl Engine {
         if !Weak::ptr_eq(&prepared.origin, &Arc::downgrade(&self.shared)) {
             return Err(error(ErrorCode::BadInput));
         }
-        let _operation = self
-            .resources
-            .operation
-            .lock()
-            .map_err(|_| error(ErrorCode::Internal))?;
-        let mut registry = self.shared.sources.lock().map_err(|_| error(ErrorCode::Internal))?;
+        let _operation = self.resources.operation.recover_lock();
+        let mut registry = self.shared.sources.recover_lock();
         let slot = registry
             .slots
             .get(&prepared.slot)
@@ -443,7 +411,7 @@ impl Engine {
         if slot.generation != prepared.generation || slot.path != prepared.path {
             return Err(error(ErrorCode::Cancelled));
         }
-        let _publication = self.shared.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
+        let _publication = self.shared.publication.recover_lock();
         let generation = slot.generation.wrapping_add(1);
         let id = prepared.slot;
         prepared.cancel.check()?;
@@ -484,7 +452,7 @@ impl Engine {
         drop(state);
         drop(registry);
         let old = {
-            let mut watches = self.resources.watches.lock().map_err(|_| error(ErrorCode::Internal))?;
+            let mut watches = self.resources.watches.recover_lock();
             match read.watch {
                 Some(watch) => watches.insert(id, watch),
                 None => watches.remove(&id),
@@ -511,7 +479,7 @@ impl Engine {
         let active = std::sync::OnceLock::new();
         let weak = Arc::downgrade(&self.shared);
         let callback = move |candidate| {
-            if !*active.get_or_init(|| accepted.lock().is_ok_and(|accepted| accepted.recv().is_ok())) {
+            if !*active.get_or_init(|| accepted.recover_lock().recv().is_ok()) {
                 return None;
             }
             weak.upgrade()
@@ -528,7 +496,7 @@ impl Engine {
         cancel: &Cancellation,
     ) -> Result<(), EngineError> {
         loaded.snapshot.reuse_unchanged(self.snapshot()?.as_ref());
-        let mut registry = self.shared.sources.lock().map_err(|_| error(ErrorCode::Internal))?;
+        let mut registry = self.shared.sources.recover_lock();
         let existing = registry
             .slots
             .iter()
@@ -584,7 +552,7 @@ impl Engine {
         );
         drop(registry);
         let old = {
-            let mut watches = self.resources.watches.lock().map_err(|_| error(ErrorCode::Internal))?;
+            let mut watches = self.resources.watches.recover_lock();
             match watch {
                 Some(watch) => watches.insert(id, watch),
                 None => watches.remove(&id),
@@ -601,13 +569,7 @@ impl Engine {
         callback: impl Fn(Result<LoadedLibrary, SourceError>) -> Option<Snapshot> + Send + Sync + 'static,
     ) -> Result<SourceWatch, SourceError> {
         #[cfg(test)]
-        if let Some(before_watch) = self
-            .resources
-            .before_watch
-            .lock()
-            .map_err(|_| SourceError::WatchUnavailable)?
-            .as_ref()
-        {
+        if let Some(before_watch) = self.resources.before_watch.recover_lock().as_ref() {
             before_watch();
         }
         #[cfg(test)]
@@ -620,8 +582,7 @@ impl Engine {
         let loaded_zotero = self
             .resources
             .zotero
-            .lock()
-            .map_err(|_| error(ErrorCode::Internal))?
+            .recover_lock()
             .current()
             .iter()
             .any(|loaded| library.is_none_or(|id| *id == loaded.library));
@@ -643,8 +604,7 @@ impl Engine {
         let paths: Vec<_> = self
             .shared
             .sources
-            .lock()
-            .map_err(|_| error(ErrorCode::Internal))?
+            .recover_lock()
             .slots
             .iter()
             .filter(|(_, slot)| library.is_none_or(|id| slot.loaded.library == *id))
@@ -701,12 +661,8 @@ impl Engine {
         mut on_begin: impl FnMut() -> Result<(), EngineError>,
     ) -> Result<(), EngineError> {
         cancel.check()?;
-        let _operation = self
-            .resources
-            .operation
-            .lock()
-            .map_err(|_| error(ErrorCode::Internal))?;
-        let mut source = self.resources.zotero.lock().map_err(|_| error(ErrorCode::Internal))?;
+        let _operation = self.resources.operation.recover_lock();
+        let mut source = self.resources.zotero.recover_lock();
         let wanted: Vec<Library> = match libraries {
             Some(libraries) => libraries.iter().copied().map(Into::into).collect(),
             None => source.libraries(),
@@ -760,11 +716,7 @@ impl Engine {
                 if let Some(chosen) = chosen {
                     *source = chosen;
                 }
-                *self
-                    .resources
-                    .closed_groups
-                    .lock()
-                    .map_err(|_| error(ErrorCode::Internal))? = source.closed_groups().map(<[_]>::to_vec);
+                *self.resources.closed_groups.recover_lock() = source.closed_groups().map(<[_]>::to_vec);
                 Ok(())
             }
             Err(failure) => {
@@ -792,12 +744,7 @@ impl Engine {
     /// What reads the chosen Zotero libraries' attachments, and the port
     /// Zotero answers on while it runs.
     pub(super) fn zotero_reading(&self) -> Result<(ibis_sources::zotero_source::ZoteroReading, u16), EngineError> {
-        let reading = self
-            .resources
-            .zotero
-            .lock()
-            .map_err(|_| error(ErrorCode::Internal))?
-            .reading();
+        let reading = self.resources.zotero.recover_lock().reading();
         let port = self
             .resources
             .zotero_port
@@ -818,11 +765,7 @@ impl Engine {
         let groups = match ibis_sources::zotero_source::live_groups(port) {
             Ok(groups) => groups,
             Err(ZoteroError::Live(LiveError::Transport(TransportError::Unreachable))) => {
-                let closed = self
-                    .resources
-                    .closed_groups
-                    .lock()
-                    .map_err(|_| error(ErrorCode::Internal))?;
+                let closed = self.resources.closed_groups.recover_lock();
                 closed.clone().ok_or_else(|| error(ErrorCode::SourceUnavailable))?
             }
             Err(failure) => {
@@ -851,7 +794,7 @@ impl Shared {
         generation: u64,
         candidate: Result<LoadedLibrary, SourceError>,
     ) -> Option<Snapshot> {
-        let mut registry = self.sources.lock().ok()?;
+        let mut registry = self.sources.recover_lock();
         let slot = registry.slots.get(&id)?;
         if slot.generation != generation {
             return None;
@@ -893,7 +836,7 @@ impl Shared {
     }
 
     fn file_watch_unavailable(&self, library: &LibraryId) -> Result<(), EngineError> {
-        let _publication = self.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
+        let _publication = self.publication.recover_lock();
         let old = self.state_view()?;
         // No source observation completed: observers must not advance their
         // successful-check time just because watch health changed.
@@ -1020,7 +963,7 @@ mod tests {
         for found in [unresolved, discover(&roots)] {
             let server = zotero_fixture::Server::new();
             let engine = Engine::with_zotero_port(server.port).unwrap();
-            engine.resources.zotero.lock().unwrap().use_discovery(&found);
+            engine.resources.zotero.recover_lock().use_discovery(&found);
             let cancel = Cancellation::default();
             let open = serde_json::json!({"action":"open-zotero"});
             server.sharing_off.store(true, Ordering::SeqCst);
@@ -1042,7 +985,7 @@ mod tests {
         let engine = Engine::new().unwrap().without_file_watches();
         engine.open_file(&path, &Cancellation::default()).unwrap();
         let (id, generation) = {
-            let registry = engine.shared.sources.lock().unwrap();
+            let registry = engine.shared.sources.recover_lock();
             let (id, slot) = registry.slots.iter().next().unwrap();
             (*id, slot.generation)
         };
@@ -1077,7 +1020,7 @@ mod tests {
         let engine = Engine::new().unwrap().without_file_watches();
         engine.open_file(&path, &Cancellation::default()).unwrap();
         let (id, generation) = {
-            let registry = engine.shared.sources.lock().unwrap();
+            let registry = engine.shared.sources.recover_lock();
             let (id, slot) = registry.slots.iter().next().unwrap();
             (*id, slot.generation)
         };
@@ -1111,8 +1054,7 @@ mod tests {
         let (id, generation) = engine
             .shared
             .sources
-            .lock()
-            .unwrap()
+            .recover_lock()
             .slots
             .iter()
             .map(|(id, slot)| (*id, slot.generation.wrapping_add(1)))
@@ -1199,7 +1141,7 @@ mod tests {
         std::fs::write(&path, "@book{replacement}").unwrap();
         let (entered, setup_started) = mpsc::channel();
         let (release, released) = mpsc::channel();
-        *engine.resources.before_watch.lock().unwrap() = Some(Box::new(move || {
+        *engine.resources.before_watch.recover_lock() = Some(Box::new(move || {
             entered.send(()).unwrap();
             released.recv().unwrap();
         }));
@@ -1211,7 +1153,7 @@ mod tests {
             let cancel = cancel.clone();
             std::thread::spawn(move || {
                 let prepared = engine.prepare_file_reload(&path, &cancel)?;
-                let _selection = selection.lock().unwrap();
+                let _selection = selection.recover_lock();
                 engine.accept_file_reload(prepared)
             })
         };
@@ -1239,8 +1181,7 @@ mod tests {
         let (id, generation) = engine
             .shared
             .sources
-            .lock()
-            .unwrap()
+            .recover_lock()
             .slots
             .iter()
             .map(|(id, slot)| (*id, slot.generation))
@@ -1279,7 +1220,7 @@ mod tests {
         let cancel = Cancellation::default();
         engine.open_file(&path, &cancel).unwrap();
         let (slot, generation) = {
-            let registry = engine.shared.sources.lock().unwrap();
+            let registry = engine.shared.sources.recover_lock();
             let (slot, source) = registry.slots.iter().next().unwrap();
             (*slot, source.generation)
         };
@@ -1481,7 +1422,7 @@ mod tests {
             engine.libraries().unwrap().libraries[0].watch_warning,
             Some(WatchWarning::LiveRefreshOff)
         );
-        assert!(engine.resources.watches.lock().unwrap().is_empty());
+        assert!(engine.resources.watches.recover_lock().is_empty());
         let listed = engine
             .dispatch(Method::Libraries, &json!({"action":"list"}), &cancel)
             .unwrap();
@@ -1527,7 +1468,7 @@ mod tests {
         engine.resources.fail_watches.store(true, Ordering::Relaxed);
         engine.open_file(&path, &Cancellation::default()).unwrap();
         assert_eq!(engine.libraries().unwrap().libraries[0].watch_warning, None);
-        assert!(engine.resources.watches.lock().unwrap().is_empty());
+        assert!(engine.resources.watches.recover_lock().is_empty());
     }
     #[test]
     fn old_callbacks_cannot_replace_new_data_and_equal_hash_updates_still_replace_owner() {
@@ -1542,8 +1483,7 @@ mod tests {
         let (id, generation) = engine
             .shared
             .sources
-            .lock()
-            .unwrap()
+            .recover_lock()
             .slots
             .iter()
             .map(|(id, slot)| (*id, slot.generation))
@@ -1555,7 +1495,7 @@ mod tests {
         assert!(engine.shared.file_changed(id, generation, Ok(old)).is_none());
         assert_eq!(engine.snapshot().unwrap().fingerprints(), &fresh);
         let (generation, prior) = {
-            let registry = engine.shared.sources.lock().unwrap();
+            let registry = engine.shared.sources.recover_lock();
             let slot = registry.slots.get(&id).unwrap();
             (slot.generation, slot.loaded.clone())
         };
@@ -1578,7 +1518,7 @@ mod tests {
         assert_eq!(libraries.libraries[0].warnings.len(), MAX_WARNING_DETAILS);
         assert_eq!(libraries.libraries[0].warnings_total, MAX_WARNING_DETAILS + 1);
         assert_eq!(engine.snapshot().unwrap().fingerprints(), &fresh);
-        let registry = engine.shared.sources.lock().unwrap();
+        let registry = engine.shared.sources.recover_lock();
         assert!(!Arc::ptr_eq(&registry.slots[&id].loaded, &prior));
         drop(registry);
         let handles = Arc::downgrade(&engine.resources);

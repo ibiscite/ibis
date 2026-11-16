@@ -64,64 +64,6 @@ impl AtomicFile {
     }
 }
 
-/// Why [`replace_keeping_backup`] changed nothing.
-#[derive(Debug)]
-pub enum BackupReplaceError<E> {
-    /// The new text could not be staged beside the file.
-    Stage(io::Error),
-    /// The backup of the old text could not be written.
-    Backup,
-    /// The caller's check failed after staging: usually, the file changed.
-    Check(E),
-    /// The check failed and the new backup could not be removed either.
-    BackupLeft(E),
-    /// The staged file could not take the file's place.
-    Write(io::Error),
-}
-
-/// Write `after` in place of `before` at `path`, keeping `before` in a private
-/// numbered backup `path.ibis-backup-N`, or create `path` when `before` is
-/// `None`. `check` runs once everything is staged, just before the rename, so
-/// the caller can refuse if another program saved the file meanwhile; a
-/// backup is kept only beside a change that was made.
-pub fn replace_keeping_backup<E>(
-    path: &Path,
-    before: Option<&[u8]>,
-    after: &[u8],
-    check: impl FnOnce() -> Result<(), E>,
-) -> Result<Option<PathBuf>, BackupReplaceError<E>> {
-    let staged = AtomicFile::new(path, after).map_err(BackupReplaceError::Stage)?;
-    let backup = match before {
-        Some(before) => {
-            let (backup, mut file) = create_numbered(path, ".ibis-backup").map_err(|_| BackupReplaceError::Backup)?;
-            file.write_all(before).and_then(|()| file.sync_all()).map_err(|_| {
-                let _ = fs::remove_file(&backup);
-                BackupReplaceError::Backup
-            })?;
-            Some(backup)
-        }
-        None => None,
-    };
-    if let Err(reason) = check() {
-        return Err(match &backup {
-            Some(backup) if fs::remove_file(backup).is_err() => BackupReplaceError::BackupLeft(reason),
-            _ => BackupReplaceError::Check(reason),
-        });
-    }
-    let written = if before.is_some() {
-        staged.replace()
-    } else {
-        staged.create()
-    };
-    written.map_err(|error| {
-        if let Some(backup) = &backup {
-            let _ = fs::remove_file(backup);
-        }
-        BackupReplaceError::Write(error)
-    })?;
-    Ok(backup)
-}
-
 struct Temporary {
     path: PathBuf,
     placed: bool,

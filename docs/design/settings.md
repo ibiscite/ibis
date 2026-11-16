@@ -74,8 +74,8 @@ Search finds agents, MCP, app names and command line.
 
 **Attachment text.** After AI Apps, one switch per open library says **Let AI
 apps read attachment text**, with its display name. It is off by default:
-AI apps receive text with page numbers, never files; terminal `ibis read` needs
-no opt-in. No library shows **No library is open.** The app and CLI share the
+The help beside it says this covers connected AI apps, which receive text
+with page numbers, never files; a terminal running `ibis` needs no opt-in. No library shows **No library is open.** The app and CLI share the
 device-only `attachment_text` setting, applied to the running MCP gate. Only
 complete IDs previously listed and still open can change. Failed saves restore
 the saved choice; late saves cannot undo newer choices. Search finds attachment,
@@ -88,7 +88,8 @@ app, target library (never its path), summary and time, with the engine's
 before/after text in a Note in code. **Apply** is the confirmation, without a
 second dialog; nothing in a library changes before that press. The row keeps
 the result: **Applied; backup kept as NAME**, or the engine's refusal sentence.
-**Reject** removes a waiting proposal. Only `.bib` libraries take proposals
+**Reject** removes a waiting proposal. **Reject all from this app** rejects
+that app’s pending proposals across libraries, preserving applied receipts. Only `.bib` libraries take proposals
 (maintainer direction 2026-11-15). An empty group has one row,
 **No proposed changes**. Refresh on a visit, visible window focus or
 visibility change, without letting late reads replace newer decisions or erase

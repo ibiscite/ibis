@@ -23,6 +23,7 @@ pub(crate) enum NativeOperation {
     WaitingProposals,
     ApplyProposal,
     RejectProposal,
+    RejectAppProposals,
     CliStatus,
     SetCliInstalled,
     CopyCliProfile,
@@ -56,6 +57,7 @@ impl NativeOperation {
             | Self::WaitingProposals
             | Self::ApplyProposal
             | Self::RejectProposal
+            | Self::RejectAppProposals
             | Self::CliStatus
             | Self::SetCliInstalled
             | Self::CopyCliProfile

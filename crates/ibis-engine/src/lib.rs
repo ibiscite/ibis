@@ -2,6 +2,7 @@
 pub mod agent_apps;
 pub mod discovery;
 mod method;
+mod sync;
 pub use method::Method;
 
 pub mod cayw;

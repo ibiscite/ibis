@@ -1,5 +1,7 @@
 //! Shared settings backup operations. Reads have a deadline; a requested write
 //! finishes before returning. Paths and restore plans remain native.
+#[cfg(test)]
+use crate::sync::MutexExt;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -203,7 +205,11 @@ mod tests {
         let stuck: Vec<_> = (0..MAX_IN_FLIGHT)
             .map(|_| {
                 let wait = wait.clone();
-                std::thread::spawn(move || bounded(&IN_FLIGHT, move || drop(wait.lock().map(|w| w.recv()))))
+                std::thread::spawn(move || {
+                    bounded(&IN_FLIGHT, move || {
+                        let _ = wait.recover_lock().recv();
+                    })
+                })
             })
             .collect();
         for call in stuck {

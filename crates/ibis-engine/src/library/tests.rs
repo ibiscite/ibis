@@ -370,3 +370,24 @@ fn a_stuck_read_gives_way_to_cancellation_and_to_its_deadline() {
     assert_eq!(deadline, Err(LoadError::FILE_UNAVAILABLE));
     drop(release);
 }
+
+#[test]
+fn a_panicking_publication_does_not_disable_the_library_owner() -> Result<(), Error> {
+    let directory = tempfile::tempdir()?;
+    let settings = Arc::new(crate::settings::Owner::open(directory.path().join("settings.json")));
+    let panic_once = std::sync::atomic::AtomicBool::new(true);
+    let owner = Owner::new(
+        settings,
+        || Ok(Engine::new()?.without_file_watches()),
+        move |_| {
+            if panic_once.swap(false, Ordering::SeqCst) {
+                panic!("invented publication failure");
+            }
+        },
+    );
+    assert!(crate::sync::attempt(|| owner.submit(Intent::RefuseNotLocal)).is_err());
+    assert!(owner.submit(Intent::Close));
+    assert_eq!(owner.status().state, LibraryState::None);
+    assert!(owner.view().error.is_none());
+    Ok(())
+}

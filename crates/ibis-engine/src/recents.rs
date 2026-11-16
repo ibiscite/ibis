@@ -1,5 +1,6 @@
 //! Bounded recent identities on disk; session references and undo only in memory.
 use crate::MAX_CITATION_ITEMS;
+use crate::sync::MutexExt;
 use ibis_core::contract::{ItemRef, LibraryObject, Snapshot, SnapshotObject};
 use std::{
     io::{self, Read},
@@ -175,12 +176,12 @@ impl Default for SessionReferences {
         std::thread::spawn(move || {
             while let Ok(reply) = work.recv() {
                 let (path, observed) = {
-                    let current = state.lock().unwrap_or_else(|e| e.into_inner());
+                    let current = state.recover_lock();
                     (current.path.clone(), Arc::clone(&current.entries))
                 };
                 let mut entries = (*observed).clone();
                 let saved = save(path, &mut entries);
-                let mut current = state.lock().unwrap_or_else(|e| e.into_inner());
+                let mut current = state.recover_lock();
                 if Arc::ptr_eq(&observed, &current.entries) {
                     current.forget_failed &= saved.is_err();
                     current.entries = Arc::new(entries);
@@ -196,7 +197,7 @@ impl Default for SessionReferences {
 }
 impl SessionReferences {
     pub fn lock(&self) -> std::sync::MutexGuard<'_, List> {
-        self.list.lock().unwrap_or_else(|e| e.into_inner())
+        self.list.recover_lock()
     }
     pub fn items(&self) -> Vec<ItemRef> {
         self.lock().items.clone()

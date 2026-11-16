@@ -23,9 +23,19 @@ pub(super) fn is_bib(path: &Path) -> bool {
     })
 }
 
-/// The file's text, when it is a regular file of UTF-8 within the library bound.
-/// A link is refused: replacing it would put a file where the link was.
+#[cfg(test)]
+thread_local! { pub(super) static READS: std::cell::RefCell<Vec<std::path::PathBuf>> = const { std::cell::RefCell::new(Vec::new()) }; }
+
+/// Read regular UTF-8 text within the library size bound, I/O pool and deadline.
+/// Refuse links: replacement would put a file where the link was.
 pub(super) fn read(path: &Path) -> Result<String, WriteError> {
+    #[cfg(test)]
+    READS.with_borrow_mut(|reads| reads.push(path.to_path_buf()));
+    let path = path.to_path_buf();
+    ibis_sources::inspect_io(move || read_sync(&path)).ok_or(WriteProblem::Unreadable)?
+}
+
+fn read_sync(path: &Path) -> Result<String, WriteError> {
     let metadata = std::fs::symlink_metadata(path).map_err(|_| WriteProblem::Unreadable)?;
     if !metadata.is_file() || metadata.len() > ibis_sources::MAX_LIBRARY_BYTES {
         return Err(WriteProblem::Unreadable.into());

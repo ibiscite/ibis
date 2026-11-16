@@ -223,6 +223,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
   const defaults: Record<string, Handler> = {
     waiting_proposals: () => proposals,
     apply_proposal: ({ id }) => { proposals = proposals.filter((proposal) => proposal.id !== id); return { status: "applied", backup: "signals.bib.ibis-backup-1" }; },
+    reject_app_proposals: ({ id }) => { const app = proposals.find((proposal) => proposal.id === id)?.source_app; proposals = proposals.filter((proposal) => proposal.source_app !== app); return { status: "rejected" }; },
     reject_proposal: ({ id }) => { proposals = proposals.filter((proposal) => proposal.id !== id); return { status: "rejected" }; },
     shortcut_status: () => ({ shortcut: "CommandOrControl+Shift+Y", registered: true, error: null }),
     search: () => [],
