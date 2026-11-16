@@ -304,7 +304,8 @@ impl ZoteroSource {
             return Err(LiveError::Cancelled.into());
         }
         let data = found.and_then(|found| chosen_directory(&found, self.profile_name.as_deref()))?;
-        let acquired = read_closed_at(&data, &std::env::temp_dir(), cancelled.clone())
+        let cache = crate::identity::cache_dir().ok_or(closed::ClosedError::PrivateStorage)?;
+        let acquired = read_closed_at(&data, &cache, cancelled.clone())
             .map_err(|error| chosen_read_failed(error, self.profile_name.as_deref()))?;
         self.publish_closed(&acquired, Some(&data), &|| cancelled())
     }
@@ -852,7 +853,7 @@ impl BbtKeys {
 }
 
 // Hold the existing private-root lease only while reading. An idle desktop
-// must not keep the shared temporary cache locked against a separate CLI.
+// must not keep the per-user cache locked against a separate CLI.
 fn read_closed_at(
     data: &Path,
     cache: &Path,
