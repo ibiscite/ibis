@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "../src/App";
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
-import type { DraftItem, PickerPreferences, CitationIntent, FormDetails, SearchQuery } from "../src/bindings";
+import type { DraftItem, PickerPreferences, PickerSnapshot, CitationIntent, FormDetails, SearchQuery } from "../src/bindings";
 import type { OutputId } from "../src/format/outputs";
 import { Button } from "../src/ui/Button";
 import { KeyCaps } from "../src/ui/KeyCaps";
@@ -35,7 +35,7 @@ import "../src/ui/CopyReceipt.css";
 import "../src/ui/CopiedNotice.css";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/ui/Window.css?inline";
-import { formatAnswer, noFormatChosen } from "../src/testing/format";
+import { fixtureDestination, formatAnswer, noFormatChosen } from "../src/testing/format";
 
 export const scenarios = ["notice", "results", "unknown-app", "unknown-app-empty", "first-run", "more", "format-menu", "writings", "writings-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "reference-details-more", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-selector", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "citation-order", "citation-handles", "citation-details-larger", "tokens", "settings-general", "settings-look", "settings-citations", "settings-ai-apps", "settings-shortcuts", "settings-about", "settings-details", "settings-newer", "settings-broken", "text-80", "text-120", "share-bibtex", "token-warnings", "sample", "editor-request", "picker-refusal", "retained-citation"] as const;
 type Scenario = typeof scenarios[number];
@@ -135,6 +135,10 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
   const project = writings.active!;
   // A fixture's format is the one remembered for the app, as the engine would answer.
   const format = fixed?.preferences?.output ? formatAnswer(fixed.preferences.output) : noFormatChosen;
+  const destination: PickerSnapshot["destination"] = knownApp ? { Ok: fixtureDestination({
+    app: "Invented Editor", app_id: "invented.editor", format,
+    writing: writingContext ? project : null, writing_context: writingContext ? "invented-opening" : null, context_version: [1, 0],
+  }) } : { Err: { code: "destination-unavailable", message: { id: "operation-failures-app-read", args: {} }, recovery: { action: "retry" }, focus: "search" } };
   const refusal = ["project-check-conflict", "picker-refusal"].includes(scenario) ? "A key in thesis.bib identifies a different work. Resolve the conflict before citing it." : null;
   const library: LibraryStatus = {
     source_generation: "1", source_is_requested: true,
@@ -149,6 +153,16 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
   const receipts = new Map<string, { text: string; items: DraftItem[]; output: OutputId; key: string }>();
   const handlers: Record<string, (request: Request) => unknown> = {
     "plugin:window|is_visible": () => true,
+    picker_snapshot: async () => ({
+      presentation: 1, selection: null, library, destination,
+      preferences: { Ok: await settings.pickerPreferences() },
+      recents: { Ok: [{ revision: library.revision, results: [] }, false, false] },
+    } satisfies PickerSnapshot),
+    picker_rendered: () => {
+      if (scenario === "file-drag") void emit("library:file-drag", true);
+      if (scenario === "undo-notice") void emit("picker:window-reset", { revision: 1, undo: 1 });
+      if (scenario === "update") void emit("update:progress", { attempt: 1, revision: 1, received: 3_150_000, total: 7_400_000, phase: "downloading" });
+    },
     library_status: () => library,
     // As the engine does: a trailing page number is read as the page.
     search: ({ query }) => {
@@ -214,11 +228,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
       ] } satisfies FormDetails;
     },
     editor_request: () => scenario === "editor-request" ? { request: 1, format: "LaTeX", style: false } : null,
-    picker_destination: () => knownApp && !writingContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
-      find_open: false, usual_format: "apa", format, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false,
-      writing: null, writing_context: null, context_version: [1, 0] } : writingContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
-      find_open: false, usual_format: "apa", format, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false,
-      writing: project, writing_context: "invented-opening", context_version: [1, 0] } : null,
+    picker_destination: () => { if ("Err" in destination) throw destination.Err; return destination.Ok; },
     writings: () => writings,
     edit_writing: () => writings,
     picker_preferences: () => settings.pickerPreferences(),
@@ -337,11 +347,6 @@ const invented = () => book;
 
 function Canvas({ host, scenario, settings, theme }: { host: HTMLElement; scenario: Scenario; settings: SettingsApi; theme: Theme }) {
   useEffect(() => {
-    if (scenario === "file-drag") void emit("library:file-drag", true);
-    if (scenario === "undo-notice") void emit("picker:window-reset", { revision: 1, undo: 1 });
-    if (scenario === "update") void emit("update:progress", { attempt: 1, revision: 1, received: 3_150_000, total: 7_400_000, phase: "downloading" });
-  }, [scenario]);
-  useEffect(() => {
     const fixed = fixtures[scenario];
     const clicks = scenario === "more" ? ['button[aria-label="More"]'] : scenario === "format-menu" ? ['button[aria-label^="Citation format"]'] : [fixed?.click ?? []].flat();
     const keys = [...fixed?.keys ?? []];
@@ -436,7 +441,7 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
   const zoom = fixtures[scenario as Scenario]?.textZoom;
   if (zoom) document.documentElement.style.setProperty("--text-zoom", String(zoom));
   else document.documentElement.style.removeProperty("--text-zoom");
-  const settings = demoApi();
+  const settings = demoApi({ ...fixtures[scenario as Scenario]?.preferences, appearance: theme, paste: false });
   // Citations with what people have once they cite: an app's remembered format and writings.
   if (scenario === "settings-citations") settings.formatSettings = async () => ({ apps: [{ id: "invented.editor", app: "Invented Editor", format: "apa" }], writings: writings.writings, key_output_visible: true });
   // The installed app can always open settings.json (General › Advanced, and a broken file's recovery).
@@ -444,7 +449,6 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
   // settings.json that does not parse: the engine's own Problem, as the picker gets it.
   if (scenario === "settings-broken") settings.formatSettings = () => Promise.reject({ code: "settings-invalid", message: { id: "app-settings-error-invalid", args: {} }, recovery: { action: "review-settings" }, focus: "settings" });
   if (scenario === "settings-newer") settings.formatSettings = async () => ({ apps: [], writings: [], key_output_visible: false, unknown: { future_choice: "Enabled" } });
-  void settings.savePickerPreferences({ ...fixtures[scenario as Scenario]?.preferences, appearance: theme as Theme, paste: false }).then(settings.pickerPreferencesSaved);
   // The states and tokens pages use the Settings window's base styles.
   const settingsWindow = scenario.startsWith("settings-") || scenario === "states" || scenario === "tokens" || scenario === "parts";
   document.documentElement.classList.toggle("settings-window", settingsWindow);
