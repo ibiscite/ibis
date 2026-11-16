@@ -60,6 +60,10 @@ Each is one pull request that deletes the path it replaces:
 7. The file library's lifecycle moves into the engine.
 8. Zotero's lifecycle moves through the same owner.
 9. Native delivery is one operation from content to receipt.
+   Foundation item 2 (2026-11-16): Enter submits one `deliver_citation` command.
+   Copy and dismissal share the main-thread commit; native paste and its receipt
+   finish that operation. The picker handles one typed outcome, and the separate
+   copy and receipt commands and frontend delivery phases are removed.
 10. Picker actions are executable declarations; accelerators are parsed types.
 
 Two small deletion passes (front end; Rust and tooling) run once their paths

@@ -580,6 +580,8 @@ type, and whether Ibis can read its text. `read` prints at most five pages or
 go on. `find-in` prints at most ten passages of about 400 characters that
 hold the words, ignoring case and line breaks, with their pages.
 
+CLI and MCP attachment text tools refuse files whose resolved path is outside the `.bib` library’s folder or Zotero’s storage folder unless **Allow attachment text outside the library’s folder** is enabled in **Settings › AI Apps › Attachment text** (`attachment_text_outside_library`, device-only and off by default).
+
 Text comes from two places. For a Zotero attachment Zotero indexed, it is the
 text Zotero keeps: while Zotero runs, Ibis asks Zotero for it; while Zotero is
 closed, it reads Zotero's text cache from the attachment's storage folder,

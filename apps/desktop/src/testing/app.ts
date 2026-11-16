@@ -7,7 +7,7 @@ import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { expect, vi } from "vitest";
 import { listen } from "@tauri-apps/api/event";
 import type * as api from "../api";
-import type { CitedWarning, DisplayTree, Preview, DraftItem, CitationIntent } from "../bindings";
+import type { CitedWarning, ClosestMatch, DeliveryOutcome, DisplayTree, Preview, DraftItem, CitationIntent } from "../bindings";
 import { recordId } from "../test-fixtures";
 import { isStyle, listedOutput } from "../format/outputs";
 import { fixtureDestination, formatAnswer } from "./format";
@@ -179,11 +179,20 @@ export function prepared(args: unknown): Prepared {
   return found;
 }
 
+/** The native result for a citation that stays in the picker. */
+export function retainedCitation(args: unknown): Extract<DeliveryOutcome, { outcome: "retained" }> {
+  const { preview } = prepared(args);
+  const { closestMatches } = args as { closestMatches: ClosestMatch[] };
+  const warnings = [...preview.warnings, ...closestMatches.map(({ item, title }) => ({ item, message: { id: "picker-closest-match-warning", args: { title } } }))];
+  return { outcome: "retained", copied: { text: preview.text, warnings }, reason: warnings.length ? "warnings" : "pinned" };
+}
+
 export type Handler = (args: Record<string, unknown> & PreviewRequest & { query: api.SearchQuery; ticket: string; contentHash: string }) => unknown;
 
 /** Mock the Rust commands; returns the list of commands called. */
 export function backend(overrides: Record<string, Handler> = {}): string[] {
   let proposals = exampleProposals();
+  let attachmentTextOutsideLibrary = false;
   const calls: string[] = [];
   const citationKeys = new Map<string, string>();
   let lastLibrary: Partial<api.LibraryStatus> = {};
@@ -208,7 +217,6 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     picker_presentation: () => 0,
     picker_moving: () => null,
     delight_view: () => ({ status: null, peck: false, anniversary: false, build: "0.0.0 · invented · 2026-11-01" }),
-    show_copied_notice: () => null,
     set_pinned: () => null,
     read_window_position_undo: () => null,
     undo_window_position: () => false,
@@ -225,10 +233,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     ] }),
     // A way to share references, as the engine would copy the shown citation in it.
     citation_example: (args) => prepared(args).request.items.map(({ id }) => `@misc{${citationKeys.get(JSON.stringify(id)) ?? ""}}`).join("\n"),
-    copy_file_citation: (args) => {
-      const { preview } = prepared(args);
-      return { text: preview.text, warnings: preview.warnings };
-    },
+    deliver_citation: retainedCitation,
     picker_preferences: () => preferences,
     format_settings: () => ({ apps: [], key_output_visible: Boolean(preferences.key_output), writings: [] }),
     save_picker_preferences: ({ preferences: patch }) => { const receipt = ++revision; submitted.set(receipt, patch as Partial<api.PickerPreferences>); return receipt; },
@@ -243,6 +248,8 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     set_login_item: ({ enabled }) => ({ name: "Ibis", enabled, problem: null }),
     // Builds without an update key have no update controls.
     update_checks: () => null,
+    attachment_text_outside_library: () => attachmentTextOutsideLibrary,
+    set_attachment_text_outside_library: ({ on }) => { attachmentTextOutsideLibrary = Boolean(on); return attachmentTextOutsideLibrary; },
     update_available: () => false,
     update_picker_activity: ({ ticket }: Record<string, unknown>) => ticket === null ? ++activityTicket : ticket === activityTicket ? ticket : null,
     find_sources: () => ({ zotero: "absent", list: 1, files: [], cut_short: false }),
@@ -316,3 +323,9 @@ export function removeFromCitation(token: HTMLElement | null) {
   act(() => token.focus());
   fireEvent.keyDown(token, { key: "Backspace" });
 }
+
+/** A native delivery refusal; its worker never rejects across IPC. */
+export const changedDelivery = { outcome: "refused", problem: {
+  code: "snapshot_changed", message: { id: "picker-snapshot-changed", args: {} },
+  recovery: { action: "select-references" }, focus: "results",
+} } satisfies import("../bindings").DeliveryOutcome;

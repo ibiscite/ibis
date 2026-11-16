@@ -123,10 +123,10 @@ try {
               { form: "year-only", example: saved.style ? "(2026)" : "[-@synthetic0]", reason: saved.style === "ieee" ? "This style cannot show Year only." : null },
             ] };
           }
-          if (command === "copy_file_citation") {
+          if (command === "deliver_citation") {
             const saved = prepared.get(args.ticket);
-            return { text: saved.text, summary: shelfDetails === "receipt" ? { text: saved.text.slice(0, 119) + "…", more: saved.items.length - 1 } : null,
-              warnings: largeNotice ? Array.from({ length: 20 }, (_, i) => `Invented copy warning ${i + 1}: check the reference metadata.`) : [] };
+            return { outcome: "retained", reason: "pinned", copied: { text: saved.text, summary: shelfDetails === "receipt" ? { text: saved.text.slice(0, 119) + "…", more: saved.items.length - 1 } : null,
+              warnings: largeNotice ? Array.from({ length: 20 }, (_, i) => `Invented copy warning ${i + 1}: check the reference metadata.`) : [] } };
           }
           if (command === "login_item") return { name: "Ibis", enabled: false, problem: null };
           if (command === "update_checks") return null;

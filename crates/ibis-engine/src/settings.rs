@@ -432,6 +432,10 @@ pub struct Device {
     /// grant, so it stays on this computer, as paste approvals do (decision 0031).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attachment_text: Vec<ibis_core::contract::LibraryId>,
+    /// Allow attachment text tools (CLI and MCP) to read files outside the
+    /// library file's folder or Zotero's storage folder, on this computer only.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub attachment_text_outside_library: bool,
 }
 
 /// The most libraries `attachment_text` may name.
@@ -1170,6 +1174,19 @@ impl From<&crate::settings::SettingsError> for Problem {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn attachment_text_outside_library_settings_are_device_only_and_off_by_default() {
+        let defaults = super::parse(r#"{"schema_version":2}"#).unwrap();
+        assert!(!defaults.device.attachment_text_outside_library);
+        let settings = super::parse(r#"{"schema_version":2,"attachment_text_outside_library":true}"#).unwrap();
+        assert!(settings.device.attachment_text_outside_library);
+        assert_eq!(
+            serde_json::to_value(&settings).unwrap()["attachment_text_outside_library"],
+            true
+        );
+        let backup = super::backup::export(&settings, "0.0.0").unwrap();
+        assert!(!backup.contains("attachment_text_outside_library"));
+    }
     #[test]
     fn attachment_text_settings_store_complete_library_ids() {
         let id = ibis_core::contract::LibraryId::digest(b"invented-profile-a-personal");

@@ -309,6 +309,11 @@
                 "type": "string"
               },
               {
+                "const": "attachment-outside-library",
+                "description": "The resolved attachment file is outside its library's folder, and\nthis computer has not explicitly allowed reading it.",
+                "type": "string"
+              },
+              {
                 "const": "no-such-pages",
                 "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
                 "type": "string"
@@ -1661,6 +1666,11 @@
               {
                 "const": "no-attachment-text",
                 "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or its file is missing, damaged or one Ibis cannot read.",
+                "type": "string"
+              },
+              {
+                "const": "attachment-outside-library",
+                "description": "The resolved attachment file is outside its library's folder, and\nthis computer has not explicitly allowed reading it.",
                 "type": "string"
               },
               {
@@ -3241,6 +3251,11 @@
               {
                 "const": "no-attachment-text",
                 "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or its file is missing, damaged or one Ibis cannot read.",
+                "type": "string"
+              },
+              {
+                "const": "attachment-outside-library",
+                "description": "The resolved attachment file is outside its library's folder, and\nthis computer has not explicitly allowed reading it.",
                 "type": "string"
               },
               {
@@ -5304,6 +5319,11 @@
               {
                 "const": "no-attachment-text",
                 "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or its file is missing, damaged or one Ibis cannot read.",
+                "type": "string"
+              },
+              {
+                "const": "attachment-outside-library",
+                "description": "The resolved attachment file is outside its library's folder, and\nthis computer has not explicitly allowed reading it.",
                 "type": "string"
               },
               {
@@ -7379,6 +7399,11 @@
                 "type": "string"
               },
               {
+                "const": "attachment-outside-library",
+                "description": "The resolved attachment file is outside its library's folder, and\nthis computer has not explicitly allowed reading it.",
+                "type": "string"
+              },
+              {
                 "const": "no-such-pages",
                 "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
                 "type": "string"
@@ -8629,6 +8654,11 @@
                 "type": "string"
               },
               {
+                "const": "attachment-outside-library",
+                "description": "The resolved attachment file is outside its library's folder, and\nthis computer has not explicitly allowed reading it.",
+                "type": "string"
+              },
+              {
                 "const": "no-such-pages",
                 "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
                 "type": "string"
@@ -9632,6 +9662,11 @@
                 "type": "string"
               },
               {
+                "const": "attachment-outside-library",
+                "description": "The resolved attachment file is outside its library's folder, and\nthis computer has not explicitly allowed reading it.",
+                "type": "string"
+              },
+              {
                 "const": "no-such-pages",
                 "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
                 "type": "string"
@@ -10542,6 +10577,11 @@
                 "type": "string"
               },
               {
+                "const": "attachment-outside-library",
+                "description": "The resolved attachment file is outside its library's folder, and\nthis computer has not explicitly allowed reading it.",
+                "type": "string"
+              },
+              {
                 "const": "no-such-pages",
                 "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
                 "type": "string"
@@ -11381,6 +11421,11 @@
                 "type": "string"
               },
               {
+                "const": "attachment-outside-library",
+                "description": "The resolved attachment file is outside its library's folder, and\nthis computer has not explicitly allowed reading it.",
+                "type": "string"
+              },
+              {
                 "const": "no-such-pages",
                 "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
                 "type": "string"
@@ -12210,6 +12255,11 @@
               {
                 "const": "no-attachment-text",
                 "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or its file is missing, damaged or one Ibis cannot read.",
+                "type": "string"
+              },
+              {
+                "const": "attachment-outside-library",
+                "description": "The resolved attachment file is outside its library's folder, and\nthis computer has not explicitly allowed reading it.",
                 "type": "string"
               },
               {

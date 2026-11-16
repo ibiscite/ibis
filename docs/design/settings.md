@@ -81,6 +81,8 @@ complete IDs previously listed and still open can change. Failed saves restore
 the saved choice; late saves cannot undo newer choices. Search finds attachment,
 full text and PDF.
 
+One further switch, **Allow attachment text outside the library’s folder**, controls the device-only `attachment_text_outside_library` permission for both CLI and MCP; it is off by default, including when no library is open.
+
 **Proposed changes** follows Attachment text. One row names the proposing
 app, target library (never its path), summary and time, with the engine's
 before/after text in a Note in code. **Apply** is the confirmation, without a
