@@ -125,7 +125,7 @@ each takes a single hosted runner. Fork PRs skip every job, so their **CI result
 fails; they keep read-only title feedback.
 
 The maintainer's own machines can take the slow or scarce CI jobs as self-hosted
-runners: the macOS and Windows `Rust and desktop` jobs and the Linux release checks.
+runners: the macOS and Windows `Rust and desktop` jobs, the longest and the scarcest.
 The repository variable `RUNNERS` maps a hosted label to a machine's labels, for
 example `{"macos-15":["self-hosted","ibis-mac"]}`. A job whose label is missing
 runs on GitHub's hosted runner, so removing a key (or the variable) moves that work
