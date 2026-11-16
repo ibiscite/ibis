@@ -11,9 +11,9 @@ afterEach(resetApp);
 
 test("an editor owns the shown format and Send until its request ends", async () => {
   let editor: { request: number; format: string; style: boolean } | null = { request: 1, format: "LaTeX", style: false };
-  const copied = vi.fn(() => ({ text: "\\cite{aster}", warnings: [] }));
-  backend({ editor_request: () => editor, "destination": () => fixtureDestination({ format: formatAnswer("apa"), app: "Invented Writer", can_paste: true }),
-    search: () => [result("aster", "Invented reference")], copy_file_citation: copied });
+  const copied = vi.fn(() => ({ outcome: "retained", copied: { text: "\\cite{aster}", warnings: [] }, reason: "pinned" }));
+  backend({ editor_request: () => editor, destination: () => fixtureDestination({ format: formatAnswer("apa"), app: "Invented Writer", can_paste: true }),
+    search: () => [result("aster", "Invented reference")], deliver_citation: copied });
   render(<App />);
   await screen.findByText("Invented reference");
   expect(await screen.findByRole("button", { name: /Send.*LaTeX/ })).toBeTruthy();
@@ -33,9 +33,9 @@ test("a no-match search retains the prepared citation but needs fresh Enter afte
   let finish!: () => void;
   const unmatched = new Promise<never[]>((resolve) => { finish = () => resolve([]); });
   const preview = vi.fn(() => receipt("[@aster]"));
-  const copied = vi.fn((args: unknown) => ({ text: prepared(args).preview.text, warnings: [] }));
+  const copied = vi.fn((args: unknown) => ({ outcome: "retained", copied: { text: prepared(args).preview.text, warnings: [] }, reason: "pinned" }));
   backend({ search: ({ query }) => query.text === "unmatched" ? unmatched : [result("aster", "Invented reference")],
-    preview_file_citation: preview, copy_file_citation: copied });
+    preview_file_citation: preview, deliver_citation: copied });
   render(<App />);
   await screen.findByText("Invented reference");
   await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("[@aster]"));

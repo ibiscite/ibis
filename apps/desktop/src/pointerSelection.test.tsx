@@ -37,7 +37,7 @@ function move(target: Element, x: number, y: number, at?: number) {
 
 test("moving the mouse only shows hover; a clicked row stays chosen and is what Copy copies", async () => {
   const copies: unknown[] = [];
-  backend(() => three, { copy_file_citation: (args) => { copies.push(prepared(args).request); return { text: "@b", warnings: [] }; } });
+  backend(() => three, { deliver_citation: (args) => { copies.push(prepared(args).request); return { outcome: "retained", copied: { text: "@b", warnings: [] }, reason: "pinned" }; } });
   await act(async () => { render(<App />); });
   await screen.findByText("Gamma");
   expect(activeTitle()).toBe("Alpha");

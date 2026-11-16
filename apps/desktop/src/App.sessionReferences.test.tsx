@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import type { SessionBibliography, SessionReferencesView } from "./api";
-import { backend, chooseFromMore, displayTree, receipt, resetApp, result } from "./testing/app";
+import { backend, chooseFromMore, displayTree, receipt, resetApp, result, showPicker } from "./testing/app";
 
 afterEach(resetApp);
 
@@ -267,7 +267,7 @@ test("a removed row leaves the keyboard in the sheet, so the next key cannot act
   await waitFor(() => expect(within(dialog).getAllByRole("button", { name: /^Remove / })).toHaveLength(1));
   await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
   fireEvent.keyDown(document.activeElement!, { key: "Enter" });
-  expect(calls.filter((command) => command === "copy_file_citation")).toHaveLength(0);
+  expect(calls.filter((command) => command === "deliver_citation")).toHaveLength(0);
   expect(screen.getByRole("dialog")).toBe(dialog);
 });
 
@@ -278,7 +278,7 @@ test("hiding the picker closes the sheet, and opening it again reads the list af
   await within(dialog).findByText("text");
   await act(() => emit("picker:hidden"));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  await act(() => emit("picker:shown", 1));
+  await act(() => showPicker(1));
   await chooseFromMore("Cited Since Opening…");
   await within(await screen.findByRole("dialog")).findByText("text");
   expect(reads).toBe(2);

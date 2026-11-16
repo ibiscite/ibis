@@ -3,12 +3,12 @@
   "sources": {
     "zotero": {
       "repo": "zotero/zotero",
-      "commit": "db41b99fddcc52d38897c59c161b6adaca036afb"
+      "commit": "d569d42f59f14cc22d3d89367a4b528222a5b254"
     },
     "styles": {
       "repo": "citation-style-language/styles",
-      "tag": "v1.0.16",
-      "commit": "8c15d2757ac6ce93c800682f4b9e53582e27e609"
+      "tag": "v1.0.22",
+      "commit": "af0aea3fffd44fe798cce9285598d0d5cf62ef23"
     },
     "locales": {
       "repo": "citation-style-language/locales",
@@ -22,7 +22,7 @@
       "path": "chrome/content/zotero/xpcom/citeproc.js",
       "out": "citeproc.mjs",
       "module": true,
-      "sha256": "4e717cb27c1d66024bbaa578604203c178af04e789c6244a722df44d70631466"
+      "sha256": "f4c82cd815c7229e3a2e4e80673f19aa6a27e2d5017bf1b0234b1e3beaf70946"
     }
   ],
   "curated": [

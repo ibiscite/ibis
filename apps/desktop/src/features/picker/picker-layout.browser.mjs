@@ -78,8 +78,13 @@ try {
           }
           if (command === "plugin:event|listen") { listeners.set(args.handler, args.event); return args.handler; }
           if (command === "plugin:event|unlisten") return;
-          if (command === "plugin:window|is_visible") return true;
-          if (command === "picker_presentation") return 0;
+          if (command === "picker_snapshot") return {
+            presentation: 1, selection: null, library,
+            preferences: { Ok: preferences },
+            destination: { Ok: (await window.__TAURI_INTERNALS__.invoke("app_context", { request: { kind: "destination" } })).destination },
+            recents: { Ok: await window.__TAURI_INTERNALS__.invoke("recent_references", { forget: false }) },
+          };
+          if (command === "picker_rendered") return null;
           if (command === "native_appearance") return "opaque";
           if (command === "picker_preferences") return preferences;
           if (command === "save_picker_preferences") { Object.assign(preferences, args.preferences); return 1; }
@@ -123,10 +128,10 @@ try {
               { form: "year-only", example: saved.style ? "(2026)" : "[-@synthetic0]", reason: saved.style === "ieee" ? "This style cannot show Year only." : null },
             ] };
           }
-          if (command === "copy_file_citation") {
+          if (command === "deliver_citation") {
             const saved = prepared.get(args.ticket);
-            return { text: saved.text, summary: shelfDetails === "receipt" ? { text: saved.text.slice(0, 119) + "…", more: saved.items.length - 1 } : null,
-              warnings: largeNotice ? Array.from({ length: 20 }, (_, i) => `Invented copy warning ${i + 1}: check the reference metadata.`) : [] };
+            return { outcome: "retained", reason: "pinned", copied: { text: saved.text, summary: shelfDetails === "receipt" ? { text: saved.text.slice(0, 119) + "…", more: saved.items.length - 1 } : null,
+              warnings: largeNotice ? Array.from({ length: 20 }, (_, i) => `Invented copy warning ${i + 1}: check the reference metadata.`) : [] } };
           }
           if (command === "login_item") return { name: "Ibis", enabled: false, problem: null };
           if (command === "update_checks") return null;

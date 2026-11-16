@@ -93,11 +93,8 @@ mod tests {
 
     #[test]
     fn failed_launches_return_only_failure() {
-        assert!(run(&mut Command::new("/usr/bin/true")).is_ok());
-        for mut command in [
-            Command::new("/usr/bin/false"),
-            Command::new("/invented/unavailable-launcher"),
-        ] {
+        assert!(run(&mut Command::new("true")).is_ok());
+        for mut command in [Command::new("false"), Command::new("/invented/unavailable-launcher")] {
             assert_eq!(run(&mut command), Err(()));
         }
     }

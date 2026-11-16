@@ -144,6 +144,21 @@ export class PreferencePatchQueue {
     }
   }
 
+  snapshotReceiver() {
+    const request = this.reads;
+    return (preferences: PickerPreferences | null) => {
+      if (request === this.reads) this.observe(preferences);
+    };
+  }
+
+  private observe(preferences: PickerPreferences | null) {
+    this.reads += 1;
+    this.loaded = preferences !== null;
+    this.durable = preferences;
+    this.emit({ type: "read", value: { preferences: preferences ? { ...preferences, ...this.patch } : null },
+      pendingOutput: this.patch.output !== undefined || this.patch.key_output !== undefined });
+  }
+
   load(active: () => boolean = () => true): Promise<void> {
     return this.read(active, false);
   }

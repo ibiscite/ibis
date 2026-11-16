@@ -507,6 +507,13 @@ impl Owner {
         self.shared.with_state(|state| state.current.clone()).flatten()
     }
 
+    /// Status and the searchable library captured under the same owner lock.
+    pub fn status_with_current(&self) -> (LibraryStatus, Option<Arc<Current>>) {
+        self.shared
+            .with_state(|state| (status::status(state), state.current.clone()))
+            .unwrap_or_else(|| (LibraryStatus::unavailable(), None))
+    }
+
     /// The status as it is now, for an interface that has just started.
     pub fn status(&self) -> LibraryStatus {
         self.shared
@@ -1080,20 +1087,19 @@ fn open_zotero(
 /// The choice a successful read saves: the path the read resolved, so the
 /// saved choice names what was read even if the chosen path later moves.
 fn remembered_choice(source: &Source, loaded: &Result<Loaded, LoadError>) -> Option<LibrarySetting> {
-    match loaded {
-        Ok(Loaded::Reload(_, prepared)) if let Prepared::File(prepared) = &**prepared => {
-            return prepared
-                .source_path()
-                .map(|path| LibrarySetting::Bibtex(path.to_path_buf()));
-        }
-        Ok(Loaded::New(current))
-            if matches!(current.source, Source::File(_))
-                && let Some(path) = current.source_path.as_deref()
-                && is_bib(path) =>
-        {
-            return Some(LibrarySetting::Bibtex(path.to_path_buf()));
-        }
-        _ => {}
+    if let Ok(Loaded::Reload(_, prepared)) = loaded
+        && let Prepared::File(prepared) = &**prepared
+    {
+        return prepared
+            .source_path()
+            .map(|path| LibrarySetting::Bibtex(path.to_path_buf()));
+    }
+    if let Ok(Loaded::New(current)) = loaded
+        && matches!(current.source, Source::File(_))
+        && let Some(path) = current.source_path.as_deref()
+        && is_bib(path)
+    {
+        return Some(LibrarySetting::Bibtex(path.to_path_buf()));
     }
     source.setting()
 }

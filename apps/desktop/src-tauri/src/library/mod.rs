@@ -7,7 +7,7 @@ mod error;
 pub(crate) mod open_source;
 #[cfg(test)]
 mod samples;
-mod search;
+pub(crate) mod search;
 #[cfg(test)]
 pub(crate) mod tests;
 #[cfg(test)]

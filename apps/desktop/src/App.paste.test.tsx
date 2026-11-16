@@ -24,8 +24,7 @@ async function answer(label: string) {
 }
 async function reopen(h: Harness) {
   await act(async () => { await h.reopen(); });
-  // Reopening refreshes library status, which rechecks search and its preview.
-  await act(async () => { h.search.pending.at(-1)!.complete({ revision: "1", results: [result("a", "Invented reference")] }); });
+  // The opening snapshot already contains the current recent rows.
   await act(async () => { h.preview.pending.at(-1)!.complete({ text: "[@a]" }); });
 }
 async function finish(h: Harness) {
@@ -73,53 +72,6 @@ test.each(["first Enter", "recognised app's format chooser"])("Copy only through
   expect(screen.queryByRole("dialog")).toBeNull();
   await finish(h);
   expect(h.document.pastes).toHaveLength(0);
-});
-
-test("saving Copy only while a paste-approved clipboard response is delayed cannot join or deliver that copy", async () => {
-  const h = await open((h) => {
-    h.appChoices.set("example.writer", { output: "pandoc", paste: "paste" });
-    h.holdCopyReplies = true;
-  });
-  await enter();
-  await act(async () => { h.copy.pending[0]!.complete(); });
-  expect(h.clipboard.text).toBe("[@a]");
-  expect(h.visible).toBe(true);
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^Citation format/ })); });
-  await answer("Copy Only");
-  await act(async () => { await vi.advanceTimersByTimeAsync(200); });
-  await enter();
-  h.holdCopyReplies = false;
-  if (h.copy.pending.length) await act(async () => { h.copy.pending[0]!.complete(); });
-  await act(async () => { h.copyReplies.pending[0]!.complete(); });
-  if (h.delivery.pending.length) {
-    await act(async () => { h.delivery.pending[0]!.complete(); });
-    await act(async () => { h.notice.pending[0]!.complete(); });
-  }
-  expect(h.document.text).toBe("Draft: [citation].");
-  expect(h.document.pastes).toHaveLength(0);
-  expect(h.copy.calls).toHaveLength(2);
-  expect(receipt(h)).toBe("Copied. Copy Only is set for this app. Press ⌘V to paste.");
-});
-
-test("revoking paste after the write still confirms Copied when its delayed response arrives without another Enter", async () => {
-  const h = await open((h) => {
-    h.appChoices.set("example.writer", { output: "pandoc", paste: "paste" });
-    h.holdCopyReplies = true;
-  });
-  await enter();
-  await act(async () => { h.copy.pending[0]!.complete(); });
-  expect(h.clipboard.text).toBe("[@a]");
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^Citation format/ })); });
-  await answer("Copy Only");
-  await act(async () => { h.copyReplies.pending[0]!.complete(); });
-  expect(screen.getAllByRole("status").some((status) => status.textContent?.includes("Copied"))).toBe(true);
-  expect(within(screen.getByRole("region", { name: "Preview" })).getByRole("status", { name: "Copied" })).toBeTruthy();
-  expect(document.querySelector(".copy-notice")).toBeNull();
-  expect(h.visible).toBe(true);
-  expect(h.document.text).toBe("Draft: [citation].");
-  expect(h.document.pastes).toHaveLength(0);
-  expect(h.delivery.calls).toHaveLength(0);
-  expect(h.copy.calls).toHaveLength(1);
 });
 
 test("the format chooser can keep a recognised writing app to copying, with a fresh Enter", async () => {
@@ -202,14 +154,12 @@ test("a delayed approval cannot replay its held citation after reopening in anot
   h.document.app = "Other Writer";
   h.target.appId = "example.other";
   h.target.verified = true;
-  await reopen(h);
-  await enter();
+  await act(async () => { await h.reopen(); });
   expect(h.copy.calls).toHaveLength(0);
   await act(async () => { h.appSaves.pending[0]!.complete(); });
-  // The destination read waits for the old save. Its new app identity then
-  // refreshes that app's recent references before the held Enter can copy.
+  await act(async () => { h.preview.pending.at(-1)!.complete({ text: "[@a]" }); });
   expect(h.copy.calls).toHaveLength(0);
-  await act(async () => { h.search.pending.at(-1)!.complete({ revision: "1", results: [result("a", "Invented reference")] }); });
+  await enter();
   await finish(h);
   expect(h.document.pastes).toHaveLength(1);
   expect(receipt(h)).toBe("Pasted into Other Writer");
@@ -221,8 +171,9 @@ test("close and reopen while saving approval never replays Enter", async () => {
   const h = await open((h) => { h.holdAppSaves = true; });
   await enter();
   await answer("Paste into Example Writer from Now On");
-  await reopen(h);
+  await act(async () => { await h.reopen(); });
   await act(async () => { h.appSaves.pending[0]!.complete(); });
+  await act(async () => { h.preview.pending.at(-1)!.complete({ text: "[@a]" }); });
   expect(h.copy.calls).toHaveLength(0);
   expect(h.document.pastes).toHaveLength(0);
   await enter();

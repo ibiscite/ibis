@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { App } from "./App";
 import { keyLabel } from "./keys";
 import { isMac } from "./platform";
-import { backend, resetApp } from "./testing/app";
+import { backend, resetApp, showPicker } from "./testing/app";
 
 const tip = `${keyLabel("CmdOrCtrl+Shift+P", isMac)} keeps Ibis open between citations.`;
 beforeEach(() => vi.useFakeTimers());
@@ -17,7 +17,7 @@ test("a claimed tip takes the notice line and never copies or changes focus", as
   expect(screen.getByText(tip).closest(".notice-slot")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Library" })).toBeTruthy();
   expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
   const input = screen.getByLabelText("Search references");
   fireEvent.keyDown(input, { key: "Enter" });
   expect(screen.getByText("Choose a reference to paste.")).toBeTruthy();
@@ -47,14 +47,14 @@ test("empty Enter explains refusal and zoom reports for one second, without copy
   fireEvent.keyDown(input, { key: "-", ctrlKey: true });
   expect(screen.getByText("100%")).toBeTruthy();
   expect(document.activeElement).toBe(input);
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
 });
 
 test("delayed claims and closed windows cannot replace newer visible feedback", async () => {
   const pending: ((value: ReturnType<typeof view>) => void)[] = [];
   backend({ delight_view: () => new Promise((resolve) => pending.push(resolve)) });
   const mounted = await act(async () => render(<App />));
-  await act(async () => { await emit("picker:shown", 2); });
+  await act(async () => { await showPicker(2); });
   await act(async () => { pending.at(-1)!(view("library1000")); });
   expect(screen.getByText("1,000 references. A solid library.")).toBeTruthy();
   await act(async () => { pending[0]!(view("paste-tip")); });
@@ -114,6 +114,6 @@ test("the welcome peck expires and cannot replay when empty results remount or t
   await act(async () => fireEvent.change(input, { target: { value: "invented" } }));
   await act(async () => fireEvent.change(input, { target: { value: "" } }));
   expect(container.querySelector('[data-motion="peck"]')).toBeNull();
-  await act(async () => { await emit("picker:hidden"); await emit("picker:shown", 2); });
+  await act(async () => { await emit("picker:hidden"); await showPicker(2); });
   expect(container.querySelector('[data-motion="peck"]')).toBeNull();
 });

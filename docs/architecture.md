@@ -156,6 +156,13 @@ ambiguous keys and changed Zotero generations refuse it, including a changed
 record that would produce identical text. Checked content retains its session
 identity and the citable revision checked during commit; the app holds the engine's final freshness guard while writing the
 clipboard on the main thread. Clipboard and paste proof remain native-owned.
+The picker submits `deliver_citation` once for Enter, with its checked preview
+and native presentation. Rust re-cites, commits the copy and decides dismissal
+in one main-thread task, then pastes and publishes the receipt. It returns one
+typed outcome: pasted, copied-only with its native reason, retained in the
+picker, sent to an editor, refused with a `Problem`, or cancelled. Pins and
+warnings retain the picker; receipt
+tokens stay in Rust, and inline confirmations receive its display summary.
 Bibliographies name unrenderable records in `left_out` and retain the rest;
 their shown receipt pins the selected records, including those left out.
 

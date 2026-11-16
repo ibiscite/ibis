@@ -193,21 +193,7 @@ pub(crate) async fn recent_references(
                 .forget()
                 .map_err(|_| super::CommandError::RecentHistoryNotSaved)?;
         }
-        let (ids, has_history, forget_failed) = {
-            let history = session.lock();
-            (
-                history.ids(captured.as_deref()).to_vec(),
-                history.has_history(),
-                history.forget_failed,
-            )
-        };
-        let reply = match file {
-            Some(file) => file
-                .recents(&ids, has_history)
-                .map(|reply| file.mark_project(reply, project.as_ref()))?,
-            None => SearchReply::default(),
-        };
-        Ok((reply, has_history, forget_failed))
+        recent_rows(session.inner(), captured.as_deref(), file.as_deref(), project.as_ref())
     })
     .await
     .map_err(|_| super::CommandError::RecentReferencesFailed)?
@@ -258,6 +244,30 @@ pub(crate) async fn search(
     })
     .await
     .map_err(|_| super::CommandError::SearchFailed)?
+}
+
+/// Resolve the destination's recents from the captured library and bibliography.
+pub(crate) fn recent_rows(
+    session: &crate::session_references::SessionReferences,
+    captured: Option<&str>,
+    file: Option<&ibis_engine::library::Current>,
+    project: Option<&crate::project::Current>,
+) -> Result<(SearchReply, bool, bool), super::CommandError> {
+    let (ids, has_history, forget_failed) = {
+        let history = session.lock();
+        (
+            history.ids(captured).to_vec(),
+            history.has_history(),
+            history.forget_failed,
+        )
+    };
+    let reply = match file {
+        Some(file) => file
+            .recents(&ids, has_history)
+            .map(|reply| file.mark_project(reply, project))?,
+        None => SearchReply::default(),
+    };
+    Ok((reply, has_history, forget_failed))
 }
 
 #[cfg(test)]

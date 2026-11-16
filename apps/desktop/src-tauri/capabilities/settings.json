@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "settings",
-  "description": "Settings window: read and change saved choices, the login item, update checks, the paste permission and the shortcut, and back up or restore settings through system file dialogs, and switch the loopback editor endpoint on or off and copy its address. Can list open libraries by name and ID and change their attachment-text choices. No general file system or shell access, and no network beyond that one 127.0.0.1 listener. Can list library-change previews and apply or reject a proposal by id. Library and backup names exclude paths. Can inspect supported AI apps and connect/disconnect their fixed Ibis MCP entry through the shared engine, preserving unrelated settings. Can inspect and install/remove the bundled command at its fixed user location, and copy its fixed PATH profile line.",
+  "description": "Settings window: read and change saved choices, the login item, update checks, the paste permission and the shortcut, and back up or restore settings through system file dialogs, and switch the loopback editor endpoint on or off and copy its address. Can list open libraries by name and ID, change their attachment-text choices and allow attachment text outside library folders on this computer. No general file system or shell access, and no network beyond that one 127.0.0.1 listener. Can list library-change previews and apply or reject a proposal by id. Library and backup names exclude paths. Can inspect supported AI apps and connect/disconnect their fixed Ibis MCP entry through the shared engine, preserving unrelated settings. Can inspect and install/remove the bundled command at its fixed user location, and copy its fixed PATH profile line.",
   "windows": [
     "settings"
   ],
@@ -13,6 +13,8 @@
     "core:window:allow-destroy",
     "allow-attachment-text-libraries",
     "allow-set-attachment-text",
+    "allow-attachment-text-outside-library",
+    "allow-set-attachment-text-outside-library",
     "allow-format-settings",
     "allow-forget-app-format",
     "allow-open-settings-file",

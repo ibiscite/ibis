@@ -21,6 +21,10 @@ export const commands = {
 	attachmentTextLibraries: () => __TAURI_INVOKE<AttachmentTextLibrary[]>("attachment_text_libraries"),
 	/** Save a choice for an open library previously returned to Settings. */
 	setAttachmentText: (id: LibraryId, on: boolean) => __TAURI_INVOKE<boolean>("set_attachment_text", { id, on }),
+	/** Whether attachment text tools may read files beyond the library's folder. */
+	attachmentTextOutsideLibrary: () => __TAURI_INVOKE<boolean>("attachment_text_outside_library"),
+	/** Save this computer's permission to read attachment text outside libraries. */
+	setAttachmentTextOutsideLibrary: (on: boolean) => __TAURI_INVOKE<boolean>("set_attachment_text_outside_library", { on }),
 	cliStatus: () => __TAURI_INVOKE<CommandStatus>("cli_status"),
 	setCliInstalled: (installed: boolean) => __TAURI_INVOKE<CommandStatus>("set_cli_installed", { installed }),
 	copyCliProfile: () => __TAURI_INVOKE<null>("copy_cli_profile"),
@@ -107,11 +111,10 @@ export const commands = {
 	 */
 	citationExample: (ticket: string, contentHash: string, output: string, intent: CitationIntent) => __TAURI_INVOKE<string | null>("citation_example", { ticket, contentHash, output, intent }),
 	/**
-	 * Copy the shown citation. Citing it again can wait for the formatter, so
-	 * that runs on a worker with no lock held; the short commit that writes the
-	 * clipboard stays on the main thread, as the native clipboard needs.
+	 * The preview ticket fixes the citation's context. The presentation fixes the
+	 * picker it may copy for and hide; nothing received later can adopt this work.
 	 */
-	copyFileCitation: (ticket: string, contentHash: string, replaces: string[]) => __TAURI_INVOKE<Copied>("copy_file_citation", { ticket, contentHash, replaces }),
+	deliverCitation: (ticket: string, contentHash: string, replaces: string[], presentation: number, closestMatches: ClosestMatch[]) => __TAURI_INVOKE<DeliveryOutcome>("deliver_citation", { ticket, contentHash, replaces, presentation, closestMatches }),
 	/** Choose the file with the system dialog; the interface never handles a path. */
 	chooseProject: () => __TAURI_INVOKE<void>("choose_project"),
 	/**
@@ -185,10 +188,12 @@ export const commands = {
 	loginItem: () => __TAURI_INVOKE<LoginItem>("login_item"),
 	/** Start Ibis when the person logs in, or stop doing so. */
 	setLoginItem: (enabled: boolean) => __TAURI_INVOKE<LoginItem>("set_login_item", { enabled }),
+	/** Subscribe before reading: an opening before the webview mounted is retained here. */
+	pickerSnapshot: () => __TAURI_INVOKE<PickerSnapshot | null>("picker_snapshot"),
+	/** The complete snapshot has reached the DOM; only its presentation may reveal. */
+	pickerRendered: (presentation: number) => __TAURI_INVOKE<void>("picker_rendered", { presentation }),
 	/** Hide only the originating presentation; a delayed request cannot dismiss a reopen. */
 	hidePicker: (presentation: number | null) => __TAURI_INVOKE<boolean>("hide_picker", { presentation }),
-	/** Read the native presentation after subscribing, including on webview reload. */
-	pickerPresentation: () => __TAURI_INVOKE<number>("picker_presentation"),
 	/**
 	 * Pin or unpin the picker. Staying on top is best effort: Wayland does not
 	 * allow it, and there pinned means only that the picker stays open. The
@@ -209,16 +214,6 @@ export const commands = {
 	shortcutStatus: () => __TAURI_INVOKE<ShortcutStatus>("shortcut_status"),
 	/** Only Settings may request the desktop's configuration UI. It never saves. */
 	configureShortcuts: () => __TAURI_INVOKE<null>("configure_shortcuts"),
-	/**
-	 * After the picker has hidden: paste into the app it was opened from when
-	 * that is safe (#27), then say "Pasted into …" or "Copied" and why. The
-	 * interface calls this only after a copy without warnings that hid the
-	 * picker (see `copyFeedback.ts`); copies with warnings keep their notice
-	 * inside the picker. Failures are reported as fixed diagnostics: the
-	 * citation is on the clipboard either way.
-	 * Returns the delivery outcome so a permission detour keeps the prepared shelf.
-	 */
-	showCopiedNotice: (text: string, delivery: number | null, summary: ReceiptSummary | null) => __TAURI_INVOKE<Delivered>("show_copied_notice", { text, delivery, summary }),
 	/**
 	 * The notice being shown, for a notice page that has just loaded and missed
 	 * the event that announced it.
@@ -386,6 +381,12 @@ export type CitedWarning = {
 	message: Message;
 };
 
+/** Search provenance retained with each selected reference. */
+export type ClosestMatch = {
+	item: number;
+	title: string;
+};
+
 /** The desktop and MCP receive this same shape, without pre-rendered English. */
 export type CommandError = {
 	code: string;
@@ -423,8 +424,6 @@ export type ContextRequest = {
 };
 
 export type Copied = {
-	/** Unique clipboard-write identity for receipts, even without a native paste proof. */
-	delivery?: number | null;
 	summary?: ReceiptSummary | null;
 	text: string;
 	/** What the chosen syntax could not express, and other problems the user should see. */
@@ -467,6 +466,29 @@ export type Delivered = {
 
 /** A paste that began and could not finish. */
 export type DeliveryFailure = "key-release-failed";
+
+export type DeliveryOutcome = {
+	app: string | null;
+	copied: Copied;
+	outcome: "pasted";
+} | {
+	copied: Copied;
+	outcome: "copied-only";
+	reason: CopiedReason;
+} | {
+	copied: Copied;
+	outcome: "retained";
+	reason: RetainedReason;
+} | {
+	copied: Copied;
+	outcome: "sent";
+	retained: RetainedReason | null;
+} | {
+	outcome: "refused";
+	problem: Problem;
+} | {
+	outcome: "cancelled";
+};
 
 /** How much each result row shows (ADR 0020). */
 export type Density = "compact" | "comfortable";
@@ -894,6 +916,15 @@ export type PickerSave = {
 	preferences: PickerPreferences;
 };
 
+export type PickerSnapshot = {
+	destination: Result_of_PickerDestination_or_CommandError;
+	library: LibraryStatus;
+	preferences: Result_of_PickerPreferences_or_CommandError;
+	presentation: number;
+	recents: Result_of_Tuple_of_SearchReply_and_boolean_and_boolean_or_CommandError;
+	selection: string | null;
+};
+
 /** The saved snapshot and the identity of the write that published it. */
 export type PreferenceChange = {
 	accent?: Accent | null;
@@ -1099,6 +1130,26 @@ export type RestorePreview = {
 	/** Names this preview; only the latest one can be restored. */
 	ticket: number;
 };
+
+export type Result_of_PickerDestination_or_CommandError = {
+	Ok: PickerDestination;
+} | {
+	Err: CommandError;
+};
+
+export type Result_of_PickerPreferences_or_CommandError = {
+	Ok: PickerPreferences;
+} | {
+	Err: CommandError;
+};
+
+export type Result_of_Tuple_of_SearchReply_and_boolean_and_boolean_or_CommandError = {
+	Ok: [SearchReply, boolean, boolean];
+} | {
+	Err: CommandError;
+};
+
+export type RetainedReason = "warnings" | "pinned" | "hide-failed" | "presentation-changed";
 
 export type RowAction = "copy" | "toggle";
 

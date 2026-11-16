@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import { backend, prepared, receipt, resetApp, result } from "./testing/app";
+import { backend, prepared, receipt, resetApp, result, showPicker } from "./testing/app";
 import type { Density } from "./api";
 import type { Preview } from "./bindings";
 import { warningText } from "./i18n";
@@ -33,8 +33,7 @@ function setup(density: Density = "comfortable", formatted = true) {
     zotero: false, warnings: 0, error: null, problem: null, note: null,
   });
   const switchTo = async (next: typeof mode) => { mode = next; await emit("library:changed", status()); };
-  const copied = vi.fn((args: unknown) => ({ text: prepared(args).preview.text, warnings: prepared(args).preview.warnings }));
-  const notice = vi.fn(() => ({ outcome: "copied", reason: "paste-off", app: null }));
+  const copied = vi.fn((args: unknown) => ({ outcome: "retained", reason: "warnings", copied: { text: prepared(args).preview.text, warnings: prepared(args).preview.warnings } }));
   const preview = vi.fn(async ({ items }: { items: { id: { library: string } }[] }) =>
     receipt(items[0]?.id.library === "samples" ? formatted ? apa : sampleKeys : "(Fen, 2023)",
       null,
@@ -49,11 +48,10 @@ function setup(density: Density = "comfortable", formatted = true) {
       revision: mode, sample: mode === "sample",
     }] }),
     preview_file_citation: preview,
-    copy_file_citation: copied,
-    show_copied_notice: notice,
+    deliver_citation: copied,
   });
   render(<App />);
-  return { calls, copied, notice, preview, switchTo };
+  return { calls, copied, preview, switchTo };
 }
 
 async function chooseSamples() {
@@ -62,7 +60,7 @@ async function chooseSamples() {
 }
 
 test.each([true, false])("first citation: choose samples, search, Enter and receipt (formatted: %s)", async (formatted) => {
-  const { calls, copied, notice } = setup("comfortable", formatted);
+  const { calls, copied } = setup("comfortable", formatted);
   const text = formatted ? apa : sampleKeys;
   await screen.findByRole("option", { name: /^Try Sample References/ });
   expect(calls).not.toContain("use_sample_library");
@@ -83,11 +81,9 @@ test.each([true, false])("first citation: choose samples, search, Enter and rece
   if (formatted) {
     expect(await screen.findByText("Copied", { selector: ".shelf-copied, .copy-notice strong" })).toBeTruthy();
     expect(prepared(copied.mock.calls[0]?.[0]).preview.text).toBe(apa);
-    expect(notice).not.toHaveBeenCalled();
     expect(screen.getByRole("list", { name: "Copy warnings" }).textContent).toContain(warningText(apaWarnings[0]!));
   } else {
-    await waitFor(() => expect(notice).toHaveBeenCalledWith({ text, delivery: null, summary: null }));
-    expect(calls).toContain("hide_picker");
+    await waitFor(() => expect(copied).toHaveBeenCalledOnce());
   }
   expect(copied).toHaveBeenCalledOnce();
   expect(prepared(copied.mock.calls[0]?.[0]).preview.text).toContain("[Sample]");
@@ -119,7 +115,7 @@ test("Use Your Own Library returns to normal choices, clears sample selection, a
   press(file);
   await waitFor(() => expect(calls).toContain("choose_library"));
   expect(document.activeElement).toBe(file);
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
 });
 
 test.each(["none", "More", "keys", "keys from More"] as const)("welcome Escape dismisses %s then hides without clearing the retained sample query", async (overlay) => {
@@ -152,7 +148,7 @@ test.each(["none", "More", "keys", "keys from More"] as const)("welcome Escape d
   fireEvent.keyDown(document.activeElement!, { key: "Escape" });
   await waitFor(() => expect(calls.filter((call) => call === "hide_picker")).toHaveLength(1));
   expect(input.value).toBe("lantern");
-  await act(async () => { await emit("picker:hidden"); await emit("picker:shown"); });
+  await act(async () => { await emit("picker:hidden"); await showPicker(); });
   fireEvent.keyDown(zotero, { key: "Escape" });
   await waitFor(() => expect(calls.filter((call) => call === "hide_picker")).toHaveLength(2));
 });

@@ -1,11 +1,14 @@
 // What a result row shows. Pure; no React.
 import type { SearchResult } from "../../api";
-import type { CitedWarning } from "../../bindings";
+import type { CitedWarning, ClosestMatch } from "../../bindings";
 
 /** Search provenance stays with selected references, independently of later
  * queries: each closest match is a warning about the reference at its place. */
+export function closestMatches(records: readonly SearchResult[]): ClosestMatch[] {
+  return records.flatMap((r, item) => r.partial ? [{ item, title: r.title || r.key }] : []);
+}
 export function closestMatchWarnings(records: readonly SearchResult[]): CitedWarning[] {
-  return records.flatMap((r, item) => r.partial ? [{ item, message: { id: "picker-closest-match-warning", args: { title: r.title || r.key } } }] : []);
+  return closestMatches(records).map(({ item, title }) => ({ item, message: { id: "picker-closest-match-warning", args: { title } } }));
 }
 
 // Fields a row already shows; a match anywhere else is named under the row.

@@ -8,7 +8,7 @@
  * starts, and refuses a superseded write. App also suppresses stale feedback
  * when a successful native write's response arrives after reopening.
  *
- * show_copied_notice queues delivery first: completing it consumes a matching
+ * The single delivery command queues its native paste: completing it consumes a matching
  * one-use proof, checks clipboard ownership/sequence and picker presentation,
  * then pastes at the fake document's selection. Completing the notice renders
  * the real receipt UI and returns that derived outcome to App. This separates
@@ -20,9 +20,9 @@
  * deadlines, engine formatting or hashing. Their Rust tests remain necessary.
  */
 import { emit } from "@tauri-apps/api/event";
-import type { AppPaste, CopiedReason, Copied, Delivered, Preview, NoticeMessage, SearchQuery, SearchReply } from "../bindings";
+import type { AppPaste, CopiedReason, DeliveryOutcome, Delivered, Preview, NoticeMessage, SearchQuery, SearchReply } from "../bindings";
 import { readNotice, renderNotice } from "../copyFeedback";
-import { backend, prepared, receipt, displayTree, type PreviewRequest } from "./app";
+import { changedDelivery, backend, prepared, receipt, retainedCitation, displayTree, showPicker, type PreviewRequest } from "./app";
 import { formatAnswer } from "./format";
 
 type Job<Args, Input> = {
@@ -37,7 +37,7 @@ class Work<Args, Input = void, Output = void> {
   readonly calls: Job<Args, Input>[] = [];
   get pending() { return this.calls.filter((job) => job.pending); }
 
-  enqueue(args: Args, finish: (value: Input) => Output): Promise<Output> {
+  enqueue(args: Args, finish: (value: Input) => Output | PromiseLike<Output>): Promise<Output> {
     return new Promise((resolve, reject) => {
       const settle = () => {
         if (!job.pending) throw new Error("This fake worker has already completed.");
@@ -64,11 +64,13 @@ type AppChoice = { output: string | null; paste: AppPaste | null };
 
 export function deliveryHarness(text = "Draft: [citation].", selection: [number, number] = [7, 17]) {
   const search = new Work<SearchQuery, SearchReply, SearchReply>();
+  let appSaving: Promise<unknown> = Promise.resolve();
+  let firstSnapshot = true;
+  let recentReply: SearchReply = { revision: "1", results: [] };
   const citationKeys = new Map<string, string>();
   const preview = new Work<PreviewRequest, PreviewContent, Preview>();
-  const copy = new Work<{ ticket: string; contentHash: string; replaces: string[] }, void, Copied>();
-  const copyReplies = new Work<Copied, void, Copied>();
-  let holdCopyReplies = false;
+  const copy = new Work<{ ticket: string; contentHash: string; replaces: string[] }, void, DeliveryOutcome>();
+  let pinned = false;
   const delivery = new Work<DeliveryRequest, void, Delivered>();
   const notice = new Work<NoticeMessage, void, Delivered>();
   const appSaves = new Work<{ appId: string; output: string | null; paste: AppPaste | null }>();
@@ -144,8 +146,8 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
 
 
   const calls = backend({
-    "plugin:window|is_visible": () => visible,
-    "destination": () => {
+    "destination": async ({ snapshot }) => {
+      if (snapshot) await appSaving;
       captured ??= capture();
       const choice = appChoices.get(target.appId);
       const paste = target.refusal ? null : choice?.paste ?? null;
@@ -161,10 +163,21 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
         appChoices.set(args.appId, { output: args.output ?? saved?.output ?? null, paste: args.paste ?? saved?.paste ?? null });
         if (args.paste !== null) proof = null;
       });
+      appSaving = saving.catch(() => undefined);
       if (!holdAppSaves) appSaves.pending.at(-1)!.complete();
       return saving;
     },
+    recent_references: ({ snapshot }) => {
+      if (snapshot && !firstSnapshot) return [recentReply, false, false];
+      firstSnapshot = false;
+      return search.enqueue({ text: "", interpret_locators: true }, (reply) => {
+        recentReply = reply;
+        for (const record of reply.results) citationKeys.set(JSON.stringify(record.id), record.key);
+        return reply;
+      }).then((reply) => [reply, false, false]);
+    },
     search: ({ query }) => search.enqueue(query, (reply) => {
+      recentReply = reply;
       for (const record of reply.results) citationKeys.set(JSON.stringify(record.id), record.key);
       return reply;
     }),
@@ -183,36 +196,41 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
         return value;
       });
     },
-    copy_file_citation: (args) => {
+    set_pinned: ({ on }) => { pinned = Boolean(on); },
+    deliver_citation: (args) => {
       const replaces = (args.replaces ?? []) as string[];
       const request = { ...args, replaces };
-      const generation = copyGeneration, sequence = clipboard.sequence;
-      return copy.enqueue(request, () => {
-        if (generation !== copyGeneration || sequence !== clipboard.sequence) throw { code: "cancelled" };
+      const generation = copyGeneration, sequence = clipboard.sequence, citation = latestPreview;
+      return copy.enqueue(request, async (): Promise<DeliveryOutcome> => {
+        if (generation !== copyGeneration || sequence !== clipboard.sequence || citation !== latestPreview) throw { code: "cancelled" };
         const { preview } = prepared(args);
         if (args.ticket !== activeTicket) throw { code: "snapshot_changed" };
         Object.assign(clipboard, { text: preview.text, html: clipboardHtml.get(preview.ticket) ?? null, owner: "ibis", sequence: clipboard.sequence + 1 });
         const token = ++nextDelivery;
         proof = { ...(captured ?? capture()), replaces: replaces.length > 0 ? replaces : null, presentation, app: document.app, text: preview.text, delivery: token, sequence: clipboard.sequence, epoch: lifecycle.epoch, written: lifecycle.elapsed, paste: appChoices.get(target.appId)?.paste ?? null };
-        return { text: clipboard.text, warnings: preview.warnings, delivery: token };
-      }).then((outcome) => holdCopyReplies ? copyReplies.enqueue(outcome, () => outcome) : outcome);
-    },
-    hide_picker: async () => { copyGeneration += 1; visible = false; await emit("picker:hidden"); return null; },
-    show_copied_notice: (args) => {
-      const request = args as unknown as DeliveryRequest;
-      const noticeOwner = ++latestNotice;
-      return delivery.enqueue(request, () => deliver(request))
-        .then((delivered) => notice.enqueue({ text: request.text, delivered }, () => {
+        const { copied } = retainedCitation(args);
+        if (copied.warnings.length || pinned) return { outcome: "retained", copied, reason: copied.warnings.length ? "warnings" : "pinned" };
+        copyGeneration += 1; visible = false; await emit("picker:hidden");
+        const request = { text: copied.text, delivery: token };
+        const noticeOwner = ++latestNotice;
+        const delivered = await delivery.enqueue(request, () => deliver(request));
+        await notice.enqueue({ text: request.text, delivered }, () => {
           if (noticeOwner === latestNotice) showReceipt(readNotice({ text: request.text, delivered }));
           return delivered;
-        }));
+        });
+        return delivered.outcome === "pasted" ? { outcome: "pasted", copied, app: delivered.app }
+          : { outcome: "copied-only", copied, reason: delivered.reason };
+      }).catch((error) => {
+        if (error?.code === "cancelled") return { outcome: "cancelled" } as const;
+        if (error?.code === "snapshot_changed") return changedDelivery;
+        throw error;
+      });
     },
+    hide_picker: async () => { copyGeneration += 1; visible = false; await emit("picker:hidden"); return true; },
   });
 
   return {
-    search, preview, copy, copyReplies, delivery, notice, calls, clipboard, document, documents, target, authorizations, lifecycle, receipt: receiptRoot, appChoices, appSaves,
-    get holdCopyReplies() { return holdCopyReplies; },
-    set holdCopyReplies(value: boolean) { holdCopyReplies = value; },
+    search, preview, copy, delivery, notice, calls, clipboard, document, documents, target, authorizations, lifecycle, receipt: receiptRoot, appChoices, appSaves,
     get holdAppSaves() { return holdAppSaves; },
     set holdAppSaves(value: boolean) { holdAppSaves = value; },
     get visible() { return visible; },
@@ -223,8 +241,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
       captured = capture();
       visible = true;
       const text = captured.selection;
-      await emit("picker:preparing", text && shows(text) ? text : null);
-      await emit("picker:shown");
+      showPicker(presentation, text && shows(text) ? text : null);
     },
     copyElsewhere(text: string) {
       Object.assign(clipboard, { text, html: null, owner: "external", sequence: clipboard.sequence + 1 });

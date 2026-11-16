@@ -12,6 +12,7 @@ mod bindings;
 mod cli_install;
 mod copy;
 mod delights;
+mod delivery;
 #[cfg(any(target_os = "linux", test))]
 mod desktop_theme;
 mod destination;
@@ -92,8 +93,6 @@ fn main() {
     #[cfg(not(target_os = "macos"))]
     let initial_picker = picker::prepare_startup(&mut context);
     let picker_generation = picker::PickerGeneration::default();
-    #[cfg(not(target_os = "macos"))]
-    let initial_picker_owner = picker_generation.current();
     let builder = tauri::Builder::default();
     #[cfg(target_os = "macos")]
     let builder = builder.manage(initial_panel);
@@ -132,6 +131,7 @@ fn main() {
         .manage(picker::Moving::default())
         .manage(sizing::Sizing::default())
         .manage(picker_generation)
+        .manage(picker::Presentation::default())
         .manage(picker::Registered::default())
         .manage(shortcut_setting::Changing::default())
         .manage(notice::Notice::default())
@@ -359,10 +359,8 @@ fn main() {
             #[cfg(target_os = "macos")]
             panel::frame_ready(app.handle());
             #[cfg(not(target_os = "macos"))]
-            if initial_picker.0
-                && let Some(window) = app.get_webview_window("main")
-            {
-                picker::present_window(&window, initial_picker.1, initial_picker_owner);
+            if initial_picker.0 {
+                picker::show_picker_focused(app.handle(), initial_picker.1);
             }
             // Install after startup effects: a newer file edit must never be
             // undone by an older initial tray, shortcut or recording value.

@@ -57,6 +57,66 @@ fn settings(directory: &std::path::Path, chosen: Value) -> std::path::PathBuf {
     path
 }
 
+#[cfg(unix)]
+#[test]
+fn outside_library_permission_is_checked_on_every_attachment_tool_call() {
+    use std::os::unix::fs::PermissionsExt;
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    std::fs::create_dir(root.join("library")).unwrap();
+    std::fs::write(root.join("outside.pdf"), b"%PDF-1.7\n").unwrap();
+    let library = root.join("library/refs.bib");
+    std::fs::write(
+        &library,
+        "@book{atlas2026, title={Invented atlas}, file={../outside.pdf}}",
+    )
+    .unwrap();
+    let program = root.join("invented-ibis");
+    std::fs::write(&program, "#!/bin/sh\ncat >/dev/null\nprintf '{\"read\":{\"pages\":1,\"labels\":null,\"text\":[\"Invented lantern.\"]}}'\n").unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let engine = Engine::new().unwrap().without_file_watches().with_pdf_reader(program);
+    engine
+        .dispatch(
+            Method::Libraries,
+            &json!({"action":"open-file", "path":library}),
+            &Cancellation::default(),
+        )
+        .unwrap();
+    let chosen = json!([engine.libraries().unwrap().libraries[0].id]);
+    let path = settings(root, chosen.clone());
+    let mut session = mcp::Session::default().with_formats(path.clone());
+    let refused = call(&engine, &mut session, "outline", json!({"ref":"atlas2026"}));
+    assert_eq!(refused["result"]["isError"], true, "{refused}");
+    let refusal = refused.to_string();
+    assert!(refusal.contains("attachment-outside-library"));
+    assert!(!refusal.contains("outside.pdf"));
+    std::fs::write(
+        &path,
+        json!({"schema_version":2, "attachment_text":chosen, "attachment_text_outside_library":true}).to_string(),
+    )
+    .unwrap();
+    let outlined = call(&engine, &mut session, "outline", json!({"ref":"atlas2026"}));
+    let attachment = outlined["result"]["structuredContent"]["attachments"][0]["id"].clone();
+    assert!(attachment.is_string(), "{outlined}");
+    for (tool, arguments) in [
+        ("read", json!({"attachment":attachment})),
+        ("find_in", json!({"attachment":attachment, "query":"lantern"})),
+    ] {
+        assert_eq!(call(&engine, &mut session, tool, arguments)["result"]["isError"], false);
+    }
+    settings(root, chosen);
+    for (tool, arguments) in [
+        ("outline", json!({"ref":"atlas2026"})),
+        ("read", json!({"attachment":attachment})),
+        ("find_in", json!({"attachment":attachment, "query":"lantern"})),
+    ] {
+        let refused = call(&engine, &mut session, tool, arguments);
+        assert_eq!(refused["result"]["isError"], true, "{refused}");
+        assert!(refused.to_string().contains("attachment-outside-library"));
+        assert!(!refused.to_string().contains("outside.pdf"));
+    }
+}
+
 #[test]
 fn the_reading_tools_are_listed_only_for_a_library_the_person_named() {
     let server = fixture::Server::new();

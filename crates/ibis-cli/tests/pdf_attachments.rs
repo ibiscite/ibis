@@ -12,6 +12,23 @@ struct Library {
 }
 
 impl Library {
+    fn allow_outside(&self, on: bool) {
+        let config = if cfg!(target_os = "macos") {
+            self.root.join("Library/Application Support")
+        } else if cfg!(windows) {
+            self.root.join("AppData")
+        } else {
+            self.root.join("config")
+        };
+        let path = config.join("com.ibiscite.ibis/settings.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            path,
+            serde_json::json!({"schema_version":2, "attachment_text_outside_library":on}).to_string(),
+        )
+        .unwrap();
+    }
+
     fn new(name: &str) -> Self {
         let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("pdf-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
@@ -63,6 +80,73 @@ impl Library {
         assert_eq!(status, 0, "{stdout}{stderr}");
         serde_json::from_str(&stdout).unwrap()
     }
+}
+
+#[test]
+fn outside_attachments_need_the_device_permission_for_outline_read_and_find_in() {
+    let mut library = Library::new("outside");
+    let inner = library.root.join("library");
+    std::fs::create_dir(&inner).unwrap();
+    library.root = inner;
+    std::fs::write(
+        library.root.join("refs.bib"),
+        "@book{atlas2026, title={Invented atlas}, file={../papers/atlas.pdf}}",
+    )
+    .unwrap();
+    let (status, stdout, stderr) = library.run(&["outline", "atlas2026", "--json"]);
+    assert_ne!(status, 0);
+    assert!(stdout.contains("attachment-outside-library"), "{stdout}{stderr}");
+    assert!(!stdout.contains("atlas.pdf"));
+    library.allow_outside(true);
+    let outline = library.json(&["outline", "atlas2026"]);
+    let attachment = &outline["data"]["attachments"][0];
+    assert_eq!(attachment["text"], "available");
+    let id = attachment["id"].as_str().unwrap();
+    assert_eq!(
+        library.json(&["read", id])["data"]["pages"][0]["text"],
+        "Invented preface."
+    );
+    assert_eq!(
+        library.json(&["find-in", id, "lantern"])["data"]["passages"][0]["pdf_page"],
+        3
+    );
+    library.allow_outside(false);
+    for args in [
+        vec!["read", id],
+        vec!["find-in", id, "lantern"],
+        vec![
+            "call",
+            "outline",
+            "--params",
+            r#"{"item":{"by":"key","value":"atlas2026"}}"#,
+        ],
+    ] {
+        let (status, stdout, stderr) = library.run(&args);
+        assert_ne!(status, 0);
+        assert!(stderr.contains("outside the library’s folder"), "{stdout}{stderr}");
+        assert!(stderr.contains("Settings › AI Apps"), "{stderr}");
+        assert!(!stderr.contains("atlas.pdf"), "{stderr}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symlink_inside_the_library_cannot_authorize_an_outside_attachment() {
+    let mut library = Library::new("outside-link");
+    let target = library.root.join("papers/atlas.pdf");
+    let inner = library.root.join("library");
+    std::fs::create_dir(&inner).unwrap();
+    std::os::unix::fs::symlink(target, inner.join("escape.pdf")).unwrap();
+    library.root = inner;
+    std::fs::write(
+        library.root.join("refs.bib"),
+        "@book{atlas2026, title={Invented atlas}, file={escape.pdf}}",
+    )
+    .unwrap();
+    let (status, stdout, stderr) = library.run(&["outline", "atlas2026"]);
+    assert_ne!(status, 0);
+    assert!(stderr.contains("outside the library’s folder"), "{stdout}{stderr}");
+    assert!(!stderr.contains("escape.pdf"));
 }
 
 #[test]

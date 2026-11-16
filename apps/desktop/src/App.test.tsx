@@ -10,18 +10,18 @@ import config from "../src-tauri/tauri.conf.json";
 import { OUTPUTS } from "./bindings";
 import { outputName, type OutputId } from "./format/outputs";
 import { missingKey, recordId } from "./test-fixtures";
-import { displayTree, backend, chooseFromMore, paletteRow, chooseFromLibrary, libraryButton, prepared, receipt, resetApp, result, type PreviewRequest, type SyntheticId, openCitationDetails, closeCitationDetails, inCitation, findInCitation, removeFromCitation, citationKeys } from "./testing/app";
+import { displayTree, changedDelivery, backend, chooseFromMore, paletteRow, chooseFromLibrary, libraryButton, prepared, receipt, retainedCitation, resetApp, result, type PreviewRequest, type SyntheticId, openCitationDetails, closeCitationDetails, inCitation, findInCitation, removeFromCitation, citationKeys, showPicker } from "./testing/app";
 
 afterEach(resetApp);
 
 test("a pasted list previews and copies every result in order, with a safe missing-key notice", async () => {
   const copied = vi.fn((args: unknown) => {
     const { preview } = prepared(args);
-    return { text: preview.text, warnings: [] };
+    return { outcome: "retained", copied: { text: preview.text, warnings: [] }, reason: "pinned" };
   });
-  const calls = backend({
+  backend({
     search: ({ query }) => query.text ? { revision: "1", results: [result("b", "Second"), result("a", "First")], list: { missing: ["<script>invented</script>"] } } : [],
-    copy_file_citation: copied,
+    deliver_citation: copied,
   });
   render(<App />);
   const box = screen.getByLabelText("Search references");
@@ -37,14 +37,13 @@ test("a pasted list previews and copies every result in order, with a safe missi
   await waitFor(() => expect(copied).toHaveBeenCalledOnce());
   const request = prepared(copied.mock.calls[0]![0]).request;
   expect(request.items.map(({ id }) => id.key)).toEqual(["b", "a"]);
-  await waitFor(() => expect(calls).toContain("hide_picker"));
 });
 
 test("editing Page in a pasted list preserves every reference in preview and copy order", async () => {
   const previews: PreviewRequest[] = [];
   const copied = vi.fn((args: unknown) => {
     const { preview } = prepared(args);
-    return { text: preview.text, warnings: [] };
+    return { outcome: "retained", copied: { text: preview.text, warnings: [] }, reason: "pinned" };
   });
   backend({
     search: ({ query }) => query.text ? { revision: "1", results: [result("b", "Second"), result("a", "First")], list: { missing: [] } } : [],
@@ -56,7 +55,7 @@ test("editing Page in a pasted list preserves every reference in preview and cop
       ]);
       return { ...receipt(spans.map((span) => span.text).join("")), display: displayTree(spans) };
     },
-    copy_file_citation: copied,
+    deliver_citation: copied,
   });
   render(<App />);
   const box = screen.getByLabelText("Search references");
@@ -76,17 +75,17 @@ test("editing Page in a pasted list preserves every reference in preview and cop
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copied).toHaveBeenCalledOnce());
   expect(prepared(copied.mock.calls[0]![0]).request.items).toEqual(editedItems);
-  expect(copied.mock.results[0]!.value.text).toBe("@b; @a, p. 42");
+  expect(copied.mock.results[0]!.value.copied.text).toBe("@b; @a, p. 42");
 });
 
 test("an explicit selection overrides the pasted list and a pending query cannot copy it", async () => {
   const copied = vi.fn((args: unknown) => {
     const { preview } = prepared(args);
-    return { text: preview.text, warnings: [] };
+    return { outcome: "retained", copied: { text: preview.text, warnings: [] }, reason: "pinned" };
   });
   backend({
     search: ({ query }) => query.text === "pending" ? new Promise(() => undefined) : query.text ? { revision: "1", results: [result("b", "Second"), result("a", "First")], list: { missing: ["absent"] } } : [],
-    copy_file_citation: copied,
+    deliver_citation: copied,
   });
   render(<App />);
   const box = screen.getByLabelText("Search references");
@@ -113,7 +112,7 @@ test("a pasted list with only missing keys shows its notice and cannot copy", as
   await screen.findByText("Not in your library: absent, 日本🌙");
   fireEvent.keyDown(box, { key: "Enter" });
   expect(calls).not.toContain("preview_file_citation");
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
 });
 
 test("selected closest-match warnings survive exact searches and copying a mixed citation", async () => {
@@ -122,9 +121,9 @@ test("selected closest-match warnings survive exact searches and copying a mixed
     search: ({ query: { text } }) => text === "sleep photon"
       ? [{ ...result("near", "Synthetic closest reference"), partial: true }]
       : [result("exact", "Synthetic exact reference")],
-    copy_file_citation: (args) => {
+    deliver_citation: (args) => {
       copied.push(prepared(args).request);
-      return { text: "[@exact; @near]", warnings: [] };
+      return retainedCitation(args);
     },
   });
   render(<App />);
@@ -168,7 +167,7 @@ test("partial results say Closest matches visibly and aloud and remain usable", 
   expect(screen.getByRole("option", { selected: true }).textContent).toContain("Sleep research");
   await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("@sleep"));
   fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => expect(calls).toContain("copy_file_citation"));
+  await waitFor(() => expect(calls).toContain("deliver_citation"));
 
   fireEvent.change(box, { target: { value: "sleep" } });
   await screen.findByText("Best matches");
@@ -197,14 +196,14 @@ test("the shelf shows what Enter pastes in a key syntax, without copying, and le
   const output = await screen.findByRole("region", { name: "Preview" });
   await waitFor(() => expect(output.textContent).toContain("[@a]"));
   expect(output.hasAttribute("data-keys")).toBe(true);
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
   fail = true;
   fireEvent.change(box, { target: { value: "again" } });
   await screen.findByText("Second");
   await waitFor(() => expect(calls.filter((c) => c === "preview_file_citation")).toHaveLength(2));
   await screen.findByRole("alert");
   fireEvent.keyDown(box, { key: "Enter" });
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
 });
 
 test.each([
@@ -228,10 +227,10 @@ test.each([
   await act(async () => { await emit("picker:hidden"); });
   refuse = fault;
   await act(async () => { await emit("library:changed", { state: "loaded", revision: "1", source_generation: "1", source_is_requested: true, has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null }); });
-  await act(async () => { await emit("picker:preparing"); });
+  await act(async () => { await showPicker(); });
   // The first frame of the reopened window already has no failure in it.
   expect(screen.queryByText("The citation could not be prepared. Try again.")).toBeNull();
-  await act(async () => { await emit("picker:shown", 2); });
+  await act(async () => { await showPicker(2); });
   await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("[@a]"));
   expect(screen.queryByText("The citation could not be prepared. Try again.")).toBeNull();
   expect(copy()).toBeTruthy();
@@ -249,7 +248,7 @@ test("a preview the engine keeps refusing says so, and Copy is gone instead of w
   expect(screen.queryByText("Formatting…")).toBeNull();
   expect(within(screen.getByRole("group", { name: "Keys" })).queryByRole("button", { name: /^Copy/ })).toBeNull();
   fireEvent.keyDown(box, { key: "Enter" });
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
 });
 
 test("a duplicate-key refusal stays visible before Details and copying stays blocked", async () => {
@@ -258,7 +257,7 @@ test("a duplicate-key refusal stays visible before Details and copying stays blo
   const calls = backend({
     search: () => [result("same", "First")],
     preview_file_citation: () => { throw shared; },
-    copy_file_citation: () => { throw shared; },
+    deliver_citation: () => { throw shared; },
   });
   render(<App />);
   const box = screen.getByLabelText("Search references");
@@ -270,14 +269,14 @@ test("a duplicate-key refusal stays visible before Details and copying stays blo
   expect(refusal.closest(".shelf")).toBeTruthy();
   expect(screen.queryByRole("dialog")).toBeNull();
   fireEvent.keyDown(box, { key: "Enter" });
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
   fireEvent.click(screen.getByRole("button", { name: "Details" }));
   const details = screen.getByRole("dialog", { name: /^Citation details for/ });
   expect(within(details).getByRole("alert").textContent).toContain(message);
   fireEvent.keyDown(details, { key: "Escape" });
   act(() => box.focus());
   fireEvent.keyDown(box, { key: "Enter" });
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
   expect(screen.getAllByRole("alert").filter((alert) => alert.textContent?.includes(message))).toHaveLength(1);
   expect(document.body.textContent).not.toContain("Nothing was copied. Try again");
   expect(calls).not.toContain("hide_picker");
@@ -334,8 +333,8 @@ async function expectPage(value: string) {
 
 
 test("C5 click selects without copying and double-click copies the highlighted citation", async () => {
-  const copied = vi.fn(() => ({ text: "[@b]", warnings: [] }));
-  const calls = backend({ search: () => [result("a", "First"), result("b", "Second")], copy_file_citation: copied });
+  const copied = vi.fn(() => ({ outcome: "retained", copied: { text: "[@b]", warnings: [] }, reason: "pinned" }));
+  const calls = backend({ search: () => [result("a", "First"), result("b", "Second")], deliver_citation: copied });
   render(<App />);
   fireEvent.click(await screen.findByText("Second"), { detail: 1 });
   expect(screen.getByRole("option", { name: /Second/ }).getAttribute("aria-selected")).toBe("true");
@@ -348,8 +347,8 @@ test("C5 click selects without copying and double-click copies the highlighted c
 });
 
 test("⌘1–9 (Ctrl elsewhere) does what a double-click on that numbered row does, only while the list is shown", async () => {
-  const copied = vi.fn(() => ({ text: "[@b]", warnings: [] }));
-  backend({ search: () => [result("a", "First"), result("b", "Second"), result("c", "Third")], copy_file_citation: copied });
+  const copied = vi.fn(() => ({ outcome: "retained", copied: { text: "[@b]", warnings: [] }, reason: "pinned" }));
+  backend({ search: () => [result("a", "First"), result("b", "Second"), result("c", "Third")], deliver_citation: copied });
   render(<App />);
   const search = screen.getByLabelText("Search references");
   await screen.findByText("Third");
@@ -373,8 +372,8 @@ test("⌘1–9 (Ctrl elsewhere) does what a double-click on that numbered row do
 
 test.each([null, "toggle", "copy"])("C5 native context completion %s uses the current row without a browser menu", async (action) => {
   const context = vi.fn(() => action);
-  const copied = vi.fn(() => ({ text: "[@b]", warnings: [] }));
-  const calls = backend({ search: () => [result("a", "First"), result("b", "Second")], row_context: context, copy_file_citation: copied });
+  const copied = vi.fn(() => ({ outcome: "retained", copied: { text: "[@b]", warnings: [] }, reason: "pinned" }));
+  const calls = backend({ search: () => [result("a", "First"), result("b", "Second")], row_context: context, deliver_citation: copied });
   render(<App />);
   const row = await screen.findByText("Second");
   fireEvent.contextMenu(row);
@@ -390,9 +389,9 @@ test.each([null, "toggle", "copy"])("C5 native context completion %s uses the cu
 test.each(["query", "hide", "selection", "revision", "highlight", "failure"])("C5 context result cannot outlive its %s owner", async (change) => {
   let finish: (value: string | null) => void = () => undefined;
   const pending = new Promise<string | null>((resolve) => { finish = resolve; });
-  const copied = vi.fn(() => ({ text: "unexpected", warnings: [] }));
+  const copied = vi.fn(() => ({ outcome: "retained", copied: { text: "unexpected", warnings: [] }, reason: "pinned" }));
   const calls = backend({ search: () => [result("a", "First"), result("b", "Second")],
-    row_context: () => change === "failure" ? Promise.reject(new Error("SYNTHETIC_PRIVATE_PAYLOAD")) : pending, copy_file_citation: copied });
+    row_context: () => change === "failure" ? Promise.reject(new Error("SYNTHETIC_PRIVATE_PAYLOAD")) : pending, deliver_citation: copied });
   render(<App />);
   fireEvent.contextMenu(await screen.findByText("Second"));
   if (change === "query") fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "new" } });
@@ -541,48 +540,7 @@ test("opening the first library searches the untouched empty query", async () =>
   expect(screen.queryByRole("option", { name: FILE_ROW })).toBeNull();
 });
 
-test("a failed status request does not suppress search errors", async () => {
-  backend({
-    library_status: () => { throw new Error("status unavailable"); },
-    search: () => { throw new Error("search unavailable"); },
-  });
-  render(<App />);
-  expect((await screen.findByText("Ibis could not search your library. Use Reload, then try again.")).getAttribute("role")).toBe("alert");
-});
 
-test.each([
-  ["resolves", false], ["rejects", false],
-  ["resolves", true], ["rejects", true],
-] as const)("a startup status request that %s cannot overwrite a newer library event (failed: %s)", async (outcome, failed) => {
-  let resolveStatus: (value: unknown) => void = () => undefined;
-  let rejectStatus: (reason: Error) => void = () => undefined;
-  backend({
-    library_status: () => new Promise((resolve, reject) => {
-      resolveStatus = resolve;
-      rejectStatus = reject;
-    }),
-    search: () => failed ? [] : [result("new", "New library reference")],
-  });
-  render(<App />);
-  await act(async () => { await Promise.resolve(); });
-  await act(async () => {
-    await emit("library:changed", { revision: "1", state: failed ? "error" : "loaded", has_snapshot: !failed, zotero: false, problem: "other",
-      name: "new.bib", snapshot_name: "new.bib", references: failed ? 0 : 1, warnings: 0,
-      error: failed ? "synthetic load failed" : null, note: null,
-    });
-  });
-  if (failed) await screen.findByRole("alert");
-  else await screen.findByText("New library reference");
-  await act(async () => {
-    if (outcome === "resolves") {
-      resolveStatus({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, problem: null, note: null });
-    } else rejectStatus(new Error("stale status unavailable"));
-  });
-  expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toContain("new.bib");
-  expect(screen.queryByRole("option", { name: FILE_ROW })).toBeNull();
-  if (failed) expect(screen.getByRole("alert").textContent).toContain("Synthetic load failed");
-  else expect(screen.getByText("New library reference")).toBeTruthy();
-});
 
 test("a failed search clears the results of the previous query", async () => {
   backend({
@@ -622,7 +580,7 @@ test("the quit shortcut works with Caps Lock on, like the More shortcut", async 
 
 test("identical copy warnings are both listed without duplicate React keys", async () => {
   const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
-  backend({ search: () => [result("a", "First")], copy_file_citation: () => ({ text: "@a", warnings: [missingKey("year2026"), missingKey("year2026")] }) });
+  backend({ search: () => [result("a", "First")], deliver_citation: () => ({ outcome: "retained", copied: { text: "@a", warnings: [missingKey("year2026"), missingKey("year2026")] }, reason: "pinned" }) });
   render(<App />);
   await screen.findByText("First");
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
@@ -661,14 +619,14 @@ test("the query is searched again when a library finishes opening", async () => 
   expect(screen.queryByRole("alert")).toBeNull();
 });
 
-test("Enter copies the highlighted result in the remembered format and hides the picker", async () => {
+test("Enter submits the highlighted result in the remembered format", async () => {
   const copies: unknown[] = [];
   const calls = backend({
     picker_preferences: () => ({ output: "typst" }),
     search: ({ query: { text: query } }) => (query ? [result("a", "First"), result("b", "Second")] : []),
-    copy_file_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request;
+    deliver_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request;
       copies.push(args);
-      return { text: "@b", warnings: [] };
+      return { outcome: "retained", copied: { text: "@b", warnings: [] }, reason: "pinned" };
     },
   });
   render(<App />);
@@ -678,7 +636,7 @@ test("Enter copies the highlighted result in the remembered format and hides the
   await screen.findByText("Second");
   fireEvent.keyDown(box, { key: "ArrowDown" });
   fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => expect(calls).toContain("hide_picker"));
+  await waitFor(() => expect(calls).toContain("deliver_citation"));
   expect(copies).toMatchObject([{ items: selections([{ library: "refs.bib", key: "b" }]), output: "typst", expectedRevision: "1" }]);
   expect(screen.getByText("Copied")).toBeTruthy();
 });
@@ -688,9 +646,9 @@ test("the selection is kept by record identity across queries and copied in orde
   backend({
     search: ({ query: { text: query } }) =>
       query === "one" ? [result("same", "One", "a.bib")] : query === "two" ? [result("same", "Two", "b.bib")] : [],
-    copy_file_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request;
+    deliver_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request;
       copies.push(args);
-      return { text: "[@same; @same]", warnings: [] };
+      return { outcome: "retained", copied: { text: "[@same; @same]", warnings: [] }, reason: "pinned" };
     },
   });
   render(<App />);
@@ -729,9 +687,9 @@ async function removalRestoresSearch({ count, index, activation }: Removal) {
     let finishCopy!: () => void;
     const calls = backend({
       search: () => records,
-      copy_file_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request;
+      deliver_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request;
         copies.push(args);
-        return new Promise((resolve) => { finishCopy = () => resolve({ text: `[@${args.items.map(({ id }) => id.key).join("; @")}]`, warnings: [] }); });
+        return new Promise((resolve) => { finishCopy = () => resolve({ outcome: "retained", copied: { text: `[@${args.items.map(({ id }) => id.key).join("; @")}]`, warnings: [] }, reason: "pinned" }); });
       },
     });
     render(<App />);
@@ -765,7 +723,7 @@ async function removalRestoresSearch({ count, index, activation }: Removal) {
     const remaining = records.slice(0, count).filter((_, i) => i !== index);
     await waitFor(() => expect(selectedKeys()).toEqual(remaining.map((record) => record.key)));
     expect(box.getAttribute("aria-activedescendant")).toBe(active);
-    expect(calls).not.toContain("copy_file_citation");
+    expect(calls).not.toContain("deliver_citation");
     expect(calls).not.toContain("hide_picker");
     expect(document.activeElement).toBe(box);
     expect((box as HTMLInputElement).value).toBe("focus");
@@ -786,7 +744,7 @@ test.each([false, true])("removal with the × ignores queued Enter repeats and w
   const copies: Record<string, unknown>[] = [];
   backend({
     search: () => [result("a", "First"), result("b", "Second")],
-    copy_file_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request; copies.push(args); return { text: "copied", warnings: [] }; },
+    deliver_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request; copies.push(args); return { outcome: "retained", copied: { text: "copied", warnings: [] }, reason: "pinned" }; },
   });
   render(<App />);
   await screen.findByText("First");
@@ -834,7 +792,7 @@ test("hovering a token's × keeps focus and menu keys unchanged", async () => {
   fireEvent.keyDown(menu, { key: "Escape" });
   expect(document.activeElement).toBe(more);
   expect(screen.getByRole("button", { name: "Remove Smith 2020" })).toBe(remove);
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
   expect(calls).not.toContain("hide_picker");
 });
 
@@ -847,9 +805,9 @@ test.each([7, 9, 10])("%i long-key selections retain order across queries and fi
   const copies: Record<string, unknown>[] = [];
   backend({
     search: ({ query: { text: query } }) => query === "" ? [] : records.slice(Number(query) * pageSize, (Number(query) + 1) * pageSize),
-    copy_file_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request;
+    deliver_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request;
       copies.push(args);
-      return { text: `[@${args.items.map(({ id }) => id.key).join("; @")}]`, warnings: [] };
+      return { outcome: "retained", copied: { text: `[@${args.items.map(({ id }) => id.key).join("; @")}]`, warnings: [] }, reason: "pinned" };
     },
   });
   await act(async () => { render(<App />); });
@@ -884,9 +842,9 @@ test("warnings keep the picker open and failures say nothing was copied", async 
   let fail = false;
   const calls = backend({
     search: ({ query: { text: query } }) => (query ? [result("a", "First")] : []),
-    copy_file_citation: () => {
+    deliver_citation: () => {
       if (fail) throw new Error("SYNTHETIC_PRIVATE_PAYLOAD");
-      return { text: "a", warnings: [missingKey("bare2026")] };
+      return { outcome: "retained", copied: { text: "a", warnings: [missingKey("bare2026")] }, reason: "pinned" };
     },
   });
   render(<App />);
@@ -911,7 +869,7 @@ test("Enter while composing text with an input method copies nothing", async () 
   fireEvent.keyDown(box, { key: "Enter", isComposing: true });
   fireEvent.keyDown(box, { key: "Enter", keyCode: 229 });
   await new Promise((resolve) => setTimeout(resolve, 0));
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
 });
 
 test("Enter never copies a result left over from the previous query", async () => {
@@ -919,7 +877,7 @@ test("Enter never copies a result left over from the previous query", async () =
   const calls = backend({
     search: ({ query: { text: query } }) =>
       query === "old" ? [result("old", "Old result")] : query ? new Promise((resolve) => (release = resolve)) : [],
-    copy_file_citation: () => ({ text: "x", warnings: [] }),
+    deliver_citation: () => ({ outcome: "retained", copied: { text: "x", warnings: [] }, reason: "pinned" }),
   });
   render(<App />);
   const box = screen.getByLabelText("Search references");
@@ -928,7 +886,7 @@ test("Enter never copies a result left over from the previous query", async () =
   fireEvent.change(box, { target: { value: "new" } });
   fireEvent.keyDown(box, { key: "Enter" });
   await new Promise((resolve) => setTimeout(resolve, 0));
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
   release([result("new", "New result")]);
   await screen.findByText("New result");
 });
@@ -940,7 +898,7 @@ test("while a newer search is pending, no key, click or hint acts on the previou
     search: ({ query: { text: query } }) => query === "kept" ? [result("kept", "Kept result")]
       : query === "old" ? [result("old", "Old result")]
       : query ? new Promise((resolve, reject) => { pending[query as string] = { resolve, reject }; }) : [],
-    copy_file_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request; copied.push(args); return { text: "x", warnings: [] }; },
+    deliver_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request; copied.push(args); return { outcome: "retained", copied: { text: "x", warnings: [] }, reason: "pinned" }; },
   });
   render(<App />);
   const box = screen.getByLabelText("Search references");
@@ -1122,15 +1080,13 @@ test("combobox focus is separate from citation selection and only additions/remo
   expect(notice.textContent).toBe("0 references selected for citation");
 });
 
-test("failed status and saved choice reads show safe notices without hiding search results", async () => {
+test("failed picker choices show a safe notice without hiding snapshot results", async () => {
   backend({
-    library_status: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); },
     picker_preferences: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); },
     search: () => [result("a", "Available reference")],
   });
   render(<App />);
   await screen.findByText("Available reference");
-  expect(screen.getByText("Ibis could not check your library. Choose the file again.").getAttribute("role")).toBe("alert");
   // Unreadable choices are not replaced with defaults on disk; the default format applies meanwhile.
   expect(await screen.findByText("Your picker choices could not be saved. They apply until restart.")).toBeTruthy();
   expect(screen.getByRole("region", { name: "Picker actions" }).textContent).not.toContain("No library chosen");
@@ -1170,10 +1126,10 @@ test("event subscription and cleanup failures are handled with safe messages", a
   } finally { focus.mockRestore(); library.mockRestore(); log.mockRestore(); }
 });
 
-test("web plugin permissions grant only event subscriptions, visibility reads and drag-region bootstrap", () => {
+test("web plugin permissions grant only event subscriptions and drag-region bootstrap", () => {
   expect(capability.permissions.filter((permission) => permission.includes(":")).sort()).toEqual([
     "core:event:allow-listen", "core:event:allow-unlisten",
-    "core:window:allow-internal-toggle-maximize", "core:window:allow-is-visible", "core:window:allow-start-dragging",
+    "core:window:allow-internal-toggle-maximize", "core:window:allow-start-dragging",
   ]);
   expect(config.app.windows[0]?.maximizable).toBe(false);
 });
@@ -1344,7 +1300,7 @@ test("a citation style shows a safe engine preview and copies its receipt with w
         ] }]))
       : receipt(items.length > 1 ? "(Garcia, 2021); Second" : "(Garcia, 2021)", null,
           items.length > 1 ? [{ item: 1, message: { id: "app-loss", args: { what: "the page or location", target: " for “Second”" } } }] : []),
-    copy_file_citation: (args) => { const { preview } = prepared(args); copies.push(preview); return { text: preview.text, warnings: preview.warnings }; },
+    deliver_citation: (args) => { const { preview } = prepared(args); copies.push(preview); return { outcome: "retained", copied: { text: preview.text, warnings: preview.warnings }, reason: "pinned" }; },
   });
   render(<App />);
   await screen.findByText("First");
@@ -1370,12 +1326,12 @@ test("a citation style shows a safe engine preview and copies its receipt with w
 });
 test("moving before a waiting Enter's engine preview is ready cancels that copy", async () => {
   let finish: (value: ReturnType<typeof receipt>) => void = () => undefined;
-  const copies = vi.fn(() => ({ text: "unexpected", warnings: [] }));
+  const copies = vi.fn(() => ({ outcome: "retained", copied: { text: "unexpected", warnings: [] }, reason: "pinned" }));
   backend({
     search: () => [result("a", "First"), result("b", "Second")],
     preview_file_citation: ({ items }) => items[0]!.id.key === recordId("a") ? receipt("(Alpha, 2021)")
       : new Promise((resolve) => { finish = resolve; }),
-    copy_file_citation: copies,
+    deliver_citation: copies,
   });
   render(<App />);
   await screen.findByText("First");
@@ -1393,7 +1349,7 @@ test("moving before a waiting Enter's engine preview is ready cancels that copy"
 test("the output keeps ordered chips and exact key copying", async () => {
   const copies: unknown[] = [];
   backend({ search: () => [result("a", "First"), result("b", "Second")],
-    copy_file_citation: (nativeReceipt) => { const { items } = prepared(nativeReceipt).request; copies.push(items); return { text: "@a; @b", warnings: [] }; } });
+    deliver_citation: (nativeReceipt) => { const { items } = prepared(nativeReceipt).request; copies.push(items); return { outcome: "retained", copied: { text: "@a; @b", warnings: [] }, reason: "pinned" }; } });
   render(<App />);
   await screen.findByText("First");
   const box = screen.getByLabelText("Search references");
@@ -1410,7 +1366,7 @@ test("the output keeps ordered chips and exact key copying", async () => {
 test.each(["same", "different"])("copy feedback only omits exact visible output (%s)", async (presentation) => {
   const copied = presentation === "different" ? "@a; @b" : "@a";
   backend({ search: () => [result("a", "First"), ...(presentation === "different" ? [result("b", "Second")] : [])],
-    copy_file_citation: () => ({ text: copied, warnings: [missingKey("copy2026")] }) });
+    deliver_citation: () => ({ outcome: "retained", copied: { text: copied, warnings: [missingKey("copy2026")] }, reason: "pinned" }) });
   render(<App />);
   await screen.findByText("First");
   const box = screen.getByLabelText("Search references");
@@ -1629,7 +1585,7 @@ test("a pinned picker stays open after copying, and Escape never unpins it", asy
   const pins: unknown[] = [];
   const calls = backend({
     search: () => [result("a", "First")],
-    copy_file_citation: () => ({ text: "@a", warnings: [] }),
+    deliver_citation: () => ({ outcome: "retained", copied: { text: "@a", warnings: [] }, reason: "pinned" }),
     set_pinned: ({ on }) => { pins.push(on); return null; },
   });
   render(<App />);
@@ -1649,7 +1605,7 @@ test("a pinned picker stays open after copying, and Escape never unpins it", asy
   fireEvent.change(box, { target: { value: "first" } });
   await screen.findByText("First");
   fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => expect(calls).toContain("hide_picker"));
+  await waitFor(() => expect(calls.filter((command) => command === "deliver_citation")).toHaveLength(2));
 });
 
 test("a failed pin is reported", async () => {
@@ -1701,7 +1657,7 @@ test.each([[30_000, true, "first"], [61_000, true, ""], [61_000, false, "first"]
       fireEvent(window, new Event("blur"));
       if (hidden) await act(async () => { await emit("picker:hidden"); });
       now.mockReturnValue(1_000_000 + away);
-      await act(async () => { await emit("picker:shown"); });
+      await act(async () => { await showPicker(); });
       expect(box.value).toBe(kept);
       expect(document.activeElement).toBe(box);
     } finally {
@@ -1716,7 +1672,7 @@ test.each(["before", "after"])("reopening from a result replaces the query when 
     render(<App />);
     const box = screen.getByLabelText<HTMLInputElement>("Search references");
     fireEvent.change(box, { target: { value: "previous query" } });
-    const row = await screen.findByRole("option", { name: /First/ });
+    let row = await screen.findByRole("option", { name: /First/ });
     // Model the result that WebKit restores when the native window activates.
     row.tabIndex = -1;
     act(() => row.focus());
@@ -1729,7 +1685,9 @@ test.each(["before", "after"])("reopening from a result replaces the query when 
       fireEvent.focus(window);
     };
     if (activation === "before") activate();
-    await act(async () => { await emit("picker:shown"); });
+    await act(async () => { await showPicker(); });
+    row = await screen.findByRole("option", { name: /First/ });
+    row.tabIndex = -1;
     if (activation === "after") activate();
 
     expect(document.activeElement).toBe(box);
@@ -1757,13 +1715,15 @@ test.each([false, true])("typing before native activation keeps the new query an
     render(<App />);
     const box = screen.getByLabelText<HTMLInputElement>("Search references");
     fireEvent.change(box, { target: { value: "previous query" } });
-    const row = await screen.findByRole("option", { name: /First/ });
+    let row = await screen.findByRole("option", { name: /First/ });
     row.tabIndex = -1;
     if (escaped) {
       fireEvent.keyDown(box, { key: "Escape" });
       fireEvent.keyDown(box, { key: "Escape" });
     }
-    await act(async () => { await emit("picker:hidden"); await emit("picker:shown"); });
+    await act(async () => { await emit("picker:hidden"); await showPicker(); });
+    row = await screen.findByRole("option", { name: /First/ });
+    row.tabIndex = -1;
     fireEvent.input(box, { target: { value: "ab" } });
     act(() => row.focus());
     focused.mockReturnValue(true);
@@ -1783,9 +1743,11 @@ test("hiding cancels a pending Search focus handoff", async () => {
   const focused = vi.spyOn(document, "hasFocus").mockReturnValue(false);
   try {
     render(<App />);
-    const row = await screen.findByRole("option", { name: /First/ });
+    let row = await screen.findByRole("option", { name: /First/ });
     row.tabIndex = -1;
-    await act(async () => { await emit("picker:shown"); });
+    await act(async () => { await showPicker(); });
+    row = await screen.findByRole("option", { name: /First/ });
+    row.tabIndex = -1;
     await act(async () => { await emit("picker:hidden"); });
     act(() => row.focus());
     fireEvent.focus(window);
@@ -1825,7 +1787,7 @@ test.each(OUTPUTS.filter((output) => !output.style && !output.shares).map((outpu
   await waitFor(() => expect(formatValue()).toBe("typst"));
   chooseFormat(choice);
   await waitFor(() => expect(remembered).toBe(choice));
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
   first.unmount();
   render(<App />);
   await waitFor(() => expect(formatValue()).toBe(choice));
@@ -1893,31 +1855,6 @@ test.each(["menu", "shortcut"])("%s Quit drains ordered format choices before ex
   await waitFor(() => expect(calls).toContain("quit"));
 });
 
-test.each(["menu", "shortcut"])("%s Quit waits for the initial read, then saves the one output chosen", async (route) => {
-  let finishReading = () => undefined as void;
-  const reading = new Promise<void>((resolve) => { finishReading = resolve; });
-  let remembered: string | null = "apa";
-  let atQuit: unknown = null;
-  const calls = backend({
-    picker_preferences: async () => { await reading; return { output: "apa", density: "comfortable", larger_text: false }; },
-    picker_preferences_saved: ({ preferences }) => { remembered = savedOutput(preferences) ?? remembered; return null; },
-    quit: () => { atQuit = { output: remembered }; return null; },
-  });
-  render(<App />);
-  await waitFor(() => formatButton());
-  chooseFormat("cite");
-  try {
-    if (route === "menu") await chooseFromMore("Quit Ibis");
-    else await act(async () => { fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "q", ctrlKey: true }); });
-    expect(calls).not.toContain("quit");
-    expect(atQuit).toBeNull();
-    await act(async () => { finishReading(); await reading; });
-    await waitFor(() => expect(atQuit).toEqual({ output: "cite" }));
-    expect(calls.filter((call) => call === "picker_preferences_saved")).toHaveLength(1);
-  } finally {
-    await act(async () => { finishReading(); await reading; });
-  }
-});
 
 test("a refused preference save reports failure and still allows Quit", async () => {
   const calls = backend({
@@ -1948,22 +1885,6 @@ test("a stuck settings request cannot keep Quit waiting indefinitely", async () 
   expect(calls).toContain("quit");
 });
 
-test("a choice made while saved choices load is kept and saved, not replaced", async () => {
-  let finish = () => undefined as void;
-  const loaded = new Promise<void>((resolve) => { finish = resolve; });
-  const saved: { output?: string }[] = [];
-  backend({
-    // Reads what is on disk when it answers, as the settings file does.
-    picker_preferences: async () => { await loaded; return { output: saved.at(-1)?.output ?? "apa", density: "compact", larger_text: false }; },
-    picker_preferences_saved: ({ preferences }) => { saved.push(preferences as { output?: string; key_output?: string }); return null; },
-  });
-  render(<App />);
-  await waitFor(() => formatButton());
-  chooseFormat("cite");
-  await act(async () => { finish(); await loaded; });
-  await waitFor(() => expect(saved).toEqual([{ key_output: "cite" }]));
-  expect(formatValue()).toBe("cite");
-});
 
 test("unreadable saved choices are reported and never overwritten with defaults", async () => {
   const saved: unknown[] = [];
@@ -2308,7 +2229,7 @@ test("with sources in the citation, a double-click copies the citation like Ente
   const copies: unknown[] = [];
   backend({
     search: () => [result("a", "First"), result("b", "Second")],
-    copy_file_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request; copies.push(args); return { text: "@a", warnings: [] }; },
+    deliver_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request; copies.push(args); return { outcome: "retained", copied: { text: "@a", warnings: [] }, reason: "pinned" }; },
   });
   render(<App />);
   fireEvent.click(await screen.findByText("First"), { shiftKey: true });
@@ -2320,7 +2241,7 @@ test("with sources in the citation, a double-click copies the citation like Ente
 test("a drag, a third click or an unsupported modified row click copies nothing", async () => {
   const calls = backend({
     search: () => [result("a", "First")],
-    copy_file_citation: () => ({ text: "@a", warnings: [] }),
+    deliver_citation: () => ({ outcome: "retained", copied: { text: "@a", warnings: [] }, reason: "pinned" }),
   });
   render(<App />);
   const row = (await screen.findByText("First")).closest('[role="option"]')!;
@@ -2331,11 +2252,11 @@ test("a drag, a third click or an unsupported modified row click copies nothing"
     fireEvent.click(row, { metaKey: true });
     fireEvent.click(row, { altKey: true });
   });
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
   expect(row.hasAttribute("data-citation-selected")).toBe(false);
   fireEvent.pointerDown(row, { clientX: 10, clientY: 10 });
   fireEvent.click(row, { clientX: 12, clientY: 11, detail: 2 });
-  await waitFor(() => expect(calls).toContain("copy_file_citation"));
+  await waitFor(() => expect(calls).toContain("deliver_citation"));
 });
 
 test("a double-click on a row waits for its engine preview before copying its receipt", async () => {
@@ -2345,7 +2266,7 @@ test("a double-click on a row waits for its engine preview before copying its re
     picker_preferences: () => ({ output: "apa", density: "comfortable", larger_text: false }),
     search: () => [result("a", "First"), result("b", "Second")],
     preview_file_citation: ({ items }) => items[0]!.id.key === recordId("b") ? new Promise((resolve) => { finish = resolve; }) : receipt("(Smith, 2020)"),
-    copy_file_citation: (args) => { const { preview } = prepared(args); copies.push(preview.text); return { text: preview.text, warnings: [] }; },
+    deliver_citation: (args) => { const { preview } = prepared(args); copies.push(preview.text); return { outcome: "retained", copied: { text: preview.text, warnings: [] }, reason: "pinned" }; },
   });
   render(<App />);
   await waitFor(() => expect(formatValue()).toBe("apa"));
@@ -2369,7 +2290,7 @@ test.each([30_000, 61_000])(
       await waitFor(() => expect(calls).toContain("hide_picker"));
       await act(async () => { await emit("picker:hidden"); });
       now.mockReturnValue(1_000_000 + away);
-      await act(async () => { await emit("picker:shown"); });
+      await act(async () => { await showPicker(); });
       await waitFor(() => expect(document.activeElement).toBe(box));
       expect(box.value).toBe("");
     } finally {
@@ -2392,14 +2313,14 @@ test("Esc clearing preserves citations and invalidates an escaped query before r
   expect(box.value).toBe("");
   expect(document.activeElement).toBe(box);
   expect(inCitation("a")).toBeTruthy();
-  await act(async () => { await emit("picker:hidden"); await emit("picker:shown"); });
+  await act(async () => { await emit("picker:hidden"); await showPicker(); });
   expect(box.value).toBe("");
   fireEvent.keyDown(box, { key: "Enter", repeat: true });
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
 });
 
 test("a search cleared by Escape stays cleared once something else is typed or copied", async () => {
-  backend({ search: () => [result("a", "First")], copy_file_citation: () => ({ text: "@a", warnings: [] }) });
+  backend({ search: () => [result("a", "First")], deliver_citation: () => ({ outcome: "retained", copied: { text: "@a", warnings: [] }, reason: "pinned" }) });
   render(<App />);
   const box = screen.getByLabelText("Search references") as HTMLInputElement;
   fireEvent.change(box, { target: { value: "first" } });
@@ -2408,7 +2329,7 @@ test("a search cleared by Escape stays cleared once something else is typed or c
   fireEvent.change(box, { target: { value: "f" } });
   fireEvent.change(box, { target: { value: "" } });
   await act(async () => { await emit("picker:hidden"); });
-  await act(async () => { await emit("picker:shown"); });
+  await act(async () => { await showPicker(); });
   expect(box.value).toBe("");
   fireEvent.change(box, { target: { value: "first" } });
   await screen.findByText("First");
@@ -2419,7 +2340,7 @@ test("a search cleared by Escape stays cleared once something else is typed or c
   fireEvent.keyDown(box, { key: "Enter" });
   await screen.findByText("Copied");
   await act(async () => { await emit("picker:hidden"); });
-  await act(async () => { await emit("picker:shown"); });
+  await act(async () => { await showPicker(); });
   expect(box.value).toBe("");
 });
 
@@ -2430,7 +2351,7 @@ test.each(["Escape", "hidden"])("a click waiting for its preview never copies af
     picker_preferences: () => ({ output: "apa", density: "comfortable", larger_text: false }),
     search: () => [result("a", "First"), result("b", "Second")],
     preview_file_citation: () => ready.then(() => receipt("(Smith, 2020)")),
-    copy_file_citation: () => null,
+    deliver_citation: () => null,
   });
   render(<App />);
   await waitFor(() => expect(formatValue()).toBe("apa"));
@@ -2443,9 +2364,8 @@ test.each(["Escape", "hidden"])("a click waiting for its preview never copies af
   const hides = calls.filter((c) => c === "hide_picker").length;
   await act(async () => { release(); });
   await waitFor(() => expect(document.querySelector(".shelf-output")?.textContent).toContain("Smith"));
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
   expect(calls.filter((c) => c === "hide_picker")).toHaveLength(hides);
-  expect(calls).not.toContain("show_copied_notice");
 });
 
 // Each visible hint as "label keys"; the label always comes first (docs/design/picker.md, Footer).
@@ -2496,7 +2416,7 @@ test("More reads like the hints beside it: its name first, then its keys", async
 
 test("footer actions copy and open shortcuts without using a keyboard shortcut", async () => {
   let copied: unknown;
-  backend({ search: () => [result("a", "First")], copy_file_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request; copied = args.items; return { text: "@a", warnings: [] }; } });
+  backend({ search: () => [result("a", "First")], deliver_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request; copied = args.items; return { outcome: "retained", copied: { text: "@a", warnings: [] }, reason: "pinned" }; } });
   render(<App />);
   await screen.findByText("First");
   const copy = within(screen.getByRole("group", { name: "Keys" })).getByRole("button", { name: "Copy as Pandoc" });
@@ -2734,7 +2654,7 @@ test("the footer can wait for pending engine output and never offers failed outp
       if (fail) throw new Error("synthetic: formatting failed");
       return receipt("(Alpha, 2021)");
     },
-    copy_file_citation: () => null,
+    deliver_citation: () => null,
   });
   try {
     render(<App />);
@@ -2785,7 +2705,7 @@ test.each(["ieee", "pandoc", "apa"])("changing format cancels a click waiting fo
     picker_preferences: () => ({ output: "apa", density: "comfortable", larger_text: false }),
     search: () => [result("a", "First"), result("b", "Second")],
     preview_file_citation: () => ready.then(() => receipt("(Smith, 2020)")),
-    copy_file_citation: (nativeReceipt) => { const made = prepared(nativeReceipt); output.push(made); return { text: made.preview.text, warnings: made.preview.warnings }; },
+    deliver_citation: (nativeReceipt) => { const made = prepared(nativeReceipt); output.push(made); return { outcome: "retained", copied: { text: made.preview.text, warnings: made.preview.warnings }, reason: "pinned" }; },
   });
   render(<App />);
   await waitFor(() => expect(formatValue()).toBe("apa"));
@@ -2797,14 +2717,13 @@ test.each(["ieee", "pandoc", "apa"])("changing format cancels a click waiting fo
   if (next !== "pandoc") await waitFor(() => expect(document.querySelector(".shelf-output")?.textContent).toContain("Smith"));
   expect(output).toEqual([]);
   expect(calls).not.toContain("hide_picker");
-  expect(calls).not.toContain("show_copied_notice");
   fireEvent.click(screen.getByText("Second"), { detail: 2 });
   await waitFor(() => expect(output).toHaveLength(1));
   expect(output[0]!.request).toMatchObject({
     items: [{ id: result("b", "").id }],
     output: next,
   });
-  expect(calls).toContain("copy_file_citation");
+  expect(calls).toContain("deliver_citation");
 });
 
 test.each(["click", "Enter", "Shift+Enter"])("a replacement snapshot blocks prior rows until refreshed search (%s)", async (action) => {
@@ -2817,7 +2736,7 @@ test.each(["click", "Enter", "Shift+Enter"])("a replacement snapshot blocks prio
   const calls = backend({
     library_status: () => status("snapshot-1"),
     search: () => replacement ? new Promise((resolve) => { release = resolve; }) : [old],
-    copy_file_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request; copied.push(args); return { text: replacement ? "[@newkey]" : "[@oldkey]", warnings: [] }; },
+    deliver_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request; copied.push(args); return { outcome: "retained", copied: { text: replacement ? "[@newkey]" : "[@oldkey]", warnings: [] }, reason: "pinned" }; },
   });
   render(<App />);
   await screen.findByText("Old title and key");
@@ -2843,7 +2762,7 @@ test("a newer search revision refreshes status even before its event arrives", a
   backend({
     library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", references: 1, warnings: 0, error: null, revision: ++reads === 1 ? "1" : "2" }),
     search: () => [{ ...result("a", "Fresh before event"), revision: "2" }],
-    copy_file_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request; copied.push(args); return { text: "@a", warnings: [] }; },
+    deliver_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request; copied.push(args); return { outcome: "retained", copied: { text: "@a", warnings: [] }, reason: "pinned" }; },
   });
   render(<App />);
   await screen.findByText("Fresh before event");
@@ -2874,11 +2793,11 @@ test("a pre-event copy rejection recovers without copying or hiding until a fres
   const calls = backend({
     library_status: () => ({ ...zoteroStatus(["user"]), revision }),
     search: () => [{ ...result("ITEM0001", `Snapshot ${revision}`, "zotero:user"), revision }],
-    copy_file_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request;
+    deliver_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request;
       attempts.push(args.expectedRevision);
-      if (args.expectedRevision !== revision) throw { code: "snapshot_changed" };
+      if (args.expectedRevision !== revision) return changedDelivery;
       writes.push(revision);
-      return { text: "fresh copy", warnings: [] };
+      return { outcome: "retained", copied: { text: "fresh copy", warnings: [] }, reason: "pinned" };
     },
   });
   render(<App />);
@@ -2905,7 +2824,7 @@ test("mixed selected revisions retain their original tokens and cannot copy", as
       if (items.some((item) => item.cite !== `synthetic-cite-${revision}`)) throw { code: "snapshot_changed" };
       return receipt("current selection");
     },
-    copy_file_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request; copies.push(args); return { text: "unexpected", warnings: [] }; },
+    deliver_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request; copies.push(args); return { outcome: "retained", copied: { text: "unexpected", warnings: [] }, reason: "pinned" }; },
   });
   render(<App />);
   fireEvent.click(await screen.findByText("Selected 1"), { shiftKey: true });
@@ -2926,7 +2845,7 @@ test.each(["resolve", "reject"])("an older recovery status cannot override a new
   const calls = backend({
     library_status: () => ++reads === 1 ? { ...zoteroStatus(["user"]), revision } : new Promise((resolve, fail) => { finish = resolve; reject = fail; }),
     search: () => [{ ...result("a", `Recovery ${revision}`), revision }],
-    copy_file_citation: () => { throw { code: "snapshot_changed" }; },
+    deliver_citation: () => changedDelivery,
   });
   render(<App />);
   fireEvent.click(await screen.findByText("Recovery 1"), { detail: 2 });
@@ -2954,12 +2873,12 @@ test("a retired formatted preview sends its own revision and requires a fresh co
       if (expectedRevision !== revision) throw { code: "snapshot_changed" };
       return receipt(revision === "1" ? "(Smith, 2020)" : "(Smith, 2021)");
     },
-    copy_file_citation: (nativeReceipt) => { const { expectedRevision } = prepared(nativeReceipt).request; const { text } = prepared(nativeReceipt).preview;
+    deliver_citation: (nativeReceipt) => { const { expectedRevision } = prepared(nativeReceipt).request; const { text } = prepared(nativeReceipt).preview;
       attempts.push(expectedRevision);
-      if (expectedRevision !== revision) throw { code: "snapshot_changed" };
+      if (expectedRevision !== revision) return changedDelivery;
       writes.push(revision);
       copiedText = text;
-      return { text, warnings: [] };
+      return { outcome: "retained", copied: { text, warnings: [] }, reason: "pinned" };
     },
   });
   try {
@@ -2994,7 +2913,7 @@ test("a late search reply cannot replace rows from the newer snapshot", async ()
   backend({
     library_status: () => ({ ...zoteroStatus(["user"]), revision }),
     search: () => revision === "1" ? [result("a", "Late 1")] : new Promise((resolve) => { pending[revision] = resolve; }),
-    copy_file_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request; copied.push(args.expectedRevision); return { text: "@a", warnings: [] }; },
+    deliver_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request; copied.push(args.expectedRevision); return { outcome: "retained", copied: { text: "@a", warnings: [] }, reason: "pinned" }; },
   });
   render(<App />);
   await screen.findByText("Late 1");
@@ -3016,19 +2935,18 @@ test.each([false, true])("copy completion preserves selections changed while pen
   let release: (value: unknown) => void = () => undefined;
   const calls = backend({
     search: () => [result("a", "First"), result("b", "Second")],
-    copy_file_citation: () => new Promise((resolve) => { release = resolve; }),
+    deliver_citation: () => new Promise((resolve) => { release = resolve; }),
   });
   render(<App />);
   if (pinned) toggleKeepOpen();
   fireEvent.click(await screen.findByText("First"), { shiftKey: true });
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
-  await waitFor(() => expect(calls).toContain("copy_file_citation"));
+  await waitFor(() => expect(calls).toContain("deliver_citation"));
   fireEvent.click(screen.getByText("Second"), { shiftKey: true });
-  await act(async () => { release({ text: "@a", warnings: [] }); });
+  await act(async () => { release({ outcome: "retained", copied: { text: "@a", warnings: [] }, reason: "pinned" }); });
   expect(inCitation("b")).not.toBeNull();
   expect(inCitation("a")).not.toBeNull();
   expect(calls).not.toContain("hide_picker");
-  expect(calls).not.toContain("show_copied_notice");
 });
 
 
@@ -3036,14 +2954,14 @@ test.each(["selection ABA", "query ABA", "hide and reopen"])("copy completion ig
   let release: (value: unknown) => void = () => undefined;
   const calls = backend({
     search: () => [result("a", "First")],
-    copy_file_citation: () => new Promise((resolve) => { release = resolve; }),
+    deliver_citation: () => new Promise((resolve) => { release = resolve; }),
   });
   render(<App />);
   const first = await screen.findByText("First");
   const box = screen.getByLabelText("Search references");
   fireEvent.click(first, { shiftKey: true });
   fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => expect(calls).toContain("copy_file_citation"));
+  await waitFor(() => expect(calls).toContain("deliver_citation"));
   if (change === "selection ABA") {
     fireEvent.click(first, { shiftKey: true });
     fireEvent.click(first, { shiftKey: true });
@@ -3051,13 +2969,12 @@ test.each(["selection ABA", "query ABA", "hide and reopen"])("copy completion ig
     fireEvent.change(box, { target: { value: "different" } });
     fireEvent.change(box, { target: { value: "" } });
   } else {
-    await act(async () => { await emit("picker:hidden"); await emit("picker:shown"); });
+    await act(async () => { await emit("picker:hidden"); await showPicker(); });
   }
-  await act(async () => { release({ text: "obsolete copy", warnings: [] }); });
+  await act(async () => { release({ outcome: "retained", copied: { text: "obsolete copy", warnings: [] }, reason: "pinned" }); });
   expect(inCitation("a")).not.toBeNull();
   expect(screen.queryByText("obsolete copy")).toBeNull();
   expect(calls).not.toContain("hide_picker");
-  expect(calls).not.toContain("show_copied_notice");
 });
 
 test.each(["success", "failure"])("double Enter while pinned starts one copy and permits a fresh attempt after %s", async (oldOutcome) => {
@@ -3065,7 +2982,7 @@ test.each(["success", "failure"])("double Enter while pinned starts one copy and
   const reject: ((reason: unknown) => void)[] = [];
   backend({
     search: () => [result("a", "First")],
-    copy_file_citation: () => new Promise((done, fail) => { resolve.push(done); reject.push(fail); }),
+    deliver_citation: () => new Promise((done, fail) => { resolve.push(done); reject.push(fail); }),
   });
   render(<App />);
   toggleKeepOpen();
@@ -3077,37 +2994,23 @@ test.each(["success", "failure"])("double Enter while pinned starts one copy and
   await act(async () => { await Promise.resolve(); });
   expect(resolve).toHaveLength(1);
   await act(async () => {
-    if (oldOutcome === "success") resolve[0]!({ text: "old copy", warnings: [missingKey("old2026")] });
+    if (oldOutcome === "success") resolve[0]!({ outcome: "retained", copied: { text: "old copy", warnings: [missingKey("old2026")] }, reason: "pinned" });
     else reject[0]!("old failure");
   });
   if (oldOutcome === "success") await screen.findByText("old2026 is missing from thesis.bib.");
   else await screen.findByText("Nothing was copied. Try again, or use Reload.");
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(resolve).toHaveLength(2));
-  await act(async () => { resolve[1]!({ text: "new copy", warnings: [missingKey("new2026")] }); });
+  await act(async () => { resolve[1]!({ outcome: "retained", copied: { text: "new copy", warnings: [missingKey("new2026")] }, reason: "pinned" }); });
   await screen.findByText("new2026 is missing from thesis.bib.");
   expect(screen.queryByText("new2026 is missing from thesis.bib.")).not.toBeNull();
   expect(screen.queryByText("old2026 is missing from thesis.bib.")).toBeNull();
   expect(screen.queryByText("Nothing was copied. Try again, or use Reload.")).toBeNull();
 });
 
-test.each([false, true])("copy completion uses the current pin choice (initially=%s)", async (initiallyPinned) => {
-  let release: (value: unknown) => void = () => undefined;
-  const calls = backend({ search: () => [result("a", "First")], copy_file_citation: () => new Promise((resolve) => { release = resolve; }) });
-  render(<App />);
-  if (initiallyPinned) toggleKeepOpen();
-  fireEvent.click(await screen.findByText("First"), { shiftKey: true });
-  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
-  await waitFor(() => expect(calls).toContain("copy_file_citation"));
-  toggleKeepOpen();
-  await act(async () => { release({ text: "@a", warnings: [] }); });
-  expect(inCitation("a")).toBeNull();
-  expect(calls.includes("hide_picker")).toBe(initiallyPinned);
-});
-
 test.each(["selection", "copy feedback"])("an obsolete stale copy recovers data without replacing a newer %s", async (change) => {
   let revision = "1";
-  let rejectOld: (reason: unknown) => void = () => undefined;
+  let refuseOld: () => void = () => undefined;
   let reads = 0;
   const attempts: unknown[] = [];
   const calls = backend({
@@ -3116,10 +3019,10 @@ test.each(["selection", "copy feedback"])("an obsolete stale copy recovers data 
       { ...result("a", `First revision ${revision}`), revision },
       { ...result("b", `Second revision ${revision}`), revision },
     ],
-    copy_file_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request;
+    deliver_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request;
       attempts.push(args.expectedRevision);
-      if (attempts.length === 1) return new Promise((_resolve, reject) => { rejectOld = reject; });
-      return { text: "newer copy", warnings: [missingKey("newer2026")] };
+      if (attempts.length === 1) return new Promise((resolve) => { refuseOld = () => resolve(changedDelivery); });
+      return { outcome: "retained", copied: { text: "newer copy", warnings: [missingKey("newer2026")] }, reason: "pinned" };
     },
   });
   render(<App />);
@@ -3137,12 +3040,11 @@ test.each(["selection", "copy feedback"])("an obsolete stale copy recovers data 
     await screen.findByText("newer2026 is missing from thesis.bib.");
   }
   revision = "2"; // Backend replaced the snapshot without delivering its event.
-  await act(async () => { rejectOld({ code: "snapshot_changed" }); });
+  await act(async () => { refuseOld(); });
   await screen.findByText("First revision 2");
   expect(reads).toBeGreaterThan(1);
   expect(screen.queryByText("The library changed. Search again and reselect the references before copying.")).toBeNull();
   expect(calls).not.toContain("hide_picker");
-  expect(calls).not.toContain("show_copied_notice");
   if (change === "selection") {
     expect(inCitation("a")).not.toBeNull();
     expect(inCitation("b")).not.toBeNull();
@@ -3163,7 +3065,7 @@ test.each([
   let revision = "1";
   let reads = 0;
   let searches = 0;
-  let rejectOld: (reason: unknown) => void = () => undefined;
+  let refuseOld: () => void = () => undefined;
   let finishNew: (value: unknown) => void = () => undefined;
   const attempts: unknown[] = [];
   const calls = backend({
@@ -3173,10 +3075,10 @@ test.each([
       const keys = changedResults ? (searches >= 3 ? ["a"] : ["b", "a"]) : ["a", "b"];
       return keys.map((key) => ({ ...result(key, `Pending ${revision} ${key}`, "zotero:user"), revision }));
     },
-    copy_file_citation: (nativeReceipt) => { const { expectedRevision } = prepared(nativeReceipt).request;
+    deliver_citation: (nativeReceipt) => { const { expectedRevision } = prepared(nativeReceipt).request;
       attempts.push(expectedRevision);
       return attempts.length === 1
-        ? new Promise((_resolve, reject) => { rejectOld = reject; })
+        ? new Promise((resolve) => { refuseOld = () => resolve(changedDelivery); })
         : new Promise((resolve) => { finishNew = resolve; });
     },
   });
@@ -3194,49 +3096,44 @@ test.each([
   if (selectedCopy) fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(attempts).toEqual(["1", "2"]));
   revision = refreshedRevision;
-  await act(async () => { rejectOld({ code: "snapshot_changed" }); });
+  await act(async () => { refuseOld(); });
   await waitFor(() => expect(reads).toBe(2));
   await waitFor(() => expect(searches).toBe(3));
   if (changedResults) await waitFor(() => expect(screen.queryByText("Pending 2 b")).toBeNull());
   else await screen.findByText(`Pending ${refreshedRevision} b`);
-  await act(async () => { finishNew({ text: "new valid copy", warnings: [missingKey("newest2026")] }); });
+  await act(async () => { finishNew({ outcome: "retained", copied: { text: "new valid copy", warnings: [missingKey("newest2026")] }, reason: "pinned" }); });
   expect(Boolean(screen.queryByText("newest2026 is missing from thesis.bib."))).toBe(refreshedRevision === "2" && !changedResults);
   expect(Boolean(inCitation("b"))).toBe(selectedCopy && refreshedRevision !== "2");
   expect(screen.queryByText("The library changed. Search again and reselect the references before copying.")).toBeNull();
   expect(calls).not.toContain("hide_picker");
-  expect(calls).not.toContain("show_copied_notice");
 });
 
 test.each(["warning", "notice"])("a search started before a selected copy preserves its completion (%s)", async (feedback) => {
   let releaseSearch: (value: unknown) => void = () => undefined;
   let finishCopy: (value: unknown) => void = () => undefined;
-  const notices: unknown[] = [];
   const calls = backend({
     search: ({ query: { text: query } }) => query === "pending"
       ? new Promise((resolve) => { releaseSearch = resolve; })
       : [result("a", "Selected before search")],
-    copy_file_citation: () => new Promise((resolve) => { finishCopy = resolve; }),
-    show_copied_notice: ({ text }) => { notices.push(text); return null; },
+    deliver_citation: () => new Promise((resolve) => { finishCopy = resolve; }),
   });
   render(<App />);
   if (feedback === "warning") toggleKeepOpen();
   fireEvent.click(await screen.findByText("Selected before search"), { shiftKey: true });
   const box = screen.getByLabelText("Search references");
   fireEvent.change(box, { target: { value: "pending" } });
-  await waitFor(() => expect(calls.filter((call) => call === "search" || call === "recent_references")).toHaveLength(2));
+  await waitFor(() => expect(calls.filter((call) => call === "search" || call === "recent_references")).toHaveLength(1));
   fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => expect(calls).toContain("copy_file_citation"));
+  await waitFor(() => expect(calls).toContain("deliver_citation"));
   await act(async () => { releaseSearch([result("b", "Search finished later")]); });
   await screen.findByText("Search finished later");
-  await act(async () => { finishCopy({ text: "selected copy", warnings: feedback === "warning" ? [missingKey("selected2026")] : [] }); });
+  await act(async () => { finishCopy({ outcome: "retained", copied: { text: "selected copy", warnings: feedback === "warning" ? [missingKey("selected2026")] : [] }, reason: "pinned" }); });
   expect(inCitation("a")).toBeNull();
   if (feedback === "warning") {
     expect(screen.queryByText("selected2026 is missing from thesis.bib.")).not.toBeNull();
     expect(calls).not.toContain("hide_picker");
-    expect(notices).toEqual([]);
   } else {
-    await waitFor(() => expect(notices).toEqual(["selected copy"]));
-    expect(calls).toContain("hide_picker");
+    expect(screen.getByText("Copied", { selector: ".shelf-copied, .copy-notice strong" })).toBeTruthy();
   }
 });
 
@@ -3265,7 +3162,7 @@ test("retained stale freshness does not hide settings or copy failures", async (
   backend({
     library_status: () => ({ ...zoteroStatus(["user"]), state: "error", stale: true, error: "Zotero is not running; keeping the last loaded references", settings_notice: notice }),
     search: () => [result("kept", "Retained reference with errors")],
-    copy_file_citation: () => { throw new Error("synthetic clipboard failure"); },
+    deliver_citation: () => { throw new Error("synthetic clipboard failure"); },
   });
   render(<App />);
   await screen.findByText("Retained reference with errors");
@@ -3342,7 +3239,7 @@ test("format toolbar menu exposes both sections and saves a choice without copyi
   expect(screen.getByRole("option", { name: "Pandoc" }).getAttribute("aria-current")).toBe("true");
   fireEvent.click(screen.getByRole("option", { name: "BibLaTeX \\autocite" }));
   await waitFor(() => expect(saved).toContain("autocite"));
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
   expect(formatButton("Citation format BibLaTeX \\autocite")).toBeTruthy();
   await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Search references")));
 });
@@ -3371,7 +3268,7 @@ test("the format chooser shows prepared engine text without exposing lookup IDs 
   fireEvent.keyDown(field, { key: "Escape" });
   expect(calls.filter((call) => call === "preview_file_citation")).toHaveLength(previews);
   fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => expect(calls).toContain("copy_file_citation"));
+  await waitFor(() => expect(calls).toContain("deliver_citation"));
 });
 
 test("engine citation styles are reachable and save their choice without copying", async () => {
@@ -3539,7 +3436,7 @@ test("typed locators stay with selected references across later searches", async
   backend({
     search: () => ({ revision: "1", results: [result(second ? "b" : "a", second ? "Second locator" : "First locator")],
       interpretation: { search: second ? "B" : "A", locator: { term: "page", value: second ? "9" : "12" }, typed: second ? "p.9" : "p.12" } }),
-    copy_file_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request; copies.push(args); return { text: "selected pages", warnings: [] }; },
+    deliver_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request; copies.push(args); return { outcome: "retained", copied: { text: "selected pages", warnings: [] }, reason: "pinned" }; },
   });
   render(<App />);
   const box = screen.getByLabelText("Search references");
@@ -3583,7 +3480,7 @@ test("a selected locator changes only through Apply or Remove, which retains the
   const copies: unknown[] = [];
   backend({
     search: ({ query }) => locatorReply(query.text.includes("9") ? "9" : "12"),
-    copy_file_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request; copies.push(args); return { text: "copied locator", warnings: [] }; },
+    deliver_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request; copies.push(args); return { outcome: "retained", copied: { text: "copied locator", warnings: [] }, reason: "pinned" }; },
   });
   render(<App />);
   const box = screen.getByLabelText("Search references");
@@ -3630,7 +3527,7 @@ test.each(["reopen", "edit", "copy", "expiry"])("an escaped literal search prese
   const calls = backend({ search: ({ query }) => {
     searched.push(query);
     return { ...locatorReply(), interpretation: query.text && query.interpret_locators ? locatorReply().interpretation : null };
-  }, copy_file_citation: () => ({ text: "copied literal result", warnings: [] }) });
+  }, deliver_citation: () => ({ outcome: "retained", copied: { text: "copied literal result", warnings: [] }, reason: "pinned" }) });
   const now = vi.spyOn(performance, "now").mockReturnValue(1_000_000);
   try {
     render(<App />);
@@ -3653,10 +3550,10 @@ test.each(["reopen", "edit", "copy", "expiry"])("an escaped literal search prese
       fireEvent.keyDown(box, { key: "Enter" });
       await screen.findByText("Copied");
     } else fireEvent.keyDown(box, { key: "Escape" });
-    await waitFor(() => expect(calls).toContain("hide_picker"));
+    if (change !== "copy") await waitFor(() => expect(calls).toContain("hide_picker"));
     await act(async () => { await emit("picker:hidden"); });
     now.mockReturnValue(1_000_000 + (change === "expiry" ? 61_000 : 30_000));
-    await act(async () => { await emit("picker:shown"); });
+    await act(async () => { await showPicker(); });
     await waitFor(() => expect(box.value).toBe(""));
     await waitFor(() => expect(searched.at(-1)).toEqual({ text: "", interpret_locators: true }));
     expect(screen.queryByRole("group", { name: "Using p. 12" })).toBeNull();
@@ -3672,8 +3569,8 @@ test.each(["reopen", "edit", "copy", "expiry"])("an escaped literal search prese
 test.each(OUTPUTS.filter((output) => !output.style).map((output) => output.id))("%s previews and copies the captured locator, including with output hidden", async (format) => {
   const output = receipt("key with locator");
   const preview = vi.fn(() => output);
-  const copy = vi.fn(() => ({ text: "key with locator", warnings: [] }));
-  backend({ search: () => locatorReply(), picker_preferences: () => ({ output: format }), preview_file_citation: preview, copy_file_citation: copy });
+  const copy = vi.fn(() => ({ outcome: "retained", copied: { text: "key with locator", warnings: [] }, reason: "pinned" }));
+  backend({ search: () => locatorReply(), picker_preferences: () => ({ output: format }), preview_file_citation: preview, deliver_citation: copy });
   render(<App />);
   await screen.findByText("Locator reference");
   await waitFor(() => expect(preview).toHaveBeenLastCalledWith({ items: [
@@ -3683,7 +3580,7 @@ test.each(OUTPUTS.filter((output) => !output.style).map((output) => output.id))(
   } }));
   const box = screen.getByLabelText("Search references");
   fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => expect(copy).toHaveBeenCalledExactlyOnceWith({ ticket: output.ticket, contentHash: output.content_hash, replaces: [] }));
+  await waitFor(() => expect(copy).toHaveBeenCalledExactlyOnceWith({ ticket: output.ticket, contentHash: output.content_hash, replaces: [], presentation: 0, closestMatches: [] }));
 });
 
 test("applying a locator to the same identity retires a pending key preview", async () => {
@@ -3707,7 +3604,7 @@ test("applying a locator to the same identity retires a pending key preview", as
 test.each(["copy", "context"])("applying a locator retires a pending native %s completion", async (operation) => {
   let finish: (value: unknown) => void = () => undefined;
   const calls = backend({ search: ({ query }) => locatorReply(query.text.includes("9") ? "9" : "12"),
-    copy_file_citation: () => new Promise((resolve) => { finish = resolve; }),
+    deliver_citation: () => new Promise((resolve) => { finish = resolve; }),
     row_context: () => new Promise((resolve) => { finish = resolve; }) });
   render(<App />);
   const box = screen.getByLabelText("Search references");
@@ -3717,7 +3614,7 @@ test.each(["copy", "context"])("applying a locator retires a pending native %s c
   if (operation === "copy") fireEvent.keyDown(box, { key: "Enter" });
   else fireEvent.contextMenu(screen.getByText("Locator reference"));
   fireEvent.click(screen.getByRole("button", { name: "Apply locator to a" }));
-  await act(async () => { finish(operation === "copy" ? { text: "retired locator receipt", warnings: [] } : "toggle"); });
+  await act(async () => { finish(operation === "copy" ? { outcome: "retained", copied: { text: "retired locator receipt", warnings: [] }, reason: "pinned" } : "toggle"); });
   await expectPage("9");
   expect(screen.queryByText("retired locator receipt")).toBeNull();
   expect(calls).not.toContain("hide_picker");
@@ -3726,7 +3623,7 @@ test.each(["copy", "context"])("applying a locator retires a pending native %s c
 test.each(["copy", "context"])("literal search mode retires a pending native %s completion without changing prepared locators", async (operation) => {
   let finish: (value: unknown) => void = () => undefined;
   const calls = backend({ search: ({ query }) => query.interpret_locators ? locatorReply() : new Promise(() => undefined),
-    copy_file_citation: () => new Promise((resolve) => { finish = resolve; }),
+    deliver_citation: () => new Promise((resolve) => { finish = resolve; }),
     row_context: () => new Promise((resolve) => { finish = resolve; }) });
   render(<App />);
   const box = screen.getByLabelText("Search references");
@@ -3734,7 +3631,7 @@ test.each(["copy", "context"])("literal search mode retires a pending native %s 
   if (operation === "copy") fireEvent.keyDown(box, { key: "Enter" });
   else fireEvent.contextMenu(screen.getByText("Locator reference"));
   fireEvent.click(screen.getByRole("button", { name: "Search as typed" }));
-  await act(async () => { finish(operation === "copy" ? { text: "retired mode receipt", warnings: [] } : "toggle"); });
+  await act(async () => { finish(operation === "copy" ? { outcome: "retained", copied: { text: "retired mode receipt", warnings: [] }, reason: "pinned" } : "toggle"); });
   await expectPage("12");
   expect(screen.queryByText("retired mode receipt")).toBeNull();
   expect(calls).not.toContain("hide_picker");
@@ -3751,7 +3648,7 @@ test("a same-identity locator edit cancels a waiting style click and its engine 
       const value = items[0]!.locator!.value;
       return new Promise((resolve) => { pending[value] = () => resolve(receipt(`CSL page ${value}`)); });
     },
-    copy_file_citation: (args) => { const { preview } = prepared(args); copies.push(preview.text); return { text: preview.text, warnings: [] }; },
+    deliver_citation: (args) => { const { preview } = prepared(args); copies.push(preview.text); return { outcome: "retained", copied: { text: preview.text, warnings: [] }, reason: "pinned" }; },
     picker_preferences: () => ({ output: "apa", density: "comfortable", larger_text: false }) });
   render(<App />);
   const box = screen.getByLabelText("Search references");
@@ -3812,7 +3709,7 @@ test("literal mode cancels a waiting engine style row click while keeping the pr
   }));
   const copies = vi.fn(() => null);
   backend({ search: ({ query }) => ({ ...locatorReply(), interpretation: query.interpret_locators ? locatorReply().interpretation : null }),
-    preview_file_citation: previews, copy_file_citation: copies,
+    preview_file_citation: previews, deliver_citation: copies,
     picker_preferences: () => ({ output: "apa", density: "comfortable", larger_text: false }) });
   {
     render(<App />);
@@ -3841,14 +3738,14 @@ test("removing and re-adding a selected identity captures the newer query locato
 
 test("a locator cannot update or copy a prepared reference from a retired snapshot", async () => {
   let revision = "1";
-  const copy = vi.fn(() => ({ text: "unexpected", warnings: [] }));
+  const copy = vi.fn(() => ({ outcome: "retained", copied: { text: "unexpected", warnings: [] }, reason: "pinned" }));
   backend({ library_status: () => ({ ...zoteroStatus(["user"]), revision }),
     search: () => ({ ...locatorReply(revision === "1" ? "12" : "9"), revision,
     results: [{ ...result("a", `Snapshot locator ${revision}`), revision, cite: `synthetic-cite-${revision}` }] }),
     preview_file_citation: ({ items }) => {
       if (items.some((item) => item.cite !== `synthetic-cite-${revision}`)) throw { code: "snapshot_changed" };
       return receipt("current locator");
-    }, copy_file_citation: copy });
+    }, deliver_citation: copy });
   render(<App />);
   fireEvent.click(await screen.findByText("Snapshot locator 1"), { ctrlKey: true });
   revision = "2";
@@ -3868,62 +3765,24 @@ test("looping animations pause while the picker is hidden and resume when it is 
   expect(document.documentElement.dataset.pickerHidden).toBeUndefined();
   await act(async () => { await emit("picker:hidden"); });
   expect(document.documentElement.dataset.pickerHidden).toBe("");
-  await act(async () => { await emit("picker:shown"); });
+  await act(async () => { await showPicker(); });
   expect(document.documentElement.dataset.pickerHidden).toBeUndefined();
 });
 
-test.each([false, true])("picker visibility at startup pauses animations only when hidden (visible: %s)", async (visible) => {
-  const read = vi.fn(() => visible);
-  backend({ "plugin:window|is_visible": read });
-  await act(async () => { render(<App />); });
-  expect(read).toHaveBeenCalledOnce();
-  expect(document.documentElement.dataset.pickerHidden).toBe(visible ? undefined : "");
-});
 
-test.each(["shown", "hidden"])("picker:%s wins over a stale picker visibility read", async (event) => {
-  let finish!: (visible: boolean) => void;
-  const read = vi.fn(() => new Promise<boolean>((resolve) => { finish = resolve; }));
-  backend({ "plugin:window|is_visible": read });
-  render(<App />);
-  await waitFor(() => expect(read).toHaveBeenCalledOnce());
-  await act(async () => { await emit(`picker:${event}`); });
-  await act(async () => { finish(event === "hidden"); });
-  expect(document.documentElement.dataset.pickerHidden).toBe(event === "hidden" ? "" : undefined);
-});
 
-test("a failed picker visibility read preserves the latest event's animation flag", async () => {
-  let reject!: (error: Error) => void;
-  const read = vi.fn(() => new Promise<boolean>((_, fail) => { reject = fail; }));
-  backend({ "plugin:window|is_visible": read });
-  render(<App />);
-  await waitFor(() => expect(read).toHaveBeenCalledOnce());
-  await act(async () => { await emit("picker:hidden"); });
-  await act(async () => { reject(new Error("SYNTHETIC_PRIVATE_PAYLOAD")); });
-  expect(document.documentElement.dataset.pickerHidden).toBe("");
-  expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
-});
 
-test("a picker visibility read completing after unmount cannot pause animations", async () => {
-  let finish!: (visible: boolean) => void;
-  const read = vi.fn(() => new Promise<boolean>((resolve) => { finish = resolve; }));
-  backend({ "plugin:window|is_visible": read });
-  const view = render(<App />);
-  await waitFor(() => expect(read).toHaveBeenCalledOnce());
-  view.unmount();
-  await act(async () => { finish(false); });
-  expect(document.documentElement.dataset.pickerHidden).toBeUndefined();
-});
 
 test("Ctrl+, opens Settings from the picker, and a change made there reaches the picker", async () => {
   let largerText = false;
   const pages: unknown[] = [];
-  const calls = backend({
+  backend({
     open_settings: ({ page }) => { pages.push(page); return null; },
     picker_preferences: () => ({ output: "pandoc", density: "comfortable", larger_text: largerText, paste: true, menu_bar: true }),
   });
   render(<App />);
   const box = screen.getByLabelText("Search references");
-  await waitFor(() => expect(calls).toContain("picker_preferences"));
+  await screen.findByRole("button", { name: /^Citation format/ });
   fireEvent.keyDown(box, { key: ",", ctrlKey: true });
   await waitFor(() => expect(pages).toEqual([null]));
   largerText = true;

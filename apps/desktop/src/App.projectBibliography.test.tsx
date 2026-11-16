@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import type { EntryCopy, ProjectStatus } from "./api";
-import { backend, chooseFromMore, receipt, resetApp, result } from "./testing/app";
+import { backend, chooseFromMore, receipt, resetApp, result, showPicker } from "./testing/app";
 import { missingKey } from "./test-fixtures";
 
 afterEach(resetApp);
@@ -15,7 +15,7 @@ test("an unreadable bibliography is a warning with Retry: Enter copies, says why
     search: () => [result("a", "Invented work")],
     "project-status": () => file({ state: "failed", reason: "It is not there, or not on this computer yet." }),
     preview_file_citation: () => ({ ...receipt("[@a]"), warnings: [warning] }),
-    copy_file_citation: () => ({ text: "[@a]", warnings: [warning] }),
+    deliver_citation: () => ({ outcome: "retained", copied: { text: "[@a]", warnings: [warning] }, reason: "pinned" }),
   });
   render(<App />);
   await screen.findByText("Invented work");
@@ -24,7 +24,7 @@ test("an unreadable bibliography is a warning with Retry: Enter copies, says why
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));
   await waitFor(() => expect(called).toContain("retry-project"));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
-  await waitFor(() => expect(called).toContain("copy_file_citation"));
+  await waitFor(() => expect(called).toContain("deliver_citation"));
   await waitFor(() => expect(screen.getAllByText("Couldn’t check a against thesis.bib.").length).toBeGreaterThan(0));
   expect(called).not.toContain("hide_picker");
 });
@@ -37,7 +37,7 @@ test("a known wrong-work key is refused and never reaches native copy, by Enter 
   await screen.findByText("A key in thesis.bib identifies a different work.");
   expect(document.querySelector<HTMLButtonElement>(".footer-action")?.disabled).toBe(true);
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
-  expect(called).not.toContain("copy_file_citation");
+  expect(called).not.toContain("deliver_citation");
   // Dragging delivers what Enter pastes, so it delivers nothing here either.
   const beak = document.querySelector<HTMLElement>(".shelf-leading")!;
   expect(beak.getAttribute("draggable")).toBeNull();
@@ -52,7 +52,7 @@ test("Retry checks again and keeps the citation, but does not replay the refused
     "project-status": () => file({ revision: refused ? 1 : 2 }),
     preview_file_citation: () => ({ ...receipt("[@a]"), project_refusal: refused ? "A key in thesis.bib identifies a different work." : null }),
     "retry-project": async () => { refused = false; await emit("project:changed", [1, 2]); },
-    copy_file_citation: () => ({ text: "[@a]", warnings: [] }),
+    deliver_citation: () => ({ outcome: "retained", copied: { text: "[@a]", warnings: [] }, reason: "pinned" }),
   });
   render(<App />);
   await screen.findByText("A key in thesis.bib identifies a different work.");
@@ -60,10 +60,10 @@ test("Retry checks again and keeps the citation, but does not replay the refused
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));
   await waitFor(() => expect(screen.queryByRole("button", { name: "Retry" })).toBeNull());
   expect(called.filter((command) => command === "retry-project")).toHaveLength(1);
-  expect(called).not.toContain("copy_file_citation");
+  expect(called).not.toContain("deliver_citation");
   expect(screen.getByText("Invented work")).toBeTruthy();
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
-  await waitFor(() => expect(called.filter((command) => command === "copy_file_citation")).toHaveLength(1));
+  await waitFor(() => expect(called.filter((command) => command === "deliver_citation")).toHaveLength(1));
 });
 
 const file = (over: Partial<ProjectStatus> = {}): ProjectStatus => ({ generation: 1, revision: 1, name: "thesis.bib", state: "ready", reason: null, damaged_lines: [], ...over });
@@ -100,7 +100,7 @@ test("a citation with a warning stays open and says why instead of pasting", asy
   const warning = missingKey("okafor2018");
   picker("missing", () => file(), {
     preview_file_citation: () => receipt("[@okafor2018]", null, [warning]),
-    copy_file_citation: () => ({ text: "[@okafor2018]", warnings: [warning] }),
+    deliver_citation: () => ({ outcome: "retained", copied: { text: "[@okafor2018]", warnings: [warning] }, reason: "pinned" }),
   });
   await waitFor(() => expect(shownRow()).toContain("Missing from thesis.bib"));
   await waitFor(() => expect(document.body.textContent).toContain("[@okafor2018]"));
@@ -174,7 +174,7 @@ test("the status survives the picker closing and opening again", async () => {
   picker("missing", () => file());
   await waitFor(() => expect(shownRow()).toContain("Missing from thesis.bib"));
   await act(() => emit("picker:hidden"));
-  await act(() => emit("picker:shown", 1));
+  await act(() => showPicker(1));
   await waitFor(() => expect(shownRow()).toContain("Missing from thesis.bib"));
 });
 
@@ -236,7 +236,7 @@ test("Enter while the bibliography is still reading copies once the read ends, w
     search: () => [result("a", "First")],
     // The engine refuses a key output whose project read has not finished.
     preview_file_citation: () => reading ? Promise.reject({ code: "cancelled" }) : receipt("[@a]"),
-    copy_file_citation: () => ({ outcome: "copied", warnings: [] }),
+    deliver_citation: () => ({ outcome: "retained", copied: { text: "[@a]", warnings: [] }, reason: "pinned" }),
   });
   render(<App />);
   const box = screen.getByLabelText("Search references");
@@ -248,7 +248,7 @@ test("Enter while the bibliography is still reading copies once the read ends, w
   expect(screen.queryAllByText("This citation could not be prepared. Close and reopen Ibis to try again.")).toHaveLength(0);
   reading = false;
   await act(() => emit("project:changed", [1, 2]));
-  await waitFor(() => expect(calls.filter((call) => call === "copy_file_citation")).toHaveLength(1));
+  await waitFor(() => expect(calls.filter((call) => call === "deliver_citation")).toHaveLength(1));
   expect(screen.queryAllByText("This citation could not be prepared. Close and reopen Ibis to try again.")).toHaveLength(0);
 });
 

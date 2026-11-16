@@ -28,8 +28,8 @@ test("an older Settings notification read cannot restore the wrong global output
     pickerPreferences: () => reads.shift()!,
     ...owner(vi.fn(async () => ({ preferences }))), quit: vi.fn(async () => undefined),
   }, context));
-  act(() => result.current.loadPreferences(() => true));
-  act(() => result.current.loadPreferences(() => true));
+  await act(async () => result.current.preferencesChanged(undefined, undefined, () => true));
+  await act(async () => result.current.preferencesChanged(undefined, undefined, () => true));
   await act(async () => { second.resolve({ ...preferences, output: "cite" }); });
   expect(result.current.format).toBe("cite");
   await act(async () => { first.resolve({ ...preferences, output: "apa" }); });
@@ -45,9 +45,9 @@ test("a global key choice during a stale Settings read wins and sends only its f
     pickerPreferences: async () => reading ? old.promise : { ...preferences, output: "apa" },
     ...owner(setPickerPreferences), quit: async () => undefined,
   }, context));
-  await act(async () => { result.current.loadPreferences(() => true); });
+  await act(async () => { result.current.preferencesChanged(undefined, undefined, () => true); });
   reading = true;
-  act(() => result.current.loadPreferences(() => true));
+  act(() => result.current.preferencesChanged(undefined, undefined, () => true));
   act(() => { void result.current.chooseFormat("cite"); });
   await act(async () => { save.resolve({ preferences: { ...preferences, output: "apa", key_output: "cite" } }); });
   await act(async () => { old.resolve({ ...preferences, output: "apa" }); });
@@ -65,7 +65,7 @@ test("a queued key-format save never replays a style acknowledged before it reac
     }));
   const { result } = renderHook(() => usePickerPreferences({
     pickerPreferences: async () => ({ ...preferences, output: "apa" }), ...owner(setPickerPreferences), quit: async () => undefined }, context));
-  await act(async () => { result.current.loadPreferences(() => true); });
+  await act(async () => { result.current.preferencesChanged(undefined, undefined, () => true); });
   act(() => { void result.current.chooseFormat("chicago-author-date"); });
   act(() => { void result.current.chooseFormat("cite"); });
   await act(async () => { output.resolve({ preferences: { ...preferences, output: "chicago-author-date" } }); });
@@ -86,7 +86,7 @@ test("a failed later output stays applied in the picker and is never sent again"
   });
   const { result } = renderHook(() => usePickerPreferences({ pickerPreferences: async () => state,
     ...owner(setPickerPreferences), quit: async () => undefined }, context));
-  await act(async () => { result.current.loadPreferences(() => true); });
+  await act(async () => { result.current.preferencesChanged(undefined, undefined, () => true); });
   act(() => { void result.current.chooseFormat("cite"); });
   act(() => { void result.current.chooseFormat("ieee"); });
   act(() => { void result.current.chooseFormat("typst"); });
@@ -109,12 +109,12 @@ test("reopening after a failed first read applies the saved choices and clears t
     }, { ...context, report: operations.report, perform: operations.perform });
     return { picker, failures: operations.failures };
   });
-  await act(async () => { result.current.picker.loadPreferences(() => true); });
+  await act(async () => { result.current.picker.preferencesChanged(undefined, undefined, () => true); });
   expect(result.current.failures.preferences).toBe(true);
   expect(result.current.picker.format).not.toBe("ieee");
   // The file can be read again, and the picker reads it when it is shown.
   readable = true;
-  await act(async () => { result.current.picker.loadPreferences(() => true); });
+  await act(async () => { result.current.picker.preferencesChanged(undefined, undefined, () => true); });
   expect(result.current.picker.format).toBe("ieee");
   expect(result.current.picker.density).toBe("compact");
   expect(result.current.failures.preferences).toBeFalsy();

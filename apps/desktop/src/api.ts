@@ -1,12 +1,11 @@
 // UI conveniences around the generated Rust command contract.
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { OutputId } from "./format/outputs";
 import { commands, type CommandError, type PreferenceChange } from "./bindings";
 import { events, type Source } from "./nativeEvents";
 
 export type { Sources } from "./bindings";
 export type {
-  AppPaste, Copied, Density, EntryCopy, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PastedList, PickerDestination, PickerPreferences, ProjectStatus, SearchQuery, SearchResult, SessionBibliography, SessionEdit, SessionReferencesView, ShortcutStatus, ZoteroGroup, ZoteroLibrary, ZoteroProfiles,
+  AppPaste, Copied, Density, EntryCopy, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PastedList, PickerDestination, PickerPreferences, PickerSnapshot, ProjectStatus, SearchQuery, SearchResult, SessionBibliography, SessionEdit, SessionReferencesView, ShortcutStatus, ZoteroGroup, ZoteroLibrary, ZoteroProfiles,
   WritingView, WritingsView, WritingEdit,
 } from "./bindings";
 /** What the notice after a copy says: pasted into an app, or copied and why. */
@@ -33,7 +32,8 @@ export const {
   openLibrarySource,
   librarySource,
   hidePicker,
-  pickerPresentation,
+  pickerSnapshot,
+  pickerRendered,
   pickerMoving,
   setPinned,
   quit,
@@ -62,8 +62,8 @@ export const editWriting = (context: string, action: import("./bindings").Writin
 export const projectStatus = () => commands.appContext({ kind: "project-status" }).then((view) => view.project);
 export const stopProject = () => commands.appContext({ kind: "stop-project" }).then(() => {});
 
-export function copyFileCitation(ticket: string, contentHash: string, replaces: readonly string[] | null) {
-  return commands.copyFileCitation(ticket, contentHash, [...replaces ?? []]);
+export function deliverCitation(ticket: string, contentHash: string, replaces: readonly string[] | null, presentation: number, closestMatches: import("./bindings").ClosestMatch[]) {
+  return commands.deliverCitation(ticket, contentHash, [...replaces ?? []], presentation, closestMatches);
 }
 
 /** Retry refreshes evidence only; the person chooses insertion afresh. */
@@ -146,11 +146,6 @@ export function search(query: string, limit = 20, scope: string[] | null = null,
   return commands.search({ text: query, interpret_locators: interpretLocators }, limit, searchPage, searchRequest, scope);
 }
 
-/** Read visibility after subscribing, including hidden startup without an event. */
-export function pickerVisible(): Promise<boolean> {
-  return getCurrentWindow().isVisible();
-}
-
 // The picker's native events; `events` names each once (nativeEvents.ts).
 export const {
   onPickerShown, onPickerPreparing, onPickerHidden, onSearchRequested, onWindowReset, onShortcutStatus, onWritingsChanged,
@@ -191,10 +186,5 @@ export function newerUpdate(old: UpdateProgress | null, next: UpdateProgress): U
   const distance = old ? (next.revision - old.revision) >>> 0 : 1;
   return !old || next.attempt > old.attempt ||
     (next.attempt === old.attempt && distance > 0 && distance < 0x80000000) ? next : old;
-}
-
-/** Delivery still receives the full canonical text; only the receipt is shortened. */
-export function showCopiedNotice(text: string, delivery: number | null, summary: import("./bindings").ReceiptSummary | null = null) {
-  return commands.showCopiedNotice(text, delivery, summary);
 }
 

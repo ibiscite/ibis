@@ -96,16 +96,15 @@ pub(in crate::mcp) fn offered_tool(
 }
 
 /// Refused unless the person lets AI apps read `library`'s attachment text.
-fn permit(engine: &Engine, formats: &Formats, library: &ibis_core::contract::LibraryId) -> Result<(), Refusal> {
-    let allowed = match settings(formats) {
-        Some(settings) => engine.attachment_text_allowed(&settings, library)?,
-        None => false,
-    };
-    if allowed {
-        Ok(())
-    } else {
-        Err(Refusal::bad(ToolProblem::AttachmentText, &[]))
+fn permit(engine: &Engine, formats: &Formats, library: &ibis_core::contract::LibraryId) -> Result<Engine, Refusal> {
+    if let Some(settings) = settings(formats)
+        && engine.attachment_text_allowed(&settings, library)?
+    {
+        return Ok(engine
+            .clone()
+            .with_attachment_text_outside_library(settings.device.attachment_text_outside_library));
     }
+    Err(Refusal::bad(ToolProblem::AttachmentText, &[]))
 }
 
 fn attachment_input() -> Value {
@@ -248,7 +247,7 @@ fn outline(
         return Err(EngineError::new(ErrorCode::NotFound).into());
     }
     let id = found.object.id().clone();
-    permit(engine, formats, &id.library)?;
+    let engine = permit(engine, formats, &id.library)?;
     let outlined = engine.outline(
         &OutlineRequest {
             item: ItemSelector::Id(id),
@@ -256,7 +255,7 @@ fn outline(
         cancel,
     )?;
     let reference = arguments.get("ref").and_then(Value::as_str);
-    answered(engine, outlined, PROVENANCE, reference)
+    answered(&engine, outlined, PROVENANCE, reference)
 }
 
 fn read(
@@ -272,9 +271,9 @@ fn read(
         last_page: page_argument(arguments, "last_page")?,
         offset: number_argument(arguments, "offset")?.map(|offset| usize::try_from(offset).unwrap_or(usize::MAX)),
     };
-    permit(engine, formats, &engine.attachment_library(attachment)?)?;
+    let engine = permit(engine, formats, &engine.attachment_library(attachment)?)?;
     let read = engine.read_attachment(&request, cancel)?;
-    answered(engine, read, ATTACHMENT_PROVENANCE, None)
+    answered(&engine, read, ATTACHMENT_PROVENANCE, None)
 }
 
 fn find_in(
@@ -288,7 +287,7 @@ fn find_in(
         attachment: attachment.to_owned(),
         query: text_argument(arguments, "query")?.to_owned(),
     };
-    permit(engine, formats, &engine.attachment_library(attachment)?)?;
+    let engine = permit(engine, formats, &engine.attachment_library(attachment)?)?;
     let found = engine.find_in(&request, cancel)?;
-    answered(engine, found, ATTACHMENT_PROVENANCE, None)
+    answered(&engine, found, ATTACHMENT_PROVENANCE, None)
 }
