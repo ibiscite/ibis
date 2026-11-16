@@ -1,5 +1,5 @@
 //! Settings confirms engine proposals by id; no file or library path crosses IPC.
-use ibis_engine::write::{Proposals, Status, WriteError, WriteProblem};
+use ibis_engine::write::{Proposals, WriteError, WriteProblem};
 use serde::Serialize;
 use tauri::Manager;
 
@@ -39,26 +39,22 @@ pub(crate) async fn waiting_proposals(app: tauri::AppHandle) -> Result<Vec<Waiti
 }
 
 fn waiting(store: &Proposals) -> Result<Vec<WaitingProposal>, String> {
-    store
-        .list()
+    Ok(store
+        .waiting()
         .map_err(|error| error.sentence())?
         .into_iter()
-        .filter(|proposal| proposal.status == Status::Pending)
-        .map(|proposal| {
-            let preview = store.show(&proposal.id).map_err(|error| error.sentence())?;
-            Ok(WaitingProposal {
-                id: proposal.id,
-                source_app: proposal.source.client,
-                library: preview.library,
-                summary: preview.summary,
-                created_ms: proposal.created_ms,
-                lines: preview.lines,
-                before: preview.before,
-                after: preview.after,
-                refusal: preview.refusal.map(|problem| WriteError::from(problem).sentence()),
-            })
+        .map(|preview| WaitingProposal {
+            id: preview.proposal.id,
+            source_app: preview.proposal.source.client,
+            library: preview.library,
+            summary: preview.summary,
+            created_ms: preview.proposal.created_ms,
+            lines: preview.lines,
+            before: preview.before,
+            after: preview.after,
+            refusal: preview.refusal.map(|problem| WriteError::from(problem).sentence()),
         })
-        .collect()
+        .collect())
 }
 
 /// Apply only after the person presses Apply on the displayed proposal.
@@ -98,6 +94,24 @@ fn apply(store: &Proposals, engine: Option<&ibis_engine::Engine>, id: &str) -> P
 #[ibis_desktop_macros::command]
 pub(crate) async fn reject_proposal(app: tauri::AppHandle, id: String) -> Result<ProposalResult, String> {
     crate::cli_install::with_owner(&OWNER, move || Ok(reject(&store(&app), &id))).await
+}
+
+/// Reject all pending proposals with the same claimed app as this displayed id.
+#[tauri::command]
+#[ibis_desktop_macros::command]
+pub(crate) async fn reject_app_proposals(app: tauri::AppHandle, id: String) -> Result<ProposalResult, String> {
+    crate::cli_install::with_owner(&OWNER, move || {
+        let store = store(&app);
+        Ok(
+            match store.get(&id).and_then(|proposal| store.reject_from(&proposal.source)) {
+                Ok(_) => ProposalResult::Rejected,
+                Err(error) => ProposalResult::Refused {
+                    sentence: error.sentence(),
+                },
+            },
+        )
+    })
+    .await
 }
 
 fn reject(store: &Proposals, id: &str) -> ProposalResult {
@@ -155,7 +169,16 @@ mod tests {
             }
         );
         assert_eq!(
-            std::fs::read_to_string(dir.path().join("signals.bib.ibis-backup-1")).unwrap(),
+            std::fs::read_to_string(
+                std::fs::read_dir(dir.path().join("library-backups"))
+                    .unwrap()
+                    .next()
+                    .unwrap()
+                    .unwrap()
+                    .path()
+                    .join("signals.bib.ibis-backup-1")
+            )
+            .unwrap(),
             before
         );
         assert!(waiting(&store).unwrap().is_empty());

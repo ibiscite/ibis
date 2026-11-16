@@ -50,6 +50,7 @@
     "allow-waiting-proposals",
     "allow-apply-proposal",
     "allow-reject-proposal",
+    "allow-reject-app-proposals",
     "allow-cli-status",
     "allow-set-cli-installed",
     "allow-copy-cli-profile"

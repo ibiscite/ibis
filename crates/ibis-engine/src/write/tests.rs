@@ -117,7 +117,12 @@ fn an_added_reference_is_appended_with_a_new_key_and_every_other_byte_kept() {
     let written = fs::read_to_string(&fixture.bib).unwrap();
     assert_eq!(written, format!("{BIB}\n{entry}\n"));
     assert_eq!(fs::read_to_string(&applied.backup).unwrap(), BIB);
-    assert_eq!(backups(&fixture.bib), vec![applied.backup.clone()]);
+    assert!(backups(&fixture.bib).is_empty());
+    assert!(
+        applied
+            .backup
+            .starts_with(fixture.store.dir().with_file_name("library-backups"))
+    );
     // The engine reads the change at once, and the reference is not offered twice.
     assert!(
         fixture
@@ -542,4 +547,223 @@ fn proposal_tools_are_offered_only_with_allow_writes() {
             .unwrap()
             .contains("note")
     );
+}
+
+#[test]
+fn applies_keep_only_the_latest_five_private_backups_per_library() {
+    let fixture = fixture();
+    let other = fixture._dir.path().join("other/refs.bib");
+    fs::create_dir(other.parent().unwrap()).unwrap();
+    fs::write(&other, BIB).unwrap();
+    fixture.engine.open_file(&other, &Cancellation::default()).unwrap();
+    let mut directories = Vec::new();
+    for library in fixture.engine.libraries().unwrap().libraries {
+        let path = fixture.engine.file_path(&library.id).unwrap().unwrap();
+        let mut versions = Vec::new();
+        for i in 0..12 {
+            let before = fs::read_to_string(&path).unwrap();
+            let proposal = fixture
+                .engine
+                .propose(
+                    &fixture.store,
+                    source(),
+                    ProposeRequest::Add {
+                        library: Some(library.id.clone()),
+                        fields: object(json!({"type":"book", "title":format!("Invented version {i}")})),
+                    },
+                )
+                .unwrap();
+            let applied = fixture.engine.apply_proposal(&fixture.store, &proposal.id).unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                assert_eq!(
+                    fs::metadata(&applied.backup).unwrap().permissions().mode() & 0o777,
+                    0o600
+                );
+                assert_eq!(
+                    fs::metadata(applied.backup.parent().unwrap())
+                        .unwrap()
+                        .permissions()
+                        .mode()
+                        & 0o777,
+                    0o700
+                );
+            }
+            versions.push((applied.backup, before));
+        }
+        let directory = versions.last().unwrap().0.parent().unwrap().to_path_buf();
+        assert_eq!(fs::read_dir(&directory).unwrap().count(), MAX_BACKUPS);
+        for (i, (backup, before)) in versions.iter().enumerate() {
+            if i < versions.len() - MAX_BACKUPS {
+                assert!(!backup.exists());
+            } else {
+                assert_eq!(fs::read_to_string(backup).unwrap(), *before);
+            }
+        }
+        assert!(backups(&path).is_empty());
+        directories.push(directory);
+    }
+    assert_ne!(
+        directories[0], directories[1],
+        "same filenames in different libraries stay separate"
+    );
+    assert_eq!(fs::read_dir(&directories[0]).unwrap().count(), MAX_BACKUPS);
+}
+
+#[test]
+fn rejecting_an_app_covers_all_its_libraries_and_preserves_other_apps_and_decisions() {
+    let fixture = fixture();
+    let mut proposals = Vec::new();
+    for i in 0..4 {
+        proposals.push(
+            fixture
+                .engine
+                .propose(
+                    &fixture.store,
+                    Source {
+                        client: if i == 3 { "Other app".into() } else { source().client },
+                        ..source()
+                    },
+                    ProposeRequest::Add {
+                        library: None,
+                        fields: object(json!({"type":"book", "title":format!("Invented proposal {i}")})),
+                    },
+                )
+                .unwrap(),
+        );
+    }
+    // A pending proposal in another library from the same app.
+    let other = fixture._dir.path().join("other.bib");
+    fs::write(&other, BIB).unwrap();
+    fixture.engine.open_file(&other, &Cancellation::default()).unwrap();
+    let library = fixture
+        .engine
+        .libraries()
+        .unwrap()
+        .libraries
+        .into_iter()
+        .find(|info| fixture.engine.file_path(&info.id).unwrap().as_ref() != Some(&fixture.bib))
+        .unwrap();
+    proposals.push(
+        fixture
+            .engine
+            .propose(
+                &fixture.store,
+                source(),
+                ProposeRequest::Add {
+                    library: Some(library.id),
+                    fields: object(json!({"type":"book", "title":"Other library proposal"})),
+                },
+            )
+            .unwrap(),
+    );
+    fixture.engine.apply_proposal(&fixture.store, &proposals[0].id).unwrap();
+    fixture.store.reject(&proposals[1].id).unwrap();
+    let before = fs::read_to_string(&fixture.bib).unwrap();
+    assert_eq!(fixture.store.reject_from(&source()).unwrap(), 2);
+    assert_eq!(fixture.store.reject_from(&source()).unwrap(), 0);
+    for (proposal, status) in proposals.iter().zip([
+        Status::Applied,
+        Status::Rejected,
+        Status::Rejected,
+        Status::Pending,
+        Status::Rejected,
+    ]) {
+        assert_eq!(fixture.store.get(&proposal.id).unwrap().status, status);
+    }
+    assert_eq!(fs::read_to_string(&fixture.bib).unwrap(), before);
+    assert_eq!(fs::read_to_string(other).unwrap(), BIB);
+}
+
+#[test]
+fn waiting_reads_each_library_once_including_failures_and_skips_decided_proposals() {
+    let fixture = fixture();
+    let mut proposals = Vec::new();
+    for _ in 0..3 {
+        let mut fields = paper();
+        fields.remove("DOI");
+        proposals.push(
+            fixture
+                .engine
+                .propose(&fixture.store, source(), ProposeRequest::Add { library: None, fields })
+                .unwrap(),
+        );
+    }
+    fixture.store.reject(&proposals[0].id).unwrap();
+    bib::READS.with_borrow_mut(Vec::clear);
+    let waiting = fixture.store.waiting().unwrap();
+    assert_eq!(waiting.len(), 2);
+    assert!(
+        waiting
+            .iter()
+            .all(|preview| preview.refusal.is_none() && preview.after.is_some())
+    );
+    bib::READS.with_borrow(|reads| assert_eq!(reads, std::slice::from_ref(&fixture.bib)));
+    assert_eq!(fs::read_to_string(&fixture.bib).unwrap(), BIB);
+    fs::remove_file(&fixture.bib).unwrap();
+    bib::READS.with_borrow_mut(Vec::clear);
+    let waiting = fixture.store.waiting().unwrap();
+    assert!(
+        waiting
+            .iter()
+            .all(|preview| preview.refusal == Some(WriteProblem::Unreadable))
+    );
+    bib::READS.with_borrow(|reads| assert_eq!(reads, std::slice::from_ref(&fixture.bib)));
+}
+
+#[test]
+fn a_failed_backup_leaves_the_library_and_proposal_unchanged() {
+    let fixture = fixture();
+    let proposal = fixture
+        .engine
+        .propose(
+            &fixture.store,
+            source(),
+            ProposeRequest::Add {
+                library: None,
+                fields: paper(),
+            },
+        )
+        .unwrap();
+    fs::write(fixture.store.dir().with_file_name("library-backups"), "blocked").unwrap();
+    assert_eq!(
+        fixture
+            .engine
+            .apply_proposal(&fixture.store, &proposal.id)
+            .unwrap_err()
+            .problem,
+        WriteProblem::BackupFailed
+    );
+    assert_eq!(fs::read_to_string(&fixture.bib).unwrap(), BIB);
+    assert_eq!(fixture.store.get(&proposal.id).unwrap().status, Status::Pending);
+    assert!(backups(&fixture.bib).is_empty());
+}
+
+#[test]
+fn replacement_rechecks_the_library_and_removes_the_backup_on_a_raced_edit() {
+    let fixture = fixture();
+    let proposal = fixture
+        .engine
+        .propose(
+            &fixture.store,
+            source(),
+            ProposeRequest::Add {
+                library: None,
+                fields: paper(),
+            },
+        )
+        .unwrap();
+    let result = fixture
+        .store
+        .replace_library(&proposal.target, BIB.as_bytes(), b"proposed replacement", || {
+            fs::write(&fixture.bib, b"external edit").unwrap();
+            Err(WriteProblem::Changed)
+        });
+    assert_eq!(result.unwrap_err().problem, WriteProblem::Changed);
+    assert_eq!(fs::read(&fixture.bib).unwrap(), b"external edit");
+    let root = fixture.store.dir().with_file_name("library-backups");
+    let library = fs::read_dir(root).unwrap().next().unwrap().unwrap().path();
+    assert_eq!(fs::read_dir(library).unwrap().count(), 0);
+    assert_eq!(fs::read_dir(fixture.bib.parent().unwrap()).unwrap().count(), 1);
 }

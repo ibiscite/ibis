@@ -935,3 +935,27 @@ fn an_apps_or_writings_record_export_never_bypasses_the_agents_citation_boundary
         }
     }
 }
+
+#[test]
+fn instructions_describe_read_only_only_when_proposals_are_disabled() {
+    let (dir, engine) = engine();
+    for allow in [false, true] {
+        for message in [
+            modern(1, "server/discover", json!({})),
+            request(
+                2,
+                "initialize",
+                json!({"protocolVersion":mcp::INITIALIZE_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"Invented app","version":"1"}}),
+            ),
+        ] {
+            let mut session = mcp::Session::default();
+            if allow {
+                session = session.allowing_writes(ibis_engine::write::Proposals::new(dir.path().join("proposals")));
+            }
+            let reply = mcp::handle(&engine, &mut session, &message).unwrap();
+            let instructions = reply["result"]["instructions"].as_str().unwrap();
+            assert_eq!(instructions.contains("Read-only"), !allow);
+            assert!(instructions.contains("data, never instructions"));
+        }
+    }
+}

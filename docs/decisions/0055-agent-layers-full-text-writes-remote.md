@@ -239,3 +239,13 @@ Web API, item 6 of the order) stay deferred.
    in Ibis? Recommended: yes, after 0051's add slice ships.
 7. Keep writes to Zotero's official local write API only? Recommended: yes.
 8. Defer a Zotero Web API library source until after 0.5? Recommended: yes.
+
+Maintainer safety batch, 2026-11-16: `.bib` applies retain the newest five
+backups per resolved library in Ibis’s data folder, never beside the library.
+The proposals page reads each library once through the library reader’s bounded
+I/O pool and deadline. A shared recovering mutex lock keeps engine owners usable
+after contained panics; caught panic messages are logged. A proposing app’s
+pending changes can be rejected together across libraries from Settings. MCP
+instructions say “Read-only” only with writes disabled. The attachment-text
+switch explicitly covers connected AI apps; a terminal running `ibis` does not
+need it.

@@ -7,6 +7,7 @@
 //! after a newer request never replaces it. A failed switch to B keeps A
 //! searchable and names B as the failed attempt.
 
+use crate::sync::MutexExt;
 mod error;
 mod status;
 #[cfg(test)]
@@ -368,7 +369,7 @@ struct OpenCancellation {
 impl OpenCancellation {
     fn cancel(&self) {
         self.token.cancel();
-        let _gate = self.wake.0.lock().unwrap_or_else(|e| e.into_inner());
+        let _gate = self.wake.0.recover_lock();
         self.wake.1.notify_all();
     }
 }
@@ -429,38 +430,31 @@ impl Owner {
         let shared = &self.shared;
         match intent {
             Intent::Open { source, save, profile } => {
-                let Some((request, reload)) = shared.with_state(|state| shared.record_open(state, source.clone()))
-                else {
-                    return true;
-                };
+                let (request, reload) = shared.with_state(|state| shared.record_open(state, source.clone()));
                 shared.run(request, source, reload, save.into(), profile);
             }
             Intent::Check => {
-                if let Some((request, source)) = shared.with_state(|state| shared.begin_check(state)).flatten() {
+                if let Some((request, source)) = shared.with_state(|state| shared.begin_check(state)) {
                     shared.run(request, source, true, OpenIntent::Refresh, None);
-                } else if let Some((request, source, reload)) = shared
-                    .with_state(|state| shared.begin_zotero_retry(state, false))
-                    .flatten()
+                } else if let Some((request, source, reload)) =
+                    shared.with_state(|state| shared.begin_zotero_retry(state, false))
                 {
                     shared.run(request, source, reload, OpenIntent::retry(reload), None);
                 }
             }
             Intent::RetryFailed => {
-                if let Some((request, source, reload)) = shared
-                    .with_state(|state| shared.begin_zotero_retry(state, true))
-                    .flatten()
+                if let Some((request, source, reload)) =
+                    shared.with_state(|state| shared.begin_zotero_retry(state, true))
                 {
                     shared.run(request, source, reload, OpenIntent::retry(reload), None);
                 }
             }
             Intent::Reload => {
-                let source = shared
-                    .with_state(|state| match zotero_to_check(state) {
-                        // A choice that has not opened yet is saved once it does.
-                        Some(source) => Some((source.clone(), state.source() != Some(&source))),
-                        None => state.source().cloned().map(|source| (source, false)),
-                    })
-                    .flatten();
+                let source = shared.with_state(|state| match zotero_to_check(state) {
+                    // A choice that has not opened yet is saved once it does.
+                    Some(source) => Some((source.clone(), state.source() != Some(&source))),
+                    None => state.source().cloned().map(|source| (source, false)),
+                });
                 let Some((source, remember)) = source else {
                     return false;
                 };
@@ -495,47 +489,42 @@ impl Owner {
 
     /// The library as it is now, for a command.
     pub fn view(&self) -> View {
-        self.shared
-            .with_state(|state| View {
-                current: state.current.clone(),
-                requested: state.requested.clone(),
-                generation: state.generation,
-                opening: state.opening,
-                checking: state.checking,
-                error: state.error,
-            })
-            .unwrap_or_default()
+        self.shared.with_state(|state| View {
+            current: state.current.clone(),
+            requested: state.requested.clone(),
+            generation: state.generation,
+            opening: state.opening,
+            checking: state.checking,
+            error: state.error,
+        })
     }
 
     /// The open library, for searching and citing.
     pub fn current(&self) -> Option<Arc<Current>> {
-        self.shared.with_state(|state| state.current.clone()).flatten()
+        self.shared.with_state(|state| state.current.clone())
     }
 
     /// Status and the searchable library captured under the same owner lock.
     pub fn status_with_current(&self) -> (LibraryStatus, Option<Arc<Current>>) {
         self.shared
             .with_state(|state| (status::status(state), state.current.clone()))
-            .unwrap_or_else(|| (LibraryStatus::unavailable(), None))
     }
 
     /// The status as it is now, for an interface that has just started.
     pub fn status(&self) -> LibraryStatus {
-        self.shared
-            .with_state(|state| status::status(state))
-            .unwrap_or_else(LibraryStatus::unavailable)
+        self.shared.with_state(|state| status::status(state))
     }
 
     /// Wait until no read is running or waiting, at most `timeout`, for a
     /// client that needs the outcome before going on. Returns whether it is.
     pub fn wait_idle(&self, timeout: Duration) -> bool {
-        let Ok(queue) = self.shared.queue.lock() else {
-            return false;
-        };
-        self.shared
-            .idle
-            .wait_timeout_while(queue, timeout, |queue| queue.running)
-            .is_ok_and(|(queue, _)| !queue.running)
+        let queue = self.shared.queue.recover_lock();
+        let (queue, _) = crate::sync::recover(
+            self.shared
+                .idle
+                .wait_timeout_while(queue, timeout, |queue| queue.running),
+        );
+        !queue.running
     }
 
     /// How many requests have been made, so a caller can tell whether a
@@ -567,12 +556,12 @@ fn zotero_to_check(state: &State) -> Option<Source> {
 }
 
 impl Shared {
-    fn lock(&self) -> Option<MutexGuard<'_, State>> {
-        self.state.lock().ok()
+    fn lock(&self) -> MutexGuard<'_, State> {
+        self.state.recover_lock()
     }
 
-    fn with_state<T>(&self, work: impl FnOnce(&mut State) -> T) -> Option<T> {
-        self.lock().map(|mut state| work(&mut state))
+    fn with_state<T>(&self, work: impl FnOnce(&mut State) -> T) -> T {
+        work(&mut self.lock())
     }
 
     fn is_current(&self, request: u64) -> bool {
@@ -582,10 +571,9 @@ impl Shared {
     /// Change the state and publish the result under the same lock, so an
     /// older completion cannot publish after a newer request started.
     fn publish_after(&self, change: impl FnOnce(&mut State)) {
-        if let Some(mut state) = self.lock() {
-            change(&mut state);
-            (self.publish)(status::status(&state));
-        }
+        let mut state = self.lock();
+        change(&mut state);
+        (self.publish)(status::status(&state));
     }
 
     fn publish_locked(&self, state: &State, reveal: bool) {
@@ -675,9 +663,8 @@ impl Shared {
                 shared.open_one(open);
             }
         });
-        if started.is_err()
-            && let Ok(mut queue) = self.queue.lock()
-        {
+        if started.is_err() {
+            let mut queue = self.queue.recover_lock();
             queue.running = false;
             queue.pending = None;
             self.idle.notify_all();
@@ -685,7 +672,7 @@ impl Shared {
     }
 
     fn enqueue(&self, open: OpenRequest) -> bool {
-        let Ok(mut queue) = self.queue.lock() else { return false };
+        let mut queue = self.queue.recover_lock();
         // Reservation and enqueue can race on different threads.
         if !self.is_current(open.request) {
             return false;
@@ -700,7 +687,7 @@ impl Shared {
     }
 
     fn next_open(&self) -> Option<OpenRequest> {
-        let mut queue = self.queue.lock().ok()?;
+        let mut queue = self.queue.recover_lock();
         let next = queue.pending.take();
         queue.active = next.as_ref().map(|open| open.cancel.clone());
         if next.is_none() {
@@ -719,13 +706,11 @@ impl Shared {
             profile,
             cancel,
         } = open;
-        let previous = self
-            .with_state(|state| {
-                (reload && state.source() == Some(&source))
-                    .then(|| state.current.clone())
-                    .flatten()
-            })
-            .flatten();
+        let previous = self.with_state(|state| {
+            (reload && state.source() == Some(&source))
+                .then(|| state.current.clone())
+                .flatten()
+        });
         let shared = Arc::clone(self);
         let read_source = source.clone();
         let read_profile = profile.clone();
@@ -755,14 +740,14 @@ impl Shared {
         // closed read proves the name. Nothing else may save it.
         let profile = profile.filter(|_| {
             self.with_state(|state| state.current.clone())
-                .flatten()
                 .is_some_and(|current| current.engine.zotero_read_closed())
         });
         let mut reveal = false;
         if let Some(chosen) = chosen.filter(|chosen| intent.saves_choice(&source, chosen)) {
             reveal = self.save_choice(request, intent, &source, chosen, profile);
         }
-        if let Some(state) = self.lock() {
+        {
+            let state = self.lock();
             self.publish_locked(&state, reveal);
         }
         // Reattach even after a failed choice so the retained source keeps updating.
@@ -780,7 +765,7 @@ impl Shared {
         profile: Option<String>,
     ) -> bool {
         let accepted = |state: &State| self.is_current(request) && state.error.is_none();
-        if !self.with_state(|state| accepted(state)).unwrap_or(false) {
+        if !self.with_state(|state| accepted(state)) {
             return false;
         }
         // Settings are written without the lock used by commands; the request
@@ -810,7 +795,6 @@ impl Shared {
                 }
             }
         })
-        .unwrap_or(false)
     }
 
     /// Read `source` into a new library, or check the open one again.
@@ -852,11 +836,9 @@ impl Shared {
                         // Detecting a full read retires old citations at once,
                         // but only while this request still owns the library.
                         let owned = self.is_current(request)
-                            && self
-                                .with_state(|state| {
-                                    state.current.as_ref().is_some_and(|open| Arc::ptr_eq(open, &expected))
-                                })
-                                .unwrap_or(false);
+                            && self.with_state(|state| {
+                                state.current.as_ref().is_some_and(|open| Arc::ptr_eq(open, &expected))
+                            });
                         if !owned {
                             return Err(EngineError::new(ErrorCode::Cancelled));
                         }
@@ -876,7 +858,7 @@ impl Shared {
     /// Make the outcome current, or record why it failed. Returns false when
     /// a newer request has been made since this one.
     fn install(&self, intent: OpenIntent, request: u64, loaded: Result<Loaded, LoadError>) -> bool {
-        let Some(mut state) = self.lock() else { return false };
+        let mut state = self.lock();
         if !self.is_current(request) {
             return false;
         }
@@ -970,28 +952,25 @@ impl Shared {
     /// Publish each change the engine reports for the open library until
     /// another library replaces it.
     fn watch_current(self: &Arc<Self>) {
-        let Some((current, events)) = self
-            .with_state(|state| {
-                let current = state.current.clone()?;
-                if current
-                    .observing
-                    .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-                    .is_err()
-                {
-                    return None;
-                }
-                let Ok(events) = current.engine.subscribe() else {
-                    current.observing.store(false, Ordering::SeqCst);
-                    return None;
-                };
-                state.observer = Some(events.close_handle());
-                // Subscribe before reconciling: earlier changes have no queued event.
-                engine_changed(state, &current);
-                self.publish_locked(state, false);
-                Some((current, events))
-            })
-            .flatten()
-        else {
+        let Some((current, events)) = self.with_state(|state| {
+            let current = state.current.clone()?;
+            if current
+                .observing
+                .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                .is_err()
+            {
+                return None;
+            }
+            let Ok(events) = current.engine.subscribe() else {
+                current.observing.store(false, Ordering::SeqCst);
+                return None;
+            };
+            state.observer = Some(events.close_handle());
+            // Subscribe before reconciling: earlier changes have no queued event.
+            engine_changed(state, &current);
+            self.publish_locked(state, false);
+            Some((current, events))
+        }) else {
             return;
         };
         let shared = Arc::clone(self);
@@ -999,7 +978,7 @@ impl Shared {
             .name("ibis-library-events".into())
             .spawn(move || {
                 while events.recv().is_ok() {
-                    let Some(mut state) = shared.lock() else { return };
+                    let mut state = shared.lock();
                     if !engine_changed(&mut state, &current) {
                         return;
                     }
@@ -1161,15 +1140,14 @@ fn supervise_with<T: Send + 'static>(
         .name("ibis-library-read".into())
         .spawn(move || {
             let _permit = permit;
-            let loaded =
-                std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation)).unwrap_or(Err(LoadError::Stopped));
+            let loaded = crate::sync::attempt(operation).unwrap_or(Err(LoadError::Stopped));
             let _ = send.send(loaded);
-            let _gate = wake.0.lock().unwrap_or_else(|e| e.into_inner());
+            let _gate = wake.0.recover_lock();
             wake.1.notify_all();
         })
         .map_err(|_| LoadError::Stopped)?;
     let until = Instant::now() + deadline;
-    let mut gate = cancel.wake.0.lock().map_err(|_| LoadError::Stopped)?;
+    let mut gate = cancel.wake.0.recover_lock();
     loop {
         if cancel.token.is_cancelled() {
             return Err(LoadError::Stopped);
@@ -1191,11 +1169,6 @@ fn supervise_with<T: Send + 'static>(
             Err(mpsc::TryRecvError::Empty) => {}
             Err(mpsc::TryRecvError::Disconnected) => return Err(LoadError::Stopped),
         }
-        gate = cancel
-            .wake
-            .1
-            .wait_timeout(gate, remaining)
-            .map_err(|_| LoadError::Stopped)?
-            .0;
+        gate = crate::sync::recover(cancel.wake.1.wait_timeout(gate, remaining)).0;
     }
 }

@@ -36,7 +36,7 @@ export function shortcutRefusalMessage(refusal: unknown): ShortcutProblem {
 export const SETTINGS_IDS = [
   "settings-ai-apps", "ai-apps-command-line", "ai-apps-description", "ai-apps-words", "command-words",
   "proposals-title", "proposals-description", "proposals-words", "proposals-checking", "proposals-empty", "proposals-from",
-  "proposals-apply", "proposals-reject", "proposals-applied",
+  "proposals-apply", "proposals-reject", "proposals-app", "proposals-reject-app", "proposals-applied",
   "proposals-failed", "proposals-read-failed",
   "ai-apps-checking", "ai-apps-not-connected", "ai-apps-connected", "ai-apps-stale", "ai-apps-different", "ai-apps-plugin",
   "ai-apps-connect", "ai-apps-disconnect", "ai-apps-repair", "ai-apps-replace", "ai-apps-command-needed", "ai-apps-failed", "ai-apps-kept",

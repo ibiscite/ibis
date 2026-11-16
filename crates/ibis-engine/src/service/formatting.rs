@@ -1,6 +1,7 @@
 //! Formatting and cancellation stay behind the same typed engine boundary.
 use super::{Engine, StylesResult, error};
 use crate::request::StylesRequest;
+use crate::sync::MutexExt;
 use ibis_core::contract::*;
 use ibis_csl::{CancellationToken, FormatError};
 use std::{
@@ -36,7 +37,7 @@ struct Registration {
 pub struct Formatting(Arc<Mutex<Option<ibis_csl::Formatter>>>);
 impl Formatting {
     fn formatter(&self) -> Result<ibis_csl::Formatter, EngineError> {
-        let mut current = self.0.lock().map_err(|_| error(ErrorCode::Internal))?;
+        let mut current = self.0.recover_lock();
         if let Some(formatter) = current.as_ref() {
             return Ok(formatter.clone());
         }
@@ -54,25 +55,13 @@ impl Formatting {
 }
 impl Drop for Registration {
     fn drop(&mut self) {
-        self.cancel
-            .0
-            .handlers
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .tasks
-            .remove(&self.id);
+        self.cancel.0.handlers.recover_lock().tasks.remove(&self.id);
     }
 }
 impl Cancellation {
     #[cfg(test)]
     pub(crate) fn has_formatting_task(&self) -> bool {
-        !self
-            .0
-            .handlers
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .tasks
-            .is_empty()
+        !self.0.handlers.recover_lock().tasks.is_empty()
     }
     /// Native inspection can expire without cancelling its caller's request.
     pub(crate) fn child(&self) -> Self {
@@ -86,15 +75,7 @@ impl Cancellation {
     }
     pub fn cancel(&self) {
         self.0.cancelled.store(true, Ordering::Release);
-        let tasks: Vec<_> = self
-            .0
-            .handlers
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .tasks
-            .values()
-            .cloned()
-            .collect();
+        let tasks: Vec<_> = self.0.handlers.recover_lock().tasks.values().cloned().collect();
         // Never hold the registration lock while entering the formatter scheduler.
         for task in tasks {
             task.cancel();
@@ -111,7 +92,7 @@ impl Cancellation {
         }
     }
     fn track(&self, token: CancellationToken) -> Result<Registration, EngineError> {
-        let mut handlers = self.0.handlers.lock().map_err(|_| error(ErrorCode::Internal))?;
+        let mut handlers = self.0.handlers.recover_lock();
         if handlers.tasks.len() >= 64 {
             return Err(error(ErrorCode::ResourceLimit));
         }
@@ -242,7 +223,7 @@ mod tests {
             let deadline = Instant::now() + Duration::from_secs(5);
             let mut observed = false;
             while Instant::now() < deadline && !working.is_finished() {
-                observed = !cancel.0.handlers.lock().unwrap().tasks.is_empty();
+                observed = !cancel.0.handlers.recover_lock().tasks.is_empty();
                 if observed {
                     break;
                 }
@@ -269,7 +250,7 @@ mod tests {
             );
             assert!(observed, "format request was registered for cancellation");
         });
-        assert!(cancel.0.handlers.lock().unwrap().tasks.is_empty());
+        assert!(cancel.0.handlers.recover_lock().tasks.is_empty());
     }
     #[test]
     fn oversized_csl_is_a_resource_refusal_and_worker_recovers() {
