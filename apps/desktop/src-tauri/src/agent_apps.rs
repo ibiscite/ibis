@@ -122,10 +122,16 @@ mod tests {
                 path
             };
             let script = home.path[0].join(program);
+            // Nix builds have no /bin/rm; the script's PATH is the test home's.
+            let rm = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+                .map(|directory| directory.join("rm"))
+                .find(|path| path.is_file())
+                .unwrap();
             std::fs::write(
                 &script,
                 format!(
-                    "#!/bin/sh\ncase \"$2\" in\nremove) /bin/rm '{}' ;;\nadd) exit 1 ;;\nesac\n",
+                    "#!/bin/sh\ncase \"$2\" in\nremove) '{}' '{}' ;;\nadd) exit 1 ;;\nesac\n",
+                    rm.display(),
                     settings.display()
                 ),
             )
