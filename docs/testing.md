@@ -50,7 +50,7 @@ and inspect the `.snap` diff.
 | Script tests | Workflow helpers, packages, publication, update feeds, budgets and Markdown links. | Native helpers have separate platform requirements. |
 
 Committed pictures are the visual spec: CI rejects missing/extra pictures, dimension changes, or more than 0.01% differing pixels (pixelmatch threshold 0.1); failures attach actuals and diffs.
-To accept a visual change, run `bash scripts/update-picture-baselines.sh RUN_ID HEAD_SHA` on the failed run, review the PNGs and commit them with the change.
+To accept a visual change, run `bash scripts/update-picture-baselines.sh RUN_ID` on the failed run, review the PNGs and commit them with the change.
 Baselines come only from that pinned CI image, never from a local render; an empty baseline folder fails until seeded this way.
 
 The weekly [style workflow](../.github/workflows/styles.yml) renders invented
