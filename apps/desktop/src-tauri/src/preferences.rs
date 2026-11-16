@@ -10,8 +10,8 @@ use ibis_engine::settings::{self, Density, PickerPlacement};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::library::Library;
 use crate::output::OutputRef;
+use ibis_engine::library::{ChoiceStore, Owner};
 
 pub(crate) use ibis_engine::settings_backup::{settings_message, settings_problem};
 
@@ -58,6 +58,7 @@ pub(crate) fn settings_notice(path: &Path, loaded: &settings::Loaded) -> Option<
 #[derive(Clone)]
 pub(crate) struct SettingsFile {
     pub(crate) path: PathBuf,
+    notice: Arc<Mutex<Option<String>>>,
     /// Orders every save of this file by when it was asked for (decision 0040).
     pub(crate) owner: Arc<ibis_engine::settings::Owner>,
     /// Whether bird facts and milestones are on, as last saved or read.
@@ -89,6 +90,18 @@ impl From<&settings::Settings> for NativeSettings {
     }
 }
 
+impl ChoiceStore for SettingsFile {
+    fn zotero_profile(&self) -> Result<Option<String>, ibis_core::contract::EngineError> {
+        self.owner.zotero_profile()
+    }
+
+    fn save(&self, change: &mut dyn FnMut(&mut settings::Settings)) -> Result<(), String> {
+        self.update(change).map_err(|error| error.to_string())?;
+        self.refresh_notice();
+        Ok(())
+    }
+}
+
 impl SettingsFile {
     fn apply_text_size<R: tauri::Runtime>(&self, app: &AppHandle<R>, larger: bool, revision: u64) {
         let Ok(mut current) = self.sizing_revision.lock() else {
@@ -112,6 +125,7 @@ impl SettingsFile {
         let delights = crate::delights::DelightOwner::new(loaded.delights);
         SettingsFile {
             owner: Arc::new(ibis_engine::settings::Owner::open(path.clone())),
+            notice: Arc::new(Mutex::new(settings_notice(&path, &read))),
             path,
             surprises: Arc::new(std::sync::atomic::AtomicBool::new(surprises)),
             receipts: Arc::default(),
@@ -289,7 +303,7 @@ impl SettingsFile {
             return;
         }
         let (file, app) = (self.clone(), app.clone());
-        let library_request = app.state::<crate::library::LoadRequests>().0.load(Ordering::SeqCst);
+        let library_request = app.state::<Owner>().requests();
         tauri::async_runtime::spawn_blocking(move || {
             // Native owners may themselves save a choice. Never call them in
             // the watch callback, which runs inside the settings owner's queue.
@@ -314,7 +328,7 @@ impl SettingsFile {
                         && (previous.library != desired.library
                             || (previous.profile != desired.profile
                                 && matches!(desired.library, Some(settings::LibrarySetting::Zotero(_)))))
-                        && app.state::<crate::library::LoadRequests>().0.load(Ordering::SeqCst) == library_request
+                        && app.state::<Owner>().requests() == library_request
                     {
                         crate::library::apply_file_settings(&app, desired.library.clone(), desired.profile.clone());
                         previous.library = desired.library.clone();
@@ -342,18 +356,22 @@ impl SettingsFile {
         });
     }
 
-    /// The Zotero profile chosen for reading while Zotero is closed.
-    pub(crate) fn zotero_profile(&self) -> Result<Option<String>, CommandError> {
-        settings::load(&self.path)
-            .cites()
-            .map(|settings| settings.device.zotero_profile.clone())
-            .map_err(CommandError::from)
+    pub(crate) fn notice(&self) -> Option<String> {
+        self.notice.lock().ok().and_then(|notice| notice.clone())
     }
 
-    /// Refresh under the library lock so a reload cannot carry forward a stale
-    /// recovery warning.
-    pub(crate) fn refresh_notice(&self, library: &mut Library) {
-        library.settings_notice = settings_notice(&self.path, &settings::load(&self.path));
+    pub(crate) fn refresh_notice(&self) -> bool {
+        let previous = self.notice();
+        let next = settings_notice(&self.path, &settings::load(&self.path));
+        let Ok(mut notice) = self.notice.lock() else {
+            return false;
+        };
+        if *notice == previous && *notice != next {
+            *notice = next;
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -942,7 +960,6 @@ mod tests {
             .unwrap_or_else(|error| panic!("{error}"));
         let app = tauri::test::mock_builder()
             .manage(SettingsFile::new(path.clone()))
-            .manage(Mutex::new(crate::library::Library::default()))
             .build(tauri::test::mock_context(tauri::test::noop_assets()))
             .unwrap_or_else(|error| panic!("{error}"));
         let main = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
@@ -984,13 +1001,7 @@ mod tests {
             assert!(unexpected.is_err(), "revision {revision}: {unexpected:?}");
             assert_eq!(native.get(), Some(Some(false)));
         }
-        assert!(
-            app.state::<Mutex<crate::library::Library>>()
-                .lock()
-                .unwrap_or_else(|error| panic!("{error}"))
-                .settings_notice
-                .is_none()
-        );
+        assert!(app.state::<SettingsFile>().notice().is_none());
         // A native-only choice still applies without a preference event.
         apply(15, r#"{"larger_text":true,"update_checks":true}"#);
         assert_eq!(native.get(), Some(Some(true)));
@@ -1015,7 +1026,6 @@ mod tests {
             .unwrap_or_else(|error| panic!("{error}"));
         let app = tauri::test::mock_builder()
             .manage(SettingsFile::new(path.clone()))
-            .manage(Mutex::new(crate::library::Library::default()))
             .build(tauri::test::mock_context(tauri::test::noop_assets()))
             .unwrap_or_else(|error| panic!("{error}"));
         let main = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
@@ -1057,13 +1067,7 @@ mod tests {
             *native.lock().unwrap_or_else(|error| panic!("{error}")),
             Some(Some(false))
         );
-        assert!(
-            app.state::<Mutex<crate::library::Library>>()
-                .lock()
-                .unwrap_or_else(|error| panic!("{error}"))
-                .settings_notice
-                .is_some()
-        );
+        assert!(app.state::<SettingsFile>().notice().is_some());
         assert!(file.update(|saved| saved.portable.menu_bar = Some(false)).is_err());
         assert!(std::fs::read_to_string(&path).unwrap_or_default().contains("invented"));
         save_atomically(&path, br#"{"larger_text":false,"update_checks":true}"#);

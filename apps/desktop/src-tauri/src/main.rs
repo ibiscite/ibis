@@ -56,16 +56,17 @@ mod tray;
 mod updater;
 mod writings;
 
+use ibis_engine::{Engine, library::Owner};
 use std::path::PathBuf;
-use std::sync::Mutex;
 use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex};
 
 use ibis_engine::settings;
 use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_global_shortcut::ShortcutState;
 
 use crate::diagnostics::{NativeIssue, application_message, checked, report};
-use crate::library::{Library, LoadRequests, SearchRequests, Source, start_open};
+use crate::library::{SearchRequests, Source, start_open};
 use crate::picker::{
     ChooserOpen, Pinned, ShortcutStatus, dismiss_picker, hides_on_blur, start_shortcut, toggle_picker,
 };
@@ -117,9 +118,7 @@ fn main() {
         )
     };
     let builder = builder
-        .manage(Mutex::new(Library::default()))
         .manage(library::attachment_text::AttachmentText::default())
-        .manage(LoadRequests::default())
         .manage(SearchRequests::default())
         .manage(tray::SearchRequest::default())
         .manage(setup::Offered::default())
@@ -242,7 +241,37 @@ fn main() {
             let interface = loaded.interface().unwrap_or_default();
             let cites = loaded.cites().ok();
             library::engine_library::warm_formatter(cites.and_then(|settings| settings.portable.output.clone()));
-            app.manage(SettingsFile::new(settings_path.clone()));
+            let settings_file = SettingsFile::new(settings_path.clone());
+            app.manage(settings_file.clone());
+            let handle = app.handle().clone();
+            let notices = settings_file.clone();
+            app.manage(Owner::new(
+                Arc::new(settings_file),
+                || Ok(Engine::new()?.with_formatting(library::engine_library::FORMATTING.clone())),
+                move |mut status| {
+                    for line in &status.log {
+                        application_message(line);
+                    }
+                    let reveal = status.reveal;
+                    status.settings_notice = notices.notice();
+                    report(handle.emit("library:changed", status), NativeIssue::LibraryEvent);
+                    let native = handle.clone();
+                    // Tauri runs main-thread calls inline during setup. Defer
+                    // native work so it can read the owner after publication.
+                    tauri::async_runtime::spawn(async move {
+                        let main = native.clone();
+                        report(
+                            native.run_on_main_thread(move || {
+                                if reveal {
+                                    picker::reveal_picker_quietly(&main);
+                                }
+                                tray::refresh_library(&main);
+                            }),
+                            NativeIssue::TrayLibrary,
+                        );
+                    });
+                },
+            ));
             let remember = cites.is_some_and(|settings| settings.portable.recent_citations.unwrap_or(true));
             session_references::manage(app.handle(), &settings_path, remember);
             app.state::<sizing::Sizing>().load(&interface);
@@ -280,9 +309,6 @@ fn main() {
             destination::manage(app.handle(), &settings_path);
             if let Some(problem) = &loaded.problem {
                 application_message(preferences::settings_problem(problem));
-            }
-            if let Ok(mut library) = app.state::<Mutex<Library>>().lock() {
-                library.settings_notice = preferences::settings_notice(&settings_path, &loaded);
             }
             #[cfg(target_os = "macos")]
             picker::follow_layout(app.handle());

@@ -2,7 +2,6 @@
 //! arbitrary URI, executable or shell command.
 
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use ibis_core::contract::{ItemRef, LibraryId, LibraryObject};
@@ -14,10 +13,10 @@ mod icons;
 
 static OPENS: AtomicU64 = AtomicU64::new(0);
 
-use super::state::Library;
 use super::{CommandError, Source};
 use crate::diagnostics::{NativeIssue, report};
 use crate::picker::{PickerGeneration, Takeover, yield_to_window};
+use ibis_engine::library::{Owner, View};
 
 #[derive(Debug, PartialEq, Eq)]
 enum Target {
@@ -54,14 +53,14 @@ pub(crate) async fn open_library_source(
     reveal: bool,
     presentation: Option<u64>,
     app: AppHandle,
-    library: State<'_, Mutex<Library>>,
+    library: State<'_, Owner>,
 ) -> Result<(), CommandError> {
     // Named by the picker: this body runs after Tauri schedules it, and a
     // launch that ends later gives way for the opening that asked alone.
     let presentation = app.state::<PickerGeneration>().originating(presentation);
     let request = OPENS.fetch_add(1, Ordering::SeqCst).wrapping_add(1);
     let target = {
-        let library = library.lock().map_err(|_| failed())?;
+        let library = library.view();
         target(
             &library,
             item.as_ref(),
@@ -83,8 +82,8 @@ pub(crate) async fn open_library_source(
         }
         // Attachment lookup can wait on Zotero. Recheck the immutable source
         // observation before launching anything after that wait.
-        let library = owner.state::<Mutex<Library>>();
-        let library = library.lock().map_err(|_| failed())?;
+        let library = owner.state::<Owner>();
+        let library = library.view();
         self::target(
             &library,
             item.as_ref(),
@@ -136,10 +135,10 @@ pub(crate) async fn library_source(
     expected_source_generation: String,
     zotero_only: bool,
     with_status_icon: bool,
-    library: State<'_, Mutex<Library>>,
+    library: State<'_, Owner>,
 ) -> Result<SourcePresentation, CommandError> {
     let (target, status_path) = {
-        let library = library.lock().map_err(|_| failed())?;
+        let library = library.view();
         let target = target(
             &library,
             item.as_ref(),
@@ -147,7 +146,7 @@ pub(crate) async fn library_source(
             &expected_source_generation,
             zotero_only,
         )?;
-        let status_path = match library.source.as_ref().or(library.requested.as_ref()) {
+        let status_path = match library.source().or(library.requested.as_ref()) {
             Some(Source::File(path) | Source::Samples(path)) => Some(path.clone()),
             _ => None,
         };
@@ -179,7 +178,7 @@ pub(crate) async fn library_source(
 }
 
 fn target(
-    library: &Library,
+    library: &View,
     item: Option<&SourceItem>,
     expected: &str,
     expected_source_generation: &str,
@@ -188,7 +187,7 @@ fn target(
     // Opening the app itself is independent of a library snapshot. In
     // particular it still works on first run or after a failed status read.
     if zotero_only {
-        let chosen = [library.requested.as_ref(), library.source.as_ref()]
+        let chosen = [library.requested.as_ref(), library.source()]
             .into_iter()
             .flatten()
             .find_map(|source| match source {
@@ -202,19 +201,19 @@ fn target(
                 .unwrap_or(ZoteroLibrary::Personal),
         ));
     }
-    if library.source_generation.to_string() != expected_source_generation
-        || library.file.as_ref().map(|file| file.revision()).unwrap_or_default() != expected
+    if library.generation.to_string() != expected_source_generation
+        || library.current.as_ref().map(|file| file.revision()).unwrap_or_default() != expected
     {
         return Err(CommandError::SnapshotChanged);
     }
     let Some(item) = item else {
-        return match library.source.as_ref().or(library.requested.as_ref()) {
+        return match library.source().or(library.requested.as_ref()) {
             Some(Source::File(path) | Source::Samples(path)) => Ok(Target::File(path.clone())),
             Some(Source::Zotero(chosen)) => Ok(Target::Zotero(selected_zotero(chosen)?)),
             None => Err(failed()),
         };
     };
-    let file = library.file.as_ref().ok_or_else(failed)?;
+    let file = library.current.as_ref().ok_or_else(failed)?;
     let snapshot = file.engine.snapshot().map_err(|_| CommandError::SnapshotChanged)?;
     if snapshot.fingerprints().full.as_str() != expected {
         return Err(CommandError::SnapshotChanged);
@@ -239,7 +238,7 @@ fn target(
             SourceItem::Library { .. } => Ok(Target::Zotero(zotero)),
         };
     }
-    match library.source.as_ref() {
+    match library.source() {
         Some(Source::File(path) | Source::Samples(path)) => Ok(Target::File(path.clone())),
         _ => Err(failed()),
     }
@@ -305,36 +304,32 @@ fn launch(target: Target, reveal: bool) -> Result<(), CommandError> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::state::candidate;
     use super::*;
+    use crate::library::tests::{open, owner};
+    use crate::preferences::SettingsFile;
 
     #[cfg(not(target_os = "windows"))]
     #[test]
     fn tray_fix_problems_targets_the_warning_library_among_multiple_selections()
     -> Result<(), Box<dyn std::error::Error>> {
-        use crate::library::{engine_library::FileLibrary, zotero_fixture};
+        use crate::library::zotero_fixture;
         use ibis_engine::{
-            Cancellation, Engine,
+            Engine,
             settings::{ZoteroLibraries, ZoteroLibrary},
         };
         let server = zotero_fixture::Server::new();
         server.group_warning.store(true, std::sync::atomic::Ordering::Relaxed);
         let chosen: ZoteroLibraries = serde_json::from_value(serde_json::json!(["user", {"group":7}]))?;
-        let engine = Engine::with_zotero_port(server.port).map_err(|_| "engine")?;
-        engine
-            .dispatch(
-                ibis_engine::Method::Libraries,
-                &serde_json::json!({"action":"open-zotero", "libraries":["personal", {"group":7}]}),
-                &Cancellation::default(),
-            )
-            .map_err(|_| "open Zotero")?;
-        let file = FileLibrary::from_engine(engine);
-        let library = Library {
-            source: Some(Source::Zotero(chosen)),
-            file: Some(std::sync::Arc::new(file)),
-            ..Library::default()
-        };
-        let status = crate::library::snapshot_status(&library);
+        let directory = tempfile::tempdir()?;
+        let port = server.port;
+        let library = Owner::new(
+            std::sync::Arc::new(SettingsFile::new(directory.path().join("settings.json"))),
+            move || Engine::with_zotero_port(port),
+            |_| {},
+        );
+        open(&library, Source::Zotero(chosen));
+        let status = library.status();
+        let library = library.view();
         assert_eq!(status.zotero_libraries, [ZoteroLibrary::User, ZoteroLibrary::Group(7)]);
         assert_eq!(status.warnings, 1);
         let affected = SourceItem::Library {
@@ -354,14 +349,25 @@ mod tests {
     #[cfg(not(target_os = "windows"))]
     #[test]
     fn opening_zotero_after_a_failed_switch_keeps_the_requested_group() -> Result<(), Box<dyn std::error::Error>> {
-        let mut library = Library {
-            source: Some(Source::Zotero(ibis_engine::settings::ZoteroLibrary::Group(7).into())),
-            ..Library::default()
-        };
-        let generation = library.source_generation.to_string();
-        library.requested = library.source.take();
-        library.source = Some(Source::File("retained.bib".into()));
-        let selected = target(&library, None, "", &generation, true)?;
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("retained.bib");
+        std::fs::write(&path, "@book{invented}")?;
+        let server = crate::library::zotero_fixture::Server::new();
+        server.sharing_off.store(true, std::sync::atomic::Ordering::Relaxed);
+        let port = server.port;
+        let library = Owner::new(
+            std::sync::Arc::new(SettingsFile::new(directory.path().join("settings.json"))),
+            move || ibis_engine::Engine::with_zotero_port(port),
+            |_| {},
+        );
+        open(&library, path);
+        open(
+            &library,
+            Source::Zotero(ibis_engine::settings::ZoteroLibrary::Group(7).into()),
+        );
+        let view = library.view();
+        let generation = view.generation.to_string();
+        let selected = target(&view, None, "", &generation, true)?;
         assert_eq!(selected, Target::Zotero(ZoteroLibrary::Group(7)));
         Ok(())
     }
@@ -390,20 +396,25 @@ mod tests {
 
     #[test]
     fn failed_switch_opens_the_searched_source_and_stale_requests_refuse() {
-        let mut library = candidate(PathBuf::from("retained.bib"), "@misc{synthetic}");
-        library.requested = Some(Source::File("missing.bib".into()));
-        let revision = library.file.as_ref().map(|file| file.revision()).unwrap_or_default();
-        let generation = library.source_generation.to_string();
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("retained.bib");
+        std::fs::write(&path, "@misc{synthetic}").unwrap();
+        let owner = owner(SettingsFile::new(directory.path().join("settings.json")));
+        open(&owner, path.clone());
+        open(&owner, directory.path().join("missing.bib"));
+        let library = owner.view();
+        let revision = library.current.as_ref().map(|file| file.revision()).unwrap_or_default();
+        let generation = library.generation.to_string();
         assert_eq!(
             target(&library, None, &revision, &generation, false).ok(),
-            Some(Target::File("retained.bib".into()))
+            Some(Target::File(path.clone()))
         );
         assert!(matches!(
             target(&library, None, "old", &generation, false),
             Err(CommandError::SnapshotChanged)
         ));
         let item = library
-            .file
+            .current
             .as_ref()
             .and_then(|file| file.engine.snapshot().ok())
             .and_then(|snapshot| snapshot.objects().first().map(|object| object.object.id().clone()))
@@ -411,7 +422,7 @@ mod tests {
         let source = SourceItem::Item(item.clone());
         assert_eq!(
             target(&library, Some(&source), &revision, &generation, false).ok(),
-            Some(Target::File("retained.bib".into()))
+            Some(Target::File(path.clone()))
         );
         assert!(matches!(
             target(&library, Some(&source), "old", &generation, false),
@@ -420,51 +431,36 @@ mod tests {
         let mut forged = item.clone();
         forged.key = "not-a-record".into();
         assert!(target(&library, Some(&SourceItem::Item(forged)), &revision, &generation, false).is_err());
-        library.source = Some(Source::Samples("samples.csljson".into()));
         assert_eq!(
-            target(&library, Some(&source), &revision, &generation, false).ok(),
-            Some(Target::File("samples.csljson".into()))
-        );
-        assert_eq!(
-            target(&Library::default(), None, "", "", true).ok(),
+            target(&View::default(), None, "", "", true).ok(),
             Some(Target::Zotero(ZoteroLibrary::Personal))
         );
     }
 
     #[test]
     fn an_itemless_open_from_empty_a_cannot_open_empty_b_with_the_same_snapshot() {
-        use super::super::state::{LoadRequests, begin_open, install};
-        let active = Mutex::new(candidate(PathBuf::from("empty-a.bib"), ""));
-        let first = super::super::status::status(&active.lock().unwrap_or_else(|_| panic!("library lock")));
-        let requests = LoadRequests::default();
-        let (request, _, opening) =
-            begin_open(&active, &requests, PathBuf::from("empty-b.bib")).unwrap_or_else(|| panic!("open empty B"));
-        let second = install(
-            &active,
-            &requests,
-            request,
-            Ok(candidate(PathBuf::from("empty-b.bib"), "")),
-        )
-        .unwrap_or_else(|| panic!("install empty B"));
-        let library = active.lock().unwrap_or_else(|_| panic!("library lock"));
+        let directory = tempfile::tempdir().unwrap();
+        let a = directory.path().join("empty-a.bib");
+        let b = directory.path().join("empty-b.bib");
+        std::fs::write(&a, "").unwrap();
+        std::fs::write(&b, "").unwrap();
+        let active = owner(SettingsFile::new(directory.path().join("settings.json")));
+        open(&active, a);
+        let first = active.status();
+        open(&active, b.clone());
+        let second = active.status();
+        let library = active.view();
         assert_eq!(
             first.revision, second.revision,
             "empty snapshots deliberately share their fingerprint"
         );
-        assert!(
-            matches!(
-                target(&library, None, &first.revision, &first.source_generation, false),
-                Err(CommandError::SnapshotChanged)
-            ),
-            "A's delayed request must refuse instead of opening B"
-        );
         assert!(matches!(
-            target(&library, None, &opening.revision, &opening.source_generation, false),
+            target(&library, None, &first.revision, &first.source_generation, false),
             Err(CommandError::SnapshotChanged)
         ));
         assert_eq!(
             target(&library, None, &second.revision, &second.source_generation, false).ok(),
-            Some(Target::File("empty-b.bib".into()))
+            Some(Target::File(b))
         );
     }
 

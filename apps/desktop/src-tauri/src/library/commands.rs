@@ -1,16 +1,15 @@
 //! The library commands the interface calls.
 
-use std::sync::{Arc, Mutex};
+use super::engine_library::FileLibrary;
+use ibis_engine::library::{ChoiceStore, Intent, LibraryProblem, LibraryStatus, Owner};
 
 use ibis_engine::settings::{ZoteroLibraries, ZoteroLibrary};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State, path::BaseDirectory};
 
+use super::Source;
 use super::search::{SearchQuery, SearchReply, SearchRequests};
-use super::source::Source;
-use super::state::Library;
-use super::status::{LibraryProblem, LibraryStatus};
-use super::tasks::{choose_library_file, current_status, reload_library_file, start_open, use_zotero_library};
+use super::{choose_library_file, current_status, reload_library_file, start_open, use_zotero_library};
 use crate::project::ProjectBibliography;
 use ibis_engine::discovery::{self, ZoteroPresence};
 use ibis_engine::{Cancellation, ZoteroGroup, health::InspectionPolicy};
@@ -42,8 +41,7 @@ pub(crate) fn use_sample_library(app: AppHandle, enabled: bool) -> Result<(), St
             .map_err(|_| "The sample references could not be found".to_string())?;
         start_open(&app, Source::Samples(path), false);
     } else {
-        super::state::leave_samples(&app.state(), &app.state());
-        super::tasks::publish_current(&app);
+        app.state::<Owner>().submit(Intent::LeaveSamples);
     }
     Ok(())
 }
@@ -65,8 +63,8 @@ pub(crate) fn use_zotero_libraries(app: AppHandle, libraries: Vec<ZoteroLibrary>
 /// listed by the closed read of the open library. Starts no read of its own.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn zotero_groups(library: State<'_, Mutex<Library>>) -> Result<Vec<ZoteroGroup>, super::CommandError> {
-    let file = library.lock().ok().and_then(|library| library.file.clone());
+pub(crate) async fn zotero_groups(library: State<'_, Owner>) -> Result<Vec<ZoteroGroup>, super::CommandError> {
+    let file = library.current();
     tauri::async_runtime::spawn_blocking(move || match file {
         Some(file) => file.zotero_groups(),
         None => ibis_engine::Engine::new().and_then(|engine| super::engine_library::zotero_groups(&engine)),
@@ -92,10 +90,7 @@ pub(crate) struct ZoteroProfiles {
 #[ibis_desktop_macros::command]
 pub(crate) async fn zotero_profiles(app: AppHandle) -> Result<ZoteroProfiles, super::CommandError> {
     tauri::async_runtime::spawn_blocking(move || {
-        let chosen = app
-            .state::<crate::preferences::SettingsFile>()
-            .zotero_profile()
-            .map_err(|_| ibis_core::contract::EngineError::new(ibis_core::contract::ErrorCode::SourceUnavailable))?;
+        let chosen = app.state::<crate::preferences::SettingsFile>().zotero_profile()?;
         let running = discovery::find_zotero(InspectionPolicy::Setup, false, &Cancellation::default())?
             != discovery::ZoteroPresence::Absent;
         super::engine_library::zotero_profiles().map(|names| ZoteroProfiles { names, chosen, running })
@@ -110,7 +105,7 @@ pub(crate) async fn zotero_profiles(app: AppHandle) -> Result<ZoteroProfiles, su
 #[tauri::command]
 #[ibis_desktop_macros::command]
 pub(crate) fn use_zotero_profile(app: AppHandle, name: String) {
-    super::tasks::use_zotero_profile(&app, name);
+    super::use_zotero_profile(&app, name);
 }
 
 /// Whether to read Zotero again after asking it: it now shares, or it opened
@@ -134,14 +129,9 @@ pub(crate) async fn check_zotero_sharing(app: AppHandle) -> Result<ZoteroPresenc
     .await
     .map_err(|_| super::CommandError::NotPrepared)?
     .map_err(super::CommandError::from)?;
-    let problem = app
-        .state::<Mutex<Library>>()
-        .lock()
-        .ok()
-        .and_then(|library| library.error)
-        .map(LibraryProblem::from);
+    let problem = app.state::<Owner>().view().error.map(LibraryProblem::from);
     if zotero_answered(found, problem) {
-        super::tasks::retry_zotero_on_focus(&app);
+        super::retry_zotero_on_focus(&app);
     }
     Ok(found)
 }
@@ -188,17 +178,13 @@ impl<'de> serde::Deserialize<'de> for RecentIdentity {
 pub(crate) async fn recent_references(
     forget: bool,
     app: AppHandle,
-    library: State<'_, Mutex<Library>>,
+    library: State<'_, Owner>,
     project: State<'_, ProjectBibliography>,
     editor: State<'_, crate::editor_endpoint::Pending>,
 ) -> Result<(SearchReply, bool, bool), super::CommandError> {
     let captured = crate::paste::last_app(&app).map(|(id, _, _)| id.normalized());
     let captured = editor.app(captured);
-    let file = library
-        .lock()
-        .map_err(|_| super::CommandError::SourceNotOpened)?
-        .file
-        .clone();
+    let file = library.current();
     let project = project.current();
     tauri::async_runtime::spawn_blocking(move || {
         let session = app.state::<crate::session_references::SessionReferences>();
@@ -243,31 +229,22 @@ pub(crate) async fn search(
     page: u32,
     request: u32,
     scope: Option<Vec<String>>,
-    library: State<'_, Mutex<Library>>,
+    library: State<'_, Owner>,
     requests: State<'_, SearchRequests>,
     project: State<'_, ProjectBibliography>,
 ) -> Result<SearchReply, super::CommandError> {
-    // The library lock is held only to take the engine.
-    let file = {
-        let library = library.lock().map_err(|_| super::CommandError::SearchFailed)?;
-        match (&library.source, &library.file) {
-            (Some(_), Some(file)) => Arc::clone(file),
-            _ => {
-                return Err(library
-                    .error
-                    .map(|error| super::CommandError::Presented(error.problem()))
-                    .unwrap_or_else(|| {
-                        super::CommandError::Presented(ibis_core::contract::Problem {
-                            code: "no-library".into(),
-                            info: ibis_core::contract::RecoveryInfo::new(
-                                "app-command-no-library",
-                                ibis_core::contract::Recovery::ChooseLibrary,
-                            ),
-                        })
-                    }));
+    let view = library.view();
+    let file = view.current.ok_or_else(|| {
+        super::CommandError::Presented(view.error.map(|error| error.problem()).unwrap_or_else(|| {
+            ibis_core::contract::Problem {
+                code: "no-library".into(),
+                info: ibis_core::contract::RecoveryInfo::new(
+                    "app-command-no-library",
+                    ibis_core::contract::Recovery::ChooseLibrary,
+                ),
             }
-        }
-    };
+        }))
+    })?;
     let Some(cancel) = requests.start(page, request) else {
         return Ok(SearchReply {
             revision: file.revision(),

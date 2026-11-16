@@ -14,7 +14,15 @@ fn delayed_citations_write_only_for_their_original_picker_and_clipboard() -> Res
         &path,
         "@book{taylor,title={Synthetic signals},author={Taylor, Alex},year={2026}}",
     )?;
-    let file = FileLibrary::open(&path, &ibis_engine::Cancellation::default()).map_err(|_| "open invented library")?;
+    let file = ibis_engine::library::Current::open(
+        ibis_engine::Engine::new()
+            .unwrap_or_else(|_| panic!("engine"))
+            .with_formatting(crate::library::engine_library::FORMATTING.clone()),
+        ibis_engine::library::Source::File(path.clone()),
+        None,
+        &ibis_engine::Cancellation::default(),
+    )
+    .map_err(|_| "open invented library")?;
     let query = serde_json::from_value(json!({"text":"signals","interpret_locators":false}))?;
     let rows = serde_json::to_value(file.search(&query, 10, None, &ibis_engine::Cancellation::default())?)?;
     let selection = json!({
@@ -36,7 +44,7 @@ fn delayed_citations_write_only_for_their_original_picker_and_clipboard() -> Res
         let project = ProjectBibliography::default();
         let session = SessionReferences::default();
         let selection: DraftItem = serde_json::from_value(selection.clone())?;
-        let preview = crate::test_citations::preview(&file.engine, file.sample, vec![selection], "pandoc")
+        let preview = crate::test_citations::preview(&file.engine, file.sample(), vec![selection], "pandoc")
             .map_err(|error| error.to_string())?;
         project
             .bind_preview(&file.engine, &preview, project.version())
