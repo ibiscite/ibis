@@ -133,7 +133,9 @@ Mac is away. Windows and Linux stay hosted: the Notepad paste test needs an unlo
 desktop and the Linux job installs packages with sudo, and neither was faster on our
 machines. The runner is GitHub's official
 [actions/runner](https://github.com/actions/runner), registered to this repository
-and run as the maintainer's user. It keeps state between jobs, so it only runs
+and run as the maintainer's user with its own `CARGO_HOME` and `RUSTUP_HOME`
+(set in the runner's `.env`), and the Rust build cache action runs only on hosted
+machines, so jobs never touch the maintainer's toolchain. It keeps state between jobs, so it only runs
 reviewed code: Dependabot's PRs stay on hosted runners, and Preview's builds,
 signing and attestations always run on fresh hosted machines. A fork PR runs its
 own copy of the workflows and could target it, so the repository requires approval

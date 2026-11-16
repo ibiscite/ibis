@@ -140,6 +140,16 @@ class CiResultTest(unittest.TestCase):
             self.assertLess(chooser, cache_index)
             self.assertLess(cache_index, installer)
 
+    def test_jobs_that_can_run_on_our_machines_never_touch_cargo_home(self):
+        # rust-cache restores and prunes CARGO_HOME/bin; on a self-hosted runner that
+        # is the owner's own toolchain (it removed rustup from the Mac once).
+        for name, job in self.workflow["jobs"].items():
+            if "vars.RUNNERS" not in str(job.get("runs-on", "")):
+                continue
+            for step in job["steps"]:
+                if "Swatinem/rust-cache" in step.get("uses", ""):
+                    self.assertEqual(step.get("if"), "runner.environment == 'github-hosted'", name)
+
     def test_actions_are_pinned_to_immutable_revisions(self):
         for path in (ROOT / ".github/workflows").glob("*.yml"):
             workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
