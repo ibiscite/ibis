@@ -80,6 +80,13 @@ commit=$(git rev-list --reverse --no-merges "origin/main..$sha" | sed -n '1p')
 title=${title_arg:-$(git show -s --format=%s "$commit")}
 if [ -n "$number" ]; then title=$(gh pr view "$number" --repo "$repo" --json title --jq .title); fi
 node scripts/pr-lint.mjs --title "$title" --branch "$branch"
+# While main's latest finished push CI failed, only a fix or a revert lands. An unreadable state does not block.
+red=$(gh api "repos/$repo/actions/workflows/ci.yml/runs?branch=main&event=push&status=completed&per_page=1" \
+  --jq '.workflow_runs[0] | select(.conclusion == "failure" or .conclusion == "timed_out") | .html_url') || red=''
+repair='^(fix|revert)[(!:]|^Revert "'
+if [ -n "$red" ] && ! [[ "$title" =~ $repair ]]; then
+  echo "Main is red ($red): only a fix or revert title lands until it is green."; exit 1
+fi
 root=$(git rev-parse --show-toplevel)
 export CARGO_TARGET_DIR="$root/target"
 export CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=1

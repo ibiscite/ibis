@@ -109,7 +109,7 @@ the anchor older links use.
 [0048](decisions/0048-nix-install.md): the CLI builds from source on Linux and macOS, the desktop on Linux; independent CI reports hash repairs for agents.
 
 ## 0049 Local machines gate merges
-[0049](decisions/0049-local-gate.md): superseded; hosted CI's fast Ubuntu tier is the required merge check, without a merge queue, and macOS and Windows confirm on main and nightly.
+[0049](decisions/0049-local-gate.md): superseded; hosted CI on all three systems is the required merge check, without a merge queue, and while main is red only fixes and reverts land.
 
 ## 0050 The menu bar menu
 [0050](decisions/0050-menu-bar-menu.md): one native menu on every system, with one-click library switching, Copy Again for the frontmost app, a spoken state and text drops; no custom card.
