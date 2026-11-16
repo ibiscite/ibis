@@ -12,7 +12,7 @@
       "properties": {
         "limit": {
           "default": 10,
-          "maximum": 25,
+          "description": "Up to 25; more gives 25.",
           "minimum": 1,
           "type": "integer"
         },
