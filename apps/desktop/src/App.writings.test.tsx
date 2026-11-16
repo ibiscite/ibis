@@ -239,7 +239,7 @@ test("a checked bibliography warning still copies the waiting citation once and 
       const { preview } = prepared(args);
       const outcome = { text: preview.text, warnings: preview.warnings };
       copied.push(outcome);
-      return outcome;
+      return { outcome: "retained", copied: outcome, reason: "warnings" };
     },
     hide_picker: () => { hidden += 1; return true; },
   });

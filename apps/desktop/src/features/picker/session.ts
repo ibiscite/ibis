@@ -430,7 +430,10 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
   }
   // Native hiding is part of the operation. Its hidden event may arrive before
   // this reply; a new opening or interaction still owns its own feedback.
-  if (!ownsInteraction(s, f) || !sameOutput(f.owner.output, live)) return [finish(s, f), []];
+  if (!ownsInteraction(s, f) || !sameOutput(f.owner.output, live)) {
+    return [finish(s, f), !s.pendingCopy && s.activeCopy === f.id && f.owner.session === s.session && sameOutput(f.owner.output, live)
+      ? [{ type: "consume", output: f.owner.output }] : []];
+  }
   if (result.outcome === "retained" && result.reason === "presentation-changed" || result.outcome === "sent" && result.retained === "presentation-changed") return [finish(s, f), []];
   s = { ...s, copied: outcome, shelfCopied: sameVisibleOutput ? { ...outcome, closestMatches: f.warnings } : null,
     copyNotice: sameVisibleOutput ? null : outcome };

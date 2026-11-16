@@ -10,7 +10,7 @@ import config from "../src-tauri/tauri.conf.json";
 import { OUTPUTS } from "./bindings";
 import { outputName, type OutputId } from "./format/outputs";
 import { missingKey, recordId } from "./test-fixtures";
-import { displayTree, changedDelivery, backend, chooseFromMore, paletteRow, chooseFromLibrary, libraryButton, prepared, receipt, resetApp, result, type PreviewRequest, type SyntheticId, openCitationDetails, closeCitationDetails, inCitation, findInCitation, removeFromCitation, citationKeys } from "./testing/app";
+import { displayTree, changedDelivery, backend, chooseFromMore, paletteRow, chooseFromLibrary, libraryButton, prepared, receipt, retainedCitation, resetApp, result, type PreviewRequest, type SyntheticId, openCitationDetails, closeCitationDetails, inCitation, findInCitation, removeFromCitation, citationKeys } from "./testing/app";
 
 afterEach(resetApp);
 
@@ -19,7 +19,7 @@ test("a pasted list previews and copies every result in order, with a safe missi
     const { preview } = prepared(args);
     return { outcome: "retained", copied: { text: preview.text, warnings: [] }, reason: "pinned" };
   });
-  const calls = backend({
+  backend({
     search: ({ query }) => query.text ? { revision: "1", results: [result("b", "Second"), result("a", "First")], list: { missing: ["<script>invented</script>"] } } : [],
     deliver_citation: copied,
   });
@@ -37,7 +37,6 @@ test("a pasted list previews and copies every result in order, with a safe missi
   await waitFor(() => expect(copied).toHaveBeenCalledOnce());
   const request = prepared(copied.mock.calls[0]![0]).request;
   expect(request.items.map(({ id }) => id.key)).toEqual(["b", "a"]);
-  await waitFor(() => expect(calls).toContain("hide_picker"));
 });
 
 test("editing Page in a pasted list preserves every reference in preview and copy order", async () => {
@@ -124,7 +123,7 @@ test("selected closest-match warnings survive exact searches and copying a mixed
       : [result("exact", "Synthetic exact reference")],
     deliver_citation: (args) => {
       copied.push(prepared(args).request);
-      return { outcome: "retained", copied: { text: "[@exact; @near]", warnings: [] }, reason: "pinned" };
+      return retainedCitation(args);
     },
   });
   render(<App />);
@@ -661,7 +660,7 @@ test("the query is searched again when a library finishes opening", async () => 
   expect(screen.queryByRole("alert")).toBeNull();
 });
 
-test("Enter copies the highlighted result in the remembered format and hides the picker", async () => {
+test("Enter submits the highlighted result in the remembered format", async () => {
   const copies: unknown[] = [];
   const calls = backend({
     picker_preferences: () => ({ output: "typst" }),
@@ -678,7 +677,7 @@ test("Enter copies the highlighted result in the remembered format and hides the
   await screen.findByText("Second");
   fireEvent.keyDown(box, { key: "ArrowDown" });
   fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => expect(calls).toContain("hide_picker"));
+  await waitFor(() => expect(calls).toContain("deliver_citation"));
   expect(copies).toMatchObject([{ items: selections([{ library: "refs.bib", key: "b" }]), output: "typst", expectedRevision: "1" }]);
   expect(screen.getByText("Copied")).toBeTruthy();
 });
@@ -1649,7 +1648,7 @@ test("a pinned picker stays open after copying, and Escape never unpins it", asy
   fireEvent.change(box, { target: { value: "first" } });
   await screen.findByText("First");
   fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => expect(calls).toContain("hide_picker"));
+  await waitFor(() => expect(calls.filter((command) => command === "deliver_citation")).toHaveLength(2));
 });
 
 test("a failed pin is reported", async () => {
@@ -2874,7 +2873,7 @@ test("a pre-event copy rejection recovers without copying or hiding until a fres
     search: () => [{ ...result("ITEM0001", `Snapshot ${revision}`, "zotero:user"), revision }],
     deliver_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request;
       attempts.push(args.expectedRevision);
-      if (args.expectedRevision !== revision) throw { code: "snapshot_changed" };
+      if (args.expectedRevision !== revision) return changedDelivery;
       writes.push(revision);
       return { outcome: "retained", copied: { text: "fresh copy", warnings: [] }, reason: "pinned" };
     },
@@ -3629,7 +3628,7 @@ test.each(["reopen", "edit", "copy", "expiry"])("an escaped literal search prese
       fireEvent.keyDown(box, { key: "Enter" });
       await screen.findByText("Copied");
     } else fireEvent.keyDown(box, { key: "Escape" });
-    await waitFor(() => expect(calls).toContain("hide_picker"));
+    if (change !== "copy") await waitFor(() => expect(calls).toContain("hide_picker"));
     await act(async () => { await emit("picker:hidden"); });
     now.mockReturnValue(1_000_000 + (change === "expiry" ? 61_000 : 30_000));
     await act(async () => { await emit("picker:shown"); });

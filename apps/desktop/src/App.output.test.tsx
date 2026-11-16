@@ -126,15 +126,14 @@ test("a pick that cannot be saved says it is for this paste, then the saved form
   expect(calls).not.toContain("picker_preferences_saved");
 });
 
-test("a pasted list copies every result in order in the app's format, then hides", async () => {
-  const { previews, copies, calls, remembered } = opened(() => (fixtureDestination({ ...BROWSER, format: formatAnswer("cite", "app") })), {
+test("a pasted list copies every result in order in the app's format", async () => {
+  const { previews, copies, remembered } = opened(() => (fixtureDestination({ ...BROWSER, format: formatAnswer("cite", "app") })), {
     search: () => ({ revision: "1", results: [result("b", "Second"), result("a", "First")], list: { missing: [] } }),
   });
   await screen.findByText("Pasted list");
   await pick("Typst");
   await waitFor(() => expect(previews.at(-1)).toMatchObject({ output: "typst", items: [{ id: { key: "b" } }, { id: { key: "a" } }] }));
   await copy(previews, copies);
-  await waitFor(() => expect(calls).toContain("hide_picker"));
   expect(remembered).toEqual(["typst"]);
 });
 
@@ -224,7 +223,7 @@ test("a successful copy consumes a held format even after the highlighted row ch
     deliver_citation: (args) => {
       const preparedCopy = prepared(args);
       formats.push(preparedCopy.request.output);
-      return formats.length === 1 ? first : { text: preparedCopy.preview.text, warnings: [] };
+      return formats.length === 1 ? first : { outcome: "retained", copied: { text: preparedCopy.preview.text, warnings: [] }, reason: "pinned" };
     },
   });
   await screen.findByText("First");

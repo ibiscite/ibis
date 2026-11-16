@@ -7,7 +7,7 @@ import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { expect, vi } from "vitest";
 import { listen } from "@tauri-apps/api/event";
 import type * as api from "../api";
-import type { CitedWarning, DisplayTree, Preview, DraftItem, CitationIntent } from "../bindings";
+import type { CitedWarning, ClosestMatch, DeliveryOutcome, DisplayTree, Preview, DraftItem, CitationIntent } from "../bindings";
 import { recordId } from "../test-fixtures";
 import { isStyle, listedOutput } from "../format/outputs";
 import { fixtureDestination, formatAnswer } from "./format";
@@ -179,6 +179,14 @@ export function prepared(args: unknown): Prepared {
   return found;
 }
 
+/** The native result for a citation that stays in the picker. */
+export function retainedCitation(args: unknown): Extract<DeliveryOutcome, { outcome: "retained" }> {
+  const { preview } = prepared(args);
+  const { closestMatches } = args as { closestMatches: ClosestMatch[] };
+  const warnings = [...preview.warnings, ...closestMatches.map(({ item, title }) => ({ item, message: { id: "picker-closest-match-warning", args: { title } } }))];
+  return { outcome: "retained", copied: { text: preview.text, warnings }, reason: warnings.length ? "warnings" : "pinned" };
+}
+
 export type Handler = (args: Record<string, unknown> & PreviewRequest & { query: api.SearchQuery; ticket: string; contentHash: string }) => unknown;
 
 /** Mock the Rust commands; returns the list of commands called. */
@@ -224,10 +232,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     ] }),
     // A way to share references, as the engine would copy the shown citation in it.
     citation_example: (args) => prepared(args).request.items.map(({ id }) => `@misc{${citationKeys.get(JSON.stringify(id)) ?? ""}}`).join("\n"),
-    deliver_citation: (args) => {
-      const { preview } = prepared(args);
-      return { outcome: "retained", copied: { text: preview.text, warnings: [...preview.warnings, ...(args.closestMatches as import("../bindings").ClosestMatch[]).map(({ item, title }) => ({ item, message: { id: "picker-closest-match-warning", args: { title } } }))] }, reason: "pinned" };
-    },
+    deliver_citation: retainedCitation,
     picker_preferences: () => preferences,
     format_settings: () => ({ apps: [], key_output_visible: Boolean(preferences.key_output), writings: [] }),
     save_picker_preferences: ({ preferences: patch }) => { const receipt = ++revision; submitted.set(receipt, patch as Partial<api.PickerPreferences>); return receipt; },

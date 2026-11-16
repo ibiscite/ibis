@@ -192,5 +192,3 @@ export function newerUpdate(old: UpdateProgress | null, next: UpdateProgress): U
     (next.attempt === old.attempt && distance > 0 && distance < 0x80000000) ? next : old;
 }
 
-/** Delivery still receives the full canonical text; only the receipt is shortened. */
-
