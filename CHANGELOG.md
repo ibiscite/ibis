@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.9](https://github.com/ibiscite/ibis/compare/v0.3.8...v0.3.9) (2026-11-16)
+
+
+### Bug Fixes
+
+* AI apps read attachments only inside the library ([#1956](https://github.com/ibiscite/ibis/issues/1956)) ([c937502](https://github.com/ibiscite/ibis/commit/c93750221ff6bbdda05115432b99e48f2bd83250))
+* **ci:** green the release checks and the Nix desktop build ([#1961](https://github.com/ibiscite/ibis/issues/1961)) ([0821971](https://github.com/ibiscite/ibis/commit/0821971eec61b013b98397c7f7340a58381239ba))
+* **engine:** make the staging swap test deterministic ([#1962](https://github.com/ibiscite/ibis/issues/1962)) ([c665dc6](https://github.com/ibiscite/ibis/commit/c665dc647a88d74fe2c2a9b8a5f6b4a25c92b29b))
+* update to CSL styles v1.0.22, citeproc d569d42 ([#1958](https://github.com/ibiscite/ibis/issues/1958)) ([3344954](https://github.com/ibiscite/ibis/commit/3344954f728e37f383f4755d988d48cd00dc03e2))
+
 ## [0.3.8](https://github.com/ibiscite/ibis/compare/v0.3.7...v0.3.8) (2026-11-16)
 
 
