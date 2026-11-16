@@ -60,7 +60,7 @@ test("with a result ready to copy, the citation format is a distinct named contr
   expect(await screen.findByRole("button", { name: "Citation format Typst" })).toBe(button);
   expect(status.textContent).toMatch(/^Typst\./);
   expect(document.activeElement).toBe(search);
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
 });
 
 test("More holds working actions, leaving preferences and update checks to Settings", async () => {

@@ -3,7 +3,7 @@
 use ibis_engine::citations::{Operation, SessionId};
 use std::sync::Mutex;
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::{AppHandle, State};
 
 use crate::library::{CommandError, PreviewIntent};
@@ -17,7 +17,7 @@ pub(crate) struct Copied {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) summary: Option<ReceiptSummary>,
     /// Unique clipboard-write identity for receipts, even without a native paste proof.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip)]
     pub(crate) delivery: Option<u32>,
     /// What was cited, for the session's list and the project check; stays
     /// on this side of the bridge.
@@ -25,7 +25,7 @@ pub(crate) struct Copied {
     pub(crate) cited: Vec<ibis_core::contract::ItemRef>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, schemars::JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, schemars::JsonSchema)]
 pub(crate) struct ReceiptSummary {
     pub(crate) text: String,
     pub(crate) more: usize,
@@ -147,9 +147,9 @@ pub(crate) fn clipboard_mark() -> ClipboardMark {
 
 /// The picker and clipboard this request belongs to, captured before reciting.
 #[derive(Clone, Copy)]
-struct CopyIntent {
-    presentation: u64,
-    clipboard: ClipboardMark,
+pub(crate) struct CopyIntent {
+    pub(crate) presentation: u64,
+    pub(crate) clipboard: ClipboardMark,
 }
 
 impl CopyIntent {
@@ -368,58 +368,14 @@ pub(crate) fn write_plain(app: &AppHandle, text: &str) -> Result<(), String> {
     )
 }
 
-/// Copy the shown citation. Citing it again can wait for the formatter, so
-/// that runs on a worker with no lock held; the short commit that writes the
-/// clipboard stays on the main thread, as the native clipboard needs.
-#[tauri::command]
-#[ibis_desktop_macros::command]
-pub(crate) async fn copy_file_citation(
-    ticket: String,
-    content_hash: String,
-    replaces: Vec<String>,
-    app: AppHandle,
-    library: State<'_, Owner>,
-) -> Result<Copied, CommandError> {
-    let intent = CopyIntent {
-        presentation: tauri::Manager::state::<crate::picker::PickerGeneration>(&app).current(),
-        clipboard: clipboard_mark(),
-    };
-    // What the copy is for is fixed when it is asked for: a Forget or a new
-    // target while it waits must not adopt it.
-    let editor = tauri::Manager::state::<crate::editor_endpoint::Pending>(&app);
-    let captured = editor.app(crate::paste::last_app(&app));
-    let epoch = tauri::Manager::state::<crate::session_references::SessionReferences>(&app)
-        .lock()
-        .epoch();
-    let file = open_file(&library)?;
-    let recited = tauri::async_runtime::spawn_blocking(move || {
-        file.engine
-            .citations()
-            .commit(SessionId::PICKER, &ticket, &content_hash)
-            .map_err(CommandError::from)
-    })
-    .await
-    .map_err(|_| CommandError::ClipboardUnavailable)??;
-    let (send, committed) = std::sync::mpsc::sync_channel(1);
-    let main = app.clone();
-    app.run_on_main_thread(move || {
-        let _ = send.send(commit_shown(&main, &recited, replaces, captured, epoch, intent));
-    })
-    .map_err(|_| CommandError::ClipboardUnavailable)?;
-    tauri::async_runtime::spawn_blocking(move || committed.recv())
-        .await
-        .map_err(|_| CommandError::ClipboardUnavailable)?
-        .map_err(|_| CommandError::ClipboardUnavailable)?
-}
-
-fn commit_shown(
+pub(crate) fn commit_shown(
     app: &AppHandle,
     recited: &ibis_engine::citations::CheckedCitation,
     replaces: Vec<String>,
     captured: Option<(ibis_core::destination::AppId, String, Option<String>)>,
     epoch: std::sync::Arc<()>,
     intent: CopyIntent,
-) -> Result<Copied, CommandError> {
+) -> Result<(Copied, bool), CommandError> {
     use tauri::Manager;
     let library = app.state::<Owner>();
     let editor = app.state::<crate::editor_endpoint::Pending>();
@@ -503,7 +459,7 @@ fn commit_shown(
         if matches!(request.output, ibis_core::contract::OutputSpec::Key { .. }) {
             app.state::<crate::preferences::SettingsFile>().record_key_format_use();
         }
-        return Ok(copied);
+        return Ok((copied, true));
     }
     let format = {
         let settings = ibis_engine::settings::load(&app.state::<crate::preferences::SettingsFile>().path);
@@ -550,7 +506,7 @@ fn commit_shown(
         app.state::<crate::notice::Notice>()
             .remember_format(copied.delivery, id, chosen);
     }
-    Ok(copied)
+    Ok((copied, false))
 }
 
 /// The open library's engine; its commit barrier guards the write.

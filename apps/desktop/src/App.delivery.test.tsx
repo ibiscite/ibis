@@ -747,12 +747,12 @@ test("after a change that was only copied, anything else selected still only cop
 test("the shortcut alone never reopens the last citation", async () => {
   const harness = await pastedOnce();
   await act(async () => { await harness.reopen(); });
-  expect(harness.calls.filter((call) => call === "copy_file_citation")).toHaveLength(1);
+  expect(harness.calls.filter((call) => call === "deliver_citation")).toHaveLength(1);
   expect(screen.queryByText("Change Citation", { exact: false })).toBeNull();
   // Nothing from the last citation came back: the shelf has no reference, so
   // Enter on the empty search copies nothing.
   await enter();
-  expect(harness.calls.filter((call) => call === "copy_file_citation")).toHaveLength(1);
+  expect(harness.calls.filter((call) => call === "deliver_citation")).toHaveLength(1);
 });
 
 test("More offers no Change Last Citation until this app has one", async () => {

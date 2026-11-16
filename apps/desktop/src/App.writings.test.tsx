@@ -33,7 +33,7 @@ test("Enter pressed during reopening waits for the newly captured writing and co
       if (request.output === "cite" && request.intent.context?.[0] === 1) initialPreviewStarted = true;
       return receipt(`${request.output}:${JSON.stringify(request.intent.context)}`);
     },
-    copy_file_citation: (args) => { const text = prepared(args).preview.text; copied.push(text); return { text, warnings: [] }; },
+    deliver_citation: (args) => { const text = prepared(args).preview.text; copied.push(text); return { outcome: "retained", copied: { text, warnings: [] }, reason: "pinned" }; },
   });
   render(<App />);
   await screen.findByText("Synthetic source");
@@ -67,7 +67,7 @@ test("a bibliography read finishing for the same writing refreshes a waiting Ent
       if (request.intent.context?.[0] === 1) { delayedPreviewStarted = true; return earlier.promise; }
       return receipt("initial context");
     },
-    copy_file_citation: (args) => { const text = prepared(args).preview.text; copied.push(text); return { text, warnings: [] }; },
+    deliver_citation: (args) => { const text = prepared(args).preview.text; copied.push(text); return { outcome: "retained", copied: { text, warnings: [] }, reason: "pinned" }; },
   });
   render(<App />);
   await screen.findByText("Synthetic source");
@@ -102,7 +102,7 @@ test("leaving a writing restores the app's output and copies a fresh preview", a
       return view();
     },
     preview_file_citation: (request) => receipt(`${request.output}:${JSON.stringify(request.intent.context)}`),
-    copy_file_citation: (args) => { const text = prepared(args).preview.text; copied.push(text); return { text, warnings: [] }; },
+    deliver_citation: (args) => { const text = prepared(args).preview.text; copied.push(text); return { outcome: "retained", copied: { text, warnings: [] }, reason: "pinned" }; },
   });
   render(<App />);
   await screen.findByText("Synthetic source");
@@ -170,7 +170,7 @@ test("a fresh Enter after selecting a writing waits for its delayed destination 
       return next;
     },
     preview_file_citation: (request) => receipt(`${request.output}:${JSON.stringify(request.intent.context)}`),
-    copy_file_citation: (args) => { const text = prepared(args).preview.text; copied.push(text); return { text, warnings: [] }; },
+    deliver_citation: (args) => { const text = prepared(args).preview.text; copied.push(text); return { outcome: "retained", copied: { text, warnings: [] }, reason: "pinned" }; },
   });
   render(<App />);
   await screen.findByText("Synthetic source");
@@ -190,10 +190,9 @@ test("a same-format writing switch starts a new copy and an older copy cannot de
   const first = writingDestination("Writing A", "cite", [1, 0]);
   const second = writingDestination("Writing B", "cite", [2, 0]);
   const writings = [first.writing!, second.writing!];
-  const oldCopy = pending<{ text: string; warnings: string[]; delivery: number }>();
+  const oldCopy = pending<import("./bindings").DeliveryOutcome>();
   let selected = "Writing A";
-  const invoked: string[] = [], delivered: { text: unknown; delivery: unknown }[] = [];
-  let hidden = 0;
+  const invoked: string[] = [];
   const view = (): WritingsView => ({ writings: writings, selected, context: selected === "Writing A" ? "opening-1" : "opening-2", session_only: false });
   backend({
     search: () => [result("a", "Synthetic source")],
@@ -201,13 +200,11 @@ test("a same-format writing switch starts a new copy and an older copy cannot de
     writings: view,
     edit_writing: async () => { selected = "Writing B"; await emit("project:changed", [2, 0]); return view(); },
     preview_file_citation: (request) => receipt(request.intent.context?.[0] === 2 ? "cite:Writing B" : "cite:Writing A"),
-    copy_file_citation: (args) => {
+    deliver_citation: (args) => {
       const text = prepared(args).preview.text;
       invoked.push(text);
-      return text === "cite:Writing A" ? oldCopy.promise : { text, warnings: [], delivery: 29 };
+      return text === "cite:Writing A" ? oldCopy.promise : { outcome: "retained", copied: { text, warnings: [] }, reason: "pinned" };
     },
-    hide_picker: () => { hidden += 1; return true; },
-    show_copied_notice: ({ text, delivery }) => { delivered.push({ text, delivery }); return null; },
   });
   render(<App />);
   await screen.findByText("Synthetic source");
@@ -220,11 +217,7 @@ test("a same-format writing switch starts a new copy and an older copy cannot de
   await waitFor(() => expect(document.querySelector(".shelf")?.textContent).toContain("cite:Writing B"));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   await waitFor(() => expect(invoked).toEqual(["cite:Writing A", "cite:Writing B"]));
-  await waitFor(() => expect(delivered).toEqual([{ text: "cite:Writing B", delivery: 29 }]));
-  expect(hidden).toBe(1);
-  await act(async () => { oldCopy.resolve({ text: "cite:Writing A", warnings: [], delivery: 17 }); });
-  expect(hidden).toBe(1);
-  expect(delivered).toEqual([{ text: "cite:Writing B", delivery: 29 }]);
+  await act(async () => { oldCopy.resolve({ outcome: "retained", copied: { text: "cite:Writing A", warnings: [] }, reason: "pinned" }); });
   expect(document.querySelector(".shelf")?.textContent).toContain("cite:Writing B");
   expect(document.querySelector(".shelf")?.textContent).not.toContain("cite:Writing A");
 });
@@ -242,7 +235,7 @@ test("a checked bibliography warning still copies the waiting citation once and 
       if (request.intent.context?.[0] === 1) { earlierStarted = true; return earlier.promise; }
       return receipt("initial context");
     },
-    copy_file_citation: (args) => {
+    deliver_citation: (args) => {
       const { preview } = prepared(args);
       const outcome = { text: preview.text, warnings: preview.warnings };
       copied.push(outcome);
@@ -271,9 +264,9 @@ test("a bibliography event retires an old copy proof before its delayed destinat
   const first = writingDestination("Writing A", "cite", [1, 0]);
   const refreshed = writingDestination("Writing A", "cite", [1, 1]);
   const destination = pending<PickerDestination>(), checked = pending<Preview>();
-  const oldCopy = pending<{ text: string; warnings: string[]; delivery: number }>();
-  const invoked: string[] = [], delivered: { text: unknown; delivery: unknown }[] = [];
-  let reads = 0, checkedPreviewStarted = false, hidden = 0;
+  const oldCopy = pending<import("./bindings").DeliveryOutcome>();
+  const invoked: string[] = [];
+  let reads = 0, checkedPreviewStarted = false;
   backend({
     search: () => [result("a", "Synthetic source")],
     picker_destination: () => ++reads === 1 ? first : destination.promise,
@@ -281,13 +274,11 @@ test("a bibliography event retires an old copy proof before its delayed destinat
       if (request.intent.context?.[1] === 1) { checkedPreviewStarted = true; return checked.promise; }
       return receipt("cite:before bibliography check");
     },
-    copy_file_citation: (args) => {
+    deliver_citation: (args) => {
       const text = prepared(args).preview.text;
       invoked.push(text);
-      return text === "cite:before bibliography check" ? oldCopy.promise : { text, warnings: [], delivery: 29 };
+      return text === "cite:before bibliography check" ? oldCopy.promise : { outcome: "retained", copied: { text, warnings: [] }, reason: "pinned" };
     },
-    hide_picker: () => { hidden += 1; return true; },
-    show_copied_notice: ({ text, delivery }) => { delivered.push({ text, delivery }); return null; },
   });
   render(<App />);
   await screen.findByText("Synthetic source");
@@ -298,14 +289,10 @@ test("a bibliography event retires an old copy proof before its delayed destinat
   await waitFor(() => expect(reads).toBe(2));
   // The event itself retires the earlier context. A native reply cannot use
   // the interval before the refreshed destination arrives to deliver its proof.
-  await act(async () => { oldCopy.resolve({ text: "cite:before bibliography check", warnings: [], delivery: 17 }); });
-  expect(hidden).toBe(0);
-  expect(delivered).toEqual([]);
+  await act(async () => { oldCopy.resolve({ outcome: "retained", copied: { text: "cite:before bibliography check", warnings: [] }, reason: "pinned" }); });
   await act(async () => { destination.resolve(refreshed); });
   await waitFor(() => expect(checkedPreviewStarted).toBe(true));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   await act(async () => { checked.resolve(receipt("cite:current checked context [1,1]")); });
   await waitFor(() => expect(invoked).toEqual(["cite:before bibliography check", "cite:current checked context [1,1]"]));
-  await waitFor(() => expect(delivered).toEqual([{ text: "cite:current checked context [1,1]", delivery: 29 }]));
-  expect(hidden).toBe(1);
 });

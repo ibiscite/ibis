@@ -231,16 +231,8 @@ pub(crate) fn copied_notice(notice: State<'_, Notice>) -> Option<NoticeMessage> 
     notice.text.lock().ok().and_then(|text| text.clone())
 }
 
-/// After the picker has hidden: paste into the app it was opened from when
-/// that is safe (#27), then say "Pasted into …" or "Copied" and why. The
-/// interface calls this only after a copy without warnings that hid the
-/// picker (see `copyFeedback.ts`); copies with warnings keep their notice
-/// inside the picker. Failures are reported as fixed diagnostics: the
-/// citation is on the clipboard either way.
-/// Returns the delivery outcome so a permission detour keeps the prepared shelf.
-#[tauri::command]
-#[ibis_desktop_macros::command]
-pub(crate) async fn show_copied_notice(
+/// Deliver a committed citation and publish its receipt. Native delivery is its only caller.
+pub(crate) async fn deliver(
     app: AppHandle,
     text: String,
     delivery: Option<u32>,

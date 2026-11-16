@@ -33,9 +33,9 @@ function opened(destination: () => PickerDestination, overrides: Parameters<type
       const text = isStyle(listedOutput(request.output) ?? "pandoc") ? `(Smith, 2020) ${request.output}` : `synthetic ${request.output}`;
       return { ...receipt(text), ticket: `ticket-${number}`, content_hash: `hash-${number}` };
     },
-    copy_file_citation: (args) => {
+    deliver_citation: (args) => {
       copies.push({ ticket: args.ticket, contentHash: args.contentHash });
-      return { text: prepared(args).preview.text, warnings: [] };
+      return { outcome: "retained", copied: { text: prepared(args).preview.text, warnings: [] }, reason: "pinned" };
     },
     remember_app_output: ({ output }) => { remembered.push(output as string | null); return null; },
     ...overrides,
@@ -221,7 +221,7 @@ test("a successful copy consumes a held format even after the highlighted row ch
   opened(() => (fixtureDestination({ ...BROWSER, format: formatAnswer("cite", "app") })), {
     remember_app_output: refuseSave,
     search: () => [result("a", "First"), result("b", "Second")],
-    copy_file_citation: (args) => {
+    deliver_citation: (args) => {
       const preparedCopy = prepared(args);
       formats.push(preparedCopy.request.output);
       return formats.length === 1 ? first : { text: preparedCopy.preview.text, warnings: [] };
@@ -235,7 +235,7 @@ test("a successful copy consumes a held format even after the highlighted row ch
   fireEvent.keyDown(search, { key: "Enter" });
   await waitFor(() => expect(formats).toEqual(["typst"]));
   fireEvent.keyDown(search, { key: "ArrowDown" });
-  await act(async () => { finish({ text: "synthetic typst copy", warnings: [] }); });
+  await act(async () => { finish({ outcome: "retained", copied: { text: "synthetic typst copy", warnings: [] }, reason: "pinned" }); });
   await waitFor(() => expect(formatShown()).toBe("LaTeX \\cite · Example Browser"));
   fireEvent.keyDown(search, { key: "Enter" });
   await waitFor(() => expect(formats).toEqual(["typst", "cite"]));
@@ -250,7 +250,7 @@ test("one format shortcut opens the formats without copying or changing any defa
   const menu = await screen.findByRole("dialog");
   expect(within(menu).queryByRole("menuitemcheckbox")).toBeNull();
   expect(within(menu).getAllByRole("option").filter((row) => row.closest('[aria-label="Recent"], [aria-label="Key formats"], [aria-label="Citation styles"], [aria-label="Share references"]'))).toHaveLength(OUTPUTS.length);
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
   expect(calls).not.toContain("picker_preferences_saved");
   expect(remembered).toEqual([]);
 });
@@ -258,16 +258,16 @@ test("one format shortcut opens the formats without copying or changing any defa
 test("an unrelated Settings refresh does not extend a held format", async () => {
   let finish!: (value: unknown) => void;
   const copying = new Promise((done) => { finish = done; });
-  const { calls } = opened(() => (fixtureDestination({ ...BROWSER, format: formatAnswer("cite", "app") })), { copy_file_citation: () => copying, remember_app_output: refuseSave });
+  const { calls } = opened(() => (fixtureDestination({ ...BROWSER, format: formatAnswer("cite", "app") })), { deliver_citation: () => copying, remember_app_output: refuseSave });
   await screen.findByText("First");
   await toggleKeepOpen();
   await pick("Typst");
   await waitFor(() => expect(formatShown()).toBe("Typst · This paste"));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
-  await waitFor(() => expect(calls).toContain("copy_file_citation"));
+  await waitFor(() => expect(calls).toContain("deliver_citation"));
   await act(async () => { await emit("preferences:changed"); });
   await waitFor(() => expect(calls.filter((call) => call === "picker_destination")).toHaveLength(2));
-  await act(async () => { finish({ text: "synthetic typst copy", warnings: [] }); });
+  await act(async () => { finish({ outcome: "retained", copied: { text: "synthetic typst copy", warnings: [] }, reason: "pinned" }); });
   await waitFor(() => expect(formatShown()).toBe("LaTeX \\cite · Example Browser"));
 });
 
