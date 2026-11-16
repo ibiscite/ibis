@@ -380,6 +380,7 @@ impl Engine {
                     parent.object.id(),
                     attachment,
                     self.pdf.as_ref(),
+                    self.attachment_text_outside_library,
                     {
                         let cancel = cancel.clone();
                         Arc::new(move || cancel.is_cancelled())
@@ -388,7 +389,14 @@ impl Engine {
                 .map_err(sources::zotero_error),
             _ if attachment.link_only => Ok(TextState::NoFile),
             Owner::File(library) => match self.pdf.as_ref().filter(|_| attachment.is_pdf()) {
-                Some(reader) => file_text(reader, library, parent, attachment, cancel),
+                Some(reader) => file_text(
+                    reader,
+                    library,
+                    parent,
+                    attachment,
+                    self.attachment_text_outside_library,
+                    cancel,
+                ),
                 None => Ok(TextState::NotYet),
             },
             Owner::Snapshot => Ok(TextState::NotYet),
@@ -489,6 +497,7 @@ fn file_text(
     library: &std::path::Path,
     parent: &SnapshotObject,
     attachment: &SourceAttachment,
+    outside_library: bool,
     cancel: &Cancellation,
 ) -> Result<TextState, EngineError> {
     let file = ibis_sources::attachment_file(
@@ -496,6 +505,7 @@ fn file_text(
         parent.object.id(),
         &parent.fingerprints.full,
         &attachment.key,
+        outside_library,
         &|| cancel.is_cancelled(),
     )
     .map_err(|failure| match failure {

@@ -1,16 +1,15 @@
 // Thin effect runner. It never decides which interaction owns a completion.
 import * as nativeApi from "../../api";
-import type { Delivered, Problem, WritingEdit } from "../../bindings";
+import type { Problem, WritingEdit } from "../../bindings";
 import { problemText, say } from "../../i18n";
 import type { OutputId } from "../../format/outputs";
 import type { Operation } from "./Notices";
 import type { PreviewFailure } from "./preview";
 import { initialSession, reduceSession, type SessionEffect, type SessionEvent } from "./session";
 
-export type SessionPorts = Pick<typeof nativeApi, "copyFileCitation" | "hidePicker" | "search" | "previewFileCitation">
-  & Partial<Pick<typeof nativeApi, "showCopiedNotice" | "pickerDestination" | "rememberAppOutput" | "editWriting">> & {
-  pinned: () => boolean;
-  refresh: () => void; reportHide: (failed: boolean) => void;
+export type SessionPorts = Pick<typeof nativeApi, "deliverCitation" | "search" | "previewFileCitation">
+  & Partial<Pick<typeof nativeApi, "pickerDestination" | "rememberAppOutput" | "editWriting">> & {
+  refresh: () => void;
   report: (operation: Operation, failed: boolean) => void;
   /** Saves the default format, for a pick with no app to remember it for. */
   chooseDefault: (output: OutputId) => void | Promise<void>;
@@ -40,27 +39,11 @@ export function createSessionController(initial = initialSession()) {
     switch (effect.type) {
       case "copy": {
         try {
-          const outcome = await ports.copyFileCitation(effect.ticket, effect.hash, effect.replaces);
-          dispatch({ type: "copied", id: effect.id, session: effect.session, outcome, pinned: ports.pinned() });
-        } catch (error) {
-          const stale = nativeApi.isSnapshotChanged(error), shared = nativeApi.sharedCitationKey(error);
-          dispatch({ type: "copy-failed", id: effect.id, session: effect.session, stale,
-            message: stale ? say("picker-snapshot-changed") : shared ? say("picker-shared-key", { key: shared }) : say("picker-copy-error") });
+          const outcome = await ports.deliverCitation(effect.ticket, effect.hash, effect.replaces, effect.presentation, effect.closestMatches);
+          dispatch({ type: "completed", id: effect.id, session: effect.session, outcome });
+        } catch {
+          dispatch({ type: "copy-failed", id: effect.id, session: effect.session, message: say("picker-copy-error") });
         }
-        break;
-      }
-      case "hide":
-        try {
-          const hidden = await ports.hidePicker(effect.presentation);
-          dispatch({ type: hidden === false ? "hide-refused" : "hid", id: effect.id, session: effect.session });
-        }
-        catch { dispatch({ type: "hide-failed", id: effect.id, session: effect.session }); }
-        break;
-      case "notice": {
-        let delivered: Delivered | null = null;
-        try { delivered = await ports.showCopiedNotice?.(effect.outcome.text, effect.outcome.delivery ?? null, effect.outcome.summary ?? null) ?? null; }
-        catch { console.error(say("copied-notice-notice-failed")); }
-        dispatch({ type: "delivered", id: effect.id, session: effect.session, delivered });
         break;
       }
       case "consume": dispatch({ type: "consume-held", output: effect.output }); break;
@@ -95,7 +78,6 @@ export function createSessionController(initial = initialSession()) {
         dispatch({ type: "destination-save-settled" });
         break;
       }
-      case "hide-status": ports.reportHide(effect.failed); break;
       case "refresh": ports.refresh(); break;
       case "search": {
         const { seq } = effect;

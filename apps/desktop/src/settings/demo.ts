@@ -10,6 +10,7 @@ export function demoApi(initialPreferences: Partial<PickerPreferences> = {}): Se
   let shortcut: ShortcutStatus = { shortcut: DEFAULT_PICKER_SHORTCUT, registered: true, error: null };
   let enabled = false, automatic = false;
   let attachmentText = false;
+  let outsideLibrary = false;
   let revision = 0;
   let factIndex = -1;
   let windowSize: WindowSize = "medium", previousWindowSize: WindowSize = "medium", windowRevision = 0;
@@ -32,6 +33,8 @@ export function demoApi(initialPreferences: Partial<PickerPreferences> = {}): Se
   return {
     attachmentTextLibraries: async () => [{ id: "lib_invented_demo_library", name: "Sample references", on: attachmentText }],
     setAttachmentText: async (id, on) => { if (id !== "lib_invented_demo_library") throw new Error("Unknown library"); attachmentText = on; return on; },
+    attachmentTextOutsideLibrary: async () => outsideLibrary,
+    setAttachmentTextOutsideLibrary: async (on) => { outsideLibrary = on; return on; },
     onLibraryChanged: subscribe,
     waitingProposals: async () => proposals,
     applyProposal: async (id) => { proposals = proposals.filter((proposal) => proposal.id !== id); return { status: "applied", backup: "signals.bib.ibis-backup-1" }; },

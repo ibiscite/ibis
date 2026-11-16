@@ -61,8 +61,8 @@ export const {
   openSettings,
 } = commands;
 
-export function copyFileCitation(ticket: string, contentHash: string, replaces: readonly string[] | null) {
-  return commands.copyFileCitation(ticket, contentHash, [...replaces ?? []]);
+export function deliverCitation(ticket: string, contentHash: string, replaces: readonly string[] | null, presentation: number, closestMatches: import("./bindings").ClosestMatch[]) {
+  return commands.deliverCitation(ticket, contentHash, [...replaces ?? []], presentation, closestMatches);
 }
 
 /** Retry refreshes evidence only; the person chooses insertion afresh. */
@@ -185,10 +185,5 @@ export function newerUpdate(old: UpdateProgress | null, next: UpdateProgress): U
   const distance = old ? (next.revision - old.revision) >>> 0 : 1;
   return !old || next.attempt > old.attempt ||
     (next.attempt === old.attempt && distance > 0 && distance < 0x80000000) ? next : old;
-}
-
-/** Delivery still receives the full canonical text; only the receipt is shortened. */
-export function showCopiedNotice(text: string, delivery: number | null, summary: import("./bindings").ReceiptSummary | null = null) {
-  return commands.showCopiedNotice(text, delivery, summary);
 }
 

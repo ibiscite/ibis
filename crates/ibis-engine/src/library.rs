@@ -1087,20 +1087,19 @@ fn open_zotero(
 /// The choice a successful read saves: the path the read resolved, so the
 /// saved choice names what was read even if the chosen path later moves.
 fn remembered_choice(source: &Source, loaded: &Result<Loaded, LoadError>) -> Option<LibrarySetting> {
-    match loaded {
-        Ok(Loaded::Reload(_, prepared)) if let Prepared::File(prepared) = &**prepared => {
-            return prepared
-                .source_path()
-                .map(|path| LibrarySetting::Bibtex(path.to_path_buf()));
-        }
-        Ok(Loaded::New(current))
-            if matches!(current.source, Source::File(_))
-                && let Some(path) = current.source_path.as_deref()
-                && is_bib(path) =>
-        {
-            return Some(LibrarySetting::Bibtex(path.to_path_buf()));
-        }
-        _ => {}
+    if let Ok(Loaded::Reload(_, prepared)) = loaded
+        && let Prepared::File(prepared) = &**prepared
+    {
+        return prepared
+            .source_path()
+            .map(|path| LibrarySetting::Bibtex(path.to_path_buf()));
+    }
+    if let Ok(Loaded::New(current)) = loaded
+        && matches!(current.source, Source::File(_))
+        && let Some(path) = current.source_path.as_deref()
+        && is_bib(path)
+    {
+        return Some(LibrarySetting::Bibtex(path.to_path_buf()));
     }
     source.setting()
 }

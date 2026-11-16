@@ -267,7 +267,7 @@ test("a removed row leaves the keyboard in the sheet, so the next key cannot act
   await waitFor(() => expect(within(dialog).getAllByRole("button", { name: /^Remove / })).toHaveLength(1));
   await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
   fireEvent.keyDown(document.activeElement!, { key: "Enter" });
-  expect(calls.filter((command) => command === "copy_file_citation")).toHaveLength(0);
+  expect(calls.filter((command) => command === "deliver_citation")).toHaveLength(0);
   expect(screen.getByRole("dialog")).toBe(dialog);
 });
 

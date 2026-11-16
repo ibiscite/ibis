@@ -1089,6 +1089,11 @@
           "const": "no-attachment-text"
         },
         {
+          "description": "The resolved attachment file is outside its library's folder, and\nthis computer has not explicitly allowed reading it.",
+          "type": "string",
+          "const": "attachment-outside-library"
+        },
+        {
           "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
           "type": "string",
           "const": "no-such-pages"

@@ -11,6 +11,7 @@ mod bindings;
 mod cli_install;
 mod copy;
 mod delights;
+mod delivery;
 #[cfg(any(target_os = "linux", test))]
 mod desktop_theme;
 mod destination;

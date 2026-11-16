@@ -4,7 +4,7 @@ import { enterLabel } from "./enterLabel";
 import { choiceKey, idKey, type CitationReference } from "./choice";
 import { arrangeView } from "../../testing/sessionView";
 import { initialSession, reduceSession, sessionQueryKey, type SessionEvent, type SessionView } from "./session";
-import type { CopiedReason } from "../../bindings";
+import type { Copied, CopiedReason, DeliveryOutcome } from "../../bindings";
 
 const a: CitationReference = { ...testStates[1]!.results[0]!, locator: { term: "page", value: "١٢–١٤" } };
 const b = testStates[1]!.results[1]!;
@@ -21,9 +21,11 @@ function scenario() {
     [state] = reduceSession(arranged, event);
     return { type: "committed" };
   };
-  /** The copy's answer; the destination's token at that moment is the arranged view's. */
-  const complete = (id: number, { output: _, ...change }: Partial<Extract<SessionEvent, { type: "copied" }>> & { output?: unknown } = {}) =>
-    send({ type: "copied", id, session: 0, outcome: { text: prepared.text, warnings: [] }, pinned: false, ...change });
+  const complete = (id: number, { output: _, pinned = false, outcome = { text: prepared.text, warnings: [] }, ...change }: { output?: unknown; pinned?: boolean; outcome?: Copied; session?: number; result?: DeliveryOutcome } = {}) => {
+    const { result, ...owner } = change;
+    const copied = { ...outcome, warnings: [...outcome.warnings, ...state.flights.find((f) => f.id === id)?.warnings ?? []] };
+    return send({ type: "completed", id, session: 0, outcome: result ?? (pinned ? { outcome: "retained", copied, reason: "pinned" } : { outcome: "pasted", copied, app: "Example Writer" }), ...owner });
+  };
   return { send, view, complete, get state() { return state; }, get effects() { return effects; } };
 }
 
@@ -101,13 +103,13 @@ test.each(["before", "after"] as const)("a refreshed checked receipt cannot adop
   s.send(s.view(checked));
   if (oldResponse === "before") {
     s.complete(1);
-    expect(s.effects.some((effect) => effect.type === "hide" || effect.type === "notice")).toBe(false);
+    expect(s.effects.some((effect) => effect.type === "copy")).toBe(false);
   }
   const second = s.send({ type: "enter", choice: choiceKey([a]) });
   expect(second).toMatchObject([{ type: "copy", id: 2, ticket: "checked-ticket" }]);
   if (oldResponse === "after") {
     s.complete(1);
-    expect(s.effects.some((effect) => effect.type === "hide" || effect.type === "notice")).toBe(false);
+    expect(s.effects.some((effect) => effect.type === "copy")).toBe(false);
   }
   expect(s.state.activeCopy).toBe(2);
   s.complete(2, { pinned: true, outcome: { text: prepared.text, warnings: checked.shown.warnings } });
@@ -139,9 +141,7 @@ test.each([false, true])("a citation draft keeps every field through a short reo
   const references = [...s.state.selected.values()];
   if (permission) {
     s.send({ type: "enter", choice: choiceKey(references) });
-    s.complete(1);
-    s.send({ type: "hid", id: 1, session: 0 });
-    s.send({ type: "delivered", id: 1, session: 0, delivered: { outcome: "copied", reason: "no-permission" } });
+    s.complete(1, { result: { outcome: "copied-only", copied: { text: prepared.text, warnings: [] }, reason: "no-permission" } });
   }
   s.send({ type: "hidden", now: 10 });
   s.send({ type: "shown", now: permission ? 120_000 : 20, presentation: 2 });
@@ -238,11 +238,7 @@ test("search, Enter and receipt use exactly one prepared engine ticket", () => {
   expect(s.effects).toEqual([]);
   s.complete(1);
   expect(s.state.copied?.text).toBe(prepared.text);
-  expect(s.effects).toMatchObject([{ type: "hide", id: 1 }]);
   s.send({ type: "hidden", now: 10 });
-  s.send({ type: "hid", id: 1, session: 0 });
-  expect(s.effects).toMatchObject([{ type: "hide-status", failed: false }, { type: "notice", outcome: { text: prepared.text } }]);
-  s.send({ type: "delivered", id: 1, session: 0, delivered: { outcome: "pasted", app: "Example Writer" } });
   expect(s.state.lastOutcome).toBe("Pasted into Example Writer");
   expect(s.state.flights).toHaveLength(0);
 });
@@ -255,9 +251,7 @@ test.each<[CopiedReason, string]>([
   s.send({ type: "toggle", result: a, locator: a.locator });
   s.send(s.view());
   s.send({ type: "enter", choice: choiceKey([a]) });
-  s.complete(1);
-  s.send({ type: "hid", id: 1, session: 0 });
-  s.send({ type: "delivered", id: 1, session: 0, delivered: { outcome: "copied", reason } });
+  s.complete(1, { result: { outcome: "copied-only", copied: { text: prepared.text, warnings: [] }, reason } });
   expect(s.state.lastOutcome).toBe(message);
   expect([...s.state.selected.values()]).toEqual([a]);
   expect(s.state.permissionDetour).toBe(true);
@@ -275,7 +269,7 @@ test("search and preview failures never copy, and a copy rejection shows its fix
   expect(s.effects).toEqual([]);
   s.send(s.view());
   s.send({ type: "enter", choice: choiceKey([a]) });
-  s.send({ type: "copy-failed", id: 1, session: 0, message: "Invented copy failure", stale: false });
+  s.send({ type: "copy-failed", id: 1, session: 0, message: "Invented copy failure" });
   expect(s.state.copyError).toBe("Invented copy failure");
   expect(s.effects).toEqual([]);
 });
@@ -320,7 +314,6 @@ test("close/reopen retires old completion without consuming a newer copy", () =>
   expect(s.state.activeCopy).toBe(2);
   expect(s.state.copied).toBeNull();
   s.complete(2, { session: 1 });
-  expect(s.effects).toMatchObject([{ type: "hide", id: 2 }]);
 });
 
 test("Shift+Enter keeps insertion order and canonical locators; Escape only cancels Enter", () => {
@@ -361,7 +354,6 @@ test("a current ready Enter joins a copy after query changes and still delivers 
   expect(s.effects).toEqual([]);
   expect(s.state.flights).toHaveLength(1);
   s.complete(1);
-  expect(s.effects).toMatchObject([{ type: "hide" }]);
   s.complete(1);
   expect(s.effects).toEqual([]);
 });
@@ -384,14 +376,14 @@ test("a stale success never consumes the newer citation's copy or receipt", () =
   expect(s.effects).toEqual([]);
 });
 
-test("delivery revocation keeps completed-write feedback without hiding or delivering", () => {
+test("a retained copy still confirms its write after delivery policy changes", () => {
   const s = scenario();
   s.send({ type: "toggle", result: a, locator: a.locator });
   s.send(s.view());
   s.send({ type: "enter", choice: choiceKey([a]) });
   const output = { opening: 0, choice: 0, delivery: 1 };
   s.send(s.view({ output }));
-  s.complete(1, { output, outcome: { text: prepared.text, warnings: [], delivery: 17 } });
+  s.complete(1, { output, pinned: true, outcome: { text: prepared.text, warnings: [] } });
   expect(s.state.copied).toEqual({ text: prepared.text, warnings: [] });
   expect(s.state.shelfCopied).toEqual({ text: prepared.text, warnings: [], closestMatches: [] });
   expect(s.state.copyNotice).toBeNull();
@@ -523,9 +515,7 @@ test("a new selection ends a permission detour: the text a paste would replace i
   s.send({ type: "query", value: "prepared" });
   s.send(s.view());
   s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
-  s.complete(1);
-  s.send({ type: "hid", id: 1, session: 0 });
-  s.send({ type: "delivered", id: 1, session: 0, delivered: { outcome: "copied", reason: "no-permission" } });
+  s.complete(1, { result: { outcome: "copied-only", copied: { text: prepared.text, warnings: [] }, reason: "no-permission" } });
   expect(s.state.permissionDetour).toBe(true);
   s.send({ type: "hidden", now: 20 });
   s.send({ type: "preparing", now: 30, selection: "smith 2020" });
@@ -538,9 +528,7 @@ test("a detour keeps its prepared search when the document has no selection", ()
   s.send({ type: "query", value: "prepared" });
   s.send(s.view());
   s.send({ type: "enter", choice: choiceKey([a]) });
-  s.complete(1);
-  s.send({ type: "hid", id: 1, session: 0 });
-  s.send({ type: "delivered", id: 1, session: 0, delivered: { outcome: "copied", reason: "no-permission" } });
+  s.complete(1, { result: { outcome: "copied-only", copied: { text: prepared.text, warnings: [] }, reason: "no-permission" } });
   s.send({ type: "hidden", now: 20 });
   s.send({ type: "preparing", now: 30, selection: null });
   expect(s.state).toMatchObject({ query: "prepared", permissionDetour: true });
@@ -551,16 +539,14 @@ test("a fresh Enter after a detour ends it, so a reopen during delivery cannot l
   s.send({ type: "query", value: "prepared" });
   s.send(s.view());
   s.send({ type: "enter", choice: choiceKey([a]) });
-  s.complete(1);
-  s.send({ type: "hid", id: 1, session: 0 });
-  s.send({ type: "delivered", id: 1, session: 0, delivered: { outcome: "copied", reason: "no-permission" } });
+  s.complete(1, { result: { outcome: "copied-only", copied: { text: prepared.text, warnings: [] }, reason: "no-permission" } });
   s.send({ type: "hidden", now: 20 });
   s.send({ type: "preparing", now: 30, selection: null });
   s.send({ type: "shown", now: 31, presentation: 0 });
   expect(s.state.permissionDetour).toBe(true);
   s.send(s.view());
   s.send({ type: "enter", choice: choiceKey([a]) });
-  s.send({ type: "copied", id: 2, session: s.state.session, outcome: { text: prepared.text, warnings: [] }, pinned: false });
+  s.send({ type: "completed", id: 2, session: s.state.session, outcome: { outcome: "pasted", copied: { text: prepared.text, warnings: [] }, app: "Example Writer" } });
   expect(s.state.permissionDetour).toBe(false);
 });
 
@@ -569,9 +555,7 @@ test("a detour keeps a citation prepared from document text", () => {
   s.send({ type: "preparing", now: 1, selection: "smith 2020" });
   s.send(s.view());
   s.send({ type: "enter", choice: choiceKey([a]) });
-  s.complete(1);
-  s.send({ type: "hid", id: 1, session: 0 });
-  s.send({ type: "delivered", id: 1, session: 0, delivered: { outcome: "copied", reason: "no-permission" } });
+  s.complete(1, { result: { outcome: "copied-only", copied: { text: prepared.text, warnings: [] }, reason: "no-permission" } });
   s.send({ type: "hidden", now: 20 });
   s.send({ type: "preparing", now: 30, selection: null });
   expect(s.state.query).toBe("smith 2020");
@@ -582,13 +566,11 @@ test("reopening during delivery is no detour: the new selection opens, and the l
   s.send({ type: "query", value: "prepared" });
   s.send(s.view());
   s.send({ type: "enter", choice: choiceKey([a]) });
-  s.complete(1);
-  s.send({ type: "hid", id: 1, session: 0 });
   s.send({ type: "hidden", now: 20 });
   s.send({ type: "preparing", now: 21, selection: "jones 2021" });
   s.send({ type: "shown", now: 22, presentation: 1 });
   expect(s.state).toMatchObject({ query: "jones 2021", fromDocument: true });
-  s.send({ type: "delivered", id: 1, session: 0, delivered: { outcome: "copied", reason: "no-permission" } });
+  s.complete(1, { result: { outcome: "copied-only", copied: { text: prepared.text, warnings: [] }, reason: "no-permission" } });
   expect(s.state.permissionDetour).toBe(false);
   s.send({ type: "hidden", now: 30 });
   s.send({ type: "preparing", now: 31, selection: "newer 2022" });
@@ -607,7 +589,7 @@ test("a selection arriving with a waiting Enter cancels it: Enter never pastes a
 const copyOnce = (s: ReturnType<typeof scenario>, id: number, text: string) => {
   s.send(s.view({ appId: "example.writer", chosen: [...s.state.selected.values()], shown: { ...prepared, text } }));
   const effects = s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
-  s.send({ type: "copied", id, session: s.state.session, outcome: { text, warnings: [] }, pinned: true });
+  s.send({ type: "completed", id, session: s.state.session, outcome: { outcome: "retained", copied: { text, warnings: [] }, reason: "pinned" } });
   return effects;
 };
 const withLast = () => {
@@ -666,11 +648,9 @@ test("a permission detour keeps the change, so a fresh Enter still may only repl
   s.send(s.view({ appId: "example.writer", chosen: [...s.state.selected.values()] }));
   s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
   expect(s.effects).toMatchObject([{ type: "copy", replaces: ["(2020, p. 12)"] }]);
-  s.send({ type: "copied", id: 2, session: 0, outcome: { text: prepared.text, warnings: [] }, pinned: false });
-  s.send({ type: "hidden", now: 10 });
+    s.send({ type: "hidden", now: 10 });
   expect(s.state.changing).toEqual(["(2020, p. 12)"]);
-  s.send({ type: "hid", id: 2, session: 0 });
-  s.send({ type: "delivered", id: 2, session: 0, delivered: { outcome: "copied", reason: "no-permission" } });
+  s.send({ type: "completed", id: 2, session: 0, outcome: { outcome: "copied-only", copied: { text: prepared.text, warnings: [] }, reason: "no-permission" } });
   expect(s.state.changing).toEqual(["(2020, p. 12)"]);
   expect(s.state.selected.size).toBe(1);
   s.send({ type: "hidden", now: 20 });
@@ -688,9 +668,7 @@ test("a selection ending a detour leaves the change it held, so Enter still prov
   s.send({ type: "change-last" });
   s.send(s.view({ appId: "example.writer", chosen: [...s.state.selected.values()] }));
   s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
-  s.send({ type: "copied", id: 2, session: 0, outcome: { text: prepared.text, warnings: [] }, pinned: false });
-  s.send({ type: "hid", id: 2, session: 0 });
-  s.send({ type: "delivered", id: 2, session: 0, delivered: { outcome: "copied", reason: "no-permission" } });
+    s.send({ type: "completed", id: 2, session: 0, outcome: { outcome: "copied-only", copied: { text: prepared.text, warnings: [] }, reason: "no-permission" } });
   s.send({ type: "hidden", now: 10 });
   s.send({ type: "preparing", now: 20, selection: "(2020, p. 12)" });
   expect(s.state).toMatchObject({ changing: ["(2020, p. 12)"], permissionDetour: false, query: "(2020, p. 12)" });
@@ -756,7 +734,7 @@ test("memory stays small: the app used longest ago is dropped", () => {
     s.send({ type: "toggle", result: a });
     s.send(s.view({ appId: `example.app${id}`, chosen: [...s.state.selected.values()], shown: { ...prepared, text: `(${id})` }, defaultChoice: `${id}` }));
     s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
-    s.send({ type: "copied", id, session: 0, outcome: { text: `(${id})`, warnings: [] }, pinned: true });
+    s.send({ type: "completed", id, session: 0, outcome: { outcome: "retained", copied: { text: `(${id})`, warnings: [] }, reason: "pinned" } });
   }
   expect(s.state.lastCitations.size).toBe(8);
   expect(s.state.lastCitations.has("example.app1")).toBe(false);
@@ -825,7 +803,7 @@ test("with Recent Citations off nothing is remembered, and turning it off forget
   s.send({ type: "toggle", result: a });
   s.send(s.view({ appId: "example.writer", remembersLast: false, chosen: [...s.state.selected.values()] }));
   s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
-  s.send({ type: "copied", id: 1, session: 0, outcome: { text: prepared.text, warnings: [] }, pinned: true });
+  s.send({ type: "completed", id: 1, session: 0, outcome: { outcome: "retained", copied: { text: prepared.text, warnings: [] }, reason: "pinned" } });
   expect(s.state.lastCitations.size).toBe(0);
 });
 
@@ -834,7 +812,7 @@ test("an app with no ID never shares a last citation with another", () => {
   s.send({ type: "toggle", result: a });
   s.send(s.view({ appId: null, chosen: [...s.state.selected.values()] }));
   s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
-  s.send({ type: "copied", id: 1, session: 0, outcome: { text: prepared.text, warnings: [] }, pinned: true });
+  s.send({ type: "completed", id: 1, session: 0, outcome: { outcome: "retained", copied: { text: prepared.text, warnings: [] }, reason: "pinned" } });
   expect(s.state.lastCitations.size).toBe(0);
 });
 

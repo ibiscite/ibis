@@ -2,8 +2,8 @@
  "releases": {
   "styles": {
    "repo": "citation-style-language/styles",
-   "tag": "v1.0.16",
-   "commit": "8c15d2757ac6ce93c800682f4b9e53582e27e609"
+   "tag": "v1.0.22",
+   "commit": "af0aea3fffd44fe798cce9285598d0d5cf62ef23"
   },
   "locales": {
    "repo": "citation-style-language/locales",
@@ -13,8 +13,8 @@
  },
  "bundle": {
   "path": "csl-bundle.bin",
-  "bytes": 3040685,
-  "sha256": "b71fb3fdb04c0c846421fb2243a1cb58716eb2bf2429be2c8f42f0698b6b5d2a"
+  "bytes": 3041827,
+  "sha256": "e994a8a70acdca04bf74b2a1e9ec2e81cca17e0b0c0e9ccaa2ee051d91e95144"
  },
  "renames": {
   "aaa": "american-anthropological-association",
@@ -494,6 +494,7 @@
   "modern-language-association-with-url": "modern-language-association",
   "modern-rheumatology": "springer-vancouver-brackets",
   "molecular-biochemical-parasitology": "molecular-and-biochemical-parasitology",
+  "monash-university-harvard": "apa",
   "moore-theological-college": "society-of-biblical-literature-fullnote-bibliography",
   "national-library-of-medicine": "nlm-citation-sequence",
   "national-library-of-medicine-brackets-no-et-al": "nlm-citation-sequence-brackets-no-et-al",
@@ -1424,7 +1425,7 @@
   "styles/czech-journal-of-international-relations.csl": "4308ac834803cb0c74b834c0479935e3429e587dac7e2e2dcdaa3f647d6cae2d",
   "styles/data-science-journal.csl": "29c0bb8f9e05c2213b03bd62b4d1c2ce3e81900203048eae124ffdd61c457004",
   "styles/database.csl": "7924b3007bfd0d6047da01257aa0751fa730038e9ac71c9cdafc2d27a6fad11b",
-  "styles/de-buck.csl": "586fcfd922c27e6bb1a295190827263044c05f323713196928fe319e953f2588",
+  "styles/de-buck.csl": "cec46adeec8437a7ee148fd8bb590bbf4bea2af068d4484ebbdbec2f84c0110d",
   "styles/decision-sciences.csl": "53e6cd01680001ff58624863c0b19c54119d5ce00b63c48bb139cf8e0f5efc6d",
   "styles/degruyter-american-chemical-society.csl": "01538bfae696495ea00dafae9d38b112a39c43a1c42bcd97a8c5fec60a28d58f",
   "styles/demographic-research.csl": "c7a1bea9cd0be96987570a7f5835e932f446d7c8a1d1dddffb36c1c5c81fbbde",
@@ -7136,7 +7137,6 @@
   "styles/dependent/molecular-vision.csl": "822faa4fe0804dc4ab19380af2a3be0c689112a129091bd6702001a8b880e557",
   "styles/dependent/molecules.csl": "e9821ea57dcc90d0cc7175763d957dc4047ff88b7ccbd7ca3834faad52e30e59",
   "styles/dependent/monash-bioethics-review.csl": "f6fe55984b31bc0417ee86334186d9212f405d16ff3f8b135b0cfa333bd35c60",
-  "styles/dependent/monash-university-harvard.csl": "12bdebd6b358d53bcd6c71196858942531e82aae6e6c074fe4ca5812271ba97c",
   "styles/dependent/monatshefte-fur-chemie-chemical-monthly.csl": "d9f008a1fca11d03f0df35e22ac21217ab6ba928de5b9f8c9716fdbebfa6eada",
   "styles/dependent/monatshefte-fur-mathematik.csl": "994d049c3926b92a807f5c6fb014d08d06591b3654d9cd8e0c3c1ac4d14a9e46",
   "styles/dependent/monatsschrift-kinderheilkunde.csl": "9a4e58829ee8e6ca27f512ace5234b5fc5668224f78c50f1e17412d3eefc2ef8",
@@ -9789,7 +9789,7 @@
   "styles/harvard-gesellschaft-fur-bildung-und-forschung-in-europa.csl": "912ebfb63b03ff4ba89d34399c16e6b045f2c870b538c98869bfd0d8ad9703ff",
   "styles/harvard-institut-fur-praxisforschung-de.csl": "d2f5de4638dc10ff68487362d3f11b87cf706fbe55fae4478da8fdc7a1759464",
   "styles/harvard-kings-college-london.csl": "2429820a0d8d8dc07d1cfdbcb3a092eeab5f72f4a6dcaf1b2a3865c3e17f1ea2",
-  "styles/harvard-leeds-beckett-university.csl": "8e3cfa00a5a6a22f9cbf39257793514c177652e30995cf2464fcfa90b378f76b",
+  "styles/harvard-leeds-beckett-university.csl": "d7689e038af22758dea36b2e52ba8b0231593945d06bb4869993f68139709086",
   "styles/harvard-leeds-metropolitan-university.csl": "8e5c2f4c699eb6be675942a763779c8fe6e192ca39849abd1a96fc7fc6b4aed2",
   "styles/harvard-limerick.csl": "1030db2d616d72c1c11004bc4adfe98a457eee79334b6424d43cd6af561c1dae",
   "styles/harvard-london-south-bank-university.csl": "7318255233164fc09d2b983b2c846c770b931fcf449a57c1a7ea439dd0a1ab12",
@@ -9819,7 +9819,7 @@
   "styles/harvard-university-of-exeter-geography.csl": "6944334ac4df11a4d5c72ca68aeabb1a91e82fb37bc7e70e9e3dfcaa5a83b109",
   "styles/harvard-university-of-greenwich.csl": "c1950edc9ca6525c3c7cb48270a8046efc75b79db64a1c3a3416b1159cd64c17",
   "styles/harvard-university-of-kent.csl": "8f3e1d726aaa1cdd6732c56be77ca342181e8e8a5cc46882917bf7181a9bdb7e",
-  "styles/harvard-university-of-leeds.csl": "015b6902296ce2c0254b69b56b077795c51db618afe66f151758b8154cadd7f3",
+  "styles/harvard-university-of-leeds.csl": "d3986305d342d3e5c0a580dbc9c304e5e64dc9f9303199c565b34cf9ed6b6d44",
   "styles/harvard-university-of-technology-sydney.csl": "55eaad9435064f861097f69ad337d4e1bb29e31f79124c9cc53a2877f8344e75",
   "styles/harvard-university-of-the-west-of-england.csl": "4e245077c17d1c29658dff77630f0ab64fb8eeb465849f398ea5dc4571500de6",
   "styles/harvard-university-of-the-west-of-scotland.csl": "be63a303d74153c8b878a491a9c2dba88274b69a493fbd6fb252bd501ac7a3f5",
@@ -9909,7 +9909,7 @@
   "styles/iica-catie.csl": "c3a030674c47c52e0dc3e08262eb3401b7c9e51107d957a5123d9ef7e3baede5",
   "styles/ilahiyat-studies.csl": "c1bba61ff09db0467d64f0df522328dadc577a4dd3a9878d99cc4e18e6555164",
   "styles/im-gesprach.csl": "35fcf983a3c1fd0a6759f3317c5bf8604122132d0e5cca96f98b696eb5a7c44e",
-  "styles/imperial-college-london-author-date.csl": "667f873fee36e90c1ac8647211d609ff98920640643772584a4676df3714a39b",
+  "styles/imperial-college-london-author-date.csl": "d10de22adb3cf04deec009c4f3c40a72ebb2be028752d10346086e97ef84f671",
   "styles/imperial-college-london-numerical.csl": "acd0d6914f737ca3b34fb57a144d8fcb9eabf3e730513d25452d99195d5b42e5",
   "styles/incontext-studies-in-translation-and-interculturalism.csl": "2fcdbcc650517ecd8ca9ba2b43761137def7ed769cadf733619737730666afe6",
   "styles/indian-dermatology-online-journal.csl": "bc00cf1be5e5bc7be01e96a1ccf81c00967f69b068621b5e1e1c02737ae8be37",
@@ -10669,8 +10669,8 @@
   "styles/norois.csl": "88877aa904864ed544dae7ff7707799e14cda0a8cf77bab18290a41e320a14a3",
   "styles/norsk-apa-manual-note.csl": "90f03c6b3bdc8aa6e9fdece5a019854529540c02fc47683b66827543f176ef23",
   "styles/norsk-apa-manual.csl": "7e3d471ca91539cd596b8e4d4abd0882bc8b23583afe5a8b637b5793592395ff",
-  "styles/norsk-henvisningsstandard-for-rettsvitenskapelige-tekster-full-firstnote.csl": "4e5982dd1ba58b8fc0dcc438cb3047fa37c179fb08f5bb308c4dcf01521fbc4d",
-  "styles/norsk-henvisningsstandard-for-rettsvitenskapelige-tekster.csl": "49a53f97d88dc26f57da03daab34227aa5b6f2c01538c9f82ba3d3d7f9882c85",
+  "styles/norsk-henvisningsstandard-for-rettsvitenskapelige-tekster-full-firstnote.csl": "05eb25a83b0831921d0c44e3327e4b7bdb192077a4fc946bb95605b0cc980605",
+  "styles/norsk-henvisningsstandard-for-rettsvitenskapelige-tekster.csl": "83c11dbd5f45f13279937ccde13c1bee61a5d31447ac964361256a1d0903240d",
   "styles/north-pacific-anadromous-fish-commission-bulletin.csl": "510b127816a4bef8d5d102c84295485f6b9878568a41e7ce451a49b6955403bd",
   "styles/northeastern-naturalist.csl": "9552009de7f620929e2ab2efb78726037abc0c6247ed384f05fca838b29230e2",
   "styles/nottingham-trent-university-library-harvard.csl": "a475d19e23357c3ee6453ac81c81d21e560edfce1dfe5c6464ba8508b05ba970",

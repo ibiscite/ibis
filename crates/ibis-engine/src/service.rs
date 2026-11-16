@@ -308,6 +308,7 @@ pub struct Engine {
     watch_files: bool,
     /// Reads PDFs in a child process; without one, PDFs stay unread.
     pdf: Option<ibis_sources::pdf::PdfReader>,
+    attachment_text_outside_library: bool,
 }
 impl Engine {
     pub fn new() -> Result<Self, EngineError> {
@@ -325,6 +326,12 @@ impl Engine {
     /// never parses a PDF itself.
     pub fn with_pdf_reader(mut self, program: std::path::PathBuf) -> Self {
         self.pdf = Some(ibis_sources::pdf::PdfReader::new(program));
+        self
+    }
+    /// Explicit device permission for the attachment text tools to read
+    /// beyond a library file's folder or Zotero's storage folder.
+    pub fn with_attachment_text_outside_library(mut self, allowed: bool) -> Self {
+        self.attachment_text_outside_library = allowed;
         self
     }
     /// Reuse a session's compiled style when replacing its library.
@@ -353,6 +360,7 @@ impl Engine {
             resources: Arc::new(sources::Owners::default()),
             watch_files: true,
             pdf: None,
+            attachment_text_outside_library: false,
         }
     }
     /// An isolated IPv4-loopback transport for synthetic clients.

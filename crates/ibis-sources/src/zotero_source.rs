@@ -45,6 +45,8 @@ pub enum ZoteroError {
     LibraryNotFound,
     #[error("the choice of Zotero libraries is invalid")]
     Selection,
+    #[error("the attachment file is outside the library's folder; Settings › AI Apps can allow it")]
+    AttachmentOutsideLibrary,
 }
 impl ZoteroError {
     pub fn cancelled(self) -> bool {
@@ -72,6 +74,7 @@ impl ZoteroError {
     /// What a person can do about this failure, when the kind of failure says.
     pub fn reason(self) -> Option<ErrorReason> {
         match self {
+            Self::AttachmentOutsideLibrary => Some(ErrorReason::AttachmentOutsideLibrary),
             Self::Live(LiveError::NotAllowed) => Some(ErrorReason::ZoteroSharingOff),
             Self::ProfileNeeded => Some(ErrorReason::ZoteroProfileNeeded),
             Self::Closed(closed::ClosedError::NotFound) => Some(ErrorReason::ZoteroNotFound),
@@ -719,6 +722,7 @@ impl ZoteroReading {
         parent: &ItemRef,
         attachment: &SourceAttachment,
         pdf: Option<&PdfReader>,
+        outside_library: bool,
         cancelled: Arc<dyn Fn() -> bool + Send + Sync>,
     ) -> Result<TextState, ZoteroError> {
         if cancelled() {
@@ -726,6 +730,19 @@ impl ZoteroReading {
         }
         if attachment.link_only {
             return Ok(TextState::NoFile);
+        }
+        // Zotero base-folder links cannot establish storage containment here.
+        // An empty location still permits indexed-only imported attachments.
+        if !outside_library
+            && !attachment.location.is_empty()
+            && !attachment.location.starts_with("storage:")
+            && !Path::new(&attachment.location).is_absolute()
+        {
+            return Err(ZoteroError::AttachmentOutsideLibrary);
+        }
+        let file = self.file(attachment, outside_library)?;
+        if file.is_none() && Path::new(&attachment.location).is_absolute() {
+            return Ok(TextState::Refused(crate::pdf::Refusal::Missing));
         }
         let library = self.library(&parent.library)?;
         let indexed = match self.mode {
@@ -756,7 +773,7 @@ impl ZoteroReading {
         if cancelled() {
             return Err(ZoteroError::Closed(closed::ClosedError::Cancelled));
         }
-        let file = pdf.filter(|_| attachment.is_pdf()).zip(self.file(attachment));
+        let file = pdf.filter(|_| attachment.is_pdf()).zip(file);
         let text = crate::reading::text_of(
             indexed,
             file.as_ref().map(|(reader, file)| (*reader, file.as_path())),
@@ -770,19 +787,36 @@ impl ZoteroReading {
 
     /// The attachment's stored file or an absolute linked file. Relative linked
     /// files require Zotero's base-folder preference, which this source lacks.
-    fn file(&self, attachment: &SourceAttachment) -> Option<PathBuf> {
-        if let Some(name) = attachment.location.strip_prefix("storage:") {
+    fn file(&self, attachment: &SourceAttachment, outside_library: bool) -> Result<Option<PathBuf>, ZoteroError> {
+        let path = if let Some(name) = attachment.location.strip_prefix("storage:") {
             let mut parts = Path::new(name).components();
             let (Some(std::path::Component::Normal(name)), None) = (parts.next(), parts.next()) else {
-                return None;
+                return Ok(None);
             };
             if !fulltext::valid_key(&attachment.key) {
-                return None;
+                return Ok(None);
             }
-            return Some(self.data.as_ref()?.join("storage").join(&attachment.key).join(name));
+            let Some(data) = &self.data else { return Ok(None) };
+            data.join("storage").join(&attachment.key).join(name)
+        } else {
+            let path = Path::new(&attachment.location);
+            if !path.is_absolute() {
+                return Ok(None);
+            }
+            path.to_owned()
+        };
+        let base = self.data.as_ref().map(|data| data.join("storage"));
+        if !outside_library && base.is_none() {
+            return Err(ZoteroError::AttachmentOutsideLibrary);
         }
-        let path = Path::new(&attachment.location);
-        path.is_absolute().then(|| path.to_owned())
+        crate::file::attachment_path(base.as_deref().unwrap_or(Path::new("")), &path, outside_library).map_err(
+            |error| match error {
+                crate::SourceError::AttachmentOutsideLibrary | crate::SourceError::Missing => {
+                    ZoteroError::AttachmentOutsideLibrary
+                }
+                _ => ZoteroError::Location,
+            },
+        )
     }
 }
 
@@ -1980,6 +2014,7 @@ mod tests {
         for key in ["PDF00001", "PDF00002"] {
             let folder = data.path().join("storage").join(key);
             std::fs::create_dir_all(&folder).unwrap();
+            std::fs::write(folder.join(format!("{key}.pdf")), b"%PDF-1.7\n").unwrap();
             std::fs::write(
                 folder.join(".zotero-ft-cache"),
                 "Invented first page.\n\n\u{c}Invented second page.",
@@ -2002,24 +2037,66 @@ mod tests {
         );
         // A stored file is looked for only in its own storage folder.
         assert_eq!(
-            reading.file(&found[0]),
+            reading.file(&found[0], false).unwrap(),
             Some(closed::trusted_folder(data.path()).join("storage/PDF00001/PDF00001.pdf"))
         );
         let mut elsewhere = found[0].clone();
-        for location in [
-            "storage:../PDF00002/x.pdf",
-            "storage:",
-            "attachments:papers/x.pdf",
-            "papers/x.pdf",
-        ] {
+        for location in ["storage:../PDF00002/x.pdf", "storage:"] {
             elsewhere.location = location.into();
-            assert_eq!(reading.file(&elsewhere), None, "{location}");
+            assert_eq!(reading.file(&elsewhere, false).unwrap(), None, "{location}");
         }
+        for location in ["attachments:papers/x.pdf", "papers/x.pdf"] {
+            elsewhere.location = location.into();
+            assert_eq!(
+                reading
+                    .text(unused, &parent, &elsewhere, None, false, Arc::new(|| false))
+                    .err(),
+                Some(ZoteroError::AttachmentOutsideLibrary)
+            );
+            assert!(matches!(
+                reading.text(unused, &parent, &elsewhere, None, true, Arc::new(|| false)),
+                Ok(TextState::Text(_))
+            ));
+        }
+        // Absolute linked files obey the same boundary, before indexed text
+        // is consulted; enabling this device's permission makes it readable.
         let linked = data.path().join("linked.pdf");
+        std::fs::write(&linked, b"%PDF-1.7\n").unwrap();
         elsewhere.location = linked.to_string_lossy().into_owned();
-        assert_eq!(reading.file(&elsewhere), Some(linked));
+        assert_eq!(
+            reading
+                .text(unused, &parent, &elsewhere, None, false, Arc::new(|| false))
+                .err(),
+            Some(ZoteroError::AttachmentOutsideLibrary)
+        );
+        assert!(matches!(
+            reading.text(unused, &parent, &elsewhere, None, true, Arc::new(|| false)),
+            Ok(TextState::Text(_))
+        ));
+        // Absolute files inside storage are allowed without that permission.
+        elsewhere.location = data
+            .path()
+            .join("storage/PDF00001/PDF00001.pdf")
+            .to_string_lossy()
+            .into_owned();
+        assert!(matches!(
+            reading.text(unused, &parent, &elsewhere, None, false, Arc::new(|| false)),
+            Ok(TextState::Text(_))
+        ));
+        #[cfg(unix)]
+        {
+            let link = data.path().join("storage/escape.pdf");
+            std::os::unix::fs::symlink(&linked, &link).unwrap();
+            elsewhere.location = link.to_string_lossy().into_owned();
+            assert_eq!(
+                reading
+                    .text(unused, &parent, &elsewhere, None, false, Arc::new(|| false))
+                    .err(),
+                Some(ZoteroError::AttachmentOutsideLibrary)
+            );
+        }
         let TextState::Text(text) = reading
-            .text(unused, &parent, &found[0], None, Arc::new(|| false))
+            .text(unused, &parent, &found[0], None, false, Arc::new(|| false))
             .unwrap()
         else {
             panic!("indexed text")
@@ -2029,7 +2106,7 @@ mod tests {
         assert_eq!((text.indexed_pages, text.total_pages), (Some(2), Some(40)));
         // Zotero counted three pages: the breaks do not match, so pages are unknown.
         let TextState::Text(text) = reading
-            .text(unused, &parent, &found[1], None, Arc::new(|| false))
+            .text(unused, &parent, &found[1], None, false, Arc::new(|| false))
             .unwrap()
         else {
             panic!("indexed text")
@@ -2037,7 +2114,7 @@ mod tests {
         assert!(matches!(text.body, crate::reading::Body::Whole(_)));
         assert!(
             reading
-                .text(unused, &parent, &found[2], None, Arc::new(|| false))
+                .text(unused, &parent, &found[2], None, false, Arc::new(|| false))
                 .unwrap()
                 == TextState::NotIndexed
         );

@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import type { Copied } from "../../api";
+import type { DeliveryOutcome } from "../../bindings";
 import { testStates } from "../../test-fixtures";
 import { choiceKey } from "./choice";
 import { arrangeView } from "../../testing/sessionView";
@@ -14,10 +14,9 @@ function setup(overrides: Partial<SessionPorts> = {}) {
     searchPending: false, ready: true, saving: false, shouldAsk: false, remembersLast: true, output: { opening: 0, choice: 0, delivery: 0 } });
   // A format picked for this citation only: the copy that uses it consumes it.
   const controller = createSessionController({ ...arranged, destination: { ...arranged.destination, held: "apa" } });
-  const ports: SessionPorts = { copyFileCitation: vi.fn(async () => ({ text: "canonical citation", warnings: [] })),
-    hidePicker: vi.fn(async () => true), showCopiedNotice: vi.fn(async () => ({ outcome: "pasted" as const, app: "Example Writer" })),
-    pinned: () => false, refresh: vi.fn(), reportHide: vi.fn(),
-    report: vi.fn(), chooseDefault: vi.fn(), search: vi.fn(async () => ({ revision: "synthetic", results: [] })), previewFileCitation: vi.fn(async () => { throw new Error("not asked"); }), ...overrides };
+  const ports: SessionPorts = {
+    deliverCitation: vi.fn(async (): Promise<DeliveryOutcome> => ({ outcome: "pasted", copied: { text: "canonical citation", warnings: [] }, app: "Example Writer" })),
+    refresh: vi.fn(), report: vi.fn(), chooseDefault: vi.fn(), search: vi.fn(async () => ({ revision: "synthetic", results: [] })), previewFileCitation: vi.fn(async () => { throw new Error("not asked"); }), ...overrides };
   controller.connect(ports);
   /** The picker tells a new opening what it shows: the settled search and preview are adopted. */
   const ready = () => {
@@ -33,106 +32,94 @@ function setup(overrides: Partial<SessionPorts> = {}) {
 }
 const held = (state: SessionState) => state.destination.held;
 
-test("the runner writes and delivers one canonical result despite repeated Enter", async () => {
-  const pending = deferred<Copied>();
-  const s = setup({ copyFileCitation: vi.fn(() => pending.promise) });
+const copied = { text: "canonical citation", warnings: [] };
+
+test("repeated Enter submits one command with the prepared ticket and native presentation", async () => {
+  const pending = deferred<DeliveryOutcome>();
+  const s = setup({ deliverCitation: vi.fn(() => pending.promise) });
   s.enter(); s.enter();
-  expect(s.ports.copyFileCitation).toHaveBeenCalledExactlyOnceWith("prepared", "hash", null);
-  pending.resolve({ text: "canonical citation", warnings: [], delivery: 42 });
+  expect(s.ports.deliverCitation).toHaveBeenCalledExactlyOnceWith("prepared", "hash", null, 0, []);
+  pending.resolve({ outcome: "pasted", copied, app: "Example Writer" });
   await pending.promise;
-  await Promise.resolve();
-  expect(s.ports.showCopiedNotice).toHaveBeenCalledExactlyOnceWith("canonical citation", 42, null);
-  await Promise.resolve();
   expect(s.controller.getSnapshot().lastOutcome).toBe("Pasted into Example Writer");
+  expect(held(s.controller.getSnapshot())).toBeNull();
+  expect(s.controller.getSnapshot().flights).toHaveLength(0);
+});
+
+test.each([
+  { outcome: "pasted", copied, app: "Example Writer" },
+  { outcome: "copied-only", copied, reason: "copy-only" },
+  { outcome: "retained", copied, reason: "pinned" },
+  { outcome: "sent", copied, retained: null },
+] satisfies DeliveryOutcome[])("the picker confirms $outcome and consumes its held format", async (outcome) => {
+  const s = setup({ deliverCitation: vi.fn(async () => outcome) });
+  s.enter(); await Promise.resolve();
+  expect(s.controller.getSnapshot().copied).toEqual(copied);
+  expect(held(s.controller.getSnapshot())).toBeNull();
+  expect(s.controller.getSnapshot().copyError).toBeNull();
+  if (outcome.outcome === "copied-only" && outcome.reason === "copy-only") {
+    expect(s.controller.getSnapshot().lastOutcome).toContain("Copy Only is set for this app");
+  }
+});
+
+test("native hiding may arrive before the single delivery response", async () => {
+  const pending = deferred<DeliveryOutcome>();
+  const s = setup({ deliverCitation: vi.fn(() => pending.promise) });
+  s.enter();
+  s.controller.dispatch({ type: "hidden", now: 10 });
+  pending.resolve({ outcome: "pasted", copied, app: "Example Writer" });
+  await pending.promise;
+  expect(held(s.controller.getSnapshot())).toBeNull();
+  expect(s.controller.getSnapshot().lastOutcome).toBe("Pasted into Example Writer");
+});
+
+test("an old delivery response cannot consume a reopened session's new citation", async () => {
+  const old = deferred<DeliveryOutcome>(), fresh = deferred<DeliveryOutcome>();
+  const s = setup({ deliverCitation: vi.fn().mockReturnValueOnce(old.promise).mockReturnValueOnce(fresh.promise) });
+  s.enter();
+  s.controller.dispatch({ type: "hidden", now: 10 });
+  s.controller.dispatch({ type: "shown", now: 20, presentation: 2 });
+  s.ready(); s.enter();
+  old.resolve({ outcome: "copied-only", copied, reason: "no-permission" });
+  await old.promise;
+  expect(held(s.controller.getSnapshot())).toBe("apa");
+  expect(s.controller.getSnapshot().permissionDetour).toBe(false);
+  expect(s.controller.getSnapshot().activeCopy).toBe(2);
+  fresh.resolve({ outcome: "pasted", copied, app: "Example Writer" });
+  await fresh.promise;
   expect(held(s.controller.getSnapshot())).toBeNull();
 });
 
-test("an old copy response cannot consume a reopened session's new copy", async () => {
-  const old = deferred<Copied>(), fresh = deferred<Copied>();
-  const s = setup({ copyFileCitation: vi.fn().mockReturnValueOnce(old.promise).mockReturnValueOnce(fresh.promise) });
-  s.enter();
-  s.controller.dispatch({ type: "hidden", now: 10 });
-  s.controller.dispatch({ type: "shown", now: 20, presentation: 2 });
-  s.ready(); s.enter();
-  old.resolve({ text: "old citation", warnings: [] });
-  await old.promise;
-  expect(held(s.controller.getSnapshot())).toBe("apa");
-  expect(s.ports.hidePicker).not.toHaveBeenCalled();
-  expect(s.controller.getSnapshot().activeCopy).toBe(2);
-  fresh.resolve({ text: "fresh citation", warnings: [] });
-  await fresh.promise;
-  await Promise.resolve();
-  expect(s.ports.showCopiedNotice).toHaveBeenCalledExactlyOnceWith("fresh citation", null, null);
+test("a refused delivery renders its sentence and refreshes a changed snapshot", async () => {
+  const s = setup({ deliverCitation: vi.fn(async (): Promise<DeliveryOutcome> => ({ outcome: "refused", problem: {
+    code: "snapshot_changed", message: { id: "picker-snapshot-changed", args: {} },
+    recovery: { action: "select-references" }, focus: "results",
+  } })) });
+  s.enter(); await Promise.resolve();
+  expect(s.controller.getSnapshot().copyError).toBe("The library changed. Search again and reselect the references before copying.");
+  expect(s.controller.getSnapshot().copied).toBeNull();
+  expect(s.ports.refresh).toHaveBeenCalledOnce();
 });
 
-test("a delayed hide rejection cannot show an error in a reopened session", async () => {
-  const hiding = deferred<boolean>();
-  const s = setup({ hidePicker: vi.fn(() => hiding.promise) });
-  s.enter();
-  await Promise.resolve();
-  s.controller.dispatch({ type: "hidden", now: 10 });
-  s.controller.dispatch({ type: "shown", now: 20, presentation: 2 });
-  hiding.reject(new Error("invented hide failure"));
-  await hiding.promise.catch(() => {});
-  expect(s.ports.reportHide).not.toHaveBeenCalled();
-  expect(held(s.controller.getSnapshot())).toBe("apa");
-  expect(s.ports.showCopiedNotice).not.toHaveBeenCalled();
-});
-
-test("a hide carries A's native presentation even when it arrives after B reopens", async () => {
-  const hiding = deferred<boolean>();
-  let visible = 41;
-  const arrivals: Array<() => void> = [];
-  const s = setup({ hidePicker: vi.fn((presentation) => {
-    arrivals.push(() => { if (presentation === visible) visible = -1; });
-    return hiding.promise;
-  }) });
-  s.controller.dispatch({ type: "shown", now: 0, presentation: 41 });
-  s.ready(); s.enter();
-  await Promise.resolve();
-  expect(s.ports.hidePicker).toHaveBeenCalledExactlyOnceWith(41);
-  s.controller.dispatch({ type: "hidden", now: 10 });
-  visible = 43;
-  s.controller.dispatch({ type: "shown", now: 20, presentation: 43 });
-  arrivals[0]!(); hiding.resolve(true);
-  await hiding.promise;
-  expect(visible).toBe(43);
-  expect(held(s.controller.getSnapshot())).toBe("apa");
-  expect(s.ports.showCopiedNotice).not.toHaveBeenCalled();
-  s.ready(); s.enter();
-  await Promise.resolve();
-  arrivals[1]!();
-  expect(visible).toBe(-1);
-  expect(s.ports.hidePicker).toHaveBeenLastCalledWith(43);
-});
-
-test("a refused native hide leaves the new picker and its output alone", async () => {
-  const s = setup({ hidePicker: vi.fn(async () => false) });
-  s.enter();
-  await Promise.resolve(); await Promise.resolve();
-  expect(held(s.controller.getSnapshot())).toBe("apa");
-  expect(s.ports.showCopiedNotice).not.toHaveBeenCalled();
-  expect(s.ports.reportHide).not.toHaveBeenCalled();
-  expect(s.controller.getSnapshot().permissionDetour).toBe(false);
-});
-
-test("failed hide dispatch reports the fixed error without delivering into another app", async () => {
-  const s = setup({ hidePicker: vi.fn().mockRejectedValue(new Error("invented private I/O failure")) });
-  s.enter();
-  await Promise.resolve(); await Promise.resolve();
-  expect(s.ports.hidePicker).toHaveBeenCalledExactlyOnceWith(0);
-  expect(s.ports.reportHide).toHaveBeenCalledExactlyOnceWith(true);
-  expect(s.ports.showCopiedNotice).not.toHaveBeenCalled();
+test("cancelled delivery quietly releases the flight and preserves the held format", async () => {
+  const s = setup({ deliverCitation: vi.fn(async (): Promise<DeliveryOutcome> => ({ outcome: "cancelled" })) });
+  s.enter(); await Promise.resolve();
   expect(s.controller.getSnapshot().activeCopy).toBeNull();
+  expect(s.controller.getSnapshot().copied).toBeNull();
+  expect(s.controller.getSnapshot().copyError).toBeNull();
+  expect(held(s.controller.getSnapshot())).toBe("apa");
 });
 
-test.each([false, true])("a rejected copy shows a fixed error and only stale input refreshes (stale=%s)", async (stale) => {
-  const s = setup({ copyFileCitation: vi.fn().mockRejectedValue(stale ? { code: "snapshot_changed" } : new Error("invented private payload")) });
-  s.enter();
-  await Promise.resolve();
-  expect(s.controller.getSnapshot().copyError).toBe(stale
-    ? "The library changed. Search again and reselect the references before copying." : "Nothing was copied. Try again, or use Reload.");
-  expect(s.ports.refresh).toHaveBeenCalledTimes(stale ? 1 : 0);
-  expect(s.ports.hidePicker).not.toHaveBeenCalled();
-  expect(s.ports.showCopiedNotice).not.toHaveBeenCalled();
+test("failed hiding reports the existing fixed error while confirming the completed copy", async () => {
+  const s = setup({ deliverCitation: vi.fn(async (): Promise<DeliveryOutcome> => ({ outcome: "retained", copied, reason: "hide-failed" })) });
+  s.enter(); await Promise.resolve();
+  expect(s.ports.report).toHaveBeenCalledExactlyOnceWith("hide", true);
+  expect(s.controller.getSnapshot().copied).toEqual(copied);
+});
+
+test("a transport failure shows a fixed sentence without exposing its payload", async () => {
+  const s = setup({ deliverCitation: vi.fn().mockRejectedValue(new Error("invented private payload")) });
+  s.enter(); await Promise.resolve();
+  expect(s.controller.getSnapshot().copyError).toBe("Nothing was copied. Try again, or use Reload.");
+  expect(s.ports.refresh).not.toHaveBeenCalled();
 });

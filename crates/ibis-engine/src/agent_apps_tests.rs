@@ -1,5 +1,16 @@
 use super::*;
 
+std::thread_local! {
+    // One shot and local to this test thread, so parallel tests cannot consume it.
+    static BEFORE_FINAL_CHECK: std::cell::Cell<Option<Box<dyn FnOnce()>>> = const { std::cell::Cell::new(None) };
+}
+
+pub(super) fn before_final_check() {
+    if let Some(hook) = BEFORE_FINAL_CHECK.take() {
+        hook();
+    }
+}
+
 #[test]
 fn agent_full_path_clients_without_a_command_are_blocked_without_writing() {
     for id in ["claude-desktop", "lm-studio"] {
@@ -227,32 +238,22 @@ fn backups_keep_each_original_in_a_new_private_file() {
 fn change_during_staging(link: bool) {
     let home = home(if link { "staging-link" } else { "staging-save" });
     let path = desktop(&home);
-    // Give the other writer time to observe staging, without a production hook
-    // or file watcher. The replacement is ready before either writer starts.
-    let original = json!({"mcpServers":{},"padding":"x".repeat(8 * 1024 * 1024)}).to_string();
-    fs::write(&path, original).unwrap();
+    fs::write(&path, "{\"mcpServers\":{}}\n").unwrap();
     let saved = home.root.join("saved.json");
     let changed = "{\"mcpServers\":{},\"theme\":\"new choice\"}\n";
     fs::write(&saved, changed).unwrap();
-    let temporary = path.with_file_name("claude_desktop_config.json.tmp-1");
-    let result = std::thread::scope(|scope| {
-        let app = scope.spawn(|| {
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
-            while !temporary.exists() {
-                assert!(std::time::Instant::now() < deadline, "staging was never observed");
-                std::thread::yield_now();
-            }
+    BEFORE_FINAL_CHECK.set(Some(Box::new({
+        let path = path.clone();
+        move || {
             if link {
                 fs::remove_file(&path).unwrap();
                 std::os::unix::fs::symlink(&saved, &path).unwrap();
             } else {
                 fs::rename(&saved, &path).unwrap();
             }
-        });
-        let result = edit_json(&path, "mcpServers", Some(entry(false, COMMAND)));
-        app.join().unwrap();
-        result
-    });
+        }
+    })));
+    let result = edit_json(&path, "mcpServers", Some(entry(false, COMMAND)));
     assert!(result.is_err(), "a concurrent change must abort: {result:?}");
     assert_eq!(fs::read_to_string(&path).unwrap(), changed);
     assert_eq!(fs::symlink_metadata(&path).unwrap().is_symlink(), link);

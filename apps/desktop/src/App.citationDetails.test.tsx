@@ -50,7 +50,7 @@ test("a token's details float over the picker: ⌘1–9 leaves the list alone un
   fireEvent.click(await screen.findByText("First work"), { ctrlKey: true });
   await openCitationDetails();
   expect(fireEvent.keyDown(document.body, { key: "2", code: "Digit2", ctrlKey: true })).toBe(true);
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
   await act(async () => { await emit("picker:hidden"); });
   expect(citationDetails()).toBeNull();
 });
@@ -124,10 +124,10 @@ test.each(["Text before", "Text after"] as const)("a late %s preview cannot repl
       if (!text) return receipt("Original citation");
       return new Promise((resolve) => { previews.set(text, resolve); });
     },
-    copy_file_citation: (args) => {
+    deliver_citation: (args) => {
       const { preview } = prepared(args);
       copied.push(preview.text);
-      return { text: preview.text, warnings: [] };
+      return { outcome: "retained", copied: { text: preview.text, warnings: [] }, reason: "pinned" };
     },
   });
   render(<App />);
@@ -157,10 +157,10 @@ test("Keep My Order changes the engine preview and survives a short reopen", asy
       const order = intent.keep_order ? keys : [...keys].sort();
       return receipt(order.join("; "));
     },
-    copy_file_citation: (args) => {
+    deliver_citation: (args) => {
       const { preview } = prepared(args);
       copied.push(preview.text);
-      return { text: preview.text, warnings: [] };
+      return { outcome: "retained", copied: { text: preview.text, warnings: [] }, reason: "pinned" };
     },
   });
   render(<App />);
@@ -217,7 +217,7 @@ test("source and sentence-case warnings stay visible in preview and copy feedbac
   ];
   const calls = backend({ search: () => [result("protected2020", "Using iPhone for NASA")],
     preview_file_citation: () => receipt("Okafor, A. (2020). Using iPhone for NASA. Invented Journal.", null, warnings),
-    copy_file_citation: (args) => { const saved = prepared(args); return { text: saved.preview.text, warnings: saved.preview.warnings }; },
+    deliver_citation: (args) => { const saved = prepared(args); return { outcome: "retained", copied: { text: saved.preview.text, warnings: saved.preview.warnings }, reason: "pinned" }; },
   });
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "2 warnings" }));
@@ -228,7 +228,6 @@ test("source and sentence-case warnings stay visible in preview and copy feedbac
   const feedback = await screen.findByRole("list", { name: "Copy warnings" });
   for (const warning of warnings) expect(within(feedback).getByText(warningText(warning))).toBeTruthy();
   expect(calls).not.toContain("hide_picker");
-  expect(calls).not.toContain("show_copied_notice");
 });
 
 test.each(["S.12", "pages of notes"])("a form edit preserves the captured page %s as canonical text", async (value) => {
@@ -255,7 +254,7 @@ test("a label-only Page refuses copy until corrected", async () => {
       if (items[0]?.locator_input?.text === "pp.") throw pageFailure;
       return receipt(items[0]?.locator_input?.text ? "Synthetic normalized output" : "Original output");
     },
-    copy_file_citation: (args) => { const saved = prepared(args); copied.push(saved.preview.text); return { text: saved.preview.text, warnings: [] }; },
+    deliver_citation: (args) => { const saved = prepared(args); copied.push(saved.preview.text); return { outcome: "retained", copied: { text: saved.preview.text, warnings: [] }, reason: "pinned" }; },
   });
   render(<App />);
   const page = await openCitationDetails();
@@ -265,7 +264,7 @@ test("a label-only Page refuses copy until corrected", async () => {
   expect((await screen.findByRole("alert")).textContent).toBe(message);
   fireEvent.keyDown(search, { key: "Enter" });
   await act(async () => { await Promise.resolve(); });
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
   expect(copied).toEqual([]);
   fireEvent.change(page, { target: { value: "pp. ١٢–١٥" } });
   await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
@@ -300,7 +299,7 @@ test.each(["pointer", " ", "ArrowDown"])("a token activated with %s opens its de
     { id: result("a", "").id, locator: null, locator_input: { label: "page", text: "16" } },
     { id: result("b", "").id, locator: null, locator_input: { label: "page", text: "29" } },
   ]);
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
 });
 
 test("actionable refusals remain visible until corrected", async () => {
@@ -317,7 +316,7 @@ test("actionable refusals remain visible until corrected", async () => {
   expect((await screen.findByRole("alert")).textContent).toBe(message);
   fireEvent.keyDown(search, { key: "Enter" });
   await waitFor(() => expect(screen.getAllByRole("alert").map((alert) => alert.textContent)).toEqual([message]));
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
   await chooseForm("Name in brackets");
   await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
 });
@@ -328,7 +327,7 @@ test("editing the highlighted reference freezes its page and form for preview an
   backend({
     search: ({ query }) => query.text ? [result("b", "Second work")] : [result("a", "First work")],
     preview_file_citation: (request) => { previews.push(request); return receipt(`preview ${previews.length}`); },
-    copy_file_citation: (args) => { const saved = prepared(args); copies.push(saved.request); return { text: saved.preview.text, warnings: [] }; },
+    deliver_citation: (args) => { const saved = prepared(args); copies.push(saved.request); return { outcome: "retained", copied: { text: saved.preview.text, warnings: [] }, reason: "pinned" }; },
   });
   render(<App />);
   const page = await openCitationDetails();
@@ -403,11 +402,11 @@ test("losses keep a visible count and an unsupported form blocks copying until c
   await chooseForm("Name in the sentence");
   expect((await screen.findByRole("alert")).textContent).toContain("Name in the sentence cannot be expressed");
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
   await chooseForm("Name in brackets");
   await waitFor(() => expect(preview.querySelector(".preview-text")?.textContent).toBe("Synthetic output"));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
-  await waitFor(() => expect(calls).toContain("copy_file_citation"));
+  await waitFor(() => expect(calls).toContain("deliver_citation"));
 });
 
 test("a form edit cancels queued Enter and ignores the retired preview", async () => {
@@ -424,7 +423,7 @@ test("a form edit cancels queued Enter and ignores the retired preview", async (
   await within(screen.getByRole("region", { name: "Preview" })).findByText("New narrative");
   await act(async () => { pending[0]!(receipt("Retired normal")); });
   expect(screen.queryByText("Retired normal")).toBeNull();
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
 });
 
 test("changing only the form does not offer to reapply an unchanged search page", async () => {
@@ -600,7 +599,7 @@ test("a form pick keeps focus in the details, so the next key stays there", asyn
 test("Enter in Page does what the footer says, once, and a held key does not repeat it", async () => {
   const copied: string[] = [];
   backend({ search: () => [result("a", "Invented work")], preview_file_citation: ({ items }) => receipt(`Citation ${items[0]?.locator_input?.text ?? ""}`.trim()),
-    copy_file_citation: (args) => { const saved = prepared(args); copied.push(saved.preview.text); return { text: saved.preview.text, warnings: [] }; } });
+    deliver_citation: (args) => { const saved = prepared(args); copied.push(saved.preview.text); return { outcome: "retained", copied: { text: saved.preview.text, warnings: [] }, reason: "pinned" }; } });
   render(<App />);
   const page = await openCitationDetails();
   fireEvent.change(page, { target: { value: "42" } });
@@ -626,7 +625,7 @@ test("a refused page stays visible in place, and Enter in Page copies nothing", 
   expect(document.activeElement).toBe(page);
   fireEvent.keyDown(page, { key: "Enter" });
   await act(async () => { await Promise.resolve(); });
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
   expect(document.activeElement).toBe(page);
   expect(within(screen.getByRole("dialog", { name: /^Citation details for/ })).getByRole("alert").textContent).toBe(message);
 });
@@ -711,7 +710,7 @@ test("a form picked while no receipt exists shows the form asked for, and an old
 });
 
 test("a copy that fails says so in the details, once, and in the list when they close", async () => {
-  backend({ search: () => [result("a", "Invented work")], preview_file_citation: () => receipt("Citation"), copy_file_citation: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); } });
+  backend({ search: () => [result("a", "Invented work")], preview_file_citation: () => receipt("Citation"), deliver_citation: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); } });
   render(<App />);
   const page = await openCitationDetails();
   await within(screen.getByRole("region", { name: "Preview" })).findByText("Citation");
@@ -843,7 +842,7 @@ test("a late preview from before Keep My Order went off cannot replace the newes
     picker_preferences: apa,
     search: () => [result("z", "Zulu work"), result("a", "Alpha work")],
     preview_file_citation: sortingStyle(held),
-    copy_file_citation: (args) => { const { preview } = prepared(args); copied.push(preview.text); return { text: preview.text, warnings: [] }; },
+    deliver_citation: (args) => { const { preview } = prepared(args); copied.push(preview.text); return { outcome: "retained", copied: { text: preview.text, warnings: [] }, reason: "pinned" }; },
   });
   render(<App />);
   fireEvent.click(await screen.findByText("Zulu work"), { ctrlKey: true });

@@ -121,5 +121,17 @@ fi
 [ "$(gh pr view "$number" --repo "$repo" --json headRefOid --jq .headRefOid)" = "$sha" ] || { echo 'PR head moved; rerun.'; exit 1; }
 unchanged
 if [ "$draft" = true ]; then gh pr ready "$number" --repo "$repo"; fi
+# Workflow, script, updater and app-permission changes merge only after another
+# session records its review of this exact head on the PR. Scripts call one another,
+# so every file under scripts/ counts.
+guarded='^(\.github/|scripts/|apps/desktop/src-tauri/(src/updater|capabilities/|permissions/|tauri\.))'
+if git diff --no-renames --name-only "origin/main...$sha" | grep -Eq "$guarded"; then
+  marker="Independent review: no P1 or P2 at $sha"
+  if ! gh pr view "$number" --repo "$repo" --json comments \
+    --jq '.comments[] | select(.author.login == "diyanko") | .body' | grep -Fq "$marker"; then
+    echo "Guarded paths changed. A session that did not write this reviews $sha and comments \"$marker\" on the PR; then rerun."
+    exit 1
+  fi
+fi
 gh pr merge "$number" --repo "$repo" --auto --squash --body-file "$body" --match-head-commit "$sha"
 printf 'Auto-merge requested for %s; it merges once hosted CI result passes.\n' "$number"

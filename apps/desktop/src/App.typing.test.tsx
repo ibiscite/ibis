@@ -102,7 +102,7 @@ test("the footer action pressed while a search runs copies the new top result, n
   const copies: unknown[] = [];
   backend({
     search: ({ query }) => query.text === "graph" ? next.promise : query.text ? rows : [],
-    copy_file_citation: (args) => { const citation = prepared(args); copies.push(citation.request); return { text: citation.preview.text, warnings: [] }; },
+    deliver_citation: (args) => { const citation = prepared(args); copies.push(citation.request); return { outcome: "retained", copied: { text: citation.preview.text, warnings: [] }, reason: "pinned" }; },
   });
   await act(async () => { render(<App />); });
   await type("gr");
@@ -121,7 +121,7 @@ test("a row of the earlier query is still not copied by a click while the search
   await type("graph");
   await act(async () => { fireEvent.click(screen.getByText("Gradient methods"), { detail: 2 }); });
   await act(async () => { next.resolve([]); });
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
 });
 
 test("rows of an older library snapshot are not formatted or offered while the new search runs", async () => {

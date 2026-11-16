@@ -18,7 +18,7 @@ export function usePickerMenus(api: typeof nativeApi, { perform }: Pick<ReturnTy
   const moreButton = useRef<HTMLButtonElement>(null);
   const [overlay, setOverlay] = useState<Overlay | null>(null);
   const closed = (name: Overlay) => setOverlay((current) => current === name ? null : current);
-  const { pinned, currentPin, togglePin } = usePin({ setPinned, perform });
+  const { pinned, togglePin } = usePin({ setPinned, perform });
   // Where the keyboard rests. Welcome hides Search; ask the committed screen,
   // because that state arrives a render after the chooser leaves.
   const focusHome = useCallback(() => {
@@ -69,7 +69,7 @@ export function usePickerMenus(api: typeof nativeApi, { perform }: Pick<ReturnTy
   };
   return { input, formatButtonRef, moreButton, overlay, menuOpen: overlay === "more", libraryMenuOpen: overlay === "library", formatOpen: overlay === "format", keysOpen: overlay === "keys", sessionOpen: overlay === "session", projectsOpen: overlay === "projects",
     setFormatOpen: (open: boolean) => { if (open) setOverlay("format"); else closed("format"); },
-    pinned, currentPin, togglePin, windowUndo, openMore, closeMore: () => closed("more"), openLibrary, closeLibrary: () => closed("library"), openFormat, focusHome, leaveOverlays, runFromMenu,
+    pinned, togglePin, windowUndo, openMore, closeMore: () => closed("more"), openLibrary, closeLibrary: () => closed("library"), openFormat, focusHome, leaveOverlays, runFromMenu,
     openKeys: () => openSheet("keys"), closeKeys: () => closeSheet("keys"),
     openSession: () => openSheet("session"), closeSession: () => closeSheet("session"),
     openProjects: () => openSheet("projects"), closeProjects: () => closeSheet("projects") };

@@ -2,21 +2,12 @@ import { art } from "./icon-art";
 import "./ui/Icon.css";
 // What a copy says afterwards, and what a click on a result row does.
 // Pure decisions, kept apart from the picker so they can be tested alone.
-import type { Copied, NoticeMessage } from "./api";
+import type { NoticeMessage } from "./api";
 import type { CopiedReason, Delivered as WireDelivered } from "./bindings";
 import { englishMessages } from "./i18n";
 import { say } from "./i18n";
 import { currentPlatform, platformOf, type Platform } from "./platform";
 import { listedOutput, outputName } from "./format/outputs";
-
-/**
- * After a copy: hide the picker and say "Copied" in the small notice window,
- * or stay open. A pinned picker stays beside the document and shows the
- * confirmation itself; blocking warnings stay in the picker until dismissed.
- */
-export function afterCopy(outcome: Copied, pinned: boolean): "hide-and-notify" | "stay" {
-  return outcome.warnings.length === 0 && !pinned ? "hide-and-notify" : "stay";
-}
 
 export type RowClick = {
   shiftKey: boolean;

@@ -3,27 +3,22 @@ import { useLayoutEffect, type RefObject } from "react";
 import type { SessionState } from "./session";
 import type { createSessionController } from "./sessionController";
 import type { useDestination } from "./useDestination";
-import type { useOperations } from "./useOperations";
 import type { OutputId } from "../../format/outputs";
 import type { MenuCloseReason } from "./FormatMenu";
 
-export function useCitationCopy({ api, session, state, destination, currentPin, formatButtonRef, refreshSnapshot, report, setFormatOpen }: {
+export function useCitationCopy({ api, session, state, destination, formatButtonRef, refreshSnapshot, setFormatOpen }: {
   api: typeof nativeApi;
   session: ReturnType<typeof createSessionController>;
   state: SessionState;
   destination: ReturnType<typeof useDestination>;
-  currentPin: RefObject<boolean>;
   formatButtonRef: RefObject<HTMLButtonElement | null>;
   refreshSnapshot: () => void;
-  report: ReturnType<typeof useOperations>["report"];
   setFormatOpen: (open: boolean) => void;
 }) {
-  const { copyFileCitation, hidePicker, showCopiedNotice } = api;
+  const { deliverCitation } = api;
   const send = session.dispatch;
   useLayoutEffect(() => {
-    session.connect({ copyFileCitation, hidePicker, showCopiedNotice,
-      pinned: () => currentPin.current, refresh: refreshSnapshot,
-      reportHide: (failed) => report("hide", failed) });
+    session.connect({ deliverCitation, refresh: refreshSnapshot });
   });
   // An Enter that must first ask opens the format menu once the screen shows its question.
   const asking = state.pendingCopy?.question === "open";

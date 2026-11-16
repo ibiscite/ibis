@@ -14,13 +14,13 @@ for (const [style, text] of [[null, "[@demo]"], ["apa", "(Researcher, 2026)"]] a
     let finish: (preview: Preview) => void = () => {};
     const prepared = new Promise<Preview>((resolve) => { finish = resolve; });
     const preview = vi.fn((_args: unknown) => prepared);
-    const copy = vi.fn(() => ({ text, warnings: [] }));
+    const copy = vi.fn(() => ({ outcome: "retained", copied: { text, warnings: [] }, reason: "pinned" }));
     const calls = backend({
       library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, snapshot_zotero: false, name: "synthetic.bib", snapshot_name: "synthetic.bib", references: 1, warnings: 0, error: null, problem: null, note: null }),
       picker_preferences: () => ({ output: style ?? "pandoc", density: "comfortable", larger_text: false }),
       search: ({ query }) => query.text ? [{ ...result("demo", "Synthetic research"), id, source: id.library, cite }] : [],
       preview_file_citation: preview,
-      copy_file_citation: copy,
+      deliver_citation: copy,
     });
     render(<App />);
     const input = screen.getByRole("combobox");
@@ -30,8 +30,8 @@ for (const [style, text] of [[null, "[@demo]"], ["apa", "(Researcher, 2026)"]] a
     fireEvent.keyDown(input, { key: "Enter" });
     expect(copy).not.toHaveBeenCalled();
     await act(async () => { finish({ effective_output: style ?? "pandoc", display: displayTree([]), ticket: "native-receipt", content_hash: "b".repeat(64), text, warnings: [] }); });
-    await waitFor(() => expect(copy).toHaveBeenCalledWith({ ticket: "native-receipt", contentHash: "b".repeat(64), replaces: [] }));
+    await waitFor(() => expect(copy).toHaveBeenCalledWith({ ticket: "native-receipt", contentHash: "b".repeat(64), replaces: [], presentation: 0, closestMatches: [] }));
     expect(preview).toHaveBeenCalledWith(expect.objectContaining({ items: [{ id, cite, locator: null }], output: style ?? "pandoc" }));
-    expect(calls.filter((command) => command === "copy_file_citation")).toHaveLength(1);
+    expect(calls.filter((command) => command === "deliver_citation")).toHaveLength(1);
   });
 }

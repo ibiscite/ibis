@@ -17,7 +17,7 @@ test("a claimed tip takes the notice line and never copies or changes focus", as
   expect(screen.getByText(tip).closest(".notice-slot")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Library" })).toBeTruthy();
   expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
   const input = screen.getByLabelText("Search references");
   fireEvent.keyDown(input, { key: "Enter" });
   expect(screen.getByText("Choose a reference to paste.")).toBeTruthy();
@@ -47,7 +47,7 @@ test("empty Enter explains refusal and zoom reports for one second, without copy
   fireEvent.keyDown(input, { key: "-", ctrlKey: true });
   expect(screen.getByText("100%")).toBeTruthy();
   expect(document.activeElement).toBe(input);
-  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("deliver_citation");
 });
 
 test("delayed claims and closed windows cannot replace newer visible feedback", async () => {
