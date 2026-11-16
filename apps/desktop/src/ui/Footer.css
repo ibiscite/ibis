@@ -56,7 +56,7 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: v
 .library-bar[data-hints-compact] :is(.enter-hints, .more) .key-hint-label, .library-bar[data-alt-compact] .enter-hints .key-hint-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 /* More keeps the last column, so its menu opens inward. */
-.more { position: relative; }
+.more { position: relative; display: inline-flex; align-items: center; gap: var(--space-1); }
 
 /* Footer key hints (#491): what Enter does now, or with Alt held the other
    keys. They stay in narrow windows and truncate instead of overlapping. */

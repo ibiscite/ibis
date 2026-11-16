@@ -1,5 +1,10 @@
 # 0049 Local machines gate merges (superseded)
 
+2026-11-16: every PR and push runs one `Rust and desktop` job per system (hosted
+macOS runners were the queue) and the Linux release checks; `land.sh` requires a
+recorded independent review before merging updater, signing, publishing,
+workflow or app-permission changes.
+
 2026-11-16 (maintainer): every pull request runs `Test` and `Desktop` on all
 three systems, and while main's latest push CI failed, `scripts/land.sh` lands
 only `fix` or `revert` titles. One nightly a day is built from main's head once

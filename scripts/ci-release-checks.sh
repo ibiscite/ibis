@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Heavy Linux qualification, shared by daily/manual CI and numbered releases.
+# Release-mode, minimum-Rust and budget checks, run on every PR and push and for numbered releases.
 set -euo pipefail
 cargo test -p ibis-core -p ibis-sources --release --locked
 rustup toolchain install 1.90.0 --profile minimal
