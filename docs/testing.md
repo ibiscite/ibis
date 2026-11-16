@@ -121,7 +121,8 @@ the check on all three systems. Pushes to main always run all three and so
 confirm each merged commit. Fork PRs skip every job, so their **CI result**
 fails; they keep read-only title feedback.
 
-Daily/manual runs add WebKit, release-mode/MSRV checks, five-minute fuzzing and
+Daily/manual runs add WebKit, release-mode/MSRV checks, five minutes each of fuzzing the
+BibTeX loader and the PDF extractor (`ibis-fuzz`; seeds run with `cargo test -p ibis-fuzz`) and
 installed journeys against the published nightly; failures update one issue.
 **CI result** also protects publication: a red main keeps the preceding nightly.
 Run manual qualification before a stable release.

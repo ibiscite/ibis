@@ -21,6 +21,8 @@ export type SessionView = {
    * a fresh Enter may still wait for the new checked preview. */
   writingVersion?: string | null;
   queryKey: string; format: OutputId; snapshotRevision: string | undefined; defaultChoice: string;
+  /** The last offered citation, independent of the search's current rows. */
+  offered: CitationReference[];
   chosen: CitationReference[]; shown: Prepared | "failed" | "stale" | null;
   searchPending: boolean; ready: boolean; saving: boolean; shouldAsk: boolean; output: OutputToken;
   /** Recent Citations is on: only then is an app's last citation kept to change. */
@@ -147,7 +149,7 @@ const returning = (s: SessionState, now: number): SessionState => {
   // A change never outlives its opening, unless a permission detour brings it back.
   if (s.hiddenAt !== null && s.changing !== null && !s.permissionDetour) s = changed(s, { selected: new Map(), removed: null, changing: null, keepOrder: false });
   const expired = !s.permissionDetour && s.hiddenAt !== null && now - s.hiddenAt > 60_000;
-  return expired ? changed(s, { query: "", interpretLocators: true, fromDocument: false, selected: new Map(), removed: null, active: 0, keepOrder: false }) :
+  return expired ? changed(s, { view: null, query: "", interpretLocators: true, fromDocument: false, selected: new Map(), removed: null, active: 0, keepOrder: false }) :
     s.fromDocument && s.hiddenAt !== null && !s.permissionDetour ? changed(s, { query: "", interpretLocators: true, fromDocument: false, active: 0 }) : s;
 };
 
@@ -181,7 +183,9 @@ function advance(s: SessionState, copies: boolean): [SessionState, SessionEffect
   if (p.choice !== null && p.choice !== key) return v.searchPending ? [s, []] : [{ ...s, pendingCopy: null }, []];
   if (p.choice === null) {
     if (v.searchPending) return [s, []];
-    if (!v.chosen.length) return [{ ...s, pendingCopy: null }, []];
+    // The kept shelf is available to a fresh Enter after a miss. It is not an
+    // answer to Enter queued for the running search.
+    if (!v.chosen.length || s.selected.size === 0 && v.defaultChoice === choiceKey([])) return [{ ...s, pendingCopy: null }, []];
     return advance({ ...s, pendingCopy: { ...p, choice: key } }, copies);
   }
   if (!v.ready || v.saving) return [s, []];
@@ -214,7 +218,7 @@ function observeProject(s: SessionState, clearReplacement: boolean): [SessionSta
 function applyView(s: SessionState, copies: boolean): [SessionState, SessionEffect[]] {
   const v = deriveView(s), old = s.view;
   if (!v) return [s, []];
-  const same = old && Object.entries(v).every(([key, value]) => key === "chosen" ? choiceKey(old.chosen) === choiceKey(v.chosen) :
+  const same = old && Object.entries(v).every(([key, value]) => key === "chosen" || key === "offered" ? choiceKey(old[key]) === choiceKey(v[key]) :
     key === "output" ? sameOutput(old.output, v.output) : old[key as keyof SessionView] === value);
   if (same) return advance(s, copies);
   const writingChanged = old && (old.writingId ?? null) !== (v.writingId ?? null);

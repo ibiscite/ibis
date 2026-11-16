@@ -69,7 +69,10 @@ Ibis reads local changes automatically where file notifications work.
 
 ## Command line
 
-The separate `ibis` program works without the desktop app:
+The desktop app puts the matching `ibis` command in `~/.local/bin` on macOS and
+Linux (Settings shows the line to add if that folder is not on your PATH) and on
+PATH on Windows. The command also installs on its own (Homebrew, winget, Nix
+or a download) and works without the app:
 
 ```sh
 ibis search lantern --file refs.bib
@@ -78,8 +81,9 @@ ibis cite vale2024lanterns --file refs.bib --style apa
 
 See the [CLI reference](docs/cli.md) for installation, JSON, projects,
 JSON-RPC and the [agent plugin](docs/cli.md#ai-agents-mcp).
-Connect your AI assistant with the [setup guide](https://ibiscite.org/setup),
-or paste this prompt:
+Connect the AI apps on your computer in **Settings › AI Apps** or with
+`ibis agents setup` (the same actions and settings), or follow the
+[setup guide](https://ibiscite.org/setup), or paste this prompt:
 
 ```text
 Set up Ibis for me: https://ibiscite.org/setup

@@ -228,3 +228,146 @@ fn newer_schema_refuses_missing_columns_and_changed_lookup_shapes() {
         );
     }
 }
+
+#[test]
+fn the_text_cache_is_read_from_a_regular_file_in_the_attachments_folder() {
+    let data = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic data directory"));
+    let folder = data.path().join("storage").join("FILE0001");
+    std::fs::create_dir_all(&folder).unwrap_or_else(|_| panic!("synthetic storage"));
+    assert_eq!(read_text_cache(data.path(), "FILE0001", Arc::new(|| false)), Ok(None));
+    std::fs::write(
+        folder.join(".zotero-ft-cache"),
+        "Invented page one.\u{c}Invented page two.",
+    )
+    .unwrap_or_else(|_| panic!("synthetic cache"));
+    assert_eq!(
+        read_text_cache(data.path(), "FILE0001", Arc::new(|| false)),
+        Ok(Some("Invented page one.\u{c}Invented page two.".into()))
+    );
+    assert_eq!(read_text_cache(data.path(), "NOFOLDER", Arc::new(|| false)), Ok(None));
+    let large = data.path().join("storage").join("LARGE001");
+    std::fs::create_dir_all(&large).unwrap_or_else(|_| panic!("synthetic storage"));
+    std::fs::write(
+        large.join(".zotero-ft-cache"),
+        vec![b'a'; crate::fulltext::MAX_TEXT_BYTES + 1],
+    )
+    .unwrap_or_else(|_| panic!("synthetic cache"));
+    assert_eq!(
+        read_text_cache(data.path(), "LARGE001", Arc::new(|| false)),
+        Err(ClosedError::TooLarge)
+    );
+    assert_eq!(
+        read_text_cache(data.path(), "../storage", Arc::new(|| false)),
+        Err(ClosedError::UnsafeSource)
+    );
+    #[cfg(unix)]
+    {
+        let linked = data.path().join("storage").join("LINKED01");
+        std::fs::create_dir_all(&linked).unwrap_or_else(|_| panic!("synthetic storage"));
+        std::os::unix::fs::symlink(folder.join(".zotero-ft-cache"), linked.join(".zotero-ft-cache"))
+            .unwrap_or_else(|_| panic!("synthetic link"));
+        assert!(
+            read_text_cache(data.path(), "LINKED01", Arc::new(|| false)).is_err(),
+            "a linked cache is not followed"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn text_cache_refuses_linked_storage_directories() {
+    let data = tempfile::tempdir().unwrap();
+    let storage = data.path().join("storage");
+    let secret = storage.join("SECRET01");
+    std::fs::create_dir_all(&secret).unwrap();
+    std::fs::write(secret.join(".zotero-ft-cache"), "Invented secret text").unwrap();
+    std::os::unix::fs::symlink("SECRET01", storage.join("ALLOW001")).unwrap();
+    assert!(
+        read_text_cache(data.path(), "ALLOW001", Arc::new(|| false)).is_err(),
+        "a sibling attachment is not followed"
+    );
+
+    let other = tempfile::tempdir().unwrap();
+    std::os::unix::fs::symlink(&storage, other.path().join("storage")).unwrap();
+    assert!(
+        read_text_cache(other.path(), "SECRET01", Arc::new(|| false)).is_err(),
+        "storage itself is not followed"
+    );
+    let linked_data = other.path().join("linked-data");
+    std::os::unix::fs::symlink(data.path(), &linked_data).unwrap();
+    assert_eq!(
+        read_text_cache(&linked_data, "SECRET01", Arc::new(|| false)),
+        Ok(Some("Invented secret text".into())),
+        "links in the selected root are resolved once"
+    );
+    assert!(
+        read_text_cache(&linked_data, "ALLOW001", Arc::new(|| false)).is_err(),
+        "resolving the root does not authorize links below it"
+    );
+}
+
+#[test]
+fn text_cache_refuses_invalid_utf8_without_exposing_content() {
+    let data = tempfile::tempdir().unwrap();
+    let folder = data.path().join("storage/INVALID1");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join(".zotero-ft-cache"), b"Invented secret\xfftext").unwrap();
+    let result = read_text_cache(data.path(), "INVALID1", Arc::new(|| false));
+    assert_eq!(result, Err(ClosedError::Unreadable));
+    assert!(!result.unwrap_err().to_string().contains("secret"));
+}
+
+fn stopped_cache_read(cancel: bool) {
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    };
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let token = cancelled.clone();
+    let control = Control::within(
+        Arc::new(move || token.load(Ordering::SeqCst)),
+        if cancel {
+            Duration::from_secs(5)
+        } else {
+            Duration::from_millis(50)
+        },
+    );
+    let (started, ready) = mpsc::channel();
+    let (release, released) = mpsc::channel();
+    let (finished, result) = mpsc::channel();
+    let caller = std::thread::spawn(move || {
+        // A read that stalls in the kernel until released.
+        let answer = control.io(move |_| {
+            started.send(()).unwrap();
+            released.recv().unwrap();
+            Ok(())
+        });
+        finished.send(answer).unwrap();
+    });
+    ready.recv_timeout(Duration::from_secs(1)).unwrap();
+    if cancel {
+        cancelled.store(true, Ordering::SeqCst);
+    }
+    // The caller must be released while the injected read is still stalled.
+    let answer = result.recv_timeout(Duration::from_millis(500));
+    release.send(()).unwrap();
+    caller.join().unwrap();
+    assert_eq!(
+        answer.ok(),
+        Some(Err(if cancel {
+            ClosedError::Cancelled
+        } else {
+            ClosedError::TimedOut
+        }))
+    );
+}
+
+#[test]
+fn text_cache_deadline_releases_the_caller_during_a_stalled_read() {
+    stopped_cache_read(false);
+}
+
+#[test]
+fn text_cache_cancellation_releases_the_caller_during_a_stalled_read() {
+    stopped_cache_read(true);
+}

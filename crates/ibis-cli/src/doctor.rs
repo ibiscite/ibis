@@ -1,6 +1,13 @@
 //! One-shot, read-only diagnostics. No source watches, discovery, API requests,
 //! database copies, settings recovery writes, or raw errors belong here.
-use super::{OutputMode, source_values};
+//!
+//! Like `search` and `libraries`, doctor checks the libraries chosen in the
+//! Ibis app when none is named, or when `--app-libraries` asks for them. It
+//! reads the app's settings and checks chosen files; Zotero is reported, not
+//! opened, because reading it can contact Zotero and copy its database.
+use super::{Defaults, Failure, OutputMode, source_values};
+use crate::app_libraries::{self, AppLibraries};
+use crate::human::cli;
 use clap::ArgMatches;
 use ibis_core::contract::*;
 use ibis_engine::settings;
@@ -8,37 +15,88 @@ use ibis_engine::{Cancellation, DispatchResult, Engine, LibraryInfo, Method, hea
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
-pub(super) fn run(engine: &Engine, matches: &ArgMatches, mode: OutputMode) -> Result<DispatchResult, EngineError> {
+pub(super) fn run(
+    engine: &Engine,
+    matches: &ArgMatches,
+    mode: OutputMode,
+    defaults: Defaults,
+) -> Result<DispatchResult, Failure> {
     let args = matches
         .subcommand_matches("doctor")
         .ok_or(EngineError::new(ErrorCode::Usage))?;
+    let files = source_values::<PathBuf>(matches, "file");
+    let groups = source_values::<u64>(matches, "zotero-group");
+    let personal = matches.get_flag("zotero");
+    let named = !files.is_empty() || !groups.is_empty() || personal;
+    let asked = matches.get_flag("app-libraries");
+    if asked && defaults == Defaults::None {
+        return Err(Failure::new(
+            ErrorCode::Usage,
+            cli("cli-app-libraries-unavailable", &[]),
+        ));
+    }
+    // Named libraries replace the app's, as in every other command.
+    let app = (asked || (defaults == Defaults::App && !named)).then(|| {
+        super::bounded(app_libraries::load).unwrap_or_else(|| {
+            Err(Failure::new(
+                ErrorCode::SourceUnavailable,
+                cli("cli-app-settings-timeout", &[]),
+            ))
+        })
+    });
     let cancel = Cancellation::default();
     let ids_last = health::inspect_identity(&cancel)?;
-    let config = config_check(args.get_one::<PathBuf>("config").map(PathBuf::as_path), &cancel);
+    let mut config = args.get_one::<PathBuf>("config").map_or_else(
+        || check("not-checked", "config-not-requested"),
+        |path| config_report(health::inspect_config(path.clone(), &cancel)),
+    );
     // Capture existing state once. A later check cannot relabel this observation.
     let (_, sources) = engine.health()?;
     let mut sources: Vec<_> = sources.iter().map(library_report).collect();
     // Each selected file owns its result; late native I/O cannot revise the report.
-    sources.extend(
-        source_values::<PathBuf>(matches, "file")
-            .iter()
-            .map(|path| file_report(path, &cancel)),
-    );
-    let groups = source_values::<u64>(matches, "zotero-group");
-    for _ in 0..usize::from(matches.get_flag("zotero")) + groups.len() {
+    sources.extend(files.iter().map(|path| file_report(path, &cancel)));
+    for _ in 0..usize::from(personal) + groups.len() {
         sources.push(unavailable("zotero", "not-checked", "zotero-not-checked"));
+    }
+    let mut app_problem = None;
+    match app {
+        Some(Ok(chosen)) => {
+            if config["code"] == "config-not-requested" {
+                config = check("ok", "app-settings-ok");
+                config["message"] = json!(format!(
+                    "{}'s settings were read. Its chosen libraries follow.",
+                    chosen.app
+                ));
+            }
+            sources.extend(app_reports(&chosen, &cancel));
+        }
+        Some(Err(failure)) => app_problem = Some(failure),
+        None => {}
     }
     for (index, source) in sources.iter_mut().enumerate() {
         // Stable within this report; no private location is needed to identify a check.
         source["index"] = json!(index + 1);
     }
-    let findings =
-        sources.is_empty() || config["status"] == "failed" || sources.iter().any(|source| source["status"] != "ok");
-    let library_check = if sources.is_empty() {
-        check("failed", "no-library")
-    } else {
-        check("ok", "sources-reported")
+    let library_check = match app_problem {
+        // Why the app's libraries could not be read, in the words other commands use.
+        Some(failure) if asked || failure.error.code != ErrorCode::Usage => {
+            let mut result = check("failed", "no-library");
+            if failure.error.code != ErrorCode::Usage {
+                result["code"] = serde_json::to_value(failure.error.code).unwrap_or(Value::Null);
+            }
+            result["message"] = json!(failure.sentence());
+            result
+        }
+        // Nothing chosen anywhere is the usual first run, not a broken setting.
+        _ if sources.is_empty() => check("failed", "no-library"),
+        _ => check("ok", "sources-reported"),
     };
+    // A check that was skipped on purpose is not a problem.
+    let findings = library_check["status"] == "failed"
+        || config["status"] == "failed"
+        || sources
+            .iter()
+            .any(|source| !matches!(source["status"].as_str(), Some("ok" | "not-checked")));
     let key_outputs: Vec<_> = ibis_core::syntax::CAPABILITIES
         .iter()
         .map(|capability| {
@@ -102,7 +160,7 @@ fn report_text(data: &Value, now_ms: u64) -> String {
     .unwrap_or_default();
     text.push_str("\n\n");
     let mut checks = vec![("Settings".to_owned(), &data["config"])];
-    // Each library has its own line; this one only matters when there are none.
+    // Selected libraries can be healthy while the requested app settings fail.
     if data["library_check"]["status"] != "ok" {
         checks.push(("Libraries".to_owned(), &data["library_check"]));
     }
@@ -122,8 +180,8 @@ fn report_text(data: &Value, now_ms: u64) -> String {
             result["freshness"]["updated_at_ms"].as_u64(),
         ) {
             text.push_str(&format!(
-                "      Last good read: {}.\n",
-                age(now_ms.saturating_sub(time))
+                "      {}\n",
+                cli("cli-doctor-last-read", &[("age", &age(now_ms.saturating_sub(time)))])
             ));
         }
     }
@@ -133,15 +191,16 @@ fn report_text(data: &Value, now_ms: u64) -> String {
         .count();
     text.push('\n');
     text.push_str(&match problems {
-        0 => "All good.".to_owned(),
-        1 => "1 thing to look at.".to_owned(),
-        count => format!("{count} things to look at."),
+        0 => cli("cli-doctor-all-good", &[]),
+        1 => cli("cli-doctor-one-finding", &[]),
+        count => cli("cli-doctor-findings", &[("count", &count.to_string())]),
     });
     text
 }
 
 fn summary(label: &str, result: &Value) -> String {
-    let message = result["message"].as_str().unwrap_or("Check failed.");
+    let fallback = cli("cli-doctor-check-failed", &[]);
+    let message = result["message"].as_str().unwrap_or(&fallback);
     let code = result["code"].as_str().unwrap_or("internal");
     match result["status"].as_str() {
         Some("ok") => format!("ok    {label}: {message}\n"),
@@ -171,7 +230,9 @@ fn check(status: &str, reason: &str) -> Value {
         _ => reason,
     };
     let message = match reason {
-        "no-library" => "No library selected. Give --file <library.bib> (repeat for several libraries).",
+        "no-library" => {
+            "No library selected. Choose one in the Ibis app, or give --file <library.bib> (repeat for several libraries)."
+        }
         "sources-reported" => "Each selected source has its own result below.",
         "ids-last" => "Library ids last across runs on this computer.",
         "ids-this-run" => {
@@ -208,13 +269,6 @@ fn check(status: &str, reason: &str) -> Value {
     json!({"status":status, "code":code, "message":message})
 }
 
-fn config_check(path: Option<&Path>, cancel: &Cancellation) -> Value {
-    path.map_or_else(
-        || check("not-checked", "config-not-requested"),
-        |path| config_report(health::inspect_config(path.to_owned(), cancel)),
-    )
-}
-
 fn config_report(loaded: Option<settings::Loaded>) -> Value {
     let Some(loaded) = loaded else {
         let mut result = check("failed", "config-timeout");
@@ -245,6 +299,24 @@ fn config_problem(problem: &settings::SettingsError) -> &'static str {
         }
         settings::SettingsError::Unreadable(_) => "config-unreadable",
     }
+}
+
+/// The app's chosen libraries: files checked offline, Zotero named but not
+/// opened. No chosen path is shown; agents read this report too.
+fn app_reports(chosen: &AppLibraries, cancel: &Cancellation) -> Vec<Value> {
+    let mut reports: Vec<_> = chosen.files.iter().map(|path| file_report(path, cancel)).collect();
+    for _ in &chosen.zotero {
+        let mut report = unavailable("zotero", "not-checked", "zotero-not-checked");
+        report["message"] = json!(format!(
+            "Chosen in {}. Doctor does not open Zotero: reading it can contact Zotero and copy its database, and doctor sends and writes nothing. `ibis libraries` reads it.",
+            chosen.app
+        ));
+        reports.push(report);
+    }
+    for report in &mut reports {
+        report["chosen_in"] = json!(chosen.app);
+    }
+    reports
 }
 
 fn file_report(path: &Path, cancel: &Cancellation) -> Value {

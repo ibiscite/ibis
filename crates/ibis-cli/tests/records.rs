@@ -31,6 +31,38 @@ fn records() -> Value {
 }
 
 #[test]
+fn record_count_limit_keeps_the_catalogue_message_and_resource_limit_exit() -> Result {
+    use ibis_core::contract::{CitationError, EngineError, Envelope};
+    use ibis_engine::catalogue::{self, Audience};
+
+    let input = serde_json::to_vec(&vec![
+        json!({"id":"invented", "type":"book"});
+        ibis_core::syntax::MAX_CITATION_ITEMS + 1
+    ])?;
+    let error = EngineError::citation(CitationError::TooManyRecords);
+    let message = catalogue::error(&error, Audience::Cli);
+    assert_eq!(message, "A citation can hold at most 1000 references.");
+    for json in [false, true] {
+        let mut args = vec!["ibis", "cite", "--records"];
+        if json {
+            args.push("--json");
+        }
+        let (code, output, errors) = run(&args, &input)?;
+        assert_eq!(code, 5);
+        assert_eq!(errors, format!("ibis: {message}\n"));
+        if json {
+            assert_eq!(
+                serde_json::from_slice::<Value>(&output)?,
+                serde_json::to_value(Envelope::<Value>::failure(error))?
+            );
+        } else {
+            assert!(output.is_empty());
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn records_cite_the_same_through_every_front_end() -> Result {
     let params = json!({"records": records(), "output": {"kind": "preset", "name": "apa"}, "form": "normal", "output_locale": null});
     let engine = Engine::new().map_err(|_| "engine")?;
@@ -66,7 +98,7 @@ fn records_cite_the_same_through_every_front_end() -> Result {
         &engine,
         &mut ibis_engine::mcp::Session::default(),
         &json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
-            "name": "cite", "arguments": {"records": records(), "format": "apa"},
+            "name": "cite", "arguments": {"records": records(), "format": "apa", "include_receipt": true},
             "_meta": {
                 "io.modelcontextprotocol/protocolVersion": ibis_engine::mcp::PROTOCOL_VERSION,
                 "io.modelcontextprotocol/clientCapabilities": {}

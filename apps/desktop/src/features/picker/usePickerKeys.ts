@@ -32,7 +32,7 @@ export function usePickerKeys({
   results: ReturnType<typeof useLibrarySearch>["results"];
   showCitations: boolean;
   copyChosen: ReturnType<typeof useCitationRows>["copyChosen"];
-  actions: Pick<ReturnType<typeof usePickerActions>, "toggleHighlighted" | "changeLast">;
+  actions: Pick<ReturnType<typeof usePickerActions>, "toggleHighlighted" | "changeLast" | "canChooseFormat">;
   pointer: ReturnType<typeof usePointerSelection>;
   followKeyboard: { current: boolean };
   quitAfterSaving: () => Promise<void>;
@@ -55,8 +55,10 @@ export function usePickerKeys({
     } else if (command === "keys") {
       if (keysOpen) goBack("escape", event); else openKeys();
     } else if (command === "format") {
+      if (!actions.canChooseFormat) return;
       if (formatOpen) goBack("escape", event); else openFormat();
-    } else if (command === "changeLast") changeLast();
+    } else if (command === "inspector") citationLine?.current?.edit();
+    else if (command === "changeLast") changeLast();
     else if (command === "chooseSource") chooseSources();
     else if (command === "source" || command === "revealSource") openSource(false, command === "revealSource" ? true : undefined);
     else if (command === "settings") { if (openSettings) runFromMenu("settings", () => openSettings(null, session.getSnapshot().presentation)); }

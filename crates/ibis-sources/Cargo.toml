@@ -17,9 +17,11 @@ ibis-zotero-local = { path = "../ibis-zotero-local" }
 biblatex = "0.12.0"
 getrandom = "0.4.3"
 notify = "8.2.0"
+# Page labels are compared in NFC (decision 0036).
+unicode-normalization = "0.1.26"
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.31.3", default-features = false, features = ["fs"] }
+nix = { version = "0.31.3", default-features = false, features = ["fs", "resource"] }
 
 [target.'cfg(windows)'.dependencies]
 # Already locked through the desktop: safe mount/placeholder metadata queries.
@@ -27,11 +29,18 @@ winsafe = { version = "0.0.29", default-features = false, features = ["kernel"] 
 
 [dev-dependencies]
 tempfile = "3.27.0"
-# Tests only: they build Zotero databases and compare normalized text.
+# Tests only: they build Zotero databases.
 rusqlite = { version = "0.41.0", features = ["bundled", "hooks"] }
-unicode-normalization = "0.1.26"
 insta = { version = "1.49.0", features = ["json"] }
 proptest = "1.12.0"
 
-[lints]
-workspace = true
+# Deny unsafe except in the scoped post-fork descriptor boundary (0029).
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+panic = "deny"
+unused_result_ok = "deny"
+expect_used = "warn"

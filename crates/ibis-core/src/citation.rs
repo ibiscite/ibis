@@ -19,6 +19,14 @@ impl ItemSupport {
 /// Eligibility of one item; the record is borrowed from the current snapshot.
 pub type ItemCheck<'a> = Result<&'a Record, CitationError>;
 
+/// Enforce the citation item limit before resolving keys, records or references.
+pub fn check_item_limit(count: usize) -> Result<(), CitationError> {
+    if count > MAX_CITATION_ITEMS {
+        return Err(CitationError::TooManyItems);
+    }
+    Ok(())
+}
+
 /// One eligibility outcome per input item, indexed in input order. An eligible
 /// record must still be represented by the renderer before delivery.
 /// Whole-request refusals are returned separately, before inspecting items.
@@ -116,9 +124,7 @@ fn validate_request(request: &CitationRequest) -> Result<(), CitationError> {
     if request.items.is_empty() {
         return Err(CitationError::EmptySelection);
     }
-    if request.items.len() > MAX_CITATION_ITEMS {
-        return Err(CitationError::TooManyItems);
-    }
+    check_item_limit(request.items.len())?;
     for locale in [request.input_language.as_deref(), request.output_locale.as_deref()]
         .into_iter()
         .flatten()

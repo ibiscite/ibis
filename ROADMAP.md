@@ -69,8 +69,10 @@ the maintainer promotes it.
 - Drag citations into apps. Configurable reference opening, editor and PDF
   viewer choices, several-PDF menus and Open PDF at This Page only with a known
   printed-to-physical page mapping.
-- Copy as Markdown. Reusable agent setup using the bundled command. Publish
-  the MCP Registry listing.
+- Copy as Markdown. Reusable agent setup using the bundled command: `ibis agents`,
+  then Settings › AI apps on the same code, so the app and the CLI share one
+  set of settings ([0055](docs/decisions/0055-agent-layers-full-text-writes-remote.md)).
+  Publish the MCP Registry listing.
 - Copy Again in the native menu once engine citation sessions support it.
 - German and one right-to-left interface language. Public beta.
 
@@ -93,6 +95,9 @@ the maintainer promotes it.
   than silently choosing one. Unknown printed pages ask.
 - Opt-in agent access to passages per library, off by default, without private
   links. Check quote/comment comprehension with reference-manager and file users.
+- Decided in [0055](docs/decisions/0055-agent-layers-full-text-writes-remote.md):
+  read attachment text with verified pages (`outline`, `read`, `find_in`), CLI
+  first, then MCP behind its own per-library opt-in; no network, no files.
 - Add a note instead of a citation.
 - Warn when a successfully copied key changes for a provably identical item;
   design the interaction first and provide Forget. Never infer a BibTeX rename
@@ -110,7 +115,12 @@ the maintainer promotes it.
 - Reference handling follows [0051](docs/decisions/0051-references-in-and-out.md):
   desktop sharing and file destinations; then paste a DOI to cite using the
   single opt-in lookup module; then add by identifier through Zotero's official
-  local write API. Attachment sharing needs its own design and review.
+  local write API. Attachment sharing needs its own design and review. Agent
+  write proposals that the person confirms in Ibis
+  ([0055](docs/decisions/0055-agent-layers-full-text-writes-remote.md)): the engine,
+  `ibis mcp --allow-writes` and `ibis proposals` are built and apply to `.bib`
+  files; the app's confirmation screen comes next, and Zotero follows its official
+  local write API.
 
 ## 0.7 Everywhere you work
 
@@ -120,7 +130,8 @@ the maintainer promotes it.
   when it is closed; no network listener. Command plugins use `ibis-foo` on
   PATH, with built-ins taking precedence.
 - Pasting on Linux, a language server, launcher and browser extensions.
-- A library on another computer through the person's own SSH.
+- A library on another computer through the person's own SSH, starting with
+  `ssh HOST ibis mcp` over stdio ([0055](docs/decisions/0055-agent-layers-full-text-writes-remote.md)).
 - More translations, EndNote XML and Word Sources.xml, ARM64 builds and local
   meaning-based search while the picker is open.
 - Annotations from Paperpile, JabRef, BibDesk/Skim, EndNote, Mendeley and
@@ -153,5 +164,6 @@ near 1.0; macOS uses the self-signed identity and Windows installers are unsigne
 ## Conditional work
 
 Paid signing enables Developer ID/notarization and Windows signing. Opt-in
-macOS iCloud settings sync needs a network decision. Windows App Actions and
+macOS iCloud settings sync needs a network decision. So does a read-only Zotero
+Web API library ([0055](docs/decisions/0055-agent-layers-full-text-writes-remote.md)). Windows App Actions and
 its agent registry wait for signing.

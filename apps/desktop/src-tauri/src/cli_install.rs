@@ -48,6 +48,45 @@ fn installer(app: &tauri::AppHandle) -> Result<CommandInstall, String> {
     ))
 }
 
+/// Connections use the installer's discovery locations, plus the per-user
+/// command even when a Dock-launched app has not inherited that PATH yet.
+pub(crate) fn agent_home(app: &tauri::AppHandle) -> Result<ibis_engine::agent_apps::Home, String> {
+    agent_environment(
+        installer(app)?,
+        app.path()
+            .config_dir()
+            .map_err(|_| "Could not find your settings folder.")?,
+        std::env::var_os("CODEX_HOME")
+            .map(std::path::PathBuf::from)
+            .filter(|path| path.is_absolute()),
+    )
+}
+
+fn agent_environment(
+    install: CommandInstall,
+    config: std::path::PathBuf,
+    codex_home: Option<std::path::PathBuf>,
+) -> Result<ibis_engine::agent_apps::Home, String> {
+    let status = install.status().map_err(|_| "Could not check the ibis command.")?;
+    let destination = install.destination();
+    let bundled = (!install.temporary()).then_some(install.bundled);
+    let mut path = install.path;
+    path.push(install.home.join(".local/bin"));
+    let mut home = ibis_engine::agent_apps::Home {
+        root: install.home,
+        config: Some(config),
+        path,
+        codex_home,
+        ibis: None,
+    };
+    home.ibis = if status.removable && ibis_engine::agent_apps::executable(&destination) {
+        Some(destination)
+    } else {
+        home.find("ibis").or(bundled)
+    };
+    Ok(home)
+}
+
 #[cfg(any(test, target_os = "windows"))]
 fn with_registered_path(
     mut inherited: Vec<std::path::PathBuf>,
@@ -79,39 +118,57 @@ fn registered_user_path() -> Result<Option<std::ffi::OsString>, String> {
 #[tauri::command]
 #[ibis_desktop_macros::command]
 pub(crate) async fn cli_status(app: tauri::AppHandle) -> Result<CommandStatus, String> {
-    operation(app, None).await
+    operation(app, Step::Status).await
 }
 
 #[tauri::command]
 #[ibis_desktop_macros::command]
 pub(crate) async fn set_cli_installed(app: tauri::AppHandle, installed: bool) -> Result<CommandStatus, String> {
-    operation(app, Some(installed)).await
+    operation(app, if installed { Step::Install } else { Step::Remove }).await
 }
 
-async fn operation(app: tauri::AppHandle, installed: Option<bool>) -> Result<CommandStatus, String> {
+/// Release launches maintain the per-user command; Windows's installer owns it.
+pub(crate) fn keep_at_launch(app: &tauri::AppHandle) {
+    if cfg!(debug_assertions) || cfg!(windows) {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = operation(app, Step::Keep).await;
+    });
+}
+
+enum Step {
+    Status,
+    Install,
+    Remove,
+    Keep,
+}
+
+async fn operation(app: tauri::AppHandle, step: Step) -> Result<CommandStatus, String> {
     static OWNER: tauri::async_runtime::Mutex<()> = tauri::async_runtime::Mutex::const_new(());
-    // Acquire the FIFO owner before scheduling blocking work, including reads
-    // after a close/reopen. Moving the lock into that work permits reordering.
+    // Lock before scheduling workers so a later removal cannot overtake an install.
     with_owner(&OWNER, move || {
         let install = installer(&app)?;
-        match installed {
-            None => install.status(),
-            Some(true) => install.install(),
-            Some(false) => install.remove(),
+        match step {
+            Step::Status => install.status(),
+            Step::Install => install.install(),
+            Step::Remove => install.remove(),
+            Step::Keep => install.keep_installed(),
         }
         .map_err(|_| "Could not change the ibis command. Check the folder permissions and try again.".into())
     })
     .await
 }
 
-async fn with_owner<T: Send + 'static>(
+pub(crate) async fn with_owner<T: Send + 'static>(
     owner: &tauri::async_runtime::Mutex<()>,
     work: impl FnOnce() -> Result<T, String> + Send + 'static,
 ) -> Result<T, String> {
     let _owner = owner.lock().await;
     tauri::async_runtime::spawn_blocking(work)
         .await
-        .map_err(|_| "Could not check the ibis command.".to_owned())?
+        .map_err(|_| "Could not complete the operation.".to_owned())?
 }
 
 #[tauri::command]

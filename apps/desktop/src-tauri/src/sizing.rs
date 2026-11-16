@@ -57,6 +57,7 @@ fn restore(saved: PickerWindow, room: (f64, f64)) -> Frame {
                 f64::from(saved.width),
                 f64::from(saved.height),
                 search_centre(false),
+                ibis_engine::settings::PickerPlacement::Centre,
             );
             (x.floor() as i32, y.floor() as i32)
         });
@@ -145,6 +146,7 @@ fn plan(saved: Option<Frame>, larger: bool, room: (f64, f64)) -> Frame {
         f64::from(width),
         f64::from(height),
         search_centre(larger),
+        ibis_engine::settings::PickerPlacement::Centre,
     );
     Frame {
         width,
@@ -562,6 +564,7 @@ pub(crate) fn prepare(app: &AppHandle, window: &WebviewWindow, first_show: bool,
         frame.height = (metrics.inner.1.round() as u32).min(room.1.floor().max(1.0) as u32);
     }
     if !positioned {
+        let placement = app.state::<SettingsFile>().picker_placement();
         let (x, y) = placement::launcher_position(
             placement::Area {
                 x: 0.0,
@@ -572,6 +575,7 @@ pub(crate) fn prepare(app: &AppHandle, window: &WebviewWindow, first_show: bool,
             f64::from(frame.width) + metrics.outer.0 - metrics.inner.0,
             f64::from(frame.height) + metrics.outer.1 - metrics.inner.1,
             metrics.top + search_centre(larger),
+            placement,
         );
         frame.x = x.floor() as i32;
         frame.y = y.floor() as i32;

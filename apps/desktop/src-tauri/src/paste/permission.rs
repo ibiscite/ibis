@@ -160,7 +160,7 @@ mod macos {
                 }
             },
         );
-        let _ = Command::new("/usr/bin/open").arg(PANE).status();
+        let _ = crate::system_open::open(PANE.as_ref(), false);
     }
 
     /// The macOS major version, such as 27, read once; 0 when it cannot be read.

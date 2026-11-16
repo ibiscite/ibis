@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import axe from "axe-core";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
-import type { CommandStatus, LoginItem, PickerPreferences, PickerSave, ShortcutStatus, WindowSize } from "../bindings";
+import type { AgentApp, CommandStatus, LoginItem, PickerPreferences, PickerSave, ShortcutStatus, WindowSize } from "../bindings";
 import { bindingKeys, DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
 import { currentPlatform } from "../platform";
 import { pageOf, SettingsApp } from "./SettingsApp";
@@ -18,10 +18,69 @@ import english from "../../../../locales/en-US.ftl?raw";
 import { createInterfaceMessages, englishMessages, InterfaceMessagesProvider, say } from "../i18n";
 import { SHORTCUT_ACTIONS, SHORTCUT_REGIONS } from "../i18n/settings";
 import { deferred } from "../testing/deferred";
+import { exampleProposals } from "../testing/proposals";
+
+test.each(["proposals", "changes", "add reference"])("search finds proposed changes by %s on AI Apps", async (query) => {
+  const { api } = fakeApi();
+  api.agentApps = vi.fn(async () => []);
+  api.connectAgentApp = vi.fn(); api.disconnectAgentApp = vi.fn();
+  api.waitingProposals = vi.fn(async () => exampleProposals());
+  api.applyProposal = vi.fn(); api.rejectProposal = vi.fn();
+  render(<SettingsApp api={api} initialPage="general" />);
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search Settings" }), { target: { value: query } });
+  fireEvent.click(await screen.findByRole("option", { name: /^Proposed changes/ }));
+  await screen.findByText("Claude Desktop · signals.bib");
+  expect(screen.getByRole("main", { name: "AI Apps" })).toBeTruthy();
+  expect(api.applyProposal).not.toHaveBeenCalled();
+});
 
 afterEach(() => { vi.useRealTimers(); localStorage.clear(); });
 
-test.each(["macos", "linux"])("General offers the per-user command and PATH guidance on %s", async (platform) => {
+test("AI Apps keeps Command Line, connections and Attachment text before Proposed changes", async () => {
+  const { api } = fakeApi();
+  const app: AgentApp = { id: "cursor", name: "Cursor", found: true, revision: "invented-revision", state: "not-connected", detail: "", diff: null, needs_command: true, ibis_on_path: true };
+  api.cliStatus = async () => ({ state: "not-installed", version: null, used_path: null, profile_line: null, removable: false, installable: true });
+  api.setCliInstalled = vi.fn();
+  api.copyCliProfile = vi.fn();
+  api.agentApps = async () => [app];
+  api.connectAgentApp = vi.fn();
+  api.disconnectAgentApp = vi.fn();
+  api.attachmentTextLibraries = async () => [{ id: "lib_invented_library", name: "Invented references", on: false }];
+  api.waitingProposals = async () => [];
+  api.applyProposal = vi.fn(); api.rejectProposal = vi.fn();
+  render(<SettingsApp api={api} initialPage="ai-apps" />);
+  expect(await screen.findByRole("button", { name: "Install the ibis command" })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: "Connect Cursor" })).toBeTruthy();
+  expect(await screen.findByRole("switch", { name: "Let AI apps read attachment text Invented references" })).toHaveProperty("checked", false);
+  expect(within(screen.getByRole("main")).getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["Command Line", "AI Apps", "Attachment text", "Proposed changes"]);
+});
+
+test("command changes refresh AI Apps and retire older observations", async () => {
+  const { api } = fakeApi();
+  const missing: CommandStatus = { state: "not-installed", version: null, used_path: null, profile_line: null, removable: false, installable: true };
+  const app: AgentApp = { id: "cursor", name: "Cursor", found: true, revision: "before-install", state: "not-connected", detail: "", diff: null, needs_command: true, ibis_on_path: false };
+  const installed = { ...app, revision: "after-install", ibis_on_path: true };
+  const late = deferred<AgentApp[]>();
+  api.cliStatus = vi.fn(async () => missing);
+  api.setCliInstalled = vi.fn(async (on: boolean): Promise<CommandStatus> => on ? { ...missing, state: "matching", version: "1.2.3", installable: false, removable: true } : missing);
+  api.copyCliProfile = vi.fn();
+  api.agentApps = vi.fn().mockResolvedValueOnce([app]).mockReturnValueOnce(late.promise).mockResolvedValueOnce([installed]).mockResolvedValueOnce([app]);
+  api.connectAgentApp = vi.fn(async () => [installed]);
+  api.disconnectAgentApp = vi.fn();
+  render(<SettingsApp api={api} initialPage="ai-apps" />);
+  await screen.findByText(/Command Line above/);
+  fireEvent(window, new Event("focus"));
+  fireEvent.click(screen.getByRole("button", { name: "Install the ibis command" }));
+  await waitFor(() => expect(screen.queryByText(/Command Line above/)).toBeNull());
+  await act(async () => late.resolve([app]));
+  expect(screen.queryByText(/Command Line above/)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: /^Connect/ }));
+  await waitFor(() => expect(api.connectAgentApp).toHaveBeenCalledWith("cursor", false, "after-install"));
+  fireEvent.click(screen.getByRole("button", { name: "Remove Command" }));
+  await screen.findByText(/Command Line above/);
+});
+
+test.each(["macos", "linux"])("AI Apps offers the per-user command and PATH guidance on %s", async (platform) => {
   const previous = document.documentElement.dataset.system;
   document.documentElement.dataset.system = platform;
   try {
@@ -31,7 +90,7 @@ test.each(["macos", "linux"])("General offers the per-user command and PATH guid
     api.cliStatus = vi.fn(async () => missing);
     api.setCliInstalled = vi.fn(async (): Promise<CommandStatus> => ({ ...missing, state: "matching", version: "1.2.3", used_path: "/invented/.local/bin/ibis", installable: false, removable: true }));
     api.copyCliProfile = vi.fn(async () => null);
-    render(<SettingsApp api={api} initialPage="general" />);
+    render(<SettingsApp api={api} initialPage="ai-apps" />);
     fireEvent.click(await screen.findByRole("button", { name: "Install the ibis command" }));
     expect(await screen.findByText("ibis 1.2.3 — matches this app")).toBeTruthy();
     expect(screen.getByText("/invented/.local/bin/ibis")).toBeTruthy();
@@ -185,6 +244,8 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
   /** Each choice reaches the owner when made; how it went is asked for by receipt. */
   const submitted = new Map<number, Partial<PickerPreferences>>();
   const api: TestApi = {
+    attachmentTextLibraries: async () => [],
+    setAttachmentText: async (_id, on) => on,
     pickerPreferences: async () => state.preferences,
     windowSize: vi.fn(async (): Promise<WindowSize | null> => "medium"),
     setWindowSize: vi.fn(async (): Promise<number> => ++state.windowRevision),
@@ -382,11 +443,23 @@ test("a window size that cannot be read says so and offers no choice", async () 
 });
 
 test("pages are opened by name, and the paste guide is General's pasting group", () => {
+  expect(pageOf("ai-apps")).toEqual({ page: "ai-apps", focus: null });
   expect(pageOf("paste")).toEqual({ page: "general", focus: "paste" });
   expect(pageOf("about")).toEqual({ page: "about", focus: null });
   expect(pageOf("shortcuts")).toEqual({ page: "shortcuts", focus: null });
   expect(pageOf("unknown")).toEqual({ page: "general", focus: null });
   expect(pageOf(null)).toEqual({ page: "general", focus: null });
+});
+
+test.each(["attachment", "full text", "PDF"])("search for %s opens Attachment text in AI Apps", async (query) => {
+  const { api } = fakeApi({ granted: true });
+  api.attachmentTextLibraries = async () => [{ id: "lib_invented_library", name: "Invented references", on: false }];
+  render(<SettingsApp api={api} initialPage="general" />);
+  fireEvent.change(screen.getByRole("searchbox"), { target: { value: query } });
+  fireEvent.click(await screen.findByRole("option", { name: /Let AI apps read attachment text/ }));
+  expect(await screen.findByRole("heading", { name: "AI Apps", level: 1 })).toBeTruthy();
+  const control = await screen.findByRole("switch", { name: "Let AI apps read attachment text Invented references" });
+  await waitFor(() => expect(document.activeElement).toBe(control));
 });
 
 test.each([1, 2])("Wayland portal v%s shows the desktop trigger, never a recorder or reset", async (version) => {
@@ -529,7 +602,7 @@ test("Settings opens at the top of General with every built page in a navigable,
   const sidebar = screen.getByRole("navigation", { name: "Settings pages" });
   const list = within(sidebar).getByRole("listbox", { name: "Settings pages" });
   const items = within(list).getAllByRole("option");
-  expect(items.map((item) => item.textContent)).toEqual(["General", "Appearance", "Citations", "Shortcuts", "About Ibis"]);
+  expect(items.map((item) => item.textContent)).toEqual(["General", "Appearance", "Citations", "AI Apps", "Shortcuts", "About Ibis"]);
   const selected = () => within(list).getAllByRole("option", { selected: true });
   expect(selected().map((item) => item.textContent)).toEqual(["General"]);
   expect(selected()[0]!.getAttribute("aria-current")).toBe("page");
@@ -575,7 +648,7 @@ test("clicking the current sidebar page once resets its scroll to the top", asyn
   const { api } = fakeApi({ granted: true });
   render(<SettingsApp api={api} initialPage="general" />);
   await screen.findByRole("button", { name: /^Open Ibis:/ });
-  for (const name of ["General", "Appearance", "Citations", "Shortcuts", "About Ibis"]) {
+  for (const name of ["General", "Appearance", "Citations", "AI Apps", "Shortcuts", "About Ibis"]) {
     const item = screen.getByRole("option", { name });
     fireEvent.click(item);
     const main = screen.getByRole("main", { name });
@@ -1105,7 +1178,7 @@ test("search finds theme by one Appearance name, then reveals and briefly tints 
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const { api } = fakeApi({ granted: true });
   render(<SettingsApp api={api} initialPage="general" />);
-  expect(screen.getAllByRole("option").map((x) => x.textContent)).toEqual(["General", "Appearance", "Citations", "Shortcuts", "About Ibis"]);
+  expect(screen.getAllByRole("option").map((x) => x.textContent)).toEqual(["General", "Appearance", "Citations", "AI Apps", "Shortcuts", "About Ibis"]);
   const search = screen.getByRole("searchbox", { name: "Search Settings" });
   fireEvent.change(search, { target: { value: "theme" } });
   const results = await screen.findByRole("listbox", { name: "Search results" });
@@ -1181,7 +1254,7 @@ test("Settings shows only built pages, rows and choices, including in search", a
   render(<SettingsApp api={api} initialPage="look" />);
   await screen.findByRole("radiogroup", { name: "Appearance" });
   expect(screen.queryByRole("radio", { name: /Coming soon|Largest/ })).toBeNull();
-  for (const name of ["General", "Appearance", "Citations", "Shortcuts", "About Ibis"]) {
+  for (const name of ["General", "Appearance", "Citations", "AI Apps", "Shortcuts", "About Ibis"]) {
     fireEvent.click(screen.getByRole("option", { name }));
     expect(screen.queryByText(/Coming soon/)).toBeNull();
     expect(screen.queryByText("Show the welcome again")).toBeNull();
@@ -2155,4 +2228,26 @@ test("a setting whose value is not known yet paints neither on nor off, then its
   expect(row.querySelector(".ui-switch[data-placeholder]")).not.toBeNull();
   await act(async () => answer({ enabled: true, name: "Ibis", problem: null }));
   expect((within(row as HTMLElement).getByRole("switch") as HTMLInputElement).checked).toBe(true);
+});
+
+test("Where Ibis opens saves every placement, reopens it and resets with Undo", async () => {
+  const { api, state } = fakeApi();
+  const submit = vi.spyOn(api, "savePickerPreferences");
+  const view = render(<SettingsApp api={api} initialPage="general" />);
+  for (const [label, value] of [["Top left", "top-left"], ["Top right", "top-right"], ["Bottom left", "bottom-left"], ["Bottom right", "bottom-right"], ["Centre", "centre"]]) {
+    fireEvent.click(await screen.findByRole("button", { name: /^Where Ibis opens / }));
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: label }));
+    await waitFor(() => expect(submit).toHaveBeenLastCalledWith({ picker_placement: value }));
+    await waitFor(() => expect(state.preferences).toMatchObject({ picker_placement: value }));
+  }
+  fireEvent.click(screen.getByRole("button", { name: /^Where Ibis opens / }));
+  fireEvent.click(await screen.findByRole("menuitemradio", { name: "Bottom right" }));
+  await waitFor(() => expect(state.preferences).toMatchObject({ picker_placement: "bottom-right" }));
+  view.unmount();
+  render(<SettingsApp api={api} initialPage="general" />);
+  expect(await screen.findByRole("button", { name: "Where Ibis opens Bottom right" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Use Default for Where Ibis opens" }));
+  await waitFor(() => expect(state.preferences).toMatchObject({ picker_placement: "centre" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Undo Restore Default for Where Ibis opens" }));
+  await waitFor(() => expect(state.preferences).toMatchObject({ picker_placement: "bottom-right" }));
 });

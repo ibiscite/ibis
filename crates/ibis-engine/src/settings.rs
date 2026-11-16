@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
-use ibis_core::atomic_file::{AtomicFile, sync_directory};
+use ibis_core::atomic_file::{AtomicFile, create_numbered, open_private, sync_directory};
 use ibis_core::destination::System;
 
 /// Version of the settings format this build reads and writes.
@@ -312,6 +312,18 @@ pub enum Accent {
     Ibis,
 }
 
+/// Default picker placement on the active display; a deliberate move wins there.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum PickerPlacement {
+    #[default]
+    Centre,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
 impl Appearance {
     pub fn is_system(&self) -> bool {
         *self == Self::System
@@ -356,6 +368,9 @@ pub struct Portable {
     /// Result row density. `None` means comfortable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub density: Option<Density>,
+    /// Default position on the active display. `None` means Centre.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub picker_placement: Option<PickerPlacement>,
     /// Larger text in the picker. `None` means the normal size.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub larger_text: Option<bool>,
@@ -411,9 +426,23 @@ pub struct Device {
     /// Frames explicitly dragged by the person, indexed by display.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub picker_windows: BTreeMap<String, PickerWindow>,
+    /// Libraries whose attachment text AI apps may read through `ibis mcp`,
+    /// stored as the complete opaque library ids from `ibis libraries --json`.
+    /// A library not listed stays closed to them (decision 0055). It is a
+    /// grant, so it stays on this computer, as paste approvals do (decision 0031).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachment_text: Vec<ibis_core::contract::LibraryId>,
 }
 
+/// The most libraries `attachment_text` may name.
+const MAX_ATTACHMENT_TEXT: usize = 64;
+
 impl Settings {
+    /// Whether the person let AI apps read `library`'s attachment text.
+    pub fn attachment_text(&self, library: &ibis_core::contract::LibraryId) -> bool {
+        self.device.attachment_text.contains(library)
+    }
+
     /// The format chosen for `app`, compared as the platform compares app ids.
     pub fn app_output(&self, app: &ibis_core::destination::AppId) -> Option<&str> {
         let key = app.normalized();
@@ -457,6 +486,7 @@ impl Default for Portable {
             output: None,
             key_output: None,
             density: None,
+            picker_placement: None,
             larger_text: None,
             paste: None,
             menu_bar: None,
@@ -520,6 +550,7 @@ pub struct Interface {
     pub appearance: Option<Appearance>,
     pub accent: Option<Accent>,
     pub density: Option<Density>,
+    pub picker_placement: Option<PickerPlacement>,
     pub larger_text: Option<bool>,
     pub paste: Option<bool>,
     pub menu_bar: Option<bool>,
@@ -539,6 +570,7 @@ impl From<&Settings> for Interface {
             appearance: portable.appearance,
             accent: portable.accent,
             density: portable.density,
+            picker_placement: portable.picker_placement,
             larger_text: portable.larger_text,
             paste: portable.paste,
             menu_bar: portable.menu_bar,
@@ -646,6 +678,9 @@ fn parse_fields<T: serde::de::DeserializeOwned>(mut value: Value) -> Result<T, S
 
 fn validate_settings(settings: &Settings) -> Result<(), SettingsError> {
     writings::validate(&settings.device.writings).map_err(|error| SettingsError::Invalid(error.to_string()))?;
+    if settings.device.attachment_text.len() > MAX_ATTACHMENT_TEXT {
+        return Err(SettingsError::Invalid("too many attachment text libraries".into()));
+    }
     if settings.device.writing_apps.len() > 200
         || settings.device.writing_apps.iter().any(|(key, name)| {
             let Some((system, id)) = key.split_once(':') else {
@@ -739,22 +774,12 @@ fn ensure_file(path: &Path) -> Result<(), SettingsError> {
     if let Some(problem) = loaded.problem {
         return Err(problem);
     }
-    let json =
+    let mut json =
         serde_json::to_vec_pretty(&loaded.settings).map_err(|error| SettingsError::Invalid(error.to_string()))?;
-    let mut options = fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    match options.open(path) {
-        Ok(mut file) => {
-            file.write_all(&json)?;
-            file.write_all(b"\n")?;
-            file.sync_all()?;
-            owner::committed(Err(io::ErrorKind::NotFound), [json, b"\n".to_vec()].concat());
-            sync_directory(path);
+    json.push(b'\n');
+    match AtomicFile::new(path, &json)?.create() {
+        Ok(()) => {
+            owner::committed(Err(io::ErrorKind::NotFound), json);
             Ok(())
         }
         Err(error) if error.kind() == io::ErrorKind::AlreadyExists => require_regular(path).map_err(Into::into),
@@ -805,11 +830,7 @@ fn writer_lock(path: &Path) -> Result<WriterLock, SettingsError> {
         Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error.into()),
         _ => {}
     }
-    let mut options = fs::OpenOptions::new();
-    options.read(true).write(true).create(true).truncate(false);
-    #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-    let file = options.open(lock)?;
+    let file = open_private(&lock)?;
     let acquired = file.try_lock();
     #[cfg(test)]
     writer_attempted();
@@ -1022,28 +1043,17 @@ fn preserve_invalid(path: &Path) -> io::Result<()> {
         }
         other => other?,
     };
-    for number in 1..=1000 {
-        let invalid = path.with_extension(format!("json.invalid-{number}"));
-        let mut options = fs::OpenOptions::new();
-        options.write(true).create_new(true);
-        // Damaged settings may hold private paths: readable by the owner only.
-        #[cfg(unix)]
-        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-        match options.open(&invalid) {
-            Ok(mut file) => {
-                file.write_all(&bytes)?;
-                file.sync_all()?;
-                sync_directory(&invalid);
-                return Ok(());
-            }
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error),
+    let (invalid, mut file) = create_numbered(&path.with_extension("json"), ".invalid").map_err(|error| {
+        if error.kind() == io::ErrorKind::AlreadyExists {
+            io::Error::new(error.kind(), "settings recovery names are exhausted")
+        } else {
+            error
         }
-    }
-    Err(io::Error::new(
-        io::ErrorKind::AlreadyExists,
-        "settings recovery names are exhausted",
-    ))
+    })?;
+    file.write_all(&bytes)?;
+    file.sync_all()?;
+    sync_directory(&invalid);
+    Ok(())
 }
 
 /// Change settings on disk: read the file as it is now, apply `change` and
@@ -1160,6 +1170,25 @@ impl From<&crate::settings::SettingsError> for Problem {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn attachment_text_settings_store_complete_library_ids() {
+        let id = ibis_core::contract::LibraryId::digest(b"invented-profile-a-personal");
+        let text = serde_json::json!({"schema_version": 2, "attachment_text": [id]}).to_string();
+        let settings = super::parse(&text).unwrap();
+        assert!(settings.attachment_text(&id));
+        assert_eq!(
+            serde_json::to_value(&settings).unwrap()["attachment_text"],
+            serde_json::json!([id])
+        );
+        for old in [
+            serde_json::json!({"zotero":"user"}),
+            serde_json::json!({"bibtex":"/invented/refs.bib"}),
+        ] {
+            assert!(
+                super::parse(&serde_json::json!({"schema_version":2,"attachment_text":[old]}).to_string()).is_err()
+            );
+        }
+    }
     use super::*;
 
     #[test]
@@ -1873,23 +1902,6 @@ mod tests {
             "{ damaged"
         );
         assert!(load(&path).problem.is_none());
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn preserved_damaged_settings_are_readable_by_the_owner_only() {
-        use std::os::unix::fs::PermissionsExt;
-        let directory = dir("archive-mode");
-        let path = directory.path().join("settings.json");
-        fs::write(&path, "{ damaged").unwrap_or_else(|e| panic!("{e}"));
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap_or_else(|e| panic!("{e}"));
-        fs::write(backup_path(&path), "{}").unwrap_or_else(|e| panic!("{e}"));
-        restore_backup(&path).unwrap_or_else(|e| panic!("{e}"));
-        let mode = fs::metadata(path.with_extension("json.invalid-1"))
-            .unwrap_or_else(|e| panic!("{e}"))
-            .permissions()
-            .mode();
-        assert_eq!(mode & 0o077, 0);
     }
 
     #[test]

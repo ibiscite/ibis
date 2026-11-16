@@ -15,27 +15,17 @@ pub struct AtomicFile {
 impl AtomicFile {
     pub fn new(path: &Path, bytes: &[u8]) -> io::Result<Self> {
         permissions(path)?;
-        let name = path.file_name().ok_or(io::ErrorKind::InvalidInput)?;
-        for number in 1..=1000 {
-            let mut name = name.to_os_string();
-            name.push(format!(".tmp-{number}"));
-            let temporary = path.with_file_name(name);
-            let file = match create_private(&temporary) {
-                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
-                other => other?,
-            };
-            let mut staged = Self {
-                file,
-                temporary: Temporary {
-                    path: temporary,
-                    placed: false,
-                },
-                path: path.to_path_buf(),
-            };
-            staged.file.write_all(bytes)?;
-            return Ok(staged);
-        }
-        Err(io::ErrorKind::AlreadyExists.into())
+        let (temporary, file) = create_numbered(path, ".tmp")?;
+        let mut staged = Self {
+            file,
+            temporary: Temporary {
+                path: temporary,
+                placed: false,
+            },
+            path: path.to_path_buf(),
+        };
+        staged.file.write_all(bytes)?;
+        Ok(staged)
     }
 
     /// Refuse a read-only target with `PermissionDenied`, even if the folder
@@ -74,6 +64,64 @@ impl AtomicFile {
     }
 }
 
+/// Why [`replace_keeping_backup`] changed nothing.
+#[derive(Debug)]
+pub enum BackupReplaceError<E> {
+    /// The new text could not be staged beside the file.
+    Stage(io::Error),
+    /// The backup of the old text could not be written.
+    Backup,
+    /// The caller's check failed after staging: usually, the file changed.
+    Check(E),
+    /// The check failed and the new backup could not be removed either.
+    BackupLeft(E),
+    /// The staged file could not take the file's place.
+    Write(io::Error),
+}
+
+/// Write `after` in place of `before` at `path`, keeping `before` in a private
+/// numbered backup `path.ibis-backup-N`, or create `path` when `before` is
+/// `None`. `check` runs once everything is staged, just before the rename, so
+/// the caller can refuse if another program saved the file meanwhile; a
+/// backup is kept only beside a change that was made.
+pub fn replace_keeping_backup<E>(
+    path: &Path,
+    before: Option<&[u8]>,
+    after: &[u8],
+    check: impl FnOnce() -> Result<(), E>,
+) -> Result<Option<PathBuf>, BackupReplaceError<E>> {
+    let staged = AtomicFile::new(path, after).map_err(BackupReplaceError::Stage)?;
+    let backup = match before {
+        Some(before) => {
+            let (backup, mut file) = create_numbered(path, ".ibis-backup").map_err(|_| BackupReplaceError::Backup)?;
+            file.write_all(before).and_then(|()| file.sync_all()).map_err(|_| {
+                let _ = fs::remove_file(&backup);
+                BackupReplaceError::Backup
+            })?;
+            Some(backup)
+        }
+        None => None,
+    };
+    if let Err(reason) = check() {
+        return Err(match &backup {
+            Some(backup) if fs::remove_file(backup).is_err() => BackupReplaceError::BackupLeft(reason),
+            _ => BackupReplaceError::Check(reason),
+        });
+    }
+    let written = if before.is_some() {
+        staged.replace()
+    } else {
+        staged.create()
+    };
+    written.map_err(|error| {
+        if let Some(backup) = &backup {
+            let _ = fs::remove_file(backup);
+        }
+        BackupReplaceError::Write(error)
+    })?;
+    Ok(backup)
+}
+
 struct Temporary {
     path: PathBuf,
     placed: bool,
@@ -97,12 +145,43 @@ fn permissions(path: &Path) -> io::Result<Option<Permissions>> {
     }
 }
 
-fn create_private(path: &Path) -> io::Result<File> {
+/// Create a new file with Unix mode 0600 and otherwise default security.
+/// Refuse every existing entry.
+pub fn create_private(path: &Path) -> io::Result<File> {
+    private_options().create_new(true).open(path)
+}
+
+/// Open a reusable private lock without changing existing bytes or permissions.
+/// Refuse Unix symlinks.
+pub fn open_private(path: &Path) -> io::Result<File> {
+    let mut options = private_options();
+    options.read(true).create(true).truncate(false);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::custom_flags(&mut options, nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK);
+    options.open(path)
+}
+
+fn private_options() -> fs::OpenOptions {
     let mut options = fs::OpenOptions::new();
-    options.write(true).create_new(true);
+    options.write(true);
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-    options.open(path)
+    options
+}
+
+/// Exclusively create `path{suffix}-N`, trying 1 through 1000 in order.
+pub fn create_numbered(path: &Path, suffix: &str) -> io::Result<(PathBuf, File)> {
+    let name = path.file_name().ok_or(io::ErrorKind::InvalidInput)?;
+    for number in 1..=1000 {
+        let mut name = name.to_os_string();
+        name.push(format!("{suffix}-{number}"));
+        let path = path.with_file_name(name);
+        match create_private(&path) {
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            file => return Ok((path, file?)),
+        }
+    }
+    Err(io::ErrorKind::AlreadyExists.into())
 }
 
 /// Best effort directory flush: the file is already committed. Windows journals

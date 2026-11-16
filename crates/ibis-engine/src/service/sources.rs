@@ -52,6 +52,13 @@ struct Slot {
     loaded: Arc<LoadedLibrary>,
 }
 impl Registry {
+    pub(super) fn file_generation(&self, library: &LibraryId) -> Option<u64> {
+        self.slots
+            .values()
+            .find(|slot| slot.loaded.library == *library)
+            .map(|slot| slot.generation)
+    }
+
     /// Where a file library was read from; other sources have no file.
     pub(super) fn file_path(&self, library: &LibraryId) -> Option<PathBuf> {
         self.slots
@@ -96,7 +103,7 @@ impl PreparedFileReload {
     }
 }
 
-fn zotero_error(failure: ZoteroError) -> EngineError {
+pub(super) fn zotero_error(failure: ZoteroError) -> EngineError {
     let code = if failure.cancelled() {
         ErrorCode::Cancelled
     } else if failure.limited() {
@@ -214,6 +221,7 @@ impl Engine {
             formatting: self.formatting.clone(),
             resources: Arc::new(resources),
             watch_files: false,
+            pdf: self.pdf.clone(),
         };
         let mut expected = base;
         let mut retirement_error = None;
@@ -311,7 +319,7 @@ impl Engine {
         prepared.outcome
     }
 
-    pub(super) fn open_file(&self, path: &Path, cancel: &Cancellation) -> Result<(), EngineError> {
+    pub(crate) fn open_file(&self, path: &Path, cancel: &Cancellation) -> Result<(), EngineError> {
         self.open_file_observed(path, cancel).map(|_| ())
     }
 
@@ -604,7 +612,7 @@ impl Engine {
         }
         SourceWatch::with_library(path, observation, model, callback)
     }
-    pub(super) fn reload_files(&self, library: Option<&LibraryId>, cancel: &Cancellation) -> Result<(), EngineError> {
+    pub(crate) fn reload_files(&self, library: Option<&LibraryId>, cancel: &Cancellation) -> Result<(), EngineError> {
         let loaded_zotero = self
             .resources
             .zotero
@@ -776,6 +784,21 @@ impl Engine {
                 Err(failure)
             }
         }
+    }
+    /// What reads the chosen Zotero libraries' attachments, and the port
+    /// Zotero answers on while it runs.
+    pub(super) fn zotero_reading(&self) -> Result<(ibis_sources::zotero_source::ZoteroReading, u16), EngineError> {
+        let reading = self
+            .resources
+            .zotero
+            .lock()
+            .map_err(|_| error(ErrorCode::Internal))?
+            .reading();
+        let port = self
+            .resources
+            .zotero_port
+            .unwrap_or(ibis_sources::zotero_source::DEFAULT_PORT);
+        Ok((reading, port))
     }
     /// The Zotero profiles here by name, for a choice while Zotero is closed.
     pub(super) fn zotero_profiles(&self) -> Result<Vec<String>, EngineError> {

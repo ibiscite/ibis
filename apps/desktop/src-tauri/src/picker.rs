@@ -570,9 +570,9 @@ pub(crate) fn hide_picker<R: PickerHideUi>(app: AppHandle<R>, presentation: Opti
 /// Keep receipt and ownership checks real in tests; replace only native hiding.
 pub(crate) trait PickerHideUi: tauri::Runtime {
     fn dismiss(app: &AppHandle<Self>);
-    /// The work area Settings opens in (`settings_window::work_area`); a runtime
+    /// The initial Settings frame (`settings_window::initial_frame`); a runtime
     /// that cannot read screens answers unknown.
-    fn work_area(app: &AppHandle<Self>) -> Option<(f64, f64, f64, f64)>;
+    fn settings_frame(app: &AppHandle<Self>) -> Option<crate::settings_window::InitialFrame>;
 }
 
 impl PickerHideUi for tauri::Wry {
@@ -580,8 +580,8 @@ impl PickerHideUi for tauri::Wry {
         finish_dismiss(app);
     }
 
-    fn work_area(app: &AppHandle<Self>) -> Option<(f64, f64, f64, f64)> {
-        crate::settings_window::work_area(app)
+    fn settings_frame(app: &AppHandle<Self>) -> Option<crate::settings_window::InitialFrame> {
+        crate::settings_window::initial_frame(app)
     }
 }
 
@@ -1008,7 +1008,7 @@ mod tests {
     }
 
     impl PickerHideUi for tauri::test::MockRuntime {
-        fn work_area(_: &AppHandle<Self>) -> Option<(f64, f64, f64, f64)> {
+        fn settings_frame(_: &AppHandle<Self>) -> Option<crate::settings_window::InitialFrame> {
             None
         }
 

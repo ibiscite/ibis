@@ -31,10 +31,12 @@ mod prepared;
 mod receipt;
 pub use prepared::{CitationCommitError, PreparedCitation};
 mod project;
+mod reading;
 pub use ibis_sources::project::{Doubt, EntryRefusal, KeyCheck, ProjectProblem, ProjectRead};
 pub use project::{
     EntryResult, ProjectAssessment, ProjectAssessmentState, ProjectKey, ProjectResult, WritingCitation, project_name,
 };
+pub use reading::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
@@ -304,6 +306,8 @@ pub struct Engine {
     formatting: Formatting,
     resources: Arc<sources::Owners>,
     watch_files: bool,
+    /// Reads PDFs in a child process; without one, PDFs stay unread.
+    pdf: Option<ibis_sources::pdf::PdfReader>,
 }
 impl Engine {
     pub fn new() -> Result<Self, EngineError> {
@@ -314,6 +318,13 @@ impl Engine {
     /// One-shot callers read files without installing background watches.
     pub fn without_file_watches(mut self) -> Self {
         self.watch_files = false;
+        self
+    }
+    /// Read PDF attachments with `program`, an `ibis` executable started as
+    /// a short-lived child for each file (decision 0055). The desktop app
+    /// never parses a PDF itself.
+    pub fn with_pdf_reader(mut self, program: std::path::PathBuf) -> Self {
+        self.pdf = Some(ibis_sources::pdf::PdfReader::new(program));
         self
     }
     /// Reuse a session's compiled style when replacing its library.
@@ -341,6 +352,7 @@ impl Engine {
             }))),
             resources: Arc::new(sources::Owners::default()),
             watch_files: true,
+            pdf: None,
         }
     }
     /// An isolated IPv4-loopback transport for synthetic clients.
@@ -552,9 +564,11 @@ impl Engine {
         cancel: &Cancellation,
     ) -> Result<CitationRequest, EngineError> {
         cancel.check()?;
-        if request.keys.is_empty() || request.keys.len() > ibis_core::syntax::MAX_CITATION_ITEMS {
+        if request.keys.is_empty() {
             return Err(error(ErrorCode::BadInput));
         }
+        ibis_core::citation::check_item_limit(request.keys.len())
+            .map_err(|_| EngineError::citation(CitationError::TooManyKeys))?;
         let state = self.state()?;
         let snapshot = state.index.snapshot();
         let output = crate::outputs::resolve(&request.output)?;
@@ -596,8 +610,9 @@ impl Engine {
         }
         // Records are far shallower than any transport limit allows, so the
         // same records meet the same limits however they arrive.
-        if request.records.len() > ibis_core::syntax::MAX_CITATION_ITEMS
-            || request.records.iter().any(|record| depth(record) > MAX_RECORD_DEPTH)
+        ibis_core::citation::check_item_limit(request.records.len())
+            .map_err(|_| EngineError::citation(CitationError::TooManyRecords))?;
+        if request.records.iter().any(|record| depth(record) > MAX_RECORD_DEPTH)
             || crate::wire::serialized_size(&request.records, MAX_RECORDS_BYTES).is_err()
         {
             return Err(error(ErrorCode::ResourceLimit));
@@ -638,9 +653,11 @@ impl Engine {
                 })
                 .collect(),
         };
-        if picks.is_empty() || picks.len() > ibis_core::syntax::MAX_CITATION_ITEMS {
+        if picks.is_empty() {
             return Err(error(ErrorCode::BadInput));
         }
+        ibis_core::citation::check_item_limit(picks.len())
+            .map_err(|_| EngineError::citation(CitationError::TooManyRecordItems))?;
         let snapshot = Arc::new(
             Snapshot::new(read.records.into_iter().map(LibraryObject::Record).collect())
                 .map_err(|_| error(ErrorCode::BadInput))?,
@@ -846,6 +863,9 @@ impl Engine {
                 };
                 return checked(result, exit_code);
             }
+            Method::Outline => return checked(self.outline(&parameters(params)?, cancel)?, ExitCode::Ok),
+            Method::Read => return checked(self.read_attachment(&parameters(params)?, cancel)?, ExitCode::Ok),
+            Method::FindIn => return checked(self.find_in(&parameters(params)?, cancel)?, ExitCode::Ok),
             Method::Styles => value(self.styles(&parameters(params)?)?)?,
             Method::Outputs => {
                 let OutputsRequest {} = parameters(params)?;
@@ -1126,6 +1146,9 @@ fn response_schema(method: Method) -> Value {
         Method::Records => schema_for!(health::Checked<CitationResult>),
         Method::Styles => schema_for!(StylesResult),
         Method::Outputs => schema_for!(crate::outputs::OutputsResult),
+        Method::Outline => schema_for!(health::Checked<OutlineResult>),
+        Method::Read => schema_for!(health::Checked<ReadResult>),
+        Method::FindIn => schema_for!(health::Checked<FindInResult>),
         _ => schema_for!(Value),
     }
     .into()

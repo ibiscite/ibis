@@ -17,6 +17,7 @@
 /* Controls fill the field's height, so their gap to the window's top and side is
    one --inset and their corners nest in the window's (docs/design/foundations.md, Corners). */
 .search-bar .pin-button { flex: none; margin-inline-start: auto; }
+.search-format-label { align-self: center; color: var(--text-secondary); font-size: var(--type-label-size); }
 .search-bar .ui-popup-button.ui-button[data-variant] { min-height: var(--field-h); border-radius: var(--r-control); }
 .search-bar .pin-button.ui-button[data-variant] { --icon-button-size: var(--field-h); border-radius: var(--r-control); }
 .search-page-token { display: flex; flex: none; align-items: center; gap: var(--space-1); min-width: 0; max-width: 50%; font: var(--type-label-size) / var(--type-label-line) var(--font); }

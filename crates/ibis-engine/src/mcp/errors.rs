@@ -12,10 +12,10 @@ pub(super) enum ToolProblem {
     Reference,
     StaleReference,
     Items,
-    TooManyItems,
     App,
     KeepOrder,
     Strict,
+    IncludeReceipt,
     OutputChoice,
     Format,
     CitationFormat,
@@ -36,14 +36,18 @@ pub(super) enum ToolProblem {
     NumberMinimum,
     StyleQuery,
     NoLibrary,
+    AttachmentText,
+    Writes,
+    Proposal,
 }
 impl ToolProblem {
     pub(super) fn problem(self, args: &[(&str, &str)]) -> (ErrorCode, Problem) {
         let (code, recovery) = match self {
             Self::NoLibrary => (ErrorCode::SourceUnavailable, R::ChooseLibrary),
+            Self::AttachmentText | Self::Writes => (ErrorCode::SourceUnavailable, R::ReviewSettings),
+            Self::Proposal => (ErrorCode::BadInput, R::EditInput),
             Self::StaleReference => (ErrorCode::NotFound, R::SearchReferences),
             Self::Query | Self::StyleQuery => (ErrorCode::BadInput, R::EditInput),
-            Self::TooManyItems => (ErrorCode::BadInput, R::ReduceSelection),
             Self::CitationFormat
             | Self::Format
             | Self::Style
@@ -61,6 +65,7 @@ impl ToolProblem {
             | Self::App
             | Self::KeepOrder
             | Self::Strict
+            | Self::IncludeReceipt
             | Self::Form
             | Self::HiddenCitation
             | Self::RecordsOrItems

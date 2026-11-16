@@ -7,6 +7,15 @@ import { events, type Stop } from "../nativeEvents";
 export type { PastePermission } from "../bindings";
 
 export const settingsApi = {
+  waitingProposals: commands.waitingProposals,
+  applyProposal: commands.applyProposal,
+  rejectProposal: commands.rejectProposal,
+  agentApps: commands.agentApps,
+  connectAgentApp: commands.connectAgentApp,
+  disconnectAgentApp: commands.disconnectAgentApp,
+  attachmentTextLibraries: commands.attachmentTextLibraries,
+  setAttachmentText: commands.setAttachmentText,
+  onLibraryChanged: events.onLibraryChanged,
   cliStatus: commands.cliStatus,
   setCliInstalled: commands.setCliInstalled,
   copyCliProfile: commands.copyCliProfile,
@@ -61,5 +70,5 @@ export const settingsApi = {
   onCloseRequested: (handler: () => Promise<void>): Promise<Stop> => getCurrentWindow().onCloseRequested(handler),
 };
 
-type Optional = "cliStatus" | "setCliInstalled" | "copyCliProfile" | "delightView" | "editorEndpoint" | "setEditorEndpoint" | "copyEditorEndpoint" | "onEditorEndpoint" | "formatSettings" | "forgetAppFormat" | "openSettingsFile";
+type Optional = "waitingProposals" | "applyProposal" | "rejectProposal" | "attachmentTextLibraries" | "setAttachmentText" | "onLibraryChanged" | "agentApps" | "connectAgentApp" | "disconnectAgentApp" | "cliStatus" | "setCliInstalled" | "copyCliProfile" | "delightView" | "editorEndpoint" | "setEditorEndpoint" | "copyEditorEndpoint" | "onEditorEndpoint" | "formatSettings" | "forgetAppFormat" | "openSettingsFile";
 export type SettingsApi = Omit<typeof settingsApi, Optional> & Partial<Pick<typeof settingsApi, Optional>>;

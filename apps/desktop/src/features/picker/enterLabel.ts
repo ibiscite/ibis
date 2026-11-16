@@ -7,6 +7,15 @@ export function enterPastes(app: string | null, canPaste: boolean, stayOpen: boo
   return canPaste && app !== null && app !== "" && !stayOpen;
 }
 
+/** One destination for the format label, action and nearby delivery words. */
+export function citationDelivery(app: string | null, canPaste: boolean, stayOpen: boolean, editorFormat: string | null) {
+  const pastes = !editorFormat && enterPastes(app, canPaste, stayOpen);
+  const mode = say(editorFormat ? "picker-delivery-editor" : pastes ? "picker-delivery-paste" : "picker-delivery-clipboard");
+  // Keep the format's app/writing/one-off context unless a normally available
+  // paste has become a copy for this citation. The mode always names delivery.
+  return { pastes, headerLabel: !editorFormat && app && canPaste && stayOpen ? mode : undefined, mode, editorFormat };
+}
+
 /** One phrase for the action and the output. Numeric styles still name entries. */
 export function enterLabel(format: OutputId, count: number, app: string | null, canPaste: boolean, stayOpen: boolean, pastedList: boolean) {
   const entries = writesEntries(format);

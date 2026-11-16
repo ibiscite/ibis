@@ -175,6 +175,43 @@ pub struct EntryRequest {
     pub item: ItemSelector,
 }
 
+/// A reference's attachments: what each is and whether its text can be read
+/// (decision 0055).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct OutlineRequest {
+    pub item: ItemSelector,
+}
+
+/// The text of an attachment `outline` listed: at most five pages or 32 KiB,
+/// each page marked. `next` in the answer gives the arguments that go on.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ReadRequest {
+    /// An attachment id from `outline`.
+    pub attachment: String,
+    /// The first page, from 1; only when pages are known. Omitted, page 1.
+    #[serde(default)]
+    pub first_page: Option<u32>,
+    /// The last page, at most four after the first.
+    #[serde(default)]
+    pub last_page: Option<u32>,
+    /// Where to start within the first page, or within the text when pages
+    /// are not known: a byte offset a `next` gave.
+    #[serde(default)]
+    pub offset: Option<usize>,
+}
+
+/// Short passages of an attachment that hold some words, with their pages.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FindInRequest {
+    /// An attachment id from `outline`.
+    pub attachment: String,
+    /// Words to find in this order, ignoring case and line breaks.
+    pub query: String,
+}
+
 /// A page of the style list: the curated styles first, then the rest by id.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -231,6 +268,9 @@ pub fn request_schema(method: Method) -> Value {
         Method::Records => schema_for!(RecordsRequest),
         Method::Project => schema_for!(ProjectRequest),
         Method::Entry => schema_for!(EntryRequest),
+        Method::Outline => schema_for!(OutlineRequest),
+        Method::Read => schema_for!(ReadRequest),
+        Method::FindIn => schema_for!(FindInRequest),
         Method::Styles => schema_for!(StylesRequest),
         Method::Outputs => schema_for!(OutputsRequest),
         Method::Schema => schema_for!(SchemaRequest),

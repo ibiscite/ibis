@@ -1,8 +1,11 @@
 //! Raw live acquisition and immutable publication through the shared mapper.
+use crate::pdf::PdfReader;
+use crate::reading::{DocumentText, SourceAttachment, TextState};
 use crate::{
     LibraryKind, LoadedLibrary, SourceWarning, WarningCode,
     zotero::{self, MappingError, MappingWarning, ZoteroCreator, ZoteroItem},
 };
+use ibis_core::contract::ItemRef;
 use ibis_core::contract::{CitationKeySource, ErrorReason, LibraryId, LibraryObject, Snapshot};
 use ibis_core::zotero::api::{Transport, TransportError};
 use ibis_core::zotero::libraries;
@@ -11,6 +14,7 @@ use ibis_zotero_local::bbt::{BbtError, BbtLibrary, LiveBbt};
 use ibis_zotero_local::closed;
 pub use ibis_zotero_local::closed::ClosedError;
 pub use ibis_zotero_local::discovery;
+use ibis_zotero_local::fulltext;
 pub use ibis_zotero_local::live::{Library, LiveError};
 use ibis_zotero_local::live::{Limits, LiveReader, LiveWarning};
 pub use ibis_zotero_local::{DEFAULT_PORT, LocalZotero};
@@ -131,7 +135,17 @@ pub struct ZoteroSource {
     profile_name: Option<String>,
     /// Groups the last closed read listed; Zotero has no API while closed.
     closed_groups: Vec<Group>,
+    /// What the last closed read found of attachments; nothing after a live
+    /// read, which asks Zotero instead.
+    closed_attachments: Option<Arc<ClosedAttachments>>,
+    /// The data directory whose storage folder holds attachment files and
+    /// Zotero's text cache: the one a closed read copied, or while Zotero runs
+    /// the lone or chosen directory found on this computer.
+    data: Option<PathBuf>,
 }
+
+/// Attachments by library and parent key, from one closed read.
+type ClosedAttachments = BTreeMap<LibraryId, BTreeMap<String, Vec<closed::ClosedAttachment>>>;
 impl Default for ZoteroSource {
     fn default() -> Self {
         Self {
@@ -141,6 +155,8 @@ impl Default for ZoteroSource {
             mode: None,
             profile_name: None,
             closed_groups: vec![],
+            closed_attachments: None,
+            data: None,
         }
     }
 }
@@ -166,6 +182,8 @@ impl ZoteroSource {
             mode: None,
             profile_name: None,
             closed_groups: vec![],
+            closed_attachments: None,
+            data: None,
         })
     }
     /// Read this profile while Zotero is closed. A running Zotero answers for
@@ -269,6 +287,13 @@ impl ZoteroSource {
             Ok(found) => self.use_discovery(found),
             Err(_) => self.profile = Profile::Running,
         }
+        // Zotero's API never says where its files are; while it runs they are
+        // looked for only in the directory a closed read would copy.
+        self.data = found
+            .as_ref()
+            .ok()
+            .and_then(|found| chosen_directory(found, self.profile_name.as_deref()).ok())
+            .map(|data| closed::trusted_folder(&data));
         match self.refresh_observed(DEFAULT_PORT, reload, &|| cancelled(), on_full) {
             Ok(loaded) => return Ok(loaded),
             Err(ZoteroError::Live(LiveError::Transport(TransportError::Unreachable))) => (),
@@ -281,7 +306,7 @@ impl ZoteroSource {
         let data = found.and_then(|found| chosen_directory(&found, self.profile_name.as_deref()))?;
         let acquired = read_closed_at(&data, &std::env::temp_dir(), cancelled.clone())
             .map_err(|error| chosen_read_failed(error, self.profile_name.as_deref()))?;
-        self.publish_closed(&acquired, &|| cancelled())
+        self.publish_closed(&acquired, Some(&data), &|| cancelled())
     }
     pub fn refresh(
         &mut self,
@@ -385,13 +410,16 @@ impl ZoteroSource {
         self.readers = readers;
         self.current = loaded.clone();
         self.mode = Some(ZoteroMode::Live);
+        self.closed_attachments = None;
         Ok(loaded)
     }
     fn publish_closed(
         &mut self,
         snapshot: &closed::ClosedSnapshot,
+        data: Option<&Path>,
         cancelled: &impl Fn() -> bool,
     ) -> Result<Vec<Arc<LoadedLibrary>>, ZoteroError> {
+        let mut attachments = BTreeMap::new();
         let chosen = self.libraries();
         let profile = match &self.profile {
             Profile::Known(profile) => profile.clone(),
@@ -436,6 +464,19 @@ impl ZoteroSource {
                     field: None,
                 })
                 .collect();
+            if let Some(found_attachments) = &snapshot.attachments {
+                let mut by_parent = BTreeMap::<String, Vec<closed::ClosedAttachment>>::new();
+                for attachment in found_attachments
+                    .iter()
+                    .filter(|attachment| attachment.library_id == found.library_id)
+                {
+                    by_parent
+                        .entry(attachment.parent.clone())
+                        .or_default()
+                        .push(attachment.clone());
+                }
+                attachments.insert(library_id(&profile, library), by_parent);
+            }
             loaded.push(self.map_items(
                 library_id(&profile, library),
                 found.items.iter().map(|item| {
@@ -469,6 +510,8 @@ impl ZoteroSource {
         }
         self.current = loaded.clone();
         self.mode = Some(ZoteroMode::Closed);
+        self.closed_attachments = snapshot.attachments.as_ref().map(|_| Arc::new(attachments));
+        self.data = data.map(closed::trusted_folder);
         self.readers = Self::readers(&chosen);
         self.closed_groups = closed_groups(snapshot);
         Ok(loaded)
@@ -578,6 +621,175 @@ impl ZoteroSource {
             damaged_keys: Default::default(),
         });
         Ok(loaded)
+    }
+}
+
+impl ZoteroSource {
+    /// What reading attachments needs, taken out of the source so that no lock
+    /// is held while Zotero answers or a file is read.
+    pub fn reading(&self) -> ZoteroReading {
+        ZoteroReading {
+            libraries: self
+                .current
+                .iter()
+                .map(|loaded| loaded.library.clone())
+                .zip(self.libraries())
+                .collect(),
+            mode: self.mode,
+            closed: self.closed_attachments.clone(),
+            data: self.data.clone(),
+        }
+    }
+}
+
+/// The attachments of the published Zotero libraries and their text (decision
+/// 0055): Zotero's local API while it runs, the last closed read and Zotero's
+/// text cache while it is closed, and the PDF itself through the extractor's
+/// child process when Zotero's index is missing or partial. Nothing is written.
+#[derive(Clone)]
+pub struct ZoteroReading {
+    libraries: Vec<(LibraryId, Library)>,
+    mode: Option<ZoteroMode>,
+    closed: Option<Arc<ClosedAttachments>>,
+    data: Option<PathBuf>,
+}
+impl ZoteroReading {
+    fn library(&self, id: &LibraryId) -> Result<Library, ZoteroError> {
+        self.libraries
+            .iter()
+            .find(|(library, _)| library == id)
+            .map(|(_, library)| *library)
+            .ok_or(ZoteroError::LibraryNotFound)
+    }
+
+    fn closed(&self, parent: &ItemRef) -> Result<&[closed::ClosedAttachment], ZoteroError> {
+        let found = self
+            .closed
+            .as_ref()
+            .ok_or(ZoteroError::Closed(closed::ClosedError::Unreadable))?;
+        Ok(found
+            .get(&parent.library)
+            .and_then(|parents| parents.get(&parent.key))
+            .map_or(&[], Vec::as_slice))
+    }
+
+    /// The attachments of `parent`, a record this source published.
+    pub fn attachments(
+        &self,
+        transport: &mut impl Transport,
+        parent: &ItemRef,
+    ) -> Result<Vec<SourceAttachment>, ZoteroError> {
+        let library = self.library(&parent.library)?;
+        Ok(match self.mode {
+            Some(ZoteroMode::Live) => fulltext::attachments(transport, library, &parent.key)
+                .map_err(text_error)?
+                .into_iter()
+                .map(|found| SourceAttachment {
+                    revision: found.revision,
+                    key: found.key,
+                    title: found.title,
+                    media_type: found.content_type,
+                    link_only: found.link_only,
+                    location: found.path,
+                })
+                .collect(),
+            Some(ZoteroMode::Closed) => self
+                .closed(parent)?
+                .iter()
+                .take(fulltext::MAX_ATTACHMENTS)
+                .map(|found| SourceAttachment {
+                    revision: found.revision.clone(),
+                    key: found.key.clone(),
+                    title: found.title.clone(),
+                    media_type: found.content_type.clone(),
+                    link_only: found.link_only,
+                    location: found.path.clone(),
+                })
+                .collect(),
+            None => return Err(ZoteroError::LibraryNotFound),
+        })
+    }
+
+    /// The text of `attachment`, one of `parent`'s attachments; `pdf` reads
+    /// a PDF whose index is missing or partial, and its page labels.
+    pub fn text(
+        &self,
+        transport: &mut impl Transport,
+        parent: &ItemRef,
+        attachment: &SourceAttachment,
+        pdf: Option<&PdfReader>,
+        cancelled: Arc<dyn Fn() -> bool + Send + Sync>,
+    ) -> Result<TextState, ZoteroError> {
+        if cancelled() {
+            return Err(ZoteroError::Closed(closed::ClosedError::Cancelled));
+        }
+        if attachment.link_only {
+            return Ok(TextState::NoFile);
+        }
+        let library = self.library(&parent.library)?;
+        let indexed = match self.mode {
+            Some(ZoteroMode::Live) => fulltext::indexed(transport, library, &attachment.key)
+                .map_err(text_error)?
+                .map(|found| (found.text, found.indexed_pages, found.total_pages, Some(found.revision))),
+            Some(ZoteroMode::Closed) => {
+                let counts = self
+                    .closed(parent)?
+                    .iter()
+                    .find(|found| found.key == attachment.key)
+                    .and_then(|found| found.indexed);
+                match (counts, self.data.as_deref()) {
+                    (Some(counts), Some(data)) => closed::read_text_cache(data, &attachment.key, cancelled.clone())?
+                        .map(|text| (text, counts.indexed_pages, counts.total_pages, None)),
+                    _ => None,
+                }
+            }
+            None => return Err(ZoteroError::LibraryNotFound),
+        };
+        let indexed = indexed.map(|(text, indexed_pages, total_pages, revision)| {
+            let mut text = DocumentText::from_zotero(text, indexed_pages, total_pages);
+            if let Some(revision) = revision {
+                text.revision = revision;
+            }
+            text
+        });
+        if cancelled() {
+            return Err(ZoteroError::Closed(closed::ClosedError::Cancelled));
+        }
+        let file = pdf.filter(|_| attachment.is_pdf()).zip(self.file(attachment));
+        let text = crate::reading::text_of(
+            indexed,
+            file.as_ref().map(|(reader, file)| (*reader, file.as_path())),
+            cancelled.clone(),
+        );
+        if cancelled() {
+            return Err(ZoteroError::Closed(closed::ClosedError::Cancelled));
+        }
+        Ok(text)
+    }
+
+    /// The attachment's stored file or an absolute linked file. Relative linked
+    /// files require Zotero's base-folder preference, which this source lacks.
+    fn file(&self, attachment: &SourceAttachment) -> Option<PathBuf> {
+        if let Some(name) = attachment.location.strip_prefix("storage:") {
+            let mut parts = Path::new(name).components();
+            let (Some(std::path::Component::Normal(name)), None) = (parts.next(), parts.next()) else {
+                return None;
+            };
+            if !fulltext::valid_key(&attachment.key) {
+                return None;
+            }
+            return Some(self.data.as_ref()?.join("storage").join(&attachment.key).join(name));
+        }
+        let path = Path::new(&attachment.location);
+        path.is_absolute().then(|| path.to_owned())
+    }
+}
+
+fn text_error(error: fulltext::TextError) -> ZoteroError {
+    match error {
+        fulltext::TextError::Transport(transport) => LiveError::Transport(transport).into(),
+        fulltext::TextError::TooLarge => LiveError::Limit.into(),
+        fulltext::TextError::Malformed => ZoteroError::InvalidData,
     }
 }
 
@@ -901,6 +1113,7 @@ mod tests {
             warnings: vec![],
             better_bibtex_unknown: false,
             owner: 0,
+            attachments: None,
         });
         assert_eq!(
             groups,
@@ -1226,9 +1439,10 @@ mod tests {
                 warnings: vec![],
                 better_bibtex_unknown: unknown,
                 owner: 0,
+                attachments: None,
             };
             let loaded = ZoteroSource::default()
-                .publish_closed(&snapshot, &|| false)
+                .publish_closed(&snapshot, None, &|| false)
                 .unwrap()
                 .remove(0);
             // Unknown keys leave an item without Zotero's own key keyless.
@@ -1497,9 +1711,10 @@ mod tests {
                 warnings: vec![],
                 better_bibtex_unknown: false,
                 owner,
+                attachments: None,
             };
             let mut source = several();
-            let loaded = source.publish_closed(&snapshot, &|| false).unwrap();
+            let loaded = source.publish_closed(&snapshot, None, &|| false).unwrap();
             assert_eq!(source.mode(), Some(ZoteroMode::Closed));
             ids(loaded)
         };
@@ -1686,9 +1901,10 @@ mod tests {
             warnings: vec![closed::ClosedWarning::NewerThanTested],
             better_bibtex_unknown: false,
             owner: 0,
+            attachments: None,
         };
         let loaded = ZoteroSource::default()
-            .publish_closed(&snapshot, &|| false)
+            .publish_closed(&snapshot, None, &|| false)
             .unwrap()
             .remove(0);
         assert_eq!(
@@ -1728,6 +1944,113 @@ mod tests {
     }
 
     #[test]
+    fn a_closed_read_lists_attachments_and_reads_zoteros_text_cache() {
+        let attachment = |key: &str, library_id, indexed: Option<u32>| closed::ClosedAttachment {
+            revision: ibis_core::contract::Fingerprint::of_bytes(b"invented attachment revision"),
+            library_id,
+            parent: "SYNTH001".into(),
+            key: key.into(),
+            title: format!("Invented {key}"),
+            content_type: "application/pdf".into(),
+            link_only: false,
+            path: format!("storage:{key}.pdf"),
+            indexed: indexed.map(|pages| closed::IndexedCounts {
+                indexed_pages: Some(pages),
+                total_pages: Some(40),
+            }),
+        };
+        let snapshot = closed::ClosedSnapshot {
+            schema_version: 123,
+            libraries: vec![
+                closed_library(1, None, "Invented atlas", ""),
+                closed_library(2, Some(7), "Invented group atlas", ""),
+            ],
+            warnings: vec![],
+            better_bibtex_unknown: false,
+            owner: 0,
+            attachments: Some(vec![
+                attachment("PDF00001", 1, Some(2)),
+                attachment("PDF00002", 1, Some(3)),
+                attachment("PDF00003", 1, None),
+                attachment("GROUP001", 2, Some(1)),
+            ]),
+        };
+        let data = tempfile::tempdir().unwrap();
+        for key in ["PDF00001", "PDF00002"] {
+            let folder = data.path().join("storage").join(key);
+            std::fs::create_dir_all(&folder).unwrap();
+            std::fs::write(
+                folder.join(".zotero-ft-cache"),
+                "Invented first page.\n\n\u{c}Invented second page.",
+            )
+            .unwrap();
+        }
+        let mut source = ZoteroSource::new(&[Library::User]).unwrap();
+        let loaded = source.publish_closed(&snapshot, Some(data.path()), &|| false).unwrap();
+        let parent = ItemRef {
+            library: loaded[0].library.clone(),
+            key: "SYNTH001".into(),
+        };
+        let reading = source.reading();
+        let unused = &mut LocalZotero::on_port(0);
+        let found = reading.attachments(unused, &parent).unwrap();
+        // Only the chosen library's own attachments, never the group's.
+        assert_eq!(
+            found.iter().map(|found| found.key.as_str()).collect::<Vec<_>>(),
+            ["PDF00001", "PDF00002", "PDF00003"]
+        );
+        // A stored file is looked for only in its own storage folder.
+        assert_eq!(
+            reading.file(&found[0]),
+            Some(closed::trusted_folder(data.path()).join("storage/PDF00001/PDF00001.pdf"))
+        );
+        let mut elsewhere = found[0].clone();
+        for location in [
+            "storage:../PDF00002/x.pdf",
+            "storage:",
+            "attachments:papers/x.pdf",
+            "papers/x.pdf",
+        ] {
+            elsewhere.location = location.into();
+            assert_eq!(reading.file(&elsewhere), None, "{location}");
+        }
+        let linked = data.path().join("linked.pdf");
+        elsewhere.location = linked.to_string_lossy().into_owned();
+        assert_eq!(reading.file(&elsewhere), Some(linked));
+        let TextState::Text(text) = reading
+            .text(unused, &parent, &found[0], None, Arc::new(|| false))
+            .unwrap()
+        else {
+            panic!("indexed text")
+        };
+        // A partial index cannot establish the document's page numbers.
+        assert!(text.body == crate::reading::Body::Whole("Invented first page.\n\n\u{c}Invented second page.".into()));
+        assert_eq!((text.indexed_pages, text.total_pages), (Some(2), Some(40)));
+        // Zotero counted three pages: the breaks do not match, so pages are unknown.
+        let TextState::Text(text) = reading
+            .text(unused, &parent, &found[1], None, Arc::new(|| false))
+            .unwrap()
+        else {
+            panic!("indexed text")
+        };
+        assert!(matches!(text.body, crate::reading::Body::Whole(_)));
+        assert!(
+            reading
+                .text(unused, &parent, &found[2], None, Arc::new(|| false))
+                .unwrap()
+                == TextState::NotIndexed
+        );
+        let elsewhere = ItemRef {
+            library: LibraryId::digest(b"invented other library"),
+            key: "SYNTH001".into(),
+        };
+        assert_eq!(
+            reading.attachments(unused, &elsewhere).err(),
+            Some(ZoteroError::LibraryNotFound)
+        );
+    }
+
+    #[test]
     fn closed_and_live_reads_of_chosen_libraries_publish_the_same_records() {
         let snapshot = closed::ClosedSnapshot {
             schema_version: 123,
@@ -1739,6 +2062,7 @@ mod tests {
             warnings: vec![],
             better_bibtex_unknown: false,
             owner: 0,
+            attachments: None,
         };
         let (port, _) = serve_groups(invented_libraries());
         for chosen in [
@@ -1748,7 +2072,7 @@ mod tests {
         ] {
             let closed = ZoteroSource::new(&chosen)
                 .unwrap()
-                .publish_closed(&snapshot, &|| false)
+                .publish_closed(&snapshot, None, &|| false)
                 .unwrap();
             let live = ZoteroSource::new(&chosen)
                 .unwrap()
@@ -1767,7 +2091,7 @@ mod tests {
         }
         let mut missing = ZoteroSource::new(&[Library::Group(99)]).unwrap();
         assert_eq!(
-            missing.publish_closed(&snapshot, &|| false).unwrap_err(),
+            missing.publish_closed(&snapshot, None, &|| false).unwrap_err(),
             ZoteroError::LibraryNotFound
         );
     }
@@ -1786,10 +2110,11 @@ mod tests {
                 warnings: vec![],
                 better_bibtex_unknown: false,
                 owner: 0,
+                attachments: None,
             };
             let closed = ZoteroSource::new(&[chosen])
                 .unwrap()
-                .publish_closed(&snapshot, &|| false)
+                .publish_closed(&snapshot, None, &|| false)
                 .unwrap()
                 .remove(0);
             let live = ZoteroSource::new(&[chosen])
@@ -1954,7 +2279,7 @@ mod tests {
         );
         let acquired = read_closed_at(data.path(), cache.path(), Arc::new(|| false)).unwrap();
         let closed = ZoteroSource::default()
-            .publish_closed(&acquired, &|| false)
+            .publish_closed(&acquired, None, &|| false)
             .unwrap()
             .remove(0);
         let live = ZoteroSource::default()
@@ -1997,7 +2322,7 @@ mod tests {
         // process/reader, rather than retaining it for the app's lifetime.
         closed::ClosedReader::new(cache.path()).read(data.path()).unwrap();
         let mut closed = ZoteroSource::default();
-        let closed_data = closed.publish_closed(&acquired, &|| false).unwrap().remove(0);
+        let closed_data = closed.publish_closed(&acquired, None, &|| false).unwrap().remove(0);
         let mut live = ZoteroSource::default();
         let live_data = live.refresh(&mut ParityApi, false, &|| false).unwrap().remove(0);
         assert_eq!(closed.mode(), Some(ZoteroMode::Closed));

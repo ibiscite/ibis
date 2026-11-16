@@ -7,8 +7,13 @@
 
 The desktop app includes the matching `ibis` built from the same commit.
 
-- **macOS and Linux deb/rpm:** Settings › General › **Install the ibis command**
-  links `~/.local/bin/ibis` to the command inside the app's bundle or package.
+- **macOS and Linux deb/rpm:** the first time the installed app opens, it links
+  `~/.local/bin/ibis` to the command inside its bundle or package, so where
+  that folder is on PATH, installing the app is all it takes. It skips this when another `ibis`
+  (Homebrew, a download, the other Ibis channel) comes first on PATH and while
+  the app still runs from its disk image. After that, Settings › AI Apps › Command Line
+  decides: **Install the ibis command** adds it and removing it there is
+  respected at every later launch. The link follows the app's updates.
   Keep the macOS app in its permanent location. Install creates the link even
   when the app's PATH omits it. If that directory is missing from the app's
   PATH, copy this line into your shell profile, then reopen your terminal:
@@ -21,10 +26,11 @@ The desktop app includes the matching `ibis` built from the same commit.
   installs serialize their PATH updates and refuse additions that exceed
   Windows's expanded PATH limit. Successful uninstall removes the installer's
   entry; cancellation preserves it.
-- **Linux AppImage:** the same Settings action offers the command as an owned
-  copy in `~/.local/bin`, so it keeps working after the image unmounts. It shows
-  the same profile line when that directory is missing from PATH. Install again
-  after an app update to update this copy (remove the old command first).
+- **Linux AppImage:** the first launch and the same Settings action install the
+  command as an owned copy in `~/.local/bin`, so it keeps working after the
+  image unmounts. It shows the same profile line when that directory is missing
+  from PATH. When the same AppImage file is updated, its next launch updates
+  the copy; for an AppImage saved under a new name, install again in Settings.
 
 Settings shows the command's location, version and whether it matches this app.
 Another command (including Homebrew) is never overwritten or run to inspect
@@ -32,8 +38,9 @@ its version; its location is shown with version unavailable. Unix PATH lookup
 skips files without executable access. **Remove Command**
 removes only an unchanged Ibis-owned installation and its receipt. Removing the
 app itself on macOS cannot run cleanup: remove the command in Settings first.
-The shared installation operation is available for `ibis agents setup` in
-issue #1867's next slice; that command is not part of this slice.
+A separately installed `ibis` (Homebrew, winget, Nix or a download) keeps its
+own updates and is never replaced. Both read the libraries chosen in the app.
+Then `ibis agents setup` connects your AI apps; see [AI agents](#ai-agents-mcp).
 
 Standalone downloads, Homebrew and winget remain available. Download the CLI
 archive from a [release](https://github.com/ibiscite/ibis/releases/latest) or
@@ -175,7 +182,7 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | `--width N` | Use N columns for human terminal output instead of the detected width |
 | `--contract VERSION` | The JSON contract version your client expects; one this Ibis does not speak is refused |
 | `--zotero` | Read the local Zotero personal library, open or closed |
-| `--app-libraries` | Read the libraries chosen in the Ibis app, read-only; search, show, cite and libraries do this when no library is named |
+| `--app-libraries` | Read the libraries chosen in the Ibis app, read-only; search, show, cite, libraries and doctor do this when no library is named |
 
 **`ibis libraries`**: List the libraries and their warnings
 
@@ -232,6 +239,28 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | --- | --- |
 | `KEY` | The citation key of the reference |
 
+**`ibis outline`**: List a reference's attachments and whether Ibis can read their text
+
+| Option | Does |
+| --- | --- |
+| `KEY` | The citation key of the reference |
+| `--id ID_JSON` | The reference's id, as the JSON that ibis search --json prints |
+
+**`ibis read`**: Print up to five pages of an attachment's text
+
+| Option | Does |
+| --- | --- |
+| `ATTACHMENT` | The attachment's id, as ibis outline prints it |
+| `--pages RANGE` | The pages to read, like 3 or 3-5; at most five are read at once |
+| `--offset N` | Start N bytes into the first page, or into the text when pages are not known |
+
+**`ibis find-in`**: Find short passages of an attachment that hold some words
+
+| Option | Does |
+| --- | --- |
+| `ATTACHMENT` | The attachment's id, as ibis outline prints it |
+| `WORDS` | The words to find, ignoring case; quote several words |
+
 **`ibis styles`**: Find bundled CSL styles and citation languages
 
 | Option | Does |
@@ -265,6 +294,10 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 
 **`ibis mcp`**: Serve read-only search and citation tools to AI agents (MCP over stdio)
 
+| Option | Does |
+| --- | --- |
+| `--allow-writes` | Also offer tools that propose library changes; you apply or reject each one in the Ibis app |
+
 **`ibis toggle`**: Show or hide the desktop picker
 
 | Option | Does |
@@ -276,6 +309,31 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | Option | Does |
 | --- | --- |
 | `--config PATH` | Check a chosen Ibis settings file without repairing it or loading its libraries |
+
+**`ibis agents`**: Connect Ibis to the AI apps on this computer, show them, or disconnect them
+
+**`ibis agents setup`**: Add Ibis's read-only MCP server to each AI app found here
+
+| Option | Does |
+| --- | --- |
+| `--client APP` | Only this app; repeat for several |
+| `--dry-run` | Show what would change and change nothing |
+| `--yes` | Do it without asking; needed when no one can answer, such as in a script |
+| `--replace` | Replace a different ibis entry without asking |
+
+**`ibis agents status`**: Show which AI apps have Ibis connected
+
+| Option | Does |
+| --- | --- |
+| `--client APP` | Only this app; repeat for several |
+
+**`ibis agents remove`**: Take Ibis's server out of each AI app; other servers are kept
+
+| Option | Does |
+| --- | --- |
+| `--client APP` | Only this app; repeat for several |
+| `--dry-run` | Show what would change and change nothing |
+| `--yes` | Do it without asking; needed when no one can answer, such as in a script |
 
 **`ibis settings`**: Back up the Ibis app's settings, or restore them on this or another computer
 
@@ -332,6 +390,22 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | `--style STYLE_ID` | Any bundled CSL style ID; list them with: ibis styles |
 | `--bibliography FILE` | The read-only writing bibliography to check, as a .bib file |
 | `--no-bibliography` | Stop checking a bibliography in this writing |
+
+**`ibis proposals`**: List, show or reject library changes AI apps proposed; apply them in the Ibis app
+
+**`ibis proposals list`**: List proposals, newest first
+
+**`ibis proposals show`**: Show what a proposal would change, with the entry before and after
+
+| Option | Does |
+| --- | --- |
+| `ID` | The proposal id printed by ibis proposals list |
+
+**`ibis proposals reject`**: Reject a pending proposal; no library changes
+
+| Option | Does |
+| --- | --- |
+| `ID` | The proposal id printed by ibis proposals list |
 
 **`ibis completions`**: Print shell completions
 
@@ -481,12 +555,79 @@ source library also enables metadata comparison.
 
 `entry` prints the original BibTeX entry and required strings/dependencies.
 It refuses unavailable originals, changed files, repeated keys and missing or
-redefined dependencies. Original entries may include private `file`/`note`
-fields; inspect them before sharing.
+redefined dependencies. A refusal is a finding, as a refused citation is: exit
+1, with `ok: true`, `data.outcome: "refused"` and a `reason` in `--json`.
+`no-original` means the library keeps no BibTeX source (Zotero, CSL-JSON, RIS
+and CSV); `ibis cite KEY --format bibtex` writes an entry from the record's
+fields instead. Original entries may include private `file`/`note` fields;
+inspect them before sharing.
 
 To use the same `.bib` elsewhere, upload it beside an Overleaf document, name it
 under Quarto's `bibliography:` or use Typst's `#bibliography("thesis.bib")`.
 The check covers only the file you name.
+
+### Attachment text
+
+```sh
+ibis outline vale2024lanterns --zotero
+ibis read ATTACHMENT --pages 3-5 --zotero
+ibis find-in ATTACHMENT "brass lantern" --zotero
+```
+
+`outline` lists a reference's attachments: an id for each, its title and
+type, and whether Ibis can read its text. `read` prints at most five pages or
+32 KiB, each page marked; `next` in `--json` (or the last line) says how to
+go on. `find-in` prints at most ten passages of about 400 characters that
+hold the words, ignoring case and line breaks, with their pages.
+
+Text comes from two places. For a Zotero attachment Zotero indexed, it is the
+text Zotero keeps: while Zotero runs, Ibis asks Zotero for it; while Zotero is
+closed, it reads Zotero's text cache from the attachment's storage folder,
+with the page counts from its private copy of the database. Zotero's pages
+count only when the text's page breaks match the number of pages Zotero
+recorded; both indexed and total counts must be present and equal. A PDF
+with no such index, or with only part of the file indexed, and a `.bib`
+file's `file` attachments that are PDFs, are read by Ibis itself:
+`ibis` starts a short-lived copy of itself that gets the opened file and
+nothing else, no environment and no path, parses it in at most ten seconds
+and gives each page's text. On Linux that process may use at most 3 GiB of
+address space; elsewhere the ten seconds bound it. The desktop app never
+parses a PDF. Nothing is written, and the text stays in memory for the one
+command.
+
+Ibis reads only a regular file on this computer of at most 256 MiB and 10,000
+pages that starts as a PDF: never a link, a file on a network or FUSE mount,
+or an online-only file not yet downloaded. A Zotero file is looked for in its
+storage folder, or at a linked file's full path; while Zotero runs, only in
+the data directory Ibis finds on this computer. A linked file relative to
+Zotero's base folder is not read. `outline` says why a file's text is
+not read: `missing`, `not-local`, `not-pdf`, `damaged`, `too-large` or
+`timed-out`. Text without known pages is read by `--offset` and has no page
+numbers.
+
+`pdf_page` is the file's own page, from 1; use it only to find a passage.
+`cite_page`, the printed page to cite, comes only from the PDF's page labels
+(`/PageLabels`), such as `xii` or `A-3`: at most 16 letters, digits, `-` or
+`.`, and never a label two pages share. With Zotero's text, labels count only
+when the PDF has exactly as many pages as Zotero recorded. Otherwise
+`cite_page` is null and the printed page is not known; it is never taken from
+the file's page number.
+
+An attachment id names one attachment in the current library generation.
+Changing its reference, attachment revision, indexed text or PDF file retires
+the id; run `outline` again after a replacement or reindex. It holds no path
+or file location. Links have no text, and EPUB and web snapshots have text only from Zotero's index. Zotero shows
+Reindex Item for a file with no text.
+
+AI apps need a separate choice for each library, off by default. In
+**Settings › AI Apps › Attachment text**, turn on **Let AI apps read attachment
+text** for the library. The app and CLI share this device-only setting:
+`"attachment_text": ["lib_example_library"]` names complete opaque library
+ids from `ibis libraries --json`, including the Zotero profile's identity.
+Choosing one profile's personal library or group never opens another profile's.
+This choice stays on this computer and out of settings backups. The direct
+commands and `ibis call outline|read|find-in` use the app's libraries when none
+is named and do not need this choice.
 
 ### Writings
 
@@ -533,7 +674,8 @@ Plain `cite` has no wrapper.
 
 ### Receipts and strict citations
 
-Complete citations in JSON, RPC and MCP carry `receipt`: ordered opaque record
+Complete citations in JSON and RPC carry `receipt`, and MCP's `cite` does with
+`include_receipt: true`: ordered opaque record
 identities, cite fingerprints, resolved options, source read times/findings,
 content hash and formatting versions. Caller snapshots have no source read time;
 caller-record receipts list no library reads and have clean `source_health`.
@@ -585,22 +727,69 @@ requests finish before exit. Process exit codes do not apply per request.
 
 ## AI agents (MCP)
 
-Follow the [assistant setup guide](https://ibiscite.org/setup) to connect your app
-to Ibis, or paste this prompt into your assistant:
+**Settings › AI Apps** and `ibis agents` share the engine and saved app
+settings. Connect, disconnect, repair a stale path, or review and replace a
+different entry with the row’s button. **Command Line** installs `ibis`.
+
+```sh
+ibis agents setup            # asks first
+ibis agents status           # which apps have Ibis
+ibis agents remove           # undo; other servers stay
+```
+
+Setup finds Claude Code, Claude Desktop, Codex, Cursor, VS Code, Gemini CLI,
+Windsurf and LM Studio, using `ibis mcp --app-libraries`. Claude Code and Codex
+use their own `mcp add` commands. Other apps get a JSON merge that preserves
+other servers and settings, with a private `<file>.ibis-backup-N` for each
+change; older backups stay. Links, non-JSON and files changed during setup are
+left alone. Claude Desktop and LM Studio need a durable full CLI path. The
+Ibis plugin already connects Claude Code, so setup adds nothing there.
+ChatGPT desktop shows steps for its own window.
+
+Status reports `connected`, `not-connected`, `stale`, `different`, `blocked`
+or `by-hand`; `stale`, `different` and `blocked` exit 1. Setup repairs its own
+stale path without a replacement question, reporting `replaced` and the diff.
+Different entries require agreement or `--replace`; removal takes out only
+setup’s own entry, including a stale path. Scripts use `--yes`; `--dry-run`
+changes nothing.
+
+For any other app, follow the [assistant setup guide](https://ibiscite.org/setup),
+or paste this prompt into your assistant:
 
 ```text
 Set up Ibis for me: https://ibiscite.org/setup
 ```
 
-`ibis mcp --file refs.bib`, or `ibis mcp --app-libraries`, serves four
+`ibis mcp --file refs.bib`, or `ibis mcp --app-libraries`, serves these
 read-only tools over stdio:
 
 | Tool | Input and result |
 | --- | --- |
 | `search` | `query`, optional `limit` (1–25, default 10), `shorthand` for a signal and locator; short hits with checked `ref` values, `complete` and `source_health`; shorthand adds `cited_with` and `searched_for`. |
 | `show` | `ref`; bibliographic fields and `source_health`. |
-| `cite` | Items with `ref` and optional locator/affixes/author omission, or caller [records](#records-you-send); format or style, locale, form, order, optional `for_app` and `strict`; citation text, notices, losses, warnings, receipt and `source_health`. |
+| `cite` | Items with `ref` and optional locator/affixes/author omission, or caller [records](#records-you-send); a key-syntax `format` or any CSL `style`, locale, form, order, optional `for_app`, `strict` and `include_receipt`; citation text, notices, losses, warnings, `source_health`, and the receipt when asked. |
 | `styles` | Optional `query`, `limit` and `offset`; matching styles, total and locales. |
+| `outline` | `ref`; the reference's attachments, each with an `id` for `read` and `find_in` and whether its text can be read. |
+| `read` | `attachment`, optional `first_page`, `last_page` and `offset`; at most 5 pages or 32 KiB, each with `pdf_page` and `cite_page`, and `next`. |
+| `find_in` | `attachment` and `query`; at most 10 passages of about 400 characters, each with `pdf_page` and `cite_page`, and `complete`. |
+
+`outline`, `read` and `find_in` are listed only when the person lets AI apps
+read attachment text from an open library, and they answer only for such a
+library. The choice is per library, off by default, and kept in the app's
+settings as `"attachment_text": ["lib_example_library"]`, using complete
+library ids from `ibis libraries --json`, including the Zotero profile;
+it stays on this computer and is not part of a settings backup. While they
+are listed, `tools/list` answers with `cacheScope: private`. The `ibis outline`,
+`ibis read` and `ibis find-in` commands do not need this choice.
+
+Each answer's `structuredContent` holds the full result. Its text is a short
+summary for the model instead of the same JSON again: one `ref · authors ·
+year · title` line per hit, each notice, loss and warning in words, and any
+library notes. For `cite`, the first line is `Citation:` and the citation as
+one JSON string, so a title cannot start a line and imitate a warning.
+Receipt, bibliography and delivery advice are named in that summary too.
+The common styles are accepted as
+`format` too, but the schema lists only key syntaxes; `styles` finds the rest.
 
 Refs contain identity and a short content check; changed records are refused.
 When a key is missing or shared, the ref uses an opaque digest. It contains no
@@ -622,11 +811,59 @@ CLI search/show JSON is not this privacy projection. MCP opens no external
 connection; an AI client can send received data to its own service.
 
 The repository's [plugin](../plugins/ibis/skills/ibis-cite/SKILL.md) supplies
-MCP configuration and a citation skill for Claude Code/Codex. It requires
-`ibis` on PATH and does not install the executable. It reads app libraries,
+MCP configuration and a citation skill for Claude Code/Codex. Its server entry
+is the one `ibis agents setup` writes. It requires `ibis` on PATH and does not
+install the executable. It reads app libraries,
 stops if MCP is unavailable and requires confirmation of partial/typo matches.
 The skill directory can also be copied to a client's skill folder. Marketplace
 or directory approval is not established by the repository configuration.
 
 Settings backup/restore instructions live in
 [moving to a new computer](moving-to-a-new-computer.md).
+
+### Proposed changes
+
+`ibis mcp --allow-writes`, with the usual library options, adds tools that
+let an AI app propose small library changes
+([decision 0055](decisions/0055-agent-layers-full-text-writes-remote.md)). They
+only propose: nothing in a library changes until the person applies the
+proposal in **Settings › AI Apps › Proposed changes**, and an AI client's own approval of a tool call never
+counts. Without the flag these tools are not listed and a call is an unknown
+tool. `ibis agents setup` writes the read-only server; add `--allow-writes` to
+the `ibis mcp` arguments in an app's settings by hand to offer them.
+
+| Tool | Input and result |
+| --- | --- |
+| `propose_add` | `fields` as CSL-JSON (`type` and `title` required) and `library` when several are open; the proposal id, a summary and the BibTeX entry Ibis would add. |
+| `propose_change` | `ref` and CSL-JSON `fields` with new values; the proposal id and a summary. |
+| `propose_tags` | `ref`, `add` and `remove` (BibTeX `keywords`, at most 20 tags of 64 characters); the proposal id and a summary. |
+| `proposals` | Nothing; this app's proposals with their status, and the open libraries `propose_add` can name. |
+
+Fields go through the same filter as every shared record: a field it would
+drop, such as `note`, `file`, `id` or a private link, refuses the proposal by
+name. A new reference whose DOI the library already holds is refused. Each
+proposal is a private file beside the app's settings, at most 64 KiB and at
+most 100 waiting ([privacy](../PRIVACY.md)).
+
+```sh
+ibis proposals list
+ibis proposals show 3f9c2a7d41b8e605
+ibis proposals reject 3f9c2a7d41b8e605
+```
+
+`show` prints the change and, for a `.bib` file, the entry as it is and as it
+would be written. There is no `apply` command: the person applies a proposal
+in **Settings › AI Apps › Proposed changes**, after the same preview. Applying writes `.bib` files only. It
+refuses when the entry changed since the proposal, edits only that entry's
+fields, or adds the new entry at the end, keeps every other byte, and saves
+the replaced file as `refs.bib.ibis-backup-N`. A field written with a
+`@string` macro is replaced whole; tags already written keep their spelling.
+A new entry gets a citation key such as `taylor2026signals`: the first
+author's family name, the year and the first title word that is not a short
+word like "the", in lowercase ASCII, with `a`, `b`, … added when the file or a
+waiting proposal already uses it in any letter case.
+
+Only `.bib` libraries take proposals for now. Zotero libraries wait for
+Zotero's official local write API, and Ibis never writes `zotero.sqlite`.
+Applies run one at a time, and a library file reached through a link that
+was not there when it was opened is left alone.

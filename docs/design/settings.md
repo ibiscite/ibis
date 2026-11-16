@@ -3,7 +3,8 @@
 [C18] Its own window (in the Dock and Alt+Tab while open), opened with **Settings…** (⌘,) from More, the menu bar or tray. A sidebar of pages runs under the window buttons, as in System Settings. Every change applies at once and reaches an open picker.
 
 - **Window**: 920 × 560 by default, minimum 800 × 400, each limited to the screen's work area less a margin, so a small or scaled screen (1440 × 900 at `GDK_SCALE=2` is 720 × 450) never puts a control off it. A two-column shell with a reserved `--titlebar-height` (macOS only, where the window buttons sit over the content); the sidebar background runs full height. Nothing slides behind the title bar; only the page and the sidebar list scroll.
-- **Pages** (in this order): **General** (opening shortcut, Open at Login, pasting, and an **Advanced** group with Install the ibis command and Open Settings File), **Appearance** (one live picture, then Appearance, Accent, Rows, Window size and Text size), **Libraries**, **Citations** (your format per kind, remembered apps with Forget, writings only when any exist, and Recent citations), **Shortcuts**, then after a gap **Advanced** and **About Ibis**. A page with no built controls stays out of the sidebar.
+- **Display choice** (#1770): choose Settings’ target display and origin before creating the window, so its first logical size uses that display’s DPI. On Windows, use the nearest visible origin that resolves uniquely to that display; logical rectangles can overlap at mixed scales. If an earlier display completely shadows it in logical coordinates, the current Tauri builder cannot select it reliably; retain the fitted target centre as best effort. That case still needs a creation API accepting a physical position.
+- **Pages** (in this order): **General** (opening shortcut, Open at Login, Where Ibis opens, pasting, and an **Advanced** group with Open Settings File), **Appearance** (one live picture, then Appearance, Accent, Rows, Window size and Text size), **Libraries**, **Citations** (your format per kind, remembered apps with Forget, writings only when any exist, and Recent citations), **AI Apps** (Command Line, AI Apps, then Attachment text), **Shortcuts**, then after a gap **Advanced** and **About Ibis**. A page with no built controls stays out of the sidebar.
 - **Only built settings appear**: no disabled promises or "Coming soon" rows, and nothing unbuilt in the search index.
 - `settings/rows` declares each generated preference exactly once (page, group, order, label, help, control, default and search words); help is part of the declaration's type, so a row cannot be declared without its line; `SettingRows` renders its row and reset. Native settings supply their saved state through the same renderer. Search and backup previews use the same names and choices. Unrecognised saved fields appear read-only in General.
 - **Groups and rows** [D17]: `ui/Layout` sections of `Group` cards (`--r-large`, `--surface-grouped`) of `Row`s: a label, an optional description, one control at the end. Cards keep their natural height; rows grow with text; controls move below a label that does not fit. No page opens with more than eight rows; rarer rows go behind **Details…**, a disclosure row in its own card whose chevron turns down while its rows show. Every group but a page's first lone row has a title (General: **Behavior**, **Pasting**); the **Details…** toggle and its expanded content share one card.
@@ -35,10 +36,10 @@
 
 **Citations › Cite from your editor.** A switch, off by default. On, it shows the address to paste into the editor's Cite as You Write URL setting, with **Copy Address**, and says who can use it: editors on this computer, never web pages. While an editor waits, the picker's notices say "Citing for your editor in Pandoc" and the preview is in that format; Enter sends it, Esc answers with nothing. The format palette, paste and the app question step aside for that one citation.
 
-**General.** **Open at Login** is off until turned on and read from the system, never `settings.json`. **Bird facts and milestones** closes the same card. **Show in menu bar** is on by default; while it is off, opening Ibis from Applications opens Settings. The menu bar icon is a one-colour bird from `brand/` opening a native menu (decision 0050): **Open Ibis** with the global shortcut as its key equivalent (the actual key on the active layout; a character Tauri cannot represent stays in the label); a separator; a **Library** heading, the library name · reference count (**No library yet** before choosing), then inline checked choices for Zotero when detected or in use and up to five recent files from this run by filename, newest first, then **Choose File…**; a separator; **Settings…**, **Check for Updates…**, **Help**; a separator; **Quit Ibis** (the nightly names itself). Checks follow the library actually open, including while another choice opens or fails. A failed library names the problem in one plain sentence and puts its one fix directly underneath: updates for a newer Zotero database, Choose File for a missing file, Try Again for a failed refresh, or **Fix in Ibis…** for Zotero profile, sharing and group choices in the picker. Move an existing action instead of repeating it. Reading warnings offer **Fix 1 Problem…** or **Fix N Problems…**, opening the searched source for editing. Files are watched, so there is no Reload Library item. Automatic checks and Open at Login live only in Settings. Help groups Keyboard Shortcuts (Settings › Shortcuts), What’s New (release notes), a separator, Report a Problem…, Suggest an Idea…, a separator, Reset Window Position, a separator, and the full build, which copies on click. Native items update in place; only changed choices or action order require insertion/removal. The Mac button’s accessibility title speaks the same library status: **Ibis, reading thesis.bib**, **Ibis, ready**, **Ibis, no library yet**, or the library’s problem. Windows uses the tray tooltip for this state; Linux’s tray API has no tooltip support. On macOS, text dropped on the bird opens the picker and searches for it, using the same single-line, 200-character limit as Search with Ibis. A supported library-file drop keeps opening that file. The bird raises its head only over an accepted drop and restores its reading or resting pose on exit or drop; unsupported files (including PDFs), malformed file URLs and empty text change nothing and never search for a file path. These are event-driven updates, with no hidden polling. On Windows left-click opens the picker and right-click opens the menu; AppIndicator on Linux may open the menu on either click, with Open Ibis first. There is no ⌥ alternate or subtitle in the menu. **Copy Again** waits for the engine’s citation sessions (decision 0052).
+**General.** **Open at Login** is off until turned on and read from the system, never `settings.json`. **Where Ibis opens** offers Centre (the default) and the four corners in one pop-up; a deliberate move remains remembered for that display. **Bird facts and milestones** closes the same card. **Show in menu bar** is on by default; while it is off, opening Ibis from Applications opens Settings. The menu bar icon is a one-colour bird from `brand/` opening a native menu (decision 0050): **Open Ibis** with the global shortcut as its key equivalent (the actual key on the active layout; a character Tauri cannot represent stays in the label); a separator; a **Library** heading, the library name · reference count (**No library yet** before choosing), then inline checked choices for Zotero when detected or in use and up to five recent files from this run by filename, newest first, then **Choose File…**; a separator; **Settings…**, **Check for Updates…**, **Help**; a separator; **Quit Ibis** (the nightly names itself). Checks follow the library actually open, including while another choice opens or fails. A failed library names the problem in one plain sentence and puts its one fix directly underneath: updates for a newer Zotero database, Choose File for a missing file, Try Again for a failed refresh, or **Fix in Ibis…** for Zotero profile, sharing and group choices in the picker. Move an existing action instead of repeating it. Reading warnings offer **Fix 1 Problem…** or **Fix N Problems…**, opening the searched source for editing. Files are watched, so there is no Reload Library item. Automatic checks and Open at Login live only in Settings. Help groups Keyboard Shortcuts (Settings › Shortcuts), What’s New (release notes), a separator, Report a Problem…, Suggest an Idea…, a separator, Reset Window Position, a separator, and the full build, which copies on click. Native items update in place; only changed choices or action order require insertion/removal. The Mac button’s accessibility title speaks the same library status: **Ibis, reading thesis.bib**, **Ibis, ready**, **Ibis, no library yet**, or the library’s problem. Windows uses the tray tooltip for this state; Linux’s tray API has no tooltip support. On macOS, text dropped on the bird opens the picker and searches for it, using the same single-line, 200-character limit as Search with Ibis. A supported library-file drop keeps opening that file. The bird raises its head only over an accepted drop and restores its reading or resting pose on exit or drop; unsupported files (including PDFs), malformed file URLs and empty text change nothing and never search for a file path. These are event-driven updates, with no hidden polling. On Windows left-click opens the picker and right-click opens the menu; AppIndicator on Linux may open the menu on either click, with Open Ibis first. There is no ⌥ alternate or subtitle in the menu. **Copy Again** waits for the engine’s citation sessions (decision 0052).
 
-**The ibis command.** On macOS and Linux, General offers **Install the ibis
-command** once as a persistent row, without repeated prompts. It creates a
+**The ibis command.** In Settings › AI Apps › Command Line, macOS and Linux offer
+**Install the ibis command** once as a persistent row, without repeated prompts. It creates a
 per-user `~/.local/bin/ibis` symlink to the bundled command; AppImage uses an
 owned copy there so the command survives unmounting. Linux packages register
 nothing on PATH as root. Windows installers add the command to the user's PATH.
@@ -48,6 +49,48 @@ another `ibis` (version unavailable). **Remove Command** removes only Ibis-owned
 artifacts. If `~/.local/bin` is absent from PATH on macOS or Linux, show the exact
 shell-profile line with **Copy**; no elevation or profile editing. Refresh only on a visit or
 window focus, never while hidden. All controls use `ui/Layout` and `ui/Button`.
+
+**AI Apps.** Settings and `ibis agents setup|status|remove` share the engine
+and saved app settings (decision 0055, maintainer direction 2026-11-15).
+**Command Line** comes first, then every supported AI app, found ones first.
+Rows offer **Connect**, **Disconnect**, **Repair** for stale paths or **Replace…**
+for different entries. Replace shows the before/after Note; pressing it confirms
+without another dialog. The shown entry and proposed command are fingerprinted
+so changed settings require review. Blocked files show why; plugins explain the
+existing connection; apps configured in their own window show steps.
+
+Failed changes keep the list. If a client removes an entry before adding its
+replacement fails, recovery text appears under that app only, never in logs.
+Action names include the app for accessibility. Apps needing `ibis` on PATH
+point to Command Line. One Note explains preserved settings, private numbered
+backups and the shared terminal behavior. The engine rechecks changes and uses
+`ibis_core::atomic_file` for writes. Desktop discovery includes installer PATH
+locations and `~/.local/bin`; full paths name the CLI, never the desktop or a
+temporary mount/translocation. Without a durable CLI, full-path apps say
+**Install the ibis command first**. Visit, visible focus and successful command
+changes refresh the list. A shared Settings request hook rejects late reads
+and completions after closing; refreshes during an AI app change wait for it.
+Search finds agents, MCP, app names and command line.
+
+**Attachment text.** After AI Apps, one switch per open library says **Let AI
+apps read attachment text**, with its display name. It is off by default:
+AI apps receive text with page numbers, never files; terminal `ibis read` needs
+no opt-in. No library shows **No library is open.** The app and CLI share the
+device-only `attachment_text` setting, applied to the running MCP gate. Only
+complete IDs previously listed and still open can change. Failed saves restore
+the saved choice; late saves cannot undo newer choices. Search finds attachment,
+full text and PDF.
+
+**Proposed changes** follows Attachment text. One row names the proposing
+app, target library (never its path), summary and time, with the engine's
+before/after text in a Note in code. **Apply** is the confirmation, without a
+second dialog; nothing in a library changes before that press. The row keeps
+the result: **Applied; backup kept as NAME**, or the engine's refusal sentence.
+**Reject** removes a waiting proposal. Only `.bib` libraries take proposals
+(maintainer direction 2026-11-15). An empty group has one row,
+**No proposed changes**. Refresh on a visit, visible window focus or
+visibility change, without letting late reads replace newer decisions or erase
+an Apply receipt. Search finds the group by proposals, changes and add reference.
 
 **Another computer.** Settings › General’s **Details…** holds **Back up settings** (Back Up…, a save dialog that starts in iCloud Drive on macOS, OneDrive on Windows, otherwise Documents) and **Restore settings** (Restore…). A chosen backup is checked whole, then the row lists every change as "Setting: before → after" with notes (a bibliography not on this computer, a shortcut kept for this system), **Cancel** and the primary **Restore and Restart**. Nothing changes before that button; a bibliography shows by its file name only. Refusals say why in one line and change nothing ([moving to a new computer](../moving-to-a-new-computer.md)).
 

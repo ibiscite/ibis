@@ -6,7 +6,7 @@ import { useLayer, useNearestLayer } from "../../ui/layers";
 import type { SearchResult } from "../../api";
 import { choiceKey, idKey, type CitationReference } from "./choice";
 import { outputName } from "../../format/outputs";
-import { enterLabel, enterPastes } from "./enterLabel";
+import { citationDelivery, enterLabel } from "./enterLabel";
 import { closestMatchWarnings } from "./rows";
 import type { usePickerSession } from "./usePickerSession";
 import type { usePickerMenus } from "./usePickerMenus";
@@ -66,9 +66,10 @@ export function usePickerActions({
   const nearest = useNearestLayer();
   // A kept-open window or a citation with warnings stays open, so Enter copies.
   const stayOpen = pinned || Boolean(shown && typeof shown === "object" && (shown.warnings.length || closestMatchWarnings(offered).length));
+  const delivery = citationDelivery(destination.app, canPaste, stayOpen, destination.editorFormat);
   // The keys sheet names what Enter does from the same answer as the footer,
   // and lists the global shortcut too, when it works.
-  const enterRow = destination.findOpen ? "shortcuts-action-find-open" as const : enterPastes(destination.app, canPaste, stayOpen) ? "shortcuts-action-paste" as const : "shortcuts-action-copy-only" as const;
+  const enterRow = destination.findOpen ? "shortcuts-action-find-open" as const : delivery.editorFormat ? "shortcuts-action-send" as const : delivery.pastes ? "shortcuts-action-paste" as const : "shortcuts-action-copy-only" as const;
   const bindings: readonly KeyBinding[] = [
     ...KEY_TABLE.map((binding) => binding.action === "copy" ? { ...binding, label: enterRow } : binding),
     ...destination.findOpen ? [{ region: "search", action: "copyCitation", keys: ["Alt+Enter"] } as const] : [],
@@ -77,6 +78,7 @@ export function usePickerActions({
   // What Enter does now, from the same state the copy uses; null when it does nothing.
   // A refused or stale engine preview cannot be copied.
   const enterAction = offered.length === 0 || shown === "stale" || shown === "failed" ? null
+    : delivery.editorFormat ? say("picker-send", { format: delivery.editorFormat })
     : destination.findOpen ? say("picker-find-open") : state.changing !== null ? say("picker-change-citation", { format: outputName(format) })
     : enterLabel(format, offered.length, destination.app, canPaste, stayOpen, Boolean(list && selected.size === 0))
       // A style that would sort keeps the person’s order: the footer says so, not the line.
@@ -93,7 +95,7 @@ export function usePickerActions({
   const escapeAction = nearest === "sheet" || nearest === "panel" || nearest === "chooser" ? say("key-close") : nearest === "menu" || nearest === "palette" ? say("key-close-menu")
     : nearest === "search" ? say("key-clear-search") : say("key-hide");
   const rememberedCitation = showCitations && destination.ready && state.view?.remembersLast && destination.appId ? state.lastCitations.get(destination.appId) : undefined;
-  const lastCitation = rememberedCitation && (rememberedCitation.project ?? null) === (destination.writing?.id ?? null)
+  const lastCitation = !destination.editorFormat && rememberedCitation && (rememberedCitation.project ?? null) === (destination.writing?.id ?? null)
     && (!destination.writing || rememberedCitation.format === format) ? rememberedCitation : undefined;
   /** Change Last Citation acts on the shelf, so nothing stays in its way. */
   const changeLast = () => {
@@ -109,5 +111,5 @@ export function usePickerActions({
   // The keys sheet lists Change Last Citation only while there is one to change, as More does.
   // Keys outputs always keep the order, so only a style offers the choice.
   const keepOrder = writesStyle ? { checked: state.keepOrder, toggle: () => send({ type: "keep-order", value: !state.keepOrder }) } : null;
-  return { keepOrder, bindings: lastCitation ? bindings : bindings.filter((binding) => binding.action !== "changeLast"), usingLocator, prepared, canApplyLocator, toggleHighlighted, canChangeLast: Boolean(lastCitation), changeLast, hints: { enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction } };
+  return { delivery, canChooseFormat: destination.canChooseFormat, keepOrder, bindings: bindings.filter((binding) => (lastCitation || binding.action !== "changeLast") && (destination.canChooseFormat || binding.action !== "format")), usingLocator, prepared, canApplyLocator, toggleHighlighted, canChangeLast: Boolean(lastCitation), changeLast, hints: { enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction } };
 }

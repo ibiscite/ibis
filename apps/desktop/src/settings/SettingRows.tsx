@@ -55,6 +55,9 @@ export function Setting({ row, state, preferences, feedback, reset, size = null 
       options={labels.map((option) => ({ ...option, picture: <PickerPicture density={preferences?.density}
         appearance={option.value === "system" ? "light" : option.value} split={option.value === "system"} /> }))} onChange={choose} />
     : row.control === "documents" || row.control === "keys" ? <FormatControl label={label} value={String(value)} keys={row.control === "keys"} onChange={change} />
+    : row.control === "menu" ? <ToolbarMenu label={label} value={labels.find((option) => option.value === String(value))?.label ?? ""}
+      disabled={!known || state.disabled} selectedKey={known ? String(value) : ""}
+      sections={[{ id: row.id, items: labels.map((option) => ({ id: option.value, label: option.label })) }]} onAction={choose} />
     : <><Segmented label={label} value={known ? String(value) : null} options={labels} onChange={choose} />
       {row.note && options.some((option) => option.currentOnly && option.value === value) && <Note>{text(row.note)}</Note>}</>}
   </Row></>;

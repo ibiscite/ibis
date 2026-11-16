@@ -99,6 +99,12 @@ reason-duplicate-record = Two records sent with the request have the same id, co
 reason-rejected-record = A record sent with the request is not valid CSL-JSON, so Ibis cites none rather than leave it out.
     .cli = Each record needs an id and a CSL type; fix or remove it.
     .agent = Each record needs an id and a CSL type such as book or article-journal; fix or remove the invalid one.
+reason-no-attachment-text = Ibis cannot read this attachment’s text: Zotero has not indexed it, it is a link, or its file is missing, damaged or one Ibis cannot read.
+    .cli = Run ibis outline on its reference to see which; in Zotero, Reindex Item adds the text.
+    .agent = Tell the user; they can add the text in Zotero with Reindex Item. Do not guess what it says.
+reason-no-such-pages = This attachment has no text for those pages, or where its pages begin is not known.
+    .cli = Run ibis outline on its reference to see which pages have text, or read without --pages.
+    .agent = Use the pages outline gives, or read with offset instead when its pages are not known.
 
 ## What a citation could not say in full.
 
@@ -317,6 +323,14 @@ general-login-refused = The system did not let { $name } change this. You can ch
 general-login-unreadable = { $name } could not check whether it starts when you { general-login-when }. Look in { general-login-place }.
 
 general-menu-bar-label = Show in menu bar
+general-placement = Where Ibis opens
+general-placement-description = On the display you’re working on, unless you’ve moved Ibis there.
+general-placement-words = position screen display corner centre center opens
+general-placement-centre = Centre
+general-placement-top-left = Top left
+general-placement-top-right = Top right
+general-placement-bottom-left = Bottom left
+general-placement-bottom-right = Bottom right
 general-menu-bar-description = If hidden, open Ibis from Applications to come back here.
 general-paste-title = Pasting
 general-behavior-title = Behavior
@@ -409,6 +423,8 @@ shortcuts-action-citation-remove = Remove the reference
 shortcuts-action-citation-reorder = Move the reference
 shortcuts-action-citation-open = Show its details
 shortcuts-action-citation-focus = Go to the citation
+shortcuts-action-inspector = Show citation details
+shortcuts-action-send = Send to your editor
 shortcuts-action-menu-move = Move through the menu
 shortcuts-action-menu-ends = Go to the first or last item
 shortcuts-action-menu-choose = Choose the item
@@ -443,6 +459,12 @@ about-unavailable = This build does not update itself.
 # Settings window pages and visual choices.
 settings-look = Appearance
 settings-citations = Citations
+attachment-text-title = Attachment text
+attachment-text-label = Let AI apps read attachment text
+attachment-text-description = AI apps can read the text of this library’s attachments with page numbers, never the files; ibis read in a terminal does not need this choice.
+attachment-text-words = attachment full text PDF
+attachment-text-empty = No library is open.
+attachment-text-loading = Reading library choices…
 settings-search = Search Settings
 settings-no-results = No settings match ‘{ $query }’
 settings-results = Search results
@@ -1032,6 +1054,10 @@ picker-project-entry =
        *[dependency] This entry relies on a crossref, xdata or @string that can’t come with it. Export it from your reference manager, keeping its key.
     }
 picker-editor-waiting = Citing for your editor in { $format }. Esc cancels.
+picker-send = Send · { $format }
+picker-delivery-editor = Editor
+picker-delivery-clipboard = Clipboard
+picker-delivery-paste = Automatic paste
 picker-find-source = Find { $name }…
 picker-find-source-unnamed = Find…
 picker-show-source-folder =
@@ -1309,7 +1335,7 @@ mcp-strict-help = Refuse losses, refusals or source problems.
 mcp-citation-hidden = This citation contains hidden characters and cannot be returned unchanged. Ask the user to fix the source or choose another output.
 mcp-citation-source-failed = A source could not be refreshed; this citation uses its last good copy. The receipt records its last successful read.
 mcp-citation-source-warnings = A cited source has warnings; its receipt records the warning count.
-mcp-cite-description = Cite refs returned by search, passing each ref unchanged; add page locators if needed. Choose `format` (pandoc, autocite or typst for processed documents; apa for finished text) or any CSL `style`. Default: apa. Use returned text unchanged and report notices, losses and warnings. Set `strict` to refuse findings. To cite CSL-JSON you were given instead, pass it as `records`.
+mcp-cite-description = Cite refs from search, in order, with optional locators. Use the returned text unchanged and tell the user about notices, losses and warnings.
 
 # The desktop's bundled command. Never execute another program to check its version.
 command-install = Install the ibis command
@@ -1346,8 +1372,7 @@ settings-shortcut-words = keyboard hotkey keybinding
 cli-ambiguous-suggestion = This key is ambiguous. Choose a result’s id from this search, then use ibis show --id ID_JSON with the same libraries.
 cli-ambiguous-search-keys = note: { $count } hits have ambiguous citation keys and were omitted; search with --json and use the result’s id.
 problem-empty-selection = There is nothing to cite.
-problem-too-many-items = Choose fewer references for one citation.
-    .named = One citation can hold at most { $limit } references.
+problem-too-many-items = A citation can hold at most { $count } references.
 problem-invalid-locator = Correct the page or location for this reference.
     .named = The page or location for { $reference } is empty or has control characters.
 problem-invalid-rich-text = Correct the text before or after this reference.
@@ -1483,15 +1508,18 @@ mcp-error-locator = the locator is not readable; write it like "p. 12", "ch. 3" 
 mcp-error-omit-author = omit_author must be true or false.
 mcp-error-empty-output = This output produced no text for these items; try another form, format or style.
 mcp-error-style-query = query must be text of at most 1,024 bytes.
-mcp-error-limit = limit must be a whole number from 1 to { $limit }.
+mcp-error-limit = limit must be a whole number, 1 or more; at most { $limit } results are returned.
 mcp-error-unknown-argument = { $tool } has no argument '{ $name }'; it takes: { $names }.
-mcp-error-too-many-items = One citation can hold at most { $limit } items.
 mcp-error-format = format must be one of: { $formats }.
 mcp-error-text = { $name } must be text.
 mcp-error-number-range = { $name } must be a whole number from 1 to { $limit }.
 mcp-error-number-minimum = { $name } must be a whole number, 0 or more.
+mcp-error-include-receipt = include_receipt must be true or false.
 mcp-error-stale-reference = This reference changed since search returned it; search again and check it is the one you meant.
+mcp-error-attachment-text = The user has not let AI apps read attachment text from this library. Tell them; they can allow it for this library in Ibis settings.
 mcp-error-no-library = No library is open. Ask the user to choose a library in Ibis, or to start `ibis mcp` with --file or --zotero, and then start a new session.
+mcp-error-writes = This server was started without --allow-writes, so it cannot propose changes. Tell the user; they can add --allow-writes to the ibis mcp command in their AI app.
+mcp-error-proposal = Ibis did not record this proposal: { $reason }
 mcp-error-strict = { mcp-strict-help }
 mcp-error-hidden-citation = { mcp-citation-hidden }
 mcp-item-error = Item { $number }: { $reason }
@@ -1524,3 +1552,257 @@ app-project-error-ambiguous-context = More than one writing matches this bibliog
 mcp-error-citation-format = This format exports records or Zotero markers. Choose a citation format.
 
 app-failure-open-settings-file = The settings file could not be opened. Try again.
+
+## Command-line requests, diagnostics and reports.
+
+cli-keys-unreadable = the key list could not be read; give UTF-8 text with one key per line.
+cli-keys-too-large = the key list is more than 1 MiB; send fewer keys at a time.
+cli-keys-not-utf8 = the key list must be UTF-8 text, with one key per line.
+cli-keys-empty = the key list is empty; give at least one citation key.
+cli-key-file-unavailable = the key file is missing, unreadable or not a regular file; check its path, or use - for stdin.
+cli-key-file-unopened = the key file could not be opened; check its path and permissions.
+cli-key-file-not-regular = --keys-from needs a regular file, or - for stdin.
+cli-key-file-timeout = the key file could not be read in time; try again.
+cli-toggle-unprepared = could not prepare the toggle; check that the temporary folder can be written, then try again.
+cli-app-libraries-unavailable = --app-libraries is not available here; name the libraries to read.
+cli-records-with-libraries = --records cites only the records on stdin; leave out the library options.
+cli-search-words-needed = give some words to search for: an author, title words, a year or a key.
+cli-search-words-too-long = the search words are too long; use fewer.
+cli-id-not-found = no open library holds the reference that --id names.
+cli-attachment-not-found = no open library holds that attachment, or its reference changed; run ibis outline again for a new id.
+cli-find-in-words = give the words to find, up to 200 characters.
+cli-records-too-large = the records on stdin are more than 1 MiB; send fewer at a time.
+cli-bibliography-needs-style = --bibliography needs a style: give --style, or a --format that is a style.
+cli-project-too-many-keys = at most 1000 keys can be checked at once.
+cli-styles-limit = --limit must be between 1 and 20000.
+cli-request-help = stdin must hold one CitationRequest JSON object; see: ibis schema cite
+cli-records-help = stdin must hold one JSON array of CSL-JSON records; see: ibis schema records
+cli-id-help = --id must be a reference’s id, the JSON that ibis search --json prints.
+cli-key-option-owner = --{ $flag } must follow the key it belongs to.
+cli-key-option-repeated = --{ $flag } is given twice for '{ $key }'.
+cli-locator-unreadable = --locator '{ $locator }' is not a locator Ibis reads; write it like "p. 12", "ch. 3" or "12-14".
+cli-method-unknown = there is no method '{ $method }'; choose one of: { $names }
+cli-style-unknown = there is no style '{ $style }'; list the styles with: ibis styles
+cli-locale-unknown = there is no locale '{ $locale }'; list them with: ibis styles --locales
+cli-params-help = --params must be the JSON parameters of { $method }; see: ibis schema { $method }
+cli-source-findings = note: a library has warnings or could not refresh; see: ibis libraries{ $libraries }{ $json }
+cli-keys-waiting = waiting for keys, one per line; end with Ctrl-D.
+cli-search-keyless =
+    { $plural ->
+        [one] note: { $count } hit has no citation key; see ibis search { $query }{ $libraries } --json
+       *[other] note: { $count } hits have no citation key; see ibis search { $query }{ $libraries } --json
+    }
+cli-search-more =
+    { $plural ->
+        [one] note: showing the first { $count } match; see more with --limit { $next }
+       *[other] note: showing the first { $count } matches; see more with --limit { $next }
+    }
+cli-search-narrow = note: showing the first { $count } matches; use more distinctive search words
+cli-file-name-invalid = cannot open { $path }: its name is not valid text; rename it.
+-cli-name-library = name one with --file PATH, --zotero or --zotero-group ID
+cli-app-settings-timeout = the Ibis app’s settings could not be read in time; try again, or { -cli-name-library }.
+cli-chosen-library-unopened = cannot open the library chosen in { $app }: { $reason } Choose it again there, or { -cli-name-library }.
+cli-app-settings-missing = no library is named and the Ibis app has no settings here; { -cli-name-library }.
+cli-app-formats-unreadable = cannot read the formats chosen in { $app }: { $reason }. Open { $app } to repair its settings.
+cli-app-libraries-unreadable = cannot read the libraries chosen in { $app }: { $reason }. { $fix }, or { -cli-name-library }.
+cli-app-library-unchosen = no library is chosen in { $app } yet; choose one there, or { -cli-name-library }.
+cli-app-library-relative = the library chosen in { $app } is not a full path; choose it again there, or { -cli-name-library }.
+cli-app-settings-changed = its settings changed while saving; try again
+cli-app-settings-permission = this program is not allowed to read its settings file; allow it to, or run it outside the sandbox
+cli-app-settings-file-missing = its settings file is missing
+cli-app-settings-unreadable = its settings file could not be read
+cli-app-settings-invalid = its settings file is not valid
+cli-app-settings-backup-unused = { $reason }, and Ibis does not use its backup here
+cli-app-settings-update = Update this ibis command to match { $app }
+cli-app-settings-repair = Open { $app } to repair its settings
+cli-app-settings-zotero-invalid = its settings file is not valid (Zotero library entry { $position })
+cli-app-settings-newer = its settings were written by a newer version of Ibis (format { $version })
+cli-settings-no-folder = this computer has no folder for app settings (HOME or APPDATA is not set).
+cli-settings-action-needed = choose export or import; see: ibis settings --help
+cli-settings-backup-needed = name the backup file to restore.
+cli-settings-folder-timeout = the settings folder did not respond in time; try again.
+cli-settings-exported = Backed up { $app }’s settings to { $name }.
+    Paste approvals and window places stay on this computer.
+cli-settings-backup-made = a backup made on { $system } by Ibis { $version }
+cli-settings-unchanged = { $app } already has the settings in { $backup }. Nothing changed.
+cli-settings-would-restore = Restoring { $backup } would change { $app }’s settings:
+cli-settings-restored = Restored { $backup } into { $app }:
+cli-settings-library-not-found = Note: the backup’s bibliography file is not on this computer. It is kept, and Ibis finds it once the file is there.
+cli-settings-shortcut-kept = Note: the backup has no opening shortcut for this system, so this computer’s is kept.
+cli-settings-repairs-settings = Note: the settings file on this computer is damaged or missing. Restoring writes it again, and keeps any damaged file beside it.
+cli-settings-dry-run = Nothing changed. Run it again without --dry-run to restore.
+cli-settings-restored-next = The replaced settings are kept as settings.json.bak. Paste approvals and window places stay as they were.
+    Ibis uses the restored settings the next time it opens; quit and reopen it if it is running.
+cli-writing-style-unavailable = That citation style is unavailable. List styles with: ibis styles
+cli-writing-output-unavailable = That output is unavailable. List outputs with: ibis outputs
+cli-writing-bibliography-needed = Choose a BibTeX or BibLaTeX bibliography with a .bib file name.
+cli-writing-folder-unavailable = The current folder is unavailable. Give the bibliography’s full path.
+cli-writing-action-needed = Choose list, create, rename, update or remove.
+cli-writings-empty = No writings yet. Create one with: ibis writings create NAME --format pandoc
+cli-writing-format-needed = Choose --format or --style.
+cli-writing-citation-unavailable = The writing citation is unavailable.
+cli-writing-saved =
+    { $action ->
+        [create] Created writing { $name }.
+        [rename] Renamed writing { $name }.
+        [remove] Removed writing { $name }. Its bibliography file was kept.
+       *[update] Updated writing { $name }.
+    }
+cli-no-library = No library is open; add --file <library> or --zotero.
+cli-search-no-match-terminal = No references matched. Try a shorter query.
+cli-search-no-match = No references found.
+cli-libraries-empty = No libraries loaded. Open one with --file <library>.
+cli-styles-no-match = No style matches those words.
+cli-outline-none = This reference has no attachments.
+cli-outline-pages = text, { $count } pages
+cli-outline-printed-pages = text, { $count } pages with printed page numbers
+cli-outline-text = text, pages not known
+cli-outline-not-indexed = no text: Zotero has not indexed it
+cli-outline-no-file = no text: a link, with no file
+cli-outline-too-large = no text: larger than Ibis reads
+cli-outline-not-yet = no text: Ibis cannot read this file yet
+cli-outline-missing = no text: no file where the library says
+cli-outline-not-local = no text: not a plain file on this computer, such as a link or an online-only file
+cli-outline-not-pdf = no text: the file is not a PDF
+cli-outline-damaged = no text: the PDF is damaged
+cli-outline-timed-out = no text: reading the PDF took longer than ten seconds
+cli-read-page = [file page { $page }]
+cli-read-printed-page = [file page { $page }, printed page { $label }]
+cli-read-more = More text: { $command }
+cli-find-in-none = No passage holds those words.
+cli-find-in-more = The first { $count } passages; add words to narrow it.
+cli-entry-no-original = This reference has no original BibTeX entry here: only a .bib library keeps one, and Zotero, CSL-JSON, RIS and CSV libraries don’t. To write an entry from its fields, run ibis cite KEY --format bibtex, or export it from your reference manager in your project’s dialect, keeping its key.
+cli-entry-changed = The library file changed or could not be read. Reload it and try again.
+cli-entry-repeated = The library file repeats this key, so Ibis cannot tell which entry to give.
+cli-entry-dependency = This entry relies on a crossref, xdata or @string that cannot come with it. Export it from your reference manager, keeping its key.
+cli-library-refresh-failed = note: this library could not be refreshed; showing the last successful read
+cli-library-not-watched = note: changes are not picked up automatically
+cli-warning-unknown-field = an unrecognised field was skipped; Ibis kept the reference
+cli-warning-unknown-type = the entry’s type is not supported; Ibis skips this entry
+cli-warning-duplicate-key = more than one entry uses this key or id; Ibis skips them all
+cli-warning-syntax-entry = this entry could not be read; Ibis skips it
+cli-warning-entry-too-large = the entry is too large to read; Ibis skips it
+cli-warning-library-incomplete = Ibis could not read the library in full; some references may be missing
+cli-warning-attachment-skipped = an attachment link is not valid; Ibis leaves it out
+cli-warning-syntax = an entry could not be read, so Ibis skips it
+cli-warning-field = a field could not be fully converted; check this entry
+cli-warning-work-limit = the library is too large to read in full
+cli-warning-invalid-attachment = an attachment link is not valid
+cli-warning-cloud-directory = the library is in a cloud-synced folder, so changes can be late
+cli-warning-keys-unavailable = Better BibTeX keys could not be read, so some items have none
+cli-warning-unknown = something in the library needs checking
+cli-output-disk-full = the output could not be written because the disk is full; free some space and try again.
+cli-output-unwritten = the output could not be written; check where it is sent and try again.
+cli-file-busy = it is being written or cannot be read right now; try again in a moment.
+cli-file-too-large = it is larger than Ibis reads, or too many files are open at once; split the library or open fewer files.
+cli-file-missing = there is no file at that path; check the spelling or give the full path.
+cli-file-is-folder = it is a folder; give the library file inside it.
+cli-file-permission = this program is not allowed to read it; check its permissions, or run it outside the sandbox.
+cli-zotero-unavailable = no local Zotero library was found or it could not be read; check that Zotero is installed and has been opened once, or use --file.
+cli-zotero-damaged = its data could not be understood; open Zotero once so it can repair its database.
+cli-zotero-newer = a newer version of Zotero wrote it; update Ibis.
+cli-zotero-too-large = it is larger than Ibis reads at once.
+cli-key-empty = a citation key cannot be empty.
+cli-search-partial = No reference matches every word. Closest matches:
+    { $rows }
+cli-styles-showing = Showing { $shown } of { $total } styles; narrow it with: ibis styles WORDS
+cli-project-unreadable = Couldn’t read { $name }: { $reason }.
+cli-project-damaged = Couldn’t read all of { $name }: check line { $lines }.
+cli-warning-text-kept = { $subject } could not be fully converted; Ibis uses the text as written
+cli-warning-date = { $subject } could not be fully converted; Ibis kept the reference; check the date before citing
+cli-warning-link = { $subject } is private or is not a web address; Ibis leaves it out
+cli-warning-names = { $subject } could not be fully read; Ibis uses the names it could read
+cli-warning-fields-kept = { $subject } could not be fully converted; Ibis kept the reference with the fields it could read
+cli-warning-syntax-field = { $subject } could not be read; Ibis skips this entry
+cli-warning-duplicate-key-named = more than one entry uses '{ $key }' as its key or id, so Ibis skips them all
+cli-search-stale-at = note: { $name } could not be refreshed; showing results from { $time }
+cli-search-stale = note: { $name } could not be refreshed; showing the last successful read
+cli-file-unopened = cannot open { $path }: { $reason }
+cli-zotero-unreadable-profiles = cannot read the Zotero library: { $reason } Profiles: { $profiles }.
+cli-zotero-unreadable = cannot read the Zotero library: { $reason }
+cli-key-duplicate = the citation key '{ $key }' is used by more than one entry{ $at }, so Ibis skips them all; give each entry its own key.
+cli-key-damaged = the entry '{ $key }'{ $at } could not be read, so Ibis skips it{ $reason }; fix it in your library.
+cli-key-library-incomplete = cannot find '{ $key }': { $reason }
+cli-key-ambiguous = several references use the citation key '{ $key }'; give each one its own key in your library.
+cli-key-without-library = cannot look up '{ $key }': no library is open; add --file <library> or --zotero.
+cli-key-not-found-search = no reference has the citation key '{ $key }'; find the right key with: ibis search <words>
+cli-key-too-long = the citation key '{ $key }…' is too long.
+cli-project-unavailable = the file is not there or is not on this computer yet
+cli-project-not-file = it is not a file
+cli-project-too-large = the file is larger than 64 MiB
+cli-project-not-utf8 = the file is not UTF-8 text
+cli-project-changing = the file is still changing
+cli-project-not-bibtex = a bibliography must be a BibTeX or BibLaTeX file
+cli-project-fields-differ = this entry and the library differ
+cli-project-case-differs = a key differs only by letter case
+cli-project-alias = it is another entry’s alias
+cli-project-helper = it belongs to an @xdata entry, which cannot be cited
+cli-project-commented = it is inside @comment, which some tools still read
+cli-project-key-doubt = Key may name another reference (line { $line }): { $reason }
+cli-destination-paste = note: Ibis pastes into { $name }.
+cli-destination-unknown = note: Ibis does not know this app, so it asks before pasting.
+cli-destination-unsupported = note: Ibis copies here, because it cannot paste on this system yet.
+cli-destination-terminal = note: Ibis copies for { $name }, because a paste runs there as typed input.
+cli-destination-remote = note: Ibis copies for { $name }, because keystrokes reach another system there.
+cli-destination-shortcut = note: Ibis copies for { $name }, because its paste key does something else.
+cli-destination-copy = note: Ibis copies for { $name }.
+cli-doctor-all-good = All good.
+cli-doctor-one-finding = 1 thing to look at.
+cli-doctor-findings = { $count } things to look at.
+cli-doctor-last-read = Last good read: { $age }.
+cli-doctor-check-failed = Check failed.
+cli-search-shorthand = Cited with: { $cited }; searched for: { $words }
+cli-project-key-in = In { $name } (line { $line })
+cli-project-key-missing = Missing from { $name }
+cli-project-key-unchecked = Couldn’t check { $name }
+cli-project-key-repeated = Key appears more than once (lines { $lines })
+cli-citation-language = note: written in { $language }.
+cli-library-stale-note = (last successful read; refresh failed)
+cli-library-watch-note = (changes are not picked up automatically)
+cli-greeting = Ibis { $version } finds references and cites them anywhere.
+
+    Try it:
+      ibis search lantern --file refs.bib       find a reference
+      ibis cite vale2024lanterns --file refs.bib --style apa
+                                                make a citation
+      ibis doctor --file refs.bib               check a library
+
+    With the Ibis app installed you can leave out --file.
+    Add --json to any command for scripts and agents. All commands: ibis --help
+
+# Settings and ibis agents share these app connections.
+settings-ai-apps = AI Apps
+ai-apps-command-line = Command Line
+ai-apps-description = Connect Ibis to the AI apps on this computer.
+ai-apps-words = agents MCP Claude Codex Cursor VS Code Gemini Windsurf LM Studio ChatGPT AI apps
+proposals-title = Proposed changes
+proposals-description = Review and apply library changes proposed by AI apps.
+proposals-words = proposals changes add reference
+proposals-checking = Checking proposed changes…
+proposals-empty = No proposed changes
+proposals-from = { $app } · { $library }
+proposals-apply = Apply
+proposals-reject = Reject
+proposals-applied = Applied; backup kept as { $name }.
+proposals-failed = Could not complete this action. Try again.
+proposals-read-failed = Could not read proposed changes. Return to this page to try again.
+app-failure-waiting-proposals = { proposals-read-failed }
+app-failure-apply-proposal = { proposals-failed }
+app-failure-reject-proposal = { proposals-failed }
+command-words = command line terminal shell PATH agents MCP
+ai-apps-checking = Checking AI apps…
+ai-apps-not-connected = Not connected.
+ai-apps-connected = Connected. Start a new session in the app to use Ibis.
+ai-apps-stale = The ibis command has moved or is missing.
+ai-apps-different = This app has a different Ibis connection. Review the change below.
+ai-apps-plugin = Connected through the Ibis plugin.
+ai-apps-connect = Connect
+ai-apps-disconnect = Disconnect
+ai-apps-repair = Repair
+ai-apps-replace = Replace…
+ai-apps-command-needed = The ibis command is missing. Install it in Command Line above so this app can start Ibis.
+ai-apps-failed = Could not change the AI app connection. Check the app’s settings and folder permissions, then try again.
+ai-apps-kept = Other servers and settings are kept. A backup is kept beside each changed file, the same as ibis agents in a terminal.
+app-failure-agent-apps = { ai-apps-failed }
+app-failure-connect-agent-app = { ai-apps-failed }
+app-failure-disconnect-agent-app = { ai-apps-failed }

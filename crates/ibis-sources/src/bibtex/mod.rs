@@ -18,6 +18,7 @@
 
 mod convert;
 mod dates;
+pub mod edit;
 mod lexer;
 pub(crate) mod project;
 mod resolve;

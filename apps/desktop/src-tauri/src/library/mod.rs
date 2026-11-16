@@ -11,6 +11,7 @@
 //! - `tasks`: background work and publishing status through the app.
 //! - `commands`: the commands the interface calls.
 
+pub(crate) mod attachment_text;
 pub(crate) mod commands;
 pub(crate) mod engine_library;
 mod error;

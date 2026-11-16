@@ -3,6 +3,22 @@
 import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 
 export const commands = {
+	/** Waiting proposals and their engine previews, with library names only. */
+	waitingProposals: () => __TAURI_INVOKE<WaitingProposal[]>("waiting_proposals"),
+	/** Apply only after the person presses Apply on the displayed proposal. */
+	applyProposal: (id: string) => __TAURI_INVOKE<ProposalResult>("apply_proposal", { id }),
+	/** Reject a waiting proposal; no library changes. */
+	rejectProposal: (id: string) => __TAURI_INVOKE<ProposalResult>("reject_proposal", { id }),
+	/** Every supported AI app, found ones first. */
+	agentApps: () => __TAURI_INVOKE<AgentApp[]>("agent_apps"),
+	/** Connect only if expected is the revision of the displayed entry and proposal. */
+	connectAgentApp: (id: string, replace: boolean, expected: string) => __TAURI_INVOKE<AgentApp[]>("connect_agent_app", { id, replace, expected }),
+	/** Disconnect only if expected is the revision of the displayed connection. */
+	disconnectAgentApp: (id: string, expected: string) => __TAURI_INVOKE<AgentApp[]>("disconnect_agent_app", { id, expected }),
+	/** Open libraries by display name and complete opaque ID, with their saved choice. */
+	attachmentTextLibraries: () => __TAURI_INVOKE<AttachmentTextLibrary[]>("attachment_text_libraries"),
+	/** Save a choice for an open library previously returned to Settings. */
+	setAttachmentText: (id: LibraryId, on: boolean) => __TAURI_INVOKE<boolean>("set_attachment_text", { id, on }),
 	cliStatus: () => __TAURI_INVOKE<CommandStatus>("cli_status"),
 	setCliInstalled: (installed: boolean) => __TAURI_INVOKE<CommandStatus>("set_cli_installed", { installed }),
 	copyCliProfile: () => __TAURI_INVOKE<null>("copy_cli_profile"),
@@ -303,6 +319,25 @@ export type AboutLink = "website" | "source" | "problem" | "licences";
 
 export type Accent = "system" | "ibis";
 
+/** One app's immutable plan. Only this module can construct a plan or choose its file. */
+export type AgentApp = {
+	/** The terminal's status detail, or the reason/steps for blocked/by-hand apps. */
+	detail: string;
+	/** The exact before/after entry, also used by the terminal's replacement question. */
+	diff: string | null;
+	found: boolean;
+	ibis_on_path: boolean;
+	id: string;
+	name: string;
+	needs_command: boolean;
+	/** Pins the entry and proposed command shown in this observation. */
+	revision: Fingerprint;
+	state: AgentAppState;
+};
+
+/** A connection's state; the same observation feeds Settings and the terminal. */
+export type AgentAppState = "connected" | "not-connected" | "stale" | "different" | "blocked" | "plugin" | "by-hand";
+
 export type AppFormat = {
 	/** Resolved at display time by the same native lookup as the picker. */
 	app: string;
@@ -315,6 +350,12 @@ export type AppPaste = "paste" | "copy-only";
 
 /** Settings owns these choices until the picker consumes the same event fields. */
 export type Appearance = "system" | "light" | "dark";
+
+export type AttachmentTextLibrary = {
+	id: LibraryId;
+	name: string;
+	on: boolean;
+};
 
 /** Why a backup or restore did not happen; the Settings window words it. */
 export type BackupProblem = "not-downloaded" | "unreadable" | "not-a-backup" | "settings-file" | "newer" | "invalid" | "not-saved" | "settings-unusable" | "busy" | "changed";
@@ -502,6 +543,8 @@ export type EndpointStatus = {
 
 /** How an entry copy ended; a refusal says how to get the entry another way. */
 export type EntryCopy = "copied" | "no-original" | "repeated" | "dependency" | "changed";
+
+export type Fingerprint = string;
 
 export type FocusTarget = "format-picker" | "library-picker" | "source-file" | "zotero-sharing-help" | "search" | "results" | "locator" | "citation" | "citation-form" | "session-references" | "language" | "recovery-action" | "project-name" | "project-menu" | "settings" | "request";
 
@@ -786,6 +829,9 @@ export type PickerDestination = {
 	writing_context?: string | null;
 };
 
+/** Default picker placement on the active display; a deliberate move wins there. */
+export type PickerPlacement = "centre" | "top-left" | "top-right" | "bottom-left" | "bottom-right";
+
 /**
  * How the picker looks and what it formats with, remembered across restarts
  * (ADR 0020).
@@ -805,6 +851,7 @@ export type PickerPreferences = {
 	output: string;
 	/** Enter pastes into the app the picker was opened from; on by default. */
 	paste: boolean;
+	picker_placement?: PickerPlacement | null;
 	/** Recent citations per app; on by default. Off records nothing. */
 	recent_citations?: boolean | null;
 	small_surprises?: boolean | null;
@@ -821,6 +868,7 @@ export type PickerPreferencesPatch = {
 	/** Only an id the engine lists; any other refuses the whole change. */
 	output?: string | null;
 	paste?: boolean | null;
+	picker_placement?: PickerPlacement | null;
 	recent_citations?: boolean | null;
 	small_surprises?: boolean | null;
 };
@@ -851,6 +899,7 @@ export type PreferenceChange = {
 	output: string;
 	/** Enter pastes into the app the picker was opened from; on by default. */
 	paste: boolean;
+	picker_placement?: PickerPlacement | null;
 	/** Recent citations per app; on by default. Off records nothing. */
 	recent_citations?: boolean | null;
 	revision: number;
@@ -913,6 +962,16 @@ export type ProjectStatus = {
 	 */
 	revision: number;
 	state: ProjectState;
+};
+
+export type ProposalResult = {
+	backup: string;
+	status: "applied";
+} | {
+	status: "rejected";
+} | {
+	sentence: string;
+	status: "refused";
 };
 
 /** One thing reading the library found: an entry skipped or one to check. */
@@ -1176,6 +1235,18 @@ export type UndoView = {
 	reference: SearchResult | null;
 } | {
 	kind: "reset";
+};
+
+export type WaitingProposal = {
+	after: string | null;
+	before: string | null;
+	created_ms: number;
+	id: string;
+	library: string;
+	lines: string[];
+	refusal: string | null;
+	source_app: string;
+	summary: string;
 };
 
 /** Settings › Look's window size. Any other dragged size is Custom. */

@@ -468,11 +468,11 @@ jobs:
         run: bash scripts/ci-release-checks.sh
 
   bibtex-fuzz:
-    name: Damaged BibTeX fuzzing (five minutes)
+    name: Damaged BibTeX and PDF fuzzing (five minutes each)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
-    # Compilation and tool setup are outside the five-minute fuzzing budget.
-    timeout-minutes: 20
+    # Compilation and tool setup are outside the five-minute fuzzing budgets.
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -493,19 +493,28 @@ jobs:
       - name: Test the seed corpus
         run: cargo +nightly test -p ibis-fuzz --locked seed_corpus
 
-      - name: Build the fuzz target
-        run: cargo +nightly fuzz build damaged_bibtex --features fuzzing --target-dir target/fuzz
+      - name: Build the fuzz targets
+        run: |
+          cargo +nightly fuzz build damaged_bibtex --features fuzzing --target-dir target/fuzz
+          cargo +nightly fuzz build damaged_pdf --features fuzzing --target-dir target/fuzz
 
       - name: Fuzz the real BibTeX loader for five minutes
         timeout-minutes: 6
         run: cargo +nightly fuzz run damaged_bibtex --features fuzzing --target-dir target/fuzz -- -max_total_time=300 -timeout=5 -max_len=65536 -rss_limit_mb=2048
+
+      - name: Fuzz the PDF extractor's parsing for five minutes
+        if: always()
+        timeout-minutes: 6
+        run: cargo +nightly fuzz run damaged_pdf --features fuzzing --target-dir target/fuzz -- -max_total_time=300 -timeout=5 -max_len=1048576 -rss_limit_mb=2048
 
       - name: Keep fuzz failures
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bibtex-fuzz-failures-${{ github.sha }}-${{ github.run_attempt }}
-          path: fuzz/artifacts/damaged_bibtex/
+          path: |
+            fuzz/artifacts/damaged_bibtex/
+            fuzz/artifacts/damaged_pdf/
           if-no-files-found: ignore
           retention-days: 14
 

@@ -55,7 +55,7 @@ export function PickerStatusFooter({
   const { toggleHighlighted, hints } = actions;
   // Read when More opens, the only time it is shown there.
   const libraryDetail = menuOpen ? libraryMessages.detail(library, Date.now(), (status) => zoteroLibraryNames(status, groupName)) : null;
-  return <PickerFooter library={library} groupName={groupName} emptyAction={emptyAction} copyProblem={copyProblem}
+  return <PickerFooter library={library} groupName={groupName} emptyAction={emptyAction} copyProblem={copyProblem} delivery={!command ? actions.delivery.mode : undefined}
     status={<PickerLibraryStatus library={library} groupName={groupName} isOpen={libraryMenuOpen}
       onOpenChange={(open) => (open ? openLibrary() : closeLibrary())}
       searchRef={input} sourceAction={sourceAction} sourceFailure={sourceOpen.failure !== null}
@@ -77,7 +77,7 @@ export function PickerStatusFooter({
         buttonRef={moreButton} searchRef={input} libraryDetail={libraryDetail}
         source={sourceState.sourceAvailable ? sourceAction : undefined}
         lastOutcome={lastOutcome}
-        project={{ status: project.status, choose: project.choose, stop: project.stop,
+        project={{ status: project.status, choose: actions.delivery.editorFormat ? null : project.choose, stop: actions.delivery.editorFormat ? null : project.stop,
           copyEntry: highlighted?.project?.state === "missing" && highlighted.project.generation === project.status?.generation
             ? () => { project.copyEntry(highlighted); focusHome(); } : null }}
         pinned={pinned} keepOrder={actions.keepOrder}
@@ -88,7 +88,7 @@ export function PickerStatusFooter({
         actions={{
           pin: () => run("pin"),
           keys: () => run("keys"),
-          format: () => run("format"),
+          format: actions.canChooseFormat ? () => run("format") : null,
           chooseSource: () => run("chooseSource"),
           revealSource: sourceState.sourceAvailable && source.kind === "file" ? () => run("revealSource") : null,
           peek,

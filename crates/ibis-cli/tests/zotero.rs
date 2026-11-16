@@ -47,7 +47,14 @@ impl Server {
                     continue;
                 }
                 let request = String::from_utf8(request).unwrap();
-                let body = if request.contains("format=versions") {
+                // SYNTH001 has one file, which Zotero indexed in three pages.
+                let body = if request.contains("/items/SYNTH001/children?") {
+                    json!([{"key":"PDFA0001","data":{"key":"PDFA0001","itemType":"attachment","parentItem":"SYNTH001",
+                        "title":"Invented atlas PDF","contentType":"application/pdf","linkMode":"imported_file"}}])
+                } else if request.contains("/items/PDFA0001/fulltext") {
+                    json!({"content":"Invented page one about maps.\u{c}Invented page two holds a brass lantern.\u{c}Invented page three.",
+                        "indexedPages":3,"totalPages":3})
+                } else if request.contains("format=versions") {
                     json!({"SYNTH001":version})
                 } else {
                     json!([{"key":"SYNTH001","version":version,"data":{"key":"SYNTH001","version":version,"itemType":"book",
@@ -227,4 +234,110 @@ fn zotero_group_flags_choose_the_libraries_read() {
     );
     assert_ne!(code, 0);
     assert!(!errors.is_empty());
+}
+
+fn run_failing(engine: &Engine, args: &[&str]) -> (u8, String) {
+    let mut output = vec![];
+    let mut errors = vec![];
+    let code = ibis::run_with(
+        engine.clone(),
+        args.iter().map(Into::into).collect(),
+        Cursor::new(vec![]),
+        &mut output,
+        &mut errors,
+        ibis::OutputMode::Plain,
+    );
+    assert!(output.is_empty());
+    (code, String::from_utf8(errors).unwrap())
+}
+
+#[test]
+fn outline_read_and_find_in_give_a_zotero_attachments_text_by_page() {
+    let server = Server::new();
+    let engine = Engine::with_zotero_port(server.port).unwrap();
+    let (code, output) = run(&engine, &["ibis", "--zotero", "outline", "Synthetic2026", "--json"]);
+    assert_eq!(code, 0, "{output}");
+    let outline: Value = serde_json::from_str(&output).unwrap();
+    let attachment = &outline["data"]["attachments"][0];
+    assert_eq!(attachment["pages"], 3);
+    let id = attachment["id"].as_str().unwrap().to_owned();
+    assert!(!output.contains("PDFA0001"));
+    let (code, output) = run(&engine, &["ibis", "--zotero", "outline", "Synthetic2026"]);
+    assert_eq!(code, 0);
+    assert_eq!(
+        output,
+        format!("{id}\tInvented atlas PDF\tapplication/pdf\ttext, 3 pages\n")
+    );
+
+    // Another process opening the same generation and revision can use the id.
+    let other = Engine::with_zotero_port(server.port).unwrap();
+    let (code, output) = run(&other, &["ibis", "--zotero", "read", &id, "--pages", "2"]);
+    assert_eq!(code, 0);
+    assert_eq!(
+        output,
+        format!("[file page 2]\nInvented page two holds a brass lantern.\nMore text: ibis read {id} --pages 3-7\n")
+    );
+    let (_, output) = run(&engine, &["ibis", "--zotero", "read", &id, "--pages", "2-3", "--json"]);
+    let read: Value = serde_json::from_str(&output).unwrap();
+    assert_eq!(read["data"]["pages"][1]["pdf_page"], 3);
+    assert_eq!(read["data"]["pages"][1]["cite_page"], Value::Null);
+    let (code, output) = run(&engine, &["ibis", "--zotero", "find-in", &id, "BRASS lantern"]);
+    assert_eq!(code, 0);
+    assert_eq!(output, "[file page 2]\tInvented page two holds a brass lantern.\n");
+    let (_, output) = run(&engine, &["ibis", "--zotero", "find-in", &id, "compass"]);
+    assert_eq!(output, "No passage holds those words.\n");
+
+    let (code, errors) = run_failing(&engine, &["ibis", "--zotero", "read", &id, "--pages", "4"]);
+    assert_ne!(code, 0);
+    assert!(errors.contains("ibis outline"), "{errors}");
+    let (code, errors) = run_failing(&engine, &["ibis", "--zotero", "read", "att:invented"]);
+    assert_ne!(code, 0);
+    assert!(errors.contains("run ibis outline again"), "{errors}");
+    let (code, _) = run_failing(&engine, &["ibis", "--zotero", "read", &id, "--pages", "3-2"]);
+    assert_ne!(code, 0);
+}
+
+#[test]
+fn outline_omits_private_attachment_metadata_in_plain_and_json_output() {
+    use ibis_core::contract::{Attachment, Availability, GoldenCase, ItemRef, LibraryObject, Snapshot};
+    let case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json")).unwrap();
+    let parent = case.library.objects()[0].object.id().clone();
+    let mut objects: Vec<_> = case
+        .library
+        .objects()
+        .iter()
+        .map(|object| object.object.clone())
+        .collect();
+    objects.push(LibraryObject::Attachment(Attachment {
+        id: ItemRef {
+            library: parent.library.clone(),
+            key: "invented-attachment".into(),
+        },
+        parent: Some(parent),
+        title: "file:///synthetic/private/letter.pdf".into(),
+        media_type: "/synthetic/private/letter.pdf".into(),
+        availability: Availability::OnDisk,
+        content_hash: None,
+    }));
+    let engine = Engine::from_snapshot(Arc::new(Snapshot::new(objects).unwrap()));
+    for json in [false, true] {
+        let mut args = vec!["ibis", "outline", "Example2026"];
+        if json {
+            args.push("--json");
+        }
+        let (code, output) = run(&engine, &args);
+        assert_eq!(code, 0, "{output}");
+        assert!(!output.contains("synthetic/private"), "{output}");
+        if json {
+            let value: Value = serde_json::from_str(&output).unwrap();
+            assert!(value["data"]["attachments"][0].get("title").is_none());
+            assert!(value["data"]["attachments"][0].get("media_type").is_none());
+        } else {
+            assert_eq!(
+                output.split('\t').count(),
+                4,
+                "the omitted fields keep their columns: {output}"
+            );
+        }
+    }
 }

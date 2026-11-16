@@ -9,6 +9,9 @@ A boundary with no safe binding gets one scoped module allowance, a crate-level
 
 - The Windows closed-Zotero reader uses Win32 process, drive, attribute and ACL
   calls. It opens only its disposable database copy.
+- `ibis-sources/src/pdf/inheritance.rs` marks every non-stdio Unix descriptor
+  close-on-exec in an allocation-free post-fork callback, including descriptors
+  inherited from native callers. The exec-error pipe stays usable until exec.
 - `paste/macos/secure_input.rs` reads Carbon's `IsSecureEventInputEnabled` on
   the main thread. It is a system-wide flag, not proof of a password field.
 - `paste/macos/focus/native.rs` owns public Accessibility calls and retained

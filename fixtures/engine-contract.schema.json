@@ -136,6 +136,10 @@
           "enum": [
             "empty-selection",
             "too-many-items",
+            "too-many-keys",
+            "too-many-records",
+            "too-many-record-items",
+            "invalid-too-many-items",
             "invalid-locator",
             "invalid-rich-text",
             "output-too-large",
@@ -1078,6 +1082,16 @@
           "description": "A record a request sends was not valid CSL-JSON, so none is cited.",
           "type": "string",
           "const": "rejected-record"
+        },
+        {
+          "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or its file is missing, damaged or one Ibis cannot read.",
+          "type": "string",
+          "const": "no-attachment-text"
+        },
+        {
+          "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
+          "type": "string",
+          "const": "no-such-pages"
         }
       ]
     },

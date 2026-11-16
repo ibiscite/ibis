@@ -6,6 +6,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod agent_apps;
 mod bindings;
 mod cli_install;
 mod copy;
@@ -39,6 +40,7 @@ mod picker;
 mod placement;
 mod preferences;
 mod project;
+mod proposals;
 mod row_context;
 mod session_references;
 mod settings_backup;
@@ -49,6 +51,7 @@ mod settings_window;
 mod setup;
 mod shortcut_setting;
 mod sizing;
+mod system_open;
 mod tray;
 mod updater;
 mod writings;
@@ -115,6 +118,7 @@ fn main() {
     };
     let builder = builder
         .manage(Mutex::new(Library::default()))
+        .manage(library::attachment_text::AttachmentText::default())
         .manage(LoadRequests::default())
         .manage(SearchRequests::default())
         .manage(tray::SearchRequest::default())
@@ -272,6 +276,7 @@ fn main() {
                 panel::cancel_initial_presentation(app.handle());
             }
             native_feel::install(app.handle());
+            cli_install::keep_at_launch(app.handle());
             destination::manage(app.handle(), &settings_path);
             if let Some(problem) = &loaded.problem {
                 application_message(preferences::settings_problem(problem));

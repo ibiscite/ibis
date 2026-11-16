@@ -239,6 +239,8 @@ impl EngineError {
                 ErrorReason::CsvTemplate | ErrorReason::UnknownFormat => R::ChooseLibrary,
                 ErrorReason::LibraryCutShort => R::ReviewLibrary,
                 ErrorReason::DuplicateRecord | ErrorReason::RejectedRecord => R::EditInput,
+                ErrorReason::NoAttachmentText => R::ReviewLibrary,
+                ErrorReason::NoSuchPages => R::EditInput,
             };
             return RecoveryInfo::new(&format!("reason-{}", name(reason)), recovery);
         }
@@ -270,10 +272,11 @@ impl Problem {
 
 impl From<EngineError> for Problem {
     fn from(error: EngineError) -> Self {
+        if let Some(citation) = error.citation_error {
+            return citation.problem();
+        }
         Self {
-            code: error
-                .citation_error
-                .map_or_else(|| error.reason.map_or_else(|| name(error.code), name), name),
+            code: error.reason.map_or_else(|| name(error.code), name),
             info: error.recovery_info(),
         }
     }
@@ -294,7 +297,13 @@ macro_rules! citation_diagnostics {
         }
         impl CitationError {
             pub const ALL: [Self; [$(stringify!($variant)),*].len()] = [$(Self::$variant,)*];
+            fn is_count_limit(self) -> bool {
+                matches!(self, Self::TooManyItems | Self::TooManyKeys | Self::TooManyRecords | Self::TooManyRecordItems | Self::TooManyReferences)
+            }
             pub fn message_id(self) -> &'static str {
+                if self.is_count_limit() {
+                    return "problem-too-many-items";
+                }
                 match self {
                     $(Self::$variant => concat!("problem-", $code),)*
                     Self::Unknown => "error-internal",
@@ -305,7 +314,16 @@ macro_rules! citation_diagnostics {
                     $(Self::$variant => ($code, $recovery),)*
                     Self::Unknown => ("unknown", Recovery::Retry),
                 };
-                Problem { code: code.into(), info: RecoveryInfo::new(self.message_id(), recovery) }
+                // Contract 1 classifies these inputs separately; only their words are shared.
+                let code = match self {
+                    Self::TooManyKeys | Self::TooManyRecords | Self::TooManyRecordItems => name(EngineError::citation(self).code),
+                    _ => code.into(),
+                };
+                let mut info = RecoveryInfo::new(self.message_id(), recovery);
+                if self.is_count_limit() {
+                    info = info.argument("count", crate::syntax::MAX_CITATION_ITEMS.to_string());
+                }
+                Problem { code, info }
             }
         }
     }
@@ -313,6 +331,10 @@ macro_rules! citation_diagnostics {
 citation_diagnostics! {
     EmptySelection => "empty-selection", Recovery::SelectReferences;
     TooManyItems => "too-many-items", Recovery::ReduceSelection;
+    TooManyKeys => "too-many-keys", Recovery::EditInput;
+    TooManyRecords => "too-many-records", Recovery::ReduceSelection;
+    TooManyRecordItems => "too-many-record-items", Recovery::EditInput;
+    TooManyReferences => "invalid-too-many-items", Recovery::ReduceSelection;
     InvalidLocator => "invalid-locator", Recovery::EditLocator;
     InvalidRichText => "invalid-rich-text", Recovery::EditCitation;
     OutputTooLarge => "output-too-large", Recovery::ReduceSelection;

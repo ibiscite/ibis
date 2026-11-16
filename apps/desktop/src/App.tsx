@@ -2,7 +2,7 @@ import * as nativeApi from "./api";
 import { useNativeEvent } from "./nativeEvents";
 import { useTimeout } from "./ui/timers";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { idKey, asTyped } from "./features/picker/choice";
+import { idKey } from "./features/picker/choice";
 import { keysFor, matchesAccelerator } from "./keys";
 import { isMac } from "./platform";
 import { PeekCard } from "./ui/PeekCard";
@@ -32,6 +32,7 @@ import { useLibrarySearch } from "./features/picker/useLibrarySearch";
 import { useCitationOutput } from "./features/picker/useCitationOutput";
 import { useZoteroScope } from "./features/picker/useZoteroScope";
 import { type PickerPreview, usePickerSession } from "./features/picker/usePickerSession";
+import { deriveView, type PickerInputs } from "./features/picker/view";
 import { useUpdateProgress } from "./features/picker/useUpdateProgress";
 import { usePickerLibrary } from "./features/picker/usePickerLibrary";
 import { usePickerMenus } from "./features/picker/usePickerMenus";
@@ -87,13 +88,13 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
   const updateProgress = useUpdateProgress(api, setFailures);
   const preferences = usePickerPreferences(api, { styles: true, report, perform, presentation: state.visibility });
   const { density, quitAfterSaving: quitPreferences } = preferences;
-  const destination = useDestination(session, state, api, { fallback: preferences.format, chooseDefault: preferences.chooseFormat, report });
+  const editor = useEditorRequest(api);
+  const destination = useDestination(session, state, api, { fallback: preferences.format, chooseDefault: preferences.chooseFormat, report, editorFormat: editor.label });
   const { format } = destination;
   const quitAfterSaving = () => quitPreferences(session.afterSaves(2_000));
   const libraryState = usePickerLibrary(api, operations, cancelCopy);
   const { library, settledLibrary, libraryVersion, refreshSnapshot, choosingLibrary, welcomeShown, libraryChoices, showCitations } = libraryState;
   const project = useBibliography(api, report, perform);
-  const editor = useEditorRequest(api);
   // A waiting editor's format replaces the picker's, so the same choice is asked again.
   // A changed bibliography asks the same questions of a new answer.
   const checkVersion = libraryVersion + editor.version + project.version;
@@ -105,15 +106,20 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     session, state, search: api.search, emptySearch: recents.load, app: destination.appId, query: query.startsWith(COMMAND_PREFIX) ? "" : query, interpretLocators,
     library: settledLibrary, statusFailed: failures.status ?? false, libraryVersion: checkVersion,
   });
-  const { queryKey, results, sameSnapshot, ready, interpretation, list, error, pending: searchPending } = searchState;
+  const { queryKey, results, sameSnapshot, ready, list, error, pending: searchPending } = searchState;
   // biome-ignore lint/correctness/useExhaustiveDependencies: new results are the trigger: the pointer must move again before it counts.
   useEffect(resetPointer, [results, resetPointer]);
   // What the screen shows: the selection, otherwise the shown pasted list or
   // highlighted result. It stays put while a newer search runs.
-  const shownChoice = !showCitations ? [] : selected.size > 0 ? [...selected.values()] : !sameSnapshot ? [] : list ? results
-    : results.slice(active, active + 1).map((r) => asTyped(r, interpretation));
+  const statusFailed = failures.status ?? false, remembersLast = preferences.recentCitations === true;
+  const pickerInputs: PickerInputs = { fallback: preferences.format, remembersLast, preferencesReady: preferences.ready, library, settledLibrary,
+    statusFailed, showCitations, version: checkVersion };
+  // Read this render's inputs through the session's owner before asking for a
+  // preview. Its last committed view may still belong to an older snapshot.
+  const view = deriveView({ ...state, inputs: pickerInputs });
+  const shownChoice = view?.offered ?? [];
   // What may be copied: the same, once the shown results answer the current query.
-  const chosen = selected.size > 0 || ready ? shownChoice : [];
+  const chosen = view?.chosen ?? [];
   const output = useCitationOutput({
     session, state, chosen: shownChoice, library: settledLibrary, libraryVersion: checkVersion, format, style: styleOf(format),
     previewFileCitation: api.previewFileCitation, writingContext: destination.contextVersion, contextReady: destination.ready && !project.reading,
@@ -133,10 +139,9 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     api, session, state, destination, currentPin, formatButtonRef, refreshSnapshot, report, setFormatOpen,
   });
   // What the session hears from preferences and the library's lifecycle.
-  const statusFailed = failures.status ?? false, remembersLast = preferences.recentCitations === true;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pickerInputs contains exactly these outside inputs.
   useLayoutEffect(() => {
-    send({ type: "picker-inputs", inputs: { fallback: preferences.format, remembersLast, preferencesReady: preferences.ready, library, settledLibrary,
-      statusFailed, showCitations, version: checkVersion } });
+    send({ type: "picker-inputs", inputs: pickerInputs });
   }, [send, preferences.format, remembersLast, preferences.ready, library, settledLibrary, statusFailed, showCitations, checkVersion]);
   // Last of App's layout effects: every input above has reached the session,
   // so an Enter waiting on an engine answer may copy now.
@@ -227,7 +232,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
   // ">" in the search lists commands by name (docs/design/picker.md, Command search).
   const commands = useCommandSearch({
     query: showCitations ? query : "", run: keys.run, setQuery,
-    source: source.sourceAvailable ? source.sourceAction.label : null, changeLast: actions.canChangeLast,
+    source: source.sourceAvailable ? source.sourceAction.label : null, changeLast: actions.canChangeLast, canChooseFormat: destination.canChooseFormat,
   });
   commandsShown.current = commands.mode;
   // Peek (⌘Y): the highlighted reference's full details under its row, as Quick Look.
@@ -255,7 +260,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
         ...notices({ projectNotice: destination.readProblem ?? project.notice, editorNotice: editor.label, library, failures: { ...failures, recentHistory: recents.forgetFailed },
           error, copyError: inspector.panel ? null : copyError, copied, missing: ready ? list?.missing : undefined,
           confirmation: state.copyNotice, onDismissCopied: () => send({ type: "dismiss" }) }),
-        bibliographyCheckNotice({ refusal: projectRefusal, problem: projectProblem,
+        bibliographyCheckNotice({ refusal: inspector.panel ? null : projectRefusal, problem: projectProblem,
           onRetry: project.retry ? () => { cancelCopy(); project.retry?.(); } : undefined,
           onLocate: project.choose ? () => { cancelCopy(); project.choose?.(); } : undefined,
           disabled: !destination.ready || destination.saving || !ready || searchPending }),
@@ -274,7 +279,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
         onQueryChange={(value) => { delights.dismiss(); pointer.resetHover(); setQuery(value); }}
         expanded={results.length > 0 && showCitations}
         activeDescendant={commands.mode ? commands.list.length ? `command-${commands.active}` : undefined : showCitations && results[active] ? `result-${active}` : undefined}
-        format={format} formatLabel={destination.formatLabel} formatButtonRef={formatButtonRef}
+        format={format} formatLabel={destination.formatLabel} formatButtonRef={formatButtonRef} delivery={actions.delivery}
         app={destination.app} formatSource={destination.source} formatPick={destination.pick}
         writing={destination.writing} usualFormat={destination.usualFormat} onUseUsual={destination.useUsual} onWritings={!editor.label ? menus.openProjects : undefined}
         onFormatOpenChange={onFormatOpenChange}

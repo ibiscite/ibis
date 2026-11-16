@@ -6,18 +6,18 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Find references in the user's own library by author, title words, year or citation key. Start here: every citation needs a `ref` from this tool. If nothing is found, say so; never cite from memory.",
+    "description": "Find references in the user's library by author, title words, year or key. Every citation needs a ref from here.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "limit": {
           "default": 10,
-          "maximum": 25,
+          "description": "Up to 25; more gives 25.",
           "minimum": 1,
           "type": "integer"
         },
         "query": {
-          "description": "Distinctive words: an author surname, title words, a year or a key.",
+          "description": "An author surname, title words, a year or a key.",
           "minLength": 1,
           "type": "string"
         },
@@ -37,11 +37,9 @@
         {
           "properties": {
             "cited_with": {
-              "description": "prefix and locator for the cite item",
               "type": "object"
             },
             "complete": {
-              "description": "False when more references match than these; use more distinctive words.",
               "type": "boolean"
             },
             "hits": {
@@ -56,17 +54,14 @@
                   "container": {},
                   "doi": {},
                   "partial": {
-                    "description": "True when only part of the query matched; ask the user before citing.",
                     "type": "boolean"
                   },
                   "ref": {
-                    "description": "Pass to show or cite: the key, or an id when no key is unique.",
                     "type": "string"
                   },
                   "title": {},
                   "type": {},
                   "typo": {
-                    "description": "True when spelling was corrected; ask the user before citing.",
                     "type": "boolean"
                   },
                   "year": {}
@@ -81,14 +76,12 @@
               "type": "array"
             },
             "library_notes": {
-              "description": "Why results may be missing or out of date. Tell the user.",
               "items": {
                 "type": "string"
               },
               "type": "array"
             },
             "missing": {
-              "description": "Keys or identifiers from a pasted list that the library does not hold.",
               "items": {
                 "type": "string"
               },
@@ -101,7 +94,6 @@
               "type": "string"
             },
             "source_health": {
-              "description": "Library read health. Tell the user about each finding.",
               "type": "object"
             }
           },
@@ -140,7 +132,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Read one reference's bibliographic fields, such as pages, publisher and identifiers, given a `ref` from search. Not needed before citing.",
+    "description": "Read a reference's fields (pages, publisher, identifiers) by ref. Not needed before citing.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -180,7 +172,6 @@
               "type": "string"
             },
             "ref": {
-              "description": "Pass to show or cite: the key, or an id when no key is unique.",
               "type": "string"
             },
             "source_health": {
@@ -225,16 +216,16 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Cite refs returned by search, passing each ref unchanged; add page locators if needed. Choose `format` (pandoc, autocite or typst for processed documents; apa for finished text) or any CSL `style`. Default: apa. Use returned text unchanged and report notices, losses and warnings. Set `strict` to refuse findings. To cite CSL-JSON you were given instead, pass it as `records`.",
+    "description": "Cite refs from search, in order, with optional locators. Use the returned text unchanged and tell the user about notices, losses and warnings.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "for_app": {
-          "description": "A macOS bundle ID or Windows executable: the output Ibis uses for that app.",
+          "description": "A macOS bundle ID or Windows executable: use the output Ibis uses there.",
           "type": "string"
         },
         "form": {
-          "description": "bibliography-only writes reference-list entries and needs a style.",
+          "description": "bibliography-only writes reference-list entries.",
           "enum": [
             "normal",
             "narrative",
@@ -246,7 +237,7 @@
           "type": "string"
         },
         "format": {
-          "description": "A key syntax for the document's own processor, or a common style.",
+          "description": "Citation keys for a document processor, instead of style.",
           "enum": [
             "pandoc",
             "pandoc-bare",
@@ -264,22 +255,13 @@
             "jupyter",
             "jekyll-scholar",
             "cayw-json",
-            "keys",
-            "apa",
-            "chicago-author-date",
-            "chicago-notes-bibliography",
-            "modern-language-association",
-            "harvard-cite-them-right",
-            "ieee",
-            "vancouver-nlm",
-            "nature",
-            "american-medical-association",
-            "american-chemical-society",
-            "china-national-standard-gb-t-7714-2025-numeric",
-            "china-national-standard-gb-t-7714-2025-author-date",
-            "china-national-standard-gb-t-7714-2025-note"
+            "keys"
           ],
           "type": "string"
+        },
+        "include_receipt": {
+          "description": "Add the audit receipt: hashes of the request, formatter and sources.",
+          "type": "boolean"
         },
         "items": {
           "description": "The references, in order.",
@@ -287,15 +269,15 @@
             "additionalProperties": false,
             "properties": {
               "locator": {
-                "description": "Where in the work, such as \"p. 12\", \"ch. 3\" or \"12-14\".",
+                "description": "Such as \"p. 12\", \"ch. 3\" or \"12-14\".",
                 "type": "string"
               },
               "omit_author": {
-                "description": "Leave out the author the sentence already names.",
+                "description": "The sentence already names the author.",
                 "type": "boolean"
               },
               "prefix": {
-                "description": "Text before this item, such as \"see\".",
+                "description": "Such as \"see\".",
                 "type": "string"
               },
               "ref": {
@@ -320,11 +302,11 @@
           "type": "boolean"
         },
         "locale": {
-          "description": "A language for a style, such as de-DE, from the styles tool.",
+          "description": "A style's language, such as de-DE.",
           "type": "string"
         },
         "records": {
-          "description": "Instead of items: CSL-JSON objects, each with an id and a type. The library is not read.",
+          "description": "Instead of items: CSL-JSON objects with id and type.",
           "items": {
             "type": "object"
           },
@@ -336,7 +318,7 @@
           "type": "boolean"
         },
         "style": {
-          "description": "Any style id from the styles tool, instead of format.",
+          "description": "A CSL style id, such as apa, ieee or one from styles. Default: apa.",
           "type": "string"
         }
       },
@@ -348,15 +330,12 @@
         {
           "properties": {
             "bibliography": {
-              "description": "The writing's .bib checks; filenames only.",
               "type": "object"
             },
             "destination": {
-              "description": "Delivery for for_app, with pasting on and permitted.",
               "type": "object"
             },
             "language": {
-              "description": "The language a formatted citation is written in.",
               "type": "string"
             },
             "library_notes": {
@@ -366,7 +345,6 @@
               "type": "array"
             },
             "losses": {
-              "description": "What was asked for but could not be shown.",
               "type": "array"
             },
             "notices": {
@@ -392,7 +370,6 @@
             "text",
             "notices",
             "losses",
-            "receipt",
             "provenance",
             "source_health"
           ]
@@ -425,7 +402,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Find the style ids cite accepts by journal or style name, and the languages a citation can be written in. With no query, the common styles come first.",
+    "description": "Find CSL style ids by journal or style name, and the locales cite accepts.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -437,12 +414,12 @@
         },
         "offset": {
           "default": 0,
-          "description": "How many matching styles to skip, for the next page.",
+          "description": "Styles to skip, for the next page.",
           "minimum": 0,
           "type": "integer"
         },
         "query": {
-          "description": "Words from a style's title or id, such as a journal's name.",
+          "description": "Words from a journal or style name.",
           "maxLength": 1024,
           "type": "string"
         }
@@ -480,7 +457,6 @@
               "type": "array"
             },
             "total": {
-              "description": "How many styles match, beyond this page.",
               "type": "integer"
             }
           },
@@ -510,5 +486,609 @@
       "type": "object"
     },
     "title": "Find citation styles"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "List a reference's attachments by ref, with the ids read and find_in take and whether their text can be read.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "description": "A ref from search.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "type": "object"
+    },
+    "name": "outline",
+    "outputSchema": {
+      "oneOf": [
+        {
+          "properties": {
+            "attachments": {
+              "items": {
+                "required": [
+                  "id",
+                  "text",
+                  "pages_known",
+                  "cite_pages_known"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "library_notes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "provenance": {
+              "type": "string"
+            },
+            "ref": {
+              "type": "string"
+            },
+            "source_health": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "ref",
+            "attachments",
+            "provenance",
+            "source_health"
+          ]
+        },
+        {
+          "properties": {
+            "error": {
+              "required": [
+                "code",
+                "message",
+                "recovery",
+                "focus"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "error"
+          ]
+        }
+      ],
+      "type": "object"
+    },
+    "title": "List a reference's attachments"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Read up to 5 pages or 32 KiB of an attachment's text. Cite a page only from cite_page; when it is null, ask the user.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "attachment": {
+          "description": "An attachment id from outline.",
+          "type": "string"
+        },
+        "first_page": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "last_page": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "offset": {
+          "description": "From next, to go on.",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "attachment"
+      ],
+      "type": "object"
+    },
+    "name": "read",
+    "outputSchema": {
+      "oneOf": [
+        {
+          "properties": {
+            "attachment": {
+              "type": "string"
+            },
+            "library_notes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "next": {
+              "type": "object"
+            },
+            "pages": {
+              "items": {
+                "required": [
+                  "pdf_page",
+                  "cite_page",
+                  "text"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "pages_known": {
+              "type": "boolean"
+            },
+            "provenance": {
+              "type": "string"
+            },
+            "source_health": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "attachment",
+            "pages",
+            "pages_known",
+            "provenance",
+            "source_health"
+          ]
+        },
+        {
+          "properties": {
+            "error": {
+              "required": [
+                "code",
+                "message",
+                "recovery",
+                "focus"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "error"
+          ]
+        }
+      ],
+      "type": "object"
+    },
+    "title": "Read attachment text"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Find up to 10 short passages of an attachment that hold some words, each with its page when known.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "attachment": {
+          "description": "An attachment id from outline.",
+          "type": "string"
+        },
+        "query": {
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "attachment",
+        "query"
+      ],
+      "type": "object"
+    },
+    "name": "find_in",
+    "outputSchema": {
+      "oneOf": [
+        {
+          "properties": {
+            "attachment": {
+              "type": "string"
+            },
+            "complete": {
+              "type": "boolean"
+            },
+            "library_notes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "pages_known": {
+              "type": "boolean"
+            },
+            "passages": {
+              "items": {
+                "required": [
+                  "pdf_page",
+                  "cite_page",
+                  "text"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "provenance": {
+              "type": "string"
+            },
+            "source_health": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "attachment",
+            "passages",
+            "complete",
+            "pages_known",
+            "provenance",
+            "source_health"
+          ]
+        },
+        {
+          "properties": {
+            "error": {
+              "required": [
+                "code",
+                "message",
+                "recovery",
+                "focus"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "error"
+          ]
+        }
+      ],
+      "type": "object"
+    },
+    "title": "Find words in an attachment"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Propose a new reference from CSL-JSON fields. The user confirms it in Ibis; nothing is added until then.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "description": "CSL-JSON fields, such as title, author, issued, container-title, page and DOI. No note, file or id.",
+          "minProperties": 1,
+          "required": [
+            "type",
+            "title"
+          ],
+          "type": "object"
+        },
+        "library": {
+          "description": "A library from proposals; needed when several are open.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fields"
+      ],
+      "type": "object"
+    },
+    "name": "propose_add",
+    "outputSchema": {
+      "oneOf": [
+        {
+          "properties": {
+            "bibtex": {
+              "type": "string"
+            },
+            "next": {
+              "type": "string"
+            },
+            "proposal": {
+              "type": "string"
+            },
+            "provenance": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "proposal",
+            "status",
+            "summary",
+            "next",
+            "provenance"
+          ]
+        },
+        {
+          "properties": {
+            "error": {
+              "required": [
+                "code",
+                "message",
+                "recovery",
+                "focus"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "error"
+          ]
+        }
+      ],
+      "type": "object"
+    },
+    "title": "Propose adding a reference"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Propose new values for fields of a reference by ref. The user confirms it in Ibis; nothing changes until then.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "description": "CSL-JSON fields, such as title, author, issued, container-title, page and DOI. No note, file or id.",
+          "minProperties": 1,
+          "type": "object"
+        },
+        "ref": {
+          "description": "A ref from search.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref",
+        "fields"
+      ],
+      "type": "object"
+    },
+    "name": "propose_change",
+    "outputSchema": {
+      "oneOf": [
+        {
+          "properties": {
+            "bibtex": {
+              "type": "string"
+            },
+            "next": {
+              "type": "string"
+            },
+            "proposal": {
+              "type": "string"
+            },
+            "provenance": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "proposal",
+            "status",
+            "summary",
+            "next",
+            "provenance"
+          ]
+        },
+        {
+          "properties": {
+            "error": {
+              "required": [
+                "code",
+                "message",
+                "recovery",
+                "focus"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "error"
+          ]
+        }
+      ],
+      "type": "object"
+    },
+    "title": "Propose changing a reference"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Propose tags to add to or remove from a reference by ref. The user confirms it in Ibis; nothing changes until then.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "add": {
+          "items": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 20,
+          "type": "array"
+        },
+        "ref": {
+          "description": "A ref from search.",
+          "type": "string"
+        },
+        "remove": {
+          "items": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 20,
+          "type": "array"
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "type": "object"
+    },
+    "name": "propose_tags",
+    "outputSchema": {
+      "oneOf": [
+        {
+          "properties": {
+            "bibtex": {
+              "type": "string"
+            },
+            "next": {
+              "type": "string"
+            },
+            "proposal": {
+              "type": "string"
+            },
+            "provenance": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "proposal",
+            "status",
+            "summary",
+            "next",
+            "provenance"
+          ]
+        },
+        {
+          "properties": {
+            "error": {
+              "required": [
+                "code",
+                "message",
+                "recovery",
+                "focus"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "error"
+          ]
+        }
+      ],
+      "type": "object"
+    },
+    "title": "Propose tags for a reference"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "List the proposals from this app with their status, and the libraries propose_add can name.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "name": "proposals",
+    "outputSchema": {
+      "oneOf": [
+        {
+          "properties": {
+            "libraries": {
+              "items": {
+                "required": [
+                  "library",
+                  "kind",
+                  "references"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "proposals": {
+              "items": {
+                "required": [
+                  "proposal",
+                  "status",
+                  "summary"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "provenance": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "proposals",
+            "libraries",
+            "provenance"
+          ]
+        },
+        {
+          "properties": {
+            "error": {
+              "required": [
+                "code",
+                "message",
+                "recovery",
+                "focus"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "error"
+          ]
+        }
+      ],
+      "type": "object"
+    },
+    "title": "List your proposals"
   }
 ]

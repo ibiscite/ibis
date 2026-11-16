@@ -278,7 +278,7 @@ pub fn from_context(
 fn style_id(style: &str) -> &str {
     style.strip_suffix(".csl").unwrap_or(style)
 }
-fn same_path(a: &Path, b: &Path) -> bool {
+pub(crate) fn same_path(a: &Path, b: &Path) -> bool {
     fn normalized(path: &Path) -> PathBuf {
         if let Ok(path) = std::fs::canonicalize(path) {
             return path;

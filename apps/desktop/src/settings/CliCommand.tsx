@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { CommandStatus } from "../bindings";
 import { useInterfaceMessages } from "../i18n";
 import { Button } from "../ui/Button";
 import { Buttons, Note, Row } from "../ui/Layout";
 import { rowDetails } from "./rows";
+import { useSettingsRequests } from "./useSettingsRequests";
 
 type Api = {
   cliStatus: () => Promise<CommandStatus>;
@@ -11,35 +12,27 @@ type Api = {
   copyCliProfile: () => Promise<unknown>;
 };
 
-export function CliCommandRow({ api, highlighted }: { api: Api; highlighted: boolean }) {
+export function CliCommandRow({ api, highlighted, onChanged }: { api: Api; highlighted: boolean; onChanged?: () => void }) {
   const { text } = useInterfaceMessages();
   const [status, setStatus] = useState<CommandStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [copied, setCopied] = useState(false);
-  const sequence = useRef(0);
-  const changing = useRef(false);
+  const { read, begin } = useSettingsRequests(api.cliStatus, (next) => { setStatus(next); setFailed(false); }, () => setFailed(true));
   useEffect(() => {
-    let live = true;
-    const read = () => {
-      if (changing.current) return;
-      const request = ++sequence.current;
-      void api.cliStatus().then((next) => { if (live && request === sequence.current) { setStatus(next); setFailed(false); } }, () => { if (live && request === sequence.current) setFailed(true); });
-    };
     read();
     const focus = () => { if (document.visibilityState !== "hidden") read(); };
     window.addEventListener("focus", focus);
-    return () => { live = false; sequence.current += 1; window.removeEventListener("focus", focus); };
-  }, [api.cliStatus]);
+    return () => window.removeEventListener("focus", focus);
+  }, [read]);
   const change = (installed: boolean) => {
-    const request = ++sequence.current;
-    changing.current = true;
+    const request = begin("command");
     setBusy(true); setFailed(false); setCopied(false);
     void api.setCliInstalled(installed).then((next) => {
-      if (request === sequence.current) setStatus(next);
-    }, () => { if (request === sequence.current) setFailed(true); }).finally(() => {
-      changing.current = false;
-      if (request === sequence.current) setBusy(false);
+      if (request.current()) { setStatus(next); onChanged?.(); }
+    }, () => { if (request.current()) setFailed(true); }).finally(() => {
+      if (request.current()) setBusy(false);
+      request.finish();
     });
   };
   const description = !status ? text("command-checking") : text({
@@ -55,8 +48,8 @@ export function CliCommandRow({ api, highlighted }: { api: Api; highlighted: boo
     {status?.used_path && status.state !== "foreign" && <Note><code dir="ltr">{status.used_path}</code></Note>}
     {status?.profile_line && <Row label={text("command-profile")} description={<code dir="ltr">{status.profile_line}</code>}>
       <Button isDisabled={busy} onPress={() => {
-        const request = ++sequence.current;
-        void api.copyCliProfile().then(() => { if (request === sequence.current) setCopied(true); }, () => { if (request === sequence.current) setFailed(true); });
+        const request = begin();
+        void api.copyCliProfile().then(() => { if (request.current()) setCopied(true); }, () => { if (request.current()) setFailed(true); });
       }}>{text(copied ? "command-copied" : "command-copy")}</Button>
     </Row>}
   </>;

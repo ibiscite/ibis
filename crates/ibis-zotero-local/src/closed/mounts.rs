@@ -208,6 +208,31 @@ pub(super) fn resolved(path: &Path, control: &Control) -> Result<PathBuf, Closed
     resolved
 }
 
+/// Classify a path before opening it, without probing any component. The
+/// caller walks below an already resolved root with no-follow handles.
+pub(super) fn local(path: &Path, control: &Control) -> Result<(), ClosedError> {
+    control.check()?;
+    let mounts = cached(control)?;
+    if !path.is_absolute() {
+        return Err(ClosedError::UnsafeSource);
+    }
+    let mut current = PathBuf::from("/");
+    for component in path.components() {
+        match component {
+            Component::Normal(name) => current.push(name),
+            Component::ParentDir => {
+                current.pop();
+            }
+            Component::RootDir | Component::CurDir => (),
+            Component::Prefix(_) => return Err(ClosedError::UnsafeSource),
+        }
+        if !eligible(&current, &mounts) {
+            return Err(ClosedError::UnsafeSource);
+        }
+    }
+    control.check()
+}
+
 fn walk(
     path: &Path,
     mounts: &[Mount],

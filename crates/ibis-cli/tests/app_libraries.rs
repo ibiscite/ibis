@@ -101,6 +101,46 @@ fn the_library_chosen_in_the_app_is_read_when_none_is_named() {
 }
 
 #[test]
+fn direct_and_generic_attachment_commands_load_the_app_library() {
+    let home = Home::new("attachment-commands");
+    let library = home.library("refs.bib");
+    std::fs::write(&library, "@book{lee2024,title={Invented atlas},file={atlas.pdf}}\n").unwrap();
+    home.choose(STABLE, &library);
+    let (status, stdout, stderr) = home.run(&["outline", "lee2024", "--json"]);
+    assert_eq!((status, stderr.as_str()), (0, ""), "{stdout}");
+    let outlined: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let id = outlined["data"]["attachments"][0]["id"].as_str().unwrap();
+    for (command, method, params) in [
+        (
+            vec!["outline", "lee2024", "--json"],
+            "outline",
+            serde_json::json!({"item":{"by":"key","value":"lee2024"}}),
+        ),
+        (vec!["read", id, "--json"], "read", serde_json::json!({"attachment":id})),
+        (
+            vec!["find-in", id, "atlas", "--json"],
+            "find-in",
+            serde_json::json!({"attachment":id,"query":"atlas"}),
+        ),
+    ] {
+        let (direct_status, direct_stdout, _) = home.run(&command);
+        let params = params.to_string();
+        let (status, stdout, _) = home.run(&["call", method, "--params", &params, "--json"]);
+        let direct: serde_json::Value = serde_json::from_str(&direct_stdout).unwrap();
+        let generic: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+        assert_eq!(status, direct_status, "{method}: {stdout}");
+        assert_eq!(generic, direct, "{method}");
+        if method != "outline" {
+            assert_eq!(
+                code(&stdout),
+                "source-unavailable",
+                "the attachment was resolved before refusing unimplemented file text"
+            );
+        }
+    }
+}
+
+#[test]
 fn named_libraries_replace_the_app_and_servers_read_it_only_when_asked() {
     let home = Home::new("named");
     let settings = home.settings(STABLE, "{\"schema_version\":99}");
@@ -373,4 +413,92 @@ fn settings_that_are_a_pipe_are_refused_without_waiting() {
     assert!(started.elapsed() < std::time::Duration::from_secs(15), "{stderr}");
     assert_eq!((status, code(&stdout).as_str()), (5, "source-unavailable"), "{stderr}");
     assert_eq!(stderr.lines().count(), 1, "{stderr}");
+}
+
+/// Doctor checks what the other commands read: the app's chosen file, or its
+/// Zotero choice named but not opened (beta report, 2026-11-15).
+#[test]
+fn doctor_checks_the_libraries_chosen_in_the_app() {
+    let home = Home::new("doctor-file");
+    let library = home.library("refs.bib");
+    home.choose(NIGHTLY, &library);
+    for args in [&["doctor", "--json"][..], &["doctor", "--app-libraries", "--json"]] {
+        let (status, stdout, stderr) = home.run(args);
+        assert_eq!(status, 0, "{stdout}{stderr}");
+        let report: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+        let sources = &report["data"]["sources"];
+        assert_eq!(sources.as_array().map(Vec::len), Some(1), "{stdout}");
+        assert_eq!(sources[0]["status"], "ok");
+        assert_eq!(sources[0]["chosen_in"], "Ibis Nightly");
+        assert_eq!(report["data"]["config"]["status"], "ok");
+        assert!(!stdout.contains("refs.bib"), "no chosen path is shown: {stdout}");
+    }
+
+    let home = Home::new("doctor-zotero");
+    home.settings(NIGHTLY, "{\"schema_version\":2,\"library\":{\"zotero\":\"user\"}}");
+    let (status, stdout, stderr) = home.run(&["doctor", "--app-libraries"]);
+    assert_eq!(status, 0, "{stdout}{stderr}");
+    assert!(
+        stdout.contains("skip  Library 1 (zotero): Chosen in Ibis Nightly."),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("No library selected"), "{stdout}");
+    assert!(stdout.ends_with("All good.\n"), "{stdout}");
+
+    // Without app settings doctor says why, in the other commands' words.
+    let home = Home::new("doctor-none");
+    let (status, stdout, _) = home.run(&["doctor", "--app-libraries"]);
+    assert_eq!(status, 1, "{stdout}");
+    assert!(
+        stdout.contains("fail  Libraries: no library is named and the Ibis app has no settings here"),
+        "{stdout}"
+    );
+    // A named library replaces the app's.
+    let home = Home::new("doctor-named");
+    let chosen = home.library("chosen.bib");
+    home.choose(STABLE, &chosen);
+    let named = home.library("named.bib");
+    let (status, stdout, _) = home.run(&["doctor", "--json", "--file", named.to_str().unwrap()]);
+    assert_eq!(status, 0, "{stdout}");
+    let report: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(report["data"]["sources"].as_array().map(Vec::len), Some(1));
+    assert!(report["data"]["sources"][0].get("chosen_in").is_none());
+}
+
+#[test]
+fn doctor_reports_broken_requested_app_settings_even_with_a_healthy_named_file() {
+    let home = Home::new("doctor-broken-and-named");
+    let library = home.library("invented.bib");
+    let file = library.to_str().unwrap();
+    for (settings, code, words) in [
+        ("{\"schema_version\":99}", "newer-format", "Update this ibis command"),
+        ("{not json", "bad-input", "Open Ibis to repair"),
+        (
+            "{\"schema_version\":2}",
+            "no-library",
+            "no library is chosen in Ibis yet",
+        ),
+    ] {
+        home.settings(STABLE, settings);
+        let (status, stdout, stderr) = home.run(&["doctor", "--app-libraries", "--file", file, "--json"]);
+        assert_eq!(status, 1, "{stdout}{stderr}");
+        let report: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+        assert_eq!(report["data"]["library_check"]["status"], "failed");
+        assert_eq!(report["data"]["library_check"]["code"], code);
+        assert!(
+            report["data"]["library_check"]["message"]
+                .as_str()
+                .unwrap()
+                .contains(words),
+            "{stdout}"
+        );
+        assert_eq!(report["data"]["sources"][0]["status"], "ok");
+        let (status, stdout, _) = home.run(&["doctor", "--app-libraries", "--file", file]);
+        assert_eq!(status, 1, "{stdout}");
+        assert!(
+            stdout.contains(words) && stdout.contains("fail  Libraries:"),
+            "{stdout}"
+        );
+        assert!(!stdout.contains("All good"), "{stdout}");
+    }
 }

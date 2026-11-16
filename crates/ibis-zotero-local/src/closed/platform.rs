@@ -148,37 +148,149 @@ pub(super) fn resident(metadata: &Metadata) -> bool {
 }
 
 pub(super) fn open_source(path: &Path) -> Result<File, ClosedError> {
+    let file = open_regular(path)?.ok_or(ClosedError::Unreadable)?;
+    passive(&file)?;
+    Ok(file)
+}
+
+/// Open each component through a no-follow handle. Directory handles stay
+/// pinned until the file is opened; Windows also denies ancestor replacement.
+pub(super) fn local_file(path: &Path, control: &Control) -> Result<Option<File>, ClosedError> {
+    use std::path::Component;
+    control.check()?;
+    if !path.is_absolute() {
+        return Err(ClosedError::UnsafeSource);
+    }
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    super::mounts::local(path, control)?;
+    #[cfg(unix)]
+    {
+        use nix::fcntl::{OFlag, open, openat};
+        use nix::sys::stat::Mode;
+        let flags = OFlag::O_RDONLY | OFlag::O_NOFOLLOW | OFlag::O_NONBLOCK | OFlag::O_CLOEXEC;
+        let mut dir = File::from(
+            open(Path::new("/"), flags | OFlag::O_DIRECTORY, Mode::empty()).map_err(|_| ClosedError::UnsafeSource)?,
+        );
+        let mut parts = path
+            .components()
+            .filter_map(|part| match part {
+                Component::Normal(name) => Some(name),
+                Component::ParentDir => Some(std::ffi::OsStr::new("..")),
+                _ => None,
+            })
+            .peekable();
+        while let Some(name) = parts.next() {
+            control.check()?;
+            let directory = parts.peek().is_some();
+            let file = match openat(
+                &dir,
+                name,
+                flags | if directory { OFlag::O_DIRECTORY } else { OFlag::empty() },
+                Mode::empty(),
+            ) {
+                Ok(file) => File::from(file),
+                Err(nix::errno::Errno::ENOENT) => return Ok(None),
+                Err(_) => return Err(ClosedError::UnsafeSource),
+            };
+            if !directory {
+                return regular(file).map(Some);
+            }
+            if !resident(&file.metadata().map_err(|_| ClosedError::Unreadable)?) {
+                return Err(ClosedError::UnsafeSource);
+            }
+            dir = file;
+        }
+        Err(ClosedError::UnsafeSource)
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        use windows_sys::Win32::Storage::FileSystem::{
+            FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_READ, FILE_SHARE_WRITE,
+        };
+        let (Some(folder), Some(name)) = (path.parent(), path.file_name()) else {
+            return Err(ClosedError::UnsafeSource);
+        };
+        // Classify the drive before probing it, then pin each ancestor before
+        // opening the next one. Reparse points and placeholders fail closed.
+        let mut current = PathBuf::new();
+        let mut directories = Vec::new();
+        if !drive_path(path) {
+            return Err(ClosedError::UnsafeSource);
+        }
+        for component in folder.components() {
+            current.push(component);
+            if matches!(component, Component::Prefix(_)) {
+                continue;
+            }
+            control.check()?;
+            if matches!(component, Component::RootDir) {
+                windows::local(&current, control)?;
+            }
+            let directory = match std::fs::OpenOptions::new()
+                .read(true)
+                .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+                .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+                .open(&current)
+            {
+                Ok(directory) => directory,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                Err(_) => return Err(ClosedError::Unreadable),
+            };
+            let metadata = directory.metadata().map_err(|_| ClosedError::Unreadable)?;
+            if !metadata.is_dir() || !resident(&metadata) {
+                return Err(ClosedError::UnsafeSource);
+            }
+            directories.push(directory);
+        }
+        open_regular(&current.join(name))
+    }
+    #[cfg(not(any(unix, windows)))]
+    Err(ClosedError::UnsafeSource)
+}
+
+/// A regular, resident local file opened without following a final link, or
+/// `None` when nothing is there.
+pub(super) fn open_regular(path: &Path) -> Result<Option<File>, ClosedError> {
     #[cfg(unix)]
     let file = {
         use nix::fcntl::{OFlag, open};
         use nix::sys::stat::Mode;
-        File::from(
-            open(
-                path,
-                OFlag::O_RDONLY | OFlag::O_NOFOLLOW | OFlag::O_NONBLOCK | OFlag::O_CLOEXEC,
-                Mode::empty(),
-            )
-            .map_err(|_| ClosedError::Unreadable)?,
-        )
+        match open(
+            path,
+            OFlag::O_RDONLY | OFlag::O_NOFOLLOW | OFlag::O_NONBLOCK | OFlag::O_CLOEXEC,
+            Mode::empty(),
+        ) {
+            Ok(file) => File::from(file),
+            Err(nix::errno::Errno::ENOENT) => return Ok(None),
+            Err(_) => return Err(ClosedError::Unreadable),
+        }
     };
     #[cfg(windows)]
     let file = {
         use std::os::windows::fs::OpenOptionsExt;
         // FILE_SHARE_READ | WRITE | DELETE: never prevent a Zotero launch.
-        std::fs::OpenOptions::new()
+        match std::fs::OpenOptions::new()
             .read(true)
             .share_mode(7)
             .custom_flags(0x0020_0000)
             .open(path)
-            .map_err(|_| ClosedError::Unreadable)?
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(_) => return Err(ClosedError::Unreadable),
+        }
     };
     #[cfg(not(any(unix, windows)))]
     return Err(ClosedError::UnsafeSource);
+    regular(file).map(Some)
+}
+
+fn regular(file: File) -> Result<File, ClosedError> {
     let m = file.metadata().map_err(|_| ClosedError::Unreadable)?;
     if !m.is_file() || m.file_type().is_symlink() || !resident(&m) {
         return Err(ClosedError::UnsafeSource);
     }
-    passive(&file)?;
     Ok(file)
 }
 
@@ -269,14 +381,7 @@ pub(super) fn private_file(path: &Path, control: &Control) -> Result<File, Close
     }
     #[cfg(not(windows))]
     {
-        let mut options = std::fs::OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        options.open(path).map_err(|_| ClosedError::PrivateStorage)
+        ibis_core::atomic_file::create_private(path).map_err(|_| ClosedError::PrivateStorage)
     }
 }
 
@@ -289,16 +394,7 @@ pub(super) fn private_lock(path: &Path, control: &Control) -> Result<FileLease, 
     }
     #[cfg(not(windows))]
     {
-        let mut options = std::fs::OpenOptions::new();
-        options.read(true).write(true).create(true).truncate(false);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options
-                .mode(0o600)
-                .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK);
-        }
-        let file = options.open(path).map_err(|_| ClosedError::PrivateStorage)?;
+        let file = ibis_core::atomic_file::open_private(path).map_err(|_| ClosedError::PrivateStorage)?;
         if !file.metadata().is_ok_and(|m| m.is_file()) {
             return Err(ClosedError::PrivateStorage);
         }

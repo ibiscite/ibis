@@ -400,6 +400,55 @@ pub(crate) fn parse_entry<'s>(block: &Block<'s>) -> Result<RawEntry<'s>, Problem
     })
 }
 
+/// One field of an entry body, by byte offsets into the body.
+pub(crate) struct FieldSpan<'s> {
+    /// Lowercased.
+    pub name: String,
+    /// From the first byte of the name to the last byte of the value.
+    pub whole: std::ops::Range<usize>,
+    /// The value as written, with its delimiters.
+    pub value: std::ops::Range<usize>,
+    pub parts: Vec<Part<'s>>,
+}
+
+/// An entry body's key and fields with where each is written, for an edit
+/// that keeps every other byte. `None` when the body cannot be read.
+pub(crate) fn field_spans(body: &str) -> Option<(std::ops::Range<usize>, Vec<FieldSpan<'_>>)> {
+    let mut p = Parser::new(body);
+    p.skip_ws();
+    let key_start = p.pos;
+    let key = p.key()?.len();
+    let mut fields = Vec::new();
+    loop {
+        p.skip_ws();
+        match p.peek() {
+            None => break,
+            Some(',') => {
+                p.bump();
+                continue;
+            }
+            Some(_) => {}
+        }
+        let start = p.pos;
+        let name = p.ident()?;
+        p.skip_ws();
+        if p.peek() != Some('=') {
+            return None;
+        }
+        p.bump();
+        p.skip_ws();
+        let value_start = p.pos;
+        let parts = p.value().ok()?;
+        fields.push(FieldSpan {
+            name: name.to_ascii_lowercase(),
+            whole: start..p.part_end,
+            value: value_start..p.part_end,
+            parts,
+        });
+    }
+    Some((key_start..key_start + key, fields))
+}
+
 /// BibLaTeX's canonical name for entry-type aliases.
 fn canonical_kind(kind: &str) -> &str {
     match kind {
@@ -427,11 +476,17 @@ pub(crate) fn parse_string<'s>(block: &Block<'s>) -> Option<(String, Vec<Part<'s
 struct Parser<'a> {
     src: &'a str,
     pos: usize,
+    /// Where the last value part ended, before any space or comment after it.
+    part_end: usize,
 }
 
 impl<'a> Parser<'a> {
     fn new(src: &'a str) -> Self {
-        Parser { src, pos: 0 }
+        Parser {
+            src,
+            pos: 0,
+            part_end: 0,
+        }
     }
 
     /// The entry's key, read up to the comma or space after it.
@@ -503,6 +558,7 @@ impl<'a> Parser<'a> {
                 None => return Err(WarningCause::MissingValue),
             };
             parts.push(part);
+            self.part_end = self.pos;
             self.skip_ws();
             match self.peek() {
                 Some('#') => self.bump(),

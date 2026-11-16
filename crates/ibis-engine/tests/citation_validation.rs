@@ -51,6 +51,93 @@ fn annotate(pick: &mut CitationItem, objects: &[LibraryObject]) {
 }
 
 #[test]
+fn over_limit_requests_share_the_count_diagnostic_across_input_and_output_types() {
+    use ibis_engine::catalogue::{self, Audience};
+    use ibis_engine::request::{KeyCitationRequest, KeyItem, RecordItem, RecordsRequest};
+
+    let count = ibis_core::syntax::MAX_CITATION_ITEMS;
+    for output in ["pandoc", "apa"] {
+        let (mut request, objects) = case();
+        request.output = OutputSpec::Preset { name: output.into() };
+        request.items = vec![request.items[0].clone(); count + 1];
+        let engine = Engine::from_snapshot(Arc::new(Snapshot::new(objects).unwrap()));
+        let keys = KeyCitationRequest {
+            keys: vec![KeyItem::from("unresolved"); count + 1],
+            output: request.output.clone(),
+            form: Default::default(),
+            strict: false,
+            keep_order: false,
+            output_locale: None,
+        };
+        let records = RecordsRequest {
+            records: (0..=count).map(|id| json!({"id": id, "type": "book"})).collect(),
+            output: request.output.clone(),
+            form: Default::default(),
+            strict: false,
+            output_locale: None,
+            items: None,
+        };
+        let picks = RecordsRequest {
+            records: vec![json!({"id":"one", "type":"book"})],
+            items: Some(vec![
+                RecordItem {
+                    id: "one".into(),
+                    ..Default::default()
+                };
+                count + 1
+            ]),
+            ..records.clone()
+        };
+        let cancel = Cancellation::default();
+        for (error, code, citation_error, recovery) in [
+            (
+                engine.cite(&request, &cancel).unwrap_err(),
+                ErrorCode::ResourceLimit,
+                CitationError::TooManyItems,
+                "reduce-selection",
+            ),
+            (
+                engine.cite_keys(&keys, &cancel).unwrap_err(),
+                ErrorCode::BadInput,
+                CitationError::TooManyKeys,
+                "edit-input",
+            ),
+            (
+                engine.cite_records(&records, &cancel).unwrap_err(),
+                ErrorCode::ResourceLimit,
+                CitationError::TooManyRecords,
+                "reduce-selection",
+            ),
+            (
+                engine.cite_records(&picks, &cancel).unwrap_err(),
+                ErrorCode::BadInput,
+                CitationError::TooManyRecordItems,
+                "edit-input",
+            ),
+        ] {
+            assert_eq!(error.code, code);
+            assert_eq!(error.citation_error, Some(citation_error));
+            let presented = serde_json::to_value(error).unwrap();
+            assert_eq!(
+                presented["message"],
+                json!({"id":"problem-too-many-items", "args":{"count":count.to_string()}})
+            );
+            assert_eq!(presented["recovery"]["action"], recovery);
+            for audience in [Audience::Cli, Audience::Agent, Audience::App] {
+                assert_eq!(
+                    catalogue::error(&error, audience),
+                    "A citation can hold at most 1000 references."
+                );
+                assert_eq!(
+                    catalogue::citation(CitationError::TooManyItems, audience, &[]),
+                    catalogue::error(&error, audience)
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn whole_request_refusals_keep_their_diagnostic_for_each_output() {
     for output in ["pandoc", "apa"] {
         let (mut request, objects) = case();

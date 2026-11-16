@@ -11,6 +11,7 @@ import type { CitedWarning, DisplayTree, Preview, DraftItem, CitationIntent } fr
 import { recordId } from "../test-fixtures";
 import { isStyle, listedOutput } from "../format/outputs";
 import { fixtureDestination, formatAnswer } from "./format";
+import { exampleProposals } from "./proposals";
 import { forgetRecentFormats } from "../features/picker/FormatMenu";
 
 export async function resetApp() {
@@ -182,6 +183,7 @@ export type Handler = (args: Record<string, unknown> & PreviewRequest & { query:
 
 /** Mock the Rust commands; returns the list of commands called. */
 export function backend(overrides: Record<string, Handler> = {}): string[] {
+  let proposals = exampleProposals();
   const calls: string[] = [];
   const citationKeys = new Map<string, string>();
   let lastLibrary: Partial<api.LibraryStatus> = {};
@@ -192,6 +194,9 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
   const submitted = new Map<number, Partial<api.PickerPreferences>>();
   receipts.clear();
   const defaults: Record<string, Handler> = {
+    waiting_proposals: () => proposals,
+    apply_proposal: ({ id }) => { proposals = proposals.filter((proposal) => proposal.id !== id); return { status: "applied", backup: "signals.bib.ibis-backup-1" }; },
+    reject_proposal: ({ id }) => { proposals = proposals.filter((proposal) => proposal.id !== id); return { status: "rejected" }; },
     "plugin:window|is_visible": () => true,
     shortcut_status: () => ({ shortcut: "CommandOrControl+Shift+Y", registered: true, error: null }),
     search: () => [],
@@ -225,6 +230,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
       return { text: preview.text, warnings: preview.warnings };
     },
     picker_preferences: () => preferences,
+    format_settings: () => ({ apps: [], key_output_visible: Boolean(preferences.key_output), writings: [] }),
     save_picker_preferences: ({ preferences: patch }) => { const receipt = ++revision; submitted.set(receipt, patch as Partial<api.PickerPreferences>); return receipt; },
     picker_preferences_saved: () => null,
     // Opened from no app Ibis knows: the default format applies.
@@ -235,7 +241,6 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     remember_app_output: () => null,
     login_item: () => ({ name: "Ibis", enabled: false, problem: null }),
     set_login_item: ({ enabled }) => ({ name: "Ibis", enabled, problem: null }),
-    cli_status: () => ({ state: "not-installed", version: null, used_path: null, profile_line: null, removable: false, installable: true }),
     // Builds without an update key have no update controls.
     update_checks: () => null,
     update_available: () => false,
@@ -284,7 +289,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
         const records: api.SearchResult[] = Array.isArray(found) ? found : (found as { results?: api.SearchResult[] })?.results ?? [];
         for (const record of records) citationKeys.set(JSON.stringify(record.id), record.key);
         if (cmd === "recent_references" && Array.isArray(reply) && typeof reply[1] === "boolean") return reply;
-        const rows = Array.isArray(reply) ? { revision: reply[0]?.revision ?? "1", results: reply } : reply;
+        const rows = Array.isArray(reply) ? { revision: reply[0]?.revision ?? lastLibrary.revision ?? "1", results: reply } : reply;
         return cmd === "recent_references" ? [rows, Boolean((rows as { results?: unknown[] }).results?.length), false] : rows;
       });
       return value;

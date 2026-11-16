@@ -1,4 +1,5 @@
 //! Typed engine methods shared by the command line and desktop (ADR 0028).
+pub mod agent_apps;
 pub mod discovery;
 mod method;
 pub use method::Method;
@@ -25,6 +26,9 @@ pub mod rpc;
 
 mod service;
 pub use ibis_sources::identity;
+/// The PDF extractor's contract: what `ibis __extract-pdf` answers and the
+/// bounds the engine checks it against (decision 0055).
+pub use ibis_sources::pdf;
 /// The file names a library chooser offers, and whether a dropped file is one.
 pub use ibis_sources::{library_file_extensions, names_a_library};
 pub use service::*;
@@ -43,3 +47,6 @@ pub mod server;
 pub mod recents;
 
 pub mod citations;
+
+/// Library changes agents propose and the person confirms (decision 0055).
+pub mod write;

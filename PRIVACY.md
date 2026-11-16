@@ -1,7 +1,7 @@
 # Privacy and data flows
 
-Ibis reads your libraries without changing them. It has no account or
-crash-upload service. This page describes current data flows; plans live in
+Ibis reads your libraries without changing them, except a change you apply
+yourself in the app. It has no account or crash-upload service. This page describes current data flows; plans live in
 [ROADMAP.md](ROADMAP.md).
 
 ## What Ibis reads and writes
@@ -12,6 +12,36 @@ crash-upload service. This page describes current data flows; plans live in
   `.bib` files under Documents, Desktop and Downloads; it opens a file only
   after selection. Closed Zotero databases and Better BibTeX key files are
   read from private temporary copies that are removed after use.
+- **Attachment text:** `ibis outline`, `ibis read` and `ibis find-in` read
+  the text Zotero keeps for the files it indexed: from Zotero while it runs,
+  or from the `.zotero-ft-cache` file in the attachment's storage folder while
+  it is closed, with page counts from the private copy of Zotero's database.
+  A PDF Zotero has not fully indexed, and a PDF named in a `.bib` file's
+  `file` field, is read from the file itself: `ibis` opens it, only if it is a
+  regular file on this computer of at most 256 MiB, and hands the opened file
+  to a short-lived copy of itself that has no other file, no environment and
+  ten seconds to give the text and printed page labels. The desktop app never
+  reads PDFs. These commands need no permission, so an AI app that can run
+  commands can read attachment text this way. The MCP tools `outline`, `read` and `find_in` are
+  offered only for libraries where you allow AI apps to read attachment text;
+  this is off by default, separate for each library, kept only on this
+  computer and not part of a settings backup. Text is held in memory for one
+  request, never written to disk, and returned in bounded parts: at most five
+  pages or 32 KiB, or ten passages. Ids name an attachment, never its path.
+- **Proposed changes:** only when an AI app's `ibis mcp` command includes
+  `--allow-writes`, its tools can propose adding a reference, changing a
+  reference's fields or adding and removing its tags. Each proposal is one
+  private file in a `proposals` folder beside `settings.json`, at most 64 KiB
+  and at most 100 waiting: what the AI app sent, after the same filter as every
+  shared record (no notes, files or private links), the name the app gave
+  itself, the library's id and, for a `.bib` file, its path, the reference's
+  key and title, and a fingerprint of the entry. Nothing in a library changes
+  until you apply the proposal in the Ibis app; the app shows the entry before
+  and after, refuses if it changed since, edits only that entry and keeps the
+  replaced file as `<file>.ibis-backup-N`. `ibis proposals` lists, shows and
+  rejects proposals but cannot apply them. Only `.bib` files take proposals;
+  Ibis does not change Zotero libraries.
+  An AI app that can run commands can still edit files you can edit.
 - **Project bibliographies:** chosen files are checked without changes.
   Settings retain their paths; the picker receives only file names.
 - **Clipboard:** copying replaces its contents. Clipboard managers, cloud
@@ -32,6 +62,16 @@ crash-upload service. This page describes current data flows; plans live in
 - **Windows paste:** checks foreground window/process, integrity and password
   field status through UI Automation. Uncertain or disallowed targets copy
   instead. Delivery safeguards are in [architecture](docs/architecture.md#desktop-app).
+- **Command line:** on macOS and Linux the app's first launch links
+  `~/.local/bin/ibis` to its bundled command, unless another `ibis` comes first
+  on PATH, with a receipt and a `command-settled` marker in
+  `~/.local/share/ibis`. Later launches leave the choice in Settings alone;
+  Remove Command deletes the link and receipt.
+- **AI apps:** `ibis agents setup` and `remove`, run by you, add or remove
+  one `ibis` server entry in the AI apps' own settings files (or through their
+  own `mcp add` command), keeping a new `<file>.ibis-backup-N` copy of each file
+  they change. Backups are created privately and never replace an older backup.
+  They read those files only to find that entry, and send nothing.
 - **Settings:** `settings.json` holds library choices, formats, appearance,
   shortcuts, update consent, optional project names/paths and selections per
   app. Atomic saves use `.tmp`, `.bak` and a writer `.lock`. `apps.json` keeps
@@ -69,7 +109,7 @@ MCP responses go to the client that started the server, as listed below.
 | App updates | Automatic checks require consent; Check for Updates… checks on request. GitHub receives IP address and app version, not library data. Downloads require agreement and a valid channel signature. |
 | Windows installation | Downloads Microsoft's WebView2 bootstrapper/runtime if missing. Microsoft's runtime updates are separate. |
 | Feedback | Opens GitHub in your browser with app version and OS; you decide whether to submit. |
-| AI clients | `ibis mcp` passes bibliographic fields and citations over stdio to its caller. That client may send them to its own service. [MCP privacy boundary](docs/cli.md#ai-agents-mcp). |
+| AI clients | `ibis mcp` passes bibliographic fields and citations over stdio to its caller, and attachment text from libraries where you allow it. With `--allow-writes` it also takes proposed changes, kept on this computer as above. That client may send what it receives to its own service. [MCP privacy boundary](docs/cli.md#ai-agents-mcp). |
 
 The web interface has window-scoped native commands rather than file,
 clipboard, shell or network plugin permissions. Its CSP limits connections

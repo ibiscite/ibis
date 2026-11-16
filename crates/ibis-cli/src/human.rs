@@ -6,7 +6,6 @@ pub(super) use ibis_core::model::is_hidden;
 use ibis_core::{
     contract::*,
     destination::{CopyReason, Decision, Destination},
-    syntax::MAX_CITATION_ITEMS,
 };
 use ibis_engine::catalogue::{self, Audience};
 use ibis_engine::{
@@ -42,10 +41,10 @@ pub(super) fn with_summary(
 fn search_summary(hits: &[record::Row], holdings: Holdings, out: Out) -> Option<String> {
     if hits.is_empty() {
         return match holdings {
-            Holdings::NoLibrary => Some("No library is open; add --file <library> or --zotero.".into()),
+            Holdings::NoLibrary => Some(cli("cli-no-library", &[])),
             Holdings::Empty => catalogue::text("cli-no-references", None, &[]),
-            Holdings::References if out.width.is_some() => Some("No references matched. Try a shorter query.".into()),
-            Holdings::References => Some("No references found.".into()),
+            Holdings::References if out.width.is_some() => Some(cli("cli-search-no-match-terminal", &[])),
+            Holdings::References => Some(cli("cli-search-no-match", &[])),
         };
     }
     let rows = if let Some(width) = out.width {
@@ -58,7 +57,7 @@ fn search_summary(hits: &[record::Row], holdings: Holdings, out: Out) -> Option<
     };
     // Closest matches are said to be so, never shown as full matches.
     if hits.iter().any(|hit| hit.partial) {
-        return Some(format!("No reference matches every word. Closest matches:\n{rows}"));
+        return Some(cli("cli-search-partial", &[("rows", &rows)]));
     }
     Some(rows)
 }
@@ -84,7 +83,13 @@ fn summary(
                 let locator = read.pointer("/locator/typed").and_then(Value::as_str);
                 let words = read.get("search").and_then(Value::as_str).unwrap_or_default();
                 let cited = [prefix, locator].into_iter().flatten().collect::<Vec<_>>().join(" · ");
-                format!("Cited with: {}; searched for: {}\n", field(&cited), field(words))
+                format!(
+                    "{}\n",
+                    cli(
+                        "cli-search-shorthand",
+                        &[("cited", &field(&cited)), ("words", &field(words))]
+                    )
+                )
             });
             let rows = hits.iter().map(projection::hit).collect::<Option<Vec<_>>>()?;
             let summary = search_summary(&rows, holdings, out)?;
@@ -93,7 +98,7 @@ fn summary(
         Method::Libraries => {
             let libraries = data.get("libraries")?.as_array()?;
             if libraries.is_empty() {
-                return Some("No libraries loaded. Open one with --file <library>.".into());
+                return Some(cli("cli-libraries-empty", &[]));
             }
             if out.width.is_some() {
                 return terminal_libraries(libraries, names, out);
@@ -108,17 +113,7 @@ fn summary(
                 let warnings = library.get("warnings_total").and_then(Value::as_u64).unwrap_or(0);
                 lines.push(format!(
                     "{}\t{} {}{}{}{}",
-                    field(&{
-                        let id = library.get("id")?.as_str()?;
-                        let zotero = library.get("kind").and_then(Value::as_str) == Some("zotero");
-                        names.get(id).cloned().unwrap_or_else(|| {
-                            match library.pointer("/zotero/group").and_then(Value::as_u64) {
-                                Some(group) => format!("Zotero group {group}"),
-                                None if zotero => "Zotero".into(),
-                                None => id.into(),
-                            }
-                        })
-                    }),
+                    library_name(library, names)?,
                     count,
                     if count == 1 { "item" } else { "items" },
                     match warnings {
@@ -127,14 +122,14 @@ fn summary(
                         n => format!(", {n} warnings"),
                     },
                     if library.get("refresh_error").is_some_and(|value| !value.is_null()) {
-                        " (last successful read; refresh failed)"
+                        format!(" {}", cli("cli-library-stale-note", &[]))
                     } else {
-                        ""
+                        String::new()
                     },
                     if library.get("watch_warning").is_some_and(|value| !value.is_null()) {
-                        " (changes are not picked up automatically)"
+                        format!(" {}", cli("cli-library-watch-note", &[]))
                     } else {
-                        ""
+                        String::new()
                     }
                 ));
                 let shown = library.get("warnings").and_then(Value::as_array);
@@ -164,8 +159,11 @@ fn summary(
         Method::Project => project_report(data),
         Method::Entry => match serde_json::from_value(data.clone()).ok()? {
             EntryResult::Entry { text, .. } => Some(text.trim_end().to_owned()),
-            EntryResult::Refused { reason } => Some(entry_refusal(reason).into()),
+            EntryResult::Refused { reason } => Some(entry_refusal(reason)),
         },
+        Method::Outline => outline_summary(data),
+        Method::Read => read_summary(data),
+        Method::FindIn => find_in_summary(data),
         Method::Styles => {
             let styles = data.get("styles")?.as_array()?;
             let total = data.get("total")?.as_u64()?;
@@ -181,17 +179,118 @@ fn summary(
                 })
                 .collect::<Option<Vec<_>>>()?;
             if total == 0 {
-                lines.push("No style matches those words.".into());
+                lines.push(cli("cli-styles-no-match", &[]));
             } else if styles.len() as u64 != total {
-                lines.push(format!(
-                    "Showing {} of {total} styles; narrow it with: ibis styles WORDS",
-                    styles.len()
+                lines.push(cli(
+                    "cli-styles-showing",
+                    &[("shown", &styles.len().to_string()), ("total", &total.to_string())],
                 ));
             }
             Some(lines.join("\n"))
         }
         _ => None,
     }
+}
+
+/// One line per attachment: its id, title, type and whether its text can be read.
+fn outline_summary(data: &Value) -> Option<String> {
+    let attachments = data.get("attachments")?.as_array()?;
+    if attachments.is_empty() {
+        return Some(cli("cli-outline-none", &[]));
+    }
+    attachments
+        .iter()
+        .map(|attachment| {
+            let pages = attachment.get("pages").and_then(Value::as_u64);
+            let text = match attachment.get("text")?.as_str()? {
+                "available" if attachment.get("pages_known") == Some(&Value::Bool(true)) => cli(
+                    if attachment.get("cite_pages_known") == Some(&Value::Bool(true)) {
+                        "cli-outline-printed-pages"
+                    } else {
+                        "cli-outline-pages"
+                    },
+                    &[("count", &pages.unwrap_or_default().to_string())],
+                ),
+                "available" => cli("cli-outline-text", &[]),
+                "not-indexed" => cli("cli-outline-not-indexed", &[]),
+                "no-file" => cli("cli-outline-no-file", &[]),
+                "too-large" => cli("cli-outline-too-large", &[]),
+                "missing" => cli("cli-outline-missing", &[]),
+                "not-local" => cli("cli-outline-not-local", &[]),
+                "not-pdf" => cli("cli-outline-not-pdf", &[]),
+                "damaged" => cli("cli-outline-damaged", &[]),
+                "timed-out" => cli("cli-outline-timed-out", &[]),
+                _ => cli("cli-outline-not-yet", &[]),
+            };
+            Some(format!(
+                "{}\t{}\t{}\t{text}",
+                field(attachment.get("id")?.as_str()?),
+                field(attachment.get("title").and_then(Value::as_str).unwrap_or_default()),
+                field(attachment.get("media_type").and_then(Value::as_str).unwrap_or_default()),
+            ))
+        })
+        .collect::<Option<Vec<_>>>()
+        .map(|lines| lines.join("\n"))
+}
+
+/// Attachment text as it reads, each page under its number, then how to go on.
+fn read_summary(data: &Value) -> Option<String> {
+    let mut parts = Vec::new();
+    for page in data.get("pages")?.as_array()? {
+        let text: Vec<String> = page
+            .get("text")?
+            .as_str()?
+            .lines()
+            .map(super::terminal_display)
+            .collect();
+        if let Some(mark) = page_mark(page) {
+            parts.push(mark);
+        }
+        parts.push(text.join("\n"));
+    }
+    if let Some(next) = data.get("next") {
+        let attachment = field(data.get("attachment")?.as_str()?);
+        let mut command = format!("ibis read {attachment}");
+        if let Some(page) = next.get("first_page").and_then(Value::as_u64) {
+            command.push_str(&format!(" --pages {page}-{}", page + 4));
+        }
+        if let Some(offset) = next.get("offset").and_then(Value::as_u64) {
+            command.push_str(&format!(" --offset {offset}"));
+        }
+        parts.push(cli("cli-read-more", &[("command", &command)]));
+    }
+    Some(parts.join("\n"))
+}
+
+/// The file's page, and the printed page to cite when its label is known.
+fn page_mark(item: &Value) -> Option<String> {
+    let page = item.get("pdf_page")?.as_u64()?.to_string();
+    Some(match item.get("cite_page").and_then(Value::as_str) {
+        Some(label) => cli("cli-read-printed-page", &[("page", &page), ("label", &field(label))]),
+        None => cli("cli-read-page", &[("page", &page)]),
+    })
+}
+
+/// One line per passage, after its page when pages are known.
+fn find_in_summary(data: &Value) -> Option<String> {
+    let passages = data.get("passages")?.as_array()?;
+    if passages.is_empty() {
+        return Some(cli("cli-find-in-none", &[]));
+    }
+    let mut lines = passages
+        .iter()
+        .map(|passage| {
+            let text = field(passage.get("text")?.as_str()?);
+            Some(match page_mark(passage) {
+                Some(mark) => format!("{mark}\t{text}"),
+                None => text,
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+    if data.get("complete") == Some(&Value::Bool(false)) {
+        lines.push(cli("cli-find-in-more", &[("count", &passages.len().to_string())]));
+    }
+    Some(lines.join("\n"))
 }
 
 /// One line per key, the file's own state first, in the words the app uses.
@@ -202,36 +301,42 @@ pub(super) fn project_report(data: &Value) -> Option<String> {
     let mut report = vec![];
     if let Some(problem) = result.problem {
         let why = match problem {
-            ProjectProblem::Unavailable => "the file is not there or is not on this computer yet",
-            ProjectProblem::NotAFile => "it is not a file",
-            ProjectProblem::TooLarge => "the file is larger than 64 MiB",
-            ProjectProblem::NotUtf8 => "the file is not UTF-8 text",
-            ProjectProblem::Changing => "the file is still changing",
-            ProjectProblem::NotBibtex => "a bibliography must be a BibTeX or BibLaTeX file",
+            ProjectProblem::Unavailable => cli("cli-project-unavailable", &[]),
+            ProjectProblem::NotAFile => cli("cli-project-not-file", &[]),
+            ProjectProblem::TooLarge => cli("cli-project-too-large", &[]),
+            ProjectProblem::NotUtf8 => cli("cli-project-not-utf8", &[]),
+            ProjectProblem::Changing => cli("cli-project-changing", &[]),
+            ProjectProblem::NotBibtex => cli("cli-project-not-bibtex", &[]),
         };
-        report.push(format!("Couldn't read {name}: {why}."));
+        report.push(cli("cli-project-unreadable", &[("name", &name), ("reason", &why)]));
     }
     if !result.damaged_lines.is_empty() {
-        report.push(format!(
-            "Couldn't read all of {name}: check line {}.",
-            lines(&result.damaged_lines)
+        report.push(cli(
+            "cli-project-damaged",
+            &[("name", &name), ("lines", &lines(&result.damaged_lines))],
         ));
     }
     for ProjectKey { key, check } in &result.keys {
         let status = match check {
-            KeyCheck::In { line } => format!("In {name} (line {line})"),
-            KeyCheck::Missing => format!("Missing from {name}"),
-            KeyCheck::CouldNotCheck => format!("Couldn't check {name}"),
-            KeyCheck::Repeated { lines: found } => format!("Key appears more than once (lines {})", lines(found)),
-            KeyCheck::MayNameAnother { line, doubt } => format!(
-                "Key may name another reference (line {line}): {}",
-                match doubt {
-                    Doubt::Fields => "this entry and the library differ",
-                    Doubt::LetterCase => "a key differs only by letter case",
-                    Doubt::Alias => "it is another entry's alias",
-                    Doubt::Helper => "it belongs to an @xdata entry, which cannot be cited",
-                    Doubt::Commented => "it is inside @comment, which some tools still read",
-                }
+            KeyCheck::In { line } => cli("cli-project-key-in", &[("name", &name), ("line", &line.to_string())]),
+            KeyCheck::Missing => cli("cli-project-key-missing", &[("name", &name)]),
+            KeyCheck::CouldNotCheck => cli("cli-project-key-unchecked", &[("name", &name)]),
+            KeyCheck::Repeated { lines: found } => cli("cli-project-key-repeated", &[("lines", &lines(found))]),
+            KeyCheck::MayNameAnother { line, doubt } => cli(
+                "cli-project-key-doubt",
+                &[
+                    ("line", &line.to_string()),
+                    (
+                        "reason",
+                        &match doubt {
+                            Doubt::Fields => cli("cli-project-fields-differ", &[]),
+                            Doubt::LetterCase => cli("cli-project-case-differs", &[]),
+                            Doubt::Alias => cli("cli-project-alias", &[]),
+                            Doubt::Helper => cli("cli-project-helper", &[]),
+                            Doubt::Commented => cli("cli-project-commented", &[]),
+                        },
+                    ),
+                ],
             ),
         };
         report.push(format!("{}\t{status}", field(key)));
@@ -239,16 +344,12 @@ pub(super) fn project_report(data: &Value) -> Option<String> {
     Some(report.join("\n"))
 }
 
-fn entry_refusal(reason: EntryRefusal) -> &'static str {
+fn entry_refusal(reason: EntryRefusal) -> String {
     match reason {
-        EntryRefusal::NoOriginal => {
-            "This reference has no original BibTeX entry here. Export it from your reference manager in your project's dialect, keeping its key."
-        }
-        EntryRefusal::Changed => "The library file changed or could not be read. Reload it and try again.",
-        EntryRefusal::Repeated => "The library file repeats this key, so Ibis cannot tell which entry to give.",
-        EntryRefusal::Dependency => {
-            "This entry relies on a crossref, xdata or @string that cannot come with it. Export it from your reference manager, keeping its key."
-        }
+        EntryRefusal::NoOriginal => cli("cli-entry-no-original", &[]),
+        EntryRefusal::Changed => cli("cli-entry-changed", &[]),
+        EntryRefusal::Repeated => cli("cli-entry-repeated", &[]),
+        EntryRefusal::Dependency => cli("cli-entry-dependency", &[]),
     }
 }
 
@@ -318,14 +419,11 @@ fn terminal_libraries(libraries: &[Value], names: &BTreeMap<String, String>, out
             out.dim(&out::truncate(&counts, width.saturating_sub(columns + 3)))
         ));
         for (property, message) in [
-            (
-                "refresh_error",
-                "note: this library could not be refreshed; showing the last successful read",
-            ),
-            ("watch_warning", "note: changes are not picked up automatically"),
+            ("refresh_error", cli("cli-library-refresh-failed", &[])),
+            ("watch_warning", cli("cli-library-not-watched", &[])),
         ] {
             if library.get(property).is_some_and(|value| !value.is_null()) {
-                lines.extend(wrap_warning(message, width));
+                lines.extend(wrap_warning(&message, width));
             }
         }
         let shown = library.get("warnings").and_then(Value::as_array);
@@ -384,32 +482,28 @@ fn entry_warning(warning: &Value) -> String {
                     .and_then(Value::as_str)
                     .is_some_and(|field| matches!(field, "issued" | "accessed" | "original-date" | "date")) =>
         {
-            format!("{subject} could not be fully converted; Ibis uses the text as written")
+            cli("cli-warning-text-kept", &[("subject", &subject)])
         }
         Some("field") => match warning.get("cause").and_then(Value::as_str) {
-            Some("tex-command") => format!("{subject} could not be fully converted; Ibis uses the text as written"),
-            Some("date") => {
-                format!("{subject} could not be fully converted; Ibis kept the reference; check the date before citing")
-            }
-            Some("unknown-field") => "an unrecognised field was skipped; Ibis kept the reference".into(),
-            Some("unknown-type") => "the entry's type is not supported; Ibis skips this entry".into(),
-            Some("link") => format!("{subject} is private or is not a web address; Ibis leaves it out"),
-            Some("names") => format!("{subject} could not be fully read; Ibis uses the names it could read"),
-            _ => {
-                format!("{subject} could not be fully converted; Ibis kept the reference with the fields it could read")
-            }
+            Some("tex-command") => cli("cli-warning-text-kept", &[("subject", &subject)]),
+            Some("date") => cli("cli-warning-date", &[("subject", &subject)]),
+            Some("unknown-field") => cli("cli-warning-unknown-field", &[]),
+            Some("unknown-type") => cli("cli-warning-unknown-type", &[]),
+            Some("link") => cli("cli-warning-link", &[("subject", &subject)]),
+            Some("names") => cli("cli-warning-names", &[("subject", &subject)]),
+            _ => cli("cli-warning-fields-kept", &[("subject", &subject)]),
         },
-        Some("duplicate-key") => "more than one entry uses this key or id; Ibis skips them all".into(),
+        Some("duplicate-key") => cli("cli-warning-duplicate-key", &[]),
         Some("syntax") => {
             if warning.get("field").and_then(Value::as_str).is_some() {
-                format!("{subject} could not be read; Ibis skips this entry")
+                cli("cli-warning-syntax-field", &[("subject", &subject)])
             } else {
-                "this entry could not be read; Ibis skips it".into()
+                cli("cli-warning-syntax-entry", &[])
             }
         }
-        Some("work-limit") if label.is_some() => "the entry is too large to read; Ibis skips it".into(),
-        Some("work-limit") => "Ibis could not read the library in full; some references may be missing".into(),
-        Some("invalid-attachment") => "an attachment link is not valid; Ibis leaves it out".into(),
+        Some("work-limit") if label.is_some() => cli("cli-warning-entry-too-large", &[]),
+        Some("work-limit") => cli("cli-warning-library-incomplete", &[]),
+        Some("invalid-attachment") => cli("cli-warning-attachment-skipped", &[]),
         _ => warning_line(warning).trim().to_owned(),
     };
     match label {
@@ -438,8 +532,8 @@ pub(super) fn search_notes(data: &Value, libraries: &[Value], names: &BTreeMap<S
                 .and_then(chrono::DateTime::from_timestamp_millis)
                 .map(|time| time.with_timezone(&chrono::Local).format("%-I:%M %p").to_string());
             match time {
-                Some(time) => format!("note: {name} could not be refreshed; showing results from {time}"),
-                None => format!("note: {name} could not be refreshed; showing the last successful read"),
+                Some(time) => cli("cli-search-stale-at", &[("name", &name), ("time", &time)]),
+                None => cli("cli-search-stale", &[("name", &name)]),
             }
         })
         .collect()
@@ -451,7 +545,7 @@ pub(super) fn warning_line(warning: &Value) -> String {
     let what = match (warning.get("code").and_then(Value::as_str), key) {
         (Some("duplicate-key"), Some(key)) => {
             // In CSL-JSON this is the record's `id`, which is never a citation key.
-            format!("more than one entry uses '{key}' as its key or id, so Ibis skips them all")
+            cli("cli-warning-duplicate-key-named", &[("key", &key)])
         }
         (Some("zotero-newer-than-tested"), _) => catalogue::sentence(
             "source-warning",
@@ -459,15 +553,13 @@ pub(super) fn warning_line(warning: &Value) -> String {
             Audience::Cli,
             &[],
         ),
-        (Some("syntax"), _) => "an entry could not be read, so Ibis skips it".into(),
-        (Some("field"), _) => "a field could not be fully converted; check this entry".into(),
-        (Some("work-limit"), _) => "the library is too large to read in full".into(),
-        (Some("invalid-attachment"), _) => "an attachment link is not valid".into(),
-        (Some("cloud-synced-directory"), _) => "the library is in a cloud-synced folder, so changes can be late".into(),
-        (Some("citation-keys-unavailable"), _) => {
-            "Better BibTeX keys could not be read, so some items have none".into()
-        }
-        _ => "something in the library needs checking".into(),
+        (Some("syntax"), _) => cli("cli-warning-syntax", &[]),
+        (Some("field"), _) => cli("cli-warning-field", &[]),
+        (Some("work-limit"), _) => cli("cli-warning-work-limit", &[]),
+        (Some("invalid-attachment"), _) => cli("cli-warning-invalid-attachment", &[]),
+        (Some("cloud-synced-directory"), _) => cli("cli-warning-cloud-directory", &[]),
+        (Some("citation-keys-unavailable"), _) => cli("cli-warning-keys-unavailable", &[]),
+        _ => cli("cli-warning-unknown", &[]),
     };
     // Why, from the engine's words for the warning's cause, when it gives one.
     let why = serde_json::from_value::<ibis_engine::SourceWarning>(warning.clone())
@@ -593,7 +685,7 @@ pub(super) fn citation_report(data: &Value, citing: &Citing, printed: bool) -> V
         .and_then(Value::as_str)
         .filter(|language| printed && *language != "en-US")
     {
-        lines.push(format!("note: written in {}.", field(language)));
+        lines.push(cli("cli-citation-language", &[("language", &field(language))]));
     }
     if printed && let Ok(destination) = serde_json::from_value(parse("destination")) {
         lines.push(destination_note(&destination));
@@ -606,51 +698,41 @@ pub(super) fn citation_report(data: &Value, citing: &Citing, printed: bool) -> V
 /// What the app would do with this citation; pasting is on and permitted here.
 fn destination_note(destination: &Destination) -> String {
     let name = destination.name.as_deref().unwrap_or("this app");
-    let delivery = match destination.delivery {
-        Decision::Paste => format!("Ibis pastes into {name}"),
-        Decision::Copy(CopyReason::UnknownApp) => "Ibis does not know this app, so it asks before pasting".into(),
-        Decision::Copy(CopyReason::UnsupportedSystem) => {
-            "Ibis copies here, because it cannot paste on this system yet".into()
-        }
-        Decision::Copy(CopyReason::Terminal) => {
-            format!("Ibis copies for {name}, because a paste runs there as typed input")
-        }
-        Decision::Copy(CopyReason::RemoteDesktop | CopyReason::VirtualMachine) => {
-            format!("Ibis copies for {name}, because keystrokes reach another system there")
-        }
-        Decision::Copy(CopyReason::NonstandardShortcut) => {
-            format!("Ibis copies for {name}, because its paste key does something else")
-        }
-        Decision::Copy(_) => format!("Ibis copies for {name}"),
+    let id = match destination.delivery {
+        Decision::Paste => "cli-destination-paste",
+        Decision::Copy(CopyReason::UnknownApp) => "cli-destination-unknown",
+        Decision::Copy(CopyReason::UnsupportedSystem) => "cli-destination-unsupported",
+        Decision::Copy(CopyReason::Terminal) => "cli-destination-terminal",
+        Decision::Copy(CopyReason::RemoteDesktop | CopyReason::VirtualMachine) => "cli-destination-remote",
+        Decision::Copy(CopyReason::NonstandardShortcut) => "cli-destination-shortcut",
+        Decision::Copy(_) => "cli-destination-copy",
     };
-    format!("note: {delivery}.")
+    cli(id, &[("name", name)])
 }
 
 fn refusal(error: CitationError, label: &str, output: &str, form: CitationForm, flags: &str) -> String {
     let form = catalogue::id("form", form);
     let form = form.strip_prefix("form-").unwrap_or_default();
-    let limit = MAX_CITATION_ITEMS.to_string();
     let args = [
         ("reference", label),
         ("output", output),
         ("form", form),
         ("options", flags),
-        ("limit", &limit),
     ];
     catalogue::citation(error, Audience::Cli, &args)
 }
 
 /// One of the command line's own sentences from the catalogue.
-fn cli(id: &str, args: &[(&str, &str)]) -> String {
+pub(super) fn cli(id: &str, args: &[(&str, &str)]) -> String {
     catalogue::text(id, None, args).unwrap_or_else(|| id.to_owned())
 }
 
 /// Fixed words for output that could not be written; the OS message is not repeated.
-pub(super) fn write_failure(error: &std::io::Error) -> &'static str {
+pub(super) fn write_failure(error: &std::io::Error) -> String {
     if error.kind() == std::io::ErrorKind::StorageFull {
-        "the output could not be written because the disk is full; free some space and try again."
+        cli("cli-output-disk-full", &[])
     } else {
-        "the output could not be written; check where it is sent and try again."
+        cli("cli-output-unwritten", &[])
     }
 }
 
@@ -660,10 +742,12 @@ pub(super) fn code_sentence(code: ErrorCode) -> String {
 }
 
 pub(super) fn file_failure(path: &Path, error: EngineError) -> String {
-    format!(
-        "cannot open {}: {}",
-        field(&path.display().to_string()),
-        file_reason(path, error)
+    cli(
+        "cli-file-unopened",
+        &[
+            ("path", &field(&path.display().to_string())),
+            ("reason", &file_reason(path, error)),
+        ],
     )
 }
 
@@ -678,34 +762,27 @@ pub(super) fn file_reason(path: &Path, error: EngineError) -> String {
     // Without an answer in time, the read's own reason stands.
     let probed = path.to_owned();
     let found = crate::bounded(move || path_reason(&probed)).flatten();
-    found.map_or_else(
-        || match code {
-            ErrorCode::BadInput => {
-                catalogue::text("cli-file-unreadable", None, &[]).unwrap_or_default()
-            }
-            ErrorCode::SourceUnavailable => "it is being written or cannot be read right now; try again in a moment.".into(),
-            ErrorCode::ResourceLimit => {
-                "it is larger than Ibis reads, or too many files are open at once; split the library or open fewer files.".into()
-            }
-            code => code_sentence(code),
-        },
-        str::to_owned,
-    )
+    found.unwrap_or_else(|| match code {
+        ErrorCode::BadInput => catalogue::text("cli-file-unreadable", None, &[]).unwrap_or_default(),
+        ErrorCode::SourceUnavailable => cli("cli-file-busy", &[]),
+        ErrorCode::ResourceLimit => cli("cli-file-too-large", &[]),
+        code => code_sentence(code),
+    })
 }
 
 /// What the path itself shows: missing, a folder, or a file this program may not read.
-fn path_reason(path: &Path) -> Option<&'static str> {
+fn path_reason(path: &Path) -> Option<String> {
     let link_to_nothing = std::fs::symlink_metadata(path).is_ok()
         && std::fs::metadata(path).is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound);
     if std::fs::symlink_metadata(path).is_err() || link_to_nothing {
-        Some("there is no file at that path; check the spelling or give the full path.")
+        Some(cli("cli-file-missing", &[]))
     } else if path.is_dir() {
-        Some("it is a folder; give the library file inside it.")
+        Some(cli("cli-file-is-folder", &[]))
     } else if std::fs::metadata(path).is_ok_and(|metadata| metadata.is_file())
         // Only a regular file is opened to check: opening a pipe or a device can block.
         && std::fs::File::open(path).is_err_and(|error| error.kind() == std::io::ErrorKind::PermissionDenied)
     {
-        Some("this program is not allowed to read it; check its permissions, or run it outside the sandbox.")
+        Some(cli("cli-file-permission", &[]))
     } else {
         None
     }
@@ -714,24 +791,20 @@ fn path_reason(path: &Path) -> Option<&'static str> {
 pub(super) fn zotero_failure(error: EngineError, profiles: &[String]) -> String {
     let reason = match (error.code, error.reason) {
         (_, Some(reason)) => reason_sentence(reason),
-        (ErrorCode::SourceUnavailable, None) => {
-            "no local Zotero library was found or it could not be read; check that Zotero is installed and has been opened once, or use --file.".into()
-        }
-        (ErrorCode::BadInput, None) => {
-            "its data could not be understood; open Zotero once so it can repair its database.".into()
-        }
-        (ErrorCode::NewerFormat, None) => "a newer version of Zotero wrote it; update Ibis.".into(),
-        (ErrorCode::ResourceLimit, None) => "it is larger than Ibis reads at once.".into(),
+        (ErrorCode::SourceUnavailable, None) => cli("cli-zotero-unavailable", &[]),
+        (ErrorCode::BadInput, None) => cli("cli-zotero-damaged", &[]),
+        (ErrorCode::NewerFormat, None) => cli("cli-zotero-newer", &[]),
+        (ErrorCode::ResourceLimit, None) => cli("cli-zotero-too-large", &[]),
         (code, None) => code_sentence(code),
     };
     if error.reason == Some(ErrorReason::ZoteroProfileNeeded) && !profiles.is_empty() {
         let names: Vec<_> = profiles.iter().map(|name| field(name)).collect();
-        return format!(
-            "cannot read the Zotero library: {reason} Profiles: {}.",
-            names.join(", ")
+        return cli(
+            "cli-zotero-unreadable-profiles",
+            &[("reason", &reason), ("profiles", &names.join(", "))],
         );
     }
-    format!("cannot read the Zotero library: {reason}")
+    cli("cli-zotero-unreadable", &[("reason", &reason)])
 }
 
 /// Why a citation key did not select exactly one reference.
@@ -753,9 +826,7 @@ pub(super) fn key_failure(
                     rest.iter().map(usize::to_string).collect::<Vec<_>>().join(", ")
                 ),
             };
-            format!(
-                "the citation key '{shown}' is used by more than one entry{at}, so Ibis skips them all; give each entry its own key."
-            )
+            cli("cli-key-duplicate", &[("key", &shown), ("at", &at)])
         }
         (_, Some(ErrorReason::DamagedEntry)) => {
             let at = lines.first().map(|line| format!(" on line {line}")).unwrap_or_default();
@@ -764,22 +835,17 @@ pub(super) fn key_failure(
                 .and_then(catalogue::cause)
                 .map(|cause| format!(" ({cause})"))
                 .unwrap_or_default();
-            format!("the entry '{shown}'{at} could not be read, so Ibis skips it{why}; fix it in your library.")
+            cli("cli-key-damaged", &[("key", &shown), ("at", &at), ("reason", &why)])
         }
-        (_, Some(reason @ ErrorReason::LibraryCutShort)) => {
-            format!("cannot find '{shown}': {}", reason_sentence(reason))
-        }
-        (_, Some(ErrorReason::AmbiguousKey)) => {
-            format!("several references use the citation key '{shown}'; give each one its own key in your library.")
-        }
-        (ErrorCode::NotFound, _) if !libraries_open => {
-            format!("cannot look up '{shown}': no library is open; add --file <library> or --zotero.")
-        }
-        (ErrorCode::NotFound, _) => {
-            format!("no reference has the citation key '{shown}'; find the right key with: ibis search <words>")
-        }
-        (ErrorCode::BadInput, _) if key.is_empty() => "a citation key cannot be empty.".into(),
-        (ErrorCode::BadInput, _) if key.len() > 64 * 1024 => format!("the citation key '{shown}…' is too long."),
+        (_, Some(reason @ ErrorReason::LibraryCutShort)) => cli(
+            "cli-key-library-incomplete",
+            &[("key", &shown), ("reason", &reason_sentence(reason))],
+        ),
+        (_, Some(ErrorReason::AmbiguousKey)) => cli("cli-key-ambiguous", &[("key", &shown)]),
+        (ErrorCode::NotFound, _) if !libraries_open => cli("cli-key-without-library", &[("key", &shown)]),
+        (ErrorCode::NotFound, _) => cli("cli-key-not-found-search", &[("key", &shown)]),
+        (ErrorCode::BadInput, _) if key.is_empty() => cli("cli-key-empty", &[]),
+        (ErrorCode::BadInput, _) if key.len() > 64 * 1024 => cli("cli-key-too-long", &[("key", &shown)]),
         (code, reason) => reason.map_or_else(|| code_sentence(code), reason_sentence),
     }
 }

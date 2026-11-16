@@ -63,8 +63,14 @@ export function deriveView(s: SessionState): SessionView | null {
   const status = heard ? searchStatus(search, search.inputs!, s.session, o.statusFailed) : { sameSnapshot: false, ready: false, pending: true };
   const { results, list, interpretation } = search;
   const highlighted = results.slice(s.active, s.active + 1).map((r) => asTyped(r, interpretation));
-  // What the screen shows: the selection, otherwise the shown pasted list or highlighted result.
-  const shownChoice = !o.showCitations ? [] : s.selected.size > 0 ? [...s.selected.values()] : !status.sameSnapshot ? [] : list ? results : highlighted;
+  // A miss changes the results, never the citation. Reuse only references from
+  // this snapshot; a failed search or missing pasted list is not an offer.
+  const retained = s.view?.offered ?? [];
+  const sameDestination = (s.view?.appId ?? null) === (d.destination?.app_id ?? null)
+    && (s.view?.writingId ?? null) === (d.destination?.writing?.id ?? null);
+  const previous = sameDestination && !search.error && !list && retained.every((r) => r.revision === o.settledLibrary?.revision) ? retained : [];
+  const fromResults = status.sameSnapshot ? list ? results : highlighted : [];
+  const shownChoice = !o.showCitations ? [] : s.selected.size > 0 ? [...s.selected.values()] : fromResults.length ? fromResults : previous;
   // What may be copied: the same, once the shown results answer the current query.
   const chosen = s.selected.size > 0 || status.ready ? shownChoice : [];
   const format = destinationFormat(d, o.fallback);
@@ -75,7 +81,7 @@ export function deriveView(s: SessionState): SessionView | null {
     appId: d.destination?.app_id ?? null, writingId: d.destination?.writing?.id ?? null, writingVersion: writingVersion(d),
     queryKey: sessionQueryKeyOf(s), format, snapshotRevision: o.library?.revision,
     defaultChoice: list && status.ready ? choiceKey(results) : choiceKey(highlighted),
-    chosen, shown: preview ? preview.value : null, searchPending: status.pending,
+    offered: shownChoice, chosen, shown: preview ? preview.value : null, searchPending: status.pending,
     // The citation stays in view through a reload, but Enter waits for its end.
     ready: destinationReady(d) && o.preferencesReady && o.library?.state !== "reloading",
     saving: d.saves > 0, shouldAsk: shouldAsk(d), output: d.output, remembersLast: o.remembersLast,

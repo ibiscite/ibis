@@ -17,6 +17,12 @@ impl From<ibis_engine::settings::SettingsError> for CommandError {
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum NativeOperation {
     OpenSettingsFile,
+    AgentApps,
+    ConnectAgentApp,
+    DisconnectAgentApp,
+    WaitingProposals,
+    ApplyProposal,
+    RejectProposal,
     CliStatus,
     SetCliInstalled,
     CopyCliProfile,
@@ -44,6 +50,12 @@ impl NativeOperation {
             Self::FindZotero => R::ChooseLibrary,
             Self::RowContext => R::SearchReferences,
             Self::OpenSettingsFile
+            | Self::AgentApps
+            | Self::ConnectAgentApp
+            | Self::DisconnectAgentApp
+            | Self::WaitingProposals
+            | Self::ApplyProposal
+            | Self::RejectProposal
             | Self::CliStatus
             | Self::SetCliInstalled
             | Self::CopyCliProfile
