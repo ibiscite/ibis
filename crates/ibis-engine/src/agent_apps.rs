@@ -793,6 +793,8 @@ fn edit_json(path: &Path, key: &str, entry: Option<String>) -> Result<(), String
     };
     // Recheck after staging/backup, including link swaps. An external writer
     // can still race the rename.
+    #[cfg(test)]
+    tests::before_final_check();
     let checked = read_file(path).and_then(|latest| {
         if latest == before {
             Ok(())
