@@ -156,7 +156,8 @@ jobs:
     # publishing job needs this one, so it is skipped with it.
     needs: nightly-commit
     if: ${{ !cancelled() && !inputs.update_test && (github.event_name != 'schedule' || needs.nightly-commit.outputs.build == 'true') }}
-    runs-on: ${{ matrix.os }}
+    # Only the macOS builds may move to our own Mac (RUNNERS, docs/testing.md).
+    runs-on: ${{ startsWith(matrix.os, 'macos') && fromJSON(vars.RUNNERS || '{}')[matrix.os] || matrix.os }}
     timeout-minutes: 60
     permissions:
       contents: read
@@ -455,7 +456,7 @@ jobs:
     if: vars.MACOS_SIGNING_LEAF != ''
     name: Sign (${{ matrix.name }})
     needs: build
-    runs-on: macos-15
+    runs-on: ${{ fromJSON(vars.RUNNERS || '{}')['macos-15'] || 'macos-15' }}
     timeout-minutes: 15
     # Holds the signing certificate; deployable only from main and v tags.
     environment: macos-signing

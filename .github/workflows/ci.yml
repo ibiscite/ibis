@@ -179,7 +179,10 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Rust and desktop (${{ matrix.os }})
     needs: interface
-    runs-on: ${{ matrix.os }}
+    # A machine of ours named in the RUNNERS variable takes this system's job
+    # (docs/testing.md); otherwise a hosted runner does. Linux stays hosted:
+    # its steps install system packages with sudo.
+    runs-on: ${{ matrix.os != 'ubuntu-24.04' && fromJSON(vars.RUNNERS || '{}')[matrix.os] || matrix.os }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -438,7 +441,7 @@ jobs:
   release-checks:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Release checks (Linux)
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.RUNNERS || '{}')['ubuntu-24.04'] || 'ubuntu-24.04' }}
     timeout-minutes: 30
     env:
       RUSTFLAGS: -D warnings

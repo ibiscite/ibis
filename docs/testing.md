@@ -124,6 +124,19 @@ main runs `Rust and desktop` on Ubuntu, macOS and Windows, one job per system so
 each takes a single hosted runner. Fork PRs skip every job, so their **CI result**
 fails; they keep read-only title feedback.
 
+The maintainer's own machines can take the slow or scarce jobs as self-hosted
+runners: the macOS and Windows `Rust and desktop` jobs, the Linux release checks,
+and the macOS builds and signing in Preview. The repository variable `RUNNERS`
+maps a hosted label to a machine's labels, for example
+`{"macos-15":["self-hosted","ibis-mac"]}`. A job whose label is missing from it runs
+on GitHub's hosted runner, so removing a key (or the variable) moves that work back
+when a machine is away. Each runner is GitHub's official
+[actions/runner](https://github.com/actions/runner), registered to this repository
+and run as the maintainer's user (on Windows at logon, not as a service, because the
+Notepad paste test needs the desktop). Self-hosted runners only run trusted code:
+fork PRs skip every job that could use them, and workflow runs from outside
+contributors need the maintainer's approval in the repository's Actions settings.
+
 Daily/manual runs add WebKit, five minutes each of fuzzing the
 BibTeX loader and the PDF extractor (`ibis-fuzz`; seeds run with `cargo test -p ibis-fuzz`) and
 installed journeys against the published nightly; failures update one issue.
