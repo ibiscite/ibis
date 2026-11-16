@@ -445,6 +445,13 @@ pub(crate) fn attachment_path(
     } else {
         let mut path = plain_disk(base);
         for part in location.components() {
+            // Windows resolves `..` by name before the file system sees it,
+            // and its local-file checks take only that plain form.
+            #[cfg(windows)]
+            if part == std::path::Component::ParentDir {
+                path.pop();
+                continue;
+            }
             path.push(part);
         }
         path
