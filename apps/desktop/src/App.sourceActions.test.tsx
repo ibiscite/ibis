@@ -3,7 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import { backend, chooseFromMore, resetApp, result } from "./testing/app";
+import { backend, chooseFromMore, resetApp, result, showPicker } from "./testing/app";
 
 afterEach(async () => { await resetApp(); delete document.documentElement.dataset.system; });
 const file = { source_generation: "source-1", source_is_requested: true, revision: "1", state: "loaded", has_snapshot: true, zotero: false, snapshot_zotero: false,
@@ -193,7 +193,7 @@ test("hidden pickers do not read icons; reopening rejects an old icon completion
   await act(async () => { await emit("library:changed", { ...file, note: "Invented hidden refresh" }); });
   expect(read.mock.calls).toHaveLength(before);
   const old = [...pending];
-  await act(async () => { await emit("picker:shown"); });
+  await act(async () => { await showPicker(); });
   await waitFor(() => expect(read.mock.calls.length).toBeGreaterThan(before));
   await act(async () => { pending.at(-1)?.({ kind: "file", name: "thesis.bib", icon }); });
   await act(async () => { old.forEach((finish) => finish({ kind: "file", name: "obsolete.bib", icon })); });
@@ -228,7 +228,7 @@ test("a snapshot refusal refreshes the source without claiming that its file fai
   await screen.findByText("Invented file reference");
   commandO();
   await waitFor(() => expect(document.querySelector(".library-status")?.getAttribute("title")).toContain("14 references"));
-  expect(calls.filter((call) => call === "library_status")).toHaveLength(2);
+  expect(calls.filter((call) => call === "library_status")).toHaveLength(1);
   expect(calls.filter((call) => call === "open_library_source")).toHaveLength(1);
   expect(screen.queryByRole("button", { name: /^Find/ })).toBeNull();
   expect(document.body.textContent).not.toContain("The source file could not open");
@@ -241,7 +241,7 @@ test("an unavailable source presentation uses its fallback without starting a re
   await screen.findByText("Invented file reference");
   await waitFor(() => expect(calls).toContain("library_source"));
   await act(async () => { await new Promise(requestAnimationFrame); });
-  expect(calls.filter((call) => call === "library_status")).toHaveLength(1);
+  expect(calls.filter((call) => call === "library_status")).toHaveLength(0);
   expect(screen.queryByRole("alert")).toBeNull();
 });
 

@@ -9,11 +9,12 @@ import type { createSessionController } from "./sessionController";
 import type { SearchInputs } from "./search";
 import { searchStatus } from "./view";
 
-export function useLibrarySearch({ session, state, search, emptySearch, app = null, query, interpretLocators, library, statusFailed, libraryVersion }: {
+export function useLibrarySearch({ session, state, search, emptySearch, emptyReply, app = null, query, interpretLocators, library, statusFailed, libraryVersion }: {
   session: ReturnType<typeof createSessionController>;
   state: SessionState;
   search: typeof nativeApi.search;
   emptySearch?: () => ReturnType<typeof nativeApi.search>;
+  emptyReply?: { revision: string; reply: Awaited<ReturnType<typeof nativeApi.search>> | null };
   /** The app in front: an empty query shows its recent citations. */
   app?: string | null;
   query: string;
@@ -27,10 +28,10 @@ export function useLibrarySearch({ session, state, search, emptySearch, app = nu
 }) {
   const queryKey = JSON.stringify([query, interpretLocators]);
   const recentSearch = query.trim() ? undefined : emptySearch;
-  const inputs: SearchInputs = { queryKey, query, interpretLocators, library, version: libraryVersion, recent: recentSearch, app: recentSearch ? app : null };
+  const inputs: SearchInputs = { queryKey, query, interpretLocators, library, version: libraryVersion, recent: recentSearch, recentReply: recentSearch && emptyReply && emptyReply.revision === library?.revision ? emptyReply.reply : undefined, app: recentSearch ? app : null };
   useLayoutEffect(() => { session.connect({ search, recent: recentSearch }); });
   // biome-ignore lint/correctness/useExhaustiveDependencies: the inputs are the query (queryKey covers query and locator mode), the library and the opening.
-  useLayoutEffect(() => { session.dispatch({ type: "search-inputs", inputs }); }, [queryKey, library, libraryVersion, state.session, recentSearch, inputs.app]);
+  useLayoutEffect(() => { session.dispatch({ type: "search-inputs", inputs }); }, [queryKey, library, libraryVersion, state.session, recentSearch, inputs.app, inputs.recentReply]);
 
   const { results, interpretation, list, unfiltered, resultsQuery, error, announcement } = state.search;
   const { sameSnapshot, ready, pending } = searchStatus(state.search, inputs, state.session, statusFailed);

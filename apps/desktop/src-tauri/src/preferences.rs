@@ -560,7 +560,7 @@ pub(crate) async fn picker_preferences(
 }
 
 impl SettingsFile {
-    fn preferences(&self) -> Result<PickerPreferences, CommandError> {
+    pub(crate) fn preferences(&self) -> Result<PickerPreferences, CommandError> {
         self.owner
             .read()
             .interface()

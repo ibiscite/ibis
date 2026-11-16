@@ -8,7 +8,14 @@ function eraseWebviewHistory() {
 
 /** The engine records native writes. The webview only requests current rows. */
 export function useRecentReferences(recentReferences: typeof nativeApi.recentReferences | undefined, app: string | null, opening: number,
-  onPreferencesChanged?: typeof nativeApi.onPreferencesChanged, onForget?: () => void) {
+  onPreferencesChanged?: typeof nativeApi.onPreferencesChanged, onForget?: () => void, destination?: nativeApi.PickerDestination | null) {
+  const [snapshot, setSnapshot] = useState<{ revision: string; reply: Awaited<ReturnType<typeof nativeApi.search>> | null; destination: nativeApi.PickerDestination | null }>();
+  const acceptSnapshot = (value: nativeApi.PickerSnapshot["recents"], revision: string, destination: nativeApi.PickerDestination | null) => {
+    epoch.current++;
+    const next = "Ok" in value ? value.Ok : null;
+    setSnapshot({ revision, reply: next?.[0] ?? null, destination });
+    setState((old) => ({ ...old, hasHistory: next?.[1] ?? false, forgetFailed: next?.[2] ?? false, revision: old.revision + 1 }));
+  };
   const forgetting = useRef(onForget);
   forgetting.current = onForget;
   const epoch = useRef(0);
@@ -18,6 +25,7 @@ export function useRecentReferences(recentReferences: typeof nativeApi.recentRef
   const retire = useCallback(() => {
     setErasureFailed(eraseWebviewHistory());
     epoch.current++;
+    setSnapshot(undefined);
     forgetting.current?.();
     setState((old) => ({ ...old, hasHistory: false, revision: old.revision + 1 }));
   }, []);
@@ -42,5 +50,9 @@ export function useRecentReferences(recentReferences: typeof nativeApi.recentRef
     // Only a save that set the switch: the rest of a snapshot may be older.
     if (change?.recent_citations === false && change.fields?.includes("recent_citations")) retire();
   });
-  return { load: recentReferences ? load : undefined, forget: forgetFailed || erasureFailed || hasHistory ? forget : null, forgetFailed: forgetFailed || erasureFailed };
+  const snapshotReceiver = () => {
+    const request = epoch.current;
+    return (...value: Parameters<typeof acceptSnapshot>) => { if (request === epoch.current) acceptSnapshot(...value); };
+  };
+  return { snapshot: snapshot?.destination === destination ? snapshot : undefined, snapshotReceiver, load: recentReferences ? load : undefined, forget: forgetFailed || erasureFailed || hasHistory ? forget : null, forgetFailed: forgetFailed || erasureFailed };
 }

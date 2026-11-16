@@ -192,10 +192,12 @@ export const commands = {
 	loginItem: () => __TAURI_INVOKE<LoginItem>("login_item"),
 	/** Start Ibis when the person logs in, or stop doing so. */
 	setLoginItem: (enabled: boolean) => __TAURI_INVOKE<LoginItem>("set_login_item", { enabled }),
+	/** Subscribe before reading: an opening before the webview mounted is retained here. */
+	pickerSnapshot: () => __TAURI_INVOKE<PickerSnapshot | null>("picker_snapshot"),
+	/** The complete snapshot has reached the DOM; only its presentation may reveal. */
+	pickerRendered: (presentation: number) => __TAURI_INVOKE<void>("picker_rendered", { presentation }),
 	/** Hide only the originating presentation; a delayed request cannot dismiss a reopen. */
 	hidePicker: (presentation: number | null) => __TAURI_INVOKE<boolean>("hide_picker", { presentation }),
-	/** Read the native presentation after subscribing, including on webview reload. */
-	pickerPresentation: () => __TAURI_INVOKE<number>("picker_presentation"),
 	/**
 	 * Pin or unpin the picker. Staying on top is best effort: Wayland does not
 	 * allow it, and there pinned means only that the picker stays open. The
@@ -878,6 +880,15 @@ export type PickerSave = {
 	preferences: PickerPreferences;
 };
 
+export type PickerSnapshot = {
+	destination: Result_of_PickerDestination_or_CommandError;
+	library: LibraryStatus;
+	preferences: Result_of_PickerPreferences_or_CommandError;
+	presentation: number;
+	recents: Result_of_Tuple_of_SearchReply_and_boolean_and_boolean_or_CommandError;
+	selection: string | null;
+};
+
 /** The saved snapshot and the identity of the write that published it. */
 export type PreferenceChange = {
 	accent?: Accent | null;
@@ -1082,6 +1093,24 @@ export type RestorePreview = {
 	notes: Note[];
 	/** Names this preview; only the latest one can be restored. */
 	ticket: number;
+};
+
+export type Result_of_PickerDestination_or_CommandError = {
+	Ok: PickerDestination;
+} | {
+	Err: CommandError;
+};
+
+export type Result_of_PickerPreferences_or_CommandError = {
+	Ok: PickerPreferences;
+} | {
+	Err: CommandError;
+};
+
+export type Result_of_Tuple_of_SearchReply_and_boolean_and_boolean_or_CommandError = {
+	Ok: [SearchReply, boolean, boolean];
+} | {
+	Err: CommandError;
 };
 
 export type RowAction = "copy" | "toggle";

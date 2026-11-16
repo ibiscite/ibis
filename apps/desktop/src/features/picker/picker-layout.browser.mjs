@@ -78,8 +78,13 @@ try {
           }
           if (command === "plugin:event|listen") { listeners.set(args.handler, args.event); return args.handler; }
           if (command === "plugin:event|unlisten") return;
-          if (command === "plugin:window|is_visible") return true;
-          if (command === "picker_presentation") return 0;
+          if (command === "picker_snapshot") return {
+            presentation: 1, selection: null, library,
+            preferences: { Ok: preferences },
+            destination: { Ok: await window.__TAURI_INTERNALS__.invoke("picker_destination", {}) },
+            recents: { Ok: await window.__TAURI_INTERNALS__.invoke("recent_references", { forget: false }) },
+          };
+          if (command === "picker_rendered") return null;
           if (command === "native_appearance") return "opaque";
           if (command === "picker_preferences") return preferences;
           if (command === "save_picker_preferences") { Object.assign(preferences, args.preferences); return 1; }

@@ -5,7 +5,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useEffectEvent } from "react";
 import type { NoticeMessage, UpdateProgress } from "./api";
-import type { EndpointStatus, LibraryStatus, PreferenceChange, ShortcutStatus } from "./bindings";
+import type { EndpointStatus, LibraryStatus, PreferenceChange, PickerSnapshot, ShortcutStatus } from "./bindings";
 
 export type Stop = () => void;
 type Handler = (...args: never[]) => unknown;
@@ -20,8 +20,8 @@ function on<T = null>(name: string): Source<(payload: T) => void> {
 export const events = {
   /** Shown by the global shortcut or a second launch, with its presentation. */
   onPickerShown: on<number>("picker:shown"),
-  /** Before the window shows, with short text selected in the target app, if any. */
-  onPickerPreparing: on<string | null>("picker:preparing"),
+  /** One complete observation, rendered before native code reveals the window. */
+  onPickerPreparing: on<PickerSnapshot>("picker:preparing"),
   /** Hidden, by any route. */
   onPickerHidden: on("picker:hidden"),
   /** Search with Ibis has left text for the picker to collect. */

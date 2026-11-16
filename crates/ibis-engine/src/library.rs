@@ -507,6 +507,13 @@ impl Owner {
         self.shared.with_state(|state| state.current.clone()).flatten()
     }
 
+    /// Status and the searchable library captured under the same owner lock.
+    pub fn status_with_current(&self) -> (LibraryStatus, Option<Arc<Current>>) {
+        self.shared
+            .with_state(|state| (status::status(state), state.current.clone()))
+            .unwrap_or_else(|| (LibraryStatus::unavailable(), None))
+    }
+
     /// The status as it is now, for an interface that has just started.
     pub fn status(&self) -> LibraryStatus {
         self.shared

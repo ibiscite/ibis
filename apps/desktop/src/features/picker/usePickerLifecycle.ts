@@ -1,5 +1,8 @@
 import type * as nativeApi from "../../api";
 import { useEffect } from "react";
+import { flushSync } from "react-dom";
+import type { usePickerLibrary } from "./usePickerLibrary";
+import type { useRecentReferences } from "./useRecentReferences";
 import type { Operation } from "./Notices";
 import { closeOverlays } from "../../ui/layers";
 import type { useOperations } from "./useOperations";
@@ -9,12 +12,14 @@ import type { useDestination } from "./useDestination";
 import type { usePickerPreferences } from "./usePickerPreferences";
 import { listening } from "../../nativeEvents";
 
-export function usePickerLifecycle({ api, pickerSession, menus, destination, preferences, resetPointer, readShortcut, report, setAltHeld }: {
+export function usePickerLifecycle({ api, pickerSession, menus, destination, preferences, libraryState, recents, resetPointer, readShortcut, report, setAltHeld }: {
   api: typeof nativeApi;
   pickerSession: Pick<ReturnType<typeof usePickerSession>, "session" | "send">;
   menus: Pick<ReturnType<typeof usePickerMenus>, "input" | "focusHome">;
   destination: ReturnType<typeof useDestination>;
   preferences: ReturnType<typeof usePickerPreferences>;
+  libraryState: ReturnType<typeof usePickerLibrary>;
+  recents: ReturnType<typeof useRecentReferences>;
   resetPointer: () => void;
   readShortcut: () => void;
   report: ReturnType<typeof useOperations>["report"];
@@ -22,7 +27,7 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
 }) {
   const { session, send } = pickerSession;
   const { input, focusHome } = menus;
-  const { pickerVisible, onPickerPreparing, onPickerShown, onPickerHidden, onPreferencesChanged, onProjectChanged, onWritingsChanged } = api;
+  const { pickerSnapshot, pickerRendered, onPickerPreparing, onPickerShown, onPickerHidden, onPreferencesChanged, onProjectChanged, onWritingsChanged } = api;
   // When the picker is shown, put the cursor in the search box with the
   // previous query selected, so typing replaces it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: subscribes once on mount. The handlers only call setters, refs and native calls that never change, so the first render's copies are current.
@@ -44,23 +49,12 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
       else search.setSelectionRange(search.value.length, search.value.length);
     };
     window.addEventListener("focus", activated);
-    let prepared = false;
+    let presentation = -1;
     // A detour's citation and a change coming back keep the output they were made in.
     const keepsOutput = () => { const { permissionDetour, changing } = session.getSnapshot(); return permissionDetour || changing !== null; };
-    const focusSearch = (presentation: number) => {
-      searchAtShow = input.current?.value ?? "";
-      resetPointer();
-      const previousQuery = session.getSnapshot().query;
-      send({ type: "shown", now: performance.now(), presentation });
-      if (session.getSnapshot().query !== previousQuery) searchAtShow = session.getSnapshot().query;
-      if (!prepared) destination.read(true, keepsOutput());
-      prepared = false;
+    const focusSearch = () => {
       readShortcut();
-      // Reopening also sees file edits whose watch event has not arrived.
-      // The settings owner reads after prior saves; focus never waits for it,
-      // and a reply from an older presentation cannot replace this one.
-      const visibility = session.getSnapshot().visibility;
-      preferences.loadPreferences(() => mounted && session.getSnapshot().visibility === visibility);
+      searchAtShow = input.current?.value ?? "";
       // On X11, showing can precede native activation. WebKit restores the
       // previous control then, so finish Search focus once activation arrives.
       focusAfterActivation = !document.hasFocus();
@@ -69,20 +63,28 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
     // Every hide is reported, including the native one when focus moves away;
     // a monotonic clock keeps clock changes from clearing or keeping a search.
     const reporting = (operation: Operation) => ({ failed: () => report(operation), subject: "Picker" });
-    // Visibility is read once hiding and showing are both heard (or refused), so neither is missed.
-    const heard = () => {
-      let settle = () => {};
-      const settled = new Promise<void>((done) => { settle = done; });
-      return { settled, options: { ready: settle, failed: () => { report("pickerEvents"); settle(); }, subject: "Picker" } };
+    // Reserve admission before subscribing: a newer live observation retires
+    // only its own part of a delayed bootstrap response.
+    const receivers = () => ({
+      destination: destination.snapshotReceiver(), library: libraryState.snapshotReceiver(),
+      preferences: preferences.snapshotReceiver(), recents: recents.snapshotReceiver(),
+    });
+    const bootstrap = receivers();
+    const accept = (snapshot: nativeApi.PickerSnapshot | null, receive = receivers()) => {
+      if (!mounted || !snapshot || snapshot.presentation <= presentation) return;
+      presentation = snapshot.presentation;
+      const preserve = keepsOutput();
+      flushSync(() => {
+        resetPointer();
+        send({ type: "preparing", now: performance.now(), selection: snapshot.selection });
+        receive.destination(snapshot.destination, preserve);
+        receive.library(snapshot.library);
+        receive.preferences("Ok" in snapshot.preferences ? snapshot.preferences.Ok : null);
+        receive.recents(snapshot.recents, snapshot.library.revision, "Ok" in snapshot.destination ? snapshot.destination.Ok : null);
+        send({ type: "shown", now: performance.now(), presentation: snapshot.presentation });
+      });
+      void pickerRendered(snapshot.presentation).catch(() => report("pickerEvents"));
     };
-    const hidden = heard(), shown = heard();
-    void Promise.all([hidden.settled, shown.settled]).then(async () => {
-      send({ type: "initialize" });
-      const events = session.getSnapshot().visibilityEvents;
-      const visible = await pickerVisible();
-      // The session keeps a newer event over this read; a failed read changes nothing.
-      if (mounted) send({ type: "visibility-read", visible, events });
-    }).catch(() => undefined);
     const stops = [
       listening(onPickerHidden, () => {
         focusAfterActivation = false;
@@ -90,17 +92,12 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
         send({ type: "hidden", now: performance.now() });
         closeOverlays();
         setAltHeld(false);
-      }, hidden.options),
-      // The window appears after this: settle what its first frame shows.
-      listening(onPickerPreparing, (selection) => {
-        prepared = true;
-        send({ type: "preparing", now: performance.now(), selection });
-        destination.read(true, keepsOutput());
       }, reporting("pickerEvents")),
-      listening(onPickerShown, focusSearch, shown.options),
+      listening(onPickerPreparing, accept, { ...reporting("pickerEvents"), ready: () => {
+        void pickerSnapshot().then((snapshot) => accept(snapshot, bootstrap), () => report("pickerEvents"));
+      } }),
+      listening(onPickerShown, focusSearch, reporting("pickerEvents")),
     ];
-    destination.read();
-    preferences.loadPreferences(() => mounted);
     stops.push(
       // Choices made in Settings apply to the picker at once.
       listening(onPreferencesChanged, (change) => { preferences.preferencesChanged(change?.revision, change?.fields, () => mounted); destination.read(false); }),

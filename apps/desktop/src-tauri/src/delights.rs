@@ -269,7 +269,7 @@ pub(crate) fn delight_view(
         return DelightView::default();
     }
     let picker = presentation.is_some();
-    if picker && presentation != Some(crate::picker::picker_presentation(app.state())) {
+    if picker && presentation != Some(app.state::<crate::picker::PickerGeneration>().current()) {
         return DelightView::default();
     }
     let file = app.state::<SettingsFile>();
@@ -280,7 +280,7 @@ pub(crate) fn delight_view(
             now,
             quiet_load(&status, revision.as_deref()),
             library,
-            || presentation == Some(crate::picker::picker_presentation(app.state())),
+            || presentation == Some(app.state::<crate::picker::PickerGeneration>().current()),
             false,
         )
     } else {

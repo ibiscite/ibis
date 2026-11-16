@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import type { EntryCopy, ProjectStatus } from "./api";
-import { backend, chooseFromMore, receipt, resetApp, result } from "./testing/app";
+import { backend, chooseFromMore, receipt, resetApp, result, showPicker } from "./testing/app";
 import { missingKey } from "./test-fixtures";
 
 afterEach(resetApp);
@@ -174,7 +174,7 @@ test("the status survives the picker closing and opening again", async () => {
   picker("missing", () => file());
   await waitFor(() => expect(shownRow()).toContain("Missing from thesis.bib"));
   await act(() => emit("picker:hidden"));
-  await act(() => emit("picker:shown", 1));
+  await act(() => showPicker(1));
   await waitFor(() => expect(shownRow()).toContain("Missing from thesis.bib"));
 });
 

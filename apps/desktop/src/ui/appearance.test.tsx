@@ -8,18 +8,18 @@ import type { PickerPreferences, PickerSave } from "../bindings";
 afterEach(resetApp);
 const saved: PickerPreferences = { output: "pandoc", density: "comfortable", larger_text: false, paste: true, menu_bar: true, appearance: "dark", accent: "ibis" };
 
-test("an open picker applies saved appearance and accent, then a Settings change, using its existing reads", async () => {
+test("an open picker applies saved appearance and accent, then a Settings change, using the opening snapshot and later reads", async () => {
   let preferences = saved;
   const calls = backend({ picker_preferences: () => preferences });
   const { unmount } = render(<App />);
   await waitFor(() => expect(document.documentElement.dataset.appearance).toBe("dark"));
   expect(document.documentElement.dataset.accent).toBe("ibis");
-  expect(calls.filter((call) => call === "picker_preferences")).toHaveLength(1);
+  expect(calls.filter((call) => call === "picker_preferences")).toHaveLength(0);
   preferences = { ...saved, appearance: "light", accent: "system" };
   await act(async () => { await emit("preferences:changed", preferences); });
   await waitFor(() => expect(document.documentElement.dataset.accent).toBe("system"));
   expect(document.documentElement.dataset.appearance).toBe("light");
-  expect(calls.filter((call) => call === "picker_preferences")).toHaveLength(2);
+  expect(calls.filter((call) => call === "picker_preferences")).toHaveLength(1);
   unmount();
   expect(document.documentElement.hasAttribute("data-accent")).toBe(false);
 });

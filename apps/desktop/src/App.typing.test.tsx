@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import { backend, prepared, resetApp, result } from "./testing/app";
+import { backend, prepared, resetApp, result, showPicker } from "./testing/app";
 import { deferred } from "./testing/deferred";
 
 beforeEach(() => vi.useFakeTimers());
@@ -76,28 +76,25 @@ test("returning to an answered query announces its count even when a later searc
 
 test.each([0, 400])("reopening after %d ms hidden announces the answer it keeps", async (hiddenFor) => {
   const library = { state: "loaded", has_snapshot: true, references: 2 };
-  const refresh = deferred<typeof library>();
-  let reads = 0;
-  const calls = backend({
+  backend({
     search: ({ query }) => query.text ? rows : [],
-    library_status: () => reads++ === 0 ? library : refresh.promise,
+    library_status: () => library,
   });
   await act(async () => { render(<App />); });
   await type("gr");
   await act(() => vi.advanceTimersByTimeAsync(100));
-  const status = screen.getByRole("status", { name: "Search results" });
-  const searches = calls.filter((call) => call === "search").length;
+  let status = screen.getByRole("status", { name: "Search results" });
   await act(async () => { await emit("picker:hidden"); });
   await act(() => vi.advanceTimersByTimeAsync(hiddenFor));
   expect(status.textContent).toBe("");
-  await act(async () => { await emit("picker:shown", 2); });
-  expect(calls.filter((call) => call === "search")).toHaveLength(searches);
+  await act(async () => { await showPicker(2); });
   expect(screen.getAllByRole("option")).toHaveLength(2);
+  status = screen.getByRole("status", { name: "Search results" });
   await act(() => vi.advanceTimersByTimeAsync(200));
   expect(status.textContent).toBe("");
   await act(() => vi.advanceTimersByTimeAsync(100));
   expect(status.textContent).toBe("2 results");
-  await act(async () => { refresh.resolve(library); });
+
 });
 
 test("the footer action pressed while a search runs copies the new top result, not the shown one", async () => {

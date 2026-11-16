@@ -21,7 +21,7 @@ export function useCitationCopy({ api, session, state, destination, currentPin, 
   const { copyFileCitation, hidePicker, showCopiedNotice } = api;
   const send = session.dispatch;
   useLayoutEffect(() => {
-    session.connect({ copyFileCitation, hidePicker, pickerPresentation: api.pickerPresentation, showCopiedNotice,
+    session.connect({ copyFileCitation, hidePicker, showCopiedNotice,
       pinned: () => currentPin.current, refresh: refreshSnapshot,
       reportHide: (failed) => report("hide", failed) });
   });

@@ -5,7 +5,7 @@ export { displayTree } from "../test-fixtures";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { expect, vi } from "vitest";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import type * as api from "../api";
 import type { CitedWarning, DisplayTree, Preview, DraftItem, CitationIntent } from "../bindings";
 import { recordId } from "../test-fixtures";
@@ -14,7 +14,25 @@ import { fixtureDestination, formatAnswer } from "./format";
 import { exampleProposals } from "./proposals";
 import { forgetRecentFormats } from "../features/picker/FormatMenu";
 
+let openingSnapshot: (() => Promise<api.PickerSnapshot | null>) | null = null;
+let presentation = 0;
+let summon: object | null = null;
+
+/** A native summon builds its observation before preparing and showing the window. */
+export function showPicker(requested?: number | null, selection: string | null = null) {
+  if (!openingSnapshot) throw new Error("Set up the native backend before summoning the picker");
+  const ticket = summon = {};
+  const owner = presentation = Math.max(presentation + 1, requested ?? 0);
+  void openingSnapshot().then(async (snapshot) => {
+    if (!snapshot || summon !== ticket) return;
+    await emit("picker:preparing", { ...snapshot, presentation: owner, selection });
+    await emit("picker:shown", owner);
+  });
+}
+
 export async function resetApp() {
+  openingSnapshot = null;
+  summon = null;
   forgetRecentFormats();
   cleanup();
   // Unmount effects and React Aria's focus restoration must finish on the clock
@@ -197,7 +215,6 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     waiting_proposals: () => proposals,
     apply_proposal: ({ id }) => { proposals = proposals.filter((proposal) => proposal.id !== id); return { status: "applied", backup: "signals.bib.ibis-backup-1" }; },
     reject_proposal: ({ id }) => { proposals = proposals.filter((proposal) => proposal.id !== id); return { status: "rejected" }; },
-    "plugin:window|is_visible": () => true,
     shortcut_status: () => ({ shortcut: "CommandOrControl+Shift+Y", registered: true, error: null }),
     search: () => [],
     project_status: () => null,
@@ -205,7 +222,6 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     session_references: () => ({ revision: 0, rows: [], absent: 0, overflowed: false, undo: null }),
     session_bibliography: () => null,
     hide_picker: () => true,
-    picker_presentation: () => 0,
     picker_moving: () => null,
     delight_view: () => ({ status: null, peck: false, anniversary: false, build: "0.0.0 · invented · 2026-11-01" }),
     show_copied_notice: () => null,
@@ -229,6 +245,29 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
       const { preview } = prepared(args);
       return { text: preview.text, warnings: preview.warnings };
     },
+    picker_snapshot: async () => {
+      const read = (command: string) => Promise.resolve((overrides[command] ?? defaults[command]!)({ snapshot: true, forget: false } as unknown as Parameters<Handler>[0]));
+      const outcome = async (command: string) => {
+        try { return { Ok: await read(command) }; } catch (Err) { return { Err }; }
+      };
+      const saved = await outcome("picker_preferences");
+      if ("Ok" in saved) preferences = { ...preferences, ...saved.Ok as api.PickerPreferences };
+      const library = { revision: "1", source_generation: "1", source_is_requested: true, ...await read("library_status") as object };
+      lastLibrary = library as api.LibraryStatus;
+      const destination = await outcome("picker_destination");
+      if ("Ok" in destination) destination.Ok = fixtureDestination(destination.Ok as api.PickerDestination);
+      const recents = (library as api.LibraryStatus).has_snapshot ? await outcome("recent_references")
+        : { Ok: [{ revision: library.revision, results: [] }, false, false] };
+      if ("Ok" in recents) {
+        const value = recents.Ok;
+        const tuple = Array.isArray(value) && typeof value[1] === "boolean";
+        const rows = tuple ? value[0] : value;
+        const reply = Array.isArray(rows) ? { revision: rows[0]?.revision ?? library.revision, results: rows } : rows;
+        recents.Ok = tuple ? [reply, value[1], value[2]] : [reply, Boolean((reply as { results?: unknown[] }).results?.length), false];
+      }
+      return { presentation: 0, selection: null, library, destination, recents, preferences: "Ok" in saved ? { Ok: preferences } : saved };
+    },
+    picker_rendered: () => null,
     picker_preferences: () => preferences,
     format_settings: () => ({ apps: [], key_output_visible: Boolean(preferences.key_output), writings: [] }),
     save_picker_preferences: ({ preferences: patch }) => { const receipt = ++revision; submitted.set(receipt, patch as Partial<api.PickerPreferences>); return receipt; },
@@ -249,6 +288,8 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     library_source: ({ zoteroOnly }) => ({ kind: zoteroOnly || (lastLibrary.snapshot_zotero ?? lastLibrary.zotero) ? "zotero" : "file", name: zoteroOnly ? "Zotero" : lastLibrary.snapshot_name ?? lastLibrary.name ?? "library", icon: null, status_icon: null }),
     library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null }),
   };
+  presentation = 0;
+  openingSnapshot = async () => (overrides.picker_snapshot ?? defaults.picker_snapshot!)({} as Parameters<Handler>[0]) as Promise<api.PickerSnapshot | null>;
   mockWindows("main");
   mockIPC(
     (cmd, args) => {
@@ -261,6 +302,13 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
       // A test's save handler sees the choice the receipt stands for.
       const receipt = cmd === "picker_preferences_saved" ? (args as { receipt: number }).receipt : 0;
       const value = handler((receipt ? { ...args as object, preferences: submitted.get(receipt) } : args ?? {}) as Parameters<Handler>[0]);
+      if (cmd === "picker_snapshot") return Promise.resolve(value).then((value) => {
+        const snapshot = value as api.PickerSnapshot | null;
+        if (snapshot && "Ok" in snapshot.recents) {
+          for (const row of snapshot.recents.Ok[0].results) citationKeys.set(JSON.stringify(row.id), row.key);
+        }
+        return snapshot;
+      });
       if (cmd === "picker_destination") return Promise.resolve(value).then((destination) => fixtureDestination(destination as api.PickerDestination));
       if (cmd === "picker_preferences") {
         if (value && typeof value === "object" && !("then" in value)) preferences = { ...preferences, ...value as api.PickerPreferences };

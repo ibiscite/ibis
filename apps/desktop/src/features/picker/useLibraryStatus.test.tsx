@@ -17,6 +17,7 @@ function setup(first: LibraryStatus) {
     onPickerHidden: vi.fn(async () => () => undefined), onPickerShown: vi.fn(async () => () => undefined),
   } as unknown as typeof nativeApi;
   const hook = renderHook(() => useLibraryStatus(api, vi.fn(), vi.fn()));
+  act(() => hook.result.current.snapshotReceiver()(first));
   return { ...hook, change: (next: LibraryStatus) => act(async () => changed(next)) };
 }
 
@@ -62,4 +63,15 @@ test("opening on a reload still has a library to show", async () => {
   const reloading = status("reloading");
   const { result } = setup(reloading);
   await waitFor(() => expect(result.current.settledLibrary).toBe(reloading));
+});
+
+test("a live library observation retires a delayed bootstrap field", async () => {
+  const older = status("loaded", "1");
+  const { result, change } = setup(older);
+  const receive = result.current.snapshotReceiver();
+  const current = status("loaded", "2");
+  await change(current);
+  act(() => receive(older));
+  expect(result.current.library).toBe(current);
+  expect(result.current.settledLibrary).toBe(current);
 });

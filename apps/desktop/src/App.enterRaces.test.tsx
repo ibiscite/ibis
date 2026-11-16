@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import { backend, prepared, resetApp, result, inCitation } from "./testing/app";
+import { backend, prepared, resetApp, result, inCitation, showPicker } from "./testing/app";
 import { deferred } from "./testing/deferred";
 import { missingKey } from "./test-fixtures";
 
@@ -19,10 +19,12 @@ test("queued Enter survives results arriving before their library revision", asy
   const copies: unknown[] = [];
   backend({
     library_status: () => ++reads === 1 ? { state: "loaded", has_snapshot: true, revision: "1", references: 1 } : status.promise,
+    recent_references: () => [],
     search: () => ++searches === 1 ? found.promise : [fresh],
     copy_file_citation: (args) => { const citation = prepared(args); copies.push(citation.request); return { text: citation.preview.text, warnings: [] }; },
   });
   await act(async () => { render(<App />); });
+  await act(async () => { fireEvent.change(box(), { target: { value: "fresh" } }); });
   await enter();
   await act(async () => { found.resolve([fresh]); });
   expect(reads).toBe(2);
@@ -49,17 +51,19 @@ test("Enter during a reload waits for its end, then copies once", async () => {
   expect(copies).toHaveLength(1);
 });
 
-test.each(["initial", "reconciliation"].flatMap((read) => ["later turn", "same turn"].map((recovery) => ({ read, recovery }))))("a failed $read status read cancels Enter before recovery in a $recovery", async ({ read, recovery }) => {
+test.each(["later turn", "same turn"])("a failed reconciliation status read cancels Enter before recovery in a %s", async (recovery) => {
   const found = deferred<unknown>(), status = deferred<unknown>();
   const fresh = { ...result("a", "Fresh reference"), revision: "2" };
   let reads = 0, searches = 0;
   const calls = backend({
-    library_status: () => ++reads === 1 && read === "reconciliation" ? { state: "loaded", has_snapshot: true, revision: "1", references: 1 } : status.promise,
-    search: () => ++searches === 1 && read === "reconciliation" ? found.promise : [fresh],
+    library_status: () => ++reads === 1 ? { state: "loaded", has_snapshot: true, revision: "1", references: 1 } : status.promise,
+    recent_references: () => [],
+    search: () => ++searches === 1 ? found.promise : [fresh],
   });
   await act(async () => { render(<App />); });
+  await act(async () => { fireEvent.change(box(), { target: { value: "fresh" } }); });
   await enter();
-  if (read === "reconciliation") await act(async () => { found.resolve([fresh]); });
+  await act(async () => { found.resolve([fresh]); });
   const recover = () => emit("library:changed", { state: "loaded", has_snapshot: true, revision: "2", references: 1 });
   await act(async () => {
     status.reject(new Error("invented status failure"));
@@ -189,7 +193,7 @@ test.each(["failed", "pending", "successful"])("a %s newer attempt preserves own
   });
   await act(async () => { render(<App />); });
   await enter();
-  await act(async () => { await emit("picker:hidden"); await emit("picker:shown"); });
+  await act(async () => { await emit("picker:hidden"); await showPicker(); });
   await enter();
   expect(copies).toBe(2);
   await act(async () => { delivered.resolve({ outcome: "pasted", app: "Example Writer" }); });

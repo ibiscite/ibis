@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import { backend, prepared, receipt, resetApp, result } from "./testing/app";
+import { backend, prepared, receipt, resetApp, result, showPicker } from "./testing/app";
 import type { Density } from "./api";
 import type { Preview } from "./bindings";
 import { warningText } from "./i18n";
@@ -152,7 +152,7 @@ test.each(["none", "More", "keys", "keys from More"] as const)("welcome Escape d
   fireEvent.keyDown(document.activeElement!, { key: "Escape" });
   await waitFor(() => expect(calls.filter((call) => call === "hide_picker")).toHaveLength(1));
   expect(input.value).toBe("lantern");
-  await act(async () => { await emit("picker:hidden"); await emit("picker:shown"); });
+  await act(async () => { await emit("picker:hidden"); await showPicker(); });
   fireEvent.keyDown(zotero, { key: "Escape" });
   await waitFor(() => expect(calls.filter((call) => call === "hide_picker")).toHaveLength(2));
 });

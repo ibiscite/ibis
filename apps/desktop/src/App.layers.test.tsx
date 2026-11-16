@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import { focusLost } from "./ui/layers";
-import { backend, chooseFromMore, openCitationDetails, resetApp, result, findInCitation, citationDetails, paletteRow } from "./testing/app";
+import { backend, chooseFromMore, openCitationDetails, resetApp, result, findInCitation, citationDetails, paletteRow, showPicker } from "./testing/app";
 
 // What a person sees of the layer stack: Esc from anywhere, a key and its menu
 // item doing the same thing, and nothing surviving a close and reopen.
@@ -19,7 +19,7 @@ const press = (key: string, modifiers = {}) => fireEvent.keyDown(document.active
 const hides = (calls: string[]) => calls.filter((call) => call === "hide_picker").length;
 const reopen = () => act(async () => {
   await emit("picker:hidden");
-  await emit("picker:shown", 43);
+  await showPicker(43);
 });
 const type = (text: string) => fireEvent.change(search(), { target: { value: text } });
 const focusableControls = () => [...document.querySelectorAll<HTMLElement>("main button, main input, main [tabindex='0']")]

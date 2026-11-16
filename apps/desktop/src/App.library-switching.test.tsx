@@ -4,7 +4,7 @@ import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import type { LibraryStatus } from "./api";
 import { testStates } from "./test-fixtures";
-import { backend, chooseFromLibrary, resetApp, result } from "./testing/app";
+import { backend, chooseFromLibrary, resetApp, result, showPicker } from "./testing/app";
 import { ZOTERO_CHECK_EVERY } from "./features/picker/EmptyState";
 
 afterEach(resetApp);
@@ -55,7 +55,7 @@ test("a failed Zotero switch recovers over retained file results without focus c
   ready = true;
   await act(async () => { await vi.advanceTimersByTimeAsync(ZOTERO_CHECK_EVERY * 3); });
   expect(check).toHaveBeenCalledTimes(hiddenChecks);
-  await act(async () => { await emit("picker:shown", 2); });
+  await act(async () => { await showPicker(2); });
   await act(async () => { await vi.advanceTimersByTimeAsync(ZOTERO_CHECK_EVERY); });
   expect(status.error).toBeNull();
   expect(screen.getByText("Zotero atlas")).toBeTruthy();
