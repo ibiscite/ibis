@@ -37,6 +37,7 @@ function fixture(t) {
     gh: `case "$1 $2" in
       'api user') echo "$GH_ACTOR";;
       'repo view') echo example/ibis;;
+      'api repos/example/ibis/actions/workflows/ci.yml/runs?branch=main&event=push&status=completed&per_page=1') case "$MAIN_CI" in failure) echo https://example.invalid/actions/runs/9;; error) exit 1;; esac;;
       'pr list') if [[ "$*" == *'--state merged'* ]]; then [ "$MERGED" = 0 ] || echo "$SHA"; elif [ "$HAS_PR" = 1 ]; then printf '42\\t%s\\t%s\\t%s\\n' "$AUTHOR" "$FORK" "$DRAFT"; fi;;
       'pr view') case "$*" in *--json\\ title*) echo "$PR_TITLE";; *--json\\ body*) printf 'Reviewed body.\\n\\n## Handoff\\nExisting instructions.\\n';; *--json\\ headRefOid*) echo "$PR_SHA";; *) echo https://example.invalid/pull/42;; esac;;
       'pr create'|'pr edit') while [ "$#" -gt 0 ]; do if [ "$1" = --body-file ]; then cp "$2" "$ROOT/body"; fi; shift; done; echo https://example.invalid/pull/42;;
@@ -48,7 +49,7 @@ function fixture(t) {
     for (const path of ["changed", "body", "merge-body"]) rmSync(join(root, path), { force: true });
     writeFileSync(calls, "");
     const result = spawnSync("bash", [fileURLToPath(new URL("./land.sh", import.meta.url)), ...args], { cwd: root, encoding: "utf8", timeout: 15000,
-      env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, ROOT: root, CALLS: calls, REAL_NODE: process.execPath, BRANCH: "ci/synthetic", BRANCH_EXISTS: "1", SHA: sha, PR_SHA: sha, PR_TITLE: "fix: preserve the reviewed title", DIRTY: "0", MOVE_HEAD: "0", STATUS_ERROR: "0", GH_ACTOR: "diyanko", PUSH_STATUS: "0", HAS_PR: "1", MERGED: "1", AUTHOR: "diyanko", FORK: "false", DRAFT: "false", READY_STATUS: "0", MERGE_STATUS: "0", FAIL_CHECK: "", ...overrides } });
+      env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, ROOT: root, CALLS: calls, REAL_NODE: process.execPath, BRANCH: "ci/synthetic", BRANCH_EXISTS: "1", SHA: sha, PR_SHA: sha, PR_TITLE: "fix: preserve the reviewed title", DIRTY: "0", MOVE_HEAD: "0", STATUS_ERROR: "0", GH_ACTOR: "diyanko", PUSH_STATUS: "0", HAS_PR: "1", MERGED: "1", AUTHOR: "diyanko", FORK: "false", DRAFT: "false", READY_STATUS: "0", MERGE_STATUS: "0", FAIL_CHECK: "", MAIN_CI: "success", ...overrides } });
     let body = ""; try { body = readFileSync(join(root, "body"), "utf8"); } catch {}
     let mergeBody = ""; try { mergeBody = readFileSync(join(root, "merge-body"), "utf8"); } catch {}
     return { ...result, calls: readFileSync(calls, "utf8"), body, mergeBody };
@@ -142,4 +143,17 @@ test("dirty files, moving heads, wrong owners and failed push refuse auto-merge"
   }
   assert.doesNotMatch(run({ DRAFT: "true", READY_STATUS: "74" }).calls, /gh pr merge/);
   assert.equal(run({ MERGE_STATUS: "74" }).status, 74);
+});
+
+test("a red main lands only fixes and reverts; an unknown state does not block", posix, (t) => {
+  const run = fixture(t);
+  for (const PR_TITLE of ["fix: preserve the reviewed title", "fix(ci)!: restore main", "revert: undo the shelf"]) {
+    const result = run({ MAIN_CI: "failure", PR_TITLE });
+    assert.equal(result.status, 0, PR_TITLE + result.stdout + result.stderr);
+  }
+  const refused = run({ MAIN_CI: "failure", PR_TITLE: "feat: add a shelf" });
+  assert.equal(refused.status, 1);
+  assert.match(refused.stdout, /Main is red \(https:\/\/example\.invalid\/actions\/runs\/9\)/);
+  assert.doesNotMatch(refused.calls, /cargo |git push|gh pr (create|ready|merge)/);
+  for (const MAIN_CI of ["success", "error"]) assert.equal(run({ MAIN_CI, PR_TITLE: "feat: add a shelf" }).status, 0, MAIN_CI);
 });

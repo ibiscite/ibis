@@ -97,8 +97,9 @@ at the layer that owns the cause.
 
 [`land.sh`](../scripts/land.sh) runs fast local feedback from a clean, named
 branch: formatting, workspace `cargo check` with all targets, TypeScript,
-Biome lint and `gen.mjs --check`. Dependencies must already be installed;
-Rust uses this worktree's `target` without sccache. These checks are for speed
+Biome lint and `gen.mjs --check`. While main's latest finished push CI failed,
+it refuses any title but `fix` or `revert` and names the red run. Dependencies
+must already be installed; Rust uses this worktree's `target` without sccache. These checks are for speed
 only ([decision 0049](decisions/0049-local-gate.md)).
 
 After passing, it pushes the checked head, preserves existing PR text or creates
@@ -112,19 +113,16 @@ nor reports a status. Keep the worktree until the PR merges, then run
 [CI](../.github/workflows/ci.yml) runs on in-repository PRs and pushes to main.
 **CI result** is the required merge check: interface build, `Test` and
 `Desktop` suites, web/script tests, dependency policy and commit identities
-must all pass. PRs run `Desktop` (a warm lint and test, 2–4 minutes) on all
-three systems and `Test` on Ubuntu only (about 9 minutes in all) unless [`ci-scope.sh`](../scripts/ci-scope.sh) finds platform code
-(`macos`/`windows`/`platform` paths, `paste`, `copy`, `placement`,
-`native_feel`), packaging, PowerShell, Swift, Cargo manifests or lock, or
-workflow changes, or the PR has the `full-ci` label; adding the label reruns
-the check on all three systems. Pushes to main always run all three and so
-confirm each merged commit. Fork PRs skip every job, so their **CI result**
+must all pass. Every PR and every push to main runs `Test` and `Desktop` on
+Ubuntu, macOS and Windows. Fork PRs skip every job, so their **CI result**
 fails; they keep read-only title feedback.
 
 Daily/manual runs add WebKit, release-mode/MSRV checks, five minutes each of fuzzing the
 BibTeX loader and the PDF extractor (`ibis-fuzz`; seeds run with `cargo test -p ibis-fuzz`) and
 installed journeys against the published nightly; failures update one issue.
-**CI result** also protects publication: a red main keeps the preceding nightly.
+**CI result** also protects publication: the one nightly a day is built from
+main's head only once its push CI passed, so a red or unfinished main keeps the
+preceding nightly.
 Run manual qualification before a stable release.
 [Preview](../.github/workflows/preview.yml) keeps full builds, signing and
 install/start checks before publishing. Nix and syntax-tool workflows confirm

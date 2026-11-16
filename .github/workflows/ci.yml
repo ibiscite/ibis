@@ -5,16 +5,13 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-    # Adding the full-ci label reruns the check with every platform.
-    types: [opened, synchronize, reopened, labeled]
   schedule:
     - cron: "17 5 * * *"
     - cron: "43 5 * * 1" # Weekly full advisory check and one issue on failure.
   workflow_dispatch:
 
-# Pull requests run the fast tier (Ubuntu) unless they touch platform code or
-# carry the full-ci label; main pushes and daily/manual runs use all three
-# systems. A newer push replaces a pull request's running check.
+# Pull requests, main pushes and daily/manual runs test all three systems.
+# A newer push replaces a pull request's running check.
 concurrency:
   group: ci-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -29,27 +26,6 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
-  scope:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    name: Choose platforms
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    outputs:
-      os: ${{ steps.scope.outputs.os }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 2 # A pull request's merge commit and its base.
-
-      - name: Choose the platform matrix
-        id: scope
-        env:
-          EVENT: ${{ github.event_name }}
-          FULL_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}
-        run: bash scripts/ci-scope.sh >> "$GITHUB_OUTPUT"
-
   interface:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Build the web interface
@@ -92,13 +68,12 @@ jobs:
   test:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Test (${{ matrix.os }})
-    needs: scope
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(needs.scope.outputs.os) }}
+        os: [ubuntu-24.04, macos-15, windows-2025]
     defaults:
       run:
         shell: bash
@@ -208,7 +183,7 @@ jobs:
   desktop:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Desktop (${{ matrix.os }})
-    needs: [scope, interface]
+    needs: interface
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -576,7 +551,7 @@ jobs:
   result:
     name: CI result
     if: always()
-    needs: [scope, interface, test, web, desktop, webkit, dependencies, release-checks, bibtex-fuzz, installed]
+    needs: [interface, test, web, desktop, webkit, dependencies, release-checks, bibtex-fuzz, installed]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -589,9 +564,8 @@ jobs:
 
       - name: Require every CI job to pass
         env:
-          RESULTS: ${{ needs.scope.result }} ${{ needs.interface.result }} ${{ needs.test.result }} ${{ needs.web.result }} ${{ needs.desktop.result }} ${{ needs.dependencies.result }}
+          RESULTS: ${{ needs.interface.result }} ${{ needs.test.result }} ${{ needs.web.result }} ${{ needs.desktop.result }} ${{ needs.dependencies.result }}
           QUALIFICATION: ${{ needs.webkit.result }} ${{ needs.release-checks.result }} ${{ needs.bibtex-fuzz.result }} ${{ needs.installed.result }}
-          PLATFORMS: ${{ needs.scope.outputs.os }}
           EVENT: ${{ github.event_name }}
         run: scripts/ci-result.sh
 

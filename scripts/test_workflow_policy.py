@@ -2,9 +2,9 @@
 parser, never with regular expressions.
 
 "CI result" is the required merge check and confirms main before publication.
-Pull requests run the fast tier; main and daily/manual runs need every platform,
-and daily/manual runs every qualifier, even after a failed prerequisite. The
-reporter is outside that result.
+Pull requests, main and daily/manual runs test every platform, and daily/manual
+runs every qualifier, even after a failed prerequisite. The reporter is outside
+that result.
 """
 
 import sys
@@ -49,22 +49,18 @@ class CiResultTest(unittest.TestCase):
         needs = [needs] if isinstance(needs, str) else list(needs)
         self.assertEqual(sorted(needs), sorted(name for name in jobs if name not in {key, "nightly-report"}))
 
-    def test_pull_requests_choose_platforms_and_main_runs_all(self):
+    def test_every_pull_request_and_main_push_tests_all_three_systems(self):
         events = self.workflow.get("on", self.workflow.get(True))
         self.assertEqual(set(events), {"push", "pull_request", "schedule", "workflow_dispatch"})
         self.assertEqual(events["push"], {"branches": ["main"]})
-        self.assertEqual(events["pull_request"], {"branches": ["main"], "types": ["opened", "synchronize", "reopened", "labeled"]})
+        self.assertEqual(events["pull_request"], {"branches": ["main"]})
         jobs = self.workflow["jobs"]
-        for name in ["scope", "interface", "test", "web", "desktop", "dependencies"]:
+        for name in ["interface", "test", "web", "desktop", "dependencies"]:
             self.assertEqual(jobs[name]["if"], FORK_GUARD)
-        scope = next(step for step in jobs["scope"]["steps"] if step.get("id") == "scope")
-        self.assertEqual(scope["run"], 'bash scripts/ci-scope.sh >> "$GITHUB_OUTPUT"')
-        self.assertEqual(scope["env"]["FULL_LABEL"], "${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}")
-        self.assertEqual(jobs["test"]["strategy"]["matrix"]["os"], "${{ fromJSON(needs.scope.outputs.os) }}")
-        self.assertEqual(jobs["desktop"]["strategy"]["matrix"]["os"], ["ubuntu-24.04", "macos-15", "windows-2025"])
-        self.assertEqual(jobs["test"]["needs"], "scope")
-        self.assertEqual(jobs["desktop"]["needs"], ["scope", "interface"])
-        self.assertEqual(jobs["result"]["steps"][-1]["env"]["PLATFORMS"], "${{ needs.scope.outputs.os }}")
+        for name in ["test", "desktop"]:
+            self.assertEqual(jobs[name]["strategy"]["matrix"]["os"], ["ubuntu-24.04", "macos-15", "windows-2025"])
+        self.assertNotIn("needs", jobs["test"])
+        self.assertEqual(jobs["desktop"]["needs"], "interface")
 
     def test_dependency_rules_and_identities_remain_in_confirmation(self):
         jobs = self.workflow["jobs"]
@@ -111,6 +107,23 @@ class CiResultTest(unittest.TestCase):
         advisory = next(step for step in steps if step.get("with", {}).get("command") == "check advisories")
         self.assertEqual(advisory["if"], "startsWith(github.ref, 'refs/tags/')")
         self.assertFalse(advisory.get("continue-on-error", False))
+
+    def test_one_nightly_a_day_from_a_green_head(self):
+        workflow = yaml.safe_load((ROOT / ".github/workflows/preview.yml").read_text(encoding="utf-8"))
+        events = workflow.get("on", workflow.get(True))
+        self.assertEqual(events["push"], {"tags": ["v*"]})
+        self.assertEqual([entry["cron"] for entry in events["schedule"]], ["7 2 * * *", "37 4 * * *"])
+        jobs = workflow["jobs"]
+        self.assertEqual(jobs["nightly-commit"]["if"], "github.event.schedule == '7 2 * * *'")
+        choose = next(step for step in jobs["nightly-commit"]["steps"] if step.get("id") == "choose")
+        self.assertEqual(choose["env"]["SHA"], "${{ github.sha }}")
+        self.assertLess(choose["run"].index("node scripts/ci-main.mjs"), choose["run"].index("node scripts/publication-guard.mjs nightly"))
+        gate = "${{ !cancelled() && !inputs.update_test && (github.event_name != 'schedule' || needs.nightly-commit.outputs.build == 'true') }}"
+        for name in ["build", "windows-paste"]:
+            self.assertEqual(jobs[name]["needs"], "nightly-commit")
+            self.assertEqual(jobs[name]["if"], gate)
+        self.assertEqual(jobs["nightly"]["if"], "github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish)")
+        self.assertEqual(jobs["update-e2e"]["if"], "github.ref == 'refs/heads/main' && (github.event.schedule == '37 4 * * *' || inputs.update_test)")
 
     def test_each_ubuntu_installer_restores_its_package_cache_first(self):
         for name, profile in [("desktop", "desktop"), ("web", "web")]:
