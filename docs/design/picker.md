@@ -112,3 +112,12 @@ Built in `ibis-core` so every front end shares them (#1204).
 - **Never** take keys people type with (so not Ctrl+Space or Ctrl+Alt), open by itself, appear in the Dock, taskbar or Alt+Tab (only Settings and a pinned picker do), or animate past 280 ms. On X11 the first press over a full-screen app is ignored and a second within two seconds opens Ibis.
 - **Platform limits**: macOS a non-activating floating panel, also over full-screen apps; Windows copies instead of typing into elevated apps; Wayland copies and says "Press Ctrl+V" ([compatibility](../compatibility.md#linux-shortcuts-and-tray)).
 - Hidden Ibis waits for events; nothing polls while it is hidden.
+
+## Opening observation
+
+On summon, Rust captures the target and builds one typed `PickerSnapshot` with
+library status, resolved recents, destination and format, and interface
+preferences. The webview applies it synchronously and acknowledges that
+presentation before the native window is revealed. A later presentation replaces
+the whole observation; old rows and previews cannot flash while its query runs.
+Launch follows the same path, retaining the snapshot until the listener exists.

@@ -4,7 +4,7 @@ import { emit } from "@tauri-apps/api/event";
 import { StrictMode } from "react";
 import { App } from "./App";
 import * as api from "./api";
-import { backend, resetApp } from "./testing/app";
+import { backend, resetApp, showPicker } from "./testing/app";
 
 afterEach(async () => { await resetApp(); vi.restoreAllMocks(); });
 
@@ -125,10 +125,10 @@ test("a shortcut note that appears while the picker is hidden shows when it open
   render(<App />);
   await act(async () => { await emit("picker:hidden"); });
   error = "No key on this keyboard layout types the shortcut's letter";
-  await act(async () => { await emit("picker:shown"); });
+  await act(async () => { await showPicker(); });
   expect(await screen.findByText(/No key on this keyboard layout/)).toBeTruthy();
   error = null;
-  await act(async () => { await emit("picker:hidden"); await emit("picker:shown"); });
+  await act(async () => { await emit("picker:hidden"); await showPicker(); });
   await waitFor(() => expect(screen.queryByText(/No key on this keyboard layout/)).toBeNull());
 });
 

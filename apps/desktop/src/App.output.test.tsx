@@ -6,7 +6,7 @@ import { App } from "./App";
 import type { PickerDestination } from "./api";
 import { isStyle, listedOutput } from "./format/outputs";
 import { OUTPUTS } from "./bindings";
-import { backend, prepared, receipt, resetApp, result, type PreviewRequest, toggleKeepOpen } from "./testing/app";
+import { backend, prepared, receipt, resetApp, result, type PreviewRequest, toggleKeepOpen, showPicker } from "./testing/app";
 
 afterEach(resetApp);
 const WORD: PickerDestination = fixtureDestination({ app: "Example Word", app_id: "example.word", app_identity: null, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false, format: formatAnswer("apa", "suggestion") });
@@ -65,7 +65,7 @@ test("a format pick is remembered for the browser, and a later pick replaces it"
   await pick("LaTeX \\cite");
   await waitFor(() => expect(remembered).toEqual(["cite"]));
   destination = fixtureDestination({ ...BROWSER, format: formatAnswer("cite", "app") });
-  await act(async () => { await emit("picker:shown"); });
+  await act(async () => { await showPicker(); });
   await waitFor(() => expect(formatShown()).toBe("LaTeX \\cite · Example Browser"));
   await pick("Typst");
   await waitFor(() => expect(remembered).toEqual(["cite", "typst"]));
@@ -145,10 +145,10 @@ test("a new default reaches apps with no remembered format and leaves remembered
   await pick("Typst");
   await waitFor(() => expect(saved).toEqual(["typst"]));
   destination = fixtureDestination({ ...BROWSER, app: "Example Editor", app_id: "example.editor", format: formatAnswer("typst", "yours") });
-  await act(async () => { await emit("picker:shown"); });
+  await act(async () => { await showPicker(); });
   await waitFor(() => expect(formatShown()).toBe("Typst"));
   destination = fixtureDestination({ ...BROWSER, format: formatAnswer("cite", "app") });
-  await act(async () => { await emit("picker:shown"); });
+  await act(async () => { await showPicker(); });
   await waitFor(() => expect(formatShown()).toBe("LaTeX \\cite · Example Browser"));
   expect(remembered).toEqual([]);
 });
@@ -158,7 +158,7 @@ test("the menu says why the next paste uses its format and where a pick goes", a
   opened(() => destination);
   await screen.findByText("First");
   const says = async (shown: string, note: string) => {
-    await act(async () => { await emit("picker:shown"); });
+    await act(async () => { await showPicker(); });
     await waitFor(() => expect(formatShown()).toBe(shown));
     await waitFor(() => expect(formatButton().hasAttribute("disabled")).toBe(false));
     openFormats();
@@ -265,7 +265,7 @@ test("an unrelated Settings refresh does not extend a held format", async () => 
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   await waitFor(() => expect(calls).toContain("deliver_citation"));
   await act(async () => { await emit("preferences:changed"); });
-  await waitFor(() => expect(calls.filter((call) => call === "picker_destination")).toHaveLength(2));
+  await waitFor(() => expect(calls.filter((call) => call === "picker_destination")).toHaveLength(1));
   await act(async () => { finish({ outcome: "retained", copied: { text: "synthetic typst copy", warnings: [] }, reason: "pinned" }); });
   await waitFor(() => expect(formatShown()).toBe("LaTeX \\cite · Example Browser"));
 });

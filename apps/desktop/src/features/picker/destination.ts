@@ -2,6 +2,7 @@
 // session: the app or writing in front, the format
 // picked for it, and the OutputToken a copy is checked against.
 import { problemText } from "../../i18n";
+import type * as nativeApi from "../../api";
 import type { AppPaste, PickerDestination } from "../../api";
 import { listedOutput, type OutputId } from "../../format/outputs";
 import type { Operation } from "./Notices";
@@ -47,6 +48,7 @@ export type DestinationEvent =
   | { type: "destination-reader"; present: boolean; remembers: boolean }
   /** `format` is what the picker shows now: a permission return keeps it. */
   | { type: "read-destination"; reset: boolean; preserve?: boolean; format?: OutputId }
+  | { type: "destination-snapshot"; value: nativeApi.PickerSnapshot["destination"]; preserve: boolean; format: OutputId }
   | { type: "destination-read"; request: number; destination: PickerDestination }
   | { type: "destination-read-failed"; request: number; error: unknown }
   | { type: "project-changed"; version: [number, number] | null }
@@ -119,6 +121,12 @@ export function reduceDestination(d: DestinationState, event: DestinationEvent):
     case "destination-reader":
       return d.reader === event.present && d.remembers === event.remembers ? null
         : { destination: { ...d, reader: event.present, remembers: event.remembers, ready: !event.present || d.ready }, effects: [] };
+    case "destination-snapshot": {
+      const next = read(d, true, event.preserve, event.format).destination;
+      return reduceDestination(next, "Ok" in event.value
+        ? { type: "destination-read", request: next.reads, destination: event.value.Ok }
+        : { type: "destination-read-failed", request: next.reads, error: event.value.Err });
+    }
     case "read-destination": return read(d, event.reset, event.preserve, event.format);
     case "destination-read": {
       if (event.request !== d.reads) return null;

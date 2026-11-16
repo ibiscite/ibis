@@ -3,7 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import { backend, chooseFromMore, prepared, resetApp, result, toggleKeepOpen } from "./testing/app";
+import { backend, chooseFromMore, prepared, resetApp, result, toggleKeepOpen, showPicker } from "./testing/app";
 
 afterEach(resetApp);
 const writer = "invented.writer";
@@ -84,7 +84,7 @@ function nativeHistory() {
   return {
     requests,
     recent_references: (args: Record<string, unknown>) => {
-      requests.push(args);
+      if (!args.snapshot) requests.push(args);
       if (args.forget) cited = false;
       return [{ revision: "1", results: cited ? [{ ...a, recent: "cited" }] : [] }, cited, false];
     },
@@ -113,7 +113,7 @@ test("Forget clears native history and an old receipt cannot repopulate it on re
   await screen.findByText("Recent A");
   await chooseFromMore("Forget Recent Citations");
   await waitFor(() => expect(screen.queryByText("Recent A")).toBeNull());
-  await act(async () => { await emit("picker:shown", null); });
+  await act(async () => { await showPicker(null); });
   expect(screen.queryByRole("heading", { name: "Cited here recently" })).toBeNull();
   expect(within(screen.getByRole("listbox", { name: "Results" })).queryAllByRole("option")).toHaveLength(0);
   expect(native.requests.filter((args) => (args as { forget: boolean }).forget)).toEqual([{ forget: true }]);

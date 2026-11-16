@@ -22,7 +22,7 @@
 import { emit } from "@tauri-apps/api/event";
 import type { AppPaste, CopiedReason, DeliveryOutcome, Delivered, Preview, NoticeMessage, SearchQuery, SearchReply } from "../bindings";
 import { readNotice, renderNotice } from "../copyFeedback";
-import { changedDelivery, backend, prepared, receipt, retainedCitation, displayTree, type PreviewRequest } from "./app";
+import { changedDelivery, backend, prepared, receipt, retainedCitation, displayTree, showPicker, type PreviewRequest } from "./app";
 import { formatAnswer } from "./format";
 
 type Job<Args, Input> = {
@@ -64,6 +64,9 @@ type AppChoice = { output: string | null; paste: AppPaste | null };
 
 export function deliveryHarness(text = "Draft: [citation].", selection: [number, number] = [7, 17]) {
   const search = new Work<SearchQuery, SearchReply, SearchReply>();
+  let appSaving: Promise<unknown> = Promise.resolve();
+  let firstSnapshot = true;
+  let recentReply: SearchReply = { revision: "1", results: [] };
   const citationKeys = new Map<string, string>();
   const preview = new Work<PreviewRequest, PreviewContent, Preview>();
   const copy = new Work<{ ticket: string; contentHash: string; replaces: string[] }, void, DeliveryOutcome>();
@@ -143,8 +146,8 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
 
 
   const calls = backend({
-    "plugin:window|is_visible": () => visible,
-    picker_destination: () => {
+    picker_destination: async ({ snapshot }) => {
+      if (snapshot) await appSaving;
       captured ??= capture();
       const choice = appChoices.get(target.appId);
       const paste = target.refusal ? null : choice?.paste ?? null;
@@ -160,10 +163,21 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
         appChoices.set(args.appId, { output: args.output ?? saved?.output ?? null, paste: args.paste ?? saved?.paste ?? null });
         if (args.paste !== null) proof = null;
       });
+      appSaving = saving.catch(() => undefined);
       if (!holdAppSaves) appSaves.pending.at(-1)!.complete();
       return saving;
     },
+    recent_references: ({ snapshot }) => {
+      if (snapshot && !firstSnapshot) return [recentReply, false, false];
+      firstSnapshot = false;
+      return search.enqueue({ text: "", interpret_locators: true }, (reply) => {
+        recentReply = reply;
+        for (const record of reply.results) citationKeys.set(JSON.stringify(record.id), record.key);
+        return reply;
+      }).then((reply) => [reply, false, false]);
+    },
     search: ({ query }) => search.enqueue(query, (reply) => {
+      recentReply = reply;
       for (const record of reply.results) citationKeys.set(JSON.stringify(record.id), record.key);
       return reply;
     }),
@@ -227,8 +241,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
       captured = capture();
       visible = true;
       const text = captured.selection;
-      await emit("picker:preparing", text && shows(text) ? text : null);
-      await emit("picker:shown");
+      showPicker(presentation, text && shows(text) ? text : null);
     },
     copyElsewhere(text: string) {
       Object.assign(clipboard, { text, html: null, owner: "external", sequence: clipboard.sequence + 1 });

@@ -4,7 +4,7 @@ import { getRoles } from "@testing-library/dom";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import type { LibraryStatus } from "./api";
-import { backend, resetApp, result } from "./testing/app";
+import { backend, resetApp, result, showPicker } from "./testing/app";
 
 afterEach(resetApp);
 const hour = 3_600_000;
@@ -360,7 +360,7 @@ test("an older failed open cannot overwrite a later successful open or a reopene
   openKey();
   await waitFor(() => expect(rejected).toHaveLength(2));
   await act(async () => { await emit("picker:hidden"); });
-  await act(async () => { await emit("picker:shown"); });
+  await act(async () => { await showPicker(); });
   await act(async () => { rejected[1]?.(new Error("invented retired presentation")); });
   expect(screen.queryByRole("alert")).toBeNull();
 });
@@ -389,7 +389,7 @@ test("a delayed status A cannot replace event B, including across hide and reope
   await act(async () => { await emit("library:changed", library({ references: 26, revision: "B" })); });
   expect(detailTitle()).toContain("26 references");
   await act(async () => { await emit("picker:hidden"); });
-  await act(async () => { await emit("picker:shown"); });
+  await act(async () => { await showPicker(); });
   await waitFor(() => expect(detailTitle()).toContain("27 references"));
   await act(async () => finish(stale({ references: 12, revision: "A" })));
   expect(detailTitle()).toContain("27 references");

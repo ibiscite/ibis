@@ -7,7 +7,7 @@ export function usePickerLibrary(api: typeof nativeApi, { report, setFailures }:
   const { chooseLibrary, useZotero, findZotero, findSources, openFoundLibrary, librarySource } = api;
   const setupApi = useMemo(() => ({ chooseLibrary, useZotero, useSampleLibrary: api.useSampleLibrary, findZotero, findSources, openFoundLibrary, librarySource }),
     [chooseLibrary, useZotero, api.useSampleLibrary, findZotero, findSources, openFoundLibrary, librarySource]);
-  const { library, settledLibrary, libraryVersion, refreshSnapshot } = useLibraryStatus(api, report, cancelCopy);
+  const { library, settledLibrary, libraryVersion, refreshSnapshot, snapshotReceiver } = useLibraryStatus(api, report, cancelCopy);
   // Setup failures belong to setup; recovery answers an earlier Zotero failure.
   const setupDone = library !== undefined && library?.state !== "none";
   useEffect(() => {
@@ -24,5 +24,5 @@ export function usePickerLibrary(api: typeof nativeApi, { report, setFailures }:
   const blocked = library?.state === "error" && !library.has_snapshot;
   const libraryChoices = choosingLibrary || library?.state === "none" || blocked || library?.state === "loaded" && library.has_snapshot && library.references === 0;
   const showCitations = !libraryChoices;
-  return { library, settledLibrary, libraryVersion, refreshSnapshot, choosingLibrary, setChoosingLibrary, chooserRequest, welcomeShown, setWelcomeShown, busy, blocked, libraryChoices, showCitations, setupApi };
+  return { library, settledLibrary, libraryVersion, refreshSnapshot, snapshotReceiver, choosingLibrary, setChoosingLibrary, chooserRequest, welcomeShown, setWelcomeShown, busy, blocked, libraryChoices, showCitations, setupApi };
 }

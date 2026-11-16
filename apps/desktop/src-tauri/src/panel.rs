@@ -76,27 +76,7 @@ fn startup_readiness(app: &AppHandle, panel_ready: bool) {
             // presentation. An earlier explicit show/dismiss cancels it even
             // if this readiness callback had already been queued.
             if let Some(focused) = intent {
-                let Some(panel) = checked(handle.get_webview_panel("main"), NativeIssue::Window) else {
-                    return;
-                };
-                crate::native_feel::before_show(&handle);
-                if focused {
-                    panel.show_and_make_key();
-                    if let Some(window) = checked(handle.get_webview_window("main").ok_or(()), NativeIssue::Window) {
-                        focus_webview(&window);
-                    }
-                } else {
-                    panel.order_front_regardless();
-                }
-                #[cfg(debug_assertions)]
-                eprintln!(
-                    "ibis: panel initial presented focused={} visible={} key={} first_responder={} outer_responder={}",
-                    focused,
-                    panel.as_panel().isVisible(),
-                    panel.as_panel().isKeyWindow(),
-                    panel.as_panel().firstResponder().is_some(),
-                    outer_is_responder(panel.as_panel())
-                );
+                crate::picker::show_picker_focused(&handle, focused);
             }
         }),
         NativeIssue::Focus,

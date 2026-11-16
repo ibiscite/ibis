@@ -16,6 +16,7 @@ export type SearchInputs = {
   /** Changes whenever a library opens, so the current query is searched again. */
   version: number;
   recent: unknown;
+  recentReply?: SearchReply | null;
   /** The app an empty query's recent citations are for. */
   app: string | null;
 };
@@ -51,7 +52,7 @@ export type SearchEffect =
 export const ANNOUNCE_AFTER = 300;
 
 export const sameInputs = (a: SearchInputs | null | undefined, b: SearchInputs) =>
-  Boolean(a) && a!.queryKey === b.queryKey && a!.library === b.library && a!.version === b.version && a!.recent === b.recent && a!.app === b.app;
+  Boolean(a) && a!.queryKey === b.queryKey && a!.library === b.library && a!.version === b.version && a!.recent === b.recent && a!.recentReply === b.recentReply && a!.app === b.app;
 
 /** Typing before a library opens is normal: nothing is searched and nothing fails. */
 const searchable = (library: LibraryStatus | null | undefined) =>
@@ -75,6 +76,10 @@ export function reduceSearch(s: SearchState, event: SearchEvent, session: number
         // count is missing, announce this answer when typing next pauses.
         const effects: SearchEffect[] = canSearch && !s.announcement ? [{ type: "announce-after", seq, ms: ANNOUNCE_AFTER }] : [];
         return { search: { ...s, inputs, session, seq, settled: { inputs, session } }, firstRow: false, effects };
+      }
+      if (canSearch && !s.inputs && inputs.recentReply !== undefined) {
+        return reduceSearch({ ...s, inputs, session, seq }, inputs.recentReply === null
+          ? { type: "search-failed", seq } : { type: "searched", seq, reply: inputs.recentReply }, session);
       }
       if (!canSearch) {
         return { search: { ...s, inputs, session, seq, settled: { inputs, session }, results: [], interpretation: null, list: null, unfiltered: null,

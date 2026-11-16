@@ -243,26 +243,6 @@ test("search, Enter and receipt use exactly one prepared engine ticket", () => {
   expect(s.state.flights).toHaveLength(0);
 });
 
-test("exhausted presentation reads refuse Enter and later readiness cannot replay it", () => {
-  const s = scenario();
-  s.send({ type: "retire" });
-  s.send(s.view());
-  s.send({ type: "initialize" });
-  s.send({ type: "enter", choice: choiceKey([a]) });
-  const visibility = s.state.visibility;
-  s.send({ type: "presentation", visibility, presentation: null });
-  s.send({ type: "presentation", visibility, presentation: null });
-  expect(s.state.copyError).toBe("Nothing was copied. Try again, or use Reload.");
-  expect(s.state.pendingCopy).toBeNull();
-  expect(s.effects).toEqual([]);
-  s.send({ type: "initialize" });
-  s.send({ type: "presentation", visibility, presentation: 41 });
-  expect(s.effects).toEqual([]);
-  s.send({ type: "enter", choice: choiceKey([a]) });
-  expect(s.effects).toMatchObject([{ type: "copy", ticket: "ticket-b", hash: "hash-b" }]);
-  expect(s.effects).toMatchObject([{ presentation: 41 }]);
-});
-
 test.each<[CopiedReason, string]>([
   ["no-permission", "Copied. Ibis needs your OK to paste. Press Ctrl+V to paste."],
   ["accessibility-required", "Copied. Ibis needs Accessibility access to paste safely. Press Ctrl+V to paste."],
@@ -834,24 +814,6 @@ test("an app with no ID never shares a last citation with another", () => {
   s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
   s.send({ type: "completed", id: 1, session: 0, outcome: { outcome: "retained", copied: { text: prepared.text, warnings: [] }, reason: "pinned" } });
   expect(s.state.lastCitations.size).toBe(0);
-});
-
-test("the picker counts as hidden until it is shown, and a visibility read never undoes a newer event", () => {
-  const send = (state: ReturnType<typeof initialSession>, event: SessionEvent) => reduceSession(state, event)[0];
-  let s = initialSession();
-  expect(s.shown).toBe(false);
-  // The start-up read answers "shown" when nothing happened meanwhile.
-  s = send(s, { type: "visibility-read", visible: true, events: s.visibilityEvents });
-  expect(s.shown).toBe(true);
-  // A read started before a hide answers too late: the hide stands.
-  const started = s.visibilityEvents;
-  s = send(s, { type: "hidden", now: 1 });
-  s = send(s, { type: "visibility-read", visible: true, events: started });
-  expect(s.shown).toBe(false);
-  s = send(s, { type: "shown", now: 2, presentation: 1 });
-  expect(s.shown).toBe(true);
-  s = send(s, { type: "visibility-read", visible: false, events: started });
-  expect(s.shown).toBe(true);
 });
 
 test("moving a reference follows the line's order, keeps the person's order, and refuses a stale line", () => {

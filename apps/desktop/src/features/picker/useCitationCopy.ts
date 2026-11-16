@@ -18,8 +18,7 @@ export function useCitationCopy({ api, session, state, destination, formatButton
   const { deliverCitation } = api;
   const send = session.dispatch;
   useLayoutEffect(() => {
-    session.connect({ deliverCitation, pickerPresentation: api.pickerPresentation,
-      refresh: refreshSnapshot });
+    session.connect({ deliverCitation, refresh: refreshSnapshot });
   });
   // An Enter that must first ask opens the format menu once the screen shows its question.
   const asking = state.pendingCopy?.question === "open";

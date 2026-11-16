@@ -327,14 +327,22 @@ pub(crate) fn picker_destination(
     _settings_file: State<'_, SettingsFile>,
     editor: State<'_, crate::editor_endpoint::Pending>,
 ) -> Result<PickerDestination, crate::library::CommandError> {
+    current_destination(&app, &memory, &editor)
+}
+
+pub(crate) fn current_destination(
+    app: &AppHandle,
+    memory: &AppMemory,
+    editor: &crate::editor_endpoint::Pending,
+) -> Result<PickerDestination, CommandError> {
     // The editor already said what it wants and takes the citation itself.
     let request = editor.current();
     let last = if request.is_some() {
         None
     } else {
-        crate::paste::last_app(&app)
+        crate::paste::last_app(app)
     };
-    let context = crate::writings::destination_context(&app, last.as_ref().map(|(id, _, _)| id))?;
+    let context = crate::writings::destination_context(app, last.as_ref().map(|(id, _, _)| id))?;
     let context_version = Some(context.version);
     let settings = context.settings;
     let captured = last.as_ref().map(|(id, _, _)| id);
@@ -388,9 +396,9 @@ pub(crate) fn picker_destination(
             writing_context,
         });
     };
-    let can_paste = crate::paste::intends_paste(&app, settings.portable.paste.unwrap_or(true));
+    let can_paste = crate::paste::intends_paste(app, settings.portable.paste.unwrap_or(true));
     let policy = memory.paste_for(&id, app_identity.as_deref());
-    let can_choose_paste = crate::paste::may_choose_paste(&app, settings.portable.paste.unwrap_or(true));
+    let can_choose_paste = crate::paste::may_choose_paste(app, settings.portable.paste.unwrap_or(true));
     // Only an app that can answer sees the warning; the others never paste anyway.
     let unreadable = policy.is_err() && can_choose_paste;
     let ordinary = lookup(&id).is_none_or(|entry| entry.safety == PasteSafety::Normal);

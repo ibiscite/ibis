@@ -1,8 +1,9 @@
 // The picker's saved formatting and view preferences.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type * as nativeApi from "../../api";
 import type { Density, PickerPreferences } from "../../api";
 import { defaultOutput, isStyle, listedOutput, type OutputId } from "../../format/outputs";
+import { useAppearance } from "../../ui/appearance";
 import { PreferencePatchQueue } from "../../preferencePatchQueue";
 import type { Operation } from "./Notices";
 
@@ -19,6 +20,8 @@ export function usePickerPreferences(
     perform: (operation: Operation, action: () => Promise<unknown>) => Promise<void>;
   },
 ) {
+  const [appearance, setAppearance] = useState<PickerPreferences | null>(null);
+  useAppearance(appearance);
   const [smallSurprises, setSmallSurprises] = useState<boolean | null>(null);
   /** Null until read: nothing is recorded or forgotten on a guess. */
   const [recentCitations, setRecentCitations] = useState<boolean | null>(null);
@@ -51,6 +54,7 @@ export function usePickerPreferences(
       setFormat(listedOutput(event.value.preferences[formatField.current]) ?? defaultOutput);
     } else if (event.type === "read") {
       const { preferences: saved } = event.value;
+      if (saved) setAppearance(saved);
       setReady(true);
       setAvailable(saved !== null);
       if (saved) {
@@ -78,7 +82,7 @@ export function usePickerPreferences(
     setFormat(output);
     return savePreferences(isStyle(output) ? { output } : { key_output: output });
   };
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.documentElement.dataset.density = density;
     document.documentElement.dataset.textSize = largerText ? "larger" : "normal";
     return () => {
@@ -86,11 +90,10 @@ export function usePickerPreferences(
       delete document.documentElement.dataset.textSize;
     };
   }, [density, largerText]);
-  /** Reads the saved preferences. The picker calls this from its
-   * mount effect, after the library status, so the calls keep their order. */
-  const loadPreferences = (mounted: () => boolean) => { void queue.load(mounted); };
   /** A choice saved in Settings: older replies and failed choices of its fields give way, then the picker reads. */
   const preferencesChanged = (revision: number | undefined, fields: string[] | undefined, mounted: () => boolean) => { void queue.refresh(revision ?? -1, mounted, fields); };
 
-  return { preferencesChanged, ready, available, smallSurprises, recentCitations, format, density, largerText, chooseFormat, quitAfterSaving, loadPreferences };
+  const snapshotReceiver = () => queue.snapshotReceiver();
+
+  return { snapshotReceiver, preferencesChanged, ready, available, smallSurprises, recentCitations, format, density, largerText, chooseFormat, quitAfterSaving };
 }

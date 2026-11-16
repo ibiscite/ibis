@@ -1,6 +1,6 @@
 import type { Problem } from "./bindings";
 import { warningText } from "./i18n";
-import { fixtureCitationKey } from "./testing/app";
+import { fixtureCitationKey, showPicker } from "./testing/app";
 import { recordId } from "./test-fixtures";
 import { afterEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -171,7 +171,7 @@ test("Keep My Order changes the engine preview and survives a short reopen", asy
   fireEvent.click(screen.getByRole("button", { name: /^More/ }));
   expect(screen.getByRole("option", { name: "Keep My Order" }).getAttribute("aria-current")).toBe("true");
   fireEvent.keyDown(within(screen.getByRole("dialog", { name: "Actions" })).getByRole("combobox"), { key: "Escape" });
-  await act(async () => { await emit("picker:hidden"); await emit("picker:shown", 2); });
+  await act(async () => { await emit("picker:hidden"); await showPicker(2); });
   await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("z; a"));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   await waitFor(() => expect(copied).toEqual(["z; a"]));
@@ -182,7 +182,7 @@ test("closing and reopening while Page has focus returns to Search and retains t
   render(<App />);
   const page = await openCitationDetails();
   fireEvent.change(page, { target: { value: "42" } });
-  await act(async () => { await emit("picker:hidden"); await emit("picker:shown"); await new Promise(requestAnimationFrame); });
+  await act(async () => { await emit("picker:hidden"); await showPicker(); await new Promise(requestAnimationFrame); });
   expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
   expect(screen.queryByRole("dialog", { name: /^Citation details for/ })).toBeNull();
   expect((await openCitationDetails()).value).toBe("42");
@@ -896,7 +896,7 @@ test.each(["hidden", "reopened", "failed"])("a %s shorthand hint reply cannot le
     if (outcome === "failed") fail(new Error("invented hint failure"));
     else {
       await emit("picker:hidden");
-      if (outcome === "reopened") await emit("picker:shown", 1);
+      if (outcome === "reopened") await showPicker(1);
       finish(true);
     }
   });

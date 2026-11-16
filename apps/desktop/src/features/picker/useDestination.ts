@@ -43,11 +43,14 @@ export function useDestination(session: ReturnType<typeof createSessionControlle
   const unlisted = Boolean(d.ready && destination && !listedOutput(destination.format.id));
   // Subscriptions keep the first render's functions, so they read the newest default.
   const defaultFormat = useRef(fallback);
-  useLayoutEffect(() => {
-    if (defaultFormat.current !== fallback && pickerDestination && state.destination.held === null) session.dispatch({ type: "read-destination", reset: false });
-    defaultFormat.current = fallback;
-  }, [fallback, pickerDestination, session, state.destination.held]);
+  defaultFormat.current = fallback;
   const current = () => session.getSnapshot().destination;
+  const snapshotReceiver = () => {
+    const request = current().reads;
+    return (value: nativeApi.PickerSnapshot["destination"], preserve: boolean) => {
+      if (request === current().reads) session.dispatch({ type: "destination-snapshot", value, preserve, format: destinationFormat(current(), defaultFormat.current) });
+    };
+  };
   const read = (reset = true, preserveOutput = false) => {
     if (pickerDestination) session.dispatch({ type: "read-destination", reset, preserve: preserveOutput, format: destinationFormat(current(), defaultFormat.current) });
   };
@@ -89,7 +92,7 @@ export function useDestination(session: ReturnType<typeof createSessionControlle
   const remembering = { ...d, remembers: Boolean(rememberAppOutput) };
   const askPaste = asksPaste(remembering);
   const pasteChoices = Boolean(rememberAppOutput && destination?.can_choose_paste);
-  return { appId: destination?.app_id ?? null, app, format, editorFormat, ready, saving, canChooseFormat, source, pick, shouldAsk: !editorFormat && shouldAsk(remembering), read, choose,
+  return { snapshotReceiver, appId: destination?.app_id ?? null, app, format, editorFormat, ready, saving, canChooseFormat, source, pick, shouldAsk: !editorFormat && shouldAsk(remembering), read, choose,
     findOpen: Boolean(!editorFormat && ready && destination?.find_open),
     formatLabel: editorFormat ?? (unlisted ? say("citations-unlisted") : undefined),
     writing, writingContext: destination?.writing_context ?? null, readProblem: d.editProblem ?? d.readProblem ?? (unlisted ? say("writing-unsupported") : null), contextVersion: destination?.context_version ?? null, writingChanged, editWriting,
