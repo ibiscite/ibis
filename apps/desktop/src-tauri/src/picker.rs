@@ -10,6 +10,8 @@ use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
 use crate::diagnostics::{NativeIssue, checked, report};
 
 mod dialogs;
+pub(crate) mod snapshot;
+pub(crate) use snapshot::Presentation;
 mod full_screen;
 mod layout;
 #[cfg(target_os = "linux")]
@@ -203,6 +205,10 @@ fn reveal_shows(visible: Option<bool>) -> bool {
 
 /// Show the picker on the display with the pointer, focused, and tell the interface to focus the search box.
 pub(crate) fn show_picker(app: &AppHandle) {
+    show_picker_focused(app, true);
+}
+
+pub(crate) fn show_picker_focused(app: &AppHandle, focus: bool) {
     crate::updater::picker_activity(app);
     crate::notice::retire(app);
     crate::settings_window::picker_opened();
@@ -221,7 +227,7 @@ pub(crate) fn show_picker(app: &AppHandle) {
         let handle = app.clone();
         on_picker_thread_with(
             on_picker_thread,
-            move || show_picker_on_thread(&handle, owner),
+            move || show_picker_on_thread(&handle, owner, focus),
             |show| report(app.run_on_main_thread(show), NativeIssue::Show),
         );
     }
@@ -229,12 +235,12 @@ pub(crate) fn show_picker(app: &AppHandle) {
     {
         let handle = app.clone();
         show_windows_picker_with(
-            move || show_picker_on_thread(&handle, owner),
+            move || show_picker_on_thread(&handle, owner, focus),
             |show| report(app.run_on_main_thread(show), NativeIssue::Show),
         );
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-    show_picker_on_thread(app, owner);
+    show_picker_on_thread(app, owner, focus);
 }
 
 #[cfg(any(target_os = "windows", test))]
@@ -254,7 +260,7 @@ fn on_picker_thread_with<A: FnOnce()>(on_thread: bool, action: A, dispatch: impl
     }
 }
 
-fn show_picker_on_thread(app: &AppHandle, owner: u64) {
+fn show_picker_on_thread(app: &AppHandle, owner: u64, focus: bool) {
     let visits = app.state::<PickerGeneration>();
     if !visits.owns(owner) {
         return;
@@ -269,23 +275,28 @@ fn show_picker_on_thread(app: &AppHandle, owner: u64) {
         if !crate::sizing::prepare(app, &window, false, false) || !visits.owns(owner) {
             return;
         }
-        // Before the window appears, so its first frame is already current.
-        // Only the picker listens for this; a stale show dropped its text above.
-        report(
-            app.emit_to("main", "picker:preparing", selection),
-            NativeIssue::PickerEvent,
-        );
+        snapshot::prepare(app, owner, selection, focus);
+    }
+}
+
+fn reveal_snapshot(app: &AppHandle, owner: u64, focus: bool) {
+    if let Some(window) = app.get_webview_window("main") {
         crate::native_feel::before_show(app);
         report(window.unminimize(), NativeIssue::Unminimize);
         #[cfg(target_os = "macos")]
-        crate::panel::show(app);
+        if focus {
+            crate::panel::show(app);
+        } else if let Ok(panel) = tauri_nspanel::ManagerExt::get_webview_panel(app, "main") {
+            panel.order_front_regardless();
+            presented(app);
+        }
         #[cfg(not(target_os = "macos"))]
         {
             // Above always-on-top windows too (#1133); unpinned, it hides
             // once it loses focus, so it never covers anything for long.
             #[cfg(target_os = "windows")]
             report(window.set_always_on_top(true), NativeIssue::AlwaysOnTop);
-            present_window(&window, true, owner);
+            present_window(&window, focus, owner);
             presented(app);
         }
         report(window.emit("picker:shown", owner), NativeIssue::PickerEvent);
@@ -529,13 +540,6 @@ fn foreground_full_screen() -> Option<bool> {
     }
     #[cfg(not(target_os = "linux"))]
     None
-}
-
-/// Read the native presentation after subscribing, including on webview reload.
-#[tauri::command]
-#[ibis_desktop_macros::command]
-pub(crate) fn picker_presentation(visits: State<'_, PickerGeneration>) -> u64 {
-    visits.current()
 }
 
 /// Hide only the originating presentation; a delayed request cannot dismiss a reopen.

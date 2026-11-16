@@ -114,8 +114,9 @@ registry![
     crate::settings_window::open_settings_file,
     crate::login_item::login_item,
     crate::login_item::set_login_item,
+    crate::picker::snapshot::picker_snapshot,
+    crate::picker::snapshot::picker_rendered,
     crate::picker::hide_picker,
-    crate::picker::picker_presentation,
     crate::picker::set_pinned,
     crate::picker::picker_moving,
     crate::picker::quit,
@@ -372,7 +373,6 @@ mod tests {
             "core:event:allow-listen",
             "core:event:allow-unlisten",
             "core:window:allow-internal-toggle-maximize",
-            "core:window:allow-is-visible",
             "core:window:allow-start-dragging",
         ]
         .map(str::to_owned)

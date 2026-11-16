@@ -65,58 +65,6 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  test:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    name: Test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-15, windows-2025]
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Check Windows updater activation contracts
-        if: runner.os == 'Windows'
-        run: |
-          command -v pwsh
-          python -B scripts/update-e2e.py --self-test
-
-      - name: Test the Windows offline observer
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: ./scripts/check-offline.tests.ps1
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Lint
-        run: cargo clippy --all-targets --locked
-
-      - name: Test
-        run: cargo test --locked
-
-      # Installed only now: with Pandoc present, cargo test also runs the
-      # syntax_contract consumer tests, which fail on Ubuntu's older Pandoc.
-      - name: Install Pandoc
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pandoc
-
-      - name: Compare rendering from BibTeX and from CSL export
-        if: runner.os == 'Linux'
-        env:
-          IBIS_REQUIRE_PANDOC: "1"
-        run: cargo test -p ibis --test fidelity --locked
-
   web:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Web interface
@@ -180,17 +128,67 @@ jobs:
           pnpm exec vite build
           node ../../scripts/picker-budget.mjs dist
 
-  desktop:
+  pictures:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    name: Desktop (${{ matrix.os }})
+    name: Picture gate
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:51d31fdfacb0cff99a1a724152e34ae408d2bd4e7da310ff157450f49261cc59
+      options: --init
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          package-manager-cache: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: apps/desktop/package.json
+          cache: true
+          cache_dependency_path: apps/desktop/pnpm-lock.yaml
+
+      - name: Build and render the canvas in WebKit
+        run: |
+          pnpm -C apps/desktop install --frozen-lockfile
+          pnpm -C apps/desktop exec vite build --config vite.canvas.config.ts
+          node apps/desktop/gallery/canvas.mjs apps/desktop/dist-canvas picture-actual webkit
+
+      - name: Compare with the visual spec
+        run: node apps/desktop/gallery/check-pictures.mjs apps/desktop/gallery/baselines picture-actual picture-diffs
+
+      - name: Keep pictures and diffs of a failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pictures
+          path: |
+            picture-actual/*.png
+            picture-diffs/*.png
+          if-no-files-found: warn
+          retention-days: 14
+
+  rust:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    name: Rust and desktop (${{ matrix.os }})
     needs: interface
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # The macOS job runs on our own Mac when the RUNNERS variable names it
+    # (docs/testing.md): GitHub's macOS runners are scarce. Dependabot's
+    # unreviewed updates never run on our machines.
+    runs-on: ${{ matrix.os == 'macos-15' && github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON(vars.RUNNERS || '{}')['macos-15'] || matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        # Every system on every PR: a warm desktop lint and test takes 2-4 minutes
-        # and catches code that compiles on one system only.
+        # One job per system: every PR tests all three, and each system takes one
+        # runner (hosted macOS runners are the scarce ones) with one shared build.
         os: [ubuntu-24.04, macos-15, windows-2025]
     defaults:
       run:
@@ -202,6 +200,17 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Check Windows updater activation contracts
+        if: runner.os == 'Windows'
+        run: |
+          command -v pwsh
+          python -B scripts/update-e2e.py --self-test
+
+      - name: Test the Windows offline observer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/check-offline.tests.ps1
 
       - name: Prepare Ubuntu package cache (Linux)
         if: runner.os == 'Linux'
@@ -243,18 +252,34 @@ jobs:
           name: desktop-web
           path: apps/desktop/dist
 
-      # Compile desktop test targets before unrelated suites so contract errors
-      # report early on every native platform.
-      - name: Lint all desktop targets
-        run: cargo clippy -p ibis-desktop -p ibis-desktop-macros --all-targets --locked
+      # Compile every test target first so contract errors report early on every system.
+      - name: Lint
+        run: |
+          cargo clippy --all-targets --locked
+          cargo clippy -p ibis-desktop -p ibis-desktop-macros --all-targets --locked
 
-      - name: Lint, test and build the app
+      - name: Test
+        run: cargo test --locked
+
+      - name: Test and build the app
         id: native_build
         working-directory: .
         run: |
           cargo test -p ibis-desktop -p ibis-desktop-macros --locked
           # Embed the built interface; a plain debug build uses localhost:5173.
           cargo build -p ibis-desktop --locked --features tauri/custom-protocol
+
+      # Installed only after cargo test: with Pandoc present, cargo test also runs the
+      # syntax_contract consumer tests, which fail on Ubuntu's older Pandoc.
+      - name: Install Pandoc
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pandoc
+
+      - name: Compare rendering from BibTeX and from CSL export
+        if: runner.os == 'Linux'
+        env:
+          IBIS_REQUIRE_PANDOC: "1"
+        run: cargo test -p ibis --test fidelity --locked
 
       # The bindings, schemas, MCP tools and CLI options made from the Rust code.
       - name: Check generated files (Linux)
@@ -414,8 +439,8 @@ jobs:
         run: bash scripts/ci-advisories.sh report
 
   release-checks:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Release checks (Linux)
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -551,7 +576,7 @@ jobs:
   result:
     name: CI result
     if: always()
-    needs: [interface, test, web, desktop, webkit, dependencies, release-checks, bibtex-fuzz, installed]
+    needs: [interface, rust, web, pictures, webkit, dependencies, release-checks, bibtex-fuzz, installed]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -564,8 +589,8 @@ jobs:
 
       - name: Require every CI job to pass
         env:
-          RESULTS: ${{ needs.interface.result }} ${{ needs.test.result }} ${{ needs.web.result }} ${{ needs.desktop.result }} ${{ needs.dependencies.result }}
-          QUALIFICATION: ${{ needs.webkit.result }} ${{ needs.release-checks.result }} ${{ needs.bibtex-fuzz.result }} ${{ needs.installed.result }}
+          RESULTS: ${{ needs.interface.result }} ${{ needs.rust.result }} ${{ needs.web.result }} ${{ needs.pictures.result }} ${{ needs.dependencies.result }} ${{ needs.release-checks.result }}
+          QUALIFICATION: ${{ needs.webkit.result }} ${{ needs.bibtex-fuzz.result }} ${{ needs.installed.result }}
           EVENT: ${{ github.event_name }}
         run: scripts/ci-result.sh
 

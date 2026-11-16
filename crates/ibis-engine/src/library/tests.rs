@@ -336,16 +336,17 @@ fn a_failed_zotero_choice_is_retried_when_the_person_comes_back() -> Result<(), 
 
 #[test]
 fn a_stuck_read_gives_way_to_cancellation_and_to_its_deadline() {
-    static READS: AtomicUsize = AtomicUsize::new(0);
+    let reads = Arc::new(AtomicUsize::new(0));
     let cancel = OpenCancellation::default();
     let (release, held) = mpsc::channel::<()>();
     let waiting = {
         let cancel = cancel.clone();
+        let reads = Arc::clone(&reads);
         std::thread::spawn(move || {
             supervise_with(
                 &cancel,
                 Duration::from_secs(30),
-                &READS,
+                &reads,
                 LoadError::FILE_UNAVAILABLE,
                 move || {
                     let _ = held.recv();
@@ -360,7 +361,7 @@ fn a_stuck_read_gives_way_to_cancellation_and_to_its_deadline() {
     let deadline = supervise_with(
         &OpenCancellation::default(),
         Duration::from_millis(50),
-        &READS,
+        &reads,
         LoadError::FILE_UNAVAILABLE,
         || {
             std::thread::sleep(Duration::from_secs(1));

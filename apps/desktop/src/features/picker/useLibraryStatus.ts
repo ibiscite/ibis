@@ -5,7 +5,7 @@ import type { Operation } from "./Notices";
 import { useNativeEvent } from "../../nativeEvents";
 
 /** Events and reads share one request generation. Hiding retires pending
- * reads; reopening reads once. There is no library-status polling. */
+ * reads. Opening supplies a complete picker snapshot. */
 export function useLibraryStatus(api: typeof nativeApi, report: (operation: Operation, failed?: boolean) => void, cancelCopy: () => void) {
   const [library, setLibrary] = useState<LibraryStatus | null>();
   // A reload is not a new library: search and citations keep this one, and
@@ -39,21 +39,30 @@ export function useLibraryStatus(api: typeof nativeApi, report: (operation: Oper
       current.current.report("status");
     });
   }, [publish]);
-  const { onLibraryChanged, onPickerHidden, onPickerShown } = api;
+  const { onLibraryChanged, onPickerHidden } = api;
   useNativeEvent(onLibraryChanged, (status) => {
     generation.current += 1;
     publish(status);
     report("status", false);
   }, { failed: () => report("libraryEvents"), subject: "Library" });
   useNativeEvent(onPickerHidden, () => { generation.current += 1; }, { failed: () => report("pickerEvents"), subject: "Picker" });
-  useNativeEvent(onPickerShown, refreshSnapshot, { failed: () => report("pickerEvents"), subject: "Picker" });
   useEffect(() => {
     mounted.current = true;
-    refreshSnapshot();
     return () => {
       mounted.current = false;
       generation.current += 1;
     };
-  }, [refreshSnapshot]);
-  return { library, settledLibrary, libraryVersion, refreshSnapshot };
+  }, []);
+  const acceptSnapshot = (status: LibraryStatus) => {
+    generation.current += 1;
+    setLibrary(status);
+    setSettledLibrary(status);
+    setLibraryVersion((version) => version + 1);
+    report("status", false);
+  };
+  const snapshotReceiver = () => {
+    const request = generation.current;
+    return (status: LibraryStatus) => { if (request === generation.current) acceptSnapshot(status); };
+  };
+  return { library, settledLibrary, libraryVersion, refreshSnapshot, snapshotReceiver };
 }

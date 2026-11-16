@@ -55,12 +55,11 @@ class CiResultTest(unittest.TestCase):
         self.assertEqual(events["push"], {"branches": ["main"]})
         self.assertEqual(events["pull_request"], {"branches": ["main"]})
         jobs = self.workflow["jobs"]
-        for name in ["interface", "test", "web", "desktop", "dependencies"]:
+        for name in ["interface", "rust", "web", "pictures", "dependencies"]:
             self.assertEqual(jobs[name]["if"], FORK_GUARD)
-        for name in ["test", "desktop"]:
-            self.assertEqual(jobs[name]["strategy"]["matrix"]["os"], ["ubuntu-24.04", "macos-15", "windows-2025"])
-        self.assertNotIn("needs", jobs["test"])
-        self.assertEqual(jobs["desktop"]["needs"], "interface")
+        self.assertEqual(jobs["rust"]["strategy"]["matrix"]["os"], ["ubuntu-24.04", "macos-15", "windows-2025"])
+        self.assertEqual(jobs["rust"]["needs"], "interface")
+        self.assertEqual(jobs["release-checks"]["if"], FORK_GUARD)
 
     def test_dependency_rules_and_identities_remain_in_confirmation(self):
         jobs = self.workflow["jobs"]
@@ -94,7 +93,8 @@ class CiResultTest(unittest.TestCase):
 
     def test_daily_qualification_and_failure_reporting_remain_required(self):
         jobs = self.workflow["jobs"]
-        for name in ["webkit", "installed", "release-checks", "bibtex-fuzz"]:
+        self.assertIn("release-checks", jobs["result"]["needs"])
+        for name in ["webkit", "installed", "bibtex-fuzz"]:
             self.assertEqual(jobs[name]["if"], "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'")
             self.assertIn(name, jobs["result"]["needs"])
         self.assertEqual(jobs["nightly-report"]["needs"], "result")
@@ -122,11 +122,15 @@ class CiResultTest(unittest.TestCase):
         for name in ["build", "windows-paste"]:
             self.assertEqual(jobs[name]["needs"], "nightly-commit")
             self.assertEqual(jobs[name]["if"], gate)
-        self.assertEqual(jobs["nightly"]["if"], "github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish)")
+        self.assertEqual(jobs["nightly"]["if"], "${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish) && needs.build.result == 'success' && needs.install.result == 'success' }}")
+        # build needs the nightly choice, which a tag skips; anything after build that
+        # relied on the implicit success() check would be skipped with it.
+        for name in ["sign-macos", "install", "publish", "stable-feed", "nightly"]:
+            self.assertTrue(jobs[name]["if"].startswith("${{ !cancelled() && "), name)
         self.assertEqual(jobs["update-e2e"]["if"], "github.ref == 'refs/heads/main' && (github.event.schedule == '37 4 * * *' || inputs.update_test)")
 
     def test_each_ubuntu_installer_restores_its_package_cache_first(self):
-        for name, profile in [("desktop", "desktop"), ("web", "web")]:
+        for name, profile in [("rust", "desktop"), ("web", "web")]:
             steps = self.workflow["jobs"][name]["steps"]
             cache_index, cache = next((i, step) for i, step in enumerate(steps) if str(step.get("uses", "")).startswith("actions/cache@"))
             self.assertEqual(cache["with"]["path"], "/var/cache/apt/archives")

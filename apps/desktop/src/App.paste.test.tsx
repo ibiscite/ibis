@@ -24,8 +24,7 @@ async function answer(label: string) {
 }
 async function reopen(h: Harness) {
   await act(async () => { await h.reopen(); });
-  // Reopening refreshes library status, which rechecks search and its preview.
-  await act(async () => { h.search.pending.at(-1)!.complete({ revision: "1", results: [result("a", "Invented reference")] }); });
+  // The opening snapshot already contains the current recent rows.
   await act(async () => { h.preview.pending.at(-1)!.complete({ text: "[@a]" }); });
 }
 async function finish(h: Harness) {
@@ -155,14 +154,12 @@ test("a delayed approval cannot replay its held citation after reopening in anot
   h.document.app = "Other Writer";
   h.target.appId = "example.other";
   h.target.verified = true;
-  await reopen(h);
-  await enter();
+  await act(async () => { await h.reopen(); });
   expect(h.copy.calls).toHaveLength(0);
   await act(async () => { h.appSaves.pending[0]!.complete(); });
-  // The destination read waits for the old save. Its new app identity then
-  // refreshes that app's recent references before the held Enter can copy.
+  await act(async () => { h.preview.pending.at(-1)!.complete({ text: "[@a]" }); });
   expect(h.copy.calls).toHaveLength(0);
-  await act(async () => { h.search.pending.at(-1)!.complete({ revision: "1", results: [result("a", "Invented reference")] }); });
+  await enter();
   await finish(h);
   expect(h.document.pastes).toHaveLength(1);
   expect(receipt(h)).toBe("Pasted into Other Writer");
@@ -174,8 +171,9 @@ test("close and reopen while saving approval never replays Enter", async () => {
   const h = await open((h) => { h.holdAppSaves = true; });
   await enter();
   await answer("Paste into Example Writer from Now On");
-  await reopen(h);
+  await act(async () => { await h.reopen(); });
   await act(async () => { h.appSaves.pending[0]!.complete(); });
+  await act(async () => { h.preview.pending.at(-1)!.complete({ text: "[@a]" }); });
   expect(h.copy.calls).toHaveLength(0);
   expect(h.document.pastes).toHaveLength(0);
   await enter();

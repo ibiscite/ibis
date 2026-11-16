@@ -452,7 +452,9 @@ jobs:
   sign-macos:
     # A missing repository pin means signing is disabled. Do not even refer to
     # the environment until configured: GitHub would otherwise create it.
-    if: vars.MACOS_SIGNING_LEAF != ''
+    # Every job after build names its needs: a skipped ancestor (the nightly
+    # commit choice on a tag) would otherwise skip it silently.
+    if: ${{ !cancelled() && vars.MACOS_SIGNING_LEAF != '' && needs.build.result == 'success' }}
     name: Sign (${{ matrix.name }})
     needs: build
     runs-on: macos-15
@@ -624,7 +626,7 @@ jobs:
 
   publish:
     name: Publish release
-    if: startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || inputs.publish)
+    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || inputs.publish) && needs.build.result == 'success' && needs.install.result == 'success' && needs.release-checks.result == 'success' && needs.style-changes.result == 'success' }}
     needs: [build, install, release-checks, style-changes]
     # The Latest read and publish must not interleave.
     concurrency:
@@ -716,7 +718,7 @@ jobs:
 
   stable-feed:
     name: Move the stable update feed
-    if: startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || inputs.publish)
+    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || inputs.publish) && needs.publish.result == 'success' }}
     needs: publish
     # The version check and uploads must not interleave.
     concurrency:
@@ -762,7 +764,7 @@ jobs:
 
   nightly:
     name: Publish nightly pre-release
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish)
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish) && needs.build.result == 'success' && needs.install.result == 'success' }}
     needs: [build, install]
     runs-on: ubuntu-24.04
     timeout-minutes: 15

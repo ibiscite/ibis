@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { App } from "./App";
 import { keyLabel } from "./keys";
 import { isMac } from "./platform";
-import { backend, resetApp } from "./testing/app";
+import { backend, resetApp, showPicker } from "./testing/app";
 
 const tip = `${keyLabel("CmdOrCtrl+Shift+P", isMac)} keeps Ibis open between citations.`;
 beforeEach(() => vi.useFakeTimers());
@@ -54,7 +54,7 @@ test("delayed claims and closed windows cannot replace newer visible feedback", 
   const pending: ((value: ReturnType<typeof view>) => void)[] = [];
   backend({ delight_view: () => new Promise((resolve) => pending.push(resolve)) });
   const mounted = await act(async () => render(<App />));
-  await act(async () => { await emit("picker:shown", 2); });
+  await act(async () => { await showPicker(2); });
   await act(async () => { pending.at(-1)!(view("library1000")); });
   expect(screen.getByText("1,000 references. A solid library.")).toBeTruthy();
   await act(async () => { pending[0]!(view("paste-tip")); });
@@ -114,6 +114,6 @@ test("the welcome peck expires and cannot replay when empty results remount or t
   await act(async () => fireEvent.change(input, { target: { value: "invented" } }));
   await act(async () => fireEvent.change(input, { target: { value: "" } }));
   expect(container.querySelector('[data-motion="peck"]')).toBeNull();
-  await act(async () => { await emit("picker:hidden"); await emit("picker:shown", 2); });
+  await act(async () => { await emit("picker:hidden"); await showPicker(2); });
   expect(container.querySelector('[data-motion="peck"]')).toBeNull();
 });

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import { closeCitationDetails, backend, prepared, receipt, resetApp, result, inCitation } from "./testing/app";
+import { closeCitationDetails, backend, prepared, receipt, resetApp, result, inCitation, showPicker } from "./testing/app";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(resetApp);
@@ -12,19 +12,19 @@ const searchBox = () => screen.getByLabelText("Search references");
 const enter = async () => { await act(async () => { fireEvent.keyDown(searchBox(), { key: "Enter" }); }); };
 const keys = () => within(screen.getByRole("group", { name: "Keys" }));
 
-test.each(["initial", "new query"])("Enter during %s loading waits for current results and preview, once", async (when) => {
+test("Enter during a new query waits for current results and preview, once", async () => {
   let finishSearch!: (value: unknown) => void;
   let finishPreview!: (value: ReturnType<typeof receipt>) => void;
   const copied: string[] = [];
   backend({
-    search: ({ query }) => when === "new query" && !query.text ? [result("old", "Old result")]
+    search: ({ query }) => !query.text ? [result("old", "Old result")]
       : new Promise((resolve) => { finishSearch = resolve; }),
     preview_file_citation: ({ items }) => items[0]!.id.key === recordId("old") ? receipt("@old")
       : new Promise((resolve) => { finishPreview = resolve; }),
     deliver_citation: (args) => { const { preview } = prepared(args); copied.push(preview.text); return { outcome: "retained", copied: { text: preview.text, warnings: [] }, reason: "pinned" }; },
   });
   await act(async () => { render(<App />); });
-  if (when === "new query") await act(async () => { fireEvent.change(searchBox(), { target: { value: "new" } }); });
+  await act(async () => { fireEvent.change(searchBox(), { target: { value: "new" } }); });
   await enter();
   await enter();
   expect(copied).toEqual([]);
@@ -112,7 +112,7 @@ test("a completed copy cannot be repeated while hidden; reopening requires fresh
   await act(async () => { await emit("picker:hidden"); });
   await enter();
   expect(calls.filter((call) => call === "deliver_citation")).toHaveLength(1);
-  await act(async () => { await emit("picker:shown"); });
+  await act(async () => { await showPicker(); });
   expect(calls.filter((call) => call === "deliver_citation")).toHaveLength(1);
   await enter();
   expect(calls.filter((call) => call === "deliver_citation")).toHaveLength(2);
@@ -136,7 +136,7 @@ test.each([
   await act(async () => { render(<App />); });
   await enter();
   expect(notices).toEqual(["@a"]);
-  await act(async () => { await emit("picker:hidden"); await vi.advanceTimersByTimeAsync(3000); await emit("picker:shown"); });
+  await act(async () => { await emit("picker:hidden"); await vi.advanceTimersByTimeAsync(3000); await showPicker(); });
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^More/ })); });
   expect(screen.getByRole("group", { name: new RegExp(`^Last outcome\\. ${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`) })).toBeTruthy();
 }, 10_000);

@@ -10,7 +10,7 @@ import config from "../src-tauri/tauri.conf.json";
 import { OUTPUTS } from "./bindings";
 import { outputName, type OutputId } from "./format/outputs";
 import { missingKey, recordId } from "./test-fixtures";
-import { displayTree, changedDelivery, backend, chooseFromMore, paletteRow, chooseFromLibrary, libraryButton, prepared, receipt, retainedCitation, resetApp, result, type PreviewRequest, type SyntheticId, openCitationDetails, closeCitationDetails, inCitation, findInCitation, removeFromCitation, citationKeys } from "./testing/app";
+import { displayTree, changedDelivery, backend, chooseFromMore, paletteRow, chooseFromLibrary, libraryButton, prepared, receipt, retainedCitation, resetApp, result, type PreviewRequest, type SyntheticId, openCitationDetails, closeCitationDetails, inCitation, findInCitation, removeFromCitation, citationKeys, showPicker } from "./testing/app";
 
 afterEach(resetApp);
 
@@ -227,10 +227,10 @@ test.each([
   await act(async () => { await emit("picker:hidden"); });
   refuse = fault;
   await act(async () => { await emit("library:changed", { state: "loaded", revision: "1", source_generation: "1", source_is_requested: true, has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null }); });
-  await act(async () => { await emit("picker:preparing"); });
+  await act(async () => { await showPicker(); });
   // The first frame of the reopened window already has no failure in it.
   expect(screen.queryByText("The citation could not be prepared. Try again.")).toBeNull();
-  await act(async () => { await emit("picker:shown", 2); });
+  await act(async () => { await showPicker(2); });
   await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("[@a]"));
   expect(screen.queryByText("The citation could not be prepared. Try again.")).toBeNull();
   expect(copy()).toBeTruthy();
@@ -540,48 +540,7 @@ test("opening the first library searches the untouched empty query", async () =>
   expect(screen.queryByRole("option", { name: FILE_ROW })).toBeNull();
 });
 
-test("a failed status request does not suppress search errors", async () => {
-  backend({
-    library_status: () => { throw new Error("status unavailable"); },
-    search: () => { throw new Error("search unavailable"); },
-  });
-  render(<App />);
-  expect((await screen.findByText("Ibis could not search your library. Use Reload, then try again.")).getAttribute("role")).toBe("alert");
-});
 
-test.each([
-  ["resolves", false], ["rejects", false],
-  ["resolves", true], ["rejects", true],
-] as const)("a startup status request that %s cannot overwrite a newer library event (failed: %s)", async (outcome, failed) => {
-  let resolveStatus: (value: unknown) => void = () => undefined;
-  let rejectStatus: (reason: Error) => void = () => undefined;
-  backend({
-    library_status: () => new Promise((resolve, reject) => {
-      resolveStatus = resolve;
-      rejectStatus = reject;
-    }),
-    search: () => failed ? [] : [result("new", "New library reference")],
-  });
-  render(<App />);
-  await act(async () => { await Promise.resolve(); });
-  await act(async () => {
-    await emit("library:changed", { revision: "1", state: failed ? "error" : "loaded", has_snapshot: !failed, zotero: false, problem: "other",
-      name: "new.bib", snapshot_name: "new.bib", references: failed ? 0 : 1, warnings: 0,
-      error: failed ? "synthetic load failed" : null, note: null,
-    });
-  });
-  if (failed) await screen.findByRole("alert");
-  else await screen.findByText("New library reference");
-  await act(async () => {
-    if (outcome === "resolves") {
-      resolveStatus({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, problem: null, note: null });
-    } else rejectStatus(new Error("stale status unavailable"));
-  });
-  expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toContain("new.bib");
-  expect(screen.queryByRole("option", { name: FILE_ROW })).toBeNull();
-  if (failed) expect(screen.getByRole("alert").textContent).toContain("Synthetic load failed");
-  else expect(screen.getByText("New library reference")).toBeTruthy();
-});
 
 test("a failed search clears the results of the previous query", async () => {
   backend({
@@ -1121,15 +1080,13 @@ test("combobox focus is separate from citation selection and only additions/remo
   expect(notice.textContent).toBe("0 references selected for citation");
 });
 
-test("failed status and saved choice reads show safe notices without hiding search results", async () => {
+test("failed picker choices show a safe notice without hiding snapshot results", async () => {
   backend({
-    library_status: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); },
     picker_preferences: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); },
     search: () => [result("a", "Available reference")],
   });
   render(<App />);
   await screen.findByText("Available reference");
-  expect(screen.getByText("Ibis could not check your library. Choose the file again.").getAttribute("role")).toBe("alert");
   // Unreadable choices are not replaced with defaults on disk; the default format applies meanwhile.
   expect(await screen.findByText("Your picker choices could not be saved. They apply until restart.")).toBeTruthy();
   expect(screen.getByRole("region", { name: "Picker actions" }).textContent).not.toContain("No library chosen");
@@ -1169,10 +1126,10 @@ test("event subscription and cleanup failures are handled with safe messages", a
   } finally { focus.mockRestore(); library.mockRestore(); log.mockRestore(); }
 });
 
-test("web plugin permissions grant only event subscriptions, visibility reads and drag-region bootstrap", () => {
+test("web plugin permissions grant only event subscriptions and drag-region bootstrap", () => {
   expect(capability.permissions.filter((permission) => permission.includes(":")).sort()).toEqual([
     "core:event:allow-listen", "core:event:allow-unlisten",
-    "core:window:allow-internal-toggle-maximize", "core:window:allow-is-visible", "core:window:allow-start-dragging",
+    "core:window:allow-internal-toggle-maximize", "core:window:allow-start-dragging",
   ]);
   expect(config.app.windows[0]?.maximizable).toBe(false);
 });
@@ -1700,7 +1657,7 @@ test.each([[30_000, true, "first"], [61_000, true, ""], [61_000, false, "first"]
       fireEvent(window, new Event("blur"));
       if (hidden) await act(async () => { await emit("picker:hidden"); });
       now.mockReturnValue(1_000_000 + away);
-      await act(async () => { await emit("picker:shown"); });
+      await act(async () => { await showPicker(); });
       expect(box.value).toBe(kept);
       expect(document.activeElement).toBe(box);
     } finally {
@@ -1715,7 +1672,7 @@ test.each(["before", "after"])("reopening from a result replaces the query when 
     render(<App />);
     const box = screen.getByLabelText<HTMLInputElement>("Search references");
     fireEvent.change(box, { target: { value: "previous query" } });
-    const row = await screen.findByRole("option", { name: /First/ });
+    let row = await screen.findByRole("option", { name: /First/ });
     // Model the result that WebKit restores when the native window activates.
     row.tabIndex = -1;
     act(() => row.focus());
@@ -1728,7 +1685,9 @@ test.each(["before", "after"])("reopening from a result replaces the query when 
       fireEvent.focus(window);
     };
     if (activation === "before") activate();
-    await act(async () => { await emit("picker:shown"); });
+    await act(async () => { await showPicker(); });
+    row = await screen.findByRole("option", { name: /First/ });
+    row.tabIndex = -1;
     if (activation === "after") activate();
 
     expect(document.activeElement).toBe(box);
@@ -1756,13 +1715,15 @@ test.each([false, true])("typing before native activation keeps the new query an
     render(<App />);
     const box = screen.getByLabelText<HTMLInputElement>("Search references");
     fireEvent.change(box, { target: { value: "previous query" } });
-    const row = await screen.findByRole("option", { name: /First/ });
+    let row = await screen.findByRole("option", { name: /First/ });
     row.tabIndex = -1;
     if (escaped) {
       fireEvent.keyDown(box, { key: "Escape" });
       fireEvent.keyDown(box, { key: "Escape" });
     }
-    await act(async () => { await emit("picker:hidden"); await emit("picker:shown"); });
+    await act(async () => { await emit("picker:hidden"); await showPicker(); });
+    row = await screen.findByRole("option", { name: /First/ });
+    row.tabIndex = -1;
     fireEvent.input(box, { target: { value: "ab" } });
     act(() => row.focus());
     focused.mockReturnValue(true);
@@ -1782,9 +1743,11 @@ test("hiding cancels a pending Search focus handoff", async () => {
   const focused = vi.spyOn(document, "hasFocus").mockReturnValue(false);
   try {
     render(<App />);
-    const row = await screen.findByRole("option", { name: /First/ });
+    let row = await screen.findByRole("option", { name: /First/ });
     row.tabIndex = -1;
-    await act(async () => { await emit("picker:shown"); });
+    await act(async () => { await showPicker(); });
+    row = await screen.findByRole("option", { name: /First/ });
+    row.tabIndex = -1;
     await act(async () => { await emit("picker:hidden"); });
     act(() => row.focus());
     fireEvent.focus(window);
@@ -1892,31 +1855,6 @@ test.each(["menu", "shortcut"])("%s Quit drains ordered format choices before ex
   await waitFor(() => expect(calls).toContain("quit"));
 });
 
-test.each(["menu", "shortcut"])("%s Quit waits for the initial read, then saves the one output chosen", async (route) => {
-  let finishReading = () => undefined as void;
-  const reading = new Promise<void>((resolve) => { finishReading = resolve; });
-  let remembered: string | null = "apa";
-  let atQuit: unknown = null;
-  const calls = backend({
-    picker_preferences: async () => { await reading; return { output: "apa", density: "comfortable", larger_text: false }; },
-    picker_preferences_saved: ({ preferences }) => { remembered = savedOutput(preferences) ?? remembered; return null; },
-    quit: () => { atQuit = { output: remembered }; return null; },
-  });
-  render(<App />);
-  await waitFor(() => formatButton());
-  chooseFormat("cite");
-  try {
-    if (route === "menu") await chooseFromMore("Quit Ibis");
-    else await act(async () => { fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "q", ctrlKey: true }); });
-    expect(calls).not.toContain("quit");
-    expect(atQuit).toBeNull();
-    await act(async () => { finishReading(); await reading; });
-    await waitFor(() => expect(atQuit).toEqual({ output: "cite" }));
-    expect(calls.filter((call) => call === "picker_preferences_saved")).toHaveLength(1);
-  } finally {
-    await act(async () => { finishReading(); await reading; });
-  }
-});
 
 test("a refused preference save reports failure and still allows Quit", async () => {
   const calls = backend({
@@ -1947,22 +1885,6 @@ test("a stuck settings request cannot keep Quit waiting indefinitely", async () 
   expect(calls).toContain("quit");
 });
 
-test("a choice made while saved choices load is kept and saved, not replaced", async () => {
-  let finish = () => undefined as void;
-  const loaded = new Promise<void>((resolve) => { finish = resolve; });
-  const saved: { output?: string }[] = [];
-  backend({
-    // Reads what is on disk when it answers, as the settings file does.
-    picker_preferences: async () => { await loaded; return { output: saved.at(-1)?.output ?? "apa", density: "compact", larger_text: false }; },
-    picker_preferences_saved: ({ preferences }) => { saved.push(preferences as { output?: string; key_output?: string }); return null; },
-  });
-  render(<App />);
-  await waitFor(() => formatButton());
-  chooseFormat("cite");
-  await act(async () => { finish(); await loaded; });
-  await waitFor(() => expect(saved).toEqual([{ key_output: "cite" }]));
-  expect(formatValue()).toBe("cite");
-});
 
 test("unreadable saved choices are reported and never overwritten with defaults", async () => {
   const saved: unknown[] = [];
@@ -2368,7 +2290,7 @@ test.each([30_000, 61_000])(
       await waitFor(() => expect(calls).toContain("hide_picker"));
       await act(async () => { await emit("picker:hidden"); });
       now.mockReturnValue(1_000_000 + away);
-      await act(async () => { await emit("picker:shown"); });
+      await act(async () => { await showPicker(); });
       await waitFor(() => expect(document.activeElement).toBe(box));
       expect(box.value).toBe("");
     } finally {
@@ -2391,7 +2313,7 @@ test("Esc clearing preserves citations and invalidates an escaped query before r
   expect(box.value).toBe("");
   expect(document.activeElement).toBe(box);
   expect(inCitation("a")).toBeTruthy();
-  await act(async () => { await emit("picker:hidden"); await emit("picker:shown"); });
+  await act(async () => { await emit("picker:hidden"); await showPicker(); });
   expect(box.value).toBe("");
   fireEvent.keyDown(box, { key: "Enter", repeat: true });
   expect(calls).not.toContain("deliver_citation");
@@ -2407,7 +2329,7 @@ test("a search cleared by Escape stays cleared once something else is typed or c
   fireEvent.change(box, { target: { value: "f" } });
   fireEvent.change(box, { target: { value: "" } });
   await act(async () => { await emit("picker:hidden"); });
-  await act(async () => { await emit("picker:shown"); });
+  await act(async () => { await showPicker(); });
   expect(box.value).toBe("");
   fireEvent.change(box, { target: { value: "first" } });
   await screen.findByText("First");
@@ -2418,7 +2340,7 @@ test("a search cleared by Escape stays cleared once something else is typed or c
   fireEvent.keyDown(box, { key: "Enter" });
   await screen.findByText("Copied");
   await act(async () => { await emit("picker:hidden"); });
-  await act(async () => { await emit("picker:shown"); });
+  await act(async () => { await showPicker(); });
   expect(box.value).toBe("");
 });
 
@@ -3047,7 +2969,7 @@ test.each(["selection ABA", "query ABA", "hide and reopen"])("copy completion ig
     fireEvent.change(box, { target: { value: "different" } });
     fireEvent.change(box, { target: { value: "" } });
   } else {
-    await act(async () => { await emit("picker:hidden"); await emit("picker:shown"); });
+    await act(async () => { await emit("picker:hidden"); await showPicker(); });
   }
   await act(async () => { release({ outcome: "retained", copied: { text: "obsolete copy", warnings: [] }, reason: "pinned" }); });
   expect(inCitation("a")).not.toBeNull();
@@ -3200,7 +3122,7 @@ test.each(["warning", "notice"])("a search started before a selected copy preser
   fireEvent.click(await screen.findByText("Selected before search"), { shiftKey: true });
   const box = screen.getByLabelText("Search references");
   fireEvent.change(box, { target: { value: "pending" } });
-  await waitFor(() => expect(calls.filter((call) => call === "search" || call === "recent_references")).toHaveLength(2));
+  await waitFor(() => expect(calls.filter((call) => call === "search" || call === "recent_references")).toHaveLength(1));
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(calls).toContain("deliver_citation"));
   await act(async () => { releaseSearch([result("b", "Search finished later")]); });
@@ -3631,7 +3553,7 @@ test.each(["reopen", "edit", "copy", "expiry"])("an escaped literal search prese
     if (change !== "copy") await waitFor(() => expect(calls).toContain("hide_picker"));
     await act(async () => { await emit("picker:hidden"); });
     now.mockReturnValue(1_000_000 + (change === "expiry" ? 61_000 : 30_000));
-    await act(async () => { await emit("picker:shown"); });
+    await act(async () => { await showPicker(); });
     await waitFor(() => expect(box.value).toBe(""));
     await waitFor(() => expect(searched.at(-1)).toEqual({ text: "", interpret_locators: true }));
     expect(screen.queryByRole("group", { name: "Using p. 12" })).toBeNull();
@@ -3843,62 +3765,24 @@ test("looping animations pause while the picker is hidden and resume when it is 
   expect(document.documentElement.dataset.pickerHidden).toBeUndefined();
   await act(async () => { await emit("picker:hidden"); });
   expect(document.documentElement.dataset.pickerHidden).toBe("");
-  await act(async () => { await emit("picker:shown"); });
+  await act(async () => { await showPicker(); });
   expect(document.documentElement.dataset.pickerHidden).toBeUndefined();
 });
 
-test.each([false, true])("picker visibility at startup pauses animations only when hidden (visible: %s)", async (visible) => {
-  const read = vi.fn(() => visible);
-  backend({ "plugin:window|is_visible": read });
-  await act(async () => { render(<App />); });
-  expect(read).toHaveBeenCalledOnce();
-  expect(document.documentElement.dataset.pickerHidden).toBe(visible ? undefined : "");
-});
 
-test.each(["shown", "hidden"])("picker:%s wins over a stale picker visibility read", async (event) => {
-  let finish!: (visible: boolean) => void;
-  const read = vi.fn(() => new Promise<boolean>((resolve) => { finish = resolve; }));
-  backend({ "plugin:window|is_visible": read });
-  render(<App />);
-  await waitFor(() => expect(read).toHaveBeenCalledOnce());
-  await act(async () => { await emit(`picker:${event}`); });
-  await act(async () => { finish(event === "hidden"); });
-  expect(document.documentElement.dataset.pickerHidden).toBe(event === "hidden" ? "" : undefined);
-});
 
-test("a failed picker visibility read preserves the latest event's animation flag", async () => {
-  let reject!: (error: Error) => void;
-  const read = vi.fn(() => new Promise<boolean>((_, fail) => { reject = fail; }));
-  backend({ "plugin:window|is_visible": read });
-  render(<App />);
-  await waitFor(() => expect(read).toHaveBeenCalledOnce());
-  await act(async () => { await emit("picker:hidden"); });
-  await act(async () => { reject(new Error("SYNTHETIC_PRIVATE_PAYLOAD")); });
-  expect(document.documentElement.dataset.pickerHidden).toBe("");
-  expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
-});
 
-test("a picker visibility read completing after unmount cannot pause animations", async () => {
-  let finish!: (visible: boolean) => void;
-  const read = vi.fn(() => new Promise<boolean>((resolve) => { finish = resolve; }));
-  backend({ "plugin:window|is_visible": read });
-  const view = render(<App />);
-  await waitFor(() => expect(read).toHaveBeenCalledOnce());
-  view.unmount();
-  await act(async () => { finish(false); });
-  expect(document.documentElement.dataset.pickerHidden).toBeUndefined();
-});
 
 test("Ctrl+, opens Settings from the picker, and a change made there reaches the picker", async () => {
   let largerText = false;
   const pages: unknown[] = [];
-  const calls = backend({
+  backend({
     open_settings: ({ page }) => { pages.push(page); return null; },
     picker_preferences: () => ({ output: "pandoc", density: "comfortable", larger_text: largerText, paste: true, menu_bar: true }),
   });
   render(<App />);
   const box = screen.getByLabelText("Search references");
-  await waitFor(() => expect(calls).toContain("picker_preferences"));
+  await screen.findByRole("button", { name: /^Citation format/ });
   fireEvent.keyDown(box, { key: ",", ctrlKey: true });
   await waitFor(() => expect(pages).toEqual([null]));
   largerText = true;

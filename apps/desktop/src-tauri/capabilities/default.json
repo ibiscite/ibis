@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Picker commands, event subscriptions, visibility reads and drag-region bootstrap for the main window. No file system, shell, network, menu or tray plugin access is granted.",
+  "description": "Picker commands, event subscriptions and drag-region bootstrap for the main window. No file system, shell, network, menu or tray plugin access is granted.",
   "windows": [
     "main"
   ],
@@ -9,7 +9,6 @@
     "core:event:allow-listen",
     "core:event:allow-unlisten",
     "core:window:allow-internal-toggle-maximize",
-    "core:window:allow-is-visible",
     "core:window:allow-start-dragging",
     "allow-choose-library",
     "allow-reload-library",
@@ -42,8 +41,9 @@
     "allow-forget-app-output",
     "allow-login-item",
     "allow-set-login-item",
+    "allow-picker-snapshot",
+    "allow-picker-rendered",
     "allow-hide-picker",
-    "allow-picker-presentation",
     "allow-set-pinned",
     "allow-picker-moving",
     "allow-quit",

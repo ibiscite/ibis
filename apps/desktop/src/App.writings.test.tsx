@@ -19,41 +19,6 @@ const writingDestination = (name: string, format: "cite" | "typst", context: [nu
   writing: { id: name, name, output: format, bibliography: "refs.bib" },
   writing_context: `opening-${context[0]}`, context_version: context, format: formatAnswer(format, "writing") }));
 
-test("Enter pressed during reopening waits for the newly captured writing and copies its fresh preview once", async () => {
-  const first = writingDestination("Writing A", "cite", [1, 0]);
-  const second = writingDestination("Writing B", "typst", [2, 0]);
-  const reopening = pending<PickerDestination>(), settled = pending<PickerDestination>(), preview = pending<Preview>();
-  const copied: string[] = [];
-  let reads = 0, initialPreviewStarted = false, newPreviewStarted = false;
-  backend({
-    search: () => [result("a", "Synthetic source")],
-    picker_destination: () => ++reads === 1 ? first : reads === 2 ? reopening.promise : settled.promise,
-    preview_file_citation: (request) => {
-      if (request.output === "typst" && request.intent.context?.[0] === 2) { newPreviewStarted = true; return preview.promise; }
-      if (request.output === "cite" && request.intent.context?.[0] === 1) initialPreviewStarted = true;
-      return receipt(`${request.output}:${JSON.stringify(request.intent.context)}`);
-    },
-    deliver_citation: (args) => { const text = prepared(args).preview.text; copied.push(text); return { outcome: "retained", copied: { text, warnings: [] }, reason: "pinned" }; },
-  });
-  render(<App />);
-  await screen.findByText("Synthetic source");
-  await waitFor(() => expect(initialPreviewStarted).toBe(true));
-  await act(async () => { await emit("picker:hidden"); await emit("picker:preparing", null); await emit("picker:shown", 2); });
-  await waitFor(() => expect(reads).toBe(2));
-  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
-  expect(copied).toEqual([]);
-  await act(async () => { await emit("project:changed", [2, 0]); });
-  await waitFor(() => expect(reads).toBe(3));
-  await act(async () => { settled.resolve(second); });
-  await waitFor(() => expect(newPreviewStarted).toBe(true));
-  expect(copied).toEqual([]);
-  await act(async () => { preview.resolve(receipt("typst:[2,0]")); });
-  await waitFor(() => expect(copied).toEqual(["typst:[2,0]"]));
-  // The slower destination worker belongs to the earlier read, even though it
-  // completes after the new writing's receipt has already been copied.
-  await act(async () => { reopening.resolve(first); });
-  expect(copied).toEqual(["typst:[2,0]"]);
-});
 
 test("a bibliography read finishing for the same writing refreshes a waiting Enter without cancelling it", async () => {
   let destination = writingDestination("Writing A", "cite", [1, 0]);

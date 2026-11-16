@@ -7,12 +7,12 @@ afterEach(resetApp);
 
 test("dragging the search bar reports a move of the shown picker until the pointer comes back unpressed", async () => {
   const moving = vi.fn(() => null);
-  backend({ picker_moving: moving, picker_presentation: () => 7 });
+  backend({ picker_moving: moving });
   render(<App />);
   const header = (await screen.findByLabelText("Search references")).closest("header")!;
   await vi.waitFor(() => {
     fireEvent.pointerDown(header, { button: 0, clientX: 100, clientY: 20 });
-    expect(moving).toHaveBeenCalledWith(expect.objectContaining({ presentation: 7, moving: true }));
+    expect(moving).toHaveBeenCalledWith(expect.objectContaining({ presentation: 0, moving: true }));
   });
   // Movement still pressed is the drag itself; the move goes on.
   fireEvent.pointerMove(window, { buttons: 1 });
@@ -20,7 +20,7 @@ test("dragging the search bar reports a move of the shown picker until the point
   // The compositor gives the pointer back with no button held.
   fireEvent.pointerMove(window, { buttons: 0 });
   const started = (moving.mock.calls.at(-2) as unknown as [{ id: number }])[0].id;
-  expect(moving).toHaveBeenLastCalledWith(expect.objectContaining({ presentation: 7, id: started, moving: false }));
+  expect(moving).toHaveBeenLastCalledWith(expect.objectContaining({ presentation: 0, id: started, moving: false }));
   const calls = moving.mock.calls.length;
   fireEvent.pointerMove(window, { buttons: 0 });
   expect(moving).toHaveBeenCalledTimes(calls);
@@ -28,7 +28,7 @@ test("dragging the search bar reports a move of the shown picker until the point
 
 test("a press inside the picker's content is not a move", async () => {
   const moving = vi.fn(() => null);
-  backend({ picker_moving: moving, picker_presentation: () => 7 });
+  backend({ picker_moving: moving });
   render(<App />);
   const search = await screen.findByLabelText("Search references");
   fireEvent.pointerDown(search.closest("main")!.querySelector("footer")!, { button: 0, clientX: 100, clientY: 100 });
@@ -39,14 +39,14 @@ test("a press inside the picker's content is not a move", async () => {
 
 test("a cancelled press ends the move", async () => {
   const moving = vi.fn(() => null);
-  backend({ picker_moving: moving, picker_presentation: () => 7 });
+  backend({ picker_moving: moving });
   render(<App />);
   const header = (await screen.findByLabelText("Search references")).closest("header")!;
   await vi.waitFor(() => {
     fireEvent.pointerDown(header, { button: 0, clientX: 100, clientY: 20 });
-    expect(moving).toHaveBeenCalledWith(expect.objectContaining({ presentation: 7, moving: true }));
+    expect(moving).toHaveBeenCalledWith(expect.objectContaining({ presentation: 0, moving: true }));
   });
   fireEvent.pointerCancel(window);
   const started = (moving.mock.calls.at(-2) as unknown as [{ id: number }])[0].id;
-  expect(moving).toHaveBeenLastCalledWith(expect.objectContaining({ presentation: 7, id: started, moving: false }));
+  expect(moving).toHaveBeenLastCalledWith(expect.objectContaining({ presentation: 0, id: started, moving: false }));
 });

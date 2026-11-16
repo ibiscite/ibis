@@ -46,7 +46,12 @@ and inspect the `.snap` diff.
 | CLI/MCP fixtures | [Canonical cases](../fixtures/cases/README.md), [formatted fixtures](../fixtures/formatted/README.md), schemas and error transcripts. | Covers only the requests each front end can express. |
 | Interface tests | Picker, Settings, keyboard, composition, delayed replies and accessibility structure with shared IPC/delivery fakes; the canvas checks portalled citation details and Reader. | jsdom and synthetic events do not exercise native clipboard/input APIs, a real input method or screen reader. |
 | Native WebKit canvas | System WebKit colours and measured layout rules on macOS. | Startup pictures are not reviewed visual-state comparisons. |
+| Picture gate | Every canvas PNG matches the committed visual spec in `apps/desktop/gallery/baselines/`, using pinned Linux WebKit and fonts. | Does not replace visual review or native platform checks. |
 | Script tests | Workflow helpers, packages, publication, update feeds, budgets and Markdown links. | Native helpers have separate platform requirements. |
+
+Committed pictures are the visual spec: CI rejects missing/extra pictures, dimension changes, or more than 0.01% differing pixels (pixelmatch threshold 0.1); failures attach actuals and diffs.
+To accept a visual change, run `bash scripts/update-picture-baselines.sh RUN_ID` on the failed run, review the PNGs and commit them with the change.
+Baselines come only from that pinned CI image, never from a local render; an empty baseline folder fails until seeded this way.
 
 The weekly [style workflow](../.github/workflows/styles.yml) renders invented
 records against pinned and newest upstream styles, locales and citeproc-js.
@@ -111,13 +116,31 @@ nor reports a status. Keep the worktree until the PR merges, then run
 `land.sh end NAME`.
 
 [CI](../.github/workflows/ci.yml) runs on in-repository PRs and pushes to main.
-**CI result** is the required merge check: interface build, `Test` and
-`Desktop` suites, web/script tests, dependency policy and commit identities
-must all pass. Every PR and every push to main runs `Test` and `Desktop` on
-Ubuntu, macOS and Windows. Fork PRs skip every job, so their **CI result**
+**CI result** is the required merge check: interface build, the `Rust and
+desktop` suite, web/script tests, picture comparisons, dependency policy, commit identities and the
+Linux release checks (release mode, minimum Rust, budgets) must all pass, so a
+release tag never meets a check its commits skipped. Every PR and every push to
+main runs `Rust and desktop` on Ubuntu, macOS and Windows, one job per system so
+each takes a single hosted runner. Fork PRs skip every job, so their **CI result**
 fails; they keep read-only title feedback.
 
-Daily/manual runs add WebKit, release-mode/MSRV checks, five minutes each of fuzzing the
+The macOS `Rust and desktop` job runs on the maintainer's Mac as a self-hosted
+runner, because GitHub's hosted macOS runners are often unavailable; there it also
+takes about half the time. The repository variable `RUNNERS` maps the hosted label
+to the machine's labels, `{"macos-15":["self-hosted","ibis-mac"]}`; without it the
+job runs on GitHub's runner, so removing the variable moves the work back when the
+Mac is away. Windows and Linux stay hosted: the Notepad paste test needs an unlocked
+desktop and the Linux job installs packages with sudo, and neither was faster on our
+machines. The runner is GitHub's official
+[actions/runner](https://github.com/actions/runner), registered to this repository
+and run as the maintainer's user. It keeps state between jobs, so it only runs
+reviewed code: Dependabot's PRs stay on hosted runners, and Preview's builds,
+signing and attestations always run on fresh hosted machines. A fork PR runs its
+own copy of the workflows and could target it, so the repository requires approval
+for every outside contributor's workflow run; never approve one while the runner
+is registered.
+
+Daily/manual runs add WebKit, five minutes each of fuzzing the
 BibTeX loader and the PDF extractor (`ibis-fuzz`; seeds run with `cargo test -p ibis-fuzz`) and
 installed journeys against the published nightly; failures update one issue.
 **CI result** also protects publication: the one nightly a day is built from

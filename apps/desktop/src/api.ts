@@ -1,12 +1,11 @@
 // UI conveniences around the generated Rust command contract.
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { OutputId } from "./format/outputs";
 import { commands, type CommandError, type PreferenceChange } from "./bindings";
 import { events, type Source } from "./nativeEvents";
 
 export type { Sources } from "./bindings";
 export type {
-  AppPaste, Copied, Density, EntryCopy, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PastedList, PickerDestination, PickerPreferences, ProjectStatus, SearchQuery, SearchResult, SessionBibliography, SessionEdit, SessionReferencesView, ShortcutStatus, ZoteroGroup, ZoteroLibrary, ZoteroProfiles,
+  AppPaste, Copied, Density, EntryCopy, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PastedList, PickerDestination, PickerPreferences, PickerSnapshot, ProjectStatus, SearchQuery, SearchResult, SessionBibliography, SessionEdit, SessionReferencesView, ShortcutStatus, ZoteroGroup, ZoteroLibrary, ZoteroProfiles,
   WritingView, WritingsView, WritingEdit,
 } from "./bindings";
 /** What the notice after a copy says: pasted into an app, or copied and why. */
@@ -37,7 +36,8 @@ export const {
   openLibrarySource,
   librarySource,
   hidePicker,
-  pickerPresentation,
+  pickerSnapshot,
+  pickerRendered,
   pickerMoving,
   setPinned,
   quit,
@@ -143,11 +143,6 @@ export function previewFileCitation(
 export function search(query: string, limit = 20, scope: string[] | null = null, interpretLocators = true) {
   searchRequest += 1;
   return commands.search({ text: query, interpret_locators: interpretLocators }, limit, searchPage, searchRequest, scope);
-}
-
-/** Read visibility after subscribing, including hidden startup without an event. */
-export function pickerVisible(): Promise<boolean> {
-  return getCurrentWindow().isVisible();
 }
 
 // The picker's native events; `events` names each once (nativeEvents.ts).

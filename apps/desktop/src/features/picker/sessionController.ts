@@ -7,7 +7,7 @@ import type { Operation } from "./Notices";
 import type { PreviewFailure } from "./preview";
 import { initialSession, reduceSession, type SessionEffect, type SessionEvent } from "./session";
 
-export type SessionPorts = Pick<typeof nativeApi, "deliverCitation" | "pickerPresentation" | "search" | "previewFileCitation">
+export type SessionPorts = Pick<typeof nativeApi, "deliverCitation" | "search" | "previewFileCitation">
   & Partial<Pick<typeof nativeApi, "pickerDestination" | "rememberAppOutput" | "editWriting">> & {
   refresh: () => void;
   report: (operation: Operation, failed: boolean) => void;
@@ -37,13 +37,6 @@ export function createSessionController(initial = initialSession()) {
   };
   const run = async (effect: SessionEffect) => {
     switch (effect.type) {
-      case "read-presentation": {
-        let presentation: number | null = null;
-        try { presentation = await ports.pickerPresentation(); }
-        catch { /* A pending action owns one recovery read, never a timer. */ }
-        dispatch({ type: "presentation", visibility: effect.visibility, presentation });
-        break;
-      }
       case "copy": {
         try {
           const outcome = await ports.deliverCitation(effect.ticket, effect.hash, effect.replaces, effect.presentation, effect.closestMatches);

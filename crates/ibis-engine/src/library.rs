@@ -243,6 +243,9 @@ struct Shared {
     store: Arc<dyn ChoiceStore>,
     engine: Box<dyn Fn() -> Result<Engine, EngineError> + Send + Sync>,
     publish: Publish,
+    /// This owner's reads still running, abandoned or not, per kind of source.
+    file_reads: Arc<AtomicUsize>,
+    zotero_reads: Arc<AtomicUsize>,
 }
 
 #[derive(Default)]
@@ -414,6 +417,8 @@ impl Owner {
                 store,
                 engine: Box::new(engine),
                 publish: Box::new(publish),
+                file_reads: Arc::default(),
+                zotero_reads: Arc::default(),
             }),
         }
     }
@@ -505,6 +510,13 @@ impl Owner {
     /// The open library, for searching and citing.
     pub fn current(&self) -> Option<Arc<Current>> {
         self.shared.with_state(|state| state.current.clone()).flatten()
+    }
+
+    /// Status and the searchable library captured under the same owner lock.
+    pub fn status_with_current(&self) -> (LibraryStatus, Option<Arc<Current>>) {
+        self.shared
+            .with_state(|state| (status::status(state), state.current.clone()))
+            .unwrap_or_else(|| (LibraryStatus::unavailable(), None))
     }
 
     /// The status as it is now, for an interface that has just started.
@@ -718,7 +730,12 @@ impl Shared {
         let read_source = source.clone();
         let read_profile = profile.clone();
         let token = cancel.token.clone();
-        let loaded = supervise(&source, &cancel, LOAD_DEADLINE, move || {
+        let in_flight = if matches!(source, Source::Zotero(_)) {
+            &self.zotero_reads
+        } else {
+            &self.file_reads
+        };
+        let loaded = supervise(&source, &cancel, LOAD_DEADLINE, in_flight, move || {
             let profile = match (&read_source, read_profile) {
                 (Source::Zotero(_), Some(profile)) => Some(profile),
                 (Source::Zotero(_), None) if intent != OpenIntent::ReadOnly => shared
@@ -1104,29 +1121,27 @@ fn is_bib(path: &Path) -> bool {
 
 /// Run `operation` on its own thread until it answers, `cancel` fires or the
 /// deadline passes. A driver call cannot be killed safely, so abandoned reads
-/// are bounded instead: at most four of each kind, leaving room for a local
-/// file to open while a remote one is stuck.
+/// are bounded instead: at most four of each kind per owner, leaving room for a
+/// local file to open while a remote one is stuck.
 fn supervise<T: Send + 'static>(
     source: &Source,
     cancel: &OpenCancellation,
     deadline: Duration,
+    in_flight: &Arc<AtomicUsize>,
     operation: impl FnOnce() -> Result<T, LoadError> + Send + 'static,
 ) -> Result<T, LoadError> {
-    static FILE_READS: AtomicUsize = AtomicUsize::new(0);
-    static ZOTERO_READS: AtomicUsize = AtomicUsize::new(0);
     let zotero = matches!(source, Source::Zotero(_));
-    let in_flight = if zotero { &ZOTERO_READS } else { &FILE_READS };
     supervise_with(cancel, deadline, in_flight, LoadError::unavailable(zotero), operation)
 }
 
 fn supervise_with<T: Send + 'static>(
     cancel: &OpenCancellation,
     deadline: Duration,
-    in_flight: &'static AtomicUsize,
+    in_flight: &Arc<AtomicUsize>,
     unavailable: LoadError,
     operation: impl FnOnce() -> Result<T, LoadError> + Send + 'static,
 ) -> Result<T, LoadError> {
-    struct Permit(&'static AtomicUsize);
+    struct Permit(Arc<AtomicUsize>);
     impl Drop for Permit {
         fn drop(&mut self) {
             self.0.fetch_sub(1, Ordering::SeqCst);
@@ -1139,7 +1154,7 @@ fn supervise_with<T: Send + 'static>(
         in_flight.fetch_sub(1, Ordering::SeqCst);
         return Err(unavailable);
     }
-    let permit = Permit(in_flight);
+    let permit = Permit(Arc::clone(in_flight));
     let (send, result) = mpsc::sync_channel(1);
     let wake = Arc::clone(&cancel.wake);
     std::thread::Builder::new()

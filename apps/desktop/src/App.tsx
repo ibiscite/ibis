@@ -9,7 +9,6 @@ import { PeekCard } from "./ui/PeekCard";
 
 import { fullStop, say } from "./i18n";
 import { usePointerSelection } from "./pointerSelection";
-import { usePickerAppearance } from "./ui/appearance";
 import { isStyle, styleOf } from "./format/outputs";
 import { PickerHeader } from "./features/picker/PickerHeader";
 import type { FormatExample, FormatPreview } from "./features/picker/FormatMenu";
@@ -64,12 +63,12 @@ import { PickerShown } from "./features/picker/pickerShown";
 
 // The picker: search, choose one or more references, copy them as a citation.
 export function App({ preview }: { preview?: PickerPreview } = {}) {
-  const api = usePickerAppearance(nativeApi);
+  const api = nativeApi;
   const pickerSession = usePickerSession(preview);
   const { session, state, send, setQuery, setActive, cancelCopy } = pickerSession;
   const { query, interpretLocators, active, selected, copied, copyError } = state;
   // The page's one hidden mark, from the session: CSS pauses looping animations
-  // with it. Unknown counts as hidden, so nothing runs before the native read.
+  // with it. Unknown counts as hidden, so nothing runs before the opening snapshot.
   useLayoutEffect(() => {
     if (state.shown) delete document.documentElement.dataset.pickerHidden;
     else document.documentElement.dataset.pickerHidden = "";
@@ -100,10 +99,10 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
   const checkVersion = libraryVersion + editor.version + project.version;
   const delights = usePickerDelights(api, state.presentation, library, preferences.smallSurprises);
   useEffect(() => { if (choosingLibrary) delights.dismiss(); }, [choosingLibrary, delights.dismiss]);
-  const recents = useRecentReferences(api.recentReferences, destination.appId, state.session, api.onPreferencesChanged, () => send({ type: "forget-last" }));
+  const recents = useRecentReferences(api.recentReferences, destination.appId, state.session, api.onPreferencesChanged, () => send({ type: "forget-last" }), state.destination.destination);
   const searchState = useLibrarySearch({
     // ">" asks for commands, never the library.
-    session, state, search: api.search, emptySearch: recents.load, app: destination.appId, query: query.startsWith(COMMAND_PREFIX) ? "" : query, interpretLocators,
+    session, state, search: api.search, emptySearch: recents.load, emptyReply: recents.snapshot, app: destination.appId, query: query.startsWith(COMMAND_PREFIX) ? "" : query, interpretLocators,
     library: settledLibrary, statusFailed: failures.status ?? false, libraryVersion: checkVersion,
   });
   const { queryKey, results, sameSnapshot, ready, list, error, pending: searchPending } = searchState;
@@ -163,7 +162,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
   useEffect(() => { if (editor.version > 0) readDestination(true, false); }, [editor.version]);
   const { altHeld, setAltHeld } = useAltHeld();
   useNativeRequests(api, query, setQuery, input, state.selected.size);
-  usePickerLifecycle({ api, pickerSession, menus, destination, preferences, resetPointer, readShortcut, report, setAltHeld });
+  usePickerLifecycle({ api, pickerSession, menus, destination, preferences, libraryState, recents, resetPointer, readShortcut, report, setAltHeld });
   usePickerMove(api, pickerSession.session);
   const { resultArea, followKeyboard } = useResultScroll({
     input, active, selectAll: state.selectAll, pointer, selectedSize: selected.size, citationProblem, formatted, format,
@@ -257,8 +256,8 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
       notice={[
         // What passes (Undo, a remark, an update) first: it goes by itself.
         <PickerNotices key="passing" state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? shorthand.hint ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && !shorthand.hint && delights.passive} onRemarkPassed={() => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else if (shorthand.hint) shorthand.dismiss(); else delights.dismiss(); }} />,
-        ...notices({ projectNotice: destination.readProblem ?? project.notice, editorNotice: editor.label, library, failures: { ...failures, recentHistory: recents.forgetFailed },
-          error, copyError: inspector.panel ? null : copyError, copied, missing: ready ? list?.missing : undefined,
+        ...notices({ projectNotice: project.notice, editorNotice: editor.label, library, failures: { ...failures, recentHistory: recents.forgetFailed },
+          error: error ?? destination.readProblem, copyError: inspector.panel ? null : copyError, copied, missing: ready ? list?.missing : undefined,
           confirmation: state.copyNotice, onDismissCopied: () => send({ type: "dismiss" }) }),
         bibliographyCheckNotice({ refusal: inspector.panel ? null : projectRefusal, problem: projectProblem,
           onRetry: project.retry ? () => { cancelCopy(); project.retry?.(); } : undefined,

@@ -14,7 +14,7 @@ function setup(overrides: Partial<SessionPorts> = {}) {
     searchPending: false, ready: true, saving: false, shouldAsk: false, remembersLast: true, output: { opening: 0, choice: 0, delivery: 0 } });
   // A format picked for this citation only: the copy that uses it consumes it.
   const controller = createSessionController({ ...arranged, destination: { ...arranged.destination, held: "apa" } });
-  const ports: SessionPorts = { pickerPresentation: vi.fn(async () => 0),
+  const ports: SessionPorts = {
     deliverCitation: vi.fn(async (): Promise<DeliveryOutcome> => ({ outcome: "pasted", copied: { text: "canonical citation", warnings: [] }, app: "Example Writer" })),
     refresh: vi.fn(), report: vi.fn(), chooseDefault: vi.fn(), search: vi.fn(async () => ({ revision: "synthetic", results: [] })), previewFileCitation: vi.fn(async () => { throw new Error("not asked"); }), ...overrides };
   controller.connect(ports);

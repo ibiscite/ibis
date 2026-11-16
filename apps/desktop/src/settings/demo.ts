@@ -4,9 +4,9 @@ import { exampleProposals } from "../testing/proposals";
 import type { SettingsApi } from "./api";
 
 /** Explicit development-only fixture: no native commands, files or network. */
-export function demoApi(): SettingsApi {
+export function demoApi(initialPreferences: Partial<PickerPreferences> = {}): SettingsApi {
   let proposals = exampleProposals();
-  let preferences: PickerPreferences = { output: "pandoc", density: "comfortable", larger_text: false, paste: true, menu_bar: true, appearance: "system", accent: "system" };
+  let preferences: PickerPreferences = { output: "pandoc", density: "comfortable", larger_text: false, paste: true, menu_bar: true, appearance: "system", accent: "system", ...initialPreferences };
   let shortcut: ShortcutStatus = { shortcut: DEFAULT_PICKER_SHORTCUT, registered: true, error: null };
   let enabled = false, automatic = false;
   let attachmentText = false;

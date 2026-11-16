@@ -1,10 +1,8 @@
-import { fixtureDestination, formatAnswer } from "./testing/format";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { App } from "./App";
-import { backend, prepared, resetApp, result, type PreviewRequest } from "./testing/app";
+import { backend, prepared, resetApp, result, type PreviewRequest, showPicker } from "./testing/app";
 import { emit } from "@tauri-apps/api/event";
-import type { PickerDestination } from "./api";
 import type { CitedWarning } from "./bindings";
 
 // Keep the 2.4-second confirmation alive while assertions run, even when other
@@ -73,13 +71,13 @@ test.each([
   expect(shelf()).toBe(shelfText);
   await act(async () => { await emit("picker:hidden"); await vi.advanceTimersByTimeAsync(61_000); });
   for (let opening = 0; opening < returnsBeforeGrant; opening += 1) {
-    await act(async () => { await emit("picker:shown"); });
+    await act(async () => { await showPicker(); });
     expect(shelf()).toBe(shelfText);
     expect(search.value).toBe("Smith p.12");
     await act(async () => { await emit("picker:hidden"); await vi.advanceTimersByTimeAsync(61_000); });
   }
   granted = true;
-  await act(async () => { await emit("picker:shown"); });
+  await act(async () => { await showPicker(); });
   expect(shelf()).toBe(shelfText);
   expect(search.value).toBe("Smith p.12");
   expect(calls.filter((c) => c === "deliver_citation")).toHaveLength(1);
@@ -93,48 +91,10 @@ test.each([
     { id: { key: "b" }, locator: { term: "page", value: "12" } },
   ] });
   expect(shelf()).not.toContain("@a; @b");
-  await act(async () => { await emit("picker:hidden"); await vi.advanceTimersByTimeAsync(61_000); await emit("picker:shown"); });
+  await act(async () => { await emit("picker:hidden"); await vi.advanceTimersByTimeAsync(61_000); await showPicker(); });
   expect(search.value).toBe("");
 });
 
-test("a preferences event superseding the permission return keeps the prepared output for the next copy", async () => {
-  let granted = false;
-  let destination: PickerDestination = fixtureDestination({ app: "Example Editor", app_id: "example.editor", app_identity: null, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false, format: formatAnswer("typst", "app") });
-  let delayReturn = false;
-  let finishReturn!: (value: PickerDestination) => void;
-  const copies: PreviewRequest[] = [];
-  const calls = await openPicker({
-    picker_destination: () => {
-      if (!delayReturn) return destination;
-      delayReturn = false;
-      return new Promise<PickerDestination>((resolve) => { finishReturn = resolve; });
-    },
-    deliver_citation: (args) => {
-      const citation = prepared(args);
-      copies.push(citation.request);
-      return granted ? { outcome: "pasted", copied: { text: citation.preview.text, warnings: [] }, app: "Writer" } : { outcome: "copied-only", copied: { text: citation.preview.text, warnings: [] }, reason: "no-permission" };
-    },
-  });
-  await copy();
-  await act(async () => { await emit("picker:hidden"); });
-  destination = fixtureDestination({ ...destination, app: "Example Writer", app_id: "example.writer", app_identity: null, format: formatAnswer("cite", "app") });
-  delayReturn = true;
-  granted = true;
-  await act(async () => { await emit("picker:shown"); });
-  expect(calls.filter((call) => call === "picker_destination")).toHaveLength(2);
-  await act(async () => { await emit("preferences:changed"); });
-  expect(calls.filter((call) => call === "picker_destination")).toHaveLength(3);
-  await act(async () => { finishReturn(fixtureDestination({ ...destination, app: "Stale Editor", app_id: "example.stale", format: formatAnswer("pandoc", "yours") })); });
-  expect(screen.getByRole("button", { name: "Citation format Typst · This paste" })).toBeTruthy();
-  expect(copies).toHaveLength(1);
-  await copy();
-  expect(copies).toHaveLength(2);
-  expectSameCitation(copies[0]!, copies[1]!);
-  expect(copies[1]).toMatchObject({ output: "typst" });
-  expect(screen.getByRole("button", { name: "Citation format LaTeX \\cite · Example Writer" })).toBeTruthy();
-  expect(calls).not.toContain("remember_app_output");
-  expect(calls).not.toContain("picker_preferences_saved");
-});
 
 const lostPage: CitedWarning = { item: 0, message: { id: "app-loss", args: { what: "the page or location", target: "" } } };
 
@@ -222,7 +182,7 @@ test.each(["selection", "search", "reopening"])("a delayed hide failure cannot c
   await act(async () => {
     if (change === "selection") fireEvent.click(screen.getByText("Second"), { ctrlKey: true });
     else if (change === "search") fireEvent.change(search, { target: { value: "new search" } });
-    else await emit("picker:shown");
+    else await showPicker();
   });
   const shelfText = document.querySelector(".shelf")?.textContent;
   await act(async () => { finish({ outcome: "retained", copied: { text: "@a", warnings: [] }, reason: "hide-failed" }); });
