@@ -19,6 +19,10 @@ export const commands = {
 	attachmentTextLibraries: () => __TAURI_INVOKE<AttachmentTextLibrary[]>("attachment_text_libraries"),
 	/** Save a choice for an open library previously returned to Settings. */
 	setAttachmentText: (id: LibraryId, on: boolean) => __TAURI_INVOKE<boolean>("set_attachment_text", { id, on }),
+	/** Whether attachment text tools may read files beyond the library's folder. */
+	attachmentTextOutsideLibrary: () => __TAURI_INVOKE<boolean>("attachment_text_outside_library"),
+	/** Save this computer's permission to read attachment text outside libraries. */
+	setAttachmentTextOutsideLibrary: (on: boolean) => __TAURI_INVOKE<boolean>("set_attachment_text_outside_library", { on }),
 	cliStatus: () => __TAURI_INVOKE<CommandStatus>("cli_status"),
 	setCliInstalled: (installed: boolean) => __TAURI_INVOKE<CommandStatus>("set_cli_installed", { installed }),
 	copyCliProfile: () => __TAURI_INVOKE<null>("copy_cli_profile"),
