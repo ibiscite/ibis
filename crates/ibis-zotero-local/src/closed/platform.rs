@@ -365,41 +365,54 @@ pub(super) fn create_private(path: &Path, control: &Control) -> Result<(), Close
     }
     #[cfg(windows)]
     {
-        windows::create(path, control).map_err(|e| e.context(ClosedError::PrivateStorage))?;
+        // Per-user cache security is inherited; no reader-specific ACL policy.
+        directory(path.parent().ok_or(ClosedError::PrivateStorage)?, control)
+            .map_err(|e| e.context(ClosedError::PrivateStorage))?;
+        std::fs::create_dir(path).map_err(|_| ClosedError::PrivateStorage)?;
+        secure(path, control)?;
     }
     #[cfg(not(any(unix, windows)))]
     return Err(ClosedError::PrivateStorage);
     Ok(())
 }
 
-/// Create a new private file without replacing an existing entry.
-pub(super) fn private_file(path: &Path, control: &Control) -> Result<File, ClosedError> {
-    control.check()?;
-    #[cfg(windows)]
-    {
-        windows::private_file(path, control)
-    }
-    #[cfg(not(windows))]
-    {
-        ibis_core::atomic_file::create_private(path).map_err(|_| ClosedError::PrivateStorage)
-    }
-}
-
 /// Acquire the reusable lock, retaining the same file and lease through validation.
 pub(super) fn private_lock(path: &Path, control: &Control) -> Result<FileLease, ClosedError> {
     control.check()?;
-    #[cfg(windows)]
-    {
-        windows::private_lock(path, control)
-    }
+    let failure = if cfg!(windows) {
+        ClosedError::LockPermissions
+    } else {
+        ClosedError::PrivateStorage
+    };
     #[cfg(not(windows))]
-    {
-        let file = ibis_core::atomic_file::open_private(path).map_err(|_| ClosedError::PrivateStorage)?;
-        if !file.metadata().is_ok_and(|m| m.is_file()) {
-            return Err(ClosedError::PrivateStorage);
+    let file = ibis_core::atomic_file::open_private(path).map_err(|_| failure)?;
+    #[cfg(windows)]
+    let file = {
+        use std::os::windows::fs::OpenOptionsExt;
+        use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT;
+        match ibis_core::atomic_file::create_private(path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+                .open(path)
+                .map_err(|_| failure)?,
+            Err(_) => return Err(failure),
         }
-        FileLease::acquire(file).map_err(|_| ClosedError::StorageInUse)
+    };
+    if !file.metadata().is_ok_and(|m| m.is_file() && resident(&m)) {
+        return Err(failure);
     }
+    let metadata = std::fs::symlink_metadata(path).map_err(|_| failure)?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() || !resident(&metadata) {
+        return Err(failure);
+    }
+    FileLease::acquire(file).map_err(|error| match error {
+        std::fs::TryLockError::WouldBlock => ClosedError::StorageInUse,
+        _ if cfg!(windows) => failure,
+        _ => ClosedError::StorageInUse,
+    })
 }
 
 #[cfg(target_os = "macos")]
@@ -436,7 +449,10 @@ pub(super) fn secure(path: &Path, control: &Control) -> Result<(), ClosedError> 
     }
     #[cfg(windows)]
     {
-        windows::verify(path, true, control).map_err(|e| e.context(ClosedError::PrivateStorage))?;
+        directory(path, control).map_err(|e| e.context(ClosedError::PrivateStorage))?;
+        if !std::fs::symlink_metadata(path).is_ok_and(|m| m.is_dir() && resident(&m)) {
+            return Err(ClosedError::PrivateStorage);
+        }
     }
     Ok(())
 }
@@ -444,13 +460,13 @@ pub(super) fn secure(path: &Path, control: &Control) -> Result<(), ClosedError> 
 pub(super) fn exclude_backups(path: &Path, control: &Control) -> Result<(), ClosedError> {
     control.check()?;
     // Standard cachedir signature: recognized by Unix backup tools. macOS also
-    // gets Time Machine's native exclusion; Windows root is restricted to TEMP.
+    // gets Time Machine's native exclusion; Windows uses the per-user app cache.
     use std::io::Write;
     const TAG: &[u8] = b"Signature: 8a477f597d28d172789f06886806bc55\n# Disposable Ibis Zotero copies.\n";
     let tag = path.join("CACHEDIR.TAG");
     match std::fs::symlink_metadata(&tag) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            let mut file = private_file(&tag, control)?;
+            let mut file = ibis_core::atomic_file::create_private(&tag).map_err(|_| ClosedError::PrivateStorage)?;
             file.write_all(TAG)
                 .and_then(|_| file.sync_all())
                 .map_err(|_| ClosedError::PrivateStorage)?;
@@ -476,8 +492,6 @@ pub(super) fn exclude_backups(path: &Path, control: &Control) -> Result<(), Clos
         b"com.apple.backupd",
     )
     .map_err(|_| ClosedError::PrivateStorage)?;
-    #[cfg(windows)]
-    windows::backup(path, control).map_err(|e| e.context(ClosedError::PrivateStorage))?;
     Ok(())
 }
 

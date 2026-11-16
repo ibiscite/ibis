@@ -44,6 +44,25 @@ pub fn config_dir() -> Option<PathBuf> {
     }
 }
 
+/// Per-user cache shared by the desktop and CLI, including closed Zotero reads.
+/// Keep platform paths here; the reader receives only the resolved cache parent.
+pub(crate) fn cache_dir() -> Option<PathBuf> {
+    let var = |name: &str| {
+        std::env::var_os(name)
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute())
+    };
+    let root = if cfg!(target_os = "macos") {
+        var("HOME").map(|home| home.join("Library/Caches"))
+    } else if cfg!(windows) {
+        var("LOCALAPPDATA")
+    } else {
+        var("XDG_CACHE_HOME").or_else(|| var("HOME").map(|home| home.join(".cache")))
+    };
+    root.map(|root| root.join("com.ibiscite.ibis"))
+}
+
 /// Use the person's saved key from the first library on, writing one if
 /// `create` allows it. Nothing is read or written until a library needs an id.
 pub fn use_saved_key(create: bool) {

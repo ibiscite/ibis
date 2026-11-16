@@ -1,4 +1,4 @@
-//! Query only the disposable database copy.
+//! Query only the private cached database.
 use super::{
     ClosedAttachment, ClosedError, ClosedItem, ClosedLibrary, ClosedSnapshot, ClosedWarning, Control, IndexedCounts,
     RawCreator, RawItem, SourceMetadata, StoredValue, ZoteroTable,
@@ -40,8 +40,8 @@ pub(super) fn read(
     super::database_bounds::check(&path, control)?;
     let dir = path.parent().ok_or(ClosedError::PrivateStorage)?;
     // A hot rollback journal may name an external super-journal. A zeroed
-    // PERSIST journal is not hot (SQLite pager.c hasHotJournal); discard only
-    // that private journal so SQLite never interprets its path instructions.
+    // PERSIST journal is not hot (SQLite pager.c hasHotJournal); leave a cold
+    // journal in the cache. Never let SQLite recover a hot journal.
     match std::fs::File::open(dir.join("zotero.sqlite-journal")) {
         Ok(mut journal) => {
             use std::io::Read;
@@ -51,7 +51,6 @@ pub(super) fn read(
                 return Err(ClosedError::NeedsRecovery);
             }
             drop(journal);
-            std::fs::remove_file(dir.join("zotero.sqlite-journal")).map_err(|_| ClosedError::PrivateStorage)?;
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
         Err(_) => return Err(ClosedError::PrivateStorage),
