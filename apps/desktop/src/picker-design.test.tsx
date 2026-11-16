@@ -12,7 +12,7 @@ afterEach(resetApp);
 test("an editor owns the shown format and Send until its request ends", async () => {
   let editor: { request: number; format: string; style: boolean } | null = { request: 1, format: "LaTeX", style: false };
   const copied = vi.fn(() => ({ text: "\\cite{aster}", warnings: [] }));
-  backend({ editor_request: () => editor, picker_destination: () => fixtureDestination({ format: formatAnswer("apa"), app: "Invented Writer", can_paste: true }),
+  backend({ editor_request: () => editor, "destination": () => fixtureDestination({ format: formatAnswer("apa"), app: "Invented Writer", can_paste: true }),
     search: () => [result("aster", "Invented reference")], copy_file_citation: copied });
   render(<App />);
   await screen.findByText("Invented reference");
@@ -88,7 +88,7 @@ test("the Reader keeps the refusal and the reference's warnings beside its edita
 });
 
 test("header and footer name Clipboard when warnings change delivery to copy", async () => {
-  backend({ picker_destination: () => fixtureDestination({ format: formatAnswer("bibtex"), app: "Invented Writer", can_paste: true }),
+  backend({ "destination": () => fixtureDestination({ format: formatAnswer("bibtex"), app: "Invented Writer", can_paste: true }),
     search: () => [result("aster", "Invented reference"), result("birch", "Another invented reference")],
     preview_file_citation: ({ items }) => receipt("Invented BibTeX", null, items.length > 1 ? [missingKey("aster")] : []) });
   render(<App />);

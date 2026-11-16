@@ -198,3 +198,7 @@ mod tests {
         }
     }
 }
+
+impl From<ibis_engine::app_context::Error> for CommandError {
+    fn from(error: ibis_engine::app_context::Error) -> Self { Self::Presented(error.into()) }
+}

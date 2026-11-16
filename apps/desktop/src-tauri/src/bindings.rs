@@ -51,6 +51,7 @@ macro_rules! registry {
 }
 
 registry![
+    crate::app_context::app_context,
     crate::proposals::waiting_proposals,
     crate::proposals::apply_proposal,
     crate::proposals::reject_proposal,
@@ -83,13 +84,8 @@ registry![
     crate::copy::citation_details,
     crate::copy::citation_example,
     crate::copy::copy_file_citation,
-    crate::project::project_status,
-    crate::project::retry_project,
     crate::project::choose_project,
-    crate::project::stop_project,
     crate::project::copy_project_entry,
-    crate::writings::writings,
-    crate::writings::edit_writing,
     crate::editor_endpoint::editor_request,
     crate::editor_endpoint::editor_endpoint,
     crate::editor_endpoint::set_editor_endpoint,
@@ -104,7 +100,6 @@ registry![
     crate::delights::delight_view,
     crate::delights::shorthand_hint,
     crate::preferences::picker_preferences_saved,
-    crate::destination::picker_destination,
     crate::destination::remember_app_output,
     crate::destination::forget_app_output,
     crate::format_settings::format_settings,

@@ -145,7 +145,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
 
   const calls = backend({
     "plugin:window|is_visible": () => visible,
-    picker_destination: () => {
+    "destination": () => {
       captured ??= capture();
       const choice = appChoices.get(target.appId);
       const paste = target.refusal ? null : choice?.paste ?? null;

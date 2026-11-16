@@ -8,47 +8,8 @@ use ibis_engine::Cancellation;
 use serde::{Deserialize, Serialize};
 
 /// The state of one emitted key in the project bibliography, for the row.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
-#[serde(rename_all = "kebab-case")]
-pub(crate) enum ProjectKeyState {
-    In,
-    Missing,
-    CouldNotCheck,
-    Repeated,
-    MayNameAnother,
-}
+pub(crate) use ibis_engine::app_context::project::ProjectMark;
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
-pub(crate) struct ProjectMark {
-    pub(crate) generation: u32,
-    pub(crate) state: ProjectKeyState,
-    /// Where to look in the file, when the state asks a person to look.
-    pub(crate) lines: Vec<u32>,
-}
-
-impl ProjectMark {
-    pub(crate) fn new(generation: u32, check: &ibis_engine::KeyCheck) -> Self {
-        use ibis_engine::KeyCheck;
-        let (state, lines) = match check {
-            KeyCheck::In { .. } => (ProjectKeyState::In, vec![]),
-            KeyCheck::Missing => (ProjectKeyState::Missing, vec![]),
-            KeyCheck::CouldNotCheck => (ProjectKeyState::CouldNotCheck, vec![]),
-            KeyCheck::Repeated { lines } => (ProjectKeyState::Repeated, lines.clone()),
-            KeyCheck::MayNameAnother { line, .. } => (ProjectKeyState::MayNameAnother, vec![*line]),
-        };
-        Self {
-            generation,
-            state,
-            lines: lines.into_iter().take(5).map(|line| line as u32).collect(),
-        }
-    }
-}
-
-/// The newest search each interface page has sent, so a search for a query
-/// the person has already typed past stops early instead of delaying the
-/// newer one. The interface numbers its searches, because commands can start
-/// in a different order than they were sent, and names its page, because a
-/// reloaded page counts from the start again.
 #[derive(Default)]
 pub(crate) struct SearchRequests(Mutex<HashMap<u32, (u32, Cancellation)>>);
 

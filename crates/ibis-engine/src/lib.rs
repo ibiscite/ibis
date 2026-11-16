@@ -51,3 +51,6 @@ pub mod library;
 
 /// Library changes agents propose and the person confirms (decision 0055).
 pub mod write;
+
+/// Context for the app receiving a citation.
+pub mod app_context;

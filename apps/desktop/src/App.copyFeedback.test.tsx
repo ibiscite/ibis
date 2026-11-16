@@ -105,7 +105,7 @@ test("a preferences event superseding the permission return keeps the prepared o
   let finishReturn!: (value: PickerDestination) => void;
   const copies: PreviewRequest[] = [];
   const calls = await openPicker({
-    picker_destination: () => {
+    "destination": () => {
       if (!delayReturn) return destination;
       delayReturn = false;
       return new Promise<PickerDestination>((resolve) => { finishReturn = resolve; });
@@ -123,9 +123,9 @@ test("a preferences event superseding the permission return keeps the prepared o
   delayReturn = true;
   granted = true;
   await act(async () => { await emit("picker:shown"); });
-  expect(calls.filter((call) => call === "picker_destination")).toHaveLength(2);
+  expect(calls.filter((call) => call === "destination")).toHaveLength(2);
   await act(async () => { await emit("preferences:changed"); });
-  expect(calls.filter((call) => call === "picker_destination")).toHaveLength(3);
+  expect(calls.filter((call) => call === "destination")).toHaveLength(3);
   await act(async () => { finishReturn(fixtureDestination({ ...destination, app: "Stale Editor", app_id: "example.stale", format: formatAnswer("pandoc", "yours") })); });
   expect(screen.getByRole("button", { name: "Citation format Typst · This paste" })).toBeTruthy();
   expect(copies).toHaveLength(1);

@@ -153,7 +153,7 @@ test.each(["copy", "hide", "delivery"])("a fresh Enter after picking the same fo
   let copies = 0;
   const calls = backend({
     search: () => [result("a", "Prepared reference")],
-    picker_destination: () => (fixtureDestination({ app: "Example Writer", app_id: "example.writer", app_identity: null, unreadable: false, can_paste: true, paste: null, paste_question: false, can_choose_paste: false, format: formatAnswer("pandoc", "yours") })),
+    "destination": () => (fixtureDestination({ app: "Example Writer", app_id: "example.writer", app_identity: null, unreadable: false, can_paste: true, paste: null, paste_question: false, can_choose_paste: false, format: formatAnswer("pandoc", "yours") })),
     copy_file_citation: async (args) => {
       const { preview } = prepared(args);
       if (++copies === 1 && stage === "copy") await paused.promise;

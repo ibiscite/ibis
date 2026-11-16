@@ -2604,7 +2604,7 @@ test("the footer names a healthy library alone and keeps counts and update times
 test("the keys sheet names what Enter does from the same answer as the footer", async () => {
   backend({
     search: () => [result("a", "First")],
-    picker_destination: () => (fixtureDestination({ app: "Example Writer", app_id: "example.writer", app_identity: null, unreadable: false, can_paste: true, paste: null, paste_question: false, can_choose_paste: false, format: formatAnswer("pandoc", "yours") })),
+    "destination": () => (fixtureDestination({ app: "Example Writer", app_id: "example.writer", app_identity: null, unreadable: false, can_paste: true, paste: null, paste_question: false, can_choose_paste: false, format: formatAnswer("pandoc", "yours") })),
   });
   render(<App />);
   const box = screen.getByLabelText("Search references");

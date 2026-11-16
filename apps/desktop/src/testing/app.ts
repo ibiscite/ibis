@@ -200,7 +200,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     "plugin:window|is_visible": () => true,
     shortcut_status: () => ({ shortcut: "CommandOrControl+Shift+Y", registered: true, error: null }),
     search: () => [],
-    project_status: () => null,
+    "project-status": () => null,
     editor_request: () => null,
     session_references: () => ({ revision: 0, rows: [], absent: 0, overflowed: false, undo: null }),
     session_bibliography: () => null,
@@ -234,7 +234,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     save_picker_preferences: ({ preferences: patch }) => { const receipt = ++revision; submitted.set(receipt, patch as Partial<api.PickerPreferences>); return receipt; },
     picker_preferences_saved: () => null,
     // Opened from no app Ibis knows: the default format applies.
-    picker_destination: async () => {
+    "destination": async () => {
       await Promise.resolve();
       return { app: null, app_id: null, app_identity: null, format: formatAnswer(preferences.key_output ?? preferences.output, "yours"), unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false };
     },
@@ -252,6 +252,8 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
   mockWindows("main");
   mockIPC(
     (cmd, args) => {
+      const contextKind = cmd === "app_context" ? (args as { request: import("../bindings").ContextRequest }).request.kind : null;
+      if (contextKind) { cmd = contextKind; args = (args as { request: unknown }).request as typeof args; }
       calls.push(cmd);
       if (cmd === "preview_file_citation" && (args as PreviewRequest).intent.cancel) {
         return Promise.reject({ code: "cancelled" });
@@ -261,7 +263,11 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
       // A test's save handler sees the choice the receipt stands for.
       const receipt = cmd === "picker_preferences_saved" ? (args as { receipt: number }).receipt : 0;
       const value = handler((receipt ? { ...args as object, preferences: submitted.get(receipt) } : args ?? {}) as Parameters<Handler>[0]);
-      if (cmd === "picker_destination") return Promise.resolve(value).then((destination) => fixtureDestination(destination as api.PickerDestination));
+      if (contextKind) return Promise.resolve(value).then((answer) => ({
+        destination: fixtureDestination(cmd === "destination" ? answer as api.PickerDestination : {}),
+        writings: cmd === "writings" || cmd === "edit-writing" ? answer : { writings: [], selected: null, session_only: true, context: "invented" },
+        project: cmd === "project-status" ? answer : null,
+      }));
       if (cmd === "picker_preferences") {
         if (value && typeof value === "object" && !("then" in value)) preferences = { ...preferences, ...value as api.PickerPreferences };
         return Promise.resolve(value).then((loaded) => { preferences = { ...preferences, ...loaded as api.PickerPreferences }; return preferences; });

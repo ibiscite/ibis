@@ -86,7 +86,7 @@ pub(crate) struct PickerDestination {
     /// A proven ordinary target can accept an explicit delivery choice, including recovery.
     pub(crate) can_choose_paste: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) writing: Option<crate::writings::WritingView>,
+    pub(crate) writing: Option<ibis_engine::app_context::WritingView>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) context_version: Option<(u32, u32)>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -318,58 +318,16 @@ pub(crate) fn memory_path(settings: &Path) -> PathBuf {
     settings.with_file_name("apps.json")
 }
 
-/// The app the picker was opened from, its output and what Ibis remembers for it.
-#[tauri::command]
-#[ibis_desktop_macros::command]
-pub(crate) fn picker_destination(
-    app: AppHandle,
-    memory: State<'_, AppMemory>,
-    _settings_file: State<'_, SettingsFile>,
-    editor: State<'_, crate::editor_endpoint::Pending>,
-) -> Result<PickerDestination, crate::library::CommandError> {
-    // The editor already said what it wants and takes the citation itself.
-    let request = editor.current();
-    let last = if request.is_some() {
-        None
-    } else {
-        crate::paste::last_app(&app)
-    };
-    let context = crate::writings::destination_context(&app, last.as_ref().map(|(id, _, _)| id))?;
-    let context_version = Some(context.version);
-    let settings = context.settings;
-    let captured = last.as_ref().map(|(id, _, _)| id);
-    let usual_format = ibis_engine::format::usual(&settings, captured).id.unwrap_or_default();
-    // The writing this picker reports, also one chosen only for this session.
-    let format = if let Some(request) = &request {
-        match &request.writing {
-            Some(writing) => ibis_engine::format::for_writing(
-                &request.output,
-                ibis_engine::format::WritingName {
-                    id: writing.name.clone(),
-                    name: writing.name.clone(),
-                },
-                None,
-            ),
-            None => ibis_engine::format::choose_with(&settings, None, Some(&request.output)),
-        }
-    } else {
-        match &context.active {
-            Some(project) => ibis_engine::format::for_writing(
-                project.output.spec(),
-                ibis_engine::format::WritingName {
-                    id: project.id.clone(),
-                    name: project.name.clone(),
-                },
-                captured,
-            ),
-            None => ibis_engine::format::choose(&settings, captured),
-        }
-    };
-    let writing = context.active.map(|project| project.view());
-    let writing_context = editor.current().is_none().then_some(context.edit);
-    if editor.current() != request {
-        return Err(CommandError::SnapshotChanged);
-    }
+/// Native delivery facts for the engine's captured context.
+pub(crate) fn present(app: &AppHandle, context: &ibis_engine::app_context::ContextView) -> Result<PickerDestination, CommandError> {
+    let memory = app.state::<AppMemory>();
+    let editor = app.state::<crate::editor_endpoint::Pending>();
+    let last = if editor.current().is_some() { None } else { crate::paste::last_app(app) };
+    let format = context.format.clone();
+    let usual_format = context.usual_format.clone();
+    let writing = context.writing.clone();
+    let writing_context = context.writing_context.clone();
+    let context_version = Some(context.context_version);
     let Some((id, name, app_identity)) = last else {
         return Ok(PickerDestination {
             app: None,
@@ -388,9 +346,9 @@ pub(crate) fn picker_destination(
             writing_context,
         });
     };
-    let can_paste = crate::paste::intends_paste(&app, settings.portable.paste.unwrap_or(true));
+    let can_paste = crate::paste::intends_paste(&app, context.paste_enabled);
     let policy = memory.paste_for(&id, app_identity.as_deref());
-    let can_choose_paste = crate::paste::may_choose_paste(&app, settings.portable.paste.unwrap_or(true));
+    let can_choose_paste = crate::paste::may_choose_paste(&app, context.paste_enabled);
     // Only an app that can answer sees the warning; the others never paste anyway.
     let unreadable = policy.is_err() && can_choose_paste;
     let ordinary = lookup(&id).is_none_or(|entry| entry.safety == PasteSafety::Normal);

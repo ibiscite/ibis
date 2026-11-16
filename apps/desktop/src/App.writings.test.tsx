@@ -27,7 +27,7 @@ test("Enter pressed during reopening waits for the newly captured writing and co
   let reads = 0, initialPreviewStarted = false, newPreviewStarted = false;
   backend({
     search: () => [result("a", "Synthetic source")],
-    picker_destination: () => ++reads === 1 ? first : reads === 2 ? reopening.promise : settled.promise,
+    "destination": () => ++reads === 1 ? first : reads === 2 ? reopening.promise : settled.promise,
     preview_file_citation: (request) => {
       if (request.output === "typst" && request.intent.context?.[0] === 2) { newPreviewStarted = true; return preview.promise; }
       if (request.output === "cite" && request.intent.context?.[0] === 1) initialPreviewStarted = true;
@@ -61,7 +61,7 @@ test("a bibliography read finishing for the same writing refreshes a waiting Ent
   const copied: string[] = [];
   let delayedPreviewStarted = false, checkedPreviewStarted = false;
   backend({
-    search: () => [result("a", "Synthetic source")], picker_destination: () => destination,
+    search: () => [result("a", "Synthetic source")], "destination": () => destination,
     preview_file_citation: (request) => {
       if (request.intent.context?.[1] === 1) { checkedPreviewStarted = true; return checked.promise; }
       if (request.intent.context?.[0] === 1) { delayedPreviewStarted = true; return earlier.promise; }
@@ -92,8 +92,8 @@ test("leaving a writing restores the app's output and copies a fresh preview", a
     writing_context: `opening-${generation}`, context_version: [generation, 0], format: formatAnswer(selected ? writing.output : "typst", selected ? "writing" : "app") }));
   const copied: string[] = [];
   backend({
-    search: () => [result("a", "Synthetic source")], picker_destination: destination, writings: view,
-    edit_writing: async ({ context, action }) => {
+    search: () => [result("a", "Synthetic source")], "destination": destination, writings: view,
+    "edit-writing": async ({ context, action }) => {
       expect(context).toBe(`opening-${generation}`);
       expect(action).toEqual({ kind: "select", id: null });
       selected = null;
@@ -159,9 +159,9 @@ test("a fresh Enter after selecting a writing waits for its delayed destination 
   const view = (): WritingsView => ({ writings: writings, selected: saved ? "Writing B" : "Writing A", context: saved ? "opening-2" : "opening-1", session_only: false });
   backend({
     search: () => [result("a", "Synthetic source")],
-    picker_destination: () => { if (!saved) return first; destinationReadStarted = true; return destinationRead.promise; },
+    "destination": () => { if (!saved) return first; destinationReadStarted = true; return destinationRead.promise; },
     writings: view,
-    edit_writing: async ({ context, action }) => {
+    "edit-writing": async ({ context, action }) => {
       expect(context).toBe("opening-1");
       expect(action).toEqual({ kind: "select", id: "Writing B" });
       const next = await save.promise;
@@ -197,9 +197,9 @@ test("a same-format writing switch starts a new copy and an older copy cannot de
   const view = (): WritingsView => ({ writings: writings, selected, context: selected === "Writing A" ? "opening-1" : "opening-2", session_only: false });
   backend({
     search: () => [result("a", "Synthetic source")],
-    picker_destination: () => selected === "Writing A" ? first : second,
+    "destination": () => selected === "Writing A" ? first : second,
     writings: view,
-    edit_writing: async () => { selected = "Writing B"; await emit("project:changed", [2, 0]); return view(); },
+    "edit-writing": async () => { selected = "Writing B"; await emit("project:changed", [2, 0]); return view(); },
     preview_file_citation: (request) => receipt(request.intent.context?.[0] === 2 ? "cite:Writing B" : "cite:Writing A"),
     copy_file_citation: (args) => {
       const text = prepared(args).preview.text;
@@ -236,7 +236,7 @@ test("a checked bibliography warning still copies the waiting citation once and 
   const copied: { text: string; warnings: CitedWarning[] }[] = [];
   let earlierStarted = false, checkedStarted = false, hidden = 0;
   backend({
-    search: () => [result("a", "Synthetic source")], picker_destination: () => destination,
+    search: () => [result("a", "Synthetic source")], "destination": () => destination,
     preview_file_citation: (request) => {
       if (request.intent.context?.[1] === 1) { checkedStarted = true; return checked.promise; }
       if (request.intent.context?.[0] === 1) { earlierStarted = true; return earlier.promise; }
@@ -276,7 +276,7 @@ test("a bibliography event retires an old copy proof before its delayed destinat
   let reads = 0, checkedPreviewStarted = false, hidden = 0;
   backend({
     search: () => [result("a", "Synthetic source")],
-    picker_destination: () => ++reads === 1 ? first : destination.promise,
+    "destination": () => ++reads === 1 ? first : destination.promise,
     preview_file_citation: (request) => {
       if (request.intent.context?.[1] === 1) { checkedPreviewStarted = true; return checked.promise; }
       return receipt("cite:before bibliography check");

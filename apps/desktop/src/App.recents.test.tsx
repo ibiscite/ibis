@@ -40,7 +40,7 @@ test("a failed Forget retry keeps the privacy warning visible until WebView hist
 
 test("recents are ordinary rows in one keyboard list; choosing one resolves it afresh without an old page", async () => {
   const copies: unknown[] = [];
-  backend({ picker_destination: destination,
+  backend({ "destination": destination,
     recent_references: () => [{ ...a, recent: "cited" }, { ...b, recent: "cited" }, { ...c, recent: "added" }],
     search: () => [result("d", "Typed result")],
     copy_file_citation: (args) => { const saved = prepared(args); copies.push(saved.request.items); return { text: saved.preview.text, warnings: [] }; },
@@ -63,7 +63,7 @@ test("recents are ordinary rows in one keyboard list; choosing one resolves it a
 
 test.each(["compact", "comfortable"])("%s requests and renders the same recent groups", async (density) => {
   const requests: unknown[] = [];
-  backend({ picker_destination: destination,
+  backend({ "destination": destination,
     picker_preferences: () => ({ density, larger_text: false }),
     recent_references: (args) => { requests.push(args.forget); return [{ ...a, recent: "cited" }, { ...b, recent: "added" }]; },
   });
@@ -105,7 +105,7 @@ const copyB = async () => {
 
 test("Forget clears native history and an old receipt cannot repopulate it on reopen", async () => {
   const native = nativeHistory();
-  backend({ picker_destination: destination, recent_references: native.recent_references, copy_file_citation: native.copy_file_citation, search: () => [b] });
+  backend({ "destination": destination, recent_references: native.recent_references, copy_file_citation: native.copy_file_citation, search: () => [b] });
   render(<App />);
   await screen.findByText("Recent A");
   await toggleKeepOpen();
@@ -122,7 +122,7 @@ test("Forget clears native history and an old receipt cannot repopulate it on re
 
 test("after Forget, a fresh native citation can be shown without webview recording", async () => {
   const native = nativeHistory();
-  backend({ picker_destination: destination, recent_references: native.recent_references, copy_file_citation: native.copy_file_citation, search: () => [b] });
+  backend({ "destination": destination, recent_references: native.recent_references, copy_file_citation: native.copy_file_citation, search: () => [b] });
   render(<App />);
   await screen.findByText("Recent A");
   await toggleKeepOpen();
@@ -137,7 +137,7 @@ test("after Forget, a fresh native citation can be shown without webview recordi
 test("a saved off followed by on refreshes native rows and clears Change Last Citation once", async () => {
   const native = nativeHistory();
   let off = false;
-  backend({ picker_destination: destination,
+  backend({ "destination": destination,
     recent_references: (args) => off ? [{ revision: "1", results: [] }, false, false] : native.recent_references(args),
     search: () => [b],
   });

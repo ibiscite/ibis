@@ -429,7 +429,7 @@ fn commit_shown(
     if editor.current().is_none() {
         // The citation uses the project as saved: a change made elsewhere since
         // the preview, by the command line for one, retires it before the commit.
-        crate::writings::refresh(&app, captured.as_ref().map(|(id, _, _)| id))?;
+        crate::app_context::refresh(&app, captured.as_ref().map(|(id, _, _)| id))?;
     }
     #[cfg(target_os = "windows")]
     let attempt = crate::paste::begin_copy(&app, &replaces);
