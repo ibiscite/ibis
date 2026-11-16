@@ -9,8 +9,26 @@ fn directory(name: &str) -> PathBuf {
     path
 }
 
+/// Runs `ibis` in an invented, empty home, so the machine's own settings and
+/// libraries never decide a result (or reach a test's output).
+fn ibis() -> Command {
+    let home = directory("home");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_ibis"));
+    for name in [
+        "HOME",
+        "USERPROFILE",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "XDG_CONFIG_HOME",
+        "XDG_CACHE_HOME",
+    ] {
+        command.env(name, &home);
+    }
+    command
+}
+
 fn doctor(args: &[&str]) -> (i32, Value) {
-    let output = Command::new(env!("CARGO_BIN_EXE_ibis"))
+    let output = ibis()
         .args(["doctor", "--json"])
         .args(args)
         .output()
@@ -64,10 +82,7 @@ fn no_selected_library_is_a_finding_and_plain_output_explains_the_fix() {
     assert_eq!(code, 1);
     assert_eq!(report["library_check"]["code"], "no-library");
     assert_eq!(report["sources"], json!([]));
-    let output = Command::new(env!("CARGO_BIN_EXE_ibis"))
-        .arg("doctor")
-        .output()
-        .unwrap_or_else(|error| panic!("{error}"));
+    let output = ibis().arg("doctor").output().unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(output.status.code(), Some(1));
     let text = String::from_utf8(output.stdout).unwrap_or_else(|error| panic!("{error}"));
     assert!(text.contains("no-library"));
@@ -172,7 +187,7 @@ fn doctor_leaves_an_entire_invented_home_and_selected_sources_unchanged() {
     std::fs::create_dir_all(home.path().join("Documents")).unwrap();
     std::fs::write(home.path().join("Documents/unselected.bib"), "not reference data").unwrap();
     let before = contents(home.path());
-    let output = Command::new(env!("CARGO_BIN_EXE_ibis"))
+    let output = ibis()
         .env("HOME", home.path())
         .env("USERPROFILE", home.path())
         .env("APPDATA", home.path())
@@ -195,7 +210,7 @@ fn doctor_leaves_an_entire_invented_home_and_selected_sources_unchanged() {
 #[test]
 fn zotero_without_a_running_service_is_explicitly_unchecked_and_does_not_read_home() {
     let home = directory("unused-home");
-    let output = Command::new(env!("CARGO_BIN_EXE_ibis"))
+    let output = ibis()
         .env("HOME", &home)
         .env("USERPROFILE", &home)
         .env("APPDATA", &home)
@@ -231,7 +246,7 @@ fn each_invocation_reads_current_files_and_never_remembers_a_previous_success() 
 #[test]
 fn completion_generation_does_not_open_sources_and_json_wraps_the_script() {
     for shell in ["bash", "zsh", "fish"] {
-        let output = Command::new(env!("CARGO_BIN_EXE_ibis"))
+        let output = ibis()
             .args(["completions", shell, "--file", "/invented/never-opened.bib"])
             .output()
             .unwrap_or_else(|error| panic!("{error}"));
@@ -250,7 +265,7 @@ fn completion_generation_does_not_open_sources_and_json_wraps_the_script() {
             // Fish spells long switches as `-l config`.
             assert!(script.contains(word.trim_start_matches('-')), "{shell}: {word}");
         }
-        let output = Command::new(env!("CARGO_BIN_EXE_ibis"))
+        let output = ibis()
             .args(["completions", shell, "--json"])
             .output()
             .unwrap_or_else(|error| panic!("{error}"));
@@ -264,7 +279,7 @@ fn completion_generation_does_not_open_sources_and_json_wraps_the_script() {
 #[cfg(unix)]
 #[test]
 fn bash_completes_commands_flags_and_values_in_their_real_contexts() {
-    let generated = Command::new(env!("CARGO_BIN_EXE_ibis"))
+    let generated = ibis()
         .args(["completions", "bash"])
         .output()
         .unwrap_or_else(|error| panic!("{error}"));
@@ -307,7 +322,7 @@ fn zsh_completes_flags_and_values_without_running_ibis_again() {
         eprintln!("zsh is unavailable; the generated command tree is still checked");
         return;
     }
-    let generated = Command::new(env!("CARGO_BIN_EXE_ibis"))
+    let generated = ibis()
         .args(["completions", "zsh"])
         .output()
         .unwrap_or_else(|error| panic!("{error}"));
@@ -365,7 +380,7 @@ fn terminal_kit_usage_errors_keep_the_existing_exit_code_and_envelope() {
         vec!["completions"],
         vec!["completions", "unknown-shell"],
     ] {
-        let output = Command::new(env!("CARGO_BIN_EXE_ibis"))
+        let output = ibis()
             .args(args)
             .arg("--json")
             .output()
@@ -384,7 +399,7 @@ fn terminal_kit_usage_errors_keep_the_existing_exit_code_and_envelope() {
 fn a_non_utf8_source_path_is_reported_without_a_panic_or_path_disclosure() {
     use std::{ffi::OsString, os::unix::ffi::OsStringExt};
     let path = directory("non-utf8").join(OsString::from_vec(b"invented-\xff.bib".to_vec()));
-    let output = Command::new(env!("CARGO_BIN_EXE_ibis"))
+    let output = ibis()
         .args(["doctor", "--json", "--file"])
         .arg(&path)
         .output()
@@ -586,7 +601,7 @@ fn ibis_alone_greets_a_person_and_every_example_it_shows_works() {
         .collect();
     assert_eq!(examples.len(), 3, "{greeting}");
     for example in examples {
-        let output = Command::new(env!("CARGO_BIN_EXE_ibis"))
+        let output = ibis()
             .args(example.split_whitespace())
             .current_dir(&folder)
             .output()
@@ -597,9 +612,7 @@ fn ibis_alone_greets_a_person_and_every_example_it_shows_works() {
 
 #[test]
 fn a_script_that_forgets_its_command_still_fails_loudly() {
-    let output = Command::new(env!("CARGO_BIN_EXE_ibis"))
-        .output()
-        .unwrap_or_else(|error| panic!("{error}"));
+    let output = ibis().output().unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty());
     assert!(!output.stderr.is_empty());
