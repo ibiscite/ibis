@@ -415,7 +415,6 @@ jobs:
 
   release-checks:
     name: Release checks (Linux)
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -564,8 +563,8 @@ jobs:
 
       - name: Require every CI job to pass
         env:
-          RESULTS: ${{ needs.interface.result }} ${{ needs.test.result }} ${{ needs.web.result }} ${{ needs.desktop.result }} ${{ needs.dependencies.result }}
-          QUALIFICATION: ${{ needs.webkit.result }} ${{ needs.release-checks.result }} ${{ needs.bibtex-fuzz.result }} ${{ needs.installed.result }}
+          RESULTS: ${{ needs.interface.result }} ${{ needs.test.result }} ${{ needs.web.result }} ${{ needs.desktop.result }} ${{ needs.dependencies.result }} ${{ needs.release-checks.result }}
+          QUALIFICATION: ${{ needs.webkit.result }} ${{ needs.bibtex-fuzz.result }} ${{ needs.installed.result }}
           EVENT: ${{ github.event_name }}
         run: scripts/ci-result.sh
 

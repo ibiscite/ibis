@@ -112,12 +112,13 @@ nor reports a status. Keep the worktree until the PR merges, then run
 
 [CI](../.github/workflows/ci.yml) runs on in-repository PRs and pushes to main.
 **CI result** is the required merge check: interface build, `Test` and
-`Desktop` suites, web/script tests, dependency policy and commit identities
-must all pass. Every PR and every push to main runs `Test` and `Desktop` on
+`Desktop` suites, web/script tests, dependency policy, commit identities and
+the Linux release checks (release mode, minimum Rust, budgets) must all pass, so
+a release tag never meets a check its commits skipped. Every PR and every push to main runs `Test` and `Desktop` on
 Ubuntu, macOS and Windows. Fork PRs skip every job, so their **CI result**
 fails; they keep read-only title feedback.
 
-Daily/manual runs add WebKit, release-mode/MSRV checks, five minutes each of fuzzing the
+Daily/manual runs add WebKit, five minutes each of fuzzing the
 BibTeX loader and the PDF extractor (`ibis-fuzz`; seeds run with `cargo test -p ibis-fuzz`) and
 installed journeys against the published nightly; failures update one issue.
 **CI result** also protects publication: the one nightly a day is built from
