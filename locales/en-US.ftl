@@ -870,7 +870,7 @@ picker-shared-key = More than one reference has the key { $key }, so it can’t 
 picker-using-shorthand = Using { $value }
 picker-apply = Apply
 # $word: a word that finds the person’s own cited reference, never a sample one.
-picker-shorthand-hint = Type “{ $word } 417” for page 417, or “see { $word }” to add “see”.
+picker-shorthand-hint = “{ $word } 417” for a page, “see { $word }” for “see”.
 picker-search-as-typed = Search as typed
 picker-apply-locator = Apply locator to { $key }
 picker-copied = Copied
