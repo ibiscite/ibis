@@ -19,7 +19,9 @@ const overflow = (page) => page.evaluate(() => Math.max(document.documentElement
   ...[...document.querySelectorAll("*")].filter((node) => /auto|scroll/.test(getComputedStyle(node).overflowY))
     .map((node) => node.scrollHeight - node.clientHeight)));
 const load = async (viewport) => {
-  const page = await browser.newPage({ viewport, deviceScaleFactor: 2 });
+  // Fixed time, zone, language and motion: the same commit renders the same pixels.
+  const page = await browser.newPage({ viewport, deviceScaleFactor: 2, timezoneId: "UTC", locale: "en-US", reducedMotion: "reduce" });
+  await page.clock.setFixedTime(new Date("2026-03-02T17:04:00Z"));
   // macOS is the reference design (docs/design.md), so pictures show Mac keys
   // and metrics whichever system captures them.
   await page.addInitScript(() => Object.defineProperty(navigator, "platform", { value: "MacIntel" }));
@@ -49,6 +51,8 @@ for (const scenario of scenarios) for (const mode of modes) for (const theme of 
   await page.evaluate(({ scenario, theme }) => { window.IbisCanvas.mount(document.getElementById("host"), { scenario, theme }); }, { scenario, theme });
   await page.waitForTimeout(700);
   await page.evaluate(() => document.fonts.ready);
+  // A popover placed before its fonts loaded settles on the next frame.
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
   for (let round = 0; boards(scenario) && round < 4; round++) {
     const more = await overflow(page);
     if (more <= 0) break;
