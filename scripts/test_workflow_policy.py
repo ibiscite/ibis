@@ -122,7 +122,11 @@ class CiResultTest(unittest.TestCase):
         for name in ["build", "windows-paste"]:
             self.assertEqual(jobs[name]["needs"], "nightly-commit")
             self.assertEqual(jobs[name]["if"], gate)
-        self.assertEqual(jobs["nightly"]["if"], "github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish)")
+        self.assertEqual(jobs["nightly"]["if"], "${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish) && needs.build.result == 'success' && needs.install.result == 'success' }}")
+        # build needs the nightly choice, which a tag skips; anything after build that
+        # relied on the implicit success() check would be skipped with it.
+        for name in ["sign-macos", "install", "publish", "stable-feed", "nightly"]:
+            self.assertTrue(jobs[name]["if"].startswith("${{ !cancelled() && "), name)
         self.assertEqual(jobs["update-e2e"]["if"], "github.ref == 'refs/heads/main' && (github.event.schedule == '37 4 * * *' || inputs.update_test)")
 
     def test_each_ubuntu_installer_restores_its_package_cache_first(self):
