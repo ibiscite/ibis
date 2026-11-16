@@ -376,7 +376,7 @@ fn search_input() -> Value {
         "type": "object",
         "properties": {
             "query": {"type": "string", "minLength": 1, "description": "An author surname, title words, a year or a key."},
-            "limit": {"type": "integer", "minimum": 1, "maximum": MAX_HITS, "default": 10},
+            "limit": {"type": "integer", "minimum": 1, "default": 10, "description": "At most 25 are returned; complete says whether more match."},
             "shorthand": {"type": "boolean", "description": "Read \"see\" before and \"417\" after the words into cited_with."}
         },
         "required": ["query"],
@@ -434,8 +434,9 @@ fn search(
         None => 10,
         Some(limit) => limit
             .as_u64()
-            .and_then(|limit| usize::try_from(limit).ok())
-            .filter(|limit| (1..=MAX_HITS).contains(limit))
+            .filter(|limit| *limit >= 1)
+            // Agents often ask for more than fit; the answer's `complete` says so.
+            .map(|limit| limit.min(MAX_HITS as u64) as usize)
             .ok_or_else(|| Refusal::bad(ToolProblem::Limit, &[("limit", &MAX_HITS.to_string())]))?,
     };
     let shorthand = match arguments.get("shorthand") {

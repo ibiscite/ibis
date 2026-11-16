@@ -351,7 +351,7 @@ fn each_refusal_says_what_to_change() {
     for (name, arguments, expected) in [
         ("search", json!({"query":"   "}), "query must be"),
         ("search", json!({}), "query must be"),
-        ("search", json!({"query":"x","limit":26}), "from 1 to 25"),
+        ("search", json!({"query":"x","limit":0}), "at least 1"),
         ("search", json!({"query":"x","libraries":[]}), "'libraries'"),
         ("show", json!({"key":"fen2023clouds"}), "'key'"),
         ("show", json!({"ref":7}), "ref must be"),

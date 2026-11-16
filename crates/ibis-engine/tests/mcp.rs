@@ -457,8 +457,9 @@ fn bad_calls_are_tool_errors_without_library_text() {
             .unwrap()
             .starts_with("error: bad-input. ")
     );
+    // A larger limit is capped, not refused; `complete` says whether more match.
     let limit = tool(&engine, "search", json!({"query":"sleep","limit":1000}));
-    assert_eq!(limit["isError"], true);
+    assert_eq!(limit["isError"], false);
     let unknown = handle(
         &engine,
         &modern(5, "tools/call", json!({"name":"delete","arguments":{}})),

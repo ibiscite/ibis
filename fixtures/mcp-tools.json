@@ -12,7 +12,7 @@
       "properties": {
         "limit": {
           "default": 10,
-          "maximum": 25,
+          "description": "At most 25 are returned; complete says whether more match.",
           "minimum": 1,
           "type": "integer"
         },
