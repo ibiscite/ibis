@@ -43,7 +43,7 @@ test("recents are ordinary rows in one keyboard list; choosing one resolves it a
   backend({ picker_destination: destination,
     recent_references: () => [{ ...a, recent: "cited" }, { ...b, recent: "cited" }, { ...c, recent: "added" }],
     search: () => [result("d", "Typed result")],
-    copy_file_citation: (args) => { const saved = prepared(args); copies.push(saved.request.items); return { text: saved.preview.text, warnings: [] }; },
+    deliver_citation: (args) => { const saved = prepared(args); copies.push(saved.request.items); return { outcome: "retained", copied: { text: saved.preview.text, warnings: [] }, reason: "pinned" }; },
   });
   render(<App />);
   await screen.findByRole("heading", { name: "Cited here recently" });
@@ -88,10 +88,10 @@ function nativeHistory() {
       if (args.forget) cited = false;
       return [{ revision: "1", results: cited ? [{ ...a, recent: "cited" }] : [] }, cited, false];
     },
-    copy_file_citation: (args: Record<string, unknown>) => {
+    deliver_citation: (args: Record<string, unknown>) => {
       cited = true;
       const saved = prepared(args);
-      return { text: saved.preview.text, warnings: [] };
+      return { outcome: "retained", copied: { text: saved.preview.text, warnings: [] }, reason: "pinned" };
     },
   };
 }
@@ -105,7 +105,7 @@ const copyB = async () => {
 
 test("Forget clears native history and an old receipt cannot repopulate it on reopen", async () => {
   const native = nativeHistory();
-  backend({ picker_destination: destination, recent_references: native.recent_references, copy_file_citation: native.copy_file_citation, search: () => [b] });
+  backend({ picker_destination: destination, recent_references: native.recent_references, deliver_citation: native.deliver_citation, search: () => [b] });
   render(<App />);
   await screen.findByText("Recent A");
   await toggleKeepOpen();
@@ -122,7 +122,7 @@ test("Forget clears native history and an old receipt cannot repopulate it on re
 
 test("after Forget, a fresh native citation can be shown without webview recording", async () => {
   const native = nativeHistory();
-  backend({ picker_destination: destination, recent_references: native.recent_references, copy_file_citation: native.copy_file_citation, search: () => [b] });
+  backend({ picker_destination: destination, recent_references: native.recent_references, deliver_citation: native.deliver_citation, search: () => [b] });
   render(<App />);
   await screen.findByText("Recent A");
   await toggleKeepOpen();

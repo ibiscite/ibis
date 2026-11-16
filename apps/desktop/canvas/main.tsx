@@ -190,10 +190,10 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
       const receipt = receipts.get(ticket);
       return receipt && output === "bibtex" ? receipt.items.map((item) => bibtex(rows.find((row) => row.id.key === item.id.key)?.key ?? "")).join("\n\n") : null;
     },
-    copy_file_citation: ({ ticket }) => {
+    deliver_citation: ({ ticket }) => {
       const receipt = receipts.get(ticket);
       if (!receipt) throw new Error("Unknown synthetic preview");
-      return { text: receipt.text, warnings: [] };
+      return { outcome: "retained", copied: { text: receipt.text, warnings: [] }, reason: "pinned" };
     },
     // As the engine answers: a style writes names; Pandoc writes keys and has no name-only or full form.
     citation_details: ({ ticket, item }) => {

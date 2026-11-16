@@ -930,7 +930,7 @@ mod tests {
         assert_eq!(copied(Some("apa")), Vec::<String>::new());
     }
 
-    /// One picker copy on the mock app, as `copy_file_citation` makes it with
+    /// One picker copy on the mock app, as `deliver_citation` makes it with
     /// no editor waiting and the clipboard left out: the preview, then the commit.
     struct Picker {
         app: tauri::App<tauri::test::MockRuntime>,

@@ -132,11 +132,11 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     ? bibliographyDetail(project.status) : null;
   const citationProblem = displayedOutput === "failed" ? previewProblem ?? say("picker-preview-error") : null;
   const menus = usePickerMenus(api, operations, libraryState, cancelCopy);
-  const { input, formatButtonRef, currentPin, setFormatOpen, focusHome } = menus;
+  const { input, formatButtonRef, setFormatOpen, focusHome } = menus;
   useUpdateOfferActivity(api, state, menus, choosingLibrary);
   const snapshotRevision = library?.revision;
   const { requestCopy, chooseFormat, onFormatOpenChange } = useCitationCopy({
-    api, session, state, destination, currentPin, formatButtonRef, refreshSnapshot, report, setFormatOpen,
+    api, session, state, destination, formatButtonRef, refreshSnapshot, setFormatOpen,
   });
   // What the session hears from preferences and the library's lifecycle.
   // biome-ignore lint/correctness/useExhaustiveDependencies: pickerInputs contains exactly these outside inputs.

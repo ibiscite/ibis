@@ -268,7 +268,7 @@ test("late search and preview replies cannot replace the citation that reaches t
   expectReceipt(harness, "Pasted into Example Writer", "[@b]");
 });
 
-test("a copy finishing after a selection edit writes the clipboard but cannot paste or clear the newer citation", async () => {
+test("a selection edit before commit cancels the old copy without hiding or clearing the newer citation", async () => {
   const harness = await open();
   await choose(harness, "first");
   await enter();
@@ -276,7 +276,7 @@ test("a copy finishing after a selection edit writes the clipboard but cannot pa
   await act(async () => { harness.search.pending[0]!.complete({ revision: "1", results: [second] }); });
   await enter(true);
   await act(async () => { harness.copy.pending[0]!.complete(); });
-  expect(harness.clipboard).toMatchObject({ text: "[@a]", owner: "ibis", sequence: 1 });
+  expect(harness.clipboard).toMatchObject({ text: "", owner: null, sequence: 0 });
   expect(harness.document.text).toBe("Draft: [citation].");
   expect(harness.document.pastes).toEqual([]);
   expect(harness.receipt.textContent).toBe("");
@@ -288,7 +288,7 @@ test("a copy finishing after a selection edit writes the clipboard but cannot pa
   await finishCopy(harness);
   await finishDelivery(harness);
   expect(harness.document.text).toBe("Draft: [@b].");
-  expect(harness.document.pastes.map(({ delivery }) => delivery)).toEqual([2]);
+  expect(harness.document.pastes.map(({ delivery }) => delivery)).toEqual([1]);
   expectReceipt(harness, "Pasted into Example Writer", "[@b]");
   expect(harness.copy.calls).toHaveLength(2);
   expect(harness.delivery.calls).toHaveLength(1);
@@ -747,12 +747,12 @@ test("after a change that was only copied, anything else selected still only cop
 test("the shortcut alone never reopens the last citation", async () => {
   const harness = await pastedOnce();
   await act(async () => { await harness.reopen(); });
-  expect(harness.calls.filter((call) => call === "copy_file_citation")).toHaveLength(1);
+  expect(harness.calls.filter((call) => call === "deliver_citation")).toHaveLength(1);
   expect(screen.queryByText("Change Citation", { exact: false })).toBeNull();
   // Nothing from the last citation came back: the shelf has no reference, so
   // Enter on the empty search copies nothing.
   await enter();
-  expect(harness.calls.filter((call) => call === "copy_file_citation")).toHaveLength(1);
+  expect(harness.calls.filter((call) => call === "deliver_citation")).toHaveLength(1);
 });
 
 test("More offers no Change Last Citation until this app has one", async () => {

@@ -24,7 +24,7 @@ test.each(["saved", "unreadable"])("reopening focuses Search while preferences w
   expect(document.activeElement).toBe(search);
   expect([search.selectionStart, search.selectionEnd]).toEqual([0, search.value.length]);
   fireEvent.keyDown(search, { key: "Enter" });
-  await waitFor(() => expect(calls.filter((call) => call === "hide_picker")).toHaveLength(1));
+  await waitFor(() => expect(calls.filter((call) => call === "deliver_citation")).toHaveLength(1));
   await act(async () => { await emit("picker:hidden"); await emit("picker:preparing"); await emit("picker:shown", 43); });
   await waitFor(() => expect(read).toHaveBeenCalledTimes(3));
   await act(async () => {
@@ -36,75 +36,66 @@ test.each(["saved", "unreadable"])("reopening focuses Search while preferences w
   await act(async () => { finishOld({ ...initial, density: density === "compact" ? "comfortable" : "compact" }); });
   expect(document.documentElement.dataset.density).toBe(density);
   expect(document.documentElement.dataset.textSize).toBe(outcome === "saved" ? "larger" : "normal");
-  expect(calls.filter((call) => call === "copy_file_citation")).toHaveLength(1);
+  expect(calls.filter((call) => call === "deliver_citation")).toHaveLength(1);
   fireEvent.keyDown(search, { key: "Enter" });
-  await waitFor(() => expect(calls.filter((call) => call === "hide_picker")).toHaveLength(2));
+  await waitFor(() => expect(calls.filter((call) => call === "deliver_citation")).toHaveLength(2));
   expect(calls).not.toContain("save_picker_preferences");
 });
 
 test("Enter waits for a reloaded picker's native identity before copying and pasting", async () => {
   let finish!: (value: number) => void;
   const reading = new Promise<number>((resolve) => { finish = resolve; });
-  const read = vi.fn(() => reading), copy = vi.fn(() => ({ text: "invented citation", warnings: [] }));
-  let visible = true;
-  const hide = vi.fn(({ presentation }) => { if (presentation !== 41) return false; visible = false; return true; });
-  const paste = vi.fn(() => ({ outcome: "pasted", app: "Invented Writer" }));
-  backend({ picker_presentation: read, copy_file_citation: copy, hide_picker: hide, show_copied_notice: paste,
+  const read = vi.fn(() => reading), deliver = vi.fn(() => ({ outcome: "pasted" as const, copied: { text: "invented citation", warnings: [] }, app: "Invented Writer" }));
+  backend({ picker_presentation: read, deliver_citation: deliver,
     search: () => [result("a", "Invented reference")] });
   render(<App />);
   await screen.findByText("Invented reference");
   await waitFor(() => expect(read).toHaveBeenCalledOnce());
   await act(async () => { fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" }); });
-  expect(copy).not.toHaveBeenCalled();
+  expect(deliver).not.toHaveBeenCalled();
   await act(async () => { finish(41); });
-  await waitFor(() => expect(paste).toHaveBeenCalledOnce());
-  expect(hide).toHaveBeenCalledExactlyOnceWith({ presentation: 41 });
-  expect(copy).toHaveBeenCalledOnce();
-  expect(visible).toBe(false);
+  await waitFor(() => expect(deliver).toHaveBeenCalledOnce());
+  expect(deliver).toHaveBeenCalledWith(expect.objectContaining({ presentation: 41 }));
+  expect(deliver).toHaveBeenCalledOnce();
 });
 
 test("Enter recovers a failed initialization without another show event", async () => {
   const read = vi.fn().mockRejectedValueOnce(new Error("invented read failure")).mockResolvedValue(41);
-  const hide = vi.fn(({ presentation }) => presentation === 41);
-  const paste = vi.fn(() => ({ outcome: "pasted", app: "Invented Writer" }));
-  backend({ picker_presentation: read, hide_picker: hide, show_copied_notice: paste,
+  const deliver = vi.fn(() => ({ outcome: "pasted" as const, copied: { text: "invented citation", warnings: [] }, app: "Invented Writer" }));
+  backend({ picker_presentation: read, deliver_citation: deliver,
     search: () => [result("a", "Invented reference")] });
   render(<App />);
   await screen.findByText("Invented reference");
   await act(async () => { fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" }); });
-  await waitFor(() => expect(paste).toHaveBeenCalledOnce());
+  await waitFor(() => expect(deliver).toHaveBeenCalledOnce());
   expect(read).toHaveBeenCalledTimes(2);
-  expect(hide).toHaveBeenCalledExactlyOnceWith({ presentation: 41 });
+  expect(deliver).toHaveBeenCalledWith(expect.objectContaining({ presentation: 41 }));
 });
 
 test("a failed read with Enter already queued retries once and pastes once", async () => {
   let fail!: (error: Error) => void;
   const reading = new Promise<number>((_resolve, reject) => { fail = reject; });
   const read = vi.fn().mockReturnValueOnce(reading).mockResolvedValue(41);
-  const paste = vi.fn(() => ({ outcome: "pasted", app: "Invented Writer" }));
-  const copy = vi.fn(() => ({ text: "invented citation", warnings: [] }));
-  backend({ picker_presentation: read, copy_file_citation: copy, hide_picker: ({ presentation }) => presentation === 41,
-    show_copied_notice: paste, search: () => [result("a", "Invented reference")] });
+  const deliver = vi.fn(() => ({ outcome: "pasted" as const, copied: { text: "invented citation", warnings: [] }, app: "Invented Writer" }));
+  backend({ picker_presentation: read, deliver_citation: deliver, search: () => [result("a", "Invented reference")] });
   render(<App />);
   await screen.findByText("Invented reference");
   await act(async () => {
     fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
     fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   });
-  expect(copy).not.toHaveBeenCalled();
+  expect(deliver).not.toHaveBeenCalled();
   expect(read).toHaveBeenCalledOnce();
   await act(async () => { fail(new Error("invented read failure")); });
-  await waitFor(() => expect(paste).toHaveBeenCalledOnce());
-  expect(copy).toHaveBeenCalledOnce();
+  await waitFor(() => expect(deliver).toHaveBeenCalledOnce());
   expect(read).toHaveBeenCalledTimes(2);
 });
 
-test("a late initialization cannot copy A after close and reopen B", async () => {
+test("a late initialization cannot deliver A after close and reopen B", async () => {
   let finish!: (value: number) => void;
   const reading = new Promise<number>((resolve) => { finish = resolve; });
-  const read = vi.fn(() => reading), copy = vi.fn(() => ({ text: "invented citation", warnings: [] }));
-  const hide = vi.fn(({ presentation }) => presentation === 43);
-  backend({ picker_presentation: read, copy_file_citation: copy, hide_picker: hide,
+  const read = vi.fn(() => reading), deliver = vi.fn(() => ({ outcome: "pasted" as const, copied: { text: "invented citation", warnings: [] }, app: "Invented Writer" }));
+  backend({ picker_presentation: read, deliver_citation: deliver,
     search: () => [result("a", "Invented reference")] });
   render(<App />);
   await screen.findByText("Invented reference");
@@ -114,11 +105,10 @@ test("a late initialization cannot copy A after close and reopen B", async () =>
     await emit("picker:shown", 43);
     finish(41);
   });
-  expect(copy).not.toHaveBeenCalled();
-  expect(hide).not.toHaveBeenCalled();
+  expect(deliver).not.toHaveBeenCalled();
   await screen.findByText("Invented reference");
   await act(async () => { fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" }); });
-  await waitFor(() => expect(hide).toHaveBeenCalledExactlyOnceWith({ presentation: 43 }));
+  await waitFor(() => expect(deliver).toHaveBeenCalledWith(expect.objectContaining({ presentation: 43 })));
 });
 
 test("a failed visibility read cannot discard a successful presentation initialization", async () => {
@@ -135,10 +125,8 @@ test("a failed visibility read cannot discard a successful presentation initiali
 
 test("persistent initialization failures report that nothing was copied, then another Enter can recover", async () => {
   const read = vi.fn().mockRejectedValue(new Error("invented read failure"));
-  const copy = vi.fn(() => ({ text: "invented citation", warnings: [] }));
-  const paste = vi.fn(() => ({ outcome: "pasted", app: "Invented Writer" }));
-  backend({ picker_presentation: read, copy_file_citation: copy, hide_picker: ({ presentation }) => presentation === 41,
-    show_copied_notice: paste, search: () => [result("a", "Invented reference")] });
+  const deliver = vi.fn(() => ({ outcome: "pasted" as const, copied: { text: "invented citation", warnings: [] }, app: "Invented Writer" }));
+  backend({ picker_presentation: read, deliver_citation: deliver, search: () => [result("a", "Invented reference")] });
   render(<App />);
   await screen.findByText("Invented reference");
   await act(async () => { fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" }); });
@@ -146,13 +134,13 @@ test("persistent initialization failures report that nothing was copied, then an
   const failure = await screen.findByText("Nothing was copied. Try again, or use Reload.");
   expect(failure.getAttribute("role")).toBe("alert");
   expect(document.body.textContent).not.toContain("invented read failure");
-  expect(copy).not.toHaveBeenCalled();
-  expect(paste).not.toHaveBeenCalled();
+  expect(deliver).not.toHaveBeenCalled();
+  expect(deliver).not.toHaveBeenCalled();
   read.mockResolvedValue(41);
   await act(async () => { fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" }); });
-  await waitFor(() => expect(paste).toHaveBeenCalledOnce());
+  await waitFor(() => expect(deliver).toHaveBeenCalledOnce());
   expect(read).toHaveBeenCalledTimes(4);
-  expect(copy).toHaveBeenCalledOnce();
+  expect(deliver).toHaveBeenCalledOnce();
   expect(screen.queryByText("Nothing was copied. Try again, or use Reload.")).toBeNull();
 });
 

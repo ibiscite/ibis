@@ -8,7 +8,7 @@ export function usePin({ setPinned, perform }: {
   perform: ReturnType<typeof useOperations>["perform"];
 }) {
   const [pinned, setPinnedState] = useState(false);
-  // Read by handlers that outlive a render, such as a copy finishing.
+  // Read by consecutive pin actions before React renders again.
   const currentPin = useRef(pinned);
   currentPin.current = pinned;
   const confirmedPin = useRef(false);
@@ -32,5 +32,5 @@ export function usePin({ setPinned, perform }: {
       }
     }));
   };
-  return { pinned, currentPin, togglePin };
+  return { pinned, togglePin };
 }
