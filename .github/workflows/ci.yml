@@ -181,8 +181,9 @@ jobs:
     needs: interface
     # A machine of ours named in the RUNNERS variable takes this system's job
     # (docs/testing.md); otherwise a hosted runner does. Linux stays hosted:
-    # its steps install system packages with sudo.
-    runs-on: ${{ matrix.os != 'ubuntu-24.04' && fromJSON(vars.RUNNERS || '{}')[matrix.os] || matrix.os }}
+    # its steps install system packages with sudo. Dependabot's unreviewed
+    # updates never run on our machines.
+    runs-on: ${{ matrix.os != 'ubuntu-24.04' && github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON(vars.RUNNERS || '{}')[matrix.os] || matrix.os }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -441,7 +442,7 @@ jobs:
   release-checks:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Release checks (Linux)
-    runs-on: ${{ fromJSON(vars.RUNNERS || '{}')['ubuntu-24.04'] || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON(vars.RUNNERS || '{}')['ubuntu-24.04'] || 'ubuntu-24.04' }}
     timeout-minutes: 30
     env:
       RUSTFLAGS: -D warnings

@@ -134,7 +134,7 @@ when a machine is away. Each runner is GitHub's official
 [actions/runner](https://github.com/actions/runner), registered to this repository
 and run as the maintainer's user (on Windows at logon, not as a service, because the
 Notepad paste test needs the desktop). Self-hosted runners only run trusted code:
-fork PRs skip every job that could use them, and workflow runs from outside
+fork PRs skip every job that could use them, Dependabot's PRs stay on hosted runners, and workflow runs from outside
 contributors need the maintainer's approval in the repository's Actions settings.
 
 Daily/manual runs add WebKit, five minutes each of fuzzing the
