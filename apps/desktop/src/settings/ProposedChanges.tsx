@@ -54,6 +54,13 @@ export function ProposedChanges({ api, highlighted }: { api: Api; highlighted: s
       if (pendingRead.current) { pendingRead.current = false; read(); }
     });
   };
+  const apps = new Map<string, { proposal: Shown; count: number }>();
+  for (const proposal of proposals ?? []) {
+    if (proposal.result?.status === "applied") continue;
+    const app = apps.get(proposal.source_app);
+    if (app) app.count++;
+    else apps.set(proposal.source_app, { proposal, count: 1 });
+  }
   return <Section id="proposed-changes" title={text("proposals-title")}>
     <Group>
       {!proposals && <Row label={text("proposals-checking")} pending={!failed} />}
@@ -69,12 +76,20 @@ export function ProposedChanges({ api, highlighted }: { api: Api; highlighted: s
           description={<>{proposal.summary} · {new Date(proposal.created_ms).toLocaleString(locale)}</>} highlighted={highlighted === "proposed-changes"}>
           {!applied && <Buttons>
             <Button aria-labelledby={`${id}-apply ${id}`} isDisabled={busy} onPress={() => change(proposal, "apply")}><span id={`${id}-apply`}>{text("proposals-apply")}</span></Button>
-            <Button aria-labelledby={`${id}-reject-app ${id}`} isDisabled={busy} onPress={() => change(proposal, "reject-app")}><span id={`${id}-reject-app`}>{text("proposals-reject-app")}</span></Button>
             <Button aria-labelledby={`${id}-reject ${id}`} isDisabled={busy} onPress={() => change(proposal, "reject")}><span id={`${id}-reject`}>{text("proposals-reject")}</span></Button>
           </Buttons>}
           {preview && <Note><code dir="ltr">{preview.split("\n").map((line, index) => <Fragment key={`${index}:${line}`}>{index > 0 && <br />}<span>{line}</span></Fragment>)}</code></Note>}
           {proposal.result?.status === "applied" ? <Note role="status">{text("proposals-applied", { name: proposal.result.backup })}</Note>
             : refusal && <Note problem role="alert">{refusal}</Note>}
+        </Row>;
+      })}
+      {[...apps.values()].filter(({ count }) => count > 1).map(({ proposal, count }) => {
+        const id = `proposal-app-${proposal.id}`;
+        return <Row key={proposal.source_app} id={id} label={text("proposals-app", { app: proposal.source_app, count })}
+          highlighted={highlighted === "proposed-changes"}>
+          <Button aria-labelledby={`${id}-reject ${id}`} isDisabled={busy} onPress={() => change(proposal, "reject-app")}>
+            <span id={`${id}-reject`}>{text("proposals-reject-app")}</span>
+          </Button>
         </Row>;
       })}
     </Group>

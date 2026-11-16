@@ -88,8 +88,12 @@ app, target library (never its path), summary and time, with the engine's
 before/after text in a Note in code. **Apply** is the confirmation, without a
 second dialog; nothing in a library changes before that press. The row keeps
 the result: **Applied; backup kept as NAME**, or the engine's refusal sentence.
-**Reject** removes a waiting proposal. **Reject all from this app** rejects
-that app’s pending proposals across libraries, preserving applied receipts. Only `.bib` libraries take proposals
+**Reject** removes a waiting proposal. After all proposal rows, each app with
+two or more waiting proposals has one row, **App · N proposals**, with one
+**Reject All** button. It rejects that app’s pending proposals across libraries,
+preserving applied receipts; applied rows do not count toward the threshold.
+Proposal rows keep only **Apply** and **Reject** in their control area
+(maintainer direction 2026-11-16). Only `.bib` libraries take proposals
 (maintainer direction 2026-11-15). An empty group has one row,
 **No proposed changes**. Refresh on a visit, visible window focus or
 visibility change, without letting late reads replace newer decisions or erase
