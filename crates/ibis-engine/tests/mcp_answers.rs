@@ -402,6 +402,23 @@ fn each_refusal_says_what_to_change() {
 }
 
 #[test]
+fn apa_narrative_supports_one_author_and_refuses_multiple_authors() {
+    let (_dir, _path, engine) = library(BIB.as_bytes());
+    let result = tool(
+        &engine,
+        "cite",
+        json!({"items":[{"ref":"fen2023clouds"}],"style":"apa","form":"narrative"}),
+    );
+    assert_eq!(answer(&result)["text"], "Fen (2023)");
+    let result = tool(
+        &engine,
+        "cite",
+        json!({"items":[{"ref":"vale2024lanterns"}],"style":"apa","form":"narrative"}),
+    );
+    assert!(refusal(&result).contains("cannot write Item 1 in this form"));
+}
+
+#[test]
 fn titles_and_names_arrive_as_a_person_would_read_them() {
     let (_dir, _path, engine) = library(
         br"@article{salt2020, title={Salt \& Pepper: \emph{Tide} at p<0.05}, author={van der Berg, Anna and {Acme \& Co}}, journal={Arts \& Crafts}, year=2020}

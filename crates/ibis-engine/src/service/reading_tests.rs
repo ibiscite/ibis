@@ -334,6 +334,24 @@ fn find_in_ignores_case_and_line_breaks_and_gives_short_one_line_passages() {
 }
 
 #[test]
+fn find_in_matches_compatibility_ligatures_in_text_and_query_and_keeps_original_passages() {
+    let page = "Invented ﬁndings show diﬀerent ﬂowers at the oﬃce beside a waﬄe.";
+    for (page, query) in [
+        (page, "findings"),
+        (page, "different flowers"),
+        (page, "office"),
+        (page, "waffle"),
+        ("Invented findings.", "ﬁndings"),
+    ] {
+        let (passages, complete) = find_passages(&paged(&[page]), &fold(query).0, &Cancellation::default()).unwrap();
+        assert!(complete);
+        assert_eq!(passages.len(), 1, "{query}");
+        assert_eq!(passages[0].text, page);
+        assert_eq!(passages[0].pdf_page, Some(1));
+    }
+}
+
+#[test]
 fn find_in_gives_ten_passages_at_most_and_says_when_there_are_more() {
     let page = "lantern ".repeat(100);
     let text = whole(&page);

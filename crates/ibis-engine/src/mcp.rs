@@ -81,7 +81,7 @@ fn serve_with<R: BufRead, W: Write + Send>(
     });
     // One bounded tool worker leaves stdin available for cancellation without
     // allowing a client to create unbounded threads or formatter work.
-    let (send, jobs) = mpsc::sync_channel::<ToolRequest>(8);
+    let (send, jobs) = mpsc::sync_channel::<ToolRequest>(64);
     std::thread::scope(|scope| {
         let shared = &transport;
         let execute = &execute;
@@ -213,7 +213,17 @@ fn serve_with<R: BufRead, W: Write + Send>(
                                     };
                                     match send.try_send(job) {
                                         Ok(()) => None,
-                                        Err(mpsc::TrySendError::Full(job) | mpsc::TrySendError::Disconnected(job)) => {
+                                        Err(mpsc::TrySendError::Full(job)) => {
+                                            transport.requests.remove(&key);
+                                            let mut result =
+                                                tools::tool_error(tools::Refusal::bad(errors::ToolProblem::Busy, &[]));
+                                            if job.message["params"]["_meta"][VERSION_KEY] == PROTOCOL_VERSION {
+                                                result["resultType"] = json!("complete");
+                                                result["_meta"] = json!({SERVER_INFO_KEY: server_info()});
+                                            }
+                                            Some(json!({"jsonrpc":"2.0", "id":job.message["id"], "result":result}))
+                                        }
+                                        Err(mpsc::TrySendError::Disconnected(job)) => {
                                             transport.requests.remove(&key);
                                             Some(error(job.message["id"].clone(), -32603, "Tool queue unavailable"))
                                         }

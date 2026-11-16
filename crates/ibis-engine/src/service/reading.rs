@@ -14,6 +14,7 @@ use super::*;
 use crate::request::{FindInRequest, OutlineRequest, ReadRequest};
 use ibis_sources::pdf::{PdfReader, Refusal};
 use ibis_sources::reading::{Body, DocumentText, SourceAttachment, TextState};
+use unicode_normalization::UnicodeNormalization;
 
 /// Pages one `read` returns at most.
 pub const MAX_READ_PAGES: u32 = 5;
@@ -732,8 +733,8 @@ fn find_passages(text: &DocumentText, query: &str, cancel: &Cancellation) -> Res
     Ok((passages, true))
 }
 
-/// `text` lowercased, with each run of white space one space, and for each
-/// byte of that the byte of `text` it came from.
+/// Compatibility-normalized lowercase text with each run of white space one
+/// space, and for each byte of that the byte of `text` it came from.
 fn fold(text: &str) -> (String, Vec<u32>) {
     let mut folded = String::with_capacity(text.len());
     let mut origins = Vec::with_capacity(text.len());
@@ -749,7 +750,7 @@ fn fold(text: &str) -> (String, Vec<u32>) {
             continue;
         }
         space = false;
-        for lower in character.to_lowercase() {
+        for lower in std::iter::once(character).nfkc().flat_map(char::to_lowercase) {
             let before = folded.len();
             folded.push(lower);
             origins.extend(std::iter::repeat_n(at, folded.len() - before));
@@ -766,7 +767,8 @@ fn matches(text: &str, query: &str) -> Vec<(usize, usize)> {
     let mut covered = 0;
     for (at, _) in folded.match_indices(query) {
         let start = origins[at] as usize;
-        let end = origins.get(at + query.len()).map_or(text.len(), |end| *end as usize);
+        let last = origins[at + query.len() - 1] as usize;
+        let end = last + text[last..].chars().next().map_or(0, char::len_utf8);
         if start < covered {
             continue;
         }

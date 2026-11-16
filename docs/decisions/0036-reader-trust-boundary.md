@@ -69,6 +69,11 @@ never the physical index. After NFC it has at most 16 letters, digits, `-` or
 Disagreeing or repeated labels ask; labels outside the reference's page range
 need confirmation.
 
+A lone Arabic page number at the start or end of extracted page text must
+match its label; Roman numbers are checked for Roman-style labels. Any
+contradiction invalidates the document's citation labels, including when only
+labels were requested. A page without a printed number gives no evidence.
+
 ## Notes, qualification and licences
 
 Notes are parsed by html5ever into a typed tree, bounded to 1 MiB and 32 levels:

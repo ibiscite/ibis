@@ -137,6 +137,26 @@ fn a_linked_pdf_is_never_followed() {
 }
 
 #[test]
+fn contradicting_pdf_labels_give_no_cite_pages_in_outline_read_or_find_in() {
+    let library = Library::new("wrong-labels");
+    let pdf = ibis::pdf_text::invented_pdf(
+        &["Invented preface.\niv", "78\nAn invented brass lantern."],
+        Some(&[(0, Some("r"), "", 5), (1, Some("D"), "", 79)]),
+    );
+    std::fs::write(library.root.join("papers/atlas.pdf"), pdf).unwrap();
+    let outline = library.json(&["outline", "atlas2026"]);
+    let attachment = &outline["data"]["attachments"][0];
+    assert_eq!(attachment["cite_pages_known"], false);
+    let id = attachment["id"].as_str().unwrap();
+    let read = library.json(&["read", id]);
+    for page in read["data"]["pages"].as_array().unwrap() {
+        assert_eq!(page["cite_page"], Value::Null);
+    }
+    let found = library.json(&["find-in", id, "lantern"]);
+    assert_eq!(found["data"]["passages"][0]["cite_page"], Value::Null);
+}
+
+#[test]
 fn the_child_process_reads_only_its_standard_input() {
     use std::io::Write;
     let pdf = ibis::pdf_text::invented_pdf(&["Invented page."], None);

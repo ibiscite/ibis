@@ -225,7 +225,7 @@
           "type": "string"
         },
         "form": {
-          "description": "bibliography-only writes reference-list entries.",
+          "description": "bibliography-only: entries. CSL narrative: one reference; APA/& styles: one author; no numbered styles.",
           "enum": [
             "normal",
             "narrative",

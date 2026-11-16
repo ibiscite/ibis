@@ -104,7 +104,8 @@ pub fn extract(bytes: &[u8], labels_only: bool) -> Result<Extracted, Refusal> {
         return Err(Refusal::TooLarge);
     }
     let count = u32::try_from(pages.len()).map_err(|_| Refusal::TooLarge)?;
-    let text = if labels_only {
+    // Even a labels-only answer must check the tree against printed numbers.
+    let text = if labels_only && !document.catalog().is_ok_and(|catalog| catalog.has(b"PageLabels")) {
         None
     } else {
         let mut total = 0usize;
@@ -121,23 +122,38 @@ pub fn extract(bytes: &[u8], labels_only: bool) -> Result<Extracted, Refusal> {
     };
     Ok(Extracted {
         pages: count,
-        labels: page_labels(&document, pages.len()),
-        text,
+        labels: page_labels(&document, text.as_deref().unwrap_or_default()),
+        text: if labels_only { None } else { text },
     })
 }
 
 /// The text a page shows, in content order, one line per text line. A page
 /// that cannot be decoded gives what was read of it, or nothing.
 fn page_text(document: &Document, page: ObjectId) -> String {
-    let encodings: BTreeMap<Vec<u8>, Encoding> = document
+    let fonts: BTreeMap<_, _> = document
         .get_page_fonts(page)
         .unwrap_or_default()
         .into_iter()
+        .map(|(name, font)| {
+            let mut font = font.clone();
+            if let Some(encoding) = type1_encoding(document, &font) {
+                font.set("Encoding", encoding);
+            }
+            (name, font)
+        })
+        .collect();
+    let encodings: BTreeMap<Vec<u8>, Encoding> = fonts
+        .iter()
         .filter_map(|(name, font)| {
-            Some((
-                name,
-                font.get_font_encoding_with_limit(document, MAX_STREAM_BYTES).ok()?,
-            ))
+            // lopdf otherwise prefers /Encoding, losing glyphs that only the
+            // font's authoritative Unicode map describes (notably ligatures).
+            let mut unicode = font.clone();
+            unicode.remove(b"Encoding");
+            let encoding = match unicode.get_font_encoding_with_limit(document, MAX_STREAM_BYTES) {
+                Ok(Encoding::UnicodeMapEncoding(map)) => Encoding::UnicodeMapEncoding(map),
+                _ => font.get_font_encoding_with_limit(document, MAX_STREAM_BYTES).ok()?,
+            };
+            Some((name.clone(), encoding))
         })
         .collect();
     let Ok(content) = document
@@ -184,6 +200,52 @@ fn page_text(document: &Document, page: ObjectId) -> String {
     clean(text.trim_end())
 }
 
+/// Without a PDF /Encoding, Type 1 fonts use their embedded encoding vector.
+/// Read explicit `dup code /glyph put` entries; never execute PostScript.
+fn type1_encoding(document: &Document, font: &Dictionary) -> Option<Dictionary> {
+    if font.has(b"Encoding") || font.has(b"ToUnicode") || font.get(b"Subtype").ok()?.as_name().ok()? != b"Type1" {
+        return None;
+    }
+    let descriptor = font.get_deref(b"FontDescriptor", document).ok()?.as_dict().ok()?;
+    let stream = descriptor.get_deref(b"FontFile", document).ok()?.as_stream().ok()?;
+    let length = usize::try_from(stream.dict.get(b"Length1").ok()?.as_i64().ok()?).ok()?;
+    let data = stream.get_plain_content_with_limit(MAX_STREAM_BYTES).ok()?;
+    let program = std::str::from_utf8(data.get(..length)?).ok()?;
+    let mut tokens = program
+        .lines()
+        .flat_map(|line| line.split('%').next().unwrap_or_default().split_ascii_whitespace())
+        .skip_while(|token| *token != "/Encoding")
+        .skip(1);
+    // Static vectors are common in subset fonts; other PostScript layouts
+    // retain lopdf's fallback rather than guessing the font's encoding.
+    if tokens.next()? != "256" || tokens.next()? != "array" {
+        return None;
+    }
+    let mut differences = Vec::new();
+    while let Some(token) = tokens.next() {
+        match token {
+            "def" | "eexec" => break,
+            "dup" => {
+                let code = tokens.next()?.parse::<u8>().ok();
+                let glyph = tokens.next()?.strip_prefix('/');
+                if tokens.next()? == "put"
+                    && let (Some(code), Some(glyph)) = (code, glyph)
+                {
+                    differences.push(Object::Integer(i64::from(code)));
+                    differences.push(Object::Name(glyph.as_bytes().to_vec()));
+                }
+            }
+            _ => (),
+        }
+    }
+    if differences.is_empty() {
+        return None;
+    }
+    let mut encoding = Dictionary::new();
+    encoding.set("Differences", differences);
+    Some(encoding)
+}
+
 /// Appends the strings `operands` show; a wide gap in a `TJ` array is a space.
 fn show(text: &mut String, encoding: Option<&Encoding>, operands: &[Object]) {
     let Some(encoding) = encoding else { return };
@@ -217,7 +279,12 @@ fn clean(text: &str) -> String {
             other => other,
         })
         .filter(|character| !character.is_control() || matches!(character, '\n' | '\t'))
-        .collect()
+        .collect::<String>()
+        .replace('\u{fb00}', "ff")
+        .replace('\u{fb01}', "fi")
+        .replace('\u{fb02}', "fl")
+        .replace('\u{fb03}', "ffi")
+        .replace('\u{fb04}', "ffl")
 }
 
 /// One range of a page label tree: its first page, counted from 0, and how
@@ -229,10 +296,11 @@ struct LabelRange {
     start: u64,
 }
 
-/// Each page's label from the catalog's `/PageLabels`, or `None` when there is
-/// no tree or it is damaged: a damaged tree gives no labels at all rather
-/// than labels that may be wrong. A page before the first range has none.
-pub fn page_labels(document: &Document, pages: usize) -> Option<Vec<Option<String>>> {
+/// Each page's label from `/PageLabels`, or none when the tree is absent,
+/// damaged or contradicted by a printed page number. A page before the first
+/// range has no label; a page without a printed number gives no evidence.
+pub fn page_labels(document: &Document, text: &[String]) -> Option<Vec<Option<String>>> {
+    let pages = text.len();
     if pages > MAX_PAGES as usize {
         return None;
     }
@@ -264,6 +332,18 @@ pub fn page_labels(document: &Document, pages: usize) -> Option<Vec<Option<Strin
         let end = ranges.get(index + 1).map_or(pages, |next| next.first.min(pages));
         for (offset, slot) in labels[first..end].iter_mut().enumerate() {
             *slot = label(range, offset as u64);
+            let page = text[first + offset].trim();
+            let roman = matches!(range.style, Some(b'R' | b'r'));
+            for line in page.lines().next().into_iter().chain(page.lines().next_back()) {
+                let line = line.trim();
+                if !line.is_empty()
+                    && (line.bytes().all(|byte| byte.is_ascii_digit())
+                        || roman && line.bytes().all(|byte| b"ivxlcdmIVXLCDM".contains(&byte)))
+                    && Some(line) != slot.as_deref()
+                {
+                    return None;
+                }
+            }
         }
     }
     Some(labels)

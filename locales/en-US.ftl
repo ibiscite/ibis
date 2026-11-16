@@ -1526,6 +1526,7 @@ mcp-item-error = Item { $number }: { $reason }
 mcp-item-name = Item { $number }
 mcp-output-name = This output
 mcp-tool-error = error: { $code }. { $reason }
+mcp-error-busy = Ibis is busy. Retry this tool call in a moment.
 
 cli-key-suggestions = Did you mean { $keys }?
 cli-key-not-found = no reference has the key '{ $key }'{ $choices }
