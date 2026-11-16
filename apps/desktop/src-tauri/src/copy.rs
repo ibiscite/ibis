@@ -6,7 +6,8 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 
-use crate::library::{CommandError, Library, PreviewIntent};
+use crate::library::{CommandError, PreviewIntent};
+use ibis_engine::library::{Current, Owner};
 
 #[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct Copied {
@@ -216,14 +217,9 @@ pub(crate) async fn citation_details(
     content_hash: String,
     item: usize,
     intent: PreviewIntent,
-    library: State<'_, Mutex<Library>>,
+    library: State<'_, Owner>,
 ) -> Result<ibis_core::contract::FormDetails, CommandError> {
-    let file = library
-        .lock()
-        .map_err(|_| CommandError::SnapshotChanged)?
-        .file
-        .clone()
-        .ok_or(CommandError::SnapshotChanged)?;
+    let file = library.current().ok_or(CommandError::SnapshotChanged)?;
     let cancel = file
         .engine
         .citations()
@@ -247,14 +243,9 @@ pub(crate) async fn citation_example(
     content_hash: String,
     output: String,
     intent: PreviewIntent,
-    library: State<'_, Mutex<Library>>,
+    library: State<'_, Owner>,
 ) -> Result<Option<String>, CommandError> {
-    let file = library
-        .lock()
-        .map_err(|_| CommandError::SnapshotChanged)?
-        .file
-        .clone()
-        .ok_or(CommandError::SnapshotChanged)?;
+    let file = library.current().ok_or(CommandError::SnapshotChanged)?;
     let output = crate::output::listed(&output)
         .ok_or_else(|| CommandError::from(ibis_core::contract::CitationError::UnsupportedOutput))?;
     let cancel = file
@@ -279,20 +270,20 @@ pub(crate) async fn preview_file_citation(
     output: String,
     expected_revision: String,
     intent: PreviewIntent,
-    library: State<'_, Mutex<Library>>,
+    library: State<'_, Owner>,
     editor: State<'_, crate::editor_endpoint::Pending>,
     project: State<'_, crate::project::ProjectBibliography>,
 ) -> Result<ibis_core::contract::Preview, CommandError> {
     let expected_context = intent.context;
     let keep_order = intent.keep_order;
     let (file, generation) = {
-        let library = library.lock().map_err(|_| CommandError::SourceNotOpened)?;
+        let library = library.view();
         let _ = expected_revision;
         if library.opening {
             return Err(CommandError::LibraryLoading);
         }
-        let file = library.file.clone().ok_or(CommandError::SnapshotChanged)?;
-        (file, library.source_generation)
+        let file = library.current.ok_or(CommandError::SnapshotChanged)?;
+        (file, library.generation)
     };
     let cancel = file
         .engine
@@ -324,7 +315,7 @@ pub(crate) async fn preview_file_citation(
         keep_order,
         input_language: None,
         output_locale: None,
-        sample: file.sample,
+        sample: file.sample(),
     };
     let task = file.engine.citations().preview(SessionId::PICKER, draft, cancel)?;
     let engine = file.engine.clone();
@@ -353,10 +344,10 @@ pub(crate) async fn preview_file_citation(
     // A reload cancels previews it overtakes, and the quiet check that follows
     // each show retires Zotero while it reads. Both publish when they end, which
     // asks again; that is waiting, not a failure.
-    let overtaken = result.is_err()
-        && library
-            .lock()
-            .is_ok_and(|library| library.opening || library.checking || library.source_generation != generation);
+    let overtaken = result.is_err() && {
+        let library = library.view();
+        library.opening || library.checking || library.generation != generation
+    };
     if overtaken {
         Err(CommandError::LibraryLoading)
     } else {
@@ -387,7 +378,7 @@ pub(crate) async fn copy_file_citation(
     content_hash: String,
     replaces: Vec<String>,
     app: AppHandle,
-    library: State<'_, Mutex<Library>>,
+    library: State<'_, Owner>,
 ) -> Result<Copied, CommandError> {
     let intent = CopyIntent {
         presentation: tauri::Manager::state::<crate::picker::PickerGeneration>(&app).current(),
@@ -430,7 +421,7 @@ fn commit_shown(
     intent: CopyIntent,
 ) -> Result<Copied, CommandError> {
     use tauri::Manager;
-    let library = app.state::<Mutex<Library>>();
+    let library = app.state::<Owner>();
     let editor = app.state::<crate::editor_endpoint::Pending>();
     let project = app.state::<crate::project::ProjectBibliography>();
     let app = app.clone();
@@ -445,7 +436,7 @@ fn commit_shown(
     let file = open_file(&library)?;
     let captured_id = captured.as_ref().map(|(id, _, _)| id.normalized());
     let record = |copied: &Copied| {
-        if !file.sample {
+        if !file.sample() {
             session.record(&epoch, captured_id.as_deref(), &copied.cited);
         }
     };
@@ -562,16 +553,13 @@ fn commit_shown(
     Ok(copied)
 }
 
-/// The open library's engine. The lock is held only to take it; the engine's
-/// own commit barrier guards the write.
-fn open_file(
-    library: &Mutex<Library>,
-) -> Result<std::sync::Arc<crate::library::engine_library::FileLibrary>, CommandError> {
-    let library = library.lock().map_err(|_| CommandError::SnapshotChanged)?;
+/// The open library's engine; its commit barrier guards the write.
+fn open_file(library: &Owner) -> Result<std::sync::Arc<Current>, CommandError> {
+    let library = library.view();
     if library.opening {
         return Err(CommandError::LibraryLoading);
     }
-    library.file.clone().ok_or(CommandError::SnapshotChanged)
+    library.current.ok_or(CommandError::SnapshotChanged)
 }
 
 /// Commit the shown citation through `write`, which returns its delivery,
@@ -582,7 +570,7 @@ pub(crate) struct ProjectCopy<'a> {
 }
 
 pub(crate) fn commit_copy(
-    file: &crate::library::engine_library::FileLibrary,
+    file: &Current,
     recited: &ibis_engine::citations::CheckedCitation,
     context: ProjectCopy<'_>,
     write: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<Option<u32>, CommandError>,

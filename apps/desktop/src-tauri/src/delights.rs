@@ -274,12 +274,7 @@ pub(crate) fn delight_view(
     }
     let file = app.state::<SettingsFile>();
     let view = if picker {
-        let library = app.state::<std::sync::Mutex<crate::library::Library>>();
-        let Ok(library) = library.lock() else {
-            return DelightView::default();
-        };
-        // Keep the library owner through claiming; a replacement cannot consume an old snapshot's claim.
-        let status = crate::library::snapshot_status(&library);
+        let status = crate::library::current_status(&app);
         let library = library_claim(&status, revision.as_deref());
         file.claim_delights_when(
             now,

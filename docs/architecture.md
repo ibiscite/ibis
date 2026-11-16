@@ -16,6 +16,10 @@ describes this checkout. Plans live in [ROADMAP.md](../ROADMAP.md).
 | `apps/desktop/src-tauri` | Native windows, clipboard, paste, shortcuts, settings dialogs and updates. Depends on core, engine and its command macro crate. |
 | `apps/desktop/src` | React interface, shared controls in `ui/`, tokens in `tokens.css`. |
 
+The desktop manages `ibis_engine::library::Owner`: commands submit intents and
+read its current library or view. The owner publishes library status; the app
+adds its settings notice and schedules picker and tray effects on the main thread.
+
 The desktop links the engine in process, with generated TypeScript bindings;
 it is given no PDF reader, so PDF parsing never runs in the app ([0055](decisions/0055-agent-layers-full-text-writes-remote.md)).
 Contracts for the CLI, JSON-RPC and MCP are in [the CLI reference](cli.md); the
@@ -73,16 +77,22 @@ Zotero reads use the same pinned Zotero-to-CSL mapping in both modes:
 - **Running:** the local API. Zotero 10 reconciles item versions and fetches
   changed records; Zotero 7–9 reread records. A changed API instance or
   backwards counter forces a full read.
-- **Closed:** copy the database and its WAL or journal to a private directory,
-  check that the source stayed unchanged, run SQLite's quick check, read the
-  copy and remove it. The live database is never opened. Changed copies are
-  retried at most three times. Schemas newer than the tested ceiling read with a
+- **Closed:** reuse one private file set in the per-user app cache, shared by
+  the desktop and CLI. Refresh when the database, sidecars or Better BibTeX
+  files change in size, modification time or sampled SHA-256 fingerprint.
+  Refresh stages and flushes private files, checks the source stayed unchanged,
+  then renames the set with its stamp published last under one cache lease.
+  SQLite checks and reads only the cache; the live database is never opened.
+  Changed copies are retried at most three times ([5A](decisions/0006-sources.md#closed-zotero-cache-5a)).
+  Schemas newer than the tested ceiling read with a
   source warning after required table, column and lookup shapes validate;
   incompatible layouts are refused.
 
-On Windows, private copies and their lock belong to the user who made them, and
-an existing lock is never deleted; a lock Ibis cannot repair reports its own
-error with the "Open Zotero, then reload" recovery.
+The source path owner supplies the OS cache directory; the reader creates
+`ibis-zotero-closed` beneath it. All files use core's private creator (0600 on
+Unix; inherited per-user cache security on Windows). An existing lock is never
+deleted; a Windows lock Ibis cannot open reports its own error with the
+"Open Zotero, then reload" recovery.
 Missing Zotero groups fail instead of falling back; several closed profiles require a named choice. Disagreeing citation keys stay visible and block key output.
 
 Readers accept a change after two identical reads; network and unknown mounts use manual refresh and report `live-refresh-off`. Cloud placeholders are refused before reading. Each file load shares one two-second filesystem deadline; calls share eight slots and optional attachment batches can hold at most four slots and skip immediately when capacity is unavailable, leaving availability `unknown`. Desktop loads carry the request's cancellation token through every file open and have a two-minute deadline, four per source family. Decoding is pure: the source probes attachments in one batch under the load's deadline, capped at 256, and unchecked ones stay with `unknown` availability. A failed refresh keeps the previous snapshot and reports its health; stale results cannot publish.

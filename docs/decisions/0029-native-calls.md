@@ -7,8 +7,9 @@ A boundary with no safe binding gets one scoped module allowance, a crate-level
 
 ## Scoped boundaries
 
-- The Windows closed-Zotero reader uses Win32 process, drive, attribute and ACL
-  calls. It opens only its disposable database copy.
+- The Windows closed-Zotero reader uses Win32 process, drive and attribute
+  calls. It opens only its cached database copy; core's private creator owns
+  file creation, with no reader-specific ACL or ownership code.
 - `ibis-sources/src/pdf/inheritance.rs` marks every non-stdio Unix descriptor
   close-on-exec in an allocation-free post-fork callback, including descriptors
   inherited from native callers. The exec-error pipe stays usable until exec.

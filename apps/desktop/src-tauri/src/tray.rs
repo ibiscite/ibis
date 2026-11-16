@@ -1,5 +1,7 @@
 //! The native menu bar (macOS) or tray (Windows, Linux) menu.
 
+use ibis_engine::library::{LoadError, Owner};
+
 use std::path::PathBuf;
 use std::sync::Mutex;
 #[cfg(target_os = "macos")]
@@ -13,9 +15,7 @@ use tauri_plugin_dialog::DialogExt;
 
 use crate::diagnostics::{NativeIssue, report};
 use crate::feedback::{idea_url, open_in_browser, problem_url};
-use crate::library::{
-    Library, LibraryState, LibraryStatus, LoadError, Source, choose_library_file, start_open, use_zotero_library,
-};
+use crate::library::{LibraryState, LibraryStatus, Source, choose_library_file, start_open, use_zotero_library};
 use crate::picker::show_picker;
 use crate::updater::{self, UpdateMenuItem};
 
@@ -543,15 +543,9 @@ fn native_row(app: &AppHandle, row: Row, status: &LibraryStatus, choices: &Libra
 impl TrayMenu {
     /// Preserve native objects; only move rows when the available actions change.
     fn refresh(&self, app: &AppHandle) -> tauri::Result<()> {
-        let (status, requested, current) = {
-            let library = app.state::<Mutex<Library>>();
-            let Ok(library) = library.lock() else { return Ok(()) };
-            (
-                crate::library::snapshot_status(&library),
-                library.requested.clone(),
-                library.source.clone(),
-            )
-        };
+        let view = app.state::<Owner>().view();
+        let status = crate::library::current_status(app);
+        let (requested, current) = (view.requested.clone(), view.source().cloned());
         let Ok(mut contents) = self.contents.lock() else {
             return Ok(());
         };
@@ -673,7 +667,7 @@ fn menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
                         false,
                         Some(presentation),
                         handle.clone(),
-                        handle.state::<Mutex<Library>>(),
+                        handle.state::<Owner>(),
                     )
                     .await;
                     // Only a real failure: being cancelled, replaced or still loading is not one.

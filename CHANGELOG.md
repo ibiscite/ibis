@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.3.8](https://github.com/ibiscite/ibis/compare/v0.3.7...v0.3.8) (2026-11-16)
+
+
+### Features
+
+* connect AI apps from Settings on the same code as ibis agents ([#1939](https://github.com/ibiscite/ibis/issues/1939)) ([b9d0b34](https://github.com/ibiscite/ibis/commit/b9d0b3494373dfa6882677ba3c96d263d1bcd349))
+* connect AI apps in one step; slimmer MCP answers and beta fixes ([#1938](https://github.com/ibiscite/ibis/issues/1938)) ([041f34c](https://github.com/ibiscite/ibis/commit/041f34ced72928653a27b2e2cc45635162eeda78))
+* **engine:** the engine owns the library ([#1955](https://github.com/ibiscite/ibis/issues/1955)) ([5723088](https://github.com/ibiscite/ibis/commit/57230888544e74423d6de6a2878d5fcd64a7ae21))
+* let AI apps propose .bib changes the person applies in Ibis ([#1945](https://github.com/ibiscite/ibis/issues/1945)) ([58fb8c7](https://github.com/ibiscite/ibis/commit/58fb8c77c39739f9a7d0fddf39913dee4137ebcb))
+* let AI apps read attachment text, per library, from Settings ([#1942](https://github.com/ibiscite/ibis/issues/1942)) ([566eee3](https://github.com/ibiscite/ibis/commit/566eee3a22e64ef39c8f535fd7911d3bad628801))
+* read attachment text by page, from Zotero's index or the PDF ([#1940](https://github.com/ibiscite/ibis/issues/1940)) ([5f180f5](https://github.com/ibiscite/ibis/commit/5f180f536aefef13c2ed760960898690bf9372c9))
+* review and apply AI apps' proposed .bib changes in Settings ([#1946](https://github.com/ibiscite/ibis/issues/1946)) ([5ea0ddc](https://github.com/ibiscite/ibis/commit/5ea0ddc977f99fbdca39a1ffd0ecd86446c9c707))
+
+
+### Bug Fixes
+
+* apply proposals through linked paths; cap large search limits ([#1947](https://github.com/ibiscite/ibis/issues/1947)) ([d39981e](https://github.com/ibiscite/ibis/commit/d39981eac84cf1f1c3571c84868b308ff2da5096))
+* **paste:** Windows waits for another app to close the clipboard ([#1936](https://github.com/ibiscite/ibis/issues/1936)) ([3bc3363](https://github.com/ibiscite/ibis/commit/3bc3363bb0d711820055dbf2b5de83a2c8600f08))
+* **picker:** the shorthand hint fits its one line at 480 px ([#1951](https://github.com/ibiscite/ibis/issues/1951)) ([68743ab](https://github.com/ibiscite/ibis/commit/68743ab9a8d0c83a0f623614c9c2aed8a6642565))
+* read Type 1 font encodings with non-ASCII notices ([#1950](https://github.com/ibiscite/ibis/issues/1950)) ([12088b2](https://github.com/ibiscite/ibis/commit/12088b20e0025deb613c95fd2fd676de4917f6f2))
+* trustworthy printed pages, ligatures and busy answers when reading attachments ([#1949](https://github.com/ibiscite/ibis/issues/1949)) ([140ae06](https://github.com/ibiscite/ibis/commit/140ae06e734650a87d68aae41fe002ca4bdf31fe))
+* **ui:** close design gaps from the audit; choose where Ibis opens ([#1934](https://github.com/ibiscite/ibis/issues/1934)) ([20bf8a8](https://github.com/ibiscite/ibis/commit/20bf8a844c544627b4984c98a15f196c1c1aefd3))
+* **zotero:** read a closed Zotero through one private cache copy ([#1954](https://github.com/ibiscite/ibis/issues/1954)) ([8181f8e](https://github.com/ibiscite/ibis/commit/8181f8ebd676f060c34e18d04f2a13ccaeb7590a))
+
 ## [0.3.7](https://github.com/ibiscite/ibis/compare/v0.3.6...v0.3.7) (2026-11-15)
 
 

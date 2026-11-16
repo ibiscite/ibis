@@ -1,9 +1,9 @@
 //! Closed-only Zotero reader. Source files are read as bytes; SQLite opens only
-//! an owner-only disposable copy. No source lock is taken, including at startup.
+//! a private per-user cache. No source lock is taken, including at startup.
 //!
-//! Keep one reader for subsequent loads. Its first read removes stale private
-//! copies under the same cancellation/deadline control as acquisition; a
-//! private-root lock prevents another reader cleaning an active copy. Errors
+//! Unchanged sources reuse one file set across readers and processes. A cache
+//! lease excludes concurrent refresh/query; only a completely published stamp
+//! permits reuse. Errors
 //! and Debug output never include paths or item text.
 
 use std::collections::BTreeMap;
@@ -218,9 +218,8 @@ pub struct ClosedReader {
 }
 
 impl ClosedReader {
-    /// `cache` must be an application cache/temporary parent, never library
-    /// storage. On Windows it must be inside the current user Temp folder.
-    /// Ibis creates and verifies its own child with backup exclusion.
+    /// `cache` must be the app's per-user cache parent, never library storage.
+    /// Ibis creates its own child with backup exclusion. The caller owns OS paths.
     pub fn new(cache: &Path) -> Self {
         Self {
             cache: cache.to_owned(),
@@ -244,7 +243,9 @@ impl ClosedReader {
 
     fn read_with_control(&self, data: &Path, control: &Control) -> Result<ClosedSnapshot, ClosedError> {
         control.check()?;
-        private_copy::Store::open(&self.cache, control)?.read(data, control)
+        let cache = self.cache.clone();
+        let data = data.to_owned();
+        control.io(move |control| private_copy::Store::open(&cache, control)?.read(&data, control))
     }
 }
 

@@ -1,31 +1,37 @@
 //! Native source selection, grouping and refresh adaptation. Citation policy is tested in ibis-engine.
 use super::FileLibrary;
+use crate::library::tests::open;
 use crate::library::zotero_fixture as fixture;
 use ibis_core::contract::DraftItem;
+use ibis_engine::library::{Intent, Owner, Source};
 use ibis_engine::{Cancellation, Engine};
 use serde_json::json;
 use std::sync::{Arc, atomic::Ordering};
+
+fn owner(directory: &std::path::Path, port: u16) -> Owner {
+    Owner::new(
+        Arc::new(crate::preferences::SettingsFile::new(directory.join("settings.json"))),
+        move || Engine::with_zotero_port(port),
+        |_| {},
+    )
+}
 
 #[test]
 fn chosen_groups_keep_source_identity_counts_and_scopes_consistent() -> Result<(), Box<dyn std::error::Error>> {
     use ibis_engine::settings::{ZoteroLibraries, ZoteroLibrary};
     let server = fixture::Server::new();
-    let engine = Engine::with_zotero_port(server.port).map_err(|_| "synthetic engine")?;
+    let directory = tempfile::tempdir()?;
+    let owner = owner(directory.path(), server.port);
     let both = ZoteroLibraries::new(vec![ZoteroLibrary::Group(7), ZoteroLibrary::User]).ok_or("choice")?;
-    let bridge = std::sync::Arc::new(
-        FileLibrary::open_zotero_with(engine, &both, None, &Cancellation::default()).map_err(|e| e.to_string())?,
-    );
+    open(&owner, Source::Zotero(both.clone()));
+    let bridge = owner.current().ok_or("current")?;
     let query = serde_json::from_value(json!({"text":"atlas","interpret_locators":false}))?;
     let found = bridge.search(&query, 10, None, &Cancellation::default())?;
     assert_eq!(found.results.len(), 2);
     let mut sources: Vec<_> = found.results.iter().map(|row| row.source.as_str()).collect();
     sources.sort_unstable();
     assert_eq!(sources, ["zotero:group:7", "zotero:user"]);
-    let status = crate::library::status::status(&crate::library::Library {
-        source: Some(crate::library::Source::Zotero(both.clone())),
-        file: Some(bridge.clone()),
-        ..Default::default()
-    });
+    let status = owner.status();
     assert_eq!(status.source_counts.len(), 2);
     for row in &found.results {
         assert_eq!(status.source_counts.get(&row.source), Some(&1));
@@ -36,7 +42,7 @@ fn chosen_groups_keep_source_identity_counts_and_scopes_consistent() -> Result<(
         assert_ne!(row.id.library.as_str(), row.source.as_str());
         // Search narrowing must never bypass collisions in the loaded context.
         assert!(matches!(
-            crate::test_citations::preview(&bridge.engine,bridge.sample,
+            crate::test_citations::preview(&bridge.engine,bridge.sample(),
                     vec![DraftItem {
                 prefix: None,
                 suffix: None,
@@ -69,15 +75,19 @@ fn chosen_groups_keep_source_identity_counts_and_scopes_consistent() -> Result<(
     );
     server.instance.fetch_add(1, Ordering::Relaxed);
     let group = ZoteroLibrary::Group(7).into();
-    bridge
-        .refresh_zotero(&group, None, false, &Cancellation::default())
-        .map_err(|e| e.to_string())?;
+    open(&owner, Source::Zotero(group));
+    let bridge = owner.current().ok_or("current")?;
     assert_eq!(
         bridge.search(&query, 10, None, &Cancellation::default())?.results.len(),
         1
     );
-    let missing = bridge.refresh_zotero(&ZoteroLibrary::Group(99).into(), None, true, &Cancellation::default());
-    assert!(missing.is_err_and(|error| error.to_string().contains("group library was not found")));
+    open(&owner, Source::Zotero(ZoteroLibrary::Group(99).into()));
+    assert!(
+        owner
+            .status()
+            .error
+            .is_some_and(|error| error.contains("group library was not found"))
+    );
     assert_eq!(
         bridge.search(&query, 10, None, &Cancellation::default())?.results.len(),
         1
@@ -89,15 +99,12 @@ fn chosen_groups_keep_source_identity_counts_and_scopes_consistent() -> Result<(
 fn full_reload_fetches_payloads_even_when_the_choice_order_differs() -> Result<(), Box<dyn std::error::Error>> {
     use ibis_engine::settings::{ZoteroLibraries, ZoteroLibrary};
     let server = fixture::Server::new();
-    let engine = Engine::with_zotero_port(server.port).map_err(|_| "synthetic engine")?;
-    let bridge = Arc::new(
-        FileLibrary::open_zotero_with(engine, &ZoteroLibrary::Group(7).into(), None, &Cancellation::default())
-            .map_err(|e| e.to_string())?,
-    );
+    let directory = tempfile::tempdir()?;
+    let owner = owner(directory.path(), server.port);
+    open(&owner, Source::Zotero(ZoteroLibrary::Group(7).into()));
     let both = ZoteroLibraries::new(vec![ZoteroLibrary::Group(7), ZoteroLibrary::User]).ok_or("choice")?;
-    bridge
-        .refresh_zotero(&both, None, false, &Cancellation::default())
-        .map_err(|e| e.to_string())?;
+    open(&owner, Source::Zotero(both));
+    let bridge = owner.current().ok_or("current")?;
     // Deliberately choose the opposite of the engine's ID-sorted listing.
     let reversed = bridge
         .engine
@@ -114,96 +121,67 @@ fn full_reload_fetches_payloads_even_when_the_choice_order_differs() -> Result<(
         })
         .collect();
     let both = ZoteroLibraries::new(reversed).ok_or("reversed choice")?;
-    bridge
-        .refresh_zotero(&both, None, false, &Cancellation::default())
-        .map_err(|e| e.to_string())?;
+    open(&owner, Source::Zotero(both));
     server.pause.store(true, Ordering::SeqCst);
-    let reloading = Arc::clone(&bridge);
-    let worker = std::thread::spawn(move || reloading.refresh_zotero(&both, None, true, &Cancellation::default()));
+    owner.submit(Intent::Reload);
     server.wait_for_payload();
     server.pause.store(false, Ordering::SeqCst);
-    worker.join().map_err(|_| "reload worker")?.map_err(|e| e.to_string())?;
+    assert!(owner.wait_idle(std::time::Duration::from_secs(10)));
+    assert!(owner.status().error.is_none());
     Ok(())
 }
 
 #[test]
 fn empty_group_membership_is_installed_even_when_records_are_unchanged() -> Result<(), Box<dyn std::error::Error>> {
-    use crate::library::{
-        Source,
-        load::{Loaded, load_source},
-    };
     use ibis_engine::settings::{ZoteroLibraries, ZoteroLibrary};
     let server = fixture::Server::new();
     server.empty_group.store(true, Ordering::SeqCst);
-    let engine = Engine::with_zotero_port(server.port).map_err(|_| "synthetic engine")?;
-    let mut bridge = Arc::new(
-        FileLibrary::open_zotero_with(engine, &ZoteroLibrary::User.into(), None, &Cancellation::default())
-            .map_err(|e| e.to_string())?,
-    );
-    let revision = bridge.revision();
+    let directory = tempfile::tempdir()?;
+    let owner = owner(directory.path(), server.port);
+    open(&owner, Source::Zotero(ZoteroLibrary::User.into()));
+    let revision = owner.current().ok_or("current")?.revision();
     let both = ZoteroLibraries::new(vec![ZoteroLibrary::User, ZoteroLibrary::Group(7)]).ok_or("choice")?;
     for chosen in [both, ZoteroLibrary::User.into()] {
-        let source = Source::Zotero(chosen.clone());
-        let loaded = load_source(
-            source.clone(),
-            false,
-            Some(bridge),
-            None,
-            &Cancellation::default(),
-            || false,
-        )
-        .map_err(|e| e.to_string())?;
-        let Loaded::Reload(reload) = loaded else {
-            return Err("membership must be installed".into());
-        };
-        let mut library = crate::library::state::Library {
-            source: Some(reload.source.clone()),
-            file: Some(reload.file.clone()),
-            ..Default::default()
-        };
-        reload.accept().map_err(|e| e.to_string())?;
-        assert_eq!(library.source, Some(source));
-        assert_eq!(
-            library.source.as_ref().ok_or("source")?.setting(),
-            Some(ibis_engine::settings::LibrarySetting::Zotero(chosen.clone()))
-        );
-        let status = crate::library::status::status(&library);
+        open(&owner, Source::Zotero(chosen.clone()));
+        let status = owner.status();
         assert_eq!(status.zotero_libraries, chosen.libraries());
         assert_eq!(status.references, 1);
         assert_eq!(
             status.source_counts.get("zotero:group:7"),
             chosen.libraries().contains(&ZoteroLibrary::Group(7)).then_some(&0)
         );
-        bridge = library.file.take().ok_or("bridge")?;
-        assert_eq!(bridge.revision(), revision);
+        assert_eq!(owner.current().ok_or("current")?.revision(), revision);
     }
     Ok(())
 }
 
 #[test]
 fn zotero_that_turns_sharing_on_opens_with_no_change_to_the_choice() -> Result<(), Box<dyn std::error::Error>> {
-    use crate::library::LoadError;
-    use crate::library::status::LibraryProblem;
-    use ibis_engine::settings::{ZoteroLibraries, ZoteroLibrary};
+    use ibis_engine::library::LibraryProblem;
+    use ibis_engine::settings::ZoteroLibrary;
     let server = fixture::Server::new();
     server.sharing_off.store(true, Ordering::Relaxed);
-    let chosen: ZoteroLibraries = ZoteroLibrary::User.into();
-    let open = || {
-        let engine = Engine::with_zotero_port(server.port).map_err(LoadError::Zotero)?;
-        FileLibrary::open_zotero_with(engine, &chosen, None, &Cancellation::default())
-    };
-    let refused = open().err().ok_or("sharing is off")?;
-    assert_eq!(LibraryProblem::from(refused), LibraryProblem::ZoteroAccessOff);
+    let directory = tempfile::tempdir()?;
+    let owner = owner(directory.path(), server.port);
+    open(&owner, Source::Zotero(ZoteroLibrary::User.into()));
+    assert_eq!(owner.status().problem, Some(LibraryProblem::ZoteroAccessOff));
     server.sharing_off.store(false, Ordering::Relaxed);
-    let bridge = open().map_err(|e| e.to_string())?;
-    assert_eq!(bridge.engine.snapshot().map_err(|_| "snapshot")?.objects().len(), 1);
-
-    // A reload that fails later keeps the same reason, so the same fix is offered.
+    owner.submit(Intent::RetryFailed);
+    assert!(owner.wait_idle(std::time::Duration::from_secs(10)));
+    assert_eq!(
+        owner
+            .current()
+            .ok_or("current")?
+            .engine
+            .snapshot()
+            .map_err(|_| "snapshot")?
+            .objects()
+            .len(),
+        1
+    );
     server.sharing_off.store(true, Ordering::Relaxed);
-    let refused = bridge
-        .refresh_zotero(&chosen, None, true, &Cancellation::default())
-        .err()
-        .ok_or("sharing went off")?;
-    assert_eq!(LibraryProblem::from(refused), LibraryProblem::ZoteroAccessOff);
+    owner.submit(Intent::Reload);
+    assert!(owner.wait_idle(std::time::Duration::from_secs(10)));
+    assert_eq!(owner.status().problem, Some(LibraryProblem::ZoteroAccessOff));
     Ok(())
 }

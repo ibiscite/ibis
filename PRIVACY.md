@@ -11,7 +11,9 @@ yourself in the app. It has no account or crash-upload service. This page descri
   asked to look for libraries, it searches names and modification times of
   `.bib` files under Documents, Desktop and Downloads; it opens a file only
   after selection. Closed Zotero databases and Better BibTeX key files are
-  read from private temporary copies that are removed after use.
+  read from one private copy in the app's per-user cache. It remains between
+  reads and is replaced when those source files change; clearing the app cache
+  removes it. No source database is opened by SQLite or modified by Ibis.
 - **Attachment text:** `ibis outline`, `ibis read` and `ibis find-in` read
   the text Zotero keeps for the files it indexed: from Zotero while it runs,
   or from the `.zotero-ft-cache` file in the attachment's storage folder while

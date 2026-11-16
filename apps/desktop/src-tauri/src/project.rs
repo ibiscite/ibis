@@ -16,9 +16,11 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::diagnostics::{NativeIssue, report};
+use crate::library::ProjectMark;
 use crate::library::commands::RecentIdentity;
-use crate::library::{Library, ProjectMark};
+use crate::library::engine_library::FileLibrary;
 use crate::picker::ChooserOpen;
+use ibis_engine::library::Owner;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
@@ -526,14 +528,9 @@ pub(crate) async fn copy_project_entry(
     id: RecentIdentity,
     generation: u32,
     app: AppHandle,
-    library: State<'_, Mutex<Library>>,
+    library: State<'_, Owner>,
 ) -> Result<EntryCopy, crate::library::CommandError> {
-    let file = library
-        .lock()
-        .map_err(|_| crate::errors::NativeOperation::CopyProjectEntry.failure())?
-        .file
-        .clone()
-        .ok_or(crate::library::CommandError::SnapshotChanged)?;
+    let file = library.current().ok_or(crate::library::CommandError::SnapshotChanged)?;
     // An identity from before the library changed names nothing now.
     let Some(id) = id.0 else {
         return Ok(EntryCopy::Changed);
@@ -807,7 +804,6 @@ mod tests {
 
     #[test]
     fn rows_and_warnings_use_the_key_a_citation_would_emit() {
-        use crate::library::engine_library::FileLibrary;
         use ibis_engine::Cancellation;
         let (_library_dir, library) = written(
             "refs.bib",
@@ -822,8 +818,15 @@ mod tests {
         assert!(slot.finish(ticket.generation, read(&ticket)));
         let current = slot.current().unwrap_or_else(|| panic!("a read"));
 
-        let file =
-            FileLibrary::open(&library, &ibis_engine::Cancellation::default()).unwrap_or_else(|_| panic!("a library"));
+        let file = ibis_engine::library::Current::open(
+            ibis_engine::Engine::new()
+                .unwrap_or_else(|_| panic!("engine"))
+                .with_formatting(crate::library::engine_library::FORMATTING.clone()),
+            ibis_engine::library::Source::File(library.clone()),
+            None,
+            &ibis_engine::Cancellation::default(),
+        )
+        .unwrap_or_else(|_| panic!("a library"));
         let query = serde_json::from_value(serde_json::json!({"text":"2026","interpret_locators":false}))
             .unwrap_or_else(|error| panic!("{error}"));
         let reply = file
@@ -858,7 +861,7 @@ mod tests {
                     .collect()
             })
             .unwrap_or_default();
-        let preview = crate::test_citations::preview(&file.engine, file.sample, selections, "pandoc").unwrap();
+        let preview = crate::test_citations::preview(&file.engine, file.sample(), selections, "pandoc").unwrap();
         let mut warnings = crate::test_citations::said(
             &crate::project::preview_warnings(&file.engine, &preview.ticket, &preview.content_hash, Some(&current))
                 .unwrap(),
@@ -876,7 +879,6 @@ mod tests {
 
     #[test]
     fn copying_reports_what_the_preview_warned_about_for_key_outputs_only() {
-        use crate::library::engine_library::FileLibrary;
         use ibis_engine::Cancellation;
         let (_library_dir, library) = written(
             "refs.bib",
@@ -888,8 +890,15 @@ mod tests {
         slot.finish(ticket.generation, read(&ticket));
         let current = slot.current();
 
-        let file =
-            FileLibrary::open(&library, &ibis_engine::Cancellation::default()).unwrap_or_else(|_| panic!("a library"));
+        let file = ibis_engine::library::Current::open(
+            ibis_engine::Engine::new()
+                .unwrap_or_else(|_| panic!("engine"))
+                .with_formatting(crate::library::engine_library::FORMATTING.clone()),
+            ibis_engine::library::Source::File(library.clone()),
+            None,
+            &ibis_engine::Cancellation::default(),
+        )
+        .unwrap_or_else(|_| panic!("a library"));
         let query = serde_json::from_value(serde_json::json!({"text":"gone","interpret_locators":false}))
             .unwrap_or_else(|error| panic!("{error}"));
         let reply = file
@@ -902,7 +911,7 @@ mod tests {
             }))
             .unwrap_or_else(|error| panic!("{error}"));
             let preview =
-                crate::test_citations::preview(&file.engine, file.sample, vec![selection], style.unwrap_or("pandoc"))
+                crate::test_citations::preview(&file.engine, file.sample(), vec![selection], style.unwrap_or("pandoc"))
                     .unwrap_or_else(|_| panic!("a preview"));
             let mut copied =
                 crate::test_citations::copy(&file.engine, &preview.ticket, &preview.content_hash, |_| Ok(()))
@@ -930,14 +939,13 @@ mod tests {
 
     impl Picker {
         fn new(library: &str, project: &std::path::Path) -> Self {
-            use crate::library::engine_library::FileLibrary;
             let (library_dir, path) = written("refs.bib", library);
-            let file =
-                FileLibrary::open(&path, &ibis_engine::Cancellation::default()).unwrap_or_else(|_| panic!("a library"));
-            let mut open = Library::default();
-            open.file = Some(std::sync::Arc::new(file));
+            let open = crate::library::tests::owner(crate::preferences::SettingsFile::new(
+                library_dir.path().join("settings.json"),
+            ));
+            crate::library::tests::open(&open, path);
             let app = tauri::test::mock_builder()
-                .manage(Mutex::new(open))
+                .manage(open)
                 .manage(crate::editor_endpoint::Pending::default())
                 .manage(ProjectBibliography::default())
                 .manage(crate::session_references::SessionReferences::default())
@@ -965,16 +973,11 @@ mod tests {
             text: &str,
             request: u32,
         ) -> (
-            std::sync::Arc<crate::library::engine_library::FileLibrary>,
+            std::sync::Arc<ibis_engine::library::Current>,
             ibis_core::contract::Preview,
         ) {
             use ibis_engine::Cancellation;
-            let file = self
-                .app
-                .state::<Mutex<Library>>()
-                .lock()
-                .ok()
-                .and_then(|library| library.file.clone());
+            let file = self.app.state::<Owner>().current();
             let file = file.unwrap_or_else(|| panic!("a library"));
             let query = serde_json::from_value(serde_json::json!({"text":text,"interpret_locators":false}))
                 .unwrap_or_else(|error| panic!("{error}"));

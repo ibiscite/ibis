@@ -88,7 +88,7 @@ fn soft<T>(result: Result<T, ClosedError>) -> Result<Option<T>, ClosedError> {
 }
 
 fn store(copy: &Copy, control: &Control) -> Result<Vec<StoredKey>, ClosedError> {
-    // As for Zotero's database: refuse a hot journal, discard a cold one.
+    // As for Zotero's database: refuse a hot journal before SQLite can recover it.
     match std::fs::File::open(copy.file(JOURNAL)) {
         Ok(mut journal) => {
             let mut first = [0];
@@ -96,7 +96,6 @@ fn store(copy: &Copy, control: &Control) -> Result<Vec<StoredKey>, ClosedError> 
                 return Err(ClosedError::NeedsRecovery);
             }
             drop(journal);
-            std::fs::remove_file(copy.file(JOURNAL)).map_err(|_| ClosedError::PrivateStorage)?;
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
         Err(_) => return Err(ClosedError::PrivateStorage),
