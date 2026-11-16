@@ -35,9 +35,6 @@ function fakeGithub() {
   };
   save();
   if (args[0] === "api") {
-    if (args[1] === "repos/example/ibis/git/ref/heads/main") {
-      console.log(JSON.stringify({ object: { type: "commit", sha: "a".repeat(40) } })); return;
-    }
     if (args[1].startsWith("repos/example/ibis/actions/workflows/ci.yml/runs?")) {
       console.log(JSON.stringify({ workflow_runs: [{ event: "push", head_branch: "main", head_sha: "a".repeat(40), status: "completed", conclusion: state.ciConclusion ?? "success" }] })); return;
     }
@@ -433,7 +430,7 @@ test("nightly leaves a newer, equal or diverged nightly untouched", { skip }, (t
     const result = f.run("nightly", { TAG: "nightly" });
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.deepEqual(f.state().releases.nightly.assets, assets);
-    assert.equal(f.state().calls.length, 5, "only main CI, the nightly ref and comparison may be read");
+    assert.equal(f.state().calls.length, 3, "only the commit's push CI, the nightly ref and comparison may be read");
   }
 });
 

@@ -3,15 +3,16 @@ name: Preview builds
 # Builds the desktop app for Windows, macOS and Linux with checksums and
 # build-provenance attestations.
 #
-# - Every push to main replaces the rolling "nightly" pre-release, so the
-#   newest merged state can always be downloaded from one place.
+# - Once a day the rolling "nightly" pre-release is rebuilt from main's head,
+#   if its push CI passed and the nightly does not have it yet. Pushes to main
+#   publish nothing.
 # - Nightly/release builds also check 60 seconds of offline behaviour. Real
 #   Zotero runs here and on the daily schedule. Heavy qualification runs in daily/manual CI; numbered releases also run
-#   release checks. A red main push CI stops nightly publication.
+#   release checks.
 # - Once a day, and when run manually with "Only rerun the update test", the
 #   update-e2e job updates the nightly that the newest nightly replaced to the
 #   newest nightly, using the packages that nightly's run kept. Until #493 is
-#   fixed it fails on Windows and macOS, so it no longer runs after every push.
+#   fixed it fails on Windows and macOS, so it runs on its own schedule.
 # - Run manually (Actions → Preview builds → Run workflow) for a dry run:
 #   leave publication unchecked; packages stay in workflow artifacts.
 # - A tag push, by a maintainer or by Release Please's app at a release merge,
@@ -30,12 +31,10 @@ name: Preview builds
 
 on:
   push:
-    branches: [main]
     tags: ["v*"]
-    # Path filters never apply to tag pushes, so releases always build.
-    paths-ignore: ["**.md", "docs/**", "website/**"]
   schedule:
-    - cron: "37 4 * * *"
+    - cron: "7 2 * * *" # The nightly.
+    - cron: "37 4 * * *" # The update test, after the nightly has published.
   workflow_dispatch:
     inputs:
       publish:
@@ -56,10 +55,10 @@ permissions:
   contents: read
 
 # Runs are never cancelled, so publication is never cut off halfway. While one
-# runs, only the newest waiting push to main is kept.
-# The update test has its own group, so a waiting push never replaces it.
+# runs, only the newest waiting run for the same ref is kept.
+# The update test has its own group, so a waiting nightly never replaces it.
 concurrency:
-  group: preview-${{ github.ref_name }}${{ (github.event_name == 'schedule' || inputs.update_test) && '-update-test' || '' }}
+  group: preview-${{ github.ref_name }}${{ (github.event.schedule == '37 4 * * *' || inputs.update_test) && '-update-test' || '' }}
   cancel-in-progress: false
 
 jobs:
@@ -118,11 +117,45 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # The daily nightly builds main's head, the commit this run's provenance
+  # names, only once its push CI passed and only if the nightly lacks it. An
+  # older green commit cannot be built here: its packages would attest this
+  # later commit. Otherwise the preceding nightly stays until the next day.
+  nightly-commit:
+    name: Choose the nightly commit
+    if: github.event.schedule == '7 2 * * *'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read # Read the push CI of main's head.
+    outputs:
+      build: ${{ steps.choose.outputs.build }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          sparse-checkout: scripts
+
+      - name: Build only a green commit the nightly lacks
+        id: choose
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          node scripts/ci-main.mjs
+          decision=$(node scripts/publication-guard.mjs nightly)
+          echo "build=$([ "$decision" = publish ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
   build:
     name: Build (${{ matrix.name }})
     # The update test alone builds and publishes nothing; every later
     # publishing job needs this one, so it is skipped with it.
-    if: github.event_name != 'schedule' && !inputs.update_test
+    needs: nightly-commit
+    if: ${{ !cancelled() && !inputs.update_test && (github.event_name != 'schedule' || needs.nightly-commit.outputs.build == 'true') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     permissions:
@@ -382,7 +415,8 @@ jobs:
 
   windows-paste:
     name: Paste into Notepad (Windows)
-    if: github.event_name != 'schedule' && !inputs.update_test
+    needs: nightly-commit
+    if: ${{ !cancelled() && !inputs.update_test && (github.event_name != 'schedule' || needs.nightly-commit.outputs.build == 'true') }}
     runs-on: windows-2025
     timeout-minutes: 20
     steps:
@@ -728,7 +762,7 @@ jobs:
 
   nightly:
     name: Publish nightly pre-release
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish)
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish)
     needs: [build, install]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -808,7 +842,7 @@ jobs:
           # As long as the packages, so the daily update test can use both.
           retention-days: 14
 
-      # The nightly tag moves to each new main commit. It never matches v*, so
+      # The nightly tag moves to the nightly's commit. It never matches v*, so
       # it starts no release build, and Release Please ignores it.
       - name: Replace the nightly pre-release
         env:
@@ -820,10 +854,10 @@ jobs:
 
   update-e2e:
     name: Update the previous nightly to the newest (${{ matrix.name }})
-    # Not after every push until #493 is fixed: it fails on Windows and macOS.
-    # It reuses the files the newest nightly's own run kept, so it tests the
-    # same update a push run would have tested.
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.update_test)
+    # Not in the nightly's own run until #493 is fixed: it fails on Windows and
+    # macOS. It reuses the files the newest nightly's own run kept, so it tests
+    # the same update that run would have tested.
+    if: github.ref == 'refs/heads/main' && (github.event.schedule == '37 4 * * *' || inputs.update_test)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     permissions:

@@ -46,8 +46,9 @@ versions/changelog and tags through the release app token, starting
 4. `stable-feed` replaces packages, then `latest.json` on the fixed `stable`
    tag. Older versions cannot replace a newer feed. That tag is not a source ref.
 
-A nightly verifies packages and requires passing push CI for its revision and
-current main before replacing downloads. A failure keeps the preceding nightly.
+Once a day (02:07 UTC) Preview builds the nightly from main's head if its push
+CI passed and the nightly lacks it, then verifies the packages and that CI again
+before replacing downloads; otherwise the preceding nightly stays.
 Main CI confirms the full platform matrix. Daily/manual CI adds installed nightly journeys, WebKit,
 release-mode/MSRV checks and bounded fuzzing; failures update one issue. Run
 `ci.yml` with `workflow_dispatch` on main for qualification before a stable release.

@@ -108,6 +108,23 @@ class CiResultTest(unittest.TestCase):
         self.assertEqual(advisory["if"], "startsWith(github.ref, 'refs/tags/')")
         self.assertFalse(advisory.get("continue-on-error", False))
 
+    def test_one_nightly_a_day_from_a_green_head(self):
+        workflow = yaml.safe_load((ROOT / ".github/workflows/preview.yml").read_text(encoding="utf-8"))
+        events = workflow.get("on", workflow.get(True))
+        self.assertEqual(events["push"], {"tags": ["v*"]})
+        self.assertEqual([entry["cron"] for entry in events["schedule"]], ["7 2 * * *", "37 4 * * *"])
+        jobs = workflow["jobs"]
+        self.assertEqual(jobs["nightly-commit"]["if"], "github.event.schedule == '7 2 * * *'")
+        choose = next(step for step in jobs["nightly-commit"]["steps"] if step.get("id") == "choose")
+        self.assertEqual(choose["env"]["SHA"], "${{ github.sha }}")
+        self.assertLess(choose["run"].index("node scripts/ci-main.mjs"), choose["run"].index("node scripts/publication-guard.mjs nightly"))
+        gate = "${{ !cancelled() && !inputs.update_test && (github.event_name != 'schedule' || needs.nightly-commit.outputs.build == 'true') }}"
+        for name in ["build", "windows-paste"]:
+            self.assertEqual(jobs[name]["needs"], "nightly-commit")
+            self.assertEqual(jobs[name]["if"], gate)
+        self.assertEqual(jobs["nightly"]["if"], "github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish)")
+        self.assertEqual(jobs["update-e2e"]["if"], "github.ref == 'refs/heads/main' && (github.event.schedule == '37 4 * * *' || inputs.update_test)")
+
     def test_each_ubuntu_installer_restores_its_package_cache_first(self):
         for name, profile in [("desktop", "desktop"), ("web", "web")]:
             steps = self.workflow["jobs"][name]["steps"]

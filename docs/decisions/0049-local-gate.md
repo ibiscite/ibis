@@ -2,7 +2,8 @@
 
 2026-11-16 (maintainer): every pull request runs `Test` and `Desktop` on all
 three systems, and while main's latest push CI failed, `scripts/land.sh` lands
-only `fix` or `revert` titles.
+only `fix` or `revert` titles. One nightly a day is built from main's head once
+its push CI passed; pushes to main publish nothing.
 
 2026-11-15 (maintainer): superseded: hosted CI is the required merge check, no
 merge queue; local machines are for speed and native checks. Pull requests

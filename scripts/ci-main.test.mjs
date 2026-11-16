@@ -3,17 +3,15 @@ import { test } from "node:test";
 import { requireMainCi } from "./ci-main.mjs";
 const sha = "a".repeat(40), newer = "b".repeat(40);
 const pass = (head) => ({ workflow_runs: [{ event: "push", head_branch: "main", head_sha: head, status: "completed", conclusion: "success" }] });
-const reader = (main = sha, result = pass, final = main) => {
-  let refs = 0;
-  return (path) => path === "git/ref/heads/main" ? { object: { type: "commit", sha: ++refs === 1 ? main : final } } : result(path.includes(newer) ? newer : sha);
+const reader = (result = pass) => (path) => {
+  assert.equal(path, `actions/workflows/ci.yml/runs?event=push&branch=main&head_sha=${sha}&per_page=1`);
+  return result(sha);
 };
-test("nightly needs successful push CI for its candidate and current main", () => {
+test("nightly needs successful push CI for its own commit", () => {
   requireMainCi("example/ibis", sha, reader());
-  requireMainCi("example/ibis", sha, reader(newer));
   for (const invalid of [undefined, null, {}, { workflow_runs: [] }, pass(newer), { workflow_runs: [{ ...pass(sha).workflow_runs[0], head_branch: "feature" }] }, ...["failure", "cancelled", "neutral", null].map((conclusion) => ({ workflow_runs: [{ ...pass(sha).workflow_runs[0], conclusion }] })), { workflow_runs: [{ ...pass(sha).workflow_runs[0], event: "pull_request" }] }, { workflow_runs: [{ ...pass(sha).workflow_runs[0], status: "in_progress" }] }]) {
-    assert.throws(() => requireMainCi("example/ibis", sha, reader(sha, () => invalid)));
+    assert.throws(() => requireMainCi("example/ibis", sha, reader(() => invalid)), /not passed/);
   }
-  assert.throws(() => requireMainCi("example/ibis", sha, reader(newer, (head) => head === sha ? pass(head) : { workflow_runs: [] })), /not passed/);
-  assert.throws(() => requireMainCi("example/ibis", sha, reader(sha, pass, newer)), /changed/);
+  assert.throws(() => requireMainCi("example/ibis", "main", reader()), /Invalid/);
   assert.throws(() => requireMainCi("example/ibis", sha, () => { throw Error("API failed"); }), /API failed/);
 });

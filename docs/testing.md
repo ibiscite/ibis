@@ -120,7 +120,9 @@ fails; they keep read-only title feedback.
 Daily/manual runs add WebKit, release-mode/MSRV checks, five minutes each of fuzzing the
 BibTeX loader and the PDF extractor (`ibis-fuzz`; seeds run with `cargo test -p ibis-fuzz`) and
 installed journeys against the published nightly; failures update one issue.
-**CI result** also protects publication: a red main keeps the preceding nightly.
+**CI result** also protects publication: the one nightly a day is built from
+main's head only once its push CI passed, so a red or unfinished main keeps the
+preceding nightly.
 Run manual qualification before a stable release.
 [Preview](../.github/workflows/preview.yml) keeps full builds, signing and
 install/start checks before publishing. Nix and syntax-tool workflows confirm
