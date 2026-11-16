@@ -59,6 +59,8 @@ registry![
     crate::agent_apps::disconnect_agent_app,
     crate::library::attachment_text::attachment_text_libraries,
     crate::library::attachment_text::set_attachment_text,
+    crate::library::attachment_text::attachment_text_outside_library,
+    crate::library::attachment_text::set_attachment_text_outside_library,
     crate::cli_install::cli_status,
     crate::cli_install::set_cli_installed,
     crate::cli_install::copy_cli_profile,
@@ -231,6 +233,8 @@ mod tests {
     const SETTINGS_COMMANDS: &[&str] = &[
         "attachment_text_libraries",
         "set_attachment_text",
+        "attachment_text_outside_library",
+        "set_attachment_text_outside_library",
         "format_settings",
         "forget_app_format",
         "open_settings_file",
@@ -276,6 +280,8 @@ mod tests {
     const SETTINGS_ONLY: &[&str] = &[
         "attachment_text_libraries",
         "set_attachment_text",
+        "attachment_text_outside_library",
+        "set_attachment_text_outside_library",
         "format_settings",
         "forget_app_format",
         "open_settings_file",

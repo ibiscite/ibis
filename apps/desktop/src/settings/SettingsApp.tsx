@@ -504,7 +504,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     }, () => { if (live.current && operation === versionCopy.current) setVersionCopyFailed(true); });
   };
   const availableRows = settingsRows(enterPastes).filter((row) => (row.id !== "menu-bar" || platform === "macos")
-    && (row.id !== "attachment-text" || Boolean(api.attachmentTextLibraries && api.setAttachmentText))
+    && (row.id !== "attachment-text" || Boolean(api.attachmentTextLibraries && api.setAttachmentText && api.attachmentTextOutsideLibrary && api.setAttachmentTextOutsideLibrary))
     && (row.id !== "default-key-format" || keyFormatVisible)
     && (row.id !== "open-settings-file" || Boolean(api.openSettingsFile))
     && (row.id !== "paste-label" || permission?.pastes === true)
@@ -598,7 +598,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
             <CliCommandRow api={{ cliStatus: api.cliStatus, setCliInstalled: api.setCliInstalled, copyCliProfile: api.copyCliProfile }} highlighted={highlighted === "cli-command"} onChanged={() => setAgentRefresh((revision) => revision + 1)} />
           </Group></Section>}
           {api.agentApps && api.connectAgentApp && api.disconnectAgentApp && <AiApps api={{ agentApps: api.agentApps, connectAgentApp: api.connectAgentApp, disconnectAgentApp: api.disconnectAgentApp }} highlighted={highlighted} refresh={agentRefresh} />}
-          {api.attachmentTextLibraries && api.setAttachmentText && <AttachmentText api={{ ...api, attachmentTextLibraries: api.attachmentTextLibraries, setAttachmentText: api.setAttachmentText }} highlighted={highlighted === "attachment-text"} />}
+          {api.attachmentTextLibraries && api.setAttachmentText && api.attachmentTextOutsideLibrary && api.setAttachmentTextOutsideLibrary && <AttachmentText api={{ ...api, attachmentTextLibraries: api.attachmentTextLibraries, setAttachmentText: api.setAttachmentText, attachmentTextOutsideLibrary: api.attachmentTextOutsideLibrary, setAttachmentTextOutsideLibrary: api.setAttachmentTextOutsideLibrary }} highlighted={highlighted === "attachment-text"} />}
           {api.waitingProposals && api.applyProposal && api.rejectProposal && <ProposedChanges api={{ waitingProposals: api.waitingProposals, applyProposal: api.applyProposal, rejectProposal: api.rejectProposal }} highlighted={highlighted} />}
         </>}
         {page === "shortcuts" && <ShortcutsPage opening={shortcutSetting} enterPastes={enterPastes} reveal={revealTarget} highlighted={highlighted} />}

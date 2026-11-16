@@ -132,6 +132,9 @@ pub(super) fn source_error(error: SourceError) -> EngineError {
         SourceError::Missing => return EngineError::because(ErrorCode::SourceUnavailable, ErrorReason::MissingFile),
         SourceError::UnknownFormat => return EngineError::because(ErrorCode::BadInput, ErrorReason::UnknownFormat),
         SourceError::CsvTemplate => return EngineError::because(ErrorCode::BadInput, ErrorReason::CsvTemplate),
+        SourceError::AttachmentOutsideLibrary => {
+            return EngineError::because(ErrorCode::SourceUnavailable, ErrorReason::AttachmentOutsideLibrary);
+        }
         SourceError::Cancelled => ErrorCode::Cancelled,
         SourceError::TooLarge => ErrorCode::ResourceLimit,
         SourceError::NotRegular | SourceError::Unreadable | SourceError::Incomplete | SourceError::InvalidData => {
@@ -222,6 +225,7 @@ impl Engine {
             resources: Arc::new(resources),
             watch_files: false,
             pdf: self.pdf.clone(),
+            attachment_text_outside_library: self.attachment_text_outside_library,
         };
         let mut expected = base;
         let mut retirement_error = None;

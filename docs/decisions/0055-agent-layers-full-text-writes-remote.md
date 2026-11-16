@@ -115,6 +115,12 @@ PRIVACY.md says that an agent with a shell can use it, as 0051 already does for
 lookup. PRIVACY.md, docs/agents.md, docs/cli.md, the skill and the website change
 in the pull request that ships the MCP tools.
 
+Maintainer decision 3A, 2026-11-16: CLI and MCP attachment text tools refuse
+files whose resolved path is outside the `.bib` library file’s folder or
+Zotero’s storage folder, including links inside that point outside, unless
+`attachment_text_outside_library` is enabled on this computer; it is off by
+default, excluded from backups, and shown in Settings › AI Apps › Attachment text.
+
 **Later.** Searching inside every document of a library is a separate decision.
 
 ## 2. Writing to libraries

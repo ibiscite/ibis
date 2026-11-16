@@ -759,6 +759,20 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
     } else {
         engine.without_file_watches()
     };
+    let engine = if defaults == Defaults::App
+        && (matches!(matches.subcommand_name(), Some("outline" | "read" | "find-in"))
+            || matches
+                .subcommand_matches("call")
+                .and_then(|call| call.get_one::<String>("method"))
+                .is_some_and(|method| matches!(method.as_str(), "outline" | "read" | "find-in")))
+    {
+        let allowed = bounded(|| app_libraries::format_settings(false))
+            .and_then(Result::ok)
+            .is_some_and(|settings| settings.device.attachment_text_outside_library);
+        engine.with_attachment_text_outside_library(allowed)
+    } else {
+        engine
+    };
     if let Some(("help", args)) = matches.subcommand() {
         let help = command_help(&program, args.get_one::<String>("command"));
         return emit(

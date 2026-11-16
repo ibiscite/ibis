@@ -205,6 +205,9 @@ pub enum ErrorReason {
     /// The attachment has no text Ibis can read: Zotero has not indexed it,
     /// it is a link, or its file is missing, damaged or one Ibis cannot read.
     NoAttachmentText,
+    /// The resolved attachment file is outside its library's folder, and
+    /// this computer has not explicitly allowed reading it.
+    AttachmentOutsideLibrary,
     /// The attachment has no text for the pages asked for, or its pages are
     /// not known; `outline` says which.
     NoSuchPages,

@@ -240,6 +240,7 @@ impl EngineError {
                 ErrorReason::LibraryCutShort => R::ReviewLibrary,
                 ErrorReason::DuplicateRecord | ErrorReason::RejectedRecord => R::EditInput,
                 ErrorReason::NoAttachmentText => R::ReviewLibrary,
+                ErrorReason::AttachmentOutsideLibrary => R::ReviewSettings,
                 ErrorReason::NoSuchPages => R::EditInput,
             };
             return RecoveryInfo::new(&format!("reason-{}", name(reason)), recovery);
