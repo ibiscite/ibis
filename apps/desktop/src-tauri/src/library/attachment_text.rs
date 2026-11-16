@@ -142,6 +142,38 @@ pub(crate) async fn set_attachment_text(app: AppHandle, id: LibraryId, on: bool)
         .map_err(|_| CommandError::SettingsUnavailable)?
 }
 
+/// Whether attachment text tools may read files beyond the library's folder.
+#[tauri::command]
+#[ibis_desktop_macros::command]
+pub(crate) async fn attachment_text_outside_library(app: AppHandle) -> Result<bool, CommandError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let loaded = app.state::<SettingsFile>().owner.read();
+        Ok(loaded.cites()?.device.attachment_text_outside_library)
+    })
+    .await
+    .map_err(|_| CommandError::SettingsUnavailable)?
+}
+
+/// Save this computer's permission to read attachment text outside libraries.
+#[tauri::command]
+#[ibis_desktop_macros::command]
+pub(crate) async fn set_attachment_text_outside_library(app: AppHandle, on: bool) -> Result<bool, CommandError> {
+    let pending = app
+        .state::<SettingsFile>()
+        .owner
+        .submit_with_receipt(
+            move |settings| {
+                settings.device.attachment_text_outside_library = on;
+                Ok::<_, CommandError>(())
+            },
+            move |_, result| result.map(|_| on),
+        )
+        .1;
+    tauri::async_runtime::spawn_blocking(move || pending.wait().ok_or(CommandError::SettingsUnavailable)?)
+        .await
+        .map_err(|_| CommandError::SettingsUnavailable)?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

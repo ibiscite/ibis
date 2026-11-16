@@ -52,6 +52,8 @@ pub enum SourceError {
     CsvTemplate,
     #[error("the file is not in a format Ibis reads")]
     UnknownFormat,
+    #[error("the attachment file is outside the library's folder; Settings › AI Apps can allow it")]
+    AttachmentOutsideLibrary,
 }
 
 fn file_io_error(error: std::io::Error) -> SourceError {
@@ -383,14 +385,15 @@ fn parse_format(
 
 /// Where the attachment `key` of `parent` is, when the library file at
 /// `path` still holds that reference as the library read it (`full` is its
-/// fingerprint). A location is resolved from the file's folder; nothing is
-/// opened here. `None` when the file has no such attachment, or names a place
-/// that is not a local file.
+/// fingerprint). Links are resolved to check the library-folder boundary;
+/// `outside_library` explicitly allows files beyond it. `None` when the file
+/// has no such attachment or its location is missing or not a local file.
 pub fn attachment_file(
     path: &Path,
     parent: &ibis_core::contract::ItemRef,
     full: &Fingerprint,
     key: &str,
+    outside_library: bool,
     cancelled: &dyn Fn() -> bool,
 ) -> Result<Option<PathBuf>, SourceError> {
     let observation = SourceSnapshot::read_with(path, || {}, &io::Scope::new(cancelled))?;
@@ -423,22 +426,46 @@ pub fn attachment_file(
         return Err(SourceError::Changing);
     }
     let base = source.parent().ok_or(SourceError::Unavailable)?;
-    Ok(location.map(|location| attachment_path(base, &location)))
+    location
+        .map(|location| attachment_path(base, Path::new(&location), outside_library))
+        .transpose()
+        .map(Option::flatten)
 }
 
 /// A file field's location beside its library. On Windows the canonical
 /// library folder is a `\\?\C:\` path, where `/` is no separator and which
 /// the local-file checks refuse, so it becomes the plain `C:\` form first.
-fn attachment_path(base: &Path, location: &str) -> PathBuf {
-    let location = Path::new(location);
-    if location.is_absolute() {
-        return location.to_path_buf();
+pub(crate) fn attachment_path(
+    base: &Path,
+    location: &Path,
+    outside_library: bool,
+) -> Result<Option<PathBuf>, SourceError> {
+    let path = if location.is_absolute() {
+        location.to_path_buf()
+    } else {
+        let mut path = plain_disk(base);
+        for part in location.components() {
+            path.push(part);
+        }
+        path
+    };
+    if outside_library {
+        return Ok(Some(path));
     }
-    let mut path = plain_disk(base);
-    for part in location.components() {
-        path.push(part);
-    }
-    path
+    let base = base.to_path_buf();
+    io::bounded(move || {
+        let resolved = match canonical_path_sync(&path) {
+            Ok(resolved) => resolved,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(file_io_error(error)),
+        };
+        if !resolved.starts_with(canonical_path_sync(&base).map_err(file_io_error)?) {
+            return Err(SourceError::AttachmentOutsideLibrary);
+        }
+        // Keep the original path: the PDF opener still refuses links and
+        // checks every component without following them.
+        Ok(Some(path))
+    })
 }
 
 #[cfg(windows)]
@@ -751,17 +778,67 @@ mod tests {
     use super::*;
 
     #[test]
-    fn attachment_locations_join_their_library_folder() {
-        let base = std::env::temp_dir().join("invented-library");
-        assert_eq!(
-            attachment_path(&base, "papers/atlas.pdf"),
-            base.join("papers").join("atlas.pdf")
-        );
-        #[cfg(windows)]
-        assert_eq!(
-            attachment_path(Path::new(r"\\?\D:\invented\library"), "papers/atlas.pdf"),
-            PathBuf::from(r"D:\invented\library\papers\atlas.pdf")
-        );
+    fn attachment_files_stay_inside_the_library_folder_unless_allowed() {
+        let directory = tempfile::tempdir().unwrap();
+        let base = directory.path().join("library");
+        std::fs::create_dir_all(base.join("papers")).unwrap();
+        std::fs::write(base.join("papers/atlas.pdf"), b"%PDF-1.7\n").unwrap();
+        let outside = directory.path().join("outside.pdf");
+        std::fs::write(&outside, b"%PDF-1.7\n").unwrap();
+        let library = base.join("refs.bib");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&outside, base.join("escape.pdf")).unwrap();
+        let locations = [
+            ("papers/atlas.pdf".into(), false),
+            (
+                base.join("papers/atlas.pdf").to_string_lossy().replace('\\', "/"),
+                false,
+            ),
+            ("../outside.pdf".into(), true),
+            (outside.to_string_lossy().replace('\\', "/"), true),
+            #[cfg(unix)]
+            ("escape.pdf".into(), true),
+        ];
+        for (location, escapes) in locations {
+            std::fs::write(
+                &library,
+                format!("@book{{atlas, title={{Invented atlas}}, file={{{location}}}}}"),
+            )
+            .unwrap();
+            let loaded = reload_file(&library).unwrap();
+            let parent = loaded
+                .snapshot
+                .objects()
+                .iter()
+                .find(|object| matches!(object.object, LibraryObject::Record(_)))
+                .unwrap();
+            let key = loaded
+                .snapshot
+                .objects()
+                .iter()
+                .find(|object| matches!(object.object, LibraryObject::Attachment(_)))
+                .unwrap()
+                .object
+                .id()
+                .key
+                .clone();
+            let find = |allowed| {
+                attachment_file(
+                    &library,
+                    parent.object.id(),
+                    &parent.fingerprints.full,
+                    &key,
+                    allowed,
+                    &|| false,
+                )
+            };
+            if escapes {
+                assert_eq!(find(false), Err(SourceError::AttachmentOutsideLibrary));
+                assert!(find(true).unwrap().is_some());
+            } else {
+                assert!(find(false).unwrap().is_some());
+            }
+        }
     }
     #[test]
     fn manual_sources_report_live_refresh_off_without_starting_a_worker() {

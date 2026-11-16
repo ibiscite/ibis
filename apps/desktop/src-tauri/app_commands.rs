@@ -8,6 +8,8 @@ pub const APP_COMMANDS: &[&str] = &[
     "disconnect_agent_app",
     "attachment_text_libraries",
     "set_attachment_text",
+    "attachment_text_outside_library",
+    "set_attachment_text_outside_library",
     "cli_status",
     "set_cli_installed",
     "copy_cli_profile",

@@ -21,13 +21,14 @@ yourself in the app. It has no account or crash-upload service. This page descri
   regular file on this computer of at most 256 MiB, and hands the opened file
   to a short-lived copy of itself that has no other file, no environment and
   ten seconds to give the text and printed page labels. The desktop app never
-  reads PDFs. These commands need no permission, so an AI app that can run
+  reads PDFs. These commands need no per-library MCP opt-in, so an AI app that can run
   commands can read attachment text this way. The MCP tools `outline`, `read` and `find_in` are
   offered only for libraries where you allow AI apps to read attachment text;
   this is off by default, separate for each library, kept only on this
   computer and not part of a settings backup. Text is held in memory for one
   request, never written to disk, and returned in bounded parts: at most five
   pages or 32 KiB, or ten passages. Ids name an attachment, never its path.
+  CLI and MCP attachment text tools refuse files whose resolved path is outside the `.bib` library’s folder or Zotero’s storage folder unless **Allow attachment text outside the library’s folder** is enabled in **Settings › AI Apps › Attachment text** (`attachment_text_outside_library`, device-only and off by default).
 - **Proposed changes:** only when an AI app's `ibis mcp` command includes
   `--allow-writes`, its tools can propose adding a reference, changing a
   reference's fields or adding and removing its tags. Each proposal is one

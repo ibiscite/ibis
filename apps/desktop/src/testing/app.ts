@@ -184,6 +184,7 @@ export type Handler = (args: Record<string, unknown> & PreviewRequest & { query:
 /** Mock the Rust commands; returns the list of commands called. */
 export function backend(overrides: Record<string, Handler> = {}): string[] {
   let proposals = exampleProposals();
+  let attachmentTextOutsideLibrary = false;
   const calls: string[] = [];
   const citationKeys = new Map<string, string>();
   let lastLibrary: Partial<api.LibraryStatus> = {};
@@ -243,6 +244,8 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     set_login_item: ({ enabled }) => ({ name: "Ibis", enabled, problem: null }),
     // Builds without an update key have no update controls.
     update_checks: () => null,
+    attachment_text_outside_library: () => attachmentTextOutsideLibrary,
+    set_attachment_text_outside_library: ({ on }) => { attachmentTextOutsideLibrary = Boolean(on); return attachmentTextOutsideLibrary; },
     update_available: () => false,
     update_picker_activity: ({ ticket }: Record<string, unknown>) => ticket === null ? ++activityTicket : ticket === activityTicket ? ticket : null,
     find_sources: () => ({ zotero: "absent", list: 1, files: [], cut_short: false }),
