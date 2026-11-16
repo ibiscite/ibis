@@ -1,6 +1,6 @@
 //! Listed output identities, shared by context and native delivery.
-use ibis_core::contract::OutputSpec;
 use crate::outputs::{self, OutputInfo};
+use ibis_core::contract::OutputSpec;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 /// One of the engine's outputs. It crosses IPC and files as its id, and only
 /// an id the engine lists becomes one.
@@ -105,5 +105,4 @@ mod tests {
         assert_eq!(default_style(stored(Some("ieee"))), "ieee");
         assert_eq!(default_style(stored(Some("typst"))), outputs::DEFAULT_STYLE);
     }
-
 }

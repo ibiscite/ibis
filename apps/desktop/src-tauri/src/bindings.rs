@@ -179,7 +179,15 @@ fn contract() -> Value {
         "output": schemas.output.take_definitions(true),
         "constants": {
             "CITATION_FORMS": ibis_core::contract::CitationForm::ALL,
-            "OUTPUTS": crate::output::choices(),
+            "OUTPUTS": ibis_engine::outputs::outputs().iter().map(|output| json!({
+                "id": output.id,
+                "name": output.name,
+                "description": output.description,
+                "example": output.example,
+                "style": matches!(output.output, ibis_core::contract::OutputSpec::Csl { .. }),
+                "entries": output.entries,
+                "shares": output.exports_records,
+            })).collect::<Vec<_>>(),
             "DEFAULT_OUTPUT": ibis_engine::outputs::DEFAULT,
             "DEFAULT_STYLE": ibis_engine::outputs::DEFAULT_STYLE,
         },

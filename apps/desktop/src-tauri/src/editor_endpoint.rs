@@ -8,6 +8,7 @@
 //! to answer, so nothing late can answer for a newer one. Nothing here polls:
 //! threads block on `accept`, on a read or on the answer.
 
+use ibis_engine::app_context::output;
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, Shutdown, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -384,7 +385,7 @@ impl Host for AppHost {
     fn style(&self) -> Result<String, cayw::Refusal> {
         let loaded = settings::load(&self.0.state::<SettingsFile>().path);
         let saved = loaded.cites().map_err(|_| cayw::Refusal::Option)?;
-        Ok(crate::output::default_style(crate::output::stored(saved.portable.output.as_deref())).to_owned())
+        Ok(output::default_style(output::stored(saved.portable.output.as_deref())).to_owned())
     }
     fn changed(&self) {
         report(self.0.emit("editor:request", ()), NativeIssue::LibraryEvent);

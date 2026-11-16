@@ -155,6 +155,17 @@ impl From<ibis_engine::citations::SessionError> for CommandError {
 }
 impl std::error::Error for CommandError {}
 
+impl From<ibis_engine::app_context::Error> for CommandError {
+    fn from(error: ibis_engine::app_context::Error) -> Self {
+        match error {
+            ibis_engine::app_context::Error::SnapshotChanged => Self::SnapshotChanged,
+            ibis_engine::app_context::Error::Cancelled => Self::Cancelled,
+            ibis_engine::app_context::Error::Session(error) => error.into(),
+            error => Self::Presented(error.into()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,8 +208,4 @@ mod tests {
             assert!(error["focus"].is_string());
         }
     }
-}
-
-impl From<ibis_engine::app_context::Error> for CommandError {
-    fn from(error: ibis_engine::app_context::Error) -> Self { Self::Presented(error.into()) }
 }

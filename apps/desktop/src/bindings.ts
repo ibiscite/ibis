@@ -3,6 +3,8 @@
 import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 
 export const commands = {
+	/** One typed request for the captured app's engine context. */
+	appContext: (request: ContextRequest) => __TAURI_INVOKE<AppContextView>("app_context", { request }),
 	/** Waiting proposals and their engine previews, with library names only. */
 	waitingProposals: () => __TAURI_INVOKE<WaitingProposal[]>("waiting_proposals"),
 	/** Apply only after the person presses Apply on the displayed proposal. */
@@ -110,20 +112,13 @@ export const commands = {
 	 * clipboard stays on the main thread, as the native clipboard needs.
 	 */
 	copyFileCitation: (ticket: string, contentHash: string, replaces: string[]) => __TAURI_INVOKE<Copied>("copy_file_citation", { ticket, contentHash, replaces }),
-	projectStatus: () => __TAURI_INVOKE<ProjectStatus | null>("project_status"),
-	/** Recheck only after a person's explicit action; never a background timer. */
-	retryProject: () => __TAURI_INVOKE<void>("retry_project"),
 	/** Choose the file with the system dialog; the interface never handles a path. */
 	chooseProject: () => __TAURI_INVOKE<void>("choose_project"),
-	/** Stop checking. The file itself is untouched. */
-	stopProject: () => __TAURI_INVOKE<null>("stop_project"),
 	/**
 	 * Copy a reference's original entry with its key, for adding to the project's
 	 * file. The text goes to the clipboard here and never through the web view.
 	 */
 	copyProjectEntry: (id: RecentIdentity, generation: number) => __TAURI_INVOKE<EntryCopy>("copy_project_entry", { id, generation }),
-	writings: () => __TAURI_INVOKE<WritingsView>("writings"),
-	editWriting: (context: string, action: WritingEdit) => __TAURI_INVOKE<WritingsView>("edit_writing", { context, action }),
 	/** `None` when no editor is waiting. */
 	editorRequest: () => __TAURI_INVOKE<EditorWaiting | null>("editor_request"),
 	editorEndpoint: () => __TAURI_INVOKE<EndpointStatus>("editor_endpoint"),
@@ -170,8 +165,6 @@ export const commands = {
 	shorthandHint: () => __TAURI_INVOKE<boolean>("shorthand_hint"),
 	/** The saved preferences once a submitted change has run. */
 	pickerPreferencesSaved: (receipt: number) => __TAURI_INVOKE<PickerSave>("picker_preferences_saved", { receipt }),
-	/** The app the picker was opened from, its output and what Ibis remembers for it. */
-	pickerDestination: () => __TAURI_INVOKE<PickerDestination>("picker_destination"),
 	/**
 	 * Remember a format, a delivery choice or both for the captured app. Whichever
 	 * is absent keeps its saved value; only a delivery choice revokes outstanding
@@ -338,6 +331,12 @@ export type AgentApp = {
 /** A connection's state; the same observation feeds Settings and the terminal. */
 export type AgentAppState = "connected" | "not-connected" | "stale" | "different" | "blocked" | "plugin" | "by-hand";
 
+export type AppContextView = {
+	destination: PickerDestination;
+	project: ProjectStatus | null;
+	writings: WritingsView;
+};
+
 export type AppFormat = {
 	/** Resolved at display time by the same native lookup as the picker. */
 	app: string;
@@ -404,6 +403,23 @@ export type CommandStatus = {
 	state: CommandState;
 	used_path: string | null;
 	version: string | null;
+};
+
+/** The one context boundary. Native dialogs and delivery stay with the host. */
+export type ContextRequest = {
+	kind: "destination";
+} | {
+	kind: "writings";
+} | {
+	action: WritingEdit;
+	context: string;
+	kind: "edit-writing";
+} | {
+	kind: "project-status";
+} | {
+	kind: "retry-project";
+} | {
+	kind: "stop-project";
 };
 
 export type Copied = {
@@ -936,7 +952,6 @@ export type Problem = {
 	recovery: Recovery;
 };
 
-/** The state of one emitted key in the project bibliography, for the row. */
 export type ProjectKeyState = "in" | "missing" | "could-not-check" | "repeated" | "may-name-another";
 
 export type ProjectMark = {
@@ -946,6 +961,7 @@ export type ProjectMark = {
 	state: ProjectKeyState;
 };
 
+/** State of the current bibliography read. */
 export type ProjectState = "reading" | "ready" | "damaged" | "failed";
 
 /** What the picker may show. A file name, never a folder. */

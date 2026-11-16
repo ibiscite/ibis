@@ -214,13 +214,12 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
       ] } satisfies FormDetails;
     },
     editor_request: () => scenario === "editor-request" ? { request: 1, format: "LaTeX", style: false } : null,
-    picker_destination: () => knownApp && !writingContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
+    app_context: () => ({ destination: knownApp && !writingContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
       find_open: false, usual_format: "apa", format, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false,
       writing: null, writing_context: null, context_version: [1, 0] } : writingContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
       find_open: false, usual_format: "apa", format, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false,
       writing: project, writing_context: "invented-opening", context_version: [1, 0] } : null,
-    writings: () => writings,
-    edit_writing: () => writings,
+      writings, project: null }),
     picker_preferences: () => settings.pickerPreferences(),
     save_picker_preferences: ({ preferences }) => settings.savePickerPreferences(preferences),
     picker_preferences_saved: ({ receipt }) => settings.pickerPreferencesSaved(receipt),
@@ -246,7 +245,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
     session_bibliography: () => null,
   };
   for (const command of ["quit", "set_pinned", "picker_moving", "open_library_source", "alignment_tick", "take_search_request",
-    "project_status", "forget_app_output", "update_checks", "update_picker_activity", "remember_app_output", "retry_project", "choose_project",
+    "forget_app_output", "update_checks", "update_picker_activity", "remember_app_output", "choose_project",
     "open_found_library", "reload_library", "dismiss_window_position_undo"]) handlers[command] = () => null;
   mockWindows("main");
   mockIPC((command, payload) => {

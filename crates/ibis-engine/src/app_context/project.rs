@@ -1,9 +1,9 @@
 //! Read-only bibliography observations and guarded citation context.
+use crate::{KeyCheck, ProjectProblem, ProjectRead, project_name};
+use ibis_core::contract::{CitedWarning, Message};
+use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use ibis_core::contract::{CitedWarning, Message};
-use crate::{KeyCheck, ProjectProblem, ProjectRead, project_name};
-use serde::Serialize;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum ProjectKeyState {
@@ -40,11 +40,7 @@ impl ProjectMark {
     }
 }
 
-/// The newest search each interface page has sent, so a search for a query
-/// the person has already typed past stops early instead of delaying the
-/// newer one. The interface numbers its searches, because commands can start
-/// in a different order than they were sent, and names its page, because a
-/// reloaded page counts from the start again.
+/// State of the current bibliography read.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum ProjectState {
@@ -111,17 +107,28 @@ pub struct ProjectBibliography {
     publish: std::sync::Arc<dyn Fn((u32, u32)) + Send + Sync>,
 }
 impl Default for ProjectBibliography {
-    fn default() -> Self { Self::new(|| {}, |_| {}) }
+    fn default() -> Self {
+        Self::new(|| {}, |_| {})
+    }
 }
 
 impl ProjectBibliography {
-    pub fn new(retire: impl Fn() + Send + Sync + 'static, publish: impl Fn((u32, u32)) + Send + Sync + 'static) -> Self {
-        Self { state: Default::default(), retire: std::sync::Arc::new(retire), publish: std::sync::Arc::new(publish) }
+    pub fn new(
+        retire: impl Fn() + Send + Sync + 'static,
+        publish: impl Fn((u32, u32)) + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            state: Default::default(),
+            retire: std::sync::Arc::new(retire),
+            publish: std::sync::Arc::new(publish),
+        }
     }
     pub fn activate(&self, context: String, path: Option<PathBuf>, output: Option<super::output::OutputRef>) {
         let ticket = {
             let mut slot = self.lock();
-            if slot.context.as_ref() == Some(&context) && slot.path == path && slot.output == output { return; }
+            if slot.context.as_ref() == Some(&context) && slot.path == path && slot.output == output {
+                return;
+            }
             slot.context = Some(context);
             slot.generation = slot.generation.wrapping_add(1);
             slot.path = path;
@@ -138,18 +145,30 @@ impl ProjectBibliography {
     }
     pub fn recheck(&self) {
         let ticket = self.check_again();
-        if ticket.is_some() { (self.publish)(self.version()); }
+        if ticket.is_some() {
+            (self.publish)(self.version());
+        }
         self.start_read(ticket);
     }
     fn start_read(&self, ticket: Option<Ticket>) {
-        let Some(mut ticket) = ticket.and_then(|ticket| self.enqueue_read(ticket)) else { return };
+        let Some(mut ticket) = ticket.and_then(|ticket| self.enqueue_read(ticket)) else {
+            return;
+        };
         let project = self.clone();
-        std::thread::spawn(move || loop {
-            let read = ProjectRead::read(&ticket.path, ticket.previous.as_ref());
-            if project.finish_with(ticket.generation, read, || (project.retire)()).is_some() {
-                (project.publish)(project.version());
+        std::thread::spawn(move || {
+            loop {
+                let read = ProjectRead::read(&ticket.path, ticket.previous.as_ref());
+                if project
+                    .finish_with(ticket.generation, read, || (project.retire)())
+                    .is_some()
+                {
+                    (project.publish)(project.version());
+                }
+                match project.next_read(ticket.generation) {
+                    Some(next) => ticket = next,
+                    None => break,
+                }
             }
-            match project.next_read(ticket.generation) { Some(next) => ticket = next, None => break }
         });
     }
 
@@ -320,6 +339,15 @@ impl ProjectBibliography {
 
     pub fn status(&self) -> Option<ProjectStatus> {
         let slot = self.lock();
+        Self::status_in(&slot)
+    }
+
+    pub(super) fn observation(&self) -> ((u32, u32), Option<ProjectStatus>) {
+        let slot = self.lock();
+        ((slot.generation, slot.revision), Self::status_in(&slot))
+    }
+
+    fn status_in(slot: &Slot) -> Option<ProjectStatus> {
         let name = project_name(slot.path.as_deref()?);
         // A check of a file already read also reads: its old answer may not stand.
         let state = match &slot.read {
@@ -405,9 +433,6 @@ impl Current {
     }
 }
 
-
-include!("project_tests.rs");
-
 pub fn preview_warnings(
     engine: &crate::Engine,
     id: &str,
@@ -442,3 +467,6 @@ pub fn preview_evidence(
         .map(|project| citation.project_evidence(&project.read)))
 }
 
+#[cfg(test)]
+#[path = "project_tests.rs"]
+mod tests;

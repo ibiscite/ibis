@@ -1,5 +1,6 @@
 //! Copying the selected references as a citation.
 
+use ibis_engine::app_context::output;
 use ibis_engine::citations::{Operation, SessionId};
 use std::sync::Mutex;
 
@@ -246,7 +247,7 @@ pub(crate) async fn citation_example(
     library: State<'_, Owner>,
 ) -> Result<Option<String>, CommandError> {
     let file = library.current().ok_or(CommandError::SnapshotChanged)?;
-    let output = crate::output::listed(&output)
+    let output = output::listed(&output)
         .ok_or_else(|| CommandError::from(ibis_core::contract::CitationError::UnsupportedOutput))?;
     let cancel = file
         .engine
@@ -290,7 +291,7 @@ pub(crate) async fn preview_file_citation(
         .citations()
         .start(SessionId::PICKER, Operation::Preview, intent)?;
     // The engine's id, as the menu sent it; one it does not list is refused, not guessed.
-    let output = crate::output::listed(&output)
+    let output = output::listed(&output)
         .ok_or_else(|| CommandError::from(ibis_core::contract::CitationError::UnsupportedOutput))?;
     let editor = editor.current();
     let (context_version, current_project) = project.capture(expected_context, editor.is_none().then_some(output))?;

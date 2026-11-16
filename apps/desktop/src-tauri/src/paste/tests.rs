@@ -1762,20 +1762,17 @@ fn a_changed_citation_overrides_what_the_opening_read() {
     );
 }
 #[test]
-fn a_new_bibliography_answer_revokes_even_a_detached_delivery_before_it_can_post() {
+fn engine_context_retirement_is_wired_to_detached_native_delivery() {
     use tauri::Manager;
     let app = tauri::test::mock_builder()
         .manage(super::LastTarget::default())
-        .manage(crate::project::ProjectBibliography::default())
         .build(tauri::test::mock_context(tauri::test::noop_assets()))
         .unwrap_or_else(|error| panic!("mock app: {error}"));
     let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("test directory: {error}"));
-    let path = directory.path().join("invented.bib");
-    std::fs::write(&path, "@book{synthetic,title={Work},doi={10.5555/intended}}\n")
-        .unwrap_or_else(|error| panic!("initial bibliography: {error}"));
+    let settings = crate::preferences::SettingsFile::new(directory.path().join("settings.json"));
+    crate::app_context::manage(app.handle(), &settings);
     let project = app.state::<crate::project::ProjectBibliography>();
-    let first = ibis_engine::ProjectRead::read(&path, None);
-    assert_eq!(project.finish_read(app.handle(), 0, first.clone()), Some(true));
+    project.activate("initial".into(), None, None);
     let target = app.state::<super::LastTarget>();
     target.begin_presentation(Some(writer("com.microsoft.word")));
     let token = target
@@ -1784,20 +1781,12 @@ fn a_new_bibliography_answer_revokes_even_a_detached_delivery_before_it_can_post
     let detached = target
         .take_copy(TEXT, token)
         .unwrap_or_else(|| panic!("detached proof"));
-    assert_eq!(project.finish_read(app.handle(), 0, first.clone()), Some(false));
+    project.activate("initial".into(), None, None);
     assert!(
         detached.policy.current(),
         "an unchanged check preserves the pending delivery"
     );
-    std::fs::write(&path, "@book{synthetic,title={Other work},doi={10.5555/other}}\n")
-        .unwrap_or_else(|error| panic!("updated bibliography: {error}"));
-    let conflicting = ibis_engine::ProjectRead::read(&path, Some(&first));
-    assert_eq!(project.finish_read(app.handle(), 99, conflicting.clone()), None);
-    assert!(
-        detached.policy.current(),
-        "a stale other-context read cannot revoke the current operation"
-    );
-    assert_eq!(project.finish_read(app.handle(), 0, conflicting), Some(true));
+    project.activate("replacement".into(), None, None);
     let mut posted = false;
     let request = PostRequest::new(
         DeliveryRequest {

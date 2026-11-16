@@ -1,6 +1,7 @@
 //! Saving choices made in the picker to the settings file.
 
 use crate::library::CommandError;
+use ibis_engine::app_context::output;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
@@ -10,7 +11,7 @@ use ibis_engine::settings::{self, Density, PickerPlacement};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::output::OutputRef;
+use ibis_engine::app_context::output::OutputRef;
 use ibis_engine::library::{ChoiceStore, Owner};
 
 pub(crate) use ibis_engine::settings_backup::{settings_message, settings_problem};
@@ -434,11 +435,11 @@ impl PickerPreferences {
     }
     fn from_interface(settings: &settings::Interface) -> Self {
         PickerPreferences {
-            output: crate::output::stored(settings.output.as_deref()),
+            output: output::stored(settings.output.as_deref()),
             key_output: settings
                 .key_output
                 .as_deref()
-                .and_then(crate::output::listed)
+                .and_then(output::listed)
                 .filter(|output| matches!(output.spec(), ibis_core::contract::OutputSpec::Key { .. })),
             appearance: Some(settings.appearance.unwrap_or_default()),
             accent: Some(settings.accent.unwrap_or_default()),
@@ -710,8 +711,7 @@ impl SettingsFile {
     ) -> Result<settings::Settings, CommandError> {
         let mut preferences = preferences.into();
         if let Some(id) = output {
-            preferences.output =
-                Some(crate::output::listed(id).ok_or(ibis_core::contract::CitationError::UnsupportedOutput)?);
+            preferences.output = Some(output::listed(id).ok_or(ibis_core::contract::CitationError::UnsupportedOutput)?);
         }
         let receipt = self.submit_preferences(preferences, |_, _| ())?;
         self.take_receipt(receipt)?
@@ -1134,7 +1134,7 @@ mod tests {
     }
 
     fn out(id: &str) -> OutputRef {
-        crate::output::listed(id).unwrap_or_else(|| panic!("{id} is listed"))
+        output::listed(id).unwrap_or_else(|| panic!("{id} is listed"))
     }
 
     fn preference_request<R: tauri::Runtime>(
@@ -1239,7 +1239,7 @@ mod tests {
             PickerPreferencesPatch {
                 density: Some(Density::Comfortable),
                 accent: Some(Accent::Ibis),
-                output: crate::output::listed("modern-language-association"),
+                output: output::listed("modern-language-association"),
                 ..Default::default()
             },
             app.state::<SettingsFile>(),
@@ -1250,7 +1250,7 @@ mod tests {
         let newer = save_picker_preferences(
             PickerPreferencesPatch {
                 density: Some(Density::Compact),
-                output: crate::output::listed("chicago-author-date"),
+                output: output::listed("chicago-author-date"),
                 ..Default::default()
             },
             app.state::<SettingsFile>(),

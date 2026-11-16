@@ -1,14 +1,14 @@
 //! Native bibliography chooser and clipboard effects.
-use tauri::{AppHandle, Emitter, Manager, State};
-use tauri_plugin_dialog::DialogExt;
-use serde::Serialize;
-use ibis_engine::{EntryRefusal, EntryResult};
-use ibis_engine::library::Owner;
 use crate::diagnostics::{NativeIssue, report};
 use crate::library::commands::RecentIdentity;
 use crate::library::engine_library::FileLibrary;
 use crate::picker::ChooserOpen;
-pub(crate) use ibis_engine::app_context::project::{Current, ProjectBibliography, preview_warnings, preview_evidence};
+pub(crate) use ibis_engine::app_context::project::{Current, ProjectBibliography, preview_evidence, preview_warnings};
+use ibis_engine::library::Owner;
+use ibis_engine::{EntryRefusal, EntryResult};
+use serde::Serialize;
+use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_dialog::DialogExt;
 
 pub(crate) fn watch_openings(app: &AppHandle) {
     use tauri::Listener;
@@ -114,4 +114,3 @@ pub(crate) async fn copy_project_entry(
         })
         .unwrap_or(Ok(EntryCopy::Changed))
 }
-

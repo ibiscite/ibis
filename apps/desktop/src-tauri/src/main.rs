@@ -7,6 +7,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod agent_apps;
+mod app_context;
 mod bindings;
 mod cli_install;
 mod copy;
@@ -30,7 +31,6 @@ mod menu_bar;
 mod native_corners;
 mod native_feel;
 mod notice;
-mod output;
 #[cfg(target_os = "macos")]
 mod panel;
 #[cfg(any(target_os = "macos", test))]
@@ -54,7 +54,6 @@ mod sizing;
 mod system_open;
 mod tray;
 mod updater;
-mod app_context;
 
 use ibis_engine::{Engine, library::Owner};
 use std::path::PathBuf;

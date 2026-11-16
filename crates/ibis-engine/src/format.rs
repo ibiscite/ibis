@@ -120,19 +120,8 @@ fn kind_of(output: &OutputSpec) -> FormatKind {
 }
 
 fn writing_for<'s>(settings: &'s Settings, app: &AppId) -> Option<&'s crate::settings::writings::Writing> {
-    let id = settings
-        .device
-        .writing_apps
-        .get(&format!("{}:{}", system(app), app.normalized()))?;
+    let id = settings.device.writing_apps.get(&crate::app_context::app_key(app))?;
     settings.device.writings.iter().find(|writing| &writing.name == id)
-}
-
-fn system(app: &AppId) -> &'static str {
-    match app.system {
-        ibis_core::destination::System::Macos => "macos",
-        ibis_core::destination::System::Windows => "windows",
-        ibis_core::destination::System::Linux => "linux",
-    }
 }
 
 #[cfg(test)]

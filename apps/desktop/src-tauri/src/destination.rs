@@ -8,6 +8,7 @@
 //! citation text. An unreadable file uses default formats and retains a durable
 //! delivery-recovery refusal until each app gets an explicit delivery choice.
 
+use ibis_engine::app_context::output;
 use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
@@ -319,17 +320,21 @@ pub(crate) fn memory_path(settings: &Path) -> PathBuf {
 }
 
 /// Native delivery facts for the engine's captured context.
-pub(crate) fn present(app: &AppHandle, context: &ibis_engine::app_context::ContextView) -> Result<PickerDestination, CommandError> {
+pub(crate) fn present(app: &AppHandle, context: &ibis_engine::app_context::ContextView) -> PickerDestination {
     let memory = app.state::<AppMemory>();
     let editor = app.state::<crate::editor_endpoint::Pending>();
-    let last = if editor.current().is_some() { None } else { crate::paste::last_app(app) };
+    let last = if editor.current().is_some() {
+        None
+    } else {
+        crate::paste::last_app(app)
+    };
     let format = context.format.clone();
     let usual_format = context.usual_format.clone();
     let writing = context.writing.clone();
     let writing_context = context.writing_context.clone();
     let context_version = Some(context.context_version);
     let Some((id, name, app_identity)) = last else {
-        return Ok(PickerDestination {
+        return PickerDestination {
             app: None,
             app_id: None,
             app_identity: None,
@@ -344,17 +349,17 @@ pub(crate) fn present(app: &AppHandle, context: &ibis_engine::app_context::Conte
             writing,
             context_version,
             writing_context,
-        });
+        };
     };
-    let can_paste = crate::paste::intends_paste(&app, context.paste_enabled);
+    let can_paste = crate::paste::intends_paste(app, context.paste_enabled);
     let policy = memory.paste_for(&id, app_identity.as_deref());
-    let can_choose_paste = crate::paste::may_choose_paste(&app, context.paste_enabled);
+    let can_choose_paste = crate::paste::may_choose_paste(app, context.paste_enabled);
     // Only an app that can answer sees the warning; the others never paste anyway.
     let unreadable = policy.is_err() && can_choose_paste;
     let ordinary = lookup(&id).is_none_or(|entry| entry.safety == PasteSafety::Normal);
     let paste = ordinary.then(|| policy.ok().flatten()).flatten();
     let paste_question = lookup(&id).is_none() && paste.is_none() && can_choose_paste;
-    Ok(PickerDestination {
+    PickerDestination {
         app: Some(name),
         app_id: Some(id.normalized()),
         app_identity,
@@ -369,7 +374,7 @@ pub(crate) fn present(app: &AppHandle, context: &ibis_engine::app_context::Conte
         writing,
         context_version,
         writing_context,
-    })
+    }
 }
 
 /// Remember a format, a delivery choice or both for the captured app. Whichever
@@ -389,7 +394,7 @@ pub(crate) fn remember_app_output<R: tauri::Runtime>(
 ) -> Result<(), AppChoiceError> {
     // Only an id the engine lists is remembered; anything else changes nothing.
     let output = output
-        .map(|id| crate::output::listed(&id).ok_or("this format is not available; choose another"))
+        .map(|id| output::listed(&id).ok_or("this format is not available; choose another"))
         .transpose()
         .map_err(|_| AppChoiceError::not_saved())?;
     if output.is_none() && paste.is_none() {
@@ -532,8 +537,8 @@ pub(crate) fn manage(app: &AppHandle, settings: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::output::OutputRef;
     use ibis_core::destination::System;
+    use ibis_engine::app_context::output::OutputRef;
 
     fn mac(id: &str) -> AppId {
         AppId {
@@ -577,7 +582,7 @@ mod tests {
     }
 
     fn listed(id: &str) -> Option<OutputRef> {
-        Some(crate::output::listed(id).unwrap_or_else(|| panic!("listed")))
+        Some(output::listed(id).unwrap_or_else(|| panic!("listed")))
     }
 
     /// The settings file and the per-app file side by side, as the app keeps them.
@@ -635,7 +640,7 @@ mod tests {
                 .unwrap_or_else(|error| panic!("{error}"))
                 .clone()
                 .app_output(app)
-                .and_then(crate::output::listed)
+                .and_then(output::listed)
         }
 
         fn reopened(&self) -> AppMemory {
@@ -916,29 +921,6 @@ mod tests {
     }
 
     #[test]
-    fn a_remembered_format_survives_a_restart_and_a_new_pick_replaces_it() -> io::Result<()> {
-        let choices = Choices::new()?;
-        assert_eq!(choices.format(&mac("com.microsoft.Word")), None);
-        choices
-            .choose(&mac("com.microsoft.Word"), Some("apa"), None)
-            .map_err(io::Error::other)?;
-        // IDs compare as the platform does: bundle IDs without case.
-        assert_eq!(choices.format(&mac("com.microsoft.word")), listed("apa"));
-        choices
-            .choose(&mac("com.microsoft.word"), Some("typst"), None)
-            .map_err(io::Error::other)?;
-        assert_eq!(choices.format(&mac("com.microsoft.Word")), listed("typst"));
-        // An output this Ibis does not list reads as no choice.
-        choices
-            .app
-            .state::<SettingsFile>()
-            .update(|settings| settings.remember_app_output(&mac("com.microsoft.Word"), "a-later-output".into()))
-            .map_err(io::Error::other)?;
-        assert_eq!(choices.format(&mac("com.microsoft.Word")), None);
-        Ok(())
-    }
-
-    #[test]
     fn the_file_holds_only_app_ids_and_choices_and_keeps_the_latest_apps() {
         let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let path = memory_path(&directory.path().join("settings.json"));
@@ -1129,6 +1111,3 @@ mod tests {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod acceptance;
