@@ -111,6 +111,16 @@ fn keys_held() -> bool {
     HELD.into_iter().any(w::GetAsyncKeyState)
 }
 
+/// The app behind `window` could open the clipboard now. A reader reacting to
+/// the copy, such as clipboard history, may hold it open; an app given Ctrl+V
+/// then cannot open it and drops the paste without a sign, so the paste waits
+/// as it waits for held keys. The probe opens it for that window, never for
+/// no window: such an open succeeds over another open without a window and,
+/// closing, ends it. Opening and closing changes no content or sequence number.
+fn clipboard_free(window: &w::HWND) -> bool {
+    clipboard_win::Clipboard::new_for(window.ptr()).is_ok()
+}
+
 fn foreground_pid() -> Option<i32> {
     let window = w::HWND::GetForegroundWindow()?;
     i32::try_from(window.GetWindowThreadProcessId().1).ok()
@@ -138,13 +148,15 @@ fn password_focused(pid: i32) -> Option<bool> {
 }
 
 /// Ctrl+V to whatever has the keyboard, in one call, so no other input lands
-/// between the four events.
+/// between the four events, and only while the app in front can open the clipboard.
 fn send_paste(ready: impl Fn() -> bool) -> bool {
     let Ok(mut keys) = KEYS.lock() else {
         warn_key_release();
         return false;
     };
-    keys.paste(send_inputs, std::thread::sleep, warn_key_release, ready)
+    keys.paste(send_inputs, std::thread::sleep, warn_key_release, || {
+        ready() && w::HWND::GetForegroundWindow().is_some_and(|window| clipboard_free(&window))
+    })
 }
 
 fn send_inputs(events: &[PasteEvent]) -> u32 {
@@ -269,13 +281,15 @@ impl TicketDesk for Win {
     fn ask_to_post(&self) {}
 
     /// `None` also while another window, even of the same app, is in front,
-    /// and while a key from the picker is still held, so the paste waits for
-    /// the keyboard to be free as it waits for the window.
+    /// while a key from the picker is still held and while another process
+    /// has the clipboard open, so the paste waits for the keyboard and the
+    /// clipboard to be free as it waits for the window.
     fn frontmost(&self) -> Option<Front> {
-        if keys_held() {
+        let window = w::HWND::GetForegroundWindow()?;
+        if keys_held() || !clipboard_free(&window) {
             return None;
         }
-        front(&w::HWND::GetForegroundWindow()?, false)
+        front(&window, false)
     }
 
     fn secure_field(&self, pid: i32) -> Option<bool> {
@@ -785,6 +799,8 @@ mod tests {
     #[ignore = "drives Notepad on a desktop session; CI's Windows job runs it"]
     fn one_ctrl_v_pastes_the_clipboard_into_the_app_in_front() {
         let text = "[@synthetic2026]";
+        let started = std::time::Instant::now();
+        let seq_before_copy = clipboard_win::seq_num().map(std::num::NonZeroU32::get);
         // The clipboard crate Ibis copies with, so no shell needs to be on PATH.
         clipboard_win::set_clipboard_string(text).unwrap_or_else(|error| {
             panic!(
@@ -795,6 +811,7 @@ mod tests {
                 }
             )
         });
+        let seq_copied = clipboard_win::seq_num().map(std::num::NonZeroU32::get);
         // Open a new empty file so restored tabs cannot satisfy the readback.
         // Close our file handle before Notepad opens it on Windows.
         let file = tempfile::Builder::new()
@@ -964,7 +981,11 @@ mod tests {
             );
         }
         let editor = editor.unwrap_or_else(|| panic!("{:?}", Failure::new(Stage::Identity)));
-        qualify_paste(
+        let seq_before_qualify = clipboard_win::seq_num().map(std::num::NonZeroU32::get);
+        let last_len = std::cell::Cell::new(None);
+        let sent_at = std::cell::Cell::new(None);
+        let seq_at_send = std::cell::Cell::new(None);
+        let result = qualify_paste(
             &editor.captured,
             text,
             Duration::from_secs(5),
@@ -975,6 +996,9 @@ mod tests {
                     ..failure
                 });
                 owned()?;
+                if let Ok(reading) = &reading {
+                    last_len.set(Some(reading.text.encode_utf16().count()));
+                }
                 reading
             },
             || {
@@ -984,12 +1008,36 @@ mod tests {
                         last = failure;
                         return None;
                     }
-                    (password_focused(front.pid) == Some(false)).then_some(())
+                    // Wait as delivery does: a clipboard reader reacting to the
+                    // copy, such as clipboard history, would make Notepad drop it.
+                    (password_focused(front.pid) == Some(false) && clipboard_free(window)).then_some(())
                 })
                 .ok_or(last)
             },
-            |ready| send_paste(|| ready() && in_front() && !keys_held() && foreground_pid() == Some(front.pid)),
-        )
-        .unwrap_or_else(|failure| panic!("{failure:?}"));
+            |ready| {
+                let sent = send_paste(|| ready() && in_front() && !keys_held() && foreground_pid() == Some(front.pid));
+                sent_at.set(Some(started.elapsed()));
+                seq_at_send.set(clipboard_win::seq_num().map(std::num::NonZeroU32::get));
+                sent
+            },
+        );
+        if let Err(failure) = result {
+            // Failure-only: lengths, counters and timings, never document text.
+            let seq_at_failure = clipboard_win::seq_num().map(std::num::NonZeroU32::get);
+            let clipboard_matches = clipboard_win::get_clipboard_string().map(|value| value == text);
+            std::thread::sleep(Duration::from_secs(3));
+            let late = focused_text(&worker, &diagnostics, &editor).map(|reading| reading.text.encode_utf16().count());
+            eprintln!(
+                "DIAG last_len={:?} late_len={:?} expected_len={} seq_before_copy={seq_before_copy:?} seq_copied={seq_copied:?} seq_before_qualify={seq_before_qualify:?} seq_at_send={:?} seq_at_failure={seq_at_failure:?} clipboard_matches={:?} sent_at={:?} failed_at={:?}",
+                last_len.get(),
+                late.ok(),
+                text.len(),
+                seq_at_send.get(),
+                clipboard_matches.ok(),
+                sent_at.get(),
+                started.elapsed(),
+            );
+            panic!("{failure:?}");
+        }
     }
 }
