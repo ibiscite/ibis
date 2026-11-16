@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.10](https://github.com/ibiscite/ibis/compare/v0.3.9...v0.3.10) (2026-11-16)
+
+
+### Bug Fixes
+
+* **ci:** keep the Rust cache action off our own Mac ([#1972](https://github.com/ibiscite/ibis/issues/1972)) ([b02855a](https://github.com/ibiscite/ibis/commit/b02855a9a9015c4f0df7bd42c7e95fae09639998))
+* **paste:** find Notepad's editor within its window ([#1963](https://github.com/ibiscite/ibis/issues/1963)) ([e5d45ce](https://github.com/ibiscite/ibis/commit/e5d45ce17fd2b15b731de109a3753637bd0d6fe1))
+* **release:** publish numbered releases again; run macOS CI on our Mac ([#1968](https://github.com/ibiscite/ibis/issues/1968)) ([338c4a4](https://github.com/ibiscite/ibis/commit/338c4a40816fe02000f72a3b4954425ad0e7187e))
+
 ## [0.3.9](https://github.com/ibiscite/ibis/compare/v0.3.8...v0.3.9) (2026-11-16)
 
 
