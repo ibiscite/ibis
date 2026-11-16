@@ -36,7 +36,7 @@ test("the first frame uses every snapshot source without startup fetches", async
   await waitFor(() => expect(painted).toHaveBeenCalledOnce());
   expect(painted.mock.results[0]?.value).toMatchObject({ row: "First reference", format: expect.stringContaining("Typst"),
     density: "compact", textSize: "larger", appearance: "dark", accent: "ibis" });
-  for (const command of ["library_status", "recent_references", "picker_destination", "picker_preferences"]) expect(calls).not.toContain(command);
+  for (const command of ["library_status", "recent_references", "destination", "picker_preferences"]) expect(calls).not.toContain(command);
 });
 
 test("an unread app in the opening snapshot is a failure notice", async () => {
@@ -112,7 +112,7 @@ test.each(["invented.writer", "other.writer"])("a new destination observation fo
   const first = snapshot(1, "First app reference");
   const nextDestination = fixtureDestination({ app: "Other Writer", app_id: appId, format: formatAnswer("typst") });
   const recents = vi.fn(() => [{ revision: "1", results: [result("other", "Other app reference")] }, true, false]);
-  backend({ picker_snapshot: () => first, picker_destination: () => nextDestination, recent_references: recents });
+  backend({ picker_snapshot: () => first, destination: () => nextDestination, recent_references: recents });
   render(<App />);
   await screen.findByText("First app reference");
   expect(recents).not.toHaveBeenCalled();

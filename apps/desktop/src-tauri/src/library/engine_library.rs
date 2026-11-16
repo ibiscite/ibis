@@ -2,6 +2,7 @@
 use super::CommandError;
 use super::search::{SearchQuery, SearchReply, SearchResult};
 use ibis_core::contract::{ItemRef, LibraryId};
+use ibis_engine::app_context::output;
 use ibis_engine::library::{Current, native_source};
 use ibis_engine::{Cancellation, Engine, Method, request::SearchRequest};
 use serde_json::json;
@@ -210,7 +211,7 @@ pub(crate) fn warm_formatter(output: Option<String>) {
     let _ = std::thread::Builder::new()
         .name("ibis-format-startup".into())
         .spawn(move || {
-            let output = crate::output::stored(output.as_deref());
-            let _ = formatting.warm(crate::output::default_style(output), None);
+            let output = output::stored(output.as_deref());
+            let _ = formatting.warm(output::default_style(output), None);
         });
 }

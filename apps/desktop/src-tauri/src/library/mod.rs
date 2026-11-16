@@ -20,7 +20,7 @@ pub(crate) use error::CommandError;
 use ibis_engine::library::{Intent, Owner, Save};
 pub(crate) use ibis_engine::library::{LibraryState, LibraryStatus, Source};
 use ibis_engine::settings::{LibrarySetting, ZoteroLibraries, ZoteroLibrary};
-pub(crate) use search::{PreviewIntent, ProjectMark, SearchRequests, SearchResult};
+pub(crate) use search::{PreviewIntent, SearchRequests, SearchResult};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 

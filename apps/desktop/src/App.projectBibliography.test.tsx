@@ -13,7 +13,7 @@ test("an unreadable bibliography is a warning with Retry: Enter copies, says why
   const warning = { item: 0, message: { id: "app-project-warning", args: { key: "a", name: "thesis.bib", state: "could-not-check" } } };
   const called = backend({
     search: () => [result("a", "Invented work")],
-    project_status: () => file({ state: "failed", reason: "It is not there, or not on this computer yet." }),
+    "project-status": () => file({ state: "failed", reason: "It is not there, or not on this computer yet." }),
     preview_file_citation: () => ({ ...receipt("[@a]"), warnings: [warning] }),
     deliver_citation: () => ({ outcome: "retained", copied: { text: "[@a]", warnings: [warning] }, reason: "pinned" }),
   });
@@ -22,7 +22,7 @@ test("an unreadable bibliography is a warning with Retry: Enter copies, says why
   const notice = await screen.findByText((text) => plain(text).startsWith("Couldn’t read thesis.bib."));
   expect(notice.closest('[role="status"]')).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-  await waitFor(() => expect(called).toContain("retry_project"));
+  await waitFor(() => expect(called).toContain("retry-project"));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   await waitFor(() => expect(called).toContain("deliver_citation"));
   await waitFor(() => expect(screen.getAllByText("Couldn’t check a against thesis.bib.").length).toBeGreaterThan(0));
@@ -49,9 +49,9 @@ test("a known wrong-work key is refused and never reaches native copy, by Enter 
 test("Retry checks again and keeps the citation, but does not replay the refused Enter", async () => {
   let refused = true;
   const called = backend({ search: () => [result("a", "Invented work")],
-    project_status: () => file({ revision: refused ? 1 : 2 }),
+    "project-status": () => file({ revision: refused ? 1 : 2 }),
     preview_file_citation: () => ({ ...receipt("[@a]"), project_refusal: refused ? "A key in thesis.bib identifies a different work." : null }),
-    retry_project: async () => { refused = false; await emit("project:changed", [1, 2]); },
+    "retry-project": async () => { refused = false; await emit("project:changed", [1, 2]); },
     deliver_citation: () => ({ outcome: "retained", copied: { text: "[@a]", warnings: [] }, reason: "pinned" }),
   });
   render(<App />);
@@ -59,7 +59,7 @@ test("Retry checks again and keeps the citation, but does not replay the refused
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));
   await waitFor(() => expect(screen.queryByRole("button", { name: "Retry" })).toBeNull());
-  expect(called.filter((command) => command === "retry_project")).toHaveLength(1);
+  expect(called.filter((command) => command === "retry-project")).toHaveLength(1);
   expect(called).not.toContain("deliver_citation");
   expect(screen.getByText("Invented work")).toBeTruthy();
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
@@ -76,7 +76,7 @@ const row = (state: string, generation = 1, lines: number[] = []) => ({ ...resul
 let called: string[] = [];
 const calls = (command: string) => called.filter((name) => name === command).length;
 function picker(state: string, status: () => ProjectStatus | null, handlers: Parameters<typeof backend>[0] = {}) {
-  called = backend({ project_status: status, search: () => [row(state)], ...handlers });
+  called = backend({ "project-status": status, search: () => [row(state)], ...handlers });
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "seas" } });
 }
@@ -90,7 +90,7 @@ test.each([
 });
 
 test("a repeated key says where to look in the file", async () => {
-  backend({ project_status: () => file(), search: () => [row("repeated", 1, [12, 88])] });
+  backend({ "project-status": () => file(), search: () => [row("repeated", 1, [12, 88])] });
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "seas" } });
   await waitFor(() => expect(shownRow()).toContain("Key appears more than once (lines 12, 88)"));
@@ -110,7 +110,7 @@ test("a citation with a warning stays open and says why instead of pasting", asy
 });
 
 test("with no bibliography chosen, the check asks no search twice", async () => {
-  const called = backend({ project_status: () => null, search: () => [row("in")] });
+  const called = backend({ "project-status": () => null, search: () => [row("in")] });
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "seas" } });
   await screen.findByText("Invented seas");
@@ -121,7 +121,7 @@ test("with no bibliography chosen, the check asks no search twice", async () => 
 
 test("new content in the same healthy file marks the rows again", async () => {
   let status = file(), mark = "missing";
-  backend({ project_status: () => status, search: () => [row(mark)] });
+  backend({ "project-status": () => status, search: () => [row(mark)] });
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "seas" } });
   await waitFor(() => expect(shownRow()).toContain("Missing from thesis.bib"));
@@ -133,7 +133,7 @@ test("new content in the same healthy file marks the rows again", async () => {
 
 test("a formatted output shows no mark, because a style has no key to check", async () => {
   backend({
-    project_status: () => file(), search: () => [row("missing")],
+    "project-status": () => file(), search: () => [row("missing")],
     picker_preferences: () => ({ output: "apa", density: "comfortable", larger_text: false, show_paste_preview: true, search_icon: "magnifier", paste: true, menu_bar: true }),
   });
   render(<App />);
@@ -159,7 +159,7 @@ test("a status read that finishes after a newer one cannot replace it", async ()
     // The hook reads at mount and again once its listener exists.
     () => file(), () => file(), () => new Promise((resolve) => { release = resolve; }), () => file({ generation: 3, name: "newest.bib" }),
   ];
-  backend({ project_status: () => answers.shift()?.() ?? null, search: () => [row("in", 3)] });
+  backend({ "project-status": () => answers.shift()?.() ?? null, search: () => [row("in", 3)] });
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "seas" } });
   await waitFor(() => expect(answers).toHaveLength(2));
@@ -231,8 +231,8 @@ test("a choice that could not be saved says so", async () => {
 test("Enter while the bibliography is still reading copies once the read ends, without a failure", async () => {
   let reading = true;
   const calls = backend({
-    project_status: () => file({ state: reading ? "reading" : "ready", revision: reading ? 1 : 2 }),
-    picker_destination: () => (fixtureDestination({ app: null, app_id: null, app_identity: null, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false, context_version: reading ? [1, 1] : [1, 2], format: formatAnswer("pandoc", "yours") })),
+    "project-status": () => file({ state: reading ? "reading" : "ready", revision: reading ? 1 : 2 }),
+    "destination": () => (fixtureDestination({ app: null, app_id: null, app_identity: null, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false, context_version: reading ? [1, 1] : [1, 2], format: formatAnswer("pandoc", "yours") })),
     search: () => [result("a", "First")],
     // The engine refuses a key output whose project read has not finished.
     preview_file_citation: () => reading ? Promise.reject({ code: "cancelled" }) : receipt("[@a]"),
@@ -255,7 +255,7 @@ test("Enter while the bibliography is still reading copies once the read ends, w
 test("a status read that fails after a reading answer does not leave the preview waiting", async () => {
   let fail = false;
   backend({
-    project_status: () => fail ? Promise.reject(new Error("unreadable")) : file({ state: "reading" }),
+    "project-status": () => fail ? Promise.reject(new Error("unreadable")) : file({ state: "reading" }),
     search: () => [result("a", "First")],
     preview_file_citation: () => Promise.reject({ code: "cancelled" }),
   });

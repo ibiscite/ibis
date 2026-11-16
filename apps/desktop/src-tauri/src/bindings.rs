@@ -51,6 +51,7 @@ macro_rules! registry {
 }
 
 registry![
+    crate::app_context::app_context,
     crate::proposals::waiting_proposals,
     crate::proposals::apply_proposal,
     crate::proposals::reject_proposal,
@@ -85,13 +86,8 @@ registry![
     crate::copy::citation_details,
     crate::copy::citation_example,
     crate::delivery::deliver_citation,
-    crate::project::project_status,
-    crate::project::retry_project,
     crate::project::choose_project,
-    crate::project::stop_project,
     crate::project::copy_project_entry,
-    crate::writings::writings,
-    crate::writings::edit_writing,
     crate::editor_endpoint::editor_request,
     crate::editor_endpoint::editor_endpoint,
     crate::editor_endpoint::set_editor_endpoint,
@@ -106,7 +102,6 @@ registry![
     crate::delights::delight_view,
     crate::delights::shorthand_hint,
     crate::preferences::picker_preferences_saved,
-    crate::destination::picker_destination,
     crate::destination::remember_app_output,
     crate::destination::forget_app_output,
     crate::format_settings::format_settings,
@@ -186,7 +181,15 @@ fn contract() -> Value {
         "output": schemas.output.take_definitions(true),
         "constants": {
             "CITATION_FORMS": ibis_core::contract::CitationForm::ALL,
-            "OUTPUTS": crate::output::choices(),
+            "OUTPUTS": ibis_engine::outputs::outputs().iter().map(|output| json!({
+                "id": output.id,
+                "name": output.name,
+                "description": output.description,
+                "example": output.example,
+                "style": matches!(output.output, ibis_core::contract::OutputSpec::Csl { .. }),
+                "entries": output.entries,
+                "shares": output.exports_records,
+            })).collect::<Vec<_>>(),
             "DEFAULT_OUTPUT": ibis_engine::outputs::DEFAULT,
             "DEFAULT_STYLE": ibis_engine::outputs::DEFAULT_STYLE,
         },

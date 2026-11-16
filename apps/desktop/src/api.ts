@@ -24,12 +24,8 @@ export const {
   checkZoteroSharing,
   reloadLibrary,
   libraryStatus,
-  projectStatus,
   chooseProject,
-  stopProject,
   copyProjectEntry,
-  writings,
-  editWriting,
   editorRequest,
   sessionReferences,
   editSessionReferences,
@@ -44,7 +40,6 @@ export const {
   shortcutStatus,
   recentReferences,
   pickerPreferences,
-  pickerDestination,
   rememberAppOutput,
   forgetAppOutput,
   loginItem,
@@ -61,13 +56,19 @@ export const {
   openSettings,
 } = commands;
 
+export const pickerDestination = () => commands.appContext({ kind: "destination" }).then((view) => view.destination);
+export const writings = () => commands.appContext({ kind: "writings" }).then((view) => view.writings);
+export const editWriting = (context: string, action: import("./bindings").WritingEdit) => commands.appContext({ kind: "edit-writing", context, action }).then((view) => view.writings);
+export const projectStatus = () => commands.appContext({ kind: "project-status" }).then((view) => view.project);
+export const stopProject = () => commands.appContext({ kind: "stop-project" }).then(() => {});
+
 export function deliverCitation(ticket: string, contentHash: string, replaces: readonly string[] | null, presentation: number, closestMatches: import("./bindings").ClosestMatch[]) {
   return commands.deliverCitation(ticket, contentHash, [...replaces ?? []], presentation, closestMatches);
 }
 
 /** Retry refreshes evidence only; the person chooses insertion afresh. */
 export function retryProject() {
-  return commands.retryProject();
+  return commands.appContext({ kind: "retry-project" }).then(() => {});
 }
 
 /** Native saves are ordered by the settings owner before publishing a result. */

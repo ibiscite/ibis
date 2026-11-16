@@ -1,5 +1,6 @@
 // Build-time custom commands; the bindings test compares this with the runtime registry.
 pub const APP_COMMANDS: &[&str] = &[
+    "app_context",
     "waiting_proposals",
     "apply_proposal",
     "reject_proposal",
@@ -39,7 +40,6 @@ pub const APP_COMMANDS: &[&str] = &[
     "delight_view",
     "shorthand_hint",
     "picker_preferences_saved",
-    "picker_destination",
     "remember_app_output",
     "forget_app_output",
     "format_settings",
@@ -59,13 +59,8 @@ pub const APP_COMMANDS: &[&str] = &[
     "change_suggested_format",
     "native_appearance",
     "row_context",
-    "project_status",
-    "retry_project",
     "choose_project",
-    "stop_project",
     "copy_project_entry",
-    "writings",
-    "edit_writing",
     "editor_request",
     "editor_endpoint",
     "set_editor_endpoint",

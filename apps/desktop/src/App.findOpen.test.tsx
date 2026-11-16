@@ -10,7 +10,7 @@ afterEach(resetApp);
 test("inside Zotero Enter opens the PDF or item, Command-O shows it, and Alt-Enter copies", async () => {
   const open = vi.fn(async (_args: Record<string, unknown>) => null);
   const calls = backend({ library_status: () => ({ state: "loaded", has_snapshot: true, zotero: true, snapshot_zotero: true, zotero_libraries: ["user"], name: "Zotero", references: 1, warnings: 0, error: null, problem: null, note: null }), search: () => [result("a", "Synthetic reference")],
-    picker_destination: () => fixtureDestination({ app: "Zotero", app_id: "org.zotero.zotero", find_open: true }),
+    "destination": () => fixtureDestination({ app: "Zotero", app_id: "org.zotero.zotero", find_open: true }),
     open_library_source: open, zotero_groups: () => [],
   });
   render(<App />);

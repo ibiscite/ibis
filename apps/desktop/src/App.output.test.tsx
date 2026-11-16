@@ -26,7 +26,7 @@ function opened(destination: () => PickerDestination, overrides: Parameters<type
   const remembered: (string | null)[] = [];
   const calls = backend({
     search: () => [result("a", "First")],
-    picker_destination: () => destination(),
+    "destination": () => destination(),
     preview_file_citation: (request) => {
       previews.push(request);
       const number = previews.length;
@@ -265,7 +265,7 @@ test("an unrelated Settings refresh does not extend a held format", async () => 
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   await waitFor(() => expect(calls).toContain("deliver_citation"));
   await act(async () => { await emit("preferences:changed"); });
-  await waitFor(() => expect(calls.filter((call) => call === "picker_destination")).toHaveLength(1));
+  await waitFor(() => expect(calls.filter((call) => call === "destination")).toHaveLength(1));
   await act(async () => { finish({ outcome: "retained", copied: { text: "synthetic typst copy", warnings: [] }, reason: "pinned" }); });
   await waitFor(() => expect(formatShown()).toBe("LaTeX \\cite · Example Browser"));
 });

@@ -5,6 +5,7 @@
 //! nowhere unless the person exports the bibliography, and it never reaches a
 //! library. Text comes from the open library each time it is shown.
 
+use ibis_engine::app_context::output;
 use ibis_engine::citations::{Operation, SessionId};
 
 use serde::{Deserialize, Serialize};
@@ -106,7 +107,7 @@ pub(crate) fn edit_session_references(
 
 /// The style an output id names: only a listed style writes a bibliography.
 fn style_of(id: &str) -> Result<String, CommandError> {
-    match crate::output::listed(id).map(crate::output::OutputRef::spec) {
+    match output::listed(id).map(output::OutputRef::spec) {
         Some(ibis_core::contract::OutputSpec::Csl { style }) => Ok(style.clone()),
         _ => Err(CommandError::Presented(
             ibis_core::contract::CitationError::UnsupportedOutput

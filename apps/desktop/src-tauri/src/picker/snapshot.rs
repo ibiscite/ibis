@@ -59,8 +59,8 @@ fn build<R: tauri::Runtime>(
 pub(super) fn prepare(app: &AppHandle, presentation: u64, selection: Option<String>, focus: bool) {
     let editor = app.state::<crate::editor_endpoint::Pending>();
     let captured = editor.app(crate::paste::last_app(app).map(|(id, _, _)| id.normalized()));
-    let destination =
-        crate::destination::current_destination(app, &app.state::<crate::destination::AppMemory>(), &editor);
+    let destination = crate::app_context::refresh(app, crate::paste::last_app(app).as_ref().map(|(id, _, _)| id))
+        .map(|context| crate::destination::present(app, &context));
     let snapshot = Arc::new(build(app, presentation, selection, captured.as_deref(), destination));
     if !app.state::<PickerGeneration>().owns(presentation) {
         return;
@@ -125,8 +125,8 @@ pub(crate) fn picker_snapshot(app: AppHandle, state: State<'_, Presentation>) ->
     }
     let editor = app.state::<crate::editor_endpoint::Pending>();
     let captured = editor.app(crate::paste::last_app(&app).map(|(id, _, _)| id.normalized()));
-    let destination =
-        crate::destination::current_destination(&app, &app.state::<crate::destination::AppMemory>(), &editor);
+    let destination = crate::app_context::refresh(&app, crate::paste::last_app(&app).as_ref().map(|(id, _, _)| id))
+        .map(|context| crate::destination::present(&app, &context));
     let snapshot = Arc::new(build(&app, owner, None, captured.as_deref(), destination));
     app.state::<PickerGeneration>().owns(owner).then_some(snapshot)
 }

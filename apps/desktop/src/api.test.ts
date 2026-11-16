@@ -1,10 +1,30 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type Event } from "@tauri-apps/api/event";
 import { expect, it, vi } from "vitest";
-import { isSnapshotChanged, newerUpdate, onWindowSizeSaved, previewFileCitation, search } from "./api";
+import { editWriting, isSnapshotChanged, newerUpdate, onWindowSizeSaved, pickerDestination, previewFileCitation, projectStatus, retryProject, search, stopProject, writings } from "./api";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue([]) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
+
+it("routes app context reads and edits through the typed engine request", async () => {
+  const view = { destination: { app: "Invented Writer" }, writings: { context: "opening-a" }, project: null };
+  vi.mocked(invoke).mockClear().mockResolvedValue(view);
+  expect(await pickerDestination()).toBe(view.destination);
+  expect(await writings()).toBe(view.writings);
+  expect(await editWriting("opening-a", { kind: "select", id: null })).toBe(view.writings);
+  expect(await projectStatus()).toBeNull();
+  await retryProject();
+  await stopProject();
+  expect(vi.mocked(invoke).mock.calls).toEqual([
+    ["app_context", { request: { kind: "destination" } }],
+    ["app_context", { request: { kind: "writings" } }],
+    ["app_context", { request: { kind: "edit-writing", context: "opening-a", action: { kind: "select", id: null } } }],
+    ["app_context", { request: { kind: "project-status" } }],
+    ["app_context", { request: { kind: "retry-project" } }],
+    ["app_context", { request: { kind: "stop-project" } }],
+  ]);
+  vi.mocked(invoke).mockResolvedValue([]);
+});
 
 it("a delayed size-save result cannot restore an older failure or clear a newer one", async () => {
   let deliver: (event: Event<{ revision: number; saved: boolean }>) => void = () => {};

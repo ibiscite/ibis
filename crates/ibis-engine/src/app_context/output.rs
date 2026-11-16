@@ -1,20 +1,17 @@
-//! The engine's outputs as the app stores and shows them (#1260). Settings,
-//! the per-app file and every command name an output by its engine id; this
-//! module only looks ids up, so the app has no output vocabulary of its own.
+//! Listed output identities, shared by context and native delivery.
+use crate::outputs::{self, OutputInfo};
 use ibis_core::contract::OutputSpec;
-use ibis_engine::outputs::{self, OutputInfo};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
 /// One of the engine's outputs. It crosses IPC and files as its id, and only
 /// an id the engine lists becomes one.
 #[derive(Clone, Copy)]
-pub(crate) struct OutputRef(&'static OutputInfo);
+pub struct OutputRef(&'static OutputInfo);
 
 impl OutputRef {
-    pub(crate) fn id(self) -> &'static str {
+    pub fn id(self) -> &'static str {
         &self.0.id
     }
-    pub(crate) fn spec(self) -> &'static OutputSpec {
+    pub fn spec(self) -> &'static OutputSpec {
         &self.0.output
     }
 }
@@ -46,19 +43,19 @@ impl<'de> Deserialize<'de> for OutputRef {
 }
 
 /// The listed output `id` names, if any.
-pub(crate) fn listed(id: &str) -> Option<OutputRef> {
+pub fn listed(id: &str) -> Option<OutputRef> {
     outputs::find(id).map(OutputRef)
 }
 
 /// The output a stored id means: an id this Ibis does not list, or none,
 /// fails closed to the engine's default.
-pub(crate) fn stored(id: Option<&str>) -> OutputRef {
+pub fn stored(id: Option<&str>) -> OutputRef {
     OutputRef(outputs::or_default(id))
 }
 
 /// The style a formatted app's citation is written in: the default output
 /// when it is a style, else the engine's default style.
-pub(crate) fn default_style(default: OutputRef) -> &'static str {
+pub fn default_style(default: OutputRef) -> &'static str {
     match default.spec() {
         OutputSpec::Csl { style } => style,
         _ => outputs::DEFAULT_STYLE,
@@ -68,48 +65,11 @@ pub(crate) fn default_style(default: OutputRef) -> &'static str {
 /// The listed output a writing project's stored output writes. A project
 /// made in the command line can name a style the picker does not list; that is
 /// refused, never replaced by a plausible wrong output.
-pub(crate) fn of_writing(output: &OutputSpec) -> Result<OutputRef, String> {
+pub fn of_writing(output: &OutputSpec) -> Result<OutputRef, String> {
     outputs::named(output).map(OutputRef).ok_or_else(|| {
         "This project's output is available in the command line. Choose a listed output there before using it in the picker."
             .into()
     })
-}
-
-/// One output as the web view shows it, from the engine's list, written into
-/// `bindings.ts` by `node scripts/gen.mjs`.
-#[cfg(test)]
-#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
-pub(crate) struct OutputChoice {
-    id: String,
-    /// The one name, in the header, footer, menus and Settings.
-    name: String,
-    /// A style's full title: the quiet detail beside the name.
-    description: Option<String>,
-    example: Option<String>,
-    /// A citation style, written by the formatter, rather than a key syntax.
-    style: bool,
-    /// It writes reference entries, never in-text citations.
-    entries: bool,
-    /// It shares references (BibTeX, DOI links, CSL-JSON) rather than citing
-    /// them: a one-off output, never remembered as a format (decision 0051).
-    shares: bool,
-}
-
-/// Every output the picker offers, in the engine's order.
-#[cfg(test)]
-pub(crate) fn choices() -> Vec<OutputChoice> {
-    outputs::outputs()
-        .iter()
-        .map(|output| OutputChoice {
-            id: output.id.clone(),
-            name: output.name.clone(),
-            description: output.description.clone(),
-            example: output.example.clone(),
-            style: matches!(output.output, OutputSpec::Csl { .. }),
-            entries: output.entries,
-            shares: output.exports_records,
-        })
-        .collect()
 }
 
 #[cfg(test)]
@@ -144,12 +104,5 @@ mod tests {
     fn a_formatted_app_uses_the_default_style_or_the_engines() {
         assert_eq!(default_style(stored(Some("ieee"))), "ieee");
         assert_eq!(default_style(stored(Some("typst"))), outputs::DEFAULT_STYLE);
-    }
-
-    #[test]
-    fn the_web_view_offers_exactly_the_engines_list() {
-        let ids: Vec<_> = choices().into_iter().map(|choice| choice.id).collect();
-        let listed: Vec<_> = outputs::outputs().iter().map(|output| output.id.clone()).collect();
-        assert_eq!(ids, listed);
     }
 }

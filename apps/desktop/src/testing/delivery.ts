@@ -146,7 +146,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
 
 
   const calls = backend({
-    picker_destination: async ({ snapshot }) => {
+    "destination": async ({ snapshot }) => {
       if (snapshot) await appSaving;
       captured ??= capture();
       const choice = appChoices.get(target.appId);

@@ -228,9 +228,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
       ] } satisfies FormDetails;
     },
     editor_request: () => scenario === "editor-request" ? { request: 1, format: "LaTeX", style: false } : null,
-    picker_destination: () => { if ("Err" in destination) throw destination.Err; return destination.Ok; },
-    writings: () => writings,
-    edit_writing: () => writings,
+    app_context: () => { if ("Err" in destination) throw destination.Err; return { destination: destination.Ok, writings, project: null }; },
     picker_preferences: () => settings.pickerPreferences(),
     save_picker_preferences: ({ preferences }) => settings.savePickerPreferences(preferences),
     picker_preferences_saved: ({ receipt }) => settings.pickerPreferencesSaved(receipt),
@@ -255,7 +253,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
     session_bibliography: () => null,
   };
   for (const command of ["quit", "set_pinned", "picker_moving", "open_library_source", "alignment_tick", "take_search_request",
-    "project_status", "forget_app_output", "update_checks", "update_picker_activity", "remember_app_output", "retry_project", "choose_project",
+    "forget_app_output", "update_checks", "update_picker_activity", "remember_app_output", "choose_project",
     "open_found_library", "reload_library", "dismiss_window_position_undo"]) handlers[command] = () => null;
   mockWindows("main");
   mockIPC((command, payload) => {

@@ -7,6 +7,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod agent_apps;
+mod app_context;
 mod bindings;
 mod cli_install;
 mod copy;
@@ -31,7 +32,6 @@ mod menu_bar;
 mod native_corners;
 mod native_feel;
 mod notice;
-mod output;
 #[cfg(target_os = "macos")]
 mod panel;
 #[cfg(any(target_os = "macos", test))]
@@ -55,7 +55,6 @@ mod sizing;
 mod system_open;
 mod tray;
 mod updater;
-mod writings;
 
 use ibis_engine::{Engine, library::Owner};
 use std::path::PathBuf;
@@ -124,8 +123,6 @@ fn main() {
         .manage(ChooserOpen::default())
         .manage(settings_backup::PendingRestore::default())
         .manage(row_context::RowContext::default())
-        .manage(project::ProjectBibliography::default())
-        .manage(writings::Runtime::default())
         .manage(editor_endpoint::Pending::default())
         .manage(editor_endpoint::Endpoint::default())
         .manage(session_references::SessionReferences::default())
@@ -243,6 +240,7 @@ fn main() {
             library::engine_library::warm_formatter(cites.and_then(|settings| settings.portable.output.clone()));
             let settings_file = SettingsFile::new(settings_path.clone());
             app.manage(settings_file.clone());
+            app_context::manage(app.handle(), &settings_file);
             let handle = app.handle().clone();
             let notices = settings_file.clone();
             app.manage(Owner::new(

@@ -15,7 +15,7 @@ pub(crate) struct AppFormat {
 #[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct FormatSettingsView {
     apps: Vec<AppFormat>,
-    writings: Vec<crate::writings::WritingView>,
+    writings: Vec<ibis_engine::app_context::WritingView>,
     key_output_visible: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     unknown: Option<serde_json::Map<String, serde_json::Value>>,
@@ -32,7 +32,7 @@ pub(crate) fn format_settings(app: AppHandle) -> Result<FormatSettingsView, Comm
             .app_outputs
             .iter()
             .map(|entry| AppFormat {
-                id: crate::writings::app_key(&entry.app),
+                id: ibis_engine::app_context::app_key(&entry.app),
                 app: crate::destination::display_name(&entry.app),
                 format: entry.output.clone(),
             })
@@ -41,7 +41,7 @@ pub(crate) fn format_settings(app: AppHandle) -> Result<FormatSettingsView, Comm
             .device
             .writings
             .iter()
-            .map(crate::writings::saved_view)
+            .map(ibis_engine::app_context::saved_view)
             .collect(),
         key_output_visible: settings.device.key_formats_used
             || settings.portable.key_output.is_some()
@@ -63,7 +63,7 @@ pub(crate) fn forget_app_format(app: AppHandle, id: String) -> Result<(), Comman
         settings
             .device
             .app_outputs
-            .retain(|entry| crate::writings::app_key(&entry.app) != id);
+            .retain(|entry| ibis_engine::app_context::app_key(&entry.app) != id);
     })?;
     let _ = tauri::Emitter::emit(&app, "writings:changed", ());
     Ok(())

@@ -226,7 +226,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     reject_proposal: ({ id }) => { proposals = proposals.filter((proposal) => proposal.id !== id); return { status: "rejected" }; },
     shortcut_status: () => ({ shortcut: "CommandOrControl+Shift+Y", registered: true, error: null }),
     search: () => [],
-    project_status: () => null,
+    "project-status": () => null,
     editor_request: () => null,
     session_references: () => ({ revision: 0, rows: [], absent: 0, overflowed: false, undo: null }),
     session_bibliography: () => null,
@@ -259,7 +259,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
       if ("Ok" in saved) preferences = { ...preferences, ...saved.Ok as api.PickerPreferences };
       const library = { revision: "1", source_generation: "1", source_is_requested: true, ...await read("library_status") as object };
       lastLibrary = library as api.LibraryStatus;
-      const destination = await outcome("picker_destination");
+      const destination = await outcome("destination");
       if ("Ok" in destination) destination.Ok = fixtureDestination(destination.Ok as api.PickerDestination);
       const recents = (library as api.LibraryStatus).has_snapshot ? await outcome("recent_references")
         : { Ok: [{ revision: library.revision, results: [] }, false, false] };
@@ -278,7 +278,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     save_picker_preferences: ({ preferences: patch }) => { const receipt = ++revision; submitted.set(receipt, patch as Partial<api.PickerPreferences>); return receipt; },
     picker_preferences_saved: () => null,
     // Opened from no app Ibis knows: the default format applies.
-    picker_destination: async () => {
+    "destination": async () => {
       await Promise.resolve();
       return { app: null, app_id: null, app_identity: null, format: formatAnswer(preferences.key_output ?? preferences.output, "yours"), unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false };
     },
@@ -300,6 +300,8 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
   mockWindows("main");
   mockIPC(
     (cmd, args) => {
+      const contextKind = cmd === "app_context" ? (args as { request: import("../bindings").ContextRequest }).request.kind : null;
+      if (contextKind) { cmd = contextKind; args = (args as { request: unknown }).request as typeof args; }
       calls.push(cmd);
       if (cmd === "preview_file_citation" && (args as PreviewRequest).intent.cancel) {
         return Promise.reject({ code: "cancelled" });
@@ -309,6 +311,11 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
       // A test's save handler sees the choice the receipt stands for.
       const receipt = cmd === "picker_preferences_saved" ? (args as { receipt: number }).receipt : 0;
       const value = handler((receipt ? { ...args as object, preferences: submitted.get(receipt) } : args ?? {}) as Parameters<Handler>[0]);
+      if (contextKind) return Promise.resolve(value).then((answer) => ({
+        destination: fixtureDestination(cmd === "destination" ? answer as api.PickerDestination : {}),
+        writings: cmd === "writings" || cmd === "edit-writing" ? answer : { writings: [], selected: null, session_only: true, context: "invented" },
+        project: cmd === "project-status" ? answer : null,
+      }));
       if (cmd === "picker_snapshot") return Promise.resolve(value).then((value) => {
         const snapshot = value as api.PickerSnapshot | null;
         if (snapshot && "Ok" in snapshot.recents) {
@@ -316,7 +323,6 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
         }
         return snapshot;
       });
-      if (cmd === "picker_destination") return Promise.resolve(value).then((destination) => fixtureDestination(destination as api.PickerDestination));
       if (cmd === "picker_preferences") {
         if (value && typeof value === "object" && !("then" in value)) preferences = { ...preferences, ...value as api.PickerPreferences };
         return Promise.resolve(value).then((loaded) => { preferences = { ...preferences, ...loaded as api.PickerPreferences }; return preferences; });
