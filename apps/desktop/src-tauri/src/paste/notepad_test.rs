@@ -1,7 +1,78 @@
 //! Test-only Notepad lifecycle and activation, also exercised without Windows.
 
 use std::process::Child;
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::{Duration, Instant};
+
+use super::queries::{QueryFailure, QueryWorker};
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum QueryStep {
+    #[default]
+    Scheduled,
+    Automation,
+    ElementFromHandle,
+    EditorCondition,
+    FindEditors,
+    ClassifyEditors,
+    SetFocus,
+    FocusedElement,
+    CompareFocus,
+    ValidateClassic,
+    Identity,
+    Password,
+    ReadDocument,
+}
+
+/// Retain progress on the query's own worker, including after its caller times
+/// out. Busy readiness probes must not erase the stalled call's last sub-step.
+#[derive(Default)]
+pub(crate) struct Query {
+    worker: QueryWorker,
+    step: Arc<Mutex<QueryStep>>,
+}
+
+impl Query {
+    pub fn run<T: Send + 'static>(
+        &self,
+        limit: Duration,
+        query: impl FnOnce(&dyn Fn(QueryStep)) -> Result<T, Failure> + Send + 'static,
+    ) -> Result<T, Failure> {
+        let progress = self.step.clone();
+        let started = Arc::new(AtomicBool::new(false));
+        let query_started = started.clone();
+        self.worker
+            .run_result(limit, move || {
+                let step = |step| *progress.lock().unwrap_or_else(|error| error.into_inner()) = step;
+                step(QueryStep::Scheduled);
+                query_started.store(true, Ordering::Release);
+                query(&step).map_err(|failure| Failure {
+                    query_step: Some(*progress.lock().unwrap_or_else(|error| error.into_inner())),
+                    ..failure
+                })
+            })
+            .unwrap_or_else(|error| {
+                Err(Failure {
+                    code: match error {
+                        QueryFailure::Spawn(code) => code,
+                        _ => None,
+                    },
+                    query_step: Some(if error != QueryFailure::Busy && !started.load(Ordering::Acquire) {
+                        // No call on this attempt began. A previous completed
+                        // query's sub-step would misidentify a spawn/scheduling failure.
+                        QueryStep::Scheduled
+                    } else {
+                        *self.step.lock().unwrap_or_else(|error| error.into_inner())
+                    }),
+                    query_error: Some(error),
+                    ..Failure::new(Stage::Query)
+                })
+            })
+    }
+}
 
 /// Only portable values cross UI Automation query threads. An absent or
 /// implausible provider identity can never identify the synthetic editor.
@@ -62,6 +133,8 @@ pub(crate) enum Stage {
 pub(crate) struct Failure {
     pub stage: Stage,
     pub code: Option<i32>,
+    pub query_step: Option<QueryStep>,
+    pub query_error: Option<QueryFailure>,
     pub owned: Option<bool>,
     pub focused: Option<bool>,
     pub editor_kind: Option<EditorKind>,
@@ -76,6 +149,8 @@ impl Failure {
         Self {
             stage,
             code: None,
+            query_step: None,
+            query_error: None,
             owned: None,
             focused: None,
             editor_kind: None,
@@ -812,6 +887,79 @@ mod tests {
             assert_eq!(failure.focused, primary.focused);
             assert!(format!("{failure:?}").len() < 320);
         }
+    }
+
+    #[test]
+    fn query_failures_keep_the_native_code_and_the_active_substep() {
+        for step in [
+            QueryStep::Scheduled,
+            QueryStep::Automation,
+            QueryStep::ElementFromHandle,
+            QueryStep::EditorCondition,
+            QueryStep::FindEditors,
+            QueryStep::ClassifyEditors,
+            QueryStep::SetFocus,
+            QueryStep::FocusedElement,
+            QueryStep::CompareFocus,
+            QueryStep::ValidateClassic,
+            QueryStep::Identity,
+            QueryStep::Password,
+            QueryStep::ReadDocument,
+        ] {
+            let failure = Query::default()
+                .run(Duration::from_secs(1), move |progress| {
+                    progress(step);
+                    Err::<(), _>(Failure {
+                        // Synthetic HRESULT, without any provider message.
+                        code: Some(0x80004005_u32 as i32),
+                        ..Failure::new(Stage::Automation)
+                    })
+                })
+                .expect_err("a native error cannot qualify the editor");
+            assert_eq!(failure.stage, Stage::Automation);
+            assert_eq!(failure.code, Some(0x80004005_u32 as i32));
+            assert_eq!(failure.query_step, Some(step));
+            assert_eq!(failure.query_error, None);
+        }
+    }
+
+    #[test]
+    fn busy_readiness_queries_keep_the_timed_out_calls_progress() {
+        let worker = Query::default();
+        let (started, observed) = std::sync::mpsc::channel();
+        let (release, held) = std::sync::mpsc::channel::<()>();
+        let (finished, done) = std::sync::mpsc::channel();
+        let failure = worker
+            .run(Duration::ZERO, move |progress| {
+                progress(QueryStep::FindEditors);
+                started.send(()).unwrap();
+                let _ = held.recv();
+                let _ = finished.send(());
+                Ok(())
+            })
+            .expect_err("a blocked provider cannot complete within the caller deadline");
+        assert_eq!(failure.stage, Stage::Query);
+        assert_eq!(failure.query_error, Some(QueryFailure::Timeout));
+        observed.recv_timeout(Duration::from_secs(1)).unwrap();
+        let busy = worker
+            .run(Duration::ZERO, |_| -> Result<(), Failure> {
+                panic!("a busy probe must not start or replace progress")
+            })
+            .expect_err("the timed-out call still holds the permit");
+        assert_eq!(busy.stage, Stage::Query);
+        assert_eq!(busy.query_error, Some(QueryFailure::Busy));
+        assert_eq!(busy.query_step, Some(QueryStep::FindEditors));
+        drop(release);
+        done.recv_timeout(Duration::from_secs(1)).unwrap();
+
+        let disconnected = Query::default()
+            .run(Duration::from_secs(1), |progress| -> Result<(), Failure> {
+                progress(QueryStep::FocusedElement);
+                panic!("synthetic provider panic")
+            })
+            .expect_err("a panicking query disconnects its receiver");
+        assert_eq!(disconnected.query_error, Some(QueryFailure::Disconnected));
+        assert_eq!(disconnected.query_step, Some(QueryStep::FocusedElement));
     }
 
     #[test]
