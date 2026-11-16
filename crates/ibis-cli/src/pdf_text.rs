@@ -210,7 +210,8 @@ fn type1_encoding(document: &Document, font: &Dictionary) -> Option<Dictionary> 
     let stream = descriptor.get_deref(b"FontFile", document).ok()?.as_stream().ok()?;
     let length = usize::try_from(stream.dict.get(b"Length1").ok()?.as_i64().ok()?).ok()?;
     let data = stream.get_plain_content_with_limit(MAX_STREAM_BYTES).ok()?;
-    let program = std::str::from_utf8(data.get(..length)?).ok()?;
+    // A notice may hold Latin-1 bytes; the vector itself is ASCII.
+    let program = String::from_utf8_lossy(data.get(..length)?);
     let mut tokens = program
         .lines()
         .flat_map(|line| line.split('%').next().unwrap_or_default().split_ascii_whitespace())
