@@ -111,11 +111,12 @@ nor reports a status. Keep the worktree until the PR merges, then run
 `land.sh end NAME`.
 
 [CI](../.github/workflows/ci.yml) runs on in-repository PRs and pushes to main.
-**CI result** is the required merge check: interface build, `Test` and
-`Desktop` suites, web/script tests, dependency policy, commit identities and
-the Linux release checks (release mode, minimum Rust, budgets) must all pass, so
-a release tag never meets a check its commits skipped. Every PR and every push to main runs `Test` and `Desktop` on
-Ubuntu, macOS and Windows. Fork PRs skip every job, so their **CI result**
+**CI result** is the required merge check: interface build, the `Rust and
+desktop` suite, web/script tests, dependency policy, commit identities and the
+Linux release checks (release mode, minimum Rust, budgets) must all pass, so a
+release tag never meets a check its commits skipped. Every PR and every push to
+main runs `Rust and desktop` on Ubuntu, macOS and Windows, one job per system so
+each takes a single hosted runner. Fork PRs skip every job, so their **CI result**
 fails; they keep read-only title feedback.
 
 Daily/manual runs add WebKit, five minutes each of fuzzing the
