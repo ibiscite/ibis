@@ -24,7 +24,7 @@ test("picture gate compares decoded pixels, enforces tolerance and writes a read
   const run = () => spawnSync(process.execPath, [script, baseline, actual, diffs], { encoding: "utf8", timeout: 5000 });
   let result = run();
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /empty.*refresh_pictures=true/s);
+  assert.match(result.stderr, /empty.*update-picture-baselines/s);
   await writeFile(path.join(baseline, "screen.png"), picture());
   result = run();
   assert.equal(result.status, 1);

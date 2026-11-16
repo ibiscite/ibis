@@ -8,7 +8,7 @@ const [baseline, actual, diffs] = process.argv.slice(2);
 if (!baseline || !actual || !diffs) throw new Error("Usage: check-pictures.mjs BASELINES ACTUAL DIFFS");
 const pictures = async (dir) => (await readdir(dir)).filter((name) => name.endsWith(".png")).sort();
 const expected = await pictures(baseline);
-if (!expected.length) throw new Error("Picture baselines are empty. Run CI with refresh_pictures=true on this branch, then bash scripts/update-picture-baselines.sh RUN_ID; review and commit the PNGs (see docs/testing.md).");
+if (!expected.length) throw new Error("Picture baselines are empty. Seed them from this failed run: bash scripts/update-picture-baselines.sh RUN_ID; review and commit the PNGs (see docs/testing.md).");
 const rendered = await pictures(actual);
 if (!rendered.length) throw new Error("No pictures were rendered.");
 const failures = [];

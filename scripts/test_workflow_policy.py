@@ -59,7 +59,7 @@ class CiResultTest(unittest.TestCase):
             self.assertEqual(jobs[name]["if"], FORK_GUARD)
         self.assertEqual(jobs["rust"]["strategy"]["matrix"]["os"], ["ubuntu-24.04", "macos-15", "windows-2025"])
         self.assertEqual(jobs["rust"]["needs"], "interface")
-        self.assertNotIn("if", jobs["release-checks"])
+        self.assertEqual(jobs["release-checks"]["if"], FORK_GUARD)
 
     def test_dependency_rules_and_identities_remain_in_confirmation(self):
         jobs = self.workflow["jobs"]
