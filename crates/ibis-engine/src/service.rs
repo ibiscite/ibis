@@ -22,7 +22,7 @@ use std::{
 
 #[path = "health.rs"]
 pub mod health;
-mod sources;
+pub(crate) mod sources;
 pub use sources::{PreparedFileReload, PreparedZoteroReload};
 
 pub(crate) mod formatting;

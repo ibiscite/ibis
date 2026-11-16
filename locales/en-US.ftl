@@ -281,6 +281,7 @@ app-library-retained-not-updated = the retained library { $name } could not be u
 app-library-not-refreshed = The library could not be refreshed; keeping the last loaded references.
 app-library-retained-not-refreshed = The retained library could not be refreshed; keeping the last loaded references.
 app-library-state-unavailable = library state is unavailable
+app-library-not-saved = the library opened but could not be saved for next time: { $error }
 app-command-snapshot-changed = The library changed. Search again.
 app-command-library-loading = library is loading
 app-command-cancelled = cancelled
