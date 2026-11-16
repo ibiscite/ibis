@@ -1,11 +1,14 @@
 // Renders every canvas scenario from the real bundle, in light and dark, for the design canvas.
-// IBIS_PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs pnpm -C apps/desktop canvas
+// node gallery/canvas.mjs DIST OUTPUT [chromium|webkit]; Chromium is the default.
+// IBIS_PLAYWRIGHT_MODULE may override the installed playwright-core module.
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
-const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE);
+const engines = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright-core");
+const engine = process.argv[4] || "chromium";
+if (!["chromium", "webkit"].includes(engine)) throw new Error(`Unknown browser engine: ${engine}`);
 const dist = process.argv[2], out = process.argv[3];
 await mkdir(out, { recursive: true });
-const browser = await chromium.launch({ headless: true });
+const browser = await engines[engine].launch({ headless: true });
 const size = (scenario) => scenario === "notice" ? { width: 560, height: 100 }
   : boards(scenario) ? { width: 920, height: 560 } : scenario === "reader" ? { width: 1000, height: 760 } : { width: 720, height: 480 };
 // Boards and Settings pages are captured whole: the window grows until nothing
@@ -53,7 +56,7 @@ for (const scenario of scenarios) for (const mode of modes) for (const theme of 
     await page.setViewportSize({ width: viewport.width, height: viewport.height + Math.ceil(more) });
     await page.waitForTimeout(200);
   }
-  await page.screenshot({ path: `${out}/${scenario}-${theme}${mode.suffix}.png` });
+  await page.screenshot({ path: `${out}/${scenario}-${theme}${mode.suffix}.png`, animations: "disabled" });
   // The layout rules (canvas/geometry.ts) hold in every mode and theme.
   for (const broken of await page.evaluate(() => window.IbisCanvas.geometry())) errors.push(`layout ${broken}`);
   pictures++;
