@@ -3,7 +3,7 @@
 # qualification is daily/manual.
 set -euo pipefail
 echo "Results: $RESULTS; qualification: $QUALIFICATION"
-[ "$RESULTS" = 'success success success success success' ] || { echo '::error::A CI job did not pass.'; exit 1; }
+[ "$RESULTS" = 'success success success success success success' ] || { echo '::error::A CI job did not pass.'; exit 1; }
 case "$EVENT" in
   pull_request|push) expected='skipped skipped skipped skipped';;
   schedule|workflow_dispatch) expected='success success success success';;

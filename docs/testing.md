@@ -46,7 +46,12 @@ and inspect the `.snap` diff.
 | CLI/MCP fixtures | [Canonical cases](../fixtures/cases/README.md), [formatted fixtures](../fixtures/formatted/README.md), schemas and error transcripts. | Covers only the requests each front end can express. |
 | Interface tests | Picker, Settings, keyboard, composition, delayed replies and accessibility structure with shared IPC/delivery fakes; the canvas checks portalled citation details and Reader. | jsdom and synthetic events do not exercise native clipboard/input APIs, a real input method or screen reader. |
 | Native WebKit canvas | System WebKit colours and measured layout rules on macOS. | Startup pictures are not reviewed visual-state comparisons. |
+| Picture gate | Every canvas PNG matches the committed visual spec in `apps/desktop/gallery/baselines/`, using pinned Linux WebKit and fonts. | Does not replace visual review or native platform checks. |
 | Script tests | Workflow helpers, packages, publication, update feeds, budgets and Markdown links. | Native helpers have separate platform requirements. |
+
+Committed pictures are the visual spec: CI rejects missing/extra pictures, dimension changes, or more than 0.01% differing pixels (pixelmatch threshold 0.1); failures attach actuals and diffs.
+To refresh, run `gh workflow run ci.yml --ref BRANCH -f refresh_pictures=true`, then `bash scripts/update-picture-baselines.sh RUN_ID`; review and commit the PNGs with the visual change.
+Generate baselines only through that pinned CI image, never locally; an empty baseline folder fails until seeded this way.
 
 The weekly [style workflow](../.github/workflows/styles.yml) renders invented
 records against pinned and newest upstream styles, locales and citeproc-js.
@@ -112,7 +117,7 @@ nor reports a status. Keep the worktree until the PR merges, then run
 
 [CI](../.github/workflows/ci.yml) runs on in-repository PRs and pushes to main.
 **CI result** is the required merge check: interface build, `Test` and
-`Desktop` suites, web/script tests, dependency policy and commit identities
+`Desktop` suites, web/script tests, picture comparisons, dependency policy and commit identities
 must all pass. Every PR and every push to main runs `Test` and `Desktop` on
 Ubuntu, macOS and Windows. Fork PRs skip every job, so their **CI result**
 fails; they keep read-only title feedback.

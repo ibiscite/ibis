@@ -55,7 +55,7 @@ class CiResultTest(unittest.TestCase):
         self.assertEqual(events["push"], {"branches": ["main"]})
         self.assertEqual(events["pull_request"], {"branches": ["main"]})
         jobs = self.workflow["jobs"]
-        for name in ["interface", "test", "web", "desktop", "dependencies"]:
+        for name in ["interface", "test", "web", "pictures", "desktop", "dependencies"]:
             self.assertEqual(jobs[name]["if"], FORK_GUARD)
         for name in ["test", "desktop"]:
             self.assertEqual(jobs[name]["strategy"]["matrix"]["os"], ["ubuntu-24.04", "macos-15", "windows-2025"])
