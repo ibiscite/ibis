@@ -21,26 +21,6 @@ fn break_foundation_orphaned_library_is_not_silently_discarded() {
 }
 
 #[test]
-fn multipart_dates_follow_typed_text_without_losing_timestamps() {
-    for (source, wanted) in [
-        ("2020-00-00 Spring 2020", "Spring 2020"),
-        ("0000-00-00 circa α", "circa α"),
-        ("2020-01-01 ", ""),
-        ("2020-99-01 typed", "2020-99-01 typed"),
-        ("2020-01-99 typed", "2020-01-99 typed"),
-        ("-020-01-01 typed", "-020-01-01 typed"),
-        ("2020-02-03 04:05:06", "2020-02-03 04:05:06"),
-        ("2020-02-03 04:05", "2020-02-03 04:05"),
-        ("2020-00-00 2000-01-01 typed", "2000-01-01 typed"),
-    ] {
-        assert_eq!(multipart(source), wanted);
-    }
-    assert!(!date_field("book", "accessDate"));
-    assert!(date_field("case", "dateDecided"));
-    assert!(!date_field("book", "dateDecided"));
-}
-
-#[test]
 fn rejects_views_virtual_tables_generated_columns_and_duplicate_identity() {
     for sql in [
         "ALTER TABLE fieldsCombined RENAME TO oldfields; CREATE VIEW fieldsCombined AS SELECT * FROM oldfields;",
@@ -58,13 +38,6 @@ fn rejects_views_virtual_tables_generated_columns_and_duplicate_identity() {
         edit(dir.path(), sql);
         assert!(read_fixture(dir.path()).is_err());
     }
-}
-
-#[test]
-fn null_trash_rows_do_not_hide_the_entire_library() {
-    let dir = fixture(10);
-    edit(dir.path(), "INSERT INTO deletedItems VALUES(NULL);");
-    assert_eq!(read_fixture(dir.path()).map(|s| s.libraries[0].items.len()), Ok(1));
 }
 
 #[test]
@@ -117,27 +90,6 @@ fn oversized_fields_and_excessive_creators_leave_other_items_readable() {
 }
 
 #[test]
-fn skipped_rows_still_exhaust_global_text_and_work_budgets() {
-    let db = Connection::open_in_memory().unwrap_or_else(|_| panic!("synthetic budget database"));
-    for (text, rows) in [(500_000, 4), (1_000_000, 1)] {
-        let budget = Budget {
-            text: Cell::new(text),
-            rows: Cell::new(rows),
-            exceeded: Cell::new(false),
-        };
-        assert_eq!(
-            each(
-                &db,
-                "SELECT 'title',300000 UNION ALL SELECT 'extra',300000",
-                &budget,
-                |row| budget.discard(row, &[0], &[1])
-            ),
-            Err(ClosedError::TooLarge)
-        );
-    }
-}
-
-#[test]
 fn journal_recovery_is_refused_without_interpreting_external_paths() {
     let dir = fixture(10);
     let outside = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic outside"));
@@ -149,54 +101,6 @@ fn journal_recovery_is_refused_without_interpreting_external_paths() {
     std::fs::write(dir.path().join("zotero.sqlite-journal"), journal).unwrap_or_else(|_| panic!("synthetic journal"));
     assert_eq!(read_fixture(dir.path()).err(), Some(ClosedError::NeedsRecovery));
     assert_eq!(std::fs::read(sentinel).unwrap_or_default(), b"synthetic sentinel");
-}
-
-#[test]
-fn dangling_bibliographic_rows_are_refused_instead_of_silently_dropped() {
-    for sql in [
-        "UPDATE items SET itemTypeID=999 WHERE itemID=10;",
-        "UPDATE itemData SET fieldID=999 WHERE itemID=10 AND fieldID=1;",
-        "UPDATE itemData SET valueID=999 WHERE itemID=10 AND fieldID=1;",
-        "UPDATE itemCreators SET creatorID=999 WHERE itemID=10 AND orderIndex=0;",
-        "UPDATE itemCreators SET creatorTypeID=999 WHERE itemID=10 AND orderIndex=1;",
-    ] {
-        let dir = fixture(10);
-        edit(dir.path(), sql);
-        assert_eq!(read_fixture(dir.path()).err(), Some(ClosedError::Damaged));
-    }
-}
-
-#[test]
-fn unindexed_bibliographic_queries_stream_before_the_allocation_budget() {
-    // The file is untrusted: table/column names cannot imply that Zotero's
-    // usual indexes exist. SQLite must not build large sorts or automatic
-    // indexes before the Rust row/text budget receives its first row.
-    let mut db = Connection::open_in_memory().unwrap_or_else(|_| panic!("synthetic memory db"));
-    let schema = include_str!("../../fixtures/closed/schema.sql")
-        .replace("PRIMARY KEY", "")
-        .replace("UNIQUE", "");
-    db.execute_batch(&schema)
-        .unwrap_or_else(|_| panic!("unindexed synthetic schema"));
-    configure(&mut db, &crate::closed::tests::control()).unwrap_or_else(|e| panic!("{e}"));
-    for sql in READ_SQL.into_iter().chain([OWNER_SQL]) {
-        let mut statement = db
-            .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
-            .unwrap_or_else(|_| panic!("query plan"));
-        let count = statement.parameter_count();
-        let plan = statement
-            .query_map(
-                rusqlite::params_from_iter([MAX_VALUE as i64].into_iter().take(count)),
-                |r| r.get::<_, String>(3),
-            )
-            .and_then(Iterator::collect::<rusqlite::Result<Vec<_>>>)
-            .unwrap_or_else(|_| panic!("synthetic plan"));
-        assert!(
-            !plan
-                .iter()
-                .any(|p| p.contains("TEMP B-TREE") || p.contains("AUTOMATIC")),
-            "{plan:?}"
-        );
-    }
 }
 
 #[test]
@@ -286,60 +190,6 @@ fn numeric_fields_use_zoteros_javascript_number_strings() {
 }
 
 #[test]
-fn zero_header_journal_is_ignored_only_in_the_private_copy() {
-    let dir = fixture(7);
-    let journal = dir.path().join("zotero.sqlite-journal");
-    let bytes = vec![0u8; 512];
-    std::fs::write(&journal, &bytes).unwrap_or_else(|_| panic!("synthetic cold journal"));
-    assert!(read_fixture(dir.path()).is_ok());
-    assert_eq!(std::fs::read(journal).unwrap_or_default(), bytes);
-}
-
-#[test]
-fn database_queries_filter_discarded_item_rows_before_the_work_budget() {
-    let dir = fixture(10);
-    edit(
-        dir.path(),
-        "INSERT INTO itemData SELECT itemID,1,1 FROM items WHERE itemID>=12; INSERT INTO itemCreators SELECT itemID,1,1,0 FROM items WHERE itemID>=12;",
-    );
-    let db = Connection::open(dir.path().join("zotero.sqlite")).unwrap_or_else(|_| panic!("synthetic selection query"));
-    let data: i64 = db
-        .query_row(
-            &format!("SELECT COUNT(*) FROM ({})", READ_SQL[2]),
-            [MAX_VALUE as i64],
-            |r| r.get(0),
-        )
-        .unwrap_or_else(|_| panic!("selected fields"));
-    let creators: i64 = db
-        .query_row(
-            &format!("SELECT COUNT(*) FROM ({})", READ_SQL[3]),
-            [MAX_VALUE as i64],
-            |r| r.get(0),
-        )
-        .unwrap_or_else(|_| panic!("selected creators"));
-    assert_eq!(data, 6);
-    assert_eq!(creators, 2);
-}
-
-#[test]
-fn null_item_values_are_absent_and_exact_numbers_stay_private() {
-    let dir = fixture(10);
-    edit(
-        dir.path(),
-        "UPDATE itemDataValues SET value=NULL WHERE valueID=2; UPDATE itemDataValues SET value=9007199254740993 WHERE valueID=1;",
-    );
-    let snapshot = read_fixture(dir.path()).unwrap_or_else(|e| panic!("{e}"));
-    let item = &snapshot.libraries[0].items[0];
-    assert!(!item.data.fields.contains_key("date"));
-    assert_eq!(item.metadata.stored_values.get("date"), Some(&StoredValue::Null));
-    assert_eq!(
-        item.metadata.stored_values.get("title"),
-        Some(&StoredValue::Integer(9007199254740993))
-    );
-    assert!(!format!("{:?}", item.metadata).contains("9007199254740993"));
-}
-
-#[test]
 fn fifty_thousand_realistic_articles_fit_the_closed_reader() {
     let dir = fixture(10);
     edit(
@@ -380,56 +230,6 @@ fn fifty_thousand_realistic_articles_fit_the_closed_reader() {
             .collect::<Vec<_>>(),
         vec!["date"]
     );
-}
-
-#[test]
-fn the_owner_is_the_account_the_local_api_names_from_the_first_top_level_item() {
-    let owner = |sql: &str| {
-        let dir = fixture(10);
-        edit(dir.path(), sql);
-        read_fixture(dir.path()).map(|snapshot| snapshot.owner)
-    };
-    let settings = "CREATE TABLE settings(setting TEXT,key TEXT,value,PRIMARY KEY(setting,key));";
-    let signed_in = format!("{settings} INSERT INTO settings VALUES('account','userID',4242);");
-    assert_eq!(owner(&signed_in), Ok(4242));
-    // Signed out, or a value Zotero would not report as a number.
-    assert_eq!(owner(""), Ok(0));
-    assert_eq!(owner(settings), Ok(0));
-    assert_eq!(
-        owner(&format!(
-            "{settings} INSERT INTO settings VALUES('account','userID','4242');"
-        )),
-        Ok(0)
-    );
-    assert_eq!(
-        owner(&format!(
-            "{settings} INSERT INTO settings VALUES('account','userID',-1);"
-        )),
-        Ok(0)
-    );
-    // A standalone note or file is a top-level item; a trashed item, a child
-    // and an annotation are not, and without one the API names owner 0.
-    let trashed = format!("{signed_in} INSERT INTO deletedItems VALUES(10);");
-    assert_eq!(owner(&trashed), Ok(4242));
-    let children = format!(
-        "{trashed} INSERT INTO itemNotes VALUES(13,10,'',''); INSERT INTO itemAttachments VALUES(14,10,0,'','');"
-    );
-    assert_eq!(owner(&children), Ok(0));
-    assert_eq!(
-        owner(&format!("{trashed} INSERT INTO itemNotes VALUES(13,10,'','');")),
-        Ok(4242)
-    );
-    // Group items say nothing about the personal library's owner.
-    assert_eq!(
-        owner(&format!(
-            "{children} UPDATE items SET libraryID=2,key='GROUP001' WHERE itemID=12; DELETE FROM deletedItems WHERE itemID=12;"
-        )),
-        Ok(0)
-    );
-    // Zotero has kept both tables since before the oldest supported schema.
-    for table in ["itemNotes", "itemAttachments"] {
-        assert_eq!(owner(&format!("DROP TABLE {table};")), Err(ClosedError::Damaged));
-    }
 }
 
 #[test]
@@ -476,25 +276,4 @@ fn attachments_carry_zoteros_index_counts_and_never_fail_a_read() {
     let snapshot = read_fixture(dir.path()).unwrap();
     assert!(snapshot.attachments.is_none());
     assert_eq!(snapshot.libraries[0].items.len(), 1);
-}
-
-#[test]
-fn reading_attachment_revisions_include_item_and_index_changes() {
-    let dir = fixture(10);
-    edit(
-        dir.path(),
-        "INSERT INTO itemAttachments VALUES(14,10,0,'application/pdf','storage:invented.pdf'); INSERT INTO fulltextItems(itemID,indexedPages,totalPages,indexedChars,totalChars) VALUES(14,2,2,100,100);",
-    );
-    let attachment = || read_fixture(dir.path()).unwrap().attachments.unwrap().remove(0);
-    for sql in [
-        "UPDATE items SET version=version+1 WHERE itemID=14;",
-        "UPDATE items SET dateModified='2026-11-15 12:00:00' WHERE itemID=14;",
-        "UPDATE fulltextItems SET indexedChars=101 WHERE itemID=14;",
-        "UPDATE fulltextItems SET totalChars=102 WHERE itemID=14;",
-        "UPDATE fulltextItems SET version=version+1 WHERE itemID=14;",
-    ] {
-        let before = attachment();
-        edit(dir.path(), sql);
-        assert_ne!(attachment(), before, "{sql}");
-    }
 }

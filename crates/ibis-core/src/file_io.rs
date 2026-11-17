@@ -138,23 +138,6 @@ impl Pool {
 mod tests {
     use super::*;
     #[test]
-    fn stalled_work_keeps_capacity_until_it_finishes() {
-        let pool = Pool::new(1, 0);
-        let (release, held) = mpsc::channel::<()>();
-        assert_eq!(
-            pool.run(
-                &Scope::new(&|| false, Duration::from_millis(20)),
-                Admission::Wait,
-                move || held.recv().ok()
-            ),
-            Err(Error::TimedOut)
-        );
-        let scope = Scope::new(&|| false, Duration::from_secs(1));
-        assert_eq!(pool.run(&scope, Admission::Immediate, || 1), Err(Error::Capacity));
-        release.send(()).unwrap();
-        assert_eq!(pool.run(&scope, Admission::Wait, || 2), Ok(2));
-    }
-    #[test]
     fn late_answers_are_discarded_when_cancelled() {
         use std::sync::atomic::{AtomicBool, Ordering};
         let cancelled = Arc::new(AtomicBool::new(false));

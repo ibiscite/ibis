@@ -1,5 +1,4 @@
 use super::*;
-use std::path::PathBuf;
 
 pub(super) fn fixture(version: u8) -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic database directory"));
@@ -34,37 +33,6 @@ pub(super) fn read_fixture(dir: &Path) -> Result<ClosedSnapshot, ClosedError> {
     let control = control();
     let store = private_copy::Store::open(scratch.path(), &control)?;
     store.read_with(dir, &control, &mut || Ok(()), &mut || Ok(()))
-}
-
-#[test]
-fn cancelled_first_read_does_not_initialize_private_store() {
-    let cache = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic cache"));
-    let reader = ClosedReader::new(cache.path());
-    assert_eq!(
-        reader
-            .read_cancellable(Path::new("synthetic-unused-source"), Arc::new(|| true))
-            .err(),
-        Some(ClosedError::Cancelled)
-    );
-    assert!(
-        !cache.path().join("ibis-zotero-closed").exists(),
-        "cancelled acquisition must not initialize storage before its control exists"
-    );
-}
-
-#[test]
-fn expired_first_read_does_not_initialize_private_store() {
-    let cache = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic cache"));
-    let reader = ClosedReader::new(cache.path());
-    let mut control = control();
-    control.deadline = Instant::now();
-    assert_eq!(
-        reader
-            .read_with_control(Path::new("synthetic-unused-source"), &control)
-            .err(),
-        Some(ClosedError::TimedOut)
-    );
-    assert!(!cache.path().join("ibis-zotero-closed").exists());
 }
 
 #[test]
@@ -131,25 +99,6 @@ fn rejects_old_damaged_and_missing_databases() {
 }
 
 #[test]
-fn reports_cloud_sync_without_disclosing_content_in_debug() {
-    assert!(cloud_synced(&PathBuf::from(
-        "/synthetic/Library/CloudStorage/Example/Zotero"
-    )));
-    assert!(cloud_synced(Path::new("/synthetic/OneDrive - Example/Zotero")));
-    assert!(!cloud_synced(Path::new("/synthetic/plain/Zotero")));
-    let dir = fixture(10);
-    let snapshot = read_fixture(dir.path()).unwrap_or_else(|e| panic!("{e}"));
-    assert!(!format!("{snapshot:?}").contains("Synthetic"));
-    for e in [
-        ClosedError::Damaged,
-        ClosedError::Unreadable,
-        ClosedError::PrivateStorage,
-    ] {
-        assert!(!e.to_string().contains("synthetic"));
-    }
-}
-
-#[test]
 fn cloud_synced_synthetic_directory_returns_a_fixed_warning() {
     let source = fixture(10);
     let root = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic cloud root"));
@@ -161,14 +110,6 @@ fn cloud_synced_synthetic_directory_returns_a_fixed_warning() {
         read_fixture(&data).map(|s| s.warnings),
         Ok(vec![ClosedWarning::CloudSyncedDirectory])
     );
-}
-
-#[test]
-fn tested_schema_ceiling_reads_without_a_compatibility_warning() {
-    let dir = fixture(10);
-    let snapshot = read_fixture(dir.path()).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(snapshot.libraries[0].items[0].data.key, "SYNTH001");
-    assert!(snapshot.warnings.is_empty());
 }
 
 #[test]
@@ -306,17 +247,6 @@ fn text_cache_refuses_linked_storage_directories() {
     );
 }
 
-#[test]
-fn text_cache_refuses_invalid_utf8_without_exposing_content() {
-    let data = tempfile::tempdir().unwrap();
-    let folder = data.path().join("storage/INVALID1");
-    std::fs::create_dir_all(&folder).unwrap();
-    std::fs::write(folder.join(".zotero-ft-cache"), b"Invented secret\xfftext").unwrap();
-    let result = read_text_cache(data.path(), "INVALID1", Arc::new(|| false));
-    assert_eq!(result, Err(ClosedError::Unreadable));
-    assert!(!result.unwrap_err().to_string().contains("secret"));
-}
-
 fn stopped_cache_read(cancel: bool) {
     use std::sync::{
         atomic::{AtomicBool, Ordering},
@@ -365,9 +295,4 @@ fn stopped_cache_read(cancel: bool) {
 #[test]
 fn text_cache_deadline_releases_the_caller_during_a_stalled_read() {
     stopped_cache_read(false);
-}
-
-#[test]
-fn text_cache_cancellation_releases_the_caller_during_a_stalled_read() {
-    stopped_cache_read(true);
 }

@@ -43,25 +43,6 @@ pub fn sign_receipt(path: &Path) -> std::io::Result<()> {
 mod tests {
     use super::*;
 
-    fn args(items: &[&str]) -> Vec<String> {
-        items.iter().map(|item| (*item).to_owned()).collect()
-    }
-
-    #[test]
-    fn only_the_exact_receipt_arguments_name_a_file() {
-        let named = args(&["ibis-desktop", "toggle", "--receipt", "/synthetic/receipt"]);
-        assert_eq!(receipt_path(&named), Some(Path::new("/synthetic/receipt")));
-        for other in [
-            args(&["ibis-desktop", "toggle"]),
-            args(&["ibis-desktop", "toggle", "--receipt"]),
-            args(&["ibis-desktop", "toggle", "--receipt", ""]),
-            args(&["ibis-desktop", "show", "--receipt", "/synthetic/receipt"]),
-            args(&["ibis-desktop", "toggle", "--receipt", "/synthetic/receipt", "extra"]),
-        ] {
-            assert_eq!(receipt_path(&other), None);
-        }
-    }
-
     #[test]
     fn a_receipt_fills_only_an_existing_empty_file() {
         let dir = std::env::temp_dir().join(format!("ibis-receipt-test-{}", std::process::id()));

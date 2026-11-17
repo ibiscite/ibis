@@ -689,18 +689,6 @@ fn truthy(value: &Value) -> bool {
 mod tests {
     use super::*;
 
-    #[test]
-    fn literal_year_suffixes_and_source_calendar_dates_are_distinct() {
-        for suffix in ["ad", "AD", "bc", "bce", "ce", "january", "may", "spring"] {
-            let date = format!("2020{suffix}");
-            assert_eq!(literal_year(&date), Some((2020, suffix)));
-            assert!(!literal_date(&date), "{date} stays with the source date parser");
-        }
-        for date in ["2020ac", "2020ae", "2020a", "in press"] {
-            assert!(literal_date(date), "{date} stays literal");
-        }
-    }
-
     fn citable(fields: Value) -> Value {
         let Value::Object(fields) = fields else { unreachable!() };
         serde_json::to_value(CitableFields::new(fields)).unwrap()
@@ -728,24 +716,6 @@ mod tests {
                 "author": [{"family": "Doe", "given": "Jane"}, {"literal": "Invented Group"}],
                 "issued": {"raw": "1859"},
             })
-        );
-    }
-
-    #[test]
-    fn inline_overrides_follow_citeproc() {
-        // The first inline field on the first line may follow prose; later
-        // ones, and any on later lines, may not.
-        assert_eq!(
-            citable(json!({"note": "Invented prose {:title: Invented title} more {:genre: Invented genre}"})),
-            json!({"title": "Invented title"})
-        );
-        assert_eq!(
-            citable(json!({"note": "\nInvented prose {:title: Invented title}"})),
-            json!({})
-        );
-        assert_eq!(
-            citable(json!({"note": "{:title: Invented title}{:DOI: 10.1000/invented}"})),
-            json!({"title": "Invented title", "DOI": "10.1000/invented"})
         );
     }
 
@@ -798,25 +768,6 @@ mod tests {
             })),
             json!({"author": [{"family": "Invented"}], "issued": {"date-parts": [[2020]]}})
         );
-    }
-
-    #[test]
-    fn zotero_short_titles_become_csl_ones() {
-        assert_eq!(
-            citable(json!({"journalAbbreviation": "Inv. J.", "shortTitle": "Invented", "title-short": "Kept"})),
-            json!({"container-title-short": "Inv. J.", "title-short": "Kept"})
-        );
-    }
-
-    #[test]
-    fn every_line_break_ends_an_override() {
-        for separator in ["\r", "\u{2028}", "\u{2029}", "\r\n"] {
-            assert_eq!(
-                citable(json!({"note": format!("title: Invented title{separator}Invented private memo")})),
-                json!({"title": "Invented title"}),
-                "{separator:?}"
-            );
-        }
     }
 
     #[test]

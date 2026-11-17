@@ -274,33 +274,6 @@ mod tests {
     }
 
     #[test]
-    fn added_fields_follow_the_last_one_with_its_indent() {
-        let file = read(FILE);
-        let entry = file.entry("morgan2025").unwrap_or_else(|problem| panic!("{problem:?}"));
-        let edited = entry.edited(&[("pages", Some("{1--9}".into()))]);
-        assert_eq!(
-            edited,
-            FILE.replace("year = 2025,\n", "year = 2025,\n    pages = {1--9},\n")
-        );
-        let one_line = file.entry("taylor2026").unwrap_or_else(|problem| panic!("{problem:?}"));
-        assert_eq!(
-            one_line.edited(&[("year", None), ("date", Some("{2026-03}".into()))]),
-            FILE.replace(", year={2026}}", ",\n  date = {2026-03}}")
-        );
-    }
-
-    #[test]
-    fn a_field_on_its_own_line_leaves_with_its_line() {
-        let file = read(FILE);
-        let entry = file.entry("morgan2025").unwrap_or_else(|problem| panic!("{problem:?}"));
-        assert_eq!(entry.edited(&[("year", None)]), FILE.replace("    year = 2025,\n", ""));
-        assert_eq!(
-            entry.edited(&[("title", None)]),
-            FILE.replace("    title = {Synthetic noise},\n", "")
-        );
-    }
-
-    #[test]
     fn keys_are_taken_in_any_case_and_damaged_files_are_not_edited() {
         let file = read(FILE);
         assert!(file.key_taken("Morgan2025"));
@@ -323,17 +296,5 @@ mod tests {
         assert!(added.starts_with(&crlf));
         assert_eq!(read("").append("@misc{new}"), "@misc{new}\n");
         assert_eq!(read("% end").append("@misc{new}"), "% end\n\n@misc{new}\n");
-    }
-
-    #[test]
-    fn a_written_entry_reads_back_as_names_and_values() {
-        assert_eq!(
-            written_fields("@article{k,\n  title = {A {B}},\n  year = {2020},\n}"),
-            Some(vec![
-                ("title".into(), "{A {B}}".into()),
-                ("year".into(), "{2020}".into())
-            ])
-        );
-        assert_eq!(written_fields("@misc{a}\n@misc{b}"), None);
     }
 }

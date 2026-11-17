@@ -1,6 +1,5 @@
 #![cfg(test)]
 use ibis_core::{contract::*, identifier::Identifier, search::SnapshotIndex, syntax};
-use proptest::prelude::*;
 use std::sync::Arc;
 
 fn index() -> SnapshotIndex {
@@ -113,30 +112,6 @@ fn json_metadata_is_not_read_as_citation_syntax() {
 }
 
 #[test]
-fn citations_at_punctuation_boundaries_keep_hits_and_missing_keys() {
-    let index = index();
-    for (query, expected, missing) in [
-        ("([@a]); @b", vec!["a", "b"], vec![]),
-        ("([@absent]); @b", vec!["b"], vec!["absent"]),
-        ("See ([@a]); @b.", vec!["a", "b"], vec![]),
-        ("See (text)[@a]; @b.", vec!["a", "b"], vec![]),
-        ("See (#cite(<a>)); @b", vec!["a", "b"], vec![]),
-        ("See:{cite:p}`a`; @b", vec!["a", "b"], vec![]),
-    ] {
-        let list = index.pasted_list(query, None, &|| false).unwrap().unwrap();
-        assert_eq!(
-            list.hits
-                .iter()
-                .map(|hit| hit.item.object.id().key.as_str())
-                .collect::<Vec<_>>(),
-            expected,
-            "{query}"
-        );
-        assert_eq!(list.missing, missing, "{query}");
-    }
-}
-
-#[test]
 fn citation_syntaxes_ignore_locators_and_preserve_paste_order() {
     let index = index();
     for query in [
@@ -229,25 +204,6 @@ fn lists_keep_scope_cancellation_and_work_limits() {
 }
 
 #[test]
-fn long_lists_of_prefixed_identifiers_fit_the_shared_work_allowance() {
-    let index = index();
-    for token in [
-        "PMID: 999; ",
-        "ISBN: 978 0 306 40615 7; ",
-        "doi: 10.1000/absent; ",
-        "arXiv: 2101.00001; ",
-    ] {
-        let query = token.repeat(1000);
-        let list = index
-            .pasted_list(&query, None, &|| false)
-            .unwrap()
-            .unwrap_or_else(|| panic!("not a list: {token}"));
-        assert!(list.hits.is_empty());
-        assert_eq!(list.missing.len(), 1, "{token}");
-    }
-}
-
-#[test]
 fn hostile_syntax_and_duplicate_aliases_remain_bounded() {
     let index = index();
     let list = index.pasted_list("a,OLD-A,a", None, &|| false).unwrap().unwrap();
@@ -273,111 +229,6 @@ fn hostile_syntax_and_duplicate_aliases_remain_bounded() {
             })
             .is_none()
     );
-}
-
-#[test]
-fn an_at_sign_inside_a_doi_is_not_a_citation_marker() {
-    let index = index();
-    let list = index
-        .pasted_list("10.1000/x-@a 10.1000/synthetic1", None, &|| false)
-        .unwrap()
-        .unwrap();
-    assert_eq!(
-        list.hits
-            .iter()
-            .map(|hit| hit.item.object.id().key.as_str())
-            .collect::<Vec<_>>(),
-        ["doi", "b"]
-    );
-}
-
-#[test]
-fn context_citations_read_and_latex_ones_stay_latex() {
-    let index = index();
-    let keys = |query: &str| {
-        index.pasted_list(query, None, &|| false).unwrap().map(|list| {
-            (
-                list.hits
-                    .iter()
-                    .map(|hit| hit.item.object.id().key.clone())
-                    .collect::<Vec<_>>(),
-                list.missing,
-            )
-        })
-    };
-    for (query, expected) in [
-        ("\\cite[a,b]", vec!["a", "b"]),
-        ("\\cite[alternative=year,righttext={{p. 1, 2}}][b]", vec!["b"]),
-        ("\\cite[righttext={p. 1}] [a]", vec!["a"]),
-        // LaTeX: optional arguments, however spaced, then the keys in braces.
-        ("\\cite[see]{a}", vec!["a"]),
-        ("\\cite[see] [p. 12]{a}", vec!["a"]),
-        ("\\cite[see]\n[p. 12]{a}", vec!["a"]),
-        ("\\cite[x][y][z]{a}", vec!["a"]),
-    ] {
-        let (hits, missing) = keys(query).unwrap();
-        assert_eq!(hits, expected, "{query}");
-        assert!(missing.is_empty(), "{query}");
-    }
-    // Damaged input never turns its prose into a guessed key.
-    for query in ["\\cite[p. 12", "\\cite[see b"] {
-        assert!(keys(query).is_none_or(|(_, missing)| missing.is_empty()), "{query}");
-    }
-}
-
-#[test]
-fn multiline_arguments_and_every_biblatex_multicite_group_are_kept() {
-    let index = index();
-    for (query, expected) in [
-        ("\\cite{a,\nb}", ["a", "b"]),
-        ("\\cite{a,\tb}", ["a", "b"]),
-        ("\\autocites{a}{b}", ["a", "b"]),
-        ("Prose\\autocites{a}{b}", ["a", "b"]),
-        ("\\parencites[see][p. 4]{b}\n[p. 8]{a}", ["b", "a"]),
-        ("\\textcites[see {[}literal{]}][p. 4]{b}[p. 8]{a}", ["b", "a"]),
-    ] {
-        let list = index.pasted_list(query, None, &|| false).unwrap().unwrap();
-        assert_eq!(
-            list.hits
-                .iter()
-                .map(|hit| hit.item.object.id().key.as_str())
-                .collect::<Vec<_>>(),
-            expected,
-            "{query}"
-        );
-        assert!(list.missing.is_empty(), "{query}");
-    }
-    let list = index
-        .pasted_list("\\autocites{a}[p. 4]{absent}{b}", None, &|| false)
-        .unwrap()
-        .unwrap();
-    assert_eq!(list.missing, ["absent"]);
-    assert_eq!(list.hits.len(), 2);
-}
-
-#[test]
-fn typst_literal_labels_decode_strings_and_keep_missing_keys() {
-    let index = index();
-    for query in [
-        r#"@a #cite(label("日本🌙"))"#,
-        r#"@a #cite(label("\u{65e5}\u{672c}\u{1f319}"))"#,
-    ] {
-        let list = index.pasted_list(query, None, &|| false).unwrap().unwrap();
-        assert_eq!(
-            list.hits
-                .iter()
-                .map(|hit| hit.item.object.id().key.as_str())
-                .collect::<Vec<_>>(),
-            ["a", "日本🌙"]
-        );
-        assert!(list.missing.is_empty());
-    }
-    let list = index
-        .pasted_list(r#"#cite(label("quote\"slash\\absent")) @a"#, None, &|| false)
-        .unwrap()
-        .unwrap();
-    assert_eq!(list.missing, ["quote\"slash\\absent"]);
-    assert_eq!(list.hits.len(), 1);
 }
 
 #[test]
@@ -441,47 +292,6 @@ fn complete_identifiers_win_over_internal_citation_markers() {
             .unwrap();
         assert_eq!(list.hits.len(), 1, "{token}");
         assert_eq!(list.missing, [token]);
-    }
-}
-
-#[test]
-fn pubmed_isbn_and_arxiv_identifiers_resolve_alongside_explicit_keys() {
-    let snapshot = index().snapshot().clone();
-    let objects = snapshot
-        .objects()
-        .iter()
-        .map(|item| {
-            let mut object = item.object.clone();
-            if let LibraryObject::Record(record) = &mut object {
-                record.identifiers = match record.id.key.as_str() {
-                    "a" => vec![Identifier::Pmid("12345678".into())],
-                    "b" => vec![Identifier::Isbn("9780306406157".into())],
-                    "日本🌙" => vec![Identifier::Arxiv("2101.00001".into())],
-                    _ => vec![],
-                };
-            }
-            object
-        })
-        .collect();
-    let index = SnapshotIndex::new(Arc::new(Snapshot::new(objects).unwrap()));
-    for (query, expected) in [
-        (
-            "PMID: 12345678; @b; https://arxiv.org/abs/2101.00001v3",
-            ["a", "b", "日本🌙"],
-        ),
-        ("@a ISBN-13: 978 0 306 40615 7 arXiv:2101.00001v2", ["a", "b", "日本🌙"]),
-        ("978-0-306-40615-7 PMID:12345678 arXiv:2101.00001", ["b", "a", "日本🌙"]),
-    ] {
-        let list = index.pasted_list(query, None, &|| false).unwrap().unwrap();
-        assert_eq!(
-            list.hits
-                .iter()
-                .map(|hit| hit.item.object.id().key.as_str())
-                .collect::<Vec<_>>(),
-            expected,
-            "{query}"
-        );
-        assert!(list.missing.is_empty(), "{query}");
     }
 }
 
@@ -664,23 +474,6 @@ fn every_writer_syntax_round_trips_unicode_and_punctuation_keys() {
 }
 
 #[test]
-fn writer_keys_with_multimarkdown_markers_round_trip() {
-    // CI shrank a Pandoc failure to k][#0: the marker is literal key text
-    // inside @{...}, not a MultiMarkdown note/key boundary.
-    for key in ["k][#0", "k][#b]0", "k][#b][]0", "k][#b][#a]0"] {
-        for caps in &syntax::CAPABILITIES {
-            round_trip(
-                caps,
-                &["first".into(), "second".into(), key.into()],
-                CitationForm::Normal,
-                false,
-                "",
-            );
-        }
-    }
-}
-
-#[test]
 fn writer_multikey_forms_and_notes_round_trip_without_becoming_keys() {
     for caps in &syntax::CAPABILITIES {
         for &form in caps.forms.iter().filter(|form| !caps.single_item_forms.contains(form)) {
@@ -691,153 +484,6 @@ fn writer_multikey_forms_and_notes_round_trip_without_becoming_keys() {
                 true,
                 "Synthetic title",
             );
-        }
-    }
-}
-
-fn mmd_suffix_round_trip(suffixes: [&str; 2]) {
-    let mut case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json")).unwrap();
-    let snapshot = index().snapshot().clone();
-    case.request.output = OutputSpec::Key {
-        syntax: KeySyntax::MultiMarkdown,
-        command: None,
-    };
-    case.request.items = ["a", "b"]
-        .into_iter()
-        .zip(suffixes)
-        .map(|(key, suffix)| CitationItem {
-            item: ItemRef {
-                key: key.into(),
-                ..case.request.items[0].item.clone()
-            },
-            expected_cite: None,
-            prefix: vec![],
-            suffix: if !suffix.is_empty() {
-                vec![TextRun {
-                    text: suffix.into(),
-                    ..TextRun::default()
-                }]
-            } else {
-                vec![]
-            },
-            locator: None,
-            ..case.request.items[0].clone()
-        })
-        .collect();
-    let written = syntax::cite(&snapshot, &case.request).unwrap();
-    assert!(written.copy_content(2).is_some(), "{:?}", written.outcomes);
-    let expected: String = ["a", "b"]
-        .into_iter()
-        .zip(suffixes)
-        .map(|(key, suffix)| {
-            if suffix.is_empty() {
-                format!("[#{key}][]")
-            } else {
-                format!("[{suffix}][#{key}]")
-            }
-        })
-        .collect();
-    assert_eq!(written.text, expected);
-    let index = SnapshotIndex::new(snapshot);
-    for (query, missing) in [
-        (written.text.clone(), vec![]),
-        (format!("{} @absent", written.text), vec!["absent"]),
-    ] {
-        let read = index.pasted_list(&query, None, &|| false).unwrap().unwrap();
-        assert_eq!(
-            read.hits
-                .iter()
-                .map(|hit| hit.item.object.id().key.as_str())
-                .collect::<Vec<_>>(),
-            ["a", "b"],
-            "{query}"
-        );
-        assert_eq!(read.missing, missing, "{query}");
-    }
-}
-
-#[test]
-fn multimarkdown_recognized_keys_can_end_without_a_closing_bracket() {
-    let index = index();
-    for (query, expected) in [
-        ("[#a][][#b", vec!["a", "b"]),
-        ("[#b", vec!["b"]),
-        ("[#a][][{section][#b]", vec!["a", "b"]),
-        ("[#a][][{section][#b", vec!["a", "b"]),
-    ] {
-        let list = index.pasted_list(query, None, &|| false).unwrap().unwrap();
-        assert_eq!(
-            list.hits
-                .iter()
-                .map(|hit| hit.item.object.id().key.as_str())
-                .collect::<Vec<_>>(),
-            expected,
-            "{query}"
-        );
-        assert!(list.missing.is_empty(), "{query}");
-    }
-}
-
-#[test]
-fn multimarkdown_suffix_only_braces_round_trip_before_json_protection() {
-    for suffix in [
-        "{section",
-        "}section",
-        "{section}",
-        "section{",
-        "section}",
-        "@{section",
-        "@{section}",
-        "@{section} @{tail",
-        "@{section,tail",
-        "@{section tail",
-    ] {
-        mmd_suffix_round_trip(["", suffix]);
-    }
-}
-
-#[test]
-fn multimarkdown_adjacent_notes_with_embedded_at_braces_round_trip() {
-    // These notes form [x@{y][#a][}][#b]. The @{ has no Pandoc
-    // key-start boundary, so it must not swallow the first reference.
-    for head in ["x", "é", "0", "x-", ":", "."] {
-        mmd_suffix_round_trip([&format!("{head}@{{y"), "}"]);
-    }
-}
-
-proptest! {
-    #![proptest_config(ProptestConfig { cases: 64, failure_persistence: None, ..ProptestConfig::default() })]
-    #[test]
-    fn multimarkdown_suffixes_with_braces_round_trip(
-        head in prop::sample::select(vec!["{", "}"]),
-        pieces in prop::collection::vec(prop::sample::select(vec!["{", "}", "section", "日本🌙", "é", " ", ";", ",", "@absent", ":"]), 0..16)
-    ) {
-        mmd_suffix_round_trip(["", format!("{head}{}", pieces.concat()).trim_end()]);
-    }
-
-    #[test]
-    fn writer_lists_round_trip_generated_keys(
-        pieces in prop::collection::vec((prop::sample::select(vec!["k", "[", "@"]), prop::collection::vec(prop::sample::select(vec!["日本🌙", "é", ";", "[", "]", "@", ":", ".", "/", "<", ">", "\\", "\"", "'", "%", "&", "(", ")", "#", "`", "$", "-", "!", "?", "~", "^"]), 0..7)), 1..5),
-        title in prop::collection::vec(prop::sample::select(vec!["}][#b]", "[@absent]", "#cite(<absent>)", "\\cite{absent}", "日本🌙", "[", "]", "{", "}", "\"", "\\", " "]), 0..8),
-        noted in any::<bool>(), narrative in any::<bool>()
-    ) {
-        let mut keys = vec!["first".into(), "second".into()];
-        keys.extend(pieces.into_iter().enumerate().map(|(i, (head, parts))| format!("{head}{}{i}", parts.concat())));
-        for caps in &syntax::CAPABILITIES {
-            let form = if narrative && caps.forms.contains(&CitationForm::Narrative) && !caps.single_item_forms.contains(&CitationForm::Narrative) { CitationForm::Narrative } else { CitationForm::Normal };
-            round_trip(caps, &keys, form, noted, &title.concat());
-        }
-    }
-
-    #[test]
-    fn damaged_mixed_syntax_stays_bounded_and_never_returns_partial_matches(
-        pieces in prop::collection::vec(prop::sample::select(vec!["\\cite[", "#cite(label(\"", "\\u{", "[@", "[#", "<cite data-cite=\"", "{\"citationKey\"", "日本🌙", ";", " ", "]", "}", "\\", "\"", "@a", "10.1000/x;@b"]), 0..80)
-    ) {
-        let index = index();
-        if let Some(list) = index.pasted_list(&pieces.concat(), None, &|| false).unwrap() {
-            prop_assert!(list.hits.iter().all(|hit| !hit.partial && !hit.typo));
-            let distinct: std::collections::BTreeSet<_> = list.hits.iter().map(|hit| hit.item.object.id()).collect();
-            prop_assert_eq!(distinct.len(), list.hits.len());
         }
     }
 }

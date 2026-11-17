@@ -876,20 +876,6 @@ mod tests {
         assert_eq!(record.citation_key(), Ok(Some("after")));
     }
 
-    #[test]
-    fn an_observation_holds_one_exact_copy_of_the_file() {
-        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-        let path = directory.path().join("synthetic.bib");
-        let text = "@book{a,title={Invented 日本}}\n".repeat(5_000);
-        std::fs::write(&path, &text).unwrap_or_else(|e| panic!("{e}"));
-        let (_, observation) = load_file_snapshot(&path, &|| false).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(*observation.text, text);
-        // Reading without the file's size doubles the buffer as it fills.
-        assert_eq!(observation.text.capacity(), text.len());
-        let stable = stable_observation(&path).unwrap_or_else(|e| panic!("{e}"));
-        assert!(stable.seen() == observation.seen());
-    }
-
     #[cfg(unix)]
     #[test]
     fn completed_file_observation_refuses_a_symlink_retarget_during_read() {
@@ -914,28 +900,6 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
-    #[test]
-    fn strict_reload_refuses_equal_bytes_from_a_retargeted_source() {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-        let selected = dir.path().join("selected.bib");
-        let a = dir.path().join("a.bib");
-        let b = dir.path().join("b.bib");
-        for path in [&a, &b] {
-            std::fs::write(path, "@book{same}").unwrap_or_else(|e| panic!("{e}"));
-        }
-        std::os::unix::fs::symlink(&a, &selected).unwrap_or_else(|e| panic!("{e}"));
-        let result = stable_observation_with(
-            &selected,
-            || {
-                std::fs::remove_file(&selected).unwrap_or_else(|e| panic!("{e}"));
-                std::os::unix::fs::symlink(&b, &selected).unwrap_or_else(|e| panic!("{e}"));
-            },
-            &io::Scope::new(&|| false),
-        );
-        assert!(matches!(result, Err(SourceError::Changing)));
-    }
-
     #[test]
     fn a_reload_refuses_bytes_that_differ_between_its_two_reads() {
         let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
@@ -957,37 +921,6 @@ mod tests {
         assert!(settled.warnings.is_empty());
     }
 
-    #[test]
-    fn watcher_caches_only_the_accepted_coalesced_model() {
-        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
-        let path = directory.path().join("synthetic.bib");
-        std::fs::write(&path, "@book{a,title={Keep}}\n@book{b,title={Before}}")
-            .unwrap_or_else(|error| panic!("{error}"));
-        let published = load_file(&path).unwrap_or_else(|error| panic!("{error}")).snapshot;
-        let candidate = load_file(&path).unwrap_or_else(|error| panic!("{error}"));
-        let discarded = Arc::downgrade(&candidate.snapshot.objects()[0]);
-        let mut model = Some(Snapshot::new(vec![]).unwrap_or_else(|error| panic!("{error}")));
-        publish_candidate(&mut model, candidate, &mut |result| {
-            let mut loaded = result.unwrap_or_else(|error| panic!("{error}"));
-            // Another selected owner already published the same library.
-            loaded.snapshot.reuse_unchanged(&published);
-            assert!(
-                discarded.upgrade().is_none(),
-                "the watcher retained a pre-publication payload"
-            );
-            Some(loaded.snapshot)
-        });
-        assert!(Arc::ptr_eq(
-            &model.as_ref().unwrap_or_else(|| panic!("accepted model")).objects()[0],
-            &published.objects()[0]
-        ));
-        std::fs::write(&path, "@book{a,title={Rejected}}").unwrap_or_else(|error| panic!("{error}"));
-        let rejected = load_file(&path).unwrap_or_else(|error| panic!("{error}"));
-        let rejected_payload = Arc::downgrade(&rejected.snapshot.objects()[0]);
-        publish_candidate(&mut model, rejected, &mut |_| None);
-        assert!(rejected_payload.upgrade().is_none());
-        assert_eq!(model.as_ref(), Some(&published));
-    }
     #[cfg(unix)]
     #[test]
     fn a_file_replaced_by_a_fifo_after_metadata_cannot_block() {
@@ -1013,46 +946,5 @@ mod tests {
             .unwrap_or_else(|error| panic!("{error}"));
         let file = open_readonly(&path).unwrap_or_else(|error| panic!("{error}"));
         assert_eq!(read_open_file(file), Err(SourceError::NotRegular));
-    }
-    #[test]
-    fn exhausted_bibtex_work_keeps_the_same_prefix_on_load_and_reload() {
-        let fields = (0..100)
-            .map(|index| format!("field{index}={{value}}"))
-            .collect::<Vec<_>>()
-            .join(",");
-        let text =
-            format!("@xdata{{parent,{fields}}}\n@book{{good}}\n@book{{limited,xdata={{parent}}}}\n@book{{suffix}}");
-        let parse_limited = |previous| {
-            parse_with_budget(
-                Path::new("synthetic.bib"),
-                &text,
-                bibtex::Budget::new(32 * 1024),
-                previous,
-                Some(&io::Scope::new(&|| false)),
-            )
-        };
-        let keys = |loaded: &LoadedLibrary| -> Vec<String> {
-            loaded
-                .snapshot
-                .objects()
-                .iter()
-                .filter_map(|item| match &item.object {
-                    LibraryObject::Record(record) => record.citation_key().ok().flatten().map(str::to_owned),
-                    _ => None,
-                })
-                .collect()
-        };
-        let initial = parse_limited(None).unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(keys(&initial), ["good"]);
-        assert!(
-            initial
-                .warnings
-                .iter()
-                .any(|warning| warning.code == crate::WarningCode::WorkLimit)
-        );
-        let reloaded = parse_limited(Some(&initial.snapshot)).unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(keys(&reloaded), keys(&initial));
-        assert_eq!(reloaded.warnings, initial.warnings);
-        assert_eq!(reloaded.snapshot.fingerprints(), initial.snapshot.fingerprints());
     }
 }

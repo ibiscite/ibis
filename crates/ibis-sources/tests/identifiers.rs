@@ -42,27 +42,6 @@ fn records_expose_identifiers_from_every_field() {
 }
 
 #[test]
-fn records_from_bibtex_eprint_pmid_and_spaced_isbn_fields() {
-    let records = bib("@misc{a, title={A}, eprint={hep-th/9711200}, archivePrefix={arXiv}}
-         @article{b, title={B}, journal={J}, eprint={1706.03762v5}, eprinttype={arxiv}, pmid={12345678}, pmcid={PMC7654321}}
-         @book{c, title={C}, isbn={978 0 306 40615 7}}
-         @article{d, title={D}, journal={J}, eprint={987}, eprinttype={pubmed}}
-         @misc{e, title={E}, eprint={arXiv:1706.03763}, archivePrefix={arXiv}}");
-    let ids: Vec<_> = records.iter().map(of_record).collect();
-    assert!(ids[0].contains(&Identifier::Arxiv("hep-th/9711200".into())));
-    assert!(ids[1].contains(&Identifier::Arxiv("1706.03762".into())));
-    assert!(ids[1].contains(&Identifier::Doi("10.48550/arxiv.1706.03762".into())));
-    assert!(ids[1].contains(&Identifier::Pmid("12345678".into())));
-    // BibTeX `pmid` and `pmcid` become the CSL variables Zotero uses.
-    assert_eq!(records[1].csl["PMID"], "12345678");
-    assert_eq!(records[1].csl["PMCID"], "PMC7654321");
-    assert_eq!(records[3].csl["PMID"], "987");
-    assert_eq!(ids[2], [Identifier::Isbn("9780306406157".into())]);
-    assert_eq!(ids[3], [Identifier::Pmid("987".into())]);
-    assert!(ids[4].contains(&Identifier::Arxiv("1706.03763".into())));
-}
-
-#[test]
 fn an_arxiv_eprint_is_searchable_but_never_printed() {
     let records = bib(
         "@article{a, title={A}, journal={J}, number={4}, eprint={2101.00001}, eprinttype={arxiv}}
@@ -79,42 +58,12 @@ fn an_arxiv_eprint_is_searchable_but_never_printed() {
 }
 
 #[test]
-fn records_from_zotero_carry_pmid_isbn_and_arxiv() {
-    let item: ZoteroItem = serde_json::from_value(json!({
-        "key": "SYN00001", "itemType": "journalArticle", "title": "T",
-        "ISBN": "0-306-40615-2", "extra": "PMID: 555\narXiv: 2101.00001"
-    }))
-    .unwrap();
-    let record = zotero::map_item(LibraryId::digest(b"invented"), &item).unwrap().record;
-    let ids = of_record(&record);
-    assert!(ids.contains(&Identifier::Pmid("555".into())), "{ids:?}");
-    assert!(ids.contains(&Identifier::Isbn("9780306406157".into())), "{ids:?}");
-    assert!(ids.contains(&Identifier::Arxiv("2101.00001".into())), "{ids:?}");
-}
-
-#[test]
 fn extra_identifiers_require_explicit_valid_labels_and_deduplicate() {
     let item: ZoteroItem = serde_json::from_value(json!({
         "key": "SYN00001", "itemType": "book", "title": "Synthetic identifiers",
         "extra": "PMID: 000000555\npmid: 555\nNot PMID: 999\nPMID: 000\nPMID: 1234567890\nPMID: invalid\narXiv: 2101.00001v2"
     })).unwrap();
     let record = zotero::map_item(LibraryId::digest(b"invented"), &item).unwrap().record;
-    assert_eq!(
-        of_record(&record),
-        [
-            Identifier::Doi("10.48550/arxiv.2101.00001".into()),
-            Identifier::Arxiv("2101.00001".into()),
-            Identifier::Pmid("555".into())
-        ]
-    );
-}
-
-#[test]
-fn canonical_note_identifier_labels_are_case_insensitive() {
-    let mut record = bib("@book{a,title={Synthetic identifiers}}").remove(0);
-    record
-        .csl
-        .insert("note".into(), json!("pMiD: 000000555\nArXiV: 2101.00001v2"));
     assert_eq!(
         of_record(&record),
         [

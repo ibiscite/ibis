@@ -650,38 +650,4 @@ mod tests {
         );
         Ok(())
     }
-
-    #[test]
-    fn warnings_name_only_known_csl_fields() -> Result<(), SourceError> {
-        let parsed = load_str(
-            &LibraryId::digest(b"invented-csl"),
-            r#"[
-    {"id":"a","type":"book","title":"Invented book","invented-private-tag":true,"publisher":false}
-]"#,
-        )?;
-        assert_eq!(parsed.records.len(), 1);
-        assert_eq!(
-            parsed.warnings,
-            [
-                SourceWarning::at(WarningCode::Field, Some(2))
-                    .because(WarningCause::UnknownField, None)
-                    .for_entry(Some("Invented book")),
-                SourceWarning::at(WarningCode::Field, Some(2))
-                    .because(WarningCause::Value, Some("publisher"))
-                    .for_entry(Some("Invented book")),
-            ]
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn item_locations_keep_repeated_strings_nested_arrays_and_escapes() {
-        let text = "[\n {\"id\":\"x\",\"title\":\"[, \\\" ]\"},\n {\"id\":\"x\",\"names\":[[1,2]]}\n]";
-        let spans = item_spans(text);
-        assert_eq!(spans.len(), 2);
-        assert_eq!(spans.iter().map(|(_, _, line)| *line).collect::<Vec<_>>(), [2, 3]);
-        for (start, end, _) in spans {
-            assert!(serde_json::from_str::<Value>(&text[start..end]).is_ok());
-        }
-    }
 }

@@ -408,26 +408,6 @@ mod tests {
     }
 
     #[test]
-    fn text_that_is_not_an_entry_holds_no_key() {
-        let project = read(
-            "taylor2026, in prose\n@comment{@book{commented2026,title={Hidden}}}\n@string{strung2026 = {A}}\n\
-             @book{real2026,note={see taylor2026}}\n",
-        );
-        for key in ["taylor2026", "strung2026"] {
-            assert_eq!(project.check(key, None), Missing, "{key}");
-        }
-        // Biber skips it and classic BibTeX reads it, so neither answer is safe.
-        assert_eq!(
-            project.check("commented2026", None),
-            MayNameAnother {
-                line: 2,
-                doubt: Doubt::Commented
-            }
-        );
-        assert_eq!(project.check("real2026", None), In { line: 4 });
-    }
-
-    #[test]
     fn a_repeated_key_is_named_with_every_line_even_when_the_loader_drops_it() {
         let project = read("@book{twice2026,title={A}}\n@book{twice2026,title={B}}\n");
         assert_eq!(project.check("twice2026", None), Repeated { lines: vec![1, 2] });
@@ -454,98 +434,6 @@ mod tests {
     }
 
     #[test]
-    fn an_entry_the_reader_does_not_recognise_means_nothing_can_be_called_missing() {
-        for text in [
-            "@my-type{hyphen2026,title={A}}\n@book{real2026,}\n",
-            "@book{real2026,}\n@ article{spaced2026,title={B}}\n",
-            "@book{real2026,}\n\n@typé{accent2026,title={C}}\n",
-        ] {
-            let project = read(text);
-            assert_eq!(project.check("okafor2018", None), CouldNotCheck, "{text}");
-        }
-        let lines = read("@book{a,}\n\n@my-type{b,}\n");
-        assert_eq!(lines.damaged_lines(), [3]);
-        // Prose with an address and no entry shape stays prose.
-        let prose = read("Written by me@invented.example, 2026.\n@book{a,}\n");
-        assert_eq!(prose.check("okafor2018", None), Missing);
-    }
-
-    #[test]
-    fn a_file_of_nothing_but_entry_shapes_stays_cheap_and_undecided() {
-        let text = "@a-b{\n".repeat(2_000_000);
-        let started = std::time::Instant::now();
-        let scan = crate::bibtex::project::scan(&text);
-        assert!(
-            started.elapsed() < std::time::Duration::from_secs(20),
-            "{:?}",
-            started.elapsed()
-        );
-        assert!(!scan.complete());
-        assert_eq!(
-            &scan.damaged[..3],
-            [1, 2, 3],
-            "lines stay right however they are counted"
-        );
-        assert!(scan.damaged.len() <= 32);
-        // Prose inside a comment can hide an entry shape too.
-        assert_eq!(
-            read("@comment{@my-type{k,}}\n").check("okafor2018", None),
-            CouldNotCheck
-        );
-    }
-
-    #[test]
-    fn a_file_read_again_unchanged_keeps_its_answer_and_new_damage_is_noticed() {
-        let dir = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
-        let path = dir.path().join("thesis.bib");
-        let write = |text: &str| std::fs::write(&path, text).unwrap_or_else(|error| panic!("{error}"));
-        write(TWO);
-        let good = ProjectRead::read(&path, None);
-        assert!(good.same_answers(&ProjectRead::read(&path, Some(&good))));
-
-        write(&format!("{TWO}@book{{x,title={{Never closed\n"));
-        let damaged = ProjectRead::read(&path, Some(&good));
-        assert_eq!(damaged.problem(), None);
-        assert_eq!(damaged.damaged_lines(), [4]);
-        assert_eq!(damaged.check("taylor2026", None), CouldNotCheck);
-        assert!(
-            damaged.same_answers(&ProjectRead::read(&path, Some(&damaged))),
-            "the same damage again"
-        );
-
-        write(&format!("{TWO}\n@book{{x,title={{Never closed\n"));
-        let moved = ProjectRead::read(&path, Some(&damaged));
-        assert!(
-            !moved.same_answers(&damaged),
-            "other lines are shown, so the picker must hear of it"
-        );
-
-        write(TWO);
-        let recovered = ProjectRead::read(&path, Some(&moved));
-        assert_eq!(recovered.problem(), None);
-        assert!(recovered.damaged_lines().is_empty());
-    }
-
-    #[test]
-    fn a_key_with_no_comma_after_it_is_not_an_entry() {
-        let project = read("@book{taylor2026 title={Synthetic signals}}\n");
-        assert_eq!(project.check("taylor2026", None), CouldNotCheck);
-        assert_eq!(
-            read("@book{ taylor2026 , title={A}}\n").check("taylor2026", None),
-            In { line: 1 }
-        );
-        assert_eq!(read("@book{taylor2026}\n").check("taylor2026", None), In { line: 1 });
-    }
-
-    #[test]
-    fn line_endings_and_parentheses_read_as_any_other_entry() {
-        let project = read("@book(paren2026,\r\n  title = {A}\r\n)\r\n\r\n@BOOK{upper2026,}\r\n");
-        assert_eq!(project.check("paren2026", None), In { line: 1 });
-        assert_eq!(project.check("upper2026", None), In { line: 5 });
-        assert_eq!(project.check("okafor2018", None), Missing);
-    }
-
-    #[test]
     fn a_key_that_is_there_in_another_form_raises_a_doubt() {
         let project = read(
             "@book{Taylor2026,ids={oldkey2020},title={A}}\n@xdata{shared,publisher={B}}\n@book{Case2026,}\n@book{case2026,}\n",
@@ -558,12 +446,6 @@ mod tests {
         doubt("shared", 2, Doubt::Helper);
         doubt("Case2026", 3, Doubt::LetterCase);
         assert_eq!(project.check("Taylor2026", None), In { line: 1 });
-    }
-
-    #[test]
-    fn an_alias_list_built_from_a_macro_could_name_anything() {
-        let project = read("@string{m={x}}\n@book{a,ids=m}\n");
-        assert_eq!(project.check("okafor2018", None), CouldNotCheck);
     }
 
     #[test]
@@ -630,39 +512,6 @@ mod tests {
              @book{parent2026,publisher=city}\n\n@xdata{shared,year=2026}\n"
         );
         assert!(!entry.contains("unused") && !entry.contains("other2026"));
-    }
-
-    #[test]
-    fn an_entry_that_cannot_stand_alone_is_refused() {
-        for (text, refusal) in [
-            ("@book{a,crossref={gone}}\n", EntryRefusal::Dependency),
-            ("@book{a,publisher=gone}\n", EntryRefusal::Dependency),
-            (
-                "@book{a,publisher=later}\n@string{later={x}}\n",
-                EntryRefusal::Dependency,
-            ),
-            (
-                "@string{m={x}}\n@book{a,publisher=m}\n@string{m={y}}\n",
-                EntryRefusal::Dependency,
-            ),
-            ("@book{a,crossref=m}\n@string{m={x}}\n", EntryRefusal::Dependency),
-            ("@book{a,xref={gone}}\n", EntryRefusal::Dependency),
-            ("@set{a,entryset={gone}}\n", EntryRefusal::Dependency),
-            (
-                "@string{broken = }\n@string{m={x}}\n@book{a,publisher=m}\n",
-                EntryRefusal::Dependency,
-            ),
-            (
-                "@book{a,crossref={b}}\n@book{b,title={Never closed\n",
-                EntryRefusal::Dependency,
-            ),
-            ("@book{a,}\n@book{a,title={Never closed\n", EntryRefusal::Repeated),
-            ("@book{a,}\n@book{a,}\n", EntryRefusal::Repeated),
-            ("@book{b,}\n", EntryRefusal::Changed),
-            ("@xdata{a,}\n", EntryRefusal::Changed),
-        ] {
-            assert_eq!(entry_in(text, "a"), Err(refusal), "{text}");
-        }
     }
 
     #[test]

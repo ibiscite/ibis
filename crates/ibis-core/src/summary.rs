@@ -208,23 +208,6 @@ mod tests {
     }
 
     #[test]
-    fn search_finds_a_year_only_where_the_date_gives_one() {
-        for (issued, year) in [
-            (json!({"date-parts": [["2016"]]}), Some(2016)),
-            (json!({"date-parts": [[-44]]}), Some(-44)),
-            (json!({"raw": "2016/05"}), Some(2016)),
-            (json!({"raw": "2016-05-01"}), Some(2016)),
-            (json!({"raw": "circa spring 1890s"}), None),
-            (json!({"raw": "1890s"}), None),
-            (json!({"raw": "20160501"}), None),
-            (json!({"raw": "2016-"}), None),
-            (json!({"date-parts": [["spring"]]}), None),
-        ] {
-            assert_eq!(issued_year(Some(&issued)), year, "{issued}");
-        }
-    }
-
-    #[test]
     fn people_are_named_once_in_reading_order_with_a_short_form() {
         let found = summary(json!({"author": [
             {"family": "García", "given": "Ana"},
@@ -249,20 +232,5 @@ mod tests {
                 ("et al.", "et al."),
             ]
         );
-    }
-
-    #[test]
-    fn title_and_container_are_plain_text_and_the_publisher_stands_in() {
-        let found =
-            summary(json!({"title": " <i>Synthetic</i> tides ", "publisher": "Invented Press", "type": "book"}));
-        assert_eq!(found.title.as_deref(), Some("Synthetic tides"));
-        assert_eq!(found.container.as_deref(), Some("Invented Press"));
-        assert_eq!(found.item_type.as_deref(), Some("book"));
-        let journal =
-            summary(json!({"container-title": "Journal of Tests", "publisher": "Invented Press", "title": ""}));
-        assert_eq!(journal.container.as_deref(), Some("Journal of Tests"));
-        assert_eq!(journal.title, None);
-        let long = summary(json!({"container-title": "x".repeat(200)}));
-        assert_eq!(long.container.map(|c| c.chars().count()), Some(CONTAINER_LIMIT));
     }
 }

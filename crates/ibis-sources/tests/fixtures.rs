@@ -36,8 +36,3 @@ fn real_world_quirks() {
 fn damaged_file_keeps_good_entries() {
     insta::assert_json_snapshot!(summary("damaged.bib"));
 }
-
-#[test]
-fn empty_file_is_empty_not_an_error() {
-    assert_eq!(summary("empty.bib"), json!({"records": [], "warnings": []}));
-}

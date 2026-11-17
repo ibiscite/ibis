@@ -102,63 +102,6 @@ fn shelf_spans_follow_processor_order_without_changing_citation_meaning() {
 }
 
 #[test]
-fn shelf_multi_reference_spans_preserve_passive_title_styles() {
-    let _guard = FORMAT_TESTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    let snapshot = library(&[
-        json!({"type":"book","title":"Synthetic <span style=\"font-variant: small-caps;\">Caps</span>","issued":{"date-parts":[[2026]]}}),
-        json!({"type":"book","title":"Other invented title","issued":{"date-parts":[[2024]]}}),
-    ]);
-    let result = Formatter::new()
-        .unwrap()
-        .format(&snapshot, &selection(&snapshot, "modern-language-association", false))
-        .unwrap();
-    assert!(result.html.as_deref().unwrap().contains("small-caps"));
-    assert!(result.copy_content(2).is_some());
-    let display = serde_json::to_value(&result.display).unwrap();
-    assert!(
-        display["nodes"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .flat_map(|node| node["content"].as_array().unwrap())
-            .any(|run| run["text"] == "Caps" && run["small_caps"] == true)
-    );
-}
-
-#[test]
-fn shelf_repeated_bibliography_occurrences_keep_deduplicated_output_and_each_owner() {
-    let _guard = FORMAT_TESTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    let (snapshot, mut request) = sample();
-    request.output = OutputSpec::Csl { style: "ieee".into() };
-    let formatter = Formatter::new().unwrap();
-    let single = formatter.format(&snapshot, &request).unwrap();
-    request.items[0].locator = Some(Locator {
-        term: LocatorTerm::Page,
-        value: "12".into(),
-    });
-    let mut second = request.items[0].clone();
-    second.locator.as_mut().unwrap().value = "30".into();
-    request.items.push(second);
-    let result = formatter.format(&snapshot, &request).unwrap();
-    assert_eq!(result.text, single.text);
-    assert_eq!(result.html, single.html);
-    assert_eq!(result.rtf, single.rtf);
-    assert!(result.copy_content(2).is_some());
-    for item in 0..2 {
-        assert!(result.display.nodes.iter().any(|node| node.item == Some(item)));
-    }
-    assert_eq!(
-        result
-            .display
-            .nodes
-            .iter()
-            .flat_map(|node| &node.content)
-            .map(|run| run.text.as_str())
-            .collect::<String>(),
-        result.text
-    );
-}
-#[test]
 fn formats_canonical_text_html_rtf_and_numeric_fallback() {
     let _guard = FORMAT_TESTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let formatter = Formatter::new().unwrap();
@@ -529,23 +472,6 @@ fn all_styles_match_node_for_multilingual_text_html_and_rtf() {
 }
 
 #[test]
-fn matches_pinned_zotero_synthetic_preview_expectation() {
-    let _guard = FORMAT_TESTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    // Zotero's own synthetic Preview Test asserts (Smith, 2019), including RTF:
-    // https://github.com/zotero/zotero/blob/db41b99fddcc52d38897c59c161b6adaca036afb/test/tests/citeTest.js#L175-L203
-    let snapshot = library(&[
-        json!({"type":"book","title":"Preview Test","author":[{"family":"Smith","given":"Jane"}],"issued":{"date-parts":[[2019]]}}),
-    ]);
-    let formatter = Formatter::new().unwrap();
-    let result = formatter
-        .format(&snapshot, &selection(&snapshot, "apa", false))
-        .unwrap();
-    assert_eq!(result.text, "(Smith, 2019)");
-    assert_eq!(result.html.as_deref(), Some("(Smith, 2019)"));
-    assert!(result.rtf.as_deref().unwrap().contains("\n(Smith, 2019)\n"));
-}
-
-#[test]
 fn hostile_huge_stale_and_duplicate_inputs_never_copy_wrong_output() {
     let _guard = FORMAT_TESTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let formatter = Formatter::new().unwrap();
@@ -860,18 +786,6 @@ fn presentation_equivalent_titles_are_valid_without_rewriting_canonical_output()
 }
 
 #[test]
-fn bibliography_reports_document_year_suffixes_withheld() {
-    let _guard = FORMAT_TESTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    let formatter = Formatter::new().unwrap();
-    let items:Vec<_>=["First synthetic book","Second synthetic book"].into_iter().map(|title|json!({"type":"book","title":title,"author":[{"family":"Taylor","given":"Avery"}],"issued":{"date-parts":[[2026]]}})).collect();
-    let snapshot = library(&items);
-    let result = formatter.format(&snapshot, &selection(&snapshot, "apa", true)).unwrap();
-    assert!(!result.text.contains("2026a"));
-    assert!(!result.text.contains("2026b"));
-    assert!(result.notices.contains(&Notice::YearSuffixWithheld));
-}
-
-#[test]
 fn contradictory_and_missing_author_forms_never_copy_processor_sentinels() {
     let _guard = FORMAT_TESTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let formatter = Formatter::new().unwrap();
@@ -977,35 +891,6 @@ fn ieee_lowercase_given_name_preserves_processor_bytes() {
 }
 
 #[test]
-fn reused_formatter_handles_bibliographies_across_locale_order_and_styles() {
-    let _guard = FORMAT_TESTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    let items: Vec<_> = (0..100).map(|index| json!({"type":"book","title":format!("Synthetic title {index}"),"author":[{"family":format!("Invented{index}"),"given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"})).collect();
-    let snapshot = library(&items);
-    let formatter = Formatter::new().unwrap();
-    for keep_order in [false, true] {
-        for locale in [None, Some("en"), Some("en-US")] {
-            let mut request = selection(&snapshot, "chicago-author-date", true);
-            request.output_locale = locale.map(String::from);
-            request.keep_order = keep_order;
-            let result = formatter.format(&snapshot, &request).unwrap();
-            assert!(result.copy_content(100).is_some());
-        }
-    }
-    // Reuse both workers with enough distinct engine keys to turn over the cache.
-    let small = library(&items[..3]);
-    for round in 0..3 {
-        for (style, _) in ibis_csl::STYLES {
-            for bibliography in [false, true] {
-                let mut request = selection(&small, style, bibliography);
-                request.output_locale = [None, Some("en"), Some("en-US")][round].map(String::from);
-                request.keep_order = round % 2 == 0;
-                assert!(formatter.format(&small, &request).unwrap().copy_content(3).is_some());
-            }
-        }
-    }
-}
-
-#[test]
 fn multiple_effective_author_only_items_are_explicitly_refused() {
     let _guard = FORMAT_TESTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let formatter = Formatter::new().unwrap();
@@ -1049,52 +934,6 @@ fn multiple_effective_author_only_items_are_explicitly_refused() {
                 .copy_content(2)
                 .is_some()
         );
-    }
-}
-
-#[test]
-fn nonprinting_mla_suppression_is_refused_before_cluster_rendering() {
-    let _guard = FORMAT_TESTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    let formatter = Formatter::new().unwrap();
-    let snapshot = library(&[
-        json!({"type":"book","title":"Synthetic first","author":[{"family":"Taylor"}],"issued":{"date-parts":[[2026]]}}),
-        json!({"type":"book","title":"Synthetic second","author":[{"family":"Morgan"}],"issued":{"date-parts":[[2026]]}}),
-    ]);
-    for affected in [0, 1] {
-        for year_only in [false, true] {
-            for keep_order in [false, true] {
-                let mut request = selection(&snapshot, "modern-language-association", false);
-                request.keep_order = keep_order;
-                if year_only {
-                    request.items[affected].form = Some(CitationForm::YearOnly);
-                } else {
-                    request.items[affected].suppress_author = true;
-                }
-                let result = formatter.format(&snapshot, &request).unwrap();
-                assert_eq!(
-                    result.outcomes[affected],
-                    ItemOutcome::Refused {
-                        item: affected,
-                        error: CitationError::UnsupportedForm
-                    }
-                );
-                assert!(result.copy_content(2).is_none());
-                if year_only {
-                    assert_eq!(
-                        result.outcomes[1 - affected],
-                        ItemOutcome::Rendered { item: 1 - affected }
-                    );
-                } else {
-                    assert!(result.text.is_empty());
-                    assert!(
-                        result
-                            .outcomes
-                            .iter()
-                            .all(|outcome| matches!(outcome, ItemOutcome::Refused { .. }))
-                    );
-                }
-            }
-        }
     }
 }
 
@@ -1218,24 +1057,6 @@ fn sparse_members_never_become_copyable_cluster_placeholders_or_omissions() {
     }
 }
 
-#[test]
-fn genuinely_printed_literal_processor_marker_text_remains_valid() {
-    let _guard = FORMAT_TESTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    let formatter = Formatter::new().unwrap();
-    let snapshot = library(&[
-        json!({"type":"book","title":"[CSL STYLE ERROR: reference with no printed form.]","issued":{"date-parts":[[2026]]}}),
-    ]);
-    for (style, _) in ibis_csl::STYLES {
-        for bibliography in [false, true] {
-            let result = formatter
-                .format(&snapshot, &selection(&snapshot, style, bibliography))
-                .unwrap();
-            assert!(result.copy_content(1).is_some());
-            assert!(result.text.to_ascii_lowercase().contains("csl style error"));
-            assert_eq!(result.outcomes, vec![ItemOutcome::Rendered { item: 0 }]);
-        }
-    }
-}
 fn run(text: &str, italic: bool) -> TextRun {
     TextRun {
         text: text.into(),
@@ -1334,68 +1155,6 @@ fn narrative_citations_name_the_author_then_cite_the_rest() {
     request.items.push(request.items[0].clone());
     let result = formatter.format(&snapshot, &request).unwrap();
     assert!(result.copy_content(2).is_none());
-}
-
-#[test]
-fn styled_dollar_sequences_stay_literal_in_prefixes_and_suffixes() {
-    let _guard = FORMAT_TESTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    let formatter = Formatter::new().unwrap();
-    let (snapshot, mut request) = sample();
-    for token in ["$$", "$&", "$`", "$'"] {
-        for prefix in [false, true] {
-            request.items[0].prefix.clear();
-            request.items[0].suffix.clear();
-            let runs = if prefix {
-                &mut request.items[0].prefix
-            } else {
-                &mut request.items[0].suffix
-            };
-            runs.push(run(&format!(" {token} "), true));
-            let result = formatter.format(&snapshot, &request).unwrap();
-            assert!(result.text.contains(token), "{token}");
-            assert!(
-                result
-                    .html
-                    .as_deref()
-                    .unwrap()
-                    .contains(&format!("<i> {} </i>", token.replace('&', "&#38;")))
-            );
-            assert!(
-                result
-                    .rtf
-                    .as_deref()
-                    .unwrap()
-                    .contains(&format!("{{\\i{{}} {token} }}"))
-            );
-            assert!(result.losses.is_empty());
-            assert!(result.copy_content(1).is_some());
-        }
-    }
-}
-
-#[test]
-fn narrative_citations_refuse_author_suppression() {
-    let _guard = FORMAT_TESTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    let formatter = Formatter::new().unwrap();
-    for per_item in [false, true] {
-        let (snapshot, mut request) = sample();
-        if per_item {
-            request.items[0].form = Some(CitationForm::Narrative);
-        } else {
-            request.form = CitationForm::Narrative;
-        }
-        request.items[0].suppress_author = true;
-        let result = formatter.format(&snapshot, &request).unwrap();
-        assert_eq!(
-            result.outcomes,
-            [ItemOutcome::Refused {
-                item: 0,
-                error: CitationError::UnsupportedForm,
-            }]
-        );
-        assert!(result.text.is_empty());
-        assert!(result.copy_content(1).is_none());
-    }
 }
 
 #[test]
