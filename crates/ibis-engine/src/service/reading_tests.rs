@@ -366,7 +366,12 @@ fn find_in_gives_ten_passages_at_most_and_says_when_there_are_more() {
 }
 
 fn engine_with(source: &str) -> (Engine, tempfile::TempDir, std::path::PathBuf) {
-    let directory = tempfile::tempdir().unwrap();
+    engine_in(tempfile::tempdir().unwrap(), source)
+}
+
+/// Open `source` in a folder already holding the files a test needs: a file
+/// added after opening changes the attachment generation and so its id.
+fn engine_in(directory: tempfile::TempDir, source: &str) -> (Engine, tempfile::TempDir, std::path::PathBuf) {
     let path = directory.path().join("invented.bib");
     std::fs::write(&path, source).unwrap();
     let engine = Engine::new().unwrap();
@@ -529,14 +534,16 @@ fn printed_labels_must_agree_with_the_references_own_pages() {
         ("unresolved", "101", None),
         ("", "ix", Some("ix")),
     ] {
-        let (engine, directory, _) = engine_with(&format!(
-            "@article{{atlas,title={{Invented atlas}},pages={{{pages}}},file={{atlas.pdf}}}}\n"
-        ));
+        let directory = tempfile::tempdir().unwrap();
         let program = directory.path().join("invented-ibis");
         let answer = json!({"read":{"pages":1,"labels":[label],"text":["Invented lantern."]}});
         std::fs::write(&program, format!("#!/bin/sh\nprintf '%s' '{answer}'\n")).unwrap();
         std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
         std::fs::write(directory.path().join("atlas.pdf"), "%PDF-1.7\n").unwrap();
+        let (engine, _directory, _) = engine_in(
+            directory,
+            &format!("@article{{atlas,title={{Invented atlas}},pages={{{pages}}},file={{atlas.pdf}}}}\n"),
+        );
         let engine = engine.with_pdf_reader(program);
         let attachment = outline(&engine, "atlas").unwrap().attachments.remove(0);
         assert_eq!(attachment.cite_pages_known, expected.is_some(), "{pages}: {label}");
