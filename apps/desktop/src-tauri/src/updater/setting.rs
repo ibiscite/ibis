@@ -118,7 +118,7 @@ pub(crate) async fn update_checks(app: AppHandle) -> Option<bool> {
 /// Turn automatic checks on or off from Settings. The saved answer arrives
 /// as the `update:automatic` event; changes are queued in click order.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn set_update_checks(app: AppHandle, enabled: bool) {
     if available(&app) {
         change(&app, enabled);

@@ -422,13 +422,13 @@ pub(crate) fn hidden() -> bool {
 pub(crate) struct SearchRequest(pub(crate) Mutex<Option<String>>);
 
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn take_search_request(request: tauri::State<'_, SearchRequest>) -> Option<String> {
     request.0.lock().ok().and_then(|mut waiting| waiting.take())
 }
 
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn alignment_tick() {
     #[cfg(target_os = "macos")]
     crate::menu_bar::tick();

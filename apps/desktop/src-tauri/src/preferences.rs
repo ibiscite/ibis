@@ -553,17 +553,13 @@ impl From<PickerPreferences> for PickerPreferencesPatch {
 pub(crate) async fn picker_preferences(
     settings_file: State<'_, SettingsFile>,
 ) -> Result<PickerPreferences, CommandError> {
-    // Off the main thread: a settings write in progress must never stall a paste.
-    let settings_file = settings_file.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || settings_file.preferences())
-        .await
-        .map_err(|_| CommandError::SettingsUnavailable)?
+    settings_file.preferences()
 }
 
 impl SettingsFile {
     pub(crate) fn preferences(&self) -> Result<PickerPreferences, CommandError> {
         self.owner
-            .read()
+            .view()
             .interface()
             .map(|settings| PickerPreferences::from_interface(&settings))
             .map_err(CommandError::from)
@@ -575,7 +571,7 @@ impl SettingsFile {
 /// it applies what must not wait for disk, hands the change to the settings
 /// owner and returns its receipt at once. Other settings in the file are kept.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn save_picker_preferences<R: tauri::Runtime>(
     preferences: PickerPreferencesPatch,
     settings_file: State<'_, SettingsFile>,

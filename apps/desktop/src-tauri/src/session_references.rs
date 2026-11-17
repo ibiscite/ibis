@@ -75,7 +75,7 @@ fn view(list: &List, file: Option<&Current>) -> Result<SessionReferencesView, Co
 }
 
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn session_references(
     session: State<'_, SessionReferences>,
     library: State<'_, Owner>,
@@ -85,7 +85,7 @@ pub(crate) fn session_references(
 }
 
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn edit_session_references(
     edit: SessionEdit,
     session: State<'_, SessionReferences>,

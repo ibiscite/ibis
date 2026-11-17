@@ -17,7 +17,7 @@ use ibis_engine::{Cancellation, ZoteroGroup, health::InspectionPolicy};
 /// Choose a library with the system file dialog. The interface never passes
 /// file paths; the result arrives as the `library:changed` event.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn choose_library(app: AppHandle) {
     choose_library_file(&app);
 }
@@ -25,14 +25,14 @@ pub(crate) fn choose_library(app: AppHandle) {
 /// Read the personal Zotero library while Zotero runs; the result arrives as
 /// `library:changed`.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn use_zotero(app: AppHandle) {
     use_zotero_library(&app);
 }
 
 /// Samples are an explicit, temporary source, never a saved library preference.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn use_sample_library(app: AppHandle, enabled: bool) -> Result<(), String> {
     if enabled {
         let path = app
@@ -50,7 +50,7 @@ pub(crate) fn use_sample_library(app: AppHandle, enabled: bool) -> Result<(), St
 /// result arrives as `library:changed`. An empty list or a repeated library
 /// is refused.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn use_zotero_libraries(app: AppHandle, libraries: Vec<ZoteroLibrary>) -> Result<(), String> {
     let chosen = ZoteroLibraries::new(libraries).ok_or("Choose at least one Zotero library, each once")?;
     // Chosen from the open picker: showing it again would move focus out of
@@ -103,7 +103,7 @@ pub(crate) async fn zotero_profiles(app: AppHandle) -> Result<ZoteroProfiles, su
 /// Read this Zotero profile from now on; the result arrives as
 /// `library:changed`, and only a closed read that used it saves the choice.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn use_zotero_profile(app: AppHandle, name: String) {
     super::use_zotero_profile(&app, name);
 }
@@ -138,14 +138,14 @@ pub(crate) async fn check_zotero_sharing(app: AppHandle) -> Result<ZoteroPresenc
 
 /// Open the current library again; the result arrives as `library:changed`.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn reload_library(app: AppHandle) {
     reload_library_file(&app);
 }
 
 /// The library as it is now, for the interface when it starts.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn library_status(app: AppHandle) -> LibraryStatus {
     current_status(&app)
 }
