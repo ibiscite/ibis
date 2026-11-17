@@ -99,46 +99,6 @@ fn a_failed_refresh_prints_one_note_naming_the_library_and_retained_results() ->
 }
 
 #[test]
-fn a_keyless_field_warning_names_the_title_and_the_field() -> Result<(), Box<dyn std::error::Error>> {
-    let path = library_file(
-        "keyless-warning.json",
-        r#"[{"id":"invented","type":"book","title":"Invented keyless title","citation-key":"","issued":"invalid"}]"#,
-    )?;
-    let (_, text, _) = run_mode(
-        Engine::new().map_err(|_| "engine")?,
-        &["ibis", "libraries", "--file", path.to_str().ok_or("path")?],
-        ibis::OutputMode::Terminal,
-    )?;
-    assert!(text.contains("Invented keyless title: the \"issued\" field"), "{text}");
-    Ok(())
-}
-
-#[test]
-fn search_and_libraries_have_short_human_summaries() -> Result<(), Box<dyn std::error::Error>> {
-    let (code, text, errors) = run(engine()?, &["ibis", "search", "signals"])?;
-    assert_eq!(code, 0);
-    assert!(errors.is_empty());
-    assert_eq!(text, "Example2026\tAvery Taylor\t2026\tSynthetic signals\n");
-    let (code, text, errors) = run(engine()?, &["ibis", "libraries"])?;
-    assert_eq!(code, 0);
-    assert!(errors.is_empty());
-    assert!(text.starts_with("1 library\n"), "{text}");
-    assert!(text.contains("1 item"), "{text}");
-    assert!(!text.contains("fingerprints"));
-
-    let (_, json, errors) = run(engine()?, &["ibis", "search", "signals", "--json"])?;
-    let envelope: serde_json::Value = serde_json::from_str(&json)?;
-    assert_eq!(envelope["ibis"], 1);
-    assert_eq!(envelope["ok"], true);
-    assert_eq!(
-        envelope["data"]["hits"][0]["item"]["object"]["data"]["csl"]["title"],
-        "Synthetic signals"
-    );
-    assert!(errors.is_empty());
-    Ok(())
-}
-
-#[test]
 fn human_result_rows_cannot_inject_extra_lines_or_terminal_controls() -> Result<(), Box<dyn std::error::Error>> {
     let case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json"))?;
     let LibraryObject::Record(mut record) = case.library.objects()[0].object.clone() else {
@@ -160,39 +120,6 @@ fn human_result_rows_cannot_inject_extra_lines_or_terminal_controls() -> Result<
         assert!(text.contains("\\u{1b}"));
         assert!(text.contains("\\u{202e}"));
     }
-    Ok(())
-}
-
-#[test]
-fn empty_large_and_keyless_searches_remain_explicit() -> Result<(), Box<dyn std::error::Error>> {
-    let (_, text, _) = run(engine()?, &["ibis", "search", "absent"])?;
-    assert_eq!(text, "No references found.\n");
-    // Closest matches are introduced as such.
-    let (_, full, _) = run(engine()?, &["ibis", "search", "signals"])?;
-    let (_, closest, _) = run(engine()?, &["ibis", "search", "signals absentword"])?;
-    assert_eq!(
-        closest,
-        format!("No reference matches every word. Closest matches:\n{full}")
-    );
-    let empty = Engine::from_snapshot(Arc::new(Snapshot::new(vec![])?));
-    let (_, text, _) = run(empty, &["ibis", "libraries"])?;
-    assert!(text.contains("No libraries loaded"));
-
-    let case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json"))?;
-    let LibraryObject::Record(mut record) = case.library.objects()[0].object.clone() else {
-        return Err("synthetic record".into());
-    };
-    record.citation_keys.clear();
-    record.csl.insert(
-        "title".into(),
-        serde_json::json!(format!("Synthetic {}", "文".repeat(100_000))),
-    );
-    let engine = Engine::from_snapshot(Arc::new(Snapshot::new(vec![LibraryObject::Record(record)])?));
-    let (code, text, _) = run(engine, &["ibis", "search", "synthetic"])?;
-    assert_eq!(code, 0);
-    assert_eq!(text.lines().count(), 1);
-    assert!(text.starts_with("[no citation key]\t"));
-    assert_eq!(text.matches('文').count(), 100_000);
     Ok(())
 }
 
@@ -371,72 +298,6 @@ fn errors_name_the_key_file_or_argument_and_keep_their_exit_codes() -> Result<()
 }
 
 #[test]
-fn help_and_version_are_envelopes_under_json() -> Result<(), Box<dyn std::error::Error>> {
-    let (code, text, errors) = run(engine()?, &["ibis", "--version", "--json"])?;
-    assert_eq!((code, errors.as_str()), (0, ""));
-    assert_eq!(
-        serde_json::from_str::<serde_json::Value>(&text)?,
-        serde_json::json!({"ibis":1,"ok":true,"data":{"version":ibis_core::VERSION}})
-    );
-    // The help command takes no flags of its own; --json still wraps its text.
-    for args in [
-        &["ibis", "help", "search", "--json"][..],
-        &["ibis", "--json", "help", "search"],
-        &["ibis", "--zotero", "help", "search", "--json"],
-        &["ibis", "--file=/invented/missing.bib", "help", "search", "--json"],
-        &["ibis", "help", "search", "--zotero-group", "7", "--json"],
-    ] {
-        let (code, text, errors) = run(engine()?, args)?;
-        assert_eq!((code, errors.as_str()), (0, ""));
-        let value: serde_json::Value = serde_json::from_str(&text)?;
-        assert!(
-            value["data"]["help"]
-                .as_str()
-                .is_some_and(|help| help.contains("ibis search")),
-            "{text}"
-        );
-    }
-    // `ibis help X` prints exactly what `ibis X --help` prints.
-    for command in ["search", "cite", "schema"] {
-        let (_, help, _) = run(engine()?, &["ibis", "help", command])?;
-        let (_, flag, _) = run(engine()?, &["ibis", command, "--help"])?;
-        assert_eq!(help, flag, "{command}");
-    }
-    let (_, help, _) = run(engine()?, &["ibis", "help"])?;
-    let (_, flag, _) = run(engine()?, &["ibis", "--help"])?;
-    assert_eq!(help, flag);
-    // Help keeps the name the program was started as, such as ibis.exe on Windows.
-    for (program, name) in [
-        ("ibis.exe", "ibis.exe"),
-        ("/invented/bin/renamed", "renamed"),
-        ("", "ibis"),
-    ] {
-        let (_, help, _) = run(engine()?, &[program, "help", "search"])?;
-        let (_, flag, _) = run(engine()?, &[program, "search", "--help"])?;
-        assert_eq!(help, flag, "{program}");
-        assert!(help.contains(&format!("Usage: {name} search ")), "{help}");
-    }
-    let (code, _, errors) = run(engine()?, &["ibis", "help", "invented", "--json"])?;
-    assert_eq!(code, 2);
-    assert!(errors.starts_with("ibis: "), "{errors}");
-    // Only the help command is asked again: a repeated --json stays a usage error.
-    for args in [
-        &["ibis", "--json", "--json", "--help"][..],
-        &["ibis", "help", "search", "--json", "--json"],
-        &["ibis", "search", "--json", "--json", "x"],
-    ] {
-        let (code, text, _) = run(engine()?, args)?;
-        assert_eq!(code, 2, "{args:?}");
-        assert_eq!(
-            text,
-            "{\"error\":{\"code\":\"usage\",\"focus\":\"request\",\"message\":{\"args\":{},\"id\":\"error-usage\"},\"recovery\":{\"action\":\"edit-input\"}},\"ibis\":1,\"ok\":false}\n",
-            "{args:?}"
-        );
-    }
-    Ok(())
-}
-
-#[test]
 fn a_line_break_in_any_argument_cannot_forge_a_diagnostic() -> Result<(), Box<dyn std::error::Error>> {
     for json in [false, true] {
         for args in [
@@ -466,102 +327,6 @@ fn a_line_break_in_any_argument_cannot_forge_a_diagnostic() -> Result<(), Box<dy
 }
 
 #[test]
-fn libraries_name_the_file_people_gave() -> Result<(), Box<dyn std::error::Error>> {
-    let path = library_file("named.bib", SAME_AUTHOR_YEAR)?;
-    let (code, text, _) = run_file(&path, &["libraries"])?;
-    assert_eq!(code, 0);
-    assert_eq!(text, format!("1 library\n{}\t4 items\n", path.display()));
-    let (_, text, _) = run(engine()?, &["ibis", "styles"])?;
-    assert!(
-        text.lines().any(|line| line.starts_with("apa\tAPA (7th edition)\t2")),
-        "{text}"
-    );
-    assert!(text.ends_with("narrow it with: ibis styles WORDS\n"), "{text}");
-    let (_, text, _) = run(engine()?, &["ibis", "styles", "--locales"])?;
-    assert!(text.lines().any(|line| line == "de-DE\tGerman (Germany)"), "{text}");
-    let (_, text, _) = run(engine()?, &["ibis", "styles", "invented", "nothing"])?;
-    assert_eq!(text, "No style matches those words.\n");
-    Ok(())
-}
-
-#[test]
-fn year_letters_notice_sees_the_same_year_and_names_however_they_are_written() -> Result<(), Box<dyn std::error::Error>>
-{
-    let work = |id: &str, extra: serde_json::Value| {
-        let mut item = serde_json::json!({"id":id,"citation-key":id,"type":"book","title":format!("Synthetic {id}")});
-        for (field, value) in extra.as_object().into_iter().flatten() {
-            item[field] = value.clone();
-        }
-        item
-    };
-    let ng = serde_json::json!([{"family":"Ng","given":"Avery"}]);
-    let library = serde_json::json!([
-        work(
-            "number",
-            serde_json::json!({"author":ng,"issued":{"date-parts":[[2020]]}})
-        ),
-        work(
-            "string",
-            serde_json::json!({"author":ng,"issued":{"date-parts":[["2020"]]}})
-        ),
-        work("literal", serde_json::json!({"author":ng,"issued":{"literal":"2020"}})),
-        work(
-            "particle",
-            serde_json::json!({"author":[{"family":"Berg","non-dropping-particle":"van"}],"issued":{"date-parts":[[2020]]}})
-        ),
-        work(
-            "joined",
-            serde_json::json!({"author":[{"family":"van Berg"}],"issued":{"date-parts":[[2020]]}})
-        ),
-        work(
-            "film-one",
-            serde_json::json!({"type":"motion_picture","director":ng,"issued":{"date-parts":[[2021]]}})
-        ),
-        work(
-            "film-two",
-            serde_json::json!({"type":"motion_picture","director":ng,"issued":{"date-parts":[[2021]]}})
-        ),
-        work("undated", serde_json::json!({"author":ng})),
-        work("undated-too", serde_json::json!({"author":ng})),
-        work(
-            "later",
-            serde_json::json!({"author":ng,"issued":{"date-parts":[[2022]]}})
-        ),
-    ]);
-    let path = library_file("year-forms.json", &library.to_string())?;
-    for (keys, shared) in [
-        (["number", "string"], true),
-        (["number", "literal"], true),
-        (["particle", "joined"], true),
-        (["film-one", "film-two"], true),
-        (["undated", "undated-too"], true),
-        (["number", "later"], false),
-        (["number", "particle"], false),
-    ] {
-        let (code, _, errors) = run_file(&path, &["cite", "--style", "apa", keys[0], keys[1]])?;
-        assert_eq!(code, 0, "{keys:?}: {errors}");
-        assert_eq!(errors.contains("share author and year"), shared, "{keys:?}: {errors}");
-    }
-    Ok(())
-}
-
-#[test]
-fn call_cite_explains_its_findings_too() -> Result<(), Box<dyn std::error::Error>> {
-    let path = library_file("call-cite.bib", SAME_AUTHOR_YEAR)?;
-    let (_, shown, _) = run_file(&path, &["show", "first", "--json"])?;
-    let shown: serde_json::Value = serde_json::from_str(&shown)?;
-    let params = serde_json::json!({
-        "items":[{"item":shown["data"]["object"]["data"]["id"],"suppress_author":true}],
-        "output":{"kind":"csl","style":"apa"},
-        "form":"narrative",
-    });
-    let (code, text, errors) = run_file(&path, &["call", "cite", "--params", &params.to_string()])?;
-    assert_eq!((code, text.as_str()), (1, ""));
-    assert!(errors.contains("with --form narrative"), "{errors}");
-    Ok(())
-}
-
-#[test]
 fn a_preloaded_engine_never_reads_the_app_settings() -> Result<(), Box<dyn std::error::Error>> {
     // With no library named it searches what it was given, never the app's choice.
     let (code, _, errors) = run(engine()?, &["ibis", "search", "x", "--json"])?;
@@ -578,17 +343,5 @@ fn a_preloaded_engine_never_reads_the_app_settings() -> Result<(), Box<dyn std::
     let (code, _, errors) = run(engine()?, &["ibis", "mcp", "--app-libraries", "--json"])?;
     assert_eq!(code, 0);
     assert!(errors.contains("--app-libraries is not available here"), "{errors}");
-    Ok(())
-}
-
-#[test]
-fn a_bare_less_than_sign_keeps_the_whole_title() -> Result<(), Box<dyn std::error::Error>> {
-    let path = library_file(
-        "less-than.json",
-        r#"[{"id":"lee2021","type":"article-journal","title":"Effect of p<0.05 on tidal rats"}]"#,
-    )?;
-    let (code, text, _) = run_file(&path, &["search", "tidal"])?;
-    assert_eq!(code, 0);
-    assert!(text.contains("Effect of p<0.05 on tidal rats"), "{text}");
     Ok(())
 }

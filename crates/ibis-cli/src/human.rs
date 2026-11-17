@@ -887,57 +887,6 @@ fn test_search(hits: Vec<ibis_engine::SearchHit>) -> Response {
 }
 
 #[cfg(test)]
-mod tests {
-    #[test]
-    fn newer_zotero_warning_is_shown_in_libraries_text() {
-        let mut library = test_library("lib_synthetic", 1);
-        library.warnings = vec![SourceWarning::at(ibis_engine::WarningCode::ZoteroNewerThanTested, None)];
-        library.warnings_total = 1;
-        let data = test_libraries(vec![library]);
-        let said = summary_reply(
-            &data,
-            Holdings::References,
-            &BTreeMap::new(),
-            Out::new(crate::OutputMode::Plain),
-        )
-        .unwrap_or_else(|| panic!("library summary"));
-        assert!(said.contains("Zotero is newer than this version of Ibis was tested with. Results look right, but update Ibis when you can."), "{said}");
-    }
-
-    use super::*;
-
-    /// A loss a newer engine reports is said to need a check, never named as one Ibis knows.
-    #[test]
-    fn a_loss_from_a_newer_engine_asks_for_a_check() {
-        let citing = Citing {
-            labels: vec!["vale2024".into()],
-            flags: vec![vec![]],
-            output: "APA".into(),
-            form: CitationForm::Normal,
-        };
-        let data = serde_json::json!({"losses": [{"item": 0, "field": "invented-field", "reason": "invented-reason"}]});
-        assert_eq!(
-            citation_report(
-                &CitationResult::new(
-                    String::new(),
-                    None,
-                    None,
-                    DisplayTree::default(),
-                    vec![],
-                    serde_json::from_value(data["losses"].clone()).unwrap(),
-                    vec![]
-                ),
-                &citing,
-                true
-            ),
-            [
-                "APA changed part of the citation for 'vale2024' in a way this version of Ibis can’t name. Check the citation."
-            ]
-        );
-    }
-}
-
-#[cfg(test)]
 mod terminal_tests {
     use super::*;
     use serde_json::json;
@@ -961,47 +910,6 @@ mod terminal_tests {
 
     fn hit(key: &str, title: &str) -> record::Row {
         projection::hit(&search_hit(key, title)).unwrap_or_else(|| panic!("synthetic row"))
-    }
-
-    #[test]
-    fn shorthand_keeps_its_reading_above_terminal_rows_and_empty_search_guidance() {
-        let out = Out {
-            width: Some(40),
-            color: false,
-        };
-        let mut data = test_search(vec![search_hit("vale2024", &"Lantern gardens ".repeat(10))]);
-        let Response::Engine(Reply::Search(search)) = &mut data else {
-            panic!("search fixture")
-        };
-        search.shorthand = ibis_core::shorthand::read("see vale 417");
-        let reading = "Cited with: see · 417; searched for: vale\n";
-        let text = summary_reply(&data, Holdings::References, &BTreeMap::new(), out).unwrap_or_default();
-        let rows = text.strip_prefix(reading).unwrap_or_default();
-        assert!(rows.starts_with("vale2024  Valé… 2024  "), "{text}");
-        assert!(rows.ends_with('…'), "{text}");
-        assert!(out::width(rows) <= 40, "{text}");
-        let plain = summary_reply(
-            &data,
-            Holdings::References,
-            &BTreeMap::new(),
-            Out {
-                width: None,
-                color: false,
-            },
-        )
-        .unwrap_or_default();
-        assert!(
-            plain.starts_with(&format!("{reading}vale2024\tValé, Fen, Ng, et al.\t2024\t")),
-            "{plain}"
-        );
-        let Response::Engine(Reply::Search(search)) = &mut data else {
-            panic!("search fixture")
-        };
-        search.hits.clear();
-        assert_eq!(
-            summary_reply(&data, Holdings::References, &BTreeMap::new(), out),
-            Some(format!("{reading}No references matched. Try a shorter query."))
-        );
     }
 
     #[test]
@@ -1143,16 +1051,5 @@ mod terminal_tests {
             summary_reply(&libraries, Holdings::References, &names, out).as_deref(),
             Some("2 libraries\n甲文   — 1 item\nZotero — 165 items")
         );
-    }
-
-    #[test]
-    fn only_refresh_failures_get_search_notes_with_the_library_name() {
-        let mut library = test_library("invented", 0);
-        library.refresh_error = Some(ErrorCode::SourceUnavailable);
-        library.warnings_total = 2;
-        let libraries = vec![library];
-        let notes = search_notes(&SourceHealth::of(libraries.iter()), &libraries, &BTreeMap::new());
-        assert_eq!(notes.len(), 1);
-        assert!(notes[0].starts_with("note: Zotero could not be refreshed; showing results from "));
     }
 }

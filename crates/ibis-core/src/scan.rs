@@ -84,9 +84,4 @@ impl<'a> Work<'a> {
         let i = self.find(text, |c| !c.is_whitespace()).unwrap_or(text.len());
         &text[i..]
     }
-
-    #[cfg(test)]
-    pub(crate) fn used(&self) -> usize {
-        self.used
-    }
 }

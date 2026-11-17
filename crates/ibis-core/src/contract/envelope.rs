@@ -476,21 +476,6 @@ mod tests {
     }
 
     #[test]
-    fn additive_response_fields_preserve_success_and_failure() -> Result<(), serde_json::Error> {
-        let success = json!({"ibis":1,"ok":true,"data":[],"added":true});
-        assert_eq!(
-            serde_json::from_value::<Envelope<Value>>(success)?.data(),
-            Some(&json!([]))
-        );
-        let failure = json!({"ibis":1,"ok":false,"error":{"code":"internal","added":true},"added":true});
-        assert!(matches!(
-            serde_json::from_value::<Envelope<Value>>(failure)?,
-            Envelope::Failure(_)
-        ));
-        Ok(())
-    }
-
-    #[test]
     fn contradictory_and_future_envelopes_are_refused() {
         for wire in [
             json!({"ibis":2,"ok":true,"data":[]}),

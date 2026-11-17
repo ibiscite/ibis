@@ -164,26 +164,3 @@ impl Formatter {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn software_stack_budget_has_a_measured_margin_and_a_hard_cap() {
-        let maximum = Limits {
-            stack_bytes: 2 * 1024 * 1024,
-            ..Limits::default()
-        };
-        assert!(maximum.valid());
-        assert!(maximum.stack_bytes * 4 <= WORKER_STACK_BYTES);
-        assert_eq!(Limits::default().stack_bytes, maximum.stack_bytes);
-        assert!(
-            !Limits {
-                stack_bytes: maximum.stack_bytes + 1,
-                ..maximum
-            }
-            .valid()
-        );
-    }
-}

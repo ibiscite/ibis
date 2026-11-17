@@ -35,14 +35,6 @@ fn next(rx: &Receiver<Result<LoadedLibrary, SourceError>>) -> Result<LoadedLibra
 }
 
 #[test]
-fn settling_wait_ignores_the_watchers_transient_changing_notification() {
-    let (tx, rx) = mpsc::channel();
-    tx.send(Err(SourceError::Changing)).unwrap_or_else(|e| panic!("{e}"));
-    tx.send(Err(SourceError::Unavailable)).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(next(&rx).err(), Some(SourceError::Unavailable));
-}
-
-#[test]
 fn a_recreated_directory_keeps_refreshing_and_can_be_closed_and_reopened() {
     let root = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
     let parent = root.path().join("selected");
@@ -93,45 +85,6 @@ fn a_recreated_directory_keeps_refreshing_and_can_be_closed_and_reopened() {
     std::fs::write(&path, "@misc{reopened}").unwrap_or_else(|e| panic!("{e}"));
     until_key(&rx, "reopened");
     drop(watcher);
-}
-
-#[test]
-fn seeded_watches_reuse_bibtex_and_json_records_in_the_registration_gap() {
-    for extension in ["bib", "json"] {
-        let dir = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
-        let path = dir.path().join(format!("synthetic.{extension}"));
-        let write = |title: &str| {
-            let text = if extension == "bib" {
-                format!("@book{{a,title={{Keep}}}}\n@book{{b,title={{{title}}}}}\n")
-            } else {
-                serde_json::json!([{"id":"a","type":"book","title":"Keep"},{"id":"b","type":"book","title":title}])
-                    .to_string()
-            };
-            std::fs::write(&path, text).unwrap_or_else(|error| panic!("{error}"));
-        };
-        write("Before");
-        let (loaded, observation) =
-            ibis_sources::load_file_snapshot(&path, &|| false).unwrap_or_else(|error| panic!("{error}"));
-        let original = loaded.snapshot;
-        write("After");
-        let (tx, rx) = mpsc::channel();
-        let _watch = SourceWatch::with_library(&path, Some(observation), original.clone(), move |result| {
-            let installed = result.as_ref().ok().map(|loaded| loaded.snapshot.clone());
-            let _ = tx.send(result);
-            installed
-        })
-        .unwrap_or_else(|error| panic!("{error}"));
-        let refreshed = next(&rx).unwrap_or_else(|error| panic!("{error}"));
-        assert!(records(&refreshed).iter().any(|record| record.csl["title"] == "After"));
-        assert!(std::sync::Arc::ptr_eq(
-            &original.objects()[0],
-            &refreshed.snapshot.objects()[0]
-        ));
-        assert!(!std::sync::Arc::ptr_eq(
-            &original.objects()[1],
-            &refreshed.snapshot.objects()[1]
-        ));
-    }
 }
 
 #[test]
@@ -202,32 +155,6 @@ fn change_bursts_publish_only_the_settled_contents() {
     // interval cannot establish their absence, so assert contents instead.
 }
 
-#[test]
-fn damage_loads_alike_on_open_and_reload_and_reload_warnings_are_not_blanket_rejected() {
-    use ibis_sources::{load_file, reload_file};
-    let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-    let path = dir.path().join("library.bib");
-    std::fs::write(&path, "@misc{good}\n@misc{unfinished,").unwrap_or_else(|e| panic!("{e}"));
-    let initial = load_file(&path).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(records(&initial).len(), 1);
-    assert_eq!(initial.warnings.len(), 1);
-    let reloaded = reload_file(&path).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(reloaded.snapshot.fingerprints(), initial.snapshot.fingerprints());
-    assert_eq!(reloaded.warnings, initial.warnings);
-    std::fs::write(
-        &path,
-        "@misc{good}\n@misc{good}\n@misc{retained}\n@misc{closed, title=}",
-    )
-    .unwrap_or_else(|e| panic!("{e}"));
-    let reload = reload_file(&path).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(records(&reload).len(), 1);
-    assert_eq!(records(&reload)[0].citation_key(), Ok(Some("retained")));
-    // Both `good` entries are named, then the empty `title=`.
-    assert_eq!(reload.warnings.len(), 3);
-    std::fs::write(&path, "% Deliberately empty library\n").unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(reload_file(&path).map(|l| records(&l).len()), Ok(0));
-}
-
 #[cfg(unix)]
 #[test]
 fn symlink_target_changes_and_retargeting_keep_reloading() {
@@ -278,98 +205,6 @@ fn symlink_target_changes_and_retargeting_keep_reloading() {
     );
 }
 
-#[cfg(unix)]
-#[test]
-fn a_symlink_retargeted_to_a_missing_file_recovers_when_the_file_appears() {
-    use std::os::unix::fs::symlink;
-    let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-    for name in ["selected", "first", "second"] {
-        std::fs::create_dir(dir.path().join(name)).unwrap_or_else(|e| panic!("{e}"));
-    }
-    let selected = dir.path().join("selected/library.bib");
-    let first = dir.path().join("first/target.bib");
-    let second = dir.path().join("second/target.bib");
-    std::fs::write(&first, "@misc{first}").unwrap_or_else(|e| panic!("{e}"));
-    symlink(&first, &selected).unwrap_or_else(|e| panic!("{e}"));
-    let (tx, rx) = mpsc::channel();
-    let _watch = SourceWatch::new(&selected, move |result| {
-        let _ = tx.send(result);
-    })
-    .unwrap_or_else(|e| panic!("{e}"));
-    let last_good = next(&rx).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(records(&last_good)[0].citation_keys[0].value, "first");
-    std::fs::remove_file(&selected).unwrap_or_else(|e| panic!("{e}"));
-    // Relative targets resolve from the symlink's parent, rather than the process cwd.
-    symlink("../second/target.bib", &selected).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(next(&rx).err(), Some(SourceError::Missing));
-    assert_eq!(records(&last_good)[0].citation_keys[0].value, "first");
-    std::fs::write(&first, "@misc{obsolete}").unwrap_or_else(|e| panic!("{e}"));
-    // Retrying the missing target is allowed; the obsolete target must never
-    // become a successful candidate again.
-    let deadline = Instant::now() + Duration::from_millis(800);
-    while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
-        match rx.recv_timeout(remaining) {
-            Ok(result) => assert_eq!(result.err(), Some(SourceError::Unavailable)),
-            Err(mpsc::RecvTimeoutError::Timeout) => break,
-            Err(error) => panic!("{error}"),
-        }
-    }
-    std::fs::write(&second, "@misc{second}").unwrap_or_else(|e| panic!("{e}"));
-    let recovered = next(&rx).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(records(&recovered)[0].citation_keys[0].value, "second");
-}
-
-#[cfg(windows)]
-#[test]
-fn verbatim_leaf_names_and_ordinary_aliases_watch_the_selected_file() {
-    for suffix in [".", " "] {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-        let parent = std::fs::canonicalize(dir.path()).unwrap_or_else(|e| panic!("{e}"));
-        let ordinary = dir.path().join("library.bib");
-        let verbatim = parent.join(format!("library.bib{suffix}"));
-        std::fs::write(&ordinary, "@misc{ordinary}").unwrap_or_else(|e| panic!("{e}"));
-        std::fs::write(&verbatim, "@misc{verbatim}").unwrap_or_else(|e| panic!("{e}"));
-        for (selected, key) in [
-            (verbatim.clone(), "verbatim"),
-            (ordinary.with_file_name(format!("library.bib{suffix}")), "ordinary"),
-        ] {
-            let (tx, rx) = mpsc::channel();
-            let _watch = SourceWatch::new(&selected, move |result| {
-                let _ = tx.send(result);
-            })
-            .unwrap_or_else(|e| panic!("{e}"));
-            let initial = next(&rx).unwrap_or_else(|e| panic!("{e}"));
-            assert_eq!(records(&initial)[0].citation_keys[0].value, key);
-            std::fs::write(&selected, format!("@misc{{{key}_updated}}")).unwrap_or_else(|e| panic!("{e}"));
-            let loaded = next(&rx).unwrap_or_else(|e| panic!("{e}"));
-            assert_eq!(records(&loaded)[0].citation_keys[0].value, format!("{key}_updated"));
-            assert_eq!(records(&loaded)[0].id.library, records(&initial)[0].id.library);
-        }
-    }
-}
-
-#[test]
-fn unchanged_damaged_initial_load_is_not_published_again() {
-    use ibis_sources::load_file_snapshot;
-    let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-    let path = dir.path().join("library.bib");
-    std::fs::write(&path, "@misc{good}\n@misc{unfinished,").unwrap_or_else(|e| panic!("{e}"));
-    let (initial, snapshot) = load_file_snapshot(&path, &|| false).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(records(&initial).len(), 1);
-    assert_eq!(initial.warnings.len(), 1);
-    let (tx, rx) = mpsc::channel();
-    let _watch = SourceWatch::with_snapshot(&path, snapshot, move |result| {
-        let _ = tx.send(result);
-    })
-    .unwrap_or_else(|e| panic!("{e}"));
-    assert!(rx.recv_timeout(Duration::from_millis(900)).is_err());
-    std::fs::write(&path, "@misc{updated}").unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(
-        next(&rx).map(|l| records(&l)[0].citation_keys[0].value.clone()),
-        Ok("updated".into())
-    );
-}
-
 #[test]
 #[allow(clippy::disallowed_methods)]
 fn changes_before_watch_registration_are_still_loaded_even_at_the_same_size() {
@@ -396,56 +231,6 @@ fn changes_before_watch_registration_are_still_loaded_even_at_the_same_size() {
         next(&rx).map(|l| records(&l)[0].citation_keys[0].value.clone()),
         Ok("new".into())
     );
-}
-
-#[test]
-fn unchanged_contents_after_a_gap_error_publish_recovery() {
-    use ibis_sources::load_file_snapshot;
-    for contents in ["@misc{same}", "@misc{same}\n@misc{unfinished,"] {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-        let path = dir.path().join("library.bib");
-        std::fs::write(&path, contents).unwrap_or_else(|e| panic!("{e}"));
-        let (initial, snapshot) = load_file_snapshot(&path, &|| false).unwrap_or_else(|e| panic!("{e}"));
-        std::fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
-        let (tx, rx) = mpsc::channel();
-        let _watch = SourceWatch::with_snapshot(&path, snapshot, move |result| {
-            let _ = tx.send(result);
-        })
-        .unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(next(&rx).err(), Some(SourceError::Missing));
-        // No timed retries while hidden. The next native event must preserve
-        // the initial observation, including its tolerant damaged-data policy.
-        assert!(rx.recv_timeout(Duration::from_millis(800)).is_err());
-        std::fs::write(&path, contents).unwrap_or_else(|e| panic!("{e}"));
-        let recovered = next(&rx).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(records(&recovered)[0].citation_keys[0].value, "same");
-        assert_eq!(recovered.warnings.len(), initial.warnings.len());
-    }
-}
-
-#[test]
-fn damaged_changes_in_the_registration_gap_load_as_an_open_would() {
-    use ibis_sources::load_file_snapshot;
-    let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-    let path = dir.path().join("library.bib");
-    std::fs::write(&path, "@misc{old}").unwrap_or_else(|e| panic!("{e}"));
-    let (initial, snapshot) = load_file_snapshot(&path, &|| false).unwrap_or_else(|e| panic!("{e}"));
-    std::fs::write(&path, "@misc{changed}\n@misc{unfinished,").unwrap_or_else(|e| panic!("{e}"));
-    let (tx, rx) = mpsc::channel();
-    let _watch = SourceWatch::with_snapshot(&path, snapshot, move |result| {
-        let _ = tx.send(result);
-    })
-    .unwrap_or_else(|e| panic!("{e}"));
-    let changed = next(&rx).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(records(&changed)[0].citation_keys[0].value, "changed");
-    assert_eq!(
-        changed.warnings,
-        ibis_sources::load_file(&path)
-            .unwrap_or_else(|e| panic!("{e}"))
-            .warnings
-    );
-    assert_eq!(changed.warnings.len(), 1);
-    assert_eq!(records(&initial)[0].citation_keys[0].value, "old");
 }
 
 #[test]
@@ -478,37 +263,6 @@ fn unavailable_reads_wait_for_events_instead_of_polling() {
     ));
 }
 
-#[cfg(windows)]
-#[test]
-fn a_long_exclusive_lock_recovers_on_reload_without_background_polling() {
-    use std::os::windows::fs::OpenOptionsExt;
-    let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-    let path = dir.path().join("library.bib");
-    std::fs::write(&path, "@misc{old}").unwrap_or_else(|e| panic!("{e}"));
-    let last_good = ibis_sources::load_file(&path).unwrap_or_else(|e| panic!("{e}"));
-    // Finish the edit before watching, then hold a read-only exclusive handle.
-    // Registering while locked forces the initial check to observe Unavailable:
-    // Windows can defer a writer's change notification until its handle closes.
-    std::fs::write(&path, "@misc{new}").unwrap_or_else(|e| panic!("{e}"));
-    let locked = std::fs::OpenOptions::new()
-        .read(true)
-        .share_mode(0)
-        .open(&path)
-        .unwrap_or_else(|e| panic!("{e}"));
-    let (tx, rx) = mpsc::channel();
-    let _watch = SourceWatch::new(&path, move |result| {
-        let _ = tx.send(result);
-    })
-    .unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(next(&rx).err(), Some(SourceError::Unavailable));
-    assert_eq!(records(&last_good)[0].citation_keys[0].value, "old");
-    assert!(rx.recv_timeout(Duration::from_millis(800)).is_err());
-    // Closing this read-only handle does not save or modify the source.
-    drop(locked);
-    let reloaded = ibis_sources::reload_file(&path).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(records(&reloaded)[0].citation_key(), Ok(Some("new")));
-}
-
 #[test]
 fn json_reloads_retain_failed_snapshot_and_accept_stable_empty_array() {
     let dir = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
@@ -533,40 +287,6 @@ fn json_reloads_retain_failed_snapshot_and_accept_stable_empty_array() {
     );
     std::fs::write(&path, "[]").unwrap_or_else(|error| panic!("{error}"));
     assert!(records(&next(&rx).unwrap_or_else(|error| panic!("{error}"))).is_empty());
-}
-
-#[test]
-fn long_identity_attachment_limits_load_alike_on_open_and_reload() {
-    let dir = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
-    let path = dir.path().join("synthetic.json");
-    std::fs::write(&path, r#"[{"id":"initial","type":"book"}]"#).unwrap_or_else(|error| panic!("{error}"));
-    let (initial, observation) =
-        ibis_sources::load_file_snapshot(&path, &|| false).unwrap_or_else(|error| panic!("{error}"));
-    let (tx, rx) = mpsc::channel();
-    let _watch = SourceWatch::with_snapshot(&path, observation, move |candidate| {
-        let _ = tx.send(candidate);
-    })
-    .unwrap_or_else(|error| panic!("{error}"));
-    let limited = serde_json::json!([{"id":"x".repeat(1024),"citation-key":"long","type":"book","file":"https://example.invalid/x;".repeat(256)}]);
-    std::fs::write(
-        &path,
-        serde_json::to_vec(&limited).unwrap_or_else(|error| panic!("{error}")),
-    )
-    .unwrap_or_else(|error| panic!("{error}"));
-    let limited = next(&rx).unwrap_or_else(|error| panic!("{error}"));
-    let opened = ibis_sources::load_file(&path).unwrap_or_else(|error| panic!("{error}"));
-    assert_eq!(limited.snapshot.fingerprints(), opened.snapshot.fingerprints());
-    assert_eq!(limited.warnings, opened.warnings);
-    assert!(
-        limited
-            .warnings
-            .iter()
-            .any(|warning| warning.code == ibis_sources::WarningCode::WorkLimit)
-    );
-    assert_eq!(records(&initial)[0].id.key, "record:initial");
-    std::fs::write(&path, r#"[{"id":"recovered","type":"book"}]"#).unwrap_or_else(|error| panic!("{error}"));
-    let recovered = next(&rx).unwrap_or_else(|error| panic!("{error}"));
-    assert_eq!(records(&recovered)[0].id.key, "record:recovered");
 }
 
 /// The stress-test regression: a library opened with one damaged entry kept

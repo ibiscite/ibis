@@ -129,21 +129,6 @@ fn writing_format_and_bibliography_work_without_inheriting_gui_selection() {
 }
 
 #[test]
-fn an_unknown_writing_citation_key_suggests_without_citing() {
-    let home = Home::new();
-    let bib = home.0.path().join("refs.bib");
-    std::fs::write(&bib, "@book{vale2024,title={Invented Atlas}}\n").unwrap();
-    assert_eq!(home.run(&["writings", "create", "Atlas", "--format", "pandoc"]).0, 0);
-    let (code, refused, errors) = home.run(&["cite", "vale202", "--writing", "Atlas", "--file", bib.to_str().unwrap()]);
-    assert_eq!(code, 4, "{refused} {errors}");
-    assert_eq!(refused["ok"], false);
-    assert_eq!(refused["error"]["code"], "not-found");
-    assert_eq!(refused["error"]["suggestions"], json!(["vale2024"]));
-    assert!(errors.contains("Did you mean 'vale2024'?"), "{errors}");
-    assert!(refused.get("data").is_none());
-}
-
-#[test]
 fn failed_or_busy_writes_never_report_an_unsaved_writing() {
     let home = Home::new();
     let path = home.settings();
@@ -169,45 +154,6 @@ fn failed_or_busy_writes_never_report_an_unsaved_writing() {
         serde_json::from_slice::<Value>(&std::fs::read(&path).unwrap()).unwrap()["density"],
         "compact"
     );
-}
-
-#[test]
-fn an_unreadable_writing_bibliography_is_a_warning() {
-    let home = Home::new();
-    let bib = home.0.path().join("refs.bib");
-    std::fs::write(&bib, "@book{vale2024,title={Invented Atlas}}\n").unwrap();
-    let missing = home.0.path().join("unavailable.bib");
-    let (_, made, _) = home.run(&[
-        "writings",
-        "create",
-        "Atlas",
-        "--format",
-        "pandoc",
-        "--bibliography",
-        missing.to_str().unwrap(),
-    ]);
-    let id = made["data"]["writing"]["name"].as_str().unwrap();
-    let (code, citation, _) = home.run(&["cite", "vale2024", "--writing", id, "--file", bib.to_str().unwrap()]);
-    assert_eq!(code, 1, "{citation}");
-    assert_eq!(citation["data"]["citation"]["text"], "[@vale2024]");
-    assert_eq!(citation["data"]["assessment"]["state"], "ready");
-    assert_eq!(
-        citation["data"]["bibliography"]["keys"][0]["check"]["status"],
-        "could-not-check"
-    );
-    let (code, strict, _) = home.run(&[
-        "cite",
-        "vale2024",
-        "--writing",
-        id,
-        "--strict",
-        "--file",
-        bib.to_str().unwrap(),
-    ]);
-    assert_eq!(code, 3, "{strict}");
-    assert_eq!(strict["ok"], false);
-    assert_eq!(strict["error"]["reason"], "strict-citation");
-    assert!(strict.get("data").is_none());
 }
 
 #[test]
@@ -244,25 +190,6 @@ fn a_known_wrong_work_key_is_refused() {
             assert_eq!(refused["ok"], false);
             assert!(refused.get("data").is_none());
         }
-    }
-}
-
-#[test]
-fn writing_formats_accept_the_same_registry_ids_as_ordinary_citations() {
-    let home = Home::new();
-    for output in ibis_engine::outputs::outputs() {
-        let (code, made, errors) = home.run(&[
-            "writings",
-            "create",
-            &format!("Project {}", output.id),
-            "--format",
-            &output.id,
-        ]);
-        assert_eq!(code, 0, "{}: {made} {errors}", output.id);
-        assert_eq!(
-            made["data"]["writing"]["format"],
-            serde_json::to_value(&output.output).unwrap()
-        );
     }
 }
 

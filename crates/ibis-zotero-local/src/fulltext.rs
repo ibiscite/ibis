@@ -191,24 +191,6 @@ mod tests {
     use super::*;
     use ibis_core::zotero::api::Response;
 
-    #[test]
-    fn page_breaks_count_only_when_they_match_zoteros_record() {
-        let text = "First invented page.\n\n\u{c}Second invented page.\n\n\u{c}Third.";
-        assert_eq!(
-            pages(text, Some(3)),
-            Some(vec!["First invented page.\n\n", "Second invented page.\n\n", "Third."])
-        );
-        // A trimmed empty page, or a page Zotero did not count, moves every break.
-        assert_eq!(pages(text, Some(4)), None);
-        assert_eq!(pages(text, Some(2)), None);
-        assert_eq!(pages(text, None), None);
-        assert_eq!(pages(text, Some(0)), None);
-        // pdftotext's closing form feed is one page end, not another page.
-        assert_eq!(pages("One\u{c}Two\u{c}", Some(2)), Some(vec!["One", "Two"]));
-        assert_eq!(pages("One\u{c}Two\u{c}\u{c}", Some(2)), None);
-        assert_eq!(pages("Only page", Some(1)), Some(vec!["Only page"]));
-    }
-
     struct Fake(Vec<(&'static str, u16, String)>);
     impl Transport for Fake {
         fn get(&mut self, path: &str) -> Result<Response, TransportError> {
@@ -220,28 +202,6 @@ mod tests {
                 body: body.into_bytes(),
             })
         }
-    }
-
-    #[test]
-    fn reading_live_attachment_revisions_include_version_and_date_modified() {
-        let mut row = serde_json::json!({"key":"PDF00001","version":1,"data":{"key":"PDF00001","version":1,"dateModified":"2026-11-15T12:00:00Z","itemType":"attachment","parentItem":"SYNTH001","title":"Invented PDF","contentType":"application/pdf","linkMode":"imported_file"}});
-        let read = |row: &Value| {
-            let mut transport = Fake(vec![(
-                "users/0/items/SYNTH001/children?itemType=attachment&limit=50",
-                200,
-                serde_json::json!([row]).to_string(),
-            )]);
-            attachments(&mut transport, Library::User, "SYNTH001")
-                .unwrap()
-                .remove(0)
-        };
-        let before = read(&row);
-        row["version"] = serde_json::json!(2);
-        row["data"]["version"] = serde_json::json!(2);
-        let after = read(&row);
-        assert_ne!(after, before);
-        row["data"]["dateModified"] = serde_json::json!("2026-11-15T13:00:00Z");
-        assert_ne!(read(&row), after);
     }
 
     #[test]

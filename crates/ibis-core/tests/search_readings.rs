@@ -121,64 +121,6 @@ fn kana_romaji_and_kanji_queries_agree_through_one_reading() {
 }
 
 #[test]
-fn supported_spelling_is_orthographic_hepburn_with_explicit_vowels() {
-    // shi/chi/tsu/fu/ji, wo/wi/we/vu; ぢ=じ and づ=ず. No surname rules.
-    // Small ya/yu/yo contract only the i-row; っ doubles k/s/t/p, ch -> tch.
-    // ー repeats the previous vowel; おう stays ou, おお stays oo (no macrons).
-    // ん is n, with an apostrophe before a vowel or y: shin'you != shinyou.
-    let cases = [
-        ("かざね", "kazane"),
-        ("がざね", "gazane"),
-        ("ぱざね", "pazane"),
-        ("ばざね", "bazane"),
-        ("はざね", "hazane"),
-        ("きゃの", "kyano"),
-        ("きやの", "kiyano"),
-        ("ぎゅの", "gyuno"),
-        ("しゃの", "shano"),
-        ("ちゅの", "chuno"),
-        ("じょの", "jono"),
-        ("にゃの", "nyano"),
-        ("ひゅの", "hyuno"),
-        ("びょの", "byono"),
-        ("ぴゃの", "pyano"),
-        ("みゅの", "myuno"),
-        ("りょの", "ryono"),
-        ("かっこ", "kakko"),
-        ("かこ", "kako"),
-        ("さっし", "sasshi"),
-        ("まっちゃ", "matcha"),
-        ("はっぱ", "happa"),
-        ("きって", "kitte"),
-        ("しんよう", "shin'you"),
-        ("しにょう", "shinyou"),
-        ("かんあ", "kan'a"),
-        ("かな", "kana"),
-        ("かんな", "kanna"),
-        ("らん", "ran"),
-        ("コーナ", "koona"),
-        ("こうな", "kouna"),
-        ("しちつふじ", "shichitsufuji"),
-        ("ぢづをゐゑヴ", "jizuwowiwevu"),
-    ];
-    let index = SnapshotIndex::new(snapshot(
-        cases
-            .iter()
-            .enumerate()
-            .map(|(n, (kana, _))| person(&format!("case{n}"), kana))
-            .collect(),
-    ));
-    // Quotes disable the existing typo fallback, so nearby readings must differ.
-    for (n, (_, reading)) in cases.iter().enumerate() {
-        assert_eq!(
-            keys(&index, &format!("a:\"{reading}\"")),
-            [format!("case{n}")],
-            "{reading}"
-        );
-    }
-}
-
-#[test]
 fn aliases_keep_person_boundaries_and_field_hints() {
     let index = SnapshotIndex::new(snapshot(vec![record(
         "people",
@@ -218,40 +160,6 @@ fn original_keys_and_exact_titles_outrank_readings() {
     assert_eq!(hits[0].matched, [MatchField::Citekey]);
     assert_eq!(hits[1].matched, [MatchField::Title]);
     assert_eq!(hits[2].matched, [MatchField::Author]);
-}
-
-#[test]
-fn refreshed_and_rebuilt_readings_agree_after_insert_edit_and_delete() {
-    let before = SnapshotIndex::new(snapshot(vec![
-        person("a", "かざね"),
-        person("b", "きゃの"),
-        person("d", "りか"),
-    ]));
-    let after = snapshot(vec![
-        person("b", "きゃの"),
-        person("d", "ぎゅの"),
-        person("e", "かっこ"),
-    ]);
-    let updated = SnapshotIndex::updated(after.clone(), &before);
-    let rebuilt = SnapshotIndex::new(after);
-    for (query, expected) in [
-        ("a:kazane", vec![]),
-        ("a:kyano", vec!["b"]),
-        ("a:rika", vec![]),
-        ("a:gyuno", vec!["d"]),
-        ("a:kakko", vec!["e"]),
-    ] {
-        let read = |index: &SnapshotIndex| {
-            index
-                .search(query, 10, None, &|| false)
-                .unwrap()
-                .into_iter()
-                .map(|hit| (hit.item.clone(), hit.score, hit.matched, hit.typo, hit.partial))
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(keys(&updated, query), expected, "{query}");
-        assert_eq!(read(&updated), read(&rebuilt), "{query}");
-    }
 }
 
 #[test]

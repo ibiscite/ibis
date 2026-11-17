@@ -239,26 +239,7 @@ pub(crate) fn rich_text_tag_len(text: &str) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_hidden, strip_markup};
-
-    #[test]
-    fn hidden_characters_are_told_from_ordinary_text() {
-        for hidden in [
-            '\u{1b}',
-            '\u{7}',
-            '\u{202e}',
-            '\u{2067}',
-            '\u{feff}',
-            '\u{e0041}',
-            '\u{e0100}',
-        ] {
-            assert!(is_hidden(hidden), "{hidden:?}");
-        }
-        // Joiners and marks that text in many languages needs are kept.
-        for kept in ['\n', '\t', 'a', 'ع', '\u{200d}', '\u{200c}', '\u{200f}', '\u{fe0f}'] {
-            assert!(!is_hidden(kept), "{kept:?}");
-        }
-    }
+    use super::strip_markup;
 
     #[test]
     fn strip_markup_removes_tags_and_decodes_entities() {

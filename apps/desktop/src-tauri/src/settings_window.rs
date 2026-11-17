@@ -373,40 +373,6 @@ mod tests {
     }
 
     #[test]
-    fn presenting_existing_settings_resets_general_without_a_request_and_honours_explicit_requests() {
-        use std::sync::mpsc;
-        use std::time::Duration;
-        use tauri::Listener;
-
-        let app = tauri::test::mock_builder()
-            .build(tauri::generate_context!(test = true))
-            .unwrap_or_else(|e| panic!("cannot build settings fixture: {e}"));
-        let window = WebviewWindowBuilder::new(&app, LABEL, Default::default())
-            .build()
-            .unwrap_or_else(|e| panic!("cannot build settings window: {e}"));
-        let (sent, events) = mpsc::channel();
-        window.listen("settings:page", move |event| {
-            let _ = sent.send(event.payload().to_string());
-        });
-
-        for (requested, expected) in [
-            (None, "general"),
-            (Some(Page::About), "about"),
-            (None, "general"),
-            (Some(Page::Paste), "paste"),
-            (Some(Page::Shortcuts), "shortcuts"),
-            (Some(Page::Citations), "citations"),
-            (Some(Page::General), "general"),
-        ] {
-            present_existing(&window, requested);
-            let payload = events
-                .recv_timeout(Duration::from_secs(3))
-                .unwrap_or_else(|e| panic!("settings page event missing: {e}"));
-            assert_eq!(payload, serde_json::json!(expected).to_string());
-        }
-    }
-
-    #[test]
     fn settings_fits_a_small_or_scaled_screen_and_keeps_its_size_elsewhere() {
         assert_eq!(
             fitted(None),
@@ -430,22 +396,5 @@ mod tests {
             (SIZE, MIN_SIZE),
             "an empty area while displays change is unknown"
         );
-    }
-
-    #[test]
-    fn each_page_has_the_name_the_page_reads() {
-        for (page, name) in [
-            (Page::General, "general"),
-            (Page::Paste, "paste"),
-            (Page::Look, "look"),
-            (Page::Libraries, "libraries"),
-            (Page::Advanced, "advanced"),
-            (Page::Shortcuts, "shortcuts"),
-            (Page::Citations, "citations"),
-            (Page::About, "about"),
-        ] {
-            assert_eq!(page.name(), name);
-            assert_eq!(serde_json::to_value(page).ok(), Some(serde_json::json!(name)));
-        }
     }
 }

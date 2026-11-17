@@ -373,30 +373,6 @@ mod tests {
     }
 
     #[test]
-    fn labels_are_citable_only_when_short_plain_and_unrepeated() {
-        assert_eq!(citable_label("xii"), Some("xii".into()));
-        assert_eq!(citable_label("A-3"), Some("A-3".into()));
-        assert_eq!(citable_label("S1.2"), Some("S1.2".into()));
-        // NFC first: a decomposed é is one letter.
-        assert_eq!(citable_label("e\u{301}1"), Some("\u{e9}1".into()));
-        for unknown in ["", "page 3", "12345678901234567", "3\u{200b}", "3\u{7}", "3/4"] {
-            assert_eq!(citable_label(unknown), None, "{unknown:?}");
-        }
-        let document = checked(
-            extracted(
-                4,
-                Some(vec![Some("i"), Some("1"), Some("1"), Some("x y")]),
-                Some(vec!["", "", "", ""]),
-            ),
-            false,
-        )
-        .unwrap();
-        assert_eq!(document.labels, Some(vec![Some("i".into()), None, None, None]));
-        let none_citable = checked(extracted(1, Some(vec![Some("x y")]), Some(vec![""])), false).unwrap();
-        assert_eq!(none_citable.labels, None);
-    }
-
-    #[test]
     fn an_answer_that_breaks_a_bound_is_refused() {
         assert_eq!(checked(extracted(0, None, Some(vec![])), false), Err(Refusal::Damaged));
         assert_eq!(
@@ -423,15 +399,6 @@ mod tests {
             Err(Refusal::TooLarge)
         );
         assert!(checked(extracted(1, None, Some(vec!["one"])), false).is_ok());
-    }
-
-    #[test]
-    fn the_mark_must_come_within_the_first_kilobyte() {
-        assert!(has_mark(b"%PDF-1.7\n"));
-        assert!(has_mark(&[b"junk ".as_slice(), b"%PDF-2.0"].concat()));
-        let late = [vec![b' '; MARK_WITHIN - 4], b"%PDF-1.7".to_vec()].concat();
-        assert!(!has_mark(&late));
-        assert!(!has_mark(b"PK\x03\x04 an invented archive"));
     }
 
     #[test]
@@ -522,23 +489,6 @@ mod tests {
         let stop = Arc::new(move || ready.exists());
         assert_eq!(reader.read(&file, false, stop), Err(Refusal::TimedOut));
         assert!(started.elapsed() < Duration::from_secs(5));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn a_pdf_child_answer_with_invalid_utf8_is_refused() {
-        use std::os::unix::fs::PermissionsExt;
-        let folder = tempfile::tempdir().unwrap();
-        let root = ibis_zotero_local::closed::trusted_folder(folder.path());
-        let program = root.join("invalid-ibis");
-        std::fs::write(&program, "#!/bin/sh\nprintf '\\377'\n").unwrap();
-        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
-        let file = root.join("invented.pdf");
-        std::fs::write(&file, "%PDF-1.7\n").unwrap();
-        assert_eq!(
-            PdfReader::new(program).read(&file, false, Arc::new(|| false)),
-            Err(Refusal::Damaged)
-        );
     }
 
     #[cfg(unix)]

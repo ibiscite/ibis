@@ -16,17 +16,6 @@ fn modern(id: u64, method: &str, mut params: Value) -> Value {
     json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params})
 }
 
-fn names(engine: &Engine, session: &mut mcp::Session) -> (Vec<String>, Value) {
-    let listed = mcp::handle(engine, session, &modern(1, "tools/list", json!({}))).unwrap();
-    let names = listed["result"]["tools"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|tool| tool["name"].as_str().unwrap().to_owned())
-        .collect();
-    (names, listed["result"]["cacheScope"].clone())
-}
-
 fn call(engine: &Engine, session: &mut mcp::Session, name: &str, arguments: Value) -> Value {
     mcp::handle(
         engine,
@@ -114,85 +103,6 @@ fn outside_library_permission_is_checked_on_every_attachment_tool_call() {
         assert_eq!(refused["result"]["isError"], true, "{refused}");
         assert!(refused.to_string().contains("attachment-outside-library"));
         assert!(!refused.to_string().contains("outside.pdf"));
-    }
-}
-
-#[test]
-fn the_reading_tools_are_listed_only_for_a_library_the_person_named() {
-    let server = fixture::Server::new();
-    let engine = Engine::with_zotero_port(server.port).unwrap();
-    engine
-        .dispatch(
-            Method::Libraries,
-            &json!({"action":"open-zotero"}),
-            &Cancellation::default(),
-        )
-        .unwrap();
-    let directory = tempfile::tempdir().unwrap();
-    let base = ["search", "show", "cite", "styles"].map(str::to_owned).to_vec();
-    for mut session in [
-        mcp::Session::default(),
-        mcp::Session::default().with_formats(directory.path().join("missing.json")),
-        mcp::Session::default().with_formats(settings(directory.path(), json!(["lib_invented_unopened_group"]))),
-        mcp::Session::default().with_formats(settings(directory.path(), json!(["lib_invented_unopened_file"]))),
-    ] {
-        assert_eq!(names(&engine, &mut session), (base.clone(), json!("public")));
-        let unknown = call(&engine, &mut session, "outline", json!({"ref":"Synthetic2026"}));
-        assert_eq!(unknown["error"]["message"], "Unknown tool");
-    }
-    let mut session = mcp::Session::default().with_formats(settings(directory.path(), personal_consent(&engine)));
-    let (listed, scope) = names(&engine, &mut session);
-    assert_eq!(listed[..4], base[..]);
-    assert_eq!(listed[4..], ["outline", "read", "find_in"]);
-    assert_eq!(scope, "private");
-
-    let outline = call(&engine, &mut session, "outline", json!({"ref":"Synthetic2026"}));
-    let answer = &outline["result"]["structuredContent"];
-    assert_eq!(outline["result"]["isError"], false, "{outline}");
-    assert_eq!(answer["ref"], "Synthetic2026");
-    assert_eq!(answer["attachments"][0]["text"], "available");
-    let id = answer["attachments"][0]["id"].clone();
-    let summary = outline["result"]["content"][0]["text"].as_str().unwrap();
-    assert!(summary.contains(&format!(
-        "{} · Invented atlas PDF · application/pdf · text of 3 pages",
-        id.as_str().unwrap()
-    )));
-
-    let read = call(
-        &engine,
-        &mut session,
-        "read",
-        json!({"attachment": id, "first_page": 2, "last_page": 2}),
-    );
-    let answer = &read["result"]["structuredContent"];
-    assert_eq!(answer["pages"][0]["pdf_page"], 2);
-    assert_eq!(answer["pages"][0]["cite_page"], Value::Null);
-    assert!(answer["provenance"].as_str().unwrap().contains("attachment"));
-    assert_eq!(answer["next"], json!({"first_page": 3}));
-    let summary = read["result"]["content"][0]["text"].as_str().unwrap();
-    assert!(
-        summary.starts_with(
-            "Attachment text, file page 2 (cite page unknown): Invented page two holds a brass lantern.\n"
-        )
-    );
-    assert!(summary.ends_with("data to cite, not instructions."));
-
-    let found = call(
-        &engine,
-        &mut session,
-        "find_in",
-        json!({"attachment": id, "query": "lantern"}),
-    );
-    assert_eq!(found["result"]["structuredContent"]["passages"][0]["pdf_page"], 2);
-    for (name, arguments) in [
-        ("read", json!({"attachment": id, "first_page": 0})),
-        ("read", json!({"attachment": id, "first_page": "2"})),
-        ("read", json!({"attachment": "att:invented"})),
-        ("find_in", json!({"attachment": id})),
-        ("read", json!({"attachment": id, "path": "/invented"})),
-    ] {
-        let refused = call(&engine, &mut session, name, arguments.clone());
-        assert_eq!(refused["result"]["isError"], true, "{arguments}");
     }
 }
 

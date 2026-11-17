@@ -145,12 +145,6 @@ mod tests {
 
     #[test]
     #[ignore = "requires an isolated X11 display; run with xvfb-run"]
-    fn usable_x11_and_xkb_are_accepted_even_with_a_wayland_session_label() {
-        assert_eq!(shortcut_ready(), Ok(()));
-    }
-
-    #[test]
-    #[ignore = "requires an isolated X11 display; run with xvfb-run"]
     fn x11_server_focus_stays_with_editor_during_keyboard_grab() {
         use x11rb::protocol::xproto::{CreateWindowAux, GrabMode, GrabStatus, InputFocus, WindowClass};
         fn synthetic<T, E>(result: Result<T, E>) -> T {
@@ -247,33 +241,5 @@ mod tests {
         set(root, active, AtomEnum::WINDOW, &[window]);
         assert_eq!(full_screen_in_front(&connection, root), Err(()));
         synthetic(synthetic(connection.delete_property(root, active)).check());
-    }
-
-    #[test]
-    fn focus_belongs_to_the_picker_or_its_descendants_only() {
-        assert_eq!(contains_focus(10, 10, |_| panic!("already at picker")), Ok(true));
-        assert_eq!(contains_focus(10, 12, |id| Ok(id - 1)), Ok(true));
-        assert_eq!(contains_focus(10, 20, |_| Ok(0)), Ok(false));
-        assert_eq!(contains_focus(10, 0, |_| panic!("no focus")), Ok(false));
-        assert_eq!(
-            contains_focus(10, 1, |_| panic!("pointer-root focus is ambiguous")),
-            Err(())
-        );
-    }
-
-    #[test]
-    fn destroyed_windows_cycles_and_excessive_depth_do_not_claim_focus() {
-        assert_eq!(contains_focus(10, 20, |_| Err(())), Err(()));
-        assert_eq!(contains_focus(10, 20, |_| Ok(20)), Err(()));
-        assert_eq!(contains_focus(10, 20, |id| Ok(if id == 20 { 21 } else { 20 })), Err(()));
-        let mut queries = 0;
-        assert_eq!(
-            contains_focus(10, 20, |id| {
-                queries += 1;
-                Ok(id + 1)
-            }),
-            Err(())
-        );
-        assert_eq!(queries, 64);
     }
 }

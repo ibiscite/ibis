@@ -28,11 +28,6 @@ fn warning(reason: &'static str) {
     ));
 }
 
-#[cfg(test)]
-pub(super) fn test_warning() {
-    warning("the picker content layer is unavailable");
-}
-
 fn apply(panel: &NSPanel) -> Result<(), &'static str> {
     if MainThreadMarker::new().is_none() {
         return Err("the picker corners must be configured on the main thread");

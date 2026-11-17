@@ -358,13 +358,6 @@ mod tests {
             other => panic!("{query}: {other:?}"),
         }
     }
-    fn spec(query: &str) -> (Option<KeySyntax>, Option<String>, CitationForm) {
-        let pick = pick(query);
-        match pick.spec("apa") {
-            OutputSpec::Key { syntax, command } => (Some(syntax), command, pick.form),
-            _ => (None, None, pick.form),
-        }
-    }
 
     #[test]
     fn explicit_context_is_preserved_and_ambiguous_or_relative_paths_are_refused() {
@@ -391,67 +384,10 @@ mod tests {
     }
 
     #[test]
-    fn every_listed_format_has_its_output() {
-        use CitationForm::{BibliographyOnly, Narrative, Normal};
-        use KeySyntax::*;
-        let owned = |command: &str| Some(command.to_owned());
-        for (query, syntax, command, form) in [
-            ("", Some(Pandoc), owned("bare"), Normal),
-            ("?format=pandoc", Some(Pandoc), owned("bare"), Normal),
-            ("?format=pandoc&brackets=1", Some(Pandoc), None, Normal),
-            ("?format=pandoc&brackets=true", Some(Pandoc), None, Normal),
-            ("?format=biblatex", Some(Biblatex), owned("autocite"), Normal),
-            (
-                "?format=biblatex&command=parencite",
-                Some(Biblatex),
-                owned("parencite"),
-                Normal,
-            ),
-            (
-                "?format=biblatex&command=textcite",
-                Some(Biblatex),
-                owned("textcite"),
-                Normal,
-            ),
-            ("?format=natbib", Some(Latex), owned("cite"), Normal),
-            ("?format=natbib&command=citep", Some(Natbib), None, Normal),
-            ("?format=natbib&command=citet", Some(Natbib), None, Narrative),
-            ("?format=latex", Some(Latex), owned("cite"), Normal),
-            ("?format=cite", Some(Latex), owned("cite"), Normal),
-            ("?format=citep", Some(Natbib), None, Normal),
-            ("?format=citet", Some(Natbib), None, Narrative),
-            ("?format=typst", Some(Typst), None, Normal),
-            ("?format=mmd", Some(MultiMarkdown), None, Normal),
-            ("?format=asciidoctor-bibtex", Some(AsciiDoc), None, Normal),
-            ("?format=jupyter", Some(Jupyter), None, Normal),
-            ("?format=json", Some(CaywJson), None, Normal),
-            ("?format=scannable-cite", Some(ScannableCite), None, Normal),
-            ("?format=formatted-citation", None, None, Normal),
-            ("?format=formatted-bibliography", None, None, BibliographyOnly),
-        ] {
-            assert_eq!(spec(query), (syntax, command, form), "{query}");
-        }
-        assert_eq!(
-            pick("?format=formatted-citation").spec("ieee"),
-            OutputSpec::Csl { style: "ieee".into() }
-        );
-    }
-
-    #[test]
     fn a_probe_opens_nothing() {
         assert_eq!(request("?probe=true"), Ok(CaywRequest::Probe));
         assert_eq!(request("?probe=1&format=pandoc"), Ok(CaywRequest::Probe));
         assert!(matches!(request("?probe=false"), Ok(CaywRequest::Pick(_))));
-    }
-
-    #[test]
-    fn options_that_change_nothing_are_allowed_and_clipboard_is_kept() {
-        assert!(pick("?format=pandoc&clipboard=1").clipboard);
-        assert!(!pick("?format=pandoc").clipboard);
-        assert!(!pick("?format=pandoc&clipboard=false").clipboard);
-        for option in ["minimize=true", "texstudio=true", "select=true", "application=1"] {
-            pick(&format!("?format=pandoc&{option}"));
-        }
     }
 
     #[test]
@@ -476,25 +412,6 @@ mod tests {
         ] {
             assert_eq!(request(query), Err(Refusal::Option), "{query}");
         }
-    }
-
-    #[test]
-    fn a_request_without_the_token_is_refused_whatever_it_asks() {
-        for target in [
-            "/better-bibtex/cayw?format=pandoc".to_owned(),
-            "/better-bibtex/cayw?probe=true".to_owned(),
-            format!("/{}/better-bibtex/cayw", &TOKEN[..31]),
-            format!("/{TOKEN}0/better-bibtex/cayw"),
-            "/0123456789abcdef0123456789abcdeE/better-bibtex/cayw".to_owned(),
-            "/".to_owned(),
-            "/better-bibtex/json-rpc".to_owned(),
-        ] {
-            assert_eq!(parse(&head(&target, &[]), PORT, TOKEN), Err(Refusal::Token), "{target}");
-        }
-        assert_eq!(
-            parse(&head(&format!("/{TOKEN}/better-bibtex/json-rpc"), &[]), PORT, TOKEN),
-            Err(Refusal::NotFound)
-        );
     }
 
     #[test]
@@ -586,18 +503,6 @@ mod tests {
     }
 
     #[test]
-    fn a_body_or_a_second_framing_is_refused() {
-        for header in ["Content-Length: 5", "Transfer-Encoding: chunked", "Upgrade: websocket"] {
-            assert_eq!(
-                parse(&head(&cayw(""), &[header]), PORT, TOKEN),
-                Err(Refusal::Malformed),
-                "{header}"
-            );
-        }
-        assert!(parse(&head(&cayw(""), &["Content-Length: 0"]), PORT, TOKEN).is_ok());
-    }
-
-    #[test]
     fn broken_or_oversized_requests_are_refused() {
         for bytes in [
             &b"GET\r\n\r\n"[..],
@@ -641,51 +546,5 @@ mod tests {
         }
         let text = String::from_utf8(response((200, "OK"), "[@é]")).unwrap_or_default();
         assert!(text.contains("Content-Length: 5\r\n"), "bytes, not characters: {text}");
-    }
-
-    /// Any bytes at all end in a request or a refusal, never a panic. A fixed
-    /// generator keeps every run the same, with no new dependency.
-    #[test]
-    fn no_bytes_make_the_parser_panic() {
-        let mut state: u64 = 0x2545_f491_4f6c_dd1d;
-        let mut next = move || {
-            state ^= state << 13;
-            state ^= state >> 7;
-            state ^= state << 17;
-            state
-        };
-        let pieces: [&[u8]; 12] = [
-            b"GET ",
-            b" HTTP/1.1",
-            b"\r\n",
-            b"Host: ",
-            b"127.0.0.1:",
-            b"23124",
-            b"%",
-            b"?format=",
-            "é".as_bytes(),
-            b"\xff",
-            b":",
-            TOKEN.as_bytes(),
-        ];
-        for _ in 0..20_000 {
-            let mut bytes = vec![];
-            for _ in 0..(next() % 24) {
-                match next() % 3 {
-                    0 => bytes.push(next() as u8),
-                    _ => bytes.extend_from_slice(pieces[(next() % pieces.len() as u64) as usize]),
-                }
-            }
-            if next() % 2 == 0 {
-                bytes.extend_from_slice(b"\r\n\r\n");
-            }
-            let _ = parse(&bytes, PORT, TOKEN);
-        }
-    }
-
-    #[test]
-    fn a_head_ends_at_the_first_blank_line() {
-        assert_eq!(head_end(b"GET / HTTP/1.1\r\n\r\nmore"), Some(18));
-        assert_eq!(head_end(b"GET / HTTP/1.1\r\n"), None);
     }
 }

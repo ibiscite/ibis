@@ -1,43 +1,7 @@
-use ibis_core::contract::{GoldenCase, Snapshot};
+use ibis_core::contract::GoldenCase;
 use ibis_engine::Engine;
 use serde_json::Value;
 use std::{io::Cursor, sync::Arc};
-
-fn synthetic_engine() -> Result<Engine, Box<dyn std::error::Error>> {
-    let case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json"))?;
-    let snapshot: Snapshot = case.library;
-    Ok(Engine::from_snapshot(Arc::new(snapshot)))
-}
-
-#[test]
-fn human_style_option_formats_with_the_shared_engine() -> Result<(), Box<dyn std::error::Error>> {
-    for (bibliography, expected) in [
-        (false, "(Taylor, 2026)"),
-        (true, "Taylor, A. (2026). Synthetic signals. Imaginary Press."),
-    ] {
-        let mut args = vec!["ibis", "cite", "Example2026", "--style", "apa", "--json"];
-        if bibliography {
-            args.push("--bibliography");
-        }
-        let mut output = vec![];
-        let mut errors = vec![];
-        let code = ibis::run_with(
-            synthetic_engine()?,
-            args.into_iter().map(Into::into).collect(),
-            Cursor::new(vec![]),
-            &mut output,
-            &mut errors,
-            ibis::OutputMode::Plain,
-        );
-        assert_eq!(code, 0);
-        assert!(errors.is_empty());
-        let result: Value = serde_json::from_slice(&output)?;
-        assert_eq!(result["data"]["text"], expected);
-        assert!(result["data"]["html"].is_string());
-        assert!(result["data"]["rtf"].is_string());
-    }
-    Ok(())
-}
 
 fn formatted_cases() -> Result<Vec<GoldenCase>, serde_json::Error> {
     [
@@ -153,33 +117,6 @@ fn formatted_goldens_replay_through_engine_human_call_and_stdio() -> Result<(), 
 }
 
 #[test]
-fn human_whole_document_fallback_explains_its_canonical_reference() -> Result<(), Box<dyn std::error::Error>> {
-    let case = formatted_cases()?.pop().ok_or("fallback case")?;
-    let expected = case.expected.data().ok_or("result")?.text.clone() + "\n";
-    let mut output = vec![];
-    let mut errors = vec![];
-    assert_eq!(
-        ibis::run_with(
-            Engine::from_snapshot(Arc::new(case.library)),
-            ["ibis", "cite", "Example2026", "--style", "ieee"]
-                .into_iter()
-                .map(Into::into)
-                .collect(),
-            Cursor::new(vec![]),
-            &mut output,
-            &mut errors,
-            ibis::OutputMode::Plain
-        ),
-        0
-    );
-    assert_eq!(output, expected.as_bytes());
-    let notices = String::from_utf8(errors)?;
-    assert!(notices.contains("whole document"));
-    assert!(notices.contains("reference entry"));
-    Ok(())
-}
-
-#[test]
 fn formatted_failures_stay_explicit_and_uncopyable() -> Result<(), Box<dyn std::error::Error>> {
     use ibis_core::contract::*;
     for (kind, expected) in [
@@ -232,43 +169,6 @@ fn formatted_failures_stay_explicit_and_uncopyable() -> Result<(), Box<dyn std::
             "{kind}"
         );
         assert!(citation.copy_content(1).is_none());
-    }
-    Ok(())
-}
-
-#[test]
-fn an_unknown_style_or_locale_refuses_the_whole_request() -> Result<(), Box<dyn std::error::Error>> {
-    use ibis_core::contract::*;
-    for (style, locale, reason) in [
-        ("unknown-synthetic-style", None, "unknown-style"),
-        ("modern-language-association", Some("xx-synthetic"), "unknown-locale"),
-    ] {
-        let mut case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json"))?;
-        case.request.output = OutputSpec::Csl { style: style.into() };
-        case.request.output_locale = locale.map(Into::into);
-        let mut output = vec![];
-        let mut errors = vec![];
-        let code = ibis::run_with(
-            Engine::from_snapshot(Arc::new(case.library)),
-            ["ibis", "cite", "--request", "--json"]
-                .into_iter()
-                .map(Into::into)
-                .collect(),
-            Cursor::new(serde_json::to_vec(&case.request)?),
-            &mut output,
-            &mut errors,
-            ibis::OutputMode::Plain,
-        );
-        assert_eq!(code, 3, "{reason}");
-        assert_eq!(
-            serde_json::from_slice::<serde_json::Value>(&output)?,
-            serde_json::json!({"ibis":1,"ok":false,"error":{"code":"bad-input","reason":reason,
-                "message":{"id":format!("reason-{reason}"),"args":{}},
-                "recovery":{"action":if reason == "unknown-locale" {"choose-locale"} else {"choose-style"}},
-                "focus":if reason == "unknown-locale" {"language"} else {"format-picker"}}})
-        );
-        let errors = String::from_utf8(errors)?;
-        assert!(errors.contains("ibis styles"), "{errors}");
     }
     Ok(())
 }

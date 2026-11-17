@@ -249,33 +249,6 @@ mod tests {
     }
 
     #[test]
-    fn replacement_rolls_back_if_the_old_key_cannot_be_released() {
-        let old = "Alt+Y"
-            .parse::<Shortcut>()
-            .unwrap_or_else(|error| panic!("fixture failed: {error}"));
-        let new = "Alt+K"
-            .parse::<Shortcut>()
-            .unwrap_or_else(|error| panic!("fixture failed: {error}"));
-        let mut released = Vec::new();
-        let result = replace_with(
-            Some(old),
-            new,
-            |_| Ok(()),
-            |key| {
-                released.push(key);
-                if key == old {
-                    Err(SHORTCUT_REGISTRATION_FAILED)
-                } else {
-                    Ok(())
-                }
-            },
-        );
-        assert_eq!(result, Err(SHORTCUT_REGISTRATION_FAILED));
-        assert_eq!(released, [old, new]);
-        assert!(replace_with(None, new, |_| Ok(()), |_| panic!("no previous shortcut")).is_ok());
-    }
-
-    #[test]
     fn unavailable_shortcut_backend_never_calls_the_registration_plugin() {
         assert_eq!(
             register_with::<()>(

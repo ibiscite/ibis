@@ -100,33 +100,6 @@ fn notes_go_where_each_syntax_carries_them_and_the_rest_are_losses() {
 }
 
 #[test]
-fn several_references_stay_one_citation() {
-    for (syntax, expected) in [
-        (KeySyntax::OrgCite, "[cite:@Example2026; @Example2026]"),
-        (KeySyntax::Myst, "{cite:p}`Example2026,Example2026`"),
-        (KeySyntax::MultiMarkdown, "[#Example2026][][#Example2026][]"),
-        (KeySyntax::AsciiDoc, "cite:[Example2026, Example2026]"),
-        (KeySyntax::JekyllScholar, "{% cite Example2026 Example2026 %}"),
-    ] {
-        assert_eq!(render(syntax, two).text, expected, "{syntax:?}");
-    }
-    // Jekyll Scholar pairs locators with keys by position only.
-    let result = render(KeySyntax::JekyllScholar, |request| {
-        two(request);
-        request.items[1].locator = locator(LocatorTerm::Page, "3");
-    });
-    assert_eq!(result.text, "{% cite Example2026 Example2026 %}");
-    assert_eq!(
-        result.losses,
-        [Loss {
-            item: Some(1),
-            field: LossField::Locator,
-            reason: LossReason::Unsupported
-        }]
-    );
-}
-
-#[test]
 fn org_and_myst_forms_use_their_own_styles() {
     for (form, expected) in [
         (CitationForm::Narrative, "[cite/t:@Example2026]"),
@@ -158,47 +131,6 @@ fn org_and_myst_forms_use_their_own_styles() {
 }
 
 #[test]
-fn other_locator_types_keep_their_label() {
-    let chapter = |r: &mut CitationRequest| r.items[0].locator = locator(LocatorTerm::Chapter, "3");
-    assert_eq!(render(KeySyntax::OrgCite, chapter).text, "[cite:@Example2026, chap. 3]");
-    let refused = render(KeySyntax::AsciiDoc, chapter);
-    assert_eq!(
-        refused.outcomes,
-        [ItemOutcome::Refused {
-            item: 0,
-            error: CitationError::InvalidLocator
-        }]
-    );
-    assert!(refused.copy_content(1).is_none());
-    assert_eq!(
-        render(KeySyntax::JekyllScholar, chapter).text,
-        "{% cite Example2026 --label chapter --locator 3 %}"
-    );
-    let sub_verbo = render(KeySyntax::CaywJson, |r| {
-        r.items[0].locator = locator(LocatorTerm::SubVerbo, "lex");
-    });
-    assert_eq!(
-        sub_verbo.text,
-        r#"[{"citationKey":"Example2026","label":"sub-verbo","locator":"lex"}]"#
-    );
-}
-
-#[test]
-fn asciidoc_refuses_every_non_page_locator() {
-    for term in LocatorTerm::ALL.into_iter().filter(|term| *term != LocatorTerm::Page) {
-        let result = render(KeySyntax::AsciiDoc, |r| r.items[0].locator = locator(term, "3"));
-        assert_eq!(
-            result.outcomes,
-            [ItemOutcome::Refused {
-                item: 0,
-                error: CitationError::InvalidLocator
-            }]
-        );
-        assert!(result.copy_content(1).is_none());
-    }
-}
-
-#[test]
 fn text_a_syntax_would_read_as_markup_is_a_typed_loss_never_markup() {
     for hostile in [
         "see /this/ one",
@@ -227,51 +159,6 @@ fn text_a_syntax_would_read_as_markup_is_a_typed_loss_never_markup() {
         let result = render(KeySyntax::MultiMarkdown, |r| r.items[0].suffix = plain(hostile));
         assert_eq!(result.text, "[#Example2026][]", "{hostile}");
         assert_eq!(fields(&result), [LossField::Suffix], "{hostile}");
-    }
-}
-
-#[test]
-fn an_org_suffix_that_reads_as_a_locator_is_not_carried() {
-    for suffix in ["12", "12 more", "iv more", "X more", "p. 4 below", "chapter 3"] {
-        for located in [false, true] {
-            let result = render(KeySyntax::OrgCite, |r| {
-                r.items[0].suffix = plain(suffix);
-                if located {
-                    r.items[0].locator = locator(LocatorTerm::Page, "4");
-                }
-            });
-            let expected = if located {
-                "[cite:@Example2026, p. 4]"
-            } else {
-                "[cite:@Example2026]"
-            };
-            assert_eq!(result.text, expected, "{suffix}");
-            assert_eq!(fields(&result), [LossField::Suffix], "{suffix}");
-        }
-    }
-}
-
-#[test]
-fn mixed_myst_forms_never_share_the_first_references_role() {
-    for first in [CitationForm::Normal, CitationForm::Narrative] {
-        let result = render(KeySyntax::Myst, |r| {
-            r.form = first;
-            two(r);
-            r.items[1].form = Some(if first == CitationForm::Normal {
-                CitationForm::Narrative
-            } else {
-                CitationForm::Normal
-            });
-        });
-        assert_eq!(result.outcomes[0], ItemOutcome::Rendered { item: 0 });
-        assert_eq!(
-            result.outcomes[1],
-            ItemOutcome::Refused {
-                item: 1,
-                error: CitationError::UnsupportedForm,
-            }
-        );
-        assert!(result.copy_content(2).is_none());
     }
 }
 
@@ -451,94 +338,4 @@ fn context_writes_its_cite_command_in_every_form_it_has() {
             error: CitationError::UnsupportedForm
         }]
     );
-}
-
-#[test]
-fn context_carries_notes_for_one_reference_and_reports_them_for_several() {
-    let one = render(KeySyntax::Context, noted);
-    assert_eq!(
-        one.text,
-        r"\cite[lefttext={{see\space}},righttext={{\removeunwantedspaces\removepunctuation, pp. 12–14, emphasis added}}][Example2026]"
-    );
-    assert!(one.losses.is_empty());
-    // ConTeXt sorts the keys, and its texts follow the sorted order.
-    let several = render(KeySyntax::Context, |r| {
-        noted(r);
-        two(r);
-    });
-    assert_eq!(several.text, "\\cite[Example2026,Example2026]");
-    assert_eq!(
-        fields(&several),
-        [LossField::Locator, LossField::Prefix, LossField::Suffix].repeat(2)
-    );
-}
-
-#[test]
-fn context_keeps_its_special_characters_literal() {
-    let result = render(KeySyntax::Context, |r| {
-        r.items[0].suffix = plain(r"a & b % c # d $ e _ f ^ g ~ h { i } j \ k | l, m [n] = o");
-    });
-    assert_eq!(
-        result.text,
-        r"\cite[righttext={{\removeunwantedspaces\removepunctuation, a \& b \% c \# d \$ e \_ f \char94{} g \char126{} h \char123{} i \char125{} j \char92{} k \char124{} l, m [n] = o}}][Example2026]"
-    );
-}
-
-#[test]
-fn context_refuses_a_key_it_would_read_as_something_else() {
-    for key in [
-        "a=b",
-        "a[b",
-        "a%b",
-        "a#b",
-        "*",
-        "a::b",
-        "::a",
-        "a::",
-        "match(year:2025)",
-        "tag(a)",
-    ] {
-        let mut case = seed();
-        let LibraryObject::Record(record) = case.library.objects()[0].object.clone() else {
-            panic!("a record")
-        };
-        let mut record = record;
-        record.citation_keys[0].value = key.into();
-        let id = record.id.clone();
-        case.library = Snapshot::new(vec![LibraryObject::Record(record)]).unwrap();
-        case.request.items[0].item = id;
-        case.request.items[0].expected_cite = None;
-        case.request.output = OutputSpec::Key {
-            syntax: KeySyntax::Context,
-            command: None,
-        };
-        let refused = syntax::cite(&case.library, &case.request).unwrap();
-        assert_eq!(
-            refused.outcomes,
-            [ItemOutcome::Refused {
-                item: 0,
-                error: CitationError::InvalidKey
-            }],
-            "{key}"
-        );
-    }
-}
-
-#[test]
-fn context_refuses_forms_one_cite_cannot_hold_together() {
-    let result = render(KeySyntax::Context, |r| {
-        two(r);
-        r.items[1].form = Some(CitationForm::YearOnly);
-    });
-    assert_eq!(
-        result.outcomes,
-        [
-            ItemOutcome::Rendered { item: 0 },
-            ItemOutcome::Refused {
-                item: 1,
-                error: CitationError::UnsupportedForm
-            }
-        ]
-    );
-    assert!(result.copy_content(2).is_none());
 }

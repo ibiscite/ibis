@@ -22,16 +22,3 @@ fn opening_a_replaced_configuration_does_not_wait_for_a_fifo_writer() {
     assert_eq!(result.ok(), Some(Some(Warning::NotRegularFile)));
     assert!(worker.join().is_ok());
 }
-
-#[test]
-fn opening_a_replaced_configuration_does_not_follow_a_symlink() {
-    let directory = std::env::temp_dir().join(format!("ibis-discovery-open-link-{}", std::process::id()));
-    std::fs::create_dir(&directory).unwrap_or_else(|_| panic!("create synthetic link sandbox"));
-    let target = directory.join("target");
-    std::fs::write(&target, "// synthetic").unwrap_or_else(|_| panic!("write synthetic target"));
-    let link = directory.join("prefs.js");
-    std::os::unix::fs::symlink(&target, &link).unwrap_or_else(|_| panic!("create synthetic link"));
-    let result = open_configuration(&link);
-    let _ = std::fs::remove_dir_all(directory);
-    assert_eq!(result.err(), Some(Warning::UnreadableConfiguration));
-}

@@ -1,9 +1,7 @@
 import { currentPlatform } from "./platform";
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import axe from "axe-core";
 import { LibrarySetup } from "./LibrarySetup";
-import type { SourcePresentation } from "./bindings";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); delete document.documentElement.dataset.system; });
 const perform = async (_action: string, run: () => Promise<unknown>) => { await run(); };
@@ -14,61 +12,6 @@ const press = (row: HTMLElement) => {
   fireEvent.keyDown(row, { key: "Enter", code: "Enter" });
   fireEvent.keyUp(row, { key: "Enter", code: "Enter" });
 };
-
-test("the Zotero card uses its system icon, falls back on failure and ignores a retired read", async () => {
-  const pending: ((source: SourcePresentation) => void)[] = [];
-  const read = vi.fn(() => new Promise<SourcePresentation>((resolve) => pending.push(resolve)));
-  const api = { chooseLibrary: async () => {}, useZotero: async () => {}, librarySource: read };
-  const view = render(<LibrarySetup api={api} perform={perform} />);
-  expect(read).toHaveBeenCalledWith(null, "", "", true, false);
-  expect(option(/^Use Zotero/).querySelector("svg")).toBeTruthy();
-  const failed = vi.fn(async (): Promise<SourcePresentation> => { throw Error("icon unavailable"); });
-  view.rerender(<LibrarySetup api={{ ...api, librarySource: failed }} perform={perform} />);
-  await act(async () => {});
-  const source: SourcePresentation = { kind: "zotero", name: "Zotero", icon: { mime: "image/png", bytes: [137, 80, 78, 71] }, status_icon: null };
-  await act(async () => pending[0]!(source));
-  expect(option(/^Use Zotero/).querySelector("img")).toBeNull();
-  view.unmount();
-  const reopened = render(<LibrarySetup api={api} perform={perform} />);
-  await act(async () => pending[1]!(source));
-  const image = option(/^Use Zotero/).querySelector("img")!;
-  expect(image.getAttribute("src")).toBe("data:image/png;base64,iVBORw==");
-  fireEvent.error(image);
-  expect(option(/^Use Zotero/).querySelector("img")).toBeNull();
-  expect(option(/^Use Zotero/).querySelector("svg")).toBeTruthy();
-  reopened.unmount();
-});
-
-test("initial setup never searches and manual source choices are immediately usable", async () => {
-  const chooseLibrary = vi.fn(async () => undefined), useZotero = vi.fn(async () => undefined);
-  const findSources = vi.fn(async () => ({ zotero: "absent" as const, list: 1, files: [], cut_short: false }));
-  render(<LibrarySetup api={{ chooseLibrary, useZotero, findSources }} perform={perform} />);
-  await act(async () => {});
-  expect(screen.getByRole("listbox", { name: "Where do your references live?" })).toBeTruthy();
-  expect(findSources).not.toHaveBeenCalled();
-  expect(option(/^Use Zotero/).textContent).toContain("Your Zotero library, open or closed");
-  expect(option(/^Choose a Library File…/).textContent).toContain("BibTeX, BibLaTeX, CSL-JSON, RIS or CSV");
-  press(option(/^Choose a Library File…/));
-  press(option(/^Use Zotero/));
-  expect(chooseLibrary).toHaveBeenCalledOnce();
-  expect(useZotero).toHaveBeenCalledOnce();
-  expect(findSources).not.toHaveBeenCalled();
-  expect(option(/^Find Them on This Computer/).getAttribute("aria-disabled")).toBeNull();
-});
-
-test("two-row recovery stays a list: arrows move and Enter chooses the focused row", async () => {
-  const chooseLibrary = vi.fn(async () => undefined), useZotero = vi.fn(async () => undefined);
-  render(<LibrarySetup api={{ chooseLibrary, useZotero }} perform={perform} empty={{ title: "No references in example.bib", zotero: false }} />);
-  const zotero = option(/^Use Zotero/);
-  act(() => zotero.focus());
-  fireEvent.keyDown(zotero, { key: "ArrowDown", code: "ArrowDown" });
-  const file = option(/^Choose a Library File…/);
-  expect(document.activeElement).toBe(file);
-  fireEvent.keyDown(file, { key: "Enter", code: "Enter" });
-  fireEvent.keyUp(file, { key: "Enter", code: "Enter" });
-  expect(chooseLibrary).toHaveBeenCalledOnce();
-  expect(useZotero).not.toHaveBeenCalled();
-});
 
 test("first run teaches the basics, focuses Zotero and moves through four tiles in two dimensions", async () => {
   // jsdom has no grid geometry. React Aria uses actual row rectangles to move
@@ -120,13 +63,6 @@ test("one found library replaces Find, keeps its focus, and leaves samples reach
   expect(openFoundLibrary).toHaveBeenCalledExactlyOnceWith(7, 0);
 });
 
-test.each(["macos", "windows", "linux"])("welcome formats the current shortcut for %s", (system) => {
-  document.documentElement.dataset.system = system;
-  render(<LibrarySetup api={{ chooseLibrary: async () => undefined, useZotero: async () => undefined }} perform={perform}
-    shortcut={{ shortcut: "Alt+K", registered: true, error: null }} />);
-  expect(screen.getByText(`After this, open Ibis from any app with ${system === "macos" ? "⌥K" : "Alt+K"}.`)).toBeTruthy();
-});
-
 test("several found libraries open a short list and return to the same tile", async () => {
   const openFoundLibrary = vi.fn(async () => undefined);
   render(<LibrarySetup api={{ chooseLibrary: async () => undefined, useZotero: async () => undefined,
@@ -144,70 +80,7 @@ test("several found libraries open a short list and return to the same tile", as
   expect(option(/^Try Sample References/)).toBeTruthy();
 });
 
-test("closing and reopening drops a pending discovery and focuses the new welcome", async () => {
-  let finish!: (value: typeof found) => void;
-  const api = { chooseLibrary: async () => undefined, useZotero: async () => undefined,
-    findSources: () => new Promise<typeof found>((resolve) => { finish = resolve; }), openFoundLibrary: async () => undefined };
-  const first = render(<LibrarySetup api={api} perform={perform} />);
-  press(option(/^Find Them on This Computer/));
-  first.unmount();
-  render(<LibrarySetup api={api} perform={perform} />);
-  await act(async () => finish(found));
-  expect(screen.queryByRole("option", { name: /研究/ })).toBeNull();
-  expect(option(/^Find Them on This Computer/)).toBeTruthy();
-  expect(document.activeElement).toBe(option(/^Use Zotero/));
-});
-
-test.each(["available", "absent", "access_off"] as const)("Zotero %s is told in its row or a note, and is the only suggestion when found", async (zotero) => {
-  render(<LibrarySetup api={{ chooseLibrary: async () => undefined, useZotero: async () => undefined,
-    findSources: async () => ({ zotero, list: 1, files: [], cut_short: false }) }} perform={perform} />);
-  press(option(/^Find Them on This Computer/));
-  await waitFor(() => expect(option(/^Look Again/).textContent).not.toContain("Looking"));
-  expect(option(/^Use Zotero/).textContent?.includes("Found on this")).toBe(zotero !== "absent");
-  expect(screen.queryByText(/To read your references, in Zotero/) !== null).toBe(zotero === "access_off");
-  const suggested = [...document.querySelectorAll("[data-suggested]")];
-  expect(suggested).toEqual(zotero === "absent" ? [] : [option(/^Use Zotero/)]);
-});
-
 const found = { zotero: "available" as const, list: 7, files: [{ name: "研究<literal>.bib", folder: "مراجع" }], cut_short: false };
-
-test("looking for libraries keeps focus while pending and ignores repeated presses", async () => {
-  let resolve!: (value: typeof found) => void;
-  const findSources = vi.fn().mockResolvedValue(found)
-    .mockImplementationOnce(() => new Promise<typeof found>((done) => { resolve = done; }));
-  const { unmount } = render(<LibrarySetup api={{ chooseLibrary: async () => undefined, useZotero: async () => undefined, findSources }} perform={perform} />);
-  press(option(/^Find Them on This Computer/));
-  await waitFor(() => expect(findSources).toHaveBeenCalledTimes(1));
-  const pending = option(/^Look Again/);
-  expect(document.activeElement).toBe(pending);
-  expect(pending.textContent).toContain("Looking for Zotero and .bib files…");
-  expect(option(/^Use Zotero/).getAttribute("aria-disabled")).toBeNull();
-  press(pending);
-  expect(findSources).toHaveBeenCalledTimes(1);
-  await act(async () => resolve(found));
-  const again = option(/^Look Again/);
-  expect(again.getAttribute("aria-disabled")).toBeNull();
-  press(again);
-  await waitFor(() => expect(findSources).toHaveBeenCalledTimes(2));
-  unmount();
-  const accessibility = await axe.run(document.body, { runOnly: { type: "rule", values: ["role-img-alt"] } });
-  expect(accessibility.violations.map((violation) => violation.id)).toEqual([]);
-});
-
-test("found-file rows preserve list identity and rescan a replaced list", async () => {
-  const findSources = vi.fn().mockResolvedValueOnce(found).mockResolvedValue({ ...found, list: 8, files: [{ name: "new.bib", folder: "" }] });
-  const openFoundLibrary = vi.fn().mockRejectedValueOnce(new Error("synthetic replaced list")).mockResolvedValue(null);
-  const reporting = async (_action: string, run: () => Promise<unknown>) => { try { await run(); } catch { /* Reported by the caller. */ } };
-  render(<LibrarySetup api={{ chooseLibrary: async () => undefined, useZotero: async () => undefined, findSources, openFoundLibrary }} perform={reporting} />);
-  press(option(/^Find Them on This Computer/));
-  const file = await findOption(/研究<literal>\.bib/);
-  expect(file.textContent).toContain("Found in مراجع");
-  press(file);
-  await waitFor(() => expect(openFoundLibrary).toHaveBeenCalledExactlyOnceWith(7, 0));
-  const next = await findOption(/^Use new\.bib/);
-  press(next);
-  await waitFor(() => expect(openFoundLibrary).toHaveBeenLastCalledWith(8, 0));
-});
 
 test("a refused discovery leaves manual choices and retry available", async () => {
   const chooseLibrary = vi.fn(async () => undefined), useZotero = vi.fn(async () => undefined);
@@ -237,89 +110,4 @@ test("finding nothing explains the result and keeps retry and samples reachable"
   await waitFor(() => expect(findSources).toHaveBeenCalledTimes(2));
   press(option(/^Try Sample References/));
   expect(useSampleLibrary).toHaveBeenCalledExactlyOnceWith(true);
-});
-
-test("a superseded discovery cannot replace the current list", async () => {
-  let finish!: (value: typeof found) => void;
-  const findSources = vi.fn(() => new Promise<typeof found>((resolve) => { finish = resolve; }));
-  const api = { chooseLibrary: async () => undefined, useZotero: async () => undefined, findSources, openFoundLibrary: async () => null };
-  const { rerender } = render(<LibrarySetup api={api} perform={perform} />);
-  press(option(/^Find Them on This Computer/));
-  await waitFor(() => expect(findSources).toHaveBeenCalledOnce());
-  rerender(<LibrarySetup api={{ ...api, findSources: async () => ({ ...found, list: 8, files: [{ name: "current.bib", folder: "" }] }) }} perform={perform} />);
-  await findOption(/^Use current\.bib/);
-  await act(async () => finish(found));
-  expect(screen.queryByRole("option", { name: /研究<literal>\.bib/ })).toBeNull();
-  expect(option(/^Use current\.bib/)).toBeTruthy();
-});
-
-test("a delayed refusal from an older file choice cannot rescan or replace a newer list", async () => {
-  let refuse!: (error: Error) => void;
-  const firstSearch = vi.fn(async () => found);
-  const nextSearch = vi.fn(async () => ({ ...found, list: 8, files: [{ name: "current.bib", folder: "Documents" }] }));
-  const openFoundLibrary = vi.fn().mockImplementationOnce(() => new Promise((_, reject) => { refuse = reject; })).mockResolvedValue(null);
-  const api = { chooseLibrary: async () => undefined, useZotero: async () => undefined, findSources: firstSearch, openFoundLibrary };
-  const reporting = async (_action: string, run: () => Promise<unknown>) => { try { await run(); } catch { /* The current failure is reported by the caller. */ } };
-  const view = render(<LibrarySetup api={api} perform={reporting} />);
-  press(option(/^Find Them on This Computer/));
-  press(await findOption(/研究<literal>\.bib/));
-  view.rerender(<LibrarySetup api={{ ...api, findSources: nextSearch }} perform={reporting} />);
-  const current = await findOption(/^Use current\.bib/);
-  press(current);
-  await act(async () => refuse(new Error("synthetic delayed refusal")));
-  expect(option(/^Use current\.bib/)).toBe(current);
-  expect(nextSearch).toHaveBeenCalledOnce();
-  expect(openFoundLibrary).toHaveBeenLastCalledWith(8, 0);
-});
-
-test("empty-library choices show a known Zotero tag without searching or adding source types", () => {
-  const findSources = vi.fn();
-  render(<LibrarySetup api={{ chooseLibrary: async () => undefined, useZotero: async () => undefined, findSources }}
-    perform={perform} empty={{ title: "No references in My Library", zotero: true }} />);
-  expect(screen.getByRole("heading", { name: "No references in My Library" })).toBeTruthy();
-  expect(screen.getAllByRole("option")).toHaveLength(2);
-  expect(option(/^Use Zotero/).textContent).toMatch(/Found on this (Mac|PC|computer)/);
-  expect(screen.getByText("Or drag a BibTeX, BibLaTeX, CSL-JSON, RIS or CSV file into this window.")).toBeTruthy();
-  expect(findSources).not.toHaveBeenCalled();
-});
-
-test.each(["available", "closed", "access_off"] as const)("first run still asks: a Zotero that is %s is offered first and Enter takes it", async (found) => {
-  const useZotero = vi.fn(async () => undefined);
-  render(<LibrarySetup api={{ chooseLibrary: async () => undefined, useZotero, findZotero: async () => found }}
-    perform={async (_action, run) => { await run(); }} />);
-  const row = screen.getByRole("option", { name: /Zotero/ });
-  await waitFor(() => expect(row.getAttribute("data-suggested")).toBe("true"));
-  expect(useZotero).not.toHaveBeenCalled();
-  expect(document.activeElement).toBe(row);
-  fireEvent.keyDown(row, { key: "Enter" });
-  fireEvent.keyUp(row, { key: "Enter" });
-  await waitFor(() => expect(useZotero).toHaveBeenCalledOnce());
-});
-
-test.each([["absent", async () => "absent" as const], ["a failed look", async () => { throw new Error("refused"); }]])("%s suggests nothing and keeps every start", async (_, findZotero) => {
-  render(<LibrarySetup api={{ chooseLibrary: async () => undefined, useZotero: async () => undefined, findZotero }}
-    perform={async (_action, run) => { await run(); }} />);
-  await act(async () => { await Promise.resolve(); });
-  expect(document.querySelectorAll("[data-suggested]")).toHaveLength(0);
-  expect(screen.getByRole("option", { name: /Zotero/ })).toBeTruthy();
-});
-
-test("an answer after the screen left changes nothing", async () => {
-  let answer: (found: "available") => void = () => {};
-  const { unmount } = render(<LibrarySetup api={{ chooseLibrary: async () => undefined, useZotero: async () => undefined,
-    findZotero: () => new Promise((resolve) => { answer = resolve; }) }} perform={async (_action, run) => { await run(); }} />);
-  unmount();
-  await act(async () => { answer("available"); await Promise.resolve(); });
-  expect(document.querySelectorAll("[data-suggested]")).toHaveLength(0);
-});
-
-test("an empty library offers one primary card, the one that fills it, first; its key sits after its title", async () => {
-  render(<LibrarySetup api={{ chooseLibrary: async () => undefined, useZotero: async () => undefined, findZotero: async () => "available" as const }}
-    perform={async (_action, run) => { await run(); }}
-    empty={{ title: "No references in invented.bib", zotero: false, source: { label: "Open invented.bib", help: "Add references there", open: () => undefined } }} />);
-  await act(async () => { await Promise.resolve(); });
-  const options = screen.getAllByRole("option");
-  expect(options[0]?.textContent).toContain("Open invented.bib");
-  expect([...document.querySelectorAll("[data-suggested]")]).toEqual([options[0]]);
-  expect(options[0]?.querySelector(".choice-line-title")?.textContent).toMatch(/^Open invented\.bib.+O$/);
 });

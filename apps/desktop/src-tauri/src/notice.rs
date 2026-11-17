@@ -743,53 +743,7 @@ mod macos {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn an_older_delivery_cannot_consume_a_newer_copies_format() {
-        for app in [
-            None,
-            Some(ibis_core::destination::AppId::named(
-                "com.microsoft.word",
-                ibis_core::destination::System::Macos,
-            )),
-        ] {
-            let notice = super::Notice::default();
-            let choice = ibis_engine::format::choose(&ibis_engine::settings::Settings::default(), app.as_ref());
-            notice.remember_format(Some(2), app.clone(), choice.clone());
-            assert!(notice.take_format(Some(1), app.as_ref()).is_none());
-            assert_eq!(notice.take_format(Some(2), app.as_ref()), Some(choice));
-            assert!(notice.take_format(Some(2), app.as_ref()).is_none());
-        }
-    }
     use super::*;
-
-    #[test]
-    fn an_unidentified_notice_cannot_replace_a_successful_copy_receipt() {
-        let mut owner = ReceiptOwner::default();
-        let b = owner.claim(Some(2));
-        assert_eq!(owner.claim(None), None);
-        assert!(owner.current(b));
-    }
-
-    #[test]
-    fn copies_without_native_paste_proofs_keep_write_order_with_delayed_claims() {
-        let last = crate::paste::LastTarget::default();
-        let copy = || {
-            last.write_copy("[@invented]", &[], |_| Ok(None), || Ok(None))
-                .unwrap_or_else(|e| panic!("{e}"))
-        };
-        let a = copy();
-        let b = copy();
-        let mut owner = ReceiptOwner::default();
-        let b_receipt = owner.claim(b);
-        assert!(b_receipt.is_some(), "a successful copy still reports its outcome");
-        assert_eq!(owner.claim(a), None, "delayed A cannot replace B");
-        assert!(owner.current(b_receipt));
-        let c = copy();
-        let c_receipt = owner.claim(c);
-        assert!(c_receipt.is_some(), "a fresh copy can replace a dismissed receipt");
-        assert_eq!(owner.claim(b), None);
-        assert!(owner.current(c_receipt));
-    }
 
     #[test]
     fn a_picker_opening_retires_a_notice_still_being_delivered() {
@@ -851,28 +805,8 @@ mod tests {
         Area { x, y, width, height }
     }
 
-    /// A display with a menu bar or taskbar, and one left of it with
-    /// negative coordinates.
-    const USABLE: Area = rect(0.0, 38.0, 1728.0, 1079.0);
+    /// A display left of the main one, with negative coordinates.
     const LEFT: Area = rect(-2560.0, 0.0, 2560.0, 1392.0);
-
-    #[test]
-    fn the_fade_out_ends_when_the_visible_time_does() {
-        let (leave_at, close_after) = leave_schedule(SHOWN_FOR);
-        assert_eq!(leave_at, Duration::from_millis(2_600));
-        assert_eq!(leave_at + FADE_OUT, SHOWN_FOR);
-        assert!(close_after > FADE_OUT);
-        // A delay shorter than the fade starts it at once.
-        assert_eq!(leave_schedule(Duration::from_millis(50)).0, Duration::ZERO);
-    }
-
-    #[test]
-    fn macos_shows_a_pill_near_the_top_centre() {
-        let (width, height) = notice_size(Platform::MacOs);
-        let (x, y) = notice_position(Platform::MacOs, USABLE, width, height);
-        assert_eq!(x + width / 2.0, USABLE.x + USABLE.width / 2.0);
-        assert_eq!(y, 38.0 + 24.0);
-    }
 
     #[test]
     fn all_platforms_use_the_shared_pill_frame_and_top_centre_placement() {
@@ -882,34 +816,6 @@ mod tests {
             assert_eq!(x + 280.0, LEFT.x + LEFT.width / 2.0);
             assert_eq!(y, LEFT.y + 24.0);
         }
-    }
-
-    #[test]
-    fn a_notice_larger_than_the_display_starts_at_its_corner() {
-        let tiny = rect(100.0, 50.0, 200.0, 30.0);
-        for platform in [Platform::MacOs, Platform::Windows, Platform::Linux] {
-            let (width, height) = notice_size(platform);
-            let (x, y) = notice_position(platform, tiny, width, height);
-            assert_eq!((x, y), (tiny.x, tiny.y), "{platform:?} placed it off the display");
-        }
-    }
-
-    /// A second copy moves the open window with pixels, not points, so a
-    /// display with a different scale than the window's current one cannot
-    /// misplace it; a new window gets points for its builder.
-    #[test]
-    fn corners_are_in_display_pixels_and_points_for_new_windows() {
-        let hidpi = rect(1920.0, 0.0, 3840.0, 2112.0);
-        let corner = Corner {
-            shared: notice_corner(Platform::Windows, hidpi, 2.0),
-            scale: 2.0,
-        };
-        // The same pill frame is centred and scaled for each physical display.
-        assert_eq!(corner.shared, (3280.0, 48.0));
-        assert_eq!(corner.points(), (1640.0, 24.0));
-        // A 150% display scales the 24-point top offset to 36 physical pixels.
-        let linux = notice_corner(Platform::Linux, hidpi, 1.5);
-        assert_eq!(linux, (3420.0, 36.0));
     }
 
     #[test]

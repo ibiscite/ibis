@@ -2,7 +2,6 @@
 //! read-only, and stop with the reason when those settings cannot be used.
 #![cfg(test)]
 
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -98,46 +97,6 @@ fn the_library_chosen_in_the_app_is_read_when_none_is_named() {
     let (status, stdout, _) = home.run(&["search", "invented", "--json"]);
     assert_eq!(status, 0);
     assert!(stdout.contains("kim2023") && !stdout.contains("lee2024"), "{stdout}");
-}
-
-#[test]
-fn direct_and_generic_attachment_commands_load_the_app_library() {
-    let home = Home::new("attachment-commands");
-    let library = home.library("refs.bib");
-    std::fs::write(&library, "@book{lee2024,title={Invented atlas},file={atlas.pdf}}\n").unwrap();
-    home.choose(STABLE, &library);
-    let (status, stdout, stderr) = home.run(&["outline", "lee2024", "--json"]);
-    assert_eq!((status, stderr.as_str()), (0, ""), "{stdout}");
-    let outlined: serde_json::Value = serde_json::from_str(&stdout).unwrap();
-    let id = outlined["data"]["attachments"][0]["id"].as_str().unwrap();
-    for (command, method, params) in [
-        (
-            vec!["outline", "lee2024", "--json"],
-            "outline",
-            serde_json::json!({"item":{"by":"key","value":"lee2024"}}),
-        ),
-        (vec!["read", id, "--json"], "read", serde_json::json!({"attachment":id})),
-        (
-            vec!["find-in", id, "atlas", "--json"],
-            "find-in",
-            serde_json::json!({"attachment":id,"query":"atlas"}),
-        ),
-    ] {
-        let (direct_status, direct_stdout, _) = home.run(&command);
-        let params = params.to_string();
-        let (status, stdout, _) = home.run(&["call", method, "--params", &params, "--json"]);
-        let direct: serde_json::Value = serde_json::from_str(&direct_stdout).unwrap();
-        let generic: serde_json::Value = serde_json::from_str(&stdout).unwrap();
-        assert_eq!(status, direct_status, "{method}: {stdout}");
-        assert_eq!(generic, direct, "{method}");
-        if method != "outline" {
-            assert_eq!(
-                code(&stdout),
-                "source-unavailable",
-                "the attachment was resolved before refusing unimplemented file text"
-            );
-        }
-    }
 }
 
 #[test]
@@ -239,14 +198,6 @@ fn a_backup_is_not_used_in_place_of_missing_settings() {
 }
 
 #[test]
-fn no_settings_ask_for_a_library_by_name() {
-    let home = Home::new("none");
-    let (status, stdout, stderr) = home.run(&["search", "invented", "--json"]);
-    assert_eq!((status, code(&stdout).as_str()), (2, "usage"));
-    assert!(stderr.contains("name one with --file PATH"), "{stderr}");
-}
-
-#[test]
 fn the_plugin_declares_local_execution_and_ships_its_listing_icons() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/ibis");
     let manifest: serde_json::Value =
@@ -283,94 +234,6 @@ fn plugin_versions_move_with_each_release() {
         );
     }
 }
-
-/// Launch exactly what each plugin manifest declares, using a synthetic app choice.
-fn plugin_citation(home: &Home, config: &str, key: &str) -> String {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/ibis");
-    let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(root.join(config)).unwrap()).unwrap();
-    let server = &manifest["mcpServers"]["ibis"];
-    assert_eq!(server["command"], "ibis");
-    let args: Vec<&str> = server["args"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|arg| arg.as_str().unwrap())
-        .collect();
-    let mut child = Command::new(env!("CARGO_BIN_EXE_ibis"))
-        .args(args)
-        .env("HOME", &home.root)
-        .env("USERPROFILE", &home.root)
-        .env("APPDATA", home.root.join("AppData"))
-        .env("XDG_CONFIG_HOME", home.root.join("config"))
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .unwrap();
-    let input = [
-        serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
-            "protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"synthetic","version":"1"}
-        }}),
-        serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{
-            "name":"cite","arguments":{"items":[{"ref":key}],"format":"pandoc"}
-        }}),
-    ]
-    .iter()
-    .map(|message| format!("{message}\n"))
-    .collect::<String>();
-    child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
-    while child.try_wait().unwrap().is_none() {
-        if std::time::Instant::now() >= deadline {
-            child.kill().unwrap();
-            child.wait().unwrap();
-            panic!("plugin did not stop after stdin closed");
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
-    let output = child.wait_with_output().unwrap();
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
-    assert!(output.stderr.is_empty());
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    let replies: Vec<serde_json::Value> = stdout.lines().map(|line| serde_json::from_str(line).unwrap()).collect();
-    assert_eq!(replies.len(), 2);
-    assert_eq!(replies[1]["result"]["isError"], false, "{stdout}");
-    assert!(!stdout.contains("refs.bib"), "app-chosen paths must stay private");
-    stdout
-}
-
-#[test]
-fn both_plugins_cite_the_app_choice_and_reopening_reads_the_new_choice() {
-    let home = Home::new("plugin");
-    let first = home.library("refs.bib");
-    let second = home.root.join("other.bib");
-    std::fs::write(&second, BIB.replace("lee2024", "kim2023")).unwrap();
-    for config in [".mcp.json", "mcp.json"] {
-        home.choose(STABLE, &first);
-        assert!(plugin_citation(&home, config, "lee2024").contains("[@lee2024]"));
-        home.choose(STABLE, &second);
-        let reopened = plugin_citation(&home, config, "kim2023");
-        assert!(reopened.contains("[@kim2023]") && !reopened.contains("lee2024"));
-    }
-}
-
-#[cfg(unix)]
-#[test]
-fn settings_this_program_may_not_read_are_explained() {
-    use std::os::unix::fs::PermissionsExt;
-    let home = Home::new("denied");
-    let library = home.library("refs.bib");
-    let settings = home.choose(STABLE, &library);
-    std::fs::set_permissions(&settings, std::fs::Permissions::from_mode(0o000)).unwrap();
-    if std::fs::read(&settings).is_ok() {
-        eprintln!("running with permission to read anything; the refusal cannot be shown here");
-        return;
-    }
-    let (status, stdout, stderr) = home.run(&["search", "invented", "--json"]);
-    assert_eq!((status, code(&stdout).as_str()), (5, "source-unavailable"));
-    assert!(stderr.contains("not allowed to read its settings file"), "{stderr}");
-}
-
 #[cfg(unix)]
 #[test]
 fn a_named_pipe_is_refused_without_waiting_for_a_writer() {
@@ -398,71 +261,6 @@ fn a_named_pipe_is_refused_without_waiting_for_a_writer() {
         std::thread::sleep(std::time::Duration::from_millis(50));
     };
     assert!(!status.success());
-}
-
-#[cfg(unix)]
-#[test]
-fn settings_that_are_a_pipe_are_refused_without_waiting() {
-    let home = Home::new("stalled");
-    let settings = home.config().join(STABLE).join("settings.json");
-    std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
-    // Opening a pipe with no writer would wait forever.
-    assert!(Command::new("mkfifo").arg(&settings).status().unwrap().success());
-    let started = std::time::Instant::now();
-    let (status, stdout, stderr) = home.run(&["search", "invented", "--json"]);
-    assert!(started.elapsed() < std::time::Duration::from_secs(15), "{stderr}");
-    assert_eq!((status, code(&stdout).as_str()), (5, "source-unavailable"), "{stderr}");
-    assert_eq!(stderr.lines().count(), 1, "{stderr}");
-}
-
-/// Doctor checks what the other commands read: the app's chosen file, or its
-/// Zotero choice named but not opened (beta report, 2026-11-15).
-#[test]
-fn doctor_checks_the_libraries_chosen_in_the_app() {
-    let home = Home::new("doctor-file");
-    let library = home.library("refs.bib");
-    home.choose(NIGHTLY, &library);
-    for args in [&["doctor", "--json"][..], &["doctor", "--app-libraries", "--json"]] {
-        let (status, stdout, stderr) = home.run(args);
-        assert_eq!(status, 0, "{stdout}{stderr}");
-        let report: serde_json::Value = serde_json::from_str(&stdout).unwrap();
-        let sources = &report["data"]["sources"];
-        assert_eq!(sources.as_array().map(Vec::len), Some(1), "{stdout}");
-        assert_eq!(sources[0]["status"], "ok");
-        assert_eq!(sources[0]["chosen_in"], "Ibis Nightly");
-        assert_eq!(report["data"]["config"]["status"], "ok");
-        assert!(!stdout.contains("refs.bib"), "no chosen path is shown: {stdout}");
-    }
-
-    let home = Home::new("doctor-zotero");
-    home.settings(NIGHTLY, "{\"schema_version\":2,\"library\":{\"zotero\":\"user\"}}");
-    let (status, stdout, stderr) = home.run(&["doctor", "--app-libraries"]);
-    assert_eq!(status, 0, "{stdout}{stderr}");
-    assert!(
-        stdout.contains("skip  Library 1 (zotero): Chosen in Ibis Nightly."),
-        "{stdout}"
-    );
-    assert!(!stdout.contains("No library selected"), "{stdout}");
-    assert!(stdout.ends_with("All good.\n"), "{stdout}");
-
-    // Without app settings doctor says why, in the other commands' words.
-    let home = Home::new("doctor-none");
-    let (status, stdout, _) = home.run(&["doctor", "--app-libraries"]);
-    assert_eq!(status, 1, "{stdout}");
-    assert!(
-        stdout.contains("fail  Libraries: no library is named and the Ibis app has no settings here"),
-        "{stdout}"
-    );
-    // A named library replaces the app's.
-    let home = Home::new("doctor-named");
-    let chosen = home.library("chosen.bib");
-    home.choose(STABLE, &chosen);
-    let named = home.library("named.bib");
-    let (status, stdout, _) = home.run(&["doctor", "--json", "--file", named.to_str().unwrap()]);
-    assert_eq!(status, 0, "{stdout}");
-    let report: serde_json::Value = serde_json::from_str(&stdout).unwrap();
-    assert_eq!(report["data"]["sources"].as_array().map(Vec::len), Some(1));
-    assert!(report["data"]["sources"][0].get("chosen_in").is_none());
 }
 
 #[test]

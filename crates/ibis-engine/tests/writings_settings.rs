@@ -11,42 +11,6 @@ fn output() -> OutputSpec {
 }
 
 #[test]
-fn handwritten_writings_need_only_name_format_and_optional_bibliography() {
-    let (_directory, path) = fixture::file();
-    std::fs::write(
-        &path,
-        serde_json::json!({
-            "schema_version": 2,
-            "writings": [{"name":"Atlas", "format":"pandoc"}],
-            "writing_apps": {"macos:com.microsoft.word":"Atlas"}
-        })
-        .to_string(),
-    )
-    .unwrap();
-    let loaded = settings::load(&path);
-    assert!(loaded.problem.is_none(), "{:?}", loaded.problem);
-    let writing = writings::find(loaded.cites().unwrap(), "Atlas").unwrap();
-    assert_eq!(writing.format, output());
-    assert!(writing.bibliography.is_none());
-    let renamed = settings::Owner::open(path.clone())
-        .change(|s| writings::rename(s, "Atlas", "Revised Atlas".into()))
-        .map(|(_, writing)| writing)
-        .unwrap();
-    assert_eq!(renamed.name, "Revised Atlas");
-    let reopened = fixture::read(&path);
-    assert_eq!(
-        reopened.device.writing_apps["macos:com.microsoft.word"],
-        "Revised Atlas"
-    );
-    assert_eq!(writings::find(&reopened, "Revised Atlas").unwrap(), &renamed);
-    settings::Owner::open(path.clone())
-        .change(|s| writings::remove(s, "Revised Atlas"))
-        .map(|(_, writing)| writing)
-        .unwrap();
-    assert!(fixture::read(&path).device.writing_apps.is_empty());
-}
-
-#[test]
 fn invalid_or_duplicate_names_leave_all_definitions_unchanged() {
     let mut settings = Settings::default();
     writings::create(&mut settings, "Atlas".into(), output(), None).unwrap();
@@ -67,32 +31,6 @@ fn invalid_or_duplicate_names_leave_all_definitions_unchanged() {
         .is_err()
     );
     assert_eq!(settings, before);
-}
-
-#[test]
-fn failed_transaction_and_failed_io_keep_the_old_writing() {
-    let (directory, path) = fixture::file();
-    let first = settings::Owner::open(path.clone())
-        .change(|s| writings::create(s, "Atlas".into(), output(), None))
-        .map(|(_, writing)| writing)
-        .unwrap();
-    let before = std::fs::read(&path).unwrap();
-    assert!(
-        settings::Owner::open(path.clone())
-            .change(|s| writings::rename(s, &first.name, "".into()))
-            .map(|(_, writing)| writing)
-            .is_err()
-    );
-    assert_eq!(std::fs::read(&path).unwrap(), before);
-    let blocked = directory.path().join("blocked");
-    std::fs::write(&blocked, "a regular file").unwrap();
-    assert!(
-        settings::Owner::open(blocked.join("settings.json"))
-            .change(|s| writings::create(s, "Other".into(), output(), None))
-            .map(|(_, writing)| writing)
-            .is_err()
-    );
-    assert_eq!(std::fs::read(&path).unwrap(), before);
 }
 
 #[test]

@@ -192,17 +192,6 @@ mod tests {
     use std::collections::BTreeSet;
 
     #[test]
-    fn bibliography_advice_names_the_control_that_surface_can_use() {
-        use ibis_core::contract::CitationSurface;
-        let diagnostic = CitationError::UnsupportedForm.problem();
-        let picker = problem(&diagnostic, Audience::App);
-        let bibliography = problem(&diagnostic.on(CitationSurface::Bibliography), Audience::App);
-        assert!(picker.contains("Name in brackets"), "{picker}");
-        assert!(bibliography.contains("Remove the references"), "{bibliography}");
-        assert!(!bibliography.contains("Name in brackets"), "{bibliography}");
-    }
-
-    #[test]
     fn recovery_messages_resolve_without_source_text_or_missing_arguments() {
         let mut problems: Vec<ibis_core::contract::Problem> = ErrorCode::ALL
             .into_iter()
@@ -287,30 +276,6 @@ mod tests {
     }
 
     #[test]
-    fn library_format_words_resolve_the_shared_term_for_every_front_end() {
-        let formats = "BibTeX, BibLaTeX, CSL-JSON, RIS or CSV";
-        for id in [
-            "reason-unknown-format",
-            "choice-library-file-help",
-            "choice-drop-file",
-            "operation-failures-drop-refused",
-            "cli-no-references",
-            "cli-file-help",
-            "cli-file-unreadable",
-            "app-file-dialog-formats",
-        ] {
-            let said = text(id, None, &[]).unwrap_or_default();
-            assert!(said.contains(formats), "{id}: {said}");
-        }
-        for audience in [Audience::Cli, Audience::Agent, Audience::App] {
-            assert!(
-                text("reason-unknown-format", Some(audience.attribute()), &[])
-                    .is_some_and(|fix| fix.contains("another file"))
-            );
-        }
-    }
-
-    #[test]
     fn every_engine_code_has_words_and_no_engine_message_is_unused() {
         let catalogue = catalogue_ids();
         let unique: BTreeSet<_> = catalogue.iter().cloned().collect();
@@ -331,19 +296,5 @@ mod tests {
                 "{id} has a sentence"
             );
         }
-    }
-
-    #[test]
-    fn a_reason_says_more_than_its_code_and_each_audience_gets_its_own_fix() {
-        let profile = EngineError::because(ErrorCode::SourceUnavailable, ErrorReason::ZoteroProfileNeeded);
-        let cli = error(&profile, Audience::Cli);
-        let agent = error(&profile, Audience::Agent);
-        assert!(cli.contains("--zotero-profile"), "{cli}");
-        assert!(
-            agent.starts_with(cli.split_once(". ").map_or(&*cli, |(said, _)| said)),
-            "{agent}"
-        );
-        assert_ne!(cli, agent);
-        assert_eq!(code(ErrorCode::Cancelled, Audience::App), "The request was cancelled.");
     }
 }

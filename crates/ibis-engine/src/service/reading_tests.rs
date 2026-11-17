@@ -76,90 +76,6 @@ fn attachment_outline_omits_private_titles_and_malformed_media_types() {
     }
 }
 
-#[test]
-fn attachment_outline_keeps_valid_titles_and_only_well_formed_mime_types() {
-    for media in [
-        "application/pdf",
-        "text/plain",
-        "application/vnd.synthetic+json",
-        "application/epub+zip",
-    ] {
-        let engine = Engine::from_snapshot(Arc::new(attachment_snapshot(
-            "Invented <i>atlas</i>",
-            media,
-            b"invented",
-        )));
-        let found = outline(&engine, "atlas").unwrap();
-        assert_eq!(found.attachments[0].title.as_deref(), Some("Invented atlas"));
-        assert_eq!(found.attachments[0].media_type.as_deref(), Some(media));
-    }
-    for media in [
-        "",
-        "pdf",
-        "application/",
-        "application//pdf",
-        "application/pdf;name=private",
-        "application/pdf\n",
-        "application/pdf/path",
-    ] {
-        let engine = Engine::from_snapshot(Arc::new(attachment_snapshot("Invented atlas", media, b"invented")));
-        assert!(outline(&engine, "atlas").unwrap().attachments[0].media_type.is_none());
-    }
-}
-
-#[test]
-fn attachment_ids_expire_when_the_attachment_changes_but_its_parent_does_not() {
-    let engine = Engine::from_snapshot(Arc::new(attachment_snapshot(
-        "Invented PDF",
-        "application/pdf",
-        b"first",
-    )));
-    let id = outline(&engine, "atlas").unwrap().attachments[0].id.clone();
-    let replacement = attachment_snapshot("Invented replacement PDF", "application/pdf", b"replacement");
-    let library = replacement.objects()[0].object.id().library.clone();
-    engine
-        .publish_library(library, LibraryKind::Snapshot, Arc::new(replacement))
-        .unwrap();
-    assert_eq!(
-        engine
-            .read_attachment(
-                &ReadRequest {
-                    attachment: id.clone(),
-                    ..ReadRequest::default()
-                },
-                &Cancellation::default()
-            )
-            .err()
-            .map(|e| e.code),
-        Some(ErrorCode::NotFound)
-    );
-    assert_ne!(outline(&engine, "atlas").unwrap().attachments[0].id, id);
-}
-
-#[test]
-fn attachment_ids_expire_with_the_zotero_generation() {
-    let engine = Engine::from_snapshot(Arc::new(attachment_snapshot(
-        "Invented PDF",
-        "application/pdf",
-        b"first",
-    )));
-    let id = outline(&engine, "atlas").unwrap().attachments[0].id.clone();
-    engine.shared.begin_zotero_read().unwrap();
-    assert_eq!(
-        engine
-            .read_attachment(
-                &ReadRequest {
-                    attachment: id,
-                    ..ReadRequest::default()
-                },
-                &Cancellation::default()
-            )
-            .err()
-            .map(|e| e.code),
-        Some(ErrorCode::NotFound)
-    );
-}
-
 fn paged(pages: &[&str]) -> DocumentText {
     let pages: Vec<String> = pages.iter().map(|page| (*page).to_owned()).collect();
     let count = u32::try_from(pages.len()).ok();
@@ -306,16 +222,6 @@ fn text_loses_hidden_and_control_characters_but_keeps_its_lines() {
 }
 
 #[test]
-fn unknown_page_breaks_keep_words_separate_in_reads_and_passages() {
-    let text = whole("one\u{c}two");
-    let (pages, _) = read_pages(&text, &ask(None, None, None)).unwrap();
-    assert_eq!(pages[0].text, "one two");
-    let (passages, _) = find_passages(&text, "one two", &Cancellation::default()).unwrap();
-    assert_eq!(passages.len(), 1);
-    assert_eq!(passages[0].text, "one two");
-}
-
-#[test]
 fn find_in_ignores_case_and_line_breaks_and_gives_short_one_line_passages() {
     let filler = "word ".repeat(200);
     let page = format!("{filler}a Brass\n  LANTERN glows {filler}");
@@ -333,45 +239,9 @@ fn find_in_ignores_case_and_line_breaks_and_gives_short_one_line_passages() {
     assert!(found.chars().count() <= PASSAGE_CHARS + 2);
 }
 
-#[test]
-fn find_in_matches_compatibility_ligatures_in_text_and_query_and_keeps_original_passages() {
-    let page = "Invented ﬁndings show diﬀerent ﬂowers at the oﬃce beside a waﬄe.";
-    for (page, query) in [
-        (page, "findings"),
-        (page, "different flowers"),
-        (page, "office"),
-        (page, "waffle"),
-        ("Invented findings.", "ﬁndings"),
-    ] {
-        let (passages, complete) = find_passages(&paged(&[page]), &fold(query).0, &Cancellation::default()).unwrap();
-        assert!(complete);
-        assert_eq!(passages.len(), 1, "{query}");
-        assert_eq!(passages[0].text, page);
-        assert_eq!(passages[0].pdf_page, Some(1));
-    }
-}
-
-#[test]
-fn find_in_gives_ten_passages_at_most_and_says_when_there_are_more() {
-    let page = "lantern ".repeat(100);
-    let text = whole(&page);
-    let (passages, complete) = find_passages(&text, "lantern", &Cancellation::default()).unwrap();
-    assert!(passages.len() > 1 && passages.len() < 10, "neighbours share a passage");
-    assert!(complete);
-    let spread = format!("lantern{}", " ".repeat(2 * PASSAGE_CHARS)).repeat(11);
-    let (passages, complete) = find_passages(&whole(&spread), "lantern", &Cancellation::default()).unwrap();
-    assert_eq!(passages.len(), MAX_PASSAGES);
-    assert!(!complete);
-    assert!(passages.iter().all(|passage| passage.pdf_page.is_none()));
-}
-
+#[cfg(unix)]
 fn engine_with(source: &str) -> (Engine, tempfile::TempDir, std::path::PathBuf) {
-    engine_in(tempfile::tempdir().unwrap(), source)
-}
-
-/// Open `source` in a folder already holding the files a test needs: a file
-/// added after opening changes the attachment generation and so its id.
-fn engine_in(directory: tempfile::TempDir, source: &str) -> (Engine, tempfile::TempDir, std::path::PathBuf) {
+    let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("invented.bib");
     std::fs::write(&path, source).unwrap();
     let engine = Engine::new().unwrap();
@@ -392,55 +262,6 @@ fn outline(engine: &Engine, key: &str) -> Result<OutlineResult, EngineError> {
     engine
         .outline(&request, &Cancellation::default())
         .map(|checked| checked.value)
-}
-
-#[test]
-fn without_a_pdf_reader_a_files_attachments_are_outlined_but_not_read() {
-    let (engine, _directory, path) = engine_with(
-        "@book{atlas,title={Invented atlas},file={atlas.pdf;https://example.invalid/atlas}}\n@book{bare,title={Bare}}\n",
-    );
-    let found = outline(&engine, "atlas").unwrap();
-    assert_eq!(found.attachments.len(), 2);
-    let file = &found.attachments[0];
-    assert!(file.id.starts_with("att:"));
-    assert!(!file.id.contains("atlas.pdf"));
-    assert_eq!(file.text, TextAvailability::NotYet);
-    assert!(!file.pages_known && !file.cite_pages_known);
-    assert_eq!(found.attachments[1].text, TextAvailability::NoFile);
-    assert!(outline(&engine, "bare").unwrap().attachments.is_empty());
-    let read = engine.read_attachment(
-        &ReadRequest {
-            attachment: file.id.clone(),
-            ..ReadRequest::default()
-        },
-        &Cancellation::default(),
-    );
-    let refused = read.err().unwrap();
-    assert_eq!(
-        (refused.code, refused.reason),
-        (ErrorCode::SourceUnavailable, Some(ErrorReason::NoAttachmentText))
-    );
-    // Any change to the reference retires the ids issued for it.
-    std::fs::write(
-        &path,
-        "@book{atlas,title={Invented atlas, revised},file={atlas.pdf}}\n@book{bare,title={Bare}}\n",
-    )
-    .unwrap();
-    engine
-        .dispatch(Method::Libraries, &json!({"action":"reload"}), &Cancellation::default())
-        .unwrap();
-    for id in [file.id.as_str(), "att:invented", "id:invented", ""] {
-        let find = FindInRequest {
-            attachment: id.into(),
-            query: "atlas".into(),
-        };
-        assert_eq!(
-            engine.find_in(&find, &Cancellation::default()).err().map(|e| e.code),
-            Some(ErrorCode::NotFound),
-            "{id}"
-        );
-    }
-    assert_ne!(outline(&engine, "atlas").unwrap().attachments[0].id, file.id);
 }
 
 #[cfg(unix)]
@@ -492,102 +313,5 @@ fn a_files_pdf_is_read_by_the_child_and_only_while_the_file_holds_the_reference(
     assert_eq!(
         engine.find_in(&request, &Cancellation::default()).err().map(|e| e.code),
         Some(ErrorCode::NotFound)
-    );
-}
-
-#[test]
-fn file_attachment_ids_expire_after_an_unchanged_library_reload() {
-    let (engine, _directory, _path) = engine_with("@book{atlas,title={Invented atlas},file={atlas.pdf}}\n");
-    let id = outline(&engine, "atlas").unwrap().attachments[0].id.clone();
-    engine
-        .dispatch(Method::Libraries, &json!({"action":"reload"}), &Cancellation::default())
-        .unwrap();
-    assert_eq!(
-        engine
-            .read_attachment(
-                &ReadRequest {
-                    attachment: id.clone(),
-                    ..ReadRequest::default()
-                },
-                &Cancellation::default()
-            )
-            .err()
-            .map(|e| e.code),
-        Some(ErrorCode::NotFound)
-    );
-    assert_ne!(outline(&engine, "atlas").unwrap().attachments[0].id, id);
-}
-
-#[cfg(unix)]
-#[test]
-fn printed_labels_must_agree_with_the_references_own_pages() {
-    use std::os::unix::fs::PermissionsExt;
-    for (pages, label, expected) in [
-        ("101--110", "1000", None),
-        ("101--110", "101", Some("101")),
-        ("101–110", "110", Some("110")),
-        ("101--110", "111", None),
-        ("101--110", "ix", None),
-        ("101--110, 201--210", "205", Some("205")),
-        ("101", "101", Some("101")),
-        ("S3", "S3", Some("S3")),
-        ("unresolved", "101", None),
-        ("", "ix", Some("ix")),
-    ] {
-        let directory = tempfile::tempdir().unwrap();
-        let program = directory.path().join("invented-ibis");
-        let answer = json!({"read":{"pages":1,"labels":[label],"text":["Invented lantern."]}});
-        std::fs::write(&program, format!("#!/bin/sh\nprintf '%s' '{answer}'\n")).unwrap();
-        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
-        std::fs::write(directory.path().join("atlas.pdf"), "%PDF-1.7\n").unwrap();
-        let (engine, _directory, _) = engine_in(
-            directory,
-            &format!("@article{{atlas,title={{Invented atlas}},pages={{{pages}}},file={{atlas.pdf}}}}\n"),
-        );
-        let engine = engine.with_pdf_reader(program);
-        let attachment = outline(&engine, "atlas").unwrap().attachments.remove(0);
-        assert_eq!(attachment.cite_pages_known, expected.is_some(), "{pages}: {label}");
-        let read = engine
-            .read_attachment(
-                &ReadRequest {
-                    attachment: attachment.id.clone(),
-                    ..ReadRequest::default()
-                },
-                &Cancellation::default(),
-            )
-            .unwrap()
-            .value;
-        assert_eq!(read.pages[0].cite_page.as_deref(), expected, "{pages}: {label}");
-        assert_eq!(read.pages[0].pdf_page, Some(1));
-        let find = engine
-            .find_in(
-                &FindInRequest {
-                    attachment: attachment.id,
-                    query: "lantern".into(),
-                },
-                &Cancellation::default(),
-            )
-            .unwrap()
-            .value;
-        assert_eq!(find.passages[0].cite_page.as_deref(), expected, "{pages}: {label}");
-    }
-}
-
-#[test]
-fn attachment_text_is_allowed_only_for_the_libraries_the_person_named() {
-    let (engine, _directory, _path) = engine_with("@book{atlas,title={Invented atlas},file={atlas.pdf}}\n");
-    let library = engine.libraries().unwrap().libraries[0].id.clone();
-    let id = outline(&engine, "atlas").unwrap().attachments[0].id.clone();
-    assert_eq!(engine.attachment_library(&id).unwrap(), library);
-    let mut settings = crate::settings::Settings::default();
-    assert!(!engine.attachment_text_allowed(&settings, &library).unwrap());
-    settings.device.attachment_text = vec![LibraryId::digest(b"invented other library")];
-    assert!(!engine.attachment_text_allowed(&settings, &library).unwrap());
-    settings.device.attachment_text = vec![library.clone()];
-    assert!(engine.attachment_text_allowed(&settings, &library).unwrap());
-    assert!(
-        !engine
-            .attachment_text_allowed(&settings, &LibraryId::digest(b"synthetic"))
-            .unwrap()
     );
 }

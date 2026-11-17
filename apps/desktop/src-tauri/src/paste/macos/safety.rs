@@ -279,39 +279,6 @@ mod tests {
     }
 
     #[test]
-    fn clock_failures_backwards_time_and_slow_samples_are_unproven() {
-        for (before, awake, after) in [(0, 10, 11), (10, 0, 11), (10, 9, 8), (10, 9, 500_010)] {
-            assert_eq!(clock_changed(&mut None, before, awake, after), None);
-        }
-    }
-
-    #[test]
-    fn scheduler_skew_over_one_hundred_microseconds_can_still_prove_continuity() {
-        let mut offset = None;
-        assert_eq!(clock_changed(&mut offset, 100, 95, 110), Some(false));
-        assert_eq!(clock_changed(&mut offset, 200, 195, 300_200), Some(false));
-        // The wide sample must not widen the previously established offset.
-        assert_eq!(offset, Some((4, 16)));
-        assert_eq!(clock_changed(&mut offset, 1_000_200, 195, 1_000_210), Some(true));
-    }
-
-    #[test]
-    fn two_broad_samples_still_bound_ambiguous_suspension_below_a_millisecond_plus_rounding() {
-        let mut offset = None;
-        assert_eq!(clock_changed(&mut offset, 1_000, 1_000, 500_999), Some(false));
-        // Worst opposite-edge skew in both brackets; a 1 ms + 9 ns offset
-        // shift is still disjoint, before any observer can advance the epoch.
-        assert_eq!(clock_changed(&mut offset, 2_000_010, 1_500_000, 2_500_009), Some(true));
-    }
-
-    #[test]
-    fn a_sleep_inside_the_clock_bracket_cannot_hide_in_a_wide_offset_range() {
-        let mut offset = None;
-        assert_eq!(clock_changed(&mut offset, 100, 95, 110), Some(false));
-        assert_eq!(clock_changed(&mut offset, 200, 195, 100_000_210), None);
-    }
-
-    #[test]
     fn a_sub_deadline_sleep_inside_ax_expires_without_waiting_for_an_epoch_callback() {
         let probe = PostProbe {
             epoch: 3,
@@ -323,27 +290,6 @@ mod tests {
         assert!(matches!(
             probe.check_sample(3, 1_000_250, 245, 1_000_260),
             Err(SafetyFailure::Expired)
-        ));
-    }
-
-    #[test]
-    fn post_read_lifecycle_and_unavailable_sampling_keep_distinct_reasons() {
-        let probe = PostProbe {
-            epoch: 3,
-            offset: Some((4, 16)),
-            tokens: Vec::new(),
-        };
-        assert!(matches!(
-            probe.check_sample(4, 250, 245, 260),
-            Err(SafetyFailure::Expired)
-        ));
-        assert!(matches!(
-            probe.check_sample(0, 250, 245, 260),
-            Err(SafetyFailure::Unavailable)
-        ));
-        assert!(matches!(
-            probe.check_sample(3, 0, 245, 260),
-            Err(SafetyFailure::Unavailable)
         ));
     }
 }

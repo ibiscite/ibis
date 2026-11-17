@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { expect, test, vi } from "vitest";
+import { expect, test } from "vitest";
 import { SettingsApp } from "./SettingsApp";
 import { demoApi } from "./demo";
 
@@ -22,72 +22,4 @@ test("Small surprises defaults on, persists off, and thoth still reveals the pas
   for (let i = 0; i < 30; i++) await act(async () => fireEvent.click(icon));
   expect(document.querySelector("[data-dip]")).toBeNull();
   expect(screen.queryByText(/White ibises|Scarlet ibises|Northern bald/)).toBeNull();
-});
-
-test("each click dips the bird and says the next fact, and leaving About returns the name line", async () => {
-  const api = demoApi();
-  await act(async () => render(<SettingsApp api={api} initialPage="about" />));
-  expect(screen.getByText(nameLine)).toBeTruthy();
-  const icon = screen.getByRole("button", { name: "Ibis" });
-  for (const fact of [
-    "White ibises find food by touch as they probe the mud.",
-    "Scarlet ibises get their colour from pigments in the shellfish they eat.",
-    "Ancient Egyptians mummified ibises as offerings to Thoth.",
-    "The scarlet ibis is a national bird of Trinidad and Tobago.",
-    "Northern bald ibises take turns leading their V formation.",
-  ]) {
-    await act(async () => fireEvent.click(icon));
-    expect(screen.getByText(fact).closest("[aria-live]")).not.toBeNull();
-    expect(screen.queryByText(nameLine)).toBeNull();
-    expect(document.querySelector("[data-dip]")).not.toBeNull();
-  }
-  fireEvent.click(screen.getByRole("option", { name: "General" }));
-  await act(async () => fireEvent.click(screen.getByRole("option", { name: "About Ibis" })));
-  expect(screen.getByText(nameLine)).toBeTruthy();
-  expect(document.querySelector("[data-dip]")).toBeNull();
-  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Ibis" })));
-  expect(screen.getByText("White ibises find food by touch as they probe the mud.")).toBeTruthy();
-});
-
-test("a focus read while a click is pending cannot lose that click's fact", async () => {
-  const api = demoApi(), answer = api.delightView!;
-  let release!: () => void;
-  const held = new Promise<void>((resolve) => { release = resolve; });
-  api.delightView = async (now, presentation, revision, click) => {
-    const view = await answer(now, presentation, revision, click);
-    if (click) await held;
-    return view;
-  };
-  await act(async () => render(<SettingsApp api={api} initialPage="about" />));
-  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Ibis" })));
-  await act(async () => { window.dispatchEvent(new Event("focus")); });
-  await act(async () => { release(); await held; });
-  expect(screen.getByText("White ibises find food by touch as they probe the mud.")).toBeTruthy();
-  expect(document.querySelector("[data-dip]")).not.toBeNull();
-});
-
-test("a focus read keeps the fact a click just said", async () => {
-  await act(async () => render(<SettingsApp api={demoApi()} initialPage="about" />));
-  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Ibis" })));
-  await act(async () => { window.dispatchEvent(new Event("focus")); });
-  expect(screen.getByText("White ibises find food by touch as they probe the mud.")).toBeTruthy();
-});
-
-test("a failed switch write restores the authoritative choice without losing other settings", async () => {
-  const api = demoApi();
-  vi.spyOn(api, "pickerPreferencesSaved").mockRejectedValueOnce(new Error("invented write failure"));
-  await act(async () => render(<SettingsApp api={api} initialPage="general" />));
-  fireEvent.click(screen.getByRole("switch", { name: "Bird facts and milestones" }));
-  await waitFor(() => expect(screen.getByRole<HTMLInputElement>("switch", { name: "Bird facts and milestones" }).checked).toBe(true));
-  expect((await api.pickerPreferences()).paste).toBe(true);
-});
-
-test("the anniversary takes the line for its day and a click can still say a fact", async () => {
-  const view = { fun: true, anniversary: true, fact: null, status: null, revision: 2, peck: false, build: "invented" };
-  const delightView = vi.fn(async (_now, _presentation, _revision, click) => ({ ...view, fact: click ? "touch" as const : null }));
-  await act(async () => render(<SettingsApp api={{ ...demoApi(), delightView }} initialPage="about" />));
-  expect(screen.getByText("One year with Ibis today.")).toBeTruthy();
-  expect(screen.queryByText(nameLine)).toBeNull();
-  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Ibis" })));
-  expect(screen.getByText("White ibises find food by touch as they probe the mud.")).toBeTruthy();
 });

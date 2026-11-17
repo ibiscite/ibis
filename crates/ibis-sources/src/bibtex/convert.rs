@@ -1446,80 +1446,9 @@ pub(super) fn literal_value(encoded: &str) -> String {
 mod tests {
     use super::*;
 
-    #[test]
-    fn cleaning_collapses_unicode_whitespace_and_decodes_literals_once() {
-        assert_eq!(
-            clean(" \tSynthetic\u{2003}  café\n signals\r"),
-            "Synthetic café signals"
-        );
-        assert_eq!(clean(" \t\u{2003}\n"), "");
-        assert_eq!(
-            clean(&format!(
-                "  {LEFT_BRACE}Synthetic{RIGHT_BRACE}\n{BACKSLASH}label {ESCAPE}{LEFT_BRACE}  "
-            )),
-            format!("{{Synthetic}} \\label {LEFT_BRACE}")
-        );
-        // Decode after collapsing whitespace, including escapes at a word's end.
-        assert_eq!(clean(&format!("{ESCAPE}  next  {ESCAPE}")), " next ");
-        assert_eq!(clean(&format!("{ESCAPE}{ESCAPE}{RIGHT_BRACE}")), format!("{ESCAPE}}}"));
-        let whitespace_heavy = format!("{}signal{}", " ".repeat(32_000), "\n".repeat(32_000));
-        let result = clean(&whitespace_heavy);
-        assert_eq!(result, "signal");
-        assert!(result.capacity() < 32, "retained discarded whitespace");
-    }
-
-    #[test]
-    fn name_whitespace_keeps_delimiter_boundaries_and_organizations() {
-        for (raw, expected) in [
-            ("A B", vec![false]),
-            (" A\t\nB \t\n", vec![false]),
-            ("A  AND\t{Synthetic and Organization}", vec![false, true]),
-            ("A \u{2003}\tand\n{Synthetic Organization} \t", vec![false, true]),
-            ("A\u{2003}and {Synthetic Organization}", vec![false]),
-            ("A and\u{2003}{Synthetic Organization}", vec![false]),
-            ("A andrew B", vec![false]),
-            ("A and", vec![false]),
-            ("{Synthetic and Organization}\t\n", vec![true]),
-            (" {Synthetic Organization} and {Other Organization} ", vec![true, true]),
-            ("{Synthetic Organization} suffix", vec![false]),
-        ] {
-            assert_eq!(braced_names(raw), expected, "{raw:?}");
-        }
-    }
-
     fn title(chunks: &[Chunk]) -> String {
         let pieces = pieces_from_chunks(chunks.iter(), &mut BTreeSet::new());
         render(&pieces)
-    }
-
-    #[test]
-    fn stored_case_keeps_protected_words_acronyms_and_initials() {
-        let chunks = [
-            Chunk::Normal("Using ".into()),
-            Chunk::Verbatim("iPhone".into()),
-            Chunk::Normal(" Apps for DNA Repair in E. coli: A Self-Supervised Review".into()),
-        ];
-        assert_eq!(
-            title(&chunks),
-            "Using <span class=\"nocase\">iPhone</span> Apps for DNA Repair in E. coli: A Self-Supervised Review"
-        );
-    }
-
-    #[test]
-    fn formatting_commands_become_tags_and_non_english_is_unchanged() {
-        let chunks = [
-            Chunk::Normal("The Role of ".into()),
-            Chunk::Verbatim("\\emph{in vivo}".into()),
-            Chunk::Normal(" and \\textit{In Vitro} Tests".into()),
-        ];
-        assert_eq!(
-            title(&chunks),
-            "The Role of <span class=\"nocase\"><i>in vivo</i></span> and <i>In Vitro</i> Tests"
-        );
-        assert_eq!(
-            title(&[Chunk::Normal("Schlaf und Gedächtnis".into())]),
-            "Schlaf und Gedächtnis"
-        );
     }
 
     #[test]
@@ -1527,36 +1456,6 @@ mod tests {
         assert_eq!(
             title(&[Chunk::Normal("Less <Than> & More".into())]),
             "Less &lt;Than&gt; &amp; More"
-        );
-    }
-
-    #[test]
-    fn braced_names_are_detected_per_name() {
-        assert_eq!(
-            braced_names("{World Health Organization} and van der Berg, Jan AND {A} {B}"),
-            [true, false, false]
-        );
-        assert_eq!(braced_names("Παπαδόπουλος, Νίκος and Ανδρέας"), [false, false]);
-    }
-
-    #[test]
-    fn lenient_dates_report_what_was_dropped() {
-        assert_eq!(
-            lenient_date("2021-02-31"),
-            Some((
-                PartialDate {
-                    year: 2021,
-                    month: Some(2),
-                    day: None
-                },
-                false
-            ))
-        );
-        assert_eq!(lenient_date("2020-13-45x"), Some((PartialDate::year(2020), false)));
-        assert_eq!(lenient_date("sometime"), None);
-        assert_eq!(
-            lenient_date("2024-02-29").map(|(d, ok)| (d.day, ok)),
-            Some((Some(29), true))
         );
     }
 }

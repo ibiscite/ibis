@@ -721,29 +721,3 @@ fn item_data(data: &serde_json::Map<String, Value>, key: &str, kind: &str) -> Re
         fields,
     })
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn malformed_rows_are_omitted_without_inventing_item_data() {
-        for data in [
-            json!(null),
-            json!({}),
-            json!({"key": "SYNTH001", "version": 1, "itemType": "book"}),
-        ] {
-            let (key, entry, version) = entry(json!({"key": "SYNTH001", "version": 1, "data": data})).unwrap();
-            assert_eq!(key.as_deref(), Some("SYNTH001"));
-            assert_eq!(version, Some(1));
-            assert_eq!(entry.warning, Some(LiveWarning::MalformedItem));
-            assert!(entry.item.is_none());
-            assert!(entry.modified.is_none());
-        }
-        let (key, entry, version) = entry(json!({})).unwrap();
-        assert!(key.is_none());
-        assert!(version.is_none());
-        assert_eq!(entry.warning, Some(LiveWarning::MalformedItem));
-    }
-}

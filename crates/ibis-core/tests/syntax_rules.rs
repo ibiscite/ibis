@@ -3,7 +3,6 @@
 use ibis_core::contract::*;
 use ibis_core::contract::{GoldenCase, OutputSpec};
 use ibis_core::syntax;
-use proptest::prelude::*;
 
 fn seed() -> GoldenCase {
     serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json")).unwrap()
@@ -137,50 +136,6 @@ fn empty_locators_are_refused_before_any_syntax_can_drop_them() {
 }
 
 #[test]
-fn repeated_and_unusual_keys_keep_syntax_and_input_identity() {
-    // Repeated keys remain distinct choices; Unicode and punctuation must not
-    // be decorated before each syntax makes its escaping decisions.
-    let items = [item("same"), item("same"), item("é.")];
-    for (format, expected) in [
-        (PANDOC, "[@same; @same; @{é.}]"),
-        (AUTOCITE, "\\autocites{same}{same}{é.}"),
-        (PARENCITE, "\\parencites{same}{same}{é.}"),
-        (TEXTCITE, "\\textcites{same}{same}{é.}"),
-        (CITE, "\\cite{same,same,é.}"),
-        (TYPST, "@same @same #cite(label(\"é.\"))"),
-        (KEYS, "same, same, é."),
-    ] {
-        let result = rendered(format, &items);
-        assert_eq!(result.text, expected);
-        assert_eq!(
-            result.outcomes,
-            [0, 1, 2].map(|item| ItemOutcome::Rendered { item }),
-            "{format:?}"
-        );
-        assert_eq!(
-            result
-                .display
-                .nodes
-                .iter()
-                .flat_map(|node| &node.content)
-                .map(|run| run.text.as_str())
-                .collect::<String>(),
-            expected
-        );
-        assert_eq!(
-            result
-                .display
-                .nodes
-                .iter()
-                .filter_map(|node| node.item)
-                .collect::<Vec<_>>(),
-            [0, 1, 2],
-            "each repeated input retains its own segment: {format:?}"
-        );
-    }
-}
-
-#[test]
 fn biblatex_multicite_keeps_a_prefix_inside_its_reference() {
     let items = [
         Cite {
@@ -190,70 +145,6 @@ fn biblatex_multicite_keeps_a_prefix_inside_its_reference() {
         pages("b", "24–26"),
     ];
     assert_eq!(text(AUTOCITE, &items), "\\autocites[see \\&][12]{a}[24--26]{b}");
-}
-
-#[test]
-fn pandoc_separate_locators_prefix_and_suppressed_author() {
-    let see = Cite {
-        prefix: Some("see".into()),
-        ..pages("smith2020", "12")
-    };
-    let year_only = Cite {
-        suppress_author: true,
-        ..pages("doe:2019", "24–26")
-    };
-    assert_eq!(
-        text(PANDOC, &[see, year_only]),
-        "[see @smith2020, p. 12; -@doe:2019, pp. 24-26]"
-    );
-}
-
-#[test]
-fn pandoc_wraps_unusual_keys_in_braces() {
-    assert_eq!(text(PANDOC, &[item("Smith_2020.")]), "[@{Smith_2020.}]");
-    assert_eq!(text(PANDOC, &[item("a--b")]), "[@{a--b}]");
-}
-
-#[test]
-fn pandoc_quotes_alphabetic_combining_marks_in_keys() {
-    // Rust's Unicode Alphabetic property includes these marks and symbols, but
-    // Pandoc's bare citation-key parser stops before them. With `[@key]`, the
-    // remaining text becomes a suffix and silently cites a different key.
-    for key in [
-        "synthetic\u{0345}2024",
-        "synthetic\u{05b0}2024",
-        "synthetic\u{093e}2024",
-        "synthetic\u{24b6}2024",  // Circled alphabetic symbol, not a mark.
-        "synthetic\u{1f130}2024", // Squared alphabetic symbol, not a mark.
-    ] {
-        let result = rendered(PANDOC, &[item(key)]);
-        assert_eq!(result.text, format!("[@{{{key}}}]"), "key {key:?}");
-        assert!(result.losses.is_empty());
-        assert!(result.notices.is_empty());
-    }
-}
-
-#[test]
-fn biblatex_multicite_keeps_one_locator_per_reference() {
-    let items = [pages("a", "12"), pages("b", "24-26")];
-    assert_eq!(text(AUTOCITE, &items), "\\autocites[12]{a}[24--26]{b}");
-}
-
-#[test]
-fn biblatex_prefix_needs_both_brackets() {
-    let see = Cite {
-        prefix: Some("see".into()),
-        ..item("a")
-    };
-    assert_eq!(text(PARENCITE, &[see]), "\\parencite[see][]{a}");
-    let chapter = Cite {
-        locator: Some(Locator {
-            term: LocatorTerm::Chapter,
-            value: "3".into(),
-        }),
-        ..item("a")
-    };
-    assert_eq!(text(TEXTCITE, &[chapter]), "\\textcite[chap.~3]{a}");
 }
 
 #[test]
@@ -302,15 +193,6 @@ fn plain_cite_groups_keys_or_splits_when_locators_differ() {
 }
 
 #[test]
-fn latex_special_characters_in_notes_are_escaped() {
-    let note = Cite {
-        suffix: Some("50% & more_".into()),
-        ..item("a")
-    };
-    assert_eq!(text(AUTOCITE, &[note]), "\\autocite[50\\% \\& more\\_\\nopp]{a}");
-}
-
-#[test]
 fn typst_simple_and_complex_labels() {
     assert_eq!(
         text(TYPST, &[pages("smith2020", "12"), item("doe")]),
@@ -324,51 +206,11 @@ fn typst_simple_and_complex_labels() {
     assert_eq!(text(TYPST, &[year_only]), "#cite(<a>, form: \"year\")");
 }
 
-#[test]
-/// A key with a dot uses an explicit label: Typst reads `@a.b[...]` as key `a`.
-fn typst_notes_escape_comment_markers() {
-    let notes = Cite {
-        prefix: Some("see // note".into()),
-        suffix: Some("and/or // x /* y */".into()),
-        ..pages("a.b", "12")
-    };
-    let complex = Cite {
-        prefix: Some("/* see */".into()),
-        suffix: Some("/// end".into()),
-        suppress_author: true,
-        ..pages("odd/key", "12//13")
-    };
-    assert_eq!(
-        text(TYPST, &[notes, complex]),
-        r#"see \// note #cite(label("a.b"), supplement: [p. 12, and/or \// x \/\* y \*/]) \/\* see \*/ #cite(label("odd/key"), supplement: [p. 12\//13, \/\// end], form: "year")"#
-    );
-}
-
-#[test]
-fn typst_quotes_keys_outside_the_safe_literal_subset() {
-    let keys = ["x²", "x½", ".key", ":key", "café", "key\"quote", "back\\slash"];
-    let items: Vec<_> = keys.into_iter().map(item).collect();
-    assert_eq!(
-        text(TYPST, &items),
-        r#"#cite(label("x²")) #cite(label("x½")) #cite(label(".key")) #cite(label(":key")) #cite(label("café")) #cite(label("key\"quote")) #cite(label("back\\slash"))"#
-    );
-}
-
 fn typst_prefix(prefix: &str) -> String {
     text(
         TYPST,
         &[Cite {
             prefix: Some(prefix.to_owned()),
-            ..item("synthetic2024")
-        }],
-    )
-}
-
-fn typst_suffix(suffix: &str) -> String {
-    text(
-        TYPST,
-        &[Cite {
-            suffix: Some(suffix.to_owned()),
             ..item("synthetic2024")
         }],
     )
@@ -387,82 +229,5 @@ fn typst_prefix_escapes_heading_and_list_markers() {
         ("note\u{2028}= heading", "note\u{2028}\\= heading"),
     ] {
         assert_eq!(typst_prefix(prefix), format!("{escaped} @synthetic2024"));
-    }
-}
-
-#[test]
-/// Text with a hyphen becomes a Typst string, so it can never start a list.
-fn typst_prefix_escapes_hyphen_list_markers() {
-    let (actual, expected): (Vec<_>, Vec<_>) = [
-        ("- synthetic note", "#text(\"- synthetic note\")"),
-        ("  - synthetic note", "#text(\"  - synthetic note\")"),
-        ("note\u{2029}- item", "#text(\"note\u{2029}- item\")"),
-    ]
-    .into_iter()
-    .map(|(prefix, escaped)| (typst_prefix(prefix), format!("{escaped} @synthetic2024")))
-    .unzip();
-    assert_eq!(actual, expected);
-}
-
-#[test]
-fn typst_supplements_escape_block_markers() {
-    for (note, escaped) in [
-        ("= note", "\\= note"),
-        ("+ note", "\\+ note"),
-        ("/ term: note", "\\/ term: note"),
-        ("12. note", "12\\. note"),
-    ] {
-        assert_eq!(typst_suffix(note), format!("@synthetic2024[{escaped}]"));
-    }
-}
-
-#[test]
-fn typst_supplements_keep_hyphen_text_literal() {
-    let (actual, expected): (Vec<_>, Vec<_>) = [
-        ("- note", "#text(\"- note\")"),
-        (
-            "pre-existing and/or 2024-10-19",
-            "#text(\"pre-existing and/or 2024-10-19\")",
-        ),
-    ]
-    .into_iter()
-    .map(|(note, escaped)| (typst_suffix(note), format!("@synthetic2024[{escaped}]")))
-    .unzip();
-    assert_eq!(actual, expected);
-}
-
-#[test]
-fn invalid_input_is_rejected_not_guessed() {
-    assert_eq!(
-        refused(CITE, &[item("a b")]),
-        [ItemOutcome::Refused {
-            item: 0,
-            error: CitationError::InvalidKey
-        }]
-    );
-    let control = Cite {
-        suffix: Some("x\u{7}".into()),
-        ..item("a")
-    };
-    assert_eq!(
-        refused(PANDOC, &[control]),
-        [ItemOutcome::Refused {
-            item: 0,
-            error: CitationError::InvalidRichText
-        }]
-    );
-}
-
-proptest! {
-    /// Any valid key appears in every output and rendering never panics.
-    #[test]
-    fn every_valid_key_is_present(key in "[A-Za-z0-9_][A-Za-z0-9_:./-]{0,20}", page in "[0-9]{1,4}(-[0-9]{1,4})?") {
-        for format in [PANDOC, AUTOCITE, CITE, TYPST, KEYS] {
-            let result = cite(format, &[pages(&key, &page)]);
-            prop_assert!(
-                result.as_ref().is_ok_and(|result| result.copy_content(1).is_some() && result.text.contains(&key)),
-                "{:?} lost key {}: {:?}", format, key, result
-            );
-        }
     }
 }

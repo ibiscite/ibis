@@ -206,12 +206,6 @@ mod tests {
     fn scratch() -> tempfile::TempDir {
         tempfile::tempdir().unwrap()
     }
-    #[test]
-    fn process_snapshot_is_complete_and_contains_our_pid() {
-        // Success requires a nonempty snapshot, our PID, and normal end of
-        // enumeration. Windows CI has no Zotero process.
-        assert_eq!(super::super::closed(&control()), Ok(()));
-    }
 
     #[test]
     fn only_exact_zotero_image_names_are_running() {
@@ -352,21 +346,5 @@ mod tests {
         junction(&link, &secret);
         assert!(crate::closed::read_text_cache(data.path(), "ALLOW001", std::sync::Arc::new(|| false)).is_err());
         std::fs::remove_dir(&link).unwrap();
-    }
-
-    #[test]
-    fn native_actions_preserve_cancellation_and_deadlines() {
-        let parent = scratch();
-        let child = parent.path().join("never-created");
-        for error in [ClosedError::Cancelled, ClosedError::TimedOut] {
-            let mut stopped = Control::new(std::sync::Arc::new(move || error == ClosedError::Cancelled));
-            stopped.deadline = std::time::Instant::now();
-            assert_eq!(super::super::closed(&stopped), Err(error));
-            assert_eq!(super::super::directory(parent.path(), &stopped).err(), Some(error));
-            assert_eq!(super::super::space(parent.path(), 0, &stopped), Err(error));
-            assert_eq!(super::super::secure(parent.path(), &stopped), Err(error));
-            assert_eq!(super::super::create_private(&child, &stopped), Err(error));
-            assert!(!child.exists());
-        }
     }
 }

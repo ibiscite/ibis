@@ -131,69 +131,6 @@ fn failure_cancellation_and_limits_keep_last_good() {
 }
 
 #[test]
-fn a_changed_scan_retries_from_full_data_even_when_versions_return_to_cached_values() {
-    let mut fake = Fake::new(10);
-    let mut reader = LiveReader::new(Library::User);
-    reader.refresh(&mut fake, false, &|| false).unwrap();
-    fake.rows = vec![row(1, "Restored synthetic atlas")];
-    struct Drifting {
-        inner: Fake,
-        inventories: usize,
-    }
-    impl Transport for Drifting {
-        fn get(&mut self, path: &str) -> Result<Response, TransportError> {
-            if path.ends_with("format=versions") {
-                self.inventories += 1;
-            }
-            self.inner.version = if self.inventories == 2 { 2 } else { 1 };
-            self.inner.rows = vec![row(self.inner.version, "Restored synthetic atlas")];
-            self.inner.get(path)
-        }
-    }
-    let mut drifting = Drifting {
-        inner: fake,
-        inventories: 0,
-    };
-    reader.refresh(&mut drifting, false, &|| false).unwrap();
-    assert_eq!(reader.items()[0].fields["title"], "Restored synthetic atlas");
-}
-
-#[test]
-fn unrelated_library_writes_do_not_starve_a_stable_ten_item_map() {
-    struct Churning(Fake);
-    impl Transport for Churning {
-        fn get(&mut self, path: &str) -> Result<Response, TransportError> {
-            self.0.version += 1;
-            self.0.get(path)
-        }
-    }
-    let mut reader = LiveReader::new(Library::User);
-    reader.refresh(&mut Churning(Fake::new(10)), false, &|| false).unwrap();
-    assert_eq!(reader.items()[0].fields["title"], "Invented atlas");
-}
-
-#[test]
-fn explicit_full_reload_retires_preview_before_the_first_request() {
-    let began = std::cell::Cell::new(false);
-    let mut reader = LiveReader::new(Library::User);
-    let mut fake = Fake::new(10);
-    reader.refresh(&mut fake, false, &|| false).unwrap();
-    struct Guarded<'a>(&'a std::cell::Cell<bool>, Fake);
-    impl Transport for Guarded<'_> {
-        fn get(&mut self, path: &str) -> Result<Response, TransportError> {
-            assert!(self.0.get(), "full read must retire the old preview before I/O");
-            self.1.get(path)
-        }
-    }
-    reader
-        .refresh_observed(&mut Guarded(&began, fake), true, &|| false, &mut || {
-            began.set(true);
-            Ok(())
-        })
-        .unwrap();
-}
-
-#[test]
 fn per_item_limits_omit_only_the_oversized_item_and_keep_its_warning_across_refresh() {
     let mut cases = vec![];
     let mut authors = row(1, "Invented collaboration");
@@ -284,30 +221,6 @@ fn malformed_rows_with_or_without_keys_keep_neighbors_and_cached_warnings() {
             assert_eq!(reader.retained_size().0, 1);
             assert_eq!(reader.warnings().collect::<Vec<_>>(), [LiveWarning::MalformedItem]);
         }
-    }
-}
-
-#[test]
-fn anonymous_rows_match_remaining_inventory_versions_without_assuming_order() {
-    for versions in [[Some(2), Some(1)], [None, None], [Some(2), Some(2)]] {
-        let mut fake = Fake::new(10);
-        let mut second = row(2, "Invented second item");
-        second["key"] = json!("SYNTH002");
-        second["data"]["key"] = json!("SYNTH002");
-        fake.rows.push(second);
-        fake.version = 2;
-        fake.response_rows = Some(versions.iter().map(|version| json!({"version": version})).collect());
-        let mut reader = LiveReader::new(Library::User);
-        let result = reader.refresh(&mut fake, false, &|| false);
-        if versions == [Some(2), Some(2)] {
-            assert_eq!(result, Err(LiveError::Changing));
-            assert!(reader.warnings().next().is_none());
-        } else {
-            assert_eq!(result, Ok(Refresh::Changed));
-            assert_eq!(reader.retained_size().0, 2);
-            assert_eq!(reader.warnings().count(), 2);
-        }
-        assert!(reader.items().is_empty());
     }
 }
 

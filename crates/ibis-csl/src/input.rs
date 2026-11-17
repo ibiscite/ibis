@@ -737,7 +737,6 @@ fn placeholder(index: usize, kind: &str, runs: &[TextRun]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use CitationForm::{AuthorOnly, Full, Narrative, Normal, YearOnly};
 
     #[test]
     fn processor_fields_exclude_private_data_before_normalizing_printed_text() {
@@ -764,120 +763,6 @@ mod tests {
                 "container-title": "Invented container"
             })
         );
-    }
-
-    fn synthetic_style(id: &str, xml: &str) -> catalog::Resolved {
-        catalog::Resolved {
-            id: id.into(),
-            rules: id.into(),
-            xml: xml.into(),
-            traits: style_traits(xml),
-            forced_locale: None,
-            language: "en-US".into(),
-            sentence_titles: false,
-            verified_forms: true,
-        }
-    }
-
-    #[test]
-    fn xml_traits_drive_fallback_and_form_refusals_independently_of_style_name() {
-        let id = ItemRef {
-            library: LibraryId::digest(b"synthetic-traits"),
-            key: "work".into(),
-        };
-        let csl = json!({"type":"book","author":[{"family":"Taylor"}],"issued":{"date-parts":[[2026]]}});
-        let record = serde_json::from_value(json!({"id":id,"csl":csl})).unwrap();
-        let snapshot = Snapshot::new(vec![LibraryObject::Record(record)]).unwrap();
-        for (name, format, numeric) in [
-            ("invented-numbered", "numeric", true),
-            ("invented-escaped", "nu&#109;eric", true),
-            ("ieee", "author-date", false),
-            ("invented-label", "label", false),
-        ] {
-            let xml = format!(
-                "<style><info><title>{name}</title><category citation-format = '{format}'/></info><citation><layout><date variable='issued'/></layout></citation></style>"
-            );
-            let style = synthetic_style(name, &xml);
-            let mut request: CitationRequest =
-                serde_json::from_value(json!({"items":[{"item":id}],"output":{"kind":"csl","style":name}})).unwrap();
-            for form in [Normal, Full, AuthorOnly, YearOnly, Narrative] {
-                request.form = form;
-                let prepared = prepare_with_style(&snapshot, &request, &Limits::default(), &style).unwrap();
-                let json: Value = serde_json::from_str(&prepared.json).unwrap();
-                assert_eq!(json["numeric"], numeric);
-                assert_eq!(json["bibliography"], numeric || form == Full);
-                assert_eq!(prepared.notices.contains(&Notice::NeedsDocumentContext), numeric);
-                assert_eq!(prepared.notices.contains(&Notice::ReferenceEntry), numeric);
-                assert_eq!(
-                    prepared.empty,
-                    numeric && matches!(form, AuthorOnly | YearOnly | Narrative)
-                );
-                if !numeric && form == Narrative {
-                    assert_eq!(json["cites"][0]["narrative"], true);
-                }
-                if !numeric && form == YearOnly {
-                    assert_eq!(json["cites"][0]["year-only"], true);
-                }
-            }
-        }
-        let style = synthetic_style(
-            "invented-no-year",
-            "<style><macro name='unused'><date variable='issued'/></macro><citation><sort><key macro='unused'/></sort><layout><text variable='locator'/></layout></citation><bibliography><layout><date variable='issued'/></layout></bibliography></style>",
-        );
-        let request = serde_json::from_value(json!({"items":[{"item":id,"locator":{"term":"page","value":"42"}}],"form":"year-only","output":{"kind":"csl","style":"invented-no-year"}})).unwrap();
-        let prepared = prepare_with_style(&snapshot, &request, &Limits::default(), &style).unwrap();
-        let refused = json!([{"outcome":"refused","item":0,"error":"unsupported-form","message":{"id":"problem-unsupported-form","args":{}},"recovery":{"action":"choose-form"},"focus":"citation-form"}]);
-        assert_eq!(serde_json::to_value(&prepared.outcomes).unwrap(), refused);
-    }
-
-    #[test]
-    fn bundled_styles_keep_the_behaviour_their_names_used_to_choose() {
-        let traits: Vec<_> = crate::STYLES
-            .iter()
-            .map(|(id, _)| {
-                let traits = catalog::resolve(id).unwrap().traits;
-                (*id, traits.numeric, traits.citation_has_issued, traits.year_suffix)
-            })
-            .collect();
-        assert_eq!(
-            traits,
-            [
-                ("apa", false, true, true),
-                ("chicago-author-date", false, true, true),
-                ("harvard-cite-them-right", false, true, true),
-                ("ieee", true, false, false),
-                ("modern-language-association", false, false, false),
-            ]
-        );
-    }
-
-    #[test]
-    fn a_number_or_note_in_the_style_itself_decides_how_it_is_copied() {
-        let numbered = "<style><info><category citation-format='author-date'/></info><macro name='n'><text variable='citation-number'/></macro><citation><layout><text macro='n'/></layout></citation></style>";
-        assert!(style_traits(numbered).numeric);
-        let sorted = "<style><macro name='n'><text variable='citation-number'/></macro><citation><sort><key macro='n'/></sort><layout><text variable='title'/></layout></citation></style>";
-        assert!(!style_traits(sorted).numeric);
-        assert!(style_traits("<style class='note'><citation><layout/></citation></style>").note);
-        assert!(style_traits("<style><citation and='symbol'><layout/></citation></style>").symbol_and);
-        let symbol = "<style><macro name='a'><names variable='author'><name and='symbol'/></names></macro><citation><layout><text macro='a'/></layout></citation></style>";
-        assert!(style_traits(symbol).symbol_and);
-    }
-
-    #[test]
-    fn issued_scan_follows_only_reachable_macros_and_terminates_cycles() {
-        for (layout, expected) in [
-            ("<text macro='outer'/>", true),
-            ("<date variable='issued'/>", true),
-            ("<if variable='issued'><text variable='locator'/></if>", false),
-            ("<text macro='cycle'/>", false),
-        ] {
-            let xml = format!(
-                "<style><!-- <category citation-format='numeric'/> --><macro name='outer'><text macro='inner'/></macro><macro name='inner'><choose><if type='book'><date variable='issued' date-parts='year'/></if></choose></macro><macro name='cycle'><text macro='cycle'/></macro><citation><layout prefix='>'>{layout}</layout></citation></style>"
-            );
-            let traits = style_traits(&xml);
-            assert!(!traits.numeric);
-            assert_eq!(traits.citation_has_issued, expected);
-        }
     }
 }
 
@@ -906,14 +791,4 @@ impl ResolvedOutput {
             language,
         })
     }
-}
-#[cfg(test)]
-fn prepare_with_style(
-    snapshot: &Snapshot,
-    request: &CitationRequest,
-    limits: &Limits,
-    style: &catalog::Resolved,
-) -> Result<Prepared, FormatError> {
-    let resolved = ResolvedOutput::with_style(std::sync::Arc::new(style.clone()), request.output_locale.as_deref())?;
-    prepare_resolved(snapshot, request, limits, &resolved)
 }

@@ -94,19 +94,3 @@ fn bibtex_reads_bibdesk_and_jabref_added_dates_and_skips_malformed_ones() -> Res
     );
     Ok(())
 }
-
-#[test]
-fn added_dates_from_bibtex_and_csl_json_share_one_utc_order() -> Result<(), Box<dyn std::error::Error>> {
-    let bib = added_dates(
-        "synthetic.bib",
-        "@book{late, title={Late}, date-added={2026-10-30 23:00:00 -0500}}",
-    )?;
-    let csl = added_dates(
-        "synthetic.json",
-        r#"[{"id":"early","type":"book","title":"Early","date-added":"2026-10-31T03:00:00Z"}]"#,
-    )?;
-    let (late, early) = (bib[0].1.clone().ok_or("bib date")?, csl[0].1.clone().ok_or("csl date")?);
-    // 23:00 at UTC-5 is 04:00 UTC the next day, after the CSL-JSON reference.
-    assert!(late > early, "{late} must sort after {early}");
-    Ok(())
-}

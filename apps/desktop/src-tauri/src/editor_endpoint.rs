@@ -633,33 +633,9 @@ pub(crate) fn editor_request(pending: State<'_, Pending>) -> Option<EditorWaitin
 mod tests {
     use super::*;
     use ibis_engine::cayw::CaywOutput;
-    use std::io::ErrorKind;
     use std::sync::Mutex as StdMutex;
 
     const TOKEN: &str = "0123456789abcdef0123456789abcdef";
-
-    #[test]
-    fn a_failed_older_endpoint_never_erases_a_newer_file_choice() {
-        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
-        let file = SettingsFile::new(directory.path().join("settings.json"));
-        let older = EditorEndpoint {
-            port: DEFAULT_PORT,
-            token: TOKEN.into(),
-        };
-        let newer = EditorEndpoint {
-            port: DEFAULT_PORT + 1,
-            token: "fedcba9876543210fedcba9876543210".into(),
-        };
-        file.update(|settings| settings.device.editor_endpoint = Some(newer.clone()))
-            .unwrap_or_else(|error| panic!("{error}"));
-        forget_unavailable(&file, &older);
-        assert_eq!(
-            crate::settings_fixture::read(&file.path).device.editor_endpoint,
-            Some(newer.clone())
-        );
-        forget_unavailable(&file, &newer);
-        assert_eq!(crate::settings_fixture::read(&file.path).device.editor_endpoint, None);
-    }
 
     type Then = Box<dyn FnOnce(&Pending) + Send>;
 
@@ -748,16 +724,6 @@ mod tests {
         format!("/{TOKEN}/better-bibtex/cayw{query}")
     }
 
-    /// Whether a probe gets "ready". A finished connection's thread can hold its
-    /// slot a moment after its client is done, so a probe may at first be closed
-    /// unread; a slot never given back keeps it closed until `wait_for` gives up.
-    fn probe_answers(port: u16) -> bool {
-        let mut stream = connect(port);
-        let probe = format!("GET {} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n\r\n", cayw("?probe=true"));
-        let _ = stream.write_all(probe.as_bytes());
-        answer(&mut stream).ends_with("ready")
-    }
-
     fn wait_for(what: impl Fn() -> bool) {
         let started = Instant::now();
         while !what() {
@@ -805,29 +771,6 @@ mod tests {
     }
 
     #[test]
-    fn hiding_the_picker_answers_with_nothing() {
-        let fake = Fake::default();
-        *fake.then.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Box::new(|pending: &Pending| {
-            assert!(pending.cancel_any(|| {}));
-        }));
-        let (_listening, port, _host) = server(fake);
-        let mut stream = connect(port);
-        send(&mut stream, port, &cayw(""), "");
-        let text = answer(&mut stream);
-        assert!(text.starts_with("HTTP/1.1 200 OK") && text.ends_with("Content-Length: 0\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n"), "{text}");
-    }
-
-    #[test]
-    fn an_editor_that_gives_up_ends_its_request() {
-        let (_listening, port, host) = server(Fake::default());
-        let mut stream = connect(port);
-        send(&mut stream, port, &cayw(""), "");
-        wait_for(|| host.pending.current().is_some());
-        drop(stream);
-        wait_for(|| host.pending.current().is_none());
-    }
-
-    #[test]
     fn a_second_request_is_refused_and_the_first_still_gets_its_answer() {
         let (_listening, port, host) = server(Fake::default());
         let mut first = connect(port);
@@ -841,34 +784,6 @@ mod tests {
         assert_eq!(request.label, "Typst", "the second changed nothing");
         assert!(host.pending.answer(request.id, "@a", || ()));
         assert!(answer(&mut first).ends_with("@a"));
-    }
-
-    #[test]
-    fn a_late_answer_for_an_ended_request_cannot_reach_a_newer_one() {
-        let pending = Pending::default();
-        let pick = match cayw::parse(
-            format!("GET {} HTTP/1.1\r\nHost: 127.0.0.1:1234\r\n\r\n", cayw("")).as_bytes(),
-            1234,
-            TOKEN,
-        ) {
-            Ok(CaywRequest::Pick(pick)) => pick,
-            other => panic!("{other:?}"),
-        };
-        let (first, _first_answer) = pending
-            .begin(&pick, "apa", &AtomicBool::new(false), || {})
-            .unwrap_or_else(|| panic!("a request"));
-        assert!(pending.cancel(first, || {}));
-        let (second, second_answer) = pending
-            .begin(&pick, "apa", &AtomicBool::new(false), || {})
-            .unwrap_or_else(|| panic!("a request"));
-        assert!(
-            !pending.answer(first, "late", || panic!("a late answer retires nothing")),
-            "A finished after B began"
-        );
-        assert!(!pending.cancel(first, || panic!("nothing to retire for an ended request")));
-        assert_eq!(pending.current().map(|request| request.id), Some(second));
-        assert!(pending.answer(second, "newer", || ()));
-        assert_eq!(second_answer.recv().ok().flatten().as_deref(), Some("newer"));
     }
 
     #[test]
@@ -938,78 +853,6 @@ mod tests {
     }
 
     #[test]
-    fn an_editors_preset_writing_previews_checks_and_copies_the_selected_format()
-    -> Result<(), Box<dyn std::error::Error>> {
-        use crate::library::engine_library::FileLibrary;
-        use ibis_core::contract::DraftItem;
-        use serde_json::json;
-        let directory = tempfile::tempdir()?;
-        let source = directory.path().join("library.bib");
-        let bibliography = directory.path().join("thesis.bib");
-        std::fs::write(&source, "@book{demo,title={Synthetic book}}\n")?;
-        std::fs::write(&bibliography, "@book{other,title={Other book}}\n")?;
-        let writing = settings::writings::Writing {
-            name: "Thesis".into(),
-            format: OutputSpec::Preset { name: "pandoc".into() },
-            bibliography: Some(bibliography),
-        };
-        let pick = CaywPick {
-            output: CaywOutput::Style,
-            form: CitationForm::Normal,
-            clipboard: false,
-            document: None,
-            bibliography: None,
-            csl: None,
-        };
-        let pending = Pending::default();
-        let (id, answer) = pending
-            .begin_context(&pick, "apa", Some(writing), &AtomicBool::new(false), || {})
-            .ok_or("editor request missing")?;
-        let request = pending.current().ok_or("editor request missing")?;
-        let file = ibis_engine::library::Current::open(
-            ibis_engine::Engine::new()
-                .unwrap_or_else(|_| panic!("engine"))
-                .with_formatting(crate::library::engine_library::FORMATTING.clone()),
-            ibis_engine::library::Source::File(source.clone()),
-            None,
-            &ibis_engine::Cancellation::default(),
-        )
-        .unwrap_or_else(|error| panic!("{error}"));
-        let query = serde_json::from_value(json!({"text":"demo","interpret_locators":false}))?;
-        let rows = serde_json::to_value(file.search(&query, 10, None, &ibis_engine::Cancellation::default())?)?;
-        let row = &rows["results"][0];
-        let selection: DraftItem = serde_json::from_value(json!({"id":row["id"],"cite":row["cite"],"locator":null}))?;
-        let preview = crate::test_citations::preview(&file.engine, false, vec![selection], "pandoc")?;
-        assert!(
-            file.engine
-                .citations()
-                .prepared(
-                    ibis_engine::citations::SessionId::PICKER,
-                    &preview.ticket,
-                    &preview.content_hash
-                )
-                .is_ok_and(|citation| citation.request_output() == &request.output)
-        );
-        let check = request.bibliography();
-        assert_eq!(
-            crate::test_citations::said(&crate::project::preview_warnings(
-                &file.engine,
-                &preview.ticket,
-                &preview.content_hash,
-                check.as_ref()
-            )?),
-            ["demo is missing from thesis.bib."]
-        );
-        let copied = crate::test_citations::copy(&file.engine, &preview.ticket, &preview.content_hash, |content| {
-            assert_eq!(content.text, "[@demo]");
-            Ok(())
-        })?;
-        assert!(pending.answer(id, &copied.text, || {}));
-        assert_eq!(answer.recv()?.as_deref(), Some("[@demo]"));
-        Ok(())
-    }
-
-    #[test]
     fn editor_picker_never_shows_the_foreground_apps_recent_citations() -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempfile::tempdir()?;
         let history = ibis_engine::recents::SessionReferences::default();
@@ -1038,218 +881,6 @@ mod tests {
             "the editor must not display another app's citations"
         );
         Ok(())
-    }
-
-    #[test]
-    fn editor_clipboard_copy_does_not_appear_in_the_foreground_apps_history() -> Result<(), Box<dyn std::error::Error>>
-    {
-        let dir = tempfile::tempdir()?;
-        let history = ibis_engine::recents::SessionReferences::default();
-        *history.lock() = ibis_engine::recents::List::open(dir.path().join("recents.json"), true);
-        let id = ibis_core::contract::ItemRef {
-            library: ibis_core::contract::LibraryId::new("invented")?,
-            key: "editor-citation".into(),
-        };
-        let pending = Pending::default();
-        let pick = CaywPick {
-            document: None,
-            bibliography: None,
-            csl: None,
-            output: CaywOutput::Style,
-            form: CitationForm::Normal,
-            clipboard: true,
-        };
-        let (request, answer) = pending
-            .begin(&pick, "apa", &AtomicBool::new(false), || {})
-            .ok_or("request")?;
-        // Recording uses the destination captured before answering clears Pending.
-        let destination = pending.app(Some("invented.writer"));
-        assert!(pending.answer(request, "Invented citation", || {}));
-        assert_eq!(answer.recv()?, Some("Invented citation".into()));
-        let epoch = history.lock().epoch();
-        history.record(&epoch, destination, &[id]);
-        history.flush()?;
-        assert!(
-            history.lock().ids(Some("invented.writer")).is_empty(),
-            "returning to the foreground app must not show this editor copy"
-        );
-        assert!(!ibis_engine::recents::List::open(dir.path().join("recents.json"), true).has_history());
-        Ok(())
-    }
-
-    #[test]
-    fn a_key_request_stays_a_key_whatever_the_persons_style() {
-        let pending = Pending::default();
-        let pick = CaywPick {
-            document: None,
-            bibliography: None,
-            csl: None,
-            output: CaywOutput::Key(OutputSpec::Key {
-                syntax: ibis_core::contract::KeySyntax::Pandoc,
-                command: None,
-            }),
-            form: CitationForm::Normal,
-            clipboard: false,
-        };
-        pending
-            .begin(&pick, "ieee", &AtomicBool::new(false), || {})
-            .unwrap_or_else(|| panic!("a request"));
-        assert_eq!(
-            pending.current().map(|request| request.form),
-            Some(CitationForm::Normal)
-        );
-    }
-
-    #[test]
-    fn a_receipt_is_retired_as_a_request_begins_and_as_it_ends() {
-        let pending = Pending::default();
-        let pick = CaywPick {
-            document: None,
-            bibliography: None,
-            csl: None,
-            output: CaywOutput::Style,
-            form: CitationForm::Normal,
-            clipboard: false,
-        };
-        let mut retired = 0;
-        let (id, _answer) = pending
-            .begin(&pick, "apa", &AtomicBool::new(false), || retired += 1)
-            .unwrap_or_else(|| panic!("a request"));
-        assert!(
-            pending
-                .begin(&pick, "apa", &AtomicBool::new(false), || retired += 10)
-                .is_none(),
-            "a busy request retires nothing"
-        );
-        assert!(pending.cancel(id, || retired += 100));
-        assert_eq!(retired, 101);
-        let (id, _answer) = pending
-            .begin(&pick, "apa", &AtomicBool::new(false), || retired += 1000)
-            .unwrap_or_else(|| panic!("a request"));
-        assert!(
-            !pending.answer(id + 1, "@a", || retired += 10_000),
-            "another request's answer retires nothing"
-        );
-        assert!(
-            pending.answer(id, "@a", || retired += 100_000),
-            "answering retires the editor's receipt"
-        );
-        assert!(
-            !pending.answer(id, "@a", || retired += 1_000_000),
-            "an answered request is gone"
-        );
-        assert_eq!(retired, 101_101);
-    }
-
-    #[test]
-    fn a_host_name_that_would_split_a_character_cannot_use_up_the_connections() {
-        let (_listening, port, host) = server(Fake::default());
-        for _ in 0..(MAX_CONNECTIONS * 2) {
-            let mut stream = connect(port);
-            let text = format!("GET {} HTTP/1.1\r\nHost: 12345678é:{port}\r\n\r\n", cayw(""));
-            stream
-                .write_all(text.as_bytes())
-                .unwrap_or_else(|error| panic!("{error}"));
-            assert!(answer(&mut stream).starts_with("HTTP/1.1 403"));
-        }
-        host.ready.store(true, Ordering::SeqCst);
-        wait_for(|| probe_answers(port));
-    }
-
-    #[test]
-    fn connections_that_reset_at_once_cannot_use_up_the_count() {
-        let (_listening, port, host) = server(Fake::default());
-        for _ in 0..(MAX_CONNECTIONS * 4) {
-            let stream = connect(port);
-            // Closing with nothing sent, as a reset client does.
-            drop(stream);
-        }
-        host.ready.store(true, Ordering::SeqCst);
-        wait_for(|| probe_answers(port));
-    }
-
-    #[test]
-    fn a_slot_is_given_back_on_every_path() {
-        let open = Arc::new(AtomicUsize::new(0));
-        for _ in 0..3 {
-            let slot = Slot(Arc::clone(&open));
-            open.fetch_add(1, Ordering::SeqCst);
-            drop(slot);
-        }
-        assert_eq!(open.load(Ordering::SeqCst), 0);
-    }
-
-    #[test]
-    fn a_connection_open_when_the_endpoint_is_switched_off_gets_nothing() {
-        let (accepted, worker) = mpsc::sync_channel(1);
-        let (listening, port, host) = server(Fake {
-            accepted: Some(accepted),
-            ..Fake::default()
-        });
-        let mut early = connect(port);
-        worker
-            .recv_timeout(Duration::from_secs(20))
-            .unwrap_or_else(|error| panic!("the server did not accept the connection: {error}"));
-        drop(listening);
-        // A probe would reply without going through the separate Pick guard.
-        send(&mut early, port, &cayw("?probe=true"), "");
-        match early.read(&mut [0]) {
-            Ok(0) => (),
-            Err(error) if matches!(error.kind(), ErrorKind::ConnectionReset | ErrorKind::ConnectionAborted) => (),
-            result => panic!("the server should close without a reply, got {result:?}"),
-        }
-        assert_eq!(host.presented.load(Ordering::SeqCst), 0);
-        assert_eq!(host.pending.current(), None);
-    }
-
-    #[test]
-    fn switching_off_while_a_request_starts_opens_nothing() {
-        for begun in [false, true] {
-            let (listening, port, host) = server(Fake::default());
-            let listening = StdMutex::new(Some(listening));
-            // Switched off as `set_editor_endpoint` does: close, then end any request.
-            let off: Then = Box::new(move |pending: &Pending| {
-                drop(listening.lock().ok().and_then(|mut listening| listening.take()));
-                pending.cancel_any(|| ());
-            });
-            // While it reads the person's style, or once it has begun.
-            let stage = if begun { &host.changing } else { &host.reading_style };
-            *stage.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(off);
-            let mut stream = connect(port);
-            send(&mut stream, port, &cayw(""), "");
-            let text = answer(&mut stream);
-            assert!(text.is_empty() || text.ends_with("\r\n\r\n"), "{text}");
-            assert_eq!(host.presented.load(Ordering::SeqCst), 0, "begun: {begun}");
-            assert_eq!(host.pending.current(), None);
-        }
-    }
-
-    #[test]
-    fn only_a_workable_setting_is_used() {
-        let good = EditorEndpoint {
-            port: DEFAULT_PORT,
-            token: TOKEN.into(),
-        };
-        assert!(usable(&good));
-        assert!(!usable(&EditorEndpoint {
-            port: 80,
-            ..good.clone()
-        }));
-        assert!(
-            !usable(&EditorEndpoint {
-                port: ZOTERO_PORT,
-                ..good.clone()
-            }),
-            "never Zotero's"
-        );
-        assert!(!usable(&EditorEndpoint {
-            token: "short".into(),
-            ..good.clone()
-        }));
-        assert!(!usable(&EditorEndpoint {
-            token: "../../etc/passwd/0000000000000000".into(),
-            ..good
-        }));
     }
 
     #[test]

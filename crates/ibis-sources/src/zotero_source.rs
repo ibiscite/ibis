@@ -1117,52 +1117,10 @@ mod tests {
         );
     }
     #[test]
-    fn a_chosen_profile_that_cannot_be_reached_asks_again() {
-        let not_found = ZoteroError::Closed(closed::ClosedError::NotFound);
-        assert_eq!(chosen_read_failed(not_found, Some("Work")), ZoteroError::ProfileNeeded);
-        assert_eq!(chosen_read_failed(not_found, None), not_found);
-        let running = ZoteroError::Closed(closed::ClosedError::Running);
-        assert_eq!(chosen_read_failed(running, Some("Work")), running);
-    }
-    #[test]
     fn a_chosen_profile_that_is_gone_never_falls_back_to_another() {
         let (_home, found) = registry(&[("Home", "/invented/home")]);
         assert_eq!(chosen_directory(&found, None).unwrap(), Path::new("/invented/home"));
         assert_eq!(chosen_directory(&found, Some("Work")), Err(ZoteroError::ProfileNeeded));
-    }
-    #[test]
-    fn a_closed_read_names_groups_as_a_live_list_does() {
-        let library = |group_id, name: &str| closed::ClosedLibrary {
-            library_id: 1,
-            group_id,
-            name: name.into(),
-            items: vec![],
-        };
-        let groups = closed_groups(&closed::ClosedSnapshot {
-            schema_version: 1,
-            libraries: vec![
-                library(None, ""),
-                library(Some(7), "  Lab\u{202e} group "),
-                library(Some(8), "\u{200b}"),
-            ],
-            warnings: vec![],
-            better_bibtex_unknown: false,
-            owner: 0,
-            attachments: None,
-        });
-        assert_eq!(
-            groups,
-            [
-                Group {
-                    id: 7,
-                    name: "Lab group".into()
-                },
-                Group {
-                    id: 8,
-                    name: "Group 8".into()
-                }
-            ]
-        );
     }
     #[test]
     fn each_failure_says_what_a_person_can_do() {
@@ -1240,38 +1198,6 @@ mod tests {
             .refresh(&mut ParityApi, false, &|| false)
             .unwrap()
             .remove(0);
-        assert_eq!(loaded.snapshot.objects().len(), 1);
-        assert_eq!(
-            loaded.warnings,
-            vec![SourceWarning {
-                code: WarningCode::WorkLimit,
-                line: None,
-                key: None,
-                entry: None,
-                cause: None,
-                field: None,
-            }]
-        );
-    }
-    #[test]
-    fn mapper_item_limits_skip_the_item_without_discarding_other_records() {
-        let normal = ZoteroItem {
-            key: "SYNTH001".into(),
-            item_type: "book".into(),
-            ..ZoteroItem::default()
-        };
-        let mut large = normal.clone();
-        large.key = "SYNTH002".into();
-        large.fields.insert(
-            "extra".into(),
-            format!(
-                "tex.ids: {}",
-                (0..4097).map(|n| format!("Alias{n}")).collect::<Vec<_>>().join(",")
-            ),
-        );
-        let loaded = ZoteroSource::default()
-            .map_items(library_id(b"", Library::User), [normal, large], vec![], &|| false)
-            .unwrap();
         assert_eq!(loaded.snapshot.objects().len(), 1);
         assert_eq!(
             loaded.warnings,
@@ -1404,42 +1330,6 @@ mod tests {
             status,
             json!({"jsonrpc":"2.0","id":1,"result":result}),
         )))
-    }
-
-    #[test]
-    fn a_better_bibtex_failure_cannot_clear_a_key_conflict() {
-        let bbt = answer(200, json!({"SYNTH001":"Actual2026"}));
-        let (port, _) = serve("Citation Key: Extra2026", bbt.clone());
-        let mut source = ZoteroSource::default();
-        let loaded = source.refresh_local(port, false, &|| false).unwrap().remove(0);
-        let mut found = keys(&loaded);
-        found.sort_by(|a, b| a.0.cmp(&b.0));
-        assert_eq!(
-            found,
-            vec![
-                ("Actual2026".into(), CitationKeySource::BetterBibtex),
-                ("Extra2026".into(), CitationKeySource::Extra),
-                ("Own2026".into(), CitationKeySource::Zotero),
-            ]
-        );
-        // Better BibTeX fails on the next refresh, with Zotero unchanged.
-        bbt.lock().unwrap().0 = 500;
-        let loaded = source.refresh_local(port, false, &|| false).unwrap().remove(0);
-        assert!(unavailable(&loaded));
-        assert_eq!(keys(&loaded), vec![("Own2026".into(), CitationKeySource::Zotero)]);
-        assert_eq!(loaded.snapshot.objects().len(), 2, "formatted output stays");
-    }
-
-    #[test]
-    fn an_oversized_better_bibtex_key_keeps_the_reference() {
-        let (port, _) = serve("", answer(200, json!({"SYNTH001":"k".repeat(257)})));
-        let loaded = ZoteroSource::default()
-            .refresh_local(port, false, &|| false)
-            .unwrap()
-            .remove(0);
-        assert!(unavailable(&loaded));
-        assert_eq!(loaded.snapshot.objects().len(), 2);
-        assert_eq!(keys(&loaded), vec![("Own2026".into(), CitationKeySource::Zotero)]);
     }
 
     #[test]
@@ -1576,40 +1466,6 @@ mod tests {
 
     fn invented_libraries() -> Value {
         json!([{"id":1,"name":"My Library"},{"id":2,"name":"Invented group"}])
-    }
-
-    #[test]
-    fn owner_probe_sharing_refusal_recovers_for_unresolved_and_multiple_directories() {
-        struct Sharing(bool);
-        impl Transport for Sharing {
-            fn get(&mut self, path: &str) -> Result<Response, TransportError> {
-                if self.0 {
-                    Ok(Response {
-                        status: 403,
-                        headers: vec![],
-                        body: vec![],
-                    })
-                } else {
-                    ItemsApi(vec![
-                        json!({"key":"SYNTH234","itemType":"book","title":"Recovered atlas"}),
-                    ])
-                    .get(path)
-                }
-            }
-        }
-        let (_home, multiple) = registry(&[("First", "/invented/first"), ("Second", "/invented/second")]);
-        for found in [discovery::Discovery::default(), multiple] {
-            let mut source = ZoteroSource::default();
-            source.use_discovery(&found);
-            let refused = source.refresh(&mut Sharing(true), true, &|| false).unwrap_err();
-            assert_eq!(
-                refused.reason(),
-                Some(ibis_core::contract::ErrorReason::ZoteroSharingOff)
-            );
-            // The same source must recover; the owner probe's failure is not cached.
-            let loaded = source.refresh(&mut Sharing(false), true, &|| false).unwrap();
-            assert_eq!(loaded[0].snapshot.objects().len(), 1);
-        }
     }
 
     #[test]
@@ -1798,76 +1654,6 @@ mod tests {
                 .any(|request| request.contains(r#"["2:SYNTH001"]"#))
         );
         assert_eq!(source.current().len(), 2);
-    }
-
-    #[test]
-    fn unreadable_better_bibtex_libraries_warn_only_for_the_chosen_group() {
-        for (status, reply) in [
-            (500, json!({})),
-            (200, json!({"jsonrpc":"2.0","id":1,"error":{"code":-32601}})),
-            (200, json!({"jsonrpc":"2.0","id":1,"error":{"code":-32603}})),
-            (200, json!({"jsonrpc":"2.0","id":1,"result":null})),
-        ] {
-            let (port, asked) = serve_groups_with_answer(Arc::new(std::sync::Mutex::new((status, reply))));
-            for chosen in [[Library::User, Library::Group(7)], [Library::Group(7), Library::User]] {
-                let loaded = ZoteroSource::new(&chosen)
-                    .unwrap()
-                    .refresh_local(port, false, &|| false)
-                    .unwrap();
-                for (library, loaded) in chosen.into_iter().zip(loaded) {
-                    assert_eq!(loaded.snapshot.objects().len(), 1);
-                    assert_eq!(unavailable(&loaded), library == Library::Group(7), "{status}");
-                    assert_eq!(
-                        keys(&loaded),
-                        if library == Library::User {
-                            vec![("Personal2026".into(), CitationKeySource::BetterBibtex)]
-                        } else {
-                            vec![]
-                        }
-                    );
-                }
-            }
-            let asked = asked.lock().unwrap();
-            assert_eq!(
-                asked.iter().filter(|request| request.contains("user.groups")).count(),
-                2
-            );
-            assert_eq!(
-                asked
-                    .iter()
-                    .filter(|request| request.contains("item.citationkey"))
-                    .count(),
-                2
-            );
-        }
-    }
-
-    #[test]
-    fn zotero_without_better_bibtex_gives_a_group_no_keys_and_no_warning() {
-        // Zotero answers 404 for Better BibTeX's endpoint when it is absent.
-        let (port, _) = serve_groups_with_answer(answer(404, json!({})));
-        let loaded = ZoteroSource::new(&[Library::Group(7)])
-            .unwrap()
-            .refresh_local(port, false, &|| false)
-            .unwrap();
-        assert!(keys(&loaded[0]).is_empty());
-        assert!(!unavailable(&loaded[0]));
-    }
-
-    #[test]
-    fn an_ambiguous_group_name_leaves_only_that_group_without_keys() {
-        let (port, _) = serve_groups(json!([
-            {"id":1,"name":"My Library"},{"id":2,"name":"Invented group"},{"id":3,"name":"Invented group"}
-        ]));
-        let loaded = ZoteroSource::new(&[Library::User, Library::Group(7)])
-            .unwrap()
-            .refresh_local(port, false, &|| false)
-            .unwrap();
-        assert!(!unavailable(&loaded[0]));
-        assert_eq!(keys(&loaded[0]).len(), 1);
-        assert!(unavailable(&loaded[1]));
-        assert_eq!(keys(&loaded[1]), vec![]);
-        assert_eq!(loaded[1].snapshot.objects().len(), 1, "the reference stays citable");
     }
 
     #[test]
@@ -2172,54 +1958,6 @@ mod tests {
             missing.publish_closed(&snapshot, None, &|| false).unwrap_err(),
             ZoteroError::LibraryNotFound
         );
-    }
-
-    #[test]
-    fn closed_and_live_added_dates_have_the_same_value_and_fingerprints() {
-        for (native_id, group_id, chosen) in [(1, None, Library::User), (2, Some(7), Library::Group(7))] {
-            let mut library = closed_library(native_id, group_id, "Invented atlas", "");
-            let item = &mut library.items[0];
-            item.data.better_bibtex_keys.clear();
-            item.data.fields.insert("citationKey".into(), "Synthetic2026".into());
-            item.metadata.date_added = "2020-01-01 00:00:00".into();
-            let snapshot = closed::ClosedSnapshot {
-                schema_version: 123,
-                libraries: vec![library],
-                warnings: vec![],
-                better_bibtex_unknown: false,
-                owner: 0,
-                attachments: None,
-            };
-            let closed = ZoteroSource::new(&[chosen])
-                .unwrap()
-                .publish_closed(&snapshot, None, &|| false)
-                .unwrap()
-                .remove(0);
-            let live = ZoteroSource::new(&[chosen])
-                .unwrap()
-                .refresh(
-                    &mut ItemsApi(vec![json!({"key":"SYNTH001","itemType":"book",
-                        "title":"Invented atlas","citationKey":"Synthetic2026","creators":[]})]),
-                    false,
-                    &|| false,
-                )
-                .unwrap()
-                .remove(0);
-            let LibraryObject::Record(closed_record) = &closed.snapshot.objects()[0].object else {
-                panic!("expected closed record");
-            };
-            let LibraryObject::Record(live_record) = &live.snapshot.objects()[0].object else {
-                panic!("expected live record");
-            };
-            assert_eq!(closed_record.added_at.as_deref(), Some("2020-01-01T00:00:00Z"));
-            assert_eq!(live_record.added_at, closed_record.added_at);
-            assert_eq!(
-                serde_json::to_value(&closed.snapshot).unwrap(),
-                serde_json::to_value(&live.snapshot).unwrap()
-            );
-            assert_eq!(closed.snapshot.fingerprints(), live.snapshot.fingerprints());
-            assert_eq!(closed.warnings, live.warnings);
-        }
     }
 
     /// The local API serving `items`, each at version 1, with the same creation

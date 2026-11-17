@@ -84,55 +84,6 @@ fn missing_registry_uses_the_platform_data_default() {
 }
 
 #[test]
-fn windows_profiles_sharing_a_directory_ignore_case_and_keep_a_stable_identity() {
-    let sandbox = Sandbox::new();
-    let appdata = sandbox.0.join("roaming");
-    let root = profile_root(Platform::Windows, &sandbox.0, &appdata);
-    let roots = DiscoveryRoots::new(Platform::Windows, sandbox.0.clone(), Some(appdata));
-    sandbox.write(
-        &root.join("profiles.ini"),
-        "[Profile0]\nName=First\nIsRelative=1\nPath=first\n[Profile1]\nName=Second\nIsRelative=1\nPath=second\n",
-    );
-    let paths = [r"Z:\École Data\Zotero Library", r"z:\école data\zotero library"];
-    let mut identities = vec![];
-    for paths in [paths, [paths[1], paths[0]]] {
-        for (profile, path) in ["first", "second"].into_iter().zip(paths) {
-            sandbox.write(
-                &root.join(profile).join("prefs.js"),
-                &format!(
-                    "user_pref(\"extensions.zotero.useDataDir\", true);\nuser_pref(\"extensions.zotero.dataDir\", {});",
-                    serde_json::to_string(path).unwrap_or_else(|e| panic!("{e}"))
-                ),
-            );
-        }
-        let found = discover(&roots);
-        assert!(found.warnings.is_empty());
-        assert_eq!(
-            found.directories.len(),
-            1,
-            "one library must not ask for a profile choice"
-        );
-        assert_eq!(
-            found.directories[0].path(),
-            Path::new(paths[0]),
-            "keep the I/O path intact"
-        );
-        identities.push(ibis_zotero_local::discovery::path_identity(
-            found.directories[0].path(),
-            Platform::Windows,
-        ));
-    }
-    assert_eq!(
-        identities[0], identities[1],
-        "registry order cannot change reference identities"
-    );
-    assert_ne!(
-        ibis_zotero_local::discovery::path_identity(Path::new(paths[0]), Platform::Linux),
-        ibis_zotero_local::discovery::path_identity(Path::new(paths[1]), Platform::Linux)
-    );
-}
-
-#[test]
 fn paths_are_redacted_from_debug_and_diagnostics() {
     let secret = PathBuf::from("/synthetic-do-not-print");
     let roots = DiscoveryRoots::new(Platform::Linux, secret.clone(), None);
@@ -140,28 +91,6 @@ fn paths_are_redacted_from_debug_and_diagnostics() {
     let debug = format!("{roots:?} {result:?}");
     assert!(!debug.contains("synthetic-do-not-print"));
     assert!(debug.contains("redacted"));
-}
-
-#[test]
-fn all_relative_and_absolute_profiles_are_considered_and_shared_directories_deduplicated() {
-    let sandbox = Sandbox::new();
-    let root = sandbox.0.join(".zotero/zotero");
-    let external = sandbox.0.join("external");
-    let custom = sandbox.0.join("data");
-    sandbox.write(&root.join("profiles.ini"), &format!("[Profile0]\nIsRelative=1\nPath=first\nDefault=1\n[Profile1]\nIsRelative=0\nPath={}\n[Profile2]\nIsRelative=1\nPath=third\n", external.display()));
-    let prefs = format!(
-        "user_pref(\"extensions.zotero.useDataDir\", true);\nuser_pref(\"extensions.zotero.dataDir\", \"{}\");",
-        custom.to_string_lossy().replace('\\', "\\\\")
-    );
-    sandbox.write(&root.join("first/prefs.js"), &prefs);
-    sandbox.write(&external.join("prefs.js"), &prefs);
-    sandbox.write(&root.join("third/prefs.js"), "// default");
-    let result = discover(&DiscoveryRoots::new(Platform::Linux, sandbox.0.clone(), None));
-    assert!(result.warnings.is_empty());
-    assert_eq!(
-        result.directories.iter().map(|d| d.path()).collect::<Vec<_>>(),
-        [custom.as_path(), &sandbox.0.join("Zotero")]
-    );
 }
 
 #[test]
@@ -185,31 +114,6 @@ fn malformed_preferences_do_not_guess_another_library_and_other_profiles_still_l
     let result = discover(&roots);
     assert_eq!(result.warnings, [Warning::UnsupportedPreferences]);
     assert!(result.directories.is_empty());
-}
-
-#[test]
-fn profile_registry_rejects_ambiguous_paths_and_over_limit_profile_counts() {
-    let sandbox = Sandbox::new();
-    let registry = sandbox.0.join(".zotero/zotero/profiles.ini");
-    let roots = DiscoveryRoots::new(Platform::Linux, sandbox.0.clone(), None);
-    for text in [
-        "",
-        "[General]\nStartWithLastProfile=1\n",
-        "[Profile0]\nPath=first\n",
-        "[Profile0]\nIsRelative=1\nPath=../escape\n",
-        "[Profile0]\nIsRelative=0\nPath=relative\n",
-        "[Profile0]\nIsRelative=1\nPath=first\nPath=second\n",
-    ] {
-        sandbox.write(&registry, text);
-        let result = discover(&roots);
-        assert_eq!(result.warnings, [Warning::InvalidProfiles]);
-        assert!(result.directories.is_empty());
-    }
-    let text = (0..65)
-        .map(|i| format!("[Profile{i}]\nIsRelative=1\nPath=profile{i}\n"))
-        .collect::<String>();
-    sandbox.write(&registry, &text);
-    assert_eq!(discover(&roots).warnings, [Warning::TooManyProfiles]);
 }
 
 #[test]

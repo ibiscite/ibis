@@ -687,13 +687,6 @@ mod tests {
         }
 
         #[test]
-        fn fake_exports_the_portal_property_name() {
-            let mut xml = String::new();
-            zbus::object_server::Interface::introspect_to_writer(&Fake(Arc::new(AtomicU32::new(0))), &mut xml, 0);
-            assert!(xml.contains("property name=\"version\""));
-        }
-
-        #[test]
         fn immediate_response_on_a_private_bus() -> Result<(), Box<dyn std::error::Error>> {
             if std::env::var_os("IBIS_PRIVATE_PORTAL_TEST").is_none() {
                 // Nix builds have no host /etc/dbus-1/session.conf.

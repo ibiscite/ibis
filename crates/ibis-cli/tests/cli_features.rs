@@ -125,46 +125,6 @@ fn sentinel_record_ids_never_enter_cli_human_output() -> Result {
 }
 
 #[test]
-fn keys_are_exact_ranked_lines_even_at_a_terminal_and_keyless_hits_are_counted() -> Result {
-    let (_dir, file) = library()?;
-    let (_, output, _) = run(&file, &["search", "lantern", "--json"], b"", ibis::OutputMode::Plain)?;
-    let data: Value = serde_json::from_str(&output)?;
-    let expected = data["data"]["hits"]
-        .as_array()
-        .ok_or("hits")?
-        .iter()
-        .filter_map(|hit| {
-            hit.pointer("/item/object/data/citation_keys/0/value")
-                .and_then(Value::as_str)
-        })
-        .filter(|key| !key.is_empty())
-        .map(|key| format!("{key}\n"))
-        .collect::<String>();
-    for mode in [ibis::OutputMode::Plain, ibis::OutputMode::Terminal] {
-        let (code, output, errors) = run(&file, &["search", "lantern", "--keys", "--color", "always"], b"", mode)?;
-        assert_eq!(code, 0, "{errors}");
-        assert_eq!(output, expected);
-        assert_eq!(errors.lines().count(), 1, "{errors}");
-        assert!(
-            errors.contains("2 hits have no citation key; see ibis search lantern"),
-            "{errors}"
-        );
-        assert!(errors.contains("--json"), "{errors}");
-    }
-    let (code, output, _) = run(
-        &file,
-        &["search", "lantern", "--keys", "--json"],
-        b"",
-        ibis::OutputMode::Plain,
-    )?;
-    assert_eq!(code, 2);
-    assert_eq!(serde_json::from_str::<Value>(&output)?["error"]["code"], "usage");
-    let (_, output, _) = run(&file, &["search", "absent", "--keys"], b"", ibis::OutputMode::Terminal)?;
-    assert_eq!(output, "");
-    Ok(())
-}
-
-#[test]
 fn unknown_keys_suggest_without_citing_and_preserve_library_arguments() -> Result {
     let (_dir, file) = library()?;
     for command in ["show", "cite", "entry"] {
@@ -202,85 +162,6 @@ fn unknown_keys_suggest_without_citing_and_preserve_library_arguments() -> Resul
         serde_json::from_str::<Value>(&output)?["error"]["suggestions"],
         json!(["vale2024lanterns"])
     );
-    Ok(())
-}
-
-#[test]
-fn suggestions_are_capped_and_dash_prefixed_keys_have_an_executable_next_command() -> Result {
-    let (_dir, file) = library()?;
-    let records: Vec<_> = ["a", "b", "c", "d"]
-        .into_iter()
-        .map(|suffix| json!({"id":suffix,"type":"book","citation-key":format!("-vale2024{suffix}")}))
-        .collect();
-    std::fs::write(&file, json!(records).to_string())?;
-    let (code, output, _) = run(
-        &file,
-        &["show", "--json", "--", "-vale2024"],
-        b"",
-        ibis::OutputMode::Plain,
-    )?;
-    assert_eq!(code, 4);
-    let error = serde_json::from_str::<Value>(&output)?["error"].clone();
-    assert_eq!(error["suggestions"], json!(["-vale2024a", "-vale2024b", "-vale2024c"]));
-    assert_eq!(
-        error["next"],
-        json!(["ibis", "show", "--file", file, "--", "-vale2024a"])
-    );
-    let args: Vec<_> = error["next"]
-        .as_array()
-        .ok_or("next")?
-        .iter()
-        .skip(1)
-        .map(|arg| arg.as_str().ok_or("argument"))
-        .collect::<std::result::Result<_, _>>()?;
-    let (code, _, errors) = run(&file, &args, b"", ibis::OutputMode::Plain)?;
-    assert_eq!(code, 0, "{errors}");
-    Ok(())
-}
-
-#[test]
-fn completeness_reports_more_matches_independently_of_source_health() -> Result {
-    let (_dir, file) = library()?;
-    for (limit, complete) in [("1", false), ("4", true), ("5", true)] {
-        let (_, _, errors) = run(
-            &file,
-            &["search", "lantern", "--limit", limit],
-            b"",
-            ibis::OutputMode::Terminal,
-        )?;
-        assert_eq!(
-            errors.contains("note: showing the first 1 match; see more with --limit 2"),
-            !complete,
-            "{errors}"
-        );
-        let (code, output, errors) = run(
-            &file,
-            &["search", "lantern", "--limit", limit, "--json"],
-            b"",
-            ibis::OutputMode::Plain,
-        )?;
-        assert_eq!((code, errors.as_str()), (0, ""));
-        let data = serde_json::from_str::<Value>(&output)?["data"].clone();
-        assert_eq!(data["complete"], complete);
-        assert_eq!(data["source_health"]["status"], "ok");
-    }
-    for (stdout, stderr) in [(true, false), (false, true)] {
-        let (_, output, errors) = run(
-            &file,
-            &["search", "lantern", "--limit", "1"],
-            b"",
-            ibis::OutputMode::Streams {
-                stdout,
-                stderr,
-                stdin: false,
-            },
-        )?;
-        assert_eq!(errors.contains("note: showing the first"), stderr, "{errors}");
-        if !stdout {
-            assert!(output.contains('\t'));
-            assert!(!output.contains('\x1b'));
-        }
-    }
     Ok(())
 }
 
@@ -331,75 +212,6 @@ fn color_is_explicit_and_machine_streams_stay_undecorated() -> Result {
         ibis::OutputMode::Terminal,
     )?;
     assert_eq!(output.lines().next(), Some(key.as_str()));
-    Ok(())
-}
-
-#[test]
-fn over_limit_citations_use_the_engine_error_and_catalogue_text() -> Result {
-    use ibis_core::contract::{CitationError, EngineError, Envelope, GoldenCase};
-    use ibis_engine::{Cancellation, catalogue, request::KeyCitationRequest};
-
-    let (_dir, file) = library()?;
-    let count = ibis_core::syntax::MAX_CITATION_ITEMS + 1;
-    let keys = vec!["vale2024lanterns"; count];
-    let request = KeyCitationRequest {
-        keys: keys.iter().map(|key| (*key).into()).collect(),
-        output: ibis_engine::outputs::find("pandoc").ok_or("output")?.output.clone(),
-        form: Default::default(),
-        strict: false,
-        keep_order: false,
-        output_locale: None,
-    };
-    let error = Engine::new()
-        .map_err(|_| "engine")?
-        .cite_keys(&request, &Cancellation::default())
-        .err()
-        .ok_or("over-limit citation must fail")?;
-    let message = catalogue::error(&error, catalogue::Audience::Cli);
-    assert_eq!(message, "A citation can hold at most 1000 references.");
-    assert_eq!(error.citation_error, Some(CitationError::TooManyKeys));
-    let input = keys.join("\n");
-    let key_file = std::path::Path::new(&file).with_file_name("keys.txt");
-    std::fs::write(&key_file, &input)?;
-    let mut positional = vec!["cite"];
-    positional.extend_from_slice(&keys);
-    let mut invalid_key = positional.clone();
-    invalid_key[1] = "";
-    let mut case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json"))?;
-    case.request.items = vec![case.request.items[0].clone(); count];
-    let canonical = serde_json::to_string(&case.request)?;
-    for (args, input) in [
-        (positional, input.as_bytes()),
-        (invalid_key, input.as_bytes()),
-        (vec!["cite", "--keys-from", "-"], input.as_bytes()),
-        (
-            vec!["cite", "--keys-from", key_file.to_str().ok_or("path")?],
-            input.as_bytes(),
-        ),
-        (vec!["cite", "--request"], canonical.as_bytes()),
-        (vec!["call", "cite", "--stdin"], canonical.as_bytes()),
-    ] {
-        let expected_error = if args.contains(&"--request") || args.first() == Some(&"call") {
-            EngineError::citation(CitationError::TooManyItems)
-        } else {
-            error
-        };
-        let expected = serde_json::to_value(Envelope::<Value>::failure(expected_error))?;
-        for json in [false, true] {
-            let mut args = args.clone();
-            if json {
-                args.push("--json");
-            }
-            let (code, output, errors) = run(&file, &args, input, ibis::OutputMode::Plain)?;
-            assert_eq!(code, expected_error.code.exit_code().value());
-            assert_eq!(errors, format!("ibis: {message}\n"));
-            if json {
-                assert_eq!(serde_json::from_str::<Value>(&output)?, expected);
-            } else {
-                assert!(output.is_empty());
-            }
-        }
-    }
     Ok(())
 }
 

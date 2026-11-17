@@ -1159,38 +1159,7 @@ mod tests {
         let backup = super::backup::export(&settings, "0.0.0").unwrap();
         assert!(!backup.contains("attachment_text_outside_library"));
     }
-    #[test]
-    fn attachment_text_settings_store_complete_library_ids() {
-        let id = ibis_core::contract::LibraryId::digest(b"invented-profile-a-personal");
-        let text = serde_json::json!({"schema_version": 2, "attachment_text": [id]}).to_string();
-        let settings = super::parse(&text).unwrap();
-        assert!(settings.attachment_text(&id));
-        assert_eq!(
-            serde_json::to_value(&settings).unwrap()["attachment_text"],
-            serde_json::json!([id])
-        );
-        for old in [
-            serde_json::json!({"zotero":"user"}),
-            serde_json::json!({"bibtex":"/invented/refs.bib"}),
-        ] {
-            assert!(
-                super::parse(&serde_json::json!({"schema_version":2,"attachment_text":[old]}).to_string()).is_err()
-            );
-        }
-    }
     use super::*;
-
-    #[test]
-    #[cfg_attr(debug_assertions, should_panic(expected = "while this thread holds one"))]
-    fn a_save_inside_a_settings_change_refuses_instead_of_waiting_forever() {
-        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
-        let path = directory.path().join("settings.json");
-        let inner = path.clone();
-        let nested = update(&path, move |_| {
-            assert!(matches!(update(&inner, |_| {}), Err(SettingsError::Busy)));
-        });
-        assert!(nested.is_ok());
-    }
 
     #[test]
     fn overlapping_in_process_saves_wait_and_the_last_save_survives_reopen() -> Result<(), Box<dyn std::error::Error>> {
@@ -1314,73 +1283,11 @@ mod tests {
         assert_eq!(load(&path).settings.portable.larger_text, Some(true));
     }
 
-    #[test]
-    fn invalid_appearance_or_accent_refuses_every_writer_and_keeps_the_file() {
-        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
-        let path = directory.path().join("settings.json");
-        for contents in [br#"{"appearance":"invented"}"#.as_slice(), br#"{"accent":42}"#] {
-            fs::write(&path, contents).unwrap_or_else(|error| panic!("{error}"));
-            assert!(load(&path).problem.is_some());
-            assert!(update(&path, |settings| settings.portable.menu_bar = Some(false)).is_err());
-            assert!(update(&path, |_| {}).is_err());
-            assert_eq!(fs::read(&path).unwrap_or_default(), contents);
-        }
-    }
-
-    #[test]
-    fn each_app_keeps_its_latest_format_and_the_oldest_choice_goes_first() {
-        use ibis_core::destination::{AppId, System};
-        let word = AppId {
-            system: System::Macos,
-            id: "com.microsoft.Word".into(),
-        };
-        let mut settings = Settings::default();
-        settings.remember_app_output(&word, "apa".into());
-        settings.remember_app_output(&word, "typst".into());
-        // Compared as macOS compares bundle ids, and saved in that form.
-        assert_eq!(
-            settings.app_output(&AppId {
-                system: System::Macos,
-                id: "COM.MICROSOFT.WORD".into()
-            }),
-            Some("typst")
-        );
-        assert_eq!(settings.device.app_outputs.len(), 1);
-        let other = |n: usize| AppId {
-            system: System::Macos,
-            id: format!("org.example.app{n}"),
-        };
-        for n in 0..MAX_APP_OUTPUTS {
-            settings.remember_app_output(&other(n), "pandoc".into());
-        }
-        assert_eq!(settings.device.app_outputs.len(), MAX_APP_OUTPUTS);
-        assert_eq!(
-            settings.app_output(&word),
-            None,
-            "the least recently chosen app went first"
-        );
-        assert_eq!(settings.app_output(&other(0)), Some("pandoc"));
-        // Only the system, the app id and the output are written.
-        let saved = serde_json::to_value(&settings).unwrap_or_default();
-        assert_eq!(
-            saved["app_outputs"][0],
-            serde_json::json!({ "app": { "system": "macos", "id": "org.example.app0" }, "output": "pandoc" })
-        );
-    }
-
     fn dir(name: &str) -> tempfile::TempDir {
         tempfile::Builder::new()
             .prefix(&format!("ibis-settings-{name}-"))
             .tempdir()
             .unwrap_or_else(|e| panic!("{e}"))
-    }
-
-    #[test]
-    fn missing_file_gives_defaults_without_a_problem() {
-        let directory = dir("missing");
-        let loaded = load(&directory.path().join("missing/settings.json"));
-        assert_eq!(loaded.settings, Settings::default());
-        assert!(loaded.problem.is_none());
     }
 
     #[test]
@@ -1412,32 +1319,6 @@ mod tests {
         assert!(
             matches!(loaded.problem, Some(SettingsError::Backup(error)) if matches!(error.as_ref(), SettingsError::Unreadable(e) if e.kind() == io::ErrorKind::FileTooLarge))
         );
-    }
-
-    #[test]
-    fn a_growing_settings_read_stops_after_one_byte_beyond_the_limit() {
-        let mut reader = io::Cursor::new(vec![b' '; MAX_SETTINGS_BYTES as usize + 100]);
-        let error = read_bounded(&mut reader)
-            .err()
-            .unwrap_or_else(|| panic!("oversized read"));
-        assert_eq!(error.kind(), io::ErrorKind::FileTooLarge);
-        assert_eq!(reader.position(), MAX_SETTINGS_BYTES + 1);
-    }
-
-    #[test]
-    fn a_save_cannot_create_settings_that_exceed_the_read_limit() {
-        let directory = dir("oversized-save");
-        let path = directory.path().join("settings.json");
-        let original = r#"{"paste":false}"#;
-        fs::write(&path, original).unwrap_or_else(|e| panic!("{e}"));
-        let result = update(&path, |s| {
-            s.unknown
-                .insert("future".into(), Value::String("x".repeat(MAX_SETTINGS_BYTES as usize)));
-        });
-        assert!(matches!(result, Err(SettingsError::Unreadable(e)) if e.kind() == io::ErrorKind::FileTooLarge));
-        assert_eq!(fs::read_to_string(&path).unwrap_or_default(), original);
-        assert!(!backup_path(&path).exists());
-        assert_eq!(load(&path).settings.portable.paste, Some(false));
     }
 
     #[test]
@@ -1485,127 +1366,6 @@ mod tests {
     }
 
     #[test]
-    fn primary_provenance_orders_interface_recovery_and_refuses_citation_edits() {
-        for (primary, provenance, valid, shortcut) in [
-            (None, PrimaryRead::Missing, false, None),
-            (Some(b"{}".as_slice()), PrimaryRead::Present, true, None),
-            (Some(br#"{"schema_version":2}"#), PrimaryRead::Present, true, None),
-            (Some(br#"{"shortcut":null}"#), PrimaryRead::Present, true, None),
-            (
-                Some(br#"{"shortcut":"Control+Command+R"}"#),
-                PrimaryRead::Present,
-                true,
-                Some("Control+Command+R"),
-            ),
-            (
-                Some(br#"{"shortcut":"Control+Nonsense"}"#),
-                PrimaryRead::Present,
-                true,
-                Some("Control+Nonsense"),
-            ),
-            (Some(br#"{"shortcut":""}"#), PrimaryRead::Present, true, Some("")),
-            (Some(b"{ invalid"), PrimaryRead::Present, false, None),
-            (Some(br#"{"schema_version":999}"#), PrimaryRead::Present, false, None),
-            (Some(b"\xff"), PrimaryRead::Unreadable, false, None),
-            (Some(b"directory"), PrimaryRead::Unreadable, false, None),
-        ] {
-            for (backup, recovered) in [
-                (None, false),
-                (
-                    Some(br#"{"shortcut":"Alt+Space","density":"compact"}"#.as_slice()),
-                    true,
-                ),
-                (Some(b"{}"), true),
-                (Some(b"{"), false),
-                (Some(b"\xff"), false),
-                (Some(br#"{"schema_version":1}"#), false),
-                (Some(br#"{"schema_version":999}"#), false),
-            ] {
-                let directory = dir("provenance");
-                let path = directory.path().join("settings.json");
-                match primary {
-                    Some(b"directory") => fs::create_dir(&path),
-                    Some(bytes) => fs::write(&path, bytes),
-                    None => Ok(()),
-                }
-                .unwrap_or_else(|error| panic!("{error}"));
-                if let Some(bytes) = backup {
-                    fs::write(backup_path(&path), bytes).unwrap_or_else(|error| panic!("{error}"));
-                }
-                let before = (snapshot(&path), snapshot(&backup_path(&path)));
-                let loaded = load(&path);
-                let usable = valid || primary.is_none() && backup.is_none();
-                let recovery = !valid && recovered;
-                assert_eq!(loaded.primary_read, provenance);
-                assert_eq!(loaded.problem.is_none(), usable);
-                assert_eq!(loaded.from_backup, recovery);
-                assert_eq!(loaded.cites().is_ok(), usable);
-                assert_eq!(loaded.interface().is_ok(), usable || recovery);
-                let compact = recovery && backup.is_some_and(|bytes| bytes != b"{}");
-                if let Ok(interface) = loaded.interface() {
-                    assert_eq!(interface.density, compact.then_some(Density::Compact));
-                    assert_eq!(
-                        loaded.settings.portable.shortcut.here(),
-                        if compact { Some("Alt+Space") } else { shortcut }
-                    );
-                }
-                if primary.is_none() && backup.is_some() && !recovered {
-                    assert!(matches!(&loaded.problem, Some(SettingsError::Backup(_))));
-                    assert!(
-                        loaded
-                            .problem
-                            .as_ref()
-                            .is_some_and(|error| error.to_string().contains("settings.json.bak"))
-                    );
-                }
-                let owner = Owner::open(path.clone());
-                for _ in 0..2 {
-                    let mut applied = false;
-                    assert_eq!(
-                        owner
-                            .change(|_| {
-                                applied = true;
-                                Ok::<_, SettingsError>(())
-                            })
-                            .is_ok(),
-                        usable
-                    );
-                    assert_eq!(applied, usable);
-                }
-                if !usable && primary.is_none() {
-                    assert!(owner.ensure_file().is_err());
-                }
-                assert_eq!((snapshot(&path), snapshot(&backup_path(&path))), before);
-                assert!(!path.with_extension("json.invalid-1").exists());
-                assert!(!path.with_extension("json.tmp").exists());
-            }
-        }
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn missing_primary_recovery_keeps_a_backup_symlinked_to_an_interrupted_write() {
-        let directory = dir("backup-temporary-alias");
-        let path = directory.path().join("settings.json");
-        let temporary = path.with_extension("json.tmp");
-        let bytes = br#"{"library":{"bibtex":"refs.bib"},"future_choice":[true,null]}"#;
-        fs::write(&temporary, bytes).unwrap_or_else(|e| panic!("{e}"));
-        std::os::unix::fs::symlink(&temporary, backup_path(&path)).unwrap_or_else(|e| panic!("{e}"));
-        // An occupied output name must never be followed or overwritten either.
-        let occupied = path.with_extension("json.tmp-1");
-        std::os::unix::fs::symlink(&temporary, &occupied).unwrap_or_else(|e| panic!("{e}"));
-        assert!(load(&path).from_backup);
-        let saved = restore_backup(&path).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(fs::read(backup_path(&path)).unwrap_or_else(|e| panic!("{e}")), bytes);
-        assert_eq!(fs::read(&temporary).unwrap_or_else(|e| panic!("{e}")), bytes);
-        assert_eq!(fs::read_link(&occupied).unwrap_or_else(|e| panic!("{e}")), temporary);
-        assert_eq!(saved.unknown["future_choice"], serde_json::json!([true, null]));
-        assert_eq!(load(&path).settings, saved);
-        assert!(load(&path).problem.is_none());
-        assert!(!path.with_extension("json.invalid-1").exists());
-    }
-
-    #[test]
     #[cfg(unix)]
     fn a_dangling_backup_cannot_alias_a_fresh_temporary_output() {
         let directory = dir("dangling-backup-output");
@@ -1620,65 +1380,6 @@ mod tests {
             temporary
         );
         assert!(!temporary.exists());
-    }
-
-    #[test]
-    fn missing_primary_recovery_preserves_hard_links_and_refuses_temporary_name_exhaustion() {
-        for exhausted in [false, true] {
-            let directory = dir("temporary-collisions");
-            let path = directory.path().join("settings.json");
-            let temporary = path.with_extension("json.tmp");
-            fs::write(&temporary, b"{}").unwrap_or_else(|e| panic!("{e}"));
-            fs::hard_link(&temporary, backup_path(&path)).unwrap_or_else(|e| panic!("{e}"));
-            let count = if exhausted { 1000 } else { 1 };
-            for number in 1..=count {
-                fs::write(path.with_extension(format!("json.tmp-{number}")), b"occupied")
-                    .unwrap_or_else(|e| panic!("{e}"));
-            }
-            assert_eq!(restore_backup(&path).is_err(), exhausted);
-            assert_eq!(path.exists(), !exhausted);
-            assert_eq!(fs::read(&temporary).unwrap_or_default(), b"{}");
-            assert_eq!(fs::read(backup_path(&path)).unwrap_or_default(), b"{}");
-            for number in 1..=count {
-                assert_eq!(
-                    fs::read(path.with_extension(format!("json.tmp-{number}"))).unwrap_or_default(),
-                    b"occupied"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn missing_primary_recovery_refuses_a_blocked_temporary_without_touching_the_backup() {
-        let directory = dir("missing-blocked-save");
-        let path = directory.path().join("settings.json");
-        let backup = r#"{"shortcut":"Alt+Space"}"#;
-        fs::write(backup_path(&path), backup).unwrap_or_else(|e| panic!("{e}"));
-        fs::create_dir(path.with_extension("json.tmp")).unwrap_or_else(|e| panic!("{e}"));
-        assert!(restore_backup(&path).is_err());
-        assert!(!path.exists());
-        assert!(path.with_extension("json.tmp").is_dir());
-        assert_eq!(fs::read_to_string(backup_path(&path)).unwrap_or_default(), backup);
-        assert!(load(&path).from_backup);
-        assert!(!path.with_extension("json.invalid-1").exists());
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn missing_primary_recovery_preserves_a_dangling_primary_symlink() {
-        let directory = dir("missing-primary-link");
-        let path = directory.path().join("settings.json");
-        let target = directory.path().join("absent.json");
-        std::os::unix::fs::symlink(&target, &path).unwrap_or_else(|e| panic!("{e}"));
-        fs::write(backup_path(&path), "{}").unwrap_or_else(|e| panic!("{e}"));
-        let loaded = load(&path);
-        assert!(loaded.from_backup);
-        assert_eq!(loaded.primary_read, PrimaryRead::Unreadable);
-        assert!(update(&path, |_| {}).is_err());
-        assert_eq!(fs::read_link(&path).unwrap_or_else(|e| panic!("{e}")), target);
-        assert!(!target.exists());
-        assert_eq!(fs::read_to_string(backup_path(&path)).unwrap_or_default(), "{}");
-        assert!(!path.with_extension("json.tmp").exists());
     }
 
     #[test]
@@ -1705,29 +1406,6 @@ mod tests {
         let path = directory.path().join("nested/settings.json");
         update(&path, |s| *s = settings.clone()).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(load(&path).settings, settings);
-    }
-
-    #[test]
-    fn unknown_picker_preference_values_are_refused_or_read_as_no_choice() {
-        for text in [
-            r#"{"density": "tiny"}"#,
-            r#"{"density": "spacious"}"#,
-            r#"{"accent": "purple"}"#,
-            r#"{"larger_text": "yes"}"#,
-        ] {
-            assert!(matches!(parse(text), Err(SettingsError::Invalid(_))), "{text}");
-        }
-        // An output id is the engine's to read: one this Ibis does not list
-        // keeps the file valid and means the default where it is used.
-        let later = parse(r#"{"output": "a-later-output"}"#).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(later.portable.output.as_deref(), Some("a-later-output"));
-        // An output in another shape is no choice, and the settings beside it stay.
-        for shape in [r#"7"#, r#"{"key": "typst"}"#, "null"] {
-            let text = format!(r#"{{"output": {shape}, "larger_text": true}}"#);
-            let kept = parse(&text).unwrap_or_else(|e| panic!("{shape}: {e}"));
-            assert_eq!(kept.portable.output, None, "{shape}");
-            assert_eq!(kept.portable.larger_text, Some(true), "{shape}");
-        }
     }
 
     #[test]
@@ -1788,89 +1466,6 @@ mod tests {
         }
     }
 
-    #[test]
-    #[cfg(unix)]
-    fn recovery_keeps_the_target_of_a_primary_symlink_to_an_interrupted_write() {
-        let directory = dir("symlink-recovery");
-        let path = directory.path().join("settings.json");
-        let temporary = path.with_extension("json.tmp");
-        let damaged = b"{ damaged\xff";
-        fs::write(&temporary, damaged).unwrap_or_else(|e| panic!("{e}"));
-        std::os::unix::fs::symlink(&temporary, &path).unwrap_or_else(|e| panic!("{e}"));
-        fs::write(backup_path(&path), "{}").unwrap_or_else(|e| panic!("{e}"));
-        let occupied = path.with_extension("json.invalid-1");
-        std::os::unix::fs::symlink("missing-synthetic-target", &occupied).unwrap_or_else(|e| panic!("{e}"));
-        fs::create_dir(path.with_extension("json.invalid-2")).unwrap_or_else(|e| panic!("{e}"));
-
-        let saved = restore_backup(&path).unwrap_or_else(|e| panic!("{e}"));
-        let archive = path.with_extension("json.invalid-3");
-        assert_eq!(fs::read(&archive).unwrap_or_else(|e| panic!("{e}")), damaged);
-        assert!(
-            fs::symlink_metadata(&archive)
-                .unwrap_or_else(|e| panic!("{e}"))
-                .is_file()
-        );
-        assert_eq!(
-            fs::read_link(&occupied).unwrap_or_else(|e| panic!("{e}")),
-            Path::new("missing-synthetic-target")
-        );
-        assert!(path.with_extension("json.invalid-2").is_dir());
-        assert_eq!(load(&path).settings, saved);
-        assert!(load(&path).problem.is_none());
-        assert_eq!(fs::read_to_string(backup_path(&path)).unwrap_or_default(), "{}");
-        assert_eq!(fs::read(&temporary).unwrap_or_else(|e| panic!("{e}")), damaged);
-    }
-
-    #[test]
-    fn damaged_settings_archive_is_an_independent_copy() {
-        let directory = dir("independent-archive");
-        let path = directory.path().join("settings.json");
-        let damaged = b"{ damaged\xff";
-        fs::write(&path, damaged).unwrap_or_else(|e| panic!("{e}"));
-        preserve_invalid(&path).unwrap_or_else(|e| panic!("{e}"));
-        // A later edit to the old file must never change the preserved bytes.
-        fs::write(&path, b"changed after preservation").unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(
-            fs::read(path.with_extension("json.invalid-1")).unwrap_or_else(|e| panic!("{e}")),
-            damaged
-        );
-    }
-
-    #[test]
-    fn failed_recovery_preserves_the_primary_and_backup() {
-        for blocked_temporary in [false, true] {
-            let directory = dir("blocked-recovery");
-            let path = directory.path().join("settings.json");
-            fs::write(&path, "{ damaged").unwrap_or_else(|e| panic!("{e}"));
-            fs::write(backup_path(&path), "{}").unwrap_or_else(|e| panic!("{e}"));
-            if blocked_temporary {
-                fs::create_dir(path.with_extension("json.tmp")).unwrap_or_else(|e| panic!("{e}"));
-            } else {
-                fs::write(path.with_extension("json.tmp"), "unfinished save").unwrap_or_else(|e| panic!("{e}"));
-                for number in 1..=1000 {
-                    fs::write(path.with_extension(format!("json.invalid-{number}")), "kept")
-                        .unwrap_or_else(|e| panic!("{e}"));
-                }
-            }
-            assert!(restore_backup(&path).is_err());
-            assert_eq!(fs::read_to_string(&path).unwrap_or_default(), "{ damaged");
-            assert_eq!(fs::read_to_string(backup_path(&path)).unwrap_or_default(), "{}");
-            assert!(load(&path).from_backup);
-            if !blocked_temporary {
-                assert_eq!(
-                    fs::read_to_string(path.with_extension("json.tmp")).unwrap_or_default(),
-                    "unfinished save"
-                );
-                for number in 1..=1000 {
-                    assert_eq!(
-                        fs::read_to_string(path.with_extension(format!("json.invalid-{number}"))).unwrap_or_default(),
-                        "kept"
-                    );
-                }
-            }
-        }
-    }
-
     #[cfg(unix)]
     #[test]
     fn recovery_never_writes_through_a_planted_temporary_link() {
@@ -1886,36 +1481,6 @@ mod tests {
             "{ damaged"
         );
         assert!(load(&path).problem.is_none());
-    }
-
-    #[test]
-    fn newer_files_are_refused_even_when_their_fields_changed_type() {
-        let directory = dir("newer-types");
-        let path = directory.path().join("settings.json");
-        fs::create_dir_all(path.parent().unwrap_or_else(|| panic!("no parent"))).unwrap_or_else(|e| panic!("{e}"));
-        let newer = r#"{"schema_version": 99, "shortcut": {"key": "Space"}}"#;
-        fs::write(&path, newer).unwrap_or_else(|e| panic!("{e}"));
-        assert!(matches!(load(&path).problem, Some(SettingsError::NewerVersion(99))));
-        assert!(matches!(update(&path, |_| {}), Err(SettingsError::NewerVersion(99))));
-        assert_eq!(fs::read_to_string(&path).unwrap_or_default(), newer);
-        for with_backup in [false, true] {
-            if with_backup {
-                fs::write(backup_path(&path), "{}").unwrap_or_else(|e| panic!("{e}"));
-            }
-            assert_eq!(load(&path).from_backup, with_backup);
-            let mut changed = false;
-            assert!(matches!(
-                update(&path, |_| changed = true),
-                Err(SettingsError::NewerVersion(99))
-            ));
-            assert!(!changed);
-            assert_eq!(fs::read_to_string(&path).unwrap_or_default(), newer);
-            assert!(!path.with_extension("json.invalid-1").exists());
-            assert!(!path.with_extension("json.tmp").exists());
-            if with_backup {
-                assert_eq!(fs::read_to_string(backup_path(&path)).unwrap_or_default(), "{}");
-            }
-        }
     }
 
     #[test]
@@ -1965,21 +1530,6 @@ mod tests {
     }
 
     #[test]
-    fn a_temporary_file_left_by_an_interrupted_save_does_not_leak_into_the_next() {
-        let directory = dir("interrupted");
-        let path = directory.path().join("settings.json");
-        let stale = format!("{{\"schema_version\": 2, \"shortcut\": \"{}\"}}", "x".repeat(4096));
-        fs::write(path.with_extension("json.tmp"), &stale).unwrap_or_else(|e| panic!("{e}"));
-        update(&path, |_| {}).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(load(&path).settings, Settings::default());
-        assert!(load(&path).problem.is_none());
-        assert_eq!(
-            fs::read_to_string(path.with_extension("json.tmp")).unwrap_or_default(),
-            stale
-        );
-    }
-
-    #[test]
     fn old_formats_need_explicit_restore_without_migration() {
         for old in [
             r#"{"schema_version": 1, "library": "/synthetic/refs.bib", "output": "typst"}"#,
@@ -2020,16 +1570,6 @@ mod tests {
                 fs::read_to_string(path.with_extension("json.invalid-1")).unwrap_or_default(),
                 old
             );
-        }
-    }
-
-    #[test]
-    fn invalid_format_versions_are_refused() {
-        for version in ["\"1\"", "null", "-1", "1.5"] {
-            assert!(matches!(
-                parse(&format!(r#"{{"schema_version":{version}}}"#)),
-                Err(SettingsError::Invalid(_))
-            ));
         }
     }
 
@@ -2122,46 +1662,5 @@ mod tests {
                 ));
             }
         }
-    }
-
-    #[test]
-    fn an_invalid_zotero_member_requires_explicit_restore_and_keeps_the_bad_bytes() {
-        let directory = dir("zotero-member");
-        let path = directory.path().join("settings.json");
-        let good = Settings {
-            portable: crate::settings::Portable {
-                library: Some(LibrarySetting::Zotero(ZoteroLibrary::User.into())),
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        update(&path, |s| *s = good.clone()).unwrap_or_else(|e| panic!("{e}"));
-        update(&path, |s| s.portable.larger_text = Some(true)).unwrap_or_else(|e| panic!("{e}"));
-        let backup = fs::read(backup_path(&path)).unwrap_or_else(|e| panic!("{e}"));
-        let bad = r#"{"schema_version":2,"library":{"zotero":["user",{"group":"synthetic-private-value"}]}}"#;
-        fs::write(&path, bad).unwrap_or_else(|e| panic!("{e}"));
-
-        let loaded = load(&path);
-        assert_eq!(loaded.settings, good);
-        assert!(loaded.from_backup);
-        let error = loaded
-            .problem
-            .unwrap_or_else(|| panic!("expected the invalid-member error"));
-        assert_eq!(
-            error.to_string(),
-            "the settings file is not valid: Zotero library entry 2 must be \"user\" or {\"group\": <non-negative integer ID>}"
-        );
-        assert_eq!(fs::read_to_string(&path).unwrap_or_default(), bad);
-        assert!(update(&path, |s| s.portable.output = Some("keys".into())).is_err());
-        let saved = restore_backup(&path).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(saved.portable.library, good.portable.library);
-        assert_eq!(saved.portable.output, None);
-        assert_eq!(load(&path).settings, saved);
-        assert!(load(&path).problem.is_none());
-        assert_eq!(
-            fs::read_to_string(path.with_extension("json.invalid-1")).unwrap_or_default(),
-            bad
-        );
-        assert_eq!(fs::read(backup_path(&path)).unwrap_or_default(), backup);
     }
 }

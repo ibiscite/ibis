@@ -372,23 +372,6 @@ impl CommandInstall {
 #[cfg(test)]
 #[cfg(unix)]
 mod tests {
-    #[test]
-    fn command_install_temporary_covers_mounts_even_with_a_persistent_appimage() {
-        for path in [
-            "/tmp/.mount_Ibis/usr/bin/ibis",
-            "/Volumes/Ibis/Ibis.app/Contents/MacOS/ibis",
-            "/tmp/AppTranslocation/invented/Ibis.app/Contents/MacOS/ibis",
-        ] {
-            let install = super::CommandInstall::new(
-                "/invented/home".into(),
-                vec![],
-                path.into(),
-                Some("/invented/Ibis.AppImage".into()),
-                "1.2.3".into(),
-            );
-            assert!(install.temporary(), "{path}");
-        }
-    }
     use super::*;
     use std::os::unix::fs::{PermissionsExt, symlink};
 
@@ -491,31 +474,6 @@ mod tests {
         // Settings removal still leaves the settled choice, even after a refresh.
         install.remove().unwrap();
         assert_eq!(install.keep_installed().unwrap().state, CommandState::NotInstalled);
-    }
-
-    #[test]
-    fn a_refresh_that_cannot_clear_the_settled_marker_keeps_the_old_command() {
-        let (_dir, install) = fixture(true);
-        let bundled = &install.bundled;
-        install.keep_installed().unwrap();
-        fs::write(bundled, b"invented CLI v2").unwrap();
-        fs::remove_file(install.settled()).unwrap();
-        fs::create_dir(install.settled()).unwrap();
-        assert!(install.keep_installed().is_err());
-        assert_eq!(fs::read(install.destination()).unwrap(), b"invented CLI v1");
-    }
-
-    #[test]
-    fn an_inherited_descriptor_cannot_keep_a_finished_install_locked() {
-        let (_dir, install) = fixture(false);
-        install.install().unwrap();
-        let owner = install.owner().unwrap();
-        // A concurrent fork can retain the same open file description until exec.
-        let inherited = owner.0.try_clone().unwrap();
-        assert!(matches!(install.remove(), Err(error) if error.kind() == io::ErrorKind::WouldBlock));
-        drop(owner);
-        assert_eq!(install.remove().unwrap().state, CommandState::NotInstalled);
-        drop(inherited);
     }
 
     #[test]

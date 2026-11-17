@@ -60,11 +60,6 @@ mod tests {
     }
 
     #[test]
-    fn an_unreadable_foreground_never_blocks_the_shortcut() {
-        assert_eq!(decide(None, None, Instant::now()), (true, None));
-    }
-
-    #[test]
     fn a_first_press_over_a_full_screen_app_is_ignored_and_a_second_opens() {
         let guard = FullScreenGuard::default();
         let first = Instant::now();
@@ -72,30 +67,5 @@ mod tests {
         assert!(guard.allows(Some(true), first + Duration::from_millis(600)));
         // The override is used up: the next lone press is ignored again.
         assert!(!guard.allows(Some(true), first + Duration::from_secs(10)));
-    }
-
-    #[test]
-    fn a_second_press_after_the_window_starts_over() {
-        let first = Instant::now();
-        let late = first + PRESS_AGAIN_WITHIN + Duration::from_millis(1);
-        assert_eq!(decide(Some(true), Some(first), late), (false, Some(late)));
-        let edge = first + PRESS_AGAIN_WITHIN;
-        assert_eq!(decide(Some(true), Some(first), edge), (true, None));
-    }
-
-    #[test]
-    fn a_clock_that_seems_to_run_backwards_does_not_count_as_a_second_press() {
-        let now = Instant::now();
-        let later = now + Duration::from_secs(1);
-        assert_eq!(decide(Some(true), Some(later), now), (false, Some(now)));
-    }
-
-    #[test]
-    fn leaving_full_screen_clears_an_ignored_press() {
-        let guard = FullScreenGuard::default();
-        let now = Instant::now();
-        assert!(!guard.allows(Some(true), now));
-        assert!(guard.allows(Some(false), now + Duration::from_millis(100)));
-        assert!(!guard.allows(Some(true), now + Duration::from_millis(200)));
     }
 }

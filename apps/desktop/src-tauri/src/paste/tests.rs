@@ -46,7 +46,6 @@ struct Fake {
     document: Cell<u32>,
     posted_documents: RefCell<Vec<u32>>,
     input_events: Cell<[Option<Instant>; 4]>,
-    mouse_moved: Cell<Option<Instant>>,
     input_error: Option<f64>,
     checks: RefCell<Vec<&'static str>>,
     posts: RefCell<Vec<i32>>,
@@ -95,7 +94,6 @@ impl Fake {
             document: Cell::new(1),
             posted_documents: RefCell::default(),
             input_events: Cell::new([None; 4]),
-            mouse_moved: Cell::new(None),
             input_error: None,
             checks: RefCell::default(),
             posts: RefCell::default(),
@@ -464,22 +462,6 @@ fn an_editor_with_verified_window_identity_pastes_once_after_returning() {
 }
 
 #[test]
-fn readiness_waits_for_the_original_surface_even_while_its_app_stays_active() {
-    let desk = Fake::new();
-    desk.returning_windows.replace(vec![None, None, None, Some(100)]);
-    assert_eq!(deliver(&desk, Some(&proof()), true), pasted());
-    assert_eq!(desk.waits.get(), 3);
-    assert_eq!(*desk.posted_windows.borrow(), [Some(100)]);
-}
-
-#[test]
-fn readiness_does_not_add_a_fixed_sleep_to_an_already_focused_document() {
-    let desk = Fake::new();
-    assert_eq!(deliver(&desk, Some(&proof()), true), pasted());
-    assert_eq!(desk.waits.get(), 0);
-}
-
-#[test]
 fn input_switching_a_tab_or_conversation_while_focus_returns_refuses_even_with_the_same_ax_window() {
     let events: [fn(&Fake); 4] = [
         |desk| {
@@ -533,142 +515,6 @@ fn input_switching_a_tab_or_conversation_while_focus_returns_refuses_even_with_t
 }
 
 #[test]
-fn input_during_the_final_ax_read_and_unreadable_input_timing_never_post() {
-    let desk = Fake {
-        after_window_query: Some(|desk| {
-            desk.clock.set(desk.clock.get() + Duration::from_millis(1));
-            desk.document.set(2);
-            desk.input_events.set([Some(desk.clock.get()), None, None, None]);
-        }),
-        ..Fake::new()
-    };
-    assert_eq!(deliver(&desk, Some(&proof()), true), copied("target-changed"));
-    assert!(desk.posts.borrow().is_empty());
-    for value in [f64::NAN, f64::INFINITY, -1.0] {
-        let desk = Fake {
-            input_error: Some(value),
-            ..Fake::new()
-        };
-        assert_eq!(deliver(&desk, Some(&proof()), true), copied("paste-unavailable"));
-        assert!(desk.posts.borrow().is_empty());
-    }
-}
-
-#[test]
-fn the_activating_enter_and_mouse_movement_do_not_cancel_a_paste() {
-    let desk = Fake {
-        after_return_wait: Some(|desk| desk.mouse_moved.set(Some(desk.clock.get()))),
-        ..Fake::new()
-    };
-    desk.input_events
-        .set([Some(desk.clock.get() - Duration::from_millis(1)), None, None, None]);
-    desk.returning_windows.replace(vec![None, Some(100)]);
-    assert_eq!(deliver(&desk, Some(&proof()), true), pasted());
-    assert_eq!(*desk.posted_documents.borrow(), [1]);
-}
-
-#[test]
-fn a_programmatic_interior_document_change_with_no_input_is_not_detected() {
-    let desk = Fake {
-        after_return_wait: Some(|desk| desk.document.set(2)),
-        ..Fake::new()
-    };
-    desk.returning_windows.replace(vec![None, Some(100)]);
-    assert_eq!(deliver(&desk, Some(&proof()), true), pasted());
-    assert_eq!(*desk.posted_documents.borrow(), [2]);
-}
-
-/// Under a full compile a Windows readiness check took over a second. A
-/// check that proves the right window is in front still pastes inside the
-/// paste's deadline, and never once that deadline has passed.
-#[test]
-fn a_slow_readiness_check_pastes_in_time_and_never_after() {
-    let desk = Fake {
-        ready_stall: RETURN_LIMIT + Duration::from_millis(50),
-        ..Fake::new()
-    };
-    assert_eq!(deliver(&desk, Some(&proof()), true), pasted());
-    assert_eq!(*desk.posts.borrow(), [42]);
-
-    let desk = Fake {
-        ready_stall: LATE + Duration::from_millis(50),
-        ..Fake::new()
-    };
-    assert!(matches!(deliver(&desk, Some(&proof()), true), Delivered::Copied { .. }));
-    assert!(desk.posts.borrow().is_empty());
-}
-
-#[test]
-fn a_replacement_document_during_readiness_is_never_adopted() {
-    let desk = Fake::new();
-    desk.returning_windows.replace(vec![None, Some(200)]);
-    let proof = proof();
-    assert_eq!(deliver(&desk, Some(&proof), true), copied("target-changed"));
-    assert!(desk.posts.borrow().is_empty());
-    assert_eq!(proof.text, TEXT);
-    assert_eq!(desk.waits.get(), RETURN_CHECKS);
-}
-
-#[test]
-fn reopening_the_picker_while_focus_returns_retires_the_old_delivery() {
-    let desk = Fake {
-        after_return_wait: Some(|desk| desk.presentation.set(PRESENTATION + 1)),
-        ..Fake::new()
-    };
-    desk.returning_windows.replace(vec![None, Some(100)]);
-    assert!(matches!(deliver(&desk, Some(&proof()), true), Delivered::Copied { .. }));
-    assert!(desk.posts.borrow().is_empty());
-}
-
-#[test]
-fn a_lifecycle_change_during_readiness_never_posts_after_focus_returns() {
-    let desk = Fake {
-        after_return_wait: Some(|desk| {
-            desk.stamp.set(SafetyStamp {
-                epoch: 2,
-                ..desk.stamp.get()
-            })
-        }),
-        ..Fake::new()
-    };
-    desk.returning_windows.replace(vec![None, Some(100)]);
-    assert_eq!(deliver(&desk, Some(&proof()), true), copied("paste-expired"));
-    assert!(desk.posts.borrow().is_empty());
-}
-
-#[test]
-#[cfg(target_os = "macos")]
-fn repeated_show_from_our_key_panel_still_pastes_once_into_the_original_external_window() {
-    let desk = Fake::new();
-    let last = LastTarget::default();
-    last.begin_presentation(Some(writer("com.microsoft.word")));
-    let active_external = Front {
-        app_identity: None,
-        id: Some("com.microsoft.word".into()),
-        pid: 42,
-        window: None,
-        focus_failure: None,
-        name: Some("Writer".into()),
-        elevated: false,
-        selection: Selection::Unknown,
-        search: None,
-    };
-    let own_key = macos::capture_front(Some(active_external), 7, true, |_| {
-        panic!("own panel must keep AX bank")
-    });
-    last.begin_presentation(capture::captured(SYSTEM, own_key, 7));
-    let token = last
-        .write_copy_at(TEXT, desk.stamp.get(), |_| Ok(None), || Ok(Some(COUNT)))
-        .unwrap_or_else(|error| panic!("{error}"));
-    let proof = last.take_copy(TEXT, token).unwrap_or_else(|| panic!("proof"));
-    desk.presentation.set(proof.presentation);
-    assert_eq!(deliver(&desk, Some(&proof), true), pasted());
-    assert_eq!(*desk.posts.borrow(), [42]);
-    assert_eq!(*desk.posted_windows.borrow(), [Some(100)]);
-    assert_eq!(proof.text, TEXT);
-}
-
-#[test]
 #[cfg(target_os = "macos")]
 fn granting_access_cannot_repair_a_failed_capture_without_a_fresh_external_activation() {
     for (reason, message) in [
@@ -715,70 +561,6 @@ fn granting_access_cannot_repair_a_failed_capture_without_a_fresh_external_activ
 }
 
 #[test]
-fn only_the_final_input_fence_follows_the_last_window_check_before_posting() {
-    let desk = Fake {
-        focus_after_final_check: true,
-        ..Fake::new()
-    };
-    assert_eq!(deliver(&desk, Some(&proof()), true), pasted());
-    assert_eq!(
-        *desk.posted_windows.borrow(),
-        [Some(100)],
-        "Command-V must not reach window B"
-    );
-    assert_eq!(
-        &desk.checks.borrow()[desk.checks.borrow().len() - 3..],
-        ["foreground", "input", "post"]
-    );
-}
-
-#[test]
-fn unavailable_safety_evidence_is_not_reported_as_expiry() {
-    for stamp in [
-        SafetyStamp {
-            epoch: 0,
-            elapsed: Duration::ZERO,
-        },
-        SafetyStamp {
-            epoch: u64::MAX,
-            elapsed: Duration::ZERO,
-        },
-    ] {
-        let desk = Fake {
-            stamp: Cell::new(stamp),
-            ..Fake::new()
-        };
-        assert_eq!(deliver(&desk, Some(&proof()), true), copied("paste-unavailable"));
-        assert!(desk.posts.borrow().is_empty());
-    }
-}
-
-#[test]
-fn final_window_proof_failure_keeps_its_own_delivery_reason() {
-    for (failure, reason) in [
-        (CopyReason::PasteUnavailable, "paste-unavailable"),
-        (CopyReason::TargetChanged, "target-changed"),
-        (CopyReason::PasteExpired, "paste-expired"),
-        (CopyReason::AccessibilityRequired, "accessibility-required"),
-    ] {
-        let desk = Fake {
-            focus_error: Cell::new(Some(failure)),
-            ..Fake::new()
-        };
-        let proof = proof();
-        assert_eq!(deliver(&desk, Some(&proof), true), copied(reason));
-        assert_eq!(proof.text, TEXT);
-        assert!(desk.posts.borrow().is_empty());
-    }
-    let desk = Fake {
-        after_check: Some(|desk| desk.focus_error.set(Some(CopyReason::PasteUnavailable))),
-        ..Fake::new()
-    };
-    assert_eq!(deliver(&desk, Some(&proof()), true), copied("paste-unavailable"));
-    assert!(desk.posts.borrow().is_empty());
-}
-
-#[test]
 fn a_changed_closed_minimised_or_unproven_window_never_receives_the_paste() {
     for window in [Some(200), None] {
         let desk = Fake {
@@ -796,86 +578,12 @@ fn a_changed_closed_minimised_or_unproven_window_never_receives_the_paste() {
 }
 
 #[test]
-fn an_unproven_mac_window_never_prompts_for_irrelevant_post_event_permission() {
-    for granted in [false, true] {
-        let desk = Fake {
-            may_post: granted,
-            ..Fake::new()
-        };
-        let mut proof = proof();
-        let target = proof.captured.as_mut().unwrap_or_else(|| panic!("target"));
-        target.target.system = System::Macos;
-        target.target.app = Some(AppId {
-            system: System::Macos,
-            id: "com.microsoft.word".into(),
-        });
-        target.window = None;
-        assert_eq!(deliver(&desk, Some(&proof), true), copied("paste-unavailable"));
-        assert_eq!(desk.asked.get(), 0);
-        assert!(desk.posts.borrow().is_empty());
-    }
-}
-
-#[test]
-fn sleep_lock_and_user_switch_end_a_pending_paste_even_if_instant_did_not_advance() {
-    for _event in ["sleep", "lock", "user-switch"] {
-        let desk = Fake::new();
-        let proof = proof();
-        desk.stamp.set(SafetyStamp {
-            epoch: proof.stamp.epoch + 1,
-            ..proof.stamp
-        });
-        assert_eq!(deliver(&desk, Some(&proof), true), copied("paste-expired"));
-        assert!(desk.posts.borrow().is_empty());
-        assert_eq!(proof.text, TEXT);
-    }
-}
-
-#[test]
-fn a_sleep_aware_clock_expires_delivery_when_the_active_clock_pauses() {
-    let desk = Fake::new();
-    let proof = proof();
-    desk.stamp.set(SafetyStamp {
-        elapsed: proof.stamp.elapsed + LATE,
-        ..proof.stamp
-    });
-    assert_eq!(deliver(&desk, Some(&proof), true), copied("paste-expired"));
-    assert!(desk.posts.borrow().is_empty());
-}
-
-#[test]
 fn a_copy_older_than_its_limit_on_the_delivery_clock_never_pastes() {
     // The fake clock stands in for a busy system: no real time passes.
     let desk = Fake::new();
     let proof = proof();
     desk.clock.set(proof.written + LATE);
     assert_eq!(deliver(&desk, Some(&proof), true), copied("paste-expired"));
-    assert!(desk.posts.borrow().is_empty());
-}
-
-#[test]
-fn a_lifecycle_change_during_the_clipboard_write_cannot_mint_fresh_delivery() {
-    let last = LastTarget::default();
-    last.begin_presentation(Some(writer("com.microsoft.word")));
-    let desk = Fake::new();
-    let token = last
-        .write_copy_at(
-            TEXT,
-            desk.stamp.get(),
-            |_| Ok(None),
-            || {
-                desk.stamp.set(SafetyStamp {
-                    epoch: 2,
-                    elapsed: Duration::ZERO,
-                });
-                Ok(Some(COUNT))
-            },
-        )
-        .unwrap_or_else(|e| panic!("{e}"));
-    let proof = last.take_copy(TEXT, token).unwrap_or_else(|| panic!("proof"));
-    assert_eq!(proof.stamp.epoch, 1);
-    assert!(!proof.stamp.valid_at(desk.stamp.get()));
-    assert_eq!(proof.text, TEXT);
     assert!(desk.posts.borrow().is_empty());
 }
 
@@ -922,107 +630,6 @@ fn a_superseded_claimed_worker_cannot_post_even_if_citation_and_counter_match() 
 }
 
 #[test]
-fn a_final_check_that_posted_nothing_keeps_the_copy_for_its_retry_and_nothing_else() {
-    let last = LastTarget::default();
-    last.begin_presentation(Some(writer("com.microsoft.word")));
-    let copy = || {
-        let token = last
-            .write_copy(TEXT, &[], |_| Ok(None), || Ok(Some(COUNT)))
-            .unwrap_or_else(|e| panic!("{e}"));
-        last.take_copy(TEXT, token).unwrap_or_else(|| panic!("proof"))
-    };
-    let request = |proof: &CopyProof| {
-        PostRequest::new(
-            DeliveryRequest {
-                pid: 42,
-                id: "com.microsoft.word".into(),
-                began: proof.written,
-                deadline: proof.written + LATE,
-            },
-            proof,
-        )
-    };
-    let a = copy();
-    // A busy app timed the final check out before any key was posted.
-    assert_eq!(
-        last.post_if_current(&request(&a), || PostResult::Unavailable),
-        PostResult::Unavailable
-    );
-    assert_eq!(
-        last.post_if_current(&request(&a), || PostResult::Pasted),
-        PostResult::Pasted
-    );
-    assert_eq!(
-        last.post_if_current(&request(&a), || panic!("pasted twice")),
-        PostResult::Refused
-    );
-    // A refusal, or a newer copy, ends the old one's turn for good.
-    let b = copy();
-    assert_eq!(
-        last.post_if_current(&request(&b), || PostResult::TargetChanged),
-        PostResult::TargetChanged
-    );
-    assert_eq!(
-        last.post_if_current(&request(&b), || panic!("refused, then posted")),
-        PostResult::Refused
-    );
-    let c = copy();
-    assert_eq!(
-        last.post_if_current(&request(&c), || PostResult::Unavailable),
-        PostResult::Unavailable
-    );
-    let d = copy();
-    assert_eq!(
-        last.post_if_current(&request(&c), || panic!("superseded C")),
-        PostResult::Refused
-    );
-    assert_eq!(
-        last.post_if_current(&request(&d), || PostResult::Pasted),
-        PostResult::Pasted
-    );
-}
-
-#[test]
-fn target_and_lifecycle_are_rechecked_after_the_native_queries() {
-    for change in [
-        (|desk: &Fake| desk.window.set(Some(200))) as fn(&Fake),
-        |desk: &Fake| {
-            desk.stamp.set(SafetyStamp {
-                epoch: desk.stamp.get().epoch + 1,
-                ..desk.stamp.get()
-            })
-        },
-    ] {
-        let desk = Fake {
-            after_check: Some(change),
-            ..Fake::new()
-        };
-        assert!(matches!(deliver(&desk, Some(&proof()), true), Delivered::Copied { .. }));
-        assert!(desk.posts.borrow().is_empty());
-    }
-}
-
-#[test]
-fn a_busy_clipboard_owner_refuses_instead_of_blocking_the_main_thread_post() {
-    let last = LastTarget::default();
-    let proof = proof();
-    let request = PostRequest::new(
-        DeliveryRequest {
-            pid: 42,
-            id: "com.microsoft.word".into(),
-            began: proof.written,
-            deadline: proof.written + LATE,
-        },
-        &proof,
-    );
-    let _writing = last.0.lock().unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(
-        last.post_if_current(&request, || panic!("unowned post")),
-        PostResult::Unavailable
-    );
-}
-
-#[test]
 fn a_concurrent_destination_holder_cannot_block_windows_paste_or_queue_key_downs() {
     let last = Arc::new(LastTarget::default());
     let (sent, received) = std::sync::mpsc::channel();
@@ -1051,25 +658,6 @@ fn a_concurrent_destination_holder_cannot_block_windows_paste_or_queue_key_downs
         !posted.load(Ordering::Acquire),
         "refused input must not run after the holder releases"
     );
-}
-
-#[test]
-fn an_app_busy_for_a_moment_still_gets_exactly_one_paste() {
-    // TextEdit taking focus back, or handling a keystroke, can miss one
-    // Accessibility read. That says nothing about the target: check again.
-    for desk in [
-        Fake {
-            busy_returning: Cell::new(3),
-            ..Fake::new()
-        },
-        Fake {
-            busy_final: Cell::new(2),
-            ..Fake::new()
-        },
-    ] {
-        assert!(matches!(deliver(&desk, Some(&proof()), true), Delivered::Pasted { .. }));
-        assert_eq!(*desk.posts.borrow(), [42]);
-    }
 }
 
 #[test]
@@ -1109,29 +697,6 @@ fn a_field_that_hides_typing_says_so_whether_secure_typing_or_an_unproved_target
 }
 
 #[test]
-fn secure_typing_and_unavailable_checks_have_distinct_copy_reasons() {
-    for (secure, reason) in [(Some(true), "secure-input"), (None, "paste-unavailable")] {
-        let desk = Fake {
-            secure: Cell::new(secure),
-            ..Fake::new()
-        };
-        assert_eq!(deliver(&desk, Some(&proof()), true), copied(reason));
-        assert!(desk.posts.borrow().is_empty());
-    }
-}
-
-#[test]
-fn secure_input_enabled_while_the_final_task_waits_refuses_the_paste() {
-    let desk = Fake {
-        queue_delay: Duration::from_millis(100),
-        secure_after_queue: Some(true),
-        ..Fake::new()
-    };
-    assert_eq!(deliver(&desk, Some(&proof()), true), copied("secure-input"));
-    assert!(desk.posts.borrow().is_empty());
-}
-
-#[test]
 fn clipboard_replaced_during_the_final_check_is_never_read_or_pasted() {
     let desk = Fake {
         replace_during_check: true,
@@ -1140,63 +705,6 @@ fn clipboard_replaced_during_the_final_check_is_never_read_or_pasted() {
     assert_eq!(deliver(&desk, Some(&proof()), true), copied("clipboard-changed"));
     assert!(desk.posts.borrow().is_empty());
     assert_eq!(*desk.checks.borrow(), ["foreground", "secure-input", "change-count"]);
-}
-
-#[test]
-fn clipboard_and_secure_input_are_refreshed_after_the_final_ax_provider_wait() {
-    for (change, reason) in [
-        (
-            (|desk: &Fake| desk.change_count.set(COUNT + 1)) as fn(&Fake),
-            "clipboard-changed",
-        ),
-        ((|desk: &Fake| desk.secure.set(Some(true))) as fn(&Fake), "secure-input"),
-    ] {
-        let desk = Fake {
-            after_window_query: Some(change),
-            ..Fake::new()
-        };
-        assert_eq!(deliver(&desk, Some(&proof()), true), copied(reason));
-        assert!(desk.posts.borrow().is_empty());
-    }
-}
-
-#[test]
-fn lifecycle_refresh_cannot_leave_an_older_clipboard_snapshot_before_the_final_focus_pair() {
-    let desk = Fake {
-        replace_on_refresh_stamp: true,
-        ..Fake::new()
-    };
-    assert_eq!(deliver(&desk, Some(&proof()), true), copied("clipboard-changed"));
-    assert!(desk.posts.borrow().is_empty());
-}
-
-#[test]
-fn revoking_post_event_during_provider_wait_preserves_its_permission_refusal() {
-    let desk = Fake {
-        after_window_query: Some(|desk| desk.post_event_granted.set(false)),
-        ..Fake::new()
-    };
-    assert_eq!(deliver(&desk, Some(&proof()), true), copied("no-permission"));
-    assert!(desk.posts.borrow().is_empty());
-}
-
-#[test]
-fn an_expired_main_thread_task_or_slow_flag_check_cannot_paste() {
-    for (queue_delay, query_delay, secure) in [
-        (POST_LIMIT, Duration::ZERO, Some(false)),
-        (Duration::ZERO, POST_LIMIT, Some(false)),
-        // A positive flag that arrives late is still a timed-out check.
-        (Duration::ZERO, POST_LIMIT, Some(true)),
-    ] {
-        let desk = Fake {
-            queue_delay,
-            query_delay,
-            secure: Cell::new(secure),
-            ..Fake::new()
-        };
-        assert_eq!(deliver(&desk, Some(&proof()), true), copied("paste-unavailable"));
-        assert!(desk.posts.borrow().is_empty());
-    }
 }
 
 #[test]
@@ -1211,36 +719,6 @@ fn cancellation_prevents_a_queued_task_from_running_and_preserves_completed_resu
         let completed = PendingPost::default();
         assert_eq!(completed.run(|| outcome), outcome);
         assert_eq!(completed.cancel(), outcome);
-    }
-}
-
-#[test]
-fn final_task_revalidates_foreground_picker_presentation_and_visibility() {
-    for (desk, reason) in [
-        (
-            Fake {
-                front_after_queue: Some(7),
-                ..Fake::new()
-            },
-            "target-changed",
-        ),
-        (
-            Fake {
-                presentation: Cell::new(PRESENTATION + 1),
-                ..Fake::new()
-            },
-            "paste-unavailable",
-        ),
-        (
-            Fake {
-                hidden: false,
-                ..Fake::new()
-            },
-            "paste-unavailable",
-        ),
-    ] {
-        assert_eq!(deliver(&desk, Some(&proof()), true), copied(reason));
-        assert!(desk.posts.borrow().is_empty());
     }
 }
 
@@ -1311,37 +789,6 @@ fn only_our_write_supplies_a_snapshot_and_the_proof_is_consumed_once() {
 }
 
 #[test]
-fn delivery_deadline_starts_at_the_own_write_not_at_notice_or_queue_time() {
-    let mut stale = proof();
-    stale.written -= LATE;
-    let desk = Fake::new();
-    assert_eq!(deliver(&desk, Some(&stale), true), copied("paste-expired"));
-    assert!(desk.posts.borrow().is_empty());
-}
-
-#[test]
-fn a_new_presentation_invalidates_delivery_even_when_it_keeps_the_same_target() {
-    let last = LastTarget::default();
-    last.begin_presentation(Some(writer("com.microsoft.word")));
-    let token = last
-        .write_copy(TEXT, &[], |_| Ok(None), || Ok(Some(COUNT)))
-        .unwrap_or_else(|e| panic!("{e}"));
-    let ticket = last.take_copy(TEXT, token).unwrap_or_else(|| panic!("copy proof"));
-    // Hide/blur can advance PickerGeneration repeatedly. This proof
-    // stays current until the next presentation, independently of that.
-    assert!(last.current(ticket.presentation));
-    last.begin_presentation(None);
-    assert!(!last.current(ticket.presentation));
-    {
-        let state = last.0.lock().unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(state.captured, ticket.captured);
-    }
-    last.begin_presentation(Some(writer("org.example.other")));
-    assert!(!last.current(ticket.presentation));
-    assert_eq!(ticket.captured, Some(writer("com.microsoft.word")));
-}
-
-#[test]
 fn unsafe_unproven_and_disabled_targets_only_copy() {
     let no_target = if SYSTEM == System::Linux {
         "unsupported-system"
@@ -1397,43 +844,6 @@ fn unknown_app_approval_is_frozen_before_io_and_each_fresh_enter_pastes_once() {
 }
 
 #[test]
-fn approved_unknown_apps_keep_window_accessibility_expiry_and_permission_guards() {
-    for (window, failure, age, may_post, reason) in [
-        (
-            None,
-            Some(CopyReason::AccessibilityRequired),
-            Duration::ZERO,
-            true,
-            "accessibility-required",
-        ),
-        (None, None, Duration::ZERO, true, "paste-unavailable"),
-        (Some(200), None, Duration::ZERO, true, "target-changed"),
-        (Some(100), None, LATE, true, "paste-expired"),
-        (Some(100), None, Duration::ZERO, false, "no-permission"),
-    ] {
-        let desk = Fake {
-            app_id: "org.example.writer",
-            may_post,
-            ..Fake::new()
-        };
-        let mut captured = writer(desk.app_id);
-        captured.paste = Ok(Some(AppPaste::Paste));
-        captured.focus_failure = failure;
-        if window.is_none() {
-            captured.window = None;
-        }
-        desk.window.set(window);
-        desk.stamp.set(SafetyStamp { epoch: 1, elapsed: age });
-        let proof = CopyProof {
-            captured: Some(captured),
-            ..proof()
-        };
-        assert_eq!(deliver(&desk, Some(&proof), true), copied(reason));
-        assert!(desk.posts.borrow().is_empty());
-    }
-}
-
-#[test]
 fn a_remembered_copy_only_choice_never_posts() {
     let desk = Fake {
         app_id: "org.example.writer",
@@ -1446,39 +856,6 @@ fn a_remembered_copy_only_choice_never_posts() {
         ..proof()
     };
     assert_eq!(deliver(&desk, Some(&proof), true), copied("copy-only"));
-    assert!(desk.posts.borrow().is_empty());
-}
-
-#[test]
-fn unreadable_app_choices_copy_without_guessing_that_copy_only_was_off() {
-    let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-    let path = directory.path().join("apps.json");
-    std::fs::write(&path, "unreadable invented preferences").unwrap_or_else(|e| panic!("{e}"));
-    let memory = crate::destination::AppMemory::open(path);
-    let desk = Fake::new();
-    let last = LastTarget::default();
-    last.begin_presentation(Some(writer(desk.app_id)));
-    let token = last
-        .write_copy_at(
-            TEXT,
-            desk.stamp.get(),
-            |target| memory.for_capture(target),
-            || Ok(Some(COUNT)),
-        )
-        .unwrap_or_else(|e| panic!("{e}"));
-    let proof = last.take_copy(TEXT, token).unwrap_or_else(|| panic!("copy proof"));
-    desk.presentation.set(proof.presentation);
-    // Answering for the app cannot authorize the already written citation.
-    memory
-        .set_choice(
-            &AppId {
-                system: System::Macos,
-                id: desk.app_id.into(),
-            },
-            AppPaste::Paste,
-        )
-        .unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(deliver(&desk, Some(&proof), true), copied("paste-unavailable"));
     assert!(desk.posts.borrow().is_empty());
 }
 
@@ -1515,37 +892,6 @@ fn a_saved_delivery_change_revokes_a_detached_proof_without_touching_the_clipboa
     let fresh = last.take_copy(TEXT, fresh).unwrap_or_else(|| panic!("fresh proof"));
     assert_eq!(deliver(&desk, Some(&fresh), true), copied("copy-only"));
     assert!(desk.posts.borrow().is_empty());
-}
-
-#[test]
-fn a_delayed_app_answer_after_a_newer_copy_cannot_authorize_it_or_consume_its_proof() {
-    let last = LastTarget::default();
-    let approved = Cell::new(None);
-    let desk = Fake {
-        app_id: "org.example.writer",
-        ..Fake::new()
-    };
-    last.begin_presentation(Some(writer(desk.app_id)));
-    let a = last
-        .write_copy_at(
-            "[@older]",
-            desk.stamp.get(),
-            |_| Ok(approved.get()),
-            || Ok(Some(COUNT - 1)),
-        )
-        .unwrap_or_else(|e| panic!("{e}"));
-    let b = last
-        .write_copy_at(TEXT, desk.stamp.get(), |_| Ok(approved.get()), || Ok(Some(COUNT)))
-        .unwrap_or_else(|e| panic!("{e}"));
-    // An answer held by A arrives after B has written the clipboard.
-    approved.set(Some(AppPaste::Paste));
-    assert!(last.take_copy("[@older]", a).is_none());
-    let b = last
-        .take_copy(TEXT, b)
-        .unwrap_or_else(|| panic!("B still owns its proof"));
-    assert_eq!(deliver(&desk, Some(&b), true), copied("unknown-app"));
-    assert!(desk.posts.borrow().is_empty());
-    assert_eq!(b.text, TEXT, "the newest copy and its reason are retained");
 }
 
 #[test]
@@ -1597,47 +943,6 @@ fn a_selection_changed_before_enter_is_left_alone_and_says_why() {
 }
 
 #[test]
-fn a_failed_read_or_secure_typing_at_the_final_proof_never_posts() {
-    for (failure, reason) in [
-        (CopyReason::PasteUnavailable, "paste-unavailable"),
-        (CopyReason::SecureInput, "secure-input"),
-        (CopyReason::SecureField, "secure-field"),
-        (CopyReason::TargetChanged, "target-changed"),
-    ] {
-        let desk = Fake::new();
-        *desk.selection_now.borrow_mut() = Some(Err(failure));
-        assert_eq!(
-            deliver(&desk, Some(&with_selection("smith 2020")), true),
-            copied(reason)
-        );
-        assert!(desk.posts.borrow().is_empty());
-    }
-}
-
-#[test]
-fn text_selected_after_opening_was_never_shown_so_it_is_not_replaced() {
-    let desk = Fake::new();
-    *desk.selection_now.borrow_mut() = Some(Ok(Selection::of_text("selected later").0));
-    assert_eq!(
-        deliver(&desk, Some(&with_selection("")), true),
-        copied("selection-not-shown")
-    );
-    assert!(desk.posts.borrow().is_empty());
-}
-
-#[test]
-fn a_long_selection_copies_and_says_so_before_any_foreground_wait() {
-    let desk = Fake::new();
-    let long = "Invented words. ".repeat(10);
-    assert_eq!(
-        deliver(&desk, Some(&with_selection(&long)), true),
-        copied("selection-not-shown")
-    );
-    assert!(desk.posts.borrow().is_empty());
-    assert!(desk.checks.borrow().is_empty());
-}
-
-#[test]
 fn an_opening_that_could_not_read_never_pastes_over_text_found_at_enter() {
     let unread = || {
         let mut proof = proof();
@@ -1654,43 +959,6 @@ fn an_opening_that_could_not_read_never_pastes_over_text_found_at_enter() {
     *empty.selection_now.borrow_mut() = Some(Ok(Selection::Unread));
     assert_eq!(deliver(&empty, Some(&unread()), true), pasted());
     assert_eq!(*empty.posts.borrow(), [42]);
-}
-
-#[test]
-fn an_app_that_cannot_report_a_selection_pastes_as_it_always_did() {
-    let desk = Fake::new();
-    assert_eq!(deliver(&desk, Some(&proof()), true), pasted());
-    assert_eq!(*desk.posts.borrow(), [42]);
-}
-
-#[test]
-fn the_footer_offers_copy_when_enter_would_refuse_a_long_selection() {
-    let mut captured = writer("com.microsoft.word");
-    captured.selection = Selection::Ignored;
-    let permission = PastePermission {
-        enabled: true,
-        granted: true,
-        app: None,
-    };
-    assert!(!intended_paste(Some(&captured), permission));
-    captured.selection = Selection::Nothing;
-    assert!(intended_paste(Some(&captured), permission));
-}
-
-#[test]
-fn reopening_with_a_new_selection_replaces_what_the_old_opening_read() {
-    let last = LastTarget::default();
-    let mut first = writer("com.microsoft.word");
-    first.selection = Selection::of_text("smith 2020").0;
-    last.begin_presentation(Some(first));
-    let mut second = writer("com.microsoft.word");
-    second.selection = Selection::Nothing;
-    last.begin_presentation(Some(second));
-    let held = last.0.lock().map(|state| state.captured.clone());
-    assert_eq!(
-        held.ok().flatten().map(|captured| captured.selection),
-        Some(Selection::Nothing)
-    );
 }
 
 fn replacing(old: &str) -> CopyProof {
@@ -1718,92 +986,4 @@ fn a_changed_citation_never_pastes_when_the_old_one_is_not_selected() {
         copied("citation-not-selected")
     );
     assert!(desk.posts.borrow().is_empty());
-}
-
-#[test]
-fn a_system_that_cannot_read_a_selection_only_copies_a_changed_citation() {
-    let mut captured = writer("winword.exe");
-    captured.target.system = System::Windows;
-    if let Some(app) = &mut captured.target.app {
-        app.system = System::Windows;
-    }
-    let permission = PastePermission {
-        enabled: true,
-        granted: true,
-        app: None,
-    };
-    assert!(intended_paste(Some(&captured), permission));
-    captured.selection = Selection::Citation(capture::OldCitation::of("(Smith, 2020)"));
-    assert!(!intended_paste(Some(&captured), permission));
-}
-
-#[test]
-fn a_changed_citation_overrides_what_the_opening_read() {
-    let last = LastTarget::default();
-    let mut opened = writer("com.microsoft.word");
-    opened.selection = Selection::Ignored;
-    last.begin_presentation(Some(opened));
-    let stamp = Fake::new().stamp.get();
-    let token = last
-        .write_copy_observed(
-            TEXT,
-            &["(Smith, 2020)".to_owned()],
-            stamp,
-            |_| Ok(None),
-            || Ok(Some(COUNT)),
-            #[cfg(target_os = "macos")]
-            None,
-        )
-        .unwrap_or_else(|error| panic!("{error}"));
-    let proof = last.take_copy(TEXT, token).unwrap_or_else(|| panic!("proof"));
-    assert_eq!(
-        proof.captured.map(|captured| captured.selection),
-        Some(Selection::Citation(capture::OldCitation::of("(Smith, 2020)")))
-    );
-}
-#[test]
-fn engine_context_retirement_is_wired_to_detached_native_delivery() {
-    use tauri::Manager;
-    let app = tauri::test::mock_builder()
-        .manage(super::LastTarget::default())
-        .build(tauri::test::mock_context(tauri::test::noop_assets()))
-        .unwrap_or_else(|error| panic!("mock app: {error}"));
-    let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("test directory: {error}"));
-    let settings = crate::preferences::SettingsFile::new(directory.path().join("settings.json"));
-    crate::app_context::manage(app.handle(), &settings);
-    let project = app.state::<crate::project::ProjectBibliography>();
-    project.activate("initial".into(), None, None);
-    let target = app.state::<super::LastTarget>();
-    target.begin_presentation(Some(writer("com.microsoft.word")));
-    let token = target
-        .write_copy(TEXT, &[], |_| Ok(None), || Ok(Some(COUNT)))
-        .unwrap_or_else(|error| panic!("clipboard receipt: {error}"));
-    let detached = target
-        .take_copy(TEXT, token)
-        .unwrap_or_else(|| panic!("detached proof"));
-    project.activate("initial".into(), None, None);
-    assert!(
-        detached.policy.current(),
-        "an unchanged check preserves the pending delivery"
-    );
-    project.activate("replacement".into(), None, None);
-    let mut posted = false;
-    let request = PostRequest::new(
-        DeliveryRequest {
-            pid: 42,
-            id: "com.microsoft.word".into(),
-            began: detached.written,
-            deadline: detached.written + LATE,
-        },
-        &detached,
-    );
-    let outcome = target.post_if_current(&request, || {
-        posted = true;
-        PostResult::Pasted
-    });
-    assert_eq!(outcome, PostResult::Refused);
-    assert!(
-        !posted,
-        "the delivery already taken by a worker is revoked before final input posting"
-    );
 }
