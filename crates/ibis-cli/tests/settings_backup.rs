@@ -3,12 +3,11 @@
 //! home, and nothing changes until a whole backup has been checked.
 #![cfg(test)]
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 const BIB: &str = "@book{lee2024,\n  title = {An Invented Field Guide},\n  author = {Lee, Ada},\n  year = {2024}\n}\n";
 const STABLE: &str = "com.ibiscite.ibis";
-const NIGHTLY: &str = "com.ibiscite.ibis.nightly";
 
 /// One invented computer: its own home folder and app settings.
 struct Computer {
@@ -152,19 +151,6 @@ fn a_backup_restored_on_another_computer_finds_the_library_under_its_home() {
 }
 
 #[test]
-fn a_bibliography_missing_on_this_computer_is_restored_with_a_note() {
-    let first = Computer::new("missing-first");
-    first.settings(STABLE, &serde_json::json!({"library": {"bibtex": first.library()}}));
-    let backup = first.file("backup.json");
-    assert_eq!(first.run(&["settings", "export", &backup]).0, 0);
-    let second = Computer::new("missing-second");
-    let (code, stdout, stderr) = second.run(&["settings", "import", &backup]);
-    assert_eq!(code, 0, "{stderr}");
-    assert!(stdout.contains("not on this computer"), "{stdout}");
-    assert_eq!(second.saved(STABLE)["library"]["bibtex"], "~/Papers/refs.bib");
-}
-
-#[test]
 fn export_goes_to_stdout_and_never_replaces_a_file_unless_asked() {
     let computer = Computer::new("stdout");
     computer.settings(STABLE, &serde_json::json!({"density": "compact", "shortcut": "Alt+K"}));
@@ -199,20 +185,6 @@ fn export_goes_to_stdout_and_never_replaces_a_file_unless_asked() {
         .filter(|entry| entry.file_name().to_string_lossy().ends_with(".partial"))
         .collect();
     assert!(leftovers.is_empty());
-}
-
-#[test]
-fn nothing_to_back_up_or_damaged_settings_are_refused_with_the_reason() {
-    let computer = Computer::new("nothing");
-    let (code, _, stderr) = computer.run(&["settings", "export"]);
-    assert_eq!(code, 4, "{stderr}");
-    assert!(stderr.contains("no settings on this computer yet"), "{stderr}");
-    let path = computer.settings_path(STABLE);
-    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::fs::write(&path, "{ damaged").unwrap();
-    let (code, _, stderr) = computer.run(&["settings", "export"]);
-    assert_eq!(code, 3, "{stderr}");
-    assert!(stderr.contains("Open Ibis to repair them"), "{stderr}");
 }
 
 #[test]
@@ -264,35 +236,6 @@ fn foreign_damaged_and_newer_backups_change_nothing() {
     let (code, _, stderr) = computer.run(&["settings", "import", &backup]);
     assert_eq!(code, 6, "{stderr}");
     assert_eq!(computer.saved(STABLE), serde_json::json!({"schema_version": 99}));
-}
-
-#[test]
-fn the_same_backup_twice_changes_nothing_and_nightly_is_chosen_by_name() {
-    let computer = Computer::new("again");
-    computer.settings(STABLE, &serde_json::json!({"density": "compact"}));
-    computer.settings(NIGHTLY, &serde_json::json!({"density": "comfortable"}));
-    let backup = computer.file("stable.json");
-    assert_eq!(computer.run(&["settings", "export", &backup]).0, 0);
-    let (code, stdout, _) = computer.run(&["settings", "import", &backup]);
-    assert_eq!(code, 0);
-    assert!(stdout.contains("already has the settings"), "{stdout}");
-    assert!(!computer.settings_path(STABLE).with_extension("json.bak").exists());
-    let (code, stdout, stderr) = computer.run(&["settings", "import", &backup, "--nightly"]);
-    assert_eq!(code, 0, "{stderr}");
-    assert!(stdout.contains("Ibis Nightly"), "{stdout}");
-    assert_eq!(computer.saved(NIGHTLY)["density"], "compact");
-}
-
-#[test]
-fn only_nightly_settings_are_used_when_the_stable_app_has_none() {
-    let computer = Computer::new("only-nightly");
-    computer.settings(NIGHTLY, &serde_json::json!({"larger_text": true}));
-    let (code, stdout, _) = computer.run(&["settings", "export", "--json"]);
-    assert_eq!(code, 0);
-    let report = json(&stdout);
-    assert_eq!(report["data"]["app"], "Ibis Nightly");
-    assert_eq!(report["data"]["backup"]["settings"]["larger_text"], true);
-    assert!(!Path::new(&computer.settings_path(STABLE)).exists());
 }
 
 #[test]

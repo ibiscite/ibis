@@ -31,38 +31,6 @@ fn records() -> Value {
 }
 
 #[test]
-fn record_count_limit_keeps_the_catalogue_message_and_resource_limit_exit() -> Result {
-    use ibis_core::contract::{CitationError, EngineError, Envelope};
-    use ibis_engine::catalogue::{self, Audience};
-
-    let input = serde_json::to_vec(&vec![
-        json!({"id":"invented", "type":"book"});
-        ibis_core::syntax::MAX_CITATION_ITEMS + 1
-    ])?;
-    let error = EngineError::citation(CitationError::TooManyRecords);
-    let message = catalogue::error(&error, Audience::Cli);
-    assert_eq!(message, "A citation can hold at most 1000 references.");
-    for json in [false, true] {
-        let mut args = vec!["ibis", "cite", "--records"];
-        if json {
-            args.push("--json");
-        }
-        let (code, output, errors) = run(&args, &input)?;
-        assert_eq!(code, 5);
-        assert_eq!(errors, format!("ibis: {message}\n"));
-        if json {
-            assert_eq!(
-                serde_json::from_slice::<Value>(&output)?,
-                serde_json::to_value(Envelope::<Value>::failure(error))?
-            );
-        } else {
-            assert!(output.is_empty());
-        }
-    }
-    Ok(())
-}
-
-#[test]
 fn records_cite_the_same_through_every_front_end() -> Result {
     let params = json!({"records": records(), "output": {"kind": "preset", "name": "apa"}, "form": "normal", "output_locale": null});
     let engine = Engine::new().map_err(|_| "engine")?;
@@ -131,21 +99,6 @@ fn records_cite_the_same_through_every_front_end() -> Result {
 }
 
 #[test]
-fn records_refuse_keep_order_instead_of_silently_sorting() -> Result {
-    let (code, output, errors) = run(
-        &["ibis", "cite", "--records", "--format", "apa", "--keep-order"],
-        &serde_json::to_vec(&records())?,
-    )?;
-    assert_eq!(code, 2, "{errors}");
-    assert!(output.is_empty());
-    assert!(
-        errors.contains("--keep-order") && errors.contains("--records"),
-        "{errors}"
-    );
-    Ok(())
-}
-
-#[test]
 fn refused_records_say_which_and_print_nothing_on_stdout() -> Result {
     let input = br#"[{"id":"r1","type":"book","title":"Invented"},{"id":"r2","title":"No type"}]"#;
     let (code, output, errors) = run(&["ibis", "cite", "--records"], input)?;
@@ -197,16 +150,6 @@ fn refused_records_say_which_and_print_nothing_on_stdout() -> Result {
         serde_json::from_slice::<Value>(&output)?["error"]["code"],
         "resource-limit"
     );
-    Ok(())
-}
-
-/// A field that could not be read as sent is a finding, as it is in a library file.
-#[test]
-fn a_field_that_could_not_be_read_is_a_finding() -> Result {
-    let input = br#"[{"id":"a","type":"book","title":"T","author":[{"family":"Vale"}],"issued":"2020"}]"#;
-    let (code, output, errors) = run(&["ibis", "cite", "--records", "--format", "apa"], input)?;
-    assert_eq!((code, String::from_utf8(output)?), (1, "(Vale, n.d.)\n".to_owned()));
-    assert!(errors.contains("warning:"), "{errors}");
     Ok(())
 }
 

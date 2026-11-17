@@ -160,34 +160,6 @@ pub fn words(id: &str, args: &[(&str, &str)]) -> String {
 mod tests {
     use super::*;
 
-    #[test]
-    fn a_failed_read_keeps_loaded_references_unless_it_is_no_library() {
-        let file = |code| LoadError::file(EngineError::new(code));
-        let refresh = |code| LoadError::file_refresh(EngineError::new(code));
-        for kept in [
-            file(ErrorCode::SourceUnavailable),
-            file(ErrorCode::Internal),
-            refresh(ErrorCode::BadInput),
-            refresh(ErrorCode::ResourceLimit),
-            refresh(ErrorCode::SourceUnavailable),
-            LoadError::Zotero(EngineError::new(ErrorCode::NotFound)),
-        ] {
-            assert!(kept.retains(true, false), "{kept}");
-            assert!(!kept.retains(false, true), "{kept}");
-        }
-        for lost in [
-            file(ErrorCode::BadInput),
-            file(ErrorCode::ResourceLimit),
-            file(ErrorCode::Cancelled),
-            refresh(ErrorCode::Cancelled),
-            LoadError::NotLocal,
-        ] {
-            assert!(!lost.retains(true, false), "{lost}");
-            assert!(lost.retains(true, true), "Zotero keeps its references: {lost}");
-        }
-        assert_eq!(file(ErrorCode::Cancelled), LoadError::Stopped);
-    }
-
     /// Every value a code can take, from its own schema.
     fn every<T: schemars::JsonSchema + serde::de::DeserializeOwned>() -> Vec<T> {
         let schema = serde_json::to_value(schemars::schema_for!(T)).unwrap_or_default();

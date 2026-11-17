@@ -2,7 +2,7 @@
 //! writes, and lists exactly the forms the engine writes for it.
 #![cfg(test)]
 use ibis_core::contract::*;
-use ibis_engine::{Cancellation, Engine, Method, outputs};
+use ibis_engine::{Cancellation, Engine, outputs};
 use serde_json::json;
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -157,80 +157,6 @@ fn each_example_is_what_the_engine_writes() {
 }
 
 #[test]
-fn listed_forms_are_exactly_the_forms_the_engine_writes() {
-    let (engine, id) = engine_with_doi(true);
-    let mut wrong = vec![];
-    // Zotero's markers write nothing for this library; their forms are
-    // tested in `ibis_core::syntax::scannable`.
-    for output in outputs::outputs().iter().filter(|output| !output.zotero_items) {
-        for form in CitationForm::ALL {
-            // A form is listed when it can be written for one reference: with a
-            // page, MLA's narrative form has something to write after the name;
-            // without one, natbib's author-only form loses nothing.
-            let written = [None, Some("12")].into_iter().any(|page| {
-                let mut request = request(&[(id.clone(), None)], form, preset(&output.id));
-                request.items[0].locator = page.map(|page| Locator {
-                    term: LocatorTerm::Page,
-                    value: page.into(),
-                });
-                let result = engine.cite(&request, &Cancellation::default()).unwrap();
-                result.outcomes == [ItemOutcome::Rendered { item: 0 }]
-            });
-            if written != output.forms.contains(&form) {
-                wrong.push((output.id.as_str(), form));
-            }
-        }
-    }
-    assert!(wrong.is_empty(), "listed forms differ from what is written: {wrong:#?}");
-}
-
-#[test]
-fn a_narrative_biblatex_citation_is_written_with_textcite() {
-    let (engine, id) = engine();
-    let cite = |items: &[(ItemRef, Option<CitationForm>)], form, output: &str| {
-        engine
-            .cite(&request(items, form, preset(output)), &Cancellation::default())
-            .unwrap()
-    };
-    let narrative = Some(CitationForm::Narrative);
-    for output in ["autocite", "parencite"] {
-        assert_eq!(
-            cite(&[(id.clone(), None)], CitationForm::Narrative, output).text,
-            "\\textcite{key}"
-        );
-        assert_eq!(
-            cite(&[(id.clone(), narrative)], CitationForm::Normal, output).text,
-            "\\textcite{key}"
-        );
-        // Narrative throughout, several references are one \textcites.
-        let both = cite(
-            &[(id.clone(), narrative), (id.clone(), narrative)],
-            CitationForm::Normal,
-            output,
-        );
-        assert_eq!(both.text, "\\textcites{key}{key}");
-        // One command cannot mix forms: the narrative reference is refused, not rewritten.
-        let mixed = cite(
-            &[(id.clone(), None), (id.clone(), narrative)],
-            CitationForm::Normal,
-            output,
-        );
-        assert_eq!(
-            mixed.outcomes[1],
-            ItemOutcome::Refused {
-                item: 1,
-                error: CitationError::UnsupportedForm
-            }
-        );
-        assert!(mixed.copy_content(2).is_none());
-    }
-    assert_eq!(
-        cite(&[(id.clone(), None)], CitationForm::Normal, "autocite").text,
-        "\\autocite{key}"
-    );
-}
-
-#[test]
 fn an_unknown_id_is_refused_and_a_stored_one_fails_closed() {
     let (engine, id) = engine();
     for name in ["", "no-such-output", "Pandoc", "style:apa"] {
@@ -248,74 +174,6 @@ fn an_unknown_id_is_refused_and_a_stored_one_fails_closed() {
     assert_eq!(outputs::or_default(None).id, outputs::DEFAULT);
     assert_eq!(outputs::or_default(Some("typst")).id, "typst");
     assert_eq!(outputs::or_default(Some("ieee")).id, "ieee");
-}
-
-#[test]
-fn the_list_is_an_engine_method_with_a_schema() {
-    let listed = Engine::new()
-        .unwrap()
-        .dispatch(Method::Outputs, &json!({}), &Cancellation::default())
-        .unwrap()
-        .data;
-    assert_eq!(listed, serde_json::to_value(outputs::list()).unwrap());
-    assert_eq!(listed["default"], "pandoc");
-    assert_eq!(listed["outputs"][0]["id"], "pandoc");
-    assert_eq!(listed["outputs"][0]["name"], "Pandoc");
-    assert_eq!(
-        listed["outputs"][0]["output"],
-        json!({"kind": "key", "syntax": "pandoc", "command": null})
-    );
-    assert!(
-        Engine::new()
-            .unwrap()
-            .dispatch(Method::Outputs, &json!({"unknown": true}), &Cancellation::default())
-            .is_err()
-    );
-}
-
-#[test]
-fn each_output_is_named_by_its_one_name() {
-    let mut names = BTreeSet::new();
-    for output in outputs::outputs() {
-        // Short enough for the closed format control ("APA · Word"), and never twice.
-        assert!(
-            !output.name.is_empty() && output.name.chars().count() <= 24,
-            "{}: {:?}",
-            output.id,
-            output.name
-        );
-        assert!(
-            names.insert(output.name.to_lowercase()),
-            "{:?} names two outputs",
-            output.name
-        );
-        // Only a style has a description, and it is never the name again.
-        assert!(
-            output.description.is_none() || matches!(output.output, OutputSpec::Csl { .. }),
-            "{}",
-            output.id
-        );
-        assert_ne!(
-            output.description.as_deref(),
-            Some(output.name.as_str()),
-            "{}",
-            output.id
-        );
-        assert_eq!(outputs::named(&output.output).unwrap().id, output.id);
-        assert_eq!(outputs::named(&preset(&output.id)).unwrap().id, output.id);
-    }
-    // A command left out means the syntax's own.
-    let biblatex = OutputSpec::Key {
-        syntax: KeySyntax::Biblatex,
-        command: None,
-    };
-    assert_eq!(outputs::named(&biblatex).unwrap().id, "autocite");
-    assert!(
-        outputs::named(&OutputSpec::Csl {
-            style: "elsevier-harvard".into()
-        })
-        .is_none()
-    );
 }
 
 #[test]

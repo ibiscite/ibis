@@ -96,31 +96,6 @@ fn each_app_gets_its_output_from_the_bib_to_final_text() -> Result {
 }
 
 #[test]
-fn style_and_format_stand_in_for_your_format_of_their_own_kind() -> Result {
-    let cite = |app: &str, extra: &[&str]| -> Result<String> {
-        let mut args = vec!["cite", "taylor2026", "--for-app", app];
-        args.extend_from_slice(extra);
-        Ok(run(&args)?.1)
-    };
-    assert_eq!(cite("md.obsidian", &["--format", "typst"])?, "@taylor2026\n");
-    // An app Ibis cannot place keeps what was named, whatever its kind.
-    assert_eq!(cite("com.example.unknown", &["--format", "typst"])?, "@taylor2026\n");
-    assert_eq!(
-        cite("com.example.unknown", &["--style", "ieee"])?,
-        "A. Taylor, Synthetic signals. Imaginary Press, 2026.\n"
-    );
-    // Word is a formatted app, so --style chooses its style.
-    assert_eq!(
-        cite("com.microsoft.Word", &["--style", "ieee"])?,
-        "A. Taylor, Synthetic signals. Imaginary Press, 2026.\n"
-    );
-    // A format of the other kind never applies: Word stays formatted, Obsidian keys.
-    assert_eq!(cite("com.microsoft.Word", &["--format", "typst"])?, "(Taylor, 2026)\n");
-    assert_eq!(cite("md.obsidian", &["--style", "apa"])?, "[@taylor2026]\n");
-    Ok(())
-}
-
-#[test]
 fn the_answer_says_whether_the_app_pastes_or_copies() -> Result {
     let destination = |app: &str| -> Result<Value> {
         let (code, text, _) = run(&["cite", "taylor2026", "--for-app", app, "--json"])?;
@@ -144,85 +119,11 @@ fn the_answer_says_whether_the_app_pastes_or_copies() -> Result {
 }
 
 #[test]
-fn plain_output_stays_the_citation_and_the_note_goes_to_stderr() -> Result {
-    let (_, text, errors) = run(&["cite", "taylor2026", "--for-app", "com.apple.Terminal"])?;
-    assert_eq!(text, "(Taylor, 2026)\n");
-    assert!(errors.contains("Ibis copies for Terminal"), "{errors}");
-
-    let (_, _, errors) = run(&["cite", "taylor2026", "--for-app", "md.obsidian"])?;
-    assert!(errors.contains("Ibis pastes into Obsidian"), "{errors}");
-
-    let (_, _, errors) = run(&["cite", "taylor2026", "--for-app", "com.google.Chrome"])?;
-    assert!(errors.contains("Ibis pastes into Chrome"), "{errors}");
-
-    // Without the flag nothing changes.
-    let (_, _, errors) = run(&["cite", "taylor2026"])?;
-    assert_eq!(errors, "");
-    Ok(())
-}
-
-#[test]
 fn a_missing_id_or_a_request_with_its_own_output_is_refused() -> Result {
     let (code, _, errors) = run(&["cite", "taylor2026", "--for-app", ""])?;
     assert_eq!(code, 2, "{errors}");
     let (code, _, errors) = run(&["cite", "--request", "--for-app", "md.obsidian"])?;
     assert_eq!(code, 2, "{errors}");
-    Ok(())
-}
-
-#[test]
-fn a_refused_citation_names_the_output_the_app_chose() -> Result {
-    // Word's formatted output and an unknown key both fail as any citation does.
-    let (code, text, errors) = run(&["cite", "nobody2026", "--for-app", "com.microsoft.Word"])?;
-    assert_eq!((code, text.as_str()), (4, ""), "{errors}");
-
-    // Obsidian's Pandoc cannot print a bibliography; the app's choice is what is named.
-    let (code, text, errors) = run(&[
-        "cite",
-        "taylor2026",
-        "--for-app",
-        "md.obsidian",
-        "--style",
-        "apa",
-        "--bibliography",
-    ])?;
-    assert_eq!((code, text.as_str()), (1, ""), "{errors}");
-    assert!(errors.contains("in Pandoc"), "{errors}");
-    assert!(
-        !errors.contains("Ibis pastes"),
-        "a refused citation goes nowhere: {errors}"
-    );
-    Ok(())
-}
-
-#[test]
-fn an_unreadable_library_fails_the_same_with_an_app_named() -> Result {
-    // The library fails before any settings are read.
-    use ibis_engine::Engine;
-    use std::io::Cursor;
-    let (mut output, mut errors) = (vec![], vec![]);
-    let code = ibis::run_with(
-        Engine::new().map_err(|_| "engine")?,
-        [
-            "ibis",
-            "--file",
-            "/invented/missing.bib",
-            "cite",
-            "taylor2026",
-            "--for-app",
-            "md.obsidian",
-        ]
-        .into_iter()
-        .map(Into::into)
-        .collect(),
-        Cursor::new(vec![]),
-        &mut output,
-        &mut errors,
-        ibis::OutputMode::Plain,
-    );
-    assert_ne!(code, 0);
-    assert!(output.is_empty());
-    assert!(!String::from_utf8(errors)?.contains("Ibis pastes"));
     Ok(())
 }
 

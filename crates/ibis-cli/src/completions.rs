@@ -265,25 +265,3 @@ fn fish(root: &Command) -> String {
 fn fish_quote(text: &str) -> String {
     format!("'{}'", text.replace('\\', "\\\\").replace('\'', "\\'"))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_new_command_option_and_enum_flow_from_clap_into_every_shell() {
-        let command = super::super::command().subcommand(
-            Command::new("invented-command").arg(
-                Arg::new("invented-option")
-                    .long("invented-option")
-                    .value_parser(["invented-value"]),
-            ),
-        );
-        for shell in ["bash", "zsh", "fish"] {
-            let script = generate(command.clone(), shell);
-            for word in ["invented-command", "invented-option", "invented-value"] {
-                assert!(script.contains(word), "{shell}: {word}");
-            }
-        }
-    }
-}

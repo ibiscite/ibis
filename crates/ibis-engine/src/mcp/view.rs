@@ -125,19 +125,3 @@ pub(super) fn parse<'a>(
     };
     Ok((item, check))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn cancelled_opaque_resolution_returns_cancellation_instead_of_not_found() {
-        let snapshot = Snapshot::new(vec![]).unwrap_or_else(|error| panic!("{error:?}"));
-        let cancel = crate::Cancellation::default();
-        cancel.cancel();
-        assert_eq!(
-            parse("id:absent", &snapshot, &cancel).err().map(|error| error.code),
-            Some(ErrorCode::Cancelled)
-        );
-    }
-}

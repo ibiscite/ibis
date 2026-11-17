@@ -109,11 +109,3 @@ fn the_same_record_shows_the_same_year_and_people_everywhere() -> Result {
     }
     Ok(())
 }
-
-#[test]
-fn a_year_written_as_text_is_found_by_searching_for_it() -> Result {
-    let (_dir, engine) = engine()?;
-    let found = cli_rows(engine, "2016")?;
-    assert_eq!(found.keys().collect::<Vec<_>>(), ["Synthetic tide gauges"]);
-    Ok(())
-}

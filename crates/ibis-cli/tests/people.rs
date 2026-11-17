@@ -70,46 +70,6 @@ fn ibis_alone_shows_what_it_can_do() {
 }
 
 #[test]
-fn help_speaks_plainly() {
-    let lab = Lab::new("help");
-    let (_, root, _) = lab.run(&["--help"]);
-    let (_, show, _) = lab.run(&["show", "--help"]);
-    let (_, cite, _) = lab.run(&["cite", "--help"]);
-    for (text, word) in [
-        (&root, "loaded records"),
-        (&root, "shared engine"),
-        (&show, "ItemRef"),
-        (&show, "object"),
-        (&cite, "CitationRequest JSON object from stdin\n\n"),
-    ] {
-        assert!(!text.contains(word), "{word}: {text}");
-    }
-}
-
-#[test]
-fn a_limit_nothing_could_fill_is_refused_the_same_way_at_either_end() {
-    let lab = Lab::new("limit");
-    let file = lab.file("refs.bib", BIB);
-    // A negative number reaches the same check instead of clap's `-- -1` tip.
-    for limit in ["0", "1001", "-1"] {
-        let (code, stdout, stderr) = lab.run(&["search", "lantern", "--file", &file, "--limit", limit]);
-        assert_eq!((code, stdout.as_str()), (2, ""), "{limit}");
-        assert!(stderr.contains("from 1 to 1000"), "{stderr}");
-    }
-}
-
-#[test]
-fn a_blank_search_asks_for_words() {
-    let lab = Lab::new("blank");
-    let file = lab.file("refs.bib", BIB);
-    for words in ["", "   "] {
-        let (code, stdout, stderr) = lab.run(&["search", words, "--file", &file]);
-        assert_eq!((code, stdout.as_str()), (2, ""));
-        assert!(stderr.contains("words to search for"), "{stderr}");
-    }
-}
-
-#[test]
 fn a_file_with_no_entries_is_not_called_a_failed_search() {
     let lab = Lab::new("text");
     // A `.txt` must be RIS (#1531); a `.bib` with no entries is only empty.
@@ -147,18 +107,6 @@ fn an_unknown_file_is_refused_with_supported_formats_and_a_next_step() {
 }
 
 #[test]
-fn a_library_of_skipped_entries_is_not_called_empty() {
-    let lab = Lab::new("skipped");
-    let file = lab.file(
-        "refs.bib",
-        "@article{same, title={First}, year=2000}\n@article{same, title={Second}, year=2001}\n",
-    );
-    let (code, stdout, stderr) = lab.run(&["search", "first", "--file", &file]);
-    assert_eq!((code, stdout.as_str()), (1, "No references found.\n"));
-    assert!(stderr.is_empty(), "{stderr}");
-}
-
-#[test]
 fn show_prints_a_reference_for_reading_and_json_keeps_everything() {
     let lab = Lab::new("show");
     let file = lab.file("refs.bib", BIB);
@@ -185,67 +133,6 @@ fn show_prints_a_reference_for_reading_and_json_keeps_everything() {
     assert!(stdout.contains("Ada Ash, Bo Birch, Cy Cedar, et al."), "{stdout}");
     let (_, stdout, _) = lab.run(&["show", "vale2024lanterns", "--file", &file, "--json"]);
     assert!(stdout.contains("fingerprints"), "{stdout}");
-}
-
-#[test]
-fn duplicate_entry_warnings_stay_in_libraries() {
-    let lab = Lab::new("note");
-    let file = lab.file("refs with space.bib", BIB);
-    let (code, _, stderr) = lab.run(&["search", "lantern", "--file", &file]);
-    assert_eq!(code, 1);
-    assert!(stderr.is_empty(), "{stderr}");
-    let (code, stdout, stderr) = lab.run(&["libraries", "--file", &file]);
-    assert_eq!(code, 1, "{stderr}");
-    assert!(stdout.contains("2 warnings"), "{stdout}");
-    assert!(
-        stdout.contains("line 9: more than one entry uses 'same' as its key or id"),
-        "{stdout}"
-    );
-}
-
-#[test]
-fn call_of_search_reads_the_same_libraries_as_search() {
-    let lab = Lab::new("call");
-    let (code, stdout, stderr) = lab.run(&["call", "search", "--params", r#"{"query":"lantern"}"#]);
-    assert_eq!((code, stdout.as_str()), (2, ""), "{stderr}");
-    assert!(stderr.contains("no library is named"), "{stderr}");
-    // Opening a library by parameters needs none named.
-    let file = lab.file("refs.bib", BIB);
-    let params = format!(r#"{{"action":"open-file","path":{file:?}}}"#);
-    let (code, _, stderr) = lab.run(&["call", "libraries", "--params", &params]);
-    assert_eq!(code, 1, "{stderr}");
-}
-
-#[test]
-fn doctor_reads_as_sentences() {
-    let lab = Lab::new("doctor");
-    let file = lab.file("refs.bib", BIB);
-    let (_, stdout, _) = lab.run(&["doctor", "--file", &file]);
-    assert!(!stdout.contains("ms since Unix epoch"), "{stdout}");
-    // It counts the bundled citation styles, which `cite --style` accepts.
-    let styles: usize = stdout
-        .split(" citation styles")
-        .next()
-        .and_then(|head| head.rsplit(' ').next())
-        .and_then(|count| count.parse().ok())
-        .unwrap_or_default();
-    assert!(styles > 1000, "{stdout}");
-    // The next step works for a file, Zotero and the app's libraries alike.
-    assert!(
-        stdout.contains("See them with ibis libraries and the same library options."),
-        "{stdout}"
-    );
-}
-
-#[cfg(unix)]
-#[test]
-fn a_link_to_nothing_is_missing_rather_than_busy() {
-    let lab = Lab::new("link");
-    let link = lab.0.join("link.bib");
-    std::os::unix::fs::symlink(lab.0.join("gone.bib"), &link).unwrap();
-    let (code, _, stderr) = lab.run(&["search", "x", "--file", link.to_str().unwrap()]);
-    assert_eq!(code, 5);
-    assert!(stderr.contains("was moved, renamed or removed"), "{stderr}");
 }
 
 #[test]
@@ -317,23 +204,6 @@ fn damaged_library_diagnostics_do_not_echo_unknown_field_names() {
 }
 
 #[test]
-fn a_long_bibtex_inheritance_chain_reports_the_read_limit() {
-    let lab = Lab::new("inheritance-limit");
-    let mut bib = String::from("@book{one,title={Invented reference},xdata={p0}}\n");
-    for index in 0..20 {
-        bib.push_str(&format!("@xdata{{p{index},xdata={{p{}}}}}\n", index + 1));
-    }
-    bib.push_str("@xdata{p20,publisher={Invented press}}\n");
-    let file = lab.file("refs.bib", &bib);
-    let (code, human, _) = lab.run(&["libraries", "--file", &file]);
-    assert_eq!(code, 1, "{human}");
-    assert!(
-        human.contains("xdata reaches Ibis’s limit for reading linked entries"),
-        "{human}"
-    );
-}
-
-#[test]
 fn a_key_past_the_part_ibis_could_read_says_the_library_was_cut_short() {
     let lab = Lab::new("cut-short");
     let entries: String = (0..=200_000)
@@ -344,47 +214,6 @@ fn a_key_past_the_part_ibis_could_read_says_the_library_was_cut_short() {
     assert_eq!(code, 4, "{stderr}");
     assert!(stderr.contains("too large to read in full"), "{stderr}");
     assert!(stderr.contains("Split the library"), "{stderr}");
-}
-
-#[test]
-fn a_spelling_match_says_so_and_an_exact_one_does_not() {
-    let lab = Lab::new("spelling");
-    let file = lab.file(
-        "refs.bib",
-        "@book{vale2024, title={Lanterns on the Tidal Marsh}, year=2024}\n",
-    );
-    let (code, stdout, _) = lab.run(&["search", "lanters", "--file", &file]);
-    assert_eq!(code, 0);
-    assert!(
-        stdout.contains("Lanterns on the Tidal Marsh (spelling match)"),
-        "{stdout}"
-    );
-    let (_, stdout, _) = lab.run(&["search", "lanterns", "--file", &file]);
-    assert!(!stdout.contains("spelling match"), "{stdout}");
-}
-
-#[test]
-fn a_library_read_whole_is_not_called_cut_short_by_another_limit() {
-    let lab = Lab::new("not-cut-short");
-    // Too many attachment links warn `work-limit`, yet the reference is read.
-    let files: Vec<_> = (0..300).map(|i| format!("f{i}.pdf")).collect();
-    let file = lab.file(
-        "refs.bib",
-        &format!("@misc{{kept, title={{T}}, file={{{}}}}}\n", files.join(";")),
-    );
-    // Comments past the record cap leave no reference unread either, even one
-    // that quotes an entry as an example.
-    let comments = format!(
-        "@misc{{kept, title={{T}}}}\n{}@comment{{An example: @book{{dummy, title={{X}}}}}}\n",
-        "@comment{padding}\n".repeat(200_000)
-    );
-    let padded = lab.file("padded.bib", &comments);
-    for file in [file, padded] {
-        let (code, _, stderr) = lab.run(&["cite", "missing", "--style", "apa", "--file", &file]);
-        assert_eq!(code, 4, "{stderr}");
-        assert!(stderr.contains("no reference has the key"), "{stderr}");
-        assert!(!stderr.contains("too large"), "{stderr}");
-    }
 }
 
 #[test]

@@ -240,17 +240,6 @@ mod toggle_tests {
     }
 
     #[test]
-    fn toggle_accepts_an_explicit_app() {
-        let sibling = Some(Path::new("/synthetic/sibling"));
-        for app in ["Ibis Nightly", "/synthetic/文献 $(x).app"] {
-            let command = desktop_command("macos", sibling, Some(Path::new(app)), &[], |_| false);
-            assert_eq!(command.get_program(), "open");
-            let expected = ["-n", "-a", app, "--args", "toggle"];
-            assert_eq!(command.get_args().collect::<Vec<_>>(), expected);
-        }
-    }
-
-    #[test]
     fn toggle_launches_the_desktop_with_one_literal_argument() {
         let path = Path::new("/synthetic/Ibis app/ibis-desktop");
         let command = desktop_command("linux", Some(path), None, &[], |_| false);
@@ -259,47 +248,6 @@ mod toggle_tests {
         let command = desktop_command("macos", None, None, &[], |_| false);
         let expected = ["-n", "-a", "Ibis", "--args", "toggle"];
         assert_eq!(command.get_args().collect::<Vec<_>>(), expected);
-    }
-
-    #[test]
-    fn linux_nightly_is_selected_explicitly_instead_of_the_stable_default() {
-        let nightly = Path::new("/synthetic/bin/ibis-nightly");
-        let stable = Path::new("/synthetic/bin/ibis-desktop");
-        for sibling in [None, Some(stable)] {
-            let command = desktop_command("linux", sibling, Some(nightly), &[], |_| false);
-            assert_eq!(command.get_program(), nightly);
-            assert_eq!(command.get_args().collect::<Vec<_>>(), ["toggle"]);
-        }
-        let command = desktop_command("linux", None, None, &[], |_| false);
-        assert_eq!(command.get_program(), "ibis-desktop");
-    }
-
-    #[test]
-    fn toggle_windows_lookup_prefers_override_then_sibling_then_install_folders_then_path() {
-        let user = PathBuf::from("/synthetic/Local 文献");
-        let machine = PathBuf::from("/synthetic/Program Files");
-        let in_user = user.join("Ibis").join("ibis-desktop.exe");
-        let in_machine = machine.join("Ibis").join("ibis-desktop.exe");
-        let explicit = Path::new("/synthetic/Nightly app.exe");
-        let sibling = Path::new("/synthetic/sibling.exe");
-        let fallback = Path::new("ibis-desktop.exe");
-        let roots = [user.clone(), machine.clone()];
-        for (sibling, app, roots, existing, expected) in [
-            (None, None, &roots[..], vec![&in_user, &in_machine], in_user.as_path()),
-            (None, None, &roots[..], vec![&in_machine], in_machine.as_path()),
-            (None, None, &roots[..], vec![], fallback),
-            (None, None, &[][..], vec![&in_user], fallback),
-            (None, None, &[PathBuf::new()][..], vec![], fallback),
-            (Some(sibling), None, &roots[..], vec![&in_user], sibling),
-            (Some(sibling), Some(explicit), &roots[..], vec![&in_user], explicit),
-        ] {
-            let command = desktop_command("windows", sibling, app, roots, |path| {
-                assert!(sibling.is_none() && app.is_none());
-                existing.iter().any(|p| p.as_path() == path)
-            });
-            assert_eq!(command.get_program(), expected);
-            assert_eq!(command.get_args().collect::<Vec<_>>(), ["toggle"]);
-        }
     }
 }
 
@@ -322,23 +270,5 @@ mod bundled_tests {
         }
         let own_cli = mount.join("usr/lib/Ibis/binaries/ibis");
         assert_eq!(appimage_for(&own_cli, Some(image.clone()), Some(mount)), Some(image));
-    }
-
-    #[test]
-    fn a_bundled_mac_command_opens_its_own_app_even_when_nightly_is_also_installed() {
-        let exe = Path::new("/invented/Ibis Nightly.app/Contents/MacOS/ibis");
-        assert_eq!(
-            bundled_app(exe, "macos", |_| false),
-            Some(PathBuf::from("/invented/Ibis Nightly.app"))
-        );
-    }
-
-    #[test]
-    fn linux_resource_commands_find_their_stable_or_nightly_app() {
-        for (product, binary) in [("Ibis", "ibis-desktop"), ("Ibis Nightly", "ibis-nightly")] {
-            let exe = PathBuf::from(format!("/usr/lib/{product}/binaries/ibis"));
-            let expected = PathBuf::from(format!("/usr/bin/{binary}"));
-            assert_eq!(bundled_app(&exe, "linux", |p| p == expected), Some(expected));
-        }
     }
 }

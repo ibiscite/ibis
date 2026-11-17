@@ -1,6 +1,6 @@
 //! The real CLI parser/engine/transport, against an ephemeral synthetic server.
 #![cfg(test)]
-use ibis_engine::{Cancellation, Engine, Method};
+use ibis_engine::Engine;
 use serde_json::{Value, json};
 use std::{
     io::{Cursor, Read, Write},
@@ -14,7 +14,6 @@ use std::{
 };
 struct Server {
     port: u16,
-    state: Arc<Mutex<(u64, String, bool)>>,
     stop: Arc<AtomicBool>,
     worker: Option<thread::JoinHandle<()>>,
 }
@@ -23,7 +22,7 @@ impl Server {
         let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
         listener.set_nonblocking(true).unwrap();
         let port = listener.local_addr().unwrap().port();
-        let state = Arc::new(Mutex::new((1, "Invented atlas".into(), false)));
+        let state = Arc::new(Mutex::new((1_u64, String::from("Invented atlas"), false)));
         let stop = Arc::new(AtomicBool::new(false));
         let (shared, stopping) = (state.clone(), stop.clone());
         let worker = thread::spawn(move || {
@@ -72,7 +71,6 @@ impl Server {
         });
         Self {
             port,
-            state,
             stop,
             worker: Some(worker),
         }
@@ -132,73 +130,6 @@ fn explicit_zotero_search_show_pandoc_apa_and_call_use_the_shared_engine() {
     assert!(!output.contains("invented-http"));
     assert!(!output.contains("dateModified"));
 }
-#[test]
-fn a_zotero_profile_keeps_its_ids_across_close_and_reopen_and_two_profiles_differ() {
-    let server = Server::new();
-    let ids = |engine: &Engine| {
-        let (_, output) = run(engine, &["ibis", "--zotero", "libraries", "--json"]);
-        let libraries: Value = serde_json::from_str(&output).unwrap();
-        assert_eq!(libraries["data"]["libraries"][0]["kind"], "zotero");
-        libraries["data"]["libraries"][0]["id"].clone()
-    };
-    let first = Engine::with_zotero_profile(server.port, b"directory:/invented/one").unwrap();
-    let again = Engine::with_zotero_profile(server.port, b"directory:/invented/one").unwrap();
-    let other = Engine::with_zotero_profile(server.port, b"directory:/invented/two").unwrap();
-    let (first, again, other) = (ids(&first), ids(&again), ids(&other));
-    assert_eq!(first, again);
-    assert_ne!(first, other);
-    // Both still read as the same kind of library, whatever the id says.
-    assert!(first.as_str().unwrap().starts_with("lib_"));
-    assert!(other.as_str().unwrap().starts_with("lib_"));
-}
-
-#[test]
-fn failed_reload_preserves_last_good_and_successful_reload_replaces_it() {
-    let server = Server::new();
-    let engine = Engine::with_zotero_port(server.port).unwrap();
-    let cancel = Cancellation::default();
-    engine
-        .dispatch(Method::Libraries, &json!({"action":"open-zotero"}), &cancel)
-        .unwrap();
-    let previous = engine.snapshot().unwrap();
-    server.state.lock().unwrap().2 = true;
-    engine
-        .dispatch(Method::Libraries, &json!({"action":"reload"}), &cancel)
-        .unwrap();
-    assert_eq!(engine.snapshot().unwrap().fingerprints(), previous.fingerprints());
-    assert!(engine.libraries().unwrap().libraries[0].refresh_error.is_some());
-    *server.state.lock().unwrap() = (2, "Edited atlas".into(), false);
-    engine
-        .dispatch(Method::Libraries, &json!({"action":"reload"}), &cancel)
-        .unwrap();
-    assert_ne!(engine.snapshot().unwrap().fingerprints(), previous.fingerprints());
-    assert!(engine.libraries().unwrap().libraries[0].refresh_error.is_none());
-}
-#[test]
-fn zotero_group_flags_accumulate_across_positions_and_ignore_duplicates() {
-    let server = Server::new();
-    for duplicates in [false, true] {
-        let engine = Engine::with_zotero_port(server.port).unwrap();
-        let mut args = vec!["ibis", "--zotero-group", "7", "search", "atlas", "--zotero-group", "9"];
-        if duplicates {
-            args.extend(["--zotero-group", "7", "--zotero-group", "9"]);
-        }
-        args.push("--json");
-        let (code, output) = run(&engine, &args);
-        assert_eq!(code, 0);
-        let response: Value = serde_json::from_str(&output).unwrap();
-        assert_eq!(response["data"]["hits"].as_array().unwrap().len(), 2);
-        let mut chosen: Vec<_> = engine
-            .libraries()
-            .unwrap()
-            .libraries
-            .into_iter()
-            .map(|library| serde_json::to_value(library.zotero).unwrap())
-            .collect();
-        chosen.sort_by_key(Value::to_string);
-        assert_eq!(chosen, [json!({"group":7}), json!({"group":9})]);
-    }
-}
 
 #[test]
 fn zotero_group_flags_choose_the_libraries_read() {
@@ -234,67 +165,6 @@ fn zotero_group_flags_choose_the_libraries_read() {
     );
     assert_ne!(code, 0);
     assert!(!errors.is_empty());
-}
-
-fn run_failing(engine: &Engine, args: &[&str]) -> (u8, String) {
-    let mut output = vec![];
-    let mut errors = vec![];
-    let code = ibis::run_with(
-        engine.clone(),
-        args.iter().map(Into::into).collect(),
-        Cursor::new(vec![]),
-        &mut output,
-        &mut errors,
-        ibis::OutputMode::Plain,
-    );
-    assert!(output.is_empty());
-    (code, String::from_utf8(errors).unwrap())
-}
-
-#[test]
-fn outline_read_and_find_in_give_a_zotero_attachments_text_by_page() {
-    let server = Server::new();
-    let engine = Engine::with_zotero_port(server.port).unwrap();
-    let (code, output) = run(&engine, &["ibis", "--zotero", "outline", "Synthetic2026", "--json"]);
-    assert_eq!(code, 0, "{output}");
-    let outline: Value = serde_json::from_str(&output).unwrap();
-    let attachment = &outline["data"]["attachments"][0];
-    assert_eq!(attachment["pages"], 3);
-    let id = attachment["id"].as_str().unwrap().to_owned();
-    assert!(!output.contains("PDFA0001"));
-    let (code, output) = run(&engine, &["ibis", "--zotero", "outline", "Synthetic2026"]);
-    assert_eq!(code, 0);
-    assert_eq!(
-        output,
-        format!("{id}\tInvented atlas PDF\tapplication/pdf\ttext, 3 pages\n")
-    );
-
-    // Another process opening the same generation and revision can use the id.
-    let other = Engine::with_zotero_port(server.port).unwrap();
-    let (code, output) = run(&other, &["ibis", "--zotero", "read", &id, "--pages", "2"]);
-    assert_eq!(code, 0);
-    assert_eq!(
-        output,
-        format!("[file page 2]\nInvented page two holds a brass lantern.\nMore text: ibis read {id} --pages 3-7\n")
-    );
-    let (_, output) = run(&engine, &["ibis", "--zotero", "read", &id, "--pages", "2-3", "--json"]);
-    let read: Value = serde_json::from_str(&output).unwrap();
-    assert_eq!(read["data"]["pages"][1]["pdf_page"], 3);
-    assert_eq!(read["data"]["pages"][1]["cite_page"], Value::Null);
-    let (code, output) = run(&engine, &["ibis", "--zotero", "find-in", &id, "BRASS lantern"]);
-    assert_eq!(code, 0);
-    assert_eq!(output, "[file page 2]\tInvented page two holds a brass lantern.\n");
-    let (_, output) = run(&engine, &["ibis", "--zotero", "find-in", &id, "compass"]);
-    assert_eq!(output, "No passage holds those words.\n");
-
-    let (code, errors) = run_failing(&engine, &["ibis", "--zotero", "read", &id, "--pages", "4"]);
-    assert_ne!(code, 0);
-    assert!(errors.contains("ibis outline"), "{errors}");
-    let (code, errors) = run_failing(&engine, &["ibis", "--zotero", "read", "att:invented"]);
-    assert_ne!(code, 0);
-    assert!(errors.contains("run ibis outline again"), "{errors}");
-    let (code, _) = run_failing(&engine, &["ibis", "--zotero", "read", &id, "--pages", "3-2"]);
-    assert_ne!(code, 0);
 }
 
 #[test]

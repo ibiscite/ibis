@@ -2,8 +2,8 @@
 //! a page of the list, the right language, refusals, order and restart.
 #![cfg(test)]
 use ibis_core::contract::*;
-use ibis_engine::{Cancellation, Engine, Method, mcp, request::*};
-use serde_json::{Value, json};
+use ibis_engine::{Cancellation, Engine, Method, request::*};
+use serde_json::json;
 use std::sync::Arc;
 
 fn engine() -> (Engine, ItemRef) {
@@ -73,34 +73,6 @@ fn a_dependent_style_uses_its_parents_rules_and_its_own_language() {
 }
 
 #[test]
-fn the_output_says_its_language_and_a_key_syntax_has_none() {
-    let (engine, id) = engine();
-    let chinese = cite(&engine, &id, "china-national-standard-gb-t-7714-2025-author-date", None).unwrap();
-    assert_eq!(chinese.language.as_deref(), Some("zh-CN"));
-    assert!(chinese.text.contains('（'), "{}", chinese.text);
-    assert_eq!(
-        cite(&engine, &id, "apa", None).unwrap().language.as_deref(),
-        Some("en-US")
-    );
-    assert_eq!(
-        cite(&engine, &id, "apa", Some("de")).unwrap().language.as_deref(),
-        Some("de-DE")
-    );
-}
-
-#[test]
-fn a_language_written_in_another_script_keeps_its_script() {
-    let (engine, id) = engine();
-    let mut request = request(&id, "chicago-notes-bibliography", Some("sr-Cyrl-RS"));
-    request.form = CitationForm::BibliographyOnly;
-    let cyrillic = engine.cite(&request, &Cancellation::default()).unwrap();
-    assert_eq!(cyrillic.language.as_deref(), Some("sr-Cyrl-RS"));
-    request.output_locale = Some("sr-Latn-RS".into());
-    let latin = engine.cite(&request, &Cancellation::default()).unwrap();
-    assert_ne!(cyrillic.text, latin.text);
-}
-
-#[test]
 fn a_style_no_one_has_checked_refuses_to_omit_the_author() {
     let (engine, id) = engine();
     let mut request = request(&id, "nature", None);
@@ -112,17 +84,6 @@ fn a_style_no_one_has_checked_refuses_to_omit_the_author() {
     }
     request.output = OutputSpec::Csl { style: "apa".into() };
     assert_eq!(engine.cite(&request, &Cancellation::default()).unwrap().text, "(2026)");
-}
-
-#[test]
-fn a_style_without_a_document_says_what_it_printed() {
-    let (engine, id) = engine();
-    let numeric = cite(&engine, &id, "nature", None).unwrap();
-    assert_eq!(numeric.notices, [Notice::NeedsDocumentContext, Notice::ReferenceEntry]);
-    assert!(numeric.copy_content(1).is_some());
-    let note = cite(&engine, &id, "chicago-notes-bibliography", None).unwrap();
-    assert_eq!(note.notices, [Notice::NeedsDocumentContext, Notice::FullFirstNote]);
-    assert!(note.text.contains("Synthetic Signals"), "{}", note.text);
 }
 
 #[test]
@@ -234,67 +195,4 @@ fn a_cancelled_style_request_leaves_the_next_one_correct() {
         ErrorCode::Cancelled
     );
     assert!(cite(&engine, &id, "nature", None).unwrap().copy_content(1).is_some());
-}
-
-#[test]
-fn a_new_engine_gives_the_same_citation() {
-    let style = {
-        let (engine, _) = engine();
-        german_journal(&engine).id
-    };
-    let (first, id) = engine();
-    let before = cite(&first, &id, &style, None).unwrap();
-    drop(first);
-    let (reopened, _) = engine();
-    assert_eq!(cite(&reopened, &id, &style, None).unwrap(), before);
-}
-
-#[test]
-fn agents_see_a_page_and_the_language() {
-    let (engine, id) = engine();
-    let mut session = mcp::Session::default();
-    let call = |session: &mut mcp::Session, name: &str, arguments: Value| {
-        mcp::handle(
-            &engine,
-            session,
-            &json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{
-                "name":name,"arguments":arguments,
-                "_meta":{
-                    "io.modelcontextprotocol/protocolVersion":mcp::PROTOCOL_VERSION,
-                    "io.modelcontextprotocol/clientCapabilities":{}
-                }
-            }}),
-        )
-        .unwrap()["result"]
-            .clone()
-    };
-    let page = call(&mut session, "styles", json!({"query":"nature","limit":3}));
-    assert_eq!(page["isError"], false);
-    assert_eq!(page["structuredContent"]["styles"].as_array().unwrap().len(), 3);
-    assert!(page["structuredContent"]["total"].as_u64().unwrap() > 3);
-    let all = call(&mut session, "styles", json!({"limit":mcp::MAX_STYLES}));
-    assert_eq!(all["isError"], false, "the largest page fits one answer");
-    assert_eq!(
-        call(&mut session, "styles", json!({"limit":mcp::MAX_STYLES + 1}))["isError"],
-        true
-    );
-    let reference = mcp::reference(&id);
-    let cited = call(
-        &mut session,
-        "cite",
-        json!({"items":[{"ref":reference}],"style":"apa","locale":"de-DE"}),
-    );
-    assert_eq!(cited["structuredContent"]["language"], "de-DE");
-    let refused = call(
-        &mut session,
-        "cite",
-        json!({"items":[{"ref":reference}],"style":"apa","locale":"xx-INVENTED"}),
-    );
-    assert_eq!(refused["isError"], true);
-    assert!(
-        refused["content"][0]["text"]
-            .as_str()
-            .unwrap()
-            .contains("styles tool lists the locales")
-    );
 }

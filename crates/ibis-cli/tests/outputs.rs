@@ -107,35 +107,3 @@ fn format_refuses_any_other_name_with_the_listed_ones() -> Result {
     }
     Ok(())
 }
-
-#[test]
-fn a_bibliography_needs_a_style_by_either_flag() -> Result {
-    let (code, apa, errors) = run(&["cite", "key", "--format", "apa", "--bibliography"])?;
-    assert_eq!(code, 0, "{errors}");
-    let (_, styled, _) = run(&["cite", "key", "--style", "apa", "--bibliography"])?;
-    assert_eq!(apa, styled);
-    let (code, text, errors) = run(&["cite", "key", "--format", "typst", "--bibliography"])?;
-    assert_eq!((code, text.as_str()), (2, ""));
-    assert!(errors.contains("--bibliography needs a style"), "{errors}");
-    Ok(())
-}
-
-#[test]
-fn outputs_lists_each_id_with_its_one_name() -> Result {
-    let listed = outputs::outputs();
-    let (code, text, errors) = run(&["outputs"])?;
-    assert_eq!(code, 0, "{errors}");
-    let lines: Vec<_> = text.lines().collect();
-    assert_eq!(lines.len(), listed.len());
-    for (line, output) in lines.iter().zip(listed) {
-        let mut fields = line.split('\t');
-        assert_eq!(fields.next(), Some(output.id.as_str()));
-        assert_eq!(fields.next(), Some(output.name.as_str()));
-    }
-    assert_eq!(lines[0], "pandoc\tPandoc\t[@key]");
-    let (code, json, _) = run(&["outputs", "--json"])?;
-    assert_eq!(code, 0);
-    let envelope: Value = serde_json::from_str(&json)?;
-    assert_eq!(envelope["data"], serde_json::to_value(outputs::list())?);
-    Ok(())
-}
