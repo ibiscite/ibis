@@ -19,6 +19,9 @@ describes this checkout. Plans live in [ROADMAP.md](../ROADMAP.md).
 The desktop manages `ibis_engine::library::Owner`: commands submit intents and
 read its current library or view. The owner publishes library status; the app
 adds its settings notice and schedules picker and tray effects on the main thread.
+Every command is `async` unless marked `#[command(main)]`, which answers at IPC
+receipt and never waits; settings reads use the owner's published view
+(`settings::Owner::view`), so the picker never waits behind a settings write.
 
 The desktop links the engine in process, with generated TypeScript bindings;
 it is given no PDF reader, so PDF parsing never runs in the app ([0055](decisions/0055-agent-layers-full-text-writes-remote.md)).

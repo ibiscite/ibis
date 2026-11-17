@@ -108,7 +108,7 @@ impl Presentation {
 
 /// Subscribe before reading: an opening before the webview mounted is retained here.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn picker_snapshot(app: AppHandle, state: State<'_, Presentation>) -> Option<Arc<PickerSnapshot>> {
     let owner = app.state::<PickerGeneration>().current();
     let (snapshot, preparing) = state.subscribe(&app, owner);
@@ -133,7 +133,7 @@ pub(crate) fn picker_snapshot(app: AppHandle, state: State<'_, Presentation>) ->
 
 /// The complete snapshot has reached the DOM; only its presentation may reveal.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn picker_rendered(app: AppHandle, presentation: u64) {
     let handle = app.clone();
     report(

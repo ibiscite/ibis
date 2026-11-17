@@ -39,7 +39,7 @@ pub(crate) enum AboutLink {
 }
 
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn open_about_link(app: AppHandle, link: AboutLink) {
     let url = match link {
         AboutLink::Website => "https://ibiscite.org".to_owned(),

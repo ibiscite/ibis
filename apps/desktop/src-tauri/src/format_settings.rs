@@ -22,9 +22,9 @@ pub(crate) struct FormatSettingsView {
 }
 
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn format_settings(app: AppHandle) -> Result<FormatSettingsView, CommandError> {
-    let loaded = ibis_engine::settings::load(&app.state::<SettingsFile>().path);
+    let loaded = app.state::<SettingsFile>().owner.view();
     let settings = loaded.cites().map_err(CommandError::from)?;
     Ok(FormatSettingsView {
         apps: settings
@@ -58,7 +58,7 @@ pub(crate) fn format_settings(app: AppHandle) -> Result<FormatSettingsView, Comm
 
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) fn forget_app_format(app: AppHandle, id: String) -> Result<(), CommandError> {
+pub(crate) async fn forget_app_format(app: AppHandle, id: String) -> Result<(), CommandError> {
     app.state::<SettingsFile>().update(|settings| {
         settings
             .device

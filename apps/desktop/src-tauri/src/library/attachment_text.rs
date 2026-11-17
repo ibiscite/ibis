@@ -44,7 +44,7 @@ impl AttachmentText {
         } else {
             Vec::new()
         };
-        let loaded = owner.read();
+        let loaded = owner.view();
         let settings = loaded.cites().map_err(CommandError::from)?;
         let rows: Vec<_> = libraries
             .into_iter()
@@ -139,12 +139,8 @@ pub(crate) async fn set_attachment_text(app: AppHandle, id: LibraryId, on: bool)
 #[tauri::command]
 #[ibis_desktop_macros::command]
 pub(crate) async fn attachment_text_outside_library(app: AppHandle) -> Result<bool, CommandError> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let loaded = app.state::<SettingsFile>().owner.read();
-        Ok(loaded.cites()?.device.attachment_text_outside_library)
-    })
-    .await
-    .map_err(|_| CommandError::SettingsUnavailable)?
+    let loaded = app.state::<SettingsFile>().owner.view();
+    Ok(loaded.cites()?.device.attachment_text_outside_library)
 }
 
 /// Save this computer's permission to read attachment text outside libraries.

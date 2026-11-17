@@ -257,7 +257,7 @@ fn library_claim(status: &crate::library::LibraryStatus, revision: Option<&str>)
 
 /// One request per visible presentation/snapshot. Settings passes no presentation.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn delight_view(
     app: AppHandle,
     now: LocalMoment,
@@ -293,7 +293,7 @@ pub(crate) fn delight_view(
 /// Asked when a person reaches for a citation's details by hand; true while the
 /// hint has been shown fewer than [`SHORTHAND_HINTS`] times.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn shorthand_hint(app: AppHandle) -> bool {
     let file = app.state::<SettingsFile>();
     let shown = file.claim_shorthand_hint();

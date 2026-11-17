@@ -517,7 +517,7 @@ fn status(app: &AppHandle) -> EndpointStatus {
 }
 
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn editor_endpoint(app: AppHandle) -> EndpointStatus {
     status(&app)
 }
@@ -526,7 +526,7 @@ pub(crate) fn editor_endpoint(app: AppHandle) -> EndpointStatus {
 /// time it is on, an old copy of that address no longer works.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) fn set_editor_endpoint(on: bool, app: AppHandle) -> EndpointStatus {
+pub(crate) async fn set_editor_endpoint(on: bool, app: AppHandle) -> EndpointStatus {
     let state = app.state::<Endpoint>();
     let _changing = state.1.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let closing = {
@@ -602,7 +602,7 @@ pub(crate) fn apply_file_setting(app: &AppHandle, expected: Option<EditorEndpoin
 
 /// Put the address on the clipboard for pasting into an editor's settings.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn copy_editor_endpoint(app: AppHandle) -> Result<(), String> {
     let url = status(&app).url.ok_or("The editor endpoint is off.")?;
     crate::copy::write_plain(&app, &url)
@@ -620,7 +620,7 @@ pub(crate) struct EditorWaiting {
 
 /// `None` when no editor is waiting.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn editor_request(pending: State<'_, Pending>) -> Option<EditorWaiting> {
     pending.current().map(|request| EditorWaiting {
         request: request.id as u32,

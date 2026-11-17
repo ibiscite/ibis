@@ -49,7 +49,7 @@ pub(crate) struct AppContextView {
 /// One typed request for the captured app's engine context.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) fn app_context(
+pub(crate) async fn app_context(
     app: AppHandle,
     owner: State<'_, Owner>,
     request: ContextRequest,

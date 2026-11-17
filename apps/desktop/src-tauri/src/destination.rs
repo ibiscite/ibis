@@ -383,7 +383,7 @@ pub(crate) fn present(app: &AppHandle, context: &ibis_engine::app_context::Conte
 /// to the per-app file; a delivery that fails after its format saved says so.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) fn remember_app_output<R: tauri::Runtime>(
+pub(crate) async fn remember_app_output<R: tauri::Runtime>(
     app: AppHandle<R>,
     memory: State<'_, AppMemory>,
     settings_file: State<'_, SettingsFile>,
@@ -445,7 +445,7 @@ pub(crate) fn remember_app_output<R: tauri::Runtime>(
 /// Forget only the current app's format, after checking the captured target.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) fn forget_app_output(
+pub(crate) async fn forget_app_output(
     app: AppHandle,
     settings_file: State<'_, SettingsFile>,
     app_id: String,
@@ -622,7 +622,7 @@ mod tests {
             captured.target.app = Some(app.clone());
             captured.app_identity = identity.clone();
             self.app.state::<crate::paste::LastTarget>().capture_fixture(captured);
-            remember_app_output(
+            tauri::async_runtime::block_on(remember_app_output(
                 self.app.handle().clone(),
                 self.app.state(),
                 self.app.state(),
@@ -630,7 +630,7 @@ mod tests {
                 output.map(str::to_owned),
                 paste,
                 identity,
-            )
+            ))
         }
 
         /// The format a restart reads for `app`.

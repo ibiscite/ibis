@@ -85,6 +85,9 @@ pub struct Owner {
     jobs: Arc<Mutex<Queue>>,
     worker: Mutex<Option<JoinHandle<()>>>,
     watch: Arc<Mutex<WatchState>>,
+    /// The file as of the last finished turn, published before that turn's
+    /// reply: reading it never waits behind the queue.
+    published: Arc<Mutex<Arc<Loaded>>>,
 }
 
 /// Dropping this guard or closing its owner stops native watching.
@@ -185,6 +188,8 @@ impl Owner {
         let watch = Arc::new(Mutex::new(WatchState::default()));
         let watching = Arc::clone(&watch);
         let mut seen = fingerprint(&path);
+        let published = Arc::new(Mutex::new(Arc::new(settings::load(&path))));
+        let publishing = Arc::clone(&published);
         let worker = std::thread::Builder::new()
             .name("ibis-settings".into())
             .spawn(move || {
@@ -201,8 +206,12 @@ impl Owner {
                         );
                         seen = Fingerprint::Bytes(commit.bytes);
                     }
+                    // Effects that run with the outcome read the saved file.
+                    *publishing.recover_lock() = Arc::new(settings::load(&file));
                     let reply = completed.publish.and_then(|publish| attempt(publish).ok());
                     observe(&file, job.receipt + 1, &watching, &mut seen);
+                    // And an edit seen since is in the view before the reply.
+                    *publishing.recover_lock() = Arc::new(settings::load(&file));
                     // Finish the whole turn before returning its outcome. The
                     // caller's next edit must not race this turn's final read.
                     if let Some(reply) = reply {
@@ -219,6 +228,7 @@ impl Owner {
             })),
             worker: Mutex::new(worker),
             watch,
+            published,
         }
     }
 
@@ -279,6 +289,11 @@ impl Owner {
     }
     pub fn path(&self) -> &Path {
         &self.path
+    }
+    /// The settings as the last finished turn left them, without waiting for
+    /// queued work. Use it wherever a caller must not stall on a write.
+    pub fn view(&self) -> Arc<Loaded> {
+        Arc::clone(&self.published.recover_lock())
     }
     pub fn read(&self) -> Loaded {
         self.in_turn(|path| settings::load(path.unwrap_or(&self.path)))
@@ -1010,6 +1025,35 @@ mod tests {
         let panicked = owner.submit(|_: &mut Settings| -> Result<(), SettingsError> { panic!("a broken change") });
         assert!(panicked.wait().is_none(), "a change that panics fails alone");
         assert!(density(&owner, settings::Density::Comfortable).is_ok());
+    }
+
+    #[test]
+    fn the_view_answers_while_a_change_is_held_and_shows_each_save() {
+        let (_directory, owner) = owner();
+        density(&owner, settings::Density::Compact).unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(owner.view().settings.portable.density, Some(settings::Density::Compact));
+        let (started, running) = mpsc::channel();
+        let (release, held) = mpsc::channel::<()>();
+        let slow = owner.submit(move |s: &mut Settings| -> Result<(), SettingsError> {
+            let _ = started.send(());
+            let _ = held.recv_timeout(CHANNEL_LIMIT);
+            s.portable.density = Some(settings::Density::Comfortable);
+            Ok(())
+        });
+        running
+            .recv_timeout(CHANNEL_LIMIT)
+            .unwrap_or_else(|error| panic!("the slow change starts: {error}"));
+        assert_eq!(
+            owner.view().settings.portable.density,
+            Some(settings::Density::Compact),
+            "a held write never blocks the view"
+        );
+        let _ = release.send(());
+        assert!(slow.wait().is_some_and(|saved| saved.is_ok()));
+        assert_eq!(
+            owner.view().settings.portable.density,
+            Some(settings::Density::Comfortable)
+        );
     }
 
     #[test]
