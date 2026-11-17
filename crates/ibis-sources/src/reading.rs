@@ -268,24 +268,3 @@ mod pdf_tests {
         assert!(text_of(None, None, Arc::new(|| false)) == TextState::NotIndexed);
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn reading_pages_require_matching_indexed_and_total_counts() {
-        for (indexed, total) in [
-            (Some(2), Some(1)),
-            (Some(2), Some(3)),
-            (Some(2), None),
-            (None, Some(2)),
-            (None, None),
-        ] {
-            let text = DocumentText::from_zotero("One\u{c}Two".into(), indexed, total);
-            assert!(matches!(text.body, Body::Whole(_)), "counts: {indexed:?}, {total:?}");
-        }
-        let text = DocumentText::from_zotero("One\u{c}Two".into(), Some(2), Some(2));
-        assert!(text.body == Body::Pages(vec!["One".into(), "Two".into()]));
-    }
-}

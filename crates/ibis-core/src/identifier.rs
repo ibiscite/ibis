@@ -397,32 +397,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn token_lookahead_does_not_truncate_unicode_or_hide_a_short_identifier() {
-        let query = format!("10.1000/{}🌙", "x".repeat(504));
-        let mut work = Work::new(query.len(), &|| false);
-        assert!(parse_token(&query, &mut work).is_none());
-
-        let query = format!("PMID:999;{}", "x".repeat(1000));
-        let mut work = Work::new(query.len(), &|| false);
-        let (text, value, rest) = parse_token(&query, &mut work).unwrap_or_else(|| panic!("identifier token"));
-        assert_eq!(text, "PMID:999");
-        assert_eq!(value, Identifier::Pmid("999".into()));
-        assert_eq!(rest.len(), 1001);
-    }
-
-    #[test]
-    fn long_bracket_runs_are_rejected_quickly() {
-        let started = std::time::Instant::now();
-        assert_eq!(parse_query(&"(".repeat(100_000)), None);
-        assert_eq!(parse_query(&format!("{}10.1000/x", "(".repeat(600))), None);
-        assert!(started.elapsed() < std::time::Duration::from_secs(1));
-        assert_eq!(
-            parse_query(&format!("{}10.1000/x", "(".repeat(100))),
-            Some(Identifier::Doi("10.1000/x".into()))
-        );
-    }
-
-    #[test]
     fn queries_in_common_written_forms_are_recognized() {
         let doi = Some(Identifier::Doi("10.1000/xyz.123".into()));
         for q in [

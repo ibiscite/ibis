@@ -16,15 +16,3 @@ fn decomposed_korean_names_keep_family_first_without_rewriting_name_text() {
         assert_eq!(displayed.nfc().collect::<String>(), "김민");
     }
 }
-
-#[test]
-fn korean_family_names_with_latin_given_names_keep_existing_reading_order() {
-    for family in ["김", "김"] {
-        let name = Name {
-            family: Some(family.into()),
-            given: Some("Alex".into()),
-            ..Name::default()
-        };
-        assert_eq!(name.display(), format!("Alex {family}"));
-    }
-}

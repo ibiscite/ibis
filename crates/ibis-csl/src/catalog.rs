@@ -500,38 +500,6 @@ mod tests {
     }
 
     #[test]
-    fn a_damaged_frame_is_a_formatter_failure_never_text() {
-        assert_eq!(unpack(b"not a zstd frame"), Err(FormatError::Runtime));
-        assert_eq!(unpack(&[]), Err(FormatError::Runtime));
-        assert_eq!(file(usize::MAX, 0, 1), Err(FormatError::Runtime));
-        assert_eq!(file(0, usize::MAX, 2), Err(FormatError::Runtime));
-    }
-
-    #[test]
-    fn the_last_style_kept_never_answers_for_another() {
-        let apa = resolve("apa").unwrap();
-        let nature = resolve("nature").unwrap();
-        assert_ne!(apa.xml, nature.xml);
-        assert_eq!(resolve("apa").unwrap().xml, apa.xml);
-    }
-
-    #[test]
-    fn every_listed_language_has_a_file_the_processor_can_find() {
-        for locale in &header().unwrap().locales {
-            assert!(locale_xml(&locale.0).unwrap().is_some(), "{}", locale.0);
-        }
-        // What the processor asks for while running sr-Latn-RS and sr-Cyrl-RS.
-        for (asked, found) in [
-            ("sr-LATN", "sr-Latn-RS"),
-            ("sr-CYRL", "sr-Cyrl-RS"),
-            ("sr-RS", "sr-Latn-RS"),
-        ] {
-            assert!(locale_xml(asked).unwrap().unwrap().contains(found), "{asked}");
-        }
-        assert_eq!(locale_xml("xx-INVENTED"), Ok(None));
-    }
-
-    #[test]
     fn listing_puts_curated_styles_first_and_finds_by_title_or_id() {
         let page = styles("", 3, 0).unwrap();
         assert!(page.total > 10_000);

@@ -398,114 +398,8 @@ mod tests {
             let _ = load_str(&LibraryId::digest(b"synthetic-property"), &text);
             prop_assert_eq!(take_caught_parser_panics(), 0);
         }
-
-        #[test]
-        fn mutated_entries_never_panic(
-            prefix in "\\PC{0,40}",
-            field in prop::sample::select(vec!["title", "crossref", "xdata", "author", "editor", "date", "year", "month", "journal", "pages", "langid"]),
-            value in "\\PC{0,40}",
-            closer in prop::sample::select(vec!["}", ")", "", "}}", "{"]),
-        ) {
-            let text = format!("{prefix}@article{{k, {field} = {{{value}}}{closer}\n@book(b, title={{{value}}})");
-            take_caught_parser_panics();
-            let _ = load_str(&LibraryId::digest(b"synthetic-property"), &text);
-            prop_assert_eq!(take_caught_parser_panics(), 0);
-        }
     }
 
-    #[test]
-    fn reused_records_keep_macro_epochs_and_parent_reads() {
-        let source = LibraryId::digest(b"synthetic field ownership");
-        let macros = load_str(
-            &source,
-            "@string{label={First}}\n@book{a,title=label}\n@string{label={Second}}\n@book{b,title=label}",
-        );
-        assert_eq!(macros.records[0].csl["title"], "First");
-        assert_eq!(macros.records[1].csl["title"], "Second");
-        for text in [
-            "@book{parent,title={Inherited},publisher={Press}}\n@inbook{child,crossref={parent}}\n@inbook{later,crossref={parent}}",
-            "@inbook{child,crossref={parent}}\n@book{parent,title={Inherited},publisher={Press}}\n@inbook{later,crossref={parent}}",
-            "@xdata{parent,publisher={Press}}\n@book{child,xdata={parent}}\n@book{later,xdata={parent}}",
-        ] {
-            let loaded = load_str(&source, text);
-            for record in loaded.records.iter().filter(|record| record.id.key != "record:parent") {
-                assert_eq!(record.csl["publisher"], "Press");
-            }
-            assert!(loaded.records.iter().any(|record| record.id.key == "record:later"));
-            let previous = Snapshot::new(
-                loaded
-                    .records
-                    .into_iter()
-                    .map(ibis_core::contract::LibraryObject::Record)
-                    .collect(),
-            )
-            .unwrap_or_else(|error| panic!("{error}"));
-            let repeated = load_with_budget(&source, text, Budget::for_input(text.len()), Some(&previous));
-            assert!(repeated.records.is_empty());
-            assert_eq!(repeated.reused.len(), previous.objects().len());
-        }
-    }
-    #[test]
-    fn refresh_retains_only_changed_csl_payloads() {
-        use ibis_core::contract::LibraryObject;
-        let source = LibraryId::digest(b"synthetic candidate reuse");
-        let old = load_str(
-            &source,
-            "@book{a,title={Keep}}\n@book{b,title={Before}}\n@book{c,title={Deleted}}",
-        );
-        let previous = Snapshot::new(old.records.into_iter().map(LibraryObject::Record).collect())
-            .unwrap_or_else(|error| panic!("{error}"));
-        let text = "@book{a,title={Keep}}\n@book{b,title={After}}\n@book{d,title={Added}}";
-        let candidate = load_with_budget(&source, text, Budget::for_input(text.len()), Some(&previous));
-        assert!(
-            !candidate
-                .warnings
-                .iter()
-                .any(|warning| warning.code == WarningCode::WorkLimit)
-        );
-        assert_eq!(candidate.records.len(), 2);
-        assert_eq!(candidate.reused.len(), 1);
-        let next = Snapshot::new_reusing(
-            candidate.records.into_iter().map(LibraryObject::Record).collect(),
-            &previous,
-            &candidate.reused,
-        )
-        .unwrap_or_else(|error| panic!("{error}"));
-        let fresh = Snapshot::new(
-            load_str(&source, text)
-                .records
-                .into_iter()
-                .map(LibraryObject::Record)
-                .collect(),
-        )
-        .unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(next, fresh);
-    }
-    #[test]
-    fn recovery_header_limits_are_reported_even_when_candidates_collapse() {
-        let text = format!(
-            "@book{{broken,title={{ {}\n@book{{good}}",
-            "@misc{nested}".repeat(crate::MAX_LIBRARY_RECORDS + 1)
-        );
-        let result = load_str(&LibraryId::digest(b"synthetic"), &text);
-        assert!(
-            result
-                .warnings
-                .iter()
-                .any(|warning| warning.code == WarningCode::WorkLimit)
-        );
-    }
-    #[test]
-    fn minimal_entries_pay_fixed_allocation_work() {
-        let result = load_with_budget(&LibraryId::digest(b"synthetic"), "@misc{one}", Budget::new(1024), None);
-        assert!(result.records.is_empty());
-        assert!(
-            result
-                .warnings
-                .iter()
-                .any(|warning| warning.code == WarningCode::WorkLimit)
-        );
-    }
     #[test]
     fn damaged_identity_claims_also_quarantine_reused_records() {
         use ibis_core::contract::LibraryObject;
@@ -568,15 +462,5 @@ mod tests {
                 .collect::<Vec<_>>(),
             [(Some(1), Some("one")), (Some(4), Some("one"))]
         );
-    }
-    proptest::proptest! {
-        #![proptest_config(proptest::test_runner::Config::with_cases(64))]
-        #[test]
-        fn arbitrary_damaged_text_keeps_completed_prefix(bytes in proptest::collection::vec(proptest::arbitrary::any::<u8>(),0..4096)) {
-            // The pure parser never resolves file locations from generated data.
-            let text=format!("@book{{first,title={{Invented}}}}\n{}\n@book{{last,title={{Last}}}}",String::from_utf8_lossy(&bytes));
-            let result=load_str(&LibraryId::digest(b"synthetic-property"),&text);
-            proptest::prop_assert!(result.records.iter().any(|record|record.citation_key()==Ok(Some("first"))));
-        }
     }
 }

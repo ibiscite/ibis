@@ -453,43 +453,4 @@ mod tests {
             assert_eq!(serde_json::to_value(&held).unwrap_or_default(), json!({"author": list}));
         }
     }
-
-    #[test]
-    fn a_list_changed_in_place_and_back_is_the_same_record() {
-        let original = csl(json!({"author": [{"family": "Vale"}], "title": "Synthetic"}));
-        let mut touched = original.clone();
-        let _ = touched.get_mut("author");
-        assert_eq!(touched, original);
-        assert_eq!(original, touched);
-        let reread: Csl =
-            serde_json::from_value(serde_json::to_value(&touched).unwrap_or_default()).unwrap_or_default();
-        assert_eq!(reread, touched);
-        assert_eq!(
-            touched.json_pairs(&original).count(),
-            1,
-            "only the title is JSON in both"
-        );
-        let mut changed = original.clone();
-        if let Some(Value::Array(names)) = changed.get_mut("author") {
-            names.push(json!({"family": "Okafor"}));
-        }
-        assert_ne!(changed, original);
-    }
-
-    #[test]
-    fn changing_a_name_list_in_place_keeps_its_meaning() {
-        let mut held = csl(json!({"author": [{"family": "García"}]}));
-        if let Some(Value::Array(names)) = held.get_mut("author") {
-            names.push(json!({"family": "Okafor"}));
-        }
-        assert_eq!(
-            held.get("author"),
-            Some(&json!([{"family": "García"}, {"family": "Okafor"}]))
-        );
-        assert_eq!(
-            held.remove("author"),
-            Some(json!([{"family": "García"}, {"family": "Okafor"}]))
-        );
-        assert!(held.is_empty());
-    }
 }

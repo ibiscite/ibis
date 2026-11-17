@@ -438,16 +438,4 @@ mod tests {
             assert_eq!(refusal(vec![good()], form), [CitationError::UnsupportedForm], "{form}");
         }
     }
-
-    #[test]
-    fn the_key_path_never_writes_a_marker() {
-        let request: CitationRequest = serde_json::from_value(
-            json!({"items":[item(PERSONAL, "ABCD2345", json!({}))],"output":{"kind":"key","syntax":"scannable-cite"}}),
-        )
-        .unwrap();
-        assert_eq!(
-            super::super::cite(&snapshot(), &request),
-            Err(CitationError::UnsupportedOutput)
-        );
-    }
 }

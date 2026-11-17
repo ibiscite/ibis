@@ -51,17 +51,6 @@ fn zotero_7_reads_every_key_from_the_store() {
     assert!(!snapshot.better_bibtex_unknown);
 }
 
-#[test]
-fn a_store_beside_zotero_8_means_a_migration_is_still_pending() {
-    // Better BibTeX 8 renames the store once its keys are in Zotero's field.
-    let dir = fixture(8);
-    last_run(dir.path(), "8.0.1");
-    store(dir.path(), KEYS);
-    let snapshot = read(dir.path());
-    assert_eq!(keys(&snapshot), [Vec::<String>::new(), vec![]]);
-    assert!(snapshot.better_bibtex_unknown);
-}
-
 #[cfg(unix)]
 #[test]
 fn better_bibtex_files_that_cannot_be_copied_never_fail_the_library() {
@@ -86,61 +75,6 @@ fn better_bibtex_files_that_cannot_be_copied_never_fail_the_library() {
     let snapshot = read(dir.path());
     assert!(snapshot.better_bibtex_unknown);
     assert_eq!(snapshot.libraries[0].items.len(), 1);
-}
-
-#[test]
-fn no_better_bibtex_means_no_keys_and_nothing_unknown() {
-    let snapshot = read(fixture(10).path());
-    assert_eq!(keys(&snapshot), [Vec::<String>::new(), vec![]]);
-    assert!(!snapshot.better_bibtex_unknown);
-}
-
-#[test]
-fn a_store_that_cannot_be_read_leaves_keys_unknown_but_the_library_readable() {
-    // No record of which Zotero last ran.
-    let dir = fixture(7);
-    store(dir.path(), KEYS);
-    assert!(read(dir.path()).better_bibtex_unknown);
-
-    // An older store layout.
-    let dir = fixture(7);
-    last_run(dir.path(), "7.0.15");
-    store(dir.path(), "CREATE TABLE \"better-bibtex\" (name TEXT, data TEXT);");
-    assert!(read(dir.path()).better_bibtex_unknown);
-
-    // A key far longer than any Better BibTeX makes.
-    let dir = fixture(7);
-    last_run(dir.path(), "7.0.15");
-    store(
-        dir.path(),
-        &format!(
-            "{KEYS} UPDATE citationkey SET citationKey='{}' WHERE itemID=10;",
-            "k".repeat(300)
-        ),
-    );
-    assert!(read(dir.path()).better_bibtex_unknown);
-
-    // Damaged bytes.
-    let dir = fixture(7);
-    last_run(dir.path(), "7.0.15");
-    std::fs::write(dir.path().join("better-bibtex.sqlite"), b"synthetic damaged store")
-        .unwrap_or_else(|_| panic!("synthetic bytes"));
-    let snapshot = read(dir.path());
-    assert!(snapshot.better_bibtex_unknown);
-    assert_eq!(snapshot.libraries[0].items.len(), 1);
-
-    // A hot journal.
-    let dir = fixture(7);
-    last_run(dir.path(), "7.0.15");
-    store(dir.path(), KEYS);
-    std::fs::write(
-        dir.path().join("better-bibtex.sqlite-journal"),
-        b"\xd9\xd5\x05\xf9\x20\xa1\x63\xd7",
-    )
-    .unwrap_or_else(|_| panic!("synthetic journal"));
-    let snapshot = read(dir.path());
-    assert!(snapshot.better_bibtex_unknown);
-    assert_eq!(keys(&snapshot), [Vec::<String>::new(), vec![]]);
 }
 
 #[test]

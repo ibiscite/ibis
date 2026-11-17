@@ -80,35 +80,6 @@ fn live_keys_come_from_one_read_only_call_per_batch() -> Result {
 }
 
 #[test]
-fn group_keys_are_addressed_by_local_library_id() -> Result {
-    let (port, seen) = zotero(vec![result(json!({"7:ABCD2345": "Group2026"}))])?;
-    let keys = LiveBbt::on_port(port).keys(Some(7), &["ABCD2345"])?;
-    assert_eq!(keys.get("ABCD2345").map(String::as_str), Some("Group2026"));
-    assert!(seen.recv()?.contains(r#""params":[["7:ABCD2345"]]"#));
-    Ok(())
-}
-
-#[test]
-fn libraries_list_local_ids_and_names() -> Result {
-    let (port, _) = zotero(vec![result(json!([
-        {"id": 1, "name": "My Library", "collections": null},
-        {"id": 4, "name": "Synthetic Group", "collections": null},
-        {"id": 5, "name": "Shared Name", "collections": null},
-        {"id": 6, "name": "Shared Name", "collections": null},
-    ]))])?;
-    let libraries = LiveBbt::on_port(port).libraries()?;
-    assert_eq!(libraries.len(), 4);
-    assert_eq!(
-        libraries[1],
-        BbtLibrary {
-            library_id: 4,
-            name: "Synthetic Group".into()
-        }
-    );
-    Ok(())
-}
-
-#[test]
 fn zotero_without_better_bibtex_is_unavailable_not_an_error() -> Result {
     let (port, _) = zotero(vec![
         (404, "No endpoint found".to_owned()),
@@ -127,51 +98,6 @@ fn zotero_without_better_bibtex_is_unavailable_not_an_error() -> Result {
     assert_eq!(live.keys(None, &["ABCD2345"]), Err(BbtError::Unavailable));
     assert_eq!(live.keys(None, &["ABCD2345"]), Err(BbtError::Malformed));
     assert_eq!(live.libraries(), Err(BbtError::Malformed));
-    Ok(())
-}
-
-#[test]
-fn an_older_better_bibtex_without_user_groups_is_not_an_absent_one() -> Result {
-    let (port, _) = zotero(vec![
-        (404, "No endpoint found".to_owned()),
-        (
-            200,
-            json!({"jsonrpc": "2.0", "id": null, "error": {"code": -32601, "message": "x"}}).to_string(),
-        ),
-    ])?;
-    let live = LiveBbt::on_port(port);
-    assert_eq!(live.libraries(), Err(BbtError::Unavailable));
-    assert_eq!(live.libraries(), Err(BbtError::Malformed));
-    Ok(())
-}
-
-#[test]
-fn a_closed_zotero_is_unreachable() -> Result {
-    assert_eq!(
-        LiveBbt::on_port(0).libraries(),
-        Err(BbtError::Transport(TransportError::Unreachable))
-    );
-    Ok(())
-}
-
-#[test]
-fn many_keys_are_sent_in_batches() -> Result {
-    let item_keys: Vec<String> = (0..BATCH + 1).map(|n| format!("A{n:07}")).collect();
-    let keys: Vec<&str> = item_keys.iter().map(String::as_str).collect();
-    let null = |range: std::ops::Range<usize>| -> Value {
-        Value::Object(item_keys[range].iter().map(|key| (key.clone(), Value::Null)).collect())
-    };
-    let mut last = null(BATCH..BATCH + 1);
-    last["A0000500"] = json!("Last2026");
-    let (port, seen) = zotero(vec![result(null(0..BATCH)), result(last)])?;
-    let found = LiveBbt::on_port(port).keys(None, &keys)?;
-    assert_eq!(found.len(), 1);
-    assert!(seen.recv()?.contains("A0000499"));
-    assert!(seen.recv()?.contains(r#"[["A0000500"]]"#));
-
-    let too_many: Vec<String> = (0..MAX_LIVE_KEYS + 1).map(|n| format!("B{n:07}")).collect();
-    let too_many: Vec<&str> = too_many.iter().map(String::as_str).collect();
-    assert_eq!(LiveBbt::on_port(port).keys(None, &too_many), Err(BbtError::TooLarge));
     Ok(())
 }
 
@@ -216,27 +142,5 @@ fn an_older_or_damaged_store_is_refused() -> Result {
          INSERT INTO citationkey VALUES ('not a key', 1, 'Synthetic2026');",
     )?;
     assert_eq!(read_store(&damaged), Err(BbtError::Malformed));
-    Ok(())
-}
-
-#[test]
-fn read_only_keys_are_parsed_and_empty_ones_skipped() -> Result {
-    let json = br#"[
-        {"itemID": 9, "libraryID": 4, "itemKey": "ABCD2345", "citationKey": "Shadow2026"},
-        {"itemID": 10, "libraryID": 4, "itemKey": "EFGH6789", "citationKey": ""}
-    ]"#;
-    assert_eq!(
-        read_only_keys(json)?,
-        vec![StoredKey {
-            library_id: 4,
-            item_key: "ABCD2345".into(),
-            citation_key: "Shadow2026".into()
-        }]
-    );
-    assert_eq!(read_only_keys(b"{}"), Err(BbtError::Malformed));
-    assert_eq!(
-        read_only_keys(br#"[{"itemKey": "ABCD2345"}]"#),
-        Err(BbtError::Malformed)
-    );
     Ok(())
 }

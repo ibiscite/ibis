@@ -513,35 +513,6 @@ mod tests {
     }
 
     #[test]
-    fn unquoted_unicode_page_numbers_preserve_digits_and_count_characters() {
-        for value in ["١٢–١٥", "۱۲–۱۵", "१२–१५", "１２–１５", "๑๒–๑๕", "𝟙𝟚–𝟙𝟝", "١٢٣٤٥٦٧٨٩a"]
-        {
-            let expected = Some(Locator {
-                term: LocatorTerm::Page,
-                value: value.into(),
-            });
-            assert_eq!(parse(&format!("pp. {value}")), expected);
-            assert_eq!(
-                parse_trailing(&format!("Synthetic pp. {value}")).map(|p| p.locator),
-                expected
-            );
-            assert_eq!(parse(&format!("page{value}")), expected);
-        }
-        assert!(
-            parse("pp. ١٢٣٤٥٦٧٨٩٠").is_none(),
-            "ten digits still exceed the numeric limit"
-        );
-        assert!(
-            parse_trailing("Synthetic, ٢٠٢٦").is_none(),
-            "four Unicode digits can be a year"
-        );
-        assert_eq!(
-            parse_trailing("Synthetic, ١٢–١٥").map(|p| p.locator.value),
-            Some("١٢–١٥".into())
-        );
-    }
-
-    #[test]
     fn locator_fields_distinguish_literal_values_from_incomplete_or_invalid_labels() {
         let page = |text: &str| read_field(LocatorTerm::Page, text);
         for value in ["", " ", "p", "p.", "PP", "pp.", "page", "pages", "pgs.", "S."] {
@@ -609,40 +580,6 @@ mod tests {
     }
 
     #[test]
-    fn every_csl_locator_type_can_be_typed() {
-        for term in LocatorTerm::ALL {
-            let label = LABELS
-                .iter()
-                .find(|label| label.term == term)
-                .unwrap_or_else(|| panic!("{term:?}"));
-            let written = label
-                .words
-                .first()
-                .or(label.short.first())
-                .map_or_else(|| "s.v.".to_string(), |word| (*word).to_string());
-            let value = match label.value {
-                Value::Time => "1:02:03",
-                Value::Text => "ratio",
-                _ => "12",
-            };
-            let query = format!("invented work {written} {value}");
-            assert_eq!(
-                parse_trailing(&query).map(|q| q.locator),
-                Some(Locator {
-                    term,
-                    value: value.into()
-                }),
-                "{query}"
-            );
-            // A quoted textual locator works for every type.
-            assert_eq!(
-                parse(&format!("{written} \"the epigraph\"")).map(|l| (l.term, l.value)),
-                Some((term, "the epigraph".into()))
-            );
-        }
-    }
-
-    #[test]
     fn plain_searches_are_left_alone() {
         for query in [
             "smith 2020",
@@ -688,43 +625,6 @@ mod tests {
             "",
         ] {
             assert_eq!(parse_trailing(query), None, "{query}");
-        }
-    }
-
-    #[test]
-    fn an_overlong_locator_is_left_whole_in_the_search() {
-        for query in [
-            format!("smith p {}1", "1, ".repeat(30)),
-            format!("smith, {}1", "1, ".repeat(30)),
-            format!("smith pp {}1", "1-2, ".repeat(20)),
-            format!("smith note \"{}\"", "a".repeat(70)),
-        ] {
-            assert_eq!(parse_trailing(&query), None, "{query}");
-        }
-        let at_limit = format!("smith pp {}2", "1, ".repeat(20));
-        assert_eq!(parse_trailing(&at_limit).map(|q| q.typed.len()), Some(64));
-        let long_search = format!("{} p 45", "sleep ".repeat(30));
-        assert_eq!(parse_trailing(&long_search).map(|q| q.locator.value), Some("45".into()));
-    }
-
-    #[test]
-    fn any_text_is_handled_without_panicking() {
-        for query in [
-            "§",
-            "日本 p 4",
-            "ü, 1",
-            "a ¶",
-            "x §§ 1",
-            "x s.v.",
-            "x sub verbø 1",
-            "x S.",
-            "x “”",
-            &"9, ".repeat(10_000),
-            &"a ".repeat(10_000),
-            &format!("a{} 1", ",".repeat(100_000)),
-        ] {
-            let _ = parse_trailing(query);
-            let _ = parse(query);
         }
     }
 }

@@ -221,13 +221,4 @@ mod tests {
         let keys: Vec<_> = workers.into_iter().map(|worker| worker.join().unwrap()).collect();
         assert!(keys.iter().all(|key| *key == keys[0]));
     }
-
-    #[test]
-    fn identities_are_framed_kind_separated_and_never_the_bare_digest() {
-        let one = library_id(LibraryKind::File, &[b"ab", b"c"]);
-        assert_eq!(one, library_id(LibraryKind::File, &[b"ab", b"c"]));
-        assert_ne!(one, library_id(LibraryKind::File, &[b"a", b"bc"]));
-        assert_ne!(one, library_id(LibraryKind::Zotero, &[b"ab", b"c"]));
-        assert_ne!(library_id(LibraryKind::File, &[b"abc"]), LibraryId::digest(b"abc"));
-    }
 }

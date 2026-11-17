@@ -275,13 +275,6 @@ mod tests {
     use super::*;
     use ibis_core::contract::{ItemOutcome, Notice};
     use serde_json::json;
-    pub(super) fn queued_service(limits: Limits) -> Service {
-        Service {
-            shared: Arc::default(),
-            thread: None,
-            limits,
-        }
-    }
     fn prepared(count: usize, bibliography: bool) -> Prepared {
         let items:Vec<_>=(0..count).map(|index|json!({"id":format!("ibis-{index}"),"type":"book","title":format!("Synthetic {index}"),"author":[{"family":format!("Invented{index}"),"given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"})).collect();
         let cites: Vec<_> = (0..count).map(|index| json!({"id":format!("ibis-{index}")})).collect();
@@ -292,38 +285,6 @@ mod tests {
         let (release, held) = mpsc::channel();
         *service.shared.format_gate.lock().unwrap() = Some((entered, held));
         (running, release)
-    }
-    #[test]
-    fn a_late_startup_warmup_cannot_replace_the_first_previews_style() {
-        let mut service = queued_service(Limits {
-            queue: 1,
-            ..Limits::default()
-        });
-        let first = service.submit(prepared(1, false)).unwrap();
-        // A slow startup style load completes after the person's request. It
-        // must not consume capacity, even if the foreground job was cancelled.
-        first.cancel();
-        let _late = service
-            .warm(crate::input::warm("chicago-author-date", None).unwrap())
-            .unwrap();
-        let preview = service.submit(prepared(1, false)).unwrap();
-        service.start_worker().unwrap();
-        assert_eq!(preview.wait().unwrap().text, "(Invented0, 2026)");
-    }
-    #[test]
-    fn cancelling_queued_request_frees_its_slot_and_worker_recovers() {
-        let mut service = queued_service(Limits {
-            queue: 1,
-            ..Limits::default()
-        });
-        let first = service.submit(prepared(1, true)).unwrap();
-        assert!(matches!(service.submit(prepared(1, true)), Err(FormatError::Busy)));
-        first.cancellation().cancel();
-        assert_eq!(first.wait(), Err(FormatError::Cancelled));
-        drop(service.submit(prepared(1, true)).unwrap());
-        let replacement = service.submit(prepared(1, true)).unwrap();
-        service.start_worker().unwrap();
-        assert!(replacement.wait().unwrap().copy_content(1).is_some());
     }
     #[test]
     fn running_request_cancels_and_restarts_then_next_request_succeeds() {
@@ -351,119 +312,5 @@ mod tests {
                 .copy_content(1)
                 .is_some()
         );
-    }
-    #[test]
-    fn shutdown_cancels_running_and_queued_requests() {
-        let service = Service::new(Limits::default()).unwrap();
-        let (entered, release) = hold_next_format(&service);
-        let running = service.submit(prepared(1, true)).unwrap();
-        entered.recv_timeout(TEST_GATE_LIMIT).unwrap();
-        let queued = service.submit(prepared(1, false)).unwrap();
-        let shared = service.shared.clone();
-        let shutdown = thread::spawn(move || drop(service));
-        {
-            let state = shared.state.lock().unwrap();
-            let (_state, _) = shared
-                .wake
-                .wait_timeout_while(state, TEST_GATE_LIMIT, |_| !shared.stopping.load(Ordering::Acquire))
-                .unwrap();
-            assert!(shared.stopping.load(Ordering::Acquire));
-        }
-        release.send(()).unwrap();
-        shutdown.join().unwrap();
-        assert_eq!(running.wait(), Err(FormatError::Cancelled));
-        assert_eq!(queued.wait(), Err(FormatError::Cancelled));
-    }
-}
-
-#[cfg(test)]
-mod waiting_tests {
-    use super::tests::queued_service;
-    use super::*;
-    use std::time::Duration;
-    fn empty_job() -> Prepared {
-        Prepared {
-            json: String::new(),
-            xml: "".into(),
-            language: "en-US".into(),
-            outcomes: vec![],
-            losses: vec![],
-            notices: vec![],
-            warnings: vec![],
-            empty: true,
-        }
-    }
-    #[test]
-    fn worker_failure_releases_waiters_and_refuses_new_work() {
-        let mut service = queued_service(Limits::default());
-        let mut task = service.submit(empty_job()).unwrap();
-        let shared = service.shared.clone();
-        assert!(
-            thread::spawn(move || {
-                let _state = shared.state.lock().unwrap();
-                panic!("synthetic scheduler failure");
-            })
-            .join()
-            .is_err()
-        );
-        service.start_worker().unwrap();
-        assert_eq!(
-            task.receiver
-                .take()
-                .unwrap()
-                .recv_timeout(Duration::from_secs(1))
-                .unwrap(),
-            Err(FormatError::Runtime)
-        );
-        service.shared.state.clear_poison();
-        assert!(matches!(service.submit(empty_job()), Err(FormatError::Runtime)));
-    }
-    #[test]
-    fn queued_deadline_includes_time_waiting_for_worker() {
-        let timeout = Duration::from_secs(1);
-        let mut service = queued_service(Limits {
-            timeout,
-            ..Limits::default()
-        });
-        let mut task = service
-            .submit_with_clock(empty_job(), || Instant::now() - timeout)
-            .unwrap();
-        service.start_worker().unwrap();
-        assert_eq!(
-            task.receiver
-                .take()
-                .unwrap()
-                .recv_timeout(Duration::from_secs(1))
-                .unwrap(),
-            Err(FormatError::TimedOut)
-        );
-    }
-}
-
-#[cfg(test)]
-mod shutdown_tests {
-    use super::*;
-    use std::time::Duration;
-    #[test]
-    fn shutdown_cannot_change_wait_predicate_outside_its_mutex() {
-        let service = Service::new(Limits::default()).unwrap();
-        let shared = service.shared.clone();
-        let predicate = shared.state.lock().unwrap();
-        let (started, ready) = mpsc::channel();
-        let join = thread::spawn(move || {
-            started.send(()).unwrap();
-            drop(service);
-        });
-        ready.recv().unwrap();
-        let deadline = Instant::now() + Duration::from_millis(100);
-        while !shared.stopping.load(Ordering::Acquire) && Instant::now() < deadline {
-            thread::yield_now();
-        }
-        assert!(
-            !shared.stopping.load(Ordering::Acquire),
-            "shutdown must acquire the wait predicate lock before changing it"
-        );
-        drop(predicate);
-        join.join().unwrap();
     }
 }

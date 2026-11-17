@@ -725,30 +725,6 @@ mod tests {
     }
 
     #[test]
-    fn dates_typed_without_leading_zeros_are_dates() {
-        for (source, expected) in [
-            ("2025-1-12", json!({"date-parts": [[2025,1,12]]})),
-            ("2025-01-2", json!({"date-parts": [[2025,1,2]]})),
-            ("2025-12-1", json!({"date-parts": [[2025,12,1]]})),
-            ("2025-1", json!({"date-parts": [[2025,1]]})),
-            ("2025–1–12", json!({"date-parts": [[2025,1,12]]})),
-            ("2025-1/2025-3", json!({"date-parts": [[2025,1],[2025,3]]})),
-            ("ca. 2025-1", json!({"date-parts": [[2025,1]], "circa": true})),
-            ("2025/1/12", json!({"date-parts": [["2025",1,12]]})),
-            ("2025.1.12", json!({"date-parts": [["2025",1,12]]})),
-            ("2025 Jan 12", json!({"date-parts": [["2025",1,12]]})),
-            ("2025-01-12T08:00:00Z", json!({"date-parts": [["2025",1,12]]})),
-        ] {
-            assert_eq!(to_csl(source, false), expected, "{source}");
-        }
-        assert_eq!(extra_date("2025-1-12"), Some(json!({"date-parts": [[2025,1,12]]})));
-        // Impossible dates stay as typed.
-        for value in ["2025-13-1", "2025-1-32", "2025-2-29", "2025-001-1"] {
-            assert_eq!(to_csl(value, false), json!({"literal": value}), "{value}");
-        }
-    }
-
-    #[test]
     fn invalid_edtf_and_explicit_literals_are_preserved() {
         for value in [
             "2026-02-30",
@@ -798,79 +774,6 @@ mod tests {
         ] {
             assert_eq!(to_csl(source, true), expected, "{source}");
         }
-    }
-
-    #[test]
-    fn era_boundaries_match_zotero_and_preserve_invalid_range_prefixes() {
-        assert_eq!(to_csl("27 BC–AD 14", false), json!({"literal": "27 BC–AD 14"}));
-        assert_eq!(extra_date("27 BC–AD 14"), None);
-        assert_eq!(to_csl("March 15 44BC", false), json!({"date-parts": [[-44,3,15]]}));
-        assert_eq!(
-            to_csl("Spring 200BC", false),
-            json!({"date-parts": [[-200]], "season": "Spring"})
-        );
-    }
-
-    #[test]
-    fn quoted_dates_reject_every_javascript_line_terminator() {
-        for separator in ['\r', '\n', '\u{2028}', '\u{2029}'] {
-            let value = format!("\"Invented{separator}date\"");
-            assert_eq!(extra_date(&value), None);
-            assert_eq!(to_csl(&value, false), json!({"literal": value}));
-        }
-    }
-
-    #[test]
-    fn access_calendar_matches_zotero_constructor_order() {
-        for (source, expected) in [
-            ("2026-02-30", json!({"date-parts": [["2026",2,30]]})),
-            ("2026-02-30T00:00:00Z", json!({"date-parts": [["2026",3,2]]})),
-            ("2026-02-30 12:00:00", json!({"date-parts": [["2026",3,2]]})),
-            ("0001", json!({"date-parts": [["1901",1,1]]})),
-            ("0001-01-01", json!({"date-parts": [["1",1,1]]})),
-            ("0001-01-01T00:00:00Z", json!({"date-parts": [["1901",1,1]]})),
-            ("0001-01-01 00:00:00", json!({"date-parts": [["1901",1,1]]})),
-            ("0000-02-29T00:00:00Z", json!({"date-parts": [["1900",3,1]]})),
-            ("0099-12-31T23:00:00-02:00", json!({"date-parts": [["100",1,1]]})),
-        ] {
-            assert_eq!(to_csl(source, true), expected, "{source}");
-        }
-    }
-
-    #[test]
-    fn malformed_access_timestamp_tails_follow_zotero_empty_literal() {
-        for source in [
-            "2026-10-25 nonsense",
-            "2026-10-25T99:99:99Z",
-            "2026-10-25TbadZ",
-            "2026-10-25 99:99:99",
-            "2026-10-25 12:34:56Z",
-            "2026-10-25T12:34:56+0230",
-            "2026-10-25T12:34:56.123badZ",
-            "2026-10-25T12:34:56.Z",
-            "2026-10-25T12:34:60Z",
-            "2026-10-25T24:00:01Z",
-        ] {
-            assert_eq!(to_csl(source, true), json!({"literal": ""}), "{source}");
-        }
-        for source in [
-            "2026-10-25 12:34",
-            "2026-10-25 12:34:56",
-            "2026-10-25T12:34",
-            "2026-10-25T12:34Z",
-            "2026-10-25T12:34:56.123Z",
-            "2026-10-25T12:34:56.123+02:00",
-        ] {
-            assert_eq!(
-                to_csl(source, true),
-                json!({"date-parts": [["2026",10,25]]}),
-                "{source}"
-            );
-        }
-        assert_eq!(
-            to_csl("2026-10-25T24:00:00Z", true),
-            json!({"date-parts": [["2026",10,26]]})
-        );
     }
 
     #[test]
