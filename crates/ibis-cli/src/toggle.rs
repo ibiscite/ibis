@@ -251,12 +251,11 @@ mod toggle_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod bundled_tests {
     use super::*;
 
     // AppImages exist only on Linux; the Unix paths mean nothing on Windows.
-    #[cfg(unix)]
     #[test]
     fn inherited_appimage_variables_cannot_replace_the_bundled_or_managed_app() {
         use ibis_core::command_install::appimage_for;

@@ -251,7 +251,7 @@ fn show_windows_picker_with<A: FnOnce()>(action: A, dispatch: impl FnOnce(A)) {
     dispatch(action);
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux", test))]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn on_picker_thread_with<A: FnOnce()>(on_thread: bool, action: A, dispatch: impl FnOnce(A)) {
     if on_thread {
         action();

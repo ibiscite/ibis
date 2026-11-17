@@ -239,6 +239,7 @@ fn find_in_ignores_case_and_line_breaks_and_gives_short_one_line_passages() {
     assert!(found.chars().count() <= PASSAGE_CHARS + 2);
 }
 
+#[cfg(unix)]
 fn engine_with(source: &str) -> (Engine, tempfile::TempDir, std::path::PathBuf) {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("invented.bib");
