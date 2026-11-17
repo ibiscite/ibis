@@ -135,27 +135,6 @@ def validate_bundle(bundle):
     return bundle
 
 
-def load_bundle(path):
-    def unique(pairs):
-        result = {}
-        for key, value in pairs:
-            if key in result:
-                raise ValueError()
-            result[key] = value
-        return result
-    def invalid(_value):
-        raise ValueError()
-    try:
-        with Path(path).open("rb") as source:
-            content = source.read(MAX_BYTES + 1)
-        if len(content) > MAX_BYTES:
-            raise ValueError()
-        bundle = json.loads(content.decode("utf-8"), object_pairs_hook=unique, parse_constant=invalid)
-        return validate_bundle(bundle)
-    except (OSError, ValueError, UnicodeError, RecursionError):
-        raise BundleError("Malformed or unreadable evidence bundle (limit: 1 MiB)") from None
-
-
 class Evidence:
     def __init__(self, scenario, options, metadata):
         self.started = time.monotonic()
