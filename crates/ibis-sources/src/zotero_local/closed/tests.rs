@@ -4,13 +4,13 @@ pub(super) fn fixture(version: u8) -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic database directory"));
     let db =
         rusqlite::Connection::open(dir.path().join("zotero.sqlite")).unwrap_or_else(|_| panic!("synthetic database"));
-    db.execute_batch(include_str!("../../fixtures/closed/schema.sql"))
+    db.execute_batch(include_str!("../../../fixtures/zotero/closed/schema.sql"))
         .unwrap_or_else(|_| panic!("synthetic schema"));
     let sql = match version {
-        7 => include_str!("../../fixtures/closed/zotero7.sql"),
-        8 => include_str!("../../fixtures/closed/zotero8.sql"),
-        9 => include_str!("../../fixtures/closed/zotero9.sql"),
-        10 => include_str!("../../fixtures/closed/zotero10.sql"),
+        7 => include_str!("../../../fixtures/zotero/closed/zotero7.sql"),
+        8 => include_str!("../../../fixtures/zotero/closed/zotero8.sql"),
+        9 => include_str!("../../../fixtures/zotero/closed/zotero9.sql"),
+        10 => include_str!("../../../fixtures/zotero/closed/zotero10.sql"),
         _ => panic!("synthetic version"),
     };
     db.execute_batch(sql)
@@ -190,7 +190,7 @@ fn the_text_cache_is_read_from_a_regular_file_in_the_attachments_folder() {
     std::fs::create_dir_all(&large).unwrap_or_else(|_| panic!("synthetic storage"));
     std::fs::write(
         large.join(".zotero-ft-cache"),
-        vec![b'a'; crate::fulltext::MAX_TEXT_BYTES + 1],
+        vec![b'a'; crate::zotero_local::fulltext::MAX_TEXT_BYTES + 1],
     )
     .unwrap_or_else(|_| panic!("synthetic cache"));
     assert_eq!(

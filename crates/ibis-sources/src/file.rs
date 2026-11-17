@@ -95,6 +95,20 @@ impl Format {
         }
     }
 
+    /// What a library in this format offers. A proposal rewrites the file, so
+    /// it needs a BibTeX file named as one, never one recognised by its text.
+    fn capabilities(self, path: &Path) -> &'static [crate::SourceCapability] {
+        use crate::SourceCapability::*;
+        match self {
+            Self::Bibtex if Self::named(path) == Some(Self::Bibtex) => {
+                &[BibliographicRecords, NativeCitationKeys, AttachmentText, Proposals]
+            }
+            Self::Bibtex | Self::CslJson => &[BibliographicRecords, NativeCitationKeys, AttachmentText],
+            // Decision 0043: no citation keys and no attachments.
+            Self::Ris | Self::Csv => &[BibliographicRecords],
+        }
+    }
+
     pub(crate) fn named(path: &Path) -> Option<Self> {
         NAMES.iter().find_map(|(format, names)| {
             path.extension()
@@ -333,7 +347,7 @@ fn parse_with_budget(
     previous: Option<&Snapshot>,
     scope: Option<&io::Scope<'_>>,
 ) -> Result<LoadedLibrary, SourceError> {
-    let (source, library, parsed) = parse_format(path, text, budget, previous)?;
+    let (source, library, format, parsed) = parse_format(path, text, budget, previous)?;
     let parsed_cut_short = parsed.cut_short;
     let mut objects: Vec<_> = parsed.records.into_iter().map(LibraryObject::Record).collect();
     let mut warnings = parsed.warnings;
@@ -356,6 +370,7 @@ fn parse_with_budget(
     Ok(LoadedLibrary {
         library,
         kind: crate::LibraryKind::File,
+        capabilities: format.capabilities(&source),
         snapshot,
         warnings,
         duplicate_keys: parsed.duplicate_keys,
@@ -370,17 +385,18 @@ fn parse_format(
     text: &str,
     budget: bibtex::Budget,
     previous: Option<&Snapshot>,
-) -> Result<(PathBuf, ibis_core::contract::LibraryId, crate::ParsedLibrary), SourceError> {
+) -> Result<(PathBuf, ibis_core::contract::LibraryId, Format, crate::ParsedLibrary), SourceError> {
     let source = std::path::absolute(path).map_err(|_| SourceError::Unavailable)?;
     let library = crate::identity::library_id(crate::LibraryKind::File, &[source.as_os_str().as_encoded_bytes()]);
     let text = text.trim_start_matches('\u{feff}');
-    let parsed = match Format::of(&source, text)? {
+    let format = Format::of(&source, text)?;
+    let parsed = match format {
         Format::CslJson => csl_json::load_str(&library, text)?,
         Format::Ris => exported::ris::load(&library, text, previous)?,
         Format::Csv => exported::csv::load(&library, text, previous)?,
         Format::Bibtex => bibtex::load_with_budget(&library, text, budget, previous),
     };
-    Ok((source, library, parsed))
+    Ok((source, library, format, parsed))
 }
 
 /// Where the attachment `key` of `parent` is, when the library file at
@@ -397,7 +413,7 @@ pub fn attachment_file(
     cancelled: &dyn Fn() -> bool,
 ) -> Result<Option<PathBuf>, SourceError> {
     let observation = SourceSnapshot::read_with(path, || {}, &io::Scope::new(cancelled))?;
-    let (source, library, parsed) = parse_format(
+    let (source, library, _, parsed) = parse_format(
         &observation.source,
         &observation.text,
         bibtex::Budget::for_input(observation.text.len()),

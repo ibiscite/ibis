@@ -17,7 +17,12 @@ fn attachment_consent_is_bound_to_the_complete_profile_library_identity() {
     let engine = Engine::new().unwrap();
     let empty = Snapshot::new(vec![]).unwrap();
     for id in [&first_library, &other_library] {
-        let mut info = LibraryInfo::clean(id.clone(), LibraryKind::Zotero, 0);
+        let mut info = LibraryInfo::clean(
+            id.clone(),
+            LibraryKind::Zotero,
+            &[SourceCapability::AttachmentText],
+            empty.fingerprints().full.clone(),
+        );
         info.zotero = Some(ZoteroLibrary::User);
         engine.shared.install(info, &empty, None).unwrap();
     }

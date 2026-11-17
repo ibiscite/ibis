@@ -24,4 +24,4 @@ data, persistent descriptors and interrupted data migrations require an explicit
 manual choice; the offline snapshot reader must validate candidate availability.
 
 No personal profile, database, network connection or write to Zotero is needed
-to run `cargo test -p ibis-zotero-local --test discovery`.
+to run `cargo test -p ibis-sources --test zotero_discovery`.

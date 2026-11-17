@@ -10,6 +10,8 @@
 //! <https://github.com/zotero/zotero/blob/main/chrome/content/zotero/xpcom/dataDirectory.js>.
 //! Guarded configuration opens support macOS, Windows and Linux x86-64/ARM64.
 //! Other native targets refuse configuration opens; manual override still works.
+// This module owns I/O on Zotero's profile and data folders, as `file::io` does for library files.
+#![allow(clippy::disallowed_methods)]
 
 use std::fmt;
 use std::fs::{File, OpenOptions};

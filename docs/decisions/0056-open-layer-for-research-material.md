@@ -73,7 +73,7 @@ Checked against `main` at 3613e88:
 - The contract already names attachments, notes, annotations, collections, tags
   and saved searches; attachment text is read with verified pages.
 
-The gaps: `SourceCapability` covers only records and keys, and reading content
+The gaps at that commit (steps 1 and 2 below closed the first and third): `SourceCapability` covers only records and keys, and reading content
 branches on `LibraryKind` directly, so there is no source interface yet; the
 stable surface is not written down; annotations (`page_label`, `page_index`) and
 attachment text (`pdf_page`, `cite_page`) use two page vocabularies; and others
@@ -119,19 +119,20 @@ Ibis covers this graph read-only first, then through confirmed proposals.
 
 After the six foundation items:
 
-1. **Source interface.** When `ibis-zotero-local` merges into `ibis-sources`,
-   one Rust interface serves both real implementations (files and Zotero) with
-   declared capabilities, including content access, replacing the engine's
-   branches on `LibraryKind`. Each source reports a change token, and the
-   contract gains one whole-library read with that token, which tools that
-   mirror a library need first.
-2. **Plumbing and porcelain.** [The CLI reference](../cli.md) lists the stable
-   surface (`--json` envelopes, `call`, `serve`, `mcp`, `schema`, error codes and
-   exit codes) and what may change freely (human output and wording). Contract 1
-   stays additive, with the support window that reference already gives. The
-   engine and CLI limits above are measured and added to the performance checks.
-   One real outside use, such as a Pandoc filter or an agent tool that today reads
-   Zotero itself, proves the surface.
+1. **Source interface.** Built on 2026-11-17: `ibis-zotero-local` is merged into
+   `ibis-sources`; each reader declares its library's capabilities, now
+   including `attachment-text` and `proposals`, and the engine asks those, not
+   the library kind; each library carries a `revision`, its snapshot's full
+   fingerprint. No Rust trait was added over the two readers: file watches and
+   Zotero's live and closed reads share only their output, `LoadedLibrary`,
+   and that output is the interface step 4 exposes. Left: one whole-library
+   read with its `revision`, which tools that mirror a library need first.
+2. **Plumbing and porcelain.** Built on 2026-11-17: [the CLI reference](../cli.md)
+   lists what programs may rely on and what may change. Contract 1 stays
+   additive, with the support window that reference already gives. Left: the
+   engine and CLI limits above, measured and added to the performance checks,
+   and one real outside use, such as a Pandoc filter or an agent tool that today
+   reads Zotero itself.
 3. **Anchors.** The anchor type lands in `ibis-core::contract` before
    annotations and passages ship in 0.5.
 4. **External source adapters.** An `ibis-source-<name>` program on PATH, beside

@@ -31,7 +31,7 @@ use std::time::{Duration, Instant};
 use ibis_core::zotero::api::TransportError;
 use serde_json::{Value, json};
 
-use crate::{CONNECT_TIMEOUT, DEADLINE, DEFAULT_PORT, Deadline, IO_TIMEOUT, io_error, read_response};
+use crate::zotero_local::{CONNECT_TIMEOUT, DEADLINE, DEFAULT_PORT, Deadline, IO_TIMEOUT, io_error, read_response};
 
 /// As many records as the closed reader reads items.
 pub const MAX_RECORDS: usize = 1_000_000;

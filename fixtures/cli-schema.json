@@ -320,6 +320,10 @@
               }
             ]
           },
+          "Fingerprint": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
           "FocusTarget": {
             "enum": [
               "format-picker",
@@ -360,6 +364,7 @@
           "LibraryInfo": {
             "properties": {
               "capabilities": {
+                "description": "What this library offers, as its reader declared.",
                 "items": {
                   "$ref": "#/$defs/SourceCapability"
                 },
@@ -396,6 +401,10 @@
                   }
                 ],
                 "description": "What a person can do about `refresh_error`, when the failure says."
+              },
+              "revision": {
+                "$ref": "#/$defs/Fingerprint",
+                "description": "Changes whenever the library's published content may have changed;\na tool that mirrors the library rereads it only then."
               },
               "updated_at_ms": {
                 "format": "uint64",
@@ -440,6 +449,7 @@
               "id",
               "kind",
               "capabilities",
+              "revision",
               "objects",
               "warnings",
               "warnings_total",
@@ -897,15 +907,29 @@
             ]
           },
           "SourceCapability": {
-            "description": "A fixed list per kind, not a plugin system. Zotero's two read paths share\none kind, so running and closed Zotero cannot offer different lists.",
-            "enum": [
-              "bibliographic-records",
-              "native-citation-keys",
-              "extra-citation-keys",
-              "key-aliases",
-              "key-conflicts"
-            ],
-            "type": "string"
+            "description": "What a library offers, declared by the reader that loaded it. Zotero's two\nread paths declare one list, so running and closed Zotero cannot differ.",
+            "oneOf": [
+              {
+                "enum": [
+                  "bibliographic-records",
+                  "native-citation-keys",
+                  "extra-citation-keys",
+                  "key-aliases",
+                  "key-conflicts"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "attachment-text",
+                "description": "Attachments whose text an AI app may read once the person allows it\nfor this library (decision 0055).",
+                "type": "string"
+              },
+              {
+                "const": "proposals",
+                "description": "Changes an AI app proposes and the person confirms in Ibis (decision 0055).",
+                "type": "string"
+              }
+            ]
           },
           "SourceFinding": {
             "description": "A problem with one library a result consulted. Codes only: no source text.",

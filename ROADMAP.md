@@ -49,10 +49,9 @@ the maintainer promotes it.
 - Finish the picker controller's ownership of asynchronous work and consolidate
   shared controls as screens change. Keep UI state in the interface and library
   and citation behavior in the engine.
-- Merge `ibis-zotero-local` into `ibis-sources` behind one source interface
-  with declared capabilities and a change token, serving files and Zotero alike.
-- Write down the stable machine surface of the CLI, JSON-RPC and MCP, and add
-  engine and CLI speed and memory limits
+- Measure engine and CLI speed and memory limits and add them to the
+  performance checks; then one whole-library read with its `revision`, and one
+  real outside use of the stable surface
   ([0056](docs/decisions/0056-open-layer-for-research-material.md)).
 - Replace tests of source/CSS text and call order with supported outcomes;
   generate reproducible action/race sequences for picker, Settings and delivery.

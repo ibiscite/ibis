@@ -13,6 +13,8 @@ pub mod project;
 pub mod reading;
 mod urls;
 pub mod zotero;
+/// Zotero on this computer: its local API, closed database and Better BibTeX.
+pub mod zotero_local;
 
 use std::collections::BTreeMap;
 
@@ -192,8 +194,8 @@ pub enum LibraryKind {
     Snapshot,
 }
 
-/// A fixed list per kind, not a plugin system. Zotero's two read paths share
-/// one kind, so running and closed Zotero cannot offer different lists.
+/// What a library offers, declared by the reader that loaded it. Zotero's two
+/// read paths declare one list, so running and closed Zotero cannot differ.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum SourceCapability {
@@ -202,23 +204,24 @@ pub enum SourceCapability {
     ExtraCitationKeys,
     KeyAliases,
     KeyConflicts,
+    /// Attachments whose text an AI app may read once the person allows it
+    /// for this library (decision 0055).
+    AttachmentText,
+    /// Changes an AI app proposes and the person confirms in Ibis (decision 0055).
+    Proposals,
 }
 
-impl LibraryKind {
-    pub fn capabilities(self) -> &'static [SourceCapability] {
-        use SourceCapability::*;
-        match self {
-            Self::File => &[BibliographicRecords, NativeCitationKeys],
-            Self::Zotero => &[
-                BibliographicRecords,
-                NativeCitationKeys,
-                ExtraCitationKeys,
-                KeyAliases,
-                KeyConflicts,
-            ],
-            Self::Snapshot => &[BibliographicRecords],
-        }
-    }
+impl SourceCapability {
+    /// Records handed to the engine whole, with no source behind them.
+    pub const SNAPSHOT: &'static [Self] = &[Self::BibliographicRecords];
+    const ZOTERO: &'static [Self] = &[
+        Self::BibliographicRecords,
+        Self::NativeCitationKeys,
+        Self::ExtraCitationKeys,
+        Self::KeyAliases,
+        Self::KeyConflicts,
+        Self::AttachmentText,
+    ];
 }
 
 /// One immutable library plus private source ownership. Paths never serialize.
@@ -226,6 +229,7 @@ impl LibraryKind {
 pub struct LoadedLibrary {
     pub library: LibraryId,
     pub kind: LibraryKind,
+    pub capabilities: &'static [SourceCapability],
     pub snapshot: Snapshot,
     pub warnings: Vec<SourceWarning>,
     /// The read stopped at a limit and left later records unread, so a key

@@ -280,7 +280,7 @@ impl Store {
 fn overlapping(data: &Path, cache: &Path) -> Result<bool, ClosedError> {
     #[cfg(windows)]
     {
-        use crate::discovery::{Platform, path_identity};
+        use crate::zotero_local::discovery::{Platform, path_identity};
         // Both directories have passed locality/reparse checks. Normalize only
         // for comparison: Windows' case and 8.3 aliases must not let a refresh
         // replace the source with its own cache. Keep original paths for opens.

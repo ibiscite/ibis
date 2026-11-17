@@ -5,6 +5,8 @@
 //! lease excludes concurrent refresh/query; only a completely published stamp
 //! permits reuse. Errors
 //! and Debug output never include paths or item text.
+// This module owns I/O on Zotero's data folder, as `file::io` does for library files.
+#![allow(clippy::disallowed_methods)]
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -81,7 +83,7 @@ pub struct RawItem {
     pub item_type: String,
     pub creators: Vec<RawCreator>,
     pub fields: BTreeMap<String, String>,
-    /// Keys Better BibTeX keeps outside Zotero's own fields (see [`crate::bbt`]).
+    /// Keys Better BibTeX keeps outside Zotero's own fields (see [`crate::zotero_local::bbt`]).
     pub better_bibtex_keys: Vec<String>,
 }
 
@@ -270,12 +272,12 @@ pub fn read_text_cache(
     key: &str,
     cancelled: Arc<dyn Fn() -> bool + Send + Sync>,
 ) -> Result<Option<String>, ClosedError> {
-    if !crate::fulltext::valid_key(key) {
+    if !crate::zotero_local::fulltext::valid_key(key) {
         return Err(ClosedError::UnsafeSource);
     }
     use std::io::Read;
     let path = trusted_folder(data).join("storage").join(key).join(".zotero-ft-cache");
-    let limit = crate::fulltext::MAX_TEXT_BYTES as u64;
+    let limit = crate::zotero_local::fulltext::MAX_TEXT_BYTES as u64;
     let read = with_local_file(&path, cancelled, LOCAL_FILE_BUDGET, move |file| {
         let mut bytes = Vec::new();
         file.take(limit + 1).read_to_end(&mut bytes).map(|_| bytes)

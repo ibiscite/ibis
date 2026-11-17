@@ -265,6 +265,7 @@ mod tests {
             .publish_library(
                 ibis_core::contract::LibraryId::digest(b"synthetic event"),
                 crate::LibraryKind::Snapshot,
+                crate::SourceCapability::SNAPSHOT,
                 Arc::new(ibis_core::contract::Snapshot::new(vec![]).unwrap()),
             )
             .unwrap();

@@ -13,7 +13,8 @@ ibis-core = { path = "../ibis-core" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["raw_value"] }
 thiserror = "2.0.21"
-ibis-zotero-local = { path = "../ibis-zotero-local" }
+rusqlite = { version = "0.41.0", default-features = false, features = ["bundled", "hooks", "limits"] }
+ryu-js = "1.0.3"
 biblatex = "0.12.0"
 getrandom = "0.4.3"
 notify = "8.2.0"
@@ -21,11 +22,21 @@ notify = "8.2.0"
 unicode-normalization = "0.1.26"
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.31.3", default-features = false, features = ["fs", "resource"] }
+nix = { version = "0.31.3", default-features = false, features = ["fs", "resource", "user"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+xattr = "1.6.1"
 
 [target.'cfg(windows)'.dependencies]
 # Already locked through the desktop: safe mount/placeholder metadata queries.
 winsafe = { version = "0.0.29", default-features = false, features = ["kernel"] }
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Storage_FileSystem",
+    "Win32_System_Diagnostics_ToolHelp",
+] }
+
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_System_IO", "Win32_Security"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"
@@ -34,7 +45,8 @@ rusqlite = { version = "0.41.0", features = ["bundled", "hooks"] }
 insta = { version = "1.49.0", features = ["json"] }
 proptest = "1.12.0"
 
-# Deny unsafe except in the scoped post-fork descriptor boundary (0029).
+# Deny unsafe except in the scoped post-fork descriptor boundary and the
+# native Windows boundary of closed Zotero reads (0029).
 [lints.rust]
 unsafe_code = "deny"
 

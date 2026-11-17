@@ -150,7 +150,8 @@ fn info(loaded: &LoadedLibrary) -> LibraryInfo {
     LibraryInfo {
         id: loaded.library.clone(),
         kind: loaded.kind,
-        capabilities: loaded.kind.capabilities().to_vec(),
+        capabilities: loaded.capabilities.to_vec(),
+        revision: loaded.snapshot.fingerprints().full.clone(),
         objects: loaded.snapshot.objects().len(),
         warnings: loaded.warnings.iter().take(MAX_WARNING_DETAILS).cloned().collect(),
         warnings_total: loaded.warnings.len(),

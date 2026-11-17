@@ -38,6 +38,7 @@ fn golden_cases_replay_through_mcp() {
                 .publish_library(
                     library,
                     ibis_engine::LibraryKind::Snapshot,
+                    ibis_engine::SourceCapability::SNAPSHOT,
                     Arc::new(Snapshot::new(objects).unwrap()),
                 )
                 .unwrap();

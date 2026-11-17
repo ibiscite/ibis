@@ -849,6 +849,7 @@ fn test_library(id: &str, objects: usize) -> LibraryInfo {
         id: LibraryId::new(id).unwrap(),
         kind: ibis_engine::LibraryKind::Zotero,
         capabilities: vec![],
+        revision: ibis_core::contract::Fingerprint::of_bytes(id.as_bytes()),
         objects,
         warnings: vec![],
         warnings_total: 0,

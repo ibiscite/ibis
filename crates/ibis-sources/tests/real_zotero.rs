@@ -13,8 +13,8 @@ use std::net::TcpStream;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use ibis_zotero_local::live::{Library, LiveReader, Refresh};
-use ibis_zotero_local::{DEFAULT_PORT, LocalZotero};
+use ibis_sources::zotero_local::live::{Library, LiveReader, Refresh};
+use ibis_sources::zotero_local::{DEFAULT_PORT, LocalZotero};
 
 const ARTICLE: &str = r#"{
   "itemType": "journalArticle",
@@ -213,7 +213,7 @@ fn ibis_reads_what_a_real_zotero_sends() -> Result<(), Box<dyn Error>> {
 
 // Zotero 10 migrates recognized Extra key lines into the native key field.
 // Ordinary Extra prose must survive independently of that migration.
-fn has_key(item: &ibis_zotero_local::live::ItemData, key: &str) -> bool {
+fn has_key(item: &ibis_sources::zotero_local::live::ItemData, key: &str) -> bool {
     item.fields.get("citationKey").is_some_and(|value| value == key)
         || item.fields.get("extra").is_some_and(|extra| {
             extra.lines().any(|line| {

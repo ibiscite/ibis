@@ -75,6 +75,12 @@ computer; [architecture](architecture.md#data-and-identity) explains identity.
 Library commands save only the private identity key; explicit `settings` and
 `writings` commands also write the settings you choose.
 
+In `libraries --json`, each library lists the `capabilities` its reader
+declares (`bibliographic-records`, key kinds, `attachment-text`, `proposals`)
+and a `revision` that changes whenever its published content may have changed.
+A tool that mirrors a library compares `revision` and rereads only when it
+differs. RIS and CSV files declare records only: they have no citation keys.
+
 Without explicit libraries, `search`, `show`, `cite`, `libraries` and `call`
 of the first three use the app's choice. Stable settings take precedence;
 Nightly is used when only it has settings. Missing, damaged, newer or unusable
@@ -421,6 +427,18 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 <!-- End of generated options. -->
 
 ## Output for scripts and agents
+
+What other programs may rely on, and what may change:
+
+| Stable within a contract version | Free to change |
+| --- | --- |
+| `--json` envelopes and their `data`, as `ibis schema` describes them | Terminal output, its layout and wording |
+| `call`, `serve` (JSON-RPC) and `mcp` requests and results | Message text; use `message.id` and its arguments |
+| Error codes, reasons, recoveries and exit codes | Option help text and the order of options |
+| Library ids, record ids and `revision` values, as opaque strings | How ids and revisions are computed |
+
+Build on the left column. Terminal output is for people
+([decision 0056](decisions/0056-open-layer-for-research-material.md)).
 
 `--json` writes one envelope and newline to stdout, including help and
 argument errors. Human explanations and warnings go to stderr. `serve` and

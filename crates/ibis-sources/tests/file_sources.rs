@@ -532,3 +532,45 @@ fn file_json_extensions_use_csl_json() -> Result<(), Box<dyn std::error::Error>>
     }
     Ok(())
 }
+
+#[test]
+fn each_file_format_declares_what_it_offers() -> Result<(), Box<dyn std::error::Error>> {
+    use ibis_sources::SourceCapability::*;
+
+    let dir = tempfile::tempdir()?;
+    let bibtex = "@book{one,title={Invented reference}}";
+    let cases: [(&str, &str, &[ibis_sources::SourceCapability]); 5] = [
+        (
+            "refs.bib",
+            bibtex,
+            &[BibliographicRecords, NativeCitationKeys, AttachmentText, Proposals],
+        ),
+        // Recognised by its text only: never rewritten by a proposal.
+        (
+            "refs.backup",
+            bibtex,
+            &[BibliographicRecords, NativeCitationKeys, AttachmentText],
+        ),
+        (
+            "refs.json",
+            r#"[{"id":"one","type":"book","title":"Invented reference"}]"#,
+            &[BibliographicRecords, NativeCitationKeys, AttachmentText],
+        ),
+        (
+            "refs.ris",
+            "TY  - BOOK\nTI  - Invented reference\nER  - \n",
+            &[BibliographicRecords],
+        ),
+        (
+            "refs.csv",
+            "type,title\nbook,Invented reference\n",
+            &[BibliographicRecords],
+        ),
+    ];
+    for (name, text, expected) in cases {
+        let path = dir.path().join(name);
+        std::fs::write(&path, text)?;
+        assert_eq!(ibis_sources::load_file(&path)?.capabilities, expected, "{name}");
+    }
+    Ok(())
+}

@@ -34,6 +34,7 @@ fn canonical_citation_golden_cases_replay_through_the_cli() -> Result<(), Box<dy
                 .publish_library(
                     library,
                     ibis_engine::LibraryKind::Snapshot,
+                    ibis_engine::SourceCapability::SNAPSHOT,
                     Arc::new(Snapshot::new(objects)?),
                 )
                 .map_err(|_| "publish")?;

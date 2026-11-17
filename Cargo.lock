@@ -2287,33 +2287,20 @@ dependencies = [
  "biblatex",
  "getrandom 0.4.3",
  "ibis-core",
- "ibis-zotero-local",
  "insta",
  "nix",
  "notify",
  "proptest",
  "rusqlite",
+ "ryu-js",
  "schemars 1.2.3",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.21",
  "unicode-normalization",
- "winsafe",
-]
-
-[[package]]
-name = "ibis-zotero-local"
-version = "0.3.10"
-dependencies = [
- "ibis-core",
- "nix",
- "rusqlite",
- "ryu-js",
- "serde_json",
- "tempfile",
- "thiserror 2.0.21",
  "windows-sys 0.61.2",
+ "winsafe",
  "xattr",
 ]
 

@@ -1,7 +1,7 @@
 //! Shared eligibility and precedence, observed through both output families.
 #![cfg(test)]
 use ibis_core::contract::*;
-use ibis_engine::{Cancellation, CitationCommitError, Engine, LibraryKind};
+use ibis_engine::{Cancellation, CitationCommitError, Engine, LibraryKind, SourceCapability};
 use serde_json::json;
 use std::sync::Arc;
 
@@ -163,6 +163,7 @@ fn recite_refuses_changed_identity_or_annotation_meaning_even_with_identical_tex
                 .publish_library(
                     request.items[0].item.library.clone(),
                     LibraryKind::Snapshot,
+                    SourceCapability::SNAPSHOT,
                     Arc::new(Snapshot::new(objects).unwrap()),
                 )
                 .unwrap();

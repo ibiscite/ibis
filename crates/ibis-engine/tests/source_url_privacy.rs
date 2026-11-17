@@ -61,6 +61,7 @@ fn private_urls_in_file_fields_and_note_overrides_never_reach_formatted_output()
                     .publish_library(
                         loaded.library.clone(),
                         ibis_engine::LibraryKind::Snapshot,
+                        ibis_engine::SourceCapability::SNAPSHOT,
                         Arc::new(loaded.snapshot),
                     )
                     .map_err(|error| format!("{error:?}"))?;

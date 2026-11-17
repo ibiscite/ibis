@@ -1,5 +1,5 @@
 use super::*;
-use crate::closed::tests::{edit, fixture, read_fixture};
+use crate::zotero_local::closed::tests::{edit, fixture, read_fixture};
 
 #[test]
 fn break_foundation_orphaned_library_is_not_silently_discarded() {

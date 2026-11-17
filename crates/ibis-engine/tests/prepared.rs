@@ -82,6 +82,7 @@ fn changed_pick_is_refused_when_copied() -> Result<(), Box<dyn std::error::Error
         .publish_library(
             record.id.library.clone(),
             ibis_engine::LibraryKind::Snapshot,
+            ibis_engine::SourceCapability::SNAPSHOT,
             Arc::new(Snapshot::new(vec![LibraryObject::Record(record)])?),
         )
         .map_err(|error| format!("{:?}", error.code))?;
@@ -114,6 +115,7 @@ fn key_collision_refuses_keys_but_not_formatted_citations() -> Result<(), Box<dy
         .publish_library(
             other.id.library.clone(),
             ibis_engine::LibraryKind::Snapshot,
+            ibis_engine::SourceCapability::SNAPSHOT,
             Arc::new(Snapshot::new(vec![LibraryObject::Record(other)])?),
         )
         .map_err(|_| "publish")?;

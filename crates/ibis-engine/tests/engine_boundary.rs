@@ -16,11 +16,10 @@ use serde_json::Value;
 /// `[build-dependencies]` are not part of what ships, so they are not read.
 ///
 /// Shared capabilities belong in engine methods; clients use core contract types.
-const LAYERS: [(&str, &[&str]); 9] = [
+const LAYERS: [(&str, &[&str]); 8] = [
     ("crates/ibis-core", &[]),
-    ("crates/ibis-zotero-local", &["ibis-core"]),
     ("crates/ibis-csl", &["ibis-core"]),
-    ("crates/ibis-sources", &["ibis-core", "ibis-zotero-local"]),
+    ("crates/ibis-sources", &["ibis-core"]),
     ("crates/ibis-engine", &["ibis-core", "ibis-csl", "ibis-sources"]),
     ("crates/ibis-cli", &["ibis-core", "ibis-engine"]),
     (

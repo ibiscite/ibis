@@ -36,7 +36,7 @@ pub const MAX_FILE_BYTES: u64 = 256 * 1024 * 1024;
 /// The most pages a file read may have.
 pub const MAX_PAGES: u32 = 10_000;
 /// The most text, in bytes, one file may give.
-pub const MAX_TEXT_BYTES: usize = ibis_zotero_local::fulltext::MAX_TEXT_BYTES;
+pub const MAX_TEXT_BYTES: usize = crate::zotero_local::fulltext::MAX_TEXT_BYTES;
 /// How long one extraction may take.
 pub const DEADLINE: Duration = Duration::from_secs(10);
 /// `%PDF-` must start within this many bytes.
@@ -145,7 +145,7 @@ impl PdfReader {
         labels_only: bool,
         cancelled: Arc<dyn Fn() -> bool + Send + Sync>,
     ) -> Result<PdfDocument, Refusal> {
-        use ibis_zotero_local::closed::{ClosedError, with_local_file};
+        use crate::zotero_local::closed::{ClosedError, with_local_file};
         let started = Instant::now();
         let reader = self.clone();
         let stop = cancelled.clone();
@@ -406,7 +406,7 @@ mod tests {
         let reader = PdfReader::new(PathBuf::from("/invented/no-such-ibis"));
         let folder = tempfile::tempdir().unwrap();
         // The test's own folder may sit under a system link (macOS /var).
-        let root = ibis_zotero_local::closed::trusted_folder(folder.path());
+        let root = crate::zotero_local::closed::trusted_folder(folder.path());
         let path = |name: &str| root.join(name);
         assert_eq!(
             reader.read(&path("absent.pdf"), false, Arc::new(|| false)),
@@ -476,7 +476,7 @@ mod tests {
     fn cancelling_a_running_pdf_child_releases_the_caller() {
         use std::os::unix::fs::PermissionsExt;
         let folder = tempfile::tempdir().unwrap();
-        let root = ibis_zotero_local::closed::trusted_folder(folder.path());
+        let root = crate::zotero_local::closed::trusted_folder(folder.path());
         let program = root.join("cancelled-ibis");
         // The child signals entry, then stays busy until cancellation kills it.
         std::fs::write(&program, "#!/bin/sh\n: > \"$0.ready\"\nexec sleep 30\n").unwrap();
@@ -496,7 +496,7 @@ mod tests {
     fn a_child_past_its_deadline_is_stopped() {
         use std::os::unix::fs::PermissionsExt;
         let folder = tempfile::tempdir().unwrap();
-        let root = ibis_zotero_local::closed::trusted_folder(folder.path());
+        let root = crate::zotero_local::closed::trusted_folder(folder.path());
         let program = root.join("slow-ibis");
         std::fs::write(&program, "#!/bin/sh\nexec sleep 30\n").unwrap();
         std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
@@ -514,7 +514,7 @@ mod tests {
         use nix::fcntl::{FcntlArg, FdFlag, fcntl};
         use std::os::{fd::AsRawFd, unix::fs::PermissionsExt};
         let folder = tempfile::tempdir().unwrap();
-        let root = ibis_zotero_local::closed::trusted_folder(folder.path());
+        let root = crate::zotero_local::closed::trusted_folder(folder.path());
         let private = tempfile::tempfile().unwrap();
         // Simulate a descriptor a native caller opened without close-on-exec.
         fcntl(&private, FcntlArg::F_SETFD(FdFlag::empty())).unwrap();
