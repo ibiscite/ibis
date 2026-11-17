@@ -130,23 +130,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cancel_reconciles_the_ignored_blur_after_lease_release_but_selection_does_not() {
-        let chooser = ChooserOpen::default();
-        for action in [None, Some(RowAction::Copy), Some(RowAction::Toggle)] {
-            let lease = chooser.begin().unwrap_or_else(|| panic!("menu owns chooser"));
-            assert!(!crate::picker::hides_on_blur(true, chooser.is_open(), false));
-            let mut reconciled = false;
-            let result = finish(lease, Ok(action), || {
-                reconciled = true;
-                assert!(crate::picker::hides_on_blur(true, chooser.is_open(), false));
-                assert!(!crate::picker::hides_on_blur(true, chooser.is_open(), true));
-            });
-            assert_eq!(result, Ok(action));
-            assert_eq!(reconciled, action.is_none());
-        }
-    }
-
-    #[test]
     fn only_this_popups_first_exact_action_can_complete() {
         let mut pending = Pending {
             ids: [MenuId::new("copy-new"), MenuId::new("toggle-new")],

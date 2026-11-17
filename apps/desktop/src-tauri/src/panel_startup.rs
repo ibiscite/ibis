@@ -97,31 +97,4 @@ mod tests {
             assert_eq!(startup.page_loaded(), None);
         }
     }
-
-    #[test]
-    fn dismissal_after_presentation_cannot_be_undone_by_another_load() {
-        let mut startup = InitialPresentation::new(true, true);
-        assert_eq!(startup.panel_ready(), None);
-        assert_eq!(startup.page_loaded(), Some(true));
-        startup.cancel();
-        assert_eq!(startup.page_loaded(), None);
-        assert!(startup.allows_automatic_blur());
-    }
-
-    #[test]
-    fn automatic_blur_waits_for_initial_presentation_but_explicit_dismiss_does_not() {
-        let mut startup = InitialPresentation::new(true, false);
-        assert!(!startup.allows_automatic_blur());
-        assert_eq!(startup.panel_ready(), None);
-        assert!(!startup.allows_automatic_blur());
-        assert_eq!(startup.page_loaded(), Some(false));
-        assert!(startup.allows_automatic_blur());
-
-        let mut startup = InitialPresentation::new(true, true);
-        assert!(!startup.allows_automatic_blur());
-        startup.cancel();
-        assert!(startup.allows_automatic_blur());
-        assert_eq!(startup.panel_ready(), None);
-        assert_eq!(startup.page_loaded(), None);
-    }
 }

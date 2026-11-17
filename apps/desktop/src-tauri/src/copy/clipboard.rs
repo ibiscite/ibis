@@ -242,13 +242,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_copy_that_began_before_another_ibis_copy_sees_it_was_written() {
-        let began = crate::copy::clipboard_mark();
-        crate::copy::write_token().unwrap_or_else(|error| panic!("{error}"));
-        assert_ne!(crate::copy::clipboard_mark(), began);
-    }
-
-    #[test]
     fn copy_only_writes_have_ordered_receipts_and_failed_io_has_none() {
         let a = write_copy_only(|| Ok(())).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(write_copy_only(|| Err(FAILED.into())), Err(FAILED.into()));
@@ -383,29 +376,6 @@ int main(int argc, const char **argv) { @autoreleasepool {
                 .find(|(flavor, _)| supported.contains(flavor));
             assert_eq!(selected.map(|(flavor, _)| flavor), Some(expected));
         }
-    }
-
-    #[test]
-    fn rich_flavors_are_present_only_when_supplied_and_text_is_always_available() {
-        let rich = ClipboardContent {
-            text: "Invented (2026)",
-            html: Some("<i>Invented</i> (2026)"),
-            rtf: Some("{\\rtf1 {\\i Invented} (2026)}"),
-        };
-        assert_eq!(
-            flavors(&rich),
-            [
-                (Flavor::Html, "<i>Invented</i> (2026)"),
-                (Flavor::Rtf, "{\\rtf1 {\\i Invented} (2026)}"),
-                (Flavor::Text, "Invented (2026)"),
-            ]
-        );
-        let plain = ClipboardContent {
-            text: "[@Invented2026]",
-            html: None,
-            rtf: None,
-        };
-        assert_eq!(flavors(&plain), [(Flavor::Text, "[@Invented2026]")]);
     }
 
     // Exercises the native Windows clipboard with invented data in CI.

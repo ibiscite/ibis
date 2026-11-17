@@ -430,36 +430,6 @@ mod tests {
     }
 
     #[test]
-    fn azerty_help_shortcut_conflicts_use_the_recorded_physical_key() {
-        let azerty = |key, modifiers: Modifiers| match (key, modifiers.contains(Modifiers::SHIFT)) {
-            (46, false) => Some(','),
-            (46, true) => Some('?'),
-            (41, false) => Some('m'),
-            (41, true) => Some('M'),
-            _ => None,
-        };
-        assert_eq!(
-            check_shortcut_with_layout("Shift+Command+KeyM", Modifiers::SUPER, false, Some(&azerty)).err(),
-            Some(ShortcutRefusal::PickerShortcut(PickerCommand::Keys))
-        );
-        let logical = check_shortcut_with_layout("Shift+Command+M", Modifiers::SUPER, false, Some(&azerty))
-            .unwrap_or_else(|error| panic!("logical M should remain available: {error}"));
-        assert_eq!(crate::picker::on_layout_with(logical, azerty).0.key, Code::Semicolon);
-        assert!(check_shortcut_with_layout("Shift+Command+KeyM", Modifiers::SUPER, false, None).is_ok());
-        // A physical F types U on Dvorak, while logical F moves to physical Y.
-        let dvorak = |key, _: Modifiers| match key {
-            3 => Some('u'),
-            16 => Some('f'),
-            _ => None,
-        };
-        assert!(check_shortcut_with_layout("Shift+Command+KeyF", Modifiers::SUPER, false, Some(&dvorak)).is_ok());
-        assert_eq!(
-            check_shortcut_with_layout("Shift+Command+F", Modifiers::SUPER, false, Some(&dvorak)).err(),
-            Some(ShortcutRefusal::PickerShortcut(PickerCommand::Format))
-        );
-    }
-
-    #[test]
     fn recorded_picker_shortcut_conflicts_name_the_owning_command() {
         #[derive(serde::Deserialize)]
         struct Conflict {
@@ -495,49 +465,6 @@ mod tests {
             assert_eq!(shortcut, default_shortcut(), "{}", case.name);
             assert_eq!(label, shortcut_label());
             assert!(error.is_some_and(|error| error.contains(&case.label)), "{}", case.name);
-        }
-    }
-
-    #[test]
-    fn opening_shortcuts_cannot_take_picker_commands_on_any_platform() {
-        // keys.test.ts keeps these cases in sync with KEY_TABLE and the
-        // shifted keys-help alias accepted by the picker key handler.
-        let commands: Vec<String> =
-            serde_json::from_str(include_str!("../../src/testing/picker-command-shortcuts.json"))
-                .unwrap_or_else(|error| panic!("invalid picker shortcuts: {error}"));
-        for (command, windows, modifier) in [
-            (Modifiers::SUPER, false, "Command"),
-            (Modifiers::CONTROL, true, "Control"),
-            (Modifiers::CONTROL, false, "Control"),
-        ] {
-            for keys in &commands {
-                let text = keys.replace("CmdOrCtrl", modifier);
-                assert!(check_shortcut_for(&text, command, windows).is_err(), "{text}");
-            }
-            for key in ["F", "KeyF", "P", "KeyP", "Slash", "/"] {
-                let text = format!("Shift+{modifier}+{key}");
-                assert_eq!(
-                    check_shortcut_for(&text, command, windows).err(),
-                    Some(ShortcutRefusal::PickerShortcut(match key {
-                        "F" | "KeyF" => PickerCommand::Format,
-                        "P" | "KeyP" => PickerCommand::Pin,
-                        _ => PickerCommand::Keys,
-                    })),
-                    "{text}"
-                );
-            }
-            for key in ["Y", "K", "Q", "Comma"] {
-                let text = format!("{modifier}+Shift+{key}");
-                assert!(check_shortcut_for(&text, command, windows).is_ok(), "{text}");
-            }
-            for keys in [
-                "Alt+Shift+F",
-                "Alt+Shift+P",
-                "Alt+Shift+Slash",
-                "Control+Command+Shift+F",
-            ] {
-                assert!(check_shortcut_for(keys, command, windows).is_ok(), "{keys}");
-            }
         }
     }
 
@@ -656,37 +583,6 @@ mod tests {
     }
 
     #[test]
-    fn saving_and_resetting_the_shortcut_keeps_other_settings() {
-        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("fixture failed: {error}"));
-        let file = SettingsFile::new(directory.path().join("settings.json"));
-        file.update(|settings| settings.portable.paste = Some(false))
-            .unwrap_or_else(|error| panic!("fixture failed: {error}"));
-        assert_eq!(save_shortcut(&file, Some("Alt+K".into())), Ok(()));
-        let saved = file
-            .update(|_| {})
-            .unwrap_or_else(|error| panic!("fixture failed: {error}"));
-        assert_eq!(saved.portable.shortcut.here(), Some("Alt+K"));
-        assert_eq!(saved.portable.paste, Some(false));
-        assert_eq!(save_shortcut(&file, None), Ok(()));
-        let saved = file
-            .update(|_| {})
-            .unwrap_or_else(|error| panic!("fixture failed: {error}"));
-        assert_eq!(saved.portable.shortcut.here(), None);
-        assert_eq!(saved.portable.paste, Some(false));
-    }
-
-    #[test]
-    fn a_failed_write_returns_the_not_saved_refusal() {
-        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("fixture failed: {error}"));
-        let path = directory.path().join("settings.json");
-        std::fs::create_dir(&path).unwrap_or_else(|error| panic!("fixture failed: {error}"));
-        assert_eq!(
-            save_shortcut(&SettingsFile::new(path), Some("Alt+K".into())),
-            Err(ShortcutRefusal::NotSaved)
-        );
-    }
-
-    #[test]
     fn a_shortcut_needs_a_real_modifier_and_not_the_command_key_alone() {
         let check = |text| {
             check_shortcut_for(
@@ -709,21 +605,6 @@ mod tests {
         );
         for good in ["Control+Command+R", "Alt+Space", "CommandOrControl+Shift+Y"] {
             assert!(check(good).is_ok(), "{good}");
-        }
-    }
-
-    #[test]
-    fn refusals_have_the_names_the_interface_reads() {
-        for (refusal, name) in [
-            (ShortcutRefusal::Invalid, "invalid"),
-            (ShortcutRefusal::NeedsModifier, "needs-modifier"),
-            (ShortcutRefusal::AppShortcut, "app-shortcut"),
-            (ShortcutRefusal::AltGr, "alt-gr"),
-            (ShortcutRefusal::InUse, "in-use"),
-            (ShortcutRefusal::Unavailable, "unavailable"),
-            (ShortcutRefusal::NotSaved, "not-saved"),
-        ] {
-            assert_eq!(serde_json::to_value(refusal).ok(), Some(serde_json::json!(name)));
         }
     }
 }

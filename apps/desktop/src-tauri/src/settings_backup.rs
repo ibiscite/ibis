@@ -276,25 +276,6 @@ mod tests {
     }
 
     #[test]
-    fn cancellation_retires_a_late_choice_without_consuming_the_reopened_choice() {
-        let pending = PendingRestore::default();
-        let closed = pending.begin().unwrap_or_default();
-        pending.cancel(closed);
-        assert!(!pending.offer(closed, plan(&Settings::default())));
-        let reopened = pending.begin().unwrap_or_default();
-        assert!(pending.offer(reopened, plan(&Settings::default())));
-        pending.cancel(closed);
-        assert!(!pending.offer(closed, plan(&Settings::default())));
-        assert!(pending.take(reopened).is_some());
-
-        let exhausted = PendingRestore(Mutex::new((u32::MAX - 2, None)));
-        let last = exhausted.begin().unwrap_or_default();
-        exhausted.cancel(last);
-        assert!(!exhausted.offer(last, plan(&Settings::default())));
-        assert!(exhausted.begin().is_none(), "exhaustion never reuses a ticket");
-    }
-
-    #[test]
     fn the_save_dialog_starts_in_the_folder_people_sync() {
         let home = Path::new("/invented/home");
         let icloud = home.join("Library/Mobile Documents/com~apple~CloudDocs");

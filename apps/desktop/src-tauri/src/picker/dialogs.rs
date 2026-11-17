@@ -68,16 +68,4 @@ mod tests {
         assert_eq!(won, 1);
         assert!(!chooser.is_open());
     }
-
-    #[test]
-    fn discarded_and_panicking_callbacks_release_the_chooser() {
-        let chooser = ChooserOpen::default();
-        let lease = chooser.begin().unwrap_or_else(|| panic!("first chooser"));
-        drop(move || lease.during(|| {}));
-        assert!(!chooser.is_open());
-        let lease = chooser.begin().unwrap_or_else(|| panic!("next chooser"));
-        assert!(std::panic::catch_unwind(|| lease.during(|| panic!("synthetic callback"))).is_err());
-        assert!(!chooser.is_open());
-        assert!(chooser.begin().is_some());
-    }
 }

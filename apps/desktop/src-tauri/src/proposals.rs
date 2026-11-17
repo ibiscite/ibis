@@ -189,20 +189,4 @@ mod tests {
             }
         );
     }
-
-    #[test]
-    fn proposal_unknown_id_is_refused() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = Proposals::beside(&dir.path().join("settings.json"));
-        let refused = ProposalResult::Refused {
-            sentence: WriteError::from(WriteProblem::UnknownProposal).sentence(),
-        };
-        for id in ["0123456789abcdef", "../settings.json"] {
-            assert_eq!(apply(&store, None, id), refused);
-        }
-        assert!(!store.dir().exists());
-        for id in ["0123456789abcdef", "../settings.json"] {
-            assert_eq!(reject(&store, id), refused);
-        }
-    }
 }

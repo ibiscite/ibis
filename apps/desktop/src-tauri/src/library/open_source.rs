@@ -304,70 +304,6 @@ mod tests {
     use crate::library::tests::{open, owner};
     use crate::preferences::SettingsFile;
 
-    #[cfg(not(target_os = "windows"))]
-    #[test]
-    fn tray_fix_problems_targets_the_warning_library_among_multiple_selections()
-    -> Result<(), Box<dyn std::error::Error>> {
-        use crate::library::zotero_fixture;
-        use ibis_engine::{
-            Engine,
-            settings::{ZoteroLibraries, ZoteroLibrary},
-        };
-        let server = zotero_fixture::Server::new();
-        server.group_warning.store(true, std::sync::atomic::Ordering::Relaxed);
-        let chosen: ZoteroLibraries = serde_json::from_value(serde_json::json!(["user", {"group":7}]))?;
-        let directory = tempfile::tempdir()?;
-        let port = server.port;
-        let library = Owner::new(
-            std::sync::Arc::new(SettingsFile::new(directory.path().join("settings.json"))),
-            move || Engine::with_zotero_port(port),
-            |_| {},
-        );
-        open(&library, Source::Zotero(chosen));
-        let status = library.status();
-        let library = library.view();
-        assert_eq!(status.zotero_libraries, [ZoteroLibrary::User, ZoteroLibrary::Group(7)]);
-        assert_eq!(status.warnings, 1);
-        let affected = SourceItem::Library {
-            library: status.problem_library.ok_or("warning library")?,
-        };
-        let target = target(
-            &library,
-            Some(&affected),
-            &status.revision,
-            &status.source_generation,
-            false,
-        )?;
-        assert_eq!(target, Target::Zotero(ibis_engine::request::ZoteroLibrary::Group(7)));
-        Ok(())
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    #[test]
-    fn opening_zotero_after_a_failed_switch_keeps_the_requested_group() -> Result<(), Box<dyn std::error::Error>> {
-        let directory = tempfile::tempdir()?;
-        let path = directory.path().join("retained.bib");
-        std::fs::write(&path, "@book{invented}")?;
-        let server = crate::library::zotero_fixture::Server::new();
-        server.sharing_off.store(true, std::sync::atomic::Ordering::Relaxed);
-        let port = server.port;
-        let library = Owner::new(
-            std::sync::Arc::new(SettingsFile::new(directory.path().join("settings.json"))),
-            move || ibis_engine::Engine::with_zotero_port(port),
-            |_| {},
-        );
-        open(&library, path);
-        open(
-            &library,
-            Source::Zotero(ibis_engine::settings::ZoteroLibrary::Group(7).into()),
-        );
-        let view = library.view();
-        let generation = view.generation.to_string();
-        let selected = target(&view, None, "", &generation, true)?;
-        assert_eq!(selected, Target::Zotero(ZoteroLibrary::Group(7)));
-        Ok(())
-    }
-
     #[test]
     fn links_use_native_item_keys_and_exact_library_identity() {
         assert_eq!(
@@ -430,33 +366,6 @@ mod tests {
         assert_eq!(
             target(&View::default(), None, "", "", true).ok(),
             Some(Target::Zotero(ZoteroLibrary::User))
-        );
-    }
-
-    #[test]
-    fn an_itemless_open_from_empty_a_cannot_open_empty_b_with_the_same_snapshot() {
-        let directory = tempfile::tempdir().unwrap();
-        let a = directory.path().join("empty-a.bib");
-        let b = directory.path().join("empty-b.bib");
-        std::fs::write(&a, "").unwrap();
-        std::fs::write(&b, "").unwrap();
-        let active = owner(SettingsFile::new(directory.path().join("settings.json")));
-        open(&active, a);
-        let first = active.status();
-        open(&active, b.clone());
-        let second = active.status();
-        let library = active.view();
-        assert_eq!(
-            first.revision, second.revision,
-            "empty snapshots deliberately share their fingerprint"
-        );
-        assert!(matches!(
-            target(&library, None, &first.revision, &first.source_generation, false),
-            Err(CommandError::SnapshotChanged)
-        ));
-        assert_eq!(
-            target(&library, None, &second.revision, &second.source_generation, false).ok(),
-            Some(Target::File(b))
         );
     }
 

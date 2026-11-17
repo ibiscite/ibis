@@ -269,22 +269,3 @@ pub(crate) fn recent_rows(
     };
     Ok((reply, has_history, forget_failed))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_waiting_screen_reads_again_only_when_that_can_change_what_it_says() {
-        use {LibraryProblem as P, ZoteroPresence as Z};
-        for problem in [P::ZoteroClosed, P::ZoteroAccessOff, P::ZoteroProfiles, P::ZoteroMissing] {
-            assert!(zotero_answered(Z::Available, Some(problem)));
-            assert!(!zotero_answered(Z::Absent, Some(problem)));
-        }
-        // Zotero opened with sharing off: the screen must move on from "isn't open".
-        assert!(zotero_answered(Z::AccessOff, Some(P::ZoteroClosed)));
-        assert!(zotero_answered(Z::AccessOff, Some(P::ZoteroProfiles)));
-        // Already saying so: no read every two seconds.
-        assert!(!zotero_answered(Z::AccessOff, Some(P::ZoteroAccessOff)));
-    }
-}

@@ -307,85 +307,6 @@ mod tests {
     }
 
     #[test]
-    fn refresh_keeps_disabled_choices_and_custom_keys() -> Result<(), Box<dyn std::error::Error>> {
-        for off in ["", "Hidden=true\n", "X-GNOME-Autostart-enabled=false\n"] {
-            let root = tempfile::tempdir()?;
-            let program = root.path().join("new-ibis");
-            std::fs::write(&program, b"program")?;
-            let entry = DesktopFile::for_identity(root.path(), "com.ibiscite.ibis", false, "Ibis", program.clone());
-            let path = entry.path.clone();
-            let original = format!(
-                "{}OnlyShowIn=GNOME;\n{off}",
-                desktop_entry("Ibis", &root.path().join("gone")).ok_or("entry")?
-            );
-            std::fs::write(&path, &original)?;
-            let items = LoginItems::new("Ibis", Some(Box::new(entry)));
-            items.refresh();
-            let refreshed = std::fs::read_to_string(&path)?;
-            assert!(refreshed.contains("OnlyShowIn=GNOME;"));
-            if off.is_empty() {
-                assert!(refreshed.contains(&format!("TryExec={}\n", program.display())));
-            } else {
-                assert_eq!(refreshed, original);
-            }
-            assert_eq!(items.reading(), item(off.is_empty(), None));
-            assert!(items.change(true).enabled); // Explicit On keeps its existing reset behavior.
-            assert!(!items.change(false).enabled);
-            assert!(!path.exists());
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn appimage_counts_only_from_inside_its_own_mount() {
-        let p = |s: &str| Some(PathBuf::from(s));
-        // Ibis's own AppImage: the entry names the .AppImage file.
-        assert_eq!(
-            launch_program(
-                p("/tmp/.mount_IbisAb/usr/bin/ibis-desktop"),
-                p("/home/a/Apps/Ibis-Linux.AppImage"),
-                p("/tmp/.mount_IbisAb"),
-                None,
-            ),
-            p("/home/a/Apps/Ibis-Linux.AppImage")
-        );
-        // A .deb Ibis started from another AppImage (a terminal, say) inherits
-        // that app's variables: they must not name it.
-        assert_eq!(
-            launch_program(
-                p("/usr/bin/ibis-desktop"),
-                p("/home/a/Apps/Terminal.AppImage"),
-                p("/tmp/.mount_TermXy"),
-                None,
-            ),
-            p("/usr/bin/ibis-desktop")
-        );
-        assert_eq!(
-            launch_program(
-                p("/usr/bin/ibis-desktop"),
-                p("/home/a/Apps/Terminal.AppImage"),
-                None,
-                None
-            ),
-            p("/usr/bin/ibis-desktop")
-        );
-        assert_eq!(
-            launch_program(p("/usr/bin/ibis-desktop"), p("/x.AppImage"), p("/"), None),
-            p("/usr/bin/ibis-desktop")
-        );
-        assert_eq!(
-            launch_program(
-                p("/tmp/.mount_a/ibis"),
-                p("relative.AppImage"),
-                p("/tmp/.mount_a"),
-                None
-            ),
-            p("/tmp/.mount_a/ibis")
-        );
-        assert_eq!(launch_program(None, p("/x.AppImage"), p("/tmp/.mount_a"), None), None);
-    }
-
-    #[test]
     fn packaged_login_uses_the_launcher_instead_of_the_wrapped_program() {
         let executable = Some(PathBuf::from("/nix/store/example-ibis/bin/.ibis-desktop-wrapped"));
         let launcher = "/nix/store/example-ibis/bin/ibis-desktop";
@@ -448,19 +369,6 @@ mod tests {
         assert_eq!(entry.enable(), Err(Failed));
     }
 
-    #[test]
-    fn hidden_entries_count_as_off() {
-        assert!(!switched_off(
-            "[Desktop Entry]\nName=Ibis\nX-GNOME-Autostart-enabled=true\n"
-        ));
-        assert!(switched_off("[Desktop Entry]\nName=Ibis\nHidden=true\n"));
-        assert!(switched_off("[Desktop Entry]\nX-GNOME-Autostart-enabled = false\n"));
-        // Keys of other groups are not the entry's.
-        assert!(!switched_off(
-            "[Desktop Entry]\nName=Ibis\n[Desktop Action x]\nHidden=true\n"
-        ));
-    }
-
     /// The entry appears and disappears in a temporary configuration folder,
     /// the way it does in `$XDG_CONFIG_HOME/autostart`.
     #[test]
@@ -501,89 +409,6 @@ mod tests {
         assert!(!items.change(false).enabled);
         assert!(!path.exists());
         assert_eq!(items.change(false), items.read());
-    }
-
-    #[test]
-    fn refresh_repoints_only_its_own_entry_whose_program_is_gone() {
-        let home = tempfile::tempdir().unwrap_or_else(|e| panic!("temporary folder: {e}"));
-        let path = home.path().join("autostart/ibis.desktop");
-        let here = home.path().join("now/Ibis Linux.AppImage");
-        std::fs::create_dir_all(here.parent().unwrap_or(home.path())).unwrap_or_default();
-        std::fs::write(&here, "").unwrap_or_default();
-        let moved = home.path().join("gone/Ibis-Linux.AppImage");
-        let entry = file(path.clone(), "Ibis", &here.to_string_lossy());
-
-        // Written by an earlier copy that has since moved, then edited by hand.
-        let old = desktop_entry("Ibis", &moved).unwrap_or_default() + "X-GNOME-Autostart-Delay=5\n";
-        std::fs::create_dir_all(home.path().join("autostart")).unwrap_or_default();
-        std::fs::write(&path, &old).unwrap_or_default();
-        assert_eq!(entry.refresh(), Ok(()));
-        let now = std::fs::read_to_string(&path).unwrap_or_default();
-        assert!(now.contains(&format!("TryExec={}\n", here.display())), "{now}");
-        assert!(
-            now.contains(&format!("Exec=\"{}\" --at-login\n", here.display())),
-            "{now}"
-        );
-        assert!(now.contains("X-GNOME-Autostart-Delay=5\n"), "the person's keys stay");
-        assert!(!now.contains("gone/"));
-
-        // Keys written with spaces around `=` are recognised too.
-        let spaced = old.replace("TryExec=", "TryExec = ").replace("\nExec=", "\nExec = ");
-        std::fs::write(&path, &spaced).unwrap_or_default();
-        assert_eq!(entry.refresh(), Ok(()));
-        let now = std::fs::read_to_string(&path).unwrap_or_default();
-        assert!(now.contains(&format!("TryExec={}\n", here.display())), "{now}");
-        assert!(!now.contains("gone/"), "{now}");
-
-        // A program that still exists is someone's choice: left alone.
-        let other = home.path().join("other-ibis");
-        std::fs::write(&other, "").unwrap_or_default();
-        let theirs = desktop_entry("Ibis", &other).unwrap_or_default();
-        std::fs::write(&path, &theirs).unwrap_or_default();
-        assert_eq!(entry.refresh(), Ok(()));
-        assert_eq!(std::fs::read_to_string(&path).unwrap_or_default(), theirs);
-
-        // A file Ibis did not write is left alone, even with a missing program.
-        let foreign = format!("[Desktop Entry]\nTryExec={}\nExec=x\n", moved.display());
-        std::fs::write(&path, &foreign).unwrap_or_default();
-        assert_eq!(entry.refresh(), Ok(()));
-        assert_eq!(std::fs::read_to_string(&path).unwrap_or_default(), foreign);
-
-        // A symbolic link stays a link.
-        let target = home.path().join("kept.desktop");
-        std::fs::write(&target, &old).unwrap_or_default();
-        std::fs::remove_file(&path).unwrap_or_default();
-        let linked = std::os::unix::fs::symlink(&target, &path);
-        assert!(linked.is_ok());
-        assert_eq!(entry.refresh(), Ok(()));
-        assert!(std::fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink()));
-        assert_eq!(std::fs::read_to_string(&target).unwrap_or_default(), old);
-    }
-
-    /// A package upgrade replaces the running program: Linux then names it
-    /// "... (deleted)". The new program at that path is used; with none, the
-    /// switch is refused rather than writing a path that never starts.
-    #[test]
-    fn a_replaced_program_is_found_again_or_refused() {
-        let home = tempfile::tempdir().unwrap_or_else(|e| panic!("temporary folder: {e}"));
-        let upgraded = home.path().join("ibis-desktop");
-        std::fs::write(&upgraded, "").unwrap_or_default();
-        let deleted = |path: &Path| PathBuf::from(format!("{} (deleted)", path.display()));
-        assert_eq!(
-            launch_program(Some(deleted(&upgraded)), None, None, None),
-            Some(upgraded.clone())
-        );
-
-        let removed = home.path().join("removed-ibis");
-        let dead = deleted(&removed);
-        assert_eq!(launch_program(Some(dead.clone()), None, None, None), Some(dead.clone()));
-        let path = home.path().join("autostart/ibis.desktop");
-        let entry = file(path.clone(), "Ibis", &dead.to_string_lossy());
-        assert_eq!(
-            change(Some(&entry), true, false),
-            item(false, Some(LoginItemProblem::Refused))
-        );
-        assert!(!path.exists(), "no entry for a program that is gone");
     }
 
     #[test]

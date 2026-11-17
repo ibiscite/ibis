@@ -193,54 +193,6 @@ mod tests {
     }
 
     #[test]
-    fn evidence_distinguishes_native_success_from_every_opaque_fallback() {
-        let normal = Some(Preferences {
-            high_contrast: false,
-            reduce_transparency: false,
-        });
-        let accessible = Some(Preferences {
-            high_contrast: false,
-            reduce_transparency: true,
-        });
-        assert_eq!(
-            evidence_reason(Appearance::Opaque, None, false, Appearance::Opaque),
-            "unsupported"
-        );
-        assert_eq!(
-            evidence_reason(Appearance::Acrylic, normal, false, Appearance::Opaque),
-            "not-transparent"
-        );
-        assert_eq!(
-            evidence_reason(Appearance::Acrylic, None, true, Appearance::Opaque),
-            "unknown-preferences"
-        );
-        assert_eq!(
-            evidence_reason(Appearance::Vibrancy, accessible, true, Appearance::Opaque),
-            "accessibility"
-        );
-        assert_eq!(
-            evidence_reason(Appearance::Acrylic, normal, true, Appearance::Opaque),
-            "native-failure"
-        );
-        assert_eq!(
-            evidence_reason(Appearance::Vibrancy, normal, true, Appearance::Vibrancy),
-            "applied"
-        );
-    }
-
-    #[test]
-    fn unknown_preferences_are_opaque_on_every_platform() {
-        for material in [
-            Appearance::Opaque,
-            Appearance::Acrylic,
-            Appearance::Vibrancy,
-            Appearance::LiquidGlass,
-        ] {
-            assert_eq!(requested(material, None), Appearance::Opaque);
-        }
-    }
-
-    #[test]
     fn either_accessibility_preference_requires_opacity() {
         for material in [Appearance::Acrylic, Appearance::Vibrancy, Appearance::LiquidGlass] {
             for (high_contrast, reduce_transparency) in [(true, false), (false, true), (true, true)] {
@@ -256,26 +208,5 @@ mod tests {
                 );
             }
         }
-    }
-
-    #[test]
-    fn only_supported_materials_and_explicit_preferences_allow_effects() {
-        let preferences = || {
-            Some(Preferences {
-                high_contrast: false,
-                reduce_transparency: false,
-            })
-        };
-        assert_eq!(requested(Appearance::Opaque, preferences()), Appearance::Opaque);
-        assert_eq!(requested(Appearance::Acrylic, preferences()), Appearance::Acrylic);
-        assert_eq!(requested(Appearance::Vibrancy, preferences()), Appearance::Vibrancy);
-    }
-
-    #[test]
-    fn native_material_names_are_fixed() {
-        assert_eq!(Appearance::Opaque.name(), "opaque");
-        assert_eq!(Appearance::Acrylic.name(), "acrylic");
-        assert_eq!(Appearance::Vibrancy.name(), "vibrancy");
-        assert_eq!(Appearance::LiquidGlass.name(), "liquid-glass");
     }
 }

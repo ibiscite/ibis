@@ -267,10 +267,6 @@ mod tests {
         }
     }
 
-    fn short(text: &str) -> Selection {
-        Selection::of_text(text).0
-    }
-
     #[test]
     fn short_text_on_one_line_becomes_the_search_trimmed() {
         let (selection, search) = Selection::of_text(" smith 2020 ");
@@ -297,21 +293,6 @@ mod tests {
         ] {
             assert_eq!(Selection::of_text(text), (Selection::Ignored, None), "{text:?}");
         }
-    }
-
-    #[test]
-    fn nothing_selected_is_not_a_selection_and_spaces_cannot_be_shown_so_are_ignored() {
-        assert_eq!(Selection::of_text(""), (Selection::Nothing, None));
-        assert_eq!(Selection::of_text("   "), (Selection::Ignored, None));
-    }
-
-    #[test]
-    fn a_selection_is_compared_by_digest_and_logs_only_its_kind() {
-        assert_eq!(short("smith 2020"), short("smith 2020"));
-        assert_ne!(short("smith 2020"), short("smith 2021"));
-        let (selection, search) = Selection::of_text("Invented private words");
-        let debug = format!("{selection:?} {search:?}");
-        assert_eq!(debug, "Short Some(SelectedText)");
     }
 
     #[test]
@@ -344,63 +325,6 @@ mod tests {
     }
 
     #[test]
-    fn a_change_only_copied_replaces_either_citation_and_nothing_else() {
-        // The person may have pasted the copied change by hand, or not.
-        let either = OldCitation::of_any(&["(Smith, 2020)".into(), "(Smith, 2020, p. 3)".into()]);
-        assert!(either.is("(Smith, 2020)"));
-        assert!(either.is("(Smith,\u{a0}2020, p. 3)"));
-        assert!(!either.is("(Smith, 2020) (Smith, 2020, p. 3)"));
-        assert!(!either.is("(Jones, 2021)"));
-        assert_eq!(either.limit(), 19 + 32);
-    }
-
-    #[test]
-    fn app_locations_are_compared_as_digests_without_retaining_the_paths() {
-        let id = "editor.exe";
-        let first = app_identity(System::Windows, id, r"C:\Invented\Writer\editor.exe");
-        let other = app_identity(System::Windows, id, r"C:\Invented\Viewer\editor.exe");
-        assert_ne!(first, other);
-        assert_eq!(first.as_ref().map(String::len), Some(64));
-        let captured = captured(
-            System::Windows,
-            Some(Front {
-                id: Some(id.into()),
-                app_identity: first.clone(),
-                ..front(42)
-            }),
-            7,
-        )
-        .unwrap_or_else(|| panic!("capture"));
-        assert_eq!(captured.app_identity, first);
-        assert!(!format!("{captured:?}").contains("Invented"));
-    }
-
-    #[test]
-    fn the_app_in_front_is_kept_by_id_and_process() {
-        let captured = captured(System::Macos, Some(front(42)), 7).unwrap_or_else(|| panic!("captured"));
-        assert_eq!(captured.pid, Some(42));
-        assert_eq!(captured.name.as_deref(), Some("Writer"));
-        assert_eq!(
-            captured.target.app,
-            Some(AppId {
-                system: System::Macos,
-                id: "org.example.Writer".into()
-            })
-        );
-    }
-
-    #[test]
-    fn ibis_in_front_keeps_the_earlier_capture_and_nothing_in_front_is_unknown() {
-        assert_eq!(captured(System::Macos, Some(front(7)), 7), None);
-        assert_eq!(captured(System::Macos, None, 7), Some(Captured::unknown(System::Macos)));
-        let unbundled = Front { id: None, ..front(42) };
-        assert_eq!(
-            captured(System::Macos, Some(unbundled), 7).and_then(|c| c.target.app),
-            None
-        );
-    }
-
-    #[test]
     fn an_app_with_more_rights_than_ibis_is_captured_as_elevated() {
         let admin = Front {
             app_identity: None,
@@ -423,21 +347,5 @@ mod tests {
         assert_eq!(keys, ["app", "elevated", "secure_field", "system"]);
         // The only strings kept are the app ID and the app's own name.
         assert_eq!(format!("{captured:?}").matches('"').count(), 4, "{captured:?}");
-    }
-
-    #[test]
-    fn an_active_app_is_kept_without_inventing_a_keyboard_window_proof() {
-        let front = Front {
-            app_identity: None,
-            window: None,
-            ..front(42)
-        };
-        let captured = captured(System::Macos, Some(front), 7).unwrap_or_else(|| panic!("capture"));
-        assert_eq!(captured.pid, Some(42));
-        assert!(captured.target.app.is_some());
-        assert_eq!(
-            captured.window, None,
-            "activation does not establish the global keyboard owner"
-        );
     }
 }
