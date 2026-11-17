@@ -574,3 +574,23 @@ fn each_file_format_declares_what_it_offers() -> Result<(), Box<dyn std::error::
     }
     Ok(())
 }
+
+/// A proposal is written to the path the library was opened by, so that
+/// name decides, not the name of the file a link points to.
+#[cfg(unix)]
+#[test]
+fn proposals_follow_the_name_the_library_was_opened_by() -> Result<(), Box<dyn std::error::Error>> {
+    use ibis_sources::SourceCapability::Proposals;
+
+    let dir = tempfile::tempdir()?;
+    let real = dir.path().join("real.bib");
+    std::fs::write(&real, "@book{one,title={Invented reference}}")?;
+    for (name, proposals) in [("linked.json", false), ("linked.bib", true)] {
+        let link = dir.path().join(name);
+        std::os::unix::fs::symlink(&real, &link)?;
+        let opened = ibis_sources::load_file(&link)?.capabilities.contains(&Proposals);
+        let reloaded = ibis_sources::reload_file(&link)?.capabilities.contains(&Proposals);
+        assert_eq!((opened, reloaded), (proposals, proposals), "{name}");
+    }
+    Ok(())
+}
