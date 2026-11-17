@@ -7,7 +7,10 @@ remembering, citing and sharing references, for academics, journalists and
 researchers. It stays open source, fast and reliable, simple for a first-time
 user and deep for an expert, across sources, writing apps, systems and languages.
 The engine, command line, MCP server and desktop app share those capabilities.
-References and research material define the scope.
+References and research material define the scope. Over time the engine and
+command line aim to be the standard open layer that any tool or agent uses for
+that material, whichever manager holds it, with the app as its first client
+([0056](docs/decisions/0056-open-layer-for-research-material.md)).
 
 The [README](README.md), [architecture](docs/architecture.md) and
 [compatibility guide](docs/compatibility.md) describe what works now. This page
@@ -46,7 +49,11 @@ the maintainer promotes it.
 - Finish the picker controller's ownership of asynchronous work and consolidate
   shared controls as screens change. Keep UI state in the interface and library
   and citation behavior in the engine.
-- Merge `ibis-zotero-local` into `ibis-sources` behind the engine.
+- Merge `ibis-zotero-local` into `ibis-sources` behind one source interface
+  with declared capabilities and a change token, serving files and Zotero alike.
+- Write down the stable machine surface of the CLI, JSON-RPC and MCP, and add
+  engine and CLI speed and memory limits
+  ([0056](docs/decisions/0056-open-layer-for-research-material.md)).
 - Replace tests of source/CSS text and call order with supported outcomes;
   generate reproducible action/race sequences for picker, Settings and delivery.
   Use fake time for deterministic waits and reviewed engine snapshots.
@@ -78,6 +85,9 @@ the maintainer promotes it.
 
 ## 0.5 Find the passage
 
+- One anchor type for places inside content (pages and text quotes, after the
+  W3C Web Annotation model), shared by highlights, quotes, passages
+  and locators, before annotations ship.
 - Search Chinese, Japanese and Korean names by romanized readings; collections,
   tags, saved searches, filters and Selected in Zotero.
 - Search Zotero highlights, notes and comments with their reference and page.
@@ -126,6 +136,10 @@ the maintainer promotes it.
 
 - WebAssembly-compatible rules/readers with optional native Zotero/SQLite.
   Useful thin Python/npm clients and pipe-based extensions when requested.
+- External source adapters: `ibis-source-<name>` programs that hand the engine
+  records over stdio, designed with the first manager Ibis does not read itself,
+  and one conformance kit every adapter passes
+  ([0056](docs/decisions/0056-open-layer-for-research-material.md)).
 - Same-user local CLI connection to the running app, with independent reads
   when it is closed; no network listener. Command plugins use `ibis-foo` on
   PATH, with built-ins taking precedence.
