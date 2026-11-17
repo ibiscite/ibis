@@ -463,3 +463,39 @@ fn a_failed_backup_leaves_the_library_and_proposal_unchanged() {
     assert_eq!(fixture.store.get(&proposal.id).unwrap().status, Status::Pending);
     assert!(backups(&fixture.bib).is_empty());
 }
+
+/// Two files can come to be read as one library (a link retargeted and
+/// reloaded). A proposal goes to the file whose own read allows it, never to
+/// the link, whichever read was installed last.
+#[cfg(unix)]
+#[test]
+fn a_library_read_from_two_files_takes_proposals_only_where_its_read_allows() {
+    let fixture = fixture();
+    let dir = fixture.bib.parent().unwrap();
+    let other = dir.join("other.bib");
+    fs::write(&other, BIB).unwrap();
+    let link = dir.join("linked.json");
+    std::os::unix::fs::symlink(&other, &link).unwrap();
+    // The link is read first, so it would be the first file found for the library.
+    let engine = Engine::new().unwrap().without_file_watches();
+    engine.open_file(&link, &Cancellation::default()).unwrap();
+    let linked = engine.libraries().unwrap().libraries[0].id.clone();
+    engine.open_file(&fixture.bib, &Cancellation::default()).unwrap();
+    let libraries = engine.libraries().unwrap().libraries;
+    let library = libraries.into_iter().find(|info| info.id != linked).unwrap().id;
+    fs::remove_file(&link).unwrap();
+    std::os::unix::fs::symlink(&fixture.bib, &link).unwrap();
+    engine.reload_files(Some(&linked), &Cancellation::default()).unwrap();
+    engine.reload_files(Some(&library), &Cancellation::default()).unwrap();
+    let proposal = engine
+        .propose(
+            &fixture.store,
+            source(),
+            ProposeRequest::Add {
+                library: Some(library),
+                fields: paper(),
+            },
+        )
+        .unwrap();
+    assert_eq!(proposal.target.path, fixture.bib);
+}

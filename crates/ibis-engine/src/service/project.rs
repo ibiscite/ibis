@@ -345,4 +345,8 @@ impl Engine {
         let registry = self.shared.sources.recover_lock();
         Ok(registry.file_path(library))
     }
+
+    pub(crate) fn proposal_path(&self, library: &LibraryId) -> Option<PathBuf> {
+        self.shared.sources.recover_lock().proposal_path(library)
+    }
 }
