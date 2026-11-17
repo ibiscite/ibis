@@ -1,0 +1,10 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Ibis board</title>
+<script>
+  // Key labels and fixtures read the system when they load, so it is set first.
+  { const value = { macos: "MacIntel", windows: "Win32", linux: "Linux x86_64" }[new URLSearchParams(location.search).get("platform")];
+    if (value) Object.defineProperty(navigator, "platform", { value }); }
+</script>
+<div id="host" style="height:100vh"></div>
+<script type="module" src="./board.ts"></script>

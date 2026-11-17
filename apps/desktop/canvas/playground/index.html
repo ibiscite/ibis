@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ibis design playground</title>
+<style>
+  :root { color-scheme: light dark; font: 13px/1.4 system-ui, sans-serif; --line: color-mix(in srgb, currentColor 15%, transparent); --wash: color-mix(in srgb, currentColor 6%, transparent); }
+  body { margin: 0; display: grid; grid-template-columns: 17rem 1fr; height: 100vh; }
+  aside { overflow: auto; padding: 12px; box-shadow: 1px 0 var(--line); display: flex; flex-direction: column; gap: 12px; }
+  h1 { font-size: 15px; margin: 0; }
+  h2 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; opacity: .6; margin: 0 0 4px; }
+  label { display: flex; align-items: center; gap: 6px; }
+  .controls { display: grid; grid-template-columns: auto 1fr; gap: 6px 8px; align-items: center; }
+  select, input[type="search"] { font: inherit; min-width: 0; }
+  button { font: inherit; }
+  #comment[aria-pressed="true"] { background: #0a84ff; color: #fff; border-color: #0a84ff; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  #scenarios { max-height: 40vh; overflow: auto; }
+  #scenarios button, #comments button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 3px 6px; border-radius: 4px; color: inherit; }
+  #scenarios button[aria-current="true"] { background: var(--wash); font-weight: 600; }
+  #scenarios button:hover, #comments button:hover { background: var(--wash); }
+  #comments li { display: flex; align-items: start; gap: 4px; }
+  #comments input { margin-top: 5px; }
+  .hint { opacity: .6; margin: 0; }
+  main { overflow: auto; padding: 16px; display: flex; flex-wrap: wrap; align-content: start; gap: 16px; background: var(--wash); }
+  figure { margin: 0; }
+  figcaption { opacity: .7; margin-bottom: 4px; }
+  /* Drag the corner to try another window size. */
+  .frame { resize: both; overflow: hidden; width: 720px; height: 480px; border-radius: 10px; box-shadow: 0 0 0 1px var(--line), 0 8px 24px rgb(0 0 0 / .12); background: Canvas; }
+  .frame iframe { border: 0; width: 100%; height: 100%; display: block; }
+</style>
+<aside>
+  <h1>Ibis design playground</h1>
+  <button id="comment" type="button" aria-pressed="false">Comment</button>
+  <p class="hint">Turn on Comment, then click anything on a board. Comments go to docs/design/comments.md.</p>
+  <div class="controls" id="controls"></div>
+  <section><h2>Open comments</h2><ul id="comments"></ul></section>
+  <section><h2>Variants</h2><div id="variants"></div></section>
+  <section><h2>Scenarios</h2><input type="search" id="filter" placeholder="Filter" aria-label="Filter scenarios"><ul id="scenarios"></ul></section>
+</aside>
+<main id="boards"></main>
+<script type="module" src="./shell.ts"></script>
