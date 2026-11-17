@@ -201,7 +201,7 @@ fn open(path: &Path, access: u32, control: &Control) -> Result<Handle, ClosedErr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::closed::tests::control;
+    use crate::zotero_local::closed::tests::control;
     use std::ffi::OsString;
     fn scratch() -> tempfile::TempDir {
         tempfile::tempdir().unwrap()
@@ -215,7 +215,7 @@ mod tests {
         for name in [
             "zotero-bin",
             "zotero-mcp.exe",
-            "ibis_zotero_local-test.exe",
+            "ibis_sources-test.exe",
             "Zotero.Beta.exe",
         ] {
             assert!(!zotero_image(&name.encode_utf16().collect::<Vec<_>>()));
@@ -344,7 +344,10 @@ mod tests {
         std::fs::write(secret.join(".zotero-ft-cache"), "Invented secret text").unwrap();
         let link = storage.join("ALLOW001");
         junction(&link, &secret);
-        assert!(crate::closed::read_text_cache(data.path(), "ALLOW001", std::sync::Arc::new(|| false)).is_err());
+        assert!(
+            crate::zotero_local::closed::read_text_cache(data.path(), "ALLOW001", std::sync::Arc::new(|| false))
+                .is_err()
+        );
         std::fs::remove_dir(&link).unwrap();
     }
 }

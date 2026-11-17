@@ -1,6 +1,14 @@
 //! Raw live acquisition and immutable publication through the shared mapper.
 use crate::pdf::PdfReader;
 use crate::reading::{DocumentText, SourceAttachment, TextState};
+use crate::zotero_local::bbt::{BbtError, BbtLibrary, LiveBbt};
+use crate::zotero_local::closed;
+pub use crate::zotero_local::closed::ClosedError;
+pub use crate::zotero_local::discovery;
+use crate::zotero_local::fulltext;
+pub use crate::zotero_local::live::{Library, LiveError};
+use crate::zotero_local::live::{Limits, LiveReader, LiveWarning};
+pub use crate::zotero_local::{DEFAULT_PORT, LocalZotero};
 use crate::{
     LibraryKind, LoadedLibrary, SourceWarning, WarningCode,
     zotero::{self, MappingError, MappingWarning, ZoteroCreator, ZoteroItem},
@@ -10,14 +18,6 @@ use ibis_core::contract::{CitationKeySource, ErrorReason, LibraryId, LibraryObje
 use ibis_core::zotero::api::{Transport, TransportError};
 use ibis_core::zotero::libraries;
 pub use ibis_core::zotero::libraries::Group;
-use ibis_zotero_local::bbt::{BbtError, BbtLibrary, LiveBbt};
-use ibis_zotero_local::closed;
-pub use ibis_zotero_local::closed::ClosedError;
-pub use ibis_zotero_local::discovery;
-use ibis_zotero_local::fulltext;
-pub use ibis_zotero_local::live::{Library, LiveError};
-use ibis_zotero_local::live::{Limits, LiveReader, LiveWarning};
-pub use ibis_zotero_local::{DEFAULT_PORT, LocalZotero};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::{
@@ -267,7 +267,7 @@ impl ZoteroSource {
         on_full: &mut impl FnMut() -> Result<(), LiveError>,
     ) -> Result<Vec<Arc<LoadedLibrary>>, ZoteroError> {
         self.refresh_live(
-            &mut ibis_zotero_local::LocalZotero::on_port(port),
+            &mut crate::zotero_local::LocalZotero::on_port(port),
             Some(LiveBbt::on_port(port)),
             reload,
             cancelled,
@@ -618,6 +618,7 @@ impl ZoteroSource {
         let loaded = Arc::new(LoadedLibrary {
             library,
             kind: LibraryKind::Zotero,
+            capabilities: crate::SourceCapability::ZOTERO,
             snapshot,
             warnings,
             duplicate_keys: parsed.duplicate_keys,
@@ -933,7 +934,7 @@ pub fn installed() -> bool {
 
 /// The groups a running Zotero lists; reads no library.
 pub fn live_groups(port: u16) -> Result<Vec<Group>, ZoteroError> {
-    libraries::groups(&mut ibis_zotero_local::LocalZotero::on_port(port)).map_err(|error| match error {
+    libraries::groups(&mut crate::zotero_local::LocalZotero::on_port(port)).map_err(|error| match error {
         ibis_core::zotero::api::ZoteroError::NotAllowed => LiveError::NotAllowed.into(),
         ibis_core::zotero::api::ZoteroError::Transport(transport) => LiveError::Transport(transport).into(),
         _ => LiveError::Incomplete.into(),
@@ -2004,7 +2005,7 @@ mod tests {
     /// them: one row per field value, dates in Zotero's multipart form and
     /// single-field names with `fieldMode` 1.
     fn write_database(db: &rusqlite::Connection, items: &[Value]) {
-        db.execute_batch(include_str!("../../ibis-zotero-local/fixtures/closed/schema.sql"))
+        db.execute_batch(include_str!("../fixtures/zotero/closed/schema.sql"))
             .unwrap();
         db.execute_batch(
             "DELETE FROM items; DELETE FROM itemData; DELETE FROM itemDataValues; DELETE FROM creators;
@@ -2121,9 +2122,9 @@ mod tests {
         let data = tempfile::tempdir().unwrap();
         let cache = tempfile::tempdir().unwrap();
         let db = rusqlite::Connection::open(data.path().join("zotero.sqlite")).unwrap();
-        db.execute_batch(include_str!("../../ibis-zotero-local/fixtures/closed/schema.sql"))
+        db.execute_batch(include_str!("../fixtures/zotero/closed/schema.sql"))
             .unwrap();
-        db.execute_batch(include_str!("../../ibis-zotero-local/fixtures/closed/zotero10.sql"))
+        db.execute_batch(include_str!("../fixtures/zotero/closed/zotero10.sql"))
             .unwrap();
         db.execute(
             "INSERT INTO itemDataValues(valueID,value) VALUES(6,?1)",

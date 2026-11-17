@@ -8,8 +8,7 @@ describes this checkout. Plans live in [ROADMAP.md](../ROADMAP.md).
 | Location | Responsibility |
 | --- | --- |
 | `crates/ibis-core` | Shared model, citation requests/results, key syntaxes, search and delivery rules. |
-| `crates/ibis-zotero-local` | Zotero local API client. |
-| `crates/ibis-sources` | Read-only file and Zotero adapters, discovery, database snapshots and file watches. |
+| `crates/ibis-sources` | Read-only file and Zotero readers (`zotero_local`: the local API, closed database and Better BibTeX), discovery, database snapshots and file watches. Each reader declares what its library offers. |
 | `crates/ibis-csl` | citeproc-js in QuickJS, ICU4X collation, bundled CSL styles and locales. |
 | `crates/ibis-engine` | Typed methods, source lifecycle, prepared citations, settings owner, recents, JSON-RPC and MCP. |
 | `crates/ibis-cli` | The `ibis` executable, and the PDF text extractor it starts as its own child process (`ibis __extract-pdf`, with `lopdf`). Depends on core and engine. |
@@ -72,6 +71,15 @@ shortcut recovery chooses a shortcut, retries or opens Ibis. The command registr
 wraps these failures at the IPC boundary and tests every generated error schema.
 
 ## Sources
+
+Every reader returns one `LoadedLibrary`: its id, kind, the capabilities it
+declares, an immutable snapshot and warnings. The engine asks a library's
+capabilities, never its kind, whether agents may read its attachment text or
+propose changes to it; the kind only chooses which reader serves a request.
+BibTeX named as such declares proposals; BibTeX and CSL-JSON declare native
+keys and attachment text; RIS and CSV declare records only; Zotero declares
+its keys, aliases, conflicts and attachment text in both read paths. Each
+library's `revision` is its snapshot's full fingerprint.
 
 File formats and limits are in [compatibility](compatibility.md#library-files). Files are bounded to 64 MiB; parsers report skipped records without discarding valid neighbours.
 

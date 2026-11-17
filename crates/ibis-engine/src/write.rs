@@ -29,7 +29,7 @@ pub use key::citation_key;
 pub use store::{MAX_BACKUPS, MAX_KEPT, MAX_PENDING, MAX_PROPOSAL_BYTES, Proposals};
 
 use crate::request::{ItemSelector, ShowRequest};
-use crate::{Cancellation, Engine, LibraryKind};
+use crate::{Cancellation, Engine};
 use ibis_core::citable::CitableFields;
 use ibis_core::contract::{Fingerprint, ItemRef, LibraryId, LibraryObject};
 use schemars::JsonSchema;
@@ -414,8 +414,7 @@ impl Engine {
             .map_err(|_| WriteProblem::NotOpen)?
             .libraries
             .into_iter()
-            .filter(|info| info.kind == LibraryKind::File)
-            .find(|info| self.file_path(&info.id).ok().flatten().as_deref() == Some(path.as_path()))
+            .find(|info| self.proposal_path(&info.id).as_deref() == Some(path.as_path()))
             .ok_or(WriteProblem::NotOpen)?;
         // A folder swapped for a link since the proposal could point the write elsewhere.
         if std::fs::canonicalize(path).ok().as_ref() != Some(&proposal.target.resolved) {
@@ -442,11 +441,7 @@ impl Engine {
             .into_iter()
             .find(|info| &info.id == library)
             .ok_or(WriteProblem::UnknownReference)?;
-        let path = (info.kind == LibraryKind::File)
-            .then(|| self.file_path(library).ok().flatten())
-            .flatten()
-            .filter(|path| bib::is_bib(path))
-            .ok_or(WriteProblem::LibraryKind)?;
+        let path = self.proposal_path(library).ok_or(WriteProblem::LibraryKind)?;
         let resolved = std::fs::canonicalize(&path).map_err(|_| WriteProblem::Unreadable)?;
         Ok(Target {
             library: info.id,

@@ -15,14 +15,6 @@ pub(super) struct Plan {
     pub text: String,
 }
 
-pub(super) fn is_bib(path: &Path) -> bool {
-    path.extension().is_some_and(|extension| {
-        ["bib", "bibtex", "biblatex"]
-            .iter()
-            .any(|name| extension.eq_ignore_ascii_case(name))
-    })
-}
-
 #[cfg(test)]
 thread_local! { pub(super) static READS: std::cell::RefCell<Vec<std::path::PathBuf>> = const { std::cell::RefCell::new(Vec::new()) }; }
 

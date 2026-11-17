@@ -126,7 +126,12 @@ fn refresh_keeps_old_snapshots_and_refuses_ambiguous_keys() {
     record.id.library = library.clone();
     let second = Arc::new(Snapshot::new(vec![LibraryObject::Record(record)]).unwrap());
     engine
-        .publish_library(library.clone(), ibis_engine::LibraryKind::Snapshot, second)
+        .publish_library(
+            library.clone(),
+            ibis_engine::LibraryKind::Snapshot,
+            ibis_engine::SourceCapability::SNAPSHOT,
+            second,
+        )
         .unwrap();
     assert_eq!(old.objects().len(), 1);
     assert_eq!(engine.snapshot().unwrap().objects().len(), 2);
@@ -143,6 +148,7 @@ fn refresh_keeps_old_snapshots_and_refuses_ambiguous_keys() {
         .publish_library(
             library,
             ibis_engine::LibraryKind::Snapshot,
+            ibis_engine::SourceCapability::SNAPSHOT,
             Arc::new(Snapshot::new(vec![]).unwrap()),
         )
         .unwrap();
@@ -193,12 +199,18 @@ fn a_slow_subscriber_wakes_to_current_state_without_blocking_publications() {
                 .publish_library(
                     library.clone(),
                     ibis_engine::LibraryKind::Snapshot,
+                    ibis_engine::SourceCapability::SNAPSHOT,
                     Arc::new(Snapshot::new(vec![]).unwrap()),
                 )
                 .unwrap();
         }
         publishing
-            .publish_library(library, ibis_engine::LibraryKind::Snapshot, latest)
+            .publish_library(
+                library,
+                ibis_engine::LibraryKind::Snapshot,
+                ibis_engine::SourceCapability::SNAPSHOT,
+                latest,
+            )
             .unwrap();
         completed.send(()).unwrap();
     });
@@ -212,6 +224,7 @@ fn a_slow_subscriber_wakes_to_current_state_without_blocking_publications() {
         .publish_library(
             newest.objects()[0].object.id().library.clone(),
             ibis_engine::LibraryKind::Snapshot,
+            ibis_engine::SourceCapability::SNAPSHOT,
             Arc::new(Snapshot::new(vec![]).unwrap()),
         )
         .unwrap();

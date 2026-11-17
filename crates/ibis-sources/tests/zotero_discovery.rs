@@ -1,5 +1,5 @@
 #![cfg(test)]
-use ibis_zotero_local::discovery::{DiscoveryRoots, Platform, Warning, discover};
+use ibis_sources::zotero_local::discovery::{DiscoveryRoots, Platform, Warning, discover};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -43,17 +43,17 @@ fn platform_preferences_and_default_are_discovered_from_synthetic_roots() {
     for (platform, prefs, expected) in [
         (
             Platform::MacOs,
-            include_str!("../fixtures/discovery/macos-prefs.js"),
+            include_str!("../fixtures/zotero/discovery/macos-prefs.js"),
             Some("/Synthetic/研究/Library \"A\""),
         ),
         (
             Platform::Windows,
-            include_str!("../fixtures/discovery/windows-prefs.js"),
+            include_str!("../fixtures/zotero/discovery/windows-prefs.js"),
             Some("Z:\\Synthetic\\研究\\Library"),
         ),
         (
             Platform::Linux,
-            include_str!("../fixtures/discovery/linux-prefs.js"),
+            include_str!("../fixtures/zotero/discovery/linux-prefs.js"),
             None,
         ),
     ] {

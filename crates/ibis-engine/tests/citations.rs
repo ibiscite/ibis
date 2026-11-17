@@ -98,6 +98,7 @@ fn changed_record_refuses_commit_even_when_the_text_is_identical() {
         .publish_library(
             library,
             ibis_engine::LibraryKind::Snapshot,
+            ibis_engine::SourceCapability::SNAPSHOT,
             Arc::new(Snapshot::new(objects).unwrap()),
         )
         .unwrap();
@@ -272,6 +273,7 @@ fn delivery_refuses_a_key_that_became_ambiguous_after_commit() {
         .publish_library(
             library,
             ibis_engine::LibraryKind::Snapshot,
+            ibis_engine::SourceCapability::SNAPSHOT,
             Arc::new(Snapshot::new(vec![first, other]).unwrap()),
         )
         .unwrap();
@@ -336,6 +338,7 @@ fn citation_and_bibliography_delivery_allow_metadata_updates_and_refuse_changed_
                 .publish_library(
                     record.id.library.clone(),
                     ibis_engine::LibraryKind::Snapshot,
+                    ibis_engine::SourceCapability::SNAPSHOT,
                     Arc::new(Snapshot::new(vec![LibraryObject::Record(record)]).unwrap()),
                 )
                 .unwrap()

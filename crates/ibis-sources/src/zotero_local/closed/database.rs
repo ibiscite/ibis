@@ -10,7 +10,7 @@ use rusqlite::{Connection, OpenFlags, Row};
 use std::cell::Cell;
 use std::collections::BTreeMap;
 
-// Verified against Zotero 10.0.9; see fixtures/closed/README.md.
+// Verified against Zotero 10.0.9; see fixtures/zotero/closed/README.md.
 const TESTED_SCHEMA: i64 = 131;
 
 const MAX_ITEMS: usize = 1_000_000;

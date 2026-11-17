@@ -1,5 +1,5 @@
-use crate::closed::tests::{control, edit, fixture, read_fixture};
-use crate::closed::{ClosedSnapshot, private_copy::Store};
+use crate::zotero_local::closed::tests::{control, edit, fixture, read_fixture};
+use crate::zotero_local::closed::{ClosedSnapshot, private_copy::Store};
 use std::path::Path;
 
 fn last_run(dir: &Path, version: &str) {

@@ -1,9 +1,9 @@
-//! Better BibTeX keys from the private copy (see [`crate::bbt`]). A store that
+//! Better BibTeX keys from the private copy (see [`crate::zotero_local::bbt`]). A store that
 //! is present but cannot be read marks the snapshot's keys unknown; it never
 //! fails the library read.
 use super::private_copy::Copy;
 use super::{ClosedError, ClosedSnapshot, Control, database, database_bounds};
-use crate::bbt::{self, StoredKey};
+use crate::zotero_local::bbt::{self, StoredKey};
 use rusqlite::{Connection, OpenFlags};
 use std::collections::BTreeMap;
 use std::io::Read;

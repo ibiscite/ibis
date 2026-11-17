@@ -300,7 +300,7 @@ impl Engine {
         Ok(state
             .libraries
             .get(library)
-            .is_some_and(|info| matches!(info.kind, LibraryKind::Zotero | LibraryKind::File))
+            .is_some_and(|info| info.capabilities.contains(&SourceCapability::AttachmentText))
             && settings.attachment_text(library))
     }
 

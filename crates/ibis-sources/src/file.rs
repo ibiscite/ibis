@@ -95,6 +95,22 @@ impl Format {
         }
     }
 
+    /// What a library in this format offers. A proposal rewrites the file at
+    /// the path the caller named, so that name must say BibTeX too: never a
+    /// file recognised only by its text, or a link whose own name says another
+    /// format.
+    fn capabilities(self, asked: &Path) -> &'static [crate::SourceCapability] {
+        use crate::SourceCapability::*;
+        match self {
+            Self::Bibtex if Self::named(asked) == Some(Self::Bibtex) => {
+                &[BibliographicRecords, NativeCitationKeys, AttachmentText, Proposals]
+            }
+            Self::Bibtex | Self::CslJson => &[BibliographicRecords, NativeCitationKeys, AttachmentText],
+            // Decision 0043: no citation keys and no attachments.
+            Self::Ris | Self::Csv => &[BibliographicRecords],
+        }
+    }
+
     pub(crate) fn named(path: &Path) -> Option<Self> {
         NAMES.iter().find_map(|(format, names)| {
             path.extension()
@@ -224,7 +240,7 @@ fn load_file_snapshot_with(
     scope: &io::Scope<'_>,
 ) -> Result<(LoadedLibrary, SourceSnapshot), SourceError> {
     let observation = SourceSnapshot::read_with(path, after_read, scope)?;
-    let loaded = parse(&observation.source, &observation.text, None, scope)?;
+    let loaded = parse(path, &observation, None, scope)?;
     Ok((loaded, observation))
 }
 
@@ -260,7 +276,7 @@ pub fn reload_file_snapshot(
 ) -> Result<(LoadedLibrary, SourceSnapshot), SourceError> {
     let scope = io::Scope::new(cancelled);
     let observation = stable_observation_with(path, || std::thread::sleep(SETTLE), &scope)?;
-    let loaded = parse(&observation.source, &observation.text, previous, &scope)?;
+    let loaded = parse(path, &observation, previous, &scope)?;
     Ok((loaded, observation))
 }
 
@@ -271,7 +287,7 @@ pub(crate) fn stable_observation(path: &Path) -> Result<SourceSnapshot, SourceEr
 
 /// A file read as a library without becoming one, tolerating damaged entries.
 pub(crate) fn parse_for_project(path: &Path, text: &str) -> Result<LoadedLibrary, SourceError> {
-    parse_with_budget(path, text, bibtex::Budget::for_input(text.len()), None, None)
+    parse_with_budget(path, path, text, bibtex::Budget::for_input(text.len()), None, None)
 }
 
 /// `key`'s original entry in the file `item` came from, when the file still
@@ -316,24 +332,28 @@ fn stable_observation_with(
 
 /// One read policy: the same bytes give the same library whether opened or
 /// reloaded. Damaged entries and work limits warn while the rest loads; a
-/// stable read has already ruled out a file still being written.
+/// stable read has already ruled out a file still being written. `asked` is
+/// the path the caller named, which is the one any write goes to.
 fn parse(
-    path: &Path,
-    text: &str,
+    asked: &Path,
+    observation: &SourceSnapshot,
     previous: Option<&Snapshot>,
     scope: &io::Scope<'_>,
 ) -> Result<LoadedLibrary, SourceError> {
-    parse_with_budget(path, text, bibtex::Budget::for_input(text.len()), previous, Some(scope))
+    let text = &observation.text;
+    let budget = bibtex::Budget::for_input(text.len());
+    parse_with_budget(&observation.source, asked, text, budget, previous, Some(scope))
 }
 
 fn parse_with_budget(
     path: &Path,
+    asked: &Path,
     text: &str,
     budget: bibtex::Budget,
     previous: Option<&Snapshot>,
     scope: Option<&io::Scope<'_>>,
 ) -> Result<LoadedLibrary, SourceError> {
-    let (source, library, parsed) = parse_format(path, text, budget, previous)?;
+    let (source, library, format, parsed) = parse_format(path, text, budget, previous)?;
     let parsed_cut_short = parsed.cut_short;
     let mut objects: Vec<_> = parsed.records.into_iter().map(LibraryObject::Record).collect();
     let mut warnings = parsed.warnings;
@@ -356,6 +376,7 @@ fn parse_with_budget(
     Ok(LoadedLibrary {
         library,
         kind: crate::LibraryKind::File,
+        capabilities: format.capabilities(asked),
         snapshot,
         warnings,
         duplicate_keys: parsed.duplicate_keys,
@@ -370,17 +391,18 @@ fn parse_format(
     text: &str,
     budget: bibtex::Budget,
     previous: Option<&Snapshot>,
-) -> Result<(PathBuf, ibis_core::contract::LibraryId, crate::ParsedLibrary), SourceError> {
+) -> Result<(PathBuf, ibis_core::contract::LibraryId, Format, crate::ParsedLibrary), SourceError> {
     let source = std::path::absolute(path).map_err(|_| SourceError::Unavailable)?;
     let library = crate::identity::library_id(crate::LibraryKind::File, &[source.as_os_str().as_encoded_bytes()]);
     let text = text.trim_start_matches('\u{feff}');
-    let parsed = match Format::of(&source, text)? {
+    let format = Format::of(&source, text)?;
+    let parsed = match format {
         Format::CslJson => csl_json::load_str(&library, text)?,
         Format::Ris => exported::ris::load(&library, text, previous)?,
         Format::Csv => exported::csv::load(&library, text, previous)?,
         Format::Bibtex => bibtex::load_with_budget(&library, text, budget, previous),
     };
-    Ok((source, library, parsed))
+    Ok((source, library, format, parsed))
 }
 
 /// Where the attachment `key` of `parent` is, when the library file at
@@ -397,7 +419,7 @@ pub fn attachment_file(
     cancelled: &dyn Fn() -> bool,
 ) -> Result<Option<PathBuf>, SourceError> {
     let observation = SourceSnapshot::read_with(path, || {}, &io::Scope::new(cancelled))?;
-    let (source, library, parsed) = parse_format(
+    let (source, library, _, parsed) = parse_format(
         &observation.source,
         &observation.text,
         bibtex::Budget::for_input(observation.text.len()),
@@ -733,7 +755,7 @@ fn stable_read(
     if snapshot.take().is_some_and(|previous| previous == seen) && !error_reported {
         return Ok(None);
     }
-    parse(&after.source, &after.text, previous, scope).map(Some)
+    parse(path, &after, previous, scope).map(Some)
 }
 
 impl Drop for SourceWatch {

@@ -67,6 +67,18 @@ impl Registry {
             .find(|slot| slot.loaded.library == *library)
             .map(|slot| slot.path.clone())
     }
+
+    /// The path a proposal for `library` may be written to: that of a file
+    /// read as this library whose reader declared proposals. The permission
+    /// and the destination always come from the same read.
+    pub(super) fn proposal_path(&self, library: &LibraryId) -> Option<PathBuf> {
+        self.slots
+            .values()
+            .find(|slot| {
+                slot.loaded.library == *library && slot.loaded.capabilities.contains(&SourceCapability::Proposals)
+            })
+            .map(|slot| slot.path.clone())
+    }
 }
 /// A strict read outcome prepared privately, including source-health failures.
 /// No publication occurs until the client accepts it under its selection guard.
@@ -150,7 +162,8 @@ fn info(loaded: &LoadedLibrary) -> LibraryInfo {
     LibraryInfo {
         id: loaded.library.clone(),
         kind: loaded.kind,
-        capabilities: loaded.kind.capabilities().to_vec(),
+        capabilities: loaded.capabilities.to_vec(),
+        revision: loaded.snapshot.fingerprints().full.clone(),
         objects: loaded.snapshot.objects().len(),
         warnings: loaded.warnings.iter().take(MAX_WARNING_DETAILS).cloned().collect(),
         warnings_total: loaded.warnings.len(),

@@ -1,5 +1,5 @@
 use super::*;
-use crate::closed::tests::{control, edit, fixture};
+use crate::zotero_local::closed::tests::{control, edit, fixture};
 use std::fs::OpenOptions;
 
 fn scratch() -> tempfile::TempDir {

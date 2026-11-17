@@ -49,7 +49,11 @@ pub enum WatchWarning {
 pub struct LibraryInfo {
     pub id: LibraryId,
     pub kind: LibraryKind,
+    /// What this library offers, as its reader declared.
     pub capabilities: Vec<SourceCapability>,
+    /// Changes whenever the library's published content may have changed;
+    /// a tool that mirrors the library rereads it only then.
+    pub revision: Fingerprint,
     pub objects: usize,
     pub warnings: Vec<ibis_sources::SourceWarning>,
     pub warnings_total: usize,
@@ -79,12 +83,13 @@ pub struct LibraryInfo {
     pub cut_short: bool,
 }
 impl LibraryInfo {
-    fn clean(id: LibraryId, kind: LibraryKind, objects: usize) -> Self {
+    fn clean(id: LibraryId, kind: LibraryKind, capabilities: &[SourceCapability], revision: Fingerprint) -> Self {
         Self {
             id,
             kind,
-            capabilities: kind.capabilities().to_vec(),
-            objects,
+            capabilities: capabilities.to_vec(),
+            revision,
+            objects: 0,
             warnings: vec![],
             warnings_total: 0,
             refresh_error: None,
@@ -379,7 +384,11 @@ impl Engine {
             let id = item.object.id().library.clone();
             libraries
                 .entry(id.clone())
-                .or_insert_with(|| LibraryInfo::clean(id, LibraryKind::Snapshot, 0))
+                .or_insert_with(|| {
+                    // One snapshot holds every library here, so each takes its revision.
+                    let revision = snapshot.fingerprints().full.clone();
+                    LibraryInfo::clean(id, LibraryKind::Snapshot, SourceCapability::SNAPSHOT, revision)
+                })
                 .objects += 1;
         }
         Self {
@@ -431,13 +440,12 @@ impl Engine {
         &self,
         library: LibraryId,
         kind: LibraryKind,
+        capabilities: &[SourceCapability],
         snapshot: Arc<Snapshot>,
     ) -> Result<(), EngineError> {
-        self.shared.install(
-            LibraryInfo::clean(library, kind, snapshot.objects().len()),
-            &snapshot,
-            None,
-        )
+        let mut info = LibraryInfo::clean(library, kind, capabilities, snapshot.fingerprints().full.clone());
+        info.objects = snapshot.objects().len();
+        self.shared.install(info, &snapshot, None)
     }
 
     /// Whether Zotero's references here came from its closed database, the

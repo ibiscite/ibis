@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the real-Zotero test (crates/ibis-zotero-local/tests/real_zotero.rs)
+# Runs the real-Zotero test (crates/ibis-sources/tests/real_zotero.rs)
 # against an actual Zotero: normally downloads the current Linux release, starts it
 # with a fresh, throwaway profile and data directory and the local API
 # turned on, then runs the test. Linux only; needs xvfb-run and network
@@ -386,7 +386,7 @@ def run_capture(root, version, output, executable=None):
                                RUSTC_WRAPPER="", CARGO_TARGET_DIR=os.environ.get("CARGO_TARGET_DIR", str(root / "target")),
                                CARGO_INCREMENTAL="0")
             with (work / "seed.log").open("wb") as seed_log:
-                subprocess.run(["cargo", "test", "-p", "ibis-zotero-local", "--locked", "--offline", "--test", "real_zotero", "--", "--ignored"],
+                subprocess.run(["cargo", "test", "-p", "ibis-sources", "--locked", "--offline", "--test", "real_zotero", "--", "--ignored"],
                                cwd=root, env=environment, stdout=seed_log, stderr=seed_log, check=True, timeout=600)
             phase = "paired API pages"
             keys, pages = capture_api(port, output, opener)
@@ -481,6 +481,6 @@ curl -fsS -m 5 -o /dev/null "http://127.0.0.1:$port/connector/ping" \
 sleep 10
 
 cd "$root"
-if ! RUSTC_WRAPPER= CARGO_TARGET_DIR="${CARGO_TARGET_DIR-$root/target}" IBIS_ZOTERO_PORT=$port IBIS_THROWAWAY_ZOTERO=1 cargo test -p ibis-zotero-local --locked --test real_zotero -- --ignored --nocapture; then
+if ! RUSTC_WRAPPER= CARGO_TARGET_DIR="${CARGO_TARGET_DIR-$root/target}" IBIS_ZOTERO_PORT=$port IBIS_THROWAWAY_ZOTERO=1 cargo test -p ibis-sources --locked --test real_zotero -- --ignored --nocapture; then
   echo "Zotero log:" >&2; tail -n 80 "$work/zotero.log" >&2; exit 1
 fi

@@ -533,7 +533,7 @@ mod windows;
 #[cfg(unix)]
 pub(super) mod tests {
     use super::*;
-    use crate::closed::tests::control;
+    use crate::zotero_local::closed::tests::control;
     use std::sync::Arc;
 
     fn synthetic_helper(root: &Path) -> Command {
@@ -548,7 +548,7 @@ pub(super) mod tests {
         command
             .args([
                 "--exact",
-                "closed::platform::tests::synthetic_native_helper",
+                "zotero_local::closed::platform::tests::synthetic_native_helper",
                 "--ignored",
                 "--nocapture",
             ])
@@ -564,14 +564,14 @@ pub(super) mod tests {
         );
     }
 
-    pub(in crate::closed) struct NamedProcess {
+    pub(in crate::zotero_local::closed) struct NamedProcess {
         child: std::process::Child,
         executable: PathBuf,
         _root: tempfile::TempDir,
     }
 
     impl NamedProcess {
-        pub(in crate::closed) fn start(name: &str) -> Self {
+        pub(in crate::zotero_local::closed) fn start(name: &str) -> Self {
             let source = std::env::current_exe().unwrap_or_else(|error| fixture_error("executable", error));
             // Reuse the running inode: no executable write descriptor can be
             // inherited by a concurrent fork. Keep the alias on the same FS.
@@ -592,7 +592,7 @@ pub(super) mod tests {
             }
         }
 
-        pub(in crate::closed) fn snapshot(&self) -> Vec<u8> {
+        pub(in crate::zotero_local::closed) fn snapshot(&self) -> Vec<u8> {
             let own = std::process::id();
             let child = self.child.id().to_string();
             // Never enumerate unrelated processes for the fixture-name oracle.
@@ -699,10 +699,10 @@ mod macos_acl_tests {
             .unwrap_or_else(|_| panic!("synthetic inherited ACL"));
         assert!(status.success());
         let child = parent.path().join("private");
-        create_private(&child, &crate::closed::tests::control()).unwrap_or_else(|e| panic!("{e}"));
+        create_private(&child, &crate::zotero_local::closed::tests::control()).unwrap_or_else(|e| panic!("{e}"));
         let report = output(
             Command::new("/bin/ls").args(["-lde", "-b"]).arg(&child),
-            &crate::closed::tests::control(),
+            &crate::zotero_local::closed::tests::control(),
         )
         .unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(report.split(|b| *b == b'\n').filter(|line| !line.is_empty()).count(), 1);
@@ -716,7 +716,7 @@ mod macos_acl_tests {
             .unwrap_or_else(|_| panic!("synthetic existing ACL"));
         assert!(status.success());
         assert_eq!(
-            secure(&child, &crate::closed::tests::control()),
+            secure(&child, &crate::zotero_local::closed::tests::control()),
             Err(ClosedError::PrivateStorage)
         );
     }
@@ -735,7 +735,7 @@ mod cache_tag_tests {
         std::os::unix::fs::symlink(&target, root.path().join("CACHEDIR.TAG"))
             .unwrap_or_else(|_| panic!("synthetic tag link"));
         assert_eq!(
-            exclude_backups(root.path(), &crate::closed::tests::control()),
+            exclude_backups(root.path(), &crate::zotero_local::closed::tests::control()),
             Err(ClosedError::PrivateStorage)
         );
         assert_eq!(std::fs::read(target).unwrap_or_default(), b"synthetic sentinel");

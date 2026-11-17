@@ -3,7 +3,7 @@
 //! Zotero keeps it in `.zotero-ft-cache` in the attachment's storage folder and
 //! records how many pages it indexed. While Zotero runs, its local API answers
 //! with both at `items/KEY/fulltext`; while it is closed, the private database
-//! copy gives the counts and [`crate::closed::read_text_cache`] the file.
+//! copy gives the counts and [`crate::zotero_local::closed::read_text_cache`] the file.
 //!
 //! Zotero's PDF worker (`getFulltext` in zotero/pdf-worker `src/pdf/index.js`)
 //! ends every page with a blank line and puts a form feed between pages, then

@@ -8,7 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 /// Attachments listed for one reference at most, from every source.
-pub const MAX_ATTACHMENTS: usize = ibis_zotero_local::fulltext::MAX_ATTACHMENTS;
+pub const MAX_ATTACHMENTS: usize = crate::zotero_local::fulltext::MAX_ATTACHMENTS;
 
 /// One attachment of a reference. Its title is library text.
 #[derive(Clone, PartialEq, Eq)]
@@ -101,7 +101,7 @@ impl DocumentText {
             Fingerprint::of_bytes(format!("{}:{indexed_pages:?}:{total_pages:?}", content.as_str()).as_bytes());
         let verified = match (indexed_pages, total_pages) {
             (Some(indexed), Some(total)) if indexed == total => {
-                ibis_zotero_local::fulltext::pages(&text, Some(indexed))
+                crate::zotero_local::fulltext::pages(&text, Some(indexed))
             }
             _ => None,
         };
@@ -213,7 +213,7 @@ mod pdf_tests {
     #[test]
     fn zoteros_complete_pages_win_and_take_labels_only_when_page_counts_match() {
         let folder = tempfile::tempdir().unwrap();
-        let root = ibis_zotero_local::closed::trusted_folder(folder.path());
+        let root = crate::zotero_local::closed::trusted_folder(folder.path());
         let reader = reader(&root);
         let file = root.join("invented.pdf");
         std::fs::write(&file, "%PDF-1.7\n").unwrap();

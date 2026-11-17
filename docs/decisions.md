@@ -128,3 +128,6 @@ the anchor older links use.
 
 ## 0055 Agent layers, full text, writes and remote libraries
 [0055](decisions/0055-agent-layers-full-text-writes-remote.md): decided 2026-11-15, steps 3 and 4 built; one engine with CLI, MCP and skill as thin layers; opt-in attachment text with verified pages and printed page labels, PDFs parsed only in a child process of `ibis`; agent writes only as proposals confirmed in Ibis; remote libraries through SSH first; app and CLI share one set of settings, with AI apps connected from Settings through the same code as `ibis agents`.
+
+## 0056 An open layer for research material
+[0056](decisions/0056-open-layer-for-research-material.md): the engine and CLI aim to be the standard way any tool or agent reads and cites research material from any manager; the app stays the first client; source interface, stable surface, one anchor type, then external `ibis-source-<name>` adapters with a conformance kit.

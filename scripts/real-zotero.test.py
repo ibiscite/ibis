@@ -70,7 +70,7 @@ class CaptureTests(unittest.TestCase):
 
         def seed(arguments, **kwargs):
             # Any download/fallback subprocess fails, including a future non-curl downloader.
-            self.assertEqual(arguments, ["cargo", "test", "-p", "ibis-zotero-local", "--locked", "--offline",
+            self.assertEqual(arguments, ["cargo", "test", "-p", "ibis-sources", "--locked", "--offline",
                                          "--test", "real_zotero", "--", "--ignored"])
             state.seed.append(kwargs["env"])
             with closing(sqlite3.connect(state.data / "zotero.sqlite")) as db:

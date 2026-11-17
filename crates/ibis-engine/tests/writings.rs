@@ -2,7 +2,8 @@
 use ibis_core::contract::*;
 use ibis_engine::settings::{Settings, writings};
 use ibis_engine::{
-    Cancellation, Engine, KeyCheck, LibraryKind, ProjectAssessmentState as Assessment, request::KeyCitationRequest,
+    Cancellation, Engine, KeyCheck, LibraryKind, ProjectAssessmentState as Assessment, SourceCapability,
+    request::KeyCitationRequest,
 };
 use serde_json::json;
 use std::sync::Arc;
@@ -156,6 +157,7 @@ fn a_writing_doi_conflict_never_returns_copyable_key_output() {
         .publish_library(
             record.id.library.clone(),
             LibraryKind::Snapshot,
+            SourceCapability::SNAPSHOT,
             Arc::new(Snapshot::new(vec![LibraryObject::Record(record)]).unwrap()),
         )
         .unwrap();
