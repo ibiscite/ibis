@@ -525,8 +525,8 @@ pub(crate) fn editor_endpoint(app: AppHandle) -> EndpointStatus {
 /// Switch the endpoint. Off closes the port and forgets the address, so the next
 /// time it is on, an old copy of that address no longer works.
 #[tauri::command]
-#[ibis_desktop_macros::command]
-pub(crate) async fn set_editor_endpoint(on: bool, app: AppHandle) -> EndpointStatus {
+#[ibis_desktop_macros::command(main)]
+pub(crate) fn set_editor_endpoint(on: bool, app: AppHandle) -> EndpointStatus {
     let state = app.state::<Endpoint>();
     let _changing = state.1.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let closing = {

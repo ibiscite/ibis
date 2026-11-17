@@ -33,6 +33,12 @@ type Edited = Arc<dyn Fn(u64, Loaded) + Send + Sync>;
 struct WatchState {
     edited: Option<Edited>,
     watcher: Option<notify::RecommendedWatcher>,
+    /// The file as the queue last saw it; see [`Owner::view`].
+    view: Option<Arc<Loaded>>,
+}
+fn publish(path: &Path, watch: &Mutex<WatchState>) {
+    let view = Arc::new(settings::load(path));
+    watch.recover_lock().view = Some(view);
 }
 
 /// Bytes are bounded and regular-file checked, including fingerprints.
@@ -85,9 +91,6 @@ pub struct Owner {
     jobs: Arc<Mutex<Queue>>,
     worker: Mutex<Option<JoinHandle<()>>>,
     watch: Arc<Mutex<WatchState>>,
-    /// The file as of the last finished turn, published before that turn's
-    /// reply: reading it never waits behind the queue.
-    published: Arc<Mutex<Arc<Loaded>>>,
 }
 
 /// Dropping this guard or closing its owner stops native watching.
@@ -121,6 +124,8 @@ impl<T> Pending<T> {
 }
 
 fn report(path: &Path, receipt: u64, watch: &Mutex<WatchState>, primary: std::io::Result<Vec<u8>>) {
+    // Windows told of an outside edit read the view, so it shows the edit first.
+    publish(path, watch);
     let edited = watch.recover_lock().edited.clone();
     if let Some(edited) = edited {
         edited(receipt, settings::load_bytes(path, primary));
@@ -186,10 +191,9 @@ impl Owner {
         let (sender, jobs) = mpsc::channel::<Job>();
         let file = path.clone();
         let watch = Arc::new(Mutex::new(WatchState::default()));
+        publish(&path, &watch);
         let watching = Arc::clone(&watch);
         let mut seen = fingerprint(&path);
-        let published = Arc::new(Mutex::new(Arc::new(settings::load(&path))));
-        let publishing = Arc::clone(&published);
         let worker = std::thread::Builder::new()
             .name("ibis-settings".into())
             .spawn(move || {
@@ -207,11 +211,9 @@ impl Owner {
                         seen = Fingerprint::Bytes(commit.bytes);
                     }
                     // Effects that run with the outcome read the saved file.
-                    *publishing.recover_lock() = Arc::new(settings::load(&file));
+                    publish(&file, &watching);
                     let reply = completed.publish.and_then(|publish| attempt(publish).ok());
                     observe(&file, job.receipt + 1, &watching, &mut seen);
-                    // And an edit seen since is in the view before the reply.
-                    *publishing.recover_lock() = Arc::new(settings::load(&file));
                     // Finish the whole turn before returning its outcome. The
                     // caller's next edit must not race this turn's final read.
                     if let Some(reply) = reply {
@@ -228,7 +230,6 @@ impl Owner {
             })),
             worker: Mutex::new(worker),
             watch,
-            published,
         }
     }
 
@@ -293,7 +294,8 @@ impl Owner {
     /// The settings as the last finished turn left them, without waiting for
     /// queued work. Use it wherever a caller must not stall on a write.
     pub fn view(&self) -> Arc<Loaded> {
-        Arc::clone(&self.published.recover_lock())
+        let view = self.watch.recover_lock().view.clone();
+        view.unwrap_or_else(|| Arc::new(settings::load(&self.path)))
     }
     pub fn read(&self) -> Loaded {
         self.in_turn(|path| settings::load(path.unwrap_or(&self.path)))
