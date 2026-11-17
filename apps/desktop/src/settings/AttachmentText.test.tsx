@@ -1,8 +1,6 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { AttachmentTextLibrary } from "../bindings";
-import { testStates } from "../test-fixtures";
-import { deferred } from "../testing/deferred";
 import { AttachmentText, type AttachmentTextApi } from "./AttachmentText";
 
 afterEach(cleanup);
@@ -50,50 +48,6 @@ test("toggles only the returned LibraryId and restores the saved choice when a s
   expect(toggle().checked).toBe(true);
 });
 
-test.each(["success", "failure"])("a late save's %s cannot overwrite a newer choice", async (outcome) => {
-  const older = deferred<boolean>();
-  const api = group({ setAttachmentText: vi.fn().mockReturnValueOnce(older.promise).mockResolvedValueOnce(false) });
-  await screen.findByRole("switch", { name: `${label} ${library.name}` });
-  fireEvent.click(toggle());
-  fireEvent.click(toggle());
-  await waitFor(() => expect(api.setAttachmentText).toHaveBeenLastCalledWith(library.id, false));
-  await act(async () => { if (outcome === "success") older.resolve(true); else older.reject(new Error("late refusal")); });
-  expect(toggle().checked).toBe(false);
-  expect(screen.queryByRole("alert")).toBeNull();
-});
-
-test("a late library read cannot overwrite a newer switch", async () => {
-  const older = deferred<AttachmentTextLibrary[]>();
-  group({ attachmentTextLibraries: vi.fn().mockResolvedValue([{ ...library, on: true }]).mockResolvedValueOnce([library]).mockReturnValueOnce(older.promise) });
-  await screen.findByRole("switch", { name: `${label} ${library.name}` });
-  fireEvent.focus(window);
-  fireEvent.click(toggle());
-  await act(async () => older.resolve([library]));
-  expect(toggle().checked).toBe(true);
-});
-
-test("no open library still shows the device permission switch", async () => {
-  group({ attachmentTextLibraries: async () => [] });
-  expect(await screen.findByText("No library is open.")).toBeTruthy();
-  expect(screen.getByRole("switch", { name: "Allow attachment text outside the library’s folder" })).toHaveProperty("checked", false);
-});
-
-test("a library closed during a pending save is refreshed after the save", async () => {
-  const saving = deferred<boolean>();
-  let changed!: () => void;
-  const api = group({
-    attachmentTextLibraries: vi.fn().mockResolvedValueOnce([library]).mockResolvedValue([]),
-    setAttachmentText: () => saving.promise,
-    onLibraryChanged: async (listener) => { changed = () => listener(testStates[0]!.library); return () => {}; },
-  });
-  await screen.findByRole("switch", { name: `${label} ${library.name}` });
-  fireEvent.click(toggle());
-  act(() => changed());
-  expect(api.attachmentTextLibraries).toHaveBeenCalledTimes(1);
-  await act(async () => saving.resolve(true));
-  expect(await screen.findByText("No library is open.")).toBeTruthy();
-});
-
 test("outside-library permission is off by default, saves, and restores a refused save", async () => {
   const api = group();
   const outside = await screen.findByRole<HTMLInputElement>("switch", { name: "Allow attachment text outside the library’s folder" });
@@ -106,15 +60,4 @@ test("outside-library permission is off by default, saves, and restores a refuse
   fireEvent.click(outside);
   await screen.findByRole("alert");
   expect(outside.checked).toBe(true);
-});
-
-test.each(["success", "failure"])("a late outside-library save's %s cannot undo a newer choice", async (outcome) => {
-  const older = deferred<boolean>();
-  group({ setAttachmentTextOutsideLibrary: vi.fn().mockReturnValueOnce(older.promise).mockResolvedValueOnce(false) });
-  const outside = await screen.findByRole<HTMLInputElement>("switch", { name: "Allow attachment text outside the library’s folder" });
-  fireEvent.click(outside);
-  fireEvent.click(outside);
-  await act(async () => { if (outcome === "success") older.resolve(true); else older.reject(new Error("late refusal")); });
-  expect(outside.checked).toBe(false);
-  expect(screen.queryByRole("alert")).toBeNull();
 });

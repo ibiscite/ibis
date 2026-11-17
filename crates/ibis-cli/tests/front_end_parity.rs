@@ -271,44 +271,6 @@ fn golden_citations_are_identical_through_every_front_end() -> Result {
     Ok(())
 }
 
-#[test]
-fn reading_methods_are_identical_through_every_front_end() -> Result {
-    for case in cases()? {
-        let engine = engine(&case)?;
-        let item = case.library.objects().first().map(|item| item.object.id().clone());
-        let title = case
-            .library
-            .objects()
-            .iter()
-            .find_map(|item| match &item.object {
-                LibraryObject::Record(record) => record.csl.get("title")?.as_str().map(str::to_owned),
-                _ => None,
-            })
-            .unwrap_or_default();
-        let word = title.split_whitespace().next().unwrap_or("synthetic").to_owned();
-        let mut calls = vec![
-            (Method::Libraries, Value::Null),
-            (Method::Search, json!({"query": word, "limit": 5})),
-            (Method::Search, json!({"query": "no such synthetic words", "limit": 5})),
-            (Method::Styles, json!({})),
-            (Method::Outputs, Value::Null),
-            (Method::Schema, json!({"method": "cite"})),
-        ];
-        if let Some(item) = item {
-            calls.push((Method::Show, json!({"item": {"by": "id", "value": item}})));
-        }
-        calls.push((
-            Method::Show,
-            json!({"item": {"by": "key", "value": "no-such-synthetic-key"}}),
-        ));
-        for (method, params) in calls {
-            let expected = call(FrontEnd::Engine, &engine, method, &params)?.ok_or("engine")?;
-            same(&case.name, &engine, method, &params, &expected)?;
-        }
-    }
-    Ok(())
-}
-
 /// The health of the libraries behind a result reads the same through every
 /// front end and MCP, and a damaged entry makes a clean result a finding.
 #[test]

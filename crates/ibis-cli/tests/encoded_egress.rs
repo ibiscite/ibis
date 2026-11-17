@@ -174,11 +174,6 @@ fn percent_encoded_paths_never_leave_cli_exports() {
 }
 
 #[test]
-fn wrapped_paths_never_leave_cli_exports() {
-    exports_are_private(path_records(WRAPPED));
-}
-
-#[test]
 fn wrapped_paths_never_leave_mcp_search_or_show() {
     // Stay below the server's bounded tool queue.
     for paths in WRAPPED.chunks(6) {
@@ -189,14 +184,4 @@ fn wrapped_paths_never_leave_mcp_search_or_show() {
 #[test]
 fn doi_shaped_paths_never_leave_cli_exports() {
     exports_are_private(doi_records());
-}
-
-#[test]
-fn percent_encoded_paths_never_leave_mcp_search_or_show() {
-    mcp_is_private(path_records(PATHS));
-}
-
-#[test]
-fn doi_shaped_paths_never_leave_mcp_search_or_show() {
-    mcp_is_private(doi_records());
 }

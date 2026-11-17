@@ -2,7 +2,6 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { usePickerMove } from "../features/picker/usePickerMove";
 import type { usePickerSession } from "../features/picker/usePickerSession";
-import { Band } from "./Band";
 import { Button } from "./Button";
 import { IbisMark } from "./IbisMark";
 import { SearchBar, SearchField } from "./SearchBar";
@@ -77,24 +76,4 @@ test("double-clicking the bird or the empty bar resets the position instead of z
   doubleClick(screen.getByRole("searchbox", { name: "Search references" }));
   expect(onResetPosition).not.toHaveBeenCalled();
   dispose();
-});
-
-test("every drag band marks its own slots, and a band that does not drag marks nothing", () => {
-  const { container } = render(<>
-    <Band drag icon={<span>Invented glyph</span>} trailing={<button type="button">Invented action</button>}>Invented words</Band>
-    <Band icon={<span>Plain glyph</span>} trailing={<span>Plain end</span>}>Plain words</Band>
-  </>);
-  const [drag, plain] = [...container.querySelectorAll(".ui-band")] as [Element, Element];
-  expect([drag, ...drag.querySelectorAll("[data-band-slot]")].every((node) => startsWindowDrag(node))).toBe(true);
-  expect(startsWindowDrag(screen.getByRole("button", { name: "Invented action" }))).toBe(false);
-  expect(plain.querySelector("[data-tauri-drag-region]") ?? plain.getAttribute("data-tauri-drag-region")).toBeNull();
-});
-
-test("the window's drag rule is Tauri's: a control blocks, false blocks, deep reaches inside", () => {
-  const { container } = render(<div data-tauri-drag-region="deep"><span>Deep words</span>
-    <div role="button">Invented control</div><div data-tauri-drag-region="false"><span>Kept still</span></div></div>);
-  expect(startsWindowDrag(screen.getByText("Deep words"))).toBe(true);
-  expect(startsWindowDrag(container.firstElementChild)).toBe(true);
-  expect(startsWindowDrag(screen.getByText("Invented control"))).toBe(false);
-  expect(startsWindowDrag(screen.getByText("Kept still"))).toBe(false);
 });

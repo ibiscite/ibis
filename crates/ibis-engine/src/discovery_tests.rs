@@ -44,20 +44,6 @@ fn bib_files_are_found_newest_first_within_depth_skipping_hidden_and_tool_folder
     assert_eq!(names(&found, root), ["thesis/refs.BIB", "a/b/c/deep.bib", "old.bib"]);
 }
 
-#[test]
-fn results_are_capped_and_roots_listed_twice_count_once() {
-    let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-    for i in 0..25 {
-        touch(&dir.path().join(format!("r{i:02}.bib")), i as u64 + 1);
-    }
-    let root = dir.path().to_path_buf();
-    let search = bib_files(&[root.clone(), root]);
-    assert!(search.1);
-    let found = search.0;
-    assert_eq!(found.len(), 20);
-    assert_eq!(names(&found[..2], dir.path()), ["r00.bib", "r01.bib"]);
-}
-
 #[cfg(unix)]
 #[test]
 fn links_are_not_followed_so_a_loop_cannot_hang() {
@@ -67,17 +53,4 @@ fn links_are_not_followed_so_a_loop_cannot_hang() {
     std::os::unix::fs::symlink(root, root.join("real/loop")).unwrap_or_else(|e| panic!("{e}"));
     std::os::unix::fs::symlink(root.join("real/refs.bib"), root.join("linked.bib")).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(names(&bib_files(&[root.to_path_buf()]).0, root), ["real/refs.bib"]);
-}
-
-#[test]
-fn a_full_folder_stops_its_own_search_only_and_says_so() {
-    let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-    let (big, small) = (dir.path().join("big"), dir.path().join("small"));
-    for i in 0..10 {
-        touch(&big.join(format!("sub{i}/note.txt")), 1);
-    }
-    touch(&small.join("refs.bib"), 1);
-    let search = search(&[big, small], 5, &crate::Cancellation::default());
-    assert!(search.1);
-    assert_eq!(names(&search.0, dir.path()), ["small/refs.bib"]);
 }

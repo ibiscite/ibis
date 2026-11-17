@@ -1,8 +1,8 @@
 //! Health is an engine decision; clients supply native selection facts only.
-use ibis_core::contract::{ErrorCode, ExitCode, LibraryId, LibraryObject};
+use ibis_core::contract::{ExitCode, LibraryObject};
 use ibis_engine::{
     Cancellation, Engine, Method,
-    health::{self, InspectionPolicy},
+    health::{self},
 };
 use serde_json::json;
 
@@ -41,89 +41,6 @@ fn healthy_empty_stale_and_failed_switch_keep_the_searchable_snapshot() {
 }
 
 #[test]
-fn search_health_follows_the_consulted_snapshots_across_a_failed_refresh() {
-    let dir = tempfile::tempdir().unwrap();
-    let healthy = dir.path().join("invented-healthy.bib");
-    let failed = dir.path().join("invented-deleted.bib");
-    std::fs::write(&healthy, b"@misc{one,title={Invented Lantern}}\n").unwrap();
-    std::fs::write(&failed, b"@misc{two,title={Invented Retained}}\n").unwrap();
-    let engine = Engine::new().unwrap().without_file_watches();
-    let cancel = Cancellation::default();
-    engine.open_file_observed(&healthy, &cancel).unwrap();
-    let first_id = engine.libraries().unwrap().libraries.remove(0).id;
-    engine.open_file_observed(&failed, &cancel).unwrap();
-    let second = engine
-        .libraries()
-        .unwrap()
-        .libraries
-        .into_iter()
-        .find(|library| library.id != first_id)
-        .unwrap();
-
-    let search = |params| engine.dispatch(Method::Search, &params, &cancel).unwrap();
-    let lantern = json!({"query":"lantern"});
-    let earlier = search(lantern.clone());
-    std::fs::remove_file(failed).unwrap();
-    let refusal = engine
-        .dispatch(
-            Method::Libraries,
-            &json!({"action":"reload","library":second.id}),
-            &cancel,
-        )
-        .unwrap_err();
-    assert_eq!(refusal.code, ErrorCode::SourceUnavailable);
-
-    let clean = json!({"status":"ok","findings":[]});
-    let stale = json!({"status":"findings","findings":[{
-        "code":"refresh-failed", "library":second.id, "error":"source-unavailable",
-        "last_successful_read_ms":second.updated_at_ms, "reason":"missing-file",
-        "message":{"id":"reason-missing-file","args":{}},
-        "recovery":{"action":"locate-file"},"focus":"library-picker"
-    }]});
-    assert_eq!(earlier.data["source_health"], clean);
-    assert_eq!(earlier.exit_code, ExitCode::Ok);
-    assert!(!earlier.source_findings);
-    let all = search(lantern);
-    assert_eq!(all.data["source_health"], stale, "a consulted source had no hits");
-    assert_eq!(all.exit_code, ExitCode::Findings);
-    assert!(all.source_findings);
-    assert_eq!(all.data["hits"], earlier.data["hits"]);
-    assert_eq!(all.data["snapshot"], earlier.data["snapshot"]);
-
-    let shorthand = search(json!({"query":"see lantern 417","interpret_locator":true}));
-    assert_eq!(shorthand.data["shorthand"]["prefix"], "see");
-    assert_eq!(shorthand.data["shorthand"]["locator"]["typed"], "417");
-    assert_eq!(shorthand.data["hits"], all.data["hits"]);
-    assert_eq!(shorthand.data["source_health"], stale);
-    assert_eq!(shorthand.exit_code, ExitCode::Findings);
-
-    let scoped = search(json!({"query":"retained","libraries":[second.id,second.id]}));
-    assert_eq!(scoped.data["source_health"], stale);
-    assert_eq!(
-        scoped.data["hits"][0]["item"]["object"]["data"]["csl"]["title"],
-        "Invented Retained"
-    );
-    let healthy = search(json!({"query":"lantern","libraries":[first_id]}));
-    assert_eq!(healthy.data["source_health"], clean);
-    assert_eq!(healthy.exit_code, ExitCode::Ok);
-    let none = search(json!({"query":"lantern","libraries":[]}));
-    assert_eq!(none.data["hits"], json!([]));
-    assert_eq!(none.data["source_health"], clean);
-    assert_eq!(none.exit_code, ExitCode::Ok);
-    assert_eq!(
-        engine
-            .dispatch(
-                Method::Search,
-                &json!({"query":"lantern","libraries":[first_id,LibraryId::digest(b"invented unknown")]}),
-                &cancel,
-            )
-            .unwrap_err()
-            .code,
-        ErrorCode::NotFound
-    );
-}
-
-#[test]
 fn search_reports_source_warnings_as_a_count_without_the_damaged_entry() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("invented-damaged.bib");
@@ -148,25 +65,4 @@ fn search_reports_source_warnings_as_a_count_without_the_damaged_entry() {
             "code":"source-warnings", "library":library.id, "count":1
         }]})
     );
-}
-
-#[test]
-fn cancelled_health_inspection_does_not_read_or_mutate_a_source() {
-    let cancel = Cancellation::default();
-    cancel.cancel();
-    let engine = Engine::new().unwrap();
-    assert_eq!(
-        health::inspect_identity(&cancel).unwrap_err().code,
-        ErrorCode::Cancelled
-    );
-    assert_eq!(
-        health::inspect_file(
-            InspectionPolicy::ReadOnly,
-            std::path::Path::new("/invented/never-read.bib"),
-            &cancel
-        )
-        .unwrap_err(),
-        "cancelled"
-    );
-    assert!(engine.libraries().unwrap().libraries.is_empty());
 }

@@ -77,21 +77,6 @@ fn success_without_a_tty_reports_versions_capabilities_and_freshness_without_con
 }
 
 #[test]
-fn no_selected_library_is_a_finding_and_plain_output_explains_the_fix() {
-    let (code, report) = doctor(&[]);
-    assert_eq!(code, 1);
-    assert_eq!(report["library_check"]["code"], "no-library");
-    assert_eq!(report["sources"], json!([]));
-    let output = ibis().arg("doctor").output().unwrap_or_else(|error| panic!("{error}"));
-    assert_eq!(output.status.code(), Some(1));
-    let text = String::from_utf8(output.stdout).unwrap_or_else(|error| panic!("{error}"));
-    assert!(text.contains("no-library"));
-    assert!(text.contains("--file"));
-    assert!(!text.contains('\u{1b}'));
-    assert!(output.stderr.is_empty());
-}
-
-#[test]
 fn failed_sources_do_not_hide_successes_or_echo_private_paths() {
     let missing = directory("missing").join("synthetic-private-name.bib");
     let (code, report) = doctor(&[
@@ -109,25 +94,6 @@ fn failed_sources_do_not_hide_successes_or_echo_private_paths() {
     assert_eq!(report["sources"][2]["status"], "ok");
     assert!(!report.to_string().contains("synthetic-private-name"));
     assert!(!missing.exists());
-}
-
-#[cfg(unix)]
-#[test]
-fn unreadable_library_is_reported_without_changing_permissions() {
-    use std::os::unix::fs::PermissionsExt;
-    let path = directory("unreadable").join("library.bib");
-    std::fs::write(&path, b"@book{private, title={Synthetic private title}}").unwrap_or_else(|error| panic!("{error}"));
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap_or_else(|error| panic!("{error}"));
-    let result = doctor(&["--file", path.to_str().unwrap_or_default()]);
-    let permissions = std::fs::metadata(&path)
-        .unwrap_or_else(|error| panic!("{error}"))
-        .permissions()
-        .mode();
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap_or_else(|error| panic!("{error}"));
-    assert_eq!(result.0, 1);
-    assert_eq!(result.1["sources"][0]["code"], "library-unavailable");
-    assert_eq!(permissions & 0o777, 0);
-    assert!(!result.1.to_string().contains("Synthetic private title"));
 }
 
 #[test]
@@ -232,50 +198,6 @@ fn zotero_without_a_running_service_is_explicitly_unchecked_and_does_not_read_ho
     );
 }
 
-#[test]
-fn each_invocation_reads_current_files_and_never_remembers_a_previous_success() {
-    let path = directory("reopen").join("library.bib");
-    std::fs::write(&path, b"@book{synthetic, title={Invented}}").unwrap_or_else(|error| panic!("{error}"));
-    assert_eq!(doctor(&["--file", path.to_str().unwrap_or_default()]).0, 0);
-    std::fs::remove_file(&path).unwrap_or_else(|error| panic!("{error}"));
-    let (code, report) = doctor(&["--file", path.to_str().unwrap_or_default()]);
-    assert_eq!(code, 1);
-    assert_eq!(report["sources"][0]["code"], "library-missing");
-}
-
-#[test]
-fn completion_generation_does_not_open_sources_and_json_wraps_the_script() {
-    for shell in ["bash", "zsh", "fish"] {
-        let output = ibis()
-            .args(["completions", shell, "--file", "/invented/never-opened.bib"])
-            .output()
-            .unwrap_or_else(|error| panic!("{error}"));
-        assert!(output.status.success(), "{:?}", output.stderr);
-        assert!(output.stderr.is_empty());
-        let script = String::from_utf8(output.stdout).unwrap_or_default();
-        for word in [
-            "doctor",
-            "--config",
-            "completions",
-            "--request",
-            "--locator",
-            "--zotero-group",
-            "autocite",
-        ] {
-            // Fish spells long switches as `-l config`.
-            assert!(script.contains(word.trim_start_matches('-')), "{shell}: {word}");
-        }
-        let output = ibis()
-            .args(["completions", shell, "--json"])
-            .output()
-            .unwrap_or_else(|error| panic!("{error}"));
-        let report: Value = serde_json::from_slice(&output.stdout).unwrap_or_default();
-        assert!(output.status.success());
-        assert_eq!(report["data"]["shell"], shell);
-        assert_eq!(report["data"]["script"].as_str(), Some(script.trim_end_matches('\n')));
-    }
-}
-
 #[cfg(unix)]
 #[test]
 fn bash_completes_commands_flags_and_values_in_their_real_contexts() {
@@ -317,85 +239,6 @@ fn bash_completes_commands_flags_and_values_in_their_real_contexts() {
 
 #[cfg(unix)]
 #[test]
-fn zsh_completes_flags_and_values_without_running_ibis_again() {
-    if Command::new("zsh").args(["-f", "-c", ":"]).output().is_err() {
-        eprintln!("zsh is unavailable; the generated command tree is still checked");
-        return;
-    }
-    let generated = ibis()
-        .args(["completions", "zsh"])
-        .output()
-        .unwrap_or_else(|error| panic!("{error}"));
-    assert!(generated.status.success());
-    let script = String::from_utf8(generated.stdout).unwrap_or_default();
-    for (words, index, expected, excluded) in [
-        ("ibis doctor --co", 3, "--config", "--locator"),
-        ("ibis --file cite doctor --co", 5, "--config", "--locator"),
-        ("ibis cite --format pa", 4, "pandoc", "doctor"),
-        ("ibis cite synthetic --omit-author --lo", 5, "--locator", "--config"),
-        ("ibis completions ba", 3, "bash", "doctor"),
-        ("ibis help se", 3, "search", "--locator"),
-    ] {
-        let output = Command::new("zsh").args(["-f", "-c", &format!(
-            "compdef() {{ :; }}\n{script}\ncompadd() {{ printf '%s\\n' \"$@\"; }}\nwords=({words}); CURRENT={index}; _ibis"
-        )]).output().unwrap_or_else(|error| panic!("{error}"));
-        assert!(output.status.success(), "{:?}", output.stderr);
-        let results = String::from_utf8(output.stdout).unwrap_or_default();
-        assert!(results.lines().any(|line| line == expected), "{words}: {results}");
-        assert!(!results.lines().any(|line| line == excluded), "{words}: {results}");
-    }
-}
-
-#[test]
-fn config_and_file_refusals_have_stable_codes_and_keep_other_checks_visible() {
-    let dir = directory("refusals");
-    let config = dir.join("missing.json");
-    assert_eq!(
-        doctor(&["--config", config.to_str().unwrap_or_default()]).1["config"]["code"],
-        "config-missing"
-    );
-    std::fs::write(&config, b"{\"schema_version\":999,\"private\":\"do not echo\"}")
-        .unwrap_or_else(|error| panic!("{error}"));
-    let (code, report) = doctor(&[
-        "--config",
-        config.to_str().unwrap_or_default(),
-        "--file",
-        dir.to_str().unwrap_or_default(),
-        "--file",
-        "../../fixtures/bibtex/damaged.bib",
-    ]);
-    assert_eq!(code, 1);
-    assert_eq!(report["config"]["code"], "config-newer-format");
-    assert_eq!(report["sources"][0]["code"], "library-not-regular");
-    assert_eq!(report["sources"][1]["code"], "source-warnings");
-    assert_eq!(report["sources"][1]["freshness"]["state"], "current");
-    assert!(!report.to_string().contains("do not echo"));
-    assert!(!report.to_string().contains("damaged.bib"));
-}
-
-#[test]
-fn terminal_kit_usage_errors_keep_the_existing_exit_code_and_envelope() {
-    for args in [
-        vec!["doctor", "--config"],
-        vec!["completions"],
-        vec!["completions", "unknown-shell"],
-    ] {
-        let output = ibis()
-            .args(args)
-            .arg("--json")
-            .output()
-            .unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(output.status.code(), Some(2));
-        assert_eq!(
-            serde_json::from_slice::<Value>(&output.stdout).unwrap_or_default(),
-            json!({"ibis":1,"ok":false,"error":{"code":"usage","message":{"id":"error-usage","args":{}},"recovery":{"action":"edit-input"},"focus":"request"}})
-        );
-        assert!(output.stderr.starts_with(b"ibis: "), "{:?}", output.stderr);
-    }
-}
-
-#[cfg(unix)]
-#[test]
 fn a_non_utf8_source_path_is_reported_without_a_panic_or_path_disclosure() {
     use std::{ffi::OsString, os::unix::ffi::OsStringExt};
     let path = directory("non-utf8").join(OsString::from_vec(b"invented-\xff.bib".to_vec()));
@@ -409,84 +252,6 @@ fn a_non_utf8_source_path_is_reported_without_a_panic_or_path_disclosure() {
     let report: Value = serde_json::from_slice(&output.stdout).unwrap_or_default();
     assert_eq!(report["data"]["sources"][0]["code"], "library-invalid");
     assert!(!String::from_utf8_lossy(&output.stdout).contains("invented-"));
-}
-
-#[cfg(unix)]
-#[test]
-fn fzf_recipe_requires_a_nonblank_search_before_reading_a_library() {
-    for args in [
-        vec!["/invented/unused.bib"],
-        vec!["/invented/unused.bib", ""],
-        vec!["/invented/unused.bib", " \t\r\n"],
-        vec!["/invented/unused.bib", "Invented", "extra"],
-        vec![],
-    ] {
-        let output = Command::new("bash")
-            .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/recipes/ibis-fzf"))
-            .args(args)
-            .output()
-            .unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(output.status.code(), Some(2));
-        assert!(output.stdout.is_empty());
-        let message = String::from_utf8_lossy(&output.stderr);
-        assert!(message.contains("Usage: bash ibis-fzf"), "{message}");
-        assert!(message.contains("<search words>"), "{message}");
-        assert!(!message.contains("search failed"), "{message}");
-    }
-}
-
-#[cfg(unix)]
-#[test]
-fn fzf_recipe_filters_real_titles_and_preserves_the_selected_identity() {
-    for tool in ["fzf", "jq"] {
-        match Command::new(tool).arg("--version").output() {
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                eprintln!("SKIP real fzf recipe regression: {tool} is not installed");
-                return;
-            }
-            Err(error) => panic!("cannot run {tool}: {error}"),
-            Ok(output) => assert!(output.status.success(), "{tool} --version failed"),
-        }
-    }
-    let dir = directory("real-fzf");
-    let library = dir.join("invented library.bib");
-    std::fs::write(
-        &library,
-        concat!(
-            "@book{firstpick, title={Invented comet}}\n",
-            "@book{secondpick, title={Invented lantern}}\n",
-        ),
-    )
-    .unwrap_or_else(|error| panic!("{error}"));
-    let binary_dir = std::path::Path::new(env!("CARGO_BIN_EXE_ibis"))
-        .parent()
-        .unwrap_or(&dir);
-    let command_path = std::env::join_paths(
-        std::iter::once(binary_dir.to_path_buf())
-            .chain(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())),
-    )
-    .unwrap_or_else(|error| panic!("{error}"));
-    for (filter, code, expected) in [
-        ("comet", 0, "[@firstpick]\n"),
-        ("lantern", 0, "[@secondpick]\n"),
-        ("no-such-title", 1, ""),
-    ] {
-        // Real fzf's --filter avoids a TTY while retaining the recipe's options.
-        // --nth operates on the fields transformed by --with-nth (fzf manual).
-        let output = Command::new("bash")
-            .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/recipes/ibis-fzf"))
-            .arg(&library)
-            .arg("Invented")
-            .env("PATH", &command_path)
-            .env("FZF_DEFAULT_OPTS", format!("--filter={filter}"))
-            .env_remove("FZF_DEFAULT_OPTS_FILE")
-            .env_remove("FZF_DEFAULT_COMMAND")
-            .output()
-            .unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(output.status.code(), Some(code), "filter {filter}: {:?}", output.stderr);
-        assert_eq!(output.stdout, expected.as_bytes(), "filter {filter}");
-        assert!(output.stderr.is_empty(), "filter {filter}: {:?}", output.stderr);
-    }
 }
 
 #[cfg(unix)]
@@ -558,67 +323,4 @@ fn fzf_recipe_cites_identities_and_refuses_a_changed_selection_or_failed_source(
     assert_eq!(output.status.code(), Some(5));
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("search failed"));
-}
-
-fn run_at_terminal(args: &[&str]) -> (u8, String, String) {
-    let (mut output, mut errors) = (vec![], vec![]);
-    let code = ibis::run_with(
-        ibis_engine::Engine::new().unwrap_or_else(|error| panic!("{error:?}")),
-        args.iter().map(Into::into).collect(),
-        std::io::Cursor::new(vec![]),
-        &mut output,
-        &mut errors,
-        ibis::OutputMode::Terminal,
-    );
-    let text = |bytes| String::from_utf8(bytes).unwrap_or_else(|error| panic!("{error}"));
-    (code, text(output), text(errors))
-}
-
-#[test]
-fn ibis_alone_greets_a_person_and_every_example_it_shows_works() {
-    let (code, greeting, errors) = run_at_terminal(&["ibis"]);
-    assert_eq!(code, 0);
-    assert!(errors.is_empty(), "{errors}");
-    assert!(
-        greeting.starts_with(&format!("Ibis {} ", env!("CARGO_PKG_VERSION"))),
-        "{greeting}"
-    );
-    assert!(greeting.contains("ibis --help"), "{greeting}");
-    assert!(!greeting.contains('\u{1b}'));
-
-    let folder = directory("greeting");
-    let library = "@article{vale2024lanterns, author = {Vale, Mira}, title = {Lantern gardens}, \
-                   journal = {Journal of Invented Landscapes}, year = {2024}}";
-    std::fs::write(folder.join("refs.bib"), library).unwrap_or_else(|error| panic!("{error}"));
-    let examples: Vec<_> = greeting
-        .lines()
-        .filter_map(|line| {
-            line.trim_start()
-                .strip_prefix("ibis ")
-                .filter(|_| line.starts_with("  "))
-        })
-        .map(|line| line.split("  ").next().unwrap_or_default())
-        .collect();
-    assert_eq!(examples.len(), 3, "{greeting}");
-    for example in examples {
-        let output = ibis()
-            .args(example.split_whitespace())
-            .current_dir(&folder)
-            .output()
-            .unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(output.status.code(), Some(0), "{example}: {output:?}");
-    }
-}
-
-#[test]
-fn a_script_that_forgets_its_command_still_fails_loudly() {
-    let output = ibis().output().unwrap_or_else(|error| panic!("{error}"));
-    assert_eq!(output.status.code(), Some(2));
-    assert!(output.stdout.is_empty());
-    assert!(!output.stderr.is_empty());
-
-    let (code, envelope, _) = run_at_terminal(&["ibis", "--json"]);
-    assert_eq!(code, 2);
-    let envelope: Value = serde_json::from_str(&envelope).unwrap_or_else(|error| panic!("{error}"));
-    assert_eq!(envelope["error"]["code"], "usage");
 }

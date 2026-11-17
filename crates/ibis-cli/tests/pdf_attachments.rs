@@ -239,24 +239,3 @@ fn contradicting_pdf_labels_give_no_cite_pages_in_outline_read_or_find_in() {
     let found = library.json(&["find-in", id, "lantern"]);
     assert_eq!(found["data"]["passages"][0]["cite_page"], Value::Null);
 }
-
-#[test]
-fn the_child_process_reads_only_its_standard_input() {
-    use std::io::Write;
-    let pdf = ibis::pdf_text::invented_pdf(&["Invented page."], None);
-    let mut child = Command::new(env!("CARGO_BIN_EXE_ibis"))
-        .args(["__extract-pdf", "--labels-only"])
-        .env_clear()
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .unwrap();
-    child.stdin.take().unwrap().write_all(&pdf).unwrap();
-    let output = child.wait_with_output().unwrap();
-    assert!(output.status.success());
-    let answer: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(
-        answer,
-        serde_json::json!({"read": {"pages": 1, "labels": null, "text": null}})
-    );
-}

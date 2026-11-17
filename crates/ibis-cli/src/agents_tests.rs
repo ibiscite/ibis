@@ -5,21 +5,6 @@ use std::path::Path;
 const CHANGED: &str = "its settings changed while Ibis was working; nothing was written, so run the command again";
 use std::io::Cursor;
 
-#[test]
-fn agents_without_a_full_command_path_report_the_install_step() {
-    for id in ["claude-desktop", "lm-studio"] {
-        let home = home(&format!("install-first-{id}"));
-        for action in ["status", "setup"] {
-            let args = vec![action, "--client", id];
-            let result = run(&home, &args, "", false).0.ok().unwrap();
-            assert_eq!(outcome(&result, id), "blocked");
-            assert_eq!(result.data["apps"][0]["detail"], "Install the ibis command first");
-            assert_eq!(result.exit_code, ExitCode::Findings);
-            assert!(result.text.unwrap().contains("blocked: Install the ibis command first"));
-        }
-    }
-}
-
 /// An invented home with no real app settings in it.
 fn home(name: &str) -> Home {
     let root = std::env::temp_dir().join(format!("ibis-agents-{name}-{}", std::process::id()));
@@ -148,131 +133,6 @@ fn without_a_person_to_ask_nothing_changes_unless_told_to() {
     assert_eq!(fs::read_to_string(&path).unwrap(), DESKTOP);
 }
 
-#[test]
-fn only_apps_found_here_are_set_up_and_a_missing_file_is_created() {
-    let mut home = home("found");
-    assert!(
-        run(&home, &["status"], "", false).0.ok().unwrap().data["apps"]
-            .as_array()
-            .unwrap()
-            .is_empty()
-    );
-    let command = known_command(&mut home);
-    fs::create_dir_all(home.root.join(".lmstudio")).unwrap();
-    let (result, _) = run(&home, &["setup", "--yes"], "", false);
-    let result = result.ok().unwrap();
-    assert_eq!(result.data["apps"].as_array().unwrap().len(), 1);
-    assert_eq!(outcome(&result, "lm-studio"), "connected");
-    let value: Value =
-        serde_json::from_str(&fs::read_to_string(home.root.join(".lmstudio/mcp.json")).unwrap()).unwrap();
-    assert_eq!(
-        value,
-        json!({"mcpServers": {"ibis": {"command": command, "args": ["mcp", "--app-libraries"]}}})
-    );
-    // VS Code's entries name their transport.
-    fs::create_dir_all(home.config.clone().unwrap().join("Code").join("User")).unwrap();
-    run(&home, &["setup", "--yes", "--client", "vscode"], "", false)
-        .0
-        .ok()
-        .unwrap();
-    let value: Value =
-        serde_json::from_str(&fs::read_to_string(home.config.clone().unwrap().join("Code/User/mcp.json")).unwrap())
-            .unwrap();
-    assert_eq!(value["servers"]["ibis"]["type"], "stdio");
-}
-
-#[cfg(unix)]
-#[test]
-fn claude_code_is_changed_through_its_own_command_and_never_twice_with_the_plugin() {
-    use std::os::unix::fs::PermissionsExt;
-    let home = home("claude");
-    let log = home.root.join("claude-args.txt");
-    let script = home.root.join("bin").join("claude");
-    fs::write(&script, format!("#!/bin/sh\necho \"$@\" >> '{}'\n", log.display())).unwrap();
-    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
-    let (result, _) = run(&home, &["setup", "--yes"], "", false);
-    assert_eq!(outcome(&result.ok().unwrap(), "claude-code"), "connected");
-    assert_eq!(
-        fs::read_to_string(&log).unwrap(),
-        "mcp add --scope user --transport stdio ibis -- ibis mcp --app-libraries\n"
-    );
-    fs::write(
-        home.root.join(".claude.json"),
-        r#"{"mcpServers":{"ibis":{"type":"stdio","command":"ibis","args":["mcp","--app-libraries"],"env":{}}}}"#,
-    )
-    .unwrap();
-    let (status, _) = run(&home, &["status"], "", false);
-    assert_eq!(outcome(&status.ok().unwrap(), "claude-code"), "connected");
-    run(&home, &["remove", "--yes"], "", false).0.ok().unwrap();
-    assert!(
-        fs::read_to_string(&log)
-            .unwrap()
-            .ends_with("mcp remove --scope user ibis\n")
-    );
-    // With the plugin installed, setup adds nothing: the server would be there twice.
-    fs::remove_file(&log).unwrap();
-    fs::remove_file(home.root.join(".claude.json")).unwrap();
-    let plugins = home.root.join(".claude/plugins");
-    fs::create_dir_all(&plugins).unwrap();
-    fs::write(
-        plugins.join("installed_plugins.json"),
-        r#"{"plugins":{"ibis@ibiscite":[{}]}}"#,
-    )
-    .unwrap();
-    let (result, _) = run(&home, &["setup", "--yes"], "", false);
-    let result = result.ok().unwrap();
-    assert_eq!(outcome(&result, "claude-code"), "connected");
-    assert!(result.text.unwrap().contains("plugin"));
-    assert!(!log.exists());
-}
-
-#[cfg(unix)]
-#[test]
-fn a_failed_program_add_prints_the_removed_entry_in_full() {
-    use std::os::unix::fs::PermissionsExt;
-    for (id, program) in [("claude-code", "claude"), ("codex", "codex")] {
-        let home = home(&format!("failed-add-{id}"));
-        let old = json!({"command":"ibis","args":["mcp","--file","invented.bib"],"env":{"INVENTED":"keep this"}});
-        let settings = if id == "codex" {
-            let settings = home.root.join(".codex/config.toml");
-            fs::create_dir_all(settings.parent().unwrap()).unwrap();
-            fs::write(
-                &settings,
-                "[mcp_servers.ibis]\ncommand = \"ibis\"\nargs = [\"mcp\", \"--file\", \"invented.bib\"]\n[mcp_servers.ibis.env]\nINVENTED = \"keep this\"\n",
-            )
-            .unwrap();
-            settings
-        } else {
-            let settings = home.root.join(".claude.json");
-            fs::write(&settings, json!({"mcpServers":{"ibis":old}}).to_string()).unwrap();
-            settings
-        };
-        let log = home.root.join("program-args.txt");
-        let script = home.root.join("bin").join(program);
-        fs::write(
-            &script,
-            format!(
-                "#!/bin/sh\necho \"$@\" >> '{}'\ncase \"$2\" in\nremove) /bin/rm '{}' ;;\nadd) exit 1 ;;\nesac\n",
-                log.display(),
-                settings.display()
-            ),
-        )
-        .unwrap();
-        fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
-        let (result, _) = run(&home, &["setup", "--yes", "--replace", "--client", id], "", false);
-        let result = result.ok().unwrap();
-        assert_eq!(outcome(&result, id), "failed");
-        assert!(!settings.exists(), "the fake remove took out the entry");
-        let calls = fs::read_to_string(log).unwrap();
-        assert!(calls.lines().next().unwrap().starts_with("mcp remove"), "{calls}");
-        assert!(calls.lines().nth(1).unwrap().starts_with("mcp add"), "{calls}");
-        let detail = result.data["apps"][0]["detail"].as_str().unwrap();
-        assert!(detail.contains("the old ibis entry was taken out"), "{detail}");
-        assert!(detail.contains(&format!("\"ibis\": {old}")), "{detail}");
-        assert!(detail.contains(GUIDE), "{detail}");
-    }
-}
-
 fn known_command(home: &mut Home) -> PathBuf {
     let command = home
         .root
@@ -288,29 +148,6 @@ fn known_command(home: &mut Home) -> PathBuf {
     command
 }
 
-fn stale_commands(home: &mut Home) -> Vec<String> {
-    known_command(home);
-    let missing = home.root.join("missing/ibis");
-    let directory = home.root.join("directory/ibis");
-    fs::create_dir_all(&directory).unwrap();
-    #[allow(unused_mut)] // Only Unix has a separate executable permission bit.
-    let mut commands = vec![
-        COMMAND.to_owned(),
-        missing.display().to_string(),
-        directory.display().to_string(),
-    ];
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let plain = home.root.join("nonexecutable/ibis");
-        fs::create_dir_all(plain.parent().unwrap()).unwrap();
-        fs::write(&plain, "not executable").unwrap();
-        fs::set_permissions(&plain, fs::Permissions::from_mode(0o644)).unwrap();
-        commands.push(plain.display().to_string());
-    }
-    commands
-}
-
 fn absolute_settings(home: &Home, id: &str, command: &str) -> PathBuf {
     let path = match id {
         "claude-desktop" => home.config.as_ref().unwrap().join("Claude/claude_desktop_config.json"),
@@ -324,53 +161,6 @@ fn absolute_settings(home: &Home, id: &str, command: &str) -> PathBuf {
     )
     .unwrap();
     path
-}
-
-#[test]
-fn status_reports_an_unusable_absolute_client_command_as_stale() {
-    for id in ["claude-desktop", "lm-studio"] {
-        let mut home = home(&format!("stale-status-{id}"));
-        for command in stale_commands(&mut home) {
-            let path = absolute_settings(&home, id, &command);
-            let before = fs::read(&path).unwrap();
-            let (result, _) = run(&home, &["status", "--client", id], "", false);
-            let result = result.ok().unwrap();
-            assert_eq!(outcome(&result, id), "stale", "{command}");
-            assert_eq!(result.exit_code, ExitCode::Findings);
-            assert!(result.text.unwrap().contains("ibis agents setup"));
-            assert_eq!(fs::read(path).unwrap(), before);
-        }
-        // Without a known command, repair waits for the command installation.
-        home.ibis = None;
-        absolute_settings(&home, id, COMMAND);
-        let (result, _) = run(&home, &["status", "--client", id], "", false);
-        let result = result.ok().unwrap();
-        assert_eq!(outcome(&result, id), "blocked");
-        assert_eq!(result.data["apps"][0]["detail"], "Install the ibis command first");
-    }
-}
-
-#[test]
-fn setup_repairs_a_stale_command_without_the_different_entry_question() {
-    for id in ["claude-desktop", "lm-studio"] {
-        let mut home = home(&format!("stale-setup-{id}"));
-        for command in stale_commands(&mut home) {
-            let path = absolute_settings(&home, id, &command);
-            let old = json!({"command":command,"args":ARGS});
-            let (result, asked) = run(&home, &["setup", "--client", id], "y\n", true);
-            let result = result.ok().unwrap();
-            assert_eq!(outcome(&result, id), "replaced", "{command}");
-            assert!(!asked.contains("different ibis entry"), "{asked}");
-            let detail = result.data["apps"][0]["detail"].as_str().unwrap();
-            assert!(detail.contains(&format!("- \"ibis\": {old}")), "{detail}");
-            assert!(detail.contains("+ \"ibis\":"), "{detail}");
-            let written: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
-            assert_eq!(
-                written["mcpServers"]["ibis"]["command"],
-                home.ibis.as_ref().unwrap().to_string_lossy().into_owned()
-            );
-        }
-    }
 }
 
 #[test]

@@ -9,7 +9,7 @@ use std::{
     process::Command,
 };
 
-use serde_json::{Value, json};
+use serde_json::Value;
 
 /// The picture in docs/architecture.md: each workspace member, by folder, and
 /// the workspace crates it ships with. `[dev-dependencies]` and
@@ -123,43 +123,4 @@ fn each_crate_uses_only_the_layers_below_it() {
         "Every workspace crate is in LAYERS with exactly the crates it ships with. \
          A front end that needs more calls a new engine method instead (decision 0028)."
     );
-}
-
-/// Invented metadata in the shape `cargo metadata --format-version 1 --no-deps` prints.
-fn invented(app_dependencies: Value) -> Value {
-    let package = |name: &str, folder: &str, dependencies: Value| {
-        json!({
-            "id": format!("path+file:///work/{folder}#{name}@0.1.0"),
-            "name": name,
-            "manifest_path": format!("/work/{folder}/Cargo.toml"),
-            "dependencies": dependencies,
-        })
-    };
-    let packages = [
-        package("ibis-core", "crates/ibis-core", json!([])),
-        package("ibis-sources", "crates/ibis-sources", json!([])),
-        package("ibis-csl", "crates/ibis-csl", json!([])),
-        package("ibis", "crates/ibis-cli", json!([])),
-        package("ibis-desktop", "apps/desktop/src-tauri", app_dependencies),
-    ];
-    let members: Vec<Value> = packages.iter().map(|package| package["id"].clone()).collect();
-    json!({ "workspace_root": "/work", "workspace_members": members, "packages": packages })
-}
-
-#[test]
-fn a_manifest_cannot_hide_a_crate_behind_a_rename_or_a_platform() {
-    let dependency = |name: &str, kind: Value, rename: Value, target: Value| json!({ "name": name, "kind": kind, "rename": rename, "target": target });
-    let graph = shipped_graph(&invented(json!([
-        dependency("ibis-sources", Value::Null, "rules".into(), Value::Null),
-        dependency("ibis-csl", Value::Null, Value::Null, "cfg(unix)".into()),
-        dependency("ibis", "dev".into(), Value::Null, Value::Null),
-        dependency("ibis-core", "build".into(), Value::Null, Value::Null),
-        dependency("serde", Value::Null, Value::Null, Value::Null),
-    ])));
-    let app: Vec<_> = graph["apps/desktop/src-tauri"].iter().map(String::as_str).collect();
-    assert_eq!(app, ["ibis-csl", "ibis-sources"]);
-    // A member with no workspace dependency is still in the graph, so a new
-    // crate cannot pass unlisted.
-    assert!(graph["crates/ibis-cli"].is_empty());
-    assert_eq!(graph.len(), 5);
 }

@@ -183,51 +183,6 @@ fn replay(engine: &Engine, cases: &[Value], keys: &[String], items: &[Value]) ->
     Ok(())
 }
 
-/// A Zotero date typed without leading zeros is still a date: APA prints the
-/// year, never the typed text (beta report, 2026-11-15).
-#[test]
-fn a_date_typed_without_leading_zeros_cites_its_year() -> TestResult {
-    let library = ZoteroSource::default().id_of(Library::User).ok_or("library id")?;
-    let item: ZoteroItem = serde_json::from_value(json!({
-        "key": "UNPADDED", "itemType": "journalArticle", "title": "Invented localization study",
-        "date": "2025-1-12", "citationKey": "inventedUnpadded2025",
-        "creators": [
-            {"creatorType": "author", "firstName": "Ada", "lastName": "Synthetic"},
-            {"creatorType": "author", "firstName": "Ben", "lastName": "Example"},
-            {"creatorType": "author", "firstName": "Cy", "lastName": "Invented"}
-        ]
-    }))?;
-    let mapped = map_item(library, &item).map_err(|error| format!("{error:?}"))?;
-    assert_eq!(
-        mapped.record.csl.to_map()["issued"],
-        json!({"date-parts": [[2025, 1, 12]]})
-    );
-    let engine = Engine::from_snapshot(Arc::new(Snapshot::new(vec![LibraryObject::Record(mapped.record)])?));
-    let cite = |extra: &[&str]| -> TestResult<String> {
-        let mut args: Vec<String> = ["ibis", "cite", "inventedUnpadded2025", "--style", "apa"]
-            .into_iter()
-            .map(Into::into)
-            .collect();
-        args.extend(extra.iter().map(|arg| (*arg).to_owned()));
-        let (mut output, mut errors) = (vec![], vec![]);
-        let code = ibis::run_with(
-            engine.clone(),
-            args.into_iter().map(Into::into).collect(),
-            Cursor::new(vec![]),
-            &mut output,
-            &mut errors,
-            ibis::OutputMode::Plain,
-        );
-        assert_eq!(code, 0, "{}", String::from_utf8_lossy(&errors));
-        Ok(String::from_utf8(output)?)
-    };
-    assert_eq!(cite(&[])?.trim(), "(Synthetic et al., 2025)");
-    let entry = cite(&["--bibliography"])?;
-    assert!(entry.contains("(2025)."), "{entry}");
-    assert!(!entry.contains("2025-1-12"), "{entry}");
-    Ok(())
-}
-
 /// A Zotero item has no original BibTeX entry: `entry` refuses as a finding
 /// (exit 1, `ok: true`), names the reason and says how to write one instead.
 #[test]

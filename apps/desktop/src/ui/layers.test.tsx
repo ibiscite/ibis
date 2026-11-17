@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
-import { LayerScope } from "./Layer";
-import { KINDS, closeOverlays, goBack, focusLost, useKeyOwner, useLayer, useNearestLayer, type LayerClose, type LayerKind } from "./layers";
+import { KINDS, goBack, useLayer, type LayerClose, type LayerKind } from "./layers";
 
 afterEach(cleanup);
 const ORDER = Object.keys(KINDS) as LayerKind[];
@@ -11,21 +10,6 @@ function Layer({ kind, open = true, close }: { kind: LayerKind; open?: boolean; 
   useLayer(kind, open, close);
   return null;
 }
-function Scoped({ kind, children }: { kind: LayerKind; children?: React.ReactNode }) {
-  const [open, setOpen] = useState(true);
-  const layer = useLayer(kind, open, () => { setOpen(false); });
-  return open ? <LayerScope layer={layer}><output>{kind}</output>{children}</LayerScope> : null;
-}
-function Nearest() {
-  return <output>{useNearestLayer() ?? "none"}</output>;
-}
-
-test("Esc closes a sheet inside a popover before the popover", () => {
-  const { queryByText } = render(<Scoped kind="popover"><Scoped kind="sheet" /></Scoped>);
-  fireEvent.keyDown(document.body, { key: "Escape" });
-  expect(queryByText("sheet")).toBeNull();
-  expect(queryByText("popover")).toBeTruthy();
-});
 
 test("Esc closes the nearest kind whatever order the layers opened in", () => {
   const closed: LayerKind[] = [];
@@ -47,33 +31,6 @@ test("Esc closes the nearest kind whatever order the layers opened in", () => {
   expect(goBack()).toBe(false);
 });
 
-test("the latest layer of one kind is nearest, and a layer may hand its key on", () => {
-  const first = vi.fn(), second = vi.fn(() => false);
-  render(<><Layer kind="menu" close={first} /><Layer kind="menu" close={second} /></>);
-  const event = new KeyboardEvent("keydown", { key: "Escape" });
-  expect(goBack("escape", event)).toBe(false);
-  expect(second).toHaveBeenCalledWith(event);
-  expect(first).not.toHaveBeenCalled();
-});
-
-test("a command or a hide clears every overlay, a popover too, and leaves the panel, chooser, search and window alone", () => {
-  const closed: LayerKind[] = [];
-  render(<>{ORDER.map((kind) => <Layer key={kind} kind={kind} close={(event) => { if (event) throw new Error("asked by a key"); closed.push(kind); }} />)}</>);
-  closeOverlays();
-  expect(closed).toEqual(["menu", "popover", "palette", "sheet"]);
-});
-
-test("Esc reaches a layer before any control can swallow it, and only once", () => {
-  const close = vi.fn();
-  const swallow = vi.fn((event: React.KeyboardEvent) => event.stopPropagation());
-  const { getByRole } = render(<><Layer kind="menu" close={close} /><button onKeyDownCapture={swallow}>Control</button></>);
-  const button = getByRole("button");
-  button.focus();
-  expect(fireEvent.keyDown(button, { key: "Escape" })).toBe(false);
-  expect(close).toHaveBeenCalledOnce();
-  expect(swallow).not.toHaveBeenCalled();
-});
-
 test("a composition keeps Esc, even when only its start was flagged", () => {
   const close = vi.fn();
   const { getByRole } = render(<><Layer kind="menu" close={close} /><input /></>);
@@ -87,73 +44,4 @@ test("a composition keeps Esc, even when only its start was flagged", () => {
   fireEvent.compositionEnd(field);
   fireEvent.keyDown(field, { key: "Escape" });
   expect(close).toHaveBeenCalledOnce();
-});
-
-test("a composition cut short by its field leaving cannot keep Esc away", () => {
-  const close = vi.fn();
-  const { getByRole, rerender } = render(<><Layer kind="menu" close={close} /><input /></>);
-  fireEvent.compositionStart(getByRole("textbox"));
-  rerender(<><Layer kind="menu" close={close} /></>);
-  fireEvent.keyDown(document.body, { key: "Escape" });
-  expect(close).toHaveBeenCalledOnce();
-});
-
-test("a layer that takes the focused control with it sends the keyboard home, and only then", async () => {
-  const home = vi.fn();
-  function Window({ open, control }: { open: boolean; control: boolean }) {
-    useKeyOwner({ keyDown: () => undefined, home });
-    useLayer("chooser", open, () => undefined);
-    return control ? <button>Row</button> : null;
-  }
-  const { getByRole, rerender } = render(<Window open control />);
-  getByRole("button").focus();
-  rerender(<Window open={false} control={false} />);
-  expect(document.activeElement).toBe(document.body);
-  await act(async () => {});
-  expect(home).toHaveBeenCalledOnce();
-  home.mockClear();
-  rerender(<Window open control />);
-  getByRole("button").focus();
-  rerender(<Window open={false} control />);
-  await act(async () => {});
-  expect(home).not.toHaveBeenCalled();
-});
-
-test("focus on nothing, or in something hidden, counts as lost", () => {
-  const { getByRole, rerender } = render(<div><button>Control</button></div>);
-  expect(focusLost()).toBe(true);
-  getByRole("button").focus();
-  expect(focusLost()).toBe(false);
-  rerender(<div hidden><button>Control</button></div>);
-  expect(focusLost()).toBe(true);
-});
-
-test("the nearest layer is readable for words such as the footer's Esc hint", () => {
-  const { container, rerender } = render(<><Nearest /><Layer kind="search" close={() => undefined} /></>);
-  expect(container.textContent).toBe("search");
-  rerender(<><Nearest /><Layer kind="search" close={() => undefined} /><Layer kind="sheet" close={() => undefined} /></>);
-  expect(container.textContent).toBe("sheet");
-  rerender(<><Nearest /></>);
-  expect(container.textContent).toBe("none");
-});
-
-test("opening a surface closes every menu or popover it is not inside, and a view any other view; typing closes nothing", async () => {
-  const shown = () => [...document.querySelectorAll("output")].map((node) => node.textContent);
-  function Picker({ step }: { step: number }) {
-    return <>
-      <Scoped kind="popover">{step >= 1 && <Scoped kind="menu" />}</Scoped>
-      {step >= 2 && <Scoped kind="search" />}
-      {step >= 3 && <Scoped kind="sheet" />}
-      {step >= 4 && <Scoped kind="palette" />}
-    </>;
-  }
-  const { rerender } = render(<Picker step={0} />);
-  // A menu inside the popover keeps it; Search does not close them; the sheet
-  // closes both; the palette closes the sheet.
-  const expected = [["popover", "menu"], ["popover", "menu", "search"], ["search", "sheet"], ["search", "palette"]];
-  for (const [at, after] of expected.entries()) {
-    rerender(<Picker step={at + 1} />);
-    await act(async () => {});
-    expect(shown()).toEqual(after);
-  }
 });

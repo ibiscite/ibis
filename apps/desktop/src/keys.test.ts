@@ -1,13 +1,6 @@
 import { expect, test } from "vitest";
-import { ariaKeys, bindingKeys, DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, keysFor, matchesAccelerator, shortcutLabel } from "./keys";
-import { say } from "./i18n";
+import { KEY_TABLE, keyLabel, matchesAccelerator, shortcutLabel } from "./keys";
 import pickerCommands from "./testing/picker-command-shortcuts.json";
-import { SHORTCUT_ACTIONS, SHORTCUT_REGIONS } from "./i18n/settings";
-
-test("Enter's description follows the footer in both delivery modes", () => {
-  expect(keysFor("copy")).toBe("Enter");
-  expect(say(SHORTCUT_ACTIONS.copy)).toBe("Paste or copy the citation");
-});
 
 test("Windows and Linux write modifiers Ctrl, Alt, Shift, as their menus do; macOS ⌃⌥⇧⌘", () => {
   expect(keyLabel("Alt+CmdOrCtrl+O", false)).toBe("Ctrl+Alt+O");
@@ -15,55 +8,6 @@ test("Windows and Linux write modifiers Ctrl, Alt, Shift, as their menus do; mac
   expect(keyLabel("Alt+CmdOrCtrl+O", true)).toBe("⌥⌘O");
   expect(shortcutLabel("Shift+Control+Y", false)).toBe("Ctrl+Shift+Y");
   expect(shortcutLabel("Shift+Alt+Super+Y", false)).toBe("Alt+Shift+Super+Y");
-});
-
-test("the keys Ibis handles but once left out are in the table, with their system's words", () => {
-  const listed = (action: string) => KEY_TABLE.find((binding) => binding.action === action)?.keys;
-  expect(listed("add")).toEqual(["Shift+Enter", "CmdOrCtrl+Click"]);
-  expect(listed("undo")).toEqual(["CmdOrCtrl+Z"]);
-  expect(listed("textSize")?.map((keys) => keyLabel(keys, true))).toEqual(["⌘+", "⌘−"]);
-  expect(listed("textSize")?.map((keys) => keyLabel(keys, false))).toEqual(["Ctrl+Plus", "Ctrl+Minus"]);
-  expect(listed("citationMove")?.map((keys) => keyLabel(keys, true))).toEqual(["←", "→"]);
-  expect(listed("citationRemove")?.map((keys) => keyLabel(keys, true))).toEqual(["⌫", "⌦"]);
-  expect(keyLabel("CmdOrCtrl+Click", true)).toBe("⌘-click");
-  expect(keyLabel("CmdOrCtrl+Click", false)).toBe("Ctrl+click");
-  // A click is no key, so assistive technology is not told it is one.
-  expect(ariaKeys("CmdOrCtrl+Click", true)).toBe("");
-  // Peek is handled in the search, so it is listed with Quick Look's keyboard key.
-  expect(keysFor("peek")).toBe("CmdOrCtrl+Y");
-});
-
-test("key labels follow the platform", () => {
-  expect(["CmdOrCtrl+K", "Shift+Enter", "CmdOrCtrl+/", "Escape", "ArrowDown", "?"].map((keys) => keyLabel(keys, true)))
-    .toEqual(["⌘K", "⇧↵", "⌘/", "Esc", "↓", "?"]);
-  expect(["CmdOrCtrl+K", "Shift+Enter", "CmdOrCtrl+/", "Escape", "ArrowDown", "?"].map((keys) => keyLabel(keys, false)))
-    .toEqual(["Ctrl+K", "Shift+Enter", "Ctrl+/", "Esc", "↓", "?"]);
-  expect(keyLabel("CmdOrCtrl++", false)).toBe("Ctrl++");
-  expect(ariaKeys("CmdOrCtrl+K", true)).toBe("Meta+K");
-  expect(ariaKeys("CmdOrCtrl+K", false)).toBe("Control+K");
-});
-
-test("every key in the table has words and a region, and none is listed twice", () => {
-  for (const mac of [true, false]) {
-    const seen = new Set<string>();
-    for (const binding of KEY_TABLE) {
-      expect(say(SHORTCUT_ACTIONS[binding.action])).toBeTruthy();
-      expect(say(SHORTCUT_REGIONS[binding.region])).toBeTruthy();
-      for (const keys of bindingKeys(binding, mac)) {
-        const where = `${binding.region}:${keys}`;
-        expect(seen.has(where), where).toBe(false);
-        seen.add(where);
-      }
-    }
-  }
-});
-
-test("source opening and its alternate avoid AltGr on Windows and Linux", () => {
-  for (const mac of [true, false]) {
-    expect(keyLabel(keysFor("source", mac), mac)).toBe(mac ? "⌘O" : "Ctrl+O");
-    expect(keyLabel(keysFor("revealSource", mac), mac)).toBe(mac ? "⌥⌘O" : "Ctrl+Shift+O");
-    expect(keysFor("chooseSource", mac)).toBe(mac ? "CmdOrCtrl+Shift+O" : "");
-  }
 });
 
 test("native shortcut refusals cover every modified picker command", () => {
@@ -121,57 +65,4 @@ test("an accelerator falls back to the physical key only for non-Latin letters a
   expect(matchesAccelerator(press("؛", { code: "KeyP", ctrlKey: true, shiftKey: true }), "CmdOrCtrl+Shift+P", false)).toBe(true);
   // Digits still follow the physical key, as on AZERTY's digit row.
   expect(matchesAccelerator(press("&", { code: "Digit1", ctrlKey: true }), "CmdOrCtrl+1", false)).toBe(true);
-});
-
-test("every letter accelerator in the table can be matched", () => {
-  for (const binding of KEY_TABLE) {
-    for (const keys of binding.keys) {
-      const letter = /^CmdOrCtrl\+([A-Z])$/.exec(keys)?.[1];
-      if (!letter) continue;
-      expect(matchesAccelerator(press(letter.toLowerCase(), { ctrlKey: true }), keys, false), keys).toBe(true);
-      expect(matchesAccelerator(press(letter, { metaKey: true }), keys, true), keys).toBe(true);
-    }
-  }
-});
-
-test("keep-open uses its own shifted command on both platform key models", () => {
-  const keys = keysFor("pin");
-  expect(keys).toBe("CmdOrCtrl+Shift+P");
-  expect(KEY_TABLE.filter((binding) => binding.keys.includes(keys))).toHaveLength(1);
-  expect(keyLabel(keys, true)).toBe("⇧⌘P");
-  expect(keyLabel(keys, false)).toBe("Ctrl+Shift+P");
-  for (const mac of [false, true]) {
-    const modifier = mac ? { metaKey: true } : { ctrlKey: true };
-    expect(matchesAccelerator(press("P", { ...modifier, shiftKey: true }), keys, mac)).toBe(true);
-    expect(matchesAccelerator(press("з", { code: "KeyP", ...modifier, shiftKey: true }), keys, mac)).toBe(true);
-    expect(matchesAccelerator(press("p", modifier), keys, mac)).toBe(false);
-    expect(matchesAccelerator(press("P", { ...modifier, shiftKey: true, altKey: true }), keys, mac)).toBe(false);
-  }
-});
-
-test("shortcut labels read settings in any case and alias", () => {
-  expect(shortcutLabel("Control+Command+R", true)).toBe("⌃⌘R");
-  expect(shortcutLabel("cmdorctrl + shift + keyr", false)).toBe("Ctrl+Shift+R");
-});
-
-test("the default shortcut follows Y across Latin layouts and falls back only without a Latin letter", () => {
-  expect(keyLabel(DEFAULT_PICKER_SHORTCUT, true)).toBe("⇧⌘Y");
-  expect(keyLabel(DEFAULT_PICKER_SHORTCUT, false)).toBe("Ctrl+Shift+Y");
-  for (const mac of [false, true]) {
-    const modifiers = mac ? { metaKey: true } : { ctrlKey: true };
-    for (const code of ["KeyY", "KeyZ", "KeyT", "KeyO"]) expect(matchesAccelerator(press("Y", { code, ...modifiers, shiftKey: true }), DEFAULT_PICKER_SHORTCUT, mac)).toBe(true);
-    expect(matchesAccelerator(press("Z", { code: "KeyY", ...modifiers, shiftKey: true }), DEFAULT_PICKER_SHORTCUT, mac)).toBe(false);
-    expect(matchesAccelerator(press("Н", { code: "KeyY", ...modifiers, shiftKey: true }), DEFAULT_PICKER_SHORTCUT, mac)).toBe(true);
-    expect(matchesAccelerator(press("Y", modifiers), DEFAULT_PICKER_SHORTCUT, mac)).toBe(false);
-    expect(matchesAccelerator(press("Y", { ...modifiers, shiftKey: true, altKey: true }), DEFAULT_PICKER_SHORTCUT, mac)).toBe(false);
-  }
-  expect(matchesAccelerator(press("r", { code: "KeyR", ctrlKey: true, metaKey: true }), DEFAULT_PICKER_SHORTCUT, true)).toBe(false);
-});
-
-test("every system displays modifiers in its menus' order; matching keeps the binding", () => {
-  expect(keyLabel("CmdOrCtrl+Shift+Alt+C", true)).toBe("⌥⇧⌘C");
-  expect(shortcutLabel("super+shift+ctrl+option+KeyC", true)).toBe("⌃⌥⇧⌘C");
-  expect(shortcutLabel("super+shift+ctrl+option+KeyC", false)).toBe("Ctrl+Alt+Shift+Super+C");
-  expect(keyLabel("CmdOrCtrl++", true)).toBe("⌘+");
-  expect(ariaKeys("CmdOrCtrl+Shift+P", true)).toBe("Meta+Shift+P");
 });

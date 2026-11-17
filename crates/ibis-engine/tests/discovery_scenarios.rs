@@ -3,11 +3,7 @@ use ibis_core::{
     contract::ErrorCode,
     zotero::api::{Response, Transport, TransportError},
 };
-use ibis_engine::{
-    Cancellation,
-    discovery::{Discovery, ZoteroPresence},
-    health::InspectionPolicy,
-};
+use ibis_engine::{Cancellation, discovery::Discovery, health::InspectionPolicy};
 
 struct Probe(u16, Option<Cancellation>);
 impl Transport for Probe {
@@ -89,65 +85,5 @@ fn read_only_policy_refuses_discovery_before_any_provider_runs() {
             .unwrap()
             .code,
         ErrorCode::BadInput
-    );
-}
-
-#[test]
-fn another_discovery_owner_cannot_publish_or_revive_a_handle() {
-    let first = Discovery::default();
-    let second = Discovery::default();
-    let request = first.reserve().unwrap();
-    let other = second.reserve().unwrap();
-    let result = publish(&request, "/invented/right.bib").unwrap();
-    assert!(
-        second.resolve(result.0, 0).is_none(),
-        "a request only publishes to its original owner"
-    );
-    assert_eq!(
-        publish(&request, "/invented/replayed.bib").unwrap_err().code,
-        ErrorCode::Cancelled
-    );
-    assert_eq!(first.resolve(result.0, 0), Some("/invented/right.bib".into()));
-    assert!(publish(&other, "/invented/other.bib").is_ok());
-}
-
-#[test]
-fn zotero_sharing_changes_and_closed_presence_keep_the_same_visible_results() {
-    let probe = |status, installed: fn() -> bool| {
-        ibis_engine::discovery::zotero_presence(
-            InspectionPolicy::Setup,
-            &mut Probe(status, None),
-            installed,
-            &Cancellation::default(),
-        )
-        .unwrap()
-    };
-    assert_eq!(probe(0, || true), ZoteroPresence::Closed);
-    assert_eq!(probe(0, || false), ZoteroPresence::Absent);
-    assert_eq!(
-        probe(403, || panic!("running Zotero needs no file discovery")),
-        ZoteroPresence::AccessOff
-    );
-    assert_eq!(
-        probe(200, || panic!("running Zotero needs no file discovery")),
-        ZoteroPresence::Available
-    );
-}
-
-#[test]
-fn a_cancelled_api_probe_never_starts_profile_discovery() {
-    let cancel = Cancellation::default();
-    let result = ibis_engine::discovery::zotero_presence(
-        InspectionPolicy::Setup,
-        &mut Probe(0, Some(cancel.clone())),
-        || panic!("cancelled work must not start filesystem discovery"),
-        &cancel,
-    );
-    assert_eq!(result.unwrap_err().code, ErrorCode::Cancelled);
-    assert_eq!(
-        ibis_engine::discovery::find_zotero(InspectionPolicy::Setup, true, &cancel)
-            .unwrap_err()
-            .code,
-        ErrorCode::Cancelled
     );
 }

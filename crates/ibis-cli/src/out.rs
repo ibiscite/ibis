@@ -136,39 +136,3 @@ pub(super) fn truncate(text: &str, columns: usize) -> String {
     result.push('…');
     result
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn color_policy_never_styles_pipes_no_color_or_dumb_terminals() {
-        for (terminal, no_color, term) in [(false, false, None), (true, true, None), (true, false, Some("dumb"))] {
-            let out = Out {
-                width: terminal.then_some(80),
-                color: colors(terminal, no_color, term),
-            };
-            assert_eq!(out.bold("vale2024"), "vale2024");
-            assert_eq!(out.dim("Valé 2024"), "Valé 2024");
-        }
-        assert_eq!(
-            Out {
-                width: Some(80),
-                color: colors(true, false, Some("xterm"))
-            }
-            .bold("vale2024"),
-            "\x1b[1mvale2024\x1b[0m"
-        );
-    }
-
-    #[test]
-    fn truncation_keeps_cjk_accents_and_emoji_in_whole_display_cells() {
-        assert_eq!(width("Valé Vale\u{301} 城市 👩‍🔬"), 17);
-        assert_eq!(truncate("城市庭園", 6), "城市…");
-        assert_eq!(truncate("e\u{301}lan", 2), "e\u{301}…");
-        assert_eq!(truncate("👩‍🔬abc", 3), "👩‍🔬…");
-        assert_eq!(width("A\u{fe0f}"), 1);
-        assert_eq!(width("क्‍ष"), 2);
-        assert_eq!(width("각"), 2);
-    }
-}

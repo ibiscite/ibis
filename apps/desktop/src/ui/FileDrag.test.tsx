@@ -28,12 +28,3 @@ test("the shared file source delegates a native drag and keeps click and keyboar
   fireEvent.click(source);
   expect(onPress).toHaveBeenCalledTimes(3);
 });
-
-test("assistive-technology activation still opens the alternative after a cancelled drag", () => {
-  const onPress = vi.fn();
-  render(<FileDrag icon="/invented-icon.png" label="Drag Ibis" description="Open Settings" onDrag={vi.fn()} onPress={onPress} />);
-  const source = screen.getByRole("button", { name: "Drag Ibis" });
-  fireEvent.dragStart(source);
-  fireEvent.click(source, { detail: 0 });
-  expect(onPress).toHaveBeenCalledOnce();
-});

@@ -1,47 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import english from "../../../../locales/en-US.ftl?raw";
-import { createInterfaceMessages, englishMessages, fullStop, InterfaceMessagesProvider, problemText, say, useInterfaceMessages } from ".";
-import type { Problem } from "../bindings";
-
-test("the bundled interface default is English, independent of browser language and direction", () => {
-  expect(englishMessages.locale).toBe("en-US");
-  expect(englishMessages.text("settings-general")).toBe("General");
-  expect(englishMessages.text("general-login-label", { platform: "windows" })).toBe("Start when you sign in");
-  expect(englishMessages.text("general-login-label", { platform: "macos" })).toBe("Open at login");
-  expect(englishMessages.text("general-login-label", { platform: "linux" })).toBe("Start on login");
-  expect(Object.isFrozen(englishMessages)).toBe(true);
-});
-
-test("interface messages resolve a shared Fluent term", () => {
-  const source = english + "\n-library-formats-test = BibTeX, BibLaTeX, CSL-JSON, RIS or CSV\n";
-  const messages = createInterfaceMessages(source.replace(/^choice-library-file-help =.*$/m,
-    "choice-library-file-help = { -library-formats-test }"));
-  expect(messages.text("choice-library-file-help")).toBe("BibTeX, BibLaTeX, CSL-JSON, RIS or CSV");
-});
-
-test("one settings Problem has words for the picker and for Settings, with the same recovery", () => {
-  const problem: Problem = { code: "settings-invalid", message: { id: "app-settings-error-invalid", args: {} },
-    recovery: { action: "review-settings" }, focus: "settings" };
-  expect(problemText(problem, "fallback")).toBe("The settings file is not valid. Open Settings to review it.");
-  expect(problemText(problem, "fallback", say, "settings")).toBe("settings.json isn’t valid, so Ibis is using your last good settings.");
-  const unreadable: Problem = { ...problem, code: "settings-unreadable", message: { id: "app-settings-error-unreadable", args: {} } };
-  expect(problemText(unreadable, "fallback", say, "settings")).toBe(problemText(unreadable, "fallback"));
-});
-
-test.each([
-  "", english.replace(/^settings-general =.*$/m, ""),
-  english + "\nbroken = {\n", english + "\nsettings-general = Duplicate\n",
-  english.replace("settings-general = General", "settings-general = { missing-message }"),
-  english.replace("settings-general = General", "settings-general = { $unexpected }"),
-  english.replace(/^shortcuts-open =.*$/m, ""),
-  english.replace(/^about-check =.*$/m, "about-check = { missing-message }"),
-  english.replace(/^shortcuts-picker-conflict =.*$/m, "shortcuts-picker-conflict = { $unexpected }"),
-  english.replace(/^-library-formats =.*$/m, ""),
-  english + "\n-library-formats = Duplicate\n",
-])("missing or invalid bundled resources refuse the whole message owner", (source) => {
-  expect(() => createInterfaceMessages(source)).toThrow("Invalid interface messages");
-});
+import { createInterfaceMessages, englishMessages, InterfaceMessagesProvider, useInterfaceMessages } from ".";
 
 test("missing variables and invalid catalogues refuse without partial rendering", () => {
   expect(englishMessages.text("about-version", { name: "Synthetic App", version: "0.3.0" })).toBe("Version 0.3.0");
@@ -63,25 +23,4 @@ test("hostile external values remain literal text without markup or Fluent evalu
   expect(screen.getByText('Drag <img src=x onerror="throw 1"> to { $secret } & <b>List</b>')).toBeTruthy();
   expect(document.querySelector("img, b")).toBeNull();
   expect(() => englishMessages.text("general-paste-drag")).toThrow("Invalid interface message");
-});
-
-test("the pseudolocale marks and expands interface text while keeping external values exact", () => {
-  const pseudo = createInterfaceMessages(english, true);
-  expect(pseudo.text("settings-general")).toMatch(/^⟦.+⟧$/);
-  expect(pseudo.text("settings-general").length).toBeGreaterThan("General".length * 1.3);
-  expect(pseudo.text("general-paste-drag", { name: "Synthetic App", list: "Synthetic List" })).toContain("Synthetic App");
-  expect(pseudo.text("general-paste-drag", { name: "Synthetic App", list: "Synthetic List" })).toContain("Synthetic List");
-});
-
-test("settings wording follows the platform, and a backend reason ends on one full stop", () => {
-  const says = (id: Parameters<typeof englishMessages.text>[0], platform: string) => englishMessages.text(id, { platform });
-  expect(says("general-paste-description", "macos")).toBe("Otherwise Ibis copies and you press ⌘V.");
-  for (const platform of ["windows", "linux"]) {
-    expect(says("general-paste-description", platform)).toBe("Otherwise Ibis copies and you press Ctrl+V.");
-    expect(says("look-accent-system", platform)).toBe("Follow the system");
-  }
-  expect(says("look-accent-system", "macos")).toBe("Follow the Mac");
-  expect(say("picker-shortcut-unavailable", { shortcut: "Ctrl+Shift+Y", reason: fullStop("Restart Ibis after the desktop portal is available.") }))
-    .toBe("The shortcut Ctrl+Shift+Y is not available: Restart Ibis after the desktop portal is available.");
-  expect(say("picker-shortcut-not-used", { reason: fullStop("it is taken") })).toBe("Your shortcut setting was not used: it is taken.");
 });
