@@ -8,7 +8,7 @@ import config from "../src-tauri/tauri.conf.json";
 import { OUTPUTS } from "./bindings";
 import { outputName } from "./format/outputs";
 import { missingKey, recordId } from "./test-fixtures";
-import { backend, paletteRow, chooseFromLibrary, libraryButton, prepared, receipt, resetApp, result, type PreviewRequest, type SyntheticId, citationKeys, chooseForm, openCitationDetails, textField, inCitation, citationDetails, removeFromCitation } from "./testing/app";
+import { backend, paletteRow, chooseFromLibrary, libraryButton, prepared, receipt, resetApp, result, type PreviewRequest, type SyntheticId, citationKeys, chooseForm, openCitationDetails, textField, inCitation, citationDetails, removeFromCitation, toggleKeepOpen } from "./testing/app";
 import { fixtureDestination, formatAnswer } from "./testing/format";
 import { isMac } from "./platform";
 import type { PickerDestination, WritingsView } from "./api";
@@ -305,6 +305,35 @@ test("Ctrl+K opens More's actions with their keys, Escape closes it before hidin
 const savedOutput = (preferences: unknown) => (preferences as { output?: string; key_output?: string }).key_output ?? (preferences as { output?: string }).output ?? null;
 
 const NO_LIBRARY = { state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, problem: null, note: null };
+
+test("a pinned picker stays open after copying, and Escape never unpins it", async () => {
+  const pins: unknown[] = [];
+  const calls = backend({
+    search: () => [result("a", "First")],
+    deliver_citation: () => ({ outcome: "retained", copied: { text: "@a", warnings: [] }, reason: "pinned" }),
+    set_pinned: ({ on }) => { pins.push(on); return null; },
+  });
+  render(<App />);
+  // Its own state: wait for this picker's More, then turn the pin on and wait for it.
+  await screen.findByRole("button", { name: /^More/ });
+  await toggleKeepOpen();
+  expect(screen.getByRole("button", { name: "Keep Window Open", pressed: true })).toBeTruthy();
+  await waitFor(() => expect(pins).toEqual([true]));
+  const box = screen.getByLabelText("Search references");
+  fireEvent.change(box, { target: { value: "first" } });
+  await screen.findByText("First");
+  fireEvent.keyDown(box, { key: "Enter" });
+  await screen.findByText("Copied");
+  fireEvent.keyDown(box, { key: "Escape" });
+  expect(screen.getByRole("button", { name: "Keep Window Open", pressed: true })).toBeTruthy();
+  expect(calls).not.toContain("hide_picker");
+  await toggleKeepOpen();
+  await waitFor(() => expect(pins).toEqual([true, false]));
+  fireEvent.change(box, { target: { value: "first" } });
+  await screen.findByText("First");
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(calls.filter((command) => command === "deliver_citation")).toHaveLength(2));
+});
 
 test("first-run setup lists found .bib files by name and folder, and opens one by its list number", async () => {
   const opened: unknown[] = [];
