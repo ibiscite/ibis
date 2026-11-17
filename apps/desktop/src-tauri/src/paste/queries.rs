@@ -9,6 +9,17 @@ use std::time::Duration;
 #[derive(Default)]
 pub(super) struct QueryWorker(pub(super) std::sync::Arc<std::sync::atomic::AtomicBool>);
 
+/// Fixed transport failures, without native/provider messages. A timeout is
+/// distinct from a later caller finding that same query still in flight.
+#[cfg(any(target_os = "windows", test))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum QueryFailure {
+    Busy,
+    Spawn(Option<i32>),
+    Timeout,
+    Disconnected,
+}
+
 #[cfg(any(target_os = "windows", test))]
 struct QueryPermit(std::sync::Arc<std::sync::atomic::AtomicBool>);
 
@@ -26,6 +37,14 @@ impl QueryWorker {
         limit: Duration,
         query: impl FnOnce() -> T + Send + 'static,
     ) -> Option<T> {
+        self.run_result(limit, query).ok()
+    }
+
+    pub(super) fn run_result<T: Send + 'static>(
+        &self,
+        limit: Duration,
+        query: impl FnOnce() -> T + Send + 'static,
+    ) -> Result<T, QueryFailure> {
         self.0
             .compare_exchange(
                 false,
@@ -33,7 +52,7 @@ impl QueryWorker {
                 std::sync::atomic::Ordering::Acquire,
                 std::sync::atomic::Ordering::Relaxed,
             )
-            .ok()?;
+            .map_err(|_| QueryFailure::Busy)?;
         run_query(QueryPermit(self.0.clone()), limit, query)
     }
 }
@@ -84,6 +103,7 @@ impl PasswordQueries {
             limit,
             query,
         )
+        .ok()
     }
 }
 
@@ -92,15 +112,18 @@ fn run_query<T: Send + 'static>(
     permit: impl Send + 'static,
     limit: Duration,
     query: impl FnOnce() -> T + Send + 'static,
-) -> Option<T> {
+) -> Result<T, QueryFailure> {
     let (sender, receiver) = std::sync::mpsc::channel();
     std::thread::Builder::new()
         .spawn(move || {
             let _permit = permit;
             let _ = sender.send(query());
         })
-        .ok()?;
-    receiver.recv_timeout(limit).ok()
+        .map_err(|error| QueryFailure::Spawn(error.raw_os_error()))?;
+    receiver.recv_timeout(limit).map_err(|error| match error {
+        std::sync::mpsc::RecvTimeoutError::Timeout => QueryFailure::Timeout,
+        std::sync::mpsc::RecvTimeoutError::Disconnected => QueryFailure::Disconnected,
+    })
 }
 
 #[cfg(any(target_os = "windows", test))]

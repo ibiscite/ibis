@@ -1,4 +1,5 @@
 //! Sessions own citation ordering, cancellation, examples and commit validation.
+use crate::sync::MutexExt;
 use crate::{Cancellation, Engine, PreparedCitation};
 use ibis_core::contract::*;
 use std::collections::BTreeMap;
@@ -133,8 +134,7 @@ impl SubmittedCitation {
         let cancel = self
             .worker
             .pending
-            .lock()
-            .map_err(|_| EngineError::new(ErrorCode::Internal))?
+            .recover_lock()
             .get(&self.reserved)
             .cloned()
             .ok_or_else(|| EngineError::new(ErrorCode::Cancelled))?;
@@ -152,9 +152,7 @@ impl SubmittedCitation {
 }
 impl Drop for SubmittedCitation {
     fn drop(&mut self) {
-        if let Ok(mut pending) = self.worker.pending.lock()
-            && let Some(cancel) = pending.remove(&self.reserved)
-        {
+        if let Some(cancel) = self.worker.pending.recover_lock().remove(&self.reserved) {
             cancel.cancel();
         }
     }
@@ -172,13 +170,7 @@ impl Engine {
 }
 impl Citations<'_> {
     fn worker(&self, id: SessionId) -> Result<Worker, SessionError> {
-        let mut sessions = self
-            .engine
-            .shared
-            .citations
-            .sessions
-            .lock()
-            .map_err(|_| SessionError::NotPrepared)?;
+        let mut sessions = self.engine.shared.citations.sessions.recover_lock();
         let state = if id == SessionId::PICKER {
             sessions.entry(id).or_default().clone()
         } else {
@@ -200,7 +192,7 @@ impl Citations<'_> {
         intent: CitationIntent,
     ) -> Result<Cancellation, SessionError> {
         let worker = self.worker(id)?;
-        let mut intents = worker.intents.lock().map_err(|_| SessionError::NotPrepared)?;
+        let mut intents = worker.intents.recover_lock();
         if !intents.contains_key(&(operation, intent.page)) && intents.len() >= 64 {
             return Err(ErrorCode::ResourceLimit.into());
         }
@@ -218,23 +210,12 @@ impl Citations<'_> {
         }
         current.1.check()?;
         if operation == Operation::Preview {
-            worker
-                .latest_preview
-                .lock()
-                .map_err(|_| SessionError::Cancelled)?
-                .1
-                .cancel();
+            worker.latest_preview.recover_lock().1.cancel();
         }
         Ok(current.1.clone())
     }
     pub fn open(&self) -> Result<SessionId, SessionError> {
-        let mut sessions = self
-            .engine
-            .shared
-            .citations
-            .sessions
-            .lock()
-            .map_err(|_| SessionError::NotPrepared)?;
+        let mut sessions = self.engine.shared.citations.sessions.recover_lock();
         // Reserve one registry slot for the picker, even before its first use.
         if sessions.keys().filter(|id| **id != SessionId::PICKER).count() >= MAX_SESSIONS - 1 {
             return Err(ErrorCode::ResourceLimit.into());
@@ -244,34 +225,15 @@ impl Citations<'_> {
         Ok(id)
     }
     pub fn close(&self, id: SessionId) {
-        if let Ok(mut sessions) = self.engine.shared.citations.sessions.lock()
-            && let Some(state) = sessions.remove(&id)
-        {
+        if let Some(state) = self.engine.shared.citations.sessions.recover_lock().remove(&id) {
             state.closed.store(true, Ordering::Release);
-            for cancel in state.pending.lock().unwrap_or_else(|error| error.into_inner()).values() {
+            for cancel in state.pending.recover_lock().values() {
                 cancel.cancel();
             }
-            state
-                .latest_preview
-                .lock()
-                .unwrap_or_else(|error| error.into_inner())
-                .1
-                .cancel();
-            state
-                .latest_details
-                .lock()
-                .unwrap_or_else(|error| error.into_inner())
-                .cancel();
-            state
-                .latest_bibliography
-                .lock()
-                .unwrap_or_else(|error| error.into_inner())
-                .cancel();
-            state
-                .running_bibliography
-                .lock()
-                .unwrap_or_else(|error| error.into_inner())
-                .cancel();
+            state.latest_preview.recover_lock().1.cancel();
+            state.latest_details.recover_lock().cancel();
+            state.latest_bibliography.recover_lock().cancel();
+            state.running_bibliography.recover_lock().cancel();
             Worker {
                 engine: self.engine.clone(),
                 state,
@@ -290,7 +252,7 @@ impl Citations<'_> {
         let worker = self.worker(id)?;
         let reserved = TICKETS.fetch_add(1, Ordering::Relaxed);
         {
-            let mut pending = worker.pending.lock().map_err(|_| SessionError::NotPrepared)?;
+            let mut pending = worker.pending.recover_lock();
             if worker.closed.load(Ordering::Acquire) {
                 return Err(SessionError::Cancelled);
             }
@@ -357,12 +319,12 @@ impl Citations<'_> {
         worker.begin_bibliography(&cancel)?;
         Ok(CitationTask(Box::new(move || {
             {
-                let _preview = worker.latest_preview.lock().map_err(|_| SessionError::Cancelled)?;
+                let _preview = worker.latest_preview.recover_lock();
                 cancel.check()?;
                 if worker.closed.load(Ordering::Acquire) {
                     return Err(SessionError::Cancelled);
                 }
-                let mut queued = worker.latest_bibliography.lock().map_err(|_| SessionError::Cancelled)?;
+                let mut queued = worker.latest_bibliography.recover_lock();
                 if queued.same(&cancel) {
                     *queued = Cancellation::default();
                 }
@@ -383,14 +345,14 @@ impl Citations<'_> {
         let worker = self.worker(id)?;
         let cancel = cancel.child();
         {
-            let _preview = worker.latest_preview.lock().map_err(|_| SessionError::Cancelled)?;
+            let _preview = worker.latest_preview.recover_lock();
             if worker.closed.load(Ordering::Acquire) {
                 return Err(SessionError::Cancelled);
             }
             Worker::replace_formatting(&worker.running_bibliography, &cancel)?;
         }
         let (citation, snapshot) = {
-            let held = worker.bibliography.lock().map_err(|_| SessionError::SnapshotChanged)?;
+            let held = worker.bibliography.recover_lock();
             let held = held.as_ref().ok_or(SessionError::SnapshotChanged)?;
             if held.selection.len() != items.len()
                 || held.style != style
@@ -440,7 +402,7 @@ impl Citations<'_> {
     }
     pub fn prepared(&self, id: SessionId, ticket: &str, hash: &str) -> Result<Arc<PreparedCitation>, SessionError> {
         let worker = self.worker(id)?;
-        let slot = worker.prepared.lock().map_err(|_| SessionError::SnapshotChanged)?;
+        let slot = worker.prepared.recover_lock();
         let (current, citation, _) = slot.as_ref().ok_or(SessionError::SnapshotChanged)?;
         if current != ticket || citation.result().content_hash.as_str() != hash {
             return Err(SessionError::SnapshotChanged);
@@ -615,7 +577,7 @@ impl Worker {
             warnings,
             left_out,
         };
-        let mut slot = self.bibliography.lock().map_err(|_| SessionError::SnapshotChanged)?;
+        let mut slot = self.bibliography.recover_lock();
         cancel.check()?;
         if self.closed.load(Ordering::Acquire) {
             return Err(SessionError::Cancelled);
@@ -632,10 +594,7 @@ impl Worker {
         self.reserve_preview_with(Cancellation::default())
     }
     fn reserve_preview_with(&self, cancel: Cancellation) -> u64 {
-        let mut latest = self
-            .latest_preview
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut latest = self.latest_preview.recover_lock();
         let request = TICKETS.fetch_add(1, Ordering::Relaxed);
         let cancel = cancel.child();
         // A superseded command can acquire the library after its replacement.
@@ -644,19 +603,13 @@ impl Worker {
             return request;
         }
         latest.1.cancel();
-        self.latest_details
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .cancel();
-        self.latest_bibliography
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .cancel();
+        self.latest_details.recover_lock().cancel();
+        self.latest_bibliography.recover_lock().cancel();
         *latest = (request, cancel);
         request
     }
     fn preview_cancellation(&self, reservation: u64) -> Result<Cancellation, SessionError> {
-        let latest = self.latest_preview.lock().map_err(|_| SessionError::NotPrepared)?;
+        let latest = self.latest_preview.recover_lock();
         if latest.0 != reservation || self.closed.load(Ordering::Acquire) {
             return Err(SessionError::Cancelled);
         }
@@ -822,7 +775,7 @@ impl Worker {
         } else {
             citation
         };
-        let mut slot = self.prepared.lock().map_err(|_| SessionError::NotPrepared)?;
+        let mut slot = self.prepared.recover_lock();
         self.preview_cancellation(reservation)?
             .check()
             .map_err(SessionError::from)?;
@@ -843,7 +796,7 @@ impl Worker {
         Ok(preview)
     }
     fn replace_formatting(slot: &Mutex<Cancellation>, cancel: &Cancellation) -> Result<(), SessionError> {
-        let mut current = slot.lock().map_err(|_| SessionError::Cancelled)?;
+        let mut current = slot.recover_lock();
         cancel.check().map_err(SessionError::from)?;
         current.cancel();
         *current = cancel.clone();
@@ -853,7 +806,7 @@ impl Worker {
     /// Register before spawning a worker: a citation that replaces this work
     /// must also stop a bibliography that has not started formatting yet.
     fn begin_bibliography(&self, cancel: &Cancellation) -> Result<(), SessionError> {
-        let _preview = self.latest_preview.lock().map_err(|_| SessionError::Cancelled)?;
+        let _preview = self.latest_preview.recover_lock();
         if self.closed.load(Ordering::Acquire) {
             return Err(SessionError::Cancelled);
         }
@@ -863,8 +816,8 @@ impl Worker {
     /// Admit read-only work on the latest prepared preview. It replaces the
     /// examples still running, and a newer preview stops it.
     fn admit_example(&self, ticket: &str, hash: &str, cancel: &Cancellation) -> Result<(), SessionError> {
-        let prepared = self.prepared.lock().map_err(|_| SessionError::SnapshotChanged)?;
-        let latest = self.latest_preview.lock().map_err(|_| SessionError::Cancelled)?;
+        let prepared = self.prepared.recover_lock();
+        let latest = self.latest_preview.recover_lock();
         if latest.0.to_string() != ticket
             || !prepared
                 .as_ref()
@@ -885,7 +838,7 @@ impl Worker {
         cancel: &Cancellation,
     ) -> Result<(u64, Arc<PreparedCitation>, OutputSpec), SessionError> {
         let (reservation, citation, original_output): (u64, _, _) = {
-            let slot = self.prepared.lock().map_err(|_| SessionError::SnapshotChanged)?;
+            let slot = self.prepared.recover_lock();
             let (current, citation, output) = slot.as_ref().ok_or(SessionError::SnapshotChanged)?;
             if current != ticket || citation.result().content_hash.as_str() != hash {
                 return Err(SessionError::SnapshotChanged);
@@ -896,7 +849,7 @@ impl Worker {
                 output.clone(),
             )
         };
-        let latest = self.latest_preview.lock().map_err(|_| SessionError::Cancelled)?;
+        let latest = self.latest_preview.recover_lock();
         if latest.0 != reservation || self.closed.load(Ordering::Acquire) {
             return Err(SessionError::Cancelled);
         }
@@ -1020,15 +973,13 @@ impl Worker {
     }
     fn invalidate(&self) {
         self.reserve_preview();
-        if let Ok(mut prepared) = self.prepared.lock() {
-            *prepared = None;
-        }
+        *self.prepared.recover_lock() = None;
     }
     /// Cite the shown citation again for a copy. This can wait for the
     /// formatter, so it holds no lock and its caller keeps it off the main thread.
     fn recite(&self, ticket: &str, hash: &str) -> Result<CheckedCitation, SessionError> {
         let citation = {
-            let prepared = self.prepared.lock().map_err(|_| SessionError::SnapshotChanged)?;
+            let prepared = self.prepared.recover_lock();
             let (current, citation, _) = prepared.as_ref().ok_or(SessionError::SnapshotChanged)?;
             if current != ticket || citation.result().content_hash.as_str() != hash {
                 return Err(SessionError::SnapshotChanged);
@@ -1167,11 +1118,7 @@ impl CheckedCitation {
         let mut latest = None;
         let mut bibliography = None;
         if self.bibliography {
-            let held = self
-                .session
-                .bibliography
-                .lock()
-                .map_err(|_| SessionError::SnapshotChanged)?;
+            let held = self.session.bibliography.recover_lock();
             if !held
                 .as_ref()
                 .is_some_and(|held| Arc::ptr_eq(&held.citation, &self.citation))
@@ -1180,16 +1127,8 @@ impl CheckedCitation {
             }
             bibliography = Some(held);
         } else {
-            let held = self
-                .session
-                .prepared
-                .lock()
-                .map_err(|_| SessionError::SnapshotChanged)?;
-            let current = self
-                .session
-                .latest_preview
-                .lock()
-                .map_err(|_| SessionError::SnapshotChanged)?;
+            let held = self.session.prepared.recover_lock();
+            let current = self.session.latest_preview.recover_lock();
             if current.0.to_string() != self.ticket
                 || !held
                     .as_ref()

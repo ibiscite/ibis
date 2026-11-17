@@ -1,6 +1,7 @@
 //! A project `.bib` beside the libraries, never among them: its keys are
 //! compared exactly as the citation would emit them, and it owns no records.
 use super::*;
+use crate::sync::MutexExt;
 use std::path::{Path, PathBuf};
 
 const MAX_KEYS: usize = 1000;
@@ -341,7 +342,7 @@ impl Engine {
     }
 
     pub(crate) fn file_path(&self, library: &LibraryId) -> Result<Option<PathBuf>, EngineError> {
-        let registry = self.shared.sources.lock().map_err(|_| error(ErrorCode::Internal))?;
+        let registry = self.shared.sources.recover_lock();
         Ok(registry.file_path(library))
     }
 }

@@ -11,6 +11,8 @@ export const commands = {
 	applyProposal: (id: string) => __TAURI_INVOKE<ProposalResult>("apply_proposal", { id }),
 	/** Reject a waiting proposal; no library changes. */
 	rejectProposal: (id: string) => __TAURI_INVOKE<ProposalResult>("reject_proposal", { id }),
+	/** Reject all pending proposals with the same claimed app as this displayed id. */
+	rejectAppProposals: (id: string) => __TAURI_INVOKE<ProposalResult>("reject_app_proposals", { id }),
 	/** Every supported AI app, found ones first. */
 	agentApps: () => __TAURI_INVOKE<AgentApp[]>("agent_apps"),
 	/** Connect only if expected is the revision of the displayed entry and proposal. */

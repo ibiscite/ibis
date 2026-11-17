@@ -1,4 +1,5 @@
 //! Setup discovery owns native paths and one-use, expiring choices.
+use crate::sync::MutexExt;
 use crate::{
     Cancellation,
     health::{InspectionPolicy, bounded},
@@ -80,7 +81,7 @@ pub struct Request {
 }
 impl Discovery {
     pub fn reserve(&self) -> Result<Request, EngineError> {
-        let mut offered = self.0.lock().map_err(|_| EngineError::new(ErrorCode::Internal))?;
+        let mut offered = self.0.recover_lock();
         let list = offered
             .list
             .checked_add(1)
@@ -97,7 +98,7 @@ impl Discovery {
         })
     }
     pub fn resolve(&self, list: u32, index: u32) -> Option<PathBuf> {
-        let offered = self.0.lock().ok()?;
+        let offered = self.0.recover_lock();
         (offered.list == list)
             .then(|| offered.paths.get(index as usize).cloned())
             .flatten()
@@ -128,7 +129,7 @@ impl Request {
     }
     /// The caller formats names natively; the paths stay in this request's owner.
     pub fn publish<T>(&self, paths: Vec<PathBuf>, shown: impl Fn(&Path) -> T) -> Result<(u32, Vec<T>), EngineError> {
-        let mut offered = self.owner.0.lock().map_err(|_| EngineError::new(ErrorCode::Internal))?;
+        let mut offered = self.owner.0.recover_lock();
         self.cancel.check()?;
         if offered.list != self.list {
             return Err(ErrorCode::Cancelled.into());

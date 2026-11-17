@@ -1,4 +1,5 @@
 //! Typed services retain an immutable snapshot while refresh prepares its replacement.
+use crate::sync::MutexExt;
 use crate::{Method, request::*};
 use ibis_core::{
     contract::*,
@@ -273,10 +274,8 @@ pub struct LibrarySubscriptionClose {
 }
 impl Drop for LibrarySubscriptionClose {
     fn drop(&mut self) {
-        if let Some(owner) = self.owner.upgrade()
-            && let Ok(mut subscribers) = owner.subscribers.lock()
-        {
-            subscribers.remove(&self.id);
+        if let Some(owner) = self.owner.upgrade() {
+            owner.subscribers.recover_lock().remove(&self.id);
         }
     }
 }
@@ -300,10 +299,8 @@ impl LibrarySubscription {
 
 impl Drop for LibrarySubscription {
     fn drop(&mut self) {
-        if let Some(owner) = self.owner.upgrade()
-            && let Ok(mut subscribers) = owner.subscribers.lock()
-        {
-            subscribers.remove(&self.id);
+        if let Some(owner) = self.owner.upgrade() {
+            owner.subscribers.recover_lock().remove(&self.id);
         }
     }
 }
@@ -418,7 +415,7 @@ impl Engine {
     }
     pub fn subscribe(&self) -> Result<LibrarySubscription, EngineError> {
         let (sender, receiver) = mpsc::sync_channel(1);
-        let mut subscribers = self.shared.subscribers.lock().map_err(|_| error(ErrorCode::Internal))?;
+        let mut subscribers = self.shared.subscribers.recover_lock();
         if subscribers.len() >= 64 {
             return Err(error(ErrorCode::ResourceLimit));
         }
@@ -1093,7 +1090,7 @@ impl Shared {
             .map_err(|_| error(ErrorCode::Internal))
     }
     fn notify(&self) -> Result<(), EngineError> {
-        let mut subscribers = self.subscribers.lock().map_err(|_| error(ErrorCode::Internal))?;
+        let mut subscribers = self.subscribers.recover_lock();
         subscribers.retain(|_, sender| match sender.try_send(LibraryChange) {
             // A pending wake already tells the subscriber to read current state.
             Ok(()) | Err(mpsc::TrySendError::Full(_)) => true,
@@ -1112,14 +1109,14 @@ impl Shared {
         entries: Vec<(LibraryInfo, &Snapshot)>,
         replaced: impl Fn(&LibraryInfo) -> bool,
     ) -> Result<(), EngineError> {
-        let _publication = self.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
+        let _publication = self.publication.recover_lock();
         let old = self.state_view()?;
         let next = Arc::new(State::replacement(&old, entries, replaced)?);
         *self.state.write().map_err(|_| error(ErrorCode::Internal))? = next;
         self.notify()
     }
     fn begin_zotero_read(&self) -> Result<(), EngineError> {
-        let _publication = self.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
+        let _publication = self.publication.recover_lock();
         let old = self.state_view()?;
         let generation = old
             .zotero_generation
@@ -1135,7 +1132,7 @@ impl Shared {
         Ok(())
     }
     fn failed(&self, library: &LibraryId, failure: impl Into<EngineError>) -> Result<(), EngineError> {
-        let _publication = self.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
+        let _publication = self.publication.recover_lock();
         let old = self.state_view()?;
         *self.state.write().map_err(|_| error(ErrorCode::Internal))? =
             Arc::new(old.with_failure(library, failure.into())?);

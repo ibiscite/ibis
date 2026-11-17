@@ -33,7 +33,9 @@ test("renders a switch per open library, with names, saved choices and the readi
   expect(toggle().checked).toBe(false);
   expect(screen.getByRole("switch", { name: `${label} Other references` })).toHaveProperty("checked", true);
   expect(document.body.textContent).toContain("with page numbers, never the files");
-  expect(document.body.textContent).toContain("ibis read in a terminal does not need this choice");
+  expect(toggle().getAttribute("aria-describedby")).toBe("attachment-text-help");
+  expect(document.getElementById("attachment-text-help")?.textContent).toContain("This switch covers connected AI apps");
+  expect(document.getElementById("attachment-text-help")?.textContent).toContain("A terminal running ibis does not need this switch");
 });
 
 test("toggles only the returned LibraryId and restores the saved choice when a save fails", async () => {

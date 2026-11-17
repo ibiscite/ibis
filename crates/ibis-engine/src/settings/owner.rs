@@ -1,6 +1,9 @@
 //! One queue owns every settings operation and every outside-edit report.
+use crate::sync::MutexExt;
+use crate::sync::attempt;
 use std::cell::RefCell;
-use std::panic::{AssertUnwindSafe, catch_unwind};
+#[cfg(test)]
+use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
@@ -90,10 +93,9 @@ pub struct Watching {
 }
 impl Drop for Watching {
     fn drop(&mut self) {
-        if let Ok(mut state) = self.state.lock() {
-            state.edited = None;
-            state.watcher = None;
-        }
+        let mut state = self.state.recover_lock();
+        state.edited = None;
+        state.watcher = None;
     }
 }
 fn watch_edits(mut receive: impl FnMut(Option<Duration>) -> bool, mut changed: impl FnMut() -> bool) {
@@ -116,7 +118,7 @@ impl<T> Pending<T> {
 }
 
 fn report(path: &Path, receipt: u64, watch: &Mutex<WatchState>, primary: std::io::Result<Vec<u8>>) {
-    let edited = watch.lock().ok().and_then(|state| state.edited.clone());
+    let edited = watch.recover_lock().edited.clone();
     if let Some(edited) = edited {
         edited(receipt, settings::load_bytes(path, primary));
     }
@@ -141,10 +143,10 @@ fn observe_read(
         Ok(bytes) => Fingerprint::Bytes(bytes.clone()),
         Err(error) => Fingerprint::Failed(error.kind()),
     };
-    let _ = catch_unwind(AssertUnwindSafe(|| report(path, receipt, watch, primary)));
+    let _ = attempt(|| report(path, receipt, watch, primary));
 }
 fn enqueue(queue: &Mutex<Queue>, work: Work) -> Option<u64> {
-    let mut queue = queue.lock().ok()?;
+    let mut queue = queue.recover_lock();
     // Leave a slot before and after each job for reports found in its turn.
     let receipt = queue.next.checked_add(4).filter(|value| *value < (1 << 53) - 1)?;
     queue.sender.as_ref()?.send(Job { receipt, work }).ok()?;
@@ -161,7 +163,8 @@ fn signal_edit(event: notify::Result<notify::Event>, tracked: &Mutex<Vec<PathBuf
                 event.kind,
                 notify::EventKind::Access(notify::event::AccessKind::Close(notify::event::AccessMode::Write))
             ))
-            && tracked.lock().is_ok_and(|folders| {
+            && {
+                let folders = tracked.recover_lock();
                 // Native events are hints: an atomic save can name only its
                 // replacement file or directory. The owner compares bytes.
                 event.paths.iter().any(|path| {
@@ -169,7 +172,7 @@ fn signal_edit(event: notify::Result<notify::Event>, tracked: &Mutex<Vec<PathBuf
                         .iter()
                         .any(|folder| path == folder || path.parent() == Some(folder))
                 })
-            })
+            }
     }) {
         let _ = signal.try_send(());
     }
@@ -187,8 +190,7 @@ impl Owner {
             .spawn(move || {
                 for job in jobs {
                     observe(&file, job.receipt - 1, &watching, &mut seen);
-                    let completed =
-                        catch_unwind(AssertUnwindSafe(|| (job.work)(&file, job.receipt))).unwrap_or_default();
+                    let completed = attempt(|| (job.work)(&file, job.receipt)).unwrap_or_default();
                     for commit in completed.written {
                         observe_read(
                             &file,
@@ -199,14 +201,12 @@ impl Owner {
                         );
                         seen = Fingerprint::Bytes(commit.bytes);
                     }
-                    let reply = completed
-                        .publish
-                        .and_then(|publish| catch_unwind(AssertUnwindSafe(publish)).ok());
+                    let reply = completed.publish.and_then(|publish| attempt(publish).ok());
                     observe(&file, job.receipt + 1, &watching, &mut seen);
                     // Finish the whole turn before returning its outcome. The
                     // caller's next edit must not race this turn's final read.
                     if let Some(reply) = reply {
-                        let _ = catch_unwind(AssertUnwindSafe(reply));
+                        let _ = attempt(reply);
                     }
                 }
             })
@@ -245,7 +245,7 @@ impl Owner {
         let mut target_folder = None;
         rebind(&path, &folder, &mut target_folder, &mut watcher, &tracked);
         {
-            let mut state = self.watch.lock().ok()?;
+            let mut state = self.watch.recover_lock();
             state.edited = Some(Arc::new(edited));
             state.watcher = Some(watcher);
         }
@@ -263,7 +263,7 @@ impl Owner {
                         None => events.recv().is_ok(),
                     },
                     || {
-                        let Ok(mut state) = state.lock() else { return false };
+                        let mut state = state.recover_lock();
                         let Some(watcher) = state.watcher.as_mut() else {
                             return false;
                         };
@@ -399,13 +399,15 @@ impl Owner {
         result
     }
     pub fn close(&self) {
-        if let Ok(mut jobs) = self.jobs.lock() {
+        {
+            let mut jobs = self.jobs.recover_lock();
             jobs.sender.take();
         }
-        if let Some(worker) = self.worker.lock().ok().and_then(|mut worker| worker.take()) {
+        if let Some(worker) = self.worker.recover_lock().take() {
             let _ = worker.join();
         }
-        if let Ok(mut state) = self.watch.lock() {
+        {
+            let mut state = self.watch.recover_lock();
             state.edited = None;
             state.watcher = None;
         }
@@ -452,11 +454,9 @@ fn rebind(
             *target_folder = Some(desired);
         }
     }
-    if let Ok(mut folders) = tracked.lock() {
-        *folders = std::iter::once(folder.to_path_buf())
-            .chain(target_folder.clone())
-            .collect();
-    }
+    *tracked.recover_lock() = std::iter::once(folder.to_path_buf())
+        .chain(target_folder.clone())
+        .collect();
 }
 
 #[cfg(test)]
@@ -573,10 +573,9 @@ mod tests {
         let original = std::fs::read(&path)?;
         let applied = Arc::new(Mutex::new(String::from("Control+Shift+Y")));
         let observed = Arc::clone(&applied);
-        owner.watch.lock().map_err(|_| "watch poisoned")?.edited = Some(Arc::new(move |_, loaded| {
+        owner.watch.recover_lock().edited = Some(Arc::new(move |_, loaded| {
             if loaded.problem.is_none() {
-                *observed.lock().unwrap_or_else(|error| panic!("{error}")) =
-                    loaded.settings.portable.shortcut.here().unwrap_or_default().to_owned();
+                *observed.recover_lock() = loaded.settings.portable.shortcut.here().unwrap_or_default().to_owned();
             }
         }));
         std::fs::write(&path, br#"{"shortcut":"Control+Alt+F12"}"#)?;
@@ -585,7 +584,7 @@ mod tests {
             owner.submit(|_| Ok::<_, SettingsError>(())).wait().map(|_| ()),
             Some(())
         );
-        assert_eq!(*applied.lock().map_err(|_| "shortcut poisoned")?, "Control+Alt+F12");
+        assert_eq!(*applied.recover_lock(), "Control+Alt+F12");
 
         // Fake time, no native watcher or sleeps: restore primary, backup and
         // temporary in order, then press the original shortcut a millisecond
@@ -612,7 +611,7 @@ mod tests {
                         return true;
                     }
                     assert_eq!(
-                        *applied.lock().unwrap_or_else(|error| panic!("{error}")),
+                        *applied.recover_lock(),
                         "Control+Shift+Y",
                         "the original shortcut must work when pressed after restoring the files"
                     );
@@ -627,7 +626,7 @@ mod tests {
                 true
             },
         );
-        assert_eq!(*applied.lock().map_err(|_| "shortcut poisoned")?, "Control+Shift+Y");
+        assert_eq!(*applied.recover_lock(), "Control+Shift+Y");
         assert_eq!(owner.read().settings.portable.shortcut.here(), Some("Control+Shift+Y"));
         Ok(())
     }
@@ -824,7 +823,7 @@ mod tests {
         let (directory, owner) = owner();
         density(&owner, settings::Density::Compact).unwrap_or_else(|error| panic!("{error}"));
         let (sender, edits) = mpsc::channel();
-        owner.watch.lock().unwrap_or_else(|error| panic!("{error}")).edited = Some(Arc::new(move |_, loaded| {
+        owner.watch.recover_lock().edited = Some(Arc::new(move |_, loaded| {
             let _ = sender.send(loaded);
         }));
         let path = directory.path().join("settings.json");
@@ -843,7 +842,7 @@ mod tests {
         let path = owner.path().to_path_buf();
         let (sender, edits) = mpsc::channel();
         let published = sender.clone();
-        owner.watch.lock().map_err(|_| "watch poisoned")?.edited = Some(Arc::new(move |receipt, loaded| {
+        owner.watch.recover_lock().edited = Some(Arc::new(move |receipt, loaded| {
             if loaded.settings.portable.shortcut.here() == Some("Control+Shift+Y") {
                 replace(&path, br#"{"shortcut":"Control+Alt+F12"}"#);
             }
@@ -889,7 +888,7 @@ mod tests {
         let (directory, owner) = owner();
         density(&owner, settings::Density::Compact).unwrap_or_else(|error| panic!("{error}"));
         let (sender, edits) = mpsc::channel();
-        owner.watch.lock().unwrap_or_else(|error| panic!("{error}")).edited = Some(Arc::new(move |receipt, loaded| {
+        owner.watch.recover_lock().edited = Some(Arc::new(move |receipt, loaded| {
             let _ = sender.send((receipt, loaded));
         }));
         let path = directory.path().join("settings.json");

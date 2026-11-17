@@ -120,7 +120,7 @@ fn parallel_searches_queue_twenty_calls_and_overflow_is_a_retryable_tool_error()
                 |engine, session, message, cancel| {
                     if message["id"] == 0 {
                         entered.send(()).unwrap();
-                        blocked.lock().unwrap().recv_timeout(Duration::from_secs(5)).unwrap();
+                        blocked.recover_lock().recv_timeout(Duration::from_secs(5)).unwrap();
                     }
                     handle_with_cancellation(engine, session, message, cancel)
                 },
@@ -272,7 +272,7 @@ fn a_failed_tool_reply_after_input_eof_is_returned_to_the_caller() {
         io::BufReader::new(EofInput(io::Cursor::new(input), closed)),
         FailedOutput(failed),
         |_, _, message, _| {
-            eof.lock().unwrap().recv_timeout(LIMIT).unwrap();
+            eof.recover_lock().recv_timeout(LIMIT).unwrap();
             Some(json!({"jsonrpc":"2.0", "id":message["id"], "result":{}}))
         },
     );

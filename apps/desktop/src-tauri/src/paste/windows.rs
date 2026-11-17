@@ -329,8 +329,8 @@ mod exact_bstr;
 mod tests {
     use super::*;
     use crate::paste::notepad_test::{
-        Candidate, CandidateKind, CapturedEditor, EditorIdentity, EditorKind, Failure, Reading, Session, Stage,
-        activate, legacy_value, qualify_paste, read_document, select_document, wait_for,
+        Candidate, CandidateKind, CapturedEditor, EditorIdentity, EditorKind, Failure, Query, QueryStep, Reading,
+        Session, Stage, activate, legacy_value, qualify_paste, read_document, select_document, wait_for,
     };
     use std::process::Command;
 
@@ -518,64 +518,67 @@ mod tests {
     }
 
     /// The caller deadline also bounds a busy Notepad UI Automation provider.
-    fn focused_text(
-        worker: &QueryWorker,
-        diagnostics: &QueryWorker,
-        editor: &NativeEditor,
-    ) -> Result<Reading, Failure> {
+    fn focused_text(worker: &Query, diagnostics: &QueryWorker, editor: &NativeEditor) -> Result<Reading, Failure> {
         let deadline = std::time::Instant::now() + Duration::from_secs(1);
         let query_editor = editor.clone();
-        let result = worker
-            .run(
-                deadline.saturating_duration_since(std::time::Instant::now()),
-                move || {
-                    let automation = uia(uiautomation::UIAutomation::new(), Stage::Automation)?;
-                    let field = uia(automation.get_focused_element(), Stage::Focus)?;
-                    let query_owner = &query_editor.captured.identity;
-                    let current = identity(&field)?;
-                    if current != *query_owner {
-                        return Err(Failure {
-                            focused: Some(false),
-                            ..Failure::new(Stage::Identity)
-                        });
-                    }
-                    if uia(field.is_password(), Stage::Password)? {
-                        return Err(Failure {
-                            focused: Some(true),
-                            ..Failure::new(Stage::Password)
-                        });
-                    }
-                    // Reject another field before reading any of its text. Keep
-                    // COM objects on this query thread; only values leave it.
-                    if let Some(binding) = &query_editor.classic {
-                        validate_classic(&automation, &field, binding, query_owner)?;
-                    }
-                    let text = read_document(
-                        query_editor.captured.kind,
-                        || {
-                            let pattern = uia(
-                                field.get_pattern::<uiautomation::patterns::UITextPattern>(),
-                                Stage::Pattern,
-                            )?;
-                            let range = uia(pattern.get_document_range(), Stage::Range)?;
-                            uia(range.get_text(-1), Stage::Read)
-                        },
-                        || classic_text(&field),
-                    )?;
-                    let after = uia(automation.get_focused_element(), Stage::Focus)?;
-                    if identity(&after)? != *query_owner {
-                        return Err(Failure {
-                            focused: Some(false),
-                            ..Failure::new(Stage::Identity)
-                        });
-                    }
-                    if let Some(binding) = &query_editor.classic {
-                        validate_classic(&automation, &after, binding, query_owner)?;
-                    }
-                    Ok(Reading { editor: current, text })
-                },
-            )
-            .ok_or(Failure::new(Stage::Query))?;
+        let result = worker.run(
+            deadline.saturating_duration_since(std::time::Instant::now()),
+            move |step| {
+                step(QueryStep::Automation);
+                let automation = uia(uiautomation::UIAutomation::new(), Stage::Automation)?;
+                step(QueryStep::FocusedElement);
+                let field = uia(automation.get_focused_element(), Stage::Focus)?;
+                let query_owner = &query_editor.captured.identity;
+                step(QueryStep::Identity);
+                let current = identity(&field)?;
+                if current != *query_owner {
+                    return Err(Failure {
+                        focused: Some(false),
+                        ..Failure::new(Stage::Identity)
+                    });
+                }
+                step(QueryStep::Password);
+                if uia(field.is_password(), Stage::Password)? {
+                    return Err(Failure {
+                        focused: Some(true),
+                        ..Failure::new(Stage::Password)
+                    });
+                }
+                // Reject another field before reading any of its text. Keep
+                // COM objects on this query thread; only values leave it.
+                if let Some(binding) = &query_editor.classic {
+                    step(QueryStep::ValidateClassic);
+                    validate_classic(&automation, &field, binding, query_owner)?;
+                }
+                step(QueryStep::ReadDocument);
+                let text = read_document(
+                    query_editor.captured.kind,
+                    || {
+                        let pattern = uia(
+                            field.get_pattern::<uiautomation::patterns::UITextPattern>(),
+                            Stage::Pattern,
+                        )?;
+                        let range = uia(pattern.get_document_range(), Stage::Range)?;
+                        uia(range.get_text(-1), Stage::Read)
+                    },
+                    || classic_text(&field),
+                )?;
+                step(QueryStep::FocusedElement);
+                let after = uia(automation.get_focused_element(), Stage::Focus)?;
+                step(QueryStep::Identity);
+                if identity(&after)? != *query_owner {
+                    return Err(Failure {
+                        focused: Some(false),
+                        ..Failure::new(Stage::Identity)
+                    });
+                }
+                if let Some(binding) = &query_editor.classic {
+                    step(QueryStep::ValidateClassic);
+                    validate_classic(&automation, &after, binding, query_owner)?;
+                }
+                Ok(Reading { editor: current, text })
+            },
+        );
         let failure = match result {
             Ok(reading) => return Ok(reading),
             Err(failure) if failure.stage == Stage::Pattern => failure,
@@ -629,107 +632,118 @@ mod tests {
 
     /// Recover the editor explicitly: ALT can arrive after asynchronous
     /// activation and select Notepad's menu instead of its document.
-    fn focus_document(worker: &QueryWorker, hwnd: isize, pid: u32) -> Result<NativeEditor, Failure> {
-        worker
-            .run(Duration::from_secs(1), move || {
-                let automation = uia(uiautomation::UIAutomation::new(), Stage::Automation)?;
-                let root = uia(automation.element_from_handle(hwnd.into()), Stage::Window)?;
-                let walker = uia(automation.create_tree_walker(), Stage::Editor)?;
-                let fields = uia(
-                    automation
-                        .create_matcher()
-                        .from(root.clone())
-                        .depth(20)
-                        .timeout(0)
-                        .filter_fn(Box::new(move |field: &uiautomation::UIElement| {
-                            // Inspect only active supported editor classes. The
-                            // shared selector still requires document semantics
-                            // and refuses multiple eligible candidates.
-                            if field.get_process_id()? != pid || field.is_offscreen()? || !field.is_enabled()? {
-                                return Ok(false);
-                            }
-                            Ok(matches!(field.get_classname()?.as_str(), "RichEditD2DPT" | "Edit"))
-                        }))
-                        .find_all(),
-                    Stage::Editor,
-                )?;
-                if fields.len() > 128 {
-                    return Err(Failure::new(Stage::Editor));
+    fn focus_document(worker: &Query, hwnd: isize, pid: u32) -> Result<NativeEditor, Failure> {
+        worker.run(Duration::from_secs(1), move |step| {
+            use uiautomation::types::{TreeScope, UIProperty};
+            step(QueryStep::Automation);
+            let automation = uia(uiautomation::UIAutomation::new(), Stage::Automation)?;
+            step(QueryStep::ElementFromHandle);
+            let root = uia(automation.element_from_handle(hwnd.into()), Stage::Window)?;
+            step(QueryStep::EditorCondition);
+            let walker = uia(automation.create_tree_walker(), Stage::Editor)?;
+            let modern = uia(
+                automation.create_property_condition(UIProperty::ClassName, "RichEditD2DPT".into(), None),
+                Stage::Editor,
+            )?;
+            let classic = uia(
+                automation.create_property_condition(UIProperty::ClassName, "Edit".into(), None),
+                Stage::Editor,
+            )?;
+            let supported = uia(automation.create_or_condition(modern, classic), Stage::Editor)?;
+            // UIMatcher::find_all walks the entire raw tree on this client,
+            // with several cross-process calls per node. Its timeout(0)
+            // disables retries, not that walk. Filter at the provider in a
+            // single scoped FindAll; keep every eligible document so the
+            // selector still rejects ambiguity. Never search the desktop.
+            step(QueryStep::FindEditors);
+            let fields = uia(root.find_all(TreeScope::Descendants, &supported), Stage::Editor)?;
+            step(QueryStep::ClassifyEditors);
+            let fields = fields.into_iter().try_fold(Vec::new(), |mut fields, field| {
+                if uia(field.get_process_id(), Stage::Editor)? == pid
+                    && !uia(field.is_offscreen(), Stage::Editor)?
+                    && uia(field.is_enabled(), Stage::Editor)?
+                {
+                    fields.push(field);
                 }
-                let candidates = fields
-                    .iter()
-                    .map(|field| {
-                        use uiautomation::types::ControlType;
-                        let kind = match uia(field.get_classname(), Stage::Editor)?.as_str() {
-                            "RichEditD2DPT"
-                                if uia(field.get_control_type(), Stage::Editor)? == ControlType::Document =>
-                            {
-                                CandidateKind::ModernDocument
-                            }
-                            "Edit"
-                                if uia(field.get_control_type(), Stage::Editor)? == ControlType::Edit
-                                    && uia(
-                                        automation
-                                            .compare_elements(&uia(walker.get_parent(field), Stage::Editor)?, &root),
-                                        Stage::Editor,
-                                    )? =>
-                            {
-                                CandidateKind::ClassicRootEdit
-                            }
-                            _ => CandidateKind::Other,
-                        };
-                        let editor = if matches!(kind, CandidateKind::Other) {
-                            None
-                        } else {
-                            Some(identity(field)?)
-                        };
-                        Ok(Candidate {
-                            kind: Some(kind),
-                            editor,
-                        })
+                Ok::<_, Failure>(fields)
+            })?;
+            if fields.len() > 128 {
+                return Err(Failure::new(Stage::Editor));
+            }
+            let candidates = fields
+                .iter()
+                .map(|field| {
+                    use uiautomation::types::ControlType;
+                    let kind = match uia(field.get_classname(), Stage::Editor)?.as_str() {
+                        "RichEditD2DPT" if uia(field.get_control_type(), Stage::Editor)? == ControlType::Document => {
+                            CandidateKind::ModernDocument
+                        }
+                        "Edit"
+                            if uia(field.get_control_type(), Stage::Editor)? == ControlType::Edit
+                                && uia(
+                                    automation.compare_elements(&uia(walker.get_parent(field), Stage::Editor)?, &root),
+                                    Stage::Editor,
+                                )? =>
+                        {
+                            CandidateKind::ClassicRootEdit
+                        }
+                        _ => CandidateKind::Other,
+                    };
+                    let editor = if matches!(kind, CandidateKind::Other) {
+                        None
+                    } else {
+                        Some(identity(field)?)
+                    };
+                    Ok(Candidate {
+                        kind: Some(kind),
+                        editor,
                     })
-                    .collect::<Result<Vec<_>, Failure>>()?;
-                let owner = select_document(&candidates)?;
-                let selected = candidates
-                    .iter()
-                    .position(|candidate| candidate.editor.as_ref() == Some(&owner.identity))
-                    .ok_or(Failure::new(Stage::Editor))?;
-                let editor = &fields[selected];
-                if owner.identity.process != pid {
+                })
+                .collect::<Result<Vec<_>, Failure>>()?;
+            let owner = select_document(&candidates)?;
+            let selected = candidates
+                .iter()
+                .position(|candidate| candidate.editor.as_ref() == Some(&owner.identity))
+                .ok_or(Failure::new(Stage::Editor))?;
+            let editor = &fields[selected];
+            if owner.identity.process != pid {
+                return Err(Failure::new(Stage::Identity));
+            }
+            let classic = if owner.kind == EditorKind::ClassicRootEdit {
+                let root_identity = identity(&root)?;
+                if root_identity.process != pid {
                     return Err(Failure::new(Stage::Identity));
                 }
-                let classic = if owner.kind == EditorKind::ClassicRootEdit {
-                    let root_identity = identity(&root)?;
-                    if root_identity.process != pid {
-                        return Err(Failure::new(Stage::Identity));
-                    }
-                    Some(ClassicWindow {
-                        root: root_identity,
-                        root_window: hwnd,
-                        editor_window: native_handle(editor)?,
-                    })
-                } else {
-                    None
-                };
-                uia(editor.set_focus(), Stage::Focus)?;
-                let focused = uia(automation.get_focused_element(), Stage::Focus)?;
-                if !uia(automation.compare_elements(editor, &focused), Stage::Focus)?
-                    || identity(&focused)? != owner.identity
-                {
-                    return Err(Failure {
-                        focused: Some(false),
-                        ..Failure::new(Stage::Focus)
-                    });
-                }
-                if let Some(binding) = &classic {
-                    validate_classic(&automation, &focused, binding, &owner.identity)?;
-                }
-                Ok(NativeEditor {
-                    captured: owner,
-                    classic,
+                Some(ClassicWindow {
+                    root: root_identity,
+                    root_window: hwnd,
+                    editor_window: native_handle(editor)?,
                 })
+            } else {
+                None
+            };
+            step(QueryStep::SetFocus);
+            uia(editor.set_focus(), Stage::Focus)?;
+            step(QueryStep::FocusedElement);
+            let focused = uia(automation.get_focused_element(), Stage::Focus)?;
+            step(QueryStep::CompareFocus);
+            if !uia(automation.compare_elements(editor, &focused), Stage::Focus)?
+                || identity(&focused)? != owner.identity
+            {
+                return Err(Failure {
+                    focused: Some(false),
+                    ..Failure::new(Stage::Focus)
+                });
+            }
+            if let Some(binding) = &classic {
+                step(QueryStep::ValidateClassic);
+                validate_classic(&automation, &focused, binding, &owner.identity)?;
+            }
+            Ok(NativeEditor {
+                captured: owner,
+                classic,
             })
-            .ok_or(Failure::new(Stage::Query))?
+        })
     }
 
     /// Neither a launcher nor a handed-off process proves exclusive ownership:
@@ -883,6 +897,12 @@ mod tests {
                     ..Failure::new(Stage::Window)
                 });
             }
+            if !window.IsWindow() || !window.IsWindowVisible() || !window.IsWindowEnabled() || window.IsIconic() {
+                return Err(Failure {
+                    owned: Some(true),
+                    ..Failure::new(Stage::Window)
+                });
+            }
             if !win(window.GetWindowText(), Stage::Document)?.contains(document) {
                 return Err(Failure {
                     owned: Some(false),
@@ -900,7 +920,7 @@ mod tests {
             Ok(())
         };
         let in_front = || owned().is_ok();
-        let worker = QueryWorker::default();
+        let worker = Query::default();
         let diagnostics = QueryWorker::default();
         let hwnd = window.ptr() as isize;
         let mut editor = None;
@@ -924,7 +944,12 @@ mod tests {
                 editor = Some(
                     wait_for(Duration::from_secs(5), || {
                         let result = owned()
-                            .and_then(|()| focus_document(&worker, hwnd, pid))
+                            .and_then(|()| {
+                                focus_document(&worker, hwnd, pid).map_err(|failure| Failure {
+                                    owned: Some(true),
+                                    ..failure
+                                })
+                            })
                             .and_then(|identity| {
                                 owned()?;
                                 Ok(identity)
@@ -937,7 +962,19 @@ mod tests {
                             }
                         }
                     })
-                    .unwrap_or_else(|| panic!("{last:?}")),
+                    .unwrap_or_else(|| {
+                        // Failure-only facts, never titles, paths, HWNDs or text.
+                        eprintln!(
+                            "DIAG readiness visible={} enabled={} iconic={} foreground_matches={} window_pid_matches={} launcher_pid_matches_window={}",
+                            window.IsWindowVisible(),
+                            window.IsWindowEnabled(),
+                            window.IsIconic(),
+                            w::HWND::GetForegroundWindow().as_ref() == Some(window),
+                            window.GetWindowThreadProcessId().1 == pid,
+                            notepad.session.launcher.id() == pid,
+                        );
+                        panic!("{last:?}")
+                    }),
                 );
             },
         ) {

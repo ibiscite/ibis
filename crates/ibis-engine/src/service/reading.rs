@@ -12,6 +12,7 @@
 //! never from the file's page number.
 use super::*;
 use crate::request::{FindInRequest, OutlineRequest, ReadRequest};
+use crate::sync::MutexExt;
 use ibis_sources::pdf::{PdfReader, Refusal};
 use ibis_sources::reading::{Body, DocumentText, SourceAttachment, TextState};
 use unicode_normalization::UnicodeNormalization;
@@ -326,8 +327,7 @@ impl Engine {
         Ok(self
             .shared
             .sources
-            .lock()
-            .map_err(|_| error(ErrorCode::Internal))?
+            .recover_lock()
             .file_generation(library)
             .unwrap_or(state.zotero_generation))
     }

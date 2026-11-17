@@ -144,21 +144,6 @@ pub enum LibraryState {
     Error,
 }
 
-impl LibraryStatus {
-    /// What to show when the owner itself cannot be read.
-    pub fn unavailable() -> Self {
-        let mut status = status(&State::default());
-        status.state = LibraryState::Error;
-        status.error = Some(words("app-library-state-unavailable", &[]));
-        status.problem = Some(LibraryProblem::Other);
-        status.failure = Some(Problem {
-            code: "not-prepared".into(),
-            info: ibis_core::contract::RecoveryInfo::new("app-command-not-prepared", Recovery::Retry),
-        });
-        status
-    }
-}
-
 /// How a source is named for the engine's listing: its Zotero library, or its opaque ID.
 pub fn native_source(info: &crate::LibraryInfo) -> String {
     info.zotero

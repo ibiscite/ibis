@@ -76,7 +76,7 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
         let worker_output = output.clone();
         let working = scope.spawn(move || {
             for job in jobs {
-                let result = ibis_core::panic_guard::attempt(|| {
+                let result = crate::sync::attempt(|| {
                     job.cancel.check()?;
                     let result = if let Some(citation) = job.citation {
                         let request: ibis_core::contract::CitationRequest = serde_json::from_value(job.params.clone())
@@ -447,30 +447,40 @@ mod tests {
     fn worker_panics_are_fixed_errors_and_later_requests_complete() {
         const CHILD: &str = "IBIS_RPC_PANIC_CHILD";
         if std::env::var_os(CHILD).is_none() {
-            let mut child = std::process::Command::new(std::env::current_exe().unwrap())
-                .args([
-                    "--exact",
-                    "server::tests::worker_panics_are_fixed_errors_and_later_requests_complete",
-                    "--nocapture",
-                ])
-                .env(CHILD, "1")
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .spawn()
-                .unwrap();
-            let began = Instant::now();
-            while child.try_wait().unwrap().is_none() {
-                if began.elapsed() > Duration::from_secs(10) {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    panic!("panic-guard subprocess timed out");
+            for close_stderr in [false, true] {
+                let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+                    .args([
+                        "--exact",
+                        "server::tests::worker_panics_are_fixed_errors_and_later_requests_complete",
+                        "--nocapture",
+                    ])
+                    .env(CHILD, "1")
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .spawn()
+                    .unwrap();
+                if close_stderr {
+                    drop(child.stderr.take());
                 }
-                thread::sleep(Duration::from_millis(10));
+                let began = Instant::now();
+                while child.try_wait().unwrap().is_none() {
+                    if began.elapsed() > Duration::from_secs(10) {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        panic!("panic-guard subprocess timed out");
+                    }
+                    thread::sleep(Duration::from_millis(10));
+                }
+                let output = child.wait_with_output().unwrap();
+                assert!(output.status.success());
+                if !close_stderr {
+                    assert_eq!(
+                        String::from_utf8_lossy(&output.stderr),
+                        "Ibis worker panic: synthetic worker failure\n"
+                    );
+                }
+                assert!(!String::from_utf8_lossy(&output.stdout).contains("synthetic worker failure"));
             }
-            let output = child.wait_with_output().unwrap();
-            assert!(output.status.success());
-            assert!(output.stderr.is_empty(), "caught worker panic reached stderr");
-            assert!(!String::from_utf8_lossy(&output.stdout).contains("synthetic worker failure"));
             return;
         }
 
