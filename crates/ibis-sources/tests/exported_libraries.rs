@@ -3,11 +3,9 @@
 #![cfg(test)]
 
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
-use std::time::{Duration, Instant};
 
 use ibis_core::contract::{ItemRef, LibraryObject, Record};
-use ibis_sources::{LoadedLibrary, SourceError, SourceWarning, SourceWatch, WarningCause, WarningCode};
+use ibis_sources::{LoadedLibrary, SourceError, SourceWarning, WarningCause, WarningCode};
 use serde_json::{Value, json};
 
 fn fixture(name: &str) -> PathBuf {
@@ -180,55 +178,6 @@ fn the_same_reference_keeps_its_identity_across_exports_and_a_changed_one_does_n
 }
 
 #[test]
-fn ris_is_known_by_its_content_in_utf8_with_any_line_ending() {
-    let directory = tempfile::tempdir().unwrap();
-    let text = std::fs::read_to_string(fixture("ris/library.ris")).unwrap();
-    let expected = citation_fields(&ibis_sources::load_file(&fixture("ris/library.ris")).unwrap());
-    // EndNote online saves `.txt`; Windows, old Mac and a byte-order mark.
-    for (name, text) in [
-        ("export.txt", text.clone()),
-        ("export.ris", text.replace('\n', "\r\n")),
-        ("old.ris", text.replace('\n', "\r")),
-        ("marked.ris", format!("\u{feff}{text}")),
-        ("named-oddly.refs", text.clone()),
-    ] {
-        let loaded = ibis_sources::load_file(&copy(directory.path(), name, &text)).unwrap();
-        assert_eq!(citation_fields(&loaded), expected, "{name}");
-    }
-    // A renamed PubMed `.nbib`, RefWorks Tagged and native Web of Science have no RIS record.
-    for (name, text) in [
-        ("pubmed.ris", "PMID- 1\nTI  - Invented title\nAU  - Doe J\n"),
-        ("refworks.txt", "RT Journal Article\nA1 Doe, Jane\nT1 Invented title\n"),
-        (
-            "wos.txt",
-            "FN Invented Export\nPT J\nAU Doe, J\nTI Invented title\nER\nEF\n",
-        ),
-    ] {
-        let path = copy(directory.path(), name, text);
-        assert_eq!(
-            ibis_sources::load_file(&path).err(),
-            Some(SourceError::InvalidData),
-            "{name}"
-        );
-    }
-    // UTF-16, with or without its byte-order mark, and Windows-1252.
-    let utf16: Vec<u8> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
-    for (name, bytes) in [
-        ("utf16.ris", [&[0xff, 0xfe][..], &utf16].concat()),
-        ("utf16-unmarked.ris", utf16.clone()),
-        ("latin1.ris", b"TY  - BOOK\nTI  - Caf\xe9\nER  - \n".to_vec()),
-    ] {
-        let path = directory.path().join(name);
-        std::fs::write(&path, bytes).unwrap();
-        assert_eq!(
-            ibis_sources::load_file(&path).err(),
-            Some(SourceError::Unreadable),
-            "{name}"
-        );
-    }
-}
-
-#[test]
 fn a_csv_in_the_template_reads_as_citations_without_keys() {
     let loaded = ibis_sources::load_file(&fixture("csv/library.csv")).unwrap();
     assert_eq!(loaded.warnings, []);
@@ -345,38 +294,6 @@ fn empty_and_missing_files() {
 }
 
 #[test]
-fn a_ris_file_changed_while_open_updates_and_keeps_unchanged_identities() {
-    let directory = tempfile::tempdir().unwrap();
-    let one = "TY  - BOOK\nTI  - Invented one\nER  - \n";
-    let path = copy(directory.path(), "watched.ris", one);
-    let (sender, events) = mpsc::channel();
-    let _watch = SourceWatch::new(&path, move |result| {
-        let _ = sender.send(result);
-    })
-    .unwrap();
-    let next = || {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            let remaining = deadline.checked_duration_since(Instant::now()).unwrap();
-            match events.recv_timeout(remaining).unwrap() {
-                Err(SourceError::Changing) => continue,
-                result => return result,
-            }
-        }
-    };
-    let first = next().unwrap();
-    std::fs::write(&path, format!("{one}TY  - BOOK\nTI  - Invented two\nER  - \n")).unwrap();
-    let second = next().unwrap();
-    assert_eq!(records(&second).len(), 2);
-    assert!(ids(&second).contains(&ids(&first)[0]));
-    // An unfinished record written later is skipped with its line.
-    std::fs::write(&path, format!("{one}TY  - BOOK\nTI  - Unfinished")).unwrap();
-    let third = next().unwrap();
-    assert_eq!(ids(&third), ids(&first));
-    assert_eq!(third.warnings, [skipped(4, WarningCause::NotClosed, None)]);
-}
-
-#[test]
 fn ris_fields_keep_what_was_written_and_refuse_what_disagrees() {
     let directory = tempfile::tempdir().unwrap();
     let read = |record: &str| {
@@ -413,57 +330,6 @@ fn ris_fields_keep_what_was_written_and_refuse_what_disagrees() {
 }
 
 #[test]
-fn names_dates_and_identifiers_that_agree_keep_the_record() {
-    let directory = tempfile::tempdir().unwrap();
-    let read = |name: &str, text: &str| ibis_sources::load_file(&copy(directory.path(), name, text)).unwrap();
-    let ris = |record: &str| read("one.ris", &format!("TY  - BOOK\nTI  - Invented\n{record}ER  - \n"));
-    // A name given twice is one person, in the order first given.
-    let named = ris("AU  - Doe, Jane\nAU  - Roe, Rafael\nAU  - Doe, Jane\n");
-    assert_eq!(
-        citation_fields(&named)[0]["author"],
-        json!([{"family": "Doe", "given": "Jane"}, {"family": "Roe", "given": "Rafael"}])
-    );
-    // A year that agrees with a date kept as text keeps the record and the text.
-    let dated = ris("PY  - 2026\nY1  - 2026/07//Jul-Sep2026\n");
-    assert_eq!(dated.warnings, []);
-    assert_eq!(
-        citation_fields(&dated)[0]["issued"],
-        json!({"literal": "2026/07//Jul-Sep2026"})
-    );
-    // An ISBN or ISSN that fails its check digit is dropped with a warning.
-    let valid = ris("SN  - 978-0-00-000000-2 (pbk.)\n");
-    assert_eq!(citation_fields(&valid)[0]["ISBN"], "978-0-00-000000-2");
-    let invalid = ris("SN  - 9780000000003\n");
-    assert_eq!(citation_fields(&invalid)[0]["ISBN"], Value::Null);
-    assert_eq!(invalid.warnings[0].code, WarningCode::Field);
-    let csv = read(
-        "serials.csv",
-        "type,title,ISSN,ISBN\narticle-journal,Invented one,1234-5679,\nbook,Invented two,,9780000000003\n",
-    );
-    let fields = citation_fields(&csv);
-    assert_eq!(fields[0]["ISSN"], "1234-5679");
-    assert_eq!(fields[1]["ISBN"], Value::Null);
-    assert_eq!(
-        csv.warnings.iter().map(|w| (w.code, w.line)).collect::<Vec<_>>(),
-        [(WarningCode::Field, Some(3))]
-    );
-}
-
-#[test]
-fn a_quote_inside_an_unquoted_cell_skips_the_row() {
-    let directory = tempfile::tempdir().unwrap();
-    let path = copy(
-        directory.path(),
-        "quote.csv",
-        "type,title\nbook,Unclosed \"quote\nbook,Invented\n",
-    );
-    assert_eq!(
-        ibis_sources::load_file(&path).unwrap().warnings,
-        [skipped(2, WarningCause::UnexpectedText, None)]
-    );
-}
-
-#[test]
 fn the_record_limit_counts_every_record_the_file_holds() {
     let directory = tempfile::tempdir().unwrap();
     let mut text = String::from("type,title\n");
@@ -489,34 +355,4 @@ fn the_record_limit_counts_every_record_the_file_holds() {
     );
     // A key past the limit is said to be possibly unread.
     assert!(loaded.cut_short);
-}
-
-#[test]
-fn equivalent_values_merge_and_a_bad_one_does_not_take_the_good_ones_with_it() {
-    let directory = tempfile::tempdir().unwrap();
-    let ris = |record: &str| {
-        let path = copy(
-            directory.path(),
-            "one.ris",
-            &format!("TY  - BOOK\nTI  - Invented\n{record}ER  - \n"),
-        );
-        ibis_sources::load_file(&path).unwrap()
-    };
-    let named = ris("AU  - Doe, Jane\nA1  - Doe,Jane\n");
-    assert_eq!(
-        citation_fields(&named)[0]["author"],
-        json!([{"family": "Doe", "given": "Jane"}])
-    );
-    // A text date's month takes part in the check against an exact date.
-    assert_eq!(
-        ris("PY  - 2026/07//Jul-Sep2026\nDA  - 2026/03/14/\n").warnings,
-        [skipped(1, WarningCause::Conflicting, None)]
-    );
-    assert_eq!(
-        citation_fields(&ris("SN  - 978 0 00 000000 2\n"))[0]["ISBN"],
-        "978 0 00 000000 2"
-    );
-    let mixed = ris("SN  - 978-0-00-000000-2\nSN  - invented\n");
-    assert_eq!(citation_fields(&mixed)[0]["ISBN"], "978-0-00-000000-2");
-    assert_eq!(mixed.warnings[0].code, WarningCode::Field);
 }

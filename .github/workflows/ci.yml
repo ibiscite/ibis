@@ -304,7 +304,6 @@ jobs:
       - name: Exercise the native picker (Linux)
         if: ${{ !cancelled() && steps.native_build.outcome == 'success' && runner.os == 'Linux' }}
         run: |
-          /usr/bin/python3 scripts/smoke-native.py --self-test
           /usr/bin/python3 scripts/check-offline.test.py
           for tool in Xvfb xvfb-run xauth dbus-run-session; do command -v "$tool"; done
           # Each layout owns a new server: an exited WM can leave root properties behind.

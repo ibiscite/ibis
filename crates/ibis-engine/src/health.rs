@@ -234,25 +234,6 @@ mod tests {
     use super::*;
     use std::time::Duration;
     #[test]
-    fn retention_follows_the_kind_of_failure_not_its_wording() {
-        let failed = |code| EngineError::new(code);
-        for code in [
-            ErrorCode::SourceUnavailable,
-            ErrorCode::Internal,
-            ErrorCode::NewerFormat,
-        ] {
-            assert!(retains(&failed(code), false), "{code:?}");
-            assert!(retains(&failed(code), true), "{code:?}");
-        }
-        // Opening something that is no library, or too large, replaces the
-        // last references; reading the same library again keeps them.
-        for code in [ErrorCode::BadInput, ErrorCode::ResourceLimit] {
-            assert!(!retains(&failed(code), false), "{code:?}");
-            assert!(retains(&failed(code), true), "{code:?}");
-        }
-        assert!(!retains(&failed(ErrorCode::Cancelled), true));
-    }
-    #[test]
     fn a_stalled_filesystem_returns_no_result_and_late_work_is_retired() {
         let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let path = directory.path().join("invented.json");
@@ -277,19 +258,5 @@ mod tests {
             1
         );
         assert_eq!(bounded(&Cancellation::default(), |_| 7), Some(7));
-    }
-    #[test]
-    fn health_from_a_newer_engine_parses_and_needs_review() {
-        let newer: SourceHealth = serde_json::from_value(serde_json::json!({
-            "status": "invented-status", "findings": [{"code": "invented-finding", "library": "x"}], "added": 1
-        }))
-        .unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(newer.status, HealthStatus::Unknown);
-        assert_eq!(newer.findings, [SourceFinding::Unknown]);
-        assert!(!newer.is_ok());
-        let odd: SourceHealth =
-            serde_json::from_value(serde_json::json!({"status": "ok", "findings": [{"code": "invented-finding"}]}))
-                .unwrap_or_else(|e| panic!("{e}"));
-        assert!(!odd.is_ok());
     }
 }

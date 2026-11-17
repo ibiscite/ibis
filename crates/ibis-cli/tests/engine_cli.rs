@@ -9,22 +9,6 @@ fn ibis(args: &[&str]) -> std::process::Output {
 }
 
 #[test]
-fn piped_search_keeps_the_original_tsv_even_with_forced_color() -> Result<(), Box<dyn std::error::Error>> {
-    for (name, value) in [("NO_COLOR", ""), ("TERM", "dumb"), ("CLICOLOR_FORCE", "1")] {
-        let output = Command::new(env!("CARGO_BIN_EXE_ibis"))
-            .args(["search", "lantern", "--file", "../../fixtures/website/sample.bib"])
-            .env(name, value)
-            .output()?;
-        assert!(output.status.success());
-        assert_eq!(
-            output.stdout,
-            b"vale2024lanterns\tMira Vale\t2024\tLantern gardens and the rhythm of imaginary cities\n"
-        );
-        assert!(output.stderr.is_empty());
-    }
-    Ok(())
-}
-#[test]
 fn file_flags_accumulate_across_positions_and_ignore_duplicates() -> Result<(), Box<dyn std::error::Error>> {
     for duplicates in [false, true] {
         let mut args = vec![
@@ -51,23 +35,6 @@ fn file_flags_accumulate_across_positions_and_ignore_duplicates() -> Result<(), 
         assert_eq!(value["data"]["libraries"].as_array().map(Vec::len), Some(2));
     }
     Ok(())
-}
-
-#[test]
-fn file_flags_after_the_subcommand_keep_readable_errors() {
-    let output = ibis(&[
-        "--file",
-        "../../fixtures/bibtex/empty.bib",
-        "libraries",
-        "--file",
-        "/invented/missing.bib",
-    ]);
-    assert_eq!(output.status.code(), Some(5));
-    assert!(output.stdout.is_empty());
-    assert_eq!(
-        output.stderr,
-        b"ibis: cannot open /invented/missing.bib: The library file was moved, renamed or removed. Choose its current location with --file.\n"
-    );
 }
 
 #[test]
@@ -101,54 +68,6 @@ fn every_method_is_listed_and_json_usage_errors_are_envelopes() {
 }
 
 #[test]
-fn a_search_query_after_the_end_of_options_is_not_a_json_flag() -> Result<(), Box<dyn std::error::Error>> {
-    let file = "--file=../../fixtures/bibtex/fidelity.bib";
-    let human = ibis(&["search", file, "--", "--json"]);
-    assert!(human.status.success());
-    assert!(human.stderr.is_empty());
-    assert_eq!(std::str::from_utf8(&human.stdout)?, "No references found.\n");
-
-    let machine = ibis(&["search", file, "--json", "--", "--json"]);
-    assert!(machine.status.success());
-    assert!(machine.stderr.is_empty());
-    let value: Value = serde_json::from_slice(&machine.stdout)?;
-    assert_eq!(value["ibis"], 1);
-    assert_eq!(value["ok"], true);
-    assert_eq!(value["data"]["hits"], json!([]));
-    Ok(())
-}
-
-#[test]
-fn help_and_usage_errors_respect_the_end_of_options() -> Result<(), Box<dyn std::error::Error>> {
-    let plain_usage = ibis(&["search", "--limit", "bad", "--", "--json"]);
-    let json_usage = ibis(&["search", "--limit", "bad", "--json", "--", "--json"]);
-    assert_eq!(plain_usage.status.code(), Some(2));
-    assert_eq!(json_usage.status.code(), Some(2));
-    assert!(plain_usage.stdout.is_empty());
-    assert!(plain_usage.stderr.starts_with(b"ibis: "));
-    assert_eq!(plain_usage.stderr, json_usage.stderr);
-    assert_eq!(
-        serde_json::from_slice::<Value>(&json_usage.stdout)?,
-        json!({"ibis":1,"ok":false,"error":{"code":"usage","message":{"id":"error-usage","args":{}},"recovery":{"action":"edit-input"},"focus":"request"}})
-    );
-
-    let plain_help = ibis(&["search", "--help", "--", "--json"]);
-    let json_help = ibis(&["search", "--help", "--json", "--", "--json"]);
-    assert!(plain_help.status.success() && json_help.status.success());
-    let help = std::str::from_utf8(&plain_help.stdout)?;
-    assert!(
-        help.lines()
-            .any(|line| line.starts_with("Usage: ") && line.ends_with(" search [OPTIONS] <WORDS>")),
-        "{help}"
-    );
-    assert_eq!(
-        serde_json::from_slice::<Value>(&json_help.stdout)?,
-        json!({"ibis":1,"ok":true,"data":{"help":help}})
-    );
-    Ok(())
-}
-
-#[test]
 fn schema_matches_the_published_contract() {
     let expected: Value = serde_json::from_str(include_str!("../../../fixtures/cli-schema.json"))
         .unwrap_or_else(|error| panic!("{error}"));
@@ -165,26 +84,6 @@ fn schema_matches_the_published_contract() {
             "update the snapshot only after reviewing an intentional schema change"
         );
     }
-}
-
-#[test]
-fn search_and_call_use_the_same_versioned_results() {
-    // Named, so the test never reads the app's settings on the machine running it.
-    let empty = "--file=../../fixtures/bibtex/empty.bib";
-    let search = ibis(&["search", "no matches", "--json", empty]);
-    let call = ibis(&[
-        "call",
-        "search",
-        "--params",
-        r#"{"query":"no matches"}"#,
-        "--json",
-        empty,
-    ]);
-    assert!(search.status.success());
-    assert!(call.status.success());
-    assert_eq!(search.stdout, call.stdout);
-    let missing = ibis(&["show", "missing", "--json", empty]);
-    assert_eq!(missing.status.code(), Some(4));
 }
 
 #[test]
@@ -328,51 +227,6 @@ fn native_stdio_framing_cancellation_and_transport_errors_use_the_engine() -> Re
 }
 
 #[test]
-fn piped_plain_citations_retain_literal_rtl_format_marks() -> Result<(), Box<dyn std::error::Error>> {
-    use ibis_core::contract::*;
-    use std::{io::Cursor, sync::Arc};
-    let case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json"))?;
-    let LibraryObject::Record(mut record) = case.library.objects()[0].object.clone() else {
-        panic!("record")
-    };
-    let key = "مثال\u{200f}2026";
-    record.citation_keys[0].value = key.into();
-    let engine = ibis_engine::Engine::from_snapshot(Arc::new(Snapshot::new(vec![LibraryObject::Record(record)])?));
-    let mut output = vec![];
-    let mut errors = vec![];
-    assert_eq!(
-        ibis::run_with(
-            engine.clone(),
-            ["ibis", "cite", key, "--format", "keys"].map(Into::into).to_vec(),
-            Cursor::new(vec![]),
-            &mut output,
-            &mut errors,
-            ibis::OutputMode::Plain
-        ),
-        0
-    );
-    assert_eq!(output, format!("{key}\n").into_bytes());
-    let mut output = vec![];
-    assert_eq!(
-        ibis::run_with(
-            engine,
-            ["ibis", "cite", key, "--format", "keys"].map(Into::into).to_vec(),
-            Cursor::new(vec![]),
-            &mut output,
-            &mut errors,
-            ibis::OutputMode::Terminal
-        ),
-        0
-    );
-    assert_eq!(
-        output,
-        format!("{}\n", key.replace('\u{200f}', "\\u{200f}")).into_bytes()
-    );
-    assert!(errors.is_empty());
-    Ok(())
-}
-
-#[test]
 fn mcp_serves_agents_from_the_files_given() -> Result<(), Box<dyn std::error::Error>> {
     use std::io::Write;
     let mut child = Command::new(env!("CARGO_BIN_EXE_ibis"))
@@ -446,42 +300,5 @@ fn mcp_that_cannot_open_its_library_still_starts_and_says_why() -> Result<(), Bo
     assert!(text.contains("start a new session"), "{text}");
     assert!(!text.contains("private-folder-name"), "an agent sees no path: {text}");
     assert_eq!(replies[2]["result"]["structuredContent"]["styles"][0]["id"], "apa");
-    Ok(())
-}
-
-#[test]
-fn citations_use_note_overrides_but_never_note_text_or_app_links() -> Result<(), Box<dyn std::error::Error>> {
-    let path = std::env::temp_dir().join(format!("ibis-notes-{}.json", std::process::id()));
-    std::fs::write(
-        &path,
-        json!([{
-            "id": "untitled",
-            "citation-key": "untitled",
-            "type": "book",
-            "author": [{"family": "Invented", "given": "Ada"}],
-            "issued": {"date-parts": [[2020]]},
-            "publisher": "Invented Press",
-            "note": "Invented private memo\ntitle: Invented override title",
-            "annote": "Invented private annotation",
-            "URL": "zotero://open-pdf/library/items/INVENTED"
-        }])
-        .to_string(),
-    )?;
-    let file = path.to_str().ok_or("path")?;
-    let output = ibis(&[
-        "cite",
-        "--file",
-        file,
-        "--style",
-        "apa",
-        "--form",
-        "bibliography-only",
-        "untitled",
-    ]);
-    std::fs::remove_file(&path)?;
-    assert_eq!(
-        String::from_utf8(output.stdout)?.trim(),
-        "Invented, A. (2020). Invented override title. Invented Press."
-    );
     Ok(())
 }

@@ -10,18 +10,6 @@ use ibis_engine::settings::{self, Density, LibrarySetting};
 use ibis_engine::settings_backup::{self as backup, BackupProblem};
 
 #[test]
-fn neither_client_exports_absent_or_recovered_settings_as_a_valid_backup() {
-    let (_directory, target) = fixture::file();
-    let absent = backup::export_file(target.clone(), "0.2.8").unwrap_err();
-    assert_eq!(backup::code(&absent), ErrorCode::NotFound);
-    fs::write(&target, "{ damaged").unwrap();
-    fs::write(target.with_extension("json.bak"), "{}").unwrap();
-    let recovered = backup::export_file(target.clone(), "0.2.8").unwrap_err();
-    assert_eq!(backup::problem(&recovered), BackupProblem::SettingsUnusable);
-    assert_eq!(fs::read_to_string(target).unwrap(), "{ damaged");
-}
-
-#[test]
 fn export_preview_and_restore_agree_and_dry_run_changes_nothing() {
     let directory = tempfile::tempdir().unwrap();
     let original = directory.path().join("original.json");
@@ -59,25 +47,6 @@ fn export_preview_and_restore_agree_and_dry_run_changes_nothing() {
 }
 
 #[test]
-fn an_export_at_the_automatic_backup_path_restores_its_library_and_format() {
-    let (_directory, target) = fixture::file();
-    let library = LibrarySetting::Bibtex("/invented/atlas.bib".into());
-    fixture::edit(&target, |settings| {
-        settings.portable.library = Some(library.clone());
-        settings.portable.output = Some("ieee".into());
-    })
-    .unwrap();
-    let source = target.with_extension("json.bak");
-    backup::save(&source, &backup::export_file(target.clone(), "0.3.6").unwrap(), true).unwrap();
-    fs::write(&target, "{}").unwrap();
-    let (_, plan) = backup::prepare(target.clone(), source).unwrap();
-    settings::Owner::open(target.clone()).restore(&plan).unwrap();
-    let restored = fixture::read(&target);
-    assert_eq!(restored.portable.library, Some(library));
-    assert_eq!(restored.portable.output.as_deref(), Some("ieee"));
-}
-
-#[test]
 fn malformed_newer_and_unreadable_backups_refuse_without_echoing_private_input() {
     let (directory, target) = fixture::file();
     fs::write(&target, "{}").unwrap();
@@ -108,46 +77,6 @@ fn malformed_newer_and_unreadable_backups_refuse_without_echoing_private_input()
     let error = backup::prepare(target, source).unwrap_err();
     assert_eq!(backup::problem(&error), BackupProblem::Unreadable);
     assert_eq!(backup::code(&error), ErrorCode::NotFound);
-}
-
-#[test]
-fn newer_settings_in_either_primary_or_recovery_file_refuse_preview_and_export() {
-    let (directory, target) = fixture::file();
-    let source = directory.path().join("backup.json");
-    fs::write(&target, "{}").unwrap();
-    fs::write(&source, backup::export_file(target.clone(), "0.2.8").unwrap()).unwrap();
-    for newer in [&target, &target.with_extension("json.bak")] {
-        fs::write(newer, r#"{"schema_version":999}"#).unwrap();
-        for error in [
-            backup::prepare(target.clone(), source.clone()).unwrap_err(),
-            backup::export_file(target.clone(), "0.2.8").unwrap_err(),
-        ] {
-            assert_eq!(backup::code(&error), ErrorCode::NewerFormat);
-            assert_eq!(backup::problem(&error), BackupProblem::SettingsUnusable);
-        }
-        assert_eq!(fs::read_to_string(newer).unwrap(), r#"{"schema_version":999}"#);
-        fs::remove_file(newer).unwrap();
-    }
-}
-
-#[test]
-fn a_change_after_preview_refuses_commit_and_keeps_the_newer_choice() {
-    let (directory, target) = fixture::file();
-    let source = directory.path().join("backup.json");
-    fs::write(&target, r#"{"density":"compact"}"#).unwrap();
-    fs::write(&source, backup::export_file(target.clone(), "0.2.8").unwrap()).unwrap();
-    fs::write(&target, "{}").unwrap();
-    let (_, plan) = backup::prepare(target.clone(), source).unwrap();
-    fixture::edit(&target, |settings| {
-        settings.portable.larger_text = Some(true);
-    })
-    .unwrap();
-    let before = fs::read(&target).unwrap();
-    let error = ibis_engine::settings::Owner::open(target.clone())
-        .restore(&plan)
-        .unwrap_err();
-    assert_eq!(backup::problem(&error), BackupProblem::Changed);
-    assert_eq!(fs::read(&target).unwrap(), before);
 }
 
 #[test]

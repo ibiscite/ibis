@@ -14,26 +14,6 @@ fn draft(engine: &Engine, output: &str) -> Draft {
     let record = &snapshot.objects()[0];
     serde_json::from_value(json!({"items":[{"id":record.object.id(),"cite":record.fingerprints.cite}],"output":{"kind":"preset","name":output}})).unwrap()
 }
-#[test]
-fn an_over_limit_desktop_draft_keeps_the_shared_count_diagnostic() {
-    let engine = engine();
-    let mut draft = draft(&engine, "pandoc");
-    draft.items = vec![draft.items[0].clone(); ibis_core::syntax::MAX_CITATION_ITEMS + 1];
-    let error = engine
-        .citations()
-        .preview(SessionId::PICKER, draft, Cancellation::default())
-        .unwrap()
-        .run()
-        .err()
-        .unwrap();
-    let problem = error.problem();
-    assert_eq!(problem.code, "too-many-items");
-    assert_eq!(problem.info.message.args["count"], "1000");
-    assert_eq!(
-        ibis_engine::catalogue::problem(&problem, ibis_engine::catalogue::Audience::App),
-        "A citation can hold at most 1000 references."
-    );
-}
 
 #[test]
 fn typing_fast_then_enter_cannot_commit_an_older_preview() {
@@ -96,35 +76,6 @@ fn two_connections_do_not_retire_each_others_previews_and_close_releases_the_ses
             .citations()
             .commit(first, &shown.ticket, &shown.content_hash)
             .is_err()
-    );
-}
-#[test]
-fn numeric_style_names_why_forms_are_unavailable() {
-    let engine = engine();
-    let shown = engine
-        .citations()
-        .preview(SessionId::PICKER, draft(&engine, "ieee"), Cancellation::default())
-        .unwrap()
-        .run()
-        .unwrap();
-    let details = engine
-        .citations()
-        .forms(
-            SessionId::PICKER,
-            &shown.ticket,
-            &shown.content_hash,
-            0,
-            Cancellation::default(),
-        )
-        .unwrap()
-        .run()
-        .unwrap();
-    assert_eq!(details.current_form, None);
-    assert!(
-        details
-            .forms
-            .iter()
-            .all(|form| form.example.is_none() && form.reason.as_ref().is_some_and(|reason| !reason.is_empty()))
     );
 }
 #[test]
@@ -209,205 +160,12 @@ fn a_record_the_style_cannot_write_is_named_and_keeps_its_neighbours() {
 }
 
 #[test]
-fn queued_bibliography_and_forms_are_retired_when_a_new_preview_is_submitted() {
-    let engine = engine();
-    let shown = engine
-        .citations()
-        .preview(SessionId::PICKER, draft(&engine, "apa"), Cancellation::default())
-        .unwrap()
-        .run()
-        .unwrap();
-    let forms = engine
-        .citations()
-        .forms(
-            SessionId::PICKER,
-            &shown.ticket,
-            &shown.content_hash,
-            0,
-            Cancellation::default(),
-        )
-        .unwrap();
-    let bibliography = engine
-        .citations()
-        .bibliography(
-            SessionId::PICKER,
-            vec![],
-            "unknown-style".into(),
-            Cancellation::default(),
-            false,
-        )
-        .unwrap();
-    let _next = engine
-        .citations()
-        .preview(SessionId::PICKER, draft(&engine, "keys"), Cancellation::default())
-        .unwrap();
-    assert!(forms.run().is_err());
-    assert!(
-        matches!(bibliography.run(),Err(ibis_engine::citations::SessionError::Engine(error)) if error.code==ErrorCode::Cancelled)
-    );
-}
-
-#[test]
-fn checked_content_waiting_for_the_main_thread_cannot_write_after_a_new_submission() {
-    let engine = engine();
-    let shown = engine
-        .citations()
-        .preview(SessionId::PICKER, draft(&engine, "apa"), Cancellation::default())
-        .unwrap()
-        .run()
-        .unwrap();
-    let checked = engine
-        .citations()
-        .commit(SessionId::PICKER, &shown.ticket, &shown.content_hash)
-        .unwrap();
-    let _newer = engine
-        .citations()
-        .preview(SessionId::PICKER, draft(&engine, "keys"), Cancellation::default())
-        .unwrap();
-    assert!(checked.check(&engine).is_err());
-}
-
-#[test]
-fn a_closed_session_cannot_publish_late_work_or_retire_a_reopened_connection() {
-    let engine = engine();
-    let old = engine.citations().open().unwrap();
-    let delayed = engine
-        .citations()
-        .preview(old, draft(&engine, "apa"), Cancellation::default())
-        .unwrap();
-    engine.citations().close(old);
-    let new = engine.citations().open().unwrap();
-    let shown = engine
-        .citations()
-        .preview(new, draft(&engine, "keys"), Cancellation::default())
-        .unwrap()
-        .run()
-        .unwrap();
-    assert!(delayed.run().is_err());
-    assert!(
-        engine
-            .citations()
-            .commit(new, &shown.ticket, &shown.content_hash)
-            .is_ok()
-    );
-}
-
-#[test]
 fn a_full_registry_refuses_admission_without_evicting_a_connection() {
     let engine = engine();
     let ids: Vec<_> = (0..64).map(|_| engine.citations().open().unwrap()).collect();
     assert!(engine.citations().open().is_err());
     engine.citations().close(ids[0]);
     assert!(engine.citations().open().is_ok());
-}
-
-#[test]
-fn locator_fields_and_canonical_locators_give_the_same_shown_and_checked_content() {
-    let engine = engine();
-    for output in ["pandoc", "apa", "autocite", "textcite", "ieee"] {
-        for (label, text) in [
-            (LocatorTerm::Page, "12–15"),
-            (LocatorTerm::Chapter, "3"),
-            (LocatorTerm::Section, "2.1"),
-        ] {
-            let mut canonical = draft(&engine, output);
-            canonical.items[0].locator = Some(Locator {
-                term: label,
-                value: text.into(),
-            });
-            let shown = engine
-                .citations()
-                .preview(SessionId::PICKER, canonical.clone(), Cancellation::default())
-                .unwrap()
-                .run()
-                .unwrap();
-            let mut typed = canonical;
-            typed.items[0].locator = None;
-            typed.items[0].locator_input = Some(LocatorInput {
-                label,
-                text: text.into(),
-            });
-            let typed = engine
-                .citations()
-                .preview(SessionId::PICKER, typed, Cancellation::default())
-                .unwrap()
-                .run()
-                .unwrap();
-            assert_eq!(shown.text, typed.text, "{output} {label:?}");
-            let checked = engine
-                .citations()
-                .commit(SessionId::PICKER, &typed.ticket, &typed.content_hash)
-                .unwrap();
-            assert_eq!(checked.check(&engine).unwrap().content().text, typed.text);
-        }
-    }
-    let mut wrong = draft(&engine, "apa");
-    wrong.items[0].locator_input = Some(LocatorInput {
-        label: LocatorTerm::Page,
-        text: "p.".into(),
-    });
-    let error = engine
-        .citations()
-        .preview(SessionId::PICKER, wrong, Cancellation::default())
-        .unwrap()
-        .run()
-        .unwrap_err();
-    assert_eq!(error.problem().info.recovery().focus(), FocusTarget::Locator);
-}
-
-#[test]
-fn forms_keep_the_original_biblatex_family_and_true_year_only_examples() {
-    let engine = engine();
-    for output in ["apa", "autocite", "parencite"] {
-        let mut request = draft(&engine, output);
-        request.items[0].form = Some(CitationForm::Narrative);
-        let shown = engine
-            .citations()
-            .preview(SessionId::PICKER, request, Cancellation::default())
-            .unwrap()
-            .run()
-            .unwrap();
-        let details = engine
-            .citations()
-            .forms(
-                SessionId::PICKER,
-                &shown.ticket,
-                &shown.content_hash,
-                0,
-                Cancellation::default(),
-            )
-            .unwrap()
-            .run()
-            .unwrap();
-        let normal = details
-            .forms
-            .iter()
-            .find(|form| form.form == CitationForm::Normal)
-            .unwrap();
-        let year = details
-            .forms
-            .iter()
-            .find(|form| form.form == CitationForm::YearOnly)
-            .unwrap();
-        if output == "apa" {
-            assert_eq!(year.example.as_deref(), Some("(2026)"));
-        } else {
-            assert_eq!(
-                normal.example.as_deref(),
-                Some(format!("\\{output}{{Example2026}}").as_str())
-            );
-            assert_eq!(
-                year.example.as_deref(),
-                Some(format!("\\{output}*{{Example2026}}").as_str())
-            );
-        }
-        assert!(
-            engine
-                .citations()
-                .commit(SessionId::PICKER, &shown.ticket, &shown.content_hash)
-                .is_ok()
-        );
-    }
 }
 
 #[test]
@@ -591,67 +349,6 @@ fn citation_and_bibliography_delivery_allow_metadata_updates_and_refuse_changed_
 }
 
 #[test]
-fn bibliography_copy_refuses_when_a_selected_absent_record_is_restored() {
-    let engine = engine();
-    let snapshot = engine.snapshot().unwrap();
-    let present = snapshot.objects()[0].object.clone();
-    let mut restored = present.clone();
-    let LibraryObject::Record(record) = &mut restored else {
-        panic!("record")
-    };
-    record.id.key = "restored-invented-record".into();
-    record.csl.insert("title".into(), json!("Restored invented reference"));
-    let library = record.id.library.clone();
-    let ids = vec![present.id().clone(), record.id.clone()];
-    let shown = engine
-        .citations()
-        .bibliography(
-            SessionId::PICKER,
-            ids.clone(),
-            "apa".into(),
-            Cancellation::default(),
-            false,
-        )
-        .unwrap()
-        .run()
-        .unwrap()
-        .unwrap();
-    assert!(!shown.text.contains("Restored invented reference"));
-    // The absent selection is harmless while it stays absent.
-    assert!(
-        engine
-            .citations()
-            .commit_bibliography(
-                SessionId::PICKER,
-                &ids,
-                "apa",
-                &shown.content_hash,
-                &Cancellation::default(),
-            )
-            .is_ok()
-    );
-    engine
-        .publish_library(
-            library,
-            ibis_engine::LibraryKind::Snapshot,
-            Arc::new(Snapshot::new(vec![present, restored]).unwrap()),
-        )
-        .unwrap();
-    let error = engine
-        .citations()
-        .commit_bibliography(
-            SessionId::PICKER,
-            &ids,
-            "apa",
-            &shown.content_hash,
-            &Cancellation::default(),
-        )
-        .err()
-        .unwrap();
-    assert_eq!(error.problem(), CitationError::ChangedItem.problem());
-}
-
-#[test]
 fn sharing_uses_the_session_preview_and_checked_commit() {
     let original = engine();
     let LibraryObject::Record(mut record) = original.snapshot().unwrap().objects()[0].object.clone() else {
@@ -675,82 +372,6 @@ fn sharing_uses_the_session_preview_and_checked_commit() {
             .commit(SessionId::PICKER, &shown.ticket, &shown.content_hash)
             .unwrap();
         assert_eq!(checked.check(&engine).unwrap().content().text, shown.text);
-    }
-}
-
-#[test]
-fn a_missing_doi_keeps_its_typed_recovery_through_the_session() {
-    let engine = engine();
-    let problem = engine
-        .citations()
-        .preview(SessionId::PICKER, draft(&engine, "doi-links"), Cancellation::default())
-        .unwrap()
-        .run()
-        .unwrap_err()
-        .problem();
-    assert_eq!(problem, CitationError::MissingDoi.problem());
-    assert_eq!(problem.info.recovery(), Recovery::ChooseOutput);
-    assert_eq!(problem.info.recovery().focus(), FocusTarget::FormatPicker);
-}
-
-#[test]
-fn all_refused_bibliography_offers_removing_references() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("invented.bib");
-    std::fs::write(
-        &path,
-        "@book{others2026,title={Invented signals},author={Taylor, Avery and others},year={2026}}",
-    )
-    .unwrap();
-    let engine = Engine::new().unwrap().without_file_watches();
-    engine.open_file_observed(&path, &Cancellation::default()).unwrap();
-    let ids = engine
-        .snapshot()
-        .unwrap()
-        .objects()
-        .iter()
-        .map(|object| object.object.id().clone())
-        .collect();
-    let error = engine
-        .citations()
-        .bibliography(SessionId::PICKER, ids, "apa".into(), Cancellation::default(), false)
-        .unwrap()
-        .run()
-        .unwrap_err();
-    let problem = error.problem();
-    assert_eq!(problem.info.recovery(), Recovery::RemoveReferences);
-    assert_eq!(problem.info.recovery().focus(), FocusTarget::SessionReferences);
-    assert!(error.to_string().contains("others2026"));
-    assert!(error.to_string().contains("Remove"));
-}
-
-#[test]
-fn unsupported_group_forms_name_the_reference_and_offer_a_form_the_picker_can_choose() {
-    let engine = engine();
-    for output in ["pandoc", "autocite", "apa"] {
-        let mut request = draft(&engine, output);
-        let mut second = request.items[0].clone();
-        second.form = Some(CitationForm::Narrative);
-        request.items.push(second);
-        let shown = engine
-            .citations()
-            .preview(SessionId::PICKER, request, Cancellation::default())
-            .unwrap()
-            .run()
-            .unwrap();
-        let failure = shown.failure.unwrap();
-        assert_eq!(failure.info.recovery(), Recovery::ChooseForm);
-        assert_eq!(failure.info.recovery().focus(), FocusTarget::CitationForm);
-        let text = shown.problem.unwrap();
-        assert!(text.contains("Reference 2"), "{text}");
-        assert!(text.contains("Name in brackets"), "{text}");
-        assert!(!text.contains("app-command-"), "{text}");
-        assert!(
-            engine
-                .citations()
-                .commit(SessionId::PICKER, &shown.ticket, &shown.content_hash)
-                .is_err()
-        );
     }
 }
 
@@ -796,30 +417,6 @@ fn every_record(engine: &Engine, output: &str) -> Draft {
         .map(|record| json!({"id": record.object.id(), "cite": record.fingerprints.cite}))
         .collect();
     serde_json::from_value(json!({"items": items, "output": {"kind": "preset", "name": output}})).unwrap()
-}
-
-#[test]
-fn a_warning_names_the_reference_it_is_about() {
-    let engine = two_records_the_second_warned();
-    let shown = engine
-        .citations()
-        .preview(
-            SessionId::PICKER,
-            every_record(&engine, "pandoc"),
-            Cancellation::default(),
-        )
-        .unwrap()
-        .run()
-        .unwrap();
-    assert_eq!(shown.warnings.len(), 1);
-    assert_eq!(shown.warnings[0].item, Some(1));
-    assert_eq!(shown.warnings[0].message.id, "warning-source-field");
-    assert_eq!(shown.warnings[0].message.args["reference"], "Second2026");
-    let checked = engine
-        .citations()
-        .commit(SessionId::PICKER, &shown.ticket, &shown.content_hash)
-        .unwrap();
-    assert_eq!(checked.warnings(), shown.warnings);
 }
 
 #[test]

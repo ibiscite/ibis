@@ -12,8 +12,11 @@ use std::{
 };
 pub struct Server {
     pub port: u16,
+    #[allow(dead_code)] // The desktop's Zotero recovery scenarios change and pause the server.
     pub instance: Arc<AtomicU64>,
+    #[allow(dead_code)]
     pub pause: Arc<AtomicBool>,
+    #[allow(dead_code)]
     pub paused: Arc<AtomicBool>,
     #[allow(dead_code)] // This fixture is also shared by desktop-only membership tests.
     pub empty_group: Arc<AtomicBool>,
@@ -145,6 +148,7 @@ impl Server {
             worker: Some(worker),
         }
     }
+    #[allow(dead_code)]
     pub fn wait_for_payload(&self) {
         let start = Instant::now();
         while !self.paused.load(Ordering::SeqCst) {

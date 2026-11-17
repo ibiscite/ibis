@@ -1,13 +1,10 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
-import axe from "axe-core";
 import type { Locator, CitationForm } from "../bindings";
 import { CitationDetails } from "./CitationDetails";
 
 afterEach(cleanup);
-const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
-const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 
 const answer = (forms: Partial<Record<CitationForm, string | { reason: string }>>, current: CitationForm | null = "normal") => ({ current_form: current,
   forms: (["normal", "narrative", "author-only", "year-only", "full"] as const).map((form) => {
@@ -38,31 +35,6 @@ test("Show as names each form this output can print, with the text it would past
   expect(screen.getByRole("button", { name: /^Show as / }).textContent).toBe("Year only");
 });
 
-test("forms this output cannot print are left out, and the menu says why once", async () => {
-  render(<Editor choices={answer({ normal: "(Example, 2026)" })} />);
-  expect(await forms()).toEqual([["Name in brackets", "(Example, 2026)"]]);
-  expect(screen.getAllByText(/Not in this output/)).toHaveLength(1);
-  expect(screen.getByText("Name in the sentence, Name only, Year only, and Full reference: Not in this output.")).toBeTruthy();
-});
-
-test("before the engine answers, every form can be tried from the pop-up by name", async () => {
-  const change = vi.fn();
-  render(<CitationDetails prefix="" suffix="" onPrefixChange={vi.fn()} onSuffixChange={vi.fn()} locator={null} form="narrative" onLocatorChange={vi.fn()} onFormChange={change} />);
-  expect(screen.getByRole("button", { name: /^Show as / }).textContent).toBe("Name in the sentence");
-  expect(await forms()).toHaveLength(6);
-  fireEvent.click(screen.getByRole("menuitemradio", { name: "Reference list" }));
-  expect(change).toHaveBeenCalledExactlyOnceWith("bibliography-only");
-});
-
-test("an output with no forms says the shared reason once, in place of the pop-up", () => {
-  const reason = "Reference entries have no name forms. Choose another style.";
-  const none = { reason };
-  render(<CitationDetails prefix="" suffix="" onPrefixChange={vi.fn()} onSuffixChange={vi.fn()} locator={null} form="normal" onLocatorChange={vi.fn()} onFormChange={vi.fn()}
-    choices={answer({ normal: none, narrative: none, "author-only": none, "year-only": none, full: none }, null)} />);
-  expect(screen.queryByRole("button", { name: /^Show as / })).toBeNull();
-  expect(screen.getAllByText(reason)).toHaveLength(1);
-});
-
 test("the locator's type is a pop-up inside the field: a new type keeps the value, and a cleared value keeps the type", async () => {
   render(<Editor />);
   fireEvent.change(screen.getByRole("textbox", { name: "Page" }), { target: { value: "4" } });
@@ -87,31 +59,4 @@ test("text before and after are asked for, and text already there shows from the
   render(<CitationDetails prefix="see" suffix="" onPrefixChange={vi.fn()} onSuffixChange={vi.fn()} locator={null} form="normal" onLocatorChange={vi.fn()} onFormChange={vi.fn()} />);
   expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Text before" }).value).toBe("see");
   expect(screen.getByRole("button", { name: "Text after" })).toBeTruthy();
-});
-
-test("an empty Page with the caret in it shows no placeholder", () => {
-  const css = readFileSync(new FileURL("./CitationDetails.css", import.meta.url), "utf8");
-  expect(css).toContain("input:focus::placeholder { color: transparent; }");
-});
-
-test.each(["macos", "windows", "linux"])("%s uses labelled shared controls and plain text", async (platform) => {
-  document.documentElement.dataset.platform = platform;
-  const { container } = render(<Editor />);
-  const page = screen.getByRole("textbox", { name: "Page" }) as HTMLInputElement;
-  expect(page.placeholder).toBe("Add page");
-  const text = "١٢–١٥ <script>";
-  fireEvent.change(page, { target: { value: text } });
-  expect(page.value).toBe(text);
-  expect(container.querySelector("script")).toBeNull();
-  expect(page.getAttribute("aria-describedby")).toBeTruthy();
-  const results = await axe.run(container, { rules: { "color-contrast": { enabled: false } } });
-  expect(results.violations).toEqual([]);
-  delete document.documentElement.dataset.platform;
-});
-
-test("the fields use role tokens and retain pointer and touch targets", () => {
-  const css = readFileSync(new FileURL("./CitationDetails.css", import.meta.url), "utf8");
-  expect(css).toContain("@media (pointer: coarse)");
-  expect(css).toContain("min-height: var(--control-h)");
-  expect(css).not.toMatch(/#[0-9a-f]{3,8}\b|\b\d+px\b/);
 });

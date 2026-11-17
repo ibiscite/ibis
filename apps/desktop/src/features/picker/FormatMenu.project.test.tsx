@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, test } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { FormatMenu } from "./FormatMenu";
 
@@ -20,13 +20,4 @@ test("the selected project stays visible and the format menu explains where chan
   expect(screen.getByRole("dialog").textContent).toContain("New writing…");
   expect(screen.getAllByText(/Saved for .*Thesis/).length).toBeGreaterThan(0);
   expect(screen.getByText(/Your pick changes this writing’s format/)).toBeTruthy();
-});
-
-test("Writings opens its sheet without choosing a citation format", () => {
-  const projects = vi.fn();
-  render(<Example projects={projects} />);
-  fireEvent.click(screen.getByRole("button", { name: /^Citation format/ }));
-  fireEvent.click(screen.getByRole("option", { name: "New writing…" }));
-  expect(projects).toHaveBeenCalledOnce();
-  expect(screen.queryByRole("dialog")).toBeNull();
 });

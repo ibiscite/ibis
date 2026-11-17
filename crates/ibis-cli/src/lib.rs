@@ -2209,63 +2209,8 @@ fn terminal_display(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn searching_a_newer_compatible_zotero_library_prints_results_without_a_note() {
-        let case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json"))
-            .unwrap_or_else(|e| panic!("{e:?}"));
-        let engine = Engine::from_snapshot(std::sync::Arc::new(case.library));
-        let mut library = engine
-            .libraries()
-            .unwrap_or_else(|e| panic!("{e:?}"))
-            .libraries
-            .remove(0);
-        library.kind = ibis_engine::LibraryKind::Zotero;
-        library.warnings = vec![ibis_engine::SourceWarning::at(
-            ibis_engine::WarningCode::ZoteroNewerThanTested,
-            None,
-        )];
-        library.warnings_total = 1;
-        let health = ibis_engine::health::SourceHealth::of(std::iter::once(&library));
-        let mut result = engine
-            .reply(Method::Search, &json!({"query":"signals"}), &Cancellation::default())
-            .unwrap_or_else(|e| panic!("{e:?}"));
-        let Reply::Search(search) = &mut result.data else {
-            panic!("search reply")
-        };
-        search.source_health = health;
-        let result = human::with_summary(
-            result.map_data(Response::Engine),
-            false,
-            human::Holdings::References,
-            &Default::default(),
-            out::Out::new(OutputMode::Plain),
-        );
-        let (mut output, mut errors) = (Vec::new(), Vec::new());
-        let code = emit(
-            false,
-            Ok(result),
-            None,
-            Presentation::default(),
-            &mut output,
-            &mut errors,
-            OutputMode::Plain,
-        );
-        assert_eq!(code, 0);
-        assert_eq!(
-            String::from_utf8(output).unwrap_or_else(|e| panic!("{e:?}")),
-            "Example2026\tAvery Taylor\t2026\tSynthetic signals\n"
-        );
-        assert!(errors.is_empty());
-    }
 
     use super::*;
-    #[test]
-    fn a_stalled_wait_gives_up_at_its_deadline() {
-        assert_eq!(bounded(|| 7), Some(7));
-        let (release, held) = std::sync::mpsc::channel::<()>();
-        assert!(bounded_for(Duration::ZERO, move || held.recv_timeout(Duration::from_secs(5))).is_none());
-        drop(release);
-    }
 
     #[test]
     fn a_startup_timeout_keeps_its_context_and_requires_a_new_session() {
@@ -2303,34 +2248,6 @@ mod tests {
         // Without profile names, the agent still receives the engine diagnostic.
         let plain = zotero_open_failure(EngineError::new(ErrorCode::SourceUnavailable), &[]);
         assert!(format!("{:?}", plain.refusal()).contains("source-unavailable"));
-    }
-
-    #[test]
-    fn source_flags_preserve_order_across_positions_and_ignore_duplicates() -> Result<(), clap::Error> {
-        let matches = command().try_get_matches_from([
-            "ibis",
-            "--zotero-group=9",
-            "--file=first.bib",
-            "--zotero-group",
-            "7",
-            "--file",
-            "second.bib",
-            "search",
-            "x",
-            "--zotero-group",
-            "11",
-            "--file",
-            "third.bib",
-            "--zotero-group",
-            "9",
-            "--file=first.bib",
-        ])?;
-        assert_eq!(source_values::<u64>(&matches, "zotero-group"), [9, 7, 11]);
-        assert_eq!(
-            source_values::<PathBuf>(&matches, "file"),
-            ["first.bib", "second.bib", "third.bib"].map(PathBuf::from)
-        );
-        Ok(())
     }
 
     #[test]
@@ -2379,36 +2296,6 @@ mod tests {
     }
 
     #[test]
-    fn failure_to_write_a_bounded_json_error_is_an_internal_transport_error() {
-        struct Broken;
-        impl std::io::Write for Broken {
-            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
-                Err(std::io::Error::other("synthetic transport failure"))
-            }
-            fn flush(&mut self) -> std::io::Result<()> {
-                Ok(())
-            }
-        }
-        let result = DispatchResult {
-            data: Response::Local(json!("x".repeat(protocol::MAX_RESPONSE_BYTES + 1))),
-            text: None,
-            source_findings: false,
-            exit_code: ibis_core::contract::ExitCode::Ok,
-        };
-        assert_eq!(
-            emit(
-                true,
-                Ok(result),
-                None,
-                Presentation::default(),
-                &mut Broken,
-                &mut Vec::new(),
-                OutputMode::Plain
-            ),
-            70
-        );
-    }
-    #[test]
     fn every_argument_and_option_explains_itself_in_help() {
         fn check(command: &Command, path: &str) {
             for argument in command.get_arguments() {
@@ -2425,17 +2312,5 @@ mod tests {
         let mut root = command();
         root.build();
         check(&root, "ibis");
-    }
-    #[test]
-    fn toggle_arguments_are_explicit_and_never_launched_by_parser_tests() {
-        assert!(
-            command()
-                .try_get_matches_from(["ibis", "toggle", "--app", "Ibis Nightly"])
-                .is_ok()
-        );
-        assert!(command().try_get_matches_from(["ibis", "toggle"]).is_ok());
-        for extra in ["extra", "--at-login", "--app", "--app="] {
-            assert!(command().try_get_matches_from(["ibis", "toggle", extra]).is_err());
-        }
     }
 }

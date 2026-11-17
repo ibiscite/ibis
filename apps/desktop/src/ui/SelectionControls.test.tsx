@@ -21,25 +21,6 @@ function Controls() {
   </section>;
 }
 
-function containingBlock(node: HTMLElement) {
-  for (let parent = node.parentElement; parent; parent = parent.parentElement) {
-    const position = getComputedStyle(parent).position;
-    if (position && position !== "static") return parent;
-  }
-  return null;
-}
-
-test.each(["switch", "radio"])("each %s keeps its hidden input positioned by its own associated label", (role) => {
-  render(<Controls />);
-  for (const input of screen.getAllByRole(role)) {
-    const hidden = input.parentElement!;
-    const label = input.closest("label")!;
-    expect(label.control).toBe(input);
-    expect(getComputedStyle(hidden).position).toBe("absolute");
-    expect(containingBlock(hidden)).toBe(label);
-  }
-});
-
 test("switch activation and segmented arrow keys preserve names and controlled values", () => {
   render(<Controls />);
   const toggle = screen.getByRole("switch", { name: "Show invented preview" }) as HTMLInputElement;

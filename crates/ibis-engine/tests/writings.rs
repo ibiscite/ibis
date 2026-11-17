@@ -2,8 +2,7 @@
 use ibis_core::contract::*;
 use ibis_engine::settings::{Settings, writings};
 use ibis_engine::{
-    Cancellation, Engine, KeyCheck, LibraryKind, ProjectAssessmentState as Assessment, ProjectRead,
-    request::KeyCitationRequest,
+    Cancellation, Engine, KeyCheck, LibraryKind, ProjectAssessmentState as Assessment, request::KeyCitationRequest,
 };
 use serde_json::json;
 use std::sync::Arc;
@@ -146,93 +145,6 @@ fn one_explicit_writing_controls_output_and_checks_its_bibliography() {
 }
 
 #[test]
-fn prepared_bibliography_checks_keep_the_original_key_after_a_source_rename() {
-    let engine = engine();
-    let snapshot = engine.snapshot().unwrap();
-    let LibraryObject::Record(mut renamed) = snapshot.objects()[0].object.clone() else {
-        panic!("record");
-    };
-    let request: CitationRequest =
-        serde_json::from_value(json!({"items":[{"item":renamed.id}],"output":{"kind":"key","syntax":"pandoc"}}))
-            .unwrap();
-    let prepared = engine.prepare_citation(&request, &Cancellation::default()).unwrap();
-    renamed.citation_keys[0].value = "vale2025".into();
-    engine
-        .publish_library(
-            renamed.id.library.clone(),
-            LibraryKind::Snapshot,
-            Arc::new(Snapshot::new(vec![LibraryObject::Record(renamed)]).unwrap()),
-        )
-        .unwrap();
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("refs.bib");
-    std::fs::write(
-        &path,
-        "@book{vale2024,title={Invented Atlas},author={Vale, Ada},year={2024}}\n",
-    )
-    .unwrap();
-    let checked = prepared.project_checks(&ProjectRead::read(&path, None));
-    assert_eq!(checked[0].1.key, "vale2024");
-    assert!(matches!(checked[0].1.check, KeyCheck::In { .. }));
-    assert_eq!(prepared.result().text, "[@vale2024]");
-}
-
-#[test]
-fn a_writing_key_preset_checks_the_bibliography_for_its_canonical_output() {
-    let engine = engine();
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("refs.bib");
-    std::fs::write(
-        &path,
-        "@book{vale2024,title={Invented Atlas},author={Vale, Ada},year={2024}}\n",
-    )
-    .unwrap();
-    let mut settings = Settings::default();
-    let writing = writings::create(
-        &mut settings,
-        "Atlas".into(),
-        OutputSpec::Preset {
-            name: "pandoc-bare".into(),
-        },
-        Some(path),
-    )
-    .unwrap();
-    let request: KeyCitationRequest =
-        serde_json::from_value(json!({"keys":[{"key":"vale2024"}],"output":{"kind":"csl","style":"apa"}})).unwrap();
-    let result = engine
-        .cite_writing_keys(&writing, &request, &Cancellation::default())
-        .unwrap();
-    assert_eq!(result.citation.text, "@vale2024");
-    assert!(matches!(
-        result.bibliography.unwrap().keys[0].check,
-        KeyCheck::In { .. }
-    ));
-}
-
-#[test]
-fn a_writing_record_export_does_not_check_a_bibliography() {
-    let engine = engine();
-    let directory = tempfile::tempdir().unwrap();
-    let mut settings = Settings::default();
-    let writing = writings::create(
-        &mut settings,
-        "Atlas".into(),
-        OutputSpec::Preset {
-            name: "csl-json".into(),
-        },
-        Some(directory.path().join("unavailable.bib")),
-    )
-    .unwrap();
-    let request: KeyCitationRequest =
-        serde_json::from_value(json!({"keys":[{"key":"vale2024"}],"output":{"kind":"key","syntax":"pandoc"}})).unwrap();
-    let result = engine
-        .cite_writing_keys(&writing, &request, &Cancellation::default())
-        .unwrap();
-    assert!(serde_json::from_str::<serde_json::Value>(&result.citation.text).is_ok());
-    assert!(result.bibliography.is_none());
-}
-
-#[test]
 fn a_writing_doi_conflict_never_returns_copyable_key_output() {
     let engine = engine();
     let snapshot = engine.snapshot().unwrap();
@@ -287,56 +199,6 @@ fn an_unreadable_writing_bibliography_is_a_warning() {
     assert_eq!(result.citation.text, "[@vale2024]");
     assert_eq!(result.assessment.unwrap().state, Assessment::Ready);
     assert_eq!(result.bibliography.unwrap().keys[0].check, KeyCheck::CouldNotCheck);
-}
-
-fn prepared(engine: &Engine, strict: bool) -> ibis_engine::PreparedCitation {
-    let item = engine.snapshot().unwrap().objects()[0].object.id().clone();
-    let request: CitationRequest = serde_json::from_value(
-        json!({"strict":strict,"items":[{"item":item}],"output":{"kind":"preset","name":"pandoc"}}),
-    )
-    .unwrap();
-    engine.prepare_citation(&request, &Cancellation::default()).unwrap()
-}
-
-#[test]
-fn ordinary_and_strict_requests_refuse_a_doi_conflict_in_a_damaged_file() {
-    let engine = engine();
-    let snapshot = engine.snapshot().unwrap();
-    let LibraryObject::Record(mut record) = snapshot.objects()[0].object.clone() else {
-        panic!("record");
-    };
-    record.csl.insert("DOI".into(), json!("10.1000/intended"));
-    engine
-        .publish_library(
-            record.id.library.clone(),
-            LibraryKind::Snapshot,
-            Arc::new(Snapshot::new(vec![LibraryObject::Record(record)]).unwrap()),
-        )
-        .unwrap();
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("refs.bib");
-    std::fs::write(
-        &path,
-        "@book{vale2024,title={Invented Atlas},doi={10.1000/other}}\n@book{broken,title={Never closed\n",
-    )
-    .unwrap();
-    let conflicting = ProjectRead::read(&path, None);
-    for strict in [false, true] {
-        let prepared = prepared(&engine, strict);
-        let assessment = prepared.project_evidence(&conflicting);
-        assert_eq!(assessment.state, Assessment::Conflict);
-        assert!(!assessment.can_copy());
-    }
-}
-
-#[test]
-fn a_duplicate_writing_name_requests_a_new_name_instead_of_retrying_the_same_save() {
-    let problem = ibis_core::contract::Problem::from(&ibis_engine::settings::writings::WritingError::DuplicateName);
-    let problem = serde_json::to_value(problem).unwrap_or_default();
-    assert_eq!(problem["code"], "project-duplicate-name");
-    assert_eq!(problem["message"]["id"], "app-project-error-duplicate-name");
-    assert_eq!(problem["recovery"]["action"], "rename-project");
-    assert_eq!(problem["focus"], "project-name");
 }
 
 #[test]

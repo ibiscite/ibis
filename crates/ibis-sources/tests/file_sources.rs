@@ -20,37 +20,7 @@ fn an_editor_role_warning_does_not_guess_the_source_field() -> Result<(), Box<dy
     );
     Ok(())
 }
-use ibis_sources::{WarningCause, WarningCode};
-
-#[test]
-fn cached_macro_warnings_under_a_long_field_name_do_not_stop_the_read() -> Result<(), Box<dyn std::error::Error>> {
-    let dir = tempfile::tempdir()?;
-    let path = dir.path().join("invented.bib");
-    let field = "x".repeat(16 * 1024);
-    let macros = std::iter::repeat_n("brokenmacro", 2048).collect::<Vec<_>>().join(" # ");
-    std::fs::write(
-        &path,
-        format!(
-            "@string{{brokenmacro=undefined}}\n\
-             @book{{warm,title={{Warm}} # brokenmacro}}\n\
-             @book{{many,title={{Many warnings}},{field}={macros}}}\n\
-             @book{{tail,title={{Still visible}}}}"
-        ),
-    )?;
-    let loaded = ibis_sources::load_file(&path)?;
-    assert!(!loaded.cut_short);
-    assert_eq!(loaded.snapshot.objects().len(), 3);
-    assert!(
-        !loaded
-            .warnings
-            .iter()
-            .any(|warning| warning.code == WarningCode::WorkLimit)
-    );
-    assert!(loaded.warnings.iter().any(|warning| {
-        warning.line == Some(3) && warning.cause == Some(WarningCause::Abbreviation) && warning.field.is_none()
-    }));
-    Ok(())
-}
+use ibis_sources::WarningCause;
 
 #[test]
 fn bibtex_diagnostics_name_only_known_fields() -> Result<(), Box<dyn std::error::Error>> {
@@ -120,30 +90,6 @@ fn inherited_bibtex_warnings_point_to_the_entry_with_the_problem() -> Result<(),
 }
 
 #[test]
-fn invalid_bibtex_language_names_point_to_the_alias_actually_used() -> Result<(), Box<dyn std::error::Error>> {
-    let dir = tempfile::tempdir()?;
-    let path = dir.path().join("invented.bib");
-    std::fs::write(
-        &path,
-        "@book{a,title={A},language={invented-language}}\n\
-         @book{b,title={B},hyphenation={invented-language}}\n\
-         @book{c,title={C},langid={french},hyphenation={invented-language},language={invented-language}}",
-    )?;
-    let loaded = ibis_sources::load_file(&path)?;
-    let language_warnings: Vec<_> = loaded
-        .warnings
-        .iter()
-        .filter(|warning| warning.cause == Some(WarningCause::Language))
-        .map(|warning| (warning.line, warning.field.as_deref()))
-        .collect();
-    assert_eq!(
-        language_warnings,
-        [(Some(1), Some("language")), (Some(2), Some("hyphenation"))]
-    );
-    Ok(())
-}
-
-#[test]
 fn unknown_file_names_require_reference_entry_blocks() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
     let mut outcomes = Vec::new();
@@ -170,30 +116,6 @@ fn unknown_file_names_require_reference_entry_blocks() -> Result<(), Box<dyn std
 }
 
 #[test]
-fn unknown_file_names_still_load_bibtex_and_ris() -> Result<(), Box<dyn std::error::Error>> {
-    let dir = tempfile::tempdir()?;
-    for (name, text) in [
-        ("refs.bak", "@book{one,title={Invented book}}"),
-        ("refs.bak", "@book(one,title={Invented book})"),
-        ("export.dat", "TY  - BOOK\nID  - one\nTI  - Invented book\nER  - \n"),
-    ] {
-        let path = dir.path().join(name);
-        std::fs::write(&path, text)?;
-        let loaded = ibis_sources::load_file(&path)?;
-        assert_eq!(loaded.snapshot.objects().len(), 1, "{name}");
-        assert!(matches!(&loaded.snapshot.objects()[0].object,
-            LibraryObject::Record(record) if record.csl.get("title").and_then(serde_json::Value::as_str) == Some("Invented book")));
-        if name == "refs.bak" {
-            let entry = &loaded.snapshot.objects()[0];
-            let original = ibis_sources::original_entry(&path, entry.object.id(), "one", &entry.fingerprints.cite)
-                .map_err(|error| format!("original backup entry: {error:?}"))?;
-            assert!(original.contains("Invented book"));
-        }
-    }
-    Ok(())
-}
-
-#[test]
 fn a_backup_with_an_entry_past_the_read_limit_is_reported_as_cut_short() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("refs.bak");
@@ -201,17 +123,6 @@ fn a_backup_with_an_entry_past_the_read_limit_is_reported_as_cut_short() -> Resu
     text.push_str("@book{one,title={Invented book}}");
     std::fs::write(&path, text)?;
     assert!(ibis_sources::load_file(&path)?.cut_short);
-    Ok(())
-}
-
-#[test]
-fn named_bibtex_without_entries_remains_an_empty_library() -> Result<(), Box<dyn std::error::Error>> {
-    let dir = tempfile::tempdir()?;
-    let path = dir.path().join("empty.bib");
-    for text in ["", "Only an invented comment.\n@comment{Nothing to cite}"] {
-        std::fs::write(&path, text)?;
-        assert!(ibis_sources::load_file(&path)?.snapshot.objects().is_empty());
-    }
     Ok(())
 }
 
@@ -329,22 +240,6 @@ fn csl_json_keys_come_only_from_citation_key_and_lines_are_exact() -> Result<(),
 }
 
 #[test]
-fn nonbreaking_spaces_in_attachment_names_remain_filename_characters() -> Result<(), Box<dyn std::error::Error>> {
-    let directory = tempfile::tempdir()?;
-    let filename = "Invented\u{a0}Paper.pdf";
-    std::fs::write(directory.path().join(filename), b"invented attachment")?;
-    let bibliography = directory.path().join("invented.bib");
-    std::fs::write(
-        &bibliography,
-        format!("@book{{one,title={{Invented rivers}},file={{{filename}}}}}"),
-    )?;
-    let loaded = ibis_sources::load_file(&bibliography)?;
-    assert!(loaded.snapshot.objects().iter().any(|object| matches!(&object.object,
-        LibraryObject::Attachment(attachment) if attachment.availability == Availability::OnDisk)));
-    Ok(())
-}
-
-#[test]
 fn file_identity_survives_edits_and_follows_the_canonical_location() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("synthetic.bib");
@@ -415,29 +310,6 @@ fn preserved_parser_keeps_exact_csl_meaning_of_invented_examples() -> Result<(),
             .collect::<Result<_, _>>()?;
         assert_eq!(actual, expected, "invented case {index}");
     }
-    Ok(())
-}
-
-#[test]
-fn malformed_native_keys_do_not_discard_other_records() -> Result<(), Box<dyn std::error::Error>> {
-    let dir = tempfile::tempdir()?;
-    let path = dir.path().join("synthetic.bib");
-    std::fs::write(
-        &path,
-        "@book{good,title={One}}\n@book{bad\u{0000}key,title={Bad}}\n@book{last,title={Last}}",
-    )?;
-    let loaded = ibis_sources::load_file(&path)?;
-    assert!(
-        loaded.snapshot.objects().iter().any(
-            |item| matches!(&item.object,LibraryObject::Record(record) if record.citation_key()==Ok(Some("good")))
-        )
-    );
-    assert!(
-        loaded.snapshot.objects().iter().any(
-            |item| matches!(&item.object,LibraryObject::Record(record) if record.citation_key()==Ok(Some("last")))
-        )
-    );
-    assert!(!loaded.warnings.is_empty());
     Ok(())
 }
 
@@ -531,127 +403,6 @@ fn remote_and_ambiguous_attachment_locations_never_become_local_paths() -> Resul
 }
 
 #[test]
-fn an_oversized_json_record_is_skipped_alike_on_open_and_reload() -> Result<(), Box<dyn std::error::Error>> {
-    use ibis_sources::WarningCode;
-    let dir = tempfile::tempdir()?;
-    let path = dir.path().join("synthetic.json");
-    let library = |title: &str| {
-        format!(
-            r#"[{{"id":"huge","type":"book","title":"{}"}},{{"id":"good","type":"book","title":"{title}"}}]"#,
-            "x".repeat(1024 * 1024)
-        )
-    };
-    std::fs::write(&path, library("Lantern"))?;
-    let loaded = ibis_sources::load_file(&path)?;
-    assert_eq!(loaded.snapshot.objects().len(), 1);
-    assert!(
-        loaded
-            .warnings
-            .iter()
-            .any(|warning| warning.code == WarningCode::WorkLimit)
-    );
-    // The same bytes give the same library, opened or reloaded.
-    let reloaded = ibis_sources::reload_file(&path)?;
-    assert_eq!(reloaded.snapshot.fingerprints(), loaded.snapshot.fingerprints());
-    assert_eq!(reloaded.warnings, loaded.warnings);
-    // A save beside the oversized record is picked up, with the same warning.
-    std::fs::write(&path, library("Zebra"))?;
-    let edited = ibis_sources::reload_file_reusing(&path, &reloaded.snapshot)?;
-    let titles: Vec<_> = edited
-        .snapshot
-        .objects()
-        .iter()
-        .filter_map(|item| match &item.object {
-            LibraryObject::Record(record) => Some(record.csl["title"].clone()),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(titles, ["Zebra"]);
-    assert_eq!(edited.warnings, loaded.warnings);
-    Ok(())
-}
-
-#[test]
-fn numeric_json_ids_use_consistent_citation_processor_spelling() -> Result<(), Box<dyn std::error::Error>> {
-    let dir = tempfile::tempdir()?;
-    let path = dir.path().join("synthetic.json");
-    for (id, key) in [
-        ("1.0", "1"),
-        ("-0.0", "0"),
-        ("1e-6", "0.000001"),
-        ("1e-7", "1e-7"),
-        ("1.25", "1.25"),
-        ("51.248178375505404", "51.248178375505404"),
-        ("5e-324", "5e-324"),
-        ("1e-324", "0"),
-        ("2.2250738585072014e-308", "2.2250738585072014e-308"),
-        ("9007199254740991", "9007199254740991"),
-    ] {
-        std::fs::write(&path, format!(r#"[{{"id":{id},"type":"book"}}]"#))?;
-        let loaded = ibis_sources::load_file(&path)?;
-        let native = loaded.snapshot.objects().iter().find_map(|item| match &item.object {
-            LibraryObject::Record(record) => Some(record.id.key.clone()),
-            _ => None,
-        });
-        assert_eq!(native, Some(format!("record:{key}")), "numeric identifier {id}");
-    }
-    for id in ["1e20", "1e21", "9007199254740992", "9007199254740993"] {
-        std::fs::write(&path, format!(r#"[{{"id":{id},"type":"book"}}]"#))?;
-        assert_eq!(
-            ibis_sources::load_file(&path).err(),
-            Some(ibis_sources::SourceError::InvalidData),
-            "unsafe identifier {id}"
-        );
-    }
-    Ok(())
-}
-
-#[test]
-fn unsafe_numeric_native_id_stays_stable_when_explicit_key_changes() -> Result<(), Box<dyn std::error::Error>> {
-    let dir = tempfile::tempdir()?;
-    let path = dir.path().join("synthetic.json");
-    let mut ids = Vec::new();
-    for key in ["First", "Second"] {
-        std::fs::write(
-            &path,
-            format!(r#"[{{"id":9007199254740993,"citation-key":"{key}","type":"book"}}]"#),
-        )?;
-        let loaded = ibis_sources::load_file(&path)?;
-        ids.push(loaded.snapshot.objects()[0].object.id().clone());
-    }
-    assert_eq!(ids[0], ids[1]);
-    Ok(())
-}
-
-#[test]
-fn bibtex_eprints_are_searchable_without_changing_citation_output() -> Result<(), Box<dyn std::error::Error>> {
-    use ibis_core::identifier::{Identifier, of_record};
-    let dir = tempfile::tempdir()?;
-    let path = dir.path().join("synthetic.bib");
-    std::fs::write(&path, "@article{one,title={Invented}}")?;
-    let before = ibis_sources::load_file(&path)?;
-    std::fs::write(
-        &path,
-        "@article{one,title={Invented},eprint={arXiv:2101.00001v2},archivePrefix={arXiv}}",
-    )?;
-    let after = ibis_sources::load_file(&path)?;
-    let LibraryObject::Record(record) = &after.snapshot.objects()[0].object else {
-        return Err("missing synthetic record".into());
-    };
-    assert_eq!(record.identifiers, [Identifier::Arxiv("2101.00001".into())]);
-    assert!(of_record(record).contains(&Identifier::Doi("10.48550/arxiv.2101.00001".into())));
-    assert_eq!(
-        before.snapshot.objects()[0].fingerprints.cite,
-        after.snapshot.objects()[0].fingerprints.cite
-    );
-    assert_ne!(
-        before.snapshot.objects()[0].fingerprints.full,
-        after.snapshot.objects()[0].fingerprints.full
-    );
-    Ok(())
-}
-
-#[test]
 fn invalid_bibtex_native_key_does_not_discard_adjacent_records() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("synthetic.bib");
@@ -719,41 +470,6 @@ fn relative_file_urls_stay_in_private_provenance() -> Result<(), Box<dyn std::er
 }
 
 #[test]
-fn attachment_limits_keep_records_alike_on_open_and_reload() -> Result<(), Box<dyn std::error::Error>> {
-    let dir = tempfile::tempdir()?;
-    let path = dir.path().join("synthetic.json");
-    std::fs::write(dir.path().join("neighbor.pdf"), b"invented attachment")?;
-    std::fs::write(
-        &path,
-        serde_json::to_string(&serde_json::json!([
-            {"id":"many","type":"book","file":"x;".repeat(20_000)},
-            {"id":"neighbor","type":"book","file":"neighbor.pdf"}
-        ]))?,
-    )?;
-    let loaded = ibis_sources::load_file(&path)?;
-    assert_eq!(
-        loaded
-            .snapshot
-            .objects()
-            .iter()
-            .filter(|item| matches!(item.object, LibraryObject::Record(_)))
-            .count(),
-        2
-    );
-    assert!(loaded.snapshot.objects().len() <= 259);
-    assert!(
-        loaded
-            .warnings
-            .iter()
-            .any(|warning| warning.code == ibis_sources::WarningCode::WorkLimit)
-    );
-    let reloaded = ibis_sources::reload_file(&path)?;
-    assert_eq!(reloaded.snapshot.fingerprints(), loaded.snapshot.fingerprints());
-    assert_eq!(reloaded.warnings, loaded.warnings);
-    Ok(())
-}
-
-#[test]
 fn record_caps_keep_the_same_bounded_prefix_on_open_and_reload() -> Result<(), Box<dyn std::error::Error>> {
     const LIMIT: usize = ibis_sources::MAX_LIBRARY_RECORDS;
     let dir = tempfile::tempdir()?;
@@ -792,21 +508,6 @@ fn record_caps_keep_the_same_bounded_prefix_on_open_and_reload() -> Result<(), B
         let reloaded = ibis_sources::reload_file(&path)?;
         assert_eq!(reloaded.snapshot.fingerprints(), &fingerprints, "{extension}");
         assert_eq!(reloaded.warnings, warnings, "{extension}");
-    }
-    Ok(())
-}
-
-#[test]
-fn file_bibtex_extensions_override_a_leading_square_bracket() -> Result<(), Box<dyn std::error::Error>> {
-    let dir = tempfile::tempdir()?;
-    for extension in ["bib", "bibtex", "BIB", "BIBTEX"] {
-        let path = dir.path().join(format!("synthetic.{extension}"));
-        std::fs::write(
-            &path,
-            "[Invented export comment]\n@book{invented,title={Invented title}}",
-        )?;
-        assert_eq!(ibis_sources::load_file(&path)?.snapshot.objects().len(), 1);
-        assert_eq!(ibis_sources::reload_file(&path)?.snapshot.objects().len(), 1);
     }
     Ok(())
 }

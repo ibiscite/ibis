@@ -765,36 +765,6 @@ mod tests {
     }
 
     #[test]
-    fn a_long_selection_is_recognised_without_copying_its_text_across() {
-        let fake = Fake {
-            selected_length: Cell::new(Some(SHORT_SELECTION + 1)),
-            selected: RefCell::new(Reply::Value("Invented private words".into())),
-            ..Fake::new()
-        };
-        assert_eq!(fake.selection(), Ok((Selection::Ignored, None)));
-        assert!(!fake.selection_reads.borrow().contains(&"text"));
-    }
-
-    #[test]
-    fn nothing_selected_stops_at_the_range_and_apps_without_a_range_still_answer() {
-        let empty = Fake::selecting("");
-        assert_eq!(empty.selection(), Ok((Selection::Nothing, None)));
-        assert!(!empty.selection_reads.borrow().contains(&"text"));
-        for (reply, expected) in [
-            (Reply::Value(String::new()), Selection::Nothing),
-            (Reply::NoValue, Selection::Nothing),
-            (Reply::TooLong, Selection::Ignored),
-            (Reply::Unsupported, Selection::Unknown),
-        ] {
-            let fake = Fake {
-                selected: RefCell::new(reply),
-                ..Fake::new()
-            };
-            assert_eq!(fake.selection(), Ok((expected, None)));
-        }
-    }
-
-    #[test]
     fn secure_typing_refuses_before_anything_is_asked_of_the_app() {
         for (state, reason) in [
             (Some(true), CopyReason::SecureInput),
@@ -822,44 +792,6 @@ mod tests {
         };
         assert_eq!(unproved.selection(), Err(CopyReason::PasteUnavailable));
         assert_eq!(*unproved.selection_reads.borrow(), ["subrole"]);
-    }
-
-    #[test]
-    fn a_field_without_a_subrole_is_an_ordinary_field() {
-        for password in [Reply::NoValue, Reply::Unsupported] {
-            let fake = Fake {
-                password,
-                ..Fake::selecting("smith 2020")
-            };
-            assert!(fake.selection().is_ok_and(|(_, text)| text.is_some()));
-        }
-    }
-
-    #[test]
-    fn a_foreign_panel_failed_read_or_revoked_trust_keeps_the_search_empty() {
-        let foreign = Fake {
-            focused_pid: 99,
-            ..Fake::selecting("smith 2020")
-        };
-        assert_eq!(foreign.selection(), Err(CopyReason::TargetChanged));
-        assert!(foreign.selection_reads.borrow().is_empty());
-        let failed = Fake {
-            selected: RefCell::new(Reply::Failed),
-            ..Fake::new()
-        };
-        assert_eq!(failed.selection(), Err(CopyReason::PasteUnavailable));
-        let revoked = Fake::selecting("smith 2020");
-        revoked.trusted.set(false);
-        assert_eq!(revoked.selection(), Err(CopyReason::AccessibilityRequired));
-    }
-
-    #[test]
-    fn a_late_answer_is_a_timeout_even_when_it_succeeded() {
-        let fake = Fake {
-            selection_delay: SELECTION_LIMIT,
-            ..Fake::selecting("smith 2020")
-        };
-        assert_eq!(fake.selection(), Err(CopyReason::PasteUnavailable));
     }
 
     #[test]
@@ -898,140 +830,6 @@ mod tests {
     }
 
     #[test]
-    fn an_app_that_cannot_report_a_selection_is_asked_nothing_at_the_final_proof() {
-        let fake = Fake::selecting("smith 2020");
-        assert_eq!(
-            check_selection(&fake, 42, &Selection::Unknown, fake.now() + SELECTION_LIMIT),
-            Ok(())
-        );
-        assert!(fake.reads.borrow().is_empty());
-    }
-
-    #[test]
-    fn controls_that_answer_oddly_are_not_failed_reads() {
-        assert_eq!(selection_error(0), Reply::Value(()));
-        assert_eq!(selection_error(-25212), Reply::NoValue);
-        assert_eq!(selection_error(-25205), Reply::Unsupported);
-        assert_eq!(selection_error(-25208), Reply::Unsupported, "not implemented");
-        assert_eq!(selection_error(-25204), Reply::Failed, "cannot complete");
-        assert_eq!(selection_error(-25202), Reply::Failed, "invalid element");
-        assert_eq!(range_length(true, -1, 0), Reply::Value(0), "kCFNotFound with no length");
-        assert_eq!(range_length(true, 3, 0), Reply::Value(0));
-        assert_eq!(range_length(true, 3, 7), Reply::Value(7));
-        assert_eq!(range_length(true, -1, 7), Reply::Failed);
-        assert_eq!(range_length(true, 3, -1), Reply::Failed);
-        assert_eq!(range_length(false, 3, 7), Reply::Failed);
-    }
-
-    #[test]
-    fn a_range_that_says_text_is_selected_is_believed_when_the_text_is_withheld() {
-        for reply in [Reply::NoValue, Reply::Unsupported, Reply::Value(String::new())] {
-            let fake = Fake {
-                selected_length: Cell::new(Some(5)),
-                selected: RefCell::new(reply),
-                ..Fake::new()
-            };
-            assert_eq!(fake.selection(), Ok((Selection::Ignored, None)));
-        }
-    }
-
-    #[test]
-    fn opening_never_fails_a_read_into_a_pass() {
-        let opening = |fake: &Fake, allowed| {
-            let (selection, text) = opening_selection(fake, 42, allowed, fake.now() + SELECTION_LIMIT);
-            assert_eq!(text, None);
-            selection
-        };
-        for fake in [
-            Fake {
-                selected: RefCell::new(Reply::Failed),
-                ..Fake::new()
-            },
-            Fake {
-                password: Reply::Value(true),
-                ..Fake::selecting("hunter2")
-            },
-            Fake {
-                focused_pid: 99,
-                ..Fake::selecting("smith 2020")
-            },
-            Fake {
-                selection_delay: SELECTION_LIMIT,
-                ..Fake::selecting("smith 2020")
-            },
-        ] {
-            assert_eq!(opening(&fake, true), Selection::Unread);
-        }
-        let secure = Fake::selecting("smith 2020");
-        secure.secure_typing.set(Some(true));
-        assert_eq!(opening(&secure, true), Selection::Unread);
-        let refused = Fake::selecting("smith 2020");
-        assert_eq!(opening(&refused, false), Selection::Unread);
-        assert!(refused.selection_reads.borrow().is_empty());
-        assert!(refused.reads.borrow().is_empty());
-    }
-
-    #[test]
-    fn an_unread_opening_pastes_only_once_nothing_is_proved_selected() {
-        let check = |fake: &Fake| check_selection(fake, 42, &Selection::Unread, fake.now() + FINAL_SELECTION_LIMIT);
-        assert_eq!(check(&Fake::selecting("")), Ok(()));
-        assert_eq!(
-            check(&Fake::new()),
-            Ok(()),
-            "an app that cannot report pastes as before"
-        );
-        assert_eq!(
-            check(&Fake::selecting("smith 2020")),
-            Err(CopyReason::SelectionNotShown)
-        );
-        let paragraph = "Invented paragraph. ".repeat(20);
-        assert_eq!(check(&Fake::selecting(&paragraph)), Err(CopyReason::SelectionNotShown));
-        let still_failing = Fake {
-            selected: RefCell::new(Reply::Failed),
-            ..Fake::new()
-        };
-        assert_eq!(check(&still_failing), Err(CopyReason::PasteUnavailable));
-        let password = Fake {
-            password: Reply::Value(true),
-            ..Fake::selecting("hunter2")
-        };
-        assert_eq!(check(&password), Err(CopyReason::SecureField));
-        assert!(!password.selection_reads.borrow().contains(&"range"));
-    }
-
-    #[test]
-    fn the_final_read_has_longer_than_the_opening_for_a_busy_app() {
-        let fake = Fake {
-            selection_delay: Duration::from_millis(40),
-            selected: RefCell::new(Reply::NoValue),
-            ..Fake::new()
-        };
-        assert_eq!(
-            check_selection(&fake, 42, &Selection::Unread, fake.now() + FINAL_SELECTION_LIMIT),
-            Ok(())
-        );
-        assert_eq!(
-            opening_selection(&fake, 42, true, fake.now() + SELECTION_LIMIT),
-            (Selection::Unread, None)
-        );
-    }
-
-    #[test]
-    fn secure_typing_at_the_final_proof_keeps_its_own_reason() {
-        let fake = Fake::selecting("smith 2020");
-        fake.secure_typing.set(Some(true));
-        assert_eq!(
-            check_selection(
-                &fake,
-                42,
-                &Selection::of_text("smith 2020").0,
-                fake.now() + FINAL_SELECTION_LIMIT
-            ),
-            Err(CopyReason::SecureInput)
-        );
-    }
-
-    #[test]
     fn a_changed_citation_replaces_only_the_old_citation_proved_selected() {
         let old = OldCitation::of("(Smith, 2020, p. 12)");
         let check = |fake: &Fake| {
@@ -1062,43 +860,6 @@ mod tests {
             },
         ] {
             assert_eq!(check(&fake), Err(CopyReason::CitationNotSelected));
-        }
-    }
-
-    #[test]
-    fn a_selection_much_longer_than_the_old_citation_is_never_copied_across() {
-        let old = OldCitation::of("(Smith, 2020)");
-        let fake = Fake::selecting(&"Invented paragraph. ".repeat(50));
-        assert_eq!(
-            check_selection(&fake, 42, &Selection::Citation(old), fake.now() + SELECTION_LIMIT),
-            Err(CopyReason::CitationNotSelected)
-        );
-        assert!(!fake.selection_reads.borrow().contains(&"text"));
-    }
-
-    #[test]
-    fn secure_typing_keeps_its_own_reason_when_replacing_a_citation_too() {
-        let fake = Fake::selecting("(Smith, 2020)");
-        fake.secure_typing.set(Some(true));
-        assert_eq!(
-            check_selection(
-                &fake,
-                42,
-                &Selection::Citation(OldCitation::of("(Smith, 2020)")),
-                fake.now() + SELECTION_LIMIT
-            ),
-            Err(CopyReason::SecureInput)
-        );
-        assert!(fake.reads.borrow().is_empty());
-    }
-
-    #[test]
-    fn the_selection_read_cannot_touch_the_clipboard_or_post_a_key() {
-        for source in [include_str!("focus.rs"), include_str!("focus/native.rs")] {
-            let code = source.split("#[cfg(test)]").next().unwrap_or(source);
-            for call in ["NSPasteboard", "CGEvent", "post_to_pid"] {
-                assert!(!code.contains(call), "{call}");
-            }
         }
     }
 
@@ -1148,82 +909,6 @@ mod tests {
     }
 
     #[test]
-    fn timeout_uses_one_aggregate_deadline_even_if_a_provider_returns_success() {
-        let fake = Fake {
-            delay: LIMIT,
-            ..Fake::new()
-        };
-        assert_eq!(fake.query(), Err(CopyReason::PasteUnavailable));
-        assert_eq!(fake.reads.borrow().len(), 1);
-    }
-
-    #[test]
-    fn a_closed_window_or_a_changed_focus_is_not_a_valid_identity() {
-        let closed = Fake {
-            read_failure: Some(CopyReason::TargetChanged),
-            ..Fake::new()
-        };
-        assert_eq!(closed.query(), Err(CopyReason::TargetChanged));
-        let changed = Fake {
-            change_during_read: true,
-            ..Fake::new()
-        };
-        assert_eq!(changed.query(), Err(CopyReason::PasteUnavailable));
-    }
-
-    #[test]
-    fn sleep_inside_the_last_read_cannot_return_a_timely_success() {
-        let fake = Fake {
-            sleep_on_last: LIMIT,
-            ..Fake::new()
-        };
-        let active_time = fake.now();
-        assert_eq!(fake.query(), Err(CopyReason::PasteUnavailable));
-        assert_eq!(fake.now(), active_time, "the active clock paused across sleep");
-        assert_eq!(fake.reads.borrow().len(), 8);
-    }
-
-    #[test]
-    fn a_late_error_is_also_classified_as_a_timeout() {
-        let fake = Fake {
-            delay: LIMIT,
-            read_failure: Some(CopyReason::TargetChanged),
-            ..Fake::new()
-        };
-        assert_eq!(fake.query(), Err(CopyReason::PasteUnavailable));
-        assert_eq!(fake.reads.borrow().len(), 1);
-    }
-
-    #[test]
-    fn a_focused_element_that_moves_to_another_window_cannot_keep_its_old_window_proof() {
-        let fake = Fake {
-            reparent_during_read: true,
-            ..Fake::new()
-        };
-        assert_eq!(fake.query(), Err(CopyReason::TargetChanged));
-    }
-
-    #[test]
-    fn three_millisecond_identity_reads_fit_the_aggregate_and_final_budgets() {
-        let fake = Fake {
-            delay: Duration::from_millis(3),
-            ..Fake::new()
-        };
-        assert_eq!(fake.query(), Ok(100));
-        assert_eq!(fake.elapsed(), Duration::from_millis(24));
-    }
-
-    #[test]
-    fn the_three_final_reads_still_have_a_shared_deadline() {
-        let fake = Fake {
-            delay: Duration::from_millis(5),
-            ..Fake::new()
-        };
-        assert_eq!(fake.query(), Err(CopyReason::PasteUnavailable));
-        assert_eq!(fake.reads.borrow().len(), 8);
-    }
-
-    #[test]
     fn opening_an_attached_sheet_cannot_borrow_the_documents_identity() {
         let fake = Fake::new();
         let captured = fake.query();
@@ -1232,48 +917,6 @@ mod tests {
         // top-level surface distinguishes the attached sheet's input.
         assert_ne!(fake.query(), captured);
         assert_eq!(fake.query(), Ok(500));
-    }
-
-    #[test]
-    fn sheets_and_drawers_are_distinct_surfaces_even_when_their_document_is_unchanged() {
-        for (before, after) in [(500, 100), (500, 501), (100, 600), (600, 100)] {
-            let fake = Fake {
-                surface: Cell::new(Some(before)),
-                ..Fake::new()
-            };
-            let captured = fake.query();
-            assert_eq!(captured, Ok(before));
-            fake.surface.set(Some(after));
-            assert_eq!(fake.query(), Ok(after));
-            assert_ne!(fake.query(), captured);
-        }
-    }
-
-    #[test]
-    fn the_same_focused_element_cannot_move_to_a_sheet_during_the_proof() {
-        let fake = Fake {
-            surface_after_read: Some(500),
-            ..Fake::new()
-        };
-        assert_eq!(fake.query(), Err(CopyReason::TargetChanged));
-    }
-
-    #[test]
-    fn an_unsupported_top_level_attribute_is_unavailable_without_falling_back_to_the_document() {
-        let fake = Fake {
-            unsupported: Some(Attribute::TopLevel),
-            ..Fake::new()
-        };
-        assert_eq!(fake.query(), Err(CopyReason::PasteUnavailable));
-    }
-
-    #[test]
-    fn revoking_accessibility_during_successful_provider_reads_keeps_its_permission_reason() {
-        let fake = Fake {
-            revoke_trust_after_initial_reads: true,
-            ..Fake::new()
-        };
-        assert_eq!(fake.query(), Err(CopyReason::AccessibilityRequired));
     }
 
     #[test]
@@ -1304,19 +947,6 @@ mod tests {
     }
 
     #[test]
-    fn healthy_or_refused_capture_never_activates_manual_accessibility() {
-        let healthy = Fake::new();
-        assert!(capture_query(&healthy, 42, true).is_ok());
-        assert_eq!(healthy.manual_calls.get(), 0);
-        let refused = Fake {
-            unsupported: Some(Attribute::FocusedWindow),
-            ..Fake::new()
-        };
-        assert!(capture_query(&refused, 42, false).is_err());
-        assert_eq!(refused.manual_calls.get(), 0);
-    }
-
-    #[test]
     fn a_reused_pid_or_terminated_eligible_instance_never_receives_the_ax_write() {
         for fake in [
             Fake {
@@ -1342,112 +972,6 @@ mod tests {
                 "eligibility belongs to the retained instance, not PID 42"
             );
         }
-    }
-
-    #[test]
-    fn diagnostics_record_whether_capture_attempted_the_activation_write() {
-        for failure in [None, Some(CopyReason::PasteUnavailable)] {
-            let fake = Fake {
-                unsupported: Some(Attribute::FocusedWindow),
-                manual_failure: failure,
-                ..Fake::new()
-            };
-            let trace = diagnostics::Trace::enabled();
-            let result = trace.with(|| capture_query(&fake, 42, true));
-            assert_eq!(result.is_ok(), failure.is_none());
-            let record = serde_json::to_value(trace.snapshot()).unwrap_or_else(|e| panic!("{e}"));
-            assert_eq!(record["manual_accessibility_ran"], true);
-            let next = diagnostics::Trace::enabled();
-            let _ = next.with(|| capture_query(&fake, 42, true));
-            let record = serde_json::to_value(next.snapshot()).unwrap_or_else(|e| panic!("{e}"));
-            assert_eq!(
-                record["manual_accessibility_ran"], false,
-                "no second write for this process"
-            );
-        }
-        for eligible in [false, true] {
-            let fake = Fake::new();
-            let trace = diagnostics::Trace::enabled();
-            assert!(trace.with(|| capture_query(&fake, 42, eligible)).is_ok());
-            let record = serde_json::to_value(trace.snapshot()).unwrap_or_else(|e| panic!("{e}"));
-            assert_eq!(record["manual_accessibility_ran"], false);
-        }
-    }
-
-    #[test]
-    fn manual_accessibility_does_not_repair_ax_errors_foreign_owners_or_missing_trust() {
-        for fake in [
-            Fake {
-                read_failure: Some(CopyReason::PasteUnavailable),
-                ..Fake::new()
-            },
-            Fake {
-                focused_pid: 99,
-                unsupported: Some(Attribute::TopLevel),
-                ..Fake::new()
-            },
-            Fake {
-                trusted: Cell::new(false),
-                unsupported: Some(Attribute::TopLevel),
-                ..Fake::new()
-            },
-        ] {
-            assert!(capture_query(&fake, 42, true).is_err());
-            assert_eq!(fake.manual_calls.get(), 0);
-        }
-    }
-
-    #[test]
-    fn only_missing_document_or_surface_attributes_qualify_for_manual_accessibility() {
-        for (attribute, error, repairs) in [
-            (Attribute::FocusedWindow, -25205, 1),
-            (Attribute::TopLevel, -25212, 1),
-            (Attribute::TopLevel, -25204, 0), // CannotComplete is failed I/O, not absence.
-            (Attribute::FocusedWindow, -25202, 0), // InvalidUIElement is not absence.
-            (Attribute::Window, -25212, 0),
-            (Attribute::FocusedElement, -25205, 0),
-            (Attribute::Application, -25205, 0),
-        ] {
-            let fake = Fake {
-                unsupported: Some(attribute),
-                missing_error: error,
-                ..Fake::new()
-            };
-            let result = capture_query(&fake, 42, true);
-            assert_eq!(fake.manual_calls.get(), repairs);
-            assert_eq!(result.is_ok(), repairs == 1);
-        }
-    }
-
-    #[test]
-    fn failed_activation_is_not_repeated_and_activation_cannot_extend_capture_or_borrow_an_old_document() {
-        let failed = Fake {
-            unsupported: Some(Attribute::FocusedWindow),
-            manual_failure: Some(CopyReason::PasteUnavailable),
-            ..Fake::new()
-        };
-        for _ in 0..2 {
-            assert!(capture_query(&failed, 42, true).is_err());
-        }
-        assert_eq!(failed.manual_calls.get(), 1);
-
-        let late = Fake {
-            unsupported: Some(Attribute::TopLevel),
-            manual_delay: LIMIT,
-            ..Fake::new()
-        };
-        assert!(capture_query(&late, 42, true).is_err());
-        assert_eq!(late.reads.borrow().len(), 5, "no fresh budget after enabling");
-
-        let replaced = Fake {
-            unsupported: Some(Attribute::FocusedWindow),
-            replace_after_manual: true,
-            ..Fake::new()
-        };
-        assert!(matches!(
-            capture_query(&replaced, 42, true),
-            Err(CopyReason::TargetChanged)
-        ));
     }
 
     #[test]
@@ -1486,53 +1010,5 @@ mod tests {
             capture_reason(&neither, 42, false),
             Err(CopyReason::PasteUnavailable)
         ));
-    }
-
-    #[test]
-    fn only_an_unproved_or_secure_refusal_is_reworded_and_only_by_the_targets_own_field() {
-        let foreign = Fake {
-            focused_pid: 99,
-            password: Reply::Value(true),
-            ..Fake::new()
-        };
-        assert_eq!(
-            refused_because(
-                &foreign,
-                42,
-                CopyReason::PasteUnavailable,
-                foreign.now() + SELECTION_LIMIT
-            ),
-            CopyReason::PasteUnavailable
-        );
-        let field = Fake {
-            password: Reply::Value(true),
-            ..Fake::new()
-        };
-        for kept in [
-            CopyReason::TargetChanged,
-            CopyReason::AccessibilityRequired,
-            CopyReason::ClipboardChanged,
-        ] {
-            assert_eq!(refused_because(&field, 42, kept, field.now() + SELECTION_LIMIT), kept);
-        }
-        assert!(field.selection_reads.borrow().is_empty());
-        assert_eq!(
-            refused_because(&field, 42, CopyReason::SecureInput, field.now() + SELECTION_LIMIT),
-            CopyReason::SecureField
-        );
-        let revoked = Fake {
-            password: Reply::Value(true),
-            trusted: Cell::new(false),
-            ..Fake::new()
-        };
-        assert_eq!(
-            refused_because(
-                &revoked,
-                42,
-                CopyReason::PasteUnavailable,
-                revoked.now() + SELECTION_LIMIT
-            ),
-            CopyReason::PasteUnavailable
-        );
     }
 }

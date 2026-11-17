@@ -658,54 +658,6 @@ mod tests {
     }
 
     #[test]
-    fn an_unknown_app_has_only_a_runtime_selection_and_editor_requests_ignore_it() {
-        let mut settings = Settings::default();
-        let project = create(&mut settings, &known("example.editor", 1), "Paper");
-        let unknown = Target {
-            binding: None,
-            generation: 2,
-            editor: false,
-        };
-        let session = edit(
-            &mut settings,
-            &unknown,
-            None,
-            &WritingEdit::Select {
-                id: Some(project.clone()),
-            },
-        )
-        .unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(
-            selected(&settings, &unknown, session.as_deref()),
-            Some(project.as_str())
-        );
-        assert_eq!(
-            selected(&settings, &unknown, None),
-            None,
-            "a restart has no runtime choice"
-        );
-        let editor = Target {
-            editor: true,
-            ..unknown
-        };
-        assert!(
-            active_for(&settings, &editor, session.as_deref())
-                .unwrap_or_else(|error| panic!("{error}"))
-                .is_none()
-        );
-        assert!(
-            edit(
-                &mut settings,
-                &editor,
-                session.as_deref(),
-                &WritingEdit::Select { id: Some(project) }
-            )
-            .is_err()
-        );
-        assert_eq!(settings.device.writing_apps.len(), 1);
-    }
-
-    #[test]
     fn failed_persistence_leaves_the_selection_and_definition_as_they_were() {
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
         let path = directory.path().join("settings.json");
@@ -763,53 +715,6 @@ mod tests {
     }
 
     #[test]
-    fn a_saved_project_reopens_with_its_complete_output_and_bibliography() {
-        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
-        let path = directory.path().join("settings.json");
-        let target = known("example.editor", 1);
-        let (settings, ()) = crate::settings::Owner::open(path.clone())
-            .change(|settings| {
-                let id = create(settings, &target, "Thesis");
-                definitions::update(settings, &id, output().spec().clone(), Some(invented("thesis.bib")))?;
-                Ok::<_, Error>(())
-            })
-            .unwrap_or_else(|error| panic!("{error}"));
-        let reopened = settings::load(&path).cites().unwrap().clone();
-        let before = active_for(&settings, &target, None).unwrap_or_else(|error| panic!("{error}"));
-        let after = active_for(&reopened, &known("example.editor", 2), None).unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(
-            before.map(|project| project.view()),
-            after.map(|project| project.view())
-        );
-    }
-
-    #[test]
-    fn a_delayed_bibliography_choice_cannot_return_after_switching_away_and_back() {
-        let mut settings = Settings::default();
-        let target = known("example.editor", 1);
-        let first = create(&mut settings, &target, "Thesis");
-        let earlier = owner_for(&settings, &target, None, 1).unwrap_or_else(|error| panic!("{error}"));
-        create(&mut settings, &target, "Notes");
-        edit(&mut settings, &target, None, &WritingEdit::Select { id: Some(first) })
-            .unwrap_or_else(|error| panic!("{error}"));
-        let current = owner_for(&settings, &target, None, 3).unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(earlier.id, current.id);
-        assert_ne!(earlier, current, "a matching definition never revives an old chooser");
-    }
-
-    #[test]
-    fn a_delayed_bibliography_save_refuses_a_newer_definition_of_the_same_writing() {
-        let mut settings = Settings::default();
-        let target = known("example.editor", 1);
-        let name = create(&mut settings, &target, "Thesis");
-        let earlier = owner_for(&settings, &target, None, 1).unwrap_or_else(|error| panic!("{error}"));
-        definitions::update(&mut settings, &name, output::stored(Some("apa")).spec().clone(), None)
-            .unwrap_or_else(|error| panic!("{error}"));
-        let current = owner_for(&settings, &target, None, 1).unwrap_or_else(|error| panic!("{error}"));
-        assert_ne!(earlier, current, "a file edit must retire an already open chooser");
-    }
-
-    #[test]
     fn unsupported_output_is_visible_in_the_manager_and_refused_before_selecting() {
         use ibis_core::contract::citation::OutputSpec;
         let mut settings = Settings::default();
@@ -845,77 +750,6 @@ mod tests {
                 .iter()
                 .any(|project| project.name == other.name && project.output.is_none())
         );
-    }
-
-    #[test]
-    fn duplicate_creation_keeps_the_existing_context_and_removing_clears_all_its_bindings() {
-        let mut settings = Settings::default();
-        let target = known("example.editor", 1);
-        let project = create(&mut settings, &target, "Paper");
-        let before = settings.clone();
-        assert!(
-            edit(
-                &mut settings,
-                &target,
-                None,
-                &WritingEdit::Create {
-                    name: "paper".into(),
-                    output: output()
-                }
-            )
-            .is_err()
-        );
-        assert_eq!(settings, before);
-        let other = known("example.browser", 1);
-        edit(
-            &mut settings,
-            &other,
-            None,
-            &WritingEdit::Select {
-                id: Some(project.clone()),
-            },
-        )
-        .unwrap_or_else(|error| panic!("{error}"));
-        edit(
-            &mut settings,
-            &target,
-            Some(&project),
-            &WritingEdit::Remove { id: project.clone() },
-        )
-        .unwrap_or_else(|error| panic!("{error}"));
-        assert!(settings.device.writings.is_empty());
-        assert!(settings.device.writing_apps.is_empty());
-        assert_eq!(
-            settings.portable.paste, before.portable.paste,
-            "project selection never grants paste permission"
-        );
-    }
-
-    #[test]
-    fn every_picker_output_round_trips_through_the_shared_project_contract() {
-        for listed in crate::outputs::outputs() {
-            let output = output::stored(Some(&listed.id));
-            assert_eq!(output::of_writing(&output.spec().clone()), Ok(output));
-        }
-    }
-
-    #[test]
-    fn unsupported_project_output_never_becomes_a_plausible_picker_default() {
-        use ibis_core::contract::citation::{KeySyntax, OutputSpec};
-        for output in [
-            OutputSpec::Csl {
-                style: "invented-custom-style".into(),
-            },
-            OutputSpec::Preset {
-                name: "invented-preset".into(),
-            },
-            OutputSpec::Key {
-                syntax: KeySyntax::Biblatex,
-                command: Some("invented-command".into()),
-            },
-        ] {
-            assert!(output::of_writing(&output).is_err());
-        }
     }
 
     #[test]

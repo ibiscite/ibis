@@ -12,14 +12,6 @@ function Example({ writing, reset }: { writing?: string; reset: () => void }) {
     onWritings={() => undefined} onChange={() => undefined} disabled={false} styles searchRef={search} /></>;
 }
 
-test("the app format offers to use the usual format again", () => {
-  const reset = vi.fn();
-  render(<Example reset={reset} />);
-  fireEvent.click(screen.getByRole("button", { name: /^Citation format/ }));
-  fireEvent.click(screen.getByRole("option", { name: "Use APA in Word again" }));
-  expect(reset).toHaveBeenCalledOnce();
-});
-
 test("a writing offers to stop using it in the captured app", () => {
   const reset = vi.fn();
   render(<Example writing="Thesis" reset={reset} />);

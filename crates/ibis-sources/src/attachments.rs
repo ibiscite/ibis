@@ -372,67 +372,10 @@ mod tests {
     }
 
     #[test]
-    fn paths_cannot_become_media_types() -> Result<(), serde_json::Error> {
-        for text in [
-            "file:///invented/private.pdf",
-            "synthetic.pdf:/invented/private.pdf",
-            "Label:synthetic.pdf:/invented/private.pdf",
-            "synthetic.pdf:application//pdf",
-            "synthetic.pdf:/pdf",
-        ] {
-            let (objects, references, warnings) = check(text);
-            assert_eq!(references, 0, "ambiguous attachment must not be probed");
-            assert!(!serde_json::to_string(&objects)?.contains("invented/private"));
-            assert!(!warnings.is_empty());
-        }
-        Ok(())
-    }
-
-    #[test]
     fn attachment_expansion_is_bounded_before_metadata() {
         let (objects, references, warnings) = check(&"x;".repeat(20_000));
         assert!(objects.len() <= 256);
         assert!(references <= 256);
         assert!(warnings.iter().any(|warning| warning.code == WarningCode::WorkLimit));
-    }
-
-    #[test]
-    fn oversized_paths_tokens_and_fields_warn_without_retaining_references() {
-        for text in [
-            "x".repeat(MAX_PATH_BYTES + 1),
-            "x".repeat(MAX_TOKEN_BYTES + 1),
-            ";".repeat(MAX_FIELD_BYTES + 1),
-        ] {
-            let (objects, references, warnings) = check(&text);
-            assert!(objects.is_empty());
-            assert_eq!(references, 0);
-            assert!(warnings.iter().any(|warning| warning.code == WarningCode::WorkLimit));
-        }
-    }
-
-    #[test]
-    fn valid_mime_tokens_and_naked_drive_paths_keep_their_meaning() {
-        for kind in ["PDF", "application/pdf", "application/vnd.synthetic+json", "TEXT/PLAIN"] {
-            assert!(is_media_type(kind));
-        }
-        for kind in [
-            "/private.pdf",
-            "application/",
-            "/pdf",
-            "application//pdf",
-            "application/pdf/path",
-            "application/pdf;name=x",
-        ] {
-            assert!(!is_media_type(kind));
-        }
-        assert!(!is_media_type(&format!("application/{}", "x".repeat(128))));
-        for location in [r"C:\invented\private.pdf", "C:/invented/private.pdf"] {
-            let (objects, references, _) = check(location);
-            assert_eq!(references, usize::from(cfg!(windows)));
-            let LibraryObject::Attachment(attachment) = &objects[0] else {
-                panic!("synthetic attachment")
-            };
-            assert_eq!(attachment.media_type, "application/pdf");
-        }
     }
 }

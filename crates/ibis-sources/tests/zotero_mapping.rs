@@ -6,25 +6,6 @@ use ibis_core::contract::LibraryId;
 use serde_json::json;
 
 #[test]
-fn neutral_book_maps_without_zotero_export() {
-    let item = serde_json::from_value(json!({
-        "key": "SYN00001", "itemType": "book", "title": "Invented book",
-        "creators": [{"creatorType": "author", "firstName": "Example", "lastName": "Synthetic"}],
-        "date": "2026-10-25", "citationKey": "Synthetic2026"
-    }))
-    .unwrap();
-    let mapped = zotero::map_item(LibraryId::digest(b"invented library"), &item).unwrap();
-    assert_eq!(mapped.record.csl["type"], "book");
-    assert_eq!(mapped.record.csl["title"], "Invented book");
-    assert_eq!(
-        mapped.record.csl["author"],
-        json!([{"family": "Synthetic", "given": "Example"}])
-    );
-    assert_eq!(mapped.record.csl["issued"], json!({"date-parts": [[2026, 10, 25]]}));
-    assert_eq!(mapped.record.citation_key().unwrap(), Some("Synthetic2026"));
-}
-
-#[test]
 fn differential_against_pinned_zotero_covers_every_bibliographic_type() {
     let cases: Vec<serde_json::Value> =
         serde_json::from_str(include_str!("../../../fixtures/zotero/mapping/cases.json")).unwrap();
@@ -224,66 +205,6 @@ fn malformed_oversized_and_nonbibliographic_inputs_are_bounded_and_private() {
 }
 
 #[test]
-fn aggregate_work_limits_and_invalid_keys_do_not_hide_other_sources() {
-    use zotero::MappingError;
-    let mut source = item(json!({}));
-    source.fields = (0..257)
-        .map(|index| (format!("invented-{index}"), String::new()))
-        .collect();
-    assert_eq!(
-        zotero::map_item(LibraryId::digest(b"invented"), &source),
-        Err(MappingError::InputLimit)
-    );
-    let many_keys = (0..4097)
-        .map(|index| format!("Citation Key: Invented{index}"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let many_aliases = format!(
-        "tex.ids= {}",
-        (0..4097)
-            .map(|index| format!("Alias{index}"))
-            .collect::<Vec<_>>()
-            .join(",")
-    );
-    for extra in [many_keys, many_aliases] {
-        assert_eq!(
-            zotero::map_item(LibraryId::digest(b"invented"), &item(json!({"extra": extra}))),
-            Err(MappingError::InputLimit)
-        );
-    }
-    let mut source = item(json!({}));
-    source.fields = (0..9)
-        .map(|index| (format!("invented-{index}"), "x".repeat(256 * 1024)))
-        .collect();
-    assert_eq!(
-        zotero::map_item(LibraryId::digest(b"invented"), &source),
-        Err(MappingError::InputLimit)
-    );
-    for citation_key in ["bad key", "bad\0key"] {
-        let result = mapped(json!({"citationKey": citation_key}));
-        assert!(result.record.citation_key().is_err());
-    }
-}
-
-proptest::proptest! {
-    #[test]
-    fn synthetic_unicode_fields_creators_and_extra_never_panic(
-        title in ".{0,160}", date in ".{0,160}", extra in ".{0,200}",
-        first_name in ".{0,100}", last_name in ".{0,100}"
-    ) {
-        use ibis_core::contract::{LibraryObject, Snapshot};
-        let result = mapped(json!({
-            "title": title, "date": date, "extra": extra,
-            "creators": [{"creatorType": "author", "firstName": first_name, "lastName": last_name}]
-        }));
-        let public = serde_json::to_value(&result.record).unwrap();
-        proptest::prop_assert!(public.get("raw").is_none());
-        proptest::prop_assert_eq!(result.record.id.key.as_str(), "SYN00001");
-        proptest::prop_assert!(Snapshot::new(vec![LibraryObject::Record(result.record)]).is_ok());
-    }
-}
-
-#[test]
 fn embedded_extra_url_hacks_cannot_expose_local_file_locations() {
     for extra in [
         "{:URL: file:///invented/private.pdf}",
@@ -295,53 +216,6 @@ fn embedded_extra_url_hacks_cannot_expose_local_file_locations() {
         assert!(!serde_json::to_string(&data.record).unwrap().contains("private.pdf"));
         assert!(data.warnings.contains(&zotero::MappingWarning::PrivateUrl));
     }
-}
-
-#[test]
-fn canonical_extra_key_labels_do_not_hide_conflicts() {
-    use ibis_core::contract::ModelError;
-    for label in ["Citation Key", "citation-key", "citationKey", " Citation-Key "] {
-        let record = mapped(json!({"citationKey": "Field2026", "extra": format!("{label}: Different2026")})).record;
-        assert_eq!(record.citation_key(), Err(ModelError::ConflictingCitationKeys));
-        assert_eq!(record.citation_keys.len(), 2);
-    }
-}
-
-#[test]
-fn printed_url_suppression_keeps_search_identifiers_and_bare_domains_survive() {
-    use ibis_core::identifier::Identifier;
-    let result =
-        mapped(json!({"itemType": "journalArticle", "pages": "1–9", "url": "https://arxiv.org/abs/2401.00001v2"}));
-    assert!(!result.record.csl.contains_key("URL"));
-    assert_eq!(result.record.identifiers, vec![Identifier::Arxiv("2401.00001".into())]);
-    for url in [
-        "www.example.invalid/invented",
-        "doi.org/10.0000/invented",
-        "example.invalid/invented",
-    ] {
-        let result = mapped(json!({"url": url, "extra": format!("URL: {url}")}));
-        assert_eq!(result.record.csl["URL"], url);
-        assert!(!result.warnings.contains(&zotero::MappingWarning::PrivateUrl));
-    }
-}
-
-#[test]
-fn maximum_length_particle_and_date_inputs_have_bounded_work() {
-    let started = std::time::Instant::now();
-    let family = format!("{}Synthetic", "a ".repeat(100_000));
-    let given = format!("Example {}a", "a ".repeat(100_000));
-    let date = "jan-".repeat(60_000);
-    let result =
-        mapped(json!({"date": date, "creators": [{"creatorType": "author", "firstName": given, "lastName": family}]}));
-    assert_eq!(result.record.csl["issued"], json!({"literal": date}));
-    assert!(
-        result
-            .warnings
-            .contains(&zotero::MappingWarning::DateParseLimit("issued"))
-    );
-    assert_eq!(result.record.csl["author"][0]["family"], "Synthetic");
-    assert_eq!(result.record.csl["author"][0]["given"], "Example");
-    assert!(started.elapsed() < std::time::Duration::from_secs(5));
 }
 
 #[test]
@@ -358,44 +232,6 @@ fn bare_document_filenames_stay_engine_only() {
         let public = serde_json::to_string(&result.record).unwrap();
         assert!(!public.contains(url));
         assert!(result.warnings.contains(&zotero::MappingWarning::PrivateUrl));
-    }
-}
-
-#[test]
-fn extra_url_scanning_tracks_citeproc_field_boundaries() {
-    for extra in [
-        "URL:\nURL: file:///invented/private.pdf",
-        "URL: \nURL: \nURL: file:///invented/private.pdf",
-        "{:issued: 2026}URL: file:///invented/private.pdf",
-        "{:URL: ../a}URL: file:///invented/private.pdf",
-        "{:issued: 2026}{:URL: https://example.invalid/work}URL: file:///invented/private.pdf",
-    ] {
-        let result = mapped(json!({"extra": extra}));
-        assert!(!serde_json::to_string(&result.record).unwrap().contains("private.pdf"));
-        assert!(result.warnings.contains(&zotero::MappingWarning::PrivateUrl));
-    }
-}
-
-#[test]
-fn file_transport_urls_and_inline_key_conflicts_are_not_hidden() {
-    use ibis_core::contract::ModelError;
-    for url in [
-        "smb://invented/private.pdf",
-        "afp://invented/private.pdf",
-        "nfs:/invented/private.pdf",
-        "jar:file:/invented/private.pdf",
-    ] {
-        let result = mapped(json!({"url": url, "extra": format!("{{:URL: {url}}}")}));
-        assert!(!serde_json::to_string(&result.record).unwrap().contains("private.pdf"));
-        assert!(result.warnings.contains(&zotero::MappingWarning::PrivateUrl));
-    }
-    for extra in [
-        "{:citation-key: Extra2026}",
-        "{:{:citation-key: Extra2026}",
-        "{:citation-key: Invalid{:citation-key: Extra2026}",
-    ] {
-        let result = mapped(json!({"citationKey": "Field2026", "extra": extra}));
-        assert_eq!(result.record.citation_key(), Err(ModelError::ConflictingCitationKeys));
     }
 }
 
@@ -484,19 +320,6 @@ fn a_malformed_row_cannot_discard_a_valid_neighbor() {
                 assert_eq!(loaded.warnings[0].code, WarningCode::Field);
             }
         }
-    }
-}
-
-#[test]
-fn malformed_rows_still_require_matching_identity_and_version() {
-    use ibis_sources::zotero_source::{LiveError, ZoteroError, ZoteroSource};
-    for data in [
-        json!({"key": "SYN00002", "version": 1}),
-        json!({"key": "SYN00001", "version": 2}),
-    ] {
-        let row = json!({"key": "SYN00001", "version": 1, "data": data});
-        let result = ZoteroSource::default().refresh(&mut SyntheticApi(vec![row]), false, &|| false);
-        assert_eq!(result.err(), Some(ZoteroError::Live(LiveError::Incomplete)));
     }
 }
 

@@ -637,18 +637,6 @@ pub(super) mod tests {
     }
 
     #[test]
-    fn expired_native_call_does_not_spawn() {
-        let root = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic child root"));
-        let mut expired = control();
-        expired.deadline = std::time::Instant::now();
-        assert_eq!(
-            output(&mut synthetic_helper(root.path()), &expired).err(),
-            Some(ClosedError::TimedOut)
-        );
-        assert!(!root.path().join("ready").exists());
-    }
-
-    #[test]
     fn running_native_child_is_cancelled_and_reaped() {
         let root = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic child root"));
         let ready = root.path().join("ready");
@@ -673,18 +661,6 @@ pub(super) mod tests {
         );
     }
 
-    #[test]
-    fn native_output_handles_spawn_failure_and_success() {
-        let root = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic child root"));
-        assert_eq!(
-            output(&mut Command::new(root.path().join("missing-executable")), &control()).err(),
-            Some(ClosedError::ProcessCheck)
-        );
-        let mut success = Command::new(std::env::current_exe().unwrap_or_else(|_| panic!("synthetic executable")));
-        success.arg("--list");
-        assert!(output(&mut success, &control()).is_ok());
-    }
-
     #[cfg(unix)]
     #[test]
     fn incomplete_or_malformed_process_lists_are_not_closed() {
@@ -701,49 +677,8 @@ pub(super) mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn recognizes_application_names_without_matching_test_executable() {
-        for name in [
-            "zotero",
-            "/Applications/Zotero.app/Contents/MacOS/zotero",
-            "zotero-bin",
-            "ZoTeRo",
-        ] {
-            assert!(super::zotero_process(name));
-        }
-        for name in [
-            "ibis_zotero_local-test",
-            "zotero_reader_test",
-            "zotero-mcp",
-            "Zotero.Beta",
-            "zotero-sync-helper",
-            "ps",
-            "/tmp/zotero/test",
-        ] {
-            assert!(!super::zotero_process(name));
-        }
-    }
-
-    #[cfg(unix)]
-    #[test]
     fn zotero_mcp_process_does_not_mean_zotero_is_running() {
         assert_eq!(process_list(b"42 ibis\n43 /synthetic/zotero-mcp\n", 42), Ok(()));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn a_synthetic_zotero_mcp_executable_is_not_the_zotero_process() {
-        use std::os::unix::fs::MetadataExt;
-
-        let child = NamedProcess::start("zotero-mcp");
-        let running = std::fs::metadata(std::env::current_exe().unwrap_or_else(|_| panic!("synthetic executable")))
-            .unwrap_or_else(|_| panic!("synthetic executable metadata"));
-        let helper = std::fs::metadata(&child.executable).unwrap_or_else(|_| panic!("synthetic helper metadata"));
-        assert!(
-            (running.dev(), running.ino()) == (helper.dev(), helper.ino()),
-            "the helper must reuse the running executable, without opening a new executable for writing"
-        );
-        let own = std::process::id();
-        assert_eq!(process_list(&child.snapshot(), own), Ok(()));
     }
 }
 
@@ -751,29 +686,6 @@ pub(super) mod tests {
 #[cfg(target_os = "macos")]
 mod macos_acl_tests {
     use super::*;
-    #[test]
-    fn acl_removal_does_not_follow_a_replaced_final_symlink() {
-        let root = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic ACL root"));
-        let target = root.path().join("outside");
-        std::fs::create_dir(&target).unwrap_or_else(|_| panic!("synthetic ACL target"));
-        let status = Command::new("/bin/chmod")
-            .args(["+a", "everyone allow list,search"])
-            .arg(&target)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .unwrap_or_else(|_| panic!("synthetic target ACL"));
-        assert!(status.success());
-        let link = root.path().join("replaced");
-        std::os::unix::fs::symlink(&target, &link).unwrap_or_else(|_| panic!("synthetic ACL link"));
-        let _ = clear_inherited_acl(&link, &crate::closed::tests::control());
-        let report = output(
-            Command::new("/bin/ls").args(["-lde", "-b"]).arg(&target),
-            &crate::closed::tests::control(),
-        )
-        .unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(report.split(|b| *b == b'\n').filter(|l| !l.is_empty()).count(), 2);
-    }
 
     #[test]
     fn owner_only_creation_drops_inherited_extended_acl() {

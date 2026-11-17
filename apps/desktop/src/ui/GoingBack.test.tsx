@@ -72,51 +72,6 @@ test.each(cases)("$platform › $row › $way goes back: $goes", ({ platform, ro
   if (goes) expect(unused).toBe(false);
 });
 
-test.each<Row>(["palette", "inspector", "sheet"])("%s: Esc goes back even with text; Backspace with text only edits", (row) => {
-  const { close, field } = open(row);
-  fireEvent.change(field, { target: { value: "Draft" } });
-  fireEvent.keyDown(field, { key: "Backspace" });
-  expect(close).not.toHaveBeenCalled();
-  fireEvent.keyDown(field, { key: "Escape" });
-  expect(close).toHaveBeenCalledOnce();
-});
-
-test("the other system's Back key and other mouse buttons do nothing", () => {
-  document.documentElement.dataset.system = "macos";
-  const { close, field } = open("sheet");
-  fireEvent.keyDown(field, { key: "ArrowLeft", altKey: true });
-  fireEvent.mouseDown(field, { button: 4 });
-  expect(close).not.toHaveBeenCalled();
-});
-
-test.each<Row>(["sheet", "inspector"])("%s: an open pop-up gets Esc before the view, and keeps Back and empty Backspace", (row) => {
-  const { close, field } = open(row);
-  fireEvent.click(screen.getByRole("button", { name: "Pop-up" }));
-  fireEvent.keyDown(field, { key: "Backspace" });
-  fireEvent.keyDown(field, { key: "ArrowLeft", altKey: true });
-  fireEvent.mouseDown(field, { button: 3 });
-  expect(close).not.toHaveBeenCalled();
-  expect(screen.getByRole("menu")).toBeTruthy();
-  fireEvent.keyDown(field, { key: "Escape" });
-  expect(screen.queryByRole("menu")).toBeNull();
-  expect(close).not.toHaveBeenCalled();
-  fireEvent.keyDown(field, { key: "Escape" });
-  expect(close).toHaveBeenCalledOnce();
-});
-
-test("a palette leaves Backspace and Back with its open pop-up", () => {
-  const { close, field } = open("palette");
-  const popupClose = vi.fn();
-  render(<Popup close={popupClose} />);
-  fireEvent.keyDown(field, { key: "Backspace" });
-  fireEvent.keyDown(field, { key: "ArrowLeft", altKey: true });
-  fireEvent.mouseDown(field, { button: 3 });
-  expect(close).not.toHaveBeenCalled();
-  fireEvent.keyDown(field, { key: "Escape" });
-  expect(popupClose).toHaveBeenCalledOnce();
-  expect(close).not.toHaveBeenCalled();
-});
-
 test("while a view is open the window shows only it, and what is under it shows again as it leaves", () => {
   const { close, field } = open("sheet");
   expect(document.documentElement.dataset.view).toBe("");

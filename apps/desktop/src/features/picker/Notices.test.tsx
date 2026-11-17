@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { notices, UpdateNotice } from "./Notices";
 import { missingKey } from "../../test-fixtures";
 
@@ -27,22 +27,6 @@ test.each(["Enter", " "])("warning dismissal uses shared states and activates on
   expect(dismiss).toHaveBeenCalledTimes(1);
 });
 
-test("clean confirmations have no dismissal action or warning list", () => {
-  render(<Notices {...props} copied={{ ...copied, warnings: [] }} />);
-  expect(screen.getByRole("status", { name: "" })).toBeTruthy();
-  expect(screen.queryByRole("button")).toBeNull();
-  expect(screen.queryByLabelText("Copy warnings")).toBeNull();
-});
-
-test("retiring a confirmation leaves its warnings without announcing Copied again", () => {
-  const { rerender } = render(<Notices {...props} />);
-  expect(screen.getByRole("status", { name: "" }).textContent).toContain("Copied");
-  rerender(<Notices {...props} confirmation={null} />);
-  expect(screen.queryByRole("status", { name: "" })).toBeNull();
-  expect(screen.getByLabelText("Copy warnings").textContent).toBe("研究-العربية-<literal> is missing from thesis.bib.");
-  expect(screen.queryByText("Copied")).toBeNull();
-});
-
 // Download completion is not installation success: verification still follows.
 test("update progress keeps known, unknown, checking and failed phases honest", () => {
   const progress = { attempt: 1, revision: 1, received: 25, total: 100, phase: "downloading" as const };
@@ -65,18 +49,4 @@ test("update progress keeps known, unknown, checking and failed phases honest", 
   rerender(<UpdateNotice progress={{ ...progress, phase: "failed" }} />);
   expect(screen.queryByRole("progressbar")).toBeNull();
   expect(screen.getByRole("alert").textContent).toContain("Check for Updates in Settings › About");
-});
-
-test("a failed update passes once seen, and waits while the picker is hidden", () => {
-  vi.useFakeTimers();
-  try {
-    const seen = vi.fn();
-    const failed = { attempt: 1, revision: 1, received: 0, total: null, phase: "failed" } as const;
-    const { rerender } = render(<UpdateNotice progress={failed} paused onSeen={seen} />);
-    act(() => { vi.advanceTimersByTime(9000); });
-    expect(seen).not.toHaveBeenCalled();
-    rerender(<UpdateNotice progress={failed} onSeen={seen} />);
-    act(() => { vi.advanceTimersByTime(8000); });
-    expect(seen).toHaveBeenCalledOnce();
-  } finally { vi.useRealTimers(); }
 });

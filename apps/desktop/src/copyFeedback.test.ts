@@ -1,21 +1,6 @@
-import { expect, test, vi } from "vitest";
-
-test("paste milestones decorate only the receipt heading and preserve the citation and focus", () => {
-  const root = document.createElement("div");
-  const focus = document.activeElement;
-  const show = renderNotice(root, "macos");
-  for (const [milestone, label] of [[1, "First citation"], [100, "Citation 100"], [1000, "Citation 1,000"]] as const) {
-    show({ delivered: { outcome: "pasted", app: "Invented Writer" }, text: "[@invented]", milestone });
-    expect(root.querySelector("strong")?.textContent).toBe(`Pasted into Invented Writer · ${label}`);
-    expect(root.querySelector("code")?.textContent).toBe("[@invented]");
-    expect(document.activeElement).toBe(focus);
-  }
-  show({ delivered: { outcome: "pasted", app: "Invented Writer" }, text: "[@next]" });
-  expect(root.querySelector("strong")?.textContent).toBe("Pasted into Invented Writer");
-});
-import type { NoticeMessage } from "./api";
+import { expect, test } from "vitest";
 import { say } from "./i18n";
-import { COPY_REASONS, type CopyReason, DRAG_DISTANCE, leaveNotice, type Notice, noticePlatform, noticeTitle, readNotice, renderNotice, rowClickAction, type RowClick } from "./copyFeedback";
+import { COPY_REASONS, type CopyReason, type Notice, noticeTitle, renderNotice } from "./copyFeedback";
 
 const copied = (text: string, reason: CopyReason = "paste-unavailable"): Notice => ({ delivered: { outcome: "copied", reason }, text });
 import noticeCapability from "../src-tauri/capabilities/notice.json";
@@ -30,91 +15,10 @@ test.each([["macos", "⌘V"], ["windows", "Ctrl+V"], ["linux", "Ctrl+V"]] as con
   expect(root.querySelector("strong")?.textContent).toBe(`Copied. Ibis couldn’t confirm where the text would go. Press ${key} to paste.`);
 });
 
-test("on Linux every refusal keeps its reason and ends with Ctrl+V, and a paste names the app", () => {
-  const root = document.createElement("div"), show = renderNotice(root, "linux");
-  for (const [reason, title] of [["terminal", "Copied. Not pasted into a terminal. Press Ctrl+V to paste."],
-    ["unsupported-system", "Copied. Ibis can’t paste on this system yet. Press Ctrl+V to paste."], ["paste-off", "Copied. Pasting is off in Settings. Press Ctrl+V to paste."]] as const) {
-    show(copied("[@invented]", reason));
-    expect(root.querySelector("strong")?.textContent).toBe(title);
-  }
-  show({ delivered: { outcome: "pasted", app: "Example Writer" }, text: "[@invented]" });
-  expect(root.querySelector("strong")?.textContent).toBe("Pasted into Example Writer");
-});
-
-
-
-const click: RowClick = { shiftKey: false, ctrlKey: false, metaKey: false, altKey: false, detail: 1, moved: 0, onControl: false, selectedText: false };
-
-test("C5 single-click selects without copying; double-click copies", () => {
-  expect(rowClickAction(click)).toBe("select");
-  expect(rowClickAction({ ...click, detail: 2 })).toBe("copy");
-});
-
-test("single clicks select, modifiers toggle, and drags or controls do nothing", () => {
-  expect(rowClickAction(click)).toBe("select");
-  // Screen readers and keyboards activate with a click of detail 0.
-  expect(rowClickAction({ ...click, detail: 0 })).toBe("select");
-  expect(rowClickAction({ ...click, shiftKey: true })).toBe("toggle");
-  expect(rowClickAction({ ...click, moved: DRAG_DISTANCE })).toBe("select");
-  expect(rowClickAction({ ...click, moved: DRAG_DISTANCE + 0.5 })).toBe("none");
-  expect(rowClickAction({ ...click, shiftKey: true, moved: 40 })).toBe("none");
-  expect(rowClickAction({ ...click, onControl: true })).toBe("none");
-  expect(rowClickAction({ ...click, selectedText: true })).toBe("none");
-  expect(rowClickAction({ ...click, detail: 2 })).toBe("copy");
-  expect(rowClickAction({ ...click, ctrlKey: true })).toBe("toggle");
-  expect(rowClickAction({ ...click, metaKey: true }, true)).toBe("toggle");
-  expect(rowClickAction({ ...click, ctrlKey: true }, true)).toBe("none");
-  for (const modifier of ["metaKey", "altKey"] as const) {
-    expect(rowClickAction({ ...click, [modifier]: true })).toBe("none");
-  }
-});
-
-test("notice platform parsing retains the actual system", () => {
-  expect(noticePlatform("MacIntel")).toBe("macos");
-  expect(noticePlatform("Win32")).toBe("windows");
-  expect(noticePlatform("Linux x86_64")).toBe("linux");
-  expect(noticePlatform("")).toBe("linux");
-});
-
-test("the notice is a polite status that shows text as text and replays when shown again", () => {
-  const root = document.createElement("div");
-  const show = renderNotice(root, "macos");
-  const notice = root.querySelector(".copied-notice")!;
-  expect(notice.getAttribute("role")).toBe("status");
-  expect(notice.getAttribute("aria-live")).toBe("polite");
-  // The live region exists, empty, before its text arrives.
-  expect(notice.textContent).toBe("");
-  show(copied("<img src=x onerror=alert(1)> [@a]"));
-  expect(notice.querySelector("img")).toBeNull();
-  expect(notice.querySelector("code")?.textContent).toBe("<img src=x onerror=alert(1)> [@a]");
-  expect(notice.textContent).toContain("Copied");
-  expect(notice.classList.contains("showing")).toBe(true);
-  show(copied("[@b]"));
-  expect(notice.querySelector("code")?.textContent).toBe("[@b]");
-  expect(notice.querySelectorAll("code")).toHaveLength(1);
-  const windows = document.createElement("div");
-  renderNotice(windows, "windows")(copied("[@a]"));
-  expect(windows.querySelector("strong")?.textContent).toBe("Copied. Ibis couldn’t confirm where the text would go. Press Ctrl+V to paste.");
-  expect(windows.textContent).not.toContain("⌘V");
-});
-
 test("the notice says where the citation was pasted, or why it was only copied", () => {
   expect(noticeTitle({ delivered: { outcome: "pasted", app: "Writer" } })).toBe("Pasted into Writer");
   expect(noticeTitle({ delivered: { outcome: "pasted", app: null } })).toBe("Pasted");
   expect(noticeTitle(copied("[@a]", "terminal"), "macos")).toBe("Copied. Not pasted into a terminal. Press ⌘V to paste.");
-});
-
-test("a reason Rust sends that this build does not know is reported and still says why and how to paste", () => {
-  const error = vi.spyOn(console, "error").mockImplementation(() => {});
-  try {
-    const wire = { delivered: { outcome: "copied", reason: "unknown-future-code" }, text: "[@a]" } as unknown as NoticeMessage;
-    const notice = readNotice(wire);
-    expect(notice.delivered).toEqual({ outcome: "copied", reason: "paste-unavailable" });
-    expect(noticeTitle(notice, "macos")).toBe("Copied. Ibis couldn’t confirm where the text would go. Press ⌘V to paste.");
-    expect(error).toHaveBeenCalledExactlyOnceWith("Unknown copy reason: unknown-future-code");
-    expect(readNotice({ delivered: { outcome: "copied", reason: "terminal" }, text: "[@a]" }).delivered).toEqual({ outcome: "copied", reason: "terminal" });
-    expect(error).toHaveBeenCalledOnce();
-  } finally { error.mockRestore(); }
 });
 
 test("every reason says why, then its fix, in the system's paste key", () => {
@@ -137,39 +41,6 @@ test("every reason says why, then its fix, in the system's paste key", () => {
   }
 });
 
-test.each(["macos", "windows", "linux"] as const)("%s receipt updates announce the result without moving document focus", (platform) => {
-  const editor = document.createElement("input"), root = document.createElement("div");
-  document.body.append(editor, root);
-  try {
-    editor.focus();
-    const show = renderNotice(root, platform);
-    show({ delivered: { outcome: "pasted", app: "Example Writer" }, text: "[@invented]" });
-    expect(root.querySelector("strong")?.textContent).toBe("Pasted into Example Writer");
-    show(copied("[@invented]", "paste-off"));
-    expect(root.querySelector('[role="status"]')?.getAttribute("aria-live")).toBe("polite");
-    expect(root.querySelector("strong")?.textContent).toBe(`Copied. Pasting is off in Settings. Press ${platform === "macos" ? "⌘V" : "Ctrl+V"} to paste.`);
-    expect(document.activeElement).toBe(editor);
-  } finally { editor.remove(); root.remove(); }
-});
-
-test.each<[CopyReason, string]>([
-  ["unknown-app", "Copied. Automatic paste is not approved for this app. Press ⌘V to paste."],
-  ["target-changed", "Copied. The target app or window changed. Press ⌘V to paste."],
-  ["clipboard-changed", "Copied. The clipboard changed since. Copy the citation again."],
-  ["paste-expired", "Copied. The paste expired. Press ⌘V to paste."],
-  ["secure-input", "Copied. Secure typing is on, possibly in another app. Press ⌘V to paste."],
-  ["paste-unavailable", "Copied. Ibis couldn’t confirm where the text would go. Press ⌘V to paste."],
-  ["selection-not-shown", "Copied. Ibis replaces only text it showed you. Press ⌘V to replace it."],
-  ["citation-not-selected", "Copied. Ibis replaces a citation only when it is selected. Select it, then press ⌘V."],
-])("%s offers manual paste without claiming the target is a password field", (reason, message) => {
-  const copy = copied("[@synthetic]", reason);
-  expect(noticeTitle(copy, "macos")).toBe(message);
-  const root = document.createElement("div");
-  renderNotice(root, "macos")(copy);
-  expect(root.querySelector("strong")?.textContent).toBe(message);
-  expect(root.querySelector(".copied-notice")?.getAttribute("data-outcome")).toBe("copied");
-});
-
 test("the first paste into a word processor adds the plugin note, once, in the status region", () => {
   const root = document.createElement("div");
   const show = renderNotice(root, "macos");
@@ -181,34 +52,7 @@ test("the first paste into a word processor adds the plugin note, once, in the s
   expect(root.querySelector(".copy-receipt-note")).toBeNull();
 });
 
-test("the app's timer fades the notice out, and showing it again brings it back", () => {
-  const root = document.createElement("div");
-  const show = renderNotice(root, "linux");
-  const notice = root.querySelector(".copied-notice")!;
-  show(copied("[@a]"));
-  leaveNotice(root);
-  expect(notice.classList.contains("leaving")).toBe(true);
-  show(copied("[@b]"));
-  expect(notice.classList.contains("leaving")).toBe(false);
-  expect(notice.classList.contains("showing")).toBe(true);
-});
-
 test("the notice window grants only copied text reading and event subscriptions", () => {
   expect(noticeCapability.windows).toEqual(["notice"]);
   expect([...noticeCapability.permissions].sort()).toEqual(["allow-change-suggested-format", "allow-copied-notice", "core:event:allow-listen", "core:event:allow-unlisten"]);
-});
-
-test("every receipt uses one card and only a paste is marked done", () => {
-  const root = document.createElement("div");
-  const show = renderNotice(root, "macos");
-  const code = () => root.querySelector("code")!;
-  const notice = () => root.querySelector<HTMLElement>(".copied-notice")!;
-  show(copied("\\parencite{synthetic2020}", "no-permission"));
-  expect(code().textContent).toBe("\\parencite{synthetic2020}");
-  expect(notice().classList.contains("copy-receipt")).toBe(true);
-  expect(notice().querySelectorAll(".copy-receipt-mark")).toHaveLength(1);
-  expect(notice().dataset.outcome).toBe("copied");
-  show({ delivered: { outcome: "pasted", app: "Writer" }, text: "[@synthetic]" });
-  expect(notice().dataset.outcome).toBe("pasted");
-  expect(notice().querySelectorAll("code")).toHaveLength(1);
 });

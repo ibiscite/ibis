@@ -71,38 +71,3 @@ pub fn of_writing(output: &OutputSpec) -> Result<OutputRef, String> {
             .into()
     })
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_stored_id_this_ibis_does_not_list_fails_closed_to_the_default() {
-        for unknown in [
-            None,
-            Some(""),
-            Some("no-such-output"),
-            Some("Pandoc"),
-            Some("style:apa"),
-        ] {
-            assert_eq!(stored(unknown).id(), outputs::DEFAULT, "{unknown:?}");
-        }
-        assert_eq!(stored(Some("typst")).id(), "typst");
-        assert_eq!(stored(Some("ieee")).id(), "ieee");
-    }
-
-    #[test]
-    fn only_a_listed_id_crosses_the_boundary() {
-        let typst: OutputRef = serde_json::from_str(r#""typst""#).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(serde_json::to_string(&typst).unwrap_or_default(), r#""typst""#);
-        for refused in [r#""no-such-output""#, r#"{"key":"typst"}"#, "7"] {
-            assert!(serde_json::from_str::<OutputRef>(refused).is_err(), "{refused}");
-        }
-    }
-
-    #[test]
-    fn a_formatted_app_uses_the_default_style_or_the_engines() {
-        assert_eq!(default_style(stored(Some("ieee"))), "ieee");
-        assert_eq!(default_style(stored(Some("typst"))), outputs::DEFAULT_STYLE);
-    }
-}

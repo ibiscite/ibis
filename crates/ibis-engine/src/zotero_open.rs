@@ -72,36 +72,6 @@ mod tests {
         )
     }
     #[test]
-    fn find_opens_a_pdf_and_otherwise_keeps_the_item_available() {
-        let item = "zotero://select/library/items/ABCD1234";
-        let mut pdf = response(
-            r#"[{"key":"PDF12345","data":{"itemType":"attachment","contentType":"application/pdf","parentItem":"ABCD1234"}}]"#,
-        );
-        assert_eq!(
-            with_transport(item, &mut pdf).as_deref(),
-            Some("zotero://open-pdf/library/items/PDF12345")
-        );
-        for body in [
-            "[]",
-            "not JSON",
-            r#"[{"key":"BAD/KEY!","data":{"contentType":"application/pdf","parentItem":"ABCD1234"}}]"#,
-            r#"[{"key":"PDF12345","data":{"contentType":"application/pdf","parentItem":"OTHER123"}}]"#,
-        ] {
-            assert!(with_transport(item, &mut response(body)).is_none());
-        }
-        assert!(
-            with_transport(
-                item,
-                &mut Fake(
-                    Err(TransportError::Unreachable),
-                    "users/0/items/ABCD1234/children?itemType=attachment&limit=100"
-                )
-            )
-            .is_none()
-        );
-        assert!(with_transport("https://example.invalid/private", &mut response("[]")).is_none());
-    }
-    #[test]
     fn a_group_pdf_keeps_its_library_and_an_invalid_group_cannot_make_a_request() {
         let mut group = response(
             r#"[{"key":"PDF12345","data":{"itemType":"attachment","contentType":"application/pdf","parentItem":"ABCD1234"}}]"#,

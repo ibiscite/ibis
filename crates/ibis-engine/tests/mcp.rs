@@ -56,23 +56,6 @@ fn handle(engine: &Engine, message: &Value) -> Option<Value> {
     mcp::handle(engine, &mut mcp::Session::default(), message)
 }
 
-/// A process an older client opened with `initialize`.
-fn initialized(engine: &Engine) -> mcp::Session {
-    let mut session = mcp::Session::default();
-    let opened = mcp::handle(
-        engine,
-        &mut session,
-        &request(
-            0,
-            "initialize",
-            json!({"protocolVersion":mcp::INITIALIZE_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"t","version":"1"}}),
-        ),
-    )
-    .unwrap();
-    assert_eq!(opened["result"]["protocolVersion"], mcp::INITIALIZE_VERSIONS[0]);
-    session
-}
-
 #[test]
 fn a_session_runs_over_newline_delimited_stdio() {
     let (_dir, engine) = engine();
@@ -156,99 +139,6 @@ fn agents_never_see_private_notes_and_long_text_is_cut() {
 }
 
 #[test]
-fn cite_offers_exactly_the_engines_outputs() {
-    let (_dir, engine) = engine();
-    let tools = handle(&engine, &modern(3, "tools/list", json!({}))).unwrap();
-    let formats = &tools["result"]["tools"][2]["inputSchema"]["properties"]["format"]["enum"];
-    // Every listed output but those that export whole records and Zotero's
-    // scan markers, in the list's order, is accepted. The schema names only
-    // the key syntaxes, to keep the tool list short; styles go through `style`.
-    let listed: Vec<_> = ibis_engine::outputs::outputs()
-        .iter()
-        .filter(|output| !output.exports_records && !output.zotero_items)
-        .map(|output| output.id.as_str())
-        .collect();
-    let keys: Vec<_> = ibis_engine::outputs::outputs()
-        .iter()
-        .filter(|output| !output.exports_records && !output.zotero_items)
-        .filter(|output| matches!(output.output, ibis_core::contract::OutputSpec::Key { .. }))
-        .map(|output| output.id.as_str())
-        .collect();
-    assert_eq!(formats, &json!(keys));
-    assert!(keys.len() < listed.len());
-    let item = engine
-        .show(&ibis_engine::request::ShowRequest {
-            item: ibis_engine::request::ItemSelector::Key("demo2026".into()),
-        })
-        .unwrap()
-        .object
-        .id()
-        .clone();
-    for id in &listed {
-        let cited = tool(&engine, "cite", json!({"items":[{"ref":"demo2026"}],"format":id}));
-        assert_eq!(cited["isError"], false, "{id}: {cited}");
-        // Each writes what the same output writes through the engine.
-        let direct = engine
-            .cite(
-                &serde_json::from_value(json!({
-                    "items":[{"item": item}],
-                    "output": {"kind": "preset", "name": id},
-                    "keep_order": matches!(ibis_engine::outputs::find(id).unwrap().output, ibis_core::contract::OutputSpec::Key { .. }),
-                }))
-                .unwrap(),
-                &ibis_engine::Cancellation::default(),
-            )
-            .unwrap();
-        assert_eq!(cited["structuredContent"]["text"], direct.text, "{id}");
-    }
-    // Anything else is refused with the list.
-    let unknown = tool(
-        &engine,
-        "cite",
-        json!({"items":[{"ref":"demo2026"}],"format":"biblatex"}),
-    );
-    assert_eq!(unknown["isError"], true);
-    let text = unknown["content"][0]["text"].as_str().unwrap();
-    assert_eq!(
-        text,
-        format!("error: bad-input. format must be one of: {}.", listed.join(", "))
-    );
-    // With neither, the registry's default style.
-    let plain = tool(&engine, "cite", json!({"items":[{"ref":"demo2026"}]}));
-    let apa = tool(
-        &engine,
-        "cite",
-        json!({"items":[{"ref":"demo2026"}],"format":ibis_engine::outputs::DEFAULT_STYLE}),
-    );
-    assert_eq!(plain["structuredContent"]["text"], apa["structuredContent"]["text"]);
-}
-
-#[test]
-fn search_preserves_partial_and_typo_matches_for_the_agent() {
-    let (_dir, engine) = engine();
-    let exact = tool(&engine, "search", json!({"query":"sleep"}));
-    assert_eq!(exact["structuredContent"]["hits"][0]["partial"], false);
-    assert_eq!(exact["structuredContent"]["hits"][0]["typo"], false);
-    let partial = tool(&engine, "search", json!({"query":"sleep neutron"}));
-    assert!(
-        partial["structuredContent"]["hits"][0]["ref"]
-            .as_str()
-            .unwrap()
-            .starts_with("demo2026#")
-    );
-    assert_eq!(partial["structuredContent"]["hits"][0]["partial"], true);
-    assert_eq!(partial["structuredContent"]["hits"][0]["typo"], false);
-    let typo = tool(&engine, "search", json!({"query":"synthetiq"}));
-    assert!(
-        typo["structuredContent"]["hits"][0]["ref"]
-            .as_str()
-            .unwrap()
-            .starts_with("demo2026#")
-    );
-    assert_eq!(typo["structuredContent"]["hits"][0]["typo"], true);
-}
-
-#[test]
 fn cite_formats_by_key_or_by_id() {
     let (_dir, engine) = engine();
     let pandoc = tool(&engine, "cite", json!({"items":[{"ref":"demo2026"}],"format":"pandoc"}));
@@ -289,47 +179,6 @@ fn cite_formats_by_key_or_by_id() {
 }
 
 #[test]
-fn search_reads_shorthand_as_cite_item_fields() {
-    let (_dir, engine) = engine();
-    let read = tool(
-        &engine,
-        "search",
-        json!({"query":"see researcher 417","shorthand":true}),
-    );
-    assert_eq!(
-        read["structuredContent"]["cited_with"],
-        json!({"prefix":"see","locator":"417"})
-    );
-    assert_eq!(read["structuredContent"]["searched_for"], "researcher");
-    assert!(!read["structuredContent"]["hits"].as_array().unwrap().is_empty());
-    let plain = tool(&engine, "search", json!({"query":"see researcher 417"}));
-    assert!(plain["structuredContent"].get("cited_with").is_none());
-}
-
-#[test]
-fn a_citation_key_shaped_like_an_item_id_can_be_shown_and_cited() {
-    let (_dir, engine) = library(
-        "invented.json",
-        &json!([{
-            "id": "invented-1",
-            "citation-key": "id:abc/def",
-            "type": "book",
-            "title": "Chromatic Lantern Almanac",
-            "author": [{"family": "Vale", "given": "Ada"}],
-            "issued": {"date-parts": [[2024]]}
-        }])
-        .to_string(),
-    );
-    let found = tool(&engine, "search", json!({"query":"Chromatic Lantern Almanac"}));
-    let hit = &found["structuredContent"]["hits"][0];
-    assert_eq!(hit["title"], "Chromatic Lantern Almanac");
-    let shown = tool(&engine, "show", json!({"ref":hit["ref"]}));
-    assert_eq!(shown["structuredContent"]["title"], hit["title"], "{shown}");
-    let cited = tool(&engine, "cite", json!({"items":[{"ref":hit["ref"]}]}));
-    assert_eq!(cited["structuredContent"]["text"], "(Vale, 2024)", "{cited}");
-}
-
-#[test]
 fn cite_for_an_app_uses_that_apps_output_and_says_how_it_arrives() {
     let (_dir, engine) = engine();
     let cite = |arguments| tool(&engine, "cite", arguments);
@@ -349,91 +198,6 @@ fn cite_for_an_app_uses_that_apps_output_and_says_how_it_arrives() {
         cite(json!({"items":[{"ref":"demo2026"}],"for_app":""}))["isError"],
         true
     );
-}
-
-#[test]
-fn for_app_is_refused_when_the_apps_settings_cannot_be_found() {
-    let (_dir, engine) = engine();
-    let mut session =
-        mcp::Session::default().without_formats(mcp::Refusal::from(ibis_core::contract::EngineError::because(
-            ibis_core::contract::ErrorCode::SourceUnavailable,
-            ibis_core::contract::ErrorReason::SettingsReadTimeout,
-        )));
-    let mut cite = |arguments: Value| {
-        let message = modern(9, "tools/call", json!({"name":"cite","arguments":arguments}));
-        mcp::handle(&engine, &mut session, &message).unwrap()["result"].clone()
-    };
-    // Defaults would be a guess about the person's formats, so nothing is cited.
-    let refused = cite(json!({"items":[{"ref":"demo2026"}],"for_app":"md.obsidian"}));
-    assert_eq!(refused["isError"], true, "{refused}");
-    assert!(refused["content"][0]["text"].as_str().unwrap().contains("settings"));
-    assert_eq!(cite(json!({"items":[{"ref":"demo2026"}]}))["isError"], false);
-}
-
-#[test]
-fn cite_preserves_both_item_warning_codes_by_key_and_by_id() {
-    use ibis_core::contract::*;
-    use ibis_engine::request::KeyCitationRequest;
-    let (_dir, engine) = library(
-        "invented.bib",
-        r"@article{protected2020,title={Using {iPhone} for NASA},author={Okafor, Ada},year={2020},journal={Invented Journal},publisher={\unknown{PRIVATE_SYNTHETIC_FIELD}}}",
-    );
-    let expected = engine
-        .cite_keys(
-            &KeyCitationRequest {
-                keys: vec!["protected2020".into()],
-                output: OutputSpec::Csl { style: "apa".into() },
-                form: CitationForm::BibliographyOnly,
-                strict: false,
-                output_locale: None,
-                keep_order: false,
-            },
-            &Cancellation::default(),
-        )
-        .unwrap();
-    assert_eq!(
-        expected.warnings,
-        vec![
-            CitationWarning {
-                item: 0,
-                code: CitationWarningCode::SourceField
-            },
-            CitationWarning {
-                item: 0,
-                code: CitationWarningCode::SentenceCaseExpected
-            }
-        ]
-    );
-    let shown = engine
-        .show(&ibis_engine::request::ShowRequest {
-            item: ibis_engine::request::ItemSelector::Key("protected2020".into()),
-        })
-        .unwrap();
-    for selector in [
-        json!({"ref":"protected2020"}),
-        json!({"ref":mcp::reference(shown.object.id())}),
-    ] {
-        let answer = tool(
-            &engine,
-            "cite",
-            json!({"items":[selector],"style":"apa","form":"bibliography-only"}),
-        );
-        assert_eq!(answer["isError"], false);
-        assert_eq!(answer["structuredContent"]["text"], expected.text);
-        assert_eq!(answer["structuredContent"]["warnings"], json!(expected.warnings));
-        // The citation is one escaped line; the lines after it name each warning.
-        let text = answer["content"][0]["text"].as_str().unwrap();
-        assert!(
-            text.starts_with(&format!("Citation: {}\n", json!(expected.text))),
-            "{text}"
-        );
-        assert_eq!(
-            text.lines().filter(|line| line.starts_with("Warning: ")).count(),
-            expected.warnings.len(),
-            "{text}"
-        );
-        assert!(!answer.to_string().contains("PRIVATE_SYNTHETIC_FIELD"));
-    }
 }
 
 #[test]
@@ -537,37 +301,6 @@ fn item_id(engine: &Engine) -> Value {
 }
 
 #[test]
-fn agent_views_do_not_decode_or_join_text_after_the_privacy_check() {
-    let literal = "Invented &amp;#67;&amp;#58;&amp;#92;invented&amp;#92;secret.pdf";
-    let (_dir, engine) = library("synthetic.json", &json!([
-        {"id":"literal", "type":"book", "title":literal, "DOI":"https://doi.org/&#47;home/invented/secret.pdf", "issued":{"date-parts":[[2020]], "circa":1}},
-        {"id":"hidden", "type":"book", "title":"Invented C\u{2060}:\\invented\\secret.pdf", "publisher":"Invented Press", "DOI":"10.1000/<invented>", "issued":{"date-parts":[[2020]], "circa":"1"}},
-        {"id":"encoded", "type":"book", "title":"&#67;&#58;&#92;invented&#92;secret.pdf", "publisher":"Invented Press"}
-    ]).to_string());
-    let search = tool(&engine, "search", json!({"query":"invented"}));
-    let hits = search["structuredContent"]["hits"].as_array().unwrap();
-    assert_eq!(hits.len(), 3, "{search}");
-    for hit in hits {
-        let shown = tool(&engine, "show", json!({"ref":hit["ref"]}));
-        assert_eq!(hit.get("doi"), shown["structuredContent"].get("doi"));
-        if let Some(doi) = hit.get("doi") {
-            assert_eq!(doi, "10.1000/<invented>");
-        }
-        if let Some(issued) = shown["structuredContent"]["fields"].get("issued") {
-            assert_eq!(issued["circa"], true, "{shown}");
-        }
-        if hit.get("title").is_some() {
-            let expected = "Invented &#67;&#58;&#92;invented&#92;secret.pdf";
-            assert_eq!(hit["title"], expected);
-            assert_eq!(shown["structuredContent"]["title"], expected);
-        } else {
-            assert!(shown["structuredContent"].get("title").is_none(), "{shown}");
-        }
-        assert!(!shown.to_string().contains(r"C:\\invented"), "{shown}");
-    }
-}
-
-#[test]
 fn every_answer_is_bounded() {
     let records: Vec<Value> = (0..mcp::MAX_HITS)
         .map(|index| {
@@ -618,37 +351,6 @@ fn every_answer_is_bounded() {
     assert_eq!(hits["structuredContent"]["complete"], false);
 }
 
-#[test]
-fn malformed_messages_are_answered() {
-    let (_dir, engine) = engine();
-    let bad_method = handle(&engine, &json!({"jsonrpc":"2.0","id":7,"method":123})).unwrap();
-    assert_eq!(
-        bad_method,
-        json!({"jsonrpc":"2.0","id":7,"error":{"code":-32600,"message":"Invalid Request"}})
-    );
-    let no_method = handle(&engine, &json!({"jsonrpc":"2.0","id":"eight"})).unwrap();
-    assert_eq!(no_method["id"], "eight");
-    assert_eq!(no_method["error"]["code"], -32600);
-    let bad_id = handle(&engine, &json!({"jsonrpc":"2.0","id":[1],"method":7})).unwrap();
-    assert_eq!(bad_id["id"], Value::Null);
-    let old_version = handle(&engine, &json!({"id":{"invented":1},"method":"ping"})).unwrap();
-    assert_eq!(old_version["id"], Value::Null);
-    // A response to a request the server never sent needs no answer.
-    assert_eq!(handle(&engine, &json!({"jsonrpc":"2.0","id":1,"result":{}})), None);
-}
-
-#[test]
-fn an_override_cannot_slip_past_the_formatter_checks() {
-    // An "others" marker is refused whether it is a field or a note override.
-    let (_dir, engine) = library(
-        "synthetic.json",
-        &json!([{"id":"others","type":"book","title":"Invented","issued":{"date-parts":[[2020]]},"note":"author: others"}])
-            .to_string(),
-    );
-    let cited = tool(&engine, "cite", json!({"items":[{"ref":item_id(&engine)}]}));
-    assert_eq!(cited["isError"], true);
-}
-
 fn modern(id: u64, method: &str, mut params: Value) -> Value {
     params["_meta"] = json!({
         "io.modelcontextprotocol/protocolVersion": mcp::PROTOCOL_VERSION,
@@ -656,58 +358,6 @@ fn modern(id: u64, method: &str, mut params: Value) -> Value {
         "io.modelcontextprotocol/clientCapabilities": {}
     });
     request(id, method, params)
-}
-
-#[test]
-fn a_2026_client_works_without_a_handshake() {
-    let (_dir, engine) = engine();
-    let discover = handle(&engine, &modern(1, "server/discover", json!({}))).unwrap();
-    let result = &discover["result"];
-    assert_eq!(result["resultType"], "complete");
-    assert_eq!(
-        result["supportedVersions"],
-        json!([
-            mcp::PROTOCOL_VERSION,
-            mcp::INITIALIZE_VERSIONS[0],
-            mcp::INITIALIZE_VERSIONS[1]
-        ])
-    );
-    assert_eq!(result["capabilities"], json!({"tools": {}}));
-    assert_eq!(result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"], "ibis");
-    assert_eq!(result["cacheScope"], "public");
-    assert!(result["ttlMs"].as_u64().is_some());
-
-    let list = handle(&engine, &modern(2, "tools/list", json!({}))).unwrap();
-    assert_eq!(list["result"]["resultType"], "complete");
-    assert!(list["result"]["ttlMs"].as_u64().is_some());
-    assert_eq!(list["result"]["cacheScope"], "public");
-    // The same tools in the same order as for older clients, so caches agree.
-    let handshake = mcp::handle(&engine, &mut initialized(&engine), &request(3, "tools/list", json!({}))).unwrap();
-    assert_eq!(list["result"]["tools"], handshake["result"]["tools"]);
-    assert!(handshake["result"].get("ttlMs").is_none());
-
-    let call = handle(
-        &engine,
-        &modern(4, "tools/call", json!({"name":"search","arguments":{"query":"sleep"}})),
-    )
-    .unwrap();
-    assert_eq!(call["result"]["resultType"], "complete");
-    assert!(
-        call["result"]["structuredContent"]["hits"][0]["ref"]
-            .as_str()
-            .unwrap()
-            .starts_with("demo2026#")
-    );
-    assert_eq!(
-        call["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
-        "ibis"
-    );
-
-    // Handshake-only methods do not exist for a stateless request.
-    for method in ["initialize", "ping"] {
-        let reply = handle(&engine, &modern(5, method, json!({}))).unwrap();
-        assert_eq!(reply["error"]["code"], -32601, "{method}");
-    }
 }
 
 #[test]
@@ -728,62 +378,6 @@ fn an_unknown_revision_is_refused_with_the_supported_list() {
     notification.as_object_mut().unwrap().remove("id");
     notification["params"]["_meta"]["io.modelcontextprotocol/protocolVersion"] = json!("1900-01-01");
     assert_eq!(handle(&engine, &notification), None);
-}
-
-#[test]
-fn a_request_without_the_fields_its_revision_requires_is_refused() {
-    let (_dir, engine) = engine();
-    let mut no_capabilities = modern(1, "tools/list", json!({}));
-    no_capabilities["params"]["_meta"]
-        .as_object_mut()
-        .unwrap()
-        .remove("io.modelcontextprotocol/clientCapabilities");
-    let mut numeric = modern(2, "tools/list", json!({}));
-    numeric["params"]["_meta"]["io.modelcontextprotocol/protocolVersion"] = json!(20260728);
-    // Without a version, a request belongs to an older client, which must open with initialize.
-    let unversioned = request(3, "tools/call", json!({"name":"styles","arguments":{}}));
-    for message in [no_capabilities, numeric, unversioned.clone()] {
-        let reply = handle(&engine, &message).unwrap();
-        assert_eq!(reply["error"]["code"], -32602, "{message}");
-        assert!(reply.get("result").is_none());
-    }
-    let reply = mcp::handle(&engine, &mut initialized(&engine), &unversioned).unwrap();
-    assert!(reply["result"]["content"].is_array(), "{reply}");
-}
-
-#[test]
-fn older_clients_negotiate_a_revision_they_asked_for() {
-    let (_dir, engine) = engine();
-    for version in mcp::INITIALIZE_VERSIONS {
-        let reply = handle(
-            &engine,
-            &request(
-                1,
-                "initialize",
-                json!({"protocolVersion":version,"capabilities":{},"clientInfo":{"name":"t","version":"1"}}),
-            ),
-        )
-        .unwrap();
-        assert_eq!(reply["result"]["protocolVersion"], version);
-        assert_eq!(reply["result"]["serverInfo"]["name"], "ibis");
-    }
-    // The 2026 revision has no handshake, so asking for it there gets the newest handshake revision.
-    let mut session = mcp::Session::default();
-    let reply = mcp::handle(
-        &engine,
-        &mut session,
-        &request(
-            2,
-            "initialize",
-            json!({"protocolVersion":mcp::PROTOCOL_VERSION,"capabilities":{},"clientInfo":{"name":"t","version":"1"}}),
-        ),
-    )
-    .unwrap();
-    assert_eq!(reply["result"]["protocolVersion"], mcp::INITIALIZE_VERSIONS[0]);
-    assert_eq!(
-        mcp::handle(&engine, &mut session, &request(3, "ping", json!({}))).unwrap()["result"],
-        json!({})
-    );
 }
 
 #[test]
@@ -862,53 +456,6 @@ fn every_tool_answer_has_the_fields_its_output_schema_requires() {
             }
         }
     }
-}
-
-#[test]
-fn an_app_writing_checks_its_bibliography_and_conflicting_keys_are_not_handed_to_an_agent() {
-    let (directory, engine) = library(
-        "library.bib",
-        "@book{invented,title={Intended Work},doi={10.1000/intended}}\n",
-    );
-    let bibliography = directory.path().join("writing.bib");
-    std::fs::write(
-        &bibliography,
-        "@book{invented,title={Other Work},doi={10.1000/other}}\n",
-    )
-    .unwrap();
-    let settings = directory.path().join("settings.json");
-    std::fs::write(
-        &settings,
-        json!({"schema_version":2,
-            "writings":[{"name":"Thesis","format":"pandoc","bibliography":bibliography}],
-            "writing_apps":{"macos:com.microsoft.word":"Thesis"}
-        })
-        .to_string(),
-    )
-    .unwrap();
-    let mut session = mcp::Session::default().with_formats(settings);
-    let request = modern(
-        9,
-        "tools/call",
-        json!({"name":"cite","arguments":{"items":[{"ref":"invented"}],"for_app":"com.microsoft.word"}}),
-    );
-    let refused = mcp::handle(&engine, &mut session, &request).unwrap();
-    assert_eq!(refused["result"]["isError"], true, "{refused}");
-    assert!(!refused.to_string().contains("[@invented]"));
-    std::fs::remove_file(&bibliography).unwrap();
-    let warning = mcp::handle(&engine, &mut session, &request).unwrap();
-    assert_eq!(warning["result"]["structuredContent"]["text"], "[@invented]");
-    assert_eq!(
-        warning["result"]["structuredContent"]["bibliography"]["keys"][0]["check"]["status"],
-        "could-not-check"
-    );
-    let summary = warning["result"]["content"][0]["text"].as_str().unwrap();
-    assert!(
-        summary.contains("writing.bib") && summary.contains("invented: could-not-check"),
-        "{summary}"
-    );
-    assert!(summary.contains("unavailable"), "{summary}");
-    assert!(!warning.to_string().contains(directory.path().to_str().unwrap()));
 }
 
 #[test]

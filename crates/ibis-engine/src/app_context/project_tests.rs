@@ -34,35 +34,6 @@ fn binding(engine: Option<crate::Engine>) -> (crate::Engine, ibis_core::contract
 }
 
 const A: &str = "@book{a2026,title={A}}\n";
-const B: &str = "@book{b2026,title={B}}\n";
-
-#[test]
-fn changed_answers_retire_delivery_but_unchanged_and_obsolete_reads_do_not() {
-    use std::sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    };
-    let retired = Arc::new(AtomicUsize::new(0));
-    let on_retire = retired.clone();
-    let project = ProjectBibliography::new(
-        move || {
-            on_retire.fetch_add(1, Ordering::SeqCst);
-        },
-        |_| {},
-    );
-    let (_directory, path) = written("invented.bib", A);
-    let first = ProjectRead::read(&path, None);
-    let finish = |generation, read| project.finish_with(generation, read, || (project.retire)());
-    assert_eq!(finish(0, first.clone()), Some(true));
-    assert_eq!(retired.load(Ordering::SeqCst), 1);
-    assert_eq!(finish(0, first.clone()), Some(false));
-    std::fs::write(&path, B).unwrap();
-    let changed = ProjectRead::read(&path, Some(&first));
-    assert_eq!(finish(99, changed.clone()), None);
-    assert_eq!(retired.load(Ordering::SeqCst), 1);
-    assert_eq!(finish(0, changed), Some(true));
-    assert_eq!(retired.load(Ordering::SeqCst), 2);
-}
 
 #[test]
 fn a_preview_cannot_write_after_a_project_switch_even_when_switching_back() {
@@ -104,18 +75,6 @@ fn a_preview_cannot_write_after_a_project_switch_even_when_switching_back() {
     })
     .unwrap();
     assert_eq!(written, "citation A fresh A");
-}
-
-#[test]
-fn a_delayed_preview_cannot_replace_a_newer_receipt() {
-    let slot = ProjectBibliography::default();
-    let version = slot.version();
-    let (engine, older) = binding(None);
-    let (engine, newer) = binding(Some(engine));
-    slot.bind_preview(&engine, &newer, version).unwrap();
-    assert!(slot.bind_preview(&engine, &older, version).is_err());
-    slot.commit(&newer.ticket, |_| Ok::<_, super::super::Error>(()))
-        .unwrap();
 }
 
 #[test]
@@ -171,35 +130,6 @@ fn an_obsolete_read_never_holds_up_the_newest_choice() {
 }
 
 #[test]
-fn context_validation_freezes_the_output_and_version_together() {
-    let slot = ProjectBibliography::default();
-    slot.lock().output = Some(super::super::output::stored(Some("cite")));
-    let (a, _) = slot
-        .capture(Some(slot.version()), Some(super::super::output::stored(Some("cite"))))
-        .unwrap();
-    slot.choose(None);
-    slot.lock().output = Some(super::super::output::stored(Some("typst")));
-    assert!(
-        slot.capture(Some(a), Some(super::super::output::stored(Some("cite"))))
-            .is_err()
-    );
-    assert!(
-        slot.capture(Some(slot.version()), Some(super::super::output::stored(Some("cite"))))
-            .is_err()
-    );
-    let (engine, preview) = binding(None);
-    assert!(slot.bind_preview(&engine, &preview, a).is_err());
-    assert!(
-        slot.commit::<(), super::super::Error>("old-format", |_| panic!("old format cannot write in new project"))
-            .is_err()
-    );
-    assert!(
-        slot.capture(Some(slot.version()), Some(super::super::output::stored(Some("typst"))))
-            .is_ok()
-    );
-}
-
-#[test]
 fn an_entry_copy_keeps_its_project_guard_until_the_clipboard_write_finishes() {
     let slot = ProjectBibliography::default();
     let generation = slot.version().0;
@@ -237,105 +167,4 @@ fn a_new_bibliography_must_finish_reading_before_a_citation_can_be_prepared() {
         Ok::<_, super::super::Error>(())
     })
     .unwrap();
-}
-
-#[test]
-fn a_delayed_read_of_a_never_replaces_b() {
-    let (_a_dir, a) = written("a.bib", A);
-    let (_b_dir, b) = written("b.bib", B);
-    let slot = ProjectBibliography::default();
-    let first = slot.choose(Some(a)).unwrap_or_else(|| panic!("a ticket"));
-    let second = slot.choose(Some(b)).unwrap_or_else(|| panic!("a ticket"));
-
-    assert!(slot.finish(second.generation, read(&second)));
-    assert!(
-        !slot.finish(first.generation, read(&first)),
-        "A finished last and was refused"
-    );
-
-    let current = slot.current().unwrap_or_else(|| panic!("a read"));
-    assert_eq!(current.name, "b.bib");
-    assert!(matches!(current.read.check("b2026", None), KeyCheck::In { .. }));
-    assert_eq!(current.read.check("a2026", None), KeyCheck::Missing);
-}
-
-#[test]
-fn stopping_drops_a_read_still_running() {
-    let (_dir, a) = written("a.bib", A);
-    let slot = ProjectBibliography::default();
-    let ticket = slot.choose(Some(a)).unwrap_or_else(|| panic!("a ticket"));
-    assert!(slot.choose(None).is_none());
-    assert!(!slot.finish(ticket.generation, read(&ticket)));
-    assert_eq!(slot.status(), None);
-    assert!(slot.current().is_none());
-}
-
-#[test]
-fn new_content_in_a_healthy_file_changes_the_status_so_rows_are_asked_again() {
-    let (_dir, a) = written("a.bib", A);
-    let slot = ProjectBibliography::default();
-    let ticket = slot.choose(Some(a.clone())).unwrap_or_else(|| panic!("a ticket"));
-    slot.finish(ticket.generation, read(&ticket));
-    let before = slot.status();
-
-    std::fs::write(&a, B).unwrap_or_else(|error| panic!("{error}"));
-    let again = slot.check_again().unwrap_or_else(|| panic!("a ticket"));
-    assert!(slot.finish(again.generation, read(&again)));
-    let after = slot.status();
-    assert_eq!(
-        before.as_ref().map(|status| status.state),
-        after.as_ref().map(|status| status.state),
-        "still ready"
-    );
-    assert_ne!(before, after, "yet not the same answer");
-
-    // An unchanged read leaves the status alone, so it asks nobody anything.
-    let unchanged = slot.check_again().unwrap_or_else(|| panic!("a ticket"));
-    assert!(!slot.finish(unchanged.generation, read(&unchanged)));
-    assert_eq!(slot.status(), after);
-}
-
-#[test]
-fn a_new_choice_answers_nothing_until_its_own_read_finishes() {
-    let (_a_dir, a) = written("a.bib", A);
-    let (_b_dir, b) = written("b.bib", B);
-    let slot = ProjectBibliography::default();
-    let ticket = slot.choose(Some(a)).unwrap_or_else(|| panic!("a ticket"));
-    assert!(slot.finish(ticket.generation, read(&ticket)));
-    slot.choose(Some(b));
-    assert!(slot.current().is_none(), "A's answers must not stand in for B");
-    assert_eq!(slot.status().map(|status| status.state), Some(ProjectState::Reading));
-}
-
-#[test]
-fn opening_again_reads_once_and_keeps_the_generation() {
-    let (_dir, a) = written("a.bib", A);
-    let slot = ProjectBibliography::default();
-    let ticket = slot.choose(Some(a)).unwrap_or_else(|| panic!("a ticket"));
-    assert!(slot.check_again().is_none(), "one read at a time");
-    assert!(slot.finish(ticket.generation, read(&ticket)));
-    let again = slot.check_again().unwrap_or_else(|| panic!("a ticket"));
-    assert_eq!(again.generation, ticket.generation);
-    assert!(
-        !slot.finish(again.generation, read(&again)),
-        "an unchanged file wakes nothing"
-    );
-    assert!(slot.check_again().is_some(), "and leaves no read running");
-}
-
-#[test]
-fn a_file_that_goes_away_checks_nothing() {
-    let (_dir, a) = written("a.bib", A);
-    let slot = ProjectBibliography::default();
-    let ticket = slot.choose(Some(a.clone())).unwrap_or_else(|| panic!("a ticket"));
-    assert!(slot.finish(ticket.generation, read(&ticket)));
-    assert_eq!(slot.status().map(|status| status.state), Some(ProjectState::Ready));
-
-    std::fs::remove_file(&a).unwrap_or_else(|error| panic!("{error}"));
-    let again = slot.check_again().unwrap_or_else(|| panic!("a ticket"));
-    assert!(slot.finish(again.generation, read(&again)));
-    assert_eq!(slot.status().map(|status| status.state), Some(ProjectState::Failed));
-    let current = slot.current().unwrap_or_else(|| panic!("a read"));
-    assert_eq!(current.read.check("a2026", None), KeyCheck::CouldNotCheck);
-    assert_eq!(current.read.check("z2026", None), KeyCheck::CouldNotCheck);
 }

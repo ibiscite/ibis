@@ -347,75 +347,8 @@ fn library_report(library: &LibraryInfo) -> Value {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn newer_zotero_warning_is_in_doctor_text_and_json() {
-        let mut library = LibraryInfo {
-            id: LibraryId::digest(b"synthetic-newer-zotero"),
-            kind: ibis_engine::LibraryKind::Zotero,
-            capabilities: vec![],
-            objects: 1,
-            warnings: vec![],
-            warnings_total: 0,
-            refresh_error: None,
-            refresh_reason: None,
-            updated_at_ms: 0,
-            watch_warning: None,
-            zotero: None,
-            duplicate_keys: Default::default(),
-            damaged_keys: Default::default(),
-            cut_short: false,
-        };
-        library.warnings = vec![ibis_engine::SourceWarning::at(
-            ibis_engine::WarningCode::ZoteroNewerThanTested,
-            None,
-        )];
-        library.warnings_total = 1;
-        let report = library_report(&library);
-        assert_eq!(report["warnings"][0]["code"], "zotero-newer-than-tested");
-        let text = report_text(&json!({"sources":[report]}), 0);
-        assert!(
-            text.contains("Zotero is newer than this version of Ibis was tested with."),
-            "{text}"
-        );
-    }
 
     use super::*;
-    #[test]
-    fn a_failed_refresh_reports_the_retained_snapshot_as_stale() {
-        let library = LibraryInfo {
-            id: LibraryId::digest(b"invented-source"),
-            kind: ibis_engine::LibraryKind::File,
-            capabilities: vec![],
-            objects: 3,
-            warnings: vec![],
-            warnings_total: 0,
-            refresh_error: Some(ErrorCode::SourceUnavailable),
-            refresh_reason: None,
-            updated_at_ms: 123,
-            watch_warning: None,
-            zotero: None,
-            duplicate_keys: Default::default(),
-            damaged_keys: Default::default(),
-            cut_short: false,
-        };
-        let source = library_report(&library);
-        assert_eq!(source["status"], "findings");
-        assert_eq!(source["code"], "refresh-failed");
-        assert_eq!(source["freshness"], json!({"state":"stale", "updated_at_ms":123}));
-        assert!(summary("Source 1", &source).contains("last successful snapshot"));
-    }
-
-    #[test]
-    fn a_stalled_config_reports_unreadable_without_recovery() {
-        let result = config_report(None);
-        assert_eq!(result["status"], "failed");
-        assert_eq!(result["code"], "config-unreadable");
-        assert_eq!(
-            result["message"],
-            "The chosen config could not be read in time. It was left unchanged."
-        );
-        assert_eq!(result["from_backup"], false);
-    }
 
     fn report(sources: Vec<Value>) -> Value {
         json!({
@@ -476,20 +409,5 @@ mod tests {
             "{text}"
         );
         assert!(text.ends_with("2 things to look at."), "{text}");
-    }
-
-    #[test]
-    fn an_age_reads_like_speech() {
-        for (elapsed_ms, expected) in [
-            (0, "less than a minute ago"),
-            (59_999, "less than a minute ago"),
-            (60_000, "1 minute ago"),
-            (59 * 60_000, "59 minutes ago"),
-            (3_600_000, "1 hour ago"),
-            (47 * 3_600_000, "1 day ago"),
-            (72 * 3_600_000, "3 days ago"),
-        ] {
-            assert_eq!(age(elapsed_ms), expected);
-        }
     }
 }

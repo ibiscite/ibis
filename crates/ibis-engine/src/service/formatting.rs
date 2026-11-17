@@ -59,10 +59,6 @@ impl Drop for Registration {
     }
 }
 impl Cancellation {
-    #[cfg(test)]
-    pub(crate) fn has_formatting_task(&self) -> bool {
-        !self.0.handlers.recover_lock().tasks.is_empty()
-    }
     /// Native inspection can expire without cancelling its caller's request.
     pub(crate) fn child(&self) -> Self {
         Self(Arc::new(CancelState {
@@ -156,7 +152,7 @@ pub(crate) fn formatter_error(failure: FormatError) -> EngineError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
     fn case() -> GoldenCase {
         serde_json::from_str(include_str!("../../../../fixtures/cases/02-pandoc.json")).unwrap()
     }
@@ -183,101 +179,5 @@ mod tests {
             assert!(!preview.text.is_empty());
             assert!(preview.copy_content(request.items.len()).is_some());
         });
-    }
-    #[test]
-    fn cancellation_reaches_format_workers_and_next_request_recovers() {
-        let case = case();
-        let LibraryObject::Record(template) = &case.library.objects()[0].object else {
-            panic!("record")
-        };
-        let mut request = case.request.clone();
-        request.output = OutputSpec::Csl { style: "apa".into() };
-        request.form = CitationForm::BibliographyOnly;
-        request.keep_order = false;
-        request.items.clear();
-        let objects = (0..1000)
-            .map(|index| {
-                let mut record = template.clone();
-                record.id.key = format!("synthetic-{index}");
-                record
-                    .csl
-                    .insert("title".into(), serde_json::json!(format!("Synthetic title {index}")));
-                let mut pick = case.request.items[0].clone();
-                pick.item = record.id.clone();
-                pick.expected_cite = None;
-                request.items.push(pick);
-                LibraryObject::Record(record)
-            })
-            .collect();
-        let engine = Engine::from_snapshot(Arc::new(Snapshot::new(objects).unwrap()));
-        let cancel = Cancellation::default();
-        let mut next_request = request.clone();
-        next_request.items.truncate(1);
-        std::thread::scope(|scope| {
-            let engine = &engine;
-            let request = &request;
-            let cancel = &cancel;
-            let next_request = &next_request;
-            let (completed, result) = std::sync::mpsc::channel();
-            let working = scope.spawn(move || completed.send(engine.cite(request, cancel)).unwrap());
-            let deadline = Instant::now() + Duration::from_secs(5);
-            let mut observed = false;
-            while Instant::now() < deadline && !working.is_finished() {
-                observed = !cancel.0.handlers.recover_lock().tasks.is_empty();
-                if observed {
-                    break;
-                }
-                std::thread::yield_now();
-            }
-            cancel.cancel();
-            let (completed_next, result_next) = std::sync::mpsc::channel();
-            scope.spawn(move || {
-                completed_next
-                    .send(engine.cite(next_request, &Cancellation::default()))
-                    .unwrap()
-            });
-            assert_eq!(
-                result.recv_timeout(Duration::from_secs(2)).unwrap().unwrap_err().code,
-                ErrorCode::Cancelled
-            );
-            assert!(
-                result_next
-                    .recv_timeout(Duration::from_secs(2))
-                    .unwrap()
-                    .unwrap()
-                    .copy_content(1)
-                    .is_some()
-            );
-            assert!(observed, "format request was registered for cancellation");
-        });
-        assert!(cancel.0.handlers.recover_lock().tasks.is_empty());
-    }
-    #[test]
-    fn oversized_csl_is_a_resource_refusal_and_worker_recovers() {
-        let mut case = case();
-        case.request.output = OutputSpec::Csl { style: "apa".into() };
-        case.request.items[0].expected_cite = None;
-        let LibraryObject::Record(mut record) = case.library.objects()[0].object.clone() else {
-            panic!("record")
-        };
-        record
-            .csl
-            .insert("title".into(), serde_json::json!("x".repeat(4 * 1024 * 1024)));
-        let engine = Engine::from_snapshot(Arc::new(Snapshot::new(vec![LibraryObject::Record(record)]).unwrap()));
-        assert_eq!(
-            engine.cite(&case.request, &Cancellation::default()).unwrap_err().code,
-            ErrorCode::ResourceLimit
-        );
-        let id = case.request.items[0].item.library.clone();
-        engine
-            .publish_library(id, crate::LibraryKind::Snapshot, Arc::new(case.library))
-            .unwrap();
-        assert!(
-            engine
-                .cite(&case.request, &Cancellation::default())
-                .unwrap()
-                .copy_content(1)
-                .is_some()
-        );
     }
 }

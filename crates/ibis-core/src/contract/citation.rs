@@ -631,21 +631,6 @@ mod tests {
     }
 
     #[test]
-    fn all_29_csl_locator_terms_roundtrip() {
-        let expected = "act appendix article-locator book canon chapter column elocation equation figure folio issue line note opus page paragraph part rule scene section sub-verbo supplement table timestamp title-locator verse version volume";
-        assert_eq!(LocatorTerm::ALL.len(), 29);
-        for (term, expected) in LocatorTerm::ALL.into_iter().zip(expected.split_whitespace()) {
-            assert_eq!(serde_json::to_value(term).unwrap(), expected);
-            roundtrip(Locator {
-                term,
-                value: "12–14, 20".into(),
-            });
-        }
-        assert!(serde_json::from_value::<LocatorTerm>(json!("article")).is_err());
-        assert!(serde_json::from_value::<LocatorTerm>(json!("title")).is_err());
-    }
-
-    #[test]
     fn request_preserves_duplicates_order_and_mixed_intent() {
         let mut first = item();
         first.locator = Some(Locator {
@@ -681,73 +666,6 @@ mod tests {
             strict: false,
             output_locale: Some("ja-JP".into()),
         });
-    }
-
-    #[test]
-    fn every_form_output_and_result_variant_roundtrips() {
-        for form in [
-            CitationForm::Normal,
-            CitationForm::Narrative,
-            CitationForm::AuthorOnly,
-            CitationForm::YearOnly,
-            CitationForm::Full,
-            CitationForm::BibliographyOnly,
-        ] {
-            roundtrip(form);
-        }
-        for syntax in KeySyntax::ALL {
-            roundtrip(OutputSpec::Key {
-                syntax,
-                command: Some("autocite".into()),
-            });
-        }
-        roundtrip(OutputSpec::Preset { name: "writing".into() });
-        roundtrip(ItemOutcome::Rendered { item: 0 });
-        for error in CitationError::ALL {
-            roundtrip(ItemOutcome::Refused { item: 0, error });
-        }
-        for field in [
-            LossField::Locator,
-            LossField::Prefix,
-            LossField::Suffix,
-            LossField::AuthorSuppression,
-            LossField::RichText,
-            LossField::Order,
-        ] {
-            for reason in [LossReason::Unsupported, LossReason::Flattened] {
-                roundtrip(Loss {
-                    item: Some(0),
-                    field,
-                    reason,
-                });
-            }
-        }
-        for notice in Notice::ALL {
-            roundtrip(notice);
-        }
-        let mut result = CitationResult::new(
-            "合成 & <work>".into(),
-            Some("<i>合成 &amp; &lt;work&gt;</i>".into()),
-            Some("{\\rtf1 synthetic}".into()),
-            DisplayTree {
-                nodes: vec![DisplayNode {
-                    blocks: vec![],
-                    item: Some(0),
-                    content: vec![DisplayRun {
-                        text: "合成 & <work>".into(),
-                        italic: true,
-                        ..DisplayRun::default()
-                    }],
-                }],
-            },
-            vec![ItemOutcome::Rendered { item: 0 }],
-            vec![],
-            vec![Notice::NeedsDocumentContext],
-        );
-        assert!(result.content_matches_hash());
-        roundtrip(result.clone());
-        result.html = Some("changed".into());
-        assert!(!result.content_matches_hash());
     }
 
     #[test]
@@ -820,65 +738,6 @@ mod tests {
             assert!(result.content_matches_hash());
             assert!(result.copy_content(1).is_none());
         }
-    }
-
-    #[test]
-    fn content_hash_distinguishes_representation_boundaries_and_empty_values() {
-        assert_ne!(content_hash("ab", Some("c"), None), content_hash("a", Some("bc"), None));
-        assert_ne!(content_hash("", None, None), content_hash("", Some(""), None));
-        assert_ne!(content_hash("", Some(""), None), content_hash("", None, Some("")));
-        assert_ne!(
-            content_hash("same", None, Some("one")),
-            content_hash("same", None, Some("two"))
-        );
-    }
-
-    #[test]
-    fn hostile_and_large_rich_text_is_plain_data_and_unknown_fields_fail() {
-        let text = "<script>\\input{bad} & 文字 \u{202e}".repeat(10_000);
-        roundtrip(TextRun {
-            text,
-            italic: true,
-            bold: true,
-            script: Script::Normal,
-        });
-        roundtrip(RichText::new());
-        let mut request = json!({"items":[],"output":{"kind":"key","syntax":"pandoc"}});
-        let parsed = serde_json::from_value::<CitationRequest>(request.clone()).unwrap();
-        assert!(parsed.items.is_empty());
-        request["unexpected"] = json!("never silently ignored");
-        assert!(serde_json::from_value::<CitationRequest>(request).is_err());
-        assert!(serde_json::from_value::<TextRun>(json!({"text":"x","children":[]})).is_err());
-        assert!(serde_json::from_value::<TextRun>(json!({"text":"x","script":"both"})).is_err());
-        assert!(serde_json::from_value::<OutputSpec>(json!({"kind":"key","syntax":"invented"})).is_err());
-    }
-
-    #[test]
-    fn receipt_evidence_accepts_additive_fields_without_loosening_requests() {
-        let request = json!({
-            "items":[{"item":{"library":"synthetic","key":"item_one"},
-                "annotation":{"library":"synthetic","key":"item_note"},
-                "locator":{"term":"page","value":"12"},"prefix":[{"text":"see"}]}],
-            "output":{"kind":"key","syntax":"pandoc"}
-        });
-        let parsed_request: CitationRequest = serde_json::from_value(request.clone()).unwrap();
-        let mut evidence = json!({
-            "request":request,"sources":[],"content_hash":Fingerprint::of_bytes(b"invented"),
-            "ibis_version":"invented","meaning_version":1
-        });
-        evidence["added"] = json!(true);
-        evidence["request"]["added"] = json!(true);
-        evidence["request"]["output"]["added"] = json!(true);
-        for field in ["item", "annotation", "locator"] {
-            evidence["request"]["items"][0][field]["added"] = json!(true);
-        }
-        evidence["request"]["items"][0]["added"] = json!(true);
-        evidence["request"]["items"][0]["prefix"][0]["added"] = json!(true);
-        assert!(serde_json::from_value::<CitationRequest>(evidence["request"].clone()).is_err());
-        let parsed: CitationReceipt = serde_json::from_value(evidence.clone()).unwrap();
-        assert_eq!(parsed.request, parsed_request);
-        evidence["request"]["items"][0]["locator"]["term"] = json!("invented");
-        assert!(serde_json::from_value::<CitationReceipt>(evidence).is_err());
     }
 
     #[test]

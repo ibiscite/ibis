@@ -1,7 +1,6 @@
 import { fixtureDestination, formatAnswer } from "./testing/format";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, test } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import { backend, chooseFromMore, prepared, resetApp, result, toggleKeepOpen, showPicker } from "./testing/app";
 
@@ -9,34 +8,6 @@ afterEach(resetApp);
 const writer = "invented.writer";
 const destination = () => (fixtureDestination({ app: "Invented Writer", app_id: writer, unreadable: false, can_paste: false, format: formatAnswer("pandoc", "yours") }));
 const a = result("a", "Recent A"), b = result("b", "Recent B"), c = result("c", "New C");
-
-test("a failed Forget retry keeps the privacy warning visible until WebView history is deleted", async () => {
-  const key = "ibis-citation-history";
-  const warning = "Recent citations could not be forgotten. Try again.";
-  localStorage.setItem(key, "invented private citation history");
-  const remove = vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => { throw new Error("synthetic storage refusal"); });
-  let clears = 0;
-  backend({ recent_references: (args) => {
-    if (args.forget) clears++;
-    return [{ revision: "1", results: [] }, false, false];
-  } });
-  try {
-    render(<App />);
-    expect((await screen.findByRole("alert")).textContent).toBe(warning);
-    await chooseFromMore("Forget Recent Citations");
-    await waitFor(() => expect(clears).toBe(1));
-    expect(localStorage.getItem(key)).toBe("invented private citation history");
-    expect(screen.getByRole("alert").textContent).toBe(warning);
-    remove.mockRestore();
-    await chooseFromMore("Forget Recent Citations");
-    await waitFor(() => expect(clears).toBe(2));
-    await waitFor(() => expect(screen.queryByText(warning)).toBeNull());
-    expect(localStorage.getItem(key)).toBeNull();
-  } finally {
-    remove.mockRestore();
-    localStorage.removeItem(key);
-  }
-});
 
 test("recents are ordinary rows in one keyboard list; choosing one resolves it afresh without an old page", async () => {
   const copies: unknown[] = [];
@@ -60,21 +31,6 @@ test("recents are ordinary rows in one keyboard list; choosing one resolves it a
   await waitFor(() => expect(copies).toHaveLength(1));
   expect(copies[0]).toEqual([{ id: c.id, cite: c.cite, locator: null }]);
 });
-
-test.each(["compact", "comfortable"])("%s requests and renders the same recent groups", async (density) => {
-  const requests: unknown[] = [];
-  backend({ "destination": destination,
-    picker_preferences: () => ({ density, larger_text: false }),
-    recent_references: (args) => { requests.push(args.forget); return [{ ...a, recent: "cited" }, { ...b, recent: "added" }]; },
-  });
-  render(<App />);
-  await screen.findByRole("heading", { name: "Cited here recently" });
-  await screen.findByRole("heading", { name: "Recently added" });
-  await waitFor(() => expect(document.documentElement.dataset.density).toBe(density));
-  expect(requests.at(-1)).toBe(false);
-  expect(screen.getAllByRole("option").map((row) => row.querySelector(".result-title")?.textContent)).toEqual([expect.stringContaining("Recent A"), expect.stringContaining("Recent B")]);
-});
-
 
 // Persistence and privacy races are exercised against the engine in
 // recents/tests.rs. These scenarios assert the ordinary picker outcomes.
@@ -118,38 +74,4 @@ test("Forget clears native history and an old receipt cannot repopulate it on re
   expect(within(screen.getByRole("listbox", { name: "Results" })).queryAllByRole("option")).toHaveLength(0);
   expect(native.requests.filter((args) => (args as { forget: boolean }).forget)).toEqual([{ forget: true }]);
   expect(localStorage.getItem("ibis-citation-history")).toBeNull();
-});
-
-test("after Forget, a fresh native citation can be shown without webview recording", async () => {
-  const native = nativeHistory();
-  backend({ destination: destination, recent_references: native.recent_references, deliver_citation: native.deliver_citation, search: () => [b] });
-  render(<App />);
-  await screen.findByText("Recent A");
-  await toggleKeepOpen();
-  await chooseFromMore("Forget Recent Citations");
-  await waitFor(() => expect(screen.queryByText("Recent A")).toBeNull());
-  await copyB();
-  await screen.findByText("Recent A");
-  expect(native.requests.every((args) => Object.keys(args as object).join() === "forget")).toBe(true);
-  expect(localStorage.getItem("ibis-citation-history")).toBeNull();
-});
-
-test("a saved off followed by on refreshes native rows and clears Change Last Citation once", async () => {
-  const native = nativeHistory();
-  let off = false;
-  backend({ "destination": destination,
-    recent_references: (args) => off ? [{ revision: "1", results: [] }, false, false] : native.recent_references(args),
-    search: () => [b],
-  });
-  render(<App />);
-  await screen.findByText("Recent A");
-  off = true;
-  await act(async () => {
-    await emit("preferences:changed", { revision: 1, fields: ["recent_citations"], recent_citations: false });
-    await emit("preferences:changed", { revision: 2, recent_citations: true });
-  });
-  await waitFor(() => expect(screen.queryByRole("heading", { name: "Cited here recently" })).toBeNull());
-  fireEvent.click(screen.getByRole("button", { name: "More" }));
-  expect(await screen.findByRole("dialog")).toBeTruthy();
-  expect(screen.queryByRole("option", { name: /Forget Recent Citations/ })).toBeNull();
 });

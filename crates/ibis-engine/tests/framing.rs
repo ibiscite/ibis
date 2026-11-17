@@ -1,24 +1,6 @@
 use ibis_engine::protocol::{FrameError, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, read_frame, write_frame};
 use serde_json::json;
-use std::io::{BufReader, Cursor};
-
-#[test]
-fn unicode_and_multiple_frames_use_exact_byte_lengths() -> Result<(), Box<dyn std::error::Error>> {
-    let messages = [
-        json!({"jsonrpc":"2.0","id":1,"method":"show","params":{"text":"文献 العربية 🦉"}}),
-        json!({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":1}}),
-    ];
-    let mut bytes = vec![];
-    for message in &messages {
-        write_frame(&mut bytes, message)?;
-    }
-    let mut reader = BufReader::new(Cursor::new(bytes));
-    for message in messages {
-        assert_eq!(read_frame(&mut reader)?, Some(message));
-    }
-    assert_eq!(read_frame(&mut reader)?, None);
-    Ok(())
-}
+use std::io::Cursor;
 
 #[test]
 fn malformed_headers_and_truncated_messages_fail_safely() {

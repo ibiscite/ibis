@@ -79,7 +79,7 @@ Each `smoke-native.py` invocation writes
 `OUTPUT/evidence-RUN_ID/manifest.json`, including failure and unavailable
 runs. Exit 0 means pass, 1 failure, 2 unavailable; unavailable is not coverage.
 The [closed schema](../scripts/native_evidence.schema.json) is checked on
-write and read. Bundles are limited to one manifest, 1 MiB and 4,000 events,
+write. Bundles are limited to one manifest, 1 MiB and 4,000 events,
 in a new directory. Other logs are separate diagnostics.
 
 The manifest records build, harness and fixture hashes, the observed

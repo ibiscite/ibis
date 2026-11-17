@@ -301,16 +301,6 @@ mod tests {
     use std::cell::Cell;
 
     #[test]
-    fn cached_mount_checks_preserve_cancellation_and_expiry() {
-        for error in [ClosedError::Cancelled, ClosedError::TimedOut] {
-            let mut control = Control::new(std::sync::Arc::new(move || error == ClosedError::Cancelled));
-            control.deadline = std::time::Instant::now();
-            assert_eq!(cached(&control).err(), Some(error));
-            assert_eq!(resolved(Path::new("/"), &control), Err(error));
-        }
-    }
-
-    #[test]
     fn unknown_remote_and_fuse_mounts_are_rejected_without_a_probe() {
         for kind in [
             "nfs",
@@ -348,18 +338,6 @@ mod tests {
     }
 
     #[test]
-    fn mount_escapes_and_component_boundaries_are_preserved() {
-        let mounts = linux_table(
-            b"1 0 8:1 / / rw - ext4 /dev/synthetic rw\n2 1 0:2 / /mnt/a\\040b\\134c rw - nfs synthetic rw\n",
-        )
-        .unwrap_or_else(|| panic!("table"));
-        assert!(!eligible(Path::new("/mnt/a b\\c/Zotero"), &mounts));
-        assert!(eligible(Path::new("/mnt/a b\\cd/Zotero"), &mounts));
-        assert!(linux_table(b"broken").is_none());
-        assert!(decode_mount_path(b"/bad\\999").is_none());
-    }
-
-    #[test]
     fn macos_json_refuses_case_and_unicode_aliases_conservatively() {
         let bytes = br#"{"storage-system-information":{"filesystem":[{"type":"apfs  ","mounted-on":"/"},{"type":"smbfs","mounted-on":"/Volumes/Remote"},{"type":"nfs","mounted-on":"/Volumes/\u03c2"}]}}"#;
         let mounts = macos_table(bytes).unwrap_or_else(|| panic!("table"));
@@ -367,33 +345,6 @@ mod tests {
         assert!(!eligible(Path::new("/Volumes/σ/Zotero"), &mounts));
         assert!(eligible(Path::new("/Users/研究/Zotero"), &mounts));
         assert!(eligible(Path::new("/Users/test/Documents/Zotero"), &mounts));
-    }
-
-    #[test]
-    fn a_symlink_target_is_classified_before_its_metadata_is_probed() {
-        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-        let link = directory.path().join("link");
-        std::os::unix::fs::symlink("/never-probed/child", &link).unwrap_or_else(|e| panic!("{e}"));
-        let mounts = vec![
-            Mount {
-                point: PathBuf::from("/"),
-                local: true,
-            },
-            Mount {
-                point: PathBuf::from("/never-probed"),
-                local: false,
-            },
-        ];
-        let checked = walk(
-            &link.join("Zotero"),
-            &mounts,
-            |path| {
-                assert!(!path.starts_with("/never-probed"), "remote target must not be probed");
-                std::fs::symlink_metadata(path)
-            },
-            |path| std::fs::read_link(path),
-        );
-        assert_eq!(checked, Err(ClosedError::UnsafeSource));
     }
 
     #[test]

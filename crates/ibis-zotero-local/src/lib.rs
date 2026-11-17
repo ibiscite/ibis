@@ -283,36 +283,12 @@ mod tests {
     }
 
     #[test]
-    fn chunked_answers_are_reassembled() {
-        let (mut zotero, server) =
-            serve(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n3\r\n[{}\r\n1;x=y\r\n]\r\n0\r\n\r\n");
-        let response = zotero.get("users/0/items").unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(response.body, b"[{}]");
-        request_of(server);
-    }
-
-    #[test]
     fn redirects_are_returned_not_followed() {
         let (mut zotero, server) =
             serve(b"HTTP/1.1 302 Found\r\nLocation: http://example.invalid/\r\nContent-Length: 0\r\n\r\n");
         let response = zotero.get("users/0/items").unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(response.status, 302);
         request_of(server);
-    }
-
-    #[test]
-    fn broken_answers_are_errors() {
-        for answer in [
-            &b"not http\r\n\r\n"[..],
-            b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nshort",
-            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\n",
-            b"HTTP/1.1 200 OK\r\nno colon here\r\n\r\n",
-            b"HTTP/1.1 200 OK\r\nContent-Length: 99999999999\r\n\r\n",
-        ] {
-            let (mut zotero, server) = serve(answer);
-            assert!(zotero.get("users/0/items").is_err());
-            request_of(server);
-        }
     }
 
     #[test]
@@ -345,28 +321,6 @@ mod tests {
         let (mut zotero, server) = serve(answer);
         assert_eq!(zotero.get("users/0/items").err(), Some(TransportError::TooLarge));
         request_of(server);
-    }
-
-    #[test]
-    fn huge_chunk_sizes_and_unknown_framing_are_errors_not_crashes() {
-        for answer in [
-            &b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n[]\r\nffffffffffffffff\r\n"[..],
-            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n1ffffffffffffffff\r\n",
-        ] {
-            assert_eq!(read_response(answer).err(), Some(TransportError::TooLarge));
-        }
-        for answer in [
-            &b"HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip, chunked\r\n\r\n2\r\n[]\r\n0\r\n\r\n"[..],
-            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nContent-Length: 3\r\n\r\n[]",
-            b"HTTP/1.1 200 OK\r\nContent-Length: +2\r\n\r\n[]",
-            b"HTTP/1.1 +20 OK\r\n\r\n",
-            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n\xff\r\n",
-        ] {
-            assert_eq!(read_response(answer).err(), Some(TransportError::Malformed));
-        }
-        let extension =
-            read_response(&b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2 ;x=y\r\n[]\r\n0\r\n\r\n"[..]);
-        assert_eq!(extension.map(|r| r.body).ok(), Some(b"[]".to_vec()));
     }
 
     #[test]

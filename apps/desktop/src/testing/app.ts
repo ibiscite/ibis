@@ -4,7 +4,7 @@ export { displayTree } from "../test-fixtures";
 // For clipboard/document outcomes and reordered workers, use ./delivery instead.
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
-import { expect, vi } from "vitest";
+import { vi } from "vitest";
 import { emit, listen } from "@tauri-apps/api/event";
 import type * as api from "../api";
 import type { CitedWarning, ClosestMatch, DeliveryOutcome, DisplayTree, Preview, DraftItem, CitationIntent } from "../bindings";
@@ -73,14 +73,6 @@ export async function toggleKeepOpen() {
   else await chooseFromMore("Keep Window Open");
 }
 
-/** Opens the format chooser, finds a format by typing its name, and picks it. */
-export async function chooseFormatNamed(name: string) {
-  if (!screen.queryByRole("dialog", { name: "Format" })) fireEvent.click(screen.getByRole("button", { name: /^Citation format/ }));
-  const palette = await screen.findByRole("dialog", { name: "Format" });
-  fireEvent.change(within(palette).getByRole("combobox"), { target: { value: name } });
-  fireEvent.click(await waitFor(() => paletteRow(palette, name)));
-}
-
 export function libraryButton(): HTMLButtonElement {
   return document.querySelector<HTMLButtonElement>(".library-status-trigger")!;
 }
@@ -124,17 +116,6 @@ export async function chooseForm(name: string) {
   fireEvent.click(await screen.findByRole("menuitemradio", { name }));
 }
 
-/** The text each form in Show as would paste, read from its menu, which closes again. */
-export async function formExamples(): Promise<string[]> {
-  const details = await waitFor(() => within(citationDetails()!));
-  fireEvent.click(await waitFor(() => details.getByRole("button", { name: /^Show as / })));
-  const rows = await screen.findAllByRole("menuitemradio");
-  const examples = rows.map((row) => row.querySelector(".toolbar-menu-sample")?.textContent ?? "");
-  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
-  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
-  return examples;
-}
-
 /** The details' Text before or Text after field, asked for if it is not shown yet. */
 export function textField(name: "Text before" | "Text after"): HTMLInputElement {
   const details = within(citationDetails()!);
@@ -142,18 +123,8 @@ export function textField(name: "Text before" | "Text after"): HTMLInputElement 
   return details.getByRole<HTMLInputElement>("textbox", { name });
 }
 
-/** Esc from inside the details, as a person closes them. */
-export function closeCitationDetails() {
-  const details = citationDetails();
-  if (details) fireEvent.keyDown(details.contains(document.activeElement) ? document.activeElement! : details, { key: "Escape" });
-}
-
-const fixtureKeys = new Map<string, string>();
-export const fixtureCitationKey = (id: DraftItem["id"]) => fixtureKeys.get(JSON.stringify(id)) ?? "";
-
 export function result(key: string, title: string, source = "refs.bib") {
   const id = { library: source, key: recordId(key) };
-  fixtureKeys.set(JSON.stringify(id), key);
   return {
     revision: "1", id, cite: `synthetic-cite-${key}`, source, key, title, authors: "Smith", year: "2020", matched: ["title" as const],
     first_author: "Smith", author_count: 1, container: null as string | null, item_type: "article-journal", partial: false,

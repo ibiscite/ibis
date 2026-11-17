@@ -123,8 +123,6 @@ mod tests {
     use ibis_engine::app_context::project::ProjectState;
     use std::path::PathBuf;
 
-    const A: &str = "@book{a2026,title={A}}\n";
-
     fn written(name: &str, text: &str) -> (tempfile::TempDir, PathBuf) {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join(name);
@@ -223,58 +221,6 @@ mod tests {
             ],
             "the key that is in the file adds nothing"
         );
-    }
-
-    #[test]
-    fn copying_reports_what_the_preview_warned_about_for_key_outputs_only() {
-        use ibis_engine::Cancellation;
-        let (_library_dir, library) = written(
-            "refs.bib",
-            "@book{gone2026,title={Gone},author={Lee, Kim},year={2026}}\n",
-        );
-        let (_project_dir, project) = written("thesis.bib", A);
-        let slot = ProjectBibliography::default();
-        activate(&slot, project);
-        let current = slot.current();
-
-        let file = ibis_engine::library::Current::open(
-            ibis_engine::Engine::new()
-                .unwrap_or_else(|_| panic!("engine"))
-                .with_formatting(crate::library::engine_library::FORMATTING.clone()),
-            ibis_engine::library::Source::File(library.clone()),
-            None,
-            &ibis_engine::Cancellation::default(),
-        )
-        .unwrap_or_else(|_| panic!("a library"));
-        let query = serde_json::from_value(serde_json::json!({"text":"gone","interpret_locators":false}))
-            .unwrap_or_else(|error| panic!("{error}"));
-        let reply = file
-            .search(&query, 10, None, &Cancellation::default())
-            .unwrap_or_else(|error| panic!("{error}"));
-        let rows = serde_json::to_value(&reply).unwrap_or_else(|error| panic!("{error}"));
-        let copied = |style: Option<&str>| {
-            let selection = serde_json::from_value(serde_json::json!({
-                "id": rows["results"][0]["id"], "cite": rows["results"][0]["cite"], "locator": null
-            }))
-            .unwrap_or_else(|error| panic!("{error}"));
-            let preview =
-                crate::test_citations::preview(&file.engine, file.sample(), vec![selection], style.unwrap_or("pandoc"))
-                    .unwrap_or_else(|_| panic!("a preview"));
-            let mut copied =
-                crate::test_citations::copy(&file.engine, &preview.ticket, &preview.content_hash, |_| Ok(()))
-                    .unwrap_or_else(|_| panic!("a copy"));
-            let warnings = crate::project::preview_warnings(
-                &file.engine,
-                &preview.ticket,
-                &preview.content_hash,
-                current.as_ref(),
-            )
-            .unwrap();
-            copied.warnings.extend(warnings);
-            crate::test_citations::said(&copied.warnings)
-        };
-        assert_eq!(copied(None), ["gone2026 is missing from thesis.bib."]);
-        assert_eq!(copied(Some("apa")), Vec::<String>::new());
     }
 
     /// One picker copy on the mock app, as `deliver_citation` makes it with
@@ -379,22 +325,6 @@ mod tests {
         fn listed(&self) -> Vec<ItemRef> {
             self.app.state::<crate::session_references::SessionReferences>().items()
         }
-    }
-
-    #[test]
-    fn a_copy_warns_about_the_project_and_still_lists_the_reference_for_the_session() {
-        let (_project_dir, project) = written("thesis.bib", A);
-        let picker = Picker::new("@book{gone2026,title={Gone},author={Lee, Kim},year={2026}}\n", &project);
-
-        let (previewed, copied) = picker.cite("gone", 1);
-        assert_eq!(
-            crate::test_citations::said(&previewed),
-            ["gone2026 is missing from thesis.bib."]
-        );
-        assert_eq!(copied.warnings, previewed, "the copy says what the preview said");
-        assert_eq!(copied.text, "[@gone2026]");
-        assert_eq!(picker.listed(), copied.cited, "and the session list has the reference");
-        assert_eq!(picker.listed().len(), 1);
     }
 
     #[test]

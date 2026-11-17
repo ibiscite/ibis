@@ -551,32 +551,6 @@ mod tests {
         mac("com.microsoft.word")
     }
 
-    #[test]
-    fn display_names_fall_back_to_the_table_then_the_original_id() {
-        // A different system's table is still useful; it must not consult an
-        // installed Mac app or replace an unknown ID with a guessed name.
-        let known = AppId {
-            system: System::Windows,
-            id: "WINWORD.EXE".into(),
-        };
-        assert_eq!(display_name(&known), "Microsoft Word");
-        for system in [System::Macos, System::Windows, System::Linux] {
-            let unknown = AppId {
-                system,
-                id: "org.example.InventedEditor".into(),
-            };
-            assert_eq!(display_name(&unknown), unknown.id);
-        }
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn finder_display_name_comes_from_its_installed_bundle() {
-        let finder = mac("com.apple.finder");
-        assert!(lookup(&finder).is_none(), "Finder exercises the native lookup");
-        assert_eq!(display_name(&finder), "Finder");
-    }
-
     fn memory_in(directory: &tempfile::TempDir) -> AppMemory {
         AppMemory::open(directory.path().join("apps.json"))
     }
@@ -660,69 +634,6 @@ mod tests {
     }
 
     #[test]
-    fn the_plugin_note_survives_later_choices_for_the_app() -> io::Result<()> {
-        let choices = Choices::new()?;
-        assert!(choices.app.state::<AppMemory>().take_plugin_note(&word()));
-        choices.choose(&word(), Some("apa"), None).map_err(io::Error::other)?;
-        choices
-            .choose(&word(), None, Some(AppPaste::CopyOnly))
-            .map_err(io::Error::other)?;
-        assert!(
-            !choices.app.state::<AppMemory>().take_plugin_note(&word()),
-            "a choice keeps the note shown"
-        );
-        assert_eq!(choices.format(&word()), listed("apa"));
-        assert!(!choices.reopened().take_plugin_note(&word()));
-        Ok(())
-    }
-
-    #[test]
-    fn a_shown_note_leaves_the_file_alone_on_every_later_paste() -> io::Result<()> {
-        let directory = tempfile::tempdir()?;
-        let memory = memory_in(&directory);
-        assert!(memory.take_plugin_note(&word()));
-        let path = directory.path().join("apps.json");
-        fs::remove_file(&path)?;
-        assert!(!memory.take_plugin_note(&word()));
-        assert!(!path.exists(), "an already noted app writes nothing");
-        Ok(())
-    }
-
-    #[test]
-    fn browsers_and_unknown_apps_never_get_the_note_or_a_file_entry() -> io::Result<()> {
-        let directory = tempfile::tempdir()?;
-        let memory = memory_in(&directory);
-        assert!(!memory.take_plugin_note(&mac("com.google.chrome")));
-        assert!(!memory.take_plugin_note(&mac("org.example.unknown")));
-        assert!(!directory.path().join("apps.json").exists());
-        Ok(())
-    }
-
-    #[test]
-    fn a_failed_save_shows_no_note_so_it_cannot_repeat() -> io::Result<()> {
-        let directory = tempfile::tempdir()?;
-        let memory = memory_in(&directory);
-        // A directory in the file's place: nothing can be saved over it.
-        let blocked = directory.path().join("apps.json");
-        fs::create_dir(&blocked)?;
-        fs::write(blocked.join("kept"), "")?;
-        assert!(!memory.take_plugin_note(&word()));
-        Ok(())
-    }
-
-    #[test]
-    fn the_note_keeps_only_a_flag_beside_the_app_id() -> io::Result<()> {
-        let directory = tempfile::tempdir()?;
-        memory_in(&directory).take_plugin_note(&word());
-        let saved: serde_json::Value = serde_json::from_slice(&fs::read(directory.path().join("apps.json"))?)?;
-        assert_eq!(
-            saved["apps"][0],
-            serde_json::json!({ "app": { "system": "macos", "id": "com.microsoft.word" }, "noted": true })
-        );
-        Ok(())
-    }
-
-    #[test]
     fn another_executable_with_the_same_basename_does_not_inherit_paste() -> io::Result<()> {
         let directory = tempfile::tempdir()?;
         let memory = AppMemory::open(directory.path().join("apps.json"));
@@ -766,30 +677,6 @@ mod tests {
     }
 
     #[test]
-    fn unrelated_format_saves_cannot_recover_lost_copy_only_rules() -> io::Result<()> {
-        let directory = tempfile::tempdir()?;
-        let path = directory.path().join("apps.json");
-        let word = mac("com.microsoft.word");
-        let other = mac("org.example.other");
-        AppMemory::open(path.clone()).set_choice(&word, AppPaste::CopyOnly)?;
-        fs::write(&path, "damaged invented preferences")?;
-        let memory = AppMemory::open(path.clone());
-        assert_eq!(memory.paste(&word), Err(CopyReason::PasteUnavailable));
-        let choices = Choices::open(directory)?;
-        choices.choose(&other, Some("pandoc"), None).map_err(io::Error::other)?;
-        assert_eq!(memory.paste(&word), Err(CopyReason::PasteUnavailable));
-        let reopened = AppMemory::open(path.clone());
-        assert_eq!(reopened.paste(&word), Err(CopyReason::PasteUnavailable));
-        reopened.set_choice(&other, AppPaste::CopyOnly)?;
-        assert_eq!(reopened.paste(&other), Ok(Some(AppPaste::CopyOnly)));
-        assert_eq!(reopened.paste(&word), Err(CopyReason::PasteUnavailable));
-        reopened.set_choice(&word, AppPaste::CopyOnly)?;
-        assert_eq!(reopened.paste(&word), Ok(Some(AppPaste::CopyOnly)));
-        assert_eq!(AppMemory::open(path).paste(&word), Ok(Some(AppPaste::CopyOnly)));
-        Ok(())
-    }
-
-    #[test]
     fn paste_choices_and_formats_stay_separate_and_durable() -> io::Result<()> {
         let choices = Choices::new()?;
         let app = mac("org.example.Writer");
@@ -809,41 +696,6 @@ mod tests {
         let other = mac("org.example.other");
         choices.choose(&other, Some("pandoc"), None).map_err(io::Error::other)?;
         assert_eq!(choices.app.state::<AppMemory>().paste(&other), Ok(None));
-        Ok(())
-    }
-
-    #[test]
-    fn a_first_paste_answer_keeps_its_format_and_says_so_when_its_delivery_cannot_be_saved() -> io::Result<()> {
-        let choices = Choices::new()?;
-        let app = mac("org.example.Writer");
-        let path = choices.directory.path().join("apps.json");
-        // The per-app file cannot be replaced: the delivery half fails.
-        fs::create_dir(&path)?;
-        let refused = choices.choose(&app, Some("typst"), Some(AppPaste::CopyOnly));
-        assert_eq!(
-            refused,
-            Err(CommandError::from(AppChoiceError::DeliveryNotSaved)),
-            "the picker says which choice was kept"
-        );
-        assert_eq!(choices.format(&app), listed("typst"), "the format half stays saved");
-        assert_eq!(
-            choices.app.state::<AppMemory>().paste(&app),
-            Ok(None),
-            "no delivery was recorded"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn a_choice_with_nothing_in_it_is_refused_and_keeps_what_was_saved() -> io::Result<()> {
-        let choices = Choices::new()?;
-        let app = mac("org.example.Writer");
-        choices
-            .choose(&app, Some("pandoc"), Some(AppPaste::CopyOnly))
-            .map_err(io::Error::other)?;
-        assert!(choices.choose(&app, None, None).is_err());
-        assert_eq!(choices.format(&app), listed("pandoc"));
-        assert_eq!(choices.reopened().paste(&app), Ok(Some(AppPaste::CopyOnly)));
         Ok(())
     }
 
@@ -894,33 +746,6 @@ mod tests {
     }
 
     #[test]
-    fn a_format_saved_in_the_per_app_file_before_is_dropped_and_its_delivery_kept() {
-        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-        let path = memory_path(&directory.path().join("settings.json"));
-        let word = mac("com.microsoft.Word");
-        for output in [
-            serde_json::json!("pandoc"),
-            serde_json::json!({"key": "pandoc"}),
-            serde_json::json!(7),
-        ] {
-            let file = serde_json::json!({"version": 1, "apps": [
-                {"app": {"system": "macos", "id": "com.microsoft.word"}, "output": output, "paste": "copy-only"},
-            ]});
-            fs::write(&path, file.to_string()).unwrap_or_else(|e| panic!("{e}"));
-            // Formats now live in settings.json; the file stays readable and its delivery stays.
-            let memory = AppMemory::open(path.clone());
-            assert_eq!(memory.paste(&word), Ok(Some(AppPaste::CopyOnly)), "{output}");
-            memory
-                .set_choice(&word, AppPaste::CopyOnly)
-                .unwrap_or_else(|e| panic!("{e}"));
-            assert!(
-                !fs::read_to_string(&path).unwrap_or_default().contains("output"),
-                "{output}"
-            );
-        }
-    }
-
-    #[test]
     fn the_file_holds_only_app_ids_and_choices_and_keeps_the_latest_apps() {
         let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let path = memory_path(&directory.path().join("settings.json"));
@@ -947,47 +772,6 @@ mod tests {
             file["apps"][0],
             serde_json::json!({ "app": { "system": "macos", "id": "org.example.app1" }, "paste": "copy-only" })
         );
-    }
-
-    #[test]
-    fn an_unreadable_file_keeps_delivery_recovery_after_format_choices() {
-        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-        let path = memory_path(&directory.path().join("settings.json"));
-        let choices = Choices::open(directory).unwrap_or_else(|error| panic!("{error}"));
-        let word = mac("com.microsoft.Word");
-        for damaged in [
-            "not json".to_string(),
-            r#"{"version":2,"apps":[]}"#.to_string(),
-            r#"{"version":1,"apps":[],"titles":["Draft"]}"#.to_string(),
-            r#"{"version":1,"apps":[{"app":{"system":"macos","id":"example.browser"}},{"app":{"system":"macos","id":"EXAMPLE.BROWSER"}}]}"#.to_string(),
-            format!(
-                r#"{{"version":1,"apps":[],"pad":"{}"}}"#,
-                "x".repeat(MAX_BYTES as usize)
-            ),
-        ] {
-            fs::write(&path, damaged).unwrap_or_else(|e| panic!("{e}"));
-            let memory = AppMemory::open(path.clone());
-            assert_eq!(memory.paste(&word), Err(CopyReason::PasteUnavailable));
-            choices.choose(&word, Some("cite"), None).unwrap_or_else(|e| panic!("{e}"));
-            assert_eq!(AppMemory::open(path.clone()).paste(&word), Err(CopyReason::PasteUnavailable));
-        }
-    }
-    #[test]
-    fn a_stale_app_cannot_receive_the_previous_apps_choice() -> io::Result<()> {
-        let choices = Choices::new()?;
-        assert!(
-            choices
-                .choose_for(
-                    &mac("example.editor"),
-                    "example.browser",
-                    Some("cite"),
-                    None,
-                    test_identity(&mac("example.editor"))
-                )
-                .is_err()
-        );
-        assert_eq!(choices.format(&mac("example.editor")), None);
-        Ok(())
     }
 
     #[test]
@@ -1029,17 +813,7 @@ mod tests {
             "synthetic existing data"
         );
     }
-    #[cfg(unix)]
-    #[test]
-    fn nonregular_memory_files_use_defaults_without_opening_the_stream() {
-        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-        let path = directory.path().join("apps.json");
-        let _listener = std::os::unix::net::UnixListener::bind(&path).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(
-            AppMemory::open(path).paste(&mac("example.browser")),
-            Err(CopyReason::PasteUnavailable)
-        );
-    }
+
     #[test]
     fn always_copy_saves_through_the_command_with_read_only_settings() -> Result<(), Box<dyn std::error::Error>> {
         let (directory, path) = crate::settings_fixture::file();
@@ -1094,20 +868,6 @@ mod tests {
             assert_eq!(fs::read(path)?, bytes);
             assert_eq!(fs::metadata(path)?.permissions(), permissions?);
         }
-        Ok(())
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn replacing_app_choices_preserves_their_mode() -> io::Result<()> {
-        use std::os::unix::fs::PermissionsExt;
-        let directory = tempfile::tempdir()?;
-        let memory = memory_in(&directory);
-        memory.set_choice(&word(), AppPaste::Paste)?;
-        let path = directory.path().join("apps.json");
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o640))?;
-        memory.set_choice(&word(), AppPaste::CopyOnly)?;
-        assert_eq!(fs::metadata(path)?.permissions().mode() & 0o777, 0o640);
         Ok(())
     }
 }

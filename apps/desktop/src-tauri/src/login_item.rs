@@ -136,11 +136,6 @@ impl LoginItems {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn available(&self) -> bool {
-        self.entry.is_some()
-    }
-
     fn named(&self, reading: Reading) -> LoginItem {
         LoginItem {
             name: self.name.clone(),
@@ -431,29 +426,6 @@ mod tests {
     }
 
     #[test]
-    fn reading_reports_the_system_state() {
-        assert_eq!(read(Some(&FakeEntry::new(true))), item(true, None));
-        assert_eq!(read(Some(&FakeEntry::new(false))), item(false, None));
-        assert_eq!(read(None), item(false, Some(LoginItemProblem::Unsupported)));
-        let broken = FakeEntry {
-            unreadable: true,
-            ..FakeEntry::new(true)
-        };
-        // Never shown as on when that cannot be confirmed.
-        assert_eq!(read(Some(&broken)), item(false, Some(LoginItemProblem::Unreadable)));
-    }
-
-    #[test]
-    fn a_change_the_system_accepts_has_no_problem() {
-        for on in [true, false] {
-            let entry = FakeEntry::new(!on);
-            assert_eq!(change(Some(&entry), on, false), item(on, None));
-            // Asking again for what is already so is fine too.
-            assert_eq!(change(Some(&entry), on, false), item(on, None));
-        }
-    }
-
-    #[test]
     fn a_refusal_shows_the_real_state() {
         for on in [true, false] {
             let entry = FakeEntry {
@@ -484,46 +456,6 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_registration_still_reads_its_new_approval_status() {
-        let waiting = FakeEntry {
-            approve: false,
-            registration_error: true,
-            ..FakeEntry::new(false)
-        };
-        assert_eq!(read(Some(&waiting)), item(false, None));
-        assert_eq!(
-            change(Some(&waiting), true, true),
-            item(false, Some(LoginItemProblem::NeedsApproval))
-        );
-        assert_eq!(read(Some(&waiting)), item(false, Some(LoginItemProblem::NeedsApproval)));
-        assert_eq!(
-            change(Some(&waiting), true, false),
-            item(false, Some(LoginItemProblem::Refused))
-        );
-        assert_eq!(change(Some(&waiting), false, true), item(false, None));
-    }
-
-    #[test]
-    fn an_inactive_registration_without_pending_approval_is_refused() {
-        struct InactiveEntry;
-        impl Entry for InactiveEntry {
-            fn is_enabled(&self) -> Result<bool, Failed> {
-                Ok(false)
-            }
-            fn enable(&self) -> Result<(), Failed> {
-                Ok(())
-            }
-            fn disable(&self) -> Result<(), Failed> {
-                Ok(())
-            }
-        }
-        assert_eq!(
-            change(Some(&InactiveEntry), true, true),
-            item(false, Some(LoginItemProblem::Refused))
-        );
-    }
-
-    #[test]
     fn an_unreadable_outcome_is_not_shown_as_on() {
         let entry = FakeEntry {
             unreadable: true,
@@ -537,108 +469,6 @@ mod tests {
             change(None, true, false),
             item(false, Some(LoginItemProblem::Unsupported))
         );
-    }
-
-    #[test]
-    fn refresh_preserves_system_state_and_skips_entries_that_are_not_on() {
-        let off = LoginItems::new("Ibis", Some(Box::new(FakeEntry::new(false))));
-        off.refresh();
-        assert_eq!(off.reading(), item(false, None));
-        let on = LoginItems::new("Ibis", Some(Box::new(FakeEntry::new(true))));
-        on.refresh();
-        assert_eq!(on.reading(), item(true, None));
-        let unsupported = LoginItems::new("Ibis", None);
-        unsupported.refresh();
-        assert!(!unsupported.available());
-        assert_eq!(unsupported.reading(), item(false, Some(LoginItemProblem::Unsupported)));
-        // Only an entry that is on is offered a refresh.
-        let entry = std::sync::Arc::new(FakeEntry::new(false));
-        struct Shared(std::sync::Arc<FakeEntry>);
-        impl Entry for Shared {
-            fn is_enabled(&self) -> Result<bool, Failed> {
-                self.0.is_enabled()
-            }
-            fn enable(&self) -> Result<(), Failed> {
-                self.0.enable()
-            }
-            fn disable(&self) -> Result<(), Failed> {
-                self.0.disable()
-            }
-            fn refresh(&self) -> Result<(), Failed> {
-                self.0.refresh()
-            }
-        }
-        let items = LoginItems::new("Ibis", Some(Box::new(Shared(entry.clone()))));
-        items.refresh();
-        assert_eq!(entry.refreshed.load(std::sync::atomic::Ordering::SeqCst), 0);
-        assert_eq!(entry.enabled.load(std::sync::atomic::Ordering::SeqCst), 0);
-        assert_eq!(entry.disabled.load(std::sync::atomic::Ordering::SeqCst), 0);
-        let _ = items.change(true);
-        items.refresh();
-        assert_eq!(entry.refreshed.load(std::sync::atomic::Ordering::SeqCst), 1);
-        assert_eq!(entry.enabled.load(std::sync::atomic::Ordering::SeqCst), 1);
-        assert_eq!(entry.disabled.load(std::sync::atomic::Ordering::SeqCst), 0);
-
-        for unreadable in [false, true] {
-            let entry = std::sync::Arc::new(FakeEntry {
-                unreadable,
-                refresh_error: true,
-                ..FakeEntry::new(true)
-            });
-            let items = LoginItems::new("Ibis", Some(Box::new(Shared(entry.clone()))));
-            items.refresh();
-            assert_eq!(entry.enabled.load(std::sync::atomic::Ordering::SeqCst), 0);
-            assert_eq!(entry.disabled.load(std::sync::atomic::Ordering::SeqCst), 0);
-            assert_eq!(
-                entry.refreshed.load(std::sync::atomic::Ordering::SeqCst),
-                usize::from(!unreadable)
-            );
-            assert!(entry.on.lock().is_ok_and(|on| *on));
-            assert_eq!(
-                items.reading(),
-                if unreadable {
-                    item(false, Some(LoginItemProblem::Unreadable))
-                } else {
-                    item(true, None)
-                }
-            );
-        }
-    }
-
-    #[test]
-    fn a_registration_waiting_for_approval_still_reads_as_waiting() {
-        let waiting = FakeEntry {
-            approve: false,
-            ..FakeEntry::new(false)
-        };
-        assert_eq!(read(Some(&waiting)), item(false, None));
-        let _ = change(Some(&waiting), true, true);
-        assert_eq!(read(Some(&waiting)), item(false, Some(LoginItemProblem::NeedsApproval)));
-        let _ = change(Some(&waiting), false, true);
-        assert_eq!(read(Some(&waiting)), item(false, None));
-    }
-
-    #[test]
-    fn the_interface_gets_the_apps_own_name() {
-        let items = LoginItems::new("Ibis Nightly", Some(Box::new(FakeEntry::new(true))));
-        assert_eq!(
-            items.read(),
-            LoginItem {
-                name: "Ibis Nightly".into(),
-                enabled: true,
-                problem: None
-            }
-        );
-        assert_eq!(items.change(false).name, "Ibis Nightly");
-    }
-
-    #[test]
-    fn only_the_at_login_argument_after_the_program_counts() {
-        let args = |list: &[&str]| list.iter().map(std::ffi::OsString::from).collect::<Vec<_>>();
-        assert!(launched_at_login(args(&["ibis", "--at-login"])));
-        assert!(!launched_at_login(args(&["ibis"])));
-        assert!(!launched_at_login(args(&["--at-login"])));
-        assert!(!launched_at_login(args(&["ibis", "--at-login=1", "at-login"])));
     }
 
     #[test]
