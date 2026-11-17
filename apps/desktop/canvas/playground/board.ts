@@ -11,7 +11,8 @@ const where = {
 
 const variants = import.meta.glob("../variants/*.css");
 await variants[`../variants/${where.variant}.css`]?.();
-mount(document.getElementById("host")!, { scenario: where.scenario, theme: where.theme, textZoom: where.text / 100 });
+// At 100 % a scenario keeps its own text size (text-80, text-120).
+mount(document.getElementById("host")!, { scenario: where.scenario, theme: where.theme, ...where.text !== 100 && { textZoom: where.text / 100 } });
 // A variant's rules win: its style moves after <body>, past the picker's own inline
 // styles. Vite still updates the same element when the file is saved.
 const variant = document.querySelector(`style[data-vite-dev-id$="/canvas/variants/${CSS.escape(where.variant)}.css"]`);
