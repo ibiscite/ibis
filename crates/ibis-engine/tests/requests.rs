@@ -29,17 +29,17 @@ fn requests_are_typed_and_unknown_fields_are_refused() -> Result<(), Box<dyn std
     ));
     assert!(serde_json::from_value::<LibrariesRequest>(serde_json::to_value(&open)?)? == open);
     let mixed: LibrariesRequest =
-        serde_json::from_value(json!({"action":"open-zotero","libraries":["personal",{"group":7}]}))?;
+        serde_json::from_value(json!({"action":"open-zotero","libraries":["user",{"group":7}]}))?;
     assert!(
         mixed
             == LibrariesRequest::OpenZotero {
-                libraries: Some(vec![ZoteroLibrary::Personal, ZoteroLibrary::Group(7)]),
+                libraries: Some(vec![ZoteroLibrary::User, ZoteroLibrary::Group(7)]),
                 profile: None,
                 reload: false,
             }
     );
     assert!(serde_json::from_value::<LibrariesRequest>(serde_json::to_value(&mixed)?)? == mixed);
-    for invalid in [json!(["user"]), json!([{"group":-1}]), json!([{"group":"7"}])] {
+    for invalid in [json!(["personal"]), json!([{"group":-1}]), json!([{"group":"7"}])] {
         assert!(
             serde_json::from_value::<LibrariesRequest>(json!({"action":"open-zotero","libraries":invalid})).is_err()
         );

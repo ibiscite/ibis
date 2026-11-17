@@ -46,30 +46,7 @@ impl Default for LibrariesRequest {
         Self::List {}
     }
 }
-/// A Zotero library: the personal library ("My Library") or a group by its
-/// Zotero group ID.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub enum ZoteroLibrary {
-    Personal,
-    Group(#[schemars(range(min = 1, max = 9_223_372_036_854_775_807_u64))] u64),
-}
-impl From<ZoteroLibrary> for ibis_sources::zotero_source::Library {
-    fn from(library: ZoteroLibrary) -> Self {
-        match library {
-            ZoteroLibrary::Personal => Self::User,
-            ZoteroLibrary::Group(id) => Self::Group(id),
-        }
-    }
-}
-impl From<ibis_sources::zotero_source::Library> for ZoteroLibrary {
-    fn from(library: ibis_sources::zotero_source::Library) -> Self {
-        match library {
-            ibis_sources::zotero_source::Library::User => Self::Personal,
-            ibis_sources::zotero_source::Library::Group(id) => Self::Group(id),
-        }
-    }
-}
+pub use ibis_core::zotero::Library as ZoteroLibrary;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

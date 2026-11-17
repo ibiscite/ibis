@@ -73,7 +73,7 @@ keys, composition and stale replies; Rust tests cover busy input and obsolete
 tickets; Linux CI runs `gtk_offer_return_declines_and_explicit_install_button_accepts`
 under Xvfb. Installed keyboard behaviour still needs platform evidence.
 
-## Native evidence and replay
+## Native evidence
 
 Each `smoke-native.py` invocation writes
 `OUTPUT/evidence-RUN_ID/manifest.json`, including failure and unavailable
@@ -86,17 +86,8 @@ The manifest records build, harness and fixture hashes, the observed
 environment and fixed action/result codes; unobserved fields have reasons. It
 attaches no screenshot, raw readback or desktop text.
 
-Replay on the same isolated Linux desktop:
-
-```sh
-python3 scripts/smoke-native.py --app target/debug/ibis-desktop \
-  --output screenshots/replay --replay screenshots/run/evidence-RUN_ID/manifest.json
-```
-
-Replay validates build, fixtures and environment before acting; changed,
-missing or extra actions and results are `replay-diverged`. Use one GUI worker
-per synthetic desktop, keep a failing bundle, replay it, then add the regression
-at the layer that owns the cause.
+Use one GUI worker per synthetic desktop, keep a failing bundle, then add the
+regression at the layer that owns the cause.
 
 ## Where checks run
 

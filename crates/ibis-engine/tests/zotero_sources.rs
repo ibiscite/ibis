@@ -222,11 +222,8 @@ fn chosen_group_libraries_publish_separately_and_a_new_choice_replaces_the_old()
         chosen.sort_by_key(|library| format!("{library:?}"));
         chosen
     };
-    open(json!(["personal", {"group": 7}])).unwrap();
-    assert_eq!(
-        chosen(),
-        vec![Some(ZoteroLibrary::Group(7)), Some(ZoteroLibrary::Personal)]
-    );
+    open(json!(["user", {"group": 7}])).unwrap();
+    assert_eq!(chosen(), vec![Some(ZoteroLibrary::Group(7)), Some(ZoteroLibrary::User)]);
     // The fixture serves the same item and key in both libraries: two
     // references, and the shared key names neither rather than guessing.
     let snapshot = engine.snapshot().unwrap();
@@ -258,7 +255,7 @@ fn chosen_group_libraries_publish_separately_and_a_new_choice_replaces_the_old()
     assert_eq!(cite(&only.objects()[0]), "[@Synthetic2026]");
     let group = engine.snapshot().unwrap().fingerprints().clone();
 
-    for invalid in [json!([]), json!([{"group": 0}]), json!(["personal", "personal"])] {
+    for invalid in [json!([]), json!([{"group": 0}]), json!(["user", "user"])] {
         assert_eq!(open(invalid).unwrap_err().code, ErrorCode::BadInput);
     }
     // A group that does not exist is reported, never read as another library,
@@ -279,7 +276,7 @@ fn a_zotero_that_stops_refusing_is_read_without_any_other_change() {
     server.sharing_off.store(true, Ordering::Relaxed);
     let engine = Engine::with_zotero_port(server.port).unwrap();
     let cancel = Cancellation::default();
-    let open = json!({"action":"open-zotero","libraries":["personal"]});
+    let open = json!({"action":"open-zotero","libraries":["user"]});
     let refused = engine.dispatch(Method::Libraries, &open, &cancel).unwrap_err();
     assert_eq!(refused.code, ErrorCode::SourceUnavailable);
     assert_eq!(refused.reason, Some(ErrorReason::ZoteroSharingOff));
@@ -358,7 +355,7 @@ fn zotero_markers_name_each_item_in_the_library_it_was_read_from() {
     engine
         .dispatch(
             Method::Libraries,
-            &json!({"action":"open-zotero","libraries":["personal", {"group": 7}]}),
+            &json!({"action":"open-zotero","libraries":["user", {"group": 7}]}),
             &cancel,
         )
         .unwrap();
@@ -380,7 +377,7 @@ fn zotero_markers_name_each_item_in_the_library_it_was_read_from() {
     };
     // The same item and key in both libraries: each marker names its own.
     assert_eq!(
-        marker(ZoteroLibrary::Personal),
+        marker(ZoteroLibrary::User),
         "{ | Invented atlas, 2026 | | | zu:0:SYNTH234 }"
     );
     assert_eq!(

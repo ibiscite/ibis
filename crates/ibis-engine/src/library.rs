@@ -17,15 +17,15 @@ pub use error::{LoadError, words};
 pub use status::{LibraryProblem, LibraryState, LibraryStatus, ReadingNotice, native_source};
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, mpsc};
-use std::time::{Duration, Instant, SystemTime};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::time::{Duration, SystemTime};
 
 use ibis_core::contract::{EngineError, ErrorCode};
+use ibis_core::file_io::{Admission, Pool, Scope};
 use serde_json::json;
 
 use crate::citations::SessionId;
-use crate::request::ZoteroLibrary as EngineZoteroLibrary;
 use crate::settings::{LibrarySetting, Settings, ZoteroLibraries, ZoteroLibrary};
 use crate::{Cancellation, Engine, LibrarySubscriptionClose, Method, PreparedFileReload, PreparedZoteroReload};
 
@@ -245,8 +245,8 @@ struct Shared {
     engine: Box<dyn Fn() -> Result<Engine, EngineError> + Send + Sync>,
     publish: Publish,
     /// This owner's reads still running, abandoned or not, per kind of source.
-    file_reads: Arc<AtomicUsize>,
-    zotero_reads: Arc<AtomicUsize>,
+    file_reads: Pool,
+    zotero_reads: Pool,
 }
 
 #[derive(Default)]
@@ -363,14 +363,11 @@ struct OpenRequest {
 #[derive(Clone, Default)]
 struct OpenCancellation {
     token: Cancellation,
-    wake: Arc<(Mutex<()>, Condvar)>,
 }
 
 impl OpenCancellation {
     fn cancel(&self) {
         self.token.cancel();
-        let _gate = self.wake.0.recover_lock();
-        self.wake.1.notify_all();
     }
 }
 
@@ -418,8 +415,8 @@ impl Owner {
                 store,
                 engine: Box::new(engine),
                 publish: Box::new(publish),
-                file_reads: Arc::default(),
-                zotero_reads: Arc::default(),
+                file_reads: Pool::new(4, 0),
+                zotero_reads: Pool::new(4, 0),
             }),
         }
     }
@@ -832,7 +829,7 @@ impl Shared {
                 let expected = Arc::clone(&current);
                 let prepared = current
                     .engine
-                    .prepare_zotero_reload_guarded(force, Some(&engine_libraries(&chosen)), profile, cancel, |retire| {
+                    .prepare_zotero_reload_guarded(force, Some(chosen.libraries()), profile, cancel, |retire| {
                         // Detecting a full read retires old citations at once,
                         // but only while this request still owns the library.
                         let owned = self.is_current(request)
@@ -1036,17 +1033,6 @@ fn accept(current: &Current, prepared: Prepared) -> Result<(), LoadError> {
     }
 }
 
-fn engine_libraries(chosen: &ZoteroLibraries) -> Vec<EngineZoteroLibrary> {
-    chosen
-        .libraries()
-        .iter()
-        .map(|library| match library {
-            ZoteroLibrary::User => EngineZoteroLibrary::Personal,
-            ZoteroLibrary::Group(id) => EngineZoteroLibrary::Group(*id),
-        })
-        .collect()
-}
-
 /// Read the chosen Zotero libraries into a new engine.
 fn open_zotero(
     engine: &Engine,
@@ -1054,7 +1040,7 @@ fn open_zotero(
     profile: Option<&str>,
     cancel: &Cancellation,
 ) -> Result<(), LoadError> {
-    let request = json!({"action":"open-zotero","libraries":engine_libraries(chosen),"profile":profile});
+    let request = json!({"action":"open-zotero","libraries":chosen.libraries(),"profile":profile});
     engine
         .dispatch(Method::Libraries, &request, cancel)
         .map_err(LoadError::Zotero)?;
@@ -1106,7 +1092,7 @@ fn supervise<T: Send + 'static>(
     source: &Source,
     cancel: &OpenCancellation,
     deadline: Duration,
-    in_flight: &Arc<AtomicUsize>,
+    in_flight: &Pool,
     operation: impl FnOnce() -> Result<T, LoadError> + Send + 'static,
 ) -> Result<T, LoadError> {
     let zotero = matches!(source, Source::Zotero(_));
@@ -1116,59 +1102,19 @@ fn supervise<T: Send + 'static>(
 fn supervise_with<T: Send + 'static>(
     cancel: &OpenCancellation,
     deadline: Duration,
-    in_flight: &Arc<AtomicUsize>,
+    in_flight: &Pool,
     unavailable: LoadError,
     operation: impl FnOnce() -> Result<T, LoadError> + Send + 'static,
 ) -> Result<T, LoadError> {
-    struct Permit(Arc<AtomicUsize>);
-    impl Drop for Permit {
-        fn drop(&mut self) {
-            self.0.fetch_sub(1, Ordering::SeqCst);
-        }
-    }
-    if cancel.token.is_cancelled() {
-        return Err(LoadError::Stopped);
-    }
-    if in_flight.fetch_add(1, Ordering::SeqCst) >= 4 {
-        in_flight.fetch_sub(1, Ordering::SeqCst);
-        return Err(unavailable);
-    }
-    let permit = Permit(Arc::clone(in_flight));
-    let (send, result) = mpsc::sync_channel(1);
-    let wake = Arc::clone(&cancel.wake);
-    std::thread::Builder::new()
-        .name("ibis-library-read".into())
-        .spawn(move || {
-            let _permit = permit;
-            let loaded = crate::sync::attempt(operation).unwrap_or(Err(LoadError::Stopped));
-            let _ = send.send(loaded);
-            let _gate = wake.0.recover_lock();
-            wake.1.notify_all();
-        })
-        .map_err(|_| LoadError::Stopped)?;
-    let until = Instant::now() + deadline;
-    let mut gate = cancel.wake.0.recover_lock();
-    loop {
-        if cancel.token.is_cancelled() {
-            return Err(LoadError::Stopped);
-        }
-        let remaining = until.saturating_duration_since(Instant::now());
-        if remaining.is_zero() {
-            drop(gate);
-            cancel.cancel();
-            return Err(unavailable);
-        }
-        match result.try_recv() {
-            Ok(result) => {
-                return if cancel.token.is_cancelled() {
-                    Err(LoadError::Stopped)
-                } else {
-                    result
-                };
+    let check = || cancel.token.is_cancelled();
+    in_flight
+        .run(&Scope::new(&check, deadline), Admission::Immediate, operation)
+        .map_err(|error| match error {
+            ibis_core::file_io::Error::TimedOut => {
+                cancel.cancel();
+                unavailable
             }
-            Err(mpsc::TryRecvError::Empty) => {}
-            Err(mpsc::TryRecvError::Disconnected) => return Err(LoadError::Stopped),
-        }
-        gate = crate::sync::recover(cancel.wake.1.wait_timeout(gate, remaining)).0;
-    }
+            ibis_core::file_io::Error::Capacity => unavailable,
+            _ => LoadError::Stopped,
+        })?
 }

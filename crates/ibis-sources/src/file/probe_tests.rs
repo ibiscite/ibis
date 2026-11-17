@@ -39,7 +39,7 @@ fn repeated_blocked_attachment_batches_leave_room_for_a_healthy_library() {
         let (release, blocked) = mpsc::channel::<()>();
         releases.push(release);
         let mut scope = Scope::new(&|| false);
-        scope.until = Instant::now() + Duration::from_millis(30);
+        scope.0.until = Instant::now() + Duration::from_millis(30);
         scope
             .attachments_with(&mut objects, references, move |_| {
                 let _ = blocked.recv();
@@ -65,9 +65,9 @@ fn five_hundred_blocked_attachments_share_the_sources_remaining_deadline() {
     let (mut objects, references) = references();
     let time = Arc::new(Mutex::new(Instant::now()));
     let mut scope = Scope::new(&|| false);
-    scope.until = *time.lock().unwrap_or_else(|e| panic!("{e}")) + Duration::from_millis(300);
+    scope.0.until = *time.lock().unwrap_or_else(|e| panic!("{e}")) + Duration::from_millis(300);
     let clock = time.clone();
-    scope.now = Arc::new(move || *clock.lock().unwrap_or_else(|e| panic!("{e}")));
+    scope.0.now = Arc::new(move || *clock.lock().unwrap_or_else(|e| panic!("{e}")));
     // Earlier source I/O consumes the same deadline as the attachment batch.
     let clock = time.clone();
     scope
@@ -77,7 +77,7 @@ fn five_hundred_blocked_attachments_share_the_sources_remaining_deadline() {
         })
         .unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(scope.remaining(), Ok(Duration::from_millis(100)));
-    let until = scope.until;
+    let until = scope.0.until;
     let (probed, probes) = mpsc::channel();
     let (release, blocked) = mpsc::channel::<()>();
     let mut first = true;

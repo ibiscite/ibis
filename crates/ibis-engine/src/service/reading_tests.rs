@@ -18,7 +18,7 @@ fn attachment_consent_is_bound_to_the_complete_profile_library_identity() {
     let empty = Snapshot::new(vec![]).unwrap();
     for id in [&first_library, &other_library] {
         let mut info = LibraryInfo::clean(id.clone(), LibraryKind::Zotero, 0);
-        info.zotero = Some(ZoteroLibrary::Personal);
+        info.zotero = Some(ZoteroLibrary::User);
         engine.shared.install(info, &empty, None).unwrap();
     }
     let mut settings = crate::settings::Settings::default();

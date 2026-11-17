@@ -42,7 +42,7 @@ fn personal_consent(engine: &Engine) -> Value {
         .unwrap()
         .libraries
         .into_iter()
-        .find(|library| library.zotero == Some(ibis_engine::request::ZoteroLibrary::Personal))
+        .find(|library| library.zotero == Some(ibis_engine::request::ZoteroLibrary::User))
         .unwrap()
         .id])
 }
@@ -203,7 +203,7 @@ fn each_answer_comes_only_from_a_library_the_person_named() {
     engine
         .dispatch(
             Method::Libraries,
-            &json!({"action":"open-zotero","libraries":["personal",{"group":7}]}),
+            &json!({"action":"open-zotero","libraries":["user",{"group":7}]}),
             &Cancellation::default(),
         )
         .unwrap();

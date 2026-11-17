@@ -11,7 +11,6 @@ use serde::Serialize;
 use super::error::words;
 use super::{LoadError, Source, State};
 use crate::LibraryKind;
-use crate::request::ZoteroLibrary as EngineZoteroLibrary;
 use crate::settings::ZoteroLibrary;
 
 /// Sent to the interface with the `library:changed` event.
@@ -147,11 +146,8 @@ pub enum LibraryState {
 
 /// How a source is named for the engine's listing: its Zotero library, or its opaque ID.
 pub fn native_source(info: &crate::LibraryInfo) -> String {
-    match info.zotero {
-        Some(EngineZoteroLibrary::Personal) => "zotero:user".into(),
-        Some(EngineZoteroLibrary::Group(id)) => format!("zotero:group:{id}"),
-        None => info.id.as_str().to_owned(),
-    }
+    info.zotero
+        .map_or_else(|| info.id.as_str().to_owned(), |library| library.to_string())
 }
 
 pub(super) fn status(library: &State) -> LibraryStatus {

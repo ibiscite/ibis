@@ -1370,7 +1370,10 @@ export type ZoteroGroup = {
 	name: string;
 };
 
-/** Which Zotero library to read. */
+/**
+ * Which Zotero library items belong to. Identity is the library plus the
+ * item key, never a citation key (ADR 0006).
+ */
 export type ZoteroLibrary = "user" | {
 	group: number;
 };

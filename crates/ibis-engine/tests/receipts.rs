@@ -454,9 +454,9 @@ fn an_older_prepared_result_keeps_its_own_records_and_checks_after_a_newer_resul
             .is_err()
     );
     let earlier = earlier.into_checked();
-    let delayed = DispatchResult::citation(earlier.value, 1, &OutputSpec::Preset { name: "pandoc".into() })
+    let delayed = DispatchResult::citation(earlier, 1, &OutputSpec::Preset { name: "pandoc".into() })
         .unwrap()
-        .with_health(&earlier.source_health)
+        .wire()
         .unwrap();
     assert_eq!(delayed.data, before);
     assert!(!delayed.source_findings);

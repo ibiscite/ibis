@@ -331,18 +331,27 @@ fn partial_record_shares_keep_checked_text_but_never_bypass_representation_check
             &Cancellation::default(),
         )
         .unwrap();
-    let dispatched = DispatchResult::citation(result.clone(), 2, &output).unwrap();
+    let checked = |value| ibis_engine::health::Checked {
+        value,
+        source_health: ibis_engine::health::SourceHealth::of(std::iter::empty()),
+    };
+    let dispatched = DispatchResult::citation(checked(result.clone()), 2, &output).unwrap();
     assert_eq!(dispatched.text.as_deref(), Some("https://doi.org/10.1000/invented"));
     assert_eq!(dispatched.exit_code, ExitCode::Findings);
     assert!(
-        DispatchResult::citation(result.clone(), 3, &output)
+        DispatchResult::citation(checked(result.clone()), 3, &output)
             .unwrap()
             .text
             .is_none()
     );
     let mut changed = result.clone();
     changed.text.push_str("tampered");
-    assert!(DispatchResult::citation(changed, 2, &output).unwrap().text.is_none());
+    assert!(
+        DispatchResult::citation(checked(changed), 2, &output)
+            .unwrap()
+            .text
+            .is_none()
+    );
     for (html, rtf) in [(Some("\0".into()), None), (None, Some("\0".into()))] {
         let poisoned = CitationResult::new(
             result.text.clone(),
@@ -354,6 +363,11 @@ fn partial_record_shares_keep_checked_text_but_never_bypass_representation_check
             vec![],
         );
         assert!(poisoned.content_matches_hash());
-        assert!(DispatchResult::citation(poisoned, 2, &output).unwrap().text.is_none());
+        assert!(
+            DispatchResult::citation(checked(poisoned), 2, &output)
+                .unwrap()
+                .text
+                .is_none()
+        );
     }
 }

@@ -175,10 +175,8 @@ fn scannable_markers_only_show_checked_authorless_titles() {
         record.id.key = "ABCD2345".into();
         case.request.items[0].item = record.id.clone();
         case.library = Snapshot::new(vec![LibraryObject::Record(record)]).unwrap();
-        let result = syntax::scannable::cite(&case.library, &case.request, |_| {
-            Some(syntax::scannable::ZoteroOrigin::Personal)
-        })
-        .unwrap();
+        let result =
+            syntax::scannable::cite(&case.library, &case.request, |_| Some(ibis_core::zotero::Library::User)).unwrap();
         assert_eq!(
             result.text,
             if title.contains("secret") {

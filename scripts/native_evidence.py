@@ -1,8 +1,4 @@
-"""Bounded, allowlisted native evidence. No desktop values or exceptions are serialized.
-
-The tape is a replay guard around the real scenario, never a source of commands.
-Only relative order is replayed; application IPC is outside this adapter's view.
-"""
+"""Bounded, allowlisted native evidence. No desktop values or exceptions are serialized."""
 from contextlib import contextmanager
 from contextvars import ContextVar
 from functools import cache
@@ -21,7 +17,6 @@ import uuid
 SCHEMA = Path(__file__).with_name("native_evidence.schema.json")
 MAX_BYTES = 1024 * 1024
 ACTIVE = ContextVar("native_evidence", default=None)
-REPLAY_COMMAND = "python3 scripts/smoke-native.py --app BUILD --output REPLAY --replay BUNDLE/manifest.json"
 KEYS = {value: "key-" + code for value, code in (
     ("Escape", "escape"), ("Return", "return"), ("Tab", "tab"), ("space", "space"),
     ("Down", "down"), ("ctrl+a", "select-all"), ("ctrl+k", "menu"),
@@ -162,29 +157,19 @@ def load_bundle(path):
 
 
 class Evidence:
-    def __init__(self, scenario, options, metadata, replay=None):
+    def __init__(self, scenario, options, metadata):
         self.started = time.monotonic()
         self.bundle = dict(metadata, schema_version=1, run_id=uuid.uuid4().hex,
-                           scenario=scenario, options=options, seed_reason="deterministic-scenario",
+                           scenario=scenario, options=options,
                            events=[], request_completion_order=[], missing_capabilities=[],
                            app_request_order={"value": None, "reason": "not-observable"},
-                           environment_unavailable_reason="not-observed",
-                           replay_command=REPLAY_COMMAND, replay_of=replay["run_id"] if replay else None)
-        self.replay = replay
+                           environment_unavailable_reason="not-observed")
         self.pending = {}
         self.next_id = 1
         self.failed_invariant = None
         self.failure_kind = "harness"
         self.failure_reason = "harness-failed"
         self.missing_capability = "native-session"
-        self.diverged = False
-        if replay:
-            validate_bundle(replay)
-            # Refuse a different build, fixture, harness, scenario or observed
-            # environment before any desktop action. Paths are never compared.
-            for key in ("scenario", "options", "build", "harness_sha256", "fixtures", "environment"):
-                if self.bundle[key] != replay[key]:
-                    raise BundleError("Replay inputs differ; use the recorded build, harness, fixtures and environment")
 
     def _event(self, identity, kind, code, phase):
         event = {"id": identity, "kind": kind, "code": code, "phase": phase,
@@ -192,18 +177,10 @@ class Evidence:
         events = self.bundle["events"]
         if len(events) >= 4000:
             raise BundleError("Evidence event limit exceeded")
-        if self.replay and not self.diverged:
-            index = len(events)
-            expected = self.replay["events"]
-            if index >= len(expected) or any(event[key] != expected[index][key] for key in ("id", "kind", "code", "phase")):
-                self.diverged = True
-                raise BundleError("Replay sequence diverged; native action refused")
         events.append(event)
 
     def dispatch(self, kind, code):
-        if self.diverged:
-            raise BundleError("Replay sequence diverged; native action refused")
-        # Validate codes before side effects, including when not replaying.
+        # Validate codes before side effects.
         schema = _schema()
         definition = schema["$defs"]["action" if kind == "action" else "request"]
         if kind not in ("action", "request") or not _matches(code, definition, schema):
@@ -218,24 +195,12 @@ class Evidence:
 
     def complete(self, identity, phase):
         kind, code = self.pending[identity]
-        divergence = None
-        try:
-            self._event(identity, kind, code, phase)
-        except BundleError as error:
-            # The completion already happened. Retain the actual outcome even
-            # when its order differs from replay; never repeat the native call.
-            if not self.diverged:
-                raise
-            self._event(identity, kind, code, phase)
-            divergence = error
-        finally:
-            self.pending.pop(identity, None)
+        self._event(identity, kind, code, phase)
+        self.pending.pop(identity)
         if kind == "request":
             self.bundle["request_completion_order"].append(identity)
         if phase == "reject" and self.failed_invariant is None:
             self.failed_invariant = code
-        if divergence:
-            raise divergence
 
     @contextmanager
     def step(self, kind, code):
@@ -266,20 +231,12 @@ class Evidence:
 
     def finish(self, exit_code):
         for identity in list(self.pending):
-            try:
-                self.complete(identity, "cancel")
-            except BundleError:
-                if not self.diverged:
-                    raise
+            self.complete(identity, "cancel")
         outcome = {0: "pass", 2: "unavailable"}.get(exit_code, "fail")
         result = {"outcome": outcome, "failure_kind": self.failure_kind if outcome == "fail" else None,
                   "reason": {"pass": None, "fail": self.failure_reason, "unavailable": "native-capability-unavailable"}[outcome],
                   "failed_invariant": (self.failed_invariant or "scenario") if outcome == "fail" else None}
         missing = [self.missing_capability] if outcome == "unavailable" else []
-        if self.replay and (self.diverged or len(self.bundle["events"]) != len(self.replay["events"])
-                            or result != self.replay["result"] or missing != self.replay["missing_capabilities"]):
-            result = {"outcome": "fail", "failure_kind": "harness", "reason": "replay-diverged",
-                      "failed_invariant": "replay-sequence"}
         self.bundle["result"] = result
         self.bundle["missing_capabilities"] = missing if result["outcome"] == "unavailable" else []
         return validate_bundle(self.bundle)
@@ -430,5 +387,3 @@ def observe_environment(environment=None):
         environment["display_count"] = int(match[1])
     environment["webview_version"] = _version(_probe("dpkg-query", "-W", "-f=${Version}", "libwebkit2gtk-4.1-0").decode("ascii", errors="replace"))
     environment["unavailable"] = sorted(key for key, value in environment.items() if value is None and key != "unavailable")
-    if recorder and recorder.replay and environment != recorder.replay["environment"]:
-        raise BundleError("Replay environment differs; native action refused")

@@ -113,12 +113,7 @@ fn full_reload_fetches_payloads_even_when_the_choice_order_differs() -> Result<(
         .libraries
         .iter()
         .rev()
-        .filter_map(|info| {
-            info.zotero.map(|library| match library {
-                ibis_engine::request::ZoteroLibrary::Personal => ZoteroLibrary::User,
-                ibis_engine::request::ZoteroLibrary::Group(id) => ZoteroLibrary::Group(id),
-            })
-        })
+        .filter_map(|info| info.zotero)
         .collect();
     let both = ZoteroLibraries::new(reversed).ok_or("reversed choice")?;
     open(&owner, Source::Zotero(both));

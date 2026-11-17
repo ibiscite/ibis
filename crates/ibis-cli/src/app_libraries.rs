@@ -8,7 +8,7 @@
 use crate::{Failure, human::cli};
 use ibis_core::contract::ErrorCode;
 use ibis_engine::request::ZoteroLibrary;
-use ibis_engine::settings::{self, LibrarySetting, PrimaryRead, SettingsError, ZoteroLibrary as Chosen};
+use ibis_engine::settings::{self, LibrarySetting, PrimaryRead, SettingsError};
 use std::path::{Path, PathBuf};
 
 /// The apps whose settings are read, in order: the first one with a settings
@@ -97,17 +97,7 @@ fn read(app: &'static str, path: &Path) -> Result<Option<AppLibraries>, Failure>
             ));
         }
         Some(LibrarySetting::Bibtex(file)) => (vec![file], Vec::new()),
-        Some(LibrarySetting::Zotero(libraries)) => (
-            Vec::new(),
-            libraries
-                .libraries()
-                .iter()
-                .map(|library| match library {
-                    Chosen::User => ZoteroLibrary::Personal,
-                    Chosen::Group(id) => ZoteroLibrary::Group(*id),
-                })
-                .collect(),
-        ),
+        Some(LibrarySetting::Zotero(libraries)) => (Vec::new(), libraries.libraries().to_vec()),
     };
     Ok(Some(AppLibraries {
         app,

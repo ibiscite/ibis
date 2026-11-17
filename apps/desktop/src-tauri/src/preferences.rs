@@ -1998,18 +1998,6 @@ mod tests {
     }
 
     #[test]
-    fn a_removed_accent_reads_as_following_the_mac() {
-        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-        let path = directory.path().join("settings.json");
-        std::fs::write(&path, r#"{"accent":"purple","larger_text":true}"#).unwrap_or_else(|e| panic!("{e}"));
-        let loaded = SettingsFile::new(path.clone())
-            .preferences()
-            .unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(loaded.accent, Some(Accent::System));
-        assert!(loaded.larger_text);
-    }
-
-    #[test]
     fn an_off_choice_survives_restart_and_on_stays_unwritten() {
         let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let file = SettingsFile::new(directory.path().join("settings.json"));

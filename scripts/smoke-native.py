@@ -2359,10 +2359,8 @@ def _journey_main(args):
 def evidence_main(args, scenario, scenario_id):
     """Always persist the evidence manifest, including failures."""
     try:
-        replay = getattr(args, "replay_bundle", None)
         options = {"identifier": args.identifier, "shortcut": args.shortcut or "ctrl+shift+y",
-                   "skip_performance": bool(getattr(args, "skip_performance", False)),
-                   "seed": getattr(args, "seed", 0)}
+                   "skip_performance": bool(getattr(args, "skip_performance", False))}
         fixtures = {"small": fixture().encode(), "initial-document": b"",
                     "initial-settings": b'{"schema_version": 2, "update_checks": false}'}
         if scenario_id == "native-journey":
@@ -2373,7 +2371,7 @@ def evidence_main(args, scenario, scenario_id):
                             damaged=(Path(__file__).resolve().parent.parent / "fixtures/bibtex/damaged.bib").read_bytes())
             if not options["skip_performance"]:
                 fixtures["large"] = fixture(100000).encode()
-        recorder = Evidence(scenario_id, options, collect_metadata(app_executable(args.app), fixtures), replay)
+        recorder = Evidence(scenario_id, options, collect_metadata(app_executable(args.app), fixtures))
         recorder.finish(2)  # Validate all metadata/options before any native action.
     except BundleError as error:
         print(str(error), file=sys.stderr)
@@ -2413,25 +2411,12 @@ def main():
     parser.add_argument("--skip-performance", action="store_true", default=None, help="Keep correctness checks but skip the four 100,000-reference launches")
     parser.add_argument("--first-run-preferences", action="store_true", default=None, help="Exercise first-run format persistence and settled More/Quit only")
     parser.add_argument("--journey", action="store_true", default=None, help="macOS and Windows: summon, search, paste into TextEdit or Notepad and read it back; then a terminal gets a copy")
-    parser.add_argument("--seed", type=int, help="Recorded seed (the current scenarios are deterministic)")
-    parser.add_argument("--replay", type=Path, help="Replay a version-1 evidence manifest against the same build")
     args = parser.parse_args()
-    try:
-        args.replay_bundle = load_bundle(args.replay) if args.replay else None
-        defaults = (args.replay_bundle["options"] if args.replay_bundle else
-                    {"identifier": "com.ibiscite.ibis", "shortcut": "ctrl+shift+y", "skip_performance": False, "seed": 0})
-        for key, value in defaults.items():
-            if getattr(args, key) is None:
-                setattr(args, key, value)
-        if args.first_run_preferences is None and args.replay_bundle:
-            args.first_run_preferences = args.replay_bundle["scenario"] == "first-run-preferences"
-        if args.journey is None and args.replay_bundle:
-            args.journey = args.replay_bundle["scenario"] == "native-journey"
-        if args.journey and not args.replay_bundle and args.shortcut == "ctrl+shift+y" and platform.system() == "Darwin":
-            args.shortcut = "super+shift+y"  # The macOS default.
-    except BundleError as error:
-        print(str(error), file=sys.stderr)
-        return 1
+    for key, value in {"identifier": "com.ibiscite.ibis", "shortcut": "ctrl+shift+y", "skip_performance": False}.items():
+        if getattr(args, key) is None:
+            setattr(args, key, value)
+    if args.journey and args.shortcut == "ctrl+shift+y" and platform.system() == "Darwin":
+        args.shortcut = "super+shift+y"  # The macOS default.
     if args.first_run_preferences:
         return first_run_preferences_main(args)
     if args.journey:
@@ -3362,7 +3347,7 @@ class ContractTests(unittest.TestCase):
     def test_evidence_main_prints_a_fixed_bundle_refusal_and_retains_failure_evidence(self):
         with tempfile.TemporaryDirectory() as temporary:
             args = argparse.Namespace(app=Path(temporary) / "synthetic-app", output=Path(temporary) / "output",
-                                      identifier="com.ibiscite.ibis", shortcut="ctrl+shift+y", skip_performance=True, seed=0)
+                                      identifier="com.ibiscite.ibis", shortcut="ctrl+shift+y", skip_performance=True)
             diagnostic = io.StringIO()
             with redirect_stderr(diagnostic):
                 result = evidence_main(args, Mock(side_effect=BundleError("Unrecordable native input refused")), "native-smoke")
@@ -3427,7 +3412,7 @@ class ContractTests(unittest.TestCase):
                 native.close.assert_called_once()
 
 
-    def preference_probe(self, failure=None, replay=None):
+    def preference_probe(self, failure=None):
         clock, launches, actions = [0.0], [], []
         native = Mock()
         native.query = ""
@@ -3560,8 +3545,7 @@ class ContractTests(unittest.TestCase):
             root = Path(temporary)
             app = root / "synthetic-app"
             app.touch()
-            args = argparse.Namespace(app=app, output=root / "report", identifier="com.ibiscite.ibis", shortcut=None,
-                                      replay_bundle=replay)
+            args = argparse.Namespace(app=app, output=root / "report", identifier="com.ibiscite.ibis", shortcut=None)
             candidate = root / "preexisting/settings.json"
             candidate.parent.mkdir()
             if failure == "preexisting":
@@ -3609,72 +3593,27 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(actions[pick - 2:pick], [("Down", 2), ("Return in Citation format", 2)], "Typst was not picked from the filter")
         self.assertEqual([action for action in actions if action[0] == "Quit Ibis"], [("Quit Ibis", 1), ("Quit Ibis", 2)])
 
-    def test_first_run_bundle_replays_actions_and_failed_invariants(self):
-        for error in (None, "wrong-copy", "delayed-query"):
-            with self.subTest(error=error):
-                result, report, _, actions = self.preference_probe(error)
-                replay_result, replay_report, _, replay_actions = self.preference_probe(error, report["evidence"])
-                self.assertEqual(replay_result, result)
-                self.assertEqual(replay_report["evidence"]["result"], report["evidence"]["result"])
-                self.assertEqual(replay_actions, actions)
-                self.assertEqual(replay_report["evidence"]["replay_of"], report["evidence"]["run_id"])
-
-    def test_cli_restores_replay_options_and_refuses_old_format_before_native_work(self):
-        _, report, _, _ = self.preference_probe()
-        bundle = report["evidence"]
-        bundle["options"].update(seed=37, shortcut="ctrl+super+r", identifier="com.ibiscite.ibis.nightly")
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            manifest = root / "manifest.json"
-            manifest.write_text(json.dumps(bundle), encoding="utf-8")
-            command = ["smoke", "--app", str(root / "synthetic-app"), "--output", str(root / "output"),
-                       "--replay", str(manifest)]
-            with patch("sys.argv", command), patch(__name__ + ".first_run_preferences_main", return_value=0) as scenario:
-                self.assertEqual(main(), 0)
-                restored = scenario.call_args.args[0]
-                self.assertEqual(restored.seed, 37)
-                self.assertEqual(restored.shortcut, "ctrl+super+r")
-                self.assertEqual(restored.identifier, "com.ibiscite.ibis.nightly")
-            bundle["schema_version"] = 0
-            manifest.write_text(json.dumps(bundle), encoding="utf-8")
-            message = io.StringIO()
-            with patch("sys.argv", command), patch(__name__ + ".first_run_preferences_main") as scenario, redirect_stderr(message):
-                self.assertEqual(main(), 1)
-                scenario.assert_not_called()
-            self.assertIn("Unsupported evidence schema version", message.getvalue())
-
-    def test_cli_native_setup_refusal_is_a_replayable_harness_failure(self):
+    def test_cli_native_setup_refusal_is_a_harness_failure(self):
         for first_run in (False, True):
             with self.subTest(first_run=first_run), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)
                 app = root / "synthetic-app"
                 app.touch()
-                original = None
-                manifest = None
-                for name in ("original", "replay"):
-                    output = root / name
-                    command = ["smoke", "--app", str(app), "--output", str(output), "--skip-performance"]
-                    if first_run:
-                        command.append("--first-run-preferences")
-                    if manifest:
-                        command += ["--replay", str(manifest)]
-                    with patch("sys.argv", command), patch("platform.system", return_value="Linux"), \
-                            patch(__name__ + ".Linux", side_effect=AssertionError("PRIVATE synthetic setup failure")), \
-                            patch("subprocess.Popen") as launch, patch("builtins.print") as printed:
-                        self.assertEqual(main(), 1)
-                        launch.assert_not_called()
-                    manifest = next(output.glob("evidence-*/manifest.json"))
-                    bundle = load_bundle(manifest)
-                    self.assertEqual(bundle["result"], {"outcome": "fail", "failure_kind": "harness",
-                                                       "reason": "harness-failed", "failed_invariant": "scenario"})
-                    self.assertEqual(bundle["events"], [])
-                    self.assertEqual(bundle["missing_capabilities"], [])
-                    self.assertNotIn("PRIVATE", json.dumps(bundle) + str(printed.call_args_list))
-                    if original:
-                        self.assertEqual(bundle["result"], original["result"])
-                        self.assertEqual(bundle["replay_of"], original["run_id"])
-                    else:
-                        original = bundle
+                output = root / "output"
+                command = ["smoke", "--app", str(app), "--output", str(output), "--skip-performance"]
+                if first_run:
+                    command.append("--first-run-preferences")
+                with patch("sys.argv", command), patch("platform.system", return_value="Linux"), \
+                        patch(__name__ + ".Linux", side_effect=AssertionError("PRIVATE synthetic setup failure")), \
+                        patch("subprocess.Popen") as launch, patch("builtins.print") as printed:
+                    self.assertEqual(main(), 1)
+                    launch.assert_not_called()
+                bundle = load_bundle(next(output.glob("evidence-*/manifest.json")))
+                self.assertEqual(bundle["result"], {"outcome": "fail", "failure_kind": "harness",
+                                                   "reason": "harness-failed", "failed_invariant": "scenario"})
+                self.assertEqual(bundle["events"], [])
+                self.assertEqual(bundle["missing_capabilities"], [])
+                self.assertNotIn("PRIVATE", json.dumps(bundle) + str(printed.call_args_list))
 
     def test_post_launch_product_assertion_keeps_product_classification_and_cleanup(self):
         result, report, launches, _actions = self.preference_probe("wrong-copy")
@@ -3682,7 +3621,7 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(len(launches), 2)
         self.assertEqual(report["evidence"]["result"]["failure_kind"], "product")
 
-    def test_cli_missing_build_emits_and_replays_unavailable_bundle(self):
+    def test_cli_missing_build_emits_unavailable_bundle(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             command = ["smoke", "--app", str(root / "missing-app"), "--output", str(root / "output")]
@@ -3694,13 +3633,6 @@ class ContractTests(unittest.TestCase):
             bundle = load_bundle(manifest)
             self.assertEqual(bundle["result"]["outcome"], "unavailable")
             self.assertEqual(bundle["missing_capabilities"], ["app-build"])
-            command[4] = str(root / "replay")
-            with patch("sys.argv", command + ["--replay", str(manifest)]), \
-                    patch("platform.system", return_value="Linux"), patch(__name__ + ".Linux") as driver, patch("builtins.print"):
-                self.assertEqual(main(), 2)
-                driver.assert_not_called()
-            replay = load_bundle(next((root / "replay").glob("evidence-*/manifest.json")))
-            self.assertEqual(replay["result"], bundle["result"])
 
     def test_first_run_preferences_failures_cannot_pass_during_cleanup(self):
         for failure in ("wrong-format", "duplicate", "malformed", "wrong-schema", "non-json", "oversized",
@@ -4682,7 +4614,7 @@ class ContractTests(unittest.TestCase):
         metadata = collect_metadata(Path("synthetic-unavailable-app"), {
             "small": fixture().encode(), "initial-settings": b"{}", "initial-document": b""})
         recorder = Evidence("native-smoke", {"identifier": "com.ibiscite.ibis", "shortcut": "ctrl+shift+y",
-                                             "skip_performance": True, "seed": 0}, metadata)
+                                             "skip_performance": True}, metadata)
         native = Mock(spec=["click"])
         click = native.click
         token = ACTIVE.set(recorder)
@@ -4700,24 +4632,6 @@ class ContractTests(unittest.TestCase):
                           if event["kind"] == "action" and event["phase"] == "dispatch"],
                          ["click-library", "click-reload"])
         self.assertEqual(bundle["request_completion_order"][-1], bundle["events"][0]["id"])
-
-    def test_nested_observation_poll_counts_do_not_change_replay(self):
-        metadata = collect_metadata(Path("synthetic-unavailable-app"), {
-            "small": fixture().encode(), "initial-settings": b"{}", "initial-document": b""})
-        bundle = None
-        for polls in (1, 3):
-            recorder = Evidence("native-smoke", {"identifier": "com.ibiscite.ibis", "shortcut": "ctrl+shift+y",
-                                                 "skip_performance": True, "seed": 0}, metadata, bundle)
-            observations = iter([False] * (polls - 1) + [True])
-            token = ACTIVE.set(recorder)
-            try:
-                with patch("time.sleep"):
-                    wait_for(lambda: wait_for(lambda: (next(observations),), "window identity")[0], "picker mapped")
-            finally:
-                ACTIVE.reset(token)
-            bundle = recorder.finish(0)
-            self.assertEqual(bundle["result"]["outcome"], "pass")
-            self.assertEqual(len(bundle["events"]), 2)
 
     def test_menu_failure_observes_the_current_menu_instead_of_reusing_the_prior_check(self):
         native = Mock()

@@ -12,12 +12,7 @@ use crate::citation::{self, ItemSupport};
 use crate::contract::*;
 use crate::summary::RecordSummary;
 
-/// The Zotero library a reference was read from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ZoteroOrigin {
-    Personal,
-    Group(u64),
-}
+use crate::zotero::Library;
 
 /// The locators RTF and ODF Scan read, as they write them.
 const LOCATORS: [(LocatorTerm, &str); 15] = [
@@ -50,7 +45,7 @@ const RESERVED: [char; 4] = ['|', '{', '}', '*'];
 pub fn cite(
     snapshot: &Snapshot,
     request: &CitationRequest,
-    origin: impl Fn(&LibraryId) -> Option<ZoteroOrigin>,
+    origin: impl Fn(&LibraryId) -> Option<Library>,
 ) -> Result<CitationResult, CitationError> {
     let checked = citation::check(snapshot, None, request, |item| ItemSupport {
         locator: item
@@ -107,7 +102,7 @@ pub fn cite(
 fn marker<'a>(
     record: &'a Record,
     item: &CitationItem,
-    origin: &impl Fn(&LibraryId) -> Option<ZoteroOrigin>,
+    origin: &impl Fn(&LibraryId) -> Option<Library>,
 ) -> Result<(String, &'a Record), CitationError> {
     let identifier = identifier(origin(&record.id.library), &record.id.key)?;
     let fields = CitableFields::new(record.csl.to_map());
@@ -152,15 +147,15 @@ fn marker<'a>(
 
 /// `zu:0:KEY` for the personal library, `zg:GROUP:KEY` for a group: never
 /// the numeric user ID, which a document should not carry.
-fn identifier(origin: Option<ZoteroOrigin>, key: &str) -> Result<String, CitationError> {
+fn identifier(origin: Option<Library>, key: &str) -> Result<String, CitationError> {
     // Zotero's item keys: eight of its 33 letters and digits (no 0, 1 or O).
     let valid = key.len() == 8
         && key
             .bytes()
             .all(|byte| b"23456789ABCDEFGHIJKLMNPQRSTUVWXYZ".contains(&byte));
     match origin {
-        Some(ZoteroOrigin::Personal) if valid => Ok(format!("zu:0:{key}")),
-        Some(ZoteroOrigin::Group(group)) if valid && group > 0 => Ok(format!("zg:{group}:{key}")),
+        Some(Library::User) if valid => Ok(format!("zu:0:{key}")),
+        Some(Library::Group(group)) if valid && group > 0 => Ok(format!("zg:{group}:{key}")),
         _ => Err(CitationError::NotFromZotero),
     }
 }
@@ -282,11 +277,11 @@ mod tests {
         .unwrap()
     }
 
-    fn origin(library: &LibraryId) -> Option<ZoteroOrigin> {
+    fn origin(library: &LibraryId) -> Option<Library> {
         if *library == LibraryId::digest(PERSONAL) {
-            Some(ZoteroOrigin::Personal)
+            Some(Library::User)
         } else if *library == LibraryId::digest(GROUP) {
-            Some(ZoteroOrigin::Group(4321))
+            Some(Library::Group(4321))
         } else {
             None
         }

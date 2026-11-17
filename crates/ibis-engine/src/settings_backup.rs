@@ -1,10 +1,9 @@
 //! Shared settings backup operations. Reads have a deadline; a requested write
 //! finishes before returning. Paths and restore plans remain native.
-#[cfg(test)]
-use crate::sync::MutexExt;
+use ibis_core::file_io::{Admission, Pool, Scope};
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use crate::settings::backup;
@@ -165,30 +164,13 @@ pub fn settings_message(problem: &settings::SettingsError) -> String {
 /// Run read-only file work for at most two seconds. At most eight calls run
 /// at once: a stalled call keeps its place until it finishes, bounding retries.
 pub fn within<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
-    static IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
-    bounded(&IN_FLIGHT, work)
+    static POOL: OnceLock<Pool> = OnceLock::new();
+    bounded(POOL.get_or_init(|| Pool::new(MAX_IN_FLIGHT, 0)), work)
 }
 
-fn bounded<T: Send + 'static>(in_flight: &'static AtomicUsize, work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
-    struct Place(&'static AtomicUsize);
-    impl Drop for Place {
-        fn drop(&mut self) {
-            self.0.fetch_sub(1, Ordering::AcqRel);
-        }
-    }
-    let place = Place(in_flight);
-    if in_flight.fetch_add(1, Ordering::AcqRel) >= MAX_IN_FLIGHT {
-        return None;
-    }
-    let (sender, receiver) = std::sync::mpsc::channel();
-    std::thread::Builder::new()
-        .name("ibis-settings-file".into())
-        .spawn(move || {
-            let _place = place;
-            let _ = sender.send(work());
-        })
-        .ok()?;
-    receiver.recv_timeout(DEADLINE).ok()
+fn bounded<T: Send + 'static>(pool: &Pool, work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+    pool.run(&Scope::new(&|| false, DEADLINE), Admission::Immediate, work)
+        .ok()
 }
 
 #[cfg(test)]
@@ -198,18 +180,15 @@ mod tests {
 
     #[test]
     fn stuck_file_calls_have_a_fixed_limit_until_they_finish() {
-        static IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
-        let within = |work: fn() -> i32| bounded(&IN_FLIGHT, work);
+        static POOL: OnceLock<Pool> = OnceLock::new();
+        let pool = POOL.get_or_init(|| Pool::new(MAX_IN_FLIGHT, 0));
+        let within = |work: fn() -> i32| bounded(pool, work);
         let (release, wait) = std::sync::mpsc::channel::<()>();
         let wait = std::sync::Arc::new(Mutex::new(wait));
         let stuck: Vec<_> = (0..MAX_IN_FLIGHT)
             .map(|_| {
                 let wait = wait.clone();
-                std::thread::spawn(move || {
-                    bounded(&IN_FLIGHT, move || {
-                        let _ = wait.recover_lock().recv();
-                    })
-                })
+                std::thread::spawn(move || bounded(pool, move || drop(wait.lock().map(|w| w.recv()))))
             })
             .collect();
         for call in stuck {

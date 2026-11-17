@@ -2155,6 +2155,7 @@ dependencies = [
  "insta",
  "lopdf",
  "nix",
+ "serde",
  "serde_json",
  "tempfile",
  "unicode-segmentation",

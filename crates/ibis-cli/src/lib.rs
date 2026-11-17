@@ -3,7 +3,7 @@ use clap::{Arg, ArgAction, ArgMatches, Command};
 use human::cli;
 use ibis_core::contract::*;
 use ibis_core::destination::{System, destination};
-use ibis_engine::{Cancellation, DispatchResult, Engine, Method, protocol, request::*};
+use ibis_engine::{Cancellation, Engine, Method, Reply, protocol, request::*};
 use serde_json::{Value, json};
 use std::{
     io::{BufRead, Read, Write},
@@ -682,7 +682,7 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
         return emit(
             false,
             Ok(DispatchResult {
-                data: Value::Null,
+                data: Response::Local(Value::Null),
                 text: Some(cli("cli-greeting", &[("version", ibis_core::VERSION)])),
                 source_findings: false,
                 exit_code: ExitCode::Ok,
@@ -706,11 +706,11 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
                 return emit(
                     json,
                     Ok(DispatchResult {
-                        data: if error.kind() == clap::error::ErrorKind::DisplayVersion {
+                        data: Response::Local(if error.kind() == clap::error::ErrorKind::DisplayVersion {
                             json!({"version":ibis_core::VERSION})
                         } else {
                             json!({"help":error.to_string()})
-                        },
+                        }),
                         text: Some(error.to_string().trim_end().to_owned()),
                         source_findings: false,
                         exit_code: ExitCode::Ok,
@@ -892,12 +892,33 @@ fn command_help(program: &str, target: Option<&String>) -> DispatchResult {
     let help = shown.render_help().to_string();
     DispatchResult {
         text: Some(help.trim_end().to_owned()),
-        data: json!({"help":help}),
+        data: Response::Local(json!({"help":help})),
         source_findings: false,
         exit_code: ibis_core::contract::ExitCode::Ok,
     }
 }
 
+#[derive(Debug, serde::Serialize)]
+#[serde(untagged)]
+enum Response {
+    Engine(Reply),
+    Writing(Box<ibis_engine::WritingCitation>),
+    Local(Value),
+}
+type DispatchResult = ibis_engine::DispatchResult<Response>;
+fn local(result: ibis_engine::DispatchResult) -> DispatchResult {
+    result.map_data(Response::Local)
+}
+fn dispatch(
+    engine: &Engine,
+    method: Method,
+    params: &Value,
+    cancel: &Cancellation,
+) -> Result<DispatchResult, EngineError> {
+    engine
+        .reply(method, params, cancel)
+        .map(|result| result.map_data(Response::Engine))
+}
 enum Execution {
     Search(DispatchResult, Vec<String>),
     Result(DispatchResult, Option<human::Citing>),
@@ -907,10 +928,12 @@ enum Execution {
 /// Names for the refusal, read only once a read has been refused.
 fn zotero_profiles(engine: &Engine, cancel: &Cancellation) -> Vec<String> {
     let request = json!({"action":"zotero-profiles"});
-    engine
-        .dispatch(Method::Libraries, &request, cancel)
+    dispatch(engine, Method::Libraries, &request, cancel)
         .ok()
-        .and_then(|result| serde_json::from_value(result.data.get("zotero_profiles")?.clone()).ok())
+        .and_then(|result| match result.data {
+            Response::Engine(Reply::Libraries(result)) => result.value.zotero_profiles,
+            _ => None,
+        })
         .unwrap_or_default()
 }
 
@@ -935,14 +958,11 @@ pub(crate) fn bounded<T: Send + 'static>(operation: impl FnOnce() -> T + Send + 
 }
 
 fn bounded_for<T: Send + 'static>(timeout: Duration, operation: impl FnOnce() -> T + Send + 'static) -> Option<T> {
-    let (sender, receiver) = std::sync::mpsc::channel();
-    std::thread::Builder::new()
-        .name("ibis-bounded-io".into())
-        .spawn(move || {
-            let _ = sender.send(operation());
-        })
-        .ok()?;
-    receiver.recv_timeout(timeout).ok()
+    use ibis_core::file_io::{Admission, Pool, Scope};
+    static POOL: std::sync::OnceLock<Pool> = std::sync::OnceLock::new();
+    POOL.get_or_init(|| Pool::new(8, 0))
+        .run(&Scope::new(&|| false, timeout), Admission::Immediate, operation)
+        .ok()
 }
 
 struct Failure {
@@ -1114,22 +1134,25 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
 ) -> Result<Execution, Failure> {
     let (name, args) = matches.subcommand().ok_or(EngineError::new(ErrorCode::Usage))?;
     if name == "doctor" {
-        return Ok(Execution::Result(doctor::run(engine, matches, mode, defaults)?, None));
+        return Ok(Execution::Result(
+            local(doctor::run(engine, matches, mode, defaults)?),
+            None,
+        ));
     }
     if name == "settings" {
-        return Ok(Execution::Result(settings_backup::run(args)?, None));
+        return Ok(Execution::Result(local(settings_backup::run(args)?), None));
     }
     if name == "agents" {
         return Ok(Execution::Result(
-            agents::run(args, input, errors, mode.stdin_terminal())?,
+            local(agents::run(args, input, errors, mode.stdin_terminal())?),
             None,
         ));
     }
     if name == "writings" {
-        return Ok(Execution::Result(writings::run(engine, args)?, None));
+        return Ok(Execution::Result(local(writings::run(engine, args)?), None));
     }
     if name == "proposals" {
-        return Ok(Execution::Result(proposals::run(args)?, None));
+        return Ok(Execution::Result(local(proposals::run(args)?), None));
     }
     if name == "completions" {
         let shell = args
@@ -1138,7 +1161,7 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
         let script = completions::generate(command(), shell);
         return Ok(Execution::Result(
             DispatchResult {
-                data: json!({"shell":shell, "script":script}),
+                data: Response::Local(json!({"shell":shell, "script":script})),
                 text: Some(script),
                 source_findings: false,
                 exit_code: ibis_core::contract::ExitCode::Ok,
@@ -1153,7 +1176,7 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
         )?;
         return Ok(Execution::Result(
             DispatchResult {
-                data: json!({"toggled":true}),
+                data: Response::Local(json!({"toggled":true})),
                 text: None,
                 source_findings: false,
                 exit_code: ibis_core::contract::ExitCode::Ok,
@@ -1288,7 +1311,7 @@ fn open_libraries(
         }
         for library in &app.zotero {
             match library {
-                ZoteroLibrary::Personal => personal = true,
+                ZoteroLibrary::User => personal = true,
                 ZoteroLibrary::Group(id) if !groups.contains(id) => groups.push(*id),
                 ZoteroLibrary::Group(_) => {}
             }
@@ -1317,8 +1340,7 @@ fn open_libraries(
             ),
             None => human::file_failure(&path, error),
         };
-        engine
-            .dispatch(Method::Libraries, &params, &cancel)
+        dispatch(engine, Method::Libraries, &params, &cancel)
             .map_err(|error| Failure::explained(error, message(error)))?;
         // Library ids are digests, never locations; people see the path they gave.
         for library in engine.libraries()?.libraries {
@@ -1332,7 +1354,7 @@ fn open_libraries(
         }
     }
     let zotero: Vec<_> = personal
-        .then_some(ZoteroLibrary::Personal)
+        .then_some(ZoteroLibrary::User)
         .into_iter()
         .chain(groups.into_iter().map(ZoteroLibrary::Group))
         .collect();
@@ -1349,7 +1371,7 @@ fn open_libraries(
         let before = engine.libraries()?.libraries;
         // A Zotero failure keeps its own wording with a reason too, so the
         // profiles a person can name are listed beside it.
-        engine.dispatch(Method::Libraries, &params, &cancel).map_err(|error| {
+        dispatch(engine, Method::Libraries, &params, &cancel).map_err(|error| {
             let profiles = if error.reason == Some(ErrorReason::ZoteroProfileNeeded) {
                 zotero_profiles(engine, &cancel)
             } else {
@@ -1363,16 +1385,17 @@ fn open_libraries(
                 if before.iter().any(|old| old.id == library.id) {
                     continue;
                 }
-                let group = serde_json::to_value(&library)
-                    .ok()
-                    .and_then(|value| value.pointer("/zotero/group").and_then(Value::as_u64));
+                let group = match library.zotero {
+                    Some(ZoteroLibrary::Group(id)) => Some(id),
+                    _ => None,
+                };
                 let (chosen, shown) = match group {
                     Some(group) => (
                         app.zotero.contains(&ZoteroLibrary::Group(group)) && !named_groups.contains(&group),
                         format!("Zotero group {group} (chosen in {})", app.app),
                     ),
                     None => (
-                        app.zotero.contains(&ZoteroLibrary::Personal) && !named_personal,
+                        app.zotero.contains(&ZoteroLibrary::User) && !named_personal,
                         format!("Zotero (chosen in {})", app.app),
                     ),
                 };
@@ -1422,7 +1445,8 @@ fn run_method<R: BufRead>(
                 return Err(Failure::new(ErrorCode::Usage, cli("cli-search-words-needed", &[])));
             }
             let result = explain(
-                engine.dispatch(
+                dispatch(
+                    engine,
                     Method::Search,
                     &json!({"query":query,"limit":limit,"interpret_locator":args.get_flag("shorthand")}),
                     &cancel,
@@ -1433,19 +1457,22 @@ fn run_method<R: BufRead>(
                 },
             )?;
             let libraries = engine.libraries().map_err(Failure::from)?;
-            let libraries =
-                serde_json::to_value(libraries.libraries).map_err(|_| EngineError::new(ErrorCode::Internal))?;
-            let mut notes = human::search_notes(&result.data, libraries.as_array().map_or(&[], Vec::as_slice), &names);
+            let Response::Engine(Reply::Search(search)) = &result.data else {
+                return Err(EngineError::new(ErrorCode::Internal).into());
+            };
+            let complete = search.complete;
+            let mut notes = human::search_notes(&search.source_health, &libraries.libraries, &names);
             let mut result = if args.get_flag("keys") {
-                let hits = result.data["hits"]
-                    .as_array()
-                    .ok_or_else(|| EngineError::new(ErrorCode::Internal))?;
+                let hits = &search.hits;
                 let keys: Vec<_> = hits
                     .iter()
-                    .filter_map(|hit| {
-                        hit.pointer("/item/object/data/citation_keys/0/value")
-                            .and_then(Value::as_str)
-                            .filter(|key| !key.is_empty())
+                    .filter_map(|hit| match &hit.item.object {
+                        LibraryObject::Record(record) => record
+                            .citation_keys
+                            .first()
+                            .map(|key| key.value.as_str())
+                            .filter(|key| !key.is_empty()),
+                        _ => None,
                     })
                     .collect();
                 let missing = hits.len() - keys.len();
@@ -1493,9 +1520,9 @@ fn run_method<R: BufRead>(
                 result.text = Some(text);
                 result
             } else {
-                human::with_summary(result, method, matches.get_flag("json"), holdings(), &names, out)
+                human::with_summary(result, matches.get_flag("json"), holdings(), &names, out)
             };
-            if mode.stderr_terminal() && result.data["complete"] == false {
+            if mode.stderr_terminal() && !complete {
                 notes.push(if limit < 1000 {
                     cli(
                         "cli-search-more",
@@ -1523,14 +1550,14 @@ fn run_method<R: BufRead>(
                     (json!({"item":{"by":"key","value":key}}), Some(key))
                 }
             };
-            let result = engine.dispatch(method, &params, &cancel).map_err(|error| match &key {
+            let result = dispatch(engine, method, &params, &cancel).map_err(|error| match &key {
                 Some(key) => key_failure(engine, matches, key, error, libraries_open()),
                 None if error.code == ErrorCode::NotFound => Failure::explained(error, cli("cli-id-not-found", &[])),
                 None if error.code == ErrorCode::BadInput => Failure::explained(error, cli("cli-id-help", &[])),
                 None => Failure::from(error),
             })?;
             return Ok(Execution::Result(
-                human::with_summary(result, method, matches.get_flag("json"), holdings(), &names, out),
+                human::with_summary(result, matches.get_flag("json"), holdings(), &names, out),
                 None,
             ));
         }
@@ -1544,7 +1571,7 @@ fn run_method<R: BufRead>(
                     .insert("strict".into(), json!(true));
             }
             let citing = request_citing(&params).ok_or_else(|| Failure::new(ErrorCode::BadInput, &request_help))?;
-            let result = explain(engine.dispatch(method, &params, &cancel), |error| {
+            let result = explain(dispatch(engine, method, &params, &cancel), |error| {
                 if error.code == ErrorCode::BadInput {
                     request_help.clone()
                 } else {
@@ -1571,9 +1598,8 @@ fn run_method<R: BufRead>(
                 "form": form,
                 "output_locale": args.get_one::<String>("locale"),
             });
-            let result = engine
-                .dispatch(Method::Records, &params, &cancel)
-                .map_err(|error| records_failure(error, list))?;
+            let result =
+                dispatch(engine, Method::Records, &params, &cancel).map_err(|error| records_failure(error, list))?;
             let citing = human::Citing {
                 labels: list
                     .iter()
@@ -1702,8 +1728,7 @@ fn run_method<R: BufRead>(
                 _ => failed_citation_key(engine, matches, &keys, error),
             })?;
             result.value.destination = destination;
-            let result =
-                DispatchResult::citation(result.value, keys.len(), &output)?.with_health(&result.source_health)?;
+            let result = ibis_engine::DispatchResult::citation(result, keys.len(), &output)?.map_data(Response::Engine);
             let result = writings::with_check(result, writing_result)?;
             return Ok(Execution::Result(result, Some(citing)));
         }
@@ -1711,24 +1736,23 @@ fn run_method<R: BufRead>(
             let path = args.get_one::<PathBuf>("bib").cloned().unwrap_or_default();
             let keys: Vec<&String> = args.get_many::<String>("keys").into_iter().flatten().collect();
             let result = explain(
-                engine.dispatch(method, &json!({"path":path,"keys":keys}), &cancel),
+                dispatch(engine, method, &json!({"path":path,"keys":keys}), &cancel),
                 |EngineError { code, .. }| match code {
                     ErrorCode::BadInput => cli("cli-project-too-many-keys", &[]),
                     code => human::code_sentence(code),
                 },
             )?;
             return Ok(Execution::Result(
-                human::with_summary(result, method, matches.get_flag("json"), holdings(), &names, out),
+                human::with_summary(result, matches.get_flag("json"), holdings(), &names, out),
                 None,
             ));
         }
         Method::Entry => {
             let key = args.get_one::<String>("key").cloned().unwrap_or_default();
-            let result = engine
-                .dispatch(method, &json!({"item":{"by":"key","value":key}}), &cancel)
+            let result = dispatch(engine, method, &json!({"item":{"by":"key","value":key}}), &cancel)
                 .map_err(|error| key_failure(engine, matches, &key, error, libraries_open()))?;
             return Ok(Execution::Result(
-                human::with_summary(result, method, matches.get_flag("json"), holdings(), &names, out),
+                human::with_summary(result, matches.get_flag("json"), holdings(), &names, out),
                 None,
             ));
         }
@@ -1743,14 +1767,14 @@ fn run_method<R: BufRead>(
                     (json!({"item":{"by":"key","value":key}}), Some(key))
                 }
             };
-            let result = engine.dispatch(method, &params, &cancel).map_err(|error| match &key {
+            let result = dispatch(engine, method, &params, &cancel).map_err(|error| match &key {
                 Some(key) => key_failure(engine, matches, key, error, libraries_open()),
                 None if error.code == ErrorCode::NotFound => Failure::explained(error, cli("cli-id-not-found", &[])),
                 None if error.code == ErrorCode::BadInput => Failure::explained(error, cli("cli-id-help", &[])),
                 None => Failure::from(error),
             })?;
             return Ok(Execution::Result(
-                human::with_summary(result, method, matches.get_flag("json"), holdings(), &names, out),
+                human::with_summary(result, matches.get_flag("json"), holdings(), &names, out),
                 None,
             ));
         }
@@ -1767,13 +1791,13 @@ fn run_method<R: BufRead>(
             } else {
                 json!({"attachment": attachment, "query": args.get_one::<String>("query")})
             };
-            let result = explain(engine.dispatch(method, &params, &cancel), |error| match error.code {
+            let result = explain(dispatch(engine, method, &params, &cancel), |error| match error.code {
                 ErrorCode::NotFound => cli("cli-attachment-not-found", &[]),
                 ErrorCode::BadInput if method == Method::FindIn => cli("cli-find-in-words", &[]),
                 code => human::code_sentence(code),
             })?;
             return Ok(Execution::Result(
-                human::with_summary(result, method, matches.get_flag("json"), holdings(), &names, out),
+                human::with_summary(result, matches.get_flag("json"), holdings(), &names, out),
                 None,
             ));
         }
@@ -1805,9 +1829,8 @@ fn run_method<R: BufRead>(
                     .transpose()?
                     .unwrap_or(Value::Null)
             };
-            let result = engine
-                .dispatch(method, &json!({"method":called,"params":params}), &cancel)
-                .map_err(|error| {
+            let result =
+                dispatch(engine, method, &json!({"method":called,"params":params}), &cancel).map_err(|error| {
                     if matches!(called, Method::Show | Method::Entry)
                         && params.pointer("/item/by") == Some(&json!("key"))
                         && let Some(key) = params.pointer("/item/value").and_then(Value::as_str)
@@ -1832,7 +1855,7 @@ fn run_method<R: BufRead>(
         }
     };
     let result = explain(
-        engine.dispatch(method, &params, &cancel),
+        dispatch(engine, method, &params, &cancel),
         |EngineError { code, .. }| match code {
             ErrorCode::BadInput
                 if method == Method::Styles && params["query"].as_str().is_some_and(|query| query.len() > 1024) =>
@@ -1847,7 +1870,7 @@ fn run_method<R: BufRead>(
         return Ok(Execution::Result(human::locale_list(result), None));
     }
     Ok(Execution::Result(
-        human::with_summary(result, method, matches.get_flag("json"), holdings(), &names, out),
+        human::with_summary(result, matches.get_flag("json"), holdings(), &names, out),
         None,
     ))
 }
@@ -2078,23 +2101,26 @@ fn emit(
             }
         }
         if !json && let (Ok(result), Some(citing)) = (&result, citing) {
-            let citation = result.data.get("citation").unwrap_or(&result.data);
-            let project_blocked = result
-                .data
-                .pointer("/assessment/state")
-                .and_then(Value::as_str)
-                .is_some_and(|state| state == "conflict");
-            if !project_blocked {
+            let (citation, writing) = match &result.data {
+                Response::Engine(Reply::Citation(result)) => (Some(&result.value), None),
+                Response::Writing(writing) => (Some(&writing.citation), Some(writing)),
+                _ => (None, None),
+            };
+            let project_blocked = writing
+                .and_then(|writing| writing.assessment.as_ref())
+                .is_some_and(|assessment| assessment.state == ibis_engine::ProjectAssessmentState::Conflict);
+            if !project_blocked && let Some(citation) = citation {
                 for line in human::citation_report(citation, citing, result.text.is_some()) {
                     say(&line);
                 }
             }
-            if let Some(project) = result.data.get("bibliography").filter(|value| !value.is_null())
-                && let Some(report) = human::project_report(project)
-            {
-                say(&report);
+            if let Some(project) = writing.and_then(|writing| writing.bibliography.as_ref()) {
+                say(&human::project_report(project));
             }
-            if let Some(message) = result.data.pointer("/assessment/message").and_then(Value::as_str) {
+            if let Some(message) = writing
+                .and_then(|writing| writing.assessment.as_ref())
+                .and_then(|assessment| assessment.message.as_deref())
+            {
                 say(message);
             }
             if result.text.is_none() {
@@ -2200,14 +2226,15 @@ mod tests {
         )];
         library.warnings_total = 1;
         let health = ibis_engine::health::SourceHealth::of(std::iter::once(&library));
-        let result = engine
-            .dispatch(Method::Search, &json!({"query":"signals"}), &Cancellation::default())
-            .unwrap_or_else(|e| panic!("{e:?}"))
-            .with_health(&health)
+        let mut result = engine
+            .reply(Method::Search, &json!({"query":"signals"}), &Cancellation::default())
             .unwrap_or_else(|e| panic!("{e:?}"));
+        let Reply::Search(search) = &mut result.data else {
+            panic!("search reply")
+        };
+        search.source_health = health;
         let result = human::with_summary(
-            result,
-            Method::Search,
+            result.map_data(Response::Engine),
             false,
             human::Holdings::References,
             &Default::default(),
@@ -2318,7 +2345,7 @@ mod tests {
             }
         }
         let result = || DispatchResult {
-            data: json!({"invented":true}),
+            data: Response::Local(json!({"invented":true})),
             text: Some("(Lee, 2024)".into()),
             source_findings: false,
             exit_code: ibis_core::contract::ExitCode::Ok,
@@ -2363,7 +2390,7 @@ mod tests {
             }
         }
         let result = DispatchResult {
-            data: json!("x".repeat(protocol::MAX_RESPONSE_BYTES + 1)),
+            data: Response::Local(json!("x".repeat(protocol::MAX_RESPONSE_BYTES + 1))),
             text: None,
             source_findings: false,
             exit_code: ibis_core::contract::ExitCode::Ok,
