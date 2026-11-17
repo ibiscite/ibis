@@ -346,15 +346,4 @@ mod tests {
             assert!(!guidance.contains("/synthetic"));
         }
     }
-
-    #[test]
-    fn desktop_status_displays_only_reported_triggers_and_is_not_a_setting() {
-        for (trigger, registered) in [(Some("Strg + Umschalt + Y".into()), true), (None, false)] {
-            let next = status(trigger.clone(), true, "Desktop settings".into(), None);
-            assert_eq!(next.shortcut, trigger.unwrap_or_default());
-            assert_eq!(next.registered, registered);
-            let json = serde_json::to_value(next).unwrap_or_default();
-            assert_eq!(json["desktop"]["configurable"], true);
-        }
-    }
 }

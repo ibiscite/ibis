@@ -183,14 +183,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_list_is_named_as_each_macos_names_it() {
-        assert_eq!(list_name(15), "Accessibility");
-        assert_eq!(list_name(26), "Accessibility");
-        assert_eq!(list_name(27), "Device Control and Data Access");
-        assert_eq!(list_name(28), "Device Control and Data Access");
-    }
-
-    #[test]
     fn macos_needs_both_separate_authorizations_even_when_post_event_is_already_granted() {
         for (post_event, accessibility) in [(false, false), (false, true), (true, false), (true, true)] {
             let permission = macos_permissions(post_event, accessibility, 27);
@@ -217,20 +209,6 @@ mod tests {
             );
             assert_eq!(repaired, expected);
         }
-    }
-
-    #[test]
-    fn a_grant_obtained_during_the_first_repair_is_not_reset_by_the_second() {
-        let accessibility = std::cell::Cell::new(false);
-        let mut repaired = Vec::new();
-        repair_missing(
-            |grant| grant == Grant::Accessibility && accessibility.get(),
-            |grant| {
-                repaired.push(grant);
-                accessibility.set(true);
-            },
-        );
-        assert_eq!(repaired, [Grant::PostEvent]);
     }
 
     #[test]

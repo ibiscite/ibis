@@ -158,11 +158,6 @@ impl SafetyStamp {
         }
         Ok(())
     }
-
-    #[cfg(test)]
-    fn valid_at(self, now: Self) -> bool {
-        self.check(now).is_ok()
-    }
 }
 
 /// The app the picker was last opened from.
@@ -274,11 +269,6 @@ impl LastTarget {
                 last.captured = Some(captured);
             }
         }
-    }
-
-    #[cfg(test)]
-    fn current(&self, presentation: u64) -> bool {
-        self.0.lock().is_ok_and(|last| last.presentation == presentation)
     }
 
     #[cfg(any(target_os = "macos", test))]

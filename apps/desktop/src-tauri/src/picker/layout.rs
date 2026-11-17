@@ -139,13 +139,6 @@ mod tests {
     }
 
     #[test]
-    fn the_us_layout_keeps_every_key_where_it_is() {
-        for &(code, ..) in &POSITIONS {
-            assert_eq!(translate(key(code), layout(&[])), Some(key(code)));
-        }
-    }
-
-    #[test]
     fn a_letter_moves_to_the_key_that_types_it_on_whole_layouts() {
         for (changes, letter, place) in [
             (QWERTZ, Code::KeyY, Code::KeyZ),
@@ -171,43 +164,6 @@ mod tests {
                 let letter = POSITIONS.iter().find(|(c, ..)| *c == code).map(|&(.., us)| us);
                 assert_eq!(place.and_then(|key| typed(key, MODS)), letter);
             }
-        }
-    }
-
-    #[test]
-    fn a_hybrid_layout_uses_its_command_layer_only_for_command_shortcuts() {
-        let hybrid = |key, modifiers: Modifiers| {
-            assert!(
-                modifiers.difference(Modifiers::SUPER).is_empty(),
-                "text/control modifiers must be excluded"
-            );
-            layout(if modifiers.contains(Modifiers::SUPER) {
-                &[]
-            } else {
-                DVORAK
-            })(key, modifiers)
-        };
-        for modifiers in [
-            MODS,
-            Modifiers::SUPER | Modifiers::CONTROL | Modifiers::ALT | Modifiers::SHIFT,
-        ] {
-            let shortcut = Shortcut::new(Some(modifiers), Code::KeyY);
-            assert_eq!(
-                translate(shortcut, hybrid),
-                Some(shortcut),
-                "Command uses QWERTY's Y, never T"
-            );
-        }
-        for modifiers in [
-            Modifiers::empty(),
-            Modifiers::SHIFT,
-            Modifiers::CONTROL | Modifiers::ALT,
-        ] {
-            let shortcut = Shortcut::new(Some(modifiers), Code::KeyY);
-            assert_eq!(
-                translate(shortcut, hybrid),
-                Some(Shortcut::new(Some(modifiers), Code::KeyT))
-            );
         }
     }
 

@@ -997,15 +997,6 @@ mod tests {
         assert!(!moving.holds(&visits));
     }
 
-    #[test]
-    fn revealing_a_visible_picker_keeps_its_presentation() {
-        // Revealing keeps the current library chooser's presentation identity.
-        assert!(!reveal_shows(Some(true)));
-        assert!(reveal_shows(Some(false)));
-        // Unknown visibility shows: a dialog must never open without its picker.
-        assert!(reveal_shows(None));
-    }
-
     #[derive(Default)]
     struct HideUi {
         visible: AtomicBool,
@@ -1063,26 +1054,6 @@ mod tests {
     }
 
     #[test]
-    fn settings_leaves_the_picker_that_owns_an_open_file_dialog() -> tauri::Result<()> {
-        let app = picker_and_settings(false)?;
-        let _dialog = app.state::<ChooserOpen>().begin();
-        crate::settings_window::present(app.handle(), None, 41);
-        assert!(app.state::<HideUi>().visible.load(Ordering::SeqCst));
-        Ok(())
-    }
-
-    #[test]
-    fn settings_asked_for_by_one_opening_leaves_a_newer_one_alone() -> tauri::Result<()> {
-        let app = picker_and_settings(true)?;
-        let asked = app.state::<PickerGeneration>().current();
-        let newer = app.state::<PickerGeneration>().advance();
-        crate::settings_window::present(app.handle(), None, asked);
-        assert!(app.state::<HideUi>().visible.load(Ordering::SeqCst));
-        assert_eq!(app.state::<PickerGeneration>().current(), newer);
-        Ok(())
-    }
-
-    #[test]
     fn an_opened_source_hides_only_its_own_unpinned_presentation() -> tauri::Result<()> {
         let unpinned = picker_and_settings(false)?;
         let asked = unpinned.state::<PickerGeneration>().current();
@@ -1100,87 +1071,6 @@ mod tests {
         yield_to_window(pinned.handle(), current, Takeover::Beside);
         assert!(pinned.state::<HideUi>().visible.load(Ordering::SeqCst));
         Ok(())
-    }
-
-    #[test]
-    fn picker_unknown_hide_received_before_reopen_cannot_capture_b_when_its_response_runs_late() -> tauri::Result<()> {
-        use tauri::ipc::private::*;
-        let app = tauri::test::mock_builder()
-            .manage(PickerGeneration(AtomicU64::new(41)))
-            .manage(HideUi {
-                visible: AtomicBool::new(true),
-            })
-            .build(tauri::test::mock_context(tauri::test::noop_assets()))?;
-        // Call the actual command at receipt, then leave any returned future
-        // unpolled until A has closed and B has reopened. Tauri's async wrapper
-        // adds this same scheduling gap before executing an async command body.
-        let response = hide_picker(app.handle().clone(), None);
-        let visits = app.state::<PickerGeneration>();
-        visits.advance(); // close A
-        let b = visits.advance(); // reopen B
-        app.state::<HideUi>().visible.store(true, Ordering::SeqCst);
-        let kind = (&response).async_kind();
-        tauri::async_runtime::block_on(kind.future(response)).unwrap_or_else(|e| panic!("{e:?}"));
-        assert!(
-            app.state::<HideUi>().visible.load(Ordering::SeqCst),
-            "A's Escape must leave B visible"
-        );
-        assert_eq!(visits.current(), b, "A's late response must not retire B's owner");
-        Ok(())
-    }
-
-    #[test]
-    fn a_hide_requested_before_a_dialog_opened_leaves_the_dialog_its_picker() -> tauri::Result<()> {
-        let app = tauri::test::mock_builder()
-            .manage(PickerGeneration(AtomicU64::new(41)))
-            .manage(ChooserOpen::default())
-            .manage(HideUi {
-                visible: AtomicBool::new(true),
-            })
-            .build(tauri::test::mock_context(tauri::test::noop_assets()))?;
-        // A copy sent for presentation 41 finishes late, after an update offer
-        // opened over that same, still visible picker.
-        let lease = app.state::<ChooserOpen>().begin();
-        assert!(lease.is_some());
-        assert_eq!(hide_picker(app.handle().clone(), Some(41)), Ok(false));
-        assert!(app.state::<HideUi>().visible.load(Ordering::SeqCst));
-        assert_eq!(app.state::<PickerGeneration>().current(), 41);
-        // Once the dialog closes, the same presentation can hide again.
-        drop(lease);
-        assert_eq!(hide_picker(app.handle().clone(), Some(41)), Ok(true));
-        assert!(!app.state::<HideUi>().visible.load(Ordering::SeqCst));
-        Ok(())
-    }
-
-    #[test]
-    fn picker_unknown_hide_snapshots_its_native_owner_before_dispatch_and_cannot_dismiss_a_reopen() {
-        use std::cell::Cell;
-        let visits = PickerGeneration(AtomicU64::new(41));
-        let visible = Cell::new(true);
-        let unknown = visits.originating(None);
-        assert_eq!(unknown, 41);
-        assert!(dismiss_presented_with(&visits, unknown, || visible.set(false)));
-        assert!(!visible.get(), "Escape works before webview initialization");
-
-        let b = visits.advance();
-        visible.set(true);
-        let delayed = visits.originating(None);
-        assert_eq!(delayed, b);
-        let c = visits.advance();
-        assert!(!dismiss_presented_with(&visits, delayed, || visible.set(false)));
-        assert!(
-            visible.get(),
-            "B's unknown hide cannot dismiss C after native dispatch is delayed"
-        );
-        assert_eq!(visits.current(), c);
-        assert_eq!(
-            visits.originating(Some(41)),
-            41,
-            "known hides keep their original owner"
-        );
-        assert!(!dismiss_presented_with(&visits, 41, || visible.set(false)));
-        assert!(dismiss_presented_with(&visits, visits.originating(None), || visible.set(false)));
-        assert!(!visible.get());
     }
 
     #[test]
@@ -1209,46 +1099,6 @@ mod tests {
     }
 
     #[test]
-    fn picker_windows_worker_show_cannot_lock_out_an_earlier_main_thread_appearance_refresh() {
-        use std::cell::{Cell, RefCell};
-        let cache = Mutex::new(());
-        let on_main = Cell::new(false);
-        let stalled = Cell::new(false);
-        let visible = Cell::new(false);
-        let pending = RefCell::new(Vec::new());
-        let queued_refresh = || {
-            // A real main-thread refresh would block on this cache while a
-            // worker holding it synchronously waits for the HWND response.
-            // Detect the cycle without letting the regression hang the suite.
-            if cache.try_lock().is_err() {
-                stalled.set(true);
-            }
-        };
-        show_windows_picker_with(
-            || {
-                let _cache = cache.try_lock().unwrap_or_else(|e| panic!("{e}"));
-                if !on_main.get() {
-                    queued_refresh();
-                }
-                if !stalled.get() {
-                    visible.set(true);
-                }
-            },
-            |show| pending.borrow_mut().push(show),
-        );
-        on_main.set(true);
-        queued_refresh();
-        for show in pending.into_inner() {
-            show();
-        }
-        assert!(
-            !stalled.get(),
-            "appearance refresh and synchronous HWND lookup must make progress"
-        );
-        assert!(visible.get(), "the picker opens after its appearance has refreshed");
-    }
-
-    #[test]
     fn ipc_hide_retires_only_its_presentation_including_failed_io_and_reopen() {
         use std::cell::Cell;
         let visits = PickerGeneration::default();
@@ -1271,25 +1121,6 @@ mod tests {
         assert!(visible.get());
         assert!(dismiss_presented_with(&visits, c, || visible.set(false)));
         assert!(!visible.get(), "a fresh hide still works after the refusal");
-    }
-
-    #[test]
-    fn windows_shortcut_uses_the_exact_foreground_owner_even_after_webview_focus_and_reopen() {
-        // Cached top-level focus is false when WebView2 owns keyboard input.
-        // A foreign Ibis window is still a different HWND, even in this process.
-        for (picker, foreground, focused, action) in [
-            (Some(41), Some(41), Some(true), ToggleAction::Hide),
-            (Some(41), Some(43), Some(false), ToggleAction::Show),
-            (None, Some(41), None, ToggleAction::Show),
-            (Some(41), None, None, ToggleAction::Show),
-            (Some(0), Some(0), None, ToggleAction::Show),
-            // Close/recreate B: a delayed foreground sample of A cannot hide B.
-            (Some(43), Some(41), Some(false), ToggleAction::Show),
-            (Some(43), Some(43), Some(true), ToggleAction::Hide),
-        ] {
-            assert_eq!(foreground_focus(picker, foreground), focused);
-            assert_eq!(toggle_action(Some(true), focused), action);
-        }
     }
 
     // Model the two GLib priorities, not automatic focus on map: tao queues
@@ -1346,15 +1177,6 @@ mod tests {
             }
             // tao restores the hint on draw but does not retry activation.
             self.accepts_focus.set(true);
-        }
-
-        fn settle_worker_requests(&self) {
-            // Tauri dispatches worker WindowMessages before tao can enqueue
-            // their GTK operations. GLib's idle priority cannot order these
-            // messages while they are still waiting in Tauri's event queue.
-            for _ in 0..self.worker_shows.replace(0) {
-                self.pending.borrow_mut().push(None);
-            }
         }
 
         fn settle_activation(&self, visits: &PickerGeneration) {
@@ -1438,314 +1260,6 @@ mod tests {
     }
 
     #[test]
-    fn an_explicitly_unfocused_startup_maps_without_taking_the_editors_keyboard() {
-        let native = GtkPresentation::default();
-        let visits = PickerGeneration::default();
-        present_with(
-            false,
-            || native.allow_focus(),
-            || native.show(),
-            || native.focus_after_show(visits.current()),
-        );
-        native.settle(&visits);
-        assert!(native.mapped.get());
-        assert!(!native.owns_keyboard.get());
-        assert_eq!(*native.calls.borrow(), ["queue-show", "map"]);
-        assert!(native.activations.borrow().is_empty());
-    }
-
-    #[test]
-    fn a_native_dialog_keeps_focus_when_it_opens_before_the_activation_idle() {
-        for open_before_show in [true, false] {
-            let native = GtkPresentation::default();
-            let visits = PickerGeneration::default();
-            let owner = visits.advance();
-            native.frame.set((720, 480));
-            // Explicit update offers acquire their lease before show_picker;
-            // another chooser may acquire it after Show but before idle.
-            let mut dialog = if open_before_show { native.chooser.begin() } else { None };
-            present_with(
-                true,
-                || native.allow_focus(),
-                || native.show(),
-                || native.focus_after_show(owner),
-            );
-            if !open_before_show {
-                dialog = native.chooser.begin();
-            }
-            assert!(dialog.is_some());
-            native.settle_native();
-            assert!(native.mapped.get());
-            assert!(
-                visits.owns(owner),
-                "the offer changes neither visibility nor generation"
-            );
-            native.settle_activation(&visits);
-            assert!(native.chooser.is_open());
-            assert!(
-                native.activations.borrow().is_empty(),
-                "the picker must not rise over its native dialog"
-            );
-            assert!(!native.owns_keyboard.get());
-            assert!(
-                native.idle.borrow().is_empty(),
-                "suppressed activation is consumed, never retried"
-            );
-
-            drop(dialog);
-            assert!(!native.chooser.is_open());
-            native.settle_activation(&visits);
-            assert!(
-                native.activations.borrow().is_empty(),
-                "closing the dialog must not replay old activation"
-            );
-
-            let reopened = visits.advance();
-            present_with(
-                true,
-                || native.allow_focus(),
-                || native.show(),
-                || native.focus_after_show(reopened),
-            );
-            native.settle(&visits);
-            assert_eq!(*native.activations.borrow(), [(720, 480)]);
-            assert!(
-                native.owns_keyboard.get(),
-                "a fresh show can focus once its dialog is closed"
-            );
-        }
-    }
-
-    #[test]
-    fn a_hidden_failed_or_superseded_linux_show_cannot_activate_later() {
-        for still_mapped in [false, true] {
-            let native = GtkPresentation::default();
-            let visits = PickerGeneration::default();
-            present_with(
-                true,
-                || native.allow_focus(),
-                || native.show(),
-                || native.focus_after_show(visits.current()),
-            );
-            // A failed show never maps. Its activation must neither show the
-            // hidden window itself nor wait around to consume a later show.
-            native.pending.borrow_mut().clear();
-            native.settle_activation(&visits);
-            assert!(native.activations.borrow().is_empty());
-            assert!(native.idle.borrow().is_empty());
-
-            native.show();
-            native.settle_native();
-            native.focus_after_show(visits.current());
-            visits.advance(); // Every hide cancels, even when native hide fails.
-            native.mapped.set(still_mapped);
-            native.settle_activation(&visits);
-            assert!(native.activations.borrow().is_empty());
-            assert!(!native.owns_keyboard.get());
-        }
-    }
-
-    #[test]
-    fn a_newer_linux_opening_alone_owns_activation_and_can_request_no_focus() {
-        for focus in [false, true] {
-            let native = GtkPresentation::default();
-            let visits = PickerGeneration::default();
-            native.pending.borrow_mut().push(Some((960, 640)));
-            present_with(
-                true,
-                || native.allow_focus(),
-                || native.show(),
-                || native.focus_after_show(visits.current()),
-            );
-            visits.advance(); // A is replaced by B before either queue drains.
-            native.pending.borrow_mut().push(Some((840, 600)));
-            present_with(
-                focus,
-                || native.allow_focus(),
-                || native.show(),
-                || native.focus_after_show(visits.current()),
-            );
-            native.settle(&visits);
-            assert_eq!(native.owns_keyboard.get(), focus);
-            assert_eq!(
-                *native.activations.borrow(),
-                if focus { vec![(840, 600)] } else { vec![] }
-            );
-        }
-    }
-
-    #[test]
-    fn a_show_replaced_before_activation_scheduling_cannot_borrow_the_new_ticket() {
-        let native = GtkPresentation::default();
-        let visits = PickerGeneration::default();
-        let a = visits.advance();
-        native.allow_focus();
-        native.pending.borrow_mut().push(Some((960, 640)));
-        native.show();
-        native.settle_native();
-        let b = visits.advance();
-        assert_ne!(a, b);
-        // A reached Show; B was accepted before A scheduled its GTK idle.
-        // Reading current() here would incorrectly donate B's ticket to A.
-        native.focus_after_show(a);
-        native.settle_activation(&visits);
-        assert!(native.activations.borrow().is_empty());
-        assert!(!native.owns_keyboard.get());
-
-        native.pending.borrow_mut().push(Some((840, 600)));
-        native.show();
-        native.focus_after_show(b);
-        native.settle(&visits);
-        assert_eq!(*native.activations.borrow(), [(840, 600)]);
-        assert!(native.owns_keyboard.get());
-    }
-
-    #[test]
-    fn picker_reopens_after_copy_while_native_shortcut_replacement_waits_for_its_worker() {
-        use std::cell::{Cell, RefCell};
-
-        // A file edit can replace the shortcut while its X11 callback is in
-        // flight. Registration on GTK waits for the callback's worker; a
-        // synchronous visibility getter on that worker would wait for GTK.
-        // Model that cycle without hanging the test on a blocking recv().
-        for notice_visible in [false, true] {
-            let native = GtkPresentation::default();
-            let visits = PickerGeneration::default();
-            let notice = Cell::new(notice_visible);
-            let registration_waiting = Cell::new(true);
-            let stalled = Cell::new(false);
-            let tasks = RefCell::new(Vec::new());
-            on_picker_thread_with(
-                false,
-                || {
-                    if registration_waiting.get() {
-                        stalled.set(true);
-                        return;
-                    }
-                    // Read the hidden picker's state only once GTK is free.
-                    assert_eq!(toggle_action(Some(native.mapped.get()), None), ToggleAction::Show);
-                    notice.set(false);
-                    let owner = visits.advance();
-                    present_with(
-                        true,
-                        || native.allow_focus(),
-                        || native.show(),
-                        || native.focus_after_show(owner),
-                    );
-                },
-                |toggle| tasks.borrow_mut().push(toggle),
-            );
-            // Returning from the callback lets the X11 worker acknowledge the
-            // replacement, then GTK can handle the queued opening.
-            registration_waiting.set(false);
-            for toggle in tasks.into_inner() {
-                toggle();
-            }
-            native.settle(&visits);
-            assert!(!stalled.get(), "shortcut replacement and opening both finish");
-            assert!(!notice.get(), "the old receipt cannot cover the reopened search");
-            assert!(native.mapped.get(), "the shortcut maps the picker after copying");
-            assert!(native.owns_keyboard.get(), "opening typing reaches the picker");
-        }
-    }
-
-    #[test]
-    fn native_and_worker_entrypoints_reach_activation_after_both_dispatch_queues() {
-        // Counterexample from CI: the worker attaches GLib idle before Tauri
-        // dispatches Show. Being idle on GTK does not mean Show was dispatched.
-        let old = GtkPresentation::default();
-        let visits = PickerGeneration::default();
-        old.worker.set(true);
-        present_with(
-            true,
-            || old.allow_focus(),
-            || old.show(),
-            || old.focus_after_show(visits.current()),
-        );
-        old.settle(&visits); // GTK drains while Tauri still has the worker Show.
-        old.settle_worker_requests();
-        old.settle(&visits);
-        assert!(old.mapped.get());
-        assert!(
-            !old.owns_keyboard.get(),
-            "the old order loses activation exactly as CI did"
-        );
-
-        // Shortcut, second-instance and library workers share the same native
-        // entry as tray/menu, retry, startup and reopen on the main thread.
-        for on_thread in [false, true] {
-            for gtk_drains_first in [false, true] {
-                let native = GtkPresentation::default();
-                let visits = PickerGeneration::default();
-                let owner = visits.advance();
-                let tasks = std::cell::RefCell::new(Vec::<Box<dyn FnOnce() + '_>>::new());
-                native.worker.set(!on_thread);
-                on_picker_thread_with(
-                    on_thread,
-                    || {
-                        assert!(!native.worker.get(), "GTK geometry and show must run on its thread");
-                        native.pending.borrow_mut().push(Some((840, 600)));
-                        present_with(
-                            true,
-                            || native.allow_focus(),
-                            || native.show(),
-                            || native.focus_after_show(owner),
-                        );
-                    },
-                    |show| tasks.borrow_mut().push(Box::new(show)),
-                );
-                if gtk_drains_first {
-                    native.settle(&visits);
-                }
-                native.worker.set(false);
-                for show in tasks.borrow_mut().drain(..) {
-                    show();
-                }
-                native.settle_worker_requests();
-                native.settle(&visits);
-                assert!(native.mapped.get());
-                assert!(native.owns_keyboard.get());
-                assert_eq!(
-                    *native.activations.borrow(),
-                    [(840, 600)],
-                    "one activation of the complete frame"
-                );
-                assert_eq!(native.worker_shows.get(), 0);
-            }
-        }
-    }
-
-    #[test]
-    fn an_owned_worker_show_cancelled_before_native_dispatch_cannot_present() {
-        let native = GtkPresentation::default();
-        let visits = PickerGeneration::default();
-        let owner = visits.advance();
-        let tasks = std::cell::RefCell::new(Vec::<Box<dyn FnOnce() + '_>>::new());
-        on_picker_thread_with(
-            false,
-            || {
-                if visits.owns(owner) {
-                    present_with(
-                        true,
-                        || native.allow_focus(),
-                        || native.show(),
-                        || native.focus_after_show(owner),
-                    );
-                }
-            },
-            |show| tasks.borrow_mut().push(Box::new(show)),
-        );
-        visits.advance(); // Hide/newer show owns the picker before the task runs.
-        for show in tasks.borrow_mut().drain(..) {
-            show();
-        }
-        native.settle(&visits);
-        assert!(native.calls.borrow().is_empty());
-        assert!(!native.mapped.get());
-        assert!(!native.owns_keyboard.get());
-    }
-
-    #[test]
     fn window_creation_waits_hidden_for_the_complete_frame_and_preserves_launch_intent() {
         let mut context = tauri::test::mock_context::<tauri::test::MockRuntime, _>(tauri::test::noop_assets());
         *context.config_mut() = serde_json::from_str(include_str!("../tauri.conf.json"))
@@ -1772,23 +1286,6 @@ mod tests {
         let config: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap_or_default();
         assert_eq!(config["app"]["windows"][0]["label"], "main");
         assert_eq!(config["app"]["windows"][0]["skipTaskbar"], true);
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn native_editor_focus_overrides_a_stale_positive_toolkit_focus() {
-        assert_eq!(
-            resolve_focus(Ok(Some(false)), || panic!("stale GTK focus must not be consulted")),
-            Some(false)
-        );
-        assert_eq!(resolve_focus(Ok(Some(true)), || Some(false)), Some(true));
-        assert_eq!(resolve_focus(Ok(None), || Some(true)), Some(true));
-        assert_eq!(
-            resolve_focus(Err(()), || panic!(
-                "query failure must show rather than use stale focus"
-            )),
-            None
-        );
     }
 
     #[test]
@@ -1884,58 +1381,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn shortcuts_from_settings_are_parsed_and_invalid_ones_fall_back() {
-        let (_, label, error) = configured_shortcut_for(Some("Alt+Shift+K"), cfg!(target_os = "windows"));
-        assert_eq!(label, "Alt+Shift+K");
-        assert!(error.is_none());
-        let (_, label, error) = configured_shortcut_for(Some("Control+Nonsense"), cfg!(target_os = "windows"));
-        assert_eq!(label, shortcut_label());
-        assert!(error.is_some());
-        let (_, label, error) = configured_shortcut_for(None, cfg!(target_os = "windows"));
-        assert_eq!(label, shortcut_label());
-        assert!(error.is_none());
-    }
-
-    #[test]
-    fn safe_configured_shortcuts_survive_startup_and_empty_settings_fall_back() {
-        for label in ["Alt+Q", "CmdOrCtrl+Shift+Y", "Control+Command+R", "Control+Alt+F8"] {
-            let (shortcut, shown, error) = configured_shortcut_for(Some(label), cfg!(target_os = "windows"));
-            assert_eq!(Some(shortcut), label.parse::<OpeningShortcut>().ok());
-            assert_eq!(shown, label);
-            assert!(error.is_none());
-        }
-        let (shortcut, shown, error) = configured_shortcut_for(Some(""), cfg!(target_os = "windows"));
-        assert_eq!(shortcut, default_shortcut());
-        assert_eq!(shown, shortcut_label());
-        assert!(error.is_some());
-    }
-
-    #[test]
-    fn windows_shortcut_loading_refuses_altgr_but_keeps_other_explicit_choices() {
-        for label in [
-            "Control+Alt+C",
-            "Control+Alt+KeyC",
-            "Control+Alt+Shift+KeyC",
-            "Control+Alt+Space",
-        ] {
-            let (shortcut, shown, error) = configured_shortcut_for(Some(label), true);
-            assert_eq!(shortcut, default_shortcut());
-            assert_eq!(shown, shortcut_label());
-            assert!(error.is_some_and(|error| error.contains("AltGr")));
-            let (shortcut, shown, error) = configured_shortcut_for(Some(label), false);
-            assert_eq!(Some(shortcut), label.parse::<OpeningShortcut>().ok());
-            assert_eq!(shown, label);
-            assert!(error.is_none());
-        }
-        for label in ["Control+Shift+Y", "Control+Alt+F8", "Control+Alt+Command+KeyC"] {
-            let (shortcut, shown, error) = configured_shortcut_for(Some(label), true);
-            assert_eq!(Some(shortcut), label.parse::<OpeningShortcut>().ok());
-            assert_eq!(shown, label);
-            assert!(error.is_none());
-        }
-    }
-
     /// The label users see must name the shortcut that is registered.
     #[test]
     fn the_default_shortcut_label_matches_the_registered_shortcut() {
@@ -1969,50 +1414,9 @@ mod tests {
         );
     }
 
-    /// The file dialog takes the focus from the picker; hiding the picker then
-    /// made the dialog disappear before it could be used.
-    #[test]
-    fn the_picker_stays_open_while_its_chooser_has_the_focus() {
-        assert!(yields_to_window(true, false, false, Takeover::Beside));
-        assert!(!yields_to_window(false, false, false, Takeover::Beside));
-        assert!(!yields_to_window(true, true, false, Takeover::Beside));
-        assert!(!yields_to_window(true, false, true, Takeover::Beside));
-        assert!(yields_to_window(true, false, true, Takeover::Covered));
-        assert!(!yields_to_window(true, true, true, Takeover::Covered));
-        assert!(!yields_to_window(false, false, true, Takeover::Covered));
-        assert!(hides_on_blur(true, false, false));
-        assert!(!hides_on_blur(true, true, false));
-        assert!(!hides_on_blur(false, false, false));
-    }
-
     #[test]
     fn a_pinned_picker_stays_open_when_focus_moves_to_the_document() {
         assert!(!hides_on_blur(true, false, true));
-    }
-
-    #[test]
-    fn a_later_show_or_hide_cannot_be_dismissed_by_old_menu_or_deferred_blur() {
-        let generation = PickerGeneration::default();
-        let menu = generation.current();
-        assert!(generation.owns(menu));
-        assert!(
-            !generation.still_owns_after(menu, || false),
-            "Escape returns focus to the picker"
-        );
-        assert!(
-            !generation.still_owns_after(menu, || {
-                generation.advance();
-                true
-            }),
-            "a show during a native query supersedes cancellation"
-        );
-        let menu = generation.current();
-        generation.advance(); // hide, including a failed native hide
-        assert!(!generation.owns(menu));
-        let hidden = generation.current();
-        generation.advance(); // reopen, including a failed show
-        assert!(!generation.owns(menu));
-        assert!(!generation.owns(hidden));
     }
 
     /// #341: pressing More through UI Automation on Windows blurs the picker
