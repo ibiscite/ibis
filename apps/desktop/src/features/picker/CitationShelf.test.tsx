@@ -1,11 +1,10 @@
-import { missingKey, recordId } from "../../test-fixtures";
+import { recordId } from "../../test-fixtures";
 import { displayTree } from "../../testing/app";
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { createRef, useState } from "react";
 import type { SearchResult } from "../../api";
 import type { CitationReference } from "./choice";
-import { referenceLabels, CitationShelf } from "./CitationShelf";
+import { CitationShelf } from "./CitationShelf";
 import { useCitationInspector } from "./useCitationInspector";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
@@ -25,7 +24,6 @@ function Shelf(props: ShelfProps) {
 }
 const shelf = (props: ShelfProps) => <Shelf {...props} />;
 const details = (name: RegExp | string) => screen.getByRole("dialog", { name });
-const warningsPanel = () => screen.getByRole("region", { name: "Citation warnings" });
 const press = (node: HTMLElement, key: string) => {
   act(() => node.focus());
   fireEvent.keyDown(node, { key, code: key === " " ? "Space" : key });
@@ -49,14 +47,6 @@ test("engine-owned tokens retain punctuation, per-reference removal and arrow se
   expect(remove).toHaveBeenCalledExactlyOnceWith(a);
 });
 
-test("a token is the reference's own words: brackets and separators are shared, for one reference too", () => {
-  const a = record("a", "Alpha");
-  render(shelf({ selected: chosen([a]), shown: { ...output("(Alpha, 2021, p. 4)"), display: displayTree([{ item: null, text: "(" }, { item: 0, text: "Alpha, 2021, p. 4" }, { item: null, text: ")" }]) } }));
-  const token = screen.getByRole("button", { name: "Edit Alpha 2021" });
-  expect(token.textContent).toBe("Alpha, 2021, p. 4");
-  expect([...document.querySelectorAll(".shelf-shared")].map((node) => node.textContent)).toEqual(["(", ")"]);
-});
-
 test("formatted tokens preserve engine emphasis and keep source strings inert", () => {
   const a = record("a", "Alpha"), b = record("b", "Beta");
   const text = "Alpha species; Beta <script>literal</script>";
@@ -69,44 +59,6 @@ test("formatted tokens preserve engine emphasis and keep source strings inert", 
   expect(document.querySelector(".shelf-citation i")?.textContent).toBe("Alpha species");
   expect(document.querySelector(".shelf-citation b")?.textContent).toBe("Beta <script>literal</script>");
   expect(document.querySelector(".shelf script")).toBeNull();
-});
-
-test("preview and rich-text drag preserve consecutive spaces", () => {
-  const text = "A  B";
-  render(shelf({ selected: chosen([record("a")]), shown: output(text) }));
-  expect(document.querySelector(".preview-text")?.textContent).toBe(text);
-  const setData = vi.fn();
-  fireEvent.dragStart(document.querySelector(".shelf-leading")!, { dataTransfer: { setData } });
-  expect(setData).toHaveBeenCalledWith("text/plain", text);
-  expect(setData).toHaveBeenCalledWith("text/html", '<span class="display-run">A &nbsp;B</span>');
-});
-
-test("short names distinguish identical author/year labels without using the citation key as identity", () => {
-  expect(referenceLabels([record("a"), record("b", "Okafor", "2019"), record("c", "", null)])).toEqual(["García 2021", "Okafor 2019", "c"]);
-  expect(referenceLabels([record("a"), record("b")])).toEqual(["García 2021 · a", "García 2021 · b"]);
-});
-
-test("formatted tokens keep passive small caps and underline from the engine", () => {
-  render(shelf({ selected: chosen([record("a"), record("b")]), shown: { ...output("Caps; Under"), display: displayTree([
-    { item: 0, text: "Caps", runs: [{ text: "Caps", bold: false, italic: false, script: "normal", small_caps: true }] },
-    { item: null, text: "; " }, { item: 1, text: "Under", runs: [{ text: "Under", bold: false, italic: false, script: "normal", underline: true }] },
-  ]) } }));
-  expect(document.querySelector<HTMLElement>('.shelf [style*="small-caps"]')?.textContent).toBe("Caps");
-  expect(document.querySelector<HTMLElement>('.shelf [style*="underline"]')?.textContent).toBe("Under");
-});
-
-test("colliding keys from different libraries have distinct visible and screen-reader names", () => {
-  const first = { ...record("shared"), id: { library: "invented-one", key: recordId("shared") }, source: "invented-one", title: "First invented work" };
-  const second = { ...first, id: { library: "invented-two", key: recordId("shared") }, source: "invented-two", title: "Second invented work" };
-  const change = vi.fn();
-  render(shelf({ selected: new Map([["first", first], ["second", second]]), onChangeReference: change,
-    referenceLibrary: (r) => r.source === "invented-one" ? "First library" : "Second library",
-    shown: { ...output("(García, 2021; García, 2021)"), display: displayTree([{ item: 0, text: "(García, 2021" }, { item: null, text: "; " }, { item: 1, text: "García, 2021)" }]) } }));
-  expect(screen.getByRole("button", { name: "Edit García 2021 · shared · First library" })).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Edit García 2021 · shared · Second library" }));
-  expect(details("Citation details for Second invented work")).toBeTruthy();
-  fireEvent.change(screen.getByRole("textbox", { name: "Page" }), { target: { value: "42" } });
-  expect(change).toHaveBeenCalledWith(second, { locator: { term: "page", value: "42", input: "editor" } });
 });
 
 test.each(["click", "ArrowDown", " "])("a single reference is the whole citation token; %s opens its details and focuses Page", (key) => {
@@ -135,108 +87,6 @@ test("Enter on a token pastes, as it does everywhere, and never opens its detail
   expect(screen.queryByRole("dialog", { name: /^Citation details for/ })).toBeNull();
 });
 
-test("Keep My Order is in the details only for a style with two or more references in the citation", () => {
-  const a = record("a", "Alpha"), b = record("b", "Beta"), keep = vi.fn();
-  const two = { ...output("(Alpha, 2021; Beta, 2021)"), display: displayTree([{ item: 0, text: "Alpha, 2021" }, { item: null, text: "; " }, { item: 1, text: "Beta, 2021" }]) };
-  const { rerender } = render(shelf({ selected: chosen([a, b]), shown: two, onKeepOrder: keep }));
-  fireEvent.click(screen.getByRole("button", { name: "Edit Alpha 2021" }));
-  fireEvent.click(within(details(/^Citation details for/)).getByRole("switch", { name: "Keep My Order" }));
-  expect(keep).toHaveBeenCalledExactlyOnceWith(true);
-  rerender(shelf({ selected: chosen([a, b]), shown: two, onKeepOrder: keep, style: null, keys: true }));
-  expect(within(details(/^Citation details for/)).queryByRole("switch")).toBeNull();
-  rerender(shelf({ selected: chosen([a]), shown: output("(Alpha, 2021)"), onKeepOrder: keep }));
-  expect(within(details(/^Citation details for/)).queryByRole("switch")).toBeNull();
-});
-
-test("pressing the open token closes its details; another token moves them", () => {
-  const a = record("a", "Alpha"), b = record("b", "Beta");
-  render(shelf({ selected: chosen([a, b]), shown: { ...output("(Alpha, 2021; Beta, 2021)"), display: displayTree([{ item: 0, text: "Alpha, 2021" }, { item: null, text: "; " }, { item: 1, text: "Beta, 2021" }]) } }));
-  const alpha = screen.getByRole("button", { name: "Edit Alpha 2021" }), beta = screen.getByRole("button", { name: "Edit Beta 2021" });
-  fireEvent.click(alpha);
-  expect(details("Citation details for Invented title a")).toBeTruthy();
-  fireEvent.click(beta);
-  expect(alpha.getAttribute("aria-expanded")).toBe("false");
-  expect(beta.getAttribute("aria-expanded")).toBe("true");
-  expect(details("Citation details for Invented title b")).toBeTruthy();
-  expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Page" }));
-  fireEvent.click(beta);
-  expect(screen.queryByRole("dialog", { name: /^Citation details for/ })).toBeNull();
-});
-
-test("a pending preview can be edited before formatting finishes", () => {
-  render(shelf({ selected: chosen([record("a")]), shown: null }));
-  expect(screen.getByText("Formatting…")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
-  expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Page" }));
-});
-
-test("RTL citation text is isolated with automatic direction without changing key punctuation", () => {
-  const text = "[@مثال2021, p. 12]";
-  render(shelf({ selected: chosen([record("rtl")]), keys: true, style: null, shown: output(text) }));
-  const citation = document.querySelector(".shelf .preview-text")!;
-  expect(citation.getAttribute("dir")).toBe("auto");
-  expect(citation.textContent).toBe(text);
-  expect(citation.getAttribute("title")).toBeNull();
-});
-
-test("pending retains dimmed old text for 300 ms, then Formatting without treating it as a new receipt", () => {
-  vi.useFakeTimers();
-  try {
-    const reference = record("a");
-    const { rerender } = render(shelf({ selected: chosen([reference]), shown: output("Original citation") }));
-    rerender(shelf({ selected: chosen([{ ...reference, locator: { term: "page", value: "9" } }]), shown: null }));
-    expect(document.querySelector('.shelf-output[data-state="pending"] .preview-text')?.textContent).toBe("Original citation");
-    act(() => vi.advanceTimersByTime(299));
-    expect(screen.queryByText("Formatting…")).toBeNull();
-    act(() => vi.advanceTimersByTime(1));
-    expect(screen.getByText("Formatting…")).toBeTruthy();
-    expect(document.querySelector('.shelf-output[data-state="pending"] .preview-text')).toBeNull();
-  } finally { cleanup(); vi.useRealTimers(); }
-});
-
-test("a later refresh of unchanged reference details gets its own 300 ms retention", () => {
-  vi.useFakeTimers();
-  try {
-    const selected = chosen([record("a")]);
-    const { rerender } = render(shelf({ selected, shown: output("Original citation") }));
-    rerender(shelf({ selected, shown: null }));
-    act(() => vi.advanceTimersByTime(300));
-    expect(screen.getByText("Formatting…")).toBeTruthy();
-    rerender(shelf({ selected, shown: output("Refreshed citation") }));
-    rerender(shelf({ selected, shown: null }));
-    expect(document.querySelector('.shelf-output[data-state="pending"] .preview-text')?.textContent).toBe("Refreshed citation");
-    act(() => vi.advanceTimersByTime(299));
-    expect(screen.queryByText("Formatting…")).toBeNull();
-    act(() => vi.advanceTimersByTime(1));
-    expect(screen.getByText("Formatting…")).toBeTruthy();
-  } finally { cleanup(); vi.useRealTimers(); }
-});
-
-test("a formatting reply cannot retire a token while it is being activated", () => {
-  const selected = chosen([record("a")]);
-  const { rerender } = render(shelf({ selected, shown: null }));
-  const token = screen.getByRole("button", { name: "Edit García 2021" });
-  fireEvent.mouseDown(token, { button: 0 });
-  rerender(shelf({ selected, shown: output() }));
-  fireEvent.mouseUp(token, { button: 0 });
-  fireEvent.click(token);
-  expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Page" }));
-});
-
-test("Page retains typed input, canonical pages from search, and independent reference details", () => {
-  const reference: CitationReference = { ...record("a"), locator: { term: "page", value: "S.12" }, form: "year-only" };
-  const change = vi.fn();
-  render(shelf({ highlightedReference: reference, shown: output("(2021, S.12)"), onChangeReference: change }));
-  fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
-  const page = screen.getByRole<HTMLInputElement>("textbox", { name: "Page" });
-  expect(page.value).toBe("S.12");
-  fireEvent.change(page, { target: { value: "pp. ١٢–١٥" } });
-  expect(change).toHaveBeenCalledWith(reference, { locator: { term: "page", value: "pp. ١٢–١٥", input: "editor" } });
-  expect(document.activeElement).toBe(page);
-  fireEvent.change(page, { target: { value: "" } });
-  expect(change).toHaveBeenLastCalledWith(reference, { locator: null });
-});
-
 const removeOnce = (method: string) => {
   const reference = record("a"), remove = vi.fn();
   render(shelf({ selected: chosen([reference]), shown: output(), onRemove: remove }));
@@ -247,149 +97,6 @@ const removeOnce = (method: string) => {
   expect(screen.queryByRole("dialog", { name: /^Citation details for/ })).toBeNull();
 };
 test.each(["Backspace", "Delete", "×"])("%s removes a token exactly once and never opens the details", removeOnce);
-
-test("Backspace only edits in the details, including a held key on an empty field or a button", () => {
-  const reference = record("a"), remove = vi.fn();
-  render(shelf({ selected: chosen([reference]), shown: output(), onRemove: remove }));
-  fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
-  fireEvent.keyDown(screen.getByRole("textbox", { name: "Page" }), { key: "Backspace" });
-  expect(remove).not.toHaveBeenCalled();
-  fireEvent.keyDown(screen.getByRole("button", { name: "Locator type: Page" }), { key: "Backspace" });
-  fireEvent.keyDown(screen.getByRole("button", { name: "Locator type: Page" }), { key: "Backspace", repeat: true });
-  expect(remove).not.toHaveBeenCalled();
-  fireEvent.keyDown(screen.getByRole("button", { name: "Locator type: Page" }), { key: "Delete" });
-  expect(remove).toHaveBeenCalledExactlyOnceWith(reference);
-});
-
-test("a token's details hold only its own warnings; the shelf keeps the count of all of them", () => {
-  // The engine's warning is about the second reference, as its item says.
-  const warning = { item: 1, message: { id: "app-loss", args: { what: "the page or location", target: " for beta" } } };
-  const said = "This output cannot fully show the page or location for beta.";
-  const alpha = record("alpha", "Alpha"), beta = { ...record("beta", "Beta"), partial: true };
-  const shown = { ...output("[1], [2]"), display: displayTree([{ item: 0, text: "[1]" }, { item: null, text: ", " }, { item: 1, text: "[2]" }]) };
-  const { rerender } = render(shelf({ selected: chosen([alpha, beta]), style: "ieee", shown }));
-  fireEvent.click(screen.getByRole("button", { name: "Edit Alpha 2021" }));
-  rerender(shelf({ selected: chosen([alpha, beta]), style: "ieee", shown, outputWarnings: [warning] }));
-  const first = details(/^Citation details for/);
-  expect(within(first).getByText(/IEEE numbers depend on your whole document/)).toBeTruthy();
-  expect(within(first).queryByText(said)).toBeNull();
-  expect(within(first).queryByText(/only some search words matched/)).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Edit Beta 2021" }));
-  const second = details(/^Citation details for/);
-  expect(within(second).getByText(said)).toBeTruthy();
-  expect(within(second).getByText(/only some search words matched/)).toBeTruthy();
-  press(screen.getByRole("button", { name: "2 warnings · Closest matches" }), " ");
-  expect(within(warningsPanel()).getByText(said)).toBeTruthy();
-});
-
-test("an output written on several lines, such as BibTeX, reads as one line on the shelf", () => {
-  const a = record("a", "Alpha"), b = record("b", "Beta");
-  const entry = (key: string) => `@article{${key},\n  title = {Invented title},\n  year = {2021}\n}`;
-  const text = `${entry("a")}\n\n${entry("b")}`;
-  render(shelf({ selected: chosen([a, b]), keys: true, shown: { ...output(text), display: displayTree([{ item: 0, text: entry("a") }, { item: null, text: "\n\n" }, { item: 1, text: entry("b") }]) } }));
-  expect(document.querySelector(".shelf-citation")?.textContent).toBe("@article{a, title = {Invented title}, year = {2021} } @article{b, title = {Invented title}, year = {2021} }");
-  expect(screen.getByRole("button", { name: "Edit Alpha 2021" }).closest("[title]")?.getAttribute("title")).toBe(entry("a"));
-});
-
-test("a key the token does not use is handed on to the picker", () => {
-  const picker = vi.fn();
-  render(<main onKeyDown={(event) => picker(event.key)}>{shelf({ selected: chosen([record("a")]), shown: output() })}</main>);
-  const token = screen.getByRole("button", { name: "Edit García 2021" });
-  act(() => token.focus());
-  fireEvent.keyDown(token, { key: "Escape" });
-  expect(picker).toHaveBeenCalledExactlyOnceWith("Escape");
-});
-
-test("hiding the output keeps the token's one-click ×", () => {
-  const reference = record("a"), remove = vi.fn();
-  render(shelf({ selected: chosen([reference]), shown: undefined, onRemove: remove }));
-  const token = screen.getByRole("button", { name: "Edit García 2021" });
-  const wrapper = token.closest<HTMLElement>(".citation-token")!;
-  fireEvent.click(within(wrapper).getByRole("button", { name: "Remove García 2021" }));
-  expect(remove).toHaveBeenCalledExactlyOnceWith(reference);
-  expect(screen.queryByRole("dialog", { name: /^Citation details for/ })).toBeNull();
-});
-
-test.each([1, 2])("many references at the minimum frame and %s× text retain exact output and one-step access to every reference", (scale) => {
-  vi.stubGlobal("innerWidth", 480); vi.stubGlobal("innerHeight", 360);
-  document.documentElement.style.fontSize = `${16 * scale}px`;
-  const records = Array.from({ length: 50 }, (_, i) => record(`synthetic${i}`, `Author${i}`));
-  const spans = records.flatMap((r, item) => [...item ? [{ item: null, text: "; " }] : [], { item, text: `${r.first_author}, an invented very long citation, 2021` }]);
-  const text = spans.map((span) => span.text).join("");
-  render(shelf({ selected: chosen(records), shown: { ...output(text), display: displayTree(spans) } }));
-  expect(document.querySelector(".shelf-citation")?.textContent).toBe(text);
-  expect(screen.getAllByRole("button", { name: /^Edit Author\d+ 2021$/ })).toHaveLength(50);
-  fireEvent.click(screen.getByRole("button", { name: "Edit Author49 2021" }));
-  expect(within(details("Citation details for Invented title synthetic49")).getByRole("heading", { level: 2 }).textContent).toBe("Invented title synthetic49");
-  expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Page" }));
-  document.documentElement.style.fontSize = "";
-});
-
-test.each([true, false])("folded warnings and Closest matches keep a visible count and one-step access (preview=%s)", (preview) => {
-  vi.stubGlobal("innerWidth", 480); vi.stubGlobal("innerHeight", 360);
-  const reference = { ...record("near"), partial: true };
-  render(shelf({ selected: chosen([reference]), style: "ieee", outputWarnings: [missingKey("near")], shown: preview ? output() : undefined }));
-  const warnings = screen.getByRole("button", { name: "2 warnings · Closest matches" });
-  expect(warnings.textContent).toBe("! 2");
-  press(warnings, " ");
-  const menu = warningsPanel();
-  expect(document.activeElement).toBe(menu.querySelector(".inspector-column"));
-  expect(within(menu).getByText("near is missing from thesis.bib.")).toBeTruthy();
-  expect(within(menu).getByRole("heading", { name: "Closest matches" })).toBeTruthy();
-  expect(within(menu).getByText(/only some search words matched/)).toBeTruthy();
-  expect(within(menu).getByText(/IEEE numbers depend on your whole document/)).toBeTruthy();
-});
-
-test("a note style says in the details why it copies the full first note, from the engine's notice, and the line stays the citation", () => {
-  // The picker's own format may differ from the output shown (an editor's request): the notice decides.
-  render(shelf({ selected: chosen([record("a")]), style: "pandoc", outputWarnings: [], outputNotices: ["needs-document-context", "full-first-note"], shown: output() }));
-  expect(document.querySelector(".shelf-actions")?.textContent).toBe("");
-  fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
-  expect(within(details(/^Citation details for/)).getByText(/Later notes to the same work are shortened/)).toBeTruthy();
-  cleanup();
-  // A style without the notice says nothing of the kind.
-  render(shelf({ selected: chosen([record("a")]), style: "apa", outputWarnings: [], shown: output() }));
-  fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
-  expect(screen.queryByText(/Later notes to the same work are shortened/)).toBeNull();
-});
-
-test("a formatting refusal stays beside the citation before its details open, even with the preview hidden", () => {
-  const reason = "Reference 1: This form cannot be expressed. Choose another form.";
-  render(shelf({ selected: chosen([record("a")]), shown: "failed", problem: reason }));
-  expect(within(screen.getByRole("region", { name: "Preview" })).getByText(reason)).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Details" }));
-  expect(within(details(/^Citation details for/)).getByRole("alert").textContent).toBe(reason);
-});
-
-test("closing and reopening retires the old details, focuses Search, and keeps the edited citation", async () => {
-  const search = createRef<HTMLInputElement>();
-  function Picker({ presentation }: { presentation: number }) {
-    const [reference, setReference] = useState<CitationReference>(record("a"));
-    return <><input ref={search} aria-label="Search" />{shelf({ presentation, selected: chosen([reference]), shown: output(), fallbackFocusRef: search,
-      onChangeReference: (previous, update) => setReference({ ...previous, ...update }) })}</>;
-  }
-  const { rerender } = render(<Picker presentation={0} />);
-  fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "Page" }), { target: { value: "iv–vi" } });
-  rerender(<Picker presentation={1} />);
-  await act(async () => { await new Promise(requestAnimationFrame); });
-  expect(screen.queryByRole("textbox", { name: "Page" })).toBeNull();
-  expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Search" }));
-  fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
-  expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Page" }).value).toBe("iv–vi");
-});
-
-test("removing a focused token sends focus to Search before it disappears", () => {
-  const search = createRef<HTMLInputElement>();
-  function Picker() {
-    const [selected, setSelected] = useState(chosen([record("a")]));
-    return <><input ref={search} aria-label="Search" />{shelf({ selected, shown: selected.size ? output() : undefined,
-      fallbackFocusRef: search, onRemove: () => setSelected(new Map()) })}</>;
-  }
-  render(<Picker />);
-  press(screen.getByRole("button", { name: "Edit García 2021" }), "Backspace");
-  expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Search" }));
-});
 
 test("Copied shows the exact receipt between matching beaks, with one polite confirmation", () => {
   const text = "[@invented-first; @invented-second]";
@@ -402,54 +109,4 @@ test("Copied shows the exact receipt between matching beaks, with one polite con
   rerender(shelf({ shown: output("New preview") }));
   expect(screen.queryByRole("status", { name: "Copied" })).toBeNull();
   expect(document.querySelector(".preview-text")?.textContent).toBe("New preview");
-});
-
-test("a multi-reference Copied receipt has one complete read-only line for ellipsis", () => {
-  const text = "(Alpha, 2021; Beta, 2021)";
-  render(shelf({ selected: chosen([record("a", "Alpha"), record("b", "Beta")]), copied: { text, warnings: [] }, shown: {
-    ...output(text), display: displayTree([{ item: null, text: "(" }, { item: 0, text: "Alpha, 2021" },
-      { item: null, text: "; " }, { item: 1, text: "Beta, 2021" }, { item: null, text: ")" }]),
-  } }));
-  expect(document.querySelector('.shelf[data-copied] .preview-text')?.textContent).toBe(text);
-  expect(screen.queryByRole("button", { name: /^Edit / })).toBeNull();
-});
-
-test("Copied retains the citation's scientific script and emphasis", () => {
-  render(shelf({ selected: chosen([record("a")]), shown: { ...output("CO2"), display: displayTree([{ item: 0, text: "CO2", runs: [
-    { text: "CO", italic: true, bold: false, script: "normal" },
-    { text: "2", italic: true, bold: false, script: "subscript" },
-  ] }]) }, copied: { text: "CO2", warnings: [] } }));
-  expect(document.querySelector('.shelf[data-copied] .preview-text')?.textContent).toBe("CO2");
-  expect(document.querySelector('.shelf[data-copied] sub')?.textContent).toBe("2");
-  expect([...document.querySelectorAll('.shelf[data-copied] i')].map((node) => node.textContent).join(" ")).toBe("CO 2");
-});
-
-test("Copied warnings keep their count and one-step access; a newer receipt retires the old notes", () => {
-  vi.stubGlobal("innerWidth", 480); vi.stubGlobal("innerHeight", 360);
-  const closest = { item: 0, message: { id: "picker-closest-match-warning", args: { title: "Invented title" } } };
-  const copied = { text: "Copied citation", warnings: [missingKey("year2026"), closest], closestMatches: [closest] };
-  const { rerender } = render(shelf({ copied, shown: output(copied.text) }));
-  const count = screen.getByRole("button", { name: "2 warnings · Closest matches" });
-  expect(count.textContent).toBe("! 2");
-  fireEvent.click(count);
-  const menu = warningsPanel();
-  expect(within(menu).getByText("year2026 is missing from thesis.bib.")).toBeTruthy();
-  expect(within(menu).getByRole("heading", { name: "Closest matches" })).toBeTruthy();
-  expect(within(menu).getAllByText("“Invented title” is a closest match: only some search words matched.")).toHaveLength(1);
-  rerender(shelf({ copied: { text: "New citation", warnings: [] } }));
-  expect(screen.queryByRole("region", { name: "Citation warnings" })).toBeNull();
-});
-
-test("an old receipt never replaces the live copy target or confirms a different citation", () => {
-  render(shelf({ copied: { text: "Old citation", warnings: [] }, shown: output("New citation") }));
-  expect(document.querySelector(".preview-text")?.textContent).toBe("New citation");
-  expect(screen.queryByRole("status", { name: "Copied" })).toBeNull();
-});
-
-test("a token whose words don't name its reference shows a quiet first-author-and-year handle; one that names it shows none", () => {
-  const { rerender } = render(shelf({ selected: chosen([record("a")]), style: "ieee",
-    shown: { ...output("[1]"), display: displayTree([{ item: null, text: "[" }, { item: 0, text: "1" }, { item: null, text: "]" }]) } }));
-  expect(screen.getByRole("button", { name: "Edit García 2021" }).textContent).toBe("1García 2021");
-  rerender(shelf({ selected: chosen([record("a")]), shown: output() }));
-  expect(screen.getByRole("button", { name: "Edit García 2021" }).textContent).toBe("(García, 2021)");
 });

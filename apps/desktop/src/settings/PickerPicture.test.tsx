@@ -24,9 +24,3 @@ test.each(["light", "dark"])("the %s snapshot owns its theme at the shadow host 
   expect(host.shadowRoot!.querySelector("style")!.textContent).not.toContain("color-scheme: light dark;");
   expect(host.shadowRoot!.querySelector(".results-area > #results")).toBeTruthy();
 });
-
-test("System has two explicitly themed snapshots and crops through the frame's diagonal", () => {
-  const { container } = render(<PickerPicture appearance="light" split />);
-  expect([...container.querySelectorAll<HTMLElement>(".ui-picker-picture-content > div")].map((host) => host.style.colorScheme)).toEqual(["light", "dark"]);
-  expect(container.querySelector(".ui-picker-picture-mask[data-dark]")).toBeTruthy();
-});

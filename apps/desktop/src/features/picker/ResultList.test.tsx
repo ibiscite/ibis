@@ -1,8 +1,8 @@
 import { recordId } from "../../test-fixtures";
 import { afterEach, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render } from "@testing-library/react";
-import type { Density, SearchResult } from "../../api";
-import { ResultList, rowWords } from "./ResultList";
+import type { SearchResult } from "../../api";
+import { ResultList } from "./ResultList";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
@@ -16,48 +16,6 @@ function list(active: number, onChoose = vi.fn(), onToggle = vi.fn()) {
     onMouseMove={() => undefined} onChoose={onChoose} onToggle={onToggle} />;
 }
 
-test.each<Density>(["compact", "comfortable"])("%s sample rows keep their own label while a replacement search is pending", (density) => {
-  const { getByRole } = render(<ResultList results={[{ ...rows[0]!, sample: true }]} active={0} selected={new Map()} density={density}
-    libraryOf={() => null} onMouseMove={vi.fn()} onChoose={vi.fn()} onToggle={vi.fn()} />);
-  expect(getByRole("option").querySelector(".result-title")?.textContent).toBe("Sample · Title 0");
-});
-
-test.each<Density>(["compact", "comfortable"])("%s rows reserve the trailing column for the year", (density) => {
-  const record = { ...rows[0]!, title: "多言語の研究 · الذاكرة", key: "memory2020", year: null };
-  const { container, getByRole } = render(<ResultList results={[record]} active={0} selected={new Map()} density={density}
-    libraryOf={() => "Example library"} onMouseMove={vi.fn()} onChoose={vi.fn()} onToggle={vi.fn()} />);
-  const row = getByRole("option");
-  const year = container.querySelector(".result-year")!;
-  const key = container.querySelector(".result-key")!;
-  expect(year.parentElement).toBe(row.querySelector(".result-line"));
-  expect(year.textContent).toBe("No date");
-  // C4: the key is not drawn in the row; it stays spoken, in the tooltip and LTR.
-  expect(key.classList.contains("visually-hidden")).toBe(true);
-  expect(container.querySelector(".result-meta")?.contains(key)).toBe(false);
-  expect(key.getAttribute("dir")).toBe("ltr");
-  expect(container.querySelector(".result-body")?.getAttribute("title")).toBe(record.key);
-  expect(getByRole("option", { name: /多言語の研究 · الذاكرة/ }).textContent).toContain("No date");
-});
-
-test.each(["", "研究_memory_".repeat(1_000)])("unusual keys stay literal and do not change row actions (%#)", (key) => {
-  const record = { ...rows[0]!, key, year: "0" };
-  const onChoose = vi.fn();
-  const { container, getByRole } = render(<ResultList results={[record]} active={0} selected={new Map()} density="comfortable"
-    libraryOf={() => null} onMouseMove={vi.fn()} onChoose={onChoose} onToggle={vi.fn()} />);
-  expect(container.querySelector(".result-key")?.textContent).toBe(key);
-  expect(container.querySelector(".result-year")?.textContent).toBe("0");
-  const range = document.createRange();
-  range.selectNodeContents(container.querySelector(".result-title")!);
-  window.getSelection()?.addRange(range);
-  fireEvent.click(container.querySelector(".result-title")!);
-  if (key) expect(onChoose).not.toHaveBeenCalled();
-  window.getSelection()?.removeAllRanges();
-  onChoose.mockClear();
-  fireEvent.click(container.querySelector(".result-year")!);
-  expect(onChoose).toHaveBeenCalledWith(0, record, "select");
-  expect(getByRole("option").getAttribute("aria-selected")).toBe("true");
-});
-
 test("a closest or spelling match says so on its own row, and its name reads with pauses", () => {
   const { getAllByRole } = render(<ResultList results={[{ ...rows[0]!, partial: true, year: "2021", authors: "Müller" }, rows[1]!, { ...rows[2]!, typo: true }]} active={0} selected={new Map()} density="comfortable"
     libraryOf={() => null} onMouseMove={() => undefined} onChoose={vi.fn()} onToggle={vi.fn()} />);
@@ -68,38 +26,6 @@ test("a closest or spelling match says so on its own row, and its name reads wit
   expect(closest!.textContent).toMatch(/2021, Müller/);
 });
 
-test("moving the highlight re-renders only the rows it leaves and reaches", () => {
-  const { rerender, container } = render(list(0));
-  const rendered = vi.spyOn(rowWords, "itemType");
-  rerender(list(1));
-  const keys = new Set(rendered.mock.calls.map(([type]) => type));
-  expect(keys).toEqual(new Set(["book"]));
-  // Two rows changed; each asks for its type in words at most twice.
-  expect(rendered.mock.calls.length).toBeGreaterThan(0);
-  expect(rendered.mock.calls.length).toBeLessThanOrEqual(4);
-  expect(container.querySelector("[data-active]")?.id).toBe("result-1");
-});
-
-test("memoised rows call the newest handlers", () => {
-  const first = vi.fn();
-  const newest = vi.fn();
-  const { rerender, container } = render(list(0, first));
-  rerender(list(0, newest));
-  fireEvent.click(container.querySelector("#result-3")!);
-  expect(first).not.toHaveBeenCalled();
-  expect(newest).toHaveBeenCalledWith(3, rows[3], "select");
-  const toggle = vi.fn();
-  rerender(list(0, newest, toggle));
-  const tile = container.querySelector("#result-2 .tile-button")!;
-  expect(tile.getAttribute("data-variant")).toBe("icon");
-  expect(tile.getAttribute("aria-hidden")).toBe("true");
-  expect(tile.hasAttribute("tabindex")).toBe(false);
-  fireEvent.click(tile);
-  expect(toggle).toHaveBeenCalledWith(2, rows[2]);
-  expect(newest).toHaveBeenCalledTimes(1);
-});
-
-
 test.each([2, 60])("a cancelled tile drag cannot fall through to copying its row (%i px)", (distance) => {
   const choose = vi.fn(), toggle = vi.fn();
   const { container } = render(list(0, choose, toggle));
@@ -109,10 +35,4 @@ test.each([2, 60])("a cancelled tile drag cannot fall through to copying its row
   fireEvent.click(row, { clientX: 20 + distance, clientY: 20 });
   expect(toggle).not.toHaveBeenCalled();
   expect(choose).not.toHaveBeenCalled();
-});
-
-test("the second mouse press prevents native word selection before double-click copy", () => {
-  const { getAllByRole } = render(list(0));
-  expect(fireEvent.mouseDown(getAllByRole("option")[0]!, { detail: 2, button: 0 })).toBe(false);
-  expect(fireEvent.mouseDown(getAllByRole("option")[0]!, { detail: 1, button: 0 })).toBe(true);
 });

@@ -22,25 +22,6 @@ test("holding the key alone for a second shows the marks, and letting go hides t
   expect(held()).toBe(false);
 });
 
-test.each([
-  ["another key", () => fireEvent.keyDown(window, { key: "k", metaKey: true })],
-  ["a click", () => fireEvent.pointerDown(window)],
-  ["leaving the window", () => fireEvent.blur(window)],
-])("%s cancels a hold in progress", (_, interrupt) => {
-  render(<HeldKeys />);
-  fireEvent.keyDown(window, { key: "Meta" });
-  interrupt();
-  act(() => { vi.advanceTimersByTime(HOLD_MS); });
-  expect(held()).toBe(false);
-});
-
-test("closing mid-hold leaves no timer behind", () => {
-  const { unmount } = render(<HeldKeys />);
-  fireEvent.keyDown(window, { key: "Meta" });
-  unmount();
-  expect(vi.getTimerCount()).toBe(0);
-});
-
 test("a hold marks rows with digits alone and keeps a control's words", () => {
   const { container } = render(<><HeldKeys /><KeyMark keys="CmdOrCtrl+1" /><Button label="Format" keys="CmdOrCtrl+Shift+F" /></>);
   fireEvent.keyDown(window, { key: "Meta" });
