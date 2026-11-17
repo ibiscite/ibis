@@ -226,7 +226,7 @@ impl NoticeMessage {
 /// The notice being shown, for a notice page that has just loaded and missed
 /// the event that announced it.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn copied_notice(notice: State<'_, Notice>) -> Option<NoticeMessage> {
     notice.text.lock().ok().and_then(|text| text.clone())
 }

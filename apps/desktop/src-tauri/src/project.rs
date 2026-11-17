@@ -18,7 +18,7 @@ pub(crate) fn watch_openings(app: &AppHandle) {
 
 /// Choose the file with the system dialog; the interface never handles a path.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn choose_project(app: AppHandle) {
     let Some(owner) = app.state::<ChooserOpen>().begin() else {
         return;

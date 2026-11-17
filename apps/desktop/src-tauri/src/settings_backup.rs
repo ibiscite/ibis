@@ -237,7 +237,7 @@ pub(crate) async fn restore_settings_backup(app: AppHandle, ticket: u32) -> Resu
 
 /// Forget the previewed restore.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn cancel_settings_restore(pending: State<'_, PendingRestore>, ticket: u32) -> Result<(), BackupProblem> {
     pending.cancel(ticket);
     Ok(())

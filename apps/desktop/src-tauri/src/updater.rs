@@ -224,7 +224,7 @@ pub(crate) use offer::CheckResult;
 
 /// Whether an automatic check found an update that has not been presented.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn update_available(app: AppHandle) -> bool {
     app.state::<Updates>().offer_available.load(Ordering::SeqCst)
 }
@@ -350,7 +350,7 @@ fn gtk_offer_dialog(text: String) -> (gtk::MessageDialog, gtk::Widget) {
 pub(crate) use offer::picker_activity;
 
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn update_picker_activity(window: tauri::WebviewWindow, ticket: Option<u32>) -> Option<u32> {
     offer::update_picker_activity(window, ticket)
 }

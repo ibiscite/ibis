@@ -848,7 +848,7 @@ fn target(app: &AppHandle) -> Option<(WebviewWindow, Monitor)> {
 }
 
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn window_size(app: AppHandle) -> Option<WindowSize> {
     let (window, monitor) = target(&app)?;
     let display = display(&monitor, &metrics(&window)?)?;
@@ -862,7 +862,7 @@ pub(crate) fn window_size(app: AppHandle) -> Option<WindowSize> {
 /// Returns the save revision. An Undo ticket restores that revision's exact
 /// previous frame on the same display; later geometry invalidates it.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn set_window_size(app: AppHandle, size: WindowSize, undo: Option<u64>) -> Result<u64, String> {
     const FAILED: &str = "Ibis could not change the window size. Try again.";
     let (window, monitor) = target(&app).ok_or(FAILED)?;
@@ -931,14 +931,14 @@ pub(crate) fn set_window_size(app: AppHandle, size: WindowSize, undo: Option<u64
 }
 
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn read_window_position_undo(sizing: tauri::State<'_, Sizing>) -> Option<u64> {
     let state = sizing.shared.state.lock().ok()?;
     state.undo_for(state.revision).map(|undo| undo.revision)
 }
 
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn dismiss_window_position_undo(app: AppHandle, revision: u64) {
     if let Ok(mut state) = app.state::<Sizing>().shared.state.lock() {
         state.dismiss_undo(revision);
@@ -948,7 +948,7 @@ pub(crate) fn dismiss_window_position_undo(app: AppHandle, revision: u64) {
 
 /// Double-clicking the search bar's empty area returns Ibis to its place.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn reset_window_position(app: AppHandle) {
     reset_position(&app);
 }

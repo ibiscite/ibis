@@ -43,14 +43,14 @@ pub(crate) fn list_name(major: u32) -> &'static str {
 
 /// Whether Ibis may paste now. Read each time: the person can change it at any moment.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn paste_permission() -> PastePermission {
     current()
 }
 
 /// On an explicit user action, repair only missing grants and open the pane.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn open_paste_permission(app: tauri::AppHandle) {
     #[cfg(target_os = "macos")]
     {
@@ -63,7 +63,7 @@ pub(crate) fn open_paste_permission(app: tauri::AppHandle) {
 
 /// Drag only the running app bundle into the permission list.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn drag_paste_app(window: tauri::WebviewWindow) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {

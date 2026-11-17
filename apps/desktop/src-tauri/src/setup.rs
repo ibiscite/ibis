@@ -97,7 +97,7 @@ pub(crate) async fn find_sources(app: AppHandle) -> Result<Sources, String> {
 /// remember it; the result arrives as `library:changed`. A choice from a
 /// list that has since been replaced is refused.
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn open_found_library(
     app: AppHandle,
     offered: State<'_, Offered>,

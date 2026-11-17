@@ -1,0 +1,7 @@
+/* An example direction: a looser grid and rounder controls, from the
+   parameters alone (tokens.css, "Parameters"). A variant is any CSS here;
+   the playground loads it after the app's own styles. */
+:root {
+  --unit: .3rem;
+  --radius: 11px;
+}

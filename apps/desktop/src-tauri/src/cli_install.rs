@@ -172,7 +172,7 @@ pub(crate) async fn with_owner<T: Send + 'static>(
 }
 
 #[tauri::command]
-#[ibis_desktop_macros::command]
+#[ibis_desktop_macros::command(main)]
 pub(crate) fn copy_cli_profile(app: tauri::AppHandle) -> Result<(), String> {
     crate::copy::write_plain(&app, PROFILE_LINE)
 }

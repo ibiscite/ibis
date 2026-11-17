@@ -15,9 +15,25 @@ use syn::{
 /// Arguments Tauri supplies itself; the web view never sends them.
 const INJECTED: [&str; 5] = ["AppHandle", "State", "Window", "WebviewWindow", "Webview"];
 
+/// A command runs off the main thread (`async fn`) unless it says `main`:
+/// `#[command(main)]` answers at IPC receipt, in order, and must never wait on
+/// settings, the engine, the disk or a dialog.
 #[proc_macro_attribute]
-pub fn command(_: TokenStream, item: TokenStream) -> TokenStream {
+pub fn command(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut function = parse_macro_input!(item as ItemFn);
+    let main = match attr.to_string().as_str() {
+        "" => false,
+        "main" => true,
+        _ => return error(&function.sig.ident, "the only command option is `main`"),
+    };
+    if main == function.sig.asyncness.is_some() {
+        let message = if main {
+            "an `async` command already runs off the main thread; drop `main`"
+        } else {
+            "make this command `async`, or mark it `#[command(main)]` if it must answer at IPC receipt and never waits"
+        };
+        return error(&function.sig.ident, message);
+    }
     // The IPC boundary requires a catalogue diagnostic and recovery; native
     // implementation errors stay local. Each command names its operation.
     if let ReturnType::Type(_, ty) = &function.sig.output
