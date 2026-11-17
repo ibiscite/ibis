@@ -36,9 +36,9 @@ import "../src/ui/CopiedNotice.css";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/ui/Window.css?inline";
 import { fixtureDestination, formatAnswer, noFormatChosen } from "../src/testing/format";
+import { scenarios, type Scenario } from "./scenarios";
+export { scenarios };
 
-export const scenarios = ["notice", "results", "unknown-app", "unknown-app-empty", "first-run", "more", "format-menu", "writings", "writings-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "reference-details-more", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-selector", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "citation-order", "citation-handles", "citation-details-larger", "tokens", "settings-general", "settings-look", "settings-citations", "settings-ai-apps", "settings-shortcuts", "settings-about", "settings-details", "settings-newer", "settings-broken", "text-80", "text-120", "share-bibtex", "token-warnings", "sample", "editor-request", "picker-refusal", "retained-citation"] as const;
-type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
 // Same invented records as picker-layout.browser.mjs; that executable browser
@@ -421,7 +421,7 @@ const mounts = new WeakMap<HTMLElement, () => void>();
 /** The design parameters a canvas board may turn (tokens.css, "Parameters"). */
 export const parameters = ["--unit", "--radius", "--type-base", "--ibis", "--ibis-dark"] as const;
 
-export function mount(host: HTMLElement, options: { scenario?: string; theme?: string; params?: Partial<Record<typeof parameters[number], string>> } = {}): () => void {
+export function mount(host: HTMLElement, options: { scenario?: string; theme?: string; params?: Partial<Record<typeof parameters[number], string>>; textZoom?: number } = {}): () => void {
   const params = new URLSearchParams(window.location.search);
   const scenario = options.scenario ?? (host.dataset.ibisCanvas || params.get("scenario") || "results");
   const theme = options.theme ?? host.dataset.theme ?? params.get("theme") ?? "light";
@@ -435,8 +435,9 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
     if (value) document.documentElement.style.setProperty(name, value);
     else document.documentElement.style.removeProperty(name);
   }
-  const zoom = fixtures[scenario as Scenario]?.textZoom;
-  if (zoom) document.documentElement.style.setProperty("--text-zoom", String(zoom));
+  // The text size from ⌘+/⌘−: a scenario fixes its own, the playground may choose one.
+  const zoom = options.textZoom ?? fixtures[scenario as Scenario]?.textZoom;
+  if (zoom && zoom !== 1) document.documentElement.style.setProperty("--text-zoom", String(zoom));
   else document.documentElement.style.removeProperty("--text-zoom");
   const settings = demoApi({ ...fixtures[scenario as Scenario]?.preferences, appearance: theme, paste: false });
   // Citations with what people have once they cite: an app's remembered format and writings.
