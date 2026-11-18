@@ -10,6 +10,7 @@
 //! are kept, checked as records sent with a request are. It is in no library;
 //! citing it goes through the same records path as `cite --records`.
 
+use crate::health::SourceFinding;
 use crate::settings::{self, SettingsError};
 use crate::{Cancellation, Engine, SearchResult, request::SearchRequest};
 use ibis_core::citable::DoiLink;
@@ -185,7 +186,8 @@ impl Lookup {
     }
 }
 
-/// Every hit whose DOI is exactly this one, in every open library.
+/// Every hit whose DOI is exactly this one, in every open library, each read
+/// as it is now.
 fn in_library(engine: &Engine, doi: &str, cancel: &Cancellation) -> Result<Option<SearchResult>, EngineError> {
     let mut result = engine.search(
         &SearchRequest {
@@ -196,6 +198,19 @@ fn in_library(engine: &Engine, doi: &str, cancel: &Cancellation) -> Result<Optio
         },
         cancel,
     )?;
+    // A library read from an older copy may hold the DOI by now: never send it then.
+    for finding in &result.source_health.findings {
+        match finding {
+            SourceFinding::SourceWarnings { .. } => {}
+            SourceFinding::RefreshFailed { error, reason, .. } => {
+                return Err(EngineError {
+                    reason: *reason,
+                    ..EngineError::new(*error)
+                });
+            }
+            SourceFinding::Unknown => return Err(EngineError::new(ErrorCode::SourceUnavailable)),
+        }
+    }
     result.hits.retain(|hit| hit.matched.contains(&MatchField::Doi));
     Ok((!result.hits.is_empty()).then_some(result))
 }

@@ -25,7 +25,7 @@ the anchor older links use.
 [0007](decisions/0007-formatting.md): citeproc-js in QuickJS, key outputs from `ibis-core`, every CSL style in one bundle.
 
 ## 0008 Offline by default
-[0008](decisions/0008-offline-by-default.md): no telemetry; each network use is opt-in, listed and approved; the editor endpoint.
+[0008](decisions/0008-offline-by-default.md): no telemetry; each network use is opt-in, listed and approved; the editor endpoint; the one lookup module and DOI lookup.
 
 ## 0009 Insertion
 [0009](decisions/0009-insertion.md): every Enter ends pasted or copied with a reason; selected text as the search.

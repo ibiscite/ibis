@@ -66,3 +66,20 @@ module enforces these rules for every lookup:
 - **Shipping:** PRIVACY.md, the README and the website change in the same pull
   request, to "offline by default; online lookup only if you turn it on". As a
   network change, it needs an independent review before it merges.
+
+DOI lookup, approved by the maintainer on 2026-11-18 (#1300), is built to these
+rules in `ibis-engine::lookup`, with `ureq` over rustls and the system's trust
+store, as update checks use. The switch is `online_lookup` in `settings.json`
+(absent means never asked, which is off) and the first-use answer is
+`doi_lookup_confirmed`; both stay on this computer, never in a backup. "Each
+lookup" means each kind (DOI, then PubMed ID and ISBN when they come), asked
+once and remembered, because each kind names its own services. A DOI any open
+library holds is cited from that library before the switch is even read; a
+library that cannot be read refuses rather than falls through to the network.
+`ibis lookup` never turns the switch on and has no flag that stands in for the
+answer: it asks at a terminal (default no) and otherwise refuses with
+`lookup-off` or `lookup-unconfirmed`. Both requests of one lookup share a
+10-second deadline; no system or environment proxy is used, because a proxy is
+a destination this list does not name. Only `type`, the bibliographic CSL
+variables and a DOI matching the one asked for are kept from an answer: no
+service-given `id`, citation key, note or file.
