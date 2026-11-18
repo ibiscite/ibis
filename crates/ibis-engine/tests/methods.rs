@@ -14,6 +14,7 @@ fn one_method_list_drives_all_front_ends() {
         "outline",
         "read",
         "find-in",
+        "share",
         "styles",
         "outputs",
         "schema",

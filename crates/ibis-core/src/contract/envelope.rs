@@ -211,6 +211,12 @@ pub enum ErrorReason {
     /// The attachment has no text for the pages asked for, or its pages are
     /// not known; `outline` says which.
     NoSuchPages,
+    /// Something is already where a pack of references was to be written;
+    /// Ibis never replaces it.
+    DestinationExists,
+    /// A pack of references could not be written there: the place is not an
+    /// absolute path, its folder is missing or read-only, or the disk is full.
+    DestinationUnwritable,
 }
 
 /// A fixed database identifier, never a name supplied by an untrusted source.

@@ -258,6 +258,62 @@ impl PdfReader {
     }
 }
 
+/// A PDF opened under the reader's rules, to be copied whole: a regular,
+/// resident local file reached without following a link, at most 256 MiB,
+/// starting as a PDF does.
+pub struct LocalPdf {
+    file: std::fs::File,
+    stamp: (u64, Option<std::time::SystemTime>),
+}
+impl std::fmt::Debug for LocalPdf {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "LocalPdf {{ bytes: {}, private }}", self.stamp.0)
+    }
+}
+
+impl LocalPdf {
+    /// Open the PDF at `path` as [`PdfReader::read`] opens it.
+    pub fn open(path: &Path, cancelled: Arc<dyn Fn() -> bool + Send + Sync>) -> Result<Self, Refusal> {
+        use crate::zotero_local::closed::{ClosedError, with_local_file};
+        with_local_file(path, cancelled, DEADLINE, |mut file| {
+            let stamp = stamp(&mut file)?;
+            Ok(Self { file, stamp })
+        })
+        .map_err(|error| match error {
+            ClosedError::NotFound => Refusal::Missing,
+            ClosedError::TimedOut | ClosedError::Cancelled => Refusal::TimedOut,
+            _ => Refusal::NotLocal,
+        })?
+        .ok_or(Refusal::Missing)?
+    }
+
+    /// Its size when opened, in bytes.
+    pub fn len(&self) -> u64 {
+        self.stamp.0
+    }
+
+    /// Whether it was empty when opened; a PDF never is.
+    pub fn is_empty(&self) -> bool {
+        self.stamp.0 == 0
+    }
+
+    /// Whether it is the file another opening found: same size and time.
+    pub fn same_as(&self, other: &Self) -> bool {
+        self.stamp == other.stamp
+    }
+
+    /// Copy the bytes it held when opened to `out`; a file that changed
+    /// meanwhile is refused, and `out` may then hold part of it.
+    pub fn copy_to(mut self, out: &mut impl std::io::Write) -> Result<u64, Refusal> {
+        self.file.rewind().map_err(|_| Refusal::NotLocal)?;
+        let copied = std::io::copy(&mut (&mut self.file).take(self.stamp.0), out).map_err(|_| Refusal::NotLocal)?;
+        if copied != self.stamp.0 || stamp(&mut self.file)? != self.stamp {
+            return Err(Refusal::NotLocal);
+        }
+        Ok(copied)
+    }
+}
+
 /// The open file's size and modification time, once it is known to start
 /// as a PDF within the size bound.
 #[allow(

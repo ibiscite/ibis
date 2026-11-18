@@ -189,7 +189,65 @@ fn summary_reply(
             }
             Some(lines.join("\n"))
         }
-        Reply::Citation(_) | Reply::Schema(_) => None,
+        // `ibis share` writes its own report, naming the keys it was given.
+        Reply::Citation(_) | Reply::Schema(_) | Reply::Share(_) => None,
+    }
+}
+
+/// One line per file of a pack with its size, then what was written or what
+/// would be; notes name the keys a file leaves out.
+pub(super) fn share_report(
+    share: &ibis_engine::ShareResult,
+    keys: &[&str],
+    destination: Option<&std::path::Path>,
+) -> (String, Vec<String>) {
+    let mut lines: Vec<String> = share
+        .files
+        .iter()
+        .map(|file| format!("{}\t{}", field(&file.path), size(file.bytes)))
+        .collect();
+    let count = share.files.len().to_string();
+    let total = size(share.total_bytes);
+    lines.push(match destination.filter(|_| share.written) {
+        Some(path) => cli(
+            "cli-share-written",
+            &[
+                ("count", &count),
+                ("size", &total),
+                ("path", &quoted(&path.display().to_string())),
+            ],
+        ),
+        None => cli("cli-share-preview", &[("count", &count), ("size", &total)]),
+    });
+    let named = |places: &[usize]| {
+        places
+            .iter()
+            .filter_map(|place| keys.get(*place))
+            .map(|key| field(key))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let notes = [
+        ("cli-share-not-in-list", &share.not_in_list),
+        ("cli-share-not-in-bibtex", &share.not_in_bibtex),
+        ("cli-share-without-pdf", &share.without_pdf),
+    ]
+    .into_iter()
+    .filter(|(_, places)| !places.is_empty())
+    .map(|(id, places)| cli(id, &[("keys", &named(places))]))
+    .collect();
+    (lines.join("\n"), notes)
+}
+
+/// Bytes as a person reads them: 812 bytes, 4.2 KB, 18.6 MB.
+fn size(bytes: u64) -> String {
+    #[allow(clippy::cast_precision_loss, reason = "One decimal is shown.")]
+    let value = bytes as f64;
+    match bytes {
+        0..1_000 => format!("{bytes} bytes"),
+        1_000..1_000_000 => format!("{:.1} KB", value / 1e3),
+        1_000_000..1_000_000_000 => format!("{:.1} MB", value / 1e6),
+        _ => format!("{:.1} GB", value / 1e9),
     }
 }
 

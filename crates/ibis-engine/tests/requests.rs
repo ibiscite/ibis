@@ -20,6 +20,7 @@ fn every_method_refuses_a_field_it_does_not_know() {
         Method::Outline => json!({"item":{"by":"key","value":"one"}}),
         Method::Read => json!({"attachment":"att:invented"}),
         Method::FindIn => json!({"attachment":"att:invented","query":"lantern"}),
+        Method::Share => json!({"items":[{"by":"key","value":"one"}]}),
         Method::Styles | Method::Outputs => json!({}),
         Method::Schema => json!({"method":"cite"}),
         Method::Call => json!({"method":"outputs","params":{}}),
