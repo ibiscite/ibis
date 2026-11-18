@@ -1,0 +1,10 @@
+{
+  "about": "Every breaking change to the public contract, by the contract version that made it, as scripts/contract-compat.mjs prints it (decision 0028).",
+  "breaks": [
+    {
+      "contract": 2,
+      "change": "ZoteroLibrary: value \"personal\" removed",
+      "why": "Zotero's personal library is named \"user\", Zotero's own name for it, wherever a Zotero library is named."
+    }
+  ]
+}

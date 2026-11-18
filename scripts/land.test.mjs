@@ -59,7 +59,7 @@ function fixture(t) {
 test("fast checks precede push and a new PR requests hosted auto-merge", posix, (t) => {
   const result = fixture(t)({ HAS_PR: "0" });
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  for (const command of ["cargo fmt --all --check", "cargo check --workspace --all-targets --locked", "pnpm -C apps/desktop exec tsc --noEmit", "pnpm -C apps/desktop lint", "node scripts/gen.mjs --check"]) {
+  for (const command of ["cargo fmt --all --check", "cargo check --workspace --all-targets --locked", "pnpm -C apps/desktop exec tsc --noEmit", "pnpm -C apps/desktop lint", "node scripts/gen.mjs --check", "node scripts/contract-compat.mjs"]) {
     assert.ok(result.calls.includes(command), result.calls);
     assert.ok(result.calls.indexOf(command) < result.calls.indexOf("git push"));
   }
@@ -108,7 +108,7 @@ test("start claims a branch in a worktree and end removes only a clean merged he
 
 test("each failed local check stops before push or PR changes", posix, (t) => {
   const run = fixture(t);
-  for (const FAIL_CHECK of ["fmt --all --check", "check --workspace --all-targets --locked", "-C apps/desktop exec tsc --noEmit", "-C apps/desktop lint", "scripts/gen.mjs --check"]) {
+  for (const FAIL_CHECK of ["fmt --all --check", "check --workspace --all-targets --locked", "-C apps/desktop exec tsc --noEmit", "-C apps/desktop lint", "scripts/gen.mjs --check", "scripts/contract-compat.mjs"]) {
     const result = run({ FAIL_CHECK });
     assert.notEqual(result.status, 0, result.stdout + result.stderr);
     assert.doesNotMatch(result.calls, /git push|gh pr (create|edit|ready|merge)/);

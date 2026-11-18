@@ -25,6 +25,34 @@ Optional additions can keep a version only when absence preserves the answer;
 renames, removals and changes to meaning require a new contract version.
 Canonical requests in `fixtures/cases` run through each front end.
 
+[`contract-compat.mjs`](../../scripts/contract-compat.mjs) holds every change
+to this rule, locally in `land.sh` and in CI. It compares the generated
+contract (`fixtures/engine-contract.schema.json`, `fixtures/cli-schema.json`,
+`fixtures/mcp-tools.json` and the generated parts of `docs/cli.md`) with the
+newest `v*` release. What Ibis accepts may only grow: a new optional field,
+value, method, tool, command, option or error code is additive. What it sends
+may only shrink, except new fields and new values, which clients accept as
+above. Anything else breaks: a removed or renamed method, tool, field, value,
+command or option; a newly required input; a narrowed input or widened output
+type or limit; a changed default, pattern or exit code; and any difference the
+check does not understand. A new value in a type clients send, such as a source
+kind, is additive for Ibis but tell clients that read it back.
+
+Before 1.0 a break needs no compatibility code, only an announcement. A change
+that breaks the contract on purpose:
+
+1. Raises `CONTRACT_VERSION` in `crates/ibis-core/src/contract/envelope.rs` by
+   one, unless an unreleased change already raised it since the last release,
+   and runs `node scripts/gen.mjs`. Requests, fixtures and documents that state
+   the version move with it.
+2. Lists each break in `fixtures/contract-breaks.json` under the new version,
+   word for word as `node scripts/contract-compat.mjs` prints it, with why.
+3. Names each break and the new version in its pull request description.
+
+The check fails on an unlisted break, on a listed break the change no longer
+makes, and on a raised version with nothing listed. Entries for released
+versions stay as the history of the contract.
+
 Receipts record ordered opaque identities, citation fingerprints, resolved
 output, captured source read times, findings and a canonical content hash. CSL
 receipts also identify the processor, bundle digest and actual language. They

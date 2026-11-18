@@ -74,7 +74,8 @@ if [ -n "$pr" ]; then
     *) echo "Only the maintainer's or release app's in-repository PR can land."; exit 1;;
   esac
 fi
-git fetch -q origin main
+# Release tags too: the contract check compares with the newest one.
+git fetch -q origin main 'refs/tags/v*:refs/tags/v*'
 commit=$(git rev-list --reverse --no-merges "origin/main..$sha" | sed -n '1p')
 [ -n "$commit" ] || { echo 'No non-merge commits to land.'; exit 2; }
 title=${title_arg:-$(git show -s --format=%s "$commit")}
@@ -98,6 +99,7 @@ cargo check --workspace --all-targets --locked
 pnpm -C apps/desktop exec tsc --noEmit
 pnpm -C apps/desktop lint
 node scripts/gen.mjs --check
+node scripts/contract-compat.mjs
 unchanged
 git push -q -u origin "$sha:refs/heads/$branch"
 body=$(mktemp)
