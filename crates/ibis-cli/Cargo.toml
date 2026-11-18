@@ -13,7 +13,7 @@ ibis-core = { path = "../ibis-core" }
 ibis-engine = { path = "../ibis-engine" }
 serde_json = "1.0.154"
 serde = { version = "1.0.229", features = ["derive"] }
-chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+jiff = "0.2.38"
 console = { version = "0.16.6", default-features = false, features = ["std"] }
 icu_properties = "2.4.0"
 unicode-segmentation = "1.13.3"

@@ -2143,9 +2143,8 @@ dependencies = [
 
 [[package]]
 name = "ibis"
-version = "0.3.10"
+version = "0.3.11"
 dependencies = [
- "chrono",
  "clap",
  "console",
  "ibis-core",
@@ -2153,6 +2152,7 @@ dependencies = [
  "ibis-sources",
  "icu_properties",
  "insta",
+ "jiff",
  "lopdf",
  "nix",
  "serde",
@@ -2163,7 +2163,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-core"
-version = "0.3.10"
+version = "0.3.11"
 dependencies = [
  "memchr",
  "nix",
@@ -2180,7 +2180,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-csl"
-version = "0.3.10"
+version = "0.3.11"
 dependencies = [
  "ibis-core",
  "icu_casemap",
@@ -2197,7 +2197,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-desktop"
-version = "0.3.10"
+version = "0.3.11"
 dependencies = [
  "auto-launch",
  "block2",
@@ -2239,7 +2239,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-desktop-macros"
-version = "0.3.10"
+version = "0.3.11"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2248,7 +2248,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-engine"
-version = "0.3.10"
+version = "0.3.11"
 dependencies = [
  "fluent-bundle",
  "ibis-core",
@@ -2270,7 +2270,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-fuzz"
-version = "0.3.10"
+version = "0.3.11"
 dependencies = [
  "ibis",
  "ibis-core",
@@ -2282,7 +2282,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-sources"
-version = "0.3.10"
+version = "0.3.11"
 dependencies = [
  "biblatex",
  "getrandom 0.4.3",

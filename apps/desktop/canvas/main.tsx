@@ -141,7 +141,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
     // Paste on, as by default: the footer says Paste; an app Ibis has not seen asks Paste or Copy Only.
     can_paste: scenario === "paste" || scenario === "paste-question", paste_question: scenario === "paste-question", can_choose_paste: scenario === "paste-question",
     writing: writingContext ? project : null, writing_context: writingContext ? "invented-opening" : null, context_version: [1, 0],
-  }) } : { Err: { code: "destination-unavailable", message: { id: "operation-failures-app-read", args: {} }, recovery: { action: "retry" }, focus: "search" } };
+  }) } : { Err: { code: "unavailable", message: { id: "operation-failures-app-read", args: {} }, recovery: { action: "retry" }, focus: "search" } };
   const refusal = ["project-check-conflict", "picker-refusal"].includes(scenario) ? "A key in thesis.bib identifies a different work. Resolve the conflict before citing it." : null;
   const library: LibraryStatus = {
     source_generation: "1", source_is_requested: true,

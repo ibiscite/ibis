@@ -16,7 +16,7 @@ mod zotero_fixture;
 
 use crate::picker::{ChooserOpen, reveal_picker};
 use crate::preferences::SettingsFile;
-pub(crate) use error::CommandError;
+pub(crate) use error::{CommandError, Kind};
 use ibis_engine::library::{Intent, Owner, Save};
 pub(crate) use ibis_engine::library::{LibraryState, LibraryStatus, Source};
 use ibis_engine::settings::{LibrarySetting, ZoteroLibraries, ZoteroLibrary};

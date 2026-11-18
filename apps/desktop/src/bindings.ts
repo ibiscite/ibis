@@ -391,7 +391,7 @@ export type ClosestMatch = {
 
 /** The desktop and MCP receive this same shape, without pre-rendered English. */
 export type CommandError = {
-	code: string;
+	code: ProblemCode;
 	focus: FocusTarget;
 	message: Message;
 	recovery: Recovery;
@@ -991,11 +991,14 @@ export type Preview = {
 
 /** The desktop and MCP receive this same shape, without pre-rendered English. */
 export type Problem = {
-	code: string;
+	code: ProblemCode;
 	focus: FocusTarget;
 	message: Message;
 	recovery: Recovery;
 };
+
+/** Every code a desktop problem can carry, from the engine's and the app's own failures. */
+export type ProblemCode = "agent-apps" | "alt-gr" | "ambiguous-key" | "annotation-mismatch" | "app-missing" | "app-shortcut" | "apply-proposal" | "attachment-outside-library" | "bad-input" | "bibliography-format" | "bibliography-name-taken" | "bibliography-not-saved" | "bibliography-unavailable" | "busy" | "cancelled" | "changed" | "changed-item" | "cli-status" | "clipboard-unavailable" | "configure-shortcuts" | "conflicting-key" | "connect-agent-app" | "copy-cli-profile" | "copy-editor-endpoint" | "copy-project-entry" | "csv-template" | "damaged-entry" | "delivery_not_saved" | "disconnect-agent-app" | "document-format" | "drag-paste-app" | "duplicate-key" | "duplicate-record" | "editor-pending" | "empty-selection" | "find-sources" | "find-zotero" | "finish-paste-guide" | "formatter-unavailable" | "hide-picker" | "in-use" | "internal" | "invalid" | "invalid-key" | "invalid-locale" | "invalid-locator" | "invalid-rich-text" | "invalid-too-many-items" | "key-format" | "library-cut-short" | "library_loading" | "missing-doi" | "missing-file" | "missing-item" | "missing-key" | "needs-modifier" | "newer" | "newer-format" | "no-answer" | "no-attachment-text" | "no-library" | "no-such-pages" | "not-a-backup" | "not-citable" | "not-downloaded" | "not-found" | "not-from-zotero" | "not-ibis" | "not-local" | "not-prepared" | "not-saved" | "open-found-library" | "open-settings-file" | "output-too-large" | "picker-shortcut" | "project-ambiguous-context" | "project-changed" | "project-conflict" | "project-context-unavailable" | "project-duplicate-name" | "project-invalid" | "project-invalid-context" | "project-invalid-name" | "project-not-found" | "project-output-unavailable" | "project-too-many" | "recent-history-not-saved" | "recent-references-failed" | "reject-app-proposals" | "reject-proposal" | "rejected-record" | "resource-limit" | "row-context" | "search-failed" | "set-cli-installed" | "set-window-size" | "settings-busy" | "settings-changed" | "settings-file" | "settings-invalid" | "settings-newer" | "settings-read-only" | "settings-read-timeout" | "settings-unreadable" | "settings-unusable" | "snapshot_changed" | "source-not-opened" | "source-unavailable" | "strict-citation" | "too-many-items" | "unavailable" | "undo-window-position" | "unknown-format" | "unknown-locale" | "unknown-output" | "unknown-style" | "unreadable" | "unsupported-form" | "unsupported-output" | "usage" | "use-sample-library" | "use-zotero-libraries" | "waiting-proposals" | "zotero-needs-opening" | "zotero-no-space" | "zotero-not-found" | "zotero-profile-needed" | "zotero-sharing-off";
 
 export type ProjectKeyState = "in" | "missing" | "could-not-check" | "repeated" | "may-name-another";
 
@@ -1038,7 +1041,7 @@ export type ProposalResult = {
 /** One thing reading the library found: an entry skipped or one to check. */
 export type ReadingNotice = {
 	/** The engine's warning code, such as `duplicate-key` or `syntax`. */
-	code: string;
+	code: WarningCode;
 	/** The repeated key, for `duplicate-key` only: the person's own data. */
 	key: string | null;
 	line: number | null;
@@ -1339,6 +1342,9 @@ export type WaitingProposal = {
 	source_app: string;
 	summary: string;
 };
+
+/** Safe source diagnostics contain a location and fixed code, never payloads. */
+export type WarningCode = "cloud-synced-directory" | "syntax" | "duplicate-key" | "field" | "work-limit" | "invalid-attachment" | "zotero-newer-than-tested" | "citation-keys-unavailable";
 
 /** Settings › Look's window size. Any other dragged size is Custom. */
 export type WindowSize = "small" | "medium" | "large" | "custom";

@@ -63,6 +63,12 @@ the maintainer promotes it.
 
 ## 0.4 Citation and integration work
 
+Order (maintainer, 2026-11-18): German and Arabic with the public beta first,
+then customizable shortcuts and quiet updates, then drag and Copy as Markdown,
+then every locator with real style previews. When items compete, the first
+person to serve is an academic writing in LaTeX or Markdown, and Ibis should
+feel like an invisible utility: summon, cite, gone, with depth only when asked.
+
 - Allow locators without a type where the output can preserve them.
 - Real citation-style previews and projects directly in the format palette.
 - Overleaf on free plans: read a downloaded project bibliography offline;
@@ -80,7 +86,7 @@ the maintainer promotes it.
   set of settings ([0055](docs/decisions/0055-agent-layers-full-text-writes-remote.md)).
   Publish the MCP Registry listing.
 - Copy Again in the native menu once engine citation sessions support it.
-- German and one right-to-left interface language. Public beta.
+- German and Arabic (the first right-to-left interface language). Public beta.
 
 ## 0.5 Find the passage
 

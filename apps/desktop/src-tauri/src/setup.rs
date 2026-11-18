@@ -44,20 +44,20 @@ pub(crate) struct Sources {
 /// it can offer Zotero first. Reads Zotero's profile configuration and no library.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn find_zotero() -> Result<ZoteroPresence, String> {
+pub(crate) async fn find_zotero() -> Result<ZoteroPresence, crate::errors::NativeFailure> {
     tauri::async_runtime::spawn_blocking(|| {
         discovery::find_zotero(InspectionPolicy::Setup, true, &Cancellation::default())
     })
     .await
-    .map_err(|_| "looking for Zotero stopped unexpectedly".to_string())?
-    .map_err(|_| "looking for Zotero stopped unexpectedly".to_string())
+    .map_err(|_| crate::errors::NativeFailure)?
+    .map_err(|_| crate::errors::NativeFailure)
 }
 
 /// Find what setup can offer: whether Zotero is open, and `.bib` files in
 /// the documents, desktop and downloads folders.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn find_sources(app: AppHandle) -> Result<Sources, String> {
+pub(crate) async fn find_sources(app: AppHandle) -> Result<Sources, crate::errors::NativeFailure> {
     let paths = app.path();
     let roots: Vec<PathBuf> = [paths.document_dir(), paths.desktop_dir(), paths.download_dir()]
         .into_iter()
@@ -67,7 +67,7 @@ pub(crate) async fn find_sources(app: AppHandle) -> Result<Sources, String> {
         .state::<Offered>()
         .0
         .reserve()
-        .map_err(|_| "looking for libraries stopped unexpectedly".to_string())?;
+        .map_err(|_| crate::errors::NativeFailure)?;
     tauri::async_runtime::spawn_blocking(move || {
         let (zotero, paths, cut_short) = request.find(InspectionPolicy::Setup, roots)?;
         let (list, files) = request.publish(paths, |path| FoundFile {
@@ -89,8 +89,8 @@ pub(crate) async fn find_sources(app: AppHandle) -> Result<Sources, String> {
         })
     })
     .await
-    .map_err(|_| "looking for libraries stopped unexpectedly".to_string())?
-    .map_err(|_| "looking for libraries stopped unexpectedly".to_string())
+    .map_err(|_| crate::errors::NativeFailure)?
+    .map_err(|_| crate::errors::NativeFailure)
 }
 
 /// Open the file at `index` in list `list` from [`find_sources`] and
@@ -103,11 +103,8 @@ pub(crate) fn open_found_library(
     offered: State<'_, Offered>,
     list: u32,
     index: u32,
-) -> Result<(), String> {
-    let path = offered
-        .0
-        .resolve(list, index)
-        .ok_or("That file is no longer offered; look for libraries again")?;
+) -> Result<(), crate::errors::NativeFailure> {
+    let path = offered.0.resolve(list, index).ok_or(crate::errors::NativeFailure)?;
     start_open(&app, Source::File(path), true);
     Ok(())
 }
