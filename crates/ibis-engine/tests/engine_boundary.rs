@@ -363,7 +363,11 @@ fn shipped_files(src: &Path) -> BTreeMap<String, Vec<String>> {
             if token == "mod" && code.get(i + 2).is_some_and(|t| t == ";") {
                 let name = &code[i + 1];
                 let flat = dir.join(format!("{name}.rs"));
-                queue.push(if flat.exists() { flat } else { dir.join(name).join("mod.rs") });
+                queue.push(if flat.exists() {
+                    flat
+                } else {
+                    dir.join(name).join("mod.rs")
+                });
             }
         }
         let relative = file.strip_prefix(src).unwrap().to_string_lossy().replace('\\', "/");
@@ -391,7 +395,10 @@ fn core_does_no_io() {
         .copied()
         .filter(|file| files.get(*file).is_none_or(Vec::is_empty))
         .collect();
-    assert!(stale.is_empty(), "No longer impure or gone; take it off CORE_IMPURE: {stale:?}");
+    assert!(
+        stale.is_empty(),
+        "No longer impure or gone; take it off CORE_IMPURE: {stale:?}"
+    );
 }
 
 #[test]
