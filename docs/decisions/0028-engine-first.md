@@ -25,18 +25,21 @@ Optional additions can keep a version only when absence preserves the answer;
 renames, removals and changes to meaning require a new contract version.
 Canonical requests in `fixtures/cases` run through each front end.
 
-[`contract-compat.mjs`](../../scripts/contract-compat.mjs) holds every change
-to this rule, locally in `land.sh` and in CI. It compares the generated
-contract (`fixtures/engine-contract.schema.json`, `fixtures/cli-schema.json`,
+[`contract-compat.mjs`](../../scripts/contract-compat.mjs) enforces this in
+`land.sh` and in CI. It compares the generated contract
+(`fixtures/engine-contract.schema.json`, `fixtures/cli-schema.json`,
 `fixtures/mcp-tools.json` and the generated parts of `docs/cli.md`) with the
 newest `v*` release. What Ibis accepts may only grow: a new optional field,
 value, method, tool, command, option or error code is additive. What it sends
-may only shrink, except new fields and new values, which clients accept as
-above. Anything else breaks: a removed or renamed method, tool, field, value,
-command or option; a newly required input; a narrowed input or widened output
-type or limit; a changed default, pattern or exit code; and any difference the
-check does not understand. A new value in a type clients send, such as a source
-kind, is additive for Ibis but tell clients that read it back.
+may only shrink, except new fields, values and variants of a tagged union, which
+clients accept as above. Everything else breaks: a removed or renamed method,
+tool, field, value, command or option; a newly required input; a narrowed input
+or widened output type or limit; a changed default, pattern or exit code; and
+any difference the check cannot read, which fails until the check learns it.
+The check counts positional arguments but cannot tell whether a new one is
+required, so new positional arguments are optional. A new value in a type
+clients send, such as a source kind, is additive, but clients that read the
+value back should be told in the release notes.
 
 Before 1.0 a break needs no compatibility code, only an announcement. A change
 that breaks the contract on purpose:

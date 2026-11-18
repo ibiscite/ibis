@@ -30,19 +30,25 @@ function between(text, [begin, end]) {
   return text.slice(start + begin.length, stop);
 }
 
-/** Each command's options (`--name` → takes a value) and each error code's exit. */
+/**
+ * Each command's options (`--name` → takes a value), how many positional
+ * arguments it lists, and each error code's exit. A row it cannot read fails.
+ */
 export function cliSurface(markdown) {
   const commands = new Map();
   let current = null;
   for (const line of between(markdown, OPTIONS).split("\n")) {
     const heading = line.match(/^\*\*(?:`ibis ([^`]+)`|Every command)\*\*/);
     if (heading) {
-      current = heading[1] ?? "*";
-      commands.set(current, new Map());
+      current = { options: new Map(), positionals: 0 };
+      commands.set(heading[1] ?? "*", current);
       continue;
     }
+    if (!line.startsWith("| `")) continue;
     const option = line.match(/^\| `(--?[\w-]+)( [^`]*)?` \|/);
-    if (option && current) commands.get(current).set(option[1], Boolean(option[2]));
+    if (option && current) current.options.set(option[1], Boolean(option[2]));
+    else if (/^\| `[A-Z][A-Z_]*…?` \|/.test(line) && current) current.positionals++;
+    else throw new Error(`docs/cli.md: cannot read the option row ${line}`);
   }
   const exits = new Map();
   for (const [, exit, code] of between(markdown, ERRORS).matchAll(/^\| (\d+) \| `([^`]+)` \|$/gm)) exits.set(code, Number(exit));
@@ -131,7 +137,14 @@ function alternatives(document, schema, inherited = {}) {
       return;
     }
     const kinds = Array.isArray(merged.type) ? merged.type : merged.type ? [merged.type] : merged.properties ? ["object"] : [];
-    if (!kinds.length) return void found.branches.push({ kind: "?", schema: merged });
+    if (!kinds.length) {
+      const unread = Object.keys(merged).find((key) => !IGNORED.has(key) && !key.startsWith("x-") && !HANDLED.has(key));
+      if (unread) throw new Error(`the check does not read ${unread}; teach it before using it`);
+      if (Object.keys(merged).some((key) => !["default", "$defs"].includes(key) && HANDLED.has(key))) {
+        throw new Error(`a schema without a type: ${show(merged).slice(0, 120)}`);
+      }
+      return void (found.any = true);
+    }
     for (const kind of kinds) {
       if (!KINDS.includes(kind)) throw new Error(`unsupported type ${kind}`);
       found.branches.push({ kind: kind === "integer" ? "number" : kind, integer: kind === "integer", schema: { ...merged, type: kind } });
@@ -242,7 +255,9 @@ class Comparison {
       this.note(true, path, `${branch.kind}${tag(branch) ? ` (${tag(branch)})` : ""} no longer ${input ? "accepted" : "sent"}`);
     }
     for (const branch of unmatched.now) {
-      this.note(!input, path, `${branch.kind}${tag(branch) ? ` (${tag(branch)})` : ""} now ${input ? "accepted" : "sent"}`);
+      // A new variant of a tagged union reads like a new value; a new JSON kind does not.
+      const variant = tag(branch) && before.branches.some((other) => other.kind === branch.kind && tag(other));
+      this.note(!input && !variant, path, `${branch.kind}${tag(branch) ? ` (${tag(branch)})` : ""} now ${input ? "accepted" : "sent"}`);
     }
     for (const [old, now, label] of pairs) this.branch(old, now, direction, `${path}${label}`);
   }
@@ -253,8 +268,7 @@ class Comparison {
     const b = now.schema;
     if (old.integer !== now.integer) this.note(input ? old.integer === false : now.integer === false, path, now.integer ? "now whole numbers only" : "now any number");
     for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
-      if (IGNORED.has(key) || key.startsWith("x-") || HANDLED.has(key)) continue;
-      if (show(a[key]) !== show(b[key])) this.note(true, path, `unrecognised change to ${key}`);
+      if (!IGNORED.has(key) && !key.startsWith("x-") && !HANDLED.has(key)) throw new Error(`${path}: the check does not read ${key}; teach it before using it`);
     }
     for (const key of ["pattern", "format"]) {
       if (show(a[key]) !== show(b[key])) this.note(true, path, `${key} ${show(a[key])} → ${show(b[key])}`);
@@ -356,7 +370,7 @@ export function compare(base, head) {
   const [old, now] = [golden(base.engine), golden(head.engine)];
   for (const [field, direction] of [
     ["request", "input"],
-    ["library", "input"],
+    ["library", "output"],
     ["expected", "output"],
     ["exit_code", "output"],
   ]) {
@@ -377,10 +391,13 @@ export function compare(base, head) {
     }),
   );
 
-  const commands = (surface) => [...surface.commands].map(([name, options]) => ({ name, options }));
+  const commands = (surface) => [...surface.commands].map(([name, command]) => ({ name, ...command }));
   collect(
     named(commands(base.surface), commands(head.surface), "command", (a, b, name) => {
       const label = name === "*" ? "every command" : `command ${name}`;
+      // Positional names are only labels; a required new one is not visible here.
+      if (b.positionals < a.positionals) breaking.add(`${label}: positional arguments ${a.positionals} → ${b.positionals}`);
+      if (b.positionals > a.positionals) additive.add(`${label}: positional arguments ${a.positionals} → ${b.positionals}`);
       for (const [option, value] of a.options) {
         if (!b.options.has(option)) breaking.add(`${label}: option ${option} removed`);
         else if (b.options.get(option) !== value) breaking.add(`${label}: option ${option} ${value ? "no longer takes" : "now takes"} a value`);
