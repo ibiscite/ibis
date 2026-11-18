@@ -1097,6 +1097,61 @@
           "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
           "type": "string",
           "const": "no-such-pages"
+        },
+        {
+          "description": "The text given to look up is not a DOI.",
+          "type": "string",
+          "const": "not-a-doi"
+        },
+        {
+          "description": "Online lookup is off on this computer (decision 0008).",
+          "type": "string",
+          "const": "lookup-off"
+        },
+        {
+          "description": "The first DOI lookup has not been confirmed, and this run cannot ask.",
+          "type": "string",
+          "const": "lookup-unconfirmed"
+        },
+        {
+          "description": "The person said no when asked before the first DOI lookup.",
+          "type": "string",
+          "const": "lookup-declined"
+        },
+        {
+          "description": "The lookup service could not be reached; this computer may be offline.",
+          "type": "string",
+          "const": "lookup-unreachable"
+        },
+        {
+          "description": "The lookup service did not answer in time.",
+          "type": "string",
+          "const": "lookup-timeout"
+        },
+        {
+          "description": "The lookup service asked Ibis to wait before asking again.",
+          "type": "string",
+          "const": "lookup-rate-limited"
+        },
+        {
+          "description": "The lookup service could not answer just now.",
+          "type": "string",
+          "const": "lookup-unavailable"
+        },
+        {
+          "description": "No service has a record for this DOI.",
+          "type": "string",
+          "const": "doi-not-found"
+        },
+        {
+          "description": "The lookup service's answer was larger than Ibis accepts.",
+          "type": "string",
+          "const": "lookup-too-large"
+        },
+        {
+          "description": "The lookup service's answer was not a CSL-JSON record for this DOI\nfrom a service Ibis accepts.",
+          "type": "string",
+          "const": "lookup-malformed"
         }
       ]
     },

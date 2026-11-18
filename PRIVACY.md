@@ -1,7 +1,8 @@
 # Privacy and data flows
 
 Ibis reads your libraries without changing them, except a change you apply
-yourself in the app. It has no account or crash-upload service. This page describes current data flows; plans live in
+yourself in the app. It has no account or crash-upload service. It is offline
+by default; online lookup happens only if you turn it on. This page describes current data flows; plans live in
 [ROADMAP.md](ROADMAP.md).
 
 ## What Ibis reads and writes
@@ -45,6 +46,20 @@ yourself in the app. It has no account or crash-upload service. This page descri
   rejects proposals but cannot apply them. Only `.bib` files take proposals;
   Ibis does not change Zotero libraries.
   An AI app that can run commands can still edit files you can edit.
+- **DOI lookup:** off until you turn it on. `ibis lookup` first looks for the
+  DOI in your open libraries and, if one holds it, cites it from there and sends
+  nothing. Only otherwise, and only while `online_lookup` is `true` in
+  `settings.json`, it sends the DOI alone, in the address it asks for, to
+  `doi.org`, which passes it to `api.crossref.org` or `data.crosscite.org`
+  (DataCite); Ibis follows that one hand-off and no other. Before the first DOI
+  lookup it asks in the terminal, saying exactly this, and remembers your yes as
+  `doi_lookup_confirmed`; a run that cannot ask refuses instead. The request
+  carries only the client name `Ibis/<version>` and the kind of answer wanted: no
+  library contents, search words, file paths, document text, cookies, email
+  address or proxy. The services see your IP address, as any website does. Their
+  answer is held in memory for that one citation, at most 1 MiB, never saved
+  and never added to a library. Both settings stay on this computer and are not
+  part of a settings backup. The desktop app does not look anything up yet.
 - **Project bibliographies:** chosen files are checked without changes.
   Settings retain their paths; the picker receives only file names.
 - **Clipboard:** copying replaces its contents. Clipboard managers, cloud
@@ -76,7 +91,7 @@ yourself in the app. It has no account or crash-upload service. This page descri
   they change. Backups are created privately and never replace an older backup.
   They read those files only to find that entry, and send nothing.
 - **Settings:** `settings.json` holds library choices, formats, appearance,
-  shortcuts, update consent, optional project names/paths and selections per
+  shortcuts, update and lookup consent, optional project names/paths and selections per
   app. Atomic saves use `.tmp`, `.bak` and a writer `.lock`. `apps.json` keeps
   app paste choices, including an app-location fingerprint for unknown-app
   approval. [Backups](docs/moving-to-a-new-computer.md) exclude device-local
@@ -112,7 +127,8 @@ MCP responses go to the client that started the server, as listed below.
 | App updates | Automatic checks require consent; Check for Updates… checks on request. GitHub receives IP address and app version, not library data. Downloads require agreement and a valid channel signature. |
 | Windows installation | Downloads Microsoft's WebView2 bootstrapper/runtime if missing. Microsoft's runtime updates are separate. |
 | Feedback | Opens GitHub in your browser with app version and OS; you decide whether to submit. |
-| AI clients | `ibis mcp` passes bibliographic fields and citations over stdio to its caller, and attachment text from libraries where you allow it. With `--allow-writes` it also takes proposed changes, kept on this computer as above. That client may send what it receives to its own service. [MCP privacy boundary](docs/cli.md#ai-agents-mcp). |
+| DOI lookup | Off by default. While on, `ibis lookup` sends a DOI no open library holds to `doi.org`, then to `api.crossref.org` or `data.crosscite.org`, after asking before the first one. [Details above](#what-ibis-reads-and-writes). |
+| AI clients | `ibis mcp` passes bibliographic fields and citations over stdio to its caller, and attachment text from libraries where you allow it. With `--allow-writes` it also takes proposed changes, kept on this computer as above. That client may send what it receives to its own service. MCP offers no lookup. An AI app that can run commands can still change `settings.json` or run `ibis lookup`, as it can edit any file you can. [MCP privacy boundary](docs/cli.md#ai-agents-mcp). |
 
 The web interface has window-scoped native commands rather than file,
 clipboard, shell or network plugin permissions. Its CSP limits connections

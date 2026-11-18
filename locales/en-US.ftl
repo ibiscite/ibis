@@ -106,6 +106,24 @@ reason-attachment-outside-library = This attachment file is outside the library�
 reason-no-such-pages = This attachment has no text for those pages, or where its pages begin is not known.
     .cli = Run ibis outline on its reference to see which pages have text, or read without --pages.
     .agent = Use the pages outline gives, or read with offset instead when its pages are not known.
+reason-not-a-doi = That is not a DOI. A DOI starts with 10. and a slash, as in 10.5555/example; a doi.org link or doi: prefix also works.
+    .cli = Give the DOI itself, or search your libraries with: ibis search
+reason-lookup-off = Online lookup is off on this computer, so Ibis sends nothing.
+    .cli = To allow it, set "online_lookup": true in the Ibis app’s settings.json; Ibis then asks before the first lookup.
+    .app = Turn on online lookup in Settings.
+reason-lookup-unconfirmed = Ibis asks once before the first DOI lookup, and this run cannot ask.
+    .cli = Run ibis lookup once in a terminal and answer the question.
+reason-lookup-declined = Nothing was sent: you chose not to look up the DOI.
+reason-lookup-unreachable = Ibis could not reach doi.org. This computer may be offline.
+    .cli = Check the connection and try again.
+reason-lookup-timeout = The DOI service did not answer in time.
+reason-lookup-rate-limited = The DOI service asked Ibis to wait before looking up more.
+    .cli = Try again in a minute.
+reason-lookup-unavailable = The DOI service could not answer just now.
+reason-doi-not-found = No DOI service has a record for this DOI.
+    .cli = Check the DOI for typing mistakes.
+reason-lookup-too-large = The DOI service’s answer is larger than Ibis accepts, so it was not used.
+reason-lookup-malformed = The DOI service’s answer was not a usable record for this DOI, so it was not used.
 
 ## What a citation could not say in full.
 
@@ -1569,6 +1587,10 @@ cli-key-file-not-regular = --keys-from needs a regular file, or - for stdin.
 cli-key-file-timeout = the key file could not be read in time; try again.
 cli-toggle-unprepared = could not prepare the toggle; check that the temporary folder can be written, then try again.
 cli-app-libraries-unavailable = --app-libraries is not available here; name the libraries to read.
+cli-lookup-ask = Ibis will send only this DOI, { $doi }, to { $to }, which passes it to { $first } or { $second } for its record. Nothing else leaves this computer, and Ibis asks only before the first DOI lookup. Send it? [y/N]
+cli-lookup-in-library = This DOI is in your libraries, so Ibis cited it from there and sent nothing.
+cli-lookup-looked-up = This DOI is in none of your libraries; the record is from { $service } and was not added to any library.
+cli-lookup-several = Several references in your libraries have this DOI, so Ibis cited none and sent nothing. Cite one by its key with: ibis cite
 cli-records-with-libraries = --records cites only the records on stdin; leave out the library options.
 cli-search-words-needed = give some words to search for: an author, title words, a year or a key.
 cli-search-words-too-long = the search words are too long; use fewer.

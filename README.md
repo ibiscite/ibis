@@ -9,7 +9,8 @@
 
 Ibis is a free app that searches your reference libraries and gives you a
 citation where you write. No account, no uploads, no telemetry; sources read without changes.
-[Privacy](PRIVACY.md) explains local data and optional updates.
+Offline by default; online lookup only if you turn it on.
+[Privacy](PRIVACY.md) explains local data, optional updates and optional DOI lookup.
 
 ## Install
 

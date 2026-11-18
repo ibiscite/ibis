@@ -12,7 +12,9 @@ pub use model::*;
 mod recovery;
 pub use recovery::*;
 mod added;
+mod origin;
 pub use added::added_date;
+pub use origin::{LookupService, Origin};
 
 pub(crate) mod response;
 mod schema;

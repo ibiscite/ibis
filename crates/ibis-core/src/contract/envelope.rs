@@ -211,6 +211,29 @@ pub enum ErrorReason {
     /// The attachment has no text for the pages asked for, or its pages are
     /// not known; `outline` says which.
     NoSuchPages,
+    /// The text given to look up is not a DOI.
+    NotADoi,
+    /// Online lookup is off on this computer (decision 0008).
+    LookupOff,
+    /// The first DOI lookup has not been confirmed, and this run cannot ask.
+    LookupUnconfirmed,
+    /// The person said no when asked before the first DOI lookup.
+    LookupDeclined,
+    /// The lookup service could not be reached; this computer may be offline.
+    LookupUnreachable,
+    /// The lookup service did not answer in time.
+    LookupTimeout,
+    /// The lookup service asked Ibis to wait before asking again.
+    LookupRateLimited,
+    /// The lookup service could not answer just now.
+    LookupUnavailable,
+    /// No service has a record for this DOI.
+    DoiNotFound,
+    /// The lookup service's answer was larger than Ibis accepts.
+    LookupTooLarge,
+    /// The lookup service's answer was not a CSL-JSON record for this DOI
+    /// from a service Ibis accepts.
+    LookupMalformed,
 }
 
 /// A fixed database identifier, never a name supplied by an untrusted source.
