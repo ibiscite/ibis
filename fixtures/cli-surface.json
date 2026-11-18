@@ -3162,6 +3162,11 @@
                 "help": null,
                 "hidden": false
               },
+              "share": {
+                "aliases": [],
+                "help": null,
+                "hidden": false
+              },
               "show": {
                 "aliases": [],
                 "help": null,
@@ -5851,6 +5856,373 @@
             "subcommands": {}
           }
         }
+      },
+      "share": {
+        "aliases": [],
+        "arguments": {
+          "file": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Open a BibTeX, BibLaTeX, CSL-JSON, RIS or CSV file; repeat for several libraries",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "file",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--file PATH",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "PATH"
+            ]
+          },
+          "folder": {
+            "action": "SetTrue",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 0,
+              "min": 0
+            },
+            "conflicts": [],
+            "default": [
+              "false"
+            ],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Write a plain folder instead of a zip file",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "folder",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--folder",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": []
+          },
+          "help": {
+            "action": "Help",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 0,
+              "min": 0
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Print help",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "help",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": "h",
+            "shortAliases": [],
+            "spelling": "--help",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": []
+          },
+          "keys": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": null,
+              "min": 1
+            },
+            "conflicts": [
+              "keys-from"
+            ],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Citation keys of the references, in order",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": 1,
+            "last": false,
+            "long": null,
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "KEY…",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "KEY"
+            ]
+          },
+          "keys-from": {
+            "action": "Set",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read one citation key per line from FILE, or - for stdin; ignore blanks and # comments",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "keys-from",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--keys-from FILE",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "FILE"
+            ]
+          },
+          "locale": {
+            "action": "Set",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Language of the reading list, such as de-DE; default the style's own",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "locale",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--locale LOCALE",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "LOCALE"
+            ]
+          },
+          "pdfs": {
+            "action": "SetTrue",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 0,
+              "min": 0
+            },
+            "conflicts": [],
+            "default": [
+              "false"
+            ],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Add PDFs from the library folder or Zotero storage. Attached PDFs are copied as they are, including anything inside them.",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "pdfs",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--pdfs",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": []
+          },
+          "style": {
+            "action": "Set",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "The CSL style of the reading list, default apa; list them with: ibis styles",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "style",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--style STYLE_ID",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "STYLE_ID"
+            ]
+          },
+          "to": {
+            "action": "Set",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Write the pack here, a new zip file or with --folder a new folder; nothing there is replaced",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "to",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--to PATH",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "PATH"
+            ]
+          },
+          "zotero-group": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a local Zotero group library by its group ID; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "zotero-group",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--zotero-group GROUP_ID",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "GROUP_ID"
+            ]
+          },
+          "zotero-profile": {
+            "action": "Set",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Which Zotero profile to read while Zotero is closed, when there are several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "zotero-profile",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--zotero-profile NAME",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME"
+            ]
+          }
+        },
+        "argumentsRequiredElseHelp": false,
+        "description": "Make a pack of references to send: a reading list, a .bib file and, if asked, their PDFs",
+        "groups": {},
+        "hidden": false,
+        "longFlag": null,
+        "longFlagAliases": [],
+        "shortFlag": null,
+        "shortFlagAliases": [],
+        "subcommandRequired": false,
+        "subcommands": {}
       },
       "show": {
         "aliases": [],

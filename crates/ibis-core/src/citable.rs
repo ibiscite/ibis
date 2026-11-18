@@ -307,7 +307,8 @@ fn integer_date_part(part: &mut Value) -> Option<i64> {
     if let Some(number) = part.as_i64() {
         return Some(number);
     }
-    project_scalar(part, false)?;
+    // Only a whole number survives, so an output's extra path check has nothing to add.
+    project_scalar(part, false, |_| false)?;
     let number = part.as_str()?.trim().parse().ok()?;
     *part = json!(number);
     Some(number)
