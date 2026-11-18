@@ -239,7 +239,7 @@ pub fn captured(system: System, front: Option<Front>, own: i32) -> Option<Captur
 
 /// No filesystem reads or path canonicalisation: compare exactly the location
 /// the OS already reports, including case on case-sensitive volumes.
-#[cfg(any(target_os = "macos", target_os = "windows", test))]
+#[cfg(any(target_os = "macos", target_os = "windows", test, feature = "fixtures"))]
 pub fn app_identity(system: System, id: &str, path: &str) -> Option<String> {
     if path.is_empty() || path.chars().any(char::is_control) {
         return None;
