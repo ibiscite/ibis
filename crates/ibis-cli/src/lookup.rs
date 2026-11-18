@@ -4,13 +4,15 @@
 
 use crate::{
     DispatchResult, Execution, Failure, OutputMode, Response, chosen_form, chosen_output, dispatch, form_args, human,
-    human::cli, locale_arg, output_args, output_name, settings_backup,
+    human::cli, locale_arg, out::Out, output_args, output_name, settings_backup, write_stream,
 };
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use ibis_core::contract::{CitationItem, CitationRequest, EngineError, ErrorCode, Origin};
 use ibis_engine::lookup::{Disclosure, Found, Lookup};
+use ibis_engine::outputs::DEFAULT_STYLE;
 use ibis_engine::{Cancellation, Engine, Method, Reply};
 use serde_json::json;
+use std::collections::BTreeMap;
 use std::io::{BufRead, Write};
 
 pub(crate) fn command() -> Command {
@@ -30,7 +32,7 @@ pub(crate) fn command() -> Command {
                 .required(true)
                 .help("A DOI, a doi.org link or doi:10.…"),
         )
-        .args(output_args())
+        .args(output_args(DEFAULT_STYLE))
         .args(form_args())
         .arg(locale_arg())
         .arg(
@@ -43,7 +45,7 @@ pub(crate) fn command() -> Command {
             Arg::new("nightly")
                 .long("nightly")
                 .action(ArgAction::SetTrue)
-                .help("Use Ibis Nightly's settings"),
+                .help("Use Ibis Nightly's library choice and lookup settings"),
         )
 }
 
@@ -57,47 +59,41 @@ pub(crate) struct Looked {
 pub(crate) fn run<R: BufRead, E: Write>(
     engine: &Engine,
     args: &ArgMatches,
+    names: &BTreeMap<String, String>,
     input: &mut R,
     errors: &mut E,
     mode: OutputMode,
 ) -> Result<Execution, Failure> {
     let cancel = Cancellation::default();
     let query = args.get_one::<String>("doi").cloned().unwrap_or_default();
-    let (_, path) = settings_backup::settings_file(args.get_flag("nightly"))?;
-    let settings = ibis_engine::settings::Owner::open(path);
+    let output = chosen_output(args, DEFAULT_STYLE)?;
+    let form = chosen_form(args, &output)?;
+    let settings = || {
+        settings_backup::settings_file(args.get_flag("nightly"))
+            .map(|(_, path)| ibis_engine::settings::Owner::open(path))
+            .map_err(|failure| failure.error)
+    };
     let interactive = mode.stdin_terminal() && mode.stderr_terminal();
     let mut ask = |disclosure: &Disclosure| {
         if !interactive {
             return None;
         }
-        let [first, second] = disclosure.then.map(|service| service.host());
-        let question = cli(
-            "cli-lookup-ask",
-            &[
-                ("doi", &disclosure.doi),
-                ("to", disclosure.to),
-                ("first", first),
-                ("second", second),
-            ],
-        );
-        let _ = write!(errors, "{} ", crate::terminal_display(&question));
-        let _ = errors.flush();
-        let mut answer = String::new();
-        // No answer at all is a no.
-        let _ = input.read_line(&mut answer);
-        Some(matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes"))
+        confirm(disclosure, input, errors)
     };
-    let found = Lookup::new().doi(engine, &settings, &query, &mut ask, &cancel);
-    settings.close();
-    let output = chosen_output(args)?;
-    let form = chosen_form(args, &output)?;
+    let found = Lookup::new().doi(engine, settings, &query, &mut ask, &cancel);
     let locale = args.get_one::<String>("locale");
     let strict = args.get_flag("strict");
     let (origin, result, label, note) = match crate::explain(found, |error| {
         ibis_engine::catalogue::error(&error, ibis_engine::catalogue::Audience::Cli)
     })? {
         Found::InLibrary(found) if found.hits.len() > 1 => {
-            let result = dispatch(engine, Method::Search, &json!({"query": query, "limit": 1000}), &cancel)?;
+            let result = human::with_summary(
+                found.into_dispatch().map_data(Response::Engine).bounded()?,
+                args.get_flag("json"),
+                human::Holdings::References,
+                names,
+                Out::configured(mode, args),
+            );
             return Ok(Execution::Search(result, vec![cli("cli-lookup-several", &[])]));
         }
         Found::InLibrary(found) => {
@@ -163,4 +159,53 @@ pub(crate) fn run<R: BufRead, E: Write>(
         form,
     };
     Ok(Execution::Lookup(result, citing, note))
+}
+
+fn confirm(disclosure: &Disclosure, input: &mut impl BufRead, errors: &mut impl Write) -> Option<bool> {
+    let [first, second] = disclosure.then.map(|service| service.host());
+    let question = cli(
+        "cli-lookup-ask",
+        &[
+            ("doi", &disclosure.doi),
+            ("to", disclosure.to),
+            ("first", first),
+            ("second", second),
+        ],
+    );
+    let prompt = format!("{} ", crate::terminal_display(&question));
+    write_stream(errors, prompt.as_bytes()).ok()?;
+    let mut answer = String::new();
+    input.read_line(&mut answer).ok()?;
+    Some(matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ibis_core::contract::LookupService;
+    use std::io::{self, Cursor};
+
+    struct Unflushed;
+
+    impl Write for Unflushed {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Err(io::Error::other("prompt did not reach the terminal"))
+        }
+    }
+
+    #[test]
+    fn a_yes_is_ignored_when_the_prompt_cannot_be_shown() {
+        let disclosure = Disclosure {
+            doi: "10.5555/invented".into(),
+            to: ibis_engine::lookup::RESOLVER,
+            then: LookupService::ALL,
+        };
+        let mut input = Cursor::new(b"yes\n");
+        assert_eq!(confirm(&disclosure, &mut input, &mut Unflushed), None);
+        assert_eq!(input.position(), 0);
+    }
 }

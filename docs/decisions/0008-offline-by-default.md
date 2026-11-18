@@ -80,7 +80,8 @@ library that cannot be read refuses rather than falls through to the network.
 answer: it asks at a terminal (default no) and otherwise refuses with
 `lookup-off` or `lookup-unconfirmed`. Both requests of one lookup share a
 10-second deadline; no system or environment proxy is used, because a proxy is
-a destination this list does not name. Only `type`, the bibliographic CSL
+a destination this list does not name. The hand-off must point to the same
+DOI at the service's CSL endpoint, with no query string. Only `type`, the bibliographic CSL
 variables and a DOI matching the one asked for are kept from an answer: no
 service-given `id`, citation key, note, abstract or file. Crossref's own work
 types (`journal-article`) are mapped to CSL's; any other type that is not CSL's

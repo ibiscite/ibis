@@ -10,7 +10,7 @@ describes this checkout. Plans live in [ROADMAP.md](../ROADMAP.md).
 | `crates/ibis-core` | Shared model, citation requests/results, key syntaxes, search and delivery rules. |
 | `crates/ibis-sources` | Read-only file and Zotero readers (`zotero_local`: the local API, closed database and Better BibTeX), discovery, database snapshots and file watches. Each reader declares what its library offers. |
 | `crates/ibis-csl` | citeproc-js in QuickJS, ICU4X collation, bundled CSL styles and locales. |
-| `crates/ibis-engine` | Typed methods, source lifecycle, prepared citations, settings owner, recents, JSON-RPC and MCP; `lookup`, the only network client ([0008](decisions/0008-offline-by-default.md)). |
+| `crates/ibis-engine` | Typed methods, source lifecycle, prepared citations, settings owner, recents, JSON-RPC, MCP and opt-in DOI lookup ([0008](decisions/0008-offline-by-default.md)). |
 | `crates/ibis-cli` | The `ibis` executable, and the PDF text extractor it starts as its own child process (`ibis __extract-pdf`, with `lopdf`). Depends on core and engine. |
 | `apps/desktop/src-tauri` | Native windows, clipboard, paste, shortcuts, settings dialogs and updates. Depends on core, engine and its command macro crate. |
 | `apps/desktop/src` | React interface, shared controls in `ui/`, tokens in `tokens.css`. |

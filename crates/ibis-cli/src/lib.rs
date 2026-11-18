@@ -286,7 +286,7 @@ fn command() -> Command {
                         ])
                         .help("Cite every CSL-JSON record in the array on stdin, with no library; see: ibis schema records"),
                 )
-                .args(output_args())
+                .args(output_args(ibis_engine::outputs::DEFAULT))
                 .arg(
                     Arg::new("writing").long("writing").value_name("NAME")
                         .help_heading(OUTPUT)
@@ -1203,7 +1203,7 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
     }
     let names = opened?;
     if name == "lookup" {
-        return lookup::run(engine, args, input, errors, mode);
+        return lookup::run(engine, args, &names, input, errors, mode);
     }
     if name == "serve" {
         return Ok(Execution::Stdio(
@@ -1274,12 +1274,18 @@ fn open_libraries(
         )
     });
     let app = if asked || (defaults == Defaults::App && !named && reads_app) {
-        Some(bounded(app_libraries::load).unwrap_or_else(|| {
+        let loaded = if let Some(lookup) = matches.subcommand_matches("lookup") {
+            let nightly = lookup.get_flag("nightly");
+            bounded(move || app_libraries::load_for_lookup(nightly, asked))
+        } else {
+            bounded(|| app_libraries::load().map(Some))
+        };
+        loaded.unwrap_or_else(|| {
             Err(Failure::explained(
                 EngineError::because(ErrorCode::SourceUnavailable, ErrorReason::SettingsReadTimeout),
                 cli("cli-app-settings-timeout", &[]),
             ))
-        })?)
+        })?
     } else {
         None
     };
@@ -1571,7 +1577,7 @@ fn run_method<R: BufRead>(
             let Value::Array(list) = &records else {
                 return Err(Failure::new(ErrorCode::BadInput, &records_help));
             };
-            let output = chosen_output(args)?;
+            let output = chosen_output(args, ibis_engine::outputs::DEFAULT)?;
             let form = chosen_form(args, &output)?;
             let params = json!({
                 "records": records,
@@ -1602,7 +1608,7 @@ fn run_method<R: BufRead>(
             let output = if let Some(writing) = &writing {
                 ibis_engine::outputs::resolve(&writing.format)?
             } else {
-                chosen_output(args)?
+                chosen_output(args, ibis_engine::outputs::DEFAULT)?
             };
             let form = chosen_form(args, &output)?;
             let destination = match args.get_one::<String>("for-app") {
@@ -1866,17 +1872,15 @@ fn request_citing(params: &Value) -> Option<human::Citing> {
         form: request.form,
     })
 }
-/// The output `--style` or `--format` names, or the default.
 /// `--format` and `--style`: what `cite` and `lookup` write.
-fn output_args() -> [Arg; 2] {
+fn output_args(default: &str) -> [Arg; 2] {
     [
         Arg::new("format")
             .long("format")
             .value_name("FORMAT")
             .help_heading(OUTPUT)
             .help(format!(
-                "Output to write: a key syntax or a common style [default: {}]; list them with: ibis outputs",
-                ibis_engine::outputs::DEFAULT
+                "Output to write: a key syntax or a common style [default: {default}]; list them with: ibis outputs"
             ))
             .hide_possible_values(true)
             .conflicts_with("style")
@@ -1919,11 +1923,12 @@ fn locale_arg() -> Arg {
         .help_heading(OUTPUT)
         .help("Language for --style output, such as de-DE; default the style's own. List them with: ibis styles --locales")
 }
-fn chosen_output(args: &ArgMatches) -> Result<OutputSpec, Failure> {
+/// The output `--style` or `--format` names, or the command's default.
+fn chosen_output(args: &ArgMatches, default: &str) -> Result<OutputSpec, Failure> {
     Ok(
         match (args.get_one::<String>("style"), args.get_one::<String>("format")) {
             (Some(style), _) => OutputSpec::Csl { style: style.clone() },
-            (None, format) => ibis_engine::outputs::find(format.map_or(ibis_engine::outputs::DEFAULT, String::as_str))
+            (None, format) => ibis_engine::outputs::find(format.map_or(default, String::as_str))
                 .map(|output| output.output.clone())
                 .ok_or_else(|| EngineError::new(ErrorCode::Internal))?,
         },

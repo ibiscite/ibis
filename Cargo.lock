@@ -2257,6 +2257,7 @@ dependencies = [
  "indexmap 2.14.2",
  "libc",
  "notify",
+ "percent-encoding",
  "schemars 1.2.3",
  "serde",
  "serde_json",

@@ -395,22 +395,17 @@ fn spelling_aliases(text: &str) -> String {
     aliases.trim_start().to_owned()
 }
 
-/// When the whole query is a DOI, ISBN, PubMed ID or arXiv ID that some
-/// records in scope carry, those records, newest first. `Some(None)` falls
-/// back to ordinary search; `None` means cancellation.
+/// Records carrying this identifier, newest first. `None` means cancellation.
 fn by_identifier<'r, 'i, T: SearchDocument + 'r>(
     docs: impl Iterator<Item = (&'r T, &'i [Identifier])>,
-    query: &str,
+    wanted: &Identifier,
     limit: usize,
     scope: Option<&[T::Source]>,
     stop: &dyn Fn() -> bool,
-) -> Option<Option<Vec<Hit<'r, T>>>> {
+) -> Option<Vec<Hit<'r, T>>> {
     if stop() {
         return None;
     }
-    let Some(wanted) = identifier::parse_query(query) else {
-        return Some(None);
-    };
     let field = match wanted {
         Identifier::Doi(_) => MatchField::Doi,
         _ => MatchField::Identifier,
@@ -420,7 +415,7 @@ fn by_identifier<'r, 'i, T: SearchDocument + 'r>(
         if n % STOP_CHECK_INTERVAL == 0 && stop() {
             return None;
         }
-        if in_scope(reference, scope) && ids.contains(&wanted) {
+        if in_scope(reference, scope) && ids.contains(wanted) {
             hits.push(Hit {
                 reference,
                 score: 3000,
@@ -430,9 +425,6 @@ fn by_identifier<'r, 'i, T: SearchDocument + 'r>(
             });
         }
     }
-    if hits.is_empty() {
-        return Some(None);
-    }
     hits.sort_by(|a, b| {
         b.reference
             .year()
@@ -440,7 +432,7 @@ fn by_identifier<'r, 'i, T: SearchDocument + 'r>(
             .then_with(|| a.reference.identity().cmp(b.reference.identity()))
     });
     hits.truncate(limit);
-    Some(Some(hits))
+    Some(hits)
 }
 
 const STOP_CHECK_INTERVAL: usize = 4096;

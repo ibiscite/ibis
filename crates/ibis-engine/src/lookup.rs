@@ -1,4 +1,4 @@
-//! Online lookup, the only network client in Ibis (decisions 0008 and 0051).
+//! Online DOI lookup (decisions 0008 and 0051).
 //!
 //! A DOI an open library already holds is cited from that library and never
 //! sent. Otherwise, and only while the person has turned online lookup on and
@@ -12,13 +12,13 @@
 
 use crate::health::SourceFinding;
 use crate::settings::{self, SettingsError};
-use crate::{Cancellation, Engine, SearchResult, request::SearchRequest};
+use crate::{Cancellation, Engine, SearchResult};
 use ibis_core::citable::DoiLink;
 use ibis_core::contract::{EngineError, ErrorCode, ErrorReason, LibraryId, LookupService, Origin};
 use ibis_core::identifier::{self, Identifier};
-use ibis_core::search::MatchField;
 use serde::Serialize;
 use serde_json::{Map, Value};
+use std::borrow::Borrow;
 use std::io::Read;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -68,7 +68,7 @@ pub struct LookedUp {
 /// `Some(false)` to refuse, `None` when this run cannot ask anyone.
 pub type Ask<'a> = &'a mut dyn FnMut(&Disclosure) -> Option<bool>;
 
-/// The lookup client. It holds the only HTTP client Ibis has.
+/// The HTTP client for online lookup.
 pub struct Lookup {
     transport: Box<dyn Transport>,
 }
@@ -87,11 +87,11 @@ impl Lookup {
     }
 
     /// Find `query`, a DOI in any spelling Ibis recognizes, in `engine`'s open
-    /// libraries; failing that, look it up if `settings` allow it.
-    pub fn doi(
+    /// libraries; failing that, read `settings` to decide whether to look it up.
+    pub fn doi<S: Borrow<settings::Owner>>(
         &self,
         engine: &Engine,
-        settings: &settings::Owner,
+        settings: impl FnOnce() -> Result<S, EngineError>,
         query: &str,
         ask: Ask<'_>,
         cancel: &Cancellation,
@@ -99,15 +99,13 @@ impl Lookup {
         let Some(Identifier::Doi(doi)) = identifier::parse_query(query) else {
             return Err(refusal(ErrorCode::BadInput, ErrorReason::NotADoi));
         };
-        let link = DoiLink::new(&doi).ok_or_else(|| refusal(ErrorCode::BadInput, ErrorReason::NotADoi))?;
-        if let Some(found) = in_library(engine, &doi, cancel)? {
+        if let Some(found) = in_library(engine, &Identifier::Doi(doi.clone()), cancel)? {
             return Ok(Found::InLibrary(found));
         }
-        let device = settings.read().cites().map_err(settings_error)?.device.clone();
-        if device.online_lookup != Some(true) {
-            return Err(refusal(ErrorCode::SourceUnavailable, ErrorReason::LookupOff));
-        }
-        if !device.doi_lookup_confirmed {
+        let link = DoiLink::new(&doi).ok_or_else(|| refusal(ErrorCode::BadInput, ErrorReason::NotADoi))?;
+        let settings = settings()?;
+        let settings = settings.borrow();
+        if !confirmed(settings)? {
             let disclosure = Disclosure {
                 doi: doi.clone(),
                 to: RESOLVER,
@@ -131,8 +129,15 @@ impl Lookup {
                 }
             }
         }
-        cancel.check()?;
-        let (service, answer) = self.fetch(&link)?;
+        let (service, answer) = {
+            let _one = ONE_AT_A_TIME.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            cancel.check()?;
+            // Consent may have changed while this lookup was waiting.
+            if !confirmed(settings)? {
+                return Err(refusal(ErrorCode::SourceUnavailable, ErrorReason::LookupUnconfirmed));
+            }
+            self.fetch(&link)?
+        };
         cancel.check()?;
         let record = checked(&answer, &doi)?;
         Ok(Found::LookedUp(LookedUp {
@@ -143,7 +148,6 @@ impl Lookup {
 
     /// The two requests: `doi.org`, then the one service its `Location` names.
     fn fetch(&self, link: &DoiLink) -> Result<(LookupService, Vec<u8>), EngineError> {
-        let _one = ONE_AT_A_TIME.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let start = Instant::now();
         let remaining = || {
             DEADLINE
@@ -156,7 +160,7 @@ impl Lookup {
             // `doi.org` never answers with a record itself.
             return Err(status(first.status));
         }
-        let (service, next) = accepted(first.location.as_deref())?;
+        let (service, next) = accepted(first.location.as_deref(), link.identifier())?;
         drop(first);
         let mut answer = self.transport.get(next.as_str(), remaining()?).map_err(failed)?;
         if answer.status != 200 {
@@ -186,19 +190,19 @@ impl Lookup {
     }
 }
 
+fn confirmed(settings: &settings::Owner) -> Result<bool, EngineError> {
+    let loaded = settings.read();
+    let device = &loaded.cites().map_err(settings_error)?.device;
+    if device.online_lookup != Some(true) {
+        return Err(refusal(ErrorCode::SourceUnavailable, ErrorReason::LookupOff));
+    }
+    Ok(device.doi_lookup_confirmed)
+}
+
 /// Every hit whose DOI is exactly this one, in every open library, each read
 /// as it is now.
-fn in_library(engine: &Engine, doi: &str, cancel: &Cancellation) -> Result<Option<SearchResult>, EngineError> {
-    let mut result = engine.search(
-        &SearchRequest {
-            query: doi.to_owned(),
-            limit: 1000,
-            libraries: None,
-            interpret_locator: false,
-        },
-        cancel,
-    )?;
-    result.hits.retain(|hit| hit.matched.contains(&MatchField::Doi));
+fn in_library(engine: &Engine, doi: &Identifier, cancel: &Cancellation) -> Result<Option<SearchResult>, EngineError> {
+    let result = engine.search_identifier(doi, 1000, cancel)?;
     if !result.hits.is_empty() {
         return Ok(Some(result));
     }
@@ -218,8 +222,8 @@ fn in_library(engine: &Engine, doi: &str, cancel: &Cancellation) -> Result<Optio
     Ok(None)
 }
 
-/// The one redirect accepted: HTTPS to exactly one named service, nothing else.
-fn accepted(location: Option<&str>) -> Result<(LookupService, url::Url), EngineError> {
+/// The one redirect accepted: an HTTPS request for the same DOI at a named service.
+fn accepted(location: Option<&str>, doi: &str) -> Result<(LookupService, url::Url), EngineError> {
     let url = location
         .and_then(|location| url::Url::parse(location).ok())
         .ok_or_else(malformed)?;
@@ -231,8 +235,26 @@ fn accepted(location: Option<&str>) -> Result<(LookupService, url::Url), EngineE
         && url.port().is_none()
         && url.username().is_empty()
         && url.password().is_none()
+        && url.query().is_none()
         && url.fragment().is_none();
-    plain.then_some((service, url)).ok_or_else(malformed)
+    if !plain {
+        return Err(malformed());
+    }
+    let encoded = match service {
+        LookupService::Crossref => url
+            .path()
+            .strip_prefix("/v1/works/")
+            .and_then(|path| path.strip_suffix("/transform")),
+        LookupService::Datacite => url.path().strip_prefix('/'),
+    }
+    .ok_or_else(malformed)?;
+    let redirected = percent_encoding::percent_decode_str(encoded)
+        .decode_utf8()
+        .map_err(|_| malformed())?;
+    if redirected.to_lowercase() != doi {
+        return Err(malformed());
+    }
+    Ok((service, url))
 }
 
 /// One CSL-JSON object for this DOI, cut to bibliographic CSL variables and
@@ -241,22 +263,18 @@ fn checked(answer: &[u8], doi: &str) -> Result<Value, EngineError> {
     let Ok(Value::Object(fields)) = serde_json::from_slice::<Value>(answer) else {
         return Err(malformed());
     };
+    if let Some(given) = fields.get("DOI")
+        && !matches!(given.as_str().and_then(identifier::parse_query), Some(Identifier::Doi(given)) if given == doi)
+    {
+        return Err(malformed());
+    }
     let mut record: Map<String, Value> = ibis_sources::bibliographic_fields(fields);
     if let Some(Value::String(kind)) = record.get_mut("type")
         && let Some(csl) = crossref_type(kind)
     {
         *kind = csl.to_owned();
     }
-    match record.get("DOI").and_then(Value::as_str) {
-        // A service may answer for another DOI only by mistake; never cite that.
-        Some(given) if identifier::parse_query(given) != Some(Identifier::Doi(doi.to_owned())) => {
-            return Err(malformed());
-        }
-        Some(_) => {}
-        None => {
-            record.insert("DOI".into(), Value::String(doi.to_owned()));
-        }
-    }
+    record.insert("DOI".into(), Value::String(doi.to_owned()));
     record.insert("id".into(), Value::String("lookup".into()));
     let record = Value::Object(record);
     let read = ibis_sources::request_records(&LibraryId::digest(b"looked up online"), std::slice::from_ref(&record))

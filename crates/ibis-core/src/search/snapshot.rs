@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use super::{
-    MatchField, SearchDocument, Texts, by_identifier, in_scope, key_eq, lower, name_text, normalize, pasted, rank,
+    Hit, MatchField, SearchDocument, Texts, by_identifier, in_scope, key_eq, lower, name_text, normalize, pasted, rank,
 };
 use crate::{
     contract::*,
@@ -335,28 +335,48 @@ impl SnapshotIndex {
         scope: Option<&[LibraryId]>,
         stop: &dyn Fn() -> bool,
     ) -> Option<Vec<RecordHit<'_>>> {
-        let hits = match by_identifier(
+        if stop() {
+            return None;
+        }
+        if let Some(wanted) = identifier::parse_query(query) {
+            let hits = self.search_identifier(&wanted, limit, scope, stop)?;
+            if !hits.is_empty() || limit == 0 {
+                return Some(hits);
+            }
+        }
+        Some(self.record_hits(rank(&self.entries, &self.texts, query, limit, scope, stop)?))
+    }
+
+    /// Search a parsed identifier without interpreting citation keys or prose.
+    /// `None` means cancellation.
+    pub fn search_identifier(
+        &self,
+        wanted: &identifier::Identifier,
+        limit: usize,
+        scope: Option<&[LibraryId]>,
+        stop: &dyn Fn() -> bool,
+    ) -> Option<Vec<RecordHit<'_>>> {
+        let hits = by_identifier(
             self.entries
                 .iter()
                 .map(|entry| (entry, entry.record.identifiers.as_slice())),
-            query,
+            wanted,
             limit,
             scope,
             stop,
-        )? {
-            Some(hits) => hits,
-            None => rank(&self.entries, &self.texts, query, limit, scope, stop)?,
-        };
-        Some(
-            hits.into_iter()
-                .map(|hit| RecordHit {
-                    item: &self.snapshot.objects()[hit.reference.position],
-                    score: hit.score,
-                    matched: hit.matched,
-                    typo: hit.typo,
-                    partial: hit.partial,
-                })
-                .collect(),
-        )
+        )?;
+        Some(self.record_hits(hits))
+    }
+
+    fn record_hits(&self, hits: Vec<Hit<'_, Entry>>) -> Vec<RecordHit<'_>> {
+        hits.into_iter()
+            .map(|hit| RecordHit {
+                item: &self.snapshot.objects()[hit.reference.position],
+                score: hit.score,
+                matched: hit.matched,
+                typo: hit.typo,
+                partial: hit.partial,
+            })
+            .collect()
     }
 }

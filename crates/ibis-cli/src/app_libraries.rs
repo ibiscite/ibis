@@ -31,11 +31,22 @@ pub(crate) fn load() -> Result<AppLibraries, Failure> {
     let missing = || Failure::new(ErrorCode::Usage, cli("cli-app-settings-missing", &[]));
     let directory = ibis_engine::identity::config_dir().ok_or_else(missing)?;
     for (identifier, app) in APPS {
-        if let Some(chosen) = read(app, &directory.join(identifier).join("settings.json"))? {
+        if let Some(chosen) = read(app, &directory.join(identifier).join("settings.json"), true)? {
             return Ok(chosen);
         }
     }
     Err(missing())
+}
+
+/// Lookup allows having no chosen library, and reads any choice from the
+/// same app whose online lookup settings it uses.
+pub(crate) fn load_for_lookup(nightly: bool, required: bool) -> Result<Option<AppLibraries>, Failure> {
+    let (app, path) = crate::settings_backup::settings_file(nightly)?;
+    let chosen = read(app, &path, required)?;
+    if required && chosen.is_none() {
+        return Err(Failure::new(ErrorCode::Usage, cli("cli-app-settings-missing", &[])));
+    }
+    Ok(chosen)
 }
 
 /// The app's settings, for the format it uses for each app (decision 0042):
@@ -56,8 +67,8 @@ pub(crate) fn format_settings(nightly: bool) -> Result<settings::Settings, Failu
     }
 }
 
-/// `None` when this app has no settings file at all, so the next app is tried.
-fn read(app: &'static str, path: &Path) -> Result<Option<AppLibraries>, Failure> {
+/// `None` when this app has no settings file, or when a library choice is optional and absent.
+fn read(app: &'static str, path: &Path, required: bool) -> Result<Option<AppLibraries>, Failure> {
     let loaded = settings::load(path);
     if loaded.primary_read == PrimaryRead::Missing && loaded.problem.is_none() && !loaded.from_backup {
         return Ok(None);
@@ -83,6 +94,7 @@ fn read(app: &'static str, path: &Path) -> Result<Option<AppLibraries>, Failure>
         )
     })?;
     let (files, zotero) = match settings.portable.library.clone() {
+        None if !required => return Ok(None),
         None => {
             return Err(Failure::new(
                 ErrorCode::Usage,

@@ -111,12 +111,13 @@ fn answer() -> Value {
 
 /// A library holding one invented record with DOI 10.5555/held-1.
 fn engine() -> Engine {
-    let records = ibis_sources::request_records(
-        &LibraryId::digest(b"lookup tests"),
-        &[json!({"id": "held", "type": "book", "title": "Held Lanterns", "DOI": "10.5555/HELD-1"})],
-    )
-    .unwrap()
-    .records;
+    engine_with(&[json!({"id": "held", "type": "book", "title": "Held Lanterns", "DOI": "10.5555/HELD-1"})])
+}
+
+fn engine_with(input: &[Value]) -> Engine {
+    let records = ibis_sources::request_records(&LibraryId::digest(b"lookup tests"), input)
+        .unwrap()
+        .records;
     Engine::from_snapshot(Arc::new(
         Snapshot::new(records.into_iter().map(LibraryObject::Record).collect()).unwrap(),
     ))
@@ -144,7 +145,7 @@ fn on() -> Settings {
 }
 
 fn look(fake: &Fake, settings: &Settings, query: &str, ask: Ask<'_>) -> Result<Found, EngineError> {
-    Lookup::with_transport(fake.clone()).doi(&engine(), &settings.owner, query, ask, &Cancellation::default())
+    Lookup::with_transport(fake.clone()).doi(&engine(), || Ok(&settings.owner), query, ask, &Cancellation::default())
 }
 fn never(_: &Disclosure) -> Option<bool> {
     unreachable!("Ibis asked although nothing needed asking")
@@ -202,6 +203,38 @@ fn text_that_is_not_a_doi_is_refused_before_anything_else() {
 }
 
 #[test]
+fn citation_keys_cannot_hide_a_held_doi_with_list_punctuation() {
+    let engine = engine_with(&[
+        json!({"id": "first", "type": "book", "citation-key": "10.5555/compound"}),
+        json!({"id": "second", "type": "book", "citation-key": "suffix"}),
+        json!({"id": "held", "type": "book", "DOI": "10.5555/compound,suffix"}),
+        json!({"id": "also-held", "type": "book", "DOI": "10.5555/COMPOUND,SUFFIX"}),
+    ]);
+    let fake = Fake::new(vec![]);
+    let found = Lookup::with_transport(fake.clone())
+        .doi(
+            &engine,
+            || -> Result<&settings::Owner, EngineError> { panic!("opened settings before checking an exact DOI") },
+            "10.5555/compound,suffix",
+            &mut never,
+            &Cancellation::default(),
+        )
+        .unwrap();
+    let Found::InLibrary(found) = found else {
+        panic!("a held DOI must stay in the library");
+    };
+    assert_eq!(
+        found
+            .hits
+            .iter()
+            .map(|hit| hit.item.object.id().key.as_str())
+            .collect::<Vec<_>>(),
+        ["record:also-held", "record:held"]
+    );
+    assert!(fake.asked().is_empty());
+}
+
+#[test]
 fn nothing_is_sent_while_lookup_is_off() {
     let fake = Fake::new(vec![]);
     for device in [
@@ -254,7 +287,12 @@ fn the_first_doi_lookup_asks_saying_what_is_sent_where_and_remembers_a_yes() {
 #[test]
 fn only_the_doi_goes_to_doi_org_and_then_to_the_one_named_service() {
     let fake = Fake::new(vec![redirect(CROSSREF), csl(answer())]);
-    let found = looked_up(look(&fake, &on(), "https://doi.org/10.5555/New-1", &mut never));
+    let found = looked_up(look(
+        &fake,
+        &on(),
+        "https://doi.org/10.5555/New-1?source=invented#part",
+        &mut never,
+    ));
     assert_eq!(fake.asked(), ["https://doi.org/10.5555/new-1", CROSSREF]);
     assert_eq!(
         found.origin,
@@ -288,6 +326,7 @@ fn the_answer_keeps_only_bibliographic_csl_and_is_cited_through_the_records_path
         fields,
         ["DOI", "author", "container-title", "id", "issued", "title", "type"]
     );
+    assert_eq!(record["DOI"], "10.5555/new-1");
     assert_eq!(record["id"], "lookup");
     assert_eq!(record["type"], "article-journal");
     assert_eq!(record["author"], json!([{"family": "Vale", "given": "Ada"}]));
@@ -316,6 +355,9 @@ fn a_redirect_anywhere_but_a_named_service_is_refused_and_never_followed() {
         "https://api.crossref.org.example.org/v1/works",
         "https://example.org/10.5555/new-1",
         "https://api.crossref.org/v1/works#fragment",
+        "https://api.crossref.org/v1/works/10.5555%2Fother/transform",
+        "https://api.crossref.org/v1/works/10.5555%2Fnew-1/transform?source=invented",
+        "https://data.crosscite.org/alternate/10.5555%2Fnew-1",
         "/v1/works/10.5555%2Fnew-1/transform",
         "",
     ] {
@@ -389,6 +431,10 @@ fn each_failure_is_its_own_typed_refusal() {
         ),
         (
             vec![redirect(CROSSREF), csl(json!({"type": "book", "DOI": "10.5555/other"}))],
+            ErrorReason::LookupMalformed,
+        ),
+        (
+            vec![redirect(CROSSREF), csl(json!({"type": "book", "DOI": 5555}))],
             ErrorReason::LookupMalformed,
         ),
         (

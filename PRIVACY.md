@@ -51,7 +51,8 @@ by default; online lookup happens only if you turn it on. This page describes cu
   nothing. Only otherwise, and only while `online_lookup` is `true` in
   `settings.json`, it sends the DOI alone, in the address it asks for, to
   `doi.org`, which passes it to `api.crossref.org` or `data.crosscite.org`
-  (DataCite); Ibis follows that one hand-off and no other. Before the first DOI
+  (DataCite). Ibis follows that one hand-off only for the same DOI.
+  A query or fragment in a pasted DOI link stays on this computer. Before the first DOI
   lookup it asks in the terminal, saying exactly this, and remembers your yes as
   `doi_lookup_confirmed`; a run that cannot ask refuses instead. The request
   carries only the client name `Ibis/<version>` and the kind of answer wanted: no

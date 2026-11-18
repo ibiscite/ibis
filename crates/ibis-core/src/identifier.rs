@@ -267,7 +267,7 @@ fn doi(text: &str) -> Option<String> {
     let decoded;
     let body = match strip_link(text, &["doi.org/", "dx.doi.org/"]) {
         Some(path) => {
-            decoded = percent_decode(path.split('#').next().unwrap_or(path));
+            decoded = percent_decode(path.split(['?', '#']).next().unwrap_or(path));
             decoded.as_str()
         }
         None => strip_prefix_ci(text, "doi:")
@@ -403,11 +403,16 @@ mod tests {
             "10.1000/XYZ.123",
             "doi:10.1000/xyz.123",
             "https://doi.org/10.1000/xyz.123",
+            "https://doi.org/10.1000/xyz.123?source=example#part",
             "http://dx.doi.org/10.1000/xyz.123.",
             " DOI:10.1000/xyz.123 ",
         ] {
             assert_eq!(parse_query(q), doi, "{q}");
         }
+        assert_eq!(
+            parse_query("https://doi.org/10.1000/xyz%3Fpart"),
+            Some(Identifier::Doi("10.1000/xyz?part".into()))
+        );
         let arxiv = Some(Identifier::Arxiv("2101.00001".into()));
         for q in [
             "2101.00001",

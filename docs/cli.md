@@ -183,11 +183,13 @@ ibis lookup https://doi.org/10.5555/12345678 --style apa --bibliography --file r
 
 `ibis lookup DOI` takes a DOI in any spelling search recognizes (`10.…`,
 `doi:10.…`, a `doi.org` link, any letter case) and `cite`'s `--format`,
-`--style`, `--bibliography`, `--form`, `--locale` and `--strict`. It reads the
-same libraries as `cite`. A DOI an open library holds is cited from that library and nothing is
-sent; several references with that DOI are listed, and none is cited. Any other DOI is looked up online only while the
-Ibis app's `settings.json` says `"online_lookup": true`; `--nightly` reads
-Ibis Nightly's. The first lookup asks at a terminal, naming the DOI and the
+`--style`, `--bibliography`, `--form`, `--locale` and `--strict`. Lookup defaults
+to APA. If you name no library, it reads the library chosen in the Ibis app, if any.
+A DOI an open library holds is cited from that library and nothing is sent.
+If several references have the DOI, the command lists them so you can choose one.
+Any other DOI is looked up online only while the app's `settings.json` says
+`"online_lookup": true`. Use `--nightly` to select Ibis Nightly's library choice
+and lookup settings. The first lookup asks at a terminal, naming the DOI and the
 services, and the answer is remembered. Without a terminal to ask, or with lookup
 off, it refuses: `lookup-unconfirmed` or `lookup-off`, both with recovery
 `review-settings`. No option turns lookup on or answers for you.
@@ -197,11 +199,12 @@ The DOI alone goes to `doi.org`, and from there to `api.crossref.org` or
 ([privacy](../PRIVACY.md), [decision 0008](decisions/0008-offline-by-default.md)).
 Only the record's CSL variables are kept, and it is cited exactly as
 [`cite --records`](#records-you-send) cites a record, without being added to a
-library. A looked-up record has no citation key, so key outputs and the
-`bibtex` and `csl-json` exports refuse it with `missing-key`; styles work.
+library. Formatted styles and `doi-links` work for looked-up records.
+Outputs that require a citation key, including the `bibtex` and
+`csl-json` exports, refuse with `missing-key`.
 `--json` gives `origin` (`{"from":"library","item":…}` or
-`{"from":"lookup","doi":…,"service":…}`) beside the `citation`; stderr says
-which. Refusals have their own reasons: `not-a-doi`, `lookup-declined`,
+`{"from":"lookup","doi":…,"service":…}`) beside the `citation`. Human output
+reports the record's origin on stderr. Refusals have their own reasons: `not-a-doi`, `lookup-declined`,
 `lookup-unreachable`, `lookup-timeout`, `lookup-rate-limited`,
 `lookup-unavailable`, `doi-not-found`, `lookup-too-large` and
 `lookup-malformed`. `lookup` is not a method, so `call`, `serve` and MCP have

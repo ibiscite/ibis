@@ -3,7 +3,8 @@ use crate::sync::MutexExt;
 use crate::{Method, request::*};
 use ibis_core::{
     contract::*,
-    search::{MatchField, SnapshotIndex},
+    identifier::Identifier,
+    search::{MatchField, RecordHit, SnapshotIndex},
 };
 pub use ibis_csl::{
     LocaleEntry as LocaleInfo, Release as UpstreamRelease, StyleEntry as StyleInfo, StylePage as StylesResult,
@@ -133,6 +134,17 @@ pub struct SearchHit {
     /// nothing matches every term.
     pub partial: bool,
 }
+impl From<RecordHit<'_>> for SearchHit {
+    fn from(hit: RecordHit<'_>) -> Self {
+        Self {
+            item: hit.item.clone(),
+            score: hit.score,
+            matched: hit.matched,
+            typo: hit.typo,
+            partial: hit.partial,
+        }
+    }
+}
 /// Missing explicit citation keys in a recognized pasted list.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct PastedList {
@@ -152,6 +164,22 @@ pub struct SearchResult {
     pub shorthand: Option<ibis_core::shorthand::Shorthand>,
     /// The libraries searched, as they were when these hits were found.
     pub source_health: health::SourceHealth,
+}
+impl SearchResult {
+    /// Present a typed search result without reading the libraries again.
+    pub fn into_dispatch(self) -> DispatchResult<Reply> {
+        let source_findings = !self.source_health.is_ok();
+        DispatchResult {
+            data: Reply::Search(Box::new(self)),
+            exit_code: if source_findings {
+                ExitCode::Findings
+            } else {
+                ExitCode::Ok
+            },
+            text: None,
+            source_findings,
+        }
+    }
 }
 #[derive(Debug)]
 pub struct DispatchResult<T = Value> {
@@ -564,18 +592,39 @@ impl Engine {
             complete,
             snapshot: state.index.snapshot().fingerprints().clone(),
             list,
-            hits: hits
-                .into_iter()
-                .map(|hit| SearchHit {
-                    item: hit.item.clone(),
-                    score: hit.score,
-                    matched: hit.matched,
-                    typo: hit.typo,
-                    partial: hit.partial,
-                })
-                .collect(),
+            hits: hits.into_iter().map(SearchHit::from).collect(),
             shorthand,
             source_health,
+        })
+    }
+    pub(crate) fn search_identifier(
+        &self,
+        wanted: &Identifier,
+        limit: usize,
+        cancel: &Cancellation,
+    ) -> Result<SearchResult, EngineError> {
+        cancel.check()?;
+        let state = self.state()?;
+        let mut hits = state
+            .index
+            .search_identifier(wanted, limit.saturating_add(1), None, &|| cancel.is_cancelled())
+            .ok_or_else(|| error(ErrorCode::Cancelled))?;
+        if hits.is_empty() && state.libraries.values().any(|library| library.cut_short) {
+            return Err(EngineError::because(
+                ErrorCode::SourceUnavailable,
+                ErrorReason::LibraryCutShort,
+            ));
+        }
+        let complete = hits.len() <= limit;
+        hits.truncate(limit);
+        cancel.check()?;
+        Ok(SearchResult {
+            snapshot: state.index.snapshot().fingerprints().clone(),
+            hits: hits.into_iter().map(SearchHit::from).collect(),
+            complete,
+            list: None,
+            shorthand: None,
+            source_health: health::SourceHealth::of(state.libraries.values()),
         })
     }
     pub fn show(&self, request: &ShowRequest) -> Result<SnapshotObject, EngineError> {
@@ -865,19 +914,7 @@ impl Engine {
                 return checked(listed, ExitCode::Ok, Reply::Libraries);
             }
             Method::Search => {
-                let result = self.search(&parameters(params)?, cancel)?;
-                let source_findings = !result.source_health.is_ok();
-                return DispatchResult {
-                    data: Reply::Search(Box::new(result)),
-                    exit_code: if source_findings {
-                        ExitCode::Findings
-                    } else {
-                        ExitCode::Ok
-                    },
-                    text: None,
-                    source_findings,
-                }
-                .bounded();
+                return self.search(&parameters(params)?, cancel)?.into_dispatch().bounded();
             }
             Method::Show => {
                 return checked(self.show_checked(&parameters(params)?)?, ExitCode::Ok, |value| {
