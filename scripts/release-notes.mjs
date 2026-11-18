@@ -21,6 +21,8 @@ const DOWNLOADS = [
 // The command line on its own, for people, scripts and AI agents.
 const COMMAND_LINE = ["ibis-macOS-Apple-silicon.tar.gz", "ibis-macOS-Intel.tar.gz", "ibis-Windows.zip", "ibis-Linux.tar.gz"];
 
+const GITHUB_RELEASE_BODY_LIMIT = 125_000;
+
 export function changes(generated) {
   const lines = [];
   // A change merged twice, or listed under two commits, appears once.
@@ -58,7 +60,7 @@ export function releaseNotes(tag, generated, repo = "ibiscite/ibis", styles = ""
     // Before 1.0, settings may reset; release notes say so.
     ? "\n**Good to know:** Format choices made in an earlier version start fresh; choose them again.\n"
     : /^v0\.2\./.test(tag) ? "\n**macOS shortcut:** the default is now Command+Shift+Y. Ibis keeps every explicitly stored shortcut, including Control+Command+R. To keep that old chord, set `\"shortcut\": \"Control+Command+R\"`. To use the new default, remove the `shortcut` setting and restart Ibis. Windows and Linux keep Ctrl+Shift+Y.\n" : "";
-  return `Ibis ${tag.replace(/^v/, "")}: press a shortcut in any app, find a reference, and copy its citation.
+  const render = (contractDetails) => `Ibis ${tag.replace(/^v/, "")}: press a shortcut in any app, find a reference, and copy its citation.
 
 ## Download
 
@@ -76,7 +78,7 @@ ${upgrade}
 Tell us what works and what doesn't: [report a problem or suggest an idea](https://github.com/${repo}/issues/new/choose).
 
 ## Changes
-${list ? `\n${list}\n` : "\nSee the commits since the previous release.\n"}${[styles, contract].map((part) => (part.trim() ? `\n${part.trim()}\n` : "")).join("")}
+${list ? `\n${list}\n` : "\nSee the commits since the previous release.\n"}${[styles, contractDetails].map((part) => (part.trim() ? `\n${part.trim()}\n` : "")).join("")}
 <details>
 <summary>Verify a download</summary>
 
@@ -85,6 +87,12 @@ ${list ? `\n${list}\n` : "\nSee the commits since the previous release.\n"}${[st
 
 </details>
 `;
+  const notes = render(contract);
+  if (!contract.trim() || notes.length <= GITHUB_RELEASE_BODY_LIMIT) return notes;
+
+  const summary = contract.trim().split("\n\n", 2).join("\n\n");
+  const compact = render(`${summary}\n\nThe full comparison exceeds GitHub's release notes limit. To see it, run \`node scripts/contract-compat.mjs --base refs/tags/<baseline>\` from this release's checkout, using the tag above.`);
+  return compact.length <= GITHUB_RELEASE_BODY_LIMIT ? compact : render("");
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
