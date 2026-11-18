@@ -33,12 +33,12 @@ pub(crate) fn use_zotero(app: AppHandle) {
 /// Samples are an explicit, temporary source, never a saved library preference.
 #[tauri::command]
 #[ibis_desktop_macros::command(main)]
-pub(crate) fn use_sample_library(app: AppHandle, enabled: bool) -> Result<(), String> {
+pub(crate) fn use_sample_library(app: AppHandle, enabled: bool) -> Result<(), crate::errors::NativeFailure> {
     if enabled {
         let path = app
             .path()
             .resolve("resources/samples.csljson", BaseDirectory::Resource)
-            .map_err(|_| "The sample references could not be found".to_string())?;
+            .map_err(|_| crate::errors::NativeFailure)?;
         start_open(&app, Source::Samples(path), false);
     } else {
         app.state::<Owner>().submit(Intent::LeaveSamples);
@@ -51,8 +51,11 @@ pub(crate) fn use_sample_library(app: AppHandle, enabled: bool) -> Result<(), St
 /// is refused.
 #[tauri::command]
 #[ibis_desktop_macros::command(main)]
-pub(crate) fn use_zotero_libraries(app: AppHandle, libraries: Vec<ZoteroLibrary>) -> Result<(), String> {
-    let chosen = ZoteroLibraries::new(libraries).ok_or("Choose at least one Zotero library, each once")?;
+pub(crate) fn use_zotero_libraries(
+    app: AppHandle,
+    libraries: Vec<ZoteroLibrary>,
+) -> Result<(), crate::errors::NativeFailure> {
+    let chosen = ZoteroLibraries::new(libraries).ok_or(crate::errors::NativeFailure)?;
     // Chosen from the open picker: showing it again would move focus out of
     // the menu.
     start_open(&app, Source::Zotero(chosen), true);
@@ -221,15 +224,9 @@ pub(crate) async fn search(
 ) -> Result<SearchReply, super::CommandError> {
     let view = library.view();
     let file = view.current.ok_or_else(|| {
-        super::CommandError::Presented(view.error.map(|error| error.problem()).unwrap_or_else(|| {
-            ibis_core::contract::Problem {
-                code: "no-library".into(),
-                info: ibis_core::contract::RecoveryInfo::new(
-                    "app-command-no-library",
-                    ibis_core::contract::Recovery::ChooseLibrary,
-                ),
-            }
-        }))
+        view.error.map_or(super::CommandError::NoLibrary, |error| {
+            super::CommandError::Presented(error.problem())
+        })
     })?;
     let Some(cancel) = requests.start(page, request) else {
         return Ok(SearchReply {

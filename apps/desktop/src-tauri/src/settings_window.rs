@@ -142,7 +142,7 @@ pub(crate) async fn open_settings(app: AppHandle, page: Option<Page>, presentati
 /// the picker again. Granting permission never captures a target or retries Enter.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn finish_paste_guide(app: AppHandle) -> Result<bool, String> {
+pub(crate) async fn finish_paste_guide(app: AppHandle) -> Result<bool, crate::errors::NativeFailure> {
     let (sender, receiver) = std::sync::mpsc::channel();
     let handle = app.clone();
     app.run_on_main_thread(move || {
@@ -159,16 +159,16 @@ pub(crate) async fn finish_paste_guide(app: AppHandle) -> Result<bool, String> {
                     Ok::<_, tauri::Error>(())
                 },
             )
-            .map_err(|_| "The permission guide could not close.".to_string())
+            .map_err(|_| crate::errors::NativeFailure)
         })();
         let _ = sender.send(result);
     })
-    .map_err(|_| "The permission guide could not close.".to_string())?;
+    .map_err(|_| crate::errors::NativeFailure)?;
     tauri::async_runtime::spawn_blocking(move || receiver.recv())
         .await
         .ok()
         .and_then(Result::ok)
-        .ok_or_else(|| "The permission guide could not close.".to_string())?
+        .ok_or(crate::errors::NativeFailure)?
 }
 
 fn finish_guide_with<E>(granted: bool, focused: bool, close: impl FnOnce() -> Result<(), E>) -> Result<bool, E> {
