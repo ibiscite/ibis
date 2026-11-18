@@ -34,14 +34,16 @@ fn store(app: &tauri::AppHandle) -> Proposals {
 /// Waiting proposals and their engine previews, with library names only.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn waiting_proposals(app: tauri::AppHandle) -> Result<Vec<WaitingProposal>, String> {
+pub(crate) async fn waiting_proposals(
+    app: tauri::AppHandle,
+) -> Result<Vec<WaitingProposal>, crate::errors::NativeFailure> {
     crate::cli_install::with_owner(&OWNER, move || waiting(&store(&app))).await
 }
 
-fn waiting(store: &Proposals) -> Result<Vec<WaitingProposal>, String> {
+fn waiting(store: &Proposals) -> Result<Vec<WaitingProposal>, crate::errors::NativeFailure> {
     Ok(store
         .waiting()
-        .map_err(|error| error.sentence())?
+        .map_err(|_| crate::errors::NativeFailure)?
         .into_iter()
         .map(|preview| WaitingProposal {
             id: preview.proposal.id,
@@ -60,7 +62,10 @@ fn waiting(store: &Proposals) -> Result<Vec<WaitingProposal>, String> {
 /// Apply only after the person presses Apply on the displayed proposal.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn apply_proposal(app: tauri::AppHandle, id: String) -> Result<ProposalResult, String> {
+pub(crate) async fn apply_proposal(
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<ProposalResult, crate::errors::NativeFailure> {
     crate::cli_install::with_owner(&OWNER, move || {
         let file = app.state::<ibis_engine::library::Owner>().current();
         Ok(apply(&store(&app), file.as_ref().map(|file| &file.engine), &id))
@@ -92,14 +97,20 @@ fn apply(store: &Proposals, engine: Option<&ibis_engine::Engine>, id: &str) -> P
 /// Reject a waiting proposal; no library changes.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn reject_proposal(app: tauri::AppHandle, id: String) -> Result<ProposalResult, String> {
+pub(crate) async fn reject_proposal(
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<ProposalResult, crate::errors::NativeFailure> {
     crate::cli_install::with_owner(&OWNER, move || Ok(reject(&store(&app), &id))).await
 }
 
 /// Reject all pending proposals with the same claimed app as this displayed id.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn reject_app_proposals(app: tauri::AppHandle, id: String) -> Result<ProposalResult, String> {
+pub(crate) async fn reject_app_proposals(
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<ProposalResult, crate::errors::NativeFailure> {
     crate::cli_install::with_owner(&OWNER, move || {
         let store = store(&app);
         Ok(
