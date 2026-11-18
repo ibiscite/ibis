@@ -43,6 +43,7 @@ export const SETTINGS_IDS = [
   "attachment-text-title", "attachment-text-label", "attachment-text-description",
   "attachment-text-words", "attachment-text-empty", "attachment-text-loading",
   "attachment-text-outside-label", "attachment-text-outside-description",
+  "general-language", "general-language-description", "general-language-system", "general-language-words", "language-english", "language-german", "language-arabic",
   "general-placement", "general-placement-description", "general-placement-words", "general-placement-centre",
   "general-placement-top-left", "general-placement-top-right", "general-placement-bottom-left", "general-placement-bottom-right",
   "citations-unlisted",

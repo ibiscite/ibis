@@ -18,7 +18,7 @@ import { bibliographyText } from "./useBibliography";
 export const rowWords = { itemType: (type: string): string | null => say("row-item-type", { type }) || null };
 
 /** "et al." in its own isolate, so it keeps its reading order beside a right-to-left name. */
-const etAl = <bdi>{say("row-et-al")}</bdi>;
+const etAl = () => <bdi>{say("row-et-al")}</bdi>;
 /** A spoken pause between parts that sit apart on screen but make one accessible name. */
 const pause = <span className="visually-hidden">, </span>;
 
@@ -155,7 +155,7 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
           <strong className="result-title">{r.sample && <><bdi>{say("setup-sample-label")}</bdi>{" · "}</>}{r.title}</strong>
           {/* Spoken pauses: the parts are separate on screen but one accessible name. */}
           <span className="visually-hidden">, </span>
-          {compact && r.first_author && <><span className="result-first-author" dir="auto">{abbreviatedAuthors(r) ? <>{r.first_author} {etAl}</> : r.authors}</span><span className="visually-hidden">, </span></>}
+          {compact && r.first_author && <><span className="result-first-author" dir="auto">{abbreviatedAuthors(r) ? <>{r.first_author} {etAl()}</> : r.authors}</span><span className="visually-hidden">, </span></>}
           <span className="result-year">{r.year ?? say("picker-no-date")}</span>
           <span className="visually-hidden">, </span>
         </span>
@@ -164,7 +164,7 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
               right-to-left row is cut at its end. The separator is its own part. */}
           <span className="result-byline">
             <span className="result-authors" dir="auto">
-              {abbreviatedAuthors(r) ? <><span aria-hidden="true">{r.first_author} {etAl}</span><span className="visually-hidden">{r.authors}</span></> : r.authors}
+              {abbreviatedAuthors(r) ? <><span aria-hidden="true">{r.first_author} {etAl()}</span><span className="visually-hidden">{r.authors}</span></> : r.authors}
             </span>
             {!compact && r.container && r.authors && <><span className="result-separator" aria-hidden="true">{" · "}</span>{pause}</>}
             {!compact && r.container && <span className="result-container" dir="auto">{r.container}</span>}

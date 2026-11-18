@@ -3,7 +3,7 @@ import { Input, Label, Text, TextField } from "react-aria-components";
 import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import type { Locator, LocatorTerm, FormDetails, CitationForm } from "../bindings";
 import { composing } from "../composition";
-import { INTERFACE_LOCALE, say, type MessageId } from "../i18n";
+import { interfaceLocale, say, type MessageId } from "../i18n";
 import { Icon } from "../icons";
 import { Button } from "./Button";
 import { ToolbarMenu } from "./ToolbarMenu";
@@ -61,7 +61,7 @@ export function CitationDetails({ locator, form, prefix, suffix, locatorRef, cho
   // Each reason once, with the forms it leaves out.
   const reasons = new Map<string, string[]>();
   for (const option of FORMS) { const reason = choice(option.value)?.reason; if (reason) reasons.set(reason, [...reasons.get(reason) ?? [], option.label]); }
-  const names = new Intl.ListFormat(INTERFACE_LOCALE, { type: "conjunction" });
+  const names = new Intl.ListFormat(interfaceLocale(), { type: "conjunction" });
   const note = choices === "failed" ? say("citation-details-examples-unavailable")
     : [...reasons].map(([reason, forms]) => `${names.format(forms)}: ${reason}`).join(" · ") || undefined;
   return <div className="citation-details">

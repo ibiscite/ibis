@@ -1,13 +1,12 @@
 import type { LibraryStatus } from "./bindings";
-import { fullStop, isolate, say } from "./i18n";
+import { fullStop, interfaceLocale, isolate, say } from "./i18n";
 
-/** Text is English, so numbers and times are too; one place to change with translations. */
-export const appLocale = "en";
 const minute = 60_000;
 /** How long "updated …" stays after the references change. */
 export const recentUpdate = 10 * minute;
-const numbers = new Intl.NumberFormat(appLocale);
-const relative = new Intl.RelativeTimeFormat(appLocale, { numeric: "auto" });
+// Numbers and times in the window's language, as its words are.
+const numbers = { format: (value: number) => new Intl.NumberFormat(interfaceLocale()).format(value) };
+const relative = { format: (value: number, unit: Intl.RelativeTimeFormatUnit) => new Intl.RelativeTimeFormat(interfaceLocale(), { numeric: "auto" }).format(value, unit) };
 
 /** The library's own sentences: the footer, its tooltip and the empty states. */
 export const libraryMessages = {
@@ -188,11 +187,11 @@ export function ago(at: number, now: number) {
   if (seconds < 36 * 3600) return relative.format(-Math.round(seconds / 3600), "hour");
   if (seconds < 7 * 86400) return relative.format(-Math.round(seconds / 86400), "day");
   const year = new Date(at).getFullYear() === new Date(now).getFullYear() ? undefined : "numeric";
-  return say("time-on", { date: new Intl.DateTimeFormat(appLocale, { month: "short", day: "numeric", year }).format(at) });
+  return say("time-on", { date: new Intl.DateTimeFormat(interfaceLocale(), { month: "short", day: "numeric", year }).format(at) });
 }
 
 /** Clock time today, otherwise date and time. */
 function clock(at: number, now: number) {
   const sameDay = new Date(at).toDateString() === new Date(now).toDateString();
-  return new Intl.DateTimeFormat(appLocale, sameDay ? { timeStyle: "short" } : { dateStyle: "medium", timeStyle: "short" }).format(at);
+  return new Intl.DateTimeFormat(interfaceLocale(), sameDay ? { timeStyle: "short" } : { dateStyle: "medium", timeStyle: "short" }).format(at);
 }

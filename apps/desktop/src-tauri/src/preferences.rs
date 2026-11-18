@@ -7,7 +7,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
-use ibis_engine::settings::{self, Density, PickerPlacement};
+use ibis_engine::catalogue::Language;
+use ibis_engine::settings::{self, Density, InterfaceLanguage, PickerPlacement};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -411,6 +412,11 @@ pub(crate) struct PickerPreferences {
     pub(crate) recent_citations: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) small_surprises: Option<bool>,
+    /// The interface language chosen in Settings.
+    pub(crate) interface_language: InterfaceLanguage,
+    /// The language Ibis speaks until it next opens: the choice it opened
+    /// with, or the system's. Windows read it before they draw.
+    pub(crate) speaking: Language,
 }
 
 impl PickerPreferences {
@@ -434,6 +440,8 @@ impl PickerPreferences {
             menu_bar: settings.menu_bar.unwrap_or(true),
             recent_citations: Some(settings.recent_citations.unwrap_or(true)),
             small_surprises: Some(settings.small_surprises.unwrap_or(true)),
+            interface_language: settings.interface_language.unwrap_or_default(),
+            speaking: ibis_engine::catalogue::language(),
         }
     }
 }
@@ -500,6 +508,8 @@ pub(crate) struct PickerPreferencesPatch {
     pub(crate) recent_citations: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) small_surprises: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) interface_language: Option<InterfaceLanguage>,
 }
 
 impl PickerPreferencesPatch {
@@ -527,6 +537,7 @@ impl From<PickerPreferences> for PickerPreferencesPatch {
             menu_bar: Some(value.menu_bar),
             recent_citations: value.recent_citations,
             small_surprises: value.small_surprises,
+            interface_language: Some(value.interface_language),
         }
     }
 }
@@ -716,6 +727,9 @@ fn apply_preferences(s: &mut settings::Settings, preferences: PickerPreferencesP
         return Err(CommandError::KeyFormat);
     }
 
+    if let Some(language) = preferences.interface_language {
+        s.portable.interface_language = Some(language).filter(|language| *language != InterfaceLanguage::System);
+    }
     if let Some(appearance) = preferences.appearance {
         if appearance == Appearance::System {
             s.portable.appearance = None;

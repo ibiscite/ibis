@@ -197,7 +197,8 @@ app-file-dialog-formats = { -library-formats }
 
 ## The app’s own sentence about a citation.
 
-app-loss = This output cannot fully show { $what }{ $target }.
+app-loss = This output cannot fully show { $what }.
+    .named = This output cannot fully show { $what } for { $reference }.
 app-project-warning =
     { $state ->
         [missing] { $key } is missing from { $name }.
@@ -324,6 +325,14 @@ general-login-refused = The system did not let { $name } change this. You can ch
 general-login-unreadable = { $name } could not check whether it starts when you { general-login-when }. Look in { general-login-place }.
 
 general-menu-bar-label = Show in menu bar
+general-language = Language
+general-language-description = Menus, Settings and messages, from the next time Ibis opens. Citations keep their style’s language.
+general-language-system = Same as the system
+general-language-words = language interface translation english german deutsch arabic
+# Each language by its own name, the same in every catalogue.
+language-english = English
+language-german = Deutsch
+language-arabic = العربية
 general-placement = Where Ibis opens
 general-placement-description = On the display you’re working on, unless you’ve moved Ibis there.
 general-placement-words = position screen display corner centre center opens

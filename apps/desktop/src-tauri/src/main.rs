@@ -22,6 +22,7 @@ mod errors;
 mod feedback;
 mod format_settings;
 mod instance;
+mod language;
 mod library;
 mod login_item;
 #[cfg(target_os = "macos")]
@@ -239,6 +240,11 @@ fn main() {
             let settings_path = app.path().app_config_dir()?.join("settings.json");
             let loaded = settings::load(&settings_path);
             let interface = loaded.interface().unwrap_or_default();
+            // Before any window or menu speaks: the saved language, else the
+            // system's. A new choice is spoken the next time Ibis opens.
+            ibis_engine::catalogue::use_language(language::resolve(
+                interface.interface_language.and_then(settings::InterfaceLanguage::chosen),
+            ));
             let cites = loaded.cites().ok();
             library::engine_library::warm_formatter(cites.and_then(|settings| settings.portable.output.clone()));
             let settings_file = SettingsFile::new(settings_path.clone());

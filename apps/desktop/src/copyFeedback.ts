@@ -4,7 +4,7 @@ import "./ui/Icon.css";
 // Pure decisions, kept apart from the picker so they can be tested alone.
 import type { NoticeMessage } from "./api";
 import type { CopiedReason, Delivered as WireDelivered } from "./bindings";
-import { englishMessages } from "./i18n";
+
 import { say } from "./i18n";
 import { currentPlatform, platformOf, type Platform } from "./platform";
 import { listedOutput, outputName } from "./format/outputs";
@@ -133,7 +133,7 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform, onChan
     if (message.milestone) {
       const milestone = document.createElement("span");
       milestone.setAttribute("aria-hidden", "true");
-      milestone.textContent = ` · ${englishMessages.text("delight-citation", { count: message.milestone })}`;
+      milestone.textContent = ` · ${say("delight-citation", { count: message.milestone })}`;
       title.append(milestone);
     }
     const excerpt = document.createElement("span");

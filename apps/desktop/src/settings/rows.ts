@@ -17,8 +17,10 @@ export type SettingRow = Control & {
   preference?: keyof PickerPreferences; native?: NativeSetting; default?: string | boolean;
 };
 type PreferenceDeclaration<K extends keyof PickerPreferences> = SettingRow & { order: number; default: NonNullable<PickerPreferences[K]>; control: Exclude<Control["control"], undefined> };
-/** Exhaustive over the generated owner contract: a new preference needs its row. */
+/** Exhaustive over the generated owner contract: a new preference needs its row.
+ * `speaking` is what this run of Ibis speaks, not a choice. */
 export const PREFERENCES = {
+  interface_language: { order: 4, id: "interface-language", default: "system", control: "menu", options: [{ value: "system", label: "general-language-system" }, { value: "en-US", label: "language-english" }, { value: "de", label: "language-german" }, { value: "ar", label: "language-arabic" }], page: "general", group: "general-behavior-title", label: "general-language", description: "general-language-description", keywords: "general-language-words" },
   picker_placement: { order: 4, id: "picker-placement", default: "centre", control: "menu", options: [{ value: "centre", label: "general-placement-centre" }, { value: "top-left", label: "general-placement-top-left" }, { value: "top-right", label: "general-placement-top-right" }, { value: "bottom-left", label: "general-placement-bottom-left" }, { value: "bottom-right", label: "general-placement-bottom-right" }], page: "general", group: "general-behavior-title", label: "general-placement", description: "general-placement-description", keywords: "general-placement-words" },
   menu_bar: { order: 3, id: "menu-bar", default: true, control: "switch", page: "general", group: "general-behavior-title", label: "general-menu-bar-label", description: "general-menu-bar-description" },
   small_surprises: { order: 5, id: "small-surprises", default: true, control: "switch", page: "general", group: "general-behavior-title", label: "general-small-surprises-label", description: "general-small-surprises-description", keywords: "settings-surprises-words" },
@@ -30,7 +32,7 @@ export const PREFERENCES = {
   output: { order: 1, id: "default-format", default: defaultStyle, control: "documents", page: "citations", label: "citations-documents", description: "citations-default-description" },
   key_output: { order: 2, id: "default-key-format", default: defaultOutput, control: "keys", page: "citations", label: "citations-keys", description: "citations-keys-description" },
   recent_citations: { order: 3, id: "recent-citations", default: true, control: "switch", page: "citations", label: "citations-recent", description: "citations-recent-description", keywords: "citations-recent-words" },
-} satisfies { [K in keyof PickerPreferences]-?: PreferenceDeclaration<K> };
+} satisfies { [K in Exclude<keyof PickerPreferences, "speaking">]-?: PreferenceDeclaration<K> };
 const preferences: SettingRow[] = Object.entries(PREFERENCES).map(([preference, row]) => ({ ...row, preference: preference as keyof PickerPreferences }));
 export const NATIVE_SETTINGS = {
   "open-shortcut": { order: 1, id: "open-shortcut", default: DEFAULT_PICKER_SHORTCUT, page: "general", group: "general-behavior-title", label: "shortcuts-open", description: "shortcuts-description", keywords: "settings-shortcut-words" },
