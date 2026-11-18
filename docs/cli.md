@@ -451,12 +451,13 @@ control characters; JSON preserves source strings.
 ```
 
 `ibis` is the contract version, now 1. `--contract 1` selects it; unsupported
-versions are refused with the supported versions. Within a version, results
-may gain fields and codes: ignore unknown fields and review unknown codes.
-Other changes require a new version ([decision 0028](decisions/0028-engine-first.md)).
-Unknown request fields are `bad-input`.
+versions are refused with the supported versions. Results may gain fields and
+codes: ignore unknown fields and review unknown codes. Unknown request fields
+are `bad-input`.
 
-Older contracts stay supported for at least two minor releases.
+Until 1.0 the CLI, MCP tools and engine contract are unstable: any release may
+change or remove any part of them, and each release lists its contract
+differences ([decision 0028](decisions/0028-engine-first.md)).
 
 `ibis schema METHOD` describes `data`; `cite --writing` uses
 `ibis writings schema`. Branch on `error.code` and optional
