@@ -246,7 +246,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
     open_settings: ({ page }) => openSettings(page),
     read_window_position_undo: () => scenario === "undo-notice" ? 1 : null,
     undo_window_position: () => scenario === "undo-notice",
-    delight_view: () => ({ fun: false, status: null, peck: false, anniversary: false, revision: 0, build: "0.0.0 · invented · 2026-11-01" }),
+    delight_view: () => ({ fun: false, status: null, peck: false, anniversary: false, practice: scenario === "first-paste", revision: 0, build: "0.0.0 · invented · 2026-11-01" }),
     shorthand_hint: () => false,
     update_available: () => false,
     check_zotero_sharing: () => scenario === "zotero-closed" ? "closed" : "absent",
@@ -449,8 +449,6 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
   settings.openSettingsFile ??= async () => null;
   // settings.json that does not parse: the engine's own Problem, as the picker gets it.
   if (scenario === "settings-broken") settings.formatSettings = () => Promise.reject({ code: "settings-invalid", message: { id: "app-settings-error-invalid", args: {} }, recovery: { action: "review-settings" }, focus: "settings" });
-  // A paste just refused for want of the grant: the practice paste comes before the ask.
-  if (scenario === "settings-paste") settings.pastePermission = async () => ({ pastes: true, needed: true, granted: false, list: "Accessibility" });
   if (scenario === "settings-newer") settings.formatSettings = async () => ({ apps: [], writings: [], unknown: { future_choice: "Enabled" } });
   // The states and tokens pages use the Settings window's base styles.
   const settingsWindow = scenario.startsWith("settings-") || scenario === "states" || scenario === "tokens" || scenario === "parts";

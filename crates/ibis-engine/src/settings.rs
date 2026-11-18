@@ -285,6 +285,10 @@ pub struct Delights {
     pub fact_index: Option<u8>,
     /// How often the picker has taught what can be typed with the search.
     pub shorthand_hints: u8,
+    /// The first screen with the person's own library offered its one
+    /// practice paste (maintainer, 2026-11-18); it is never offered again.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub practice_offered: bool,
 }
 
 /// Settings owns these choices until the picker consumes the same event fields.

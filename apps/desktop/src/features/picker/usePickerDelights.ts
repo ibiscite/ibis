@@ -15,6 +15,8 @@ export function usePickerDelights(api: typeof nativeApi, presentation: number | 
   const { text } = useInterfaceMessages();
   const [view, setView] = useState<DelightView | null>(null);
   const dismiss = useCallback(() => setView(null), []);
+  // The first screen's practice paste belongs to its opening; typing never retires it, a paste does.
+  const [practice, setPractice] = useState<{ presentation: number; pasted: string | null } | null>(null);
   const revision = library?.revision ?? null;
   const load = `${library?.state}:${library?.note}`;
   // biome-ignore lint/correctness/useExhaustiveDependencies: a load finishing or clearing its notice can make the same snapshot eligible.
@@ -25,11 +27,14 @@ export function usePickerDelights(api: typeof nativeApi, presentation: number | 
       void api.delightView(localMoment(), presentation, revision, false).then((next) => {
         if (!live) return;
         setView(next);
+        if (next.practice) setPractice({ presentation, pasted: null });
       }).catch(() => undefined);
     }
     return () => { live = false; };
   }, [api.delightView, presentation, revision, load, settingsRevision]);
   // Retire the animation answer, so remounting the empty state cannot replay it.
   useTimeout(() => setView((current) => current?.peck ? { ...current, peck: false } : current), view?.peck ? 240 : null, view);
-  return { feedback: view?.status ? text(STATUS[view.status], { keys: keyLabel(keysFor("pin"), isMac) }) : null, peck: view?.peck ?? false, passive: view?.status !== "paste-tip", dismiss };
+  const current = practice && practice.presentation === presentation ? practice : null;
+  return { practice: current, practise: (citation: string) => setPractice((offered) => offered && { ...offered, pasted: citation }),
+    endPractice: () => setPractice(null), feedback: view?.status ? text(STATUS[view.status], { keys: keyLabel(keysFor("pin"), isMac) }) : null, peck: view?.peck ?? false, passive: view?.status !== "paste-tip", dismiss };
 }

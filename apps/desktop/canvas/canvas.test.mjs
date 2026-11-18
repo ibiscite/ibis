@@ -51,9 +51,8 @@ test("the built scenario list renders, switches and reopens without Tauri or net
       expect(window.document.documentElement.dataset.appearance).toBe(theme);
       expect(window.document.querySelector("[src], [href]")).toBeNull();
       if (scenario.startsWith("settings-")) {
-        expect(host.querySelector('[aria-current="page"]')?.textContent?.toLowerCase()).toContain({ look: "appearance", "ai-apps": "ai apps", details: "general", newer: "general", broken: "general", paste: "general" }[scenario.slice(9)] ?? scenario.slice(9));
+        expect(host.querySelector('[aria-current="page"]')?.textContent?.toLowerCase()).toContain({ look: "appearance", "ai-apps": "ai apps", details: "general", newer: "general", broken: "general" }[scenario.slice(9)] ?? scenario.slice(9));
         expect(host.querySelector(scenario === "settings-shortcuts" ? ".ui-shortcut-table" : ".ui-row")).not.toBeNull();
-        if (scenario === "settings-paste") expect(host.querySelector('input[aria-label], .ui-text-field input')).not.toBeNull();
         if (scenario === "settings-broken") expect(host.querySelector('[role="alert"]')?.textContent).toContain("settings.json isn’t valid, so Ibis is using your last good settings.");
       } else if (scenario === "notice") {
         expect(host.querySelector('.copy-receipt[role="status"]')?.textContent).toContain("Copied");
@@ -75,6 +74,7 @@ test("the built scenario list renders, switches and reopens without Tauri or net
       else if (scenario === "parts") for (const part of ["Button: primary", "Settings rows", "Marks and icons"]) expect(host.textContent).toContain(part);
       else if (scenario === "empty-search") expect(host.textContent).toContain("Type to find");
       else if (scenario === "paste") expect(host.querySelector("footer")?.textContent).toContain("Paste into Invented Editor");
+      else if (scenario === "first-paste") expect(host.textContent).toContain("press Enter to paste this reference into this line");
       else if (scenario === "reference-list") expect(host.textContent).toContain("Copy Reference List");
       else if (scenario === "no-matches") expect(host.textContent).toContain("No matching references");
       else if (scenario === "missing") expect(host.textContent).toContain("Can’t find invented.bib");

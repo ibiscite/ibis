@@ -27,6 +27,8 @@ export type SearchState = {
   /** The request whose answer is shown, and the opening that may act on it. */
   settled: { inputs: SearchInputs; session: number } | null;
   results: SearchResult[]; interpretation: LocatorQuery | null; list: PastedList | null; unfiltered: string | null;
+  /** The words as typed name something in the library, so nothing was read from them. */
+  keptWords: boolean;
   /** The query and snapshot the shown results answer; they stay while a newer search runs. */
   resultsQuery: string | null; resultsRevision: string | null;
   error: string | null; announcement: string;
@@ -34,7 +36,7 @@ export type SearchState = {
 
 export const initialSearch: SearchState = {
   inputs: null, session: -1, seq: 0, settled: null,
-  results: [], interpretation: null, list: null, unfiltered: null,
+  results: [], interpretation: null, list: null, unfiltered: null, keptWords: false,
   resultsQuery: null, resultsRevision: null, error: null, announcement: "",
 };
 
@@ -82,7 +84,7 @@ export function reduceSearch(s: SearchState, event: SearchEvent, session: number
           ? { type: "search-failed", seq } : { type: "searched", seq, reply: inputs.recentReply }, session);
       }
       if (!canSearch) {
-        return { search: { ...s, inputs, session, seq, settled: { inputs, session }, results: [], interpretation: null, list: null, unfiltered: null,
+        return { search: { ...s, inputs, session, seq, settled: { inputs, session }, results: [], interpretation: null, list: null, unfiltered: null, keptWords: false,
           resultsQuery: inputs.queryKey, error: null, announcement: "" }, firstRow: true, effects: [] };
       }
       return { search: { ...s, inputs, session, seq, announcement: "" }, firstRow: false,
@@ -94,7 +96,7 @@ export function reduceSearch(s: SearchState, event: SearchEvent, session: number
       // An unchanged reply must not undo the person's newer row choice.
       const same = s.resultsQuery === inputs.queryKey && s.resultsRevision === revision && choiceKey(s.results) === choiceKey(found);
       return {
-        search: { ...s, settled: { inputs, session }, results: found, interpretation: event.reply.interpretation ?? null, list: event.reply.list ?? null,
+        search: { ...s, settled: { inputs, session }, results: found, interpretation: event.reply.interpretation ?? null, keptWords: Boolean(event.reply.kept_words), list: event.reply.list ?? null,
           unfiltered: event.reply.unfiltered ?? null, resultsQuery: inputs.queryKey, resultsRevision: revision, error: null },
         firstRow: !same,
         // A reply from a newer snapshot reads the library status again.
@@ -104,7 +106,7 @@ export function reduceSearch(s: SearchState, event: SearchEvent, session: number
     case "search-failed": {
       if (event.seq !== s.seq || s.session !== session || !s.inputs) return null;
       // Results of an earlier query must not sit beside this query's error.
-      return { search: { ...s, settled: { inputs: s.inputs, session }, results: [], interpretation: null, list: null, unfiltered: null,
+      return { search: { ...s, settled: { inputs: s.inputs, session }, results: [], interpretation: null, list: null, unfiltered: null, keptWords: false,
         resultsQuery: s.inputs.queryKey, error: say("picker-search-error") }, firstRow: false, effects: [] };
     }
     case "announce": {

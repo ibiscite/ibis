@@ -22,7 +22,6 @@ const IDS = [
   "general-login-unsupported", "general-login-needs-approval", "general-login-refused", "general-login-unreadable",
   "general-menu-bar-label", "general-menu-bar-description",
   "general-paste-title", "general-behavior-title", "general-paste-label", "general-paste-key", "general-paste-description", "general-paste-allowed", "general-paste-allowed-note",
-  "general-paste-practice-title", "general-paste-practice-why", "general-paste-practice-field", "general-paste-practice-done", "general-paste-practice-skip",
   "general-paste-guide-title", "general-paste-guide-why", "general-paste-step-open", "general-paste-step-allow", "general-paste-step-return",
   "general-paste-pane", "general-paste-open", "general-paste-drag", "general-paste-drag-keyboard", "general-paste-drag-fallback",
   "general-paste-drag-failed", "general-paste-waiting", "general-paste-granted", "general-paste-unreadable", "general-paste-return-failed", "general-paste-stale",

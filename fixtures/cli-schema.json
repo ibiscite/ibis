@@ -2844,6 +2844,10 @@
             },
             "type": "array"
           },
+          "kept_words": {
+            "description": "A signal or page could have been read, but the words as typed name\nsomething in the library (a title, key or number), so they were searched\nas words (maintainer, 2026-11-18). A comma asks for the page: `room, 22`.",
+            "type": "boolean"
+          },
           "list": {
             "anyOf": [
               {

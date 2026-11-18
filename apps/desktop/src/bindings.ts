@@ -451,6 +451,12 @@ export type DelightView = {
 	fact: DelightFact | null;
 	fun: boolean;
 	peck: boolean;
+	/**
+	 * The first screen with the person's own library, before any paste: Enter
+	 * pastes the highlighted reference into a practice line inside Ibis once.
+	 * A first-run step, not a surprise, so Small surprises never turns it off.
+	 */
+	practice: boolean;
 	revision: number;
 	status: DelightStatus | null;
 };
@@ -1172,6 +1178,11 @@ export type SearchQuery = {
 /** A search keeps its snapshot identity even when no references match. */
 export type SearchReply = {
 	interpretation?: LocatorQuery | null;
+	/**
+	 * The words as typed name something in the library, so no signal or page
+	 * was read from them; the picker says so in one notice line.
+	 */
+	kept_words?: boolean;
 	list?: PastedList | null;
 	results: SearchResult[];
 	revision: string;

@@ -53,21 +53,3 @@ test("a failed read does not claim permission was granted", async () => {
   await act(async () => { window.dispatchEvent(new Event("focus")); });
   expect(result.current?.granted).toBe(false);
 });
-
-test("after a refused paste, one practice paste inside Ibis comes before the ask, and Skip goes straight to it", () => {
-  const { unmount } = render(<PasteGuide name="Ibis" permission={denied} practice onOpen={vi.fn()} onDrag={vi.fn(async () => undefined)} />);
-  // The practice stands in for the ask: nothing asks for Accessibility yet.
-  expect(screen.queryByRole("button", { name: "Open System Settings" })).toBeNull();
-  const field = screen.getByRole("textbox", { name: "Practice sentence" });
-  expect(document.activeElement).toBe(field);
-  fireEvent.paste(field);
-  fireEvent.change(field, { target: { value: "(Aster, 2026)" } });
-  expect((field as HTMLInputElement).value).toBe("(Aster, 2026)");
-  expect(screen.getByText(/That’s what Ibis does/)).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Open System Settings" })).toBeTruthy();
-  unmount();
-  render(<PasteGuide name="Ibis" permission={denied} practice onOpen={vi.fn()} onDrag={vi.fn(async () => undefined)} />);
-  fireEvent.click(screen.getByRole("button", { name: "Skip" }));
-  expect(screen.queryByRole("textbox", { name: "Practice sentence" })).toBeNull();
-  expect(screen.getByRole("button", { name: "Open System Settings" })).toBeTruthy();
-});

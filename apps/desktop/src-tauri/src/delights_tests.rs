@@ -125,3 +125,28 @@ fn the_shorthand_hint_is_shown_three_times_on_a_computer_then_never() {
         3
     );
 }
+
+#[test]
+fn the_practice_paste_is_offered_once_with_an_own_library_before_any_paste_even_without_surprises() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("settings.json");
+    std::fs::write(&path, r#"{"schema_version":2,"small_surprises":false}"#).unwrap();
+    let file = SettingsFile::new(path.clone());
+    let now = moment(2026, 11, 18);
+    // No library of the person's own yet (none, or samples): not offered.
+    assert!(!file.claim_delights(now, true, None).practice);
+    assert!(file.claim_delights(now, true, Some(("invented".into(), 3))).practice);
+    assert!(!file.claim_delights(now, true, Some(("invented".into(), 3))).practice);
+    file.flush_delights().unwrap();
+    assert!(
+        crate::settings_fixture::read(&path)
+            .device
+            .delights
+            .unwrap()
+            .practice_offered
+    );
+    // Someone who has already pasted is never offered it.
+    let pasted = SettingsFile::new(dir.path().join("other.json"));
+    let _ = pasted.record_delight_paste(1);
+    assert!(!pasted.claim_delights(now, true, Some(("invented".into(), 3))).practice);
+}

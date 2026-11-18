@@ -665,3 +665,28 @@ test("a shortcut that could not be registered is explained", async () => {
   render(<App />);
   expect((await screen.findByText(/another app may be using it/)).getAttribute("role")).toBe("status");
 });
+
+// First paste and typed words (maintainer, 2026-11-18)
+test("the first screen's one Enter pastes into a practice line inside Ibis, then Enter delivers", async () => {
+  const calls = backend({
+    search: () => [result("aster2026", "Invented gardens")],
+    delight_view: () => ({ status: null, peck: false, anniversary: false, build: "0.0.0 · invented · 2026-11-01", fun: false, fact: null, revision: 1, practice: true }),
+  });
+  render(<App />);
+  const search = screen.getByLabelText("Search references");
+  await screen.findByText("Invented gardens");
+  expect(await screen.findByText(/press Enter to paste this reference into this line/)).toBeTruthy();
+  await act(async () => { fireEvent.keyDown(search, { key: "Enter" }); });
+  expect(await screen.findByText(/that’s a paste\. From now on, Enter pastes where you’re typing/)).toBeTruthy();
+  // Nothing left Ibis and no question was asked.
+  expect(calls).not.toContain("deliver_citation");
+  await act(async () => { fireEvent.keyDown(search, { key: "Enter" }); });
+  await waitFor(() => expect(calls).toContain("deliver_citation"));
+});
+
+test("words the engine kept as words say so in one notice line", async () => {
+  backend({ search: ({ query }) => query.text ? { revision: "1", results: [result("room22", "Room 22")], kept_words: true } : [] });
+  render(<App />);
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "room 22" } });
+  expect(await screen.findByText("Kept as words: they match your library. For a page, type “room, 22”.")).toBeTruthy();
+});

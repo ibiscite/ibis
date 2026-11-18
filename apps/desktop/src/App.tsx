@@ -170,6 +170,14 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     api, pickerSession, searchState, chosenKey: output.chosenKey, chosen, showCitations, format, snapshotRevision,
     focusHome, pointer, requestCopy, report,
   });
+  // The first screen's one practice paste (maintainer, 2026-11-18): Enter puts what it
+  // would paste into the practice line, inside Ibis, so it needs no permission and asks nothing.
+  const practice = delights.practice;
+  const copyChosen = () => {
+    if (practice && practice.pasted === null && checkedPreview?.text && chosen.length > 0) delights.practise(checkedPreview.text);
+    else rows.copyChosen();
+  };
+  const practiceLine = practice ? practice.pasted === null ? say("picker-practice-offer") : say("picker-practice-pasted", { citation: practice.pasted }) : null;
   const nothingMatched = Boolean(query) && searchState.resultsQuery === queryKey && results.length === 0 && !error;
   const scope = useZoteroScope({
     library, libraryVersion, menuOpen: menus.libraryMenuOpen, nothingMatched,
@@ -205,7 +213,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
   // ⌘1–9 picks a row in view, as a double-click on it does, only while the list is shown.
   const numbered = useShownRows(resultArea, results);
   const keys = usePickerKeys({
-    api, pickerSession, menus, source, results, showCitations, copyChosen: rows.copyChosen, actions, pointer, followKeyboard,
+    api, pickerSession, menus, source, results, showCitations, copyChosen, actions, pointer, followKeyboard,
     quitAfterSaving, commandKeys, citationLine, findOpen: destination.findOpen,
     pick: (number) => {
       const index = numbered.first + number - 1, record = results[index];
@@ -243,7 +251,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
       onScrollCapture={pointer.resetHover}
       notice={[
         // What passes (Undo, a remark, an update) first: it goes by itself.
-        <PickerNotices key="passing" state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? shorthand.hint ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && !shorthand.hint && delights.passive} onRemarkPassed={() => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else if (shorthand.hint) shorthand.dismiss(); else delights.dismiss(); }} />,
+        <PickerNotices key="passing" state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? practiceLine ?? shorthand.hint ?? (searchState.keptWords ? say("picker-kept-words") : null) ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && !practiceLine && !shorthand.hint && delights.passive} onRemarkPassed={() => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else if (practiceLine) delights.endPractice(); else if (shorthand.hint) shorthand.dismiss(); else delights.dismiss(); }} />,
         ...notices({ projectNotice: project.notice, editorNotice: editor.label, library, failures: { ...failures, recentHistory: recents.forgetFailed },
           error: error ?? destination.readProblem, copyError: inspector.panel ? null : copyError, copied, missing: ready ? list?.missing : undefined,
           confirmation: state.copyNotice, onDismissCopied: () => send({ type: "dismiss" }) }),
@@ -290,12 +298,12 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
       {/* Keep the selection live region mounted when choices remove citation controls. */}
       <PickerCitationShelf
         state={state} send={send} showCitations={showCitations} results={results} output={output} chosen={shownChoice}
-        changeReference={rows.changeReference} copyChosen={rows.copyChosen} libraryOf={scope.libraryOf} format={format} input={input} inspector={inspector} citationLine={citationLine}
+        changeReference={rows.changeReference} copyChosen={copyChosen} libraryOf={scope.libraryOf} format={format} input={input} inspector={inspector} citationLine={citationLine}
         deliverable={!searchPending && preferences.ready && library?.state !== "reloading" && destination.ready && !destination.saving} />
       <PickerStatusFooter
         copyProblem={projectRefusal}
         api={api} library={library} scope={scope} sourceState={source} menus={menus} actions={actions} run={keys.run} citationLine={citationLine}
-        copyChosen={rows.copyChosen} recents={recents}
+        copyChosen={copyChosen} recents={recents}
         operations={operations} altHeld={altHeld}  emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
         project={project} highlighted={ready && styleOf(format) === null ? results[active] : undefined}
         peek={peekRecord ? () => setPeeked(idKey(peekRecord.id)) : null} />

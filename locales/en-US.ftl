@@ -345,11 +345,6 @@ general-paste-description = Otherwise Ibis copies and you press { general-paste-
 # $list is the system's permission-list name, not an interface message code.
 general-paste-allowed = Allowed in Privacy & Security › { $list }
 general-paste-allowed-note = Ibis presses ⌘V once, only in the app you opened it from.
-general-paste-practice-title = Try one paste first
-general-paste-practice-why = Ibis copied your citation. Click in the field below and press ⌘V: once you allow it, Ibis does this for you, where you’re typing in your own app.
-general-paste-practice-field = Practice sentence
-general-paste-practice-done = That’s what Ibis does: the citation lands where you’re typing. Allow it below and Ibis presses ⌘V for you.
-general-paste-practice-skip = Skip
 general-paste-guide-title = Allow Ibis to paste for you
 general-paste-guide-why = To paste safely, Ibis needs Accessibility access to check which window has the keyboard, as well as permission to press ⌘V. It never reads what you type.
 general-paste-step-open = Click Open System Settings.
@@ -879,6 +874,10 @@ picker-using-shorthand = Using { $value }
 picker-apply = Apply
 # $word: a word that finds the person’s own cited reference, never a sample one.
 picker-shorthand-hint = “{ $word } 417” for a page, “see { $word }” for “see”.
+picker-kept-words = Kept as words: they match your library. For a page, type “room, 22”.
+picker-practice-offer = Try it here first: press Enter to paste this reference into this line.
+# $citation: exactly what Enter would paste.
+picker-practice-pasted = { $citation } — that’s a paste. From now on, Enter pastes where you’re typing.
 picker-search-as-typed = Search as typed
 picker-apply-locator = Apply locator to { $key }
 picker-copied = Copied
