@@ -216,6 +216,38 @@
         "trailingVarArg": false,
         "valueNames": []
       },
+      "source": {
+        "action": "Append",
+        "allowHyphenValues": false,
+        "allowNegativeNumbers": false,
+        "arity": {
+          "max": 1,
+          "min": 1
+        },
+        "conflicts": [],
+        "default": [],
+        "delimiter": null,
+        "exclusive": false,
+        "global": false,
+        "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+        "hidden": false,
+        "ignoreCase": false,
+        "index": null,
+        "last": false,
+        "long": "source",
+        "longAliases": [],
+        "possibleValues": {},
+        "requireEquals": false,
+        "required": false,
+        "short": null,
+        "shortAliases": [],
+        "spelling": "--source NAME[=LIBRARY]",
+        "terminator": null,
+        "trailingVarArg": false,
+        "valueNames": [
+          "NAME[=LIBRARY]"
+        ]
+      },
       "version": {
         "action": "Version",
         "allowHyphenValues": false,
@@ -449,6 +481,38 @@
             "terminator": null,
             "trailingVarArg": false,
             "valueNames": []
+          },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
+            ]
           },
           "zotero-group": {
             "action": "Append",
@@ -1185,6 +1249,38 @@
             "trailingVarArg": false,
             "valueNames": [
               "JSON"
+            ]
+          },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
             ]
           },
           "stdin": {
@@ -2084,6 +2180,38 @@
             "trailingVarArg": false,
             "valueNames": []
           },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
+            ]
+          },
           "strict": {
             "action": "SetTrue",
             "allowHyphenValues": false,
@@ -2416,6 +2544,38 @@
               "SHELL"
             ]
           },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
+            ]
+          },
           "zotero-group": {
             "action": "Append",
             "allowHyphenValues": false,
@@ -2589,6 +2749,38 @@
             "trailingVarArg": false,
             "valueNames": []
           },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
+            ]
+          },
           "zotero-group": {
             "action": "Append",
             "allowHyphenValues": false,
@@ -2760,6 +2952,38 @@
             "trailingVarArg": false,
             "valueNames": [
               "KEY"
+            ]
+          },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
             ]
           },
           "zotero-group": {
@@ -2967,6 +3191,38 @@
               "WORDS"
             ]
           },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
+            ]
+          },
           "zotero-group": {
             "action": "Append",
             "allowHyphenValues": false,
@@ -3172,6 +3428,11 @@
                 "help": null,
                 "hidden": false
               },
+              "sources": {
+                "aliases": [],
+                "help": null,
+                "hidden": false
+              },
               "styles": {
                 "aliases": [],
                 "help": null,
@@ -3260,6 +3521,38 @@
             "terminator": null,
             "trailingVarArg": false,
             "valueNames": []
+          },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
+            ]
           },
           "zotero-group": {
             "action": "Append",
@@ -3401,6 +3694,38 @@
             "terminator": null,
             "trailingVarArg": false,
             "valueNames": []
+          },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
+            ]
           },
           "zotero-group": {
             "action": "Append",
@@ -3574,6 +3899,38 @@
             "terminator": null,
             "trailingVarArg": false,
             "valueNames": []
+          },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
+            ]
           },
           "zotero-group": {
             "action": "Append",
@@ -3782,6 +4139,38 @@
               "KEY"
             ]
           },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
+            ]
+          },
           "zotero-group": {
             "action": "Append",
             "allowHyphenValues": false,
@@ -3922,6 +4311,38 @@
             "terminator": null,
             "trailingVarArg": false,
             "valueNames": []
+          },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
+            ]
           },
           "zotero-group": {
             "action": "Append",
@@ -4128,6 +4549,38 @@
               "KEY"
             ]
           },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
+            ]
+          },
           "zotero-group": {
             "action": "Append",
             "allowHyphenValues": false,
@@ -4300,6 +4753,38 @@
             "terminator": null,
             "trailingVarArg": false,
             "valueNames": []
+          },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
+            ]
           },
           "zotero-group": {
             "action": "Append",
@@ -4738,6 +5223,38 @@
               "RANGE"
             ]
           },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
+            ]
+          },
           "zotero-group": {
             "action": "Append",
             "allowHyphenValues": false,
@@ -4909,6 +5426,38 @@
             "trailingVarArg": false,
             "valueNames": [
               "METHOD"
+            ]
+          },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
             ]
           },
           "zotero-group": {
@@ -5184,6 +5733,38 @@
             "trailingVarArg": false,
             "valueNames": []
           },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
+            ]
+          },
           "zotero-group": {
             "action": "Append",
             "allowHyphenValues": false,
@@ -5324,6 +5905,38 @@
             "terminator": null,
             "trailingVarArg": false,
             "valueNames": []
+          },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
+            ]
           },
           "stdio": {
             "action": "SetTrue",
@@ -5497,6 +6110,38 @@
             "terminator": null,
             "trailingVarArg": false,
             "valueNames": []
+          },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
+            ]
           },
           "zotero-group": {
             "action": "Append",
@@ -6084,6 +6729,38 @@
             "trailingVarArg": false,
             "valueNames": []
           },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
+            ]
+          },
           "style": {
             "action": "Set",
             "allowHyphenValues": false,
@@ -6355,6 +7032,38 @@
               "KEY"
             ]
           },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
+            ]
+          },
           "zotero-group": {
             "action": "Append",
             "allowHyphenValues": false,
@@ -6422,6 +7131,281 @@
         },
         "argumentsRequiredElseHelp": false,
         "description": "Show one reference",
+        "groups": {},
+        "hidden": false,
+        "longFlag": null,
+        "longFlagAliases": [],
+        "shortFlag": null,
+        "shortFlagAliases": [],
+        "subcommandRequired": false,
+        "subcommands": {}
+      },
+      "sources": {
+        "aliases": [],
+        "arguments": {
+          "action": {
+            "action": "Set",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "check: read the libraries named here again and check what every source promises",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": 1,
+            "last": false,
+            "long": null,
+            "longAliases": [],
+            "possibleValues": {
+              "check": {
+                "aliases": [],
+                "help": null,
+                "hidden": false
+              }
+            },
+            "requireEquals": false,
+            "required": true,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "ACTION",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "ACTION"
+            ]
+          },
+          "changed-from": {
+            "action": "Set",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "A revision an earlier check printed: check that the library changed since",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "changed-from",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--changed-from REVISION",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "REVISION"
+            ]
+          },
+          "expect": {
+            "action": "Set",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "CSL-JSON records the library should hold exactly, without their ids, in any order",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "expect",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--expect FILE",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "FILE"
+            ]
+          },
+          "file": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Open a BibTeX, BibLaTeX, CSL-JSON, RIS or CSV file; repeat for several libraries",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "file",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--file PATH",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "PATH"
+            ]
+          },
+          "help": {
+            "action": "Help",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 0,
+              "min": 0
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Print help",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "help",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": "h",
+            "shortAliases": [],
+            "spelling": "--help",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": []
+          },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
+            ]
+          },
+          "zotero-group": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a local Zotero group library by its group ID; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "zotero-group",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--zotero-group GROUP_ID",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "GROUP_ID"
+            ]
+          },
+          "zotero-profile": {
+            "action": "Set",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Which Zotero profile to read while Zotero is closed, when there are several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "zotero-profile",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--zotero-profile NAME",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME"
+            ]
+          }
+        },
+        "argumentsRequiredElseHelp": false,
+        "description": "Check that a library's source keeps Ibis's promises, built-in readers and source adapters alike",
         "groups": {},
         "hidden": false,
         "longFlag": null,
@@ -6628,6 +7612,38 @@
               "WORDS"
             ]
           },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
+            ]
+          },
           "zotero-group": {
             "action": "Append",
             "allowHyphenValues": false,
@@ -6801,6 +7817,38 @@
             "trailingVarArg": false,
             "valueNames": []
           },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
+            ]
+          },
           "zotero-group": {
             "action": "Append",
             "allowHyphenValues": false,
@@ -6973,6 +8021,38 @@
             "terminator": null,
             "trailingVarArg": false,
             "valueNames": []
+          },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
+            ]
           },
           "zotero-group": {
             "action": "Append",

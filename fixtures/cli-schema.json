@@ -138,6 +138,36 @@
           },
           {
             "additionalProperties": false,
+            "description": "Read a library through a built-in or explicitly configured source adapter.\n`Reload` reads it again and keeps the last good read on failure.",
+            "properties": {
+              "action": {
+                "const": "open-source",
+                "type": "string"
+              },
+              "library": {
+                "description": "The library in the adapter's own terms, as the person named it.",
+                "maxLength": 4096,
+                "minLength": 1,
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "name": {
+                "maxLength": 32,
+                "minLength": 1,
+                "pattern": "^[a-z][a-z0-9-]*$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "name"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
             "properties": {
               "action": {
                 "const": "reload",
@@ -327,6 +357,36 @@
                 "const": "destination-unwritable",
                 "description": "A pack of references could not be written there: the place is not an\nabsolute path, its folder is missing or read-only, or the disk is full.",
                 "type": "string"
+              },
+              {
+                "const": "source-not-found",
+                "description": "No built-in or explicitly configured adapter could be started.",
+                "type": "string"
+              },
+              {
+                "const": "source-manager-closed",
+                "description": "The reference manager must be open to be read.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-needed",
+                "description": "Several of the manager's libraries could be meant; name one.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-not-found",
+                "description": "None of the manager's libraries has the name given.",
+                "type": "string"
+              },
+              {
+                "const": "source-permission",
+                "description": "The operating system did not let Ibis ask the reference manager.",
+                "type": "string"
+              },
+              {
+                "const": "source-failed",
+                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
+                "type": "string"
               }
             ]
           },
@@ -484,6 +544,11 @@
               {
                 "const": "snapshot",
                 "description": "Data handed to the engine whole, with no source behind it.",
+                "type": "string"
+              },
+              {
+                "const": "adapter",
+                "description": "A library a source adapter reads from a reference manager.",
                 "type": "string"
               }
             ]
@@ -1720,6 +1785,36 @@
               {
                 "const": "destination-unwritable",
                 "description": "A pack of references could not be written there: the place is not an\nabsolute path, its folder is missing or read-only, or the disk is full.",
+                "type": "string"
+              },
+              {
+                "const": "source-not-found",
+                "description": "No built-in or explicitly configured adapter could be started.",
+                "type": "string"
+              },
+              {
+                "const": "source-manager-closed",
+                "description": "The reference manager must be open to be read.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-needed",
+                "description": "Several of the manager's libraries could be meant; name one.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-not-found",
+                "description": "None of the manager's libraries has the name given.",
+                "type": "string"
+              },
+              {
+                "const": "source-permission",
+                "description": "The operating system did not let Ibis ask the reference manager.",
+                "type": "string"
+              },
+              {
+                "const": "source-failed",
+                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
                 "type": "string"
               }
             ]
@@ -3315,6 +3410,36 @@
               {
                 "const": "destination-unwritable",
                 "description": "A pack of references could not be written there: the place is not an\nabsolute path, its folder is missing or read-only, or the disk is full.",
+                "type": "string"
+              },
+              {
+                "const": "source-not-found",
+                "description": "No built-in or explicitly configured adapter could be started.",
+                "type": "string"
+              },
+              {
+                "const": "source-manager-closed",
+                "description": "The reference manager must be open to be read.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-needed",
+                "description": "Several of the manager's libraries could be meant; name one.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-not-found",
+                "description": "None of the manager's libraries has the name given.",
+                "type": "string"
+              },
+              {
+                "const": "source-permission",
+                "description": "The operating system did not let Ibis ask the reference manager.",
+                "type": "string"
+              },
+              {
+                "const": "source-failed",
+                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
                 "type": "string"
               }
             ]
@@ -5393,6 +5518,36 @@
               {
                 "const": "destination-unwritable",
                 "description": "A pack of references could not be written there: the place is not an\nabsolute path, its folder is missing or read-only, or the disk is full.",
+                "type": "string"
+              },
+              {
+                "const": "source-not-found",
+                "description": "No built-in or explicitly configured adapter could be started.",
+                "type": "string"
+              },
+              {
+                "const": "source-manager-closed",
+                "description": "The reference manager must be open to be read.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-needed",
+                "description": "Several of the manager's libraries could be meant; name one.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-not-found",
+                "description": "None of the manager's libraries has the name given.",
+                "type": "string"
+              },
+              {
+                "const": "source-permission",
+                "description": "The operating system did not let Ibis ask the reference manager.",
+                "type": "string"
+              },
+              {
+                "const": "source-failed",
+                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
                 "type": "string"
               }
             ]
@@ -7481,6 +7636,36 @@
                 "const": "destination-unwritable",
                 "description": "A pack of references could not be written there: the place is not an\nabsolute path, its folder is missing or read-only, or the disk is full.",
                 "type": "string"
+              },
+              {
+                "const": "source-not-found",
+                "description": "No built-in or explicitly configured adapter could be started.",
+                "type": "string"
+              },
+              {
+                "const": "source-manager-closed",
+                "description": "The reference manager must be open to be read.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-needed",
+                "description": "Several of the manager's libraries could be meant; name one.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-not-found",
+                "description": "None of the manager's libraries has the name given.",
+                "type": "string"
+              },
+              {
+                "const": "source-permission",
+                "description": "The operating system did not let Ibis ask the reference manager.",
+                "type": "string"
+              },
+              {
+                "const": "source-failed",
+                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
+                "type": "string"
               }
             ]
           },
@@ -8746,6 +8931,36 @@
                 "const": "destination-unwritable",
                 "description": "A pack of references could not be written there: the place is not an\nabsolute path, its folder is missing or read-only, or the disk is full.",
                 "type": "string"
+              },
+              {
+                "const": "source-not-found",
+                "description": "No built-in or explicitly configured adapter could be started.",
+                "type": "string"
+              },
+              {
+                "const": "source-manager-closed",
+                "description": "The reference manager must be open to be read.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-needed",
+                "description": "Several of the manager's libraries could be meant; name one.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-not-found",
+                "description": "None of the manager's libraries has the name given.",
+                "type": "string"
+              },
+              {
+                "const": "source-permission",
+                "description": "The operating system did not let Ibis ask the reference manager.",
+                "type": "string"
+              },
+              {
+                "const": "source-failed",
+                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
+                "type": "string"
               }
             ]
           },
@@ -9764,6 +9979,36 @@
                 "const": "destination-unwritable",
                 "description": "A pack of references could not be written there: the place is not an\nabsolute path, its folder is missing or read-only, or the disk is full.",
                 "type": "string"
+              },
+              {
+                "const": "source-not-found",
+                "description": "No built-in or explicitly configured adapter could be started.",
+                "type": "string"
+              },
+              {
+                "const": "source-manager-closed",
+                "description": "The reference manager must be open to be read.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-needed",
+                "description": "Several of the manager's libraries could be meant; name one.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-not-found",
+                "description": "None of the manager's libraries has the name given.",
+                "type": "string"
+              },
+              {
+                "const": "source-permission",
+                "description": "The operating system did not let Ibis ask the reference manager.",
+                "type": "string"
+              },
+              {
+                "const": "source-failed",
+                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
+                "type": "string"
               }
             ]
           },
@@ -10689,6 +10934,36 @@
                 "const": "destination-unwritable",
                 "description": "A pack of references could not be written there: the place is not an\nabsolute path, its folder is missing or read-only, or the disk is full.",
                 "type": "string"
+              },
+              {
+                "const": "source-not-found",
+                "description": "No built-in or explicitly configured adapter could be started.",
+                "type": "string"
+              },
+              {
+                "const": "source-manager-closed",
+                "description": "The reference manager must be open to be read.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-needed",
+                "description": "Several of the manager's libraries could be meant; name one.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-not-found",
+                "description": "None of the manager's libraries has the name given.",
+                "type": "string"
+              },
+              {
+                "const": "source-permission",
+                "description": "The operating system did not let Ibis ask the reference manager.",
+                "type": "string"
+              },
+              {
+                "const": "source-failed",
+                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
+                "type": "string"
               }
             ]
           },
@@ -11543,6 +11818,36 @@
                 "const": "destination-unwritable",
                 "description": "A pack of references could not be written there: the place is not an\nabsolute path, its folder is missing or read-only, or the disk is full.",
                 "type": "string"
+              },
+              {
+                "const": "source-not-found",
+                "description": "No built-in or explicitly configured adapter could be started.",
+                "type": "string"
+              },
+              {
+                "const": "source-manager-closed",
+                "description": "The reference manager must be open to be read.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-needed",
+                "description": "Several of the manager's libraries could be meant; name one.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-not-found",
+                "description": "None of the manager's libraries has the name given.",
+                "type": "string"
+              },
+              {
+                "const": "source-permission",
+                "description": "The operating system did not let Ibis ask the reference manager.",
+                "type": "string"
+              },
+              {
+                "const": "source-failed",
+                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
+                "type": "string"
               }
             ]
           },
@@ -12389,6 +12694,36 @@
               {
                 "const": "destination-unwritable",
                 "description": "A pack of references could not be written there: the place is not an\nabsolute path, its folder is missing or read-only, or the disk is full.",
+                "type": "string"
+              },
+              {
+                "const": "source-not-found",
+                "description": "No built-in or explicitly configured adapter could be started.",
+                "type": "string"
+              },
+              {
+                "const": "source-manager-closed",
+                "description": "The reference manager must be open to be read.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-needed",
+                "description": "Several of the manager's libraries could be meant; name one.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-not-found",
+                "description": "None of the manager's libraries has the name given.",
+                "type": "string"
+              },
+              {
+                "const": "source-permission",
+                "description": "The operating system did not let Ibis ask the reference manager.",
+                "type": "string"
+              },
+              {
+                "const": "source-failed",
+                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
                 "type": "string"
               }
             ]
@@ -13304,6 +13639,36 @@
               {
                 "const": "destination-unwritable",
                 "description": "A pack of references could not be written there: the place is not an\nabsolute path, its folder is missing or read-only, or the disk is full.",
+                "type": "string"
+              },
+              {
+                "const": "source-not-found",
+                "description": "No built-in or explicitly configured adapter could be started.",
+                "type": "string"
+              },
+              {
+                "const": "source-manager-closed",
+                "description": "The reference manager must be open to be read.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-needed",
+                "description": "Several of the manager's libraries could be meant; name one.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-not-found",
+                "description": "None of the manager's libraries has the name given.",
+                "type": "string"
+              },
+              {
+                "const": "source-permission",
+                "description": "The operating system did not let Ibis ask the reference manager.",
+                "type": "string"
+              },
+              {
+                "const": "source-failed",
+                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
                 "type": "string"
               }
             ]
