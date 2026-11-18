@@ -1012,7 +1012,7 @@ fn restore_position(app: &AppHandle, revision: u64) -> Result<bool, crate::error
         );
         frame.custom_size = undo.previous.frame.custom_size;
         apply_frame(app, &window, &monitor, frame, display.room).ok_or(FAILED)?;
-        Ok::<_, &str>(Sample {
+        Ok::<_, crate::errors::NativeFailure>(Sample {
             display,
             frame,
             removed_display: None,
