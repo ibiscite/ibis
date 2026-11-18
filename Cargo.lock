@@ -2283,7 +2283,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-native"
-version = "0.3.10"
+version = "0.3.11"
 dependencies = [
  "block2",
  "ibis-core",
