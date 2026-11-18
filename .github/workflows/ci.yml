@@ -647,6 +647,7 @@ jobs:
           RESULTS: ${{ needs.plan.result }} ${{ needs.interface.result }} ${{ needs.web.result }} ${{ needs.dependencies.result }} ${{ needs.release-checks.result }}
           # Each planned job as name:selected:result; see scripts/ci-result.sh.
           SELECTED: rust:${{ needs.plan.outputs.rust }}:${{ needs.rust.result }} pictures:${{ needs.plan.outputs.pictures }}:${{ needs.pictures.result }}
+          WORKSPACE: ${{ needs.plan.outputs.workspace }}
           QUALIFICATION: ${{ needs.webkit.result }} ${{ needs.bibtex-fuzz.result }} ${{ needs.installed.result }}
           CSL: ${{ needs.conformance.result }}
           EVENT: ${{ github.event_name }}

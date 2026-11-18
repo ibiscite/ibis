@@ -10,12 +10,17 @@ import { fileURLToPath } from "node:url";
 export const SELECTABLE = ["rust", "workspace", "pictures"];
 const FULL = Object.fromEntries(SELECTABLE.map((job) => [job, true]));
 
-// Inside a mapped folder, but read by more than that folder's own crate or job.
-const ALWAYS_FULL = [/(^|\/)build\.rs$/, /^docs\/cli\.md$/, /^apps\/desktop\/src\/bindings\.ts$/];
-// Prose nothing compiles or renders; the web job, which always runs, checks its links.
+// Build inputs and generated files can affect jobs outside their own folder.
+const ALWAYS_FULL = [
+  /(^|\/)(Cargo\.(toml|lock)|rust-toolchain(\.toml)?|build\.rs)$/,
+  /(^|\/)\.cargo(\/|$)/,
+  /^docs\/cli\.md$/,
+  /^apps\/desktop\/src\/bindings\.ts$/,
+];
+// The web job checks links in prose.
 const DOCS = [/^docs\/.+\.md$/, /^[^/]+\.md$/];
 // The interface: its own tests, the pictures, and the app that embeds it.
-const INTERFACE = /^apps\/desktop\/(?!src-tauri\/)/;
+const INTERFACE = /^apps\/desktop\/(?!src-tauri(?:\/|$))/;
 
 /** Workspace crates by folder, with their workspace dependencies, from `cargo metadata --no-deps`. */
 export function crates(metadata) {
@@ -69,6 +74,7 @@ export function plan(paths, workspace) {
 export function wantsFull({ event, labels = [], selection = "" }) {
   if (event !== "pull_request") return `a ${event || "unknown"} run`;
   if (selection === "full") return "CI_SELECTION is full";
+  if (!Array.isArray(labels) || labels.some((label) => typeof label !== "string")) return "the labels could not be read";
   if (labels.includes("ci:full")) return "the ci:full label";
   return "";
 }

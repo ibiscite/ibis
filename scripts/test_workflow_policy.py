@@ -2,9 +2,9 @@
 parser, never with regular expressions.
 
 "CI result" is the required merge check and confirms main before publication.
-Pull requests, main and daily/manual runs test every platform, and daily/manual
-runs every qualifier, even after a failed prerequisite. The reporter is outside
-that result.
+Main and daily/manual runs test every platform. Pull requests select checks by
+changed paths. Daily/manual runs every qualifier. The reporter is outside the
+result.
 """
 
 import os
@@ -71,7 +71,7 @@ class CiResultTest(unittest.TestCase):
             self.assertIn("::notice::Contract report skipped.", result.stdout)
             self.assertIn("Contract report skipped.", summary.read_text(encoding="utf-8"))
 
-    def test_every_pull_request_and_main_push_tests_all_three_systems(self):
+    def test_rust_tests_all_three_systems_when_selected(self):
         events = self.workflow.get("on", self.workflow.get(True))
         self.assertEqual(set(events), {"push", "pull_request", "schedule", "workflow_dispatch"})
         self.assertEqual(events["push"], {"branches": ["main"]})
@@ -107,6 +107,7 @@ class CiResultTest(unittest.TestCase):
         self.assertFalse(choose.get("continue-on-error", False))
         result = next(step for step in jobs["result"]["steps"] if step.get("run") == "scripts/ci-result.sh")
         self.assertEqual(result["env"]["SELECTED"], "rust:${{ needs.plan.outputs.rust }}:${{ needs.rust.result }} pictures:${{ needs.plan.outputs.pictures }}:${{ needs.pictures.result }}")
+        self.assertEqual(result["env"]["WORKSPACE"], "${{ needs.plan.outputs.workspace }}")
         self.assertEqual(result["env"]["RESULTS"], " ".join(f"${{{{ needs.{name}.result }}}}" for name in ["plan", "interface", "web", "dependencies", "release-checks"]))
         # Every job the result needs is either always required, planned or qualification.
         planned = {"rust", "pictures"}

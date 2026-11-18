@@ -31,7 +31,7 @@ test("crates come from cargo metadata with their workspace dependencies", () => 
   assert.equal(windows[0].dir, "crates/ibis-core");
 });
 
-test("documentation alone runs no Rust, picture or release job", () => {
+test("documentation alone runs no Rust or picture job", () => {
   assert.deepEqual(selected(["docs/testing.md", "README.md", "docs/design/picker.md", "docs/decisions/0049-local-gate.md"]), { rust: false, workspace: false, pictures: false, full: false });
 });
 
@@ -41,7 +41,7 @@ test("a desktop-only change keeps the app's tests on all three systems and skips
 });
 
 test("a workspace crate change tests every crate that depends on it", () => {
-  for (const path of ["crates/ibis-core/src/lib.rs", "crates/ibis-cli/tests/lookup.rs", "crates/ibis-csl/vendor/README.md", "crates/ibis-sources/Cargo.toml"]) {
+  for (const path of ["crates/ibis-core/src/lib.rs", "crates/ibis-cli/tests/lookup.rs", "crates/ibis-csl/vendor/README.md"]) {
     assert.deepEqual(selected([path]), { rust: true, workspace: true, pictures: false, full: false }, path);
   }
   assert.match(plan(["crates/ibis-csl/src/lib.rs"], workspace).reason, /ibis, ibis-csl, ibis-desktop, ibis-engine, ibis-fuzz/);
@@ -57,6 +57,7 @@ test("an interface change runs the pictures and the app that embeds it", () => {
 
 test("shared, generated, gate and unknown paths run the full suite", () => {
   for (const path of ["Cargo.lock", "Cargo.toml", "rust-toolchain.toml", ".cargo/config.toml", "crates/ibis-core/build.rs", "apps/desktop/src-tauri/build.rs",
+    "crates/ibis-sources/Cargo.toml", "apps/desktop/src-tauri/Cargo.lock", "apps/desktop/rust-toolchain", "apps/desktop/.cargo/config.toml", "apps/desktop/src-tauri",
     "fixtures/cases/02-pandoc.json", ".github/workflows/ci.yml", "scripts/ci-plan.mjs", "locales/en-US.ftl", "docs/cli.md", "apps/desktop/src/bindings.ts",
     "website/pages/home.html", "plugins/ibis/plugin.json", "brand/logo.svg", ".config/nextest.toml", "fuzz/src/lib.rs", "docs/macos-metrics.swift",
     "deny.toml", "clippy.toml", "version.txt", "flake.nix", "nix/package.nix", "a-new-folder/file.txt", "apps/desktop", "cratesish/x.rs"]) {
@@ -80,6 +81,9 @@ test("anything unreadable widens to the full suite instead of failing", () => {
   const docs = { changedPaths: () => ["docs/testing.md"], workspaceCrates: () => workspace };
   assert.equal(decide({ EVENT: "pull_request", LABELS: "[]" }, docs).full, false);
   assert.equal(decide({ EVENT: "pull_request", LABELS: "not json" }, docs).full, true);
+  for (const LABELS of ["null", "{}", '"ci:full"', "[null]"]) {
+    assert.deepEqual({ ...decide({ EVENT: "pull_request", LABELS }, docs), reason: undefined }, { ...full, reason: undefined });
+  }
   assert.equal(decide({ EVENT: "pull_request", LABELS: '["ci:full"]' }, docs).full, true);
   assert.equal(decide({ EVENT: "push" }, docs).full, true);
   for (const broken of [{ ...docs, changedPaths: () => { throw new Error("git diff failed"); } }, { ...docs, workspaceCrates: () => { throw new Error("cargo metadata failed"); } }]) {

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const script = fileURLToPath(new URL("./ci-result.sh", import.meta.url));
 const check = (env, expected) => {
   const result = spawnSync("bash", [script], { encoding: "utf8", timeout: 5000,
-    env: { ...process.env, EVENT: "push", RESULTS: Array(5).fill("success").join(" "), SELECTED: "rust:true:success pictures:true:success", CSL: "success", QUALIFICATION: "skipped skipped skipped", ...env } });
+    env: { ...process.env, EVENT: "push", RESULTS: Array(5).fill("success").join(" "), SELECTED: "rust:true:success pictures:true:success", WORKSPACE: "true", CSL: "success", QUALIFICATION: "skipped skipped skipped", ...env } });
   assert.equal(result.status, expected, `${JSON.stringify(env)}: ${result.stdout}${result.stderr}`);
 };
 
@@ -33,7 +33,7 @@ test("every job must pass; daily qualification cannot skip or fail", () => {
 
 test("a planned job passes only as selected-and-succeeded or not-selected-and-skipped", () => {
   for (const rust of ["true:success", "false:skipped"]) for (const pictures of ["true:success", "false:skipped"]) {
-    check({ EVENT: "pull_request", SELECTED: `rust:${rust} pictures:${pictures}` }, 0);
+    check({ EVENT: "pull_request", SELECTED: `rust:${rust} pictures:${pictures}`, WORKSPACE: "false" }, 0);
   }
   for (const bad of ["true:skipped", "true:cancelled", "true:failure", "false:success", "false:failure", ":skipped", ":success", "true:", "maybe:success"]) {
     check({ EVENT: "pull_request", SELECTED: `rust:${bad} pictures:true:success` }, 1);
@@ -41,5 +41,15 @@ test("a planned job passes only as selected-and-succeeded or not-selected-and-sk
   }
   for (const SELECTED of ["", "rust:true:success", "rust:true:success pictures:true:success web:true:success", "pictures:true:success rust:true:success", "rust:true:success rust:true:success"]) {
     check({ EVENT: "pull_request", SELECTED }, 1);
+  }
+});
+
+test("the workspace selection is required and every non-PR event selects the full suite", () => {
+  for (const WORKSPACE of ["", "unknown"]) check({ EVENT: "pull_request", WORKSPACE }, 1);
+  check({ EVENT: "pull_request", SELECTED: "rust:false:skipped pictures:false:skipped" }, 1);
+  for (const EVENT of ["push", "schedule", "workflow_dispatch"]) {
+    const env = { EVENT, QUALIFICATION: EVENT === "push" ? "skipped skipped skipped" : "success success success" };
+    check({ ...env, WORKSPACE: "false" }, 1);
+    check({ ...env, SELECTED: "rust:true:success pictures:false:skipped" }, 1);
   }
 });
