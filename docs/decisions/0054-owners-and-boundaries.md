@@ -31,7 +31,9 @@ reverses it.
 - Async work shares one operation-scope pattern inside owners; OS proofs,
   worker capacity and cancellation domains stay separate.
 - Catalogues are local declarations with exhaustive matches, not a framework
-  that generates every handler.
+  that generates every handler. Narrowed 2026-11-18 by
+  [0057](0057-one-method-table.md): the method table generates routing,
+  schemas and every surface from one declaration; handlers stay hand-written.
 
 ## Mistakes these remove
 
@@ -54,7 +56,10 @@ Each is one pull request that deletes the path it replaces:
 1. The gate's acceptance is authoritative: the tested tree is the merged tree.
 2. Typed egress artifacts finish (after the egress and engine slices).
 3. Attachment probing is owned by sources with one cumulative deadline.
-4. One RPC method declaration and an immutable encoded reply.
+4. One RPC method declaration and an immutable encoded reply. Since
+   2026-11-18 the declaration is the method table of
+   [0057](0057-one-method-table.md), which also derives the command line, MCP
+   and the app's engine commands.
 5. One published settings view (after slice 5).
 6. Citations capture their context; recents become private.
 7. The file library's lifecycle moves into the engine.
