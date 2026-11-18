@@ -211,8 +211,7 @@ pub enum ErrorReason {
     /// The attachment has no text for the pages asked for, or its pages are
     /// not known; `outline` says which.
     NoSuchPages,
-    /// No source adapter has this name: neither one built in nor an
-    /// `ibis-source-<name>` program on PATH.
+    /// No built-in or explicitly configured adapter could be started.
     SourceNotFound,
     /// The reference manager must be open to be read.
     SourceManagerClosed,

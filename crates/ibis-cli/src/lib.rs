@@ -644,7 +644,6 @@ pub fn run<R: BufRead, W: Write + Send, E: Write>(
 ) -> u8 {
     match Engine::new() {
         Ok(engine) => {
-            // PDFs are parsed by this same executable, in a child process.
             // PDFs and built-in source adapters run in this same executable,
             // each in a child process.
             let engine = match std::env::current_exe() {
@@ -788,6 +787,13 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
             .and_then(Result::ok)
             .is_some_and(|settings| settings.device.attachment_text_outside_library);
         engine.with_attachment_text_outside_library(allowed)
+    } else {
+        engine
+    };
+    let needs_adapters = matches!(matches.subcommand_name(), Some("serve" | "call"))
+        || !source_values::<String>(&matches, "source").is_empty();
+    let engine = if defaults == Defaults::App && needs_adapters && matches.subcommand_name() != Some("doctor") {
+        engine.with_external_sources(sources::configuration().unwrap_or_default())
     } else {
         engine
     };

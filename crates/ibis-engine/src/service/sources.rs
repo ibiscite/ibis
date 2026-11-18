@@ -236,6 +236,7 @@ impl Engine {
             watch_files: false,
             pdf: self.pdf.clone(),
             built_in_sources: self.built_in_sources.clone(),
+            external_sources: self.external_sources.clone(),
             attachment_text_outside_library: self.attachment_text_outside_library,
         };
         let mut expected = base;
@@ -603,21 +604,21 @@ impl Engine {
         SourceWatch::with_library(path, observation, model, callback)
     }
     /// Read a library through the adapter called `name`.
-    pub(crate) fn open_source(
+    /// Read and publish a named adapter approved by this engine.
+    pub fn open_source(
         &self,
         name: &str,
         library: Option<&str>,
         cancel: &Cancellation,
-    ) -> Result<(), EngineError> {
+    ) -> Result<(LibraryInfo, String), EngineError> {
         cancel.check()?;
-        let search = std::env::var_os("PATH");
-        let adapter =
-            SourceAdapter::find(name, self.built_in_sources.as_deref(), search.as_deref()).map_err(adapter_error)?;
-        self.open_adapter(adapter, library, cancel).map(|_| ())
+        let configured = self.external_sources.get(name).map(|path| path.as_path());
+        let adapter = SourceAdapter::find(name, self.built_in_sources.as_deref(), configured).map_err(adapter_error)?;
+        self.open_adapter(adapter, library, cancel)
     }
 
-    /// Read `library` through `adapter` and publish it; its id and the
-    /// adapter's own change token. A read whose scope changed replaces the library it read
+    /// Read and publish a library, returning the exact published info and the
+    /// adapter’s own change token. A change of scope replaces the library read
     /// before, so no earlier handle finds a record in it. A failure publishes
     /// nothing.
     pub fn open_adapter(
@@ -625,7 +626,7 @@ impl Engine {
         adapter: SourceAdapter,
         library: Option<&str>,
         cancel: &Cancellation,
-    ) -> Result<(LibraryId, String), EngineError> {
+    ) -> Result<(LibraryInfo, String), EngineError> {
         cancel.check()?;
         let load = adapter
             .read(library, &|| cancel.is_cancelled())
@@ -642,12 +643,14 @@ impl Engine {
         if previous.is_none() && !adapters.contains_key(&loaded.library) && adapters.len() >= MAX_FILES {
             return Err(error(ErrorCode::ResourceLimit));
         }
-        self.shared.install(info(&loaded), &loaded.snapshot, previous.clone())?;
+        let observed = info(&loaded);
+        self.shared
+            .install(observed.clone(), &loaded.snapshot, previous.clone())?;
         if let Some(previous) = previous {
             adapters.remove(&previous);
         }
         adapters.insert(loaded.library.clone(), (adapter, library.map(str::to_owned)));
-        Ok((loaded.library, load.token))
+        Ok((observed, load.token))
     }
 
     /// Read every adapter library again, or only `library`: a failure keeps

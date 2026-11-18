@@ -349,6 +349,7 @@ pub struct Engine {
     pdf: Option<ibis_sources::pdf::PdfReader>,
     /// The `ibis` executable that serves built-in source adapters.
     built_in_sources: Option<std::path::PathBuf>,
+    external_sources: Arc<BTreeMap<String, std::path::PathBuf>>,
     attachment_text_outside_library: bool,
 }
 impl Engine {
@@ -373,6 +374,11 @@ impl Engine {
     /// started as `ibis __source NAME` for each read (decision 0056).
     pub fn with_built_in_sources(mut self, program: std::path::PathBuf) -> Self {
         self.built_in_sources = Some(program);
+        self
+    }
+    /// Approve external adapters by name for the lifetime of this engine.
+    pub fn with_external_sources(mut self, sources: BTreeMap<String, std::path::PathBuf>) -> Self {
+        self.external_sources = Arc::new(sources);
         self
     }
     /// Explicit device permission for the attachment text tools to read
@@ -412,6 +418,7 @@ impl Engine {
             watch_files: true,
             pdf: None,
             built_in_sources: None,
+            external_sources: Arc::default(),
             attachment_text_outside_library: false,
         }
     }

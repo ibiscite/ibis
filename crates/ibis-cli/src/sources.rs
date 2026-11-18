@@ -12,8 +12,7 @@ use std::path::PathBuf;
 
 use clap::{Arg, ArgMatches, Command};
 use ibis_core::contract::{ErrorCode, ExitCode, LibraryId, LibraryObject};
-use ibis_engine::sources::SourceAdapter;
-use ibis_engine::{Cancellation, DispatchResult, Engine, LibraryKind, SourceCapability};
+use ibis_engine::{Cancellation, DispatchResult, Engine, LibraryInfo, LibraryKind, SourceCapability};
 use serde_json::{Value, json};
 
 use crate::Failure;
@@ -46,6 +45,58 @@ pub(crate) fn command() -> Command {
         )
 }
 
+/// One executable per name, in the person's Ibis config directory. This
+/// file is separate from portable settings and is never supplied by a library.
+pub(crate) type Configuration = BTreeMap<String, PathBuf>;
+const CONFIG_FILE: &str = "com.ibiscite.ibis/source-adapters.json";
+const MAX_CONFIG_BYTES: u64 = 64 * 1024;
+
+pub(crate) fn configuration() -> Result<Configuration, &'static str> {
+    super::bounded(read_configuration).unwrap_or(Err("source-adapter-config-timeout"))
+}
+
+#[allow(
+    clippy::disallowed_methods,
+    reason = "Read the local adapter approvals once, with a byte limit and on the bounded settings worker."
+)]
+fn read_configuration() -> Result<Configuration, &'static str> {
+    use std::io::{ErrorKind, Read};
+    let Some(directory) = ibis_engine::identity::config_dir().filter(|dir| dir.is_absolute()) else {
+        return Ok(BTreeMap::new());
+    };
+    let file = match std::fs::File::open(directory.join(CONFIG_FILE)) {
+        Ok(file) => file,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(BTreeMap::new()),
+        Err(_) => return Err("source-adapter-config-unreadable"),
+    };
+    let mut bytes = Vec::new();
+    file.take(MAX_CONFIG_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "source-adapter-config-unreadable")?;
+    if bytes.len() as u64 > MAX_CONFIG_BYTES {
+        return Err("source-adapter-config-invalid");
+    }
+    serde_json::from_slice(&bytes).map_err(|_| "source-adapter-config-invalid")
+}
+
+pub(crate) fn configuration_report() -> Value {
+    use ibis_engine::sources::SourceAdapter;
+    match configuration() {
+        Ok(configured) => {
+            let adapters: Vec<_> = configured
+                .into_iter()
+                .map(|(name, path)| {
+                    let approved = SourceAdapter::at(&name, path).is_ok();
+                    json!({"name": name, "approved": approved})
+                })
+                .collect();
+            let valid = adapters.iter().all(|adapter| adapter["approved"] == true);
+            json!({"status": if valid { "ok" } else { "failed" }, "code": if valid { "source-adapter-config-ok" } else { "source-adapter-config-invalid" }, "adapters": adapters})
+        }
+        Err(code) => json!({"status": "failed", "code": code, "adapters": []}),
+    }
+}
+
 struct Check {
     name: &'static str,
     passed: bool,
@@ -71,9 +122,7 @@ pub(crate) fn run(
     };
     let changed_from = args.get_one::<String>("changed-from");
     // Each adapter read twice more, with its own token each time.
-    let mut tokens: BTreeMap<LibraryId, Vec<(LibraryId, String)>> = BTreeMap::new();
-    let program = std::env::current_exe().ok();
-    let search = std::env::var_os("PATH");
+    let mut tokens: BTreeMap<LibraryId, [(LibraryInfo, String); 2]> = BTreeMap::new();
     for source in crate::source_values::<String>(matches, "source") {
         let (name, library) = crate::split_source(&source);
         let Some(first) = names
@@ -90,17 +139,9 @@ pub(crate) fn run(
         else {
             continue;
         };
-        let adapter = SourceAdapter::find(name, program.as_deref(), search.as_deref()).map_err(|_| {
-            Failure::new(
-                ErrorCode::SourceUnavailable,
-                format!("no source adapter is called {name}"),
-            )
-        })?;
-        let mut reads = Vec::new();
-        for _ in 0..2 {
-            reads.push(engine.open_adapter(adapter.clone(), library, &cancel)?);
-        }
-        tokens.insert(first, reads);
+        let first_read = engine.open_source(name, library, &cancel)?;
+        let second_read = engine.open_source(name, library, &cancel)?;
+        tokens.insert(first, [first_read, second_read]);
     }
     let mut report = Vec::new();
     let mut text = String::new();
@@ -110,27 +151,22 @@ pub(crate) fn run(
         let mut checks = Vec::new();
         let mut current = info.id.clone();
         let mut token = None;
-        if let Some(reads) = tokens.get(&info.id) {
-            let ids_agree = reads.iter().all(|(id, _)| *id == info.id);
+        if let Some([(first, first_token), (second, second_token)]) = tokens.get(&info.id) {
+            let ids_agree = first.id == info.id && second.id == info.id;
             checks.push(Check {
                 name: "same-scope-on-reread",
                 passed: ids_agree,
             });
-            let revisions: Vec<_> = reads
-                .iter()
-                .map(|(id, _)| revision(engine, id))
-                .collect::<Result<_, _>>()?;
-            let stable = ids_agree && revisions.iter().all(|revision| *revision == before.as_str());
             checks.push(Check {
                 name: "stable-revision-on-reread",
-                passed: stable,
+                passed: ids_agree && first.revision == before && second.revision == before,
             });
             checks.push(Check {
                 name: "token-agrees-with-revision",
-                passed: (reads[0].1 == reads[1].1) == (revisions[0] == revisions[1]),
+                passed: (first_token == second_token) == (first.revision == second.revision),
             });
-            current = reads[1].0.clone();
-            token = Some(reads[1].1.clone());
+            current = second.id.clone();
+            token = Some(second_token.clone());
         } else if info.kind != LibraryKind::Snapshot {
             let request = json!({"action": "reload", "library": info.id});
             crate::dispatch(engine, ibis_engine::Method::Libraries, &request, &cancel)?;

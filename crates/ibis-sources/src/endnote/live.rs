@@ -6,8 +6,10 @@
 //! macOS asks the person once whether the program that runs Ibis (Terminal,
 //! an editor or the Ibis app) may control EndNote; without that, the read
 //! is refused with `permission-denied`.
-use std::io::Write;
-use std::process::{Command, Stdio};
+use std::process::Command;
+use std::time::{Duration, Instant};
+
+use crate::child::{self, ChildError, Limits};
 
 use ibis_core::contract::Fingerprint;
 use ibis_core::contract::adapter::{AdapterRead, AdapterRefusal};
@@ -16,10 +18,17 @@ use super::xml::{self, XmlRecord};
 
 const SEPARATOR: char = '\u{1f}';
 const CHUNK: char = '\u{1e}';
+const MAX_DIAGNOSTICS: u64 = 16 * 1024;
 
 /// Lists the chosen library and exports its records 200 at a time.
-const EXPORT: &str = r#"on run argv
+const EXPORT: &str = r#"use framework "Foundation"
+use scripting additions
+
+on run argv
   set wanted to item 1 of argv
+  set maxRecords to item 2 of argv as integer
+  set leftBytes to item 3 of argv as integer
+  set stream to current application's NSFileHandle's fileHandleWithStandardOutput()
   if not (application id "com.ThomsonResearchSoft.EndNote" is running) then return "closed"
   tell application id "com.ThomsonResearchSoft.EndNote"
     with timeout of 100 seconds
@@ -46,19 +55,30 @@ const EXPORT: &str = r#"on run argv
       set p to POSIX path of (file of chosen as alias)
       set ids to retrieve "all" records in chosen
       set n to count of ids
-      set parts to {"ok" & (character id 31) & p & (character id 31) & n}
+      if n > maxRecords then error "Record limit"
+      set leftBytes to my emitText(stream, "ok" & (character id 31) & p & (character id 31) & n, leftBytes)
       set i to 1
       repeat while i is less than or equal to n
         set j to i + 199
         if j > n then set j to n
-        set end of parts to (export (items i thru j of ids) as "RSXML")
+        set part to export (items i thru j of ids) as "RSXML"
+        set leftBytes to my emitText(stream, (character id 30) & part, leftBytes)
+        set part to missing value
         set i to j + 1
       end repeat
-      set AppleScript's text item delimiters to (character id 30)
-      return parts as text
+      return ""
     end timeout
   end tell
 end run
+
+on emitText(stream, part, leftBytes)
+  set textValue to current application's NSString's stringWithString:part
+  set utf8 to current application's NSUTF8StringEncoding
+  set sizeBytes to (textValue's lengthOfBytesUsingEncoding:utf8) as integer
+  if sizeBytes > leftBytes then error "Export limit"
+  stream's writeData:(textValue's dataUsingEncoding:utf8)
+  return leftBytes - sizeBytes
+end emitText
 "#;
 
 /// One field of one record, as EndNote shows it.
@@ -92,7 +112,18 @@ end run
 "#;
 
 pub(crate) fn read(library: Option<&str>) -> Result<AdapterRead, AdapterRefusal> {
-    let answer = osascript(EXPORT, &[library.unwrap_or("")])?;
+    let deadline = Instant::now() + crate::adapter::DEADLINE;
+    let answer = osascript(
+        EXPORT,
+        &[
+            library.unwrap_or(""),
+            &crate::MAX_LIBRARY_RECORDS.to_string(),
+            // osascript adds a newline to the script's result.
+            &(super::MAX_FILE_BYTES - 1).to_string(),
+        ],
+        deadline,
+        super::MAX_FILE_BYTES,
+    )?;
     let mut parts = answer.split(CHUNK);
     let header: Vec<&str> = parts.next().unwrap_or_default().split(SEPARATOR).collect();
     let (path, count) = match header[..] {
@@ -106,7 +137,10 @@ pub(crate) fn read(library: Option<&str>) -> Result<AdapterRead, AdapterRefusal>
         _ => return Err(AdapterRefusal::Unreadable),
     };
     let chunks: Vec<&str> = parts.collect();
-    let records = decoded(&chunks, &path)?;
+    if count > crate::MAX_LIBRARY_RECORDS {
+        return Err(AdapterRefusal::Unreadable);
+    }
+    let records = decoded(&chunks, &path, count, deadline)?;
     // Every record EndNote listed, or none: a short export is no library.
     if records.len() != count {
         return Err(AdapterRefusal::Unreadable);
@@ -149,19 +183,9 @@ pub(crate) fn read(library: Option<&str>) -> Result<AdapterRead, AdapterRefusal>
 /// the Mac Roman repaired texts would map differently, one field EndNote
 /// reads directly decides which is right; if neither matches, the read is
 /// refused rather than guessed.
-fn decoded(chunks: &[&str], path: &str) -> Result<Vec<XmlRecord>, AdapterRefusal> {
-    let parse = |texts: &[&str]| -> Option<Vec<XmlRecord>> {
-        let mut records = Vec::new();
-        for text in texts {
-            records.extend(xml::records(text).ok()?);
-        }
-        Some(records)
-    };
-    let plain = parse(chunks);
-    let repaired_texts: Option<Vec<String>> = chunks.iter().map(|text| super::macroman::repair(text)).collect();
-    let repaired = repaired_texts
-        .as_ref()
-        .and_then(|texts| parse(&texts.iter().map(String::as_str).collect::<Vec<_>>()));
+fn decoded(chunks: &[&str], path: &str, count: usize, deadline: Instant) -> Result<Vec<XmlRecord>, AdapterRefusal> {
+    let plain = collect_records(chunks.iter().copied().map(Some), count);
+    let repaired = collect_records(chunks.iter().map(|text| super::macroman::repair(text)), count);
     let (plain, repaired) = match (plain, repaired) {
         (Some(plain), Some(repaired)) => (plain, repaired),
         (Some(only), None) | (None, Some(only)) => return Ok(only),
@@ -195,7 +219,7 @@ fn decoded(chunks: &[&str], path: &str) -> Result<Vec<XmlRecord>, AdapterRefusal
         };
     };
     let number = a.one("rec-number").ok_or(AdapterRefusal::Unreadable)?;
-    let answer = osascript(FIELD, &[path, number, label])?;
+    let answer = osascript(FIELD, &[path, number, label], deadline, super::MAX_FILE_BYTES)?;
     let shown = answer
         .strip_prefix("ok\u{1f}")
         .ok_or(AdapterRefusal::Unreadable)?
@@ -213,6 +237,16 @@ fn decoded(chunks: &[&str], path: &str) -> Result<Vec<XmlRecord>, AdapterRefusal
         (false, true) => Ok(repaired),
         _ => Err(AdapterRefusal::Unreadable),
     }
+}
+
+/// Parse one XML chunk at a time and check the running record count.
+fn collect_records(texts: impl Iterator<Item = Option<impl AsRef<str>>>, count: usize) -> Option<Vec<XmlRecord>> {
+    let mut records = Vec::new();
+    for text in texts {
+        let limit = count - records.len();
+        records.extend(xml::records_up_to(text?.as_ref(), limit).ok()?);
+    }
+    Some(records)
 }
 
 type Labels = fn(&str) -> Option<&'static str>;
@@ -274,21 +308,26 @@ fn file_identity(path: &str) -> Result<String, AdapterRefusal> {
 }
 
 /// Run an AppleScript with `arguments`; its answer without the final newline.
-fn osascript(script: &str, arguments: &[&str]) -> Result<String, AdapterRefusal> {
-    let mut child = Command::new("/usr/bin/osascript")
-        .arg("-")
-        .args(arguments)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|_| AdapterRefusal::Unsupported)?;
-    if let Some(mut input) = child.stdin.take() {
-        input
-            .write_all(script.as_bytes())
-            .map_err(|_| AdapterRefusal::Unreadable)?;
-    }
-    let output = child.wait_with_output().map_err(|_| AdapterRefusal::Unreadable)?;
+fn osascript(script: &str, arguments: &[&str], deadline: Instant, max_stdout: u64) -> Result<String, AdapterRefusal> {
+    let mut command = Command::new("/usr/bin/osascript");
+    command.arg("-").args(arguments);
+    let timeout = if script == FIELD { 30 } else { 110 };
+    let time = deadline
+        .saturating_duration_since(Instant::now())
+        .min(Duration::from_secs(timeout));
+    let output = child::run_helper(
+        command,
+        script.as_bytes(),
+        Limits {
+            time,
+            stdout: max_stdout,
+            stderr: Some(MAX_DIAGNOSTICS),
+        },
+    )
+    .map_err(|error| match error {
+        ChildError::Unavailable => AdapterRefusal::Unsupported,
+        _ => AdapterRefusal::Unreadable,
+    })?;
     if !output.status.success() {
         let errors = String::from_utf8_lossy(&output.stderr);
         // Only fixed error numbers are looked at; EndNote's message is never kept.

@@ -15,13 +15,28 @@ ibis sources check --source endnote=Invented.enl --expect fixtures/endnote/expec
 ## Finding an adapter
 
 `--source NAME` or `--source NAME=LIBRARY` names an adapter and, in its own
-terms, the library to read; repeat it for several. Built-in adapters come
-first and are served by `ibis` itself (`ibis __source NAME`), so they ship
-wherever `ibis` does; any other name runs the first `ibis-source-NAME`
-program in an absolute PATH folder, beside the `ibis-NAME` commands of
-[0039](decisions/0039-extending-ibis-from-outside.md). A program on PATH never
-stands in for a built-in name. Names are a lowercase letter, then up to 31
-lowercase letters, digits or hyphens.
+terms, the library to read. Repeat it for several. Built-in adapters ship
+with `ibis`, which serves them as `ibis __source NAME`. To enable an external
+adapter, add its name and absolute executable path to `source-adapters.json`
+in your Ibis config folder:
+
+| System | Ibis config folder |
+| --- | --- |
+| macOS | `~/Library/Application Support/com.ibiscite.ibis/` |
+| Linux | `$XDG_CONFIG_HOME/com.ibiscite.ibis/` or `~/.config/com.ibiscite.ibis/` |
+| Windows | `%APPDATA%\com.ibiscite.ibis\` |
+
+```json
+{"example": "/opt/example/bin/read-library"}
+```
+
+Use one entry per adapter. Names start with a lowercase letter, followed by
+up to 31 lowercase letters, digits or hyphens. On Windows, supply an
+absolute `.exe` path, escaping backslashes in the JSON. Store the program in
+a location you control. `ibis doctor` lists configured names and flags
+invalid entries without starting them. Restart a running `ibis serve` or
+`ibis mcp` to pick up configuration changes. The `endnote` name is reserved
+for the built-in adapter.
 
 The command line, `ibis serve` and `ibis mcp` read adapters today. The desktop
 app does not yet: on macOS it first needs the Automation permission that lets
@@ -29,8 +44,9 @@ it ask EndNote, which is a change to the app's signed permissions.
 
 ## The protocol
 
-Ibis starts the program with no arguments, no environment and only its three
-standard streams, from the folder Ibis runs in. It writes one request to the
+Ibis starts the program with no arguments and only its three standard
+streams, from the folder Ibis runs in. The environment is cleared, apart
+from `SystemRoot` on Windows. It writes one request to the
 program's standard input and closes it:
 
 ```json
@@ -81,9 +97,10 @@ Without `keys`, any `citation-key` is dropped and key outputs refuse with
 `missing-key`. Ibis's `revision` is its own fingerprint of what it read.
 
 An answer is bounded to 64 MiB and 200,000 records, and a read to two minutes;
-after that, the adapter and any program it started are stopped (on Unix, its
-whole process group). Libraries are read when opened and when the person
-reloads; there are no watches. A read that fails, times out, or answers
+Ibis stops the Windows job or Unix process group when the adapter exits or
+the read is refused. The live EndNote reader streams XML chunks within
+the same byte and record limits. Libraries are read when opened and when
+the person reloads. A read that fails, times out, or answers
 outside the protocol changes nothing: the last good read stays searchable and
 citable, and the library's health names the failure.
 

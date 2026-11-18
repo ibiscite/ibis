@@ -9,11 +9,10 @@
 //! time. A failed read changes nothing: the engine keeps the last good one.
 //!
 //! Built-in adapters are served by the `ibis` executable itself
-//! (`ibis __source NAME`), so they ship wherever `ibis` does; others are
-//! `ibis-source-NAME` programs on PATH. A built-in name is never looked up
-//! on PATH.
+//! (`ibis __source NAME`), so they ship wherever `ibis` does. External
+//! adapters run from the absolute paths approved in the person’s configuration.
 
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -89,15 +88,12 @@ pub fn valid_name(name: &str) -> bool {
 }
 
 impl SourceAdapter {
-    /// The adapter called `name`: built in when `ibis` (`built_in`, the
-    /// running `ibis` executable) serves it, otherwise the first
-    /// `ibis-source-NAME` program in `search`, a PATH value.
-    pub fn find(name: &str, built_in: Option<&Path>, search: Option<&OsStr>) -> Result<Self, AdapterError> {
-        if !valid_name(name) {
-            return Err(AdapterError::NotFound);
-        }
+    /// Resolve a built-in name or the executable explicitly configured for this name.
+    pub fn find(name: &str, built_in: Option<&Path>, configured: Option<&Path>) -> Result<Self, AdapterError> {
         if name == ENDNOTE {
-            let program = built_in.ok_or(AdapterError::NotFound)?;
+            let program = built_in
+                .filter(|path| path.is_absolute())
+                .ok_or(AdapterError::NotFound)?;
             return Ok(Self {
                 name: name.into(),
                 program: program.to_path_buf(),
@@ -105,24 +101,29 @@ impl SourceAdapter {
                 deadline: DEADLINE,
             });
         }
-        let file = format!("ibis-source-{name}{}", std::env::consts::EXE_SUFFIX);
-        std::env::split_paths(search.ok_or(AdapterError::NotFound)?)
-            // A relative PATH entry would mean a different program in every folder.
-            .filter(|directory| directory.is_absolute())
-            .map(|directory| directory.join(&file))
-            .find(|candidate| runnable(candidate))
-            .map(|program| Self::at(name, program))
-            .ok_or(AdapterError::NotFound)
+        Self::at(name, configured.ok_or(AdapterError::NotFound)?.to_path_buf())
     }
 
-    /// The adapter at `program`, for tests and programs that embed Ibis.
-    pub fn at(name: &str, program: PathBuf) -> Self {
-        Self {
+    /// Approve one external adapter, also for programs that embed Ibis.
+    pub fn at(name: &str, program: PathBuf) -> Result<Self, AdapterError> {
+        if !valid_name(name) || name == ENDNOTE || !program.is_absolute() {
+            return Err(AdapterError::NotFound);
+        }
+        // An explicit .exe selects one file and excludes the implicit command interpreter.
+        #[cfg(windows)]
+        if !program
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"))
+        {
+            return Err(AdapterError::NotFound);
+        }
+        Ok(Self {
             name: name.into(),
             program,
             arguments: vec![],
             deadline: DEADLINE,
-        }
+        })
     }
 
     /// The same adapter with a shorter deadline than [`DEADLINE`], for tests.
@@ -143,13 +144,16 @@ impl SourceAdapter {
             library: library.map(str::to_owned),
         })
         .map_err(|_| AdapterError::Failed)?;
-        let arguments: Vec<&OsStr> = self.arguments.iter().map(OsString::as_os_str).collect();
+        let mut command = std::process::Command::new(&self.program);
+        command.args(&self.arguments);
         let answer = crate::child::run(
-            &self.program,
-            &arguments,
-            request,
-            self.deadline,
-            MAX_ANSWER_BYTES,
+            command,
+            &request,
+            crate::child::Limits {
+                time: self.deadline,
+                stdout: MAX_ANSWER_BYTES,
+                stderr: None,
+            },
             cancelled,
         )
         .map_err(|error| match error {
@@ -157,10 +161,13 @@ impl SourceAdapter {
             crate::child::ChildError::Unavailable => AdapterError::NotFound,
             _ => AdapterError::Failed,
         })?;
+        if !answer.status.success() {
+            return Err(AdapterError::Failed);
+        }
         if cancelled() {
             return Err(AdapterError::Cancelled);
         }
-        let response: AdapterResponse = serde_json::from_slice(&answer).map_err(|_| AdapterError::Failed)?;
+        let response: AdapterResponse = serde_json::from_slice(&answer.stdout).map_err(|_| AdapterError::Failed)?;
         if response.ibis != ADAPTER_PROTOCOL {
             return Err(AdapterError::Failed);
         }
@@ -225,32 +232,12 @@ impl SourceAdapter {
     }
 }
 
-/// A regular file this account may run.
-#[allow(
-    clippy::disallowed_methods,
-    reason = "A PATH lookup checks metadata only; the adapter's own bounds apply once it runs."
-)]
-fn runnable(path: &Path) -> bool {
-    let Ok(metadata) = std::fs::metadata(path) else {
-        return false;
-    };
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
-    }
-    #[cfg(not(unix))]
-    {
-        metadata.is_file()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn names_are_plain_and_built_ins_never_come_from_path() {
+    fn names_are_plain_and_built_ins_take_precedence() {
         for name in ["endnote", "obsidian", "a", "a-1"] {
             assert!(valid_name(name), "{name}");
         }
@@ -258,18 +245,23 @@ mod tests {
             assert!(!valid_name(name), "{name}");
         }
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
-        let search = std::env::join_paths([directory.path()]).unwrap_or_else(|error| panic!("{error}"));
-        let ibis = Path::new("/invented/ibis");
-        let built_in = SourceAdapter::find("endnote", Some(ibis), Some(&search)).unwrap_or_else(|_| panic!("built in"));
+        let ibis = directory.path().join("ibis");
+        let external = directory.path().join("adapter.exe");
+        let built_in =
+            SourceAdapter::find(ENDNOTE, Some(&ibis), Some(&external)).unwrap_or_else(|_| panic!("built in"));
         assert_eq!(built_in.program, ibis);
-        assert_eq!(built_in.arguments, [OsString::from(CHILD_ARGUMENT), "endnote".into()]);
+        assert_eq!(built_in.arguments, [OsString::from(CHILD_ARGUMENT), ENDNOTE.into()]);
         assert_eq!(
-            SourceAdapter::find("endnote", None, Some(&search)),
+            SourceAdapter::find(ENDNOTE, None, Some(&external)),
             Err(AdapterError::NotFound)
         );
         assert_eq!(
-            SourceAdapter::find("obsidian", Some(ibis), Some(&search)),
+            SourceAdapter::find("obsidian", Some(&ibis), None),
             Err(AdapterError::NotFound)
+        );
+        assert_eq!(
+            SourceAdapter::find("obsidian", None, Some(Path::new("adapter.exe"))),
+            Err(AdapterError::NotFound),
         );
     }
 }

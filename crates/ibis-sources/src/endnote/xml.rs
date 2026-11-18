@@ -39,7 +39,6 @@ const NAME_BYTES: usize = 256;
 const ATTRIBUTES: usize = 128;
 const DEPTH: usize = 64;
 const WORK: usize = 256 * 1024 * 1024;
-const RECORDS: usize = 200_000;
 
 // quick-xml stores a start name before returning its event; check the next
 // markup's name length before handing it over.
@@ -73,6 +72,10 @@ fn unescape(text: &str) -> Result<std::borrow::Cow<'_, str>, XmlError> {
 
 /// Every record in `text`, or why none can be trusted.
 pub(crate) fn records(text: &str) -> Result<Vec<XmlRecord>, XmlError> {
+    records_up_to(text, crate::MAX_LIBRARY_RECORDS)
+}
+
+pub(super) fn records_up_to(text: &str, record_limit: usize) -> Result<Vec<XmlRecord>, XmlError> {
     let text = text.trim_start_matches('\u{feff}');
     if !text.chars().all(xml_char) {
         return Err(XmlError::Invalid);
@@ -143,7 +146,7 @@ pub(crate) fn records(text: &str) -> Result<Vec<XmlRecord>, XmlError> {
                     recognized = true;
                 }
                 if path == ["xml", "records", "record"] {
-                    if records.len() >= RECORDS {
+                    if records.len() >= record_limit {
                         return Err(XmlError::TooLarge);
                     }
                     record = XmlRecord::default();

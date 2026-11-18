@@ -83,8 +83,9 @@ library's `revision` is its snapshot's full fingerprint.
 
 [Source adapters](source-adapters.md) are separate programs that read a
 manager Ibis has no reader for and answer one whole-library read over stdio
-(`ibis_core::contract::adapter`). `ibis_sources::adapter` starts one in a
-child process with no environment, bounded to 64 MiB and two minutes, and
+(`ibis_core::contract::adapter`). The engine resolves built-in names and
+the absolute executable paths approved in the person’s device configuration.
+`ibis_sources::adapter` bounds the whole read to 64 MiB and two minutes, and
 keeps identity (a keyed digest of the adapter's name and `scope`), CSL
 validation, the private-link filter and key claims to itself. Adapter
 libraries declare records, and keys only when the adapter says it has them.

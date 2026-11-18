@@ -39,14 +39,11 @@ const MAX_FILE_BYTES: u64 = crate::MAX_LIBRARY_BYTES;
 
 /// Answer one request from `input` on `output`; the exit status.
 pub fn serve(input: impl Read, mut output: impl Write) -> u8 {
-    let mut request = Vec::new();
-    let answer = match input.take(MAX_REQUEST_BYTES + 1).read_to_end(&mut request) {
-        Ok(_) if request.len() as u64 <= MAX_REQUEST_BYTES => {
-            match serde_json::from_slice::<AdapterRequest>(&request) {
-                Ok(request) if request.ibis == ADAPTER_PROTOCOL => answer(request.library.as_deref()),
-                _ => Err(AdapterRefusal::Unsupported),
-            }
-        }
+    let answer = match crate::child::read_bounded(input, MAX_REQUEST_BYTES) {
+        Ok(request) => match serde_json::from_slice::<AdapterRequest>(&request) {
+            Ok(request) if request.ibis == ADAPTER_PROTOCOL => answer(request.library.as_deref()),
+            _ => Err(AdapterRefusal::Unsupported),
+        },
         _ => Err(AdapterRefusal::Unsupported),
     };
     let response = match answer {
@@ -89,10 +86,7 @@ fn exported(path: &Path) -> Result<AdapterRead, AdapterRefusal> {
     if !metadata.is_file() || metadata.len() > MAX_FILE_BYTES {
         return Err(AdapterRefusal::Unreadable);
     }
-    let mut bytes = Vec::new();
-    file.take(MAX_FILE_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|_| AdapterRefusal::Unreadable)?;
+    let bytes = crate::child::read_bounded(file, MAX_FILE_BYTES).map_err(|_| AdapterRefusal::Unreadable)?;
     let text = String::from_utf8(bytes).map_err(|_| AdapterRefusal::Unreadable)?;
     let records = xml::records(&text).map_err(|_| AdapterRefusal::Unreadable)?;
     let scope = Fingerprint::of_bytes(&[b"xml\0", path.as_os_str().as_encoded_bytes()].concat());
