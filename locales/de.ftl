@@ -246,6 +246,10 @@ app-project-warning =
     }
 app-tray-open = Ibis öffnen
 app-tray-open-shortcut = Ibis öffnen ({ $shortcut })
+app-key-control = Control
+app-key-option = Wahl
+app-key-shift = Umschalt
+app-key-command = Befehl
 app-tray-choose = Datei wählen…
 app-tray-zotero = Zotero
 app-tray-retry = Erneut versuchen

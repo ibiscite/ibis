@@ -254,6 +254,11 @@ app-project-warning =
     }
 app-tray-open = Open Ibis
 app-tray-open-shortcut = Open Ibis ({ $shortcut })
+# The Mac's modifier keys by name, where a menu cannot draw its symbols.
+app-key-control = Control
+app-key-option = Option
+app-key-shift = Shift
+app-key-command = Command
 app-tray-choose = Choose File…
 app-tray-zotero = Zotero
 app-tray-retry = Try Again
