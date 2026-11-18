@@ -872,7 +872,8 @@ mod tests {
         preferences: PickerPreferences,
         output: Option<&str>,
     ) -> tauri::webview::InvokeRequest {
-        let mut patch = serde_json::to_value(preferences).unwrap_or_default();
+        // What a window sends: the choices, never what Ibis reports beside them.
+        let mut patch = serde_json::to_value(PickerPreferencesPatch::from(preferences)).unwrap_or_default();
         if let Some(patch) = patch.as_object_mut() {
             match output {
                 Some(id) => patch.insert("output".into(), id.into()),
