@@ -85,7 +85,9 @@ impl List {
         self.here
             .iter()
             .find(|(id, _)| id == app)
-            .map_or_else(Vec::new, |(_, cited)| cited.iter().filter(|item| self.items.contains(item)).cloned().collect())
+            .map_or_else(Vec::new, |(_, cited)| {
+                cited.iter().filter(|item| self.items.contains(item)).cloned().collect()
+            })
     }
     fn forget(&mut self) {
         self.epoch = Arc::new(());

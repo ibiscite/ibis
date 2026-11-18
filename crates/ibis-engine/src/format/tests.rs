@@ -129,7 +129,10 @@ fn projects_are_offered_once_an_app_has_a_second_format_or_one_exists() {
     let mut settings = Settings::default();
     settings.device.writings.push(Writing {
         name: "Thesis".into(),
-        format: OutputSpec::Key { syntax: KeySyntax::Pandoc, command: None },
+        format: OutputSpec::Key {
+            syntax: KeySyntax::Pandoc,
+            command: None,
+        },
         bibliography: None,
     });
     assert!(offers_projects(&settings, None));
