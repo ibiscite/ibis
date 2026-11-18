@@ -110,28 +110,30 @@ nor reports a status. Keep the worktree until the PR merges, then run
 **CI result** is the required merge check: interface build, the `Rust and
 desktop` suite, web/script tests, picture comparisons, dependency policy, commit identities and the
 Linux release checks (release mode, minimum Rust, budgets) must all pass, so a
-release tag never meets a check its commits skipped. Every PR and every push to
-main runs `Rust and desktop` on Ubuntu, macOS and Windows, one job per system so
-each takes a single hosted runner. Fork PRs skip every job, so their **CI result**
-fails; they keep read-only title feedback.
+release tag never meets a check its commits skipped. Every PR before it can
+merge, and every push to main, runs `Rust and desktop` on Ubuntu, macOS and
+Windows, one job per system so each takes a single runner; a newer push to a PR
+cancels its superseded run. Fork PRs skip every job, so their **CI result** fails; they keep read-only title
+feedback.
 
-The macOS `Rust and desktop` job runs on the maintainer's Mac as a self-hosted
-runner, because GitHub's hosted macOS runners are often unavailable; there it also
-takes about half the time. The repository variable `RUNNERS` maps the hosted label
-to the machine's labels, `{"macos-15":["self-hosted","ibis-mac"]}`; without it the
-job runs on GitHub's runner, so removing the variable moves the work back when the
-Mac is away. Windows and Linux stay hosted: the Notepad paste test needs an unlocked
-desktop and the Linux job installs packages with sudo, and neither was faster on our
-machines. The runner is GitHub's official
+
+All three systems run on GitHub's hosted runners
+([decision 0049](decisions/0049-local-gate.md)). The repository variable `RUNNERS`
+can send the macOS job to the maintainer's Mac as a self-hosted runner instead:
+`{"macos-15":["self-hosted","ibis-mac"]}` maps the hosted label to the machine's
+labels, and `{}` or no variable keeps it hosted. That Mac serves one job at a time,
+so with many open PRs it becomes the queue. Its runner is GitHub's official
 [actions/runner](https://github.com/actions/runner), registered to this repository
 and run as the maintainer's user with its own `CARGO_HOME` and `RUSTUP_HOME`
 (set in the runner's `.env`), and the Rust build cache action runs only on hosted
-machines, so jobs never touch the maintainer's toolchain. It keeps state between jobs, so it only runs
-reviewed code: Dependabot's PRs stay on hosted runners, and Preview's builds,
-signing and attestations always run on fresh hosted machines. A fork PR runs its
-own copy of the workflows and could target it, so the repository requires approval
-for every outside contributor's workflow run; never approve one while the runner
-is registered.
+machines, so jobs never touch the maintainer's toolchain. It keeps state between
+jobs and the switch sends every in-repository PR's macOS job there, Dependabot's
+included, so add an exclusion for unreviewed updates before switching back.
+Preview's builds, signing and attestations always run on fresh hosted machines.
+A fork PR runs its own copy of the workflows and could target it, so the
+repository requires approval for every outside contributor's workflow run; never
+approve one while the runner is registered. Windows and Linux stay hosted: the Notepad paste test needs an
+unlocked desktop and the Linux job installs packages with sudo.
 
 Daily/manual runs add WebKit, five minutes each of fuzzing the
 BibTeX loader and the PDF extractor (`ibis-fuzz`; seeds run with `cargo test -p ibis-fuzz`) and

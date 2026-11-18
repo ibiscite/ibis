@@ -1,5 +1,11 @@
 # 0049 Local machines gate merges (superseded)
 
+2026-11-18 (maintainer): every PR tests all three systems before it can merge,
+and macOS runs on GitHub's hosted runners again: one self-hosted Mac served every
+PR's macOS job in turn and became the queue. The repository variable `RUNNERS`
+stays the switch back to our own Mac. A newer push cancels the PR's superseded
+run; pushes to main and daily/manual runs test all three.
+
 2026-11-16: every PR and push runs one `Rust and desktop` job per system (hosted
 macOS runners were the queue) and the Linux release checks; `land.sh` requires a
 recorded independent review before merging updater, signing, publishing,
@@ -10,8 +16,8 @@ three systems, and while main's latest push CI failed, `scripts/land.sh` lands
 only `fix` or `revert` titles. One nightly a day is built from main's head once
 its push CI passed; pushes to main publish nothing.
 
-2026-11-15 (maintainer): superseded: hosted CI is the required merge check, no
-merge queue; local machines are for speed and native checks. Pull requests
+2026-11-15 (maintainer): superseded: hosted CI is the required merge check;
+local machines are for speed and native checks. Pull requests
 squash-merge once **CI result** passes, without being up to date with main;
 main's push CI checks the combined commit, and a red main holds the nightly.
 

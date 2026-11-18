@@ -61,6 +61,11 @@ class CiResultTest(unittest.TestCase):
         self.assertEqual(jobs["rust"]["needs"], "interface")
         self.assertEqual(jobs["release-checks"]["if"], FORK_GUARD)
 
+    def test_a_newer_push_replaces_a_pull_requests_run_but_never_mains(self):
+        concurrency = self.workflow["concurrency"]
+        self.assertEqual(concurrency["group"], "ci-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}")
+        self.assertEqual(concurrency["cancel-in-progress"], "${{ github.event_name == 'pull_request' }}")
+
     def test_dependency_rules_and_identities_remain_in_confirmation(self):
         jobs = self.workflow["jobs"]
         self.assertEqual(jobs["dependencies"]["name"], "Dependency policy and commit identities")
