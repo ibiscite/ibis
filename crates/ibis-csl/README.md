@@ -154,10 +154,10 @@ cause. `tests/conformance/known-failures.json` lists each failure with a
 one-line reason; the run fails when a fixture starts failing or stops failing
 without a change to that list.
 
-The suite is fetched, not vendored, because upstream publishes it without a
-licence. It takes a few minutes, so it runs in the Citation styles workflow:
-weekly, and on every pull request that changes this crate, `ibis-core` or the
-scripts that fetch its data. By hand:
+CI fetches the suite because upstream publishes it without a licence. The
+required **CI result** checks CSL conformance on the weekly and manual CI
+runs, and on pull requests and main pushes that change the formatter, its
+Rust dependencies or the fetch scripts. Run it locally with these commands.
 
 ```sh
 node scripts/csl-suite.mjs                                    # fetch and check the pinned suite
