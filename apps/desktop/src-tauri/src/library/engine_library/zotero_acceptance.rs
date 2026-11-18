@@ -54,7 +54,7 @@ fn chosen_groups_keep_source_identity_counts_and_scopes_consistent() -> Result<(
                     }],
                     "pandoc"
                 ),
-            Err(error) if error.problem().code == "ambiguous-key" && error.problem().info.message.args.get("key").is_some_and(|key| key == "Synthetic2026")
+            Err(error) if crate::library::Kind::of(&error.problem()) == crate::library::Kind::SharedKey && error.problem().info.message.args.get("key").is_some_and(|key| key == "Synthetic2026")
         ));
     }
     assert!(

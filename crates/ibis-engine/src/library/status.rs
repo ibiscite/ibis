@@ -86,7 +86,7 @@ pub struct LibraryStatus {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct ReadingNotice {
     /// The engine's warning code, such as `duplicate-key` or `syntax`.
-    pub code: String,
+    pub code: ibis_sources::WarningCode,
     pub line: Option<u32>,
     /// The repeated key, for `duplicate-key` only: the person's own data.
     pub key: Option<String>,
@@ -209,13 +209,11 @@ pub(super) fn status(library: &State) -> LibraryStatus {
         reading: sources
             .iter()
             .flat_map(|info| &info.warnings)
-            .filter_map(|warning| {
-                Some(ReadingNotice {
-                    code: serde_json::to_value(warning.code).ok()?.as_str()?.to_owned(),
-                    line: warning.line.and_then(|line| u32::try_from(line).ok()),
-                    key: warning.key.clone(),
-                    why: crate::catalogue::cause(warning),
-                })
+            .map(|warning| ReadingNotice {
+                code: warning.code,
+                line: warning.line.and_then(|line| u32::try_from(line).ok()),
+                key: warning.key.clone(),
+                why: crate::catalogue::cause(warning),
             })
             .collect(),
         live_updates_off: sources.iter().any(|info| info.watch_warning.is_some()),

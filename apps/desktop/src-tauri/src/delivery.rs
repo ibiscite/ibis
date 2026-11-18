@@ -187,14 +187,12 @@ async fn complete(
         Ok(prepared) => prepared,
         Err(error) => {
             let mut problem = error.problem();
-            if problem.code == "cancelled" {
-                return DeliveryOutcome::Cancelled;
-            }
             // Keep the picker's existing sentences while carrying the typed problem.
-            problem.info.message.id = match problem.code.as_str() {
-                "snapshot_changed" | "changed-item" | "missing-item" => "picker-snapshot-changed",
-                "ambiguous-key" => "picker-shared-key",
-                _ => "picker-copy-error",
+            problem.info.message.id = match crate::library::Kind::of(&problem) {
+                crate::library::Kind::Cancelled => return DeliveryOutcome::Cancelled,
+                crate::library::Kind::Stale => "picker-snapshot-changed",
+                crate::library::Kind::SharedKey => "picker-shared-key",
+                crate::library::Kind::Other => "picker-copy-error",
             }
             .into();
             return DeliveryOutcome::Refused { problem };
@@ -307,7 +305,7 @@ mod tests {
                 CommandError::SnapshotChanged,
                 CommandError::ClipboardUnavailable,
             ] {
-                let cancelled = error.problem().code == "cancelled";
+                let cancelled = crate::library::Kind::of(&error.problem()) == crate::library::Kind::Cancelled;
                 let result = complete(Err(error), async |_| panic!("nothing to paste")).await;
                 match result {
                     DeliveryOutcome::Cancelled => assert!(cancelled),
