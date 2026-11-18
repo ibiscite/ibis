@@ -211,7 +211,7 @@ refuse a narrative `@key`: they have no author form to write.
 Nothing is written if any marker is damaged, any key is missing from the open
 libraries or names several references, or a locator would not print: stderr
 lists every problem with its paragraph and character, for example
-`body paragraph 3, character 12, '[@nobody2020]': no open library has the key 'nobody2020'`.
+`body paragraph 3, character 12, [@nobody2020]: no open library has the key nobody2020`.
 Exit status 4 means every problem is a missing key, 3 any other refusal.
 `--json` reports `written` with the counts and the markers left.
 
@@ -443,6 +443,15 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | `--style STYLE_ID` | Any bundled CSL style ID; list them with: ibis styles |
 | `--bibliography FILE` | The read-only writing bibliography to check, as a .bib file |
 | `--no-bibliography` | Stop checking a bibliography in this writing |
+
+**`ibis format`**: Make a finished copy of a Word or LibreOffice document from its citation markers
+
+| Option | Does |
+| --- | --- |
+| `DOCUMENT` | The .docx or .odt document with citation markers |
+| `--output PATH` | The new copy to write, with the same extension; nothing there is replaced |
+| `--style STYLE_ID` | Any bundled in-text CSL style; list them with: ibis styles |
+| `--locale LOCALE` | Language of the citations, such as de-DE; default the style's own |
 
 **`ibis proposals`**: List, show or reject library changes AI apps proposed; apply them in the Ibis app
 

@@ -478,7 +478,8 @@ fn prepare_with(
             });
             continue;
         }
-        if matches!(form, CitationForm::AuthorOnly | CitationForm::Narrative) && !has_authors {
+        // A numbered style's citation has no author form to name in a sentence.
+        if matches!(form, CitationForm::AuthorOnly | CitationForm::Narrative) && (!has_authors || document && traits.numeric) {
             outcomes.push(ItemOutcome::Refused {
                 item: index,
                 error: CitationError::UnsupportedForm,

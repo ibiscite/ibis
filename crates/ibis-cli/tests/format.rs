@@ -329,7 +329,7 @@ fn a_word_draft_is_cited_in_apa_then_restyled_in_ieee_from_the_same_original() {
 
     let (status, stdout, stderr) = folder.run(&["format", "draft.docx", "--style", "apa", "-o", "apa.docx"]);
     assert_eq!(status, 0, "{stdout}{stderr}");
-    assert!(stdout.contains("5 citations and 3 references"), "{stdout}");
+    assert!(stdout.contains("4 citations and 3 references"), "{stdout}");
     let apa = text_of(&folder.path("apa.docx"));
     // Two works by one author in one year get their letters from the whole document.
     assert_eq!(
@@ -391,7 +391,7 @@ fn an_opendocument_draft_gets_its_reference_list_at_the_end() {
     // A numeric style has no author to name in a sentence: refused, not guessed.
     let (status, _, stderr) = folder.run(&["format", "draft.odt", "--style", "ieee", "-o", "ieee.odt"]);
     assert_eq!(status, 3, "{stderr}");
-    assert!(stderr.contains("'vale2024'"), "{stderr}");
+    assert!(stderr.contains("vale2024: "), "{stderr}");
     let (status, _, stderr) = folder.run(&["format", "draft.odt", "-o", "final.docx"]);
     assert_eq!(status, 2, "{stderr}");
 }
@@ -411,8 +411,8 @@ fn every_missing_key_and_damaged_marker_is_named_and_nothing_is_written() {
     assert_eq!(status, 3, "{stdout}{stderr}");
     assert!(!folder.path("final.docx").exists());
     for expected in [
-        "body paragraph 1, character 7, '[@nobody2020]': no open library has the key 'nobody2020'",
-        "body paragraph 1, character 27, '[@vale2024 @fen2023]': two keys need a ; between them",
+        "body paragraph 1, character 7, [@nobody2020]: no open library has the key nobody2020",
+        "body paragraph 1, character 27, [@vale2024 @fen2023]: two keys need a ; between them",
         "two keys need a ; between them",
         "body paragraph 2, character 6",
         "the marker has no closing ]",

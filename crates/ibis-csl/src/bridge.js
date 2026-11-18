@@ -320,7 +320,11 @@
         hanging_indent: Boolean(bibliography && bibliography[0].hangingindent),
       });
     } catch (error) {
-      if (error !== unverified && !(error instanceof TypeError)) throw error;
+      // A citation the style prints as nothing refuses the document, like any
+      // citation Ibis cannot verify. Resource limits still surface as themselves.
+      const refused = error === unverified || error instanceof TypeError
+        || (error?.name === "Error" && error.message === "citation formatting failed");
+      if (!refused) throw error;
       return JSON.stringify({ status: "refused" });
     } finally {
       activeItems.clear();
