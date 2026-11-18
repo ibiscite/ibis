@@ -179,9 +179,8 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Rust and desktop (${{ matrix.os }})
     needs: interface
-    # macOS runs on GitHub's hosted runner; the RUNNERS variable can name our
-    # own Mac instead (docs/testing.md).
-    runs-on: ${{ matrix.os == 'macos-15' && fromJSON(vars.RUNNERS || '{}')['macos-15'] || matrix.os }}
+    # RUNNERS can send macOS jobs to our own Mac. Dependabot PRs stay hosted.
+    runs-on: ${{ matrix.os == 'macos-15' && github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON(vars.RUNNERS || '{}')['macos-15'] || matrix.os }}
     timeout-minutes: 45
     strategy:
       fail-fast: false

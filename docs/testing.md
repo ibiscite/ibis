@@ -126,9 +126,8 @@ so with many open PRs it becomes the queue. Its runner is GitHub's official
 [actions/runner](https://github.com/actions/runner), registered to this repository
 and run as the maintainer's user with its own `CARGO_HOME` and `RUSTUP_HOME`
 (set in the runner's `.env`), and the Rust build cache action runs only on hosted
-machines, so jobs never touch the maintainer's toolchain. It keeps state between
-jobs and the switch sends every in-repository PR's macOS job there, Dependabot's
-included, so add an exclusion for unreviewed updates before switching back.
+machines, so jobs never touch the maintainer's toolchain. The runner keeps state
+between jobs. Dependabot pull requests always use hosted runners.
 Preview's builds, signing and attestations always run on fresh hosted machines.
 A fork PR runs its own copy of the workflows and could target it, so the
 repository requires approval for every outside contributor's workflow run; never

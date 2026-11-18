@@ -155,6 +155,13 @@ class CiResultTest(unittest.TestCase):
                 if "Swatinem/rust-cache" in step.get("uses", ""):
                     self.assertEqual(step.get("if"), "runner.environment == 'github-hosted'", name)
 
+    def test_dependabot_pull_requests_stay_on_hosted_macos(self):
+        runs_on = self.workflow["jobs"]["rust"]["runs-on"]
+        self.assertIn(
+            "github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON(vars.RUNNERS || '{}')",
+            runs_on,
+        )
+
     def test_actions_are_pinned_to_immutable_revisions(self):
         for path in (ROOT / ".github/workflows").glob("*.yml"):
             workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
