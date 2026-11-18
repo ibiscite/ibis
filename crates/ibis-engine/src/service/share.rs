@@ -655,7 +655,9 @@ mod tests {
         assert_eq!(file_name("  ..CON  "), "CON_");
         assert_eq!(file_name("com1.draft"), "com1.draft_");
         assert_eq!(file_name("Console"), "Console");
-        assert_eq!(file_name("\u{200b}..."), "Reference");
+        // A direction override could disguise `fdp.exe` as `exe.pdf`.
+        assert_eq!(file_name("\u{202e}..."), "Reference");
+        assert_eq!(file_name("Aster\u{202e}fdp.exe"), "Asterfdp.exe");
         let long = file_name(&"é".repeat(400));
         assert!(long.len() <= MAX_NAME_BYTES && long.chars().all(|c| c == 'é'));
         let mut taken = HashSet::new();

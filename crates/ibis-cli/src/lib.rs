@@ -1838,7 +1838,12 @@ fn run_method<R: BufRead>(
             let keys = match args.get_one::<PathBuf>("keys-from") {
                 Some(path) if path == Path::new("-") => keys::read(input)?,
                 Some(path) => keys::file(path)?,
-                None => key_items(args)?,
+                None => args
+                    .get_many::<String>("keys")
+                    .into_iter()
+                    .flatten()
+                    .map(|key| KeyItem::from(key.as_str()))
+                    .collect(),
             };
             let destination = args
                 .get_one::<PathBuf>("to")
