@@ -78,9 +78,12 @@ before it ships.
 MCP never gets lookup or write tools. Amended on 2026-11-15 with
 [0055](0055-agent-layers-full-text-writes-remote.md): `ibis mcp --allow-writes`
 adds tools that only propose a change, kept for the person, who applies or
-rejects it in the Ibis app; a client's own approval never counts. `ibis lookup`
-exists only while the person has turned lookup on. The command line lists,
-shows and rejects proposals with `ibis proposals`, and cannot apply them.
+rejects it in the Ibis app; a client's own approval never counts. Amended on
+2026-11-18 ([#1984](https://github.com/ibiscite/ibis/pull/1984)): `ibis lookup`
+is always available for DOIs in open libraries. It can send a DOI only when no
+open library holds it, online lookup is on, and the person has confirmed DOI
+lookup as described in [0008](0008-offline-by-default.md). The command line
+lists, shows and rejects proposals with `ibis proposals`, and cannot apply them.
 Lookup, proposals and apply are kept out of the engine methods the command line
 generates automatically. An agent with a shell can still change settings or run
 `ibis`, and PRIVACY.md says so when lookup ships.
