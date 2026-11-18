@@ -71,7 +71,8 @@ pub enum TextAvailability {
     /// A file Ibis does not read: not a PDF, or a PDF where no PDF reader runs
     /// (only `ibis` reads PDFs, never the desktop app).
     NotYet,
-    /// Text larger than Ibis reads at once, or a PDF over 256 MiB or 10,000 pages.
+    /// Text larger than Ibis reads at once, or a PDF over 256 MiB or 10,000
+    /// pages or needing more than 2 GiB of memory to read.
     TooLarge,
     /// No file is where the library says it is.
     Missing,

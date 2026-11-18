@@ -610,8 +610,8 @@ with no such index, or with only part of the file indexed, and a `.bib`
 file's `file` attachments that are PDFs, are read by Ibis itself:
 `ibis` starts a short-lived copy of itself that gets the opened file and
 nothing else, no environment and no path, parses it in at most ten seconds
-and gives each page's text. On Linux that process may use at most 3 GiB of
-address space; elsewhere the ten seconds bound it. The desktop app never
+and gives each page's text. It may use at most 2 GiB of memory, and on Linux
+3 GiB of address space; a PDF that needs more is `too-large`. The desktop app never
 parses a PDF. Nothing is written, and the text stays in memory for the one
 command.
 

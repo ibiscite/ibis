@@ -99,7 +99,9 @@ untrusted parsing stays away from library, clipboard and paste permissions.
 
 **Bounds.** The file rules of 0036 apply: a regular local file up to 256 MiB,
 `%PDF-` near the start, no placeholder or network files, at most 10,000 pages,
-10 s per extraction. Text stays in memory for the call; Ibis keeps no document
+10 s and 2 GiB of memory per extraction. The parent enforces the memory bound:
+a Job Object on Windows, and on macOS and Linux a check of the child's
+footprint every few milliseconds, since macOS enforces no memory rlimit. Text stays in memory for the call; Ibis keeps no document
 text on disk.
 
 **Privacy and network.** The MCP tools promise today never to expose notes or
