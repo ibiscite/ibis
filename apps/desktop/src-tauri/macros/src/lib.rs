@@ -34,21 +34,29 @@ pub fn command(attr: TokenStream, item: TokenStream) -> TokenStream {
         };
         return error(&function.sig.ident, message);
     }
-    // The IPC boundary requires a catalogue diagnostic and recovery; native
-    // implementation errors stay local. Each command names its operation.
+    // The IPC boundary carries a typed problem: a code, a catalogue message and
+    // a recovery. A command fails with `CommandError`, a type that converts into
+    // it, or `NativeFailure`, which its own `NativeOperation` words. Plain text
+    // cannot cross: it would have no code, no recovery and English in Rust.
     if let ReturnType::Type(_, ty) = &function.sig.output
-        && let Some((ok, error)) = result_types(ty)
-        && !last_segment(error).is_some_and(|name| name == "CommandError")
+        && let Some((ok, failure)) = result_types(ty)
+        && !last_segment(failure).is_some_and(|name| name == "CommandError")
     {
+        if last_segment(failure).is_some_and(|name| name == "String" || name == "str") {
+            return error(
+                failure,
+                "a command cannot fail with text: return `NativeFailure` (worded by its `NativeOperation` in errors.rs) or a typed `CommandError`",
+            );
+        }
         let original = ty.clone();
         let ok = ok.clone();
-        let operation = format_ident!("{}", pascal_case(&function.sig.ident.to_string()));
-        let body = &function.block;
-        let conversion = if last_segment(error).is_some_and(|name| name == "String" || name == "str") {
-            quote! { |_| crate::errors::NativeOperation::#operation.failure() }
+        let conversion = if last_segment(failure).is_some_and(|name| name == "NativeFailure") {
+            let operation = format_ident!("{}", pascal_case(&function.sig.ident.to_string()));
+            quote! { |crate::errors::NativeFailure| crate::errors::NativeOperation::#operation.failure() }
         } else {
             quote! { crate::library::CommandError::from }
         };
+        let body = &function.block;
         let run = if function.sig.asyncness.is_some() {
             quote! { (async #body).await }
         } else {

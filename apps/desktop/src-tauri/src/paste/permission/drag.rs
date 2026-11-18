@@ -42,13 +42,13 @@ thread_local! {
     static SOURCE: OnceCell<Retained<AppDragSource>> = const { OnceCell::new() };
 }
 
-fn app_item(url: Retained<NSURL>) -> Result<Retained<NSDraggingItem>, &'static str> {
+fn app_item(url: Retained<NSURL>) -> Result<Retained<NSDraggingItem>, crate::errors::NativeFailure> {
     if !url.isFileURL()
         || url
             .pathExtension()
             .is_none_or(|ext| !ext.to_string().eq_ignore_ascii_case("app"))
     {
-        return Err("Run the bundled Ibis app to drag it into System Settings.");
+        return Err(crate::errors::NativeFailure);
     }
     Ok(NSDraggingItem::initWithPasteboardWriter(
         NSDraggingItem::alloc(),
@@ -64,8 +64,8 @@ fn accepts_drag(settings: bool, same_window: bool, key_window: bool, kind: NSEve
         && buttons & 1 != 0
 }
 
-pub(super) fn start(window: &tauri::WebviewWindow) -> Result<(), &'static str> {
-    let unavailable = "Start the app drag from Ibis Settings.";
+pub(super) fn start(window: &tauri::WebviewWindow) -> Result<(), crate::errors::NativeFailure> {
+    let unavailable = crate::errors::NativeFailure;
     let mtm = MainThreadMarker::new().ok_or(unavailable)?;
     let application = NSApplication::sharedApplication(mtm);
     let event = application.currentEvent().ok_or(unavailable)?;
@@ -127,7 +127,7 @@ mod tests {
             "file:///tmp/Invented%20Build/Ibis.app/",
         ] {
             let original = url(path);
-            let item = app_item(original.clone()).unwrap_or_else(|e| panic!("{e}"));
+            let item = app_item(original.clone()).unwrap_or_else(|e| panic!("{e:?}"));
             let dragged = item
                 .item()
                 .downcast::<NSURL>()

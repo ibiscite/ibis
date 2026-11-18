@@ -16,6 +16,10 @@ ignore = [
     # `paste` is unmaintained (not vulnerable). It comes in through the `biblatex`
     # parser. Revisit when biblatex drops it or a replacement parser is chosen.
     { id = "RUSTSEC-2024-0436", reason = "transitive via biblatex; unmaintained, no known vulnerability" },
+    # `chrono` is unmaintained (not vulnerable; RUSTSEC-2026-0543, 2026-11-18).
+    # Ibis's own code no longer uses it; it remains a required dependency of
+    # `uiautomation`, used for Windows paste checks. Revisit when that crate drops it.
+    { id = "RUSTSEC-2026-0543", reason = "transitive via uiautomation (Windows paste checks); unmaintained, no known vulnerability" },
     # `proc-macro-error` is unmaintained (not vulnerable). It is a build-time
     # macro helper reached through Tauri's GTK bindings on Linux; nothing
     # from it ships in the app. Revisit when the GTK bindings drop it.
