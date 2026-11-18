@@ -45,6 +45,9 @@ export const slotMessages: Record<keyof typeof slots, { id: MessageId; args?: Re
     { id: "delight-empty" }, { id: "delight-loading" }, { id: "delight-no-library" },
     { id: "delight-zoom", args: { percent: 200 } },
     { id: "picker-shorthand-hint", args: { word: "featherstonehaugh" } },
+    { id: "picker-kept-words" },
+    { id: "picker-practice-offer" },
+    { id: "picker-practice-pasted", args: { citation: "(Aster, 2026)" } },
     { id: "update-failed" },
   ],
   noticeLine: [

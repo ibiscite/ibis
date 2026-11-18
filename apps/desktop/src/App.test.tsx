@@ -675,9 +675,9 @@ test("the first screen's one Enter pastes into a practice line inside Ibis, then
   render(<App />);
   const search = screen.getByLabelText("Search references");
   await screen.findByText("Invented gardens");
-  expect(await screen.findByText(/press Enter to paste this reference into this line/)).toBeTruthy();
+  expect(await screen.findByText("Try a paste here first: press Enter.")).toBeTruthy();
   await act(async () => { fireEvent.keyDown(search, { key: "Enter" }); });
-  expect(await screen.findByText(/that’s a paste\. From now on, Enter pastes where you’re typing/)).toBeTruthy();
+  expect(await screen.findByText(/pasted here\. Next, Enter pastes in your app\./)).toBeTruthy();
   // Nothing left Ibis and no question was asked.
   expect(calls).not.toContain("deliver_citation");
   await act(async () => { fireEvent.keyDown(search, { key: "Enter" }); });
@@ -688,5 +688,5 @@ test("words the engine kept as words say so in one notice line", async () => {
   backend({ search: ({ query }) => query.text ? { revision: "1", results: [result("room22", "Room 22")], kept_words: true } : [] });
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "room 22" } });
-  expect(await screen.findByText("Kept as words: they match your library. For a page, type “room, 22”.")).toBeTruthy();
+  expect(await screen.findByText("Kept as words. For a page, add a comma: “room, 22”.")).toBeTruthy();
 });

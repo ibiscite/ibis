@@ -74,7 +74,7 @@ test("the built scenario list renders, switches and reopens without Tauri or net
       else if (scenario === "parts") for (const part of ["Button: primary", "Settings rows", "Marks and icons"]) expect(host.textContent).toContain(part);
       else if (scenario === "empty-search") expect(host.textContent).toContain("Type to find");
       else if (scenario === "paste") expect(host.querySelector("footer")?.textContent).toContain("Paste into Invented Editor");
-      else if (scenario === "first-paste") expect(host.textContent).toContain("press Enter to paste this reference into this line");
+      else if (scenario === "first-paste") expect(host.textContent).toContain("Try a paste here first: press Enter.");
       else if (scenario === "reference-list") expect(host.textContent).toContain("Copy Reference List");
       else if (scenario === "no-matches") expect(host.textContent).toContain("No matching references");
       else if (scenario === "missing") expect(host.textContent).toContain("Can’t find invented.bib");

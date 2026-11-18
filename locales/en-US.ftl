@@ -874,10 +874,10 @@ picker-using-shorthand = Using { $value }
 picker-apply = Apply
 # $word: a word that finds the person’s own cited reference, never a sample one.
 picker-shorthand-hint = “{ $word } 417” for a page, “see { $word }” for “see”.
-picker-kept-words = Kept as words: they match your library. For a page, type “room, 22”.
-picker-practice-offer = Try it here first: press Enter to paste this reference into this line.
+picker-kept-words = Kept as words. For a page, add a comma: “room, 22”.
+picker-practice-offer = Try a paste here first: press Enter.
 # $citation: exactly what Enter would paste.
-picker-practice-pasted = { $citation } — that’s a paste. From now on, Enter pastes where you’re typing.
+picker-practice-pasted = { $citation } pasted here. Next, Enter pastes in your app.
 picker-search-as-typed = Search as typed
 picker-apply-locator = Apply locator to { $key }
 picker-copied = Copied
