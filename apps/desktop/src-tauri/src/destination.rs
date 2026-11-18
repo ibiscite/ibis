@@ -367,11 +367,18 @@ pub(crate) fn present(app: &AppHandle, context: &ibis_engine::app_context::Conte
     let ordinary = lookup(&id).is_none_or(|entry| entry.safety == PasteSafety::Normal);
     let paste = ordinary.then(|| policy.ok().flatten()).flatten();
     let paste_question = lookup(&id).is_none() && paste.is_none() && can_choose_paste;
-    let cited_here = app
-        .state::<crate::session_references::SessionReferences>()
-        .lock()
-        .cited_here(&id.normalized())
-        .len() as u32;
+    // The rows the list would paste: those of the open library, as `session_references` gives them.
+    let cited_here = {
+        use crate::library::engine_library::FileLibrary;
+        let items = app
+            .state::<crate::session_references::SessionReferences>()
+            .lock()
+            .cited_here(&id.normalized());
+        app.state::<ibis_engine::library::Owner>()
+            .current()
+            .and_then(|file| file.session_rows(&items).ok())
+            .map_or(0, |rows| rows.len() as u32)
+    };
     PickerDestination {
         app: Some(name),
         app_id: Some(id.normalized()),

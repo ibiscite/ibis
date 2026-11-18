@@ -297,6 +297,14 @@ test("the Ibis default-format menu saves one output by its name, restores refusa
   expect(await screen.findByRole("button", { name: "In Word, LibreOffice and other documents APA" })).toBeTruthy();
 });
 
+test("Citations shows both formats with nothing saved, key formats first", async () => {
+  const { api } = fakeApi({ granted: true });
+  render(<SettingsApp api={api} initialPage="citations" />);
+  const keys = await screen.findByRole("button", { name: /^In LaTeX, Markdown and Obsidian / });
+  const documents = screen.getByRole("button", { name: /^In Word, LibreOffice and other documents / });
+  expect(keys.compareDocumentPosition(documents) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
 test("a read-only refusal names the file constraint beside the restored control", async () => {
   const { api } = fakeApi({ granted: true });
   render(<SettingsApp api={api} initialPage="look" />);

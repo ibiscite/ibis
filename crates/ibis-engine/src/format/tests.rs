@@ -41,8 +41,8 @@ fn with_nothing_chosen_each_kind_of_app_gets_its_suggestion() {
             target.id
         );
     }
-    // With no app, the engine's default output, a key format.
-    assert_eq!(said(&settings, None), ("pandoc".into(), FormatFrom::Suggestion));
+    // With no app captured (Linux copies for any app), documents.
+    assert_eq!(said(&settings, None), ("apa".into(), FormatFrom::Suggestion));
     // Settings still shows the style for documents.
     assert_eq!(documents(&settings).id.as_deref(), Some("apa"));
 }
@@ -119,6 +119,9 @@ fn projects_are_offered_once_an_app_has_a_second_format_or_one_exists() {
     assert!(accept_suggestion(&mut settings, Some(&word), &suggested));
     assert!(!offers_projects(&settings, Some(&word)));
     // A second one, chosen in Word, beside your usual APA.
+    // An id this Ibis does not list is no format, as `choose` reads it.
+    settings.remember_app_output(&word, "invented-output".into());
+    assert!(!offers_projects(&settings, Some(&word)));
     settings.remember_app_output(&word, "modern-language-association".into());
     assert!(offers_projects(&settings, Some(&word)));
     assert!(!offers_projects(&settings, Some(&app(Macos, "md.obsidian"))));

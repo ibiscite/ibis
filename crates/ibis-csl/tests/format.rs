@@ -1188,3 +1188,23 @@ fn apa_narrative_refuses_name_lists_that_need_a_different_conjunction() {
         assert!(formatter.format(&snapshot, &request).unwrap().copy_content(1).is_some());
     }
 }
+
+#[test]
+fn every_reference_asking_for_its_entry_writes_a_reference_list() {
+    // Paste Reference List: each reference carries the form, the request does not.
+    let _guard = FORMAT_TESTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let formatter = Formatter::new().unwrap();
+    let snapshot = library(&[
+        serde_json::json!({"type": "book", "title": "Synthetic signals", "author": [{"family": "Taylor", "given": "Ada"}], "issued": {"date-parts": [[2026]]}, "publisher": "Imaginary Press"}),
+        serde_json::json!({"type": "book", "title": "Invented noise", "author": [{"family": "Morgan", "given": "Bo"}], "issued": {"date-parts": [[2025]]}, "publisher": "Imaginary Press"}),
+    ]);
+    let mut request = selection(&snapshot, "apa", false);
+    for item in &mut request.items {
+        item.form = Some(CitationForm::BibliographyOnly);
+    }
+    let result = formatter.format(&snapshot, &request).unwrap();
+    assert_eq!(
+        result.text,
+        "Morgan, B. (2025). Invented noise. Imaginary Press.\nTaylor, A. (2026). Synthetic signals. Imaginary Press."
+    );
+}

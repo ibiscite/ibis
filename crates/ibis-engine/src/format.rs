@@ -16,11 +16,16 @@ use ibis_core::destination::{AppId, OutputClass, lookup};
 pub use ibis_core::destination::{FormatChoice, FormatFrom, FormatKind, WritingName};
 
 /// The kind of `app`, what is suggested for it when nothing is chosen, and
-/// whether Ibis knows its kind. An app Ibis does not list, or none, takes keys
-/// (the engine's default output); a listed app of unknown kind (Notepad, a
-/// terminal, an AI app) counts as documents.
+/// whether Ibis knows its kind. An app Ibis does not list takes keys (the
+/// engine's default output). A listed app of unknown kind (Notepad, a
+/// terminal, an AI app) counts as documents, and so does no app at all: with
+/// nothing captured (Linux, or a picker opened from Ibis) the text is copied
+/// for any app.
 fn kind(app: Option<&AppId>) -> (FormatKind, &'static str, bool) {
-    match app.and_then(lookup).map(|entry| entry.output) {
+    let Some(app) = app else {
+        return (FormatKind::Documents, outputs::DEFAULT_STYLE, false);
+    };
+    match lookup(app).map(|entry| entry.output) {
         Some(Some(OutputClass::Key(syntax))) => (FormatKind::Keys, key_id(syntax), true),
         Some(Some(OutputClass::Formatted)) => (FormatKind::Documents, outputs::DEFAULT_STYLE, true),
         Some(None) => (FormatKind::Documents, outputs::DEFAULT_STYLE, false),
@@ -130,9 +135,10 @@ pub fn choose_with(settings: &Settings, app: Option<&AppId>, yours: Option<&Outp
 /// than one kind of document there. A saved project is always offered.
 pub fn offers_projects(settings: &Settings, app: Option<&AppId>) -> bool {
     !settings.device.writings.is_empty()
-        || app.and_then(|app| settings.app_output(app)).is_some_and(|saved| {
-            usual(settings, app).id.as_deref() != Some(saved)
-        })
+        || app
+            .and_then(|app| settings.app_output(app))
+            .and_then(outputs::find)
+            .is_some_and(|saved| usual(settings, app).id.as_deref() != Some(saved.id.as_str()))
 }
 
 fn kind_of(output: &OutputSpec) -> FormatKind {
