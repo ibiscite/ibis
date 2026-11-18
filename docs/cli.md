@@ -267,6 +267,18 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | `ATTACHMENT` | The attachment's id, as ibis outline prints it |
 | `WORDS` | The words to find, ignoring case; quote several words |
 
+**`ibis share`**: Make a pack of references to send: a reading list, a .bib file and, if asked, their PDFs
+
+| Option | Does |
+| --- | --- |
+| `KEY…` | Citation keys of the references, in order |
+| `--keys-from FILE` | Read one citation key per line from FILE, or - for stdin; ignore blanks and # comments |
+| `--to PATH` | Write the pack here, a new zip file or with --folder a new folder; nothing there is replaced |
+| `--pdfs` | Add each reference's PDFs that are inside its library's folder or Zotero's storage |
+| `--folder` | Write a plain folder instead of a zip file |
+| `--style STYLE_ID` | The CSL style of the reading list, default apa; list them with: ibis styles |
+| `--locale LOCALE` | Language of the reading list, such as de-DE; default the style's own |
+
 **`ibis styles`**: Find bundled CSL styles and citation languages
 
 | Option | Does |
