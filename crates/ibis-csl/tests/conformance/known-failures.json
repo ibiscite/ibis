@@ -14,8 +14,5 @@
   ],
   "The pinned citeproc-js writes vertical-align=\"baseline\" as style=\"baseline\", where the suite expects class=\"baseline\"": [
     "decorations_Baseline"
-  ],
-  "Ibis drops a date whose month or day is an empty string, year included, so the citation prints nothing": [
-    "date_EmptyStrings"
   ]
 }
