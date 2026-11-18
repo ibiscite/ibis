@@ -633,9 +633,11 @@ when the PDF has exactly as many pages as Zotero recorded. Otherwise
 `cite_page` is null and the printed page is not known; it is never taken from
 the file's page number.
 
-An attachment id names one attachment in the current library generation.
-Changing its reference, attachment revision, indexed text or PDF file retires
-the id; run `outline` again after a replacement or reindex. It holds no path
+An attachment id names one attachment while its library's content stays the
+same: reloading an unchanged library keeps it. Changing the library, the
+attachment, its indexed text or its PDF file retires the id; run `outline`
+again after a replacement or reindex. A file that cannot be read at the moment
+is reported as such, not as a retired id. It holds no path
 or file location. Links have no text, and EPUB and web snapshots have text only from Zotero's index. Zotero shows
 Reindex Item for a file with no text.
 
