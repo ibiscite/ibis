@@ -50,6 +50,8 @@ pub mod recents;
 pub mod citations;
 pub mod library;
 
+/// The only network client: opt-in DOI lookup (decisions 0008 and 0051).
+pub mod lookup;
 /// Library changes agents propose and the person confirms (decision 0055).
 pub mod write;
 

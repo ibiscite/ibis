@@ -35,6 +35,20 @@ pub fn request_records(library: &LibraryId, records: &[Value]) -> Result<Request
     })
 }
 
+/// Keep only the bibliographic CSL variables of a record another service sent,
+/// each in a shape CSL allows, so a lookup answer meets the same vocabulary as
+/// records sent with a request. Its own `id`, a citation key, notes and file
+/// locations are never taken from a service.
+pub fn bibliographic_fields(record: serde_json::Map<String, Value>) -> serde_json::Map<String, Value> {
+    record
+        .into_iter()
+        .filter(|(name, value)| {
+            !matches!(name.as_str(), "id" | "citation-key" | "file" | "note" | "annote")
+                && field_kind(name).is_some_and(|kind| valid_field(kind, value))
+        })
+        .collect()
+}
+
 /// What [`request_records`] read: the records it kept and why any were not.
 #[derive(Debug, Clone, Default)]
 pub struct RequestRecords {

@@ -18,6 +18,7 @@ mod doctor;
 mod generated;
 mod human;
 mod keys;
+mod lookup;
 mod out;
 pub mod pdf_text;
 mod proposals;
@@ -285,26 +286,7 @@ fn command() -> Command {
                         ])
                         .help("Cite every CSL-JSON record in the array on stdin, with no library; see: ibis schema records"),
                 )
-                .arg(
-                    Arg::new("format")
-                        .long("format")
-                        .value_name("FORMAT")
-                        .help_heading(OUTPUT)
-                        .help(format!(
-                            "Output to write: a key syntax or a common style [default: {}]; list them with: ibis outputs",
-                            ibis_engine::outputs::DEFAULT
-                        ))
-                        .hide_possible_values(true)
-                        .conflicts_with("style")
-                        .value_parser(output_ids()),
-                )
-                .arg(
-                    Arg::new("style")
-                        .long("style")
-                        .value_name("STYLE_ID")
-                        .help_heading(OUTPUT)
-                        .help("Format with any CSL style instead; list them with: ibis styles"),
-                )
+                .args(output_args())
                 .arg(
                     Arg::new("writing").long("writing").value_name("NAME")
                         .help_heading(OUTPUT)
@@ -328,22 +310,7 @@ fn command() -> Command {
                         .help_heading(OUTPUT)
                         .help("Use the format Ibis uses for this app from its settings, a macOS bundle ID or Windows executable; --style or --format stands in for your usual format"),
                 )
-                .arg(
-                    Arg::new("bibliography")
-                        .long("bibliography")
-                        .action(ArgAction::SetTrue)
-                        .conflicts_with("form")
-                        .help_heading(OUTPUT)
-                        .help("Format bibliography entries, in --style or a style --format names"),
-                )
-                .arg(Arg::new("form").long("form").value_name("FORM").help_heading(OUTPUT).help("Citation form [default: normal]").value_parser([
-                    "normal",
-                    "narrative",
-                    "author-only",
-                    "year-only",
-                    "full",
-                    "bibliography-only",
-                ]))
+                .args(form_args())
                 .arg(
                     Arg::new("keep-order")
                         .long("keep-order")
@@ -351,13 +318,7 @@ fn command() -> Command {
                         .help_heading(OUTPUT)
                         .help("Keep the keys in the order given where a style would sort them"),
                 )
-                .arg(
-                    Arg::new("locale")
-                        .long("locale")
-                        .value_name("LOCALE")
-                        .help_heading(OUTPUT)
-                        .help("Language for --style output, such as de-DE; default the style's own. List them with: ibis styles --locales"),
-                )
+                .arg(locale_arg())
                 .arg(
                     Arg::new("locator")
                         .long("locator")
@@ -580,6 +541,7 @@ fn command() -> Command {
         .subcommand(settings_backup::command())
         .subcommand(writings::command())
         .subcommand(proposals::command())
+        .subcommand(lookup::command())
         .subcommand(
             Command::new("completions").about("Print shell completions").arg(
                 Arg::new("shell")
@@ -822,6 +784,20 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
                 mode,
             )
         }
+        Ok(Execution::Lookup(result, citing, note)) => emit(
+            json,
+            Ok(result),
+            Some(&citing),
+            Presentation {
+                libraries: &libraries,
+                terminal_summary: false,
+                notes: &[note],
+                keys_only: false,
+            },
+            &mut output,
+            &mut errors,
+            mode,
+        ),
         Err(failure) if matches.subcommand_name() == Some("serve") => {
             let error = failure.error;
             if protocol::write_frame(&mut output, &ibis_engine::rpc::failure(None, error)).is_err() {
@@ -903,6 +879,7 @@ fn command_help(program: &str, target: Option<&String>) -> DispatchResult {
 enum Response {
     Engine(Reply),
     Writing(Box<ibis_engine::WritingCitation>),
+    Lookup(Box<lookup::Looked>),
     Local(Value),
 }
 type DispatchResult = ibis_engine::DispatchResult<Response>;
@@ -922,6 +899,8 @@ fn dispatch(
 enum Execution {
     Search(DispatchResult, Vec<String>),
     Result(DispatchResult, Option<human::Citing>),
+    /// A DOI's citation, with where its record came from.
+    Lookup(DispatchResult, human::Citing, String),
     Stdio(u8),
 }
 
@@ -1154,6 +1133,9 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
     if name == "proposals" {
         return Ok(Execution::Result(local(proposals::run(args)?), None));
     }
+    if name == "lookup" {
+        return lookup::run(engine, args, input, errors, mode);
+    }
     if name == "completions" {
         let shell = args
             .get_one::<String>("shell")
@@ -1284,7 +1266,7 @@ fn open_libraries(
         .and_then(|call| call.get_one::<String>("method"));
     let reads_app = matches!(
         name,
-        "search" | "show" | "cite" | "entry" | "libraries" | "outline" | "read" | "find-in"
+        "search" | "show" | "cite" | "entry" | "libraries" | "outline" | "read" | "find-in" | "lookup"
     ) || called.is_some_and(|called| {
         matches!(
             called.as_str(),
@@ -1885,6 +1867,58 @@ fn request_citing(params: &Value) -> Option<human::Citing> {
     })
 }
 /// The output `--style` or `--format` names, or the default.
+/// `--format` and `--style`: what `cite` and `lookup` write.
+fn output_args() -> [Arg; 2] {
+    [
+        Arg::new("format")
+            .long("format")
+            .value_name("FORMAT")
+            .help_heading(OUTPUT)
+            .help(format!(
+                "Output to write: a key syntax or a common style [default: {}]; list them with: ibis outputs",
+                ibis_engine::outputs::DEFAULT
+            ))
+            .hide_possible_values(true)
+            .conflicts_with("style")
+            .value_parser(output_ids()),
+        Arg::new("style")
+            .long("style")
+            .value_name("STYLE_ID")
+            .help_heading(OUTPUT)
+            .help("Format with any CSL style instead; list them with: ibis styles"),
+    ]
+}
+/// `--bibliography` and `--form`, read by [`chosen_form`].
+fn form_args() -> [Arg; 2] {
+    [
+        Arg::new("bibliography")
+            .long("bibliography")
+            .action(ArgAction::SetTrue)
+            .conflicts_with("form")
+            .help_heading(OUTPUT)
+            .help("Format bibliography entries, in --style or a style --format names"),
+        Arg::new("form")
+            .long("form")
+            .value_name("FORM")
+            .help_heading(OUTPUT)
+            .help("Citation form [default: normal]")
+            .value_parser([
+                "normal",
+                "narrative",
+                "author-only",
+                "year-only",
+                "full",
+                "bibliography-only",
+            ]),
+    ]
+}
+fn locale_arg() -> Arg {
+    Arg::new("locale")
+        .long("locale")
+        .value_name("LOCALE")
+        .help_heading(OUTPUT)
+        .help("Language for --style output, such as de-DE; default the style's own. List them with: ibis styles --locales")
+}
 fn chosen_output(args: &ArgMatches) -> Result<OutputSpec, Failure> {
     Ok(
         match (args.get_one::<String>("style"), args.get_one::<String>("format")) {
@@ -2103,6 +2137,10 @@ fn emit(
         if !json && let (Ok(result), Some(citing)) = (&result, citing) {
             let (citation, writing) = match &result.data {
                 Response::Engine(Reply::Citation(result)) => (Some(&result.value), None),
+                Response::Lookup(looked) => match &looked.citation {
+                    Reply::Citation(result) => (Some(&result.value), None),
+                    _ => (None, None),
+                },
                 Response::Writing(writing) => (Some(&writing.citation), Some(writing)),
                 _ => (None, None),
             };

@@ -242,6 +242,17 @@ impl EngineError {
                 ErrorReason::NoAttachmentText => R::ReviewLibrary,
                 ErrorReason::AttachmentOutsideLibrary => R::ReviewSettings,
                 ErrorReason::NoSuchPages => R::EditInput,
+                ErrorReason::NotADoi
+                | ErrorReason::DoiNotFound
+                | ErrorReason::LookupTooLarge
+                | ErrorReason::LookupMalformed => R::EditInput,
+                ErrorReason::LookupOff | ErrorReason::LookupUnconfirmed | ErrorReason::LookupDeclined => {
+                    R::ReviewSettings
+                }
+                ErrorReason::LookupUnreachable
+                | ErrorReason::LookupTimeout
+                | ErrorReason::LookupRateLimited
+                | ErrorReason::LookupUnavailable => R::Retry,
             };
             return RecoveryInfo::new(&format!("reason-{}", name(reason)), recovery);
         }

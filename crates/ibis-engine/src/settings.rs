@@ -429,6 +429,14 @@ pub struct Device {
     /// library file's folder or Zotero's storage folder, on this computer only.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub attachment_text_outside_library: bool,
+    /// Online lookup (decision 0008). `None` means the person has not been
+    /// asked, which is off: nothing is ever sent until they say yes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub online_lookup: Option<bool>,
+    /// The person was told what the first DOI lookup sends, and where, and
+    /// agreed (decision 0008: ask before the first use of each lookup).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub doi_lookup_confirmed: bool,
 }
 
 /// The most libraries `attachment_text` may name.
@@ -1158,6 +1166,17 @@ mod tests {
         );
         let backup = super::backup::export(&settings, "0.0.0").unwrap();
         assert!(!backup.contains("attachment_text_outside_library"));
+    }
+    #[test]
+    fn online_lookup_is_off_until_chosen_and_never_travels_in_a_backup() {
+        let defaults = super::parse(r#"{"schema_version":2}"#).unwrap();
+        assert_eq!(defaults.device.online_lookup, None);
+        assert!(!defaults.device.doi_lookup_confirmed);
+        let settings =
+            super::parse(r#"{"schema_version":2,"online_lookup":true,"doi_lookup_confirmed":true}"#).unwrap();
+        assert_eq!(settings.device.online_lookup, Some(true));
+        let backup = super::backup::export(&settings, "0.0.0").unwrap();
+        assert!(!backup.contains("online_lookup") && !backup.contains("doi_lookup"));
     }
     use super::*;
 
