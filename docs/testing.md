@@ -118,7 +118,16 @@ Linux release checks (release mode, minimum Rust, budgets) must all pass, so a
 release tag never meets a check its commits skipped. Every PR before it can
 merge, and every push to main, runs `Rust and desktop` on Ubuntu, macOS and
 Windows, one job per system so each takes a single runner; a newer push to a PR
-cancels its superseded run. Fork PRs skip every job, so their **CI result** fails; they keep read-only title
+cancels its superseded run. A PR runs only the jobs its changed paths can affect: **Plan the checks**
+(`scripts/ci-plan.mjs`) skips the Rust and picture jobs for prose under `docs/` or
+the root `*.md` files, the workspace lint and tests for a change to the app alone,
+and the pictures without an interface change. Any other, generated or shared
+path (Cargo files, toolchain, `build.rs`, `fixtures/`, `.github/`, `scripts/`,
+`locales/`, `website/`, `plugins/`, `brand/`) and anything it cannot read runs the
+full suite, as do main, schedules, manual runs, the `ci:full` label (then push
+again) and the repository variable `CI_SELECTION=full`. **CI result** checks each
+planned job as selected-and-passed or not-selected-and-skipped.
+Fork PRs skip every job, so their **CI result** fails; they keep read-only title
 feedback.
 
 

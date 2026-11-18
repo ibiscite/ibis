@@ -77,16 +77,52 @@ class CiResultTest(unittest.TestCase):
         self.assertEqual(events["push"], {"branches": ["main"]})
         self.assertEqual(events["pull_request"], {"branches": ["main"]})
         jobs = self.workflow["jobs"]
-        for name in ["interface", "rust", "web", "pictures", "dependencies"]:
+        for name in ["plan", "interface", "web", "dependencies"]:
             self.assertEqual(jobs[name]["if"], FORK_GUARD)
+        # Planned jobs need the plan, which a fork's run skips, so they skip too.
+        self.assertEqual(jobs["rust"]["if"], "needs.plan.outputs.rust == 'true'")
+        self.assertEqual(jobs["pictures"]["if"], "needs.plan.outputs.pictures == 'true'")
         self.assertEqual(jobs["rust"]["strategy"]["matrix"]["os"], ["ubuntu-24.04", "macos-15", "windows-2025"])
-        self.assertEqual(jobs["rust"]["needs"], "interface")
+        self.assertEqual(jobs["rust"]["needs"], ["plan", "interface"])
+        self.assertEqual(jobs["pictures"]["needs"], "plan")
         self.assertEqual(jobs["release-checks"]["if"], FORK_GUARD)
 
     def test_a_newer_push_replaces_a_pull_requests_run_but_never_mains(self):
         concurrency = self.workflow["concurrency"]
         self.assertEqual(concurrency["group"], "ci-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}")
         self.assertEqual(concurrency["cancel-in-progress"], "${{ github.event_name == 'pull_request' }}")
+
+    def test_the_plan_selects_jobs_and_ci_result_checks_each_selection(self):
+        jobs = self.workflow["jobs"]
+        plan = jobs["plan"]
+        self.assertEqual(plan["outputs"], {name: f"${{{{ steps.plan.outputs.{name} }}}}" for name in ["rust", "workspace", "pictures"]})
+        checkout = next(step for step in plan["steps"] if "actions/checkout@" in step.get("uses", ""))
+        self.assertEqual(checkout["with"]["fetch-depth"], 2)
+        self.assertNotIn("ref", checkout["with"])
+        choose = next(step for step in plan["steps"] if step.get("id") == "plan")
+        self.assertEqual(choose["run"], "node scripts/ci-plan.mjs")
+        self.assertEqual(choose["env"]["EVENT"], "${{ github.event_name }}")
+        self.assertEqual(choose["env"]["LABELS"], "${{ toJSON(github.event.pull_request.labels.*.name) }}")
+        self.assertEqual(choose["env"]["SELECTION"], "${{ vars.CI_SELECTION }}")
+        self.assertFalse(choose.get("continue-on-error", False))
+        result = next(step for step in jobs["result"]["steps"] if step.get("run") == "scripts/ci-result.sh")
+        self.assertEqual(result["env"]["SELECTED"], "rust:${{ needs.plan.outputs.rust }}:${{ needs.rust.result }} pictures:${{ needs.plan.outputs.pictures }}:${{ needs.pictures.result }}")
+        self.assertEqual(result["env"]["RESULTS"], " ".join(f"${{{{ needs.{name}.result }}}}" for name in ["plan", "interface", "web", "dependencies", "release-checks"]))
+        # Every job the result needs is either always required, planned or qualification.
+        planned = {"rust", "pictures"}
+        qualification = {"webkit", "bibtex-fuzz", "installed"}
+        self.assertEqual(set(jobs["result"]["needs"]), {"plan", "interface", "web", "dependencies", "release-checks", "conformance"} | planned | qualification)
+        for name, job in jobs.items():
+            if "needs.plan.outputs" in str(job.get("if", "")):
+                self.assertIn(name, planned)
+
+    def test_only_workspace_steps_follow_the_workspace_selection(self):
+        steps = self.workflow["jobs"]["rust"]["steps"]
+        conditional = {step["name"] for step in steps if "needs.plan.outputs.workspace" in str(step.get("if", ""))}
+        self.assertEqual(conditional, {"Lint the workspace", "Test", "Install Pandoc", "Compare rendering from BibTeX and from CSL export"})
+        by_name = {step.get("name"): step for step in steps}
+        for name in ["Lint the app", "Test and build the app", "Check generated files (Linux)", "Format"]:
+            self.assertNotIn("needs.plan", str(by_name[name].get("if", "")), name)
 
     def test_dependency_rules_and_identities_remain_in_confirmation(self):
         jobs = self.workflow["jobs"]

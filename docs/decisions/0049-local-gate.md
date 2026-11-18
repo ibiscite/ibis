@@ -1,5 +1,14 @@
 # 0049 Local machines gate merges (superseded)
 
+2026-11-18 (maintainer): a pull request runs the jobs its changed paths can
+affect. `scripts/ci-plan.mjs` maps each path to a crate (and every crate that
+depends on it, from `cargo metadata`), the interface or prose; any other path,
+anything generated or shared, and anything it cannot read selects the full
+suite. Main, schedules, manual runs, the `ci:full` label and the repository
+variable `CI_SELECTION=full` always run everything. **CI result** passes only
+if every selected job passed and every other planned job was skipped. This
+replaces the 2026-11-13 deletion of the path classifier.
+
 2026-11-18 (maintainer): every PR tests all three systems before it can merge,
 and macOS runs on GitHub's hosted runners again: one self-hosted Mac served every
 PR's macOS job in turn and became the queue. The repository variable `RUNNERS`

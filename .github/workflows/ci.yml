@@ -26,6 +26,34 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
+  # Which jobs this change can affect (scripts/ci-plan.mjs); anything uncertain,
+  # and every main, scheduled or manual run, selects the full suite.
+  plan:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    name: Plan the checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      rust: ${{ steps.plan.outputs.rust }}
+      workspace: ${{ steps.plan.outputs.workspace }}
+      pictures: ${{ steps.plan.outputs.pictures }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2 # A pull request's merge commit and the base it merges into.
+
+      - name: Choose the checks
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          SELECTION: ${{ vars.CI_SELECTION }}
+          # The runner's own stable Cargo reads the workspace without installing the pinned toolchain.
+          RUSTUP_TOOLCHAIN: stable
+        run: node scripts/ci-plan.mjs
+
   interface:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Build the web interface
@@ -129,7 +157,8 @@ jobs:
           node ../../scripts/picker-budget.mjs dist
 
   pictures:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: plan
+    if: needs.plan.outputs.pictures == 'true'
     name: Picture gate
     runs-on: ubuntu-24.04
     container:
@@ -176,9 +205,9 @@ jobs:
           retention-days: 14
 
   rust:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: [plan, interface]
+    if: needs.plan.outputs.rust == 'true'
     name: Rust and desktop (${{ matrix.os }})
-    needs: interface
     # RUNNERS can send macOS jobs to our own Mac. Dependabot PRs stay hosted.
     runs-on: ${{ matrix.os == 'macos-15' && github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON(vars.RUNNERS || '{}')['macos-15'] || matrix.os }}
     timeout-minutes: 45
@@ -254,12 +283,15 @@ jobs:
           path: apps/desktop/dist
 
       # Compile every test target first so contract errors report early on every system.
-      - name: Lint
-        run: |
-          cargo clippy --all-targets --locked
-          cargo clippy -p ibis-desktop -p ibis-desktop-macros --all-targets --locked
+      - name: Lint the workspace
+        if: needs.plan.outputs.workspace == 'true'
+        run: cargo clippy --all-targets --locked
+
+      - name: Lint the app
+        run: cargo clippy -p ibis-desktop -p ibis-desktop-macros --all-targets --locked
 
       - name: Test
+        if: needs.plan.outputs.workspace == 'true'
         run: cargo test --locked
 
       - name: Test and build the app
@@ -273,11 +305,11 @@ jobs:
       # Installed only after cargo test: with Pandoc present, cargo test also runs the
       # syntax_contract consumer tests, which fail on Ubuntu's older Pandoc.
       - name: Install Pandoc
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && needs.plan.outputs.workspace == 'true'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pandoc
 
       - name: Compare rendering from BibTeX and from CSL export
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && needs.plan.outputs.workspace == 'true'
         env:
           IBIS_REQUIRE_PANDOC: "1"
         run: cargo test -p ibis --test fidelity --locked
@@ -599,7 +631,7 @@ jobs:
   result:
     name: CI result
     if: always()
-    needs: [interface, rust, web, pictures, webkit, dependencies, release-checks, bibtex-fuzz, installed, conformance]
+    needs: [plan, interface, rust, web, pictures, webkit, dependencies, release-checks, bibtex-fuzz, installed, conformance]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -612,7 +644,9 @@ jobs:
 
       - name: Require every CI job to pass
         env:
-          RESULTS: ${{ needs.interface.result }} ${{ needs.rust.result }} ${{ needs.web.result }} ${{ needs.pictures.result }} ${{ needs.dependencies.result }} ${{ needs.release-checks.result }}
+          RESULTS: ${{ needs.plan.result }} ${{ needs.interface.result }} ${{ needs.web.result }} ${{ needs.dependencies.result }} ${{ needs.release-checks.result }}
+          # Each planned job as name:selected:result; see scripts/ci-result.sh.
+          SELECTED: rust:${{ needs.plan.outputs.rust }}:${{ needs.rust.result }} pictures:${{ needs.plan.outputs.pictures }}:${{ needs.pictures.result }}
           QUALIFICATION: ${{ needs.webkit.result }} ${{ needs.bibtex-fuzz.result }} ${{ needs.installed.result }}
           CSL: ${{ needs.conformance.result }}
           EVENT: ${{ github.event_name }}
