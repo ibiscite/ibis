@@ -33,7 +33,7 @@ mod receipt;
 pub use prepared::{CitationCommitError, PreparedCitation};
 mod document;
 pub use document::{
-    DocumentCitation, DocumentProblem, DocumentReply, DocumentRequest, KeyProblem,
+    FormatIssue, FormatOutcome, FormatPlace, FormatRefusal, FormatReport, FormatRequest, Issue, KeyProblem,
 };
 mod project;
 mod reading;
@@ -351,6 +351,8 @@ pub struct Engine {
     watch_files: bool,
     /// Reads PDFs in a child process; without one, PDFs stay unread.
     pdf: Option<ibis_sources::pdf::PdfReader>,
+    /// Reads and writes Word and OpenDocument files in a child process.
+    office: Option<ibis_sources::office::OfficeReader>,
     attachment_text_outside_library: bool,
 }
 impl Engine {
@@ -369,6 +371,12 @@ impl Engine {
     /// never parses a PDF itself.
     pub fn with_pdf_reader(mut self, program: std::path::PathBuf) -> Self {
         self.pdf = Some(ibis_sources::pdf::PdfReader::new(program));
+        self
+    }
+    /// Read and write `ibis format`'s documents with `program`, an `ibis`
+    /// executable started as a short-lived child for each request.
+    pub fn with_office_reader(mut self, program: std::path::PathBuf) -> Self {
+        self.office = Some(ibis_sources::office::OfficeReader::new(program));
         self
     }
     /// Explicit device permission for the attachment text tools to read
@@ -407,6 +415,7 @@ impl Engine {
             resources: Arc::new(sources::Owners::default()),
             watch_files: true,
             pdf: None,
+            office: None,
             attachment_text_outside_library: false,
         }
     }

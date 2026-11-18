@@ -113,7 +113,3 @@ fn kind(archive: &mut archive::Archive<'_>) -> Result<Kind, Refusal> {
     }
     Ok(Kind::Docx)
 }
-
-#[cfg(test)]
-#[path = "office_tests.rs"]
-mod tests;

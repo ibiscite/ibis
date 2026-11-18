@@ -152,3 +152,94 @@ pub fn checked(scanned: Scanned) -> Result<Scanned, Refusal> {
     }
     Ok(scanned)
 }
+
+/// The document at `path`: a regular local file, never a link, network or
+/// placeholder file, at most [`MAX_FILE_BYTES`]. Read once; the child gets
+/// these same bytes for both requests.
+pub fn read(path: &std::path::Path, cancelled: std::sync::Arc<dyn Fn() -> bool + Send + Sync>) -> Result<Vec<u8>, Refusal> {
+    use crate::zotero_local::closed::{ClosedError, with_local_file};
+    use std::io::Read;
+    let read = with_local_file(path, cancelled, std::time::Duration::from_secs(10), |file| {
+        let mut bytes = Vec::new();
+        file.take(MAX_FILE_BYTES + 1).read_to_end(&mut bytes).map(|_| bytes)
+    })
+    .map_err(|error| match error {
+        ClosedError::NotFound => Refusal::Missing,
+        ClosedError::TimedOut | ClosedError::Cancelled => Refusal::TimedOut,
+        _ => Refusal::NotLocal,
+    })?
+    .ok_or(Refusal::Missing)?
+    .map_err(|_| Refusal::NotLocal)?;
+    if read.len() as u64 > MAX_FILE_BYTES {
+        return Err(Refusal::TooLarge);
+    }
+    Ok(read)
+}
+
+/// Runs `ibis __office` for each request (decision 0055).
+#[derive(Clone)]
+pub struct OfficeReader {
+    program: std::path::PathBuf,
+}
+impl std::fmt::Debug for OfficeReader {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("OfficeReader { private }")
+    }
+}
+
+impl OfficeReader {
+    pub fn new(program: std::path::PathBuf) -> Self {
+        Self { program }
+    }
+
+    /// Every paragraph of `document`, the body's first.
+    pub fn scan(&self, document: &[u8], cancelled: &dyn Fn() -> bool) -> Result<Scanned, Refusal> {
+        match self.exchange(&Command::Scan, document, cancelled)? {
+            (Answer::Scanned(scanned), rest) if rest.is_empty() => checked(scanned),
+            _ => Err(Refusal::Damaged),
+        }
+    }
+
+    /// `document` with `edits` applied.
+    pub fn write(&self, document: &[u8], edits: &Edits, cancelled: &dyn Fn() -> bool) -> Result<Vec<u8>, Refusal> {
+        match self.exchange(&Command::Write(edits.clone()), document, cancelled)? {
+            (Answer::Written(length), rest) if rest.len() as u64 == length => Ok(rest),
+            _ => Err(Refusal::Damaged),
+        }
+    }
+
+    /// One request and the child's answer line, then the bytes after it.
+    fn exchange(&self, command: &Command, document: &[u8], cancelled: &dyn Fn() -> bool) -> Result<(Answer, Vec<u8>), Refusal> {
+        let framed = frame(command, document).map_err(|_| Refusal::TooLarge)?;
+        let answer = crate::child::run(
+            &self.program,
+            &[CHILD_ARGUMENT],
+            crate::child::Input::Bytes(framed),
+            DEADLINE,
+            cancelled,
+            MAX_ANSWER_BYTES,
+        )
+        .map_err(|failure| match failure {
+            crate::child::Failure::TimedOut => Refusal::TimedOut,
+            crate::child::Failure::TooLarge => Refusal::TooLarge,
+            crate::child::Failure::Unavailable => Refusal::Unavailable,
+            crate::child::Failure::Failed => Refusal::Damaged,
+        })?;
+        let line = answer.iter().position(|byte| *byte == b'\n').ok_or(Refusal::Damaged)?;
+        let parsed: Answer = serde_json::from_slice(&answer[..line]).map_err(|_| Refusal::Damaged)?;
+        let rest = answer[line + 1..].to_vec();
+        match parsed {
+            // These refusals belong to the parent, never the child.
+            Answer::Refused(Refusal::Missing | Refusal::NotLocal | Refusal::TimedOut | Refusal::Unavailable) => {
+                Err(Refusal::Damaged)
+            }
+            Answer::Refused(refusal) => Err(refusal),
+            answer => Ok((answer, rest)),
+        }
+    }
+}
+
+/// How long one request may take.
+pub const DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
+// The new document, with room for its answer line.
+const MAX_ANSWER_BYTES: u64 = 2 * MAX_FILE_BYTES + MAX_TEXT_BYTES as u64 + 1024 * 1024;

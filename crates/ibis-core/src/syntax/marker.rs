@@ -36,7 +36,8 @@ pub struct MarkerCite {
 }
 
 /// Why text that starts a citation is not one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum MarkerProblemKind {
     /// `[@key` with no closing bracket.
     Unclosed,

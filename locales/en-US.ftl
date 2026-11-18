@@ -1587,6 +1587,46 @@ cli-key-option-repeated = --{ $flag } is given twice for '{ $key }'.
 cli-locator-unreadable = --locator '{ $locator }' is not a locator Ibis reads; write it like "p. 12", "ch. 3" or "12-14".
 cli-method-unknown = there is no method '{ $method }'; choose one of: { $names }
 cli-style-unknown = there is no style '{ $style }'; list the styles with: ibis styles
+cli-format-written =
+    { $path }: { $citations-plural ->
+        [one] { $citations } citation
+       *[other] { $citations } citations
+    } and { $references-plural ->
+        [one] { $references } reference
+       *[other] { $references } references
+    } in { $style }.
+cli-format-left = markers outside the body text were left as they are; only body text and tables are formatted:
+cli-format-place = { $part } paragraph { $paragraph }, character { $column }, { $text }
+cli-format-markers = { $path } was not written; fix these markers in the original and run again:
+cli-format-unclosed = the marker has no closing ]
+cli-format-without-key = a part of the marker has no @key; separate references with ;
+cli-format-two-keys = two keys need a ; between them
+cli-format-locator = the braced locator is not a page or other location
+cli-format-too-long = this paragraph is too long to read for markers
+cli-format-second-bibliography = only one [bibliography] paragraph can hold the reference list
+cli-format-key-missing = no open library has the key { $key }
+cli-format-key-ambiguous = several references have the key { $key }
+cli-format-key-duplicate = a library repeats the key { $key }, so Ibis reads neither
+cli-format-key-damaged = the library entry for { $key } could not be read
+cli-format-key-cut-short = a library was too large to read whole, so { $key } may be in it
+cli-format-key-invalid = { $key } is not a usable citation key
+cli-format-key-locator = { $style } leaves out the locator for { $key }
+cli-format-missing = nothing is at { $path }
+cli-format-not-local = { $path } is not a plain file on this computer
+cli-format-not-office = { $path } is not a Word (.docx) or LibreOffice (.odt) text document
+cli-format-unsupported = { $path } has macros, is encrypted or is not a text document; save a plain .docx or .odt copy and use that
+cli-format-damaged = { $path } could not be read as a document; it may be damaged
+cli-format-unsafe = { $path } holds entries Word and LibreOffice never write, so Ibis does not read it
+cli-format-too-large = { $path } is larger than Ibis reads: at most 64 MiB, with at most 64 MiB of text
+cli-format-timed-out = reading { $path } took too long
+cli-format-unavailable = the copy could not be made just now; try again
+cli-format-no-markers = { $path } has no citation markers such as [@key] in its body text
+cli-format-note-style = { $style } writes citations as footnotes, which ibis format does not do yet; choose an in-text style such as apa or ieee
+cli-format-style-cannot = { $style } could not write this document's citations; choose another style
+cli-format-exists = { $path } already exists; choose a new name, nothing is replaced
+cli-format-same-file = the copy needs its own name; the original is never changed
+cli-format-kind = give the copy the original's extension: .docx for Word, .odt for LibreOffice
+cli-format-unwritable = { $path } could not be written; check the folder exists and can be written
 cli-locale-unknown = there is no locale '{ $locale }'; list them with: ibis styles --locales
 cli-params-help = --params must be the JSON parameters of { $method }; see: ibis schema { $method }
 cli-source-findings = note: a library has warnings or could not refresh; see: ibis libraries{ $libraries }{ $json }
