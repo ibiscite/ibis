@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.3.11](https://github.com/ibiscite/ibis/compare/v0.3.10...v0.3.11) (2026-11-18)
+
+
+### Features
+
+* **design:** local design playground ([#1974](https://github.com/ibiscite/ibis/issues/1974)) ([0b4f4a3](https://github.com/ibiscite/ibis/commit/0b4f4a3206c272e3204ed30cf7434eb548097549))
+
+
+### Bug Fixes
+
+* **deps:** drop chrono from the command line and record its advisory ([#1992](https://github.com/ibiscite/ibis/issues/1992)) ([a2f6808](https://github.com/ibiscite/ibis/commit/a2f6808d7fe7172a9819fcc1623e261107a758bc))
+* **design:** the playground keeps a scenario's own text size ([#1976](https://github.com/ibiscite/ibis/issues/1976)) ([750c158](https://github.com/ibiscite/ibis/commit/750c158473ba891f9425cc13eda2ae74d6d50d2b))
+* **nix:** refresh the pnpm dependency hash ([#1980](https://github.com/ibiscite/ibis/issues/1980)) ([b7e80f6](https://github.com/ibiscite/ibis/commit/b7e80f6f3d5e71ef9f81164874468ca767e4d353))
+* the safety batch ([#1969](https://github.com/ibiscite/ibis/issues/1969)) ([5c00bdf](https://github.com/ibiscite/ibis/commit/5c00bdfc2c0d9abbef81f5e3651293cf37ebf0c1))
+
+
+### Performance
+
+* commands off the main thread ([#1975](https://github.com/ibiscite/ibis/issues/1975)) ([3613e88](https://github.com/ibiscite/ibis/commit/3613e886cc5062aba18bb65367172d7327a819c4))
+
+
+### Documentation
+
+* **roadmap:** 0.4 order, first user and feel from the maintainer ([#1986](https://github.com/ibiscite/ibis/issues/1986)) ([dfe85d9](https://github.com/ibiscite/ibis/commit/dfe85d979bf53c8655e7ac3168b574605ff3992f)), closes [#1300](https://github.com/ibiscite/ibis/issues/1300)
+
 ## [0.3.10](https://github.com/ibiscite/ibis/compare/v0.3.9...v0.3.10) (2026-11-16)
 
 

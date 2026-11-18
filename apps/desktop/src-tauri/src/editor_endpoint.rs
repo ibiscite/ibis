@@ -603,9 +603,9 @@ pub(crate) fn apply_file_setting(app: &AppHandle, expected: Option<EditorEndpoin
 /// Put the address on the clipboard for pasting into an editor's settings.
 #[tauri::command]
 #[ibis_desktop_macros::command(main)]
-pub(crate) fn copy_editor_endpoint(app: AppHandle) -> Result<(), String> {
-    let url = status(&app).url.ok_or("The editor endpoint is off.")?;
-    crate::copy::write_plain(&app, &url)
+pub(crate) fn copy_editor_endpoint(app: AppHandle) -> Result<(), crate::errors::NativeFailure> {
+    let url = status(&app).url.ok_or(crate::errors::NativeFailure)?;
+    crate::copy::write_plain(&app, &url).map_err(|_| crate::errors::NativeFailure)
 }
 
 /// A waiting editor, for the picker to name. Each request has its own number,

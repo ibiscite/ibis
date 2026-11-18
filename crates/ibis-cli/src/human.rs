@@ -520,8 +520,12 @@ pub(super) fn search_notes(
                 .unwrap_or_else(|| "A library".into());
             let time = i64::try_from(*last_successful_read_ms)
                 .ok()
-                .and_then(chrono::DateTime::from_timestamp_millis)
-                .map(|time| time.with_timezone(&chrono::Local).format("%-I:%M %p").to_string());
+                .and_then(|ms| jiff::Timestamp::from_millisecond(ms).ok())
+                .map(|time| {
+                    time.to_zoned(jiff::tz::TimeZone::system())
+                        .strftime("%-I:%M %p")
+                        .to_string()
+                });
             Some(match time {
                 Some(time) => cli("cli-search-stale-at", &[("name", &name), ("time", &time)]),
                 None => cli("cli-search-stale", &[("name", &name)]),

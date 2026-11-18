@@ -1,15 +1,16 @@
 //! Fixed native command locations; Settings never supplies a path or executable.
+use crate::errors::NativeFailure;
 use ibis_core::command_install::{CommandInstall, CommandStatus, PROFILE_LINE};
 use tauri::Manager;
 
-fn installer(app: &tauri::AppHandle) -> Result<CommandInstall, String> {
-    let home = app.path().home_dir().map_err(|_| "Could not find your home folder.")?;
-    let exe = std::env::current_exe().map_err(|_| "Could not find the Ibis app.")?;
-    let directory = exe.parent().ok_or("Could not find the Ibis app.")?;
+fn installer(app: &tauri::AppHandle) -> Result<CommandInstall, NativeFailure> {
+    let home = app.path().home_dir().map_err(|_| NativeFailure)?;
+    let exe = std::env::current_exe().map_err(|_| NativeFailure)?;
+    let directory = exe.parent().ok_or(NativeFailure)?;
     let bundled = if cfg!(target_os = "linux") {
         app.path()
             .resource_dir()
-            .map_err(|_| "Could not find the bundled command.")?
+            .map_err(|_| NativeFailure)?
             .join("binaries/ibis")
     } else {
         directory.join(format!("ibis{}", std::env::consts::EXE_SUFFIX))
@@ -50,12 +51,10 @@ fn installer(app: &tauri::AppHandle) -> Result<CommandInstall, String> {
 
 /// Connections use the installer's discovery locations, plus the per-user
 /// command even when a Dock-launched app has not inherited that PATH yet.
-pub(crate) fn agent_home(app: &tauri::AppHandle) -> Result<ibis_engine::agent_apps::Home, String> {
+pub(crate) fn agent_home(app: &tauri::AppHandle) -> Result<ibis_engine::agent_apps::Home, NativeFailure> {
     agent_environment(
         installer(app)?,
-        app.path()
-            .config_dir()
-            .map_err(|_| "Could not find your settings folder.")?,
+        app.path().config_dir().map_err(|_| NativeFailure)?,
         std::env::var_os("CODEX_HOME")
             .map(std::path::PathBuf::from)
             .filter(|path| path.is_absolute()),
@@ -66,8 +65,8 @@ fn agent_environment(
     install: CommandInstall,
     config: std::path::PathBuf,
     codex_home: Option<std::path::PathBuf>,
-) -> Result<ibis_engine::agent_apps::Home, String> {
-    let status = install.status().map_err(|_| "Could not check the ibis command.")?;
+) -> Result<ibis_engine::agent_apps::Home, NativeFailure> {
+    let status = install.status().map_err(|_| NativeFailure)?;
     let destination = install.destination();
     let bundled = (!install.temporary()).then_some(install.bundled);
     let mut path = install.path;
@@ -99,7 +98,7 @@ fn with_registered_path(
 }
 
 #[cfg(target_os = "windows")]
-fn registered_user_path() -> Result<Option<std::ffi::OsString>, String> {
+fn registered_user_path() -> Result<Option<std::ffi::OsString>, NativeFailure> {
     use winsafe::{HKEY, RegistryValue, co};
     match HKEY::CURRENT_USER.RegGetValue(
         Some("Environment"),
@@ -109,21 +108,21 @@ fn registered_user_path() -> Result<Option<std::ffi::OsString>, String> {
         Ok(RegistryValue::Sz(path)) => Ok(Some(path.into())),
         Ok(RegistryValue::ExpandSz(path)) => winsafe::ExpandEnvironmentStrings(&path)
             .map(|path| Some(path.into()))
-            .map_err(|_| "Could not read the installed command's PATH.".into()),
+            .map_err(|_| NativeFailure),
         Err(error) if error == co::ERROR::FILE_NOT_FOUND => Ok(None),
-        _ => Err("Could not read the installed command's PATH.".into()),
+        _ => Err(NativeFailure),
     }
 }
 
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn cli_status(app: tauri::AppHandle) -> Result<CommandStatus, String> {
+pub(crate) async fn cli_status(app: tauri::AppHandle) -> Result<CommandStatus, NativeFailure> {
     operation(app, Step::Status).await
 }
 
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn set_cli_installed(app: tauri::AppHandle, installed: bool) -> Result<CommandStatus, String> {
+pub(crate) async fn set_cli_installed(app: tauri::AppHandle, installed: bool) -> Result<CommandStatus, NativeFailure> {
     operation(app, if installed { Step::Install } else { Step::Remove }).await
 }
 
@@ -145,7 +144,7 @@ enum Step {
     Keep,
 }
 
-async fn operation(app: tauri::AppHandle, step: Step) -> Result<CommandStatus, String> {
+async fn operation(app: tauri::AppHandle, step: Step) -> Result<CommandStatus, NativeFailure> {
     static OWNER: tauri::async_runtime::Mutex<()> = tauri::async_runtime::Mutex::const_new(());
     // Lock before scheduling workers so a later removal cannot overtake an install.
     with_owner(&OWNER, move || {
@@ -156,25 +155,25 @@ async fn operation(app: tauri::AppHandle, step: Step) -> Result<CommandStatus, S
             Step::Remove => install.remove(),
             Step::Keep => install.keep_installed(),
         }
-        .map_err(|_| "Could not change the ibis command. Check the folder permissions and try again.".into())
+        .map_err(|_| NativeFailure)
     })
     .await
 }
 
-pub(crate) async fn with_owner<T: Send + 'static>(
+pub(crate) async fn with_owner<T: Send + 'static, E: From<NativeFailure> + Send + 'static>(
     owner: &tauri::async_runtime::Mutex<()>,
-    work: impl FnOnce() -> Result<T, String> + Send + 'static,
-) -> Result<T, String> {
+    work: impl FnOnce() -> Result<T, E> + Send + 'static,
+) -> Result<T, E> {
     let _owner = owner.lock().await;
     tauri::async_runtime::spawn_blocking(work)
         .await
-        .map_err(|_| "Could not complete the operation.".to_owned())?
+        .map_err(|_| NativeFailure)?
 }
 
 #[tauri::command]
 #[ibis_desktop_macros::command(main)]
-pub(crate) fn copy_cli_profile(app: tauri::AppHandle) -> Result<(), String> {
-    crate::copy::write_plain(&app, PROFILE_LINE)
+pub(crate) fn copy_cli_profile(app: tauri::AppHandle) -> Result<(), NativeFailure> {
+    crate::copy::write_plain(&app, PROFILE_LINE).map_err(|_| NativeFailure)
 }
 
 #[cfg(test)]
