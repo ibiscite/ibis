@@ -98,23 +98,7 @@ impl CitableFields {
                     .is_some_and(|raw| !raw.is_empty());
                 parts.retain(|name, value| {
                     if name == "date-parts" {
-                        value.as_array_mut().is_some_and(|dates| {
-                            dates.iter_mut().all(|date| {
-                                date.as_array_mut().is_some_and(|parts| {
-                                    parts.iter_mut().all(|part| {
-                                        if !scalar(part) {
-                                            return false;
-                                        }
-                                        if let Some(number) =
-                                            part.as_str().and_then(|part| part.trim().parse::<i64>().ok())
-                                        {
-                                            *part = json!(number);
-                                        }
-                                        part.is_number()
-                                    })
-                                })
-                            })
-                        })
+                        normalize_date_parts(value)
                     } else {
                         scalar(value)
                     }
@@ -256,6 +240,68 @@ const NAME_PARTS: [&str; 9] = [
 ];
 const DATE_PARTS: [&str; 5] = ["date-parts", "season", "circa", "literal", "raw"];
 
+fn normalize_date_parts(value: &mut Value) -> bool {
+    let Some(dates) = value.as_array_mut() else {
+        return false;
+    };
+    dates.truncate(2);
+    dates.retain_mut(|date| {
+        let Some(parts) = date.as_array_mut() else {
+            return false;
+        };
+        let precision = date_precision(parts);
+        parts.truncate(precision);
+        precision > 0
+    });
+    // CSL ranges need both endpoints at the same precision.
+    if let [Value::Array(start), Value::Array(end)] = dates.as_mut_slice() {
+        let precision = start.len().min(end.len());
+        start.truncate(precision);
+        end.truncate(precision);
+    }
+    !dates.is_empty()
+}
+
+fn date_precision(parts: &mut [Value]) -> usize {
+    let Some(year) = parts.first_mut().and_then(integer_date_part) else {
+        return 0;
+    };
+    let Some(month) = parts
+        .get_mut(1)
+        .and_then(integer_date_part)
+        .filter(|month| (1..=24).contains(month))
+    else {
+        return 1;
+    };
+    let last_day = match month {
+        2 if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        // Citeproc uses 13–24 for seasons, which have no day of month.
+        _ => return 2,
+    };
+    if parts
+        .get_mut(2)
+        .and_then(integer_date_part)
+        .is_some_and(|day| (1..=last_day).contains(&day))
+    {
+        3
+    } else {
+        2
+    }
+}
+
+fn integer_date_part(part: &mut Value) -> Option<i64> {
+    if let Some(number) = part.as_i64() {
+        return Some(number);
+    }
+    project_scalar(part, false)?;
+    let number = part.as_str()?.trim().parse().ok()?;
+    *part = json!(number);
+    Some(number)
+}
+
 /// The numeric year and optional source letters of an already literal year.
 /// Every alphabetic suffix is data here, including calendar and era names.
 pub fn literal_year(value: &str) -> Option<(i32, &str)> {
@@ -330,11 +376,7 @@ pub fn literal_date(value: &str) -> bool {
 // Resolve that priority once for note overrides and CSL dates, before projecting
 // sort data. Curly delimiters need explicit normalization; ASCII stays native.
 fn normalize_raw_date(date: &mut Map<String, Value>, has_raw: bool) {
-    if !has_raw
-        || date
-            .get("date-parts")
-            .is_some_and(|parts| !parts.as_array().is_some_and(Vec::is_empty))
-    {
+    if !has_raw || date.contains_key("date-parts") {
         return;
     }
     // Source raw wins even if normalizing its line breaks left it empty.
@@ -348,7 +390,7 @@ fn normalize_raw_date(date: &mut Map<String, Value>, has_raw: bool) {
         date.insert("literal".into(), literal);
     } else {
         // Keep the exact raw string for native parsing, discarding only fields
-        // that processor would replace (literal, circa, season, empty parts).
+        // that processor would replace (literal, circa and season).
         date.retain(|part, _| part == "raw");
     }
 }
