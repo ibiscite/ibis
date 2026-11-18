@@ -209,6 +209,8 @@ pub(crate) struct NoticeMessage {
     /// Ibis's own Light or Dark, set as the notice is shown; absent for System.
     #[serde(skip_serializing_if = "crate::preferences::Appearance::is_system")]
     appearance: crate::preferences::Appearance,
+    /// The language Ibis speaks: the notice window cannot ask for it.
+    language: ibis_engine::catalogue::Language,
 }
 
 impl NoticeMessage {
@@ -285,6 +287,7 @@ pub(crate) async fn deliver(
             plugin_note: false,
             suggested_format: None,
             appearance: Default::default(),
+            language: ibis_engine::catalogue::language(),
         },
         (receipt, epoch),
         target,

@@ -57,7 +57,7 @@ export type CopyReason = CopiedReason;
 /** What happened to a copy, with its reason checked: an unknown or missing reason does not compile. */
 export type Delivered = Exclude<WireDelivered, { outcome: "copied" }> | { outcome: "copied"; reason: CopyReason };
 /** What the card shows; the window applies the appearance itself (notice.ts). */
-export type Notice = Omit<NoticeMessage, "delivered" | "appearance"> & { delivered: Delivered };
+export type Notice = Omit<NoticeMessage, "delivered" | "appearance" | "language"> & { delivered: Delivered };
 
 const isCopyReason = (reason: string): reason is CopyReason => (COPY_REASONS as readonly string[]).includes(reason);
 
