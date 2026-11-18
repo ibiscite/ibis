@@ -2,12 +2,13 @@
 // Compare the public contract with the newest release (decision 0028):
 //   node scripts/contract-compat.mjs              # against the newest v* tag here
 //   node scripts/contract-compat.mjs --base REF   # against any commit
+//   node scripts/contract-compat.mjs --base TAG --notes FILE  # the release notes' section
 // The contract is what tools built on Ibis read: the engine schema, each
 // method's parameters and result, the MCP tools, and the CLI's commands,
 // options and exit codes. Every difference is reported as additive or
 // breaking. Before 1.0 nothing fails; see BLOCKING below.
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -430,6 +431,13 @@ export function verdict(base, head, blocking = BLOCKING) {
   return { breaking, additive, report, fails: blocking && breaking.length > 0 };
 }
 
+/** The release notes' section, empty when nothing changed. */
+export function notes({ breaking, additive }) {
+  const part = (label, lines) => (lines.length ? [`${label}:`, "", ...lines.map((line) => `- \`${line}\``), ""] : []);
+  if (!breaking.length && !additive.length) return "";
+  return ["**Contract changes**", "", ...part("Breaking", breaking), ...part("Additive", additive)].join("\n");
+}
+
 // --- Running -----------------------------------------------------------------
 
 const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 << 20 });
@@ -455,6 +463,9 @@ function main(argv) {
   const before = contract(files((path) => git("show", `${base}:${path}`)));
   const after = contract(files((path) => readFileSync(join(root, path), "utf8")));
   const { breaking, additive, report, fails } = verdict(before, after);
+  // Release notes report what a release changed; they never fail on it.
+  const out = argv.indexOf("--notes");
+  if (out >= 0) return writeFileSync(argv[out + 1], notes({ breaking, additive }));
   console.log(`The contract against ${base}: ${breaking.length} breaking, ${additive.length} additive.\n${report}`);
   if (fails) process.exitCode = 1;
 }

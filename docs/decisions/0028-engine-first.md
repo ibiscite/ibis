@@ -29,7 +29,8 @@ of it, and progress wins over compatibility. Breaks are listed, not blocked.
 generated contract (`fixtures/engine-contract.schema.json`,
 `fixtures/cli-schema.json`, `fixtures/mcp-tools.json` and the generated parts of
 `docs/cli.md`) with the newest `v*` release and prints every difference as
-additive or breaking, in `land.sh` and in CI, for release notes and for agents.
+additive or breaking: in `land.sh` and CI for agents, and under "Contract
+changes" in each release's notes, against the previous release.
 What Ibis accepts may grow and what it sends may shrink, except that new fields,
 values and variants of a tagged union are additive; everything else, including
 any difference the check cannot read, is breaking. At 1.0 its one `BLOCKING`

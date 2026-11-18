@@ -101,3 +101,10 @@ test("lists each change once, even when two commits or PR references repeat it",
 `;
   assert.equal(changes(repeated), ["**Bug Fixes**", "", "- Keep the picker open (#12)", "- Name the key"].join("\n"));
 });
+
+test("adds the contract changes after the styles, and nothing when there are none", () => {
+  const contract = "**Contract changes**\n\nBreaking:\n\n- `command writings removed`\n";
+  const notes = releaseNotes("v0.3.11", generated, "ibiscite/ibis", "**Citation styles**\n\n- None\n", contract);
+  assert.match(notes, /\*\*Citation styles\*\*\n\n- None\n\n\*\*Contract changes\*\*\n\nBreaking:\n\n- `command writings removed`\n\n<details>/);
+  assert.doesNotMatch(releaseNotes("v0.3.11", generated, "ibiscite/ibis", "", " \n"), /Contract changes/);
+});

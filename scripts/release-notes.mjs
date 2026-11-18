@@ -1,13 +1,14 @@
 // Release notes for a numbered release (#450), used by .github/workflows/preview.yml.
 //
-//   node scripts/release-notes.mjs <tag> <generated-notes-file> [<style-notes-file>]
+//   node scripts/release-notes.mjs <tag> <generated-notes-file> [<style-notes-file>] [<contract-notes-file>]
 //     Prints the notes for the release: one plain line, a download table, the
 //     unsigned-install note, then the Release Please change list without its
 //     greeting, commit hashes or long links, and the citation styles whose
-//     output changed (scripts/style-sweep.mjs release). Notes that already have a
+//     output changed (scripts/style-sweep.mjs release) and the contract changes
+//     (scripts/contract-compat.mjs --notes). Notes that already have a
 //     download table are printed unchanged, so publishing twice is harmless.
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const DOWNLOADS = [
@@ -47,7 +48,7 @@ export function changes(generated) {
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-export function releaseNotes(tag, generated, repo = "ibiscite/ibis", styles = "") {
+export function releaseNotes(tag, generated, repo = "ibiscite/ibis", styles = "", contract = "") {
   if (/^## Download$/m.test(generated)) return generated;
   const base = `https://github.com/${repo}/releases/download/${tag}`;
   const rows = DOWNLOADS.map(([system, file, extra = ""]) => `| ${system} | [${file}](${base}/${file})${extra} |`);
@@ -75,7 +76,7 @@ ${upgrade}
 Tell us what works and what doesn't: [report a problem or suggest an idea](https://github.com/${repo}/issues/new/choose).
 
 ## Changes
-${list ? `\n${list}\n` : "\nSee the commits since the previous release.\n"}${styles.trim() ? `\n${styles.trim()}\n` : ""}
+${list ? `\n${list}\n` : "\nSee the commits since the previous release.\n"}${[styles, contract].map((part) => (part.trim() ? `\n${part.trim()}\n` : "")).join("")}
 <details>
 <summary>Verify a download</summary>
 
@@ -87,11 +88,13 @@ ${list ? `\n${list}\n` : "\nSee the commits since the previous release.\n"}${sty
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const [tag, file, styles] = process.argv.slice(2);
+  const [tag, file, styles, contract] = process.argv.slice(2);
   if (!/^v\d+\.\d+\.\d+$/.test(tag ?? "") || !file) {
     console.error("usage: node scripts/release-notes.mjs vX.Y.Z <generated-notes-file> [<style-notes-file>]");
     process.exit(2);
   }
   const styleNotes = styles ? readFileSync(styles, "utf8") : "";
-  process.stdout.write(releaseNotes(tag, readFileSync(file, "utf8"), process.env.GITHUB_REPOSITORY || undefined, styleNotes));
+  // The contract report is optional: a release without one still publishes.
+  const contractNotes = contract && existsSync(contract) ? readFileSync(contract, "utf8") : "";
+  process.stdout.write(releaseNotes(tag, readFileSync(file, "utf8"), process.env.GITHUB_REPOSITORY || undefined, styleNotes, contractNotes));
 }

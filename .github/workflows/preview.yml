@@ -403,6 +403,8 @@ jobs:
           git rev-parse --verify --quiet "refs/tags/$previous" >/dev/null
           status=0
           node scripts/style-sweep.mjs release "$previous" "$OUT" || status=$?
+          # The release notes' contract changes; a report, never a failure.
+          node scripts/contract-compat.mjs --base "$previous" --notes "$OUT/contract.md" || true
           if [ -f "$OUT/report.md" ]; then cat "$OUT/report.md" >> "$GITHUB_STEP_SUMMARY"; fi
           rm -f "$OUT"/*.jsonl
           exit "$status"

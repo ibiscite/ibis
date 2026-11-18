@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { BLOCKING, cliSurface, compare, contract, FILES, verdict } from "./contract-compat.mjs";
+import { BLOCKING, cliSurface, compare, contract, FILES, notes, verdict } from "./contract-compat.mjs";
 
 const root = new URL("..", import.meta.url);
 
@@ -212,4 +212,11 @@ test("a schema keyword the check does not read fails instead of passing", () => 
   assert.throws(() => compare(wrapped, wrapped), /does not read allOf/);
   const untyped = make({ result: { items: { type: "string" } } });
   assert.throws(() => compare(untyped, untyped), /a schema without a type/);
+});
+
+test("the release notes' section lists each difference, and is empty when there is none", () => {
+  assert.equal(notes(compare(make(), make())), "");
+  const head = make({ errors: { usage: 2, internal: 70, "lookup-off": 3 } });
+  head.mcp = [];
+  assert.equal(notes(compare(make(), head)), "**Contract changes**\n\nBreaking:\n\n- `tool cite removed`\n\nAdditive:\n\n- `error lookup-off added`\n");
 });
