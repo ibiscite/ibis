@@ -9,7 +9,7 @@ use std::ops::Deref;
 use ibis_core::destination::{AppId, AppPaste, Decision, PastePermission, lookup};
 #[cfg(target_os = "windows")]
 use ibis_core::destination::{CopyReason, System};
-#[cfg(any(target_os = "windows", test))]
+#[cfg(test)]
 use ibis_native::paste::queries;
 #[cfg(any(target_os = "windows", test))]
 use ibis_native::paste::queries::QueryWorker;
