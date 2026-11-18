@@ -183,7 +183,7 @@ cause-value = تعذّرت قراءة قيمة كما هي مكتوبة
 cli-together-refused = لا يستطيع { $output } كتابة هذه المراجع معًا كما طُلب. استشهد بها واحدًا تلو الآخر لمعرفة أيها يفشل.
 cli-loss-left-out = لا يستطيع { $output } عرض { $what }{ $target }، لذا استُبعد.
 cli-loss-flattened = كتب { $output } { $what }{ $target } نصًا عاديًا.
-cli-writing-without-bibliography = لا يوجد ملف {"\u200E"}.bib
+cli-writing-without-bibliography = لا يوجد ملف ‎.bib
 cli-loss-unknown = غيّر { $output } { $what }{ $target } بطريقة لا يستطيع هذا الإصدار من Ibis تسميتها. تحقق من الاستشهاد.
 cli-loss-something = جزء من الاستشهاد
 cli-doctor-about = افحص مكتباتك وإعداداتك دون اتصال، دون كتابة أو إرسال أي شيء
@@ -792,7 +792,7 @@ citation-details-examples-unavailable = الأمثلة غير متاحة
 citation-details-edit = تعديل { $reference }
 citation-details-details = تفاصيل استشهاد { $reference }
 operation-failures-recent-history = تعذّر نسيان الاستشهادات الأخيرة. حاول مرة أخرى.
-operation-failures-project = تعذّر تغيير ملف {"\u200E"}.bib المستخدم للمطابقة. حاول مرة أخرى.
+operation-failures-project = تعذّر تغيير ملف ‎.bib المستخدم للمطابقة. حاول مرة أخرى.
 operation-failures-row-context = تعذّر فتح قائمة الصف. Enter ينسخ، وShift+Enter يضيف.
 operation-failures-status = تعذّر على Ibis التحقق من مكتبتك. اختر الملف مرة أخرى.
 operation-failures-shortcut = تعذّر التحقق من الاختصار. افتح Ibis من شريط القوائم أو علبة النظام.
@@ -841,11 +841,11 @@ setup-find-libraries = البحث عنها في هذا الكمبيوتر
 setup-found-in = عُثر عليها في { $folder }
 setup-choose-found = اختيار مكتبة معثور عليها
 setup-found-title = مكتبات عُثر عليها في هذا الكمبيوتر
-setup-find-help = Zotero وملفات {"\u200E"}.bib القريبة
+setup-find-help = Zotero وملفات ‎.bib القريبة
 setup-look-again = البحث مجددًا
-setup-looking = جارٍ البحث عن Zotero وملفات {"\u200E"}.bib…
+setup-looking = جارٍ البحث عن Zotero وملفات ‎.bib…
 setup-cut-short = بعض المجلدات أكبر من أن يُبحث فيها بالكامل. اختر الملف بنفسك إن لم يكن مدرجًا.
-setup-nothing-found = لم يُعثر على Zotero أو ملفات {"\u200E"}.bib قريبة. اختر الملف بنفسك.
+setup-nothing-found = لم يُعثر على Zotero أو ملفات ‎.bib قريبة. اختر الملف بنفسك.
 setup-missing-title = تعذّر العثور على { $name }
 setup-missing-line = ربما نُقل، أو أن القرص الذي يحويه غير متصل.
 setup-find = البحث عن { $name }
@@ -919,7 +919,7 @@ writing-bibliography-not-saved = تعذّر حفظ اختيار قائمة ال�
 writing-pick = يغيّر اختيارك تنسيق مشروع الكتابة هذا.
 project-check-retry = إعادة المحاولة
 project-check-locate = تحديد موقع قائمة المراجع…
-picker-choose-project = المطابقة مع ملف {"\u200E"}.bib…
+picker-choose-project = المطابقة مع ملف ‎.bib…
 picker-choose-other-project = المطابقة مع قائمة مراجع أخرى…
 picker-open-zotero = فتح Zotero
 picker-show-in-zotero = إظهار في Zotero
@@ -930,7 +930,7 @@ picker-drag-search-bar = اسحب حافة شريط البحث لتحريك ال
 picker-search-error = تعذّر على Ibis البحث في مكتبتك. استخدم «إعادة تحميل المكتبة»، ثم حاول مرة أخرى.
 picker-copy-error = لم يُنسخ شيء. حاول مرة أخرى، أو استخدم «إعادة تحميل المكتبة».
 picker-snapshot-changed = تغيّرت المكتبة. ابحث مجددًا وأعد تحديد المراجع قبل النسخ.
-picker-shared-key = لأكثر من مرجع المفتاح { $key }، لذا لا يمكن الاستشهاد به عبر المفتاح. أعطِ أحدها مفتاحًا مختلفًا في Zotero أو في ملف {"\u200E"}.bib.
+picker-shared-key = لأكثر من مرجع المفتاح { $key }، لذا لا يمكن الاستشهاد به عبر المفتاح. أعطِ أحدها مفتاحًا مختلفًا في Zotero أو في ملف ‎.bib.
 picker-using-shorthand = يُستخدم { $value }
 picker-apply = تطبيق
 # $word: a word that finds the person’s own cited reference, never a sample one.
@@ -1069,12 +1069,12 @@ setup-zotero-open = Zotero مفتوح.
 setup-zotero-installed = Zotero مثبّت على هذا الكمبيوتر.
 setup-bib-found =
     { $count ->
-        [zero] لم يُعثر على ملفات بصيغة {"\u200E"}.bib.
-        [one] عُثر على ملف واحد بصيغة {"\u200E"}.bib.
-        [two] عُثر على ملفين بصيغة {"\u200E"}.bib.
-        [few] عُثر على { $count } ملفات بصيغة {"\u200E"}.bib.
-        [many] عُثر على { $count } ملفًا بصيغة {"\u200E"}.bib.
-       *[other] عُثر على { $count } ملف بصيغة {"\u200E"}.bib.
+        [zero] لم يُعثر على ملفات بصيغة ‎.bib.
+        [one] عُثر على ملف واحد بصيغة ‎.bib.
+        [two] عُثر على ملفين بصيغة ‎.bib.
+        [few] عُثر على { $count } ملفات بصيغة ‎.bib.
+        [many] عُثر على { $count } ملفًا بصيغة ‎.bib.
+       *[other] عُثر على { $count } ملف بصيغة ‎.bib.
     }
 session-remove-named = إزالة { $name }
 session-undo-remove = تراجع عن الإزالة
@@ -1675,7 +1675,7 @@ mcp-startup-failed = تعذّر فتح المكتبة عند بدء هذه ال�
 app-bibliography-unavailable = تعذّر إعداد قائمة المراجع. حاول مرة أخرى.
 app-bibliography-not-saved = تعذّر حفظ قائمة المراجع. حاول مرة أخرى.
 app-bibliography-name-taken = يوجد ملف بهذا الاسم هناك. اختر اسمًا آخر.
-app-bibliography-format = احفظها بصيغة {"\u200E"}.rtf أو {"\u200E"}.html أو {"\u200E"}.txt.
+app-bibliography-format = احفظها بصيغة ‎.rtf أو ‎.html أو ‎.txt.
 app-clipboard-unavailable = تعذّرت الكتابة إلى الحافظة. حاول مرة أخرى.
 
 app-recent-history-not-saved = تعذّر نسيان الاستشهادات الأخيرة. حاول مرة أخرى.
@@ -1781,7 +1781,7 @@ cli-settings-restored-next = يُحتفظ بالإعدادات المستبدَ�
     يستخدم Ibis الإعدادات المستعادة في المرة القادمة التي يُفتح فيها؛ أنهِه وأعد فتحه إن كان قيد التشغيل.
 cli-writing-style-unavailable = نمط الاستشهاد هذا غير متاح. اعرض الأنماط باستخدام: ibis styles
 cli-writing-output-unavailable = هذا الإخراج غير متاح. اعرض أنواع الإخراج باستخدام: ibis outputs
-cli-writing-bibliography-needed = اختر قائمة مراجع BibTeX أو BibLaTeX باسم ملف ينتهي بـ {"\u200E"}.bib.
+cli-writing-bibliography-needed = اختر قائمة مراجع BibTeX أو BibLaTeX باسم ملف ينتهي بـ ‎.bib.
 cli-writing-folder-unavailable = المجلد الحالي غير متاح. أدخل المسار الكامل لقائمة المراجع.
 cli-writing-action-needed = اختر list أو create أو rename أو update أو remove.
 cli-writings-empty = لا توجد مشاريع كتابة بعد. أنشئ واحدًا باستخدام: ibis writings create NAME --format pandoc
@@ -1817,7 +1817,7 @@ cli-read-printed-page = [صفحة الملف { $page }، الصفحة المطب
 cli-read-more = مزيد من النص: { $command }
 cli-find-in-none = لا يوجد مقطع يحتوي على هذه الكلمات.
 cli-find-in-more = أول { $count } من المقاطع؛ أضف كلمات لتضييق النتائج.
-cli-entry-no-original = لا يوجد لهذا المرجع مُدخل BibTeX أصلي هنا: مكتبة {"\u200E"}.bib وحدها تحتفظ به، أما مكتبات Zotero وCSL-JSON وRIS وCSV فلا. لكتابة مُدخل من حقوله، شغّل ibis cite KEY --format bibtex، أو صدّره من مدير المراجع بالصيغة التي يستخدمها مشروعك مع الاحتفاظ بمفتاحه.
+cli-entry-no-original = لا يوجد لهذا المرجع مُدخل BibTeX أصلي هنا: مكتبة ‎.bib وحدها تحتفظ به، أما مكتبات Zotero وCSL-JSON وRIS وCSV فلا. لكتابة مُدخل من حقوله، شغّل ibis cite KEY --format bibtex، أو صدّره من مدير المراجع بالصيغة التي يستخدمها مشروعك مع الاحتفاظ بمفتاحه.
 cli-entry-changed = تغيّر ملف المكتبة أو تعذّرت قراءته. أعد تحميله وحاول مرة أخرى.
 cli-entry-repeated = يتكرر هذا المفتاح في ملف المكتبة، لذا لا يستطيع Ibis تحديد المُدخل المطلوب.
 cli-entry-dependency = يعتمد هذا المُدخل على crossref أو xdata أو @string لا يمكن إرفاقه معه. صدّره من مدير المراجع مع الاحتفاظ بمفتاحه.

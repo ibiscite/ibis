@@ -72,7 +72,8 @@ test.each(translations)("%s builds, formats every count and isolates its argumen
 
 test.each(translations.filter((language) => LANGUAGES[language].direction === "rtl"))("%s keeps a Latin word that starts with punctuation in its order", (language) => {
   // In a right-to-left sentence a leading full stop takes the sentence's
-  // direction, so ".bib" reads "bib.". A left-to-right mark before it keeps it whole.
+  // direction, so ".bib" reads "bib.". A left-to-right mark (U+200E, written
+  // as itself: Fluent would isolate a placeable) before it keeps it whole.
   const flipped = LANGUAGES[language].source.split("\n")
     .filter((line) => !line.startsWith("#"))
     .map((line) => line.replace(/^\s+\.[a-z-]+ = /, ""))
