@@ -10,6 +10,9 @@ A boundary with no safe binding gets one scoped module allowance, a crate-level
 - The Windows closed-Zotero reader uses Win32 process, drive and attribute
   calls. It opens only its cached database copy; core's private creator owns
   file creation, with no reader-specific ACL or ownership code.
+- `ibis-sources/src/zotero_local/closed/mounts/macos.rs` reads the macOS mount
+  list with `getfsstat(MNT_NOWAIT)` into a buffer it owns, so the locality
+  check starts no process and contacts no mount.
 - `ibis-sources/src/pdf/inheritance.rs` marks every non-stdio Unix descriptor
   close-on-exec in an allocation-free post-fork callback, including descriptors
   inherited from native callers. The exec-error pipe stays usable until exec.
