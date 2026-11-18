@@ -674,7 +674,7 @@ impl Engine {
                 if failure.code == ErrorCode::Cancelled {
                     return Err(failure);
                 }
-                self.shared.failed(&id, failure.clone())?;
+                self.shared.failed(&id, failure)?;
                 if library.is_some() {
                     return Err(failure);
                 }
