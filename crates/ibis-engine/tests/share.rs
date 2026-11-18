@@ -12,6 +12,7 @@ const LIBRARY: &str = r"@article{aster2026lanterns,
   title = {Brass lanterns at dusk},
   journal = {Journal of Invented Light},
   publisher = {/home/invented-account/private-library},
+  institution = {~another-invented-account/hidden-library},
   volume = {4},
   year = {2026},
   doi = {10.5555/lantern.1},
@@ -149,6 +150,8 @@ fn the_preview_is_the_pack_and_nothing_private_leaves() {
         "outside.pdf",
         "invented-account",
         "private-library",
+        "another-invented-account",
+        "hidden-library",
         fixture.root.to_str().unwrap(),
     ];
     for (name, bytes) in &files {

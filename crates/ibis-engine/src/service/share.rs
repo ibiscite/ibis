@@ -574,7 +574,7 @@ fn unique(stem: &str, taken: &mut HashSet<String>) -> String {
         } else {
             format!("{stem} ({number}).pdf")
         };
-        if taken.insert(name.nfc().flat_map(char::to_lowercase).collect()) {
+        if taken.insert(name.chars().flat_map(char::to_uppercase).nfc().collect()) {
             return name;
         }
         number += 1;
@@ -771,5 +771,7 @@ mod tests {
         assert_eq!(unique("Café", &mut taken), "Café.pdf");
         assert_eq!(unique("cafe\u{301}", &mut taken), "cafe\u{301} (2).pdf");
         assert_eq!(unique("CAFÉ", &mut taken), "CAFÉ (3).pdf");
+        assert_eq!(unique("Σ", &mut taken), "Σ.pdf");
+        assert_eq!(unique("ς", &mut taken), "ς (2).pdf");
     }
 }

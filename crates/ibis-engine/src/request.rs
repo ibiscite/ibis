@@ -190,9 +190,10 @@ pub struct FindInRequest {
 }
 
 /// A pack of references to hand to someone (#1953): a reading list page,
-/// a `.bib` file and, when asked, the references' PDFs. Everything in it
-/// passes the share-safe filter. Without a destination nothing is written,
-/// and the answer says what would be.
+/// a `.bib` file and, when asked, the references' PDFs. The pack metadata
+/// passes the share-safe filter. Attached PDFs are copied as they are,
+/// including anything inside them. Without a destination the answer previews
+/// the pack.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ShareRequest {

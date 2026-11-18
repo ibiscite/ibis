@@ -366,7 +366,19 @@ pub(crate) fn points_to_device(value: &str) -> bool {
     };
     let path = |word: &str| {
         let bytes = word.as_bytes();
-        (word.starts_with('/') || word.starts_with("~/")) && word.len() > 2
+        let home = word
+            .strip_prefix('~')
+            .and_then(|rest| rest.split_once('/'))
+            .is_some_and(|(user, tail)| {
+                !tail.is_empty()
+                    && (user.is_empty()
+                        || user.starts_with(|c: char| c.is_alphabetic() || c == '_')
+                            && user
+                                .chars()
+                                .all(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '.')))
+            });
+        word.starts_with('/') && word.len() > 2
+            || home
             || word.starts_with("\\\\")
             || (bytes.len() > 3 && bytes[0].is_ascii_alphabetic() && matches!(&bytes[1..3], b":\\" | b":/"))
             || word

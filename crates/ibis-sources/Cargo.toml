@@ -31,8 +31,13 @@ xattr = "1.6.1"
 # Already locked through the desktop: safe mount/placeholder metadata queries.
 winsafe = { version = "0.0.29", default-features = false, features = ["kernel"] }
 windows-sys = { version = "0.61.2", features = [
+    "Win32_Security",
     "Win32_Storage_FileSystem",
     "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_IO",
+    "Win32_System_JobObjects",
+    "Win32_System_SystemServices",
+    "Win32_System_Threading",
 ] }
 
 [target.'cfg(windows)'.dev-dependencies]
@@ -45,8 +50,9 @@ rusqlite = { version = "0.41.0", features = ["bundled", "hooks"] }
 insta = { version = "1.49.0", features = ["json"] }
 proptest = "1.12.0"
 
-# Deny unsafe except in the scoped post-fork descriptor boundary and the
-# native Windows boundary of closed Zotero reads (0029).
+# Deny unsafe except in the scoped boundaries decision 0029 lists: the
+# post-fork descriptor and memory ceiling of the PDF reader, the macOS mount
+# list and the native Windows boundary of closed Zotero reads.
 [lints.rust]
 unsafe_code = "deny"
 

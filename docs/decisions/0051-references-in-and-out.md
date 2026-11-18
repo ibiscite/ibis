@@ -78,11 +78,11 @@ The first design, from the pack of references the maintainer shaped in
 off until asked; each one inside its library's folder or Zotero's storage,
 never outside it whatever the attachment-text setting allows; opened by the
 PDF reader's opener (a regular, resident local file, never a link, at most
-256 MiB) and copied from that handle only while its size and time stay as
-opened. A refused file is left out and its reference named, never a reason to
-stop the pack. Attached PDFs are copied as they are, including anything inside
-them. Names come from share-safe fields, and the answer reports paths inside
-the pack. Nothing that exists is replaced. The independent review still comes
+256 MiB). Files refused during planning are left out and their references are
+listed. If a planned PDF changes while the pack is being written, the write
+fails before publication. Attached PDFs are copied as they are, including
+anything inside them. Names come from share-safe fields, and the answer
+reports paths inside the pack. Nothing that exists is replaced. The independent review still comes
 before it ships.
 
 ## Agents and the command line

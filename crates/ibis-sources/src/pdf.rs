@@ -6,7 +6,7 @@
 //! 256 MiB, with `%PDF-` in its first 1,024 bytes. The opened file becomes the
 //! child's standard input; the child gets no other handle, no environment and
 //! no path, parses the bytes and answers with JSON on standard output. It is
-//! stopped after ten seconds. Its answer is untrusted: page counts, text size
+//! stopped after ten seconds or past 2 GiB of memory. Its answer is untrusted: page counts, text size
 //! and every label are checked again here. Text stays in memory.
 //!
 //! Only `ibis` runs the child (`ibis __extract-pdf`), never the desktop app,
@@ -27,6 +27,11 @@ use std::time::{Duration, Instant};
 #[path = "pdf/inheritance.rs"]
 mod inheritance;
 
+// SAFETY: only the memory ceiling's process queries and Windows Job Object.
+#[allow(unsafe_code)]
+#[path = "pdf/ceiling.rs"]
+mod ceiling;
+
 /// The argument that makes `ibis` the extractor's child process.
 pub const CHILD_ARGUMENT: &str = "__extract-pdf";
 /// After [`CHILD_ARGUMENT`]: give page labels and the page count, not text.
@@ -39,6 +44,9 @@ pub const MAX_PAGES: u32 = 10_000;
 pub const MAX_TEXT_BYTES: usize = crate::zotero_local::fulltext::MAX_TEXT_BYTES;
 /// How long one extraction may take.
 pub const DEADLINE: Duration = Duration::from_secs(10);
+/// The most memory one extraction may use: committed memory on Windows,
+/// the physical footprint on macOS, resident memory on Linux.
+pub const MAX_MEMORY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 /// `%PDF-` must start within this many bytes.
 pub const MARK_WITHIN: usize = 1024;
 /// The most characters in a citable page label (decision 0036).
@@ -84,7 +92,8 @@ pub enum Refusal {
     NotLocal,
     /// The file does not start as a PDF does.
     NotPdf,
-    /// Over 256 MiB, over 10,000 pages, or over 16 MiB of text.
+    /// Over 256 MiB, over 10,000 pages, over 16 MiB of text, or more
+    /// memory to read than the reader may use.
     TooLarge,
     /// The PDF could not be parsed.
     Damaged,
@@ -116,6 +125,10 @@ impl std::fmt::Debug for PdfDocument {
 pub struct PdfReader {
     program: PathBuf,
     deadline: Duration,
+    memory: u64,
+    /// Tests only: the child's arguments in place of the extractor's.
+    #[cfg(test)]
+    arguments: Option<Vec<std::ffi::OsString>>,
 }
 impl std::fmt::Debug for PdfReader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -128,7 +141,18 @@ impl PdfReader {
         Self {
             program,
             deadline: DEADLINE,
+            memory: MAX_MEMORY_BYTES,
+            #[cfg(test)]
+            arguments: None,
         }
+    }
+
+    /// The same reader running another child under a lower ceiling, for tests.
+    #[cfg(test)]
+    fn with_child(mut self, arguments: &[&str], memory: u64) -> Self {
+        self.arguments = Some(arguments.iter().map(Into::into).collect());
+        self.memory = memory.min(MAX_MEMORY_BYTES);
+        self
     }
 
     /// The same reader with a shorter deadline, for tests.
@@ -195,6 +219,11 @@ impl PdfReader {
         if labels_only {
             command.arg(LABELS_ONLY);
         }
+        #[cfg(test)]
+        if let Some(arguments) = &self.arguments {
+            command = Command::new(&self.program);
+            command.args(arguments);
+        }
         // No environment: the child needs none of the person's settings,
         // tokens or paths. Windows needs its system folder to start a process.
         command.env_clear();
@@ -207,12 +236,21 @@ impl PdfReader {
         // other inheritable handles are excluded by CreateProcess itself.
         #[cfg(unix)]
         inheritance::restrict(&mut command).map_err(|_| Refusal::Unavailable)?;
+        ceiling::Ceiling::prepare(&mut command);
         let mut child = command
             .stdin(Stdio::from(file))
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
             .map_err(|_| Refusal::Unavailable)?;
+        let ceiling = match ceiling::Ceiling::start(&child, self.memory) {
+            Ok(ceiling) => ceiling,
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(Refusal::Unavailable);
+            }
+        };
         let Some(stdout) = child.stdout.take() else {
             let _ = child.kill();
             let _ = child.wait();
@@ -235,6 +273,9 @@ impl PdfReader {
             if cancelled() || Instant::now() >= deadline {
                 break Err(Refusal::TimedOut);
             }
+            if ceiling.exceeded(&child) {
+                break Err(Refusal::TooLarge);
+            }
             match child.try_wait() {
                 Ok(Some(status)) => break Ok(status),
                 Ok(None) => std::thread::sleep(Duration::from_millis(5)),
@@ -248,7 +289,12 @@ impl PdfReader {
         // The child has exited, so its pipe is closed and the reader ends.
         let bytes = reader.join().ok().and_then(Result::ok);
         if !status?.success() {
-            return Err(Refusal::Damaged);
+            // On Windows a refused commit ends the child before a sample.
+            return Err(if ceiling.was_exceeded() {
+                Refusal::TooLarge
+            } else {
+                Refusal::Damaged
+            });
         }
         let bytes = bytes.ok_or(Refusal::Damaged)?;
         if bytes.len() as u64 > MAX_ANSWER_BYTES {
@@ -276,7 +322,7 @@ impl LocalPdf {
     pub fn open(path: &Path, cancelled: Arc<dyn Fn() -> bool + Send + Sync>) -> Result<Self, Refusal> {
         use crate::zotero_local::closed::{ClosedError, with_local_file};
         with_local_file(path, cancelled, DEADLINE, |mut file| {
-            let stamp = stamp(&mut file)?;
+            let stamp = share_stamp(&mut file)?;
             Ok(Self { file, stamp })
         })
         .map_err(|error| match error {
@@ -297,7 +343,7 @@ impl LocalPdf {
     pub fn copy_to(mut self, out: &mut impl std::io::Write) -> Result<u64, Refusal> {
         self.file.rewind().map_err(|_| Refusal::NotLocal)?;
         let copied = std::io::copy(&mut (&mut self.file).take(self.stamp.bytes), out).map_err(|_| Refusal::NotLocal)?;
-        if copied != self.stamp.bytes || stamp(&mut self.file)? != self.stamp {
+        if copied != self.stamp.bytes || share_stamp(&mut self.file)? != self.stamp {
             return Err(Refusal::NotLocal);
         }
         Ok(copied)
@@ -319,12 +365,30 @@ impl PdfStamp {
     }
 }
 
+/// The open reader's size and modification time, preserving the revision
+/// used by the reader's attachment IDs.
+fn stamp(file: &mut std::fs::File) -> Result<(u64, Option<std::time::SystemTime>), Refusal> {
+    let metadata = checked_metadata(file)?;
+    Ok((metadata.len(), metadata.modified().ok()))
+}
+
+fn share_stamp(file: &mut std::fs::File) -> Result<PdfStamp, Refusal> {
+    let metadata = checked_metadata(file)?;
+    let identity = crate::zotero_local::closed::unlinked_file_identity(file, &metadata).ok_or(Refusal::NotLocal)?;
+    let modified = metadata.modified().map_err(|_| Refusal::NotLocal)?;
+    Ok(PdfStamp {
+        identity,
+        bytes: metadata.len(),
+        modified,
+    })
+}
+
 /// Verify the open file as a PDF within the size bound.
 #[allow(
     clippy::disallowed_methods,
     reason = "Opened-handle checks run inside the bounded local-file I/O owner."
 )]
-fn stamp(file: &mut std::fs::File) -> Result<PdfStamp, Refusal> {
+fn checked_metadata(file: &mut std::fs::File) -> Result<std::fs::Metadata, Refusal> {
     let metadata = file.metadata().map_err(|_| Refusal::NotLocal)?;
     if metadata.len() > MAX_FILE_BYTES {
         return Err(Refusal::TooLarge);
@@ -339,13 +403,7 @@ fn stamp(file: &mut std::fs::File) -> Result<PdfStamp, Refusal> {
     if !has_mark(&start) {
         return Err(Refusal::NotPdf);
     }
-    let identity = crate::zotero_local::closed::unlinked_file_identity(file, &metadata).ok_or(Refusal::NotLocal)?;
-    let modified = metadata.modified().map_err(|_| Refusal::NotLocal)?;
-    Ok(PdfStamp {
-        identity,
-        bytes: metadata.len(),
-        modified,
-    })
+    Ok(metadata)
 }
 
 /// Whether `%PDF-` starts within the first [`MARK_WITHIN`] bytes.
@@ -555,6 +613,36 @@ mod tests {
         let stop = Arc::new(move || ready.exists());
         assert_eq!(reader.read(&file, false, stop), Err(Refusal::TimedOut));
         assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    /// Stands in for the extractor: past a test-sized ceiling unless stopped.
+    #[test]
+    #[ignore = "subprocess helper; run only as a PDF reader's child"]
+    fn synthetic_growing_child() {
+        let mut start = Vec::new();
+        let _ = std::io::stdin().take(64).read_to_end(&mut start);
+        if start != b"%PDF-1.7\n%grow\n" {
+            return;
+        }
+        // Written, so each block is resident and committed.
+        let blocks: Vec<Vec<u8>> = (0..64).map(|_| vec![1u8; 16 * 1024 * 1024]).collect();
+        std::thread::sleep(Duration::from_secs(30));
+        drop(blocks);
+    }
+
+    #[test]
+    fn a_child_past_its_memory_ceiling_is_stopped_and_the_file_is_too_large() {
+        let folder = tempfile::tempdir().unwrap();
+        let root = crate::zotero_local::closed::trusted_folder(folder.path());
+        let file = root.join("invented.pdf");
+        std::fs::write(&file, "%PDF-1.7\n%grow\n").unwrap();
+        let reader = PdfReader::new(std::env::current_exe().unwrap()).with_child(
+            &["--exact", "pdf::tests::synthetic_growing_child", "--ignored", "--quiet"],
+            128 * 1024 * 1024,
+        );
+        let started = Instant::now();
+        assert_eq!(reader.read(&file, false, Arc::new(|| false)), Err(Refusal::TooLarge));
+        assert!(started.elapsed() < Duration::from_secs(9));
     }
 
     #[cfg(unix)]

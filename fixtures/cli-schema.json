@@ -10477,7 +10477,7 @@
                 "type": "boolean"
               },
               "id": {
-                "description": "Pass to `read` or `find-in` in this library generation, while the\nreference, attachment revision and indexed text remain unchanged.",
+                "description": "Pass to `read` or `find-in` while the library's content, attachment\nrevision and indexed text remain unchanged.",
                 "type": "string"
               },
               "media_type": {
@@ -11278,7 +11278,7 @@
               },
               {
                 "const": "too-large",
-                "description": "Text larger than Ibis reads at once, or a PDF over 256 MiB or 10,000 pages.",
+                "description": "Text larger than Ibis reads at once, or a PDF over 256 MiB or 10,000\npages or needing more than 2 GiB of memory to read.",
                 "type": "string"
               },
               {
@@ -13090,7 +13090,7 @@
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "description": "A pack of references to hand to someone (#1953): a reading list page,\na `.bib` file and, when asked, the references' PDFs. Everything in it\npasses the share-safe filter. Without a destination nothing is written,\nand the answer says what would be.",
+        "description": "A pack of references to hand to someone (#1953): a reading list page,\na `.bib` file and, when asked, the references' PDFs. The pack metadata\npasses the share-safe filter. Attached PDFs are copied as they are,\nincluding anything inside them. Without a destination the answer previews\nthe pack.",
         "properties": {
           "destination": {
             "default": null,
