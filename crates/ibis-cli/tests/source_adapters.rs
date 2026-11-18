@@ -128,7 +128,7 @@ fn call(engine: &Engine, method: Method, params: Value) -> Result<Value, Value> 
 }
 
 fn libraries(engine: &Engine) -> Vec<Value> {
-    call(engine, Method::Libraries, json!({})).unwrap()["libraries"]
+    call(engine, Method::Libraries, json!({"action": "list"})).unwrap()["libraries"]
         .as_array()
         .unwrap()
         .clone()

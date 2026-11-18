@@ -20,6 +20,7 @@ mod mapping;
 mod xml;
 #[cfg(target_os = "macos")]
 mod live;
+#[cfg(any(target_os = "macos", test))]
 mod macroman;
 
 use std::io::{Read, Write};

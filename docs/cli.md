@@ -417,6 +417,14 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | --- | --- |
 | `ID` | The proposal id printed by ibis proposals list |
 
+**`ibis sources`**: Check that a library's source keeps Ibis's promises, built-in readers and source adapters alike
+
+| Option | Does |
+| --- | --- |
+| `ACTION` | check: read the libraries named here again and check what every source promises |
+| `--expect FILE` | CSL-JSON records the library should hold exactly, without their ids, in any order |
+| `--changed-from REVISION` | A revision an earlier check printed: check that the library changed since |
+
 **`ibis completions`**: Print shell completions
 
 | Option | Does |

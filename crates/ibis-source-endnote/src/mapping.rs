@@ -161,10 +161,10 @@ mod tests {
             let Err(skip) = &mapped(&xml)[0] else { panic!("{inner}") };
             assert_eq!(skip.field.as_deref(), Some(field), "{inner}");
         }
-        let xml = "<xml><records><record><ref-type>17</ref-type><titles><title>A</title></titles><dates><year>26</year></dates><electronic-resource-num>https://doi.org/10.0000/Invented</electronic-resource-num></record></records></xml>";
+        let xml = "<xml><records><record><ref-type>17</ref-type><titles><title>A</title></titles><dates><year>26</year></dates><electronic-resource-num>https://doi.org/10.0000/invented</electronic-resource-num></record></records></xml>";
         let Ok(article) = &mapped(xml)[0] else { panic!("kept") };
         assert_eq!(article["issued"], json!({"literal": "26"}));
-        assert_eq!(article["DOI"], "10.0000/Invented");
+        assert_eq!(article["DOI"], "10.0000/invented");
         // The journal list's spelling is used only when the record has none.
         let xml = "<xml><records><record><ref-type>17</ref-type><titles><title>A</title><secondary-title>Invented J</secondary-title></titles><periodical><full-title>Invented Journal</full-title></periodical></record></records></xml>";
         let Ok(article) = &mapped(xml)[0] else { panic!("kept") };

@@ -8,13 +8,227 @@
     },
     "exit_code": {
       "$ref": "#/$defs/ExitCode"
+    },
+    "source_adapter": {
+      "description": "The source adapter protocol: what Ibis sends and what it accepts.",
+      "type": "array",
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/AdapterRequest"
+        },
+        {
+          "$ref": "#/$defs/AdapterResponse"
+        }
+      ]
     }
   },
   "required": [
     "case",
-    "exit_code"
+    "exit_code",
+    "source_adapter"
   ],
   "$defs": {
+    "AdapterMethod": {
+      "oneOf": [
+        {
+          "description": "Read the whole library once.",
+          "type": "string",
+          "const": "read"
+        }
+      ]
+    },
+    "AdapterRead": {
+      "description": "One whole-library read.",
+      "type": "object",
+      "properties": {
+        "keys": {
+          "description": "Whether `citation-key` holds the manager's own citation keys. When\nfalse, Ibis drops any `citation-key`, and key outputs refuse with\n`missing-key`.",
+          "type": "boolean",
+          "default": false
+        },
+        "records": {
+          "description": "CSL-JSON 1.0.2 records. Each `id` is the manager's own record id,\nunique and stable within `scope`. Ibis validates every field, drops\n`file` and private links, and skips records it cannot use, as it\ndoes for records sent to `cite --records`.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "revision": {
+          "description": "Changes whenever any record changes, and only then; at most 256\ncharacters. `ibis sources check` holds the adapter to it; Ibis's own\n`revision` is still computed from what it reads.",
+          "type": "string"
+        },
+        "scope": {
+          "description": "Names the library whose record ids these are, at most 256\ncharacters. It must change whenever the adapter cannot show that an\nid still names the same record as before, for example when the\nlibrary was replaced by a copy; Ibis then forgets every earlier\nhandle. It is never shown.",
+          "type": "string"
+        },
+        "skipped": {
+          "description": "Records the adapter left out, so the person hears why.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AdapterSkip"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "scope",
+        "revision",
+        "records"
+      ]
+    },
+    "AdapterRefusal": {
+      "description": "Why the adapter did not read: fixed reasons, never the manager's text.",
+      "oneOf": [
+        {
+          "description": "The manager must be open to be read, and it is not.",
+          "type": "string",
+          "const": "manager-closed"
+        },
+        {
+          "description": "Several libraries could be meant, or none was named; name one.",
+          "type": "string",
+          "const": "library-needed"
+        },
+        {
+          "description": "No library by that name is open or exists.",
+          "type": "string",
+          "const": "library-not-found"
+        },
+        {
+          "description": "The operating system did not let the adapter ask the manager.",
+          "type": "string",
+          "const": "permission-denied"
+        },
+        {
+          "description": "The library could not be read.",
+          "type": "string",
+          "const": "unreadable"
+        },
+        {
+          "description": "This adapter does not run on this system.",
+          "type": "string",
+          "const": "unsupported"
+        }
+      ]
+    },
+    "AdapterRequest": {
+      "description": "What Ibis asks.",
+      "type": "object",
+      "properties": {
+        "ibis": {
+          "description": "The protocol version, [`ADAPTER_PROTOCOL`].",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "library": {
+          "description": "Which library, in the adapter's own terms, exactly as the person\nnamed it. Omitted, the adapter reads its only library or refuses\nwith `library-needed`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "method": {
+          "$ref": "#/$defs/AdapterMethod"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "ibis",
+        "method"
+      ]
+    },
+    "AdapterResponse": {
+      "description": "The adapter's one answer: exactly one of `read` and `refused`.",
+      "type": "object",
+      "properties": {
+        "ibis": {
+          "description": "The protocol version, [`ADAPTER_PROTOCOL`].",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "read": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdapterRead"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "refused": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdapterRefusal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "ibis"
+      ]
+    },
+    "AdapterSkip": {
+      "description": "One record the adapter left out.",
+      "type": "object",
+      "properties": {
+        "cause": {
+          "$ref": "#/$defs/AdapterSkipCause"
+        },
+        "entry": {
+          "description": "Its title, shown only in the person's library diagnostics.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "field": {
+          "description": "The manager's name for the field at fault.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "cause"
+      ]
+    },
+    "AdapterSkipCause": {
+      "oneOf": [
+        {
+          "description": "A reference type the adapter does not map yet.",
+          "type": "string",
+          "const": "unsupported-type"
+        },
+        {
+          "description": "A field every record needs, such as its title, is empty.",
+          "type": "string",
+          "const": "missing-field"
+        },
+        {
+          "description": "Values that disagree.",
+          "type": "string",
+          "const": "conflicting"
+        },
+        {
+          "description": "The record could not be read.",
+          "type": "string",
+          "const": "unreadable"
+        }
+      ]
+    },
     "Annotation": {
       "type": "object",
       "properties": {
@@ -1097,6 +1311,36 @@
           "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
           "type": "string",
           "const": "no-such-pages"
+        },
+        {
+          "description": "No source adapter has this name: neither one built in nor an\n`ibis-source-<name>` program on PATH.",
+          "type": "string",
+          "const": "source-not-found"
+        },
+        {
+          "description": "The reference manager must be open to be read.",
+          "type": "string",
+          "const": "source-manager-closed"
+        },
+        {
+          "description": "Several of the manager's libraries could be meant; name one.",
+          "type": "string",
+          "const": "source-library-needed"
+        },
+        {
+          "description": "None of the manager's libraries has the name given.",
+          "type": "string",
+          "const": "source-library-not-found"
+        },
+        {
+          "description": "The operating system did not let Ibis ask the reference manager.",
+          "type": "string",
+          "const": "source-permission"
+        },
+        {
+          "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
+          "type": "string",
+          "const": "source-failed"
         }
       ]
     },

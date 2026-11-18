@@ -138,6 +138,36 @@
           },
           {
             "additionalProperties": false,
+            "description": "Read a library through a source adapter (decision 0056): one built\ninto `ibis`, or an `ibis-source-NAME` program on PATH. `Reload` reads\nit again; a failed read keeps the last good one.",
+            "properties": {
+              "action": {
+                "const": "open-source",
+                "type": "string"
+              },
+              "library": {
+                "description": "The library in the adapter's own terms, as the person named it.",
+                "maxLength": 4096,
+                "minLength": 1,
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "name": {
+                "maxLength": 32,
+                "minLength": 1,
+                "pattern": "^[a-z][a-z0-9-]*$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "name"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
             "properties": {
               "action": {
                 "const": "reload",
@@ -317,6 +347,36 @@
                 "const": "no-such-pages",
                 "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
                 "type": "string"
+              },
+              {
+                "const": "source-not-found",
+                "description": "No source adapter has this name: neither one built in nor an\n`ibis-source-<name>` program on PATH.",
+                "type": "string"
+              },
+              {
+                "const": "source-manager-closed",
+                "description": "The reference manager must be open to be read.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-needed",
+                "description": "Several of the manager's libraries could be meant; name one.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-not-found",
+                "description": "None of the manager's libraries has the name given.",
+                "type": "string"
+              },
+              {
+                "const": "source-permission",
+                "description": "The operating system did not let Ibis ask the reference manager.",
+                "type": "string"
+              },
+              {
+                "const": "source-failed",
+                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
+                "type": "string"
               }
             ]
           },
@@ -474,6 +534,11 @@
               {
                 "const": "snapshot",
                 "description": "Data handed to the engine whole, with no source behind it.",
+                "type": "string"
+              },
+              {
+                "const": "adapter",
+                "description": "A library a source adapter reads from a reference manager.",
                 "type": "string"
               }
             ]
@@ -1700,6 +1765,36 @@
               {
                 "const": "no-such-pages",
                 "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
+                "type": "string"
+              },
+              {
+                "const": "source-not-found",
+                "description": "No source adapter has this name: neither one built in nor an\n`ibis-source-<name>` program on PATH.",
+                "type": "string"
+              },
+              {
+                "const": "source-manager-closed",
+                "description": "The reference manager must be open to be read.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-needed",
+                "description": "Several of the manager's libraries could be meant; name one.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-not-found",
+                "description": "None of the manager's libraries has the name given.",
+                "type": "string"
+              },
+              {
+                "const": "source-permission",
+                "description": "The operating system did not let Ibis ask the reference manager.",
+                "type": "string"
+              },
+              {
+                "const": "source-failed",
+                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
                 "type": "string"
               }
             ]
@@ -3285,6 +3380,36 @@
               {
                 "const": "no-such-pages",
                 "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
+                "type": "string"
+              },
+              {
+                "const": "source-not-found",
+                "description": "No source adapter has this name: neither one built in nor an\n`ibis-source-<name>` program on PATH.",
+                "type": "string"
+              },
+              {
+                "const": "source-manager-closed",
+                "description": "The reference manager must be open to be read.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-needed",
+                "description": "Several of the manager's libraries could be meant; name one.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-not-found",
+                "description": "None of the manager's libraries has the name given.",
+                "type": "string"
+              },
+              {
+                "const": "source-permission",
+                "description": "The operating system did not let Ibis ask the reference manager.",
+                "type": "string"
+              },
+              {
+                "const": "source-failed",
+                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
                 "type": "string"
               }
             ]
@@ -5353,6 +5478,36 @@
               {
                 "const": "no-such-pages",
                 "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
+                "type": "string"
+              },
+              {
+                "const": "source-not-found",
+                "description": "No source adapter has this name: neither one built in nor an\n`ibis-source-<name>` program on PATH.",
+                "type": "string"
+              },
+              {
+                "const": "source-manager-closed",
+                "description": "The reference manager must be open to be read.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-needed",
+                "description": "Several of the manager's libraries could be meant; name one.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-not-found",
+                "description": "None of the manager's libraries has the name given.",
+                "type": "string"
+              },
+              {
+                "const": "source-permission",
+                "description": "The operating system did not let Ibis ask the reference manager.",
+                "type": "string"
+              },
+              {
+                "const": "source-failed",
+                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
                 "type": "string"
               }
             ]
@@ -7431,6 +7586,36 @@
                 "const": "no-such-pages",
                 "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
                 "type": "string"
+              },
+              {
+                "const": "source-not-found",
+                "description": "No source adapter has this name: neither one built in nor an\n`ibis-source-<name>` program on PATH.",
+                "type": "string"
+              },
+              {
+                "const": "source-manager-closed",
+                "description": "The reference manager must be open to be read.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-needed",
+                "description": "Several of the manager's libraries could be meant; name one.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-not-found",
+                "description": "None of the manager's libraries has the name given.",
+                "type": "string"
+              },
+              {
+                "const": "source-permission",
+                "description": "The operating system did not let Ibis ask the reference manager.",
+                "type": "string"
+              },
+              {
+                "const": "source-failed",
+                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
+                "type": "string"
               }
             ]
           },
@@ -8686,6 +8871,36 @@
                 "const": "no-such-pages",
                 "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
                 "type": "string"
+              },
+              {
+                "const": "source-not-found",
+                "description": "No source adapter has this name: neither one built in nor an\n`ibis-source-<name>` program on PATH.",
+                "type": "string"
+              },
+              {
+                "const": "source-manager-closed",
+                "description": "The reference manager must be open to be read.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-needed",
+                "description": "Several of the manager's libraries could be meant; name one.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-not-found",
+                "description": "None of the manager's libraries has the name given.",
+                "type": "string"
+              },
+              {
+                "const": "source-permission",
+                "description": "The operating system did not let Ibis ask the reference manager.",
+                "type": "string"
+              },
+              {
+                "const": "source-failed",
+                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
+                "type": "string"
               }
             ]
           },
@@ -9694,6 +9909,36 @@
                 "const": "no-such-pages",
                 "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
                 "type": "string"
+              },
+              {
+                "const": "source-not-found",
+                "description": "No source adapter has this name: neither one built in nor an\n`ibis-source-<name>` program on PATH.",
+                "type": "string"
+              },
+              {
+                "const": "source-manager-closed",
+                "description": "The reference manager must be open to be read.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-needed",
+                "description": "Several of the manager's libraries could be meant; name one.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-not-found",
+                "description": "None of the manager's libraries has the name given.",
+                "type": "string"
+              },
+              {
+                "const": "source-permission",
+                "description": "The operating system did not let Ibis ask the reference manager.",
+                "type": "string"
+              },
+              {
+                "const": "source-failed",
+                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
+                "type": "string"
               }
             ]
           },
@@ -10609,6 +10854,36 @@
                 "const": "no-such-pages",
                 "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
                 "type": "string"
+              },
+              {
+                "const": "source-not-found",
+                "description": "No source adapter has this name: neither one built in nor an\n`ibis-source-<name>` program on PATH.",
+                "type": "string"
+              },
+              {
+                "const": "source-manager-closed",
+                "description": "The reference manager must be open to be read.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-needed",
+                "description": "Several of the manager's libraries could be meant; name one.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-not-found",
+                "description": "None of the manager's libraries has the name given.",
+                "type": "string"
+              },
+              {
+                "const": "source-permission",
+                "description": "The operating system did not let Ibis ask the reference manager.",
+                "type": "string"
+              },
+              {
+                "const": "source-failed",
+                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
+                "type": "string"
               }
             ]
           },
@@ -11453,6 +11728,36 @@
                 "const": "no-such-pages",
                 "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
                 "type": "string"
+              },
+              {
+                "const": "source-not-found",
+                "description": "No source adapter has this name: neither one built in nor an\n`ibis-source-<name>` program on PATH.",
+                "type": "string"
+              },
+              {
+                "const": "source-manager-closed",
+                "description": "The reference manager must be open to be read.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-needed",
+                "description": "Several of the manager's libraries could be meant; name one.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-not-found",
+                "description": "None of the manager's libraries has the name given.",
+                "type": "string"
+              },
+              {
+                "const": "source-permission",
+                "description": "The operating system did not let Ibis ask the reference manager.",
+                "type": "string"
+              },
+              {
+                "const": "source-failed",
+                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
+                "type": "string"
               }
             ]
           },
@@ -12289,6 +12594,36 @@
               {
                 "const": "no-such-pages",
                 "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
+                "type": "string"
+              },
+              {
+                "const": "source-not-found",
+                "description": "No source adapter has this name: neither one built in nor an\n`ibis-source-<name>` program on PATH.",
+                "type": "string"
+              },
+              {
+                "const": "source-manager-closed",
+                "description": "The reference manager must be open to be read.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-needed",
+                "description": "Several of the manager's libraries could be meant; name one.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-not-found",
+                "description": "None of the manager's libraries has the name given.",
+                "type": "string"
+              },
+              {
+                "const": "source-permission",
+                "description": "The operating system did not let Ibis ask the reference manager.",
+                "type": "string"
+              },
+              {
+                "const": "source-failed",
+                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
                 "type": "string"
               }
             ]
