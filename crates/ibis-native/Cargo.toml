@@ -1,0 +1,51 @@
+[package]
+name = "ibis-native"
+description = "Ibis's native paste: the target capture, its proofs and the platform calls behind them"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[features]
+# Test helpers for crates that test their own code against these proofs.
+fixtures = []
+
+[dependencies]
+ibis-core = { path = "../ibis-core" }
+# Reads the paste setting at delivery, as the settings owner writes it.
+ibis-engine = { path = "../ibis-engine" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+schemars = "=1.2.3"
+
+# Already locked through Tauri. Safe AppKit, Core Graphics, Core Foundation
+# and Foundation bindings for the target capture, the focus proof and ⌘V.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.5"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSScreen", "NSGraphics", "NSWorkspace", "NSRunningApplication", "libc", "NSAccessibility", "NSAccessibilityProtocols", "NSColor", "NSColorSpace", "NSEvent", "NSPasteboard", "NSApplication", "NSResponder", "NSView", "NSWindow", "NSDragging", "NSDraggingItem", "NSDraggingSession", "NSHapticFeedback", "NSImage", "objc2-core-graphics", "block2"] }
+objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "libc", "CGDirectDisplay", "CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation"] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFString", "CFDictionary", "CFNumber", "CFUUID"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSAppleEventManager", "NSAppleEventDescriptor", "NSData", "NSString", "NSValue", "NSThread", "NSArray", "NSBundle", "NSURL", "objc2-core-services", "NSNotification", "NSDistributedNotificationCenter", "NSOperation", "block2"] }
+block2 = "0.6.2"
+
+# Already locked through Tauri; the safe Win32 bindings of decision 0029.
+[target.'cfg(target_os = "windows")'.dependencies]
+winsafe = { version = "0.0.29", features = ["user", "advapi", "version", "comctl"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+# `forbid` cannot be narrowed by a module allowance. Match the workspace
+# policy, with unsafe allowed only in paste/macos/secure_input.rs, safety.rs
+# and focus/native.rs (decision 0029).
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+panic = "deny"
+unused_result_ok = "deny"
+expect_used = "warn"

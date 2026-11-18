@@ -9,14 +9,14 @@ use ibis_core::destination::{AppId, AppPaste, CopyReason, System, Target};
 
 /// The most text, in UTF-16 units as AX counts it, that can become the search.
 #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
-pub(crate) const SHORT_SELECTION: usize = 120;
+pub const SHORT_SELECTION: usize = 120;
 
 /// What was selected in the target when the picker opened (#1526). Ibis only
 /// pastes over text the person saw in search: `Ignored` refuses the paste, and
 /// `Unread` lets it through only once nothing is proved selected.
 #[derive(Clone, Default, PartialEq, Eq)]
 #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
-pub(crate) enum Selection {
+pub enum Selection {
     /// The app has no way to report a selection, so Ibis cannot tell and pastes.
     #[default]
     Unknown,
@@ -38,20 +38,20 @@ pub(crate) enum Selection {
 /// person may have pasted it by hand. Only macOS reads it back.
 #[derive(Clone, PartialEq, Eq)]
 #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
-pub(crate) struct OldCitation {
-    pub(crate) digests: Vec<Fingerprint>,
+pub struct OldCitation {
+    pub digests: Vec<Fingerprint>,
     /// The longest, in UTF-16 units, so a much longer selection is never copied across.
-    pub(crate) units: usize,
+    pub units: usize,
 }
 
 #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
 impl OldCitation {
     #[cfg(test)]
-    pub(crate) fn of(text: &str) -> Self {
+    pub fn of(text: &str) -> Self {
         Self::of_any(&[text.to_owned()])
     }
 
-    pub(crate) fn of_any(texts: &[String]) -> Self {
+    pub fn of_any(texts: &[String]) -> Self {
         let plain: Vec<String> = texts.iter().map(|text| plain(text)).collect();
         Self {
             digests: plain
@@ -68,7 +68,7 @@ impl OldCitation {
 
     /// Whether `selected` is one of these citations. Apps may turn spaces into
     /// no-break spaces or wrap a line, and neither changes the citation.
-    pub(crate) fn is(&self, selected: &str) -> bool {
+    pub fn is(&self, selected: &str) -> bool {
         self.digests
             .contains(&Fingerprint::of_bytes(plain(selected).as_bytes()))
     }
@@ -76,7 +76,7 @@ impl OldCitation {
     /// The longest selection that could still be one of them once its
     /// white space is folded. Only the macOS read uses it.
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-    pub(crate) fn limit(&self) -> usize {
+    pub fn limit(&self) -> usize {
         self.units.saturating_add(32)
     }
 }
@@ -104,7 +104,7 @@ impl std::fmt::Debug for Selection {
 #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
 impl Selection {
     /// Decide what `text` is, and what the search should show of it.
-    pub(crate) fn of_text(text: &str) -> (Self, Option<SelectedText>) {
+    pub fn of_text(text: &str) -> (Self, Option<SelectedText>) {
         if text.is_empty() {
             return (Self::Nothing, None);
         }
@@ -127,11 +127,11 @@ fn line_break_or_control(c: char) -> bool {
 
 /// Text on its one way to the search: it has no `Clone`, and `Debug` hides it.
 #[derive(PartialEq, Eq)]
-pub(crate) struct SelectedText(String);
+pub struct SelectedText(String);
 
 #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
 impl SelectedText {
-    pub(crate) fn into_search(self) -> String {
+    pub fn into_search(self) -> String {
         self.0
     }
 }
@@ -144,38 +144,38 @@ impl std::fmt::Debug for SelectedText {
 
 /// What the system reports about the app in front.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct Front {
+pub struct Front {
     /// macOS bundle ID or Windows executable file name; `None` for an app without one.
-    pub(crate) id: Option<String>,
+    pub id: Option<String>,
     /// Digest of app ID and its OS-reported location; never the raw path.
-    pub(crate) app_identity: Option<String>,
-    pub(crate) pid: i32,
+    pub app_identity: Option<String>,
+    pub pid: i32,
     /// Opaque macOS document/surface identity token; no title or contents.
-    pub(crate) window: Option<u32>,
+    pub window: Option<u32>,
     /// Capture-time refusal, kept even if an authorization changes later.
-    pub(crate) focus_failure: Option<CopyReason>,
+    pub focus_failure: Option<CopyReason>,
     /// The app's own name, as the Dock or its file description shows it.
-    pub(crate) name: Option<String>,
+    pub name: Option<String>,
     /// The app runs with more rights than Ibis (Windows integrity level).
-    pub(crate) elevated: bool,
-    pub(crate) selection: Selection,
+    pub elevated: bool,
+    pub selection: Selection,
     /// Taken for the search before the rest becomes a capture.
     #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
-    pub(crate) search: Option<SelectedText>,
+    pub search: Option<SelectedText>,
 }
 
 /// The app Enter pastes into.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Captured {
-    pub(crate) target: Target,
-    pub(crate) app_identity: Option<String>,
+pub struct Captured {
+    pub target: Target,
+    pub app_identity: Option<String>,
     /// Frozen before the clipboard write; a later chooser answer cannot authorize it.
-    pub(crate) paste: Result<Option<AppPaste>, CopyReason>,
-    pub(crate) pid: Option<i32>,
-    pub(crate) window: Option<u32>,
-    pub(crate) focus_failure: Option<CopyReason>,
-    pub(crate) name: Option<String>,
-    pub(crate) selection: Selection,
+    pub paste: Result<Option<AppPaste>, CopyReason>,
+    pub pid: Option<i32>,
+    pub window: Option<u32>,
+    pub focus_failure: Option<CopyReason>,
+    pub name: Option<String>,
+    pub selection: Selection,
     #[cfg(target_os = "macos")]
     pub(crate) diagnostic: Option<super::macos::diagnostics::Snapshot>,
 }
@@ -183,7 +183,7 @@ pub(crate) struct Captured {
 impl Captured {
     /// No app to paste into: what a capture says on Linux and when nothing
     /// was in front.
-    pub(crate) fn unknown(system: System) -> Self {
+    pub fn unknown(system: System) -> Self {
         Self {
             target: Target {
                 system,
@@ -211,7 +211,7 @@ impl Captured {
 /// macOS checks system-wide Secure Event Input; Windows checks the focused
 /// field with UI Automation. The destination table refuses terminals, remote
 /// desktops and VMs on both platforms.
-pub(crate) fn captured(system: System, front: Option<Front>, own: i32) -> Option<Captured> {
+pub fn captured(system: System, front: Option<Front>, own: i32) -> Option<Captured> {
     let Some(front) = front else {
         return Some(Captured::unknown(system));
     };
@@ -240,7 +240,7 @@ pub(crate) fn captured(system: System, front: Option<Front>, own: i32) -> Option
 /// No filesystem reads or path canonicalisation: compare exactly the location
 /// the OS already reports, including case on case-sensitive volumes.
 #[cfg(any(target_os = "macos", target_os = "windows", test))]
-pub(crate) fn app_identity(system: System, id: &str, path: &str) -> Option<String> {
+pub fn app_identity(system: System, id: &str, path: &str) -> Option<String> {
     if path.is_empty() || path.chars().any(char::is_control) {
         return None;
     }

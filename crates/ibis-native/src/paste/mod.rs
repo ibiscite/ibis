@@ -12,30 +12,26 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
-#[cfg(any(target_os = "macos", test))]
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
 use ibis_core::destination::AppPaste;
 #[cfg(test)]
 use ibis_core::destination::PastePermission;
-use ibis_core::destination::{AppId, CopyReason, System};
+use ibis_core::destination::{CopyReason, System};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
 
-pub(crate) mod capture;
+pub mod capture;
 mod delivery;
 mod destination;
 mod input_fence;
-mod keys;
+pub mod keys;
 #[cfg(target_os = "macos")]
-mod macos;
-#[cfg(test)]
-mod notepad_test;
-pub(crate) mod permission;
-mod queries;
-mod tickets;
+pub mod macos;
+pub mod queries;
+pub mod tickets;
 #[cfg(target_os = "windows")]
-mod windows;
+pub mod windows;
 
-pub(crate) use capture::Captured;
+pub use capture::Captured;
 #[cfg(any(target_os = "linux", test))]
 use capture::Front;
 #[cfg(any(target_os = "macos", test))]
@@ -43,11 +39,10 @@ use capture::Selection;
 #[cfg(any(target_os = "windows", test))]
 use delivery::CopyEvidence;
 #[cfg(target_os = "windows")]
-use delivery::key_release_failed;
-use delivery::{DeliveryRequest, Desk, deliver, with_paste_settings};
-#[cfg(test)]
-use destination::intended_paste;
-use destination::paste_policy;
+pub use delivery::key_release_failed;
+pub use delivery::with_paste_settings;
+use delivery::{DeliveryRequest, Desk, deliver};
+pub use destination::{intended_paste, policy_decision};
 use input_fence::PostResult;
 #[cfg(any(target_os = "macos", test))]
 use input_fence::{InputPress, PendingPost, PostDesk, PostRequest, check_input_since, checked_post};
@@ -77,7 +72,8 @@ impl PolicyProof {
     }
 }
 
-const SYSTEM: System = if cfg!(target_os = "macos") {
+/// The system this build pastes on.
+pub const SYSTEM: System = if cfg!(target_os = "macos") {
     System::Macos
 } else if cfg!(target_os = "windows") {
     System::Windows
@@ -98,7 +94,7 @@ const POST_LIMIT: Duration = Duration::from_millis(250);
 
 /// A suspend-aware time and lifecycle identity, frozen by the successful write.
 #[derive(Clone, Copy)]
-struct SafetyStamp {
+pub struct SafetyStamp {
     epoch: u64,
     elapsed: Duration,
 }
@@ -160,14 +156,66 @@ impl SafetyStamp {
     }
 }
 
-/// The app the picker was last opened from.
-#[derive(Default)]
-pub(crate) struct LastTarget(Mutex<TargetState>);
+/// The app the picker was last opened from, with the source of the unique
+/// token each of Ibis's clipboard writes takes.
+pub struct LastTarget(Mutex<TargetState>, fn() -> Result<u32, String>);
 
-#[cfg(any(target_os = "windows", test))]
+#[cfg(test)]
+impl Default for LastTarget {
+    fn default() -> Self {
+        /// The tests' own writes, nonwrapping as the host's are.
+        fn write_token() -> Result<u32, String> {
+            static WRITES: Mutex<u32> = Mutex::new(0);
+            let failed = || "The clipboard could not be written.".to_owned();
+            let mut token = WRITES.lock().map_err(|_| failed())?;
+            *token = token.checked_add(1).ok_or_else(failed)?;
+            Ok(*token)
+        }
+        Self::new(write_token)
+    }
+}
+
 impl LastTarget {
-    #[cfg(test)]
-    pub(crate) fn capture_fixture(&self, captured: Captured) {
+    /// `write_token` must give every clipboard write of the process a new,
+    /// never reused token: a proof is consumed only by its own token.
+    pub fn new(write_token: fn() -> Result<u32, String>) -> Self {
+        Self(Mutex::default(), write_token)
+    }
+
+    /// Serialize successful policy changes with proof publication and native
+    /// posting. Detached workers keep a revocable epoch after taking their proof.
+    pub fn change_destination<T>(
+        &self,
+        revoke: bool,
+        change: impl FnOnce(Option<&Captured>) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let mut last = self.0.lock().map_err(|_| "the destination is unavailable")?;
+        #[cfg(not(target_os = "windows"))]
+        let captured = last.captured.as_ref();
+        #[cfg(target_os = "windows")]
+        let captured = last.target.as_ref().and_then(|target| target.captured.as_ref());
+        let result = change(captured)?;
+        if revoke {
+            last.invalidate_policy();
+        }
+        Ok(result)
+    }
+
+    /// Read the capture under the same lock as delivery; `None` if it is unavailable.
+    pub fn with_captured<R>(&self, read: impl FnOnce(Option<&Captured>) -> R) -> Option<R> {
+        let last = self.0.lock().ok()?;
+        #[cfg(not(target_os = "windows"))]
+        let captured = last.captured.as_ref();
+        #[cfg(target_os = "windows")]
+        let captured = last.target.as_ref().and_then(|target| target.captured.as_ref());
+        Some(read(captured))
+    }
+}
+
+#[cfg(any(target_os = "windows", test, feature = "fixtures"))]
+impl LastTarget {
+    #[cfg(any(test, feature = "fixtures"))]
+    pub fn capture_fixture(&self, captured: Captured) {
         #[cfg(not(target_os = "windows"))]
         self.begin_presentation(Some(captured));
         #[cfg(target_os = "windows")]
@@ -182,7 +230,7 @@ impl LastTarget {
 
     /// Final native checks must never dispatch to the UI thread while this
     /// guard is held. Contention refuses instead of queuing input behind IPC.
-    fn post_if_ready(&self, post: impl FnOnce() -> bool) -> bool {
+    pub fn post_if_ready(&self, post: impl FnOnce() -> bool) -> bool {
         self.0.try_lock().is_ok_and(|_policy| post())
     }
 }
@@ -220,26 +268,6 @@ impl TargetState {
     }
 }
 
-/// Serialize successful policy changes with proof publication and native
-/// posting. Detached workers keep a revocable epoch after taking their proof.
-pub(crate) fn change_destination<T, R: tauri::Runtime>(
-    app: &AppHandle<R>,
-    revoke: bool,
-    change: impl FnOnce(Option<&Captured>) -> Result<T, String>,
-) -> Result<T, String> {
-    let state = app.state::<LastTarget>();
-    let mut last = state.0.lock().map_err(|_| "the destination is unavailable")?;
-    #[cfg(not(target_os = "windows"))]
-    let captured = last.captured.as_ref();
-    #[cfg(target_os = "windows")]
-    let captured = last.target.as_ref().and_then(|target| target.captured.as_ref());
-    let result = change(captured)?;
-    if revoke {
-        last.invalidate_policy();
-    }
-    Ok(result)
-}
-
 /// Evidence from Ibis's own successful clipboard write, consumed once. The
 /// text is Ibis's citation, never read back from another clipboard owner.
 #[cfg(any(not(target_os = "windows"), test))]
@@ -260,7 +288,7 @@ struct CopyProof {
 impl LastTarget {
     /// Showing the picker invalidates an earlier delivery. Hide/blur events
     /// may happen more than once and must not retire the successful copy.
-    pub(crate) fn begin_presentation(&self, captured: Option<Captured>) {
+    pub fn begin_presentation(&self, captured: Option<Captured>) {
         if let Ok(mut last) = self.0.lock() {
             last.presentation = last.presentation.wrapping_add(1);
             last.copied = None;
@@ -272,7 +300,7 @@ impl LastTarget {
     }
 
     #[cfg(any(target_os = "macos", test))]
-    pub(crate) fn write_copy(
+    pub fn write_copy(
         &self,
         text: &str,
         replaces: &[String],
@@ -341,7 +369,7 @@ impl LastTarget {
             }
             captured
         });
-        let token = crate::copy::write_token()?;
+        let token = (self.1)()?;
         let change_count = write()?;
         if let Some(change_count) = change_count {
             last.owner = Some(token);
@@ -395,75 +423,90 @@ impl LastTarget {
     }
 }
 
-/// Remember the app in front, before the picker shows. Ibis in front keeps the
-/// earlier capture. Returns short selected text for the search, once (#1526).
-pub(crate) fn capture(app: &AppHandle) -> Option<String> {
-    let own = i32::try_from(std::process::id()).unwrap_or(i32::MAX);
-    #[cfg(target_os = "macos")]
-    let mut front = macos::frontmost(app);
-    #[cfg(target_os = "macos")]
-    let search = front
-        .as_mut()
-        .and_then(|front| front.search.take())
-        .map(capture::SelectedText::into_search);
-    #[cfg(not(target_os = "macos"))]
-    let search = None;
-    #[cfg(target_os = "windows")]
-    let generation = app.state::<crate::picker::PickerGeneration>().current();
-    #[cfg(target_os = "windows")]
-    let (front, window) = windows::capture();
-    #[cfg(target_os = "linux")]
-    let front = None;
-    #[cfg(not(target_os = "windows"))]
-    app.state::<LastTarget>()
-        .begin_presentation(capture::captured(SYSTEM, front, own));
-    #[cfg(target_os = "windows")]
-    if let Ok(mut last) = app.state::<LastTarget>().0.lock() {
-        // A newer show may finish its capture while this one's optional
-        // name is waiting. Never stamp an older HWND with its generation.
-        publish_capture(
-            &mut last.target,
-            CopyTarget {
-                captured: capture::captured(SYSTEM, front, own),
-                window,
-                generation,
-            },
-            app.state::<crate::picker::PickerGeneration>().current(),
-        );
+#[cfg(target_os = "windows")]
+impl LastTarget {
+    /// Remember a capture for its presentation. A newer show may finish its
+    /// capture while this one's optional name is waiting: `current` is read
+    /// under the lock, so an older HWND is never stamped with its generation.
+    pub fn publish_capture(
+        &self,
+        captured: Option<Captured>,
+        window: Option<windows::Window>,
+        generation: u64,
+        current: impl FnOnce() -> u64,
+    ) {
+        if let Ok(mut last) = self.0.lock() {
+            publish_capture(
+                &mut last.target,
+                CopyTarget {
+                    captured,
+                    window,
+                    generation,
+                },
+                current(),
+            );
+        }
     }
-    search
-}
 
-/// The app the picker was last opened from, with the name the picker shows
-/// for it, resolved by the same owner as Settings.
-pub(crate) fn last_app(app: &AppHandle) -> Option<(AppId, String, Option<String>)> {
-    let state = app.state::<LastTarget>();
-    let last = state.0.lock().ok()?;
-    #[cfg(not(target_os = "windows"))]
-    let captured = last.captured.clone()?;
-    #[cfg(target_os = "windows")]
-    let captured = last.target.as_ref()?.captured.clone()?;
-    let id = captured.target.app?;
-    let name = crate::destination::display_name(&id);
-    Some((id, name, captured.app_identity))
-}
+    /// Freeze the destination and time at request entry, before clipboard I/O.
+    pub fn begin_copy(
+        &self,
+        generation: impl FnOnce() -> u64,
+        replaces: &[String],
+        paste_for: impl Fn(&Captured) -> Result<Option<AppPaste>, CopyReason>,
+    ) -> CopyAttempt<windows::Window> {
+        let stamp = SafetyStamp::now();
+        let written = Instant::now();
+        let generation = generation();
+        let (target, policy) = self
+            .0
+            .lock()
+            .ok()
+            .map(|last| {
+                (
+                    last.target.clone().filter(|target| target.generation == generation),
+                    PolicyProof::capture(&last.policy),
+                )
+            })
+            .unwrap_or_default();
+        let target = target.map(|mut target| {
+            if let Some(captured) = &mut target.captured {
+                captured.paste = paste_for(captured);
+                if !replaces.is_empty() {
+                    captured.selection = capture::Selection::Citation(capture::OldCitation::of_any(replaces));
+                }
+            }
+            target
+        });
+        CopyAttempt {
+            target,
+            policy,
+            written,
+            stamp,
+        }
+    }
 
-/// The footer's intended action, from the same policy as delivery. This only
-/// reads the captured target and permission; secure input is checked at delivery.
-pub(crate) fn intends_paste(app: &AppHandle, enabled: bool) -> bool {
-    paste_policy(app, enabled, false)
-}
+    pub fn remember_copy(
+        &self,
+        attempt: CopyAttempt<windows::Window>,
+        sequence: Option<u32>,
+        token: u32,
+    ) -> Option<u32> {
+        let Ok(mut last) = self.0.lock() else {
+            return Some(token);
+        };
+        remember_ticket(&mut last.pending, attempt, sequence, token)
+    }
 
-/// Whether an ordinary target could paste after explicit approval. It uses the
-/// same proof and refusal policy, so unsafe/unproven apps never ask for approval.
-pub(crate) fn may_choose_paste(app: &AppHandle, enabled: bool) -> bool {
-    paste_policy(app, enabled, true)
+    pub fn take_ticket(&self, token: Option<u32>) -> Option<DeliveryTicket<windows::Window>> {
+        take_ticket(&mut self.0.lock().ok()?.pending, token)
+    }
 }
 
 /// What happened to a copied citation, for the notice to word.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(tag = "outcome", rename_all = "kebab-case")]
-pub(crate) enum Delivered {
+pub enum Delivered {
     Pasted {
         /// The app's own name; `None` when it has none.
         app: Option<String>,
@@ -478,7 +521,7 @@ pub(crate) enum Delivered {
 /// paste that failed once it began.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(untagged)]
-pub(crate) enum CopiedReason {
+pub enum CopiedReason {
     Decided(CopyReason),
     Delivery(DeliveryFailure),
 }
@@ -486,13 +529,13 @@ pub(crate) enum CopiedReason {
 /// A paste that began and could not finish.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum DeliveryFailure {
+pub enum DeliveryFailure {
     /// The paste keys went down but could not be released.
     KeyReleaseFailed,
 }
 
 impl Delivered {
-    pub(crate) fn copied(reason: CopyReason) -> Self {
+    pub fn copied(reason: CopyReason) -> Self {
         Self::Copied {
             reason: CopiedReason::Decided(reason),
         }
@@ -504,7 +547,7 @@ impl Delivered {
 /// the notice nor its worker may adopt a later capture.
 #[cfg(any(target_os = "windows", test))]
 #[derive(Clone)]
-pub(crate) struct CopyTarget<W> {
+pub struct CopyTarget<W> {
     captured: Option<Captured>,
     window: Option<W>,
     generation: u64,
@@ -528,7 +571,7 @@ fn publish_capture<W>(kept: &mut Option<CopyTarget<W>>, next: CopyTarget<W>, cur
 }
 
 #[cfg(any(target_os = "windows", test))]
-pub(crate) struct DeliveryTicket<W> {
+pub struct DeliveryTicket<W> {
     policy: PolicyProof,
     token: u32,
     target: CopyTarget<W>,
@@ -539,7 +582,7 @@ pub(crate) struct DeliveryTicket<W> {
 
 /// Identity and time at request entry, before target locks or clipboard I/O.
 #[cfg(any(target_os = "windows", test))]
-pub(crate) struct CopyAttempt<W> {
+pub struct CopyAttempt<W> {
     policy: PolicyProof,
     target: Option<CopyTarget<W>>,
     written: Instant,
@@ -560,54 +603,6 @@ impl<W> CopyEvidence for DeliveryTicket<W> {
     fn stamp(&self) -> SafetyStamp {
         self.stamp
     }
-}
-
-#[cfg(target_os = "windows")]
-pub(crate) fn begin_copy(app: &AppHandle, replaces: &[String]) -> CopyAttempt<windows::Window> {
-    let stamp = SafetyStamp::now();
-    let written = Instant::now();
-    let generation = app.state::<crate::picker::PickerGeneration>().current();
-    let (target, policy) = app
-        .state::<LastTarget>()
-        .0
-        .lock()
-        .ok()
-        .map(|last| {
-            (
-                last.target.clone().filter(|target| target.generation == generation),
-                PolicyProof::capture(&last.policy),
-            )
-        })
-        .unwrap_or_default();
-    let target = target.map(|mut target| {
-        if let Some(captured) = &mut target.captured {
-            captured.paste = app.state::<crate::destination::AppMemory>().for_capture(captured);
-            if !replaces.is_empty() {
-                captured.selection = capture::Selection::Citation(capture::OldCitation::of_any(replaces));
-            }
-        }
-        target
-    });
-    CopyAttempt {
-        target,
-        policy,
-        written,
-        stamp,
-    }
-}
-
-#[cfg(target_os = "windows")]
-pub(crate) fn remember_copy(
-    app: &AppHandle,
-    attempt: CopyAttempt<windows::Window>,
-    sequence: Option<u32>,
-    token: u32,
-) -> Option<u32> {
-    let state = app.state::<LastTarget>();
-    let Ok(mut last) = state.0.lock() else {
-        return Some(token);
-    };
-    remember_ticket(&mut last.pending, attempt, sequence, token)
 }
 
 #[cfg(any(target_os = "windows", test))]
@@ -639,42 +634,22 @@ fn take_ticket<W>(pending: &mut Option<DeliveryTicket<W>>, token: Option<u32>) -
     pending.take_if(|ticket| Some(ticket.token) == token)
 }
 
-#[cfg(target_os = "windows")]
-pub(crate) fn take_copy(app: &AppHandle, token: Option<u32>) -> Option<DeliveryTicket<windows::Window>> {
-    take_ticket(&mut app.state::<LastTarget>().0.lock().ok()?.pending, token)
-}
-
-#[cfg(target_os = "windows")]
-pub(crate) fn deliver_copy(app: &AppHandle, text: &str, ticket: Option<DeliveryTicket<windows::Window>>) -> Delivered {
-    let desk = windows::Win::new(app);
-    // Missing/stale receipts must not strand keys from an earlier copy.
-    if !desk.release_keys() {
-        return key_release_failed();
-    }
-    let Some(ticket) = ticket else {
-        return Delivered::copied(CopyReason::PasteUnavailable);
-    };
-    with_paste_settings(&app.state::<crate::preferences::SettingsFile>().path, |enabled| {
-        deliver_ticket(&desk, &ticket, text, enabled)
-    })
-}
-
 /// Paste into the captured app when it is safe to; the notice then says what happened.
-#[cfg(not(target_os = "windows"))]
-pub(crate) fn deliver_copy(app: &AppHandle, text: &str, token: Option<u32>) -> Delivered {
-    #[cfg(target_os = "macos")]
+/// `settings` is the settings file the paste setting is read from.
+#[cfg(target_os = "macos")]
+pub fn deliver_copy(host: &impl macos::Host, settings: &std::path::Path, text: &str, token: Option<u32>) -> Delivered {
     let began = Instant::now();
-    let proof = app.state::<LastTarget>().take_copy(text, token);
-    #[cfg(target_os = "macos")]
-    let desk = macos::Mac::new(app, proof.as_ref(), began);
-    #[cfg(target_os = "linux")]
-    let desk = CopyOnly;
-    let outcome = with_paste_settings(&app.state::<crate::preferences::SettingsFile>().path, |enabled| {
-        deliver(&desk, proof.as_ref(), enabled)
-    });
-    #[cfg(target_os = "macos")]
+    let proof = host.last_target().take_copy(text, token);
+    let desk = macos::Mac::new(host, proof.as_ref(), began);
+    let outcome = with_paste_settings(settings, |enabled| deliver(&desk, proof.as_ref(), enabled));
     desk.complete(&outcome);
     outcome
+}
+
+#[cfg(target_os = "linux")]
+pub fn deliver_copy(last: &LastTarget, settings: &std::path::Path, text: &str, token: Option<u32>) -> Delivered {
+    let proof = last.take_copy(text, token);
+    with_paste_settings(settings, |enabled| deliver(&CopyOnly, proof.as_ref(), enabled))
 }
 
 /// Linux captures no target, so it only copies.

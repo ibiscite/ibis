@@ -2208,6 +2208,7 @@ dependencies = [
  "ibis-core",
  "ibis-desktop-macros",
  "ibis-engine",
+ "ibis-native",
  "image",
  "objc2-app-kit",
  "objc2-core-foundation",
@@ -2278,6 +2279,25 @@ dependencies = [
  "libfuzzer-sys",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "ibis-native"
+version = "0.3.10"
+dependencies = [
+ "block2",
+ "ibis-core",
+ "ibis-engine",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-core-foundation",
+ "objc2-core-graphics",
+ "objc2-foundation",
+ "schemars 1.2.3",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "winsafe",
 ]
 
 [[package]]
