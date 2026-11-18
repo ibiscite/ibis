@@ -113,14 +113,15 @@ nor reports a status. Keep the worktree until the PR merges, then run
 
 [CI](../.github/workflows/ci.yml) runs on in-repository PRs and pushes to main.
 **CI result** is the required merge check. The interface build, web and script
-tests, dependency policy, commit identities and Linux release checks (release
-mode, minimum Rust, budgets) must pass. When selected, `Rust and desktop` runs
+tests, dependency policy and commit identities must pass. When selected, `Rust and desktop` runs
 on Ubuntu, macOS and Windows, with one job per system. A newer push to a PR
 cancels its superseded run. **Plan the checks** (`scripts/ci-plan.mjs`) skips
 the Rust and picture jobs for prose under `docs/` or
 the root `*.md` files, the workspace lint and tests for a change to the app alone,
 the pictures without an interface change, and [CSL conformance](../crates/ibis-csl/CONFORMANCE.md)
-unless the formatter or one of its workspace dependencies changes. Any other, generated or shared
+unless the formatter or one of its workspace dependencies changes. Linux release
+checks (release mode, minimum Rust, performance) run if a workspace crate can
+change. Any other, generated or shared
 path (Cargo files, toolchain, `build.rs`, `fixtures/`, `.github/`, `scripts/`,
 `locales/`, `website/`, `plugins/`, `brand/`) and anything it cannot read runs the
 full suite, as do main, schedules, manual runs, the `ci:full` label (then push

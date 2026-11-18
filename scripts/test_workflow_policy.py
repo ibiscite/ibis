@@ -89,7 +89,8 @@ class CiResultTest(unittest.TestCase):
         self.assertEqual(jobs["rust"]["needs"], ["plan", "interface"])
         self.assertEqual(jobs["pictures"]["needs"], "plan")
         self.assertEqual(jobs["conformance"]["needs"], "plan")
-        self.assertEqual(jobs["release-checks"]["if"], FORK_GUARD)
+        self.assertEqual(jobs["release-checks"]["needs"], "plan")
+        self.assertEqual(jobs["release-checks"]["if"], "needs.plan.outputs.workspace == 'true'")
 
     def test_a_newer_push_replaces_a_pull_requests_run_but_never_mains(self):
         concurrency = self.workflow["concurrency"]
@@ -111,13 +112,13 @@ class CiResultTest(unittest.TestCase):
         self.assertEqual(choose["env"]["MACOS_RUNNER_OVERRIDE"], "${{ github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON(vars.RUNNERS || '{}')['macos-15'] && 'true' || '' }}")
         self.assertFalse(choose.get("continue-on-error", False))
         result = next(step for step in jobs["result"]["steps"] if step.get("run") == "scripts/ci-result.sh")
-        self.assertEqual(result["env"]["SELECTED"], "rust:${{ needs.plan.outputs.rust }}:${{ needs.rust.result }} pictures:${{ needs.plan.outputs.pictures }}:${{ needs.pictures.result }} csl:${{ needs.plan.outputs.csl }}:${{ needs.conformance.result }}")
+        self.assertEqual(result["env"]["SELECTED"], "rust:${{ needs.plan.outputs.rust }}:${{ needs.rust.result }} pictures:${{ needs.plan.outputs.pictures }}:${{ needs.pictures.result }} csl:${{ needs.plan.outputs.csl }}:${{ needs.conformance.result }} release:${{ needs.plan.outputs.workspace }}:${{ needs.release-checks.result }}")
         self.assertEqual(result["env"]["WORKSPACE"], "${{ needs.plan.outputs.workspace }}")
-        self.assertEqual(result["env"]["RESULTS"], " ".join(f"${{{{ needs.{name}.result }}}}" for name in ["plan", "interface", "web", "dependencies", "release-checks"]))
+        self.assertEqual(result["env"]["RESULTS"], " ".join(f"${{{{ needs.{name}.result }}}}" for name in ["plan", "interface", "web", "dependencies"]))
         # Every job the result needs is either always required, planned or qualification.
-        planned = {"rust", "pictures", "conformance"}
+        planned = {"rust", "pictures", "conformance", "release-checks"}
         qualification = {"webkit", "bibtex-fuzz", "installed"}
-        self.assertEqual(set(jobs["result"]["needs"]), {"plan", "interface", "web", "dependencies", "release-checks"} | planned | qualification)
+        self.assertEqual(set(jobs["result"]["needs"]), {"plan", "interface", "web", "dependencies"} | planned | qualification)
         for name, job in jobs.items():
             if "needs.plan.outputs" in str(job.get("if", "")):
                 self.assertIn(name, planned)
