@@ -69,8 +69,14 @@ static CURRENT: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0
 /// Speak this language for the rest of the process. The app calls it once at
 /// start; the command line and MCP never do, so they stay English.
 pub fn use_language(language: Language) {
-    let index = Language::ALL.iter().position(|each| *each == language).unwrap_or_default();
-    CURRENT.store(u8::try_from(index).unwrap_or_default(), std::sync::atomic::Ordering::Relaxed);
+    let index = Language::ALL
+        .iter()
+        .position(|each| *each == language)
+        .unwrap_or_default();
+    CURRENT.store(
+        u8::try_from(index).unwrap_or_default(),
+        std::sync::atomic::Ordering::Relaxed,
+    );
 }
 
 /// The language this process speaks.
@@ -117,7 +123,10 @@ pub const GROUPS: [&str; 9] = [
 
 fn bundle_in(language: Language) -> &'static FluentBundle<FluentResource> {
     static BUNDLES: [OnceLock<FluentBundle<FluentResource>>; 3] = [OnceLock::new(), OnceLock::new(), OnceLock::new()];
-    let index = Language::ALL.iter().position(|each| *each == language).unwrap_or_default();
+    let index = Language::ALL
+        .iter()
+        .position(|each| *each == language)
+        .unwrap_or_default();
     BUNDLES[index].get_or_init(|| {
         let resource = FluentResource::try_new(language.source().to_owned()).unwrap_or_else(|(resource, _)| resource);
         let tag: unic_langid::LanguageIdentifier = language.tag().parse().unwrap_or_default();

@@ -314,7 +314,11 @@ fn present_offer(
 fn offer_buttons() -> MessageDialogButtons {
     // rfd defaults to the first custom action on Windows and macOS. A separate
     // Cancel slot is essential: the plugin maps Escape/close to that label.
-    MessageDialogButtons::YesNoCancelCustom(say("app-update-later", &[]), install_label(), say("app-update-cancel", &[]))
+    MessageDialogButtons::YesNoCancelCustom(
+        say("app-update-later", &[]),
+        install_label(),
+        say("app-update-cancel", &[]),
+    )
 }
 
 #[cfg(any(not(target_os = "linux"), test))]
@@ -561,7 +565,10 @@ fn present_installation_failure(app: &AppHandle, show: bool) {
 }
 
 fn tell(app: &AppHandle, text: &str) {
-    app.dialog().message(text).title(say("app-updates-title", &[])).show(|_| {});
+    app.dialog()
+        .message(text)
+        .title(say("app-updates-title", &[]))
+        .show(|_| {});
 }
 
 #[cfg(test)]

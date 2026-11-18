@@ -243,7 +243,9 @@ fn main() {
             // Before any window or menu speaks: the saved language, else the
             // system's. A new choice is spoken the next time Ibis opens.
             ibis_engine::catalogue::use_language(language::resolve(
-                interface.interface_language.and_then(settings::InterfaceLanguage::chosen),
+                interface
+                    .interface_language
+                    .and_then(settings::InterfaceLanguage::chosen),
             ));
             let cites = loaded.cites().ok();
             library::engine_library::warm_formatter(cites.and_then(|settings| settings.portable.output.clone()));

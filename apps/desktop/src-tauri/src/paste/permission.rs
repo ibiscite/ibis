@@ -33,7 +33,11 @@ pub(crate) struct PastePermission {
 /// system names it in the interface language (macOS 27 renamed it).
 #[cfg(any(target_os = "macos", test))]
 pub(crate) fn list_name(major: u32) -> String {
-    let id = if major >= 27 { "app-paste-list-since-27" } else { "app-paste-list-before-27" };
+    let id = if major >= 27 {
+        "app-paste-list-since-27"
+    } else {
+        "app-paste-list-before-27"
+    };
     ibis_engine::catalogue::text(id, None, &[]).unwrap_or_else(|| id.to_owned())
 }
 

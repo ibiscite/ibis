@@ -63,7 +63,10 @@ pub(crate) fn open_in_browser(app: &AppHandle, url: String) {
             } else {
                 format!("{}\n{url}", say("app-open-link-failed"))
             };
-            app.dialog().message(text).title(say("app-open-link-title")).show(|_| {});
+            app.dialog()
+                .message(text)
+                .title(say("app-open-link-title"))
+                .show(|_| {});
         }
     });
 }

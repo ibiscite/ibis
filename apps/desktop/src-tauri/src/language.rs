@@ -40,7 +40,11 @@ fn system_languages() -> Vec<String> {
         .split(':')
         .map(str::to_owned)
         .collect();
-    tags.extend(["LC_ALL", "LC_MESSAGES", "LANG"].into_iter().filter_map(|name| std::env::var(name).ok()));
+    tags.extend(
+        ["LC_ALL", "LC_MESSAGES", "LANG"]
+            .into_iter()
+            .filter_map(|name| std::env::var(name).ok()),
+    );
     tags.retain(|tag| !tag.is_empty());
     tags
 }

@@ -549,7 +549,10 @@ pub fn summary(proposal: &Proposal) -> String {
         }
         Change::Fields { label, fields, .. } => {
             let names: Vec<&str> = fields.keys().map(String::as_str).collect();
-            say("app-proposal-fields", &[("fields", &names.join(", ")), ("label", label)])
+            say(
+                "app-proposal-fields",
+                &[("fields", &names.join(", ")), ("label", label)],
+            )
         }
         Change::Tags { label, add, remove, .. } => {
             let state = match (add.is_empty(), remove.is_empty()) {
@@ -559,7 +562,12 @@ pub fn summary(proposal: &Proposal) -> String {
             };
             say(
                 "app-proposal-tags",
-                &[("state", state), ("add", &add.join(", ")), ("remove", &remove.join(", ")), ("label", label)],
+                &[
+                    ("state", state),
+                    ("add", &add.join(", ")),
+                    ("remove", &remove.join(", ")),
+                    ("label", label),
+                ],
             )
         }
     }
