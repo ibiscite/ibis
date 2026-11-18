@@ -171,6 +171,9 @@ function main(args) {
         if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, text);
         return 0;
       }
+      // One shared target directory must still give each side its own build,
+      // or the comparison could never fail.
+      if (base === head) throw new Error("the base and head builds are the same executable");
       // Interleaved ABBA rounds share whatever the machine is doing; the base
       // skips the idle wait, which is judged absolutely below.
       const reports = { head: [], base: [] };
