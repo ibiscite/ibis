@@ -17,14 +17,27 @@ const harness = "crates/ibis-engine/tests/perf.rs";
 export const cases = ["feel_10k", "feel_100k"];
 
 // Absolute budgets per machine class, from the medians recorded in
-// docs/architecture.md with headroom: 1.5x on a fixed machine, 2.5x on shared
-// runners. A budget never sits above what a person notices (typing 50 ms,
-// first search and first citation 100 ms, warm formatting 100 ms).
+// docs/architecture.md › Performance checks. On a fixed machine: timings 1.5x
+// the median and at least 2 ms over it, memory 1.2x, idle 0.5% of a core. On
+// shared runners: timings 2.5x the Windows median and at least 5 ms over it,
+// memory 1.5x the Linux median, idle 1%. A budget never sits above what a
+// person notices: typing 50 ms, first search, first citation and warm
+// formatting 100 ms. `null` is a class still waiting for a quiet measurement.
 export const budgets = {
-  mac: {},
-  linux: {},
-  windows: {},
-  shared: {},
+  windows: {
+    "10k": { open_ms: 900, first_search_ms: 4, summon_ms: 3, typing_p95_ms: 4, first_cite_ms: 30, format_p50_ms: 80, refresh_ms: 1200, rss_mib: 55, idle_cpu_percent: 0.5 },
+    "100k": { open_ms: 9000, first_search_ms: 25, summon_ms: 4, typing_p95_ms: 35, first_cite_ms: 35, format_p50_ms: 85, refresh_ms: 8500, rss_mib: 450, idle_cpu_percent: 0.5 },
+  },
+  // Timings wait for a quiet run; memory does not move with load.
+  linux: {
+    "10k": { rss_mib: 65 },
+    "100k": { rss_mib: 520 },
+  },
+  mac: null,
+  shared: {
+    "10k": { open_ms: 1500, first_search_ms: 8, summon_ms: 6, typing_p95_ms: 8, first_cite_ms: 50, format_p50_ms: 130, refresh_ms: 2000, rss_mib: 80, idle_cpu_percent: 1 },
+    "100k": { open_ms: 15000, first_search_ms: 40, summon_ms: 8, typing_p95_ms: 60, first_cite_ms: 55, format_p50_ms: 140, refresh_ms: 14000, rss_mib: 650, idle_cpu_percent: 1 },
+  },
 };
 
 // A regression is a median slower than the base by both the ratio and the
@@ -146,7 +159,8 @@ function main(args) {
   const [command, target] = args;
   const count = rounds(args);
   if (command === "run" || command === "check") {
-    if (command === "check" && !budgets[target]) throw new Error(`Usage: perf.mjs check ${Object.keys(budgets).join("|")}`);
+    if (command === "check" && !(target in budgets)) throw new Error(`Usage: perf.mjs check ${Object.keys(budgets).join("|")}`);
+    if (command === "check" && !budgets[target]) throw new Error(`The ${target} budgets wait for a quiet measurement: run \`perf.mjs run\` and record it`);
     const executable = build(root);
     const reports = [];
     for (let round = 0; round < count; round++) for (const name of cases) reports.push(measure(executable, name));

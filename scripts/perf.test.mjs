@@ -30,8 +30,15 @@ test("a regression needs both the ratio and the floor", () => {
     ["10k typing_p95_ms: 1 → 5 (+400%)", "100k refresh_ms: 3000 → 3700 (+23%)"]);
 });
 
-test("every machine class budgets both cases", () => {
+test("every measured machine class budgets both cases, under what a person notices", () => {
+  const felt = { typing_p95_ms: 50, first_search_ms: 100, first_cite_ms: 100, format_p50_ms: 100 };
   for (const [name, limits] of Object.entries(budgets)) {
+    if (limits === null) continue;
     assert.deepEqual(Object.keys(limits), cases.map((test) => test.replace("feel_", "")), name);
+    if (name === "shared") continue;
+    for (const metrics of Object.values(limits)) {
+      for (const [metric, ceiling] of Object.entries(felt)) if (metric in metrics) assert.ok(metrics[metric] <= ceiling, `${name} ${metric}`);
+    }
   }
+  assert.ok(budgets.shared, "every pull request is judged against the shared budgets");
 });
