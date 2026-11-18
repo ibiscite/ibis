@@ -38,6 +38,9 @@ mod panel;
 mod panel_startup;
 mod paste;
 mod picker;
+// The picker window lifecycle core; the platform adapters move onto it next.
+#[cfg_attr(not(test), allow(dead_code))]
+mod picker_window;
 mod placement;
 mod preferences;
 mod project;
