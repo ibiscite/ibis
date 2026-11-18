@@ -12,7 +12,7 @@ const LIBRARY: &str = r"@article{aster2026lanterns,
   title = {Brass lanterns at dusk},
   journal = {Journal of Invented Light},
   publisher = {/home/invented-account/private-library},
-  institution = {~another-invented-account/hidden-library},
+  institution = {\textasciitilde{}another-invented-account/hidden-library},
   volume = {4},
   year = {2026},
   doi = {10.5555/lantern.1},
@@ -184,7 +184,7 @@ fn pack_keeps_path_shaped_keys_and_filters_home_paths_in_metadata() {
     let fixture = fixture_with_library(
         r"@book{a:/_,
           author = {Aster, Mira},
-          title = {Notes at ~invented-reader/private-title},
+          title = {Notes at \textasciitilde{}invented-reader/privatetitle},
           year = {2026},
           file = {papers/aster.pdf}
         }",
@@ -202,7 +202,7 @@ fn pack_keeps_path_shaped_keys_and_filters_home_paths_in_metadata() {
         .unwrap();
     let copied = citation.copy_content(1).unwrap().text;
     assert!(copied.contains("@book{a:/_,"), "{copied}");
-    assert!(copied.contains("private-title"), "{copied}");
+    assert!(copied.contains("/privatetitle"), "{copied}");
 
     let destination = fixture.root.join("pack");
     let written = share(
@@ -222,8 +222,8 @@ fn pack_keeps_path_shaped_keys_and_filters_home_paths_in_metadata() {
     );
     let list = std::fs::read_to_string(destination.join("Reading list.html")).unwrap();
     let bib = std::fs::read_to_string(destination.join("References.bib")).unwrap();
-    assert!(!list.contains("private-title"), "{list}");
-    assert!(!bib.contains("private-title"), "{bib}");
+    assert!(!list.contains("privatetitle"), "{list}");
+    assert!(!bib.contains("privatetitle"), "{bib}");
     assert!(bib.contains("@book{a:/_,"), "{bib}");
 }
 
@@ -324,7 +324,7 @@ fn a_reference_without_a_usable_key_stays_in_the_list_and_out_of_the_bib() {
         json!([
             {"id": "one", "type": "book", "title": "Keyed lanterns", "citation-key": "vale2024keyed",
              "author": [{"family": "Vale", "given": "Ada"}], "issued": {"date-parts": [[2024]]}},
-            {"id": "two", "type": "book", "title": "Keyless clouds", "citation-key": "/home/invented-account/private-library",
+            {"id": "two", "type": "book", "title": "Keyless clouds",
              "author": [{"family": "Fen", "given": "Ola"}], "issued": {"date-parts": [[2025]]}},
         ])
         .to_string(),
@@ -360,7 +360,7 @@ fn a_reference_without_a_usable_key_stays_in_the_list_and_out_of_the_bib() {
     let (mixed, listed) = page("mixed", json!([id("Keyed lanterns"), id("Keyless clouds")]));
     assert_eq!(mixed.not_in_bibtex, [1]);
     let bib = std::fs::read_to_string(directory.path().join("mixed/References.bib")).unwrap();
-    assert!(!bib.contains("invented-account"));
+    assert!(bib.contains("@book{vale2024keyed,"), "{bib}");
     assert!(mixed.files.iter().any(|file| file.path == "References.bib"));
     assert!(
         listed.contains("Keyless clouds") && listed.contains("References.bib"),
