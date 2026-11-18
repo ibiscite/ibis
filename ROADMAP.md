@@ -142,16 +142,17 @@ feel like an invisible utility: summon, cite, gone, with depth only when asked.
 - WebAssembly-compatible rules/readers with optional native Zotero/SQLite.
   Useful thin Python/npm clients and pipe-based extensions when requested.
 - External source adapters: `ibis-source-<name>` programs that hand the engine
-  records over stdio, designed with the first manager Ibis does not read itself,
-  and one conformance kit every adapter passes
-  ([0056](docs/decisions/0056-open-layer-for-research-material.md)).
+  records over stdio, with one conformance check every source passes
+  ([0056](docs/decisions/0056-open-layer-for-research-material.md)). Built with
+  EndNote, read on the command line ([source adapters](docs/source-adapters.md));
+  next, EndNote in the app, then Obsidian reference notes as the second adapter.
 - Same-user local CLI connection to the running app, with independent reads
   when it is closed; no network listener. Command plugins use `ibis-foo` on
   PATH, with built-ins taking precedence.
 - Pasting on Linux, a language server, launcher and browser extensions.
 - A library on another computer through the person's own SSH, starting with
   `ssh HOST ibis mcp` over stdio ([0055](docs/decisions/0055-agent-layers-full-text-writes-remote.md)).
-- More translations, EndNote XML and Word Sources.xml, ARM64 builds and local
+- More translations, Word Sources.xml, ARM64 builds and local
   meaning-based search while the picker is open.
 - Annotations from Paperpile, JabRef, BibDesk/Skim, EndNote, Mendeley and
   Citavi, read from each manager's own data.

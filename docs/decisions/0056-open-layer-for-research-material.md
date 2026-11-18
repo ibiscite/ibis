@@ -143,7 +143,16 @@ After the six foundation items:
    Mendeley, Paperpile, JabRef or an Obsidian vault), not before, together with
    shared invented fixtures and an `ibis` check that every adapter, built-in or
    external, passes. Adapters run in their own process, so they choose their own
-   licence (0039).
+   licence (0039). The maintainer chose EndNote first and Obsidian reference
+   notes second on 2026-11-18. Built on 2026-11-18 with EndNote
+   ([source adapters](../source-adapters.md)): the protocol is one whole-library
+   read (`ibis_core::contract::adapter`), records and keys only, attachments
+   later; built-in adapters are served by `ibis __source NAME` so they ship
+   with `ibis`, and PATH programs never shadow them; `ibis sources check` is
+   the check, with a fake adapter for the engine's side. EndNote's XML export
+   reader runs inside that adapter, not in the engine, since it is a new
+   parser of untrusted files. Left: EndNote in the desktop app, which needs
+   the macOS Automation permission, and the Obsidian adapter.
 
 ## Not doing
 

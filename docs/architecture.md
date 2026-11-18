@@ -9,9 +9,10 @@ describes this checkout. Plans live in [ROADMAP.md](../ROADMAP.md).
 | --- | --- |
 | `crates/ibis-core` | Shared model, citation requests/results, key syntaxes, search and delivery rules. |
 | `crates/ibis-sources` | Read-only file and Zotero readers (`zotero_local`: the local API, closed database and Better BibTeX), discovery, database snapshots and file watches. Each reader declares what its library offers. |
+| `crates/ibis-source-endnote` | The built-in EndNote [source adapter](source-adapters.md): EndNote XML from an open library (macOS scripting) or an export, mapped to CSL. It speaks only the adapter protocol and runs as `ibis __source endnote`. |
 | `crates/ibis-csl` | citeproc-js in QuickJS, ICU4X collation, bundled CSL styles and locales. |
 | `crates/ibis-engine` | Typed methods, source lifecycle, prepared citations, settings owner, recents, JSON-RPC and MCP. |
-| `crates/ibis-cli` | The `ibis` executable, and the PDF text extractor it starts as its own child process (`ibis __extract-pdf`, with `lopdf`). Depends on core and engine. |
+| `crates/ibis-cli` | The `ibis` executable, and the PDF text extractor and built-in source adapters it starts as its own child processes (`ibis __extract-pdf`, with `lopdf`; `ibis __source NAME`). Depends on core and engine. |
 | `apps/desktop/src-tauri` | Native windows, clipboard, paste, shortcuts, settings dialogs and updates. Depends on core, engine and its command macro crate. |
 | `apps/desktop/src` | React interface, shared controls in `ui/`, tokens in `tokens.css`. |
 
@@ -80,6 +81,15 @@ BibTeX named as such declares proposals; BibTeX and CSL-JSON declare native
 keys and attachment text; RIS and CSV declare records only; Zotero declares
 its keys, aliases, conflicts and attachment text in both read paths. Each
 library's `revision` is its snapshot's full fingerprint.
+
+[Source adapters](source-adapters.md) are separate programs that read a
+manager Ibis has no reader for and answer one whole-library read over stdio
+(`ibis_core::contract::adapter`). `ibis_sources::adapter` starts one in a
+child process with no environment, bounded to 64 MiB and two minutes, and
+keeps identity (a keyed digest of the adapter's name and `scope`), CSL
+validation, the private-link filter and key claims to itself. Adapter
+libraries declare records, and keys only when the adapter says it has them.
+They are read on open and on reload; a failed read keeps the last good one.
 
 File formats and limits are in [compatibility](compatibility.md#library-files). Files are bounded to 64 MiB; parsers report skipped records without discarding valid neighbours.
 
