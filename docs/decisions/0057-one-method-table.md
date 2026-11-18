@@ -125,12 +125,11 @@ native and are declared later in the same form.
 
 ## The series
 
-Before it: #1981 to #1985 merge, as #1997 says, because each adds a method or
-changes the schemas. #1987's differ is welcome but not required: each step's
-proof is its unchanged fixtures. #1991 (`ibis format`, a draft) shares
-`service.rs` and the engine's `lib.rs` with step 1; it is parked and comes
-back as a row after step 2 rather than an eighth hand match, since #1997
-starts no feature lane before the spine lands. Each step lands alone on a
+Before it: #1981 to #1985 and #1991 (`ibis format`) merge, because each adds
+a method or changes the schemas and all are already in flight. #1987's differ
+is welcome but not required: each step's proof is its unchanged fixtures. No
+new feature lane starts before step 1 lands, so no further hand match is
+added; `format` moves into the table with its family. Each step lands alone on a
 green main; the old path goes in the last step of its family.
 
 1. **The table and the catalogue family.** `styles`, `outputs` and `schema`
