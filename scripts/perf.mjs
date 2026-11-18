@@ -108,9 +108,10 @@ export function build(directory) {
 
 export function measure(executable, name, env = {}) {
   const out = run(executable, [name, "--exact", "--ignored", "--nocapture", "--test-threads=1"], { env: { ...process.env, ...env } });
-  const line = out.split("\n").find((text) => text.startsWith("PERF "));
-  if (!line) throw new Error(`${name} printed no measurements`);
-  return JSON.parse(line.slice(5));
+  // libtest prints `test NAME ... ` on the same line, before the report.
+  const found = /PERF (\{.*\})/.exec(out);
+  if (!found) throw new Error(`${name} printed no measurements`);
+  return JSON.parse(found[1]);
 }
 
 function table(columns, rows) {
