@@ -252,7 +252,7 @@ fn a_running_zoteros_indexed_text_is_outlined_read_and_searched_by_page() {
 }
 
 #[test]
-fn attachment_reading_ids_expire_after_revision_index_text_or_generation_changes() {
+fn attachment_reading_ids_survive_equal_reload_and_expire_after_content_changes() {
     let server = fixture::Server::new();
     let engine = Engine::with_zotero_port(server.port).unwrap();
     let cancel = Cancellation::default();
@@ -270,7 +270,16 @@ fn attachment_reading_ids_expire_after_revision_index_text_or_generation_changes
             .data["attachments"][0]["id"]
             .clone()
     };
-    for change in ["version", "modified", "index", "text", "generation"] {
+    let before_reload = current_id();
+    engine
+        .dispatch(Method::Libraries, &json!({"action":"reload"}), &cancel)
+        .unwrap();
+    assert_eq!(current_id(), before_reload);
+    engine
+        .dispatch(Method::Read, &json!({"attachment":before_reload}), &cancel)
+        .unwrap();
+
+    for change in ["version", "modified", "index", "text"] {
         let old = current_id();
         match change {
             "version" => {
@@ -281,11 +290,6 @@ fn attachment_reading_ids_expire_after_revision_index_text_or_generation_changes
             "modified" => server.attachment.lock().unwrap()["data"]["dateModified"] = json!("2026-11-15T13:00:00Z"),
             "index" => server.fulltext.lock().unwrap()["indexedPages"] = json!(2),
             "text" => server.fulltext.lock().unwrap()["content"] = json!("Invented replacement text."),
-            "generation" => {
-                engine
-                    .dispatch(Method::Libraries, &json!({"action":"reload"}), &cancel)
-                    .unwrap();
-            }
             _ => unreachable!(),
         }
         let refused = engine

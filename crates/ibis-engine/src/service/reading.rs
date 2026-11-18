@@ -5,14 +5,14 @@
 //! Zotero's index gives it where it has one; a PDF is otherwise read by the
 //! extractor's child process, an `ibis` executable this engine was given, and
 //! without one PDFs stay unread. An attachment id names one attachment of one
-//! reference while its library generation, attachment, index and PDF stay
-//! unchanged; it never holds a path or file URL. A page number is the file's
+//! reference while its library's content, attachment, index and PDF stay
+//! unchanged, so rereading an unchanged library keeps it; it never holds a
+//! path or file URL. A page number is the file's
 //! own page, and only when its
 //! breaks were verified; `cite_page` comes only from the PDF's `/PageLabels`,
 //! never from the file's page number.
 use super::*;
 use crate::request::{FindInRequest, OutlineRequest, ReadRequest};
-use crate::sync::MutexExt;
 use ibis_sources::pdf::{PdfReader, Refusal};
 use ibis_sources::reading::{Body, DocumentText, SourceAttachment, TextState};
 use unicode_normalization::UnicodeNormalization;
@@ -38,8 +38,8 @@ pub struct OutlineResult {
 /// One attachment, without its text.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct AttachmentOutline {
-    /// Pass to `read` or `find-in` in this library generation, while the
-    /// reference, attachment revision and indexed text remain unchanged.
+    /// Pass to `read` or `find-in` while the library's content, attachment
+    /// revision and indexed text remain unchanged.
     pub id: String,
     /// The attachment's title as safe bibliographic text, omitting private locations.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -71,7 +71,8 @@ pub enum TextAvailability {
     /// A file Ibis does not read: not a PDF, or a PDF where no PDF reader runs
     /// (only `ibis` reads PDFs, never the desktop app).
     NotYet,
-    /// Text larger than Ibis reads at once, or a PDF over 256 MiB or 10,000 pages.
+    /// Text larger than Ibis reads at once, or a PDF over 256 MiB or 10,000
+    /// pages or needing more than 2 GiB of memory to read.
     TooLarge,
     /// No file is where the library says it is.
     Missing,
@@ -174,7 +175,8 @@ impl Engine {
             return Err(error(ErrorCode::NotFound));
         }
         let owner = self.owner(&state, &parent)?;
-        let generation = self.attachment_generation(&state, &parent.object.id().library)?;
+        let library = &parent.object.id().library;
+        let revision = library_revision(&state, library)?;
         let mut attachments = Vec::new();
         for attachment in self.listed(&state, &owner, &parent)? {
             cancel.check()?;
@@ -184,7 +186,7 @@ impl Engine {
                 text => Some(text?),
             };
             let cite_pages_known = matches!(&text, Some(TextState::Text(text)) if text.cite_pages.is_some());
-            let id = attachment_id(&parent, &attachment, generation, text.as_ref());
+            let id = attachment_id(&parent, &attachment, &revision, text.as_ref());
             let (availability, pages, pages_with_text, pages_known) = match &text {
                 None => (TextAvailability::TooLarge, None, None, false),
                 Some(TextState::Text(text)) => (
@@ -224,10 +226,8 @@ impl Engine {
         }
         let result = OutlineResult { attachments };
         cancel.check()?;
-        let current = self.state()?;
-        if !state.same_publication(&current)
-            || generation != self.attachment_generation(&current, &parent.object.id().library)?
-        {
+        // A republish of the same content keeps every id this outline gave.
+        if revision != library_revision(&*self.state()?, library)? {
             return Err(error(ErrorCode::NotFound));
         }
         ensure_budget(&result)?;
@@ -321,15 +321,6 @@ impl Engine {
             },
             LibraryKind::Snapshot => Owner::Snapshot,
         })
-    }
-
-    fn attachment_generation(&self, state: &State, library: &LibraryId) -> Result<u64, EngineError> {
-        Ok(self
-            .shared
-            .sources
-            .recover_lock()
-            .file_generation(library)
-            .unwrap_or(state.zotero_generation))
     }
 
     fn listed(
@@ -432,28 +423,31 @@ impl Engine {
         cancel.check()?;
         let state = self.state()?;
         let (parent, check) = parse_id(&state, attachment)?;
-        let generation = self.attachment_generation(&state, &parent.object.id().library)?;
+        let library = &parent.object.id().library;
+        let revision = library_revision(&state, library)?;
         let (slot, _) = check.split_once('.').ok_or_else(|| error(ErrorCode::NotFound))?;
         let owner = self.owner(&state, &parent)?;
         let listed = self
             .listed(&state, &owner, &parent)?
             .into_iter()
-            .find(|listed| attachment_slot(&parent, listed, generation) == slot)
+            .find(|listed| attachment_slot(&parent, listed, &revision) == slot)
             .ok_or_else(|| error(ErrorCode::NotFound))?;
         cancel.check()?;
         let text = self.text(&owner, &parent, &listed, cancel)?;
-        let current = self.state()?;
-        if attachment_id(&parent, &listed, generation, Some(&text)) != attachment
-            || !state.same_publication(&current)
-            || generation != self.attachment_generation(&current, &parent.object.id().library)?
-        {
+        // The library changed while this read ran: the id is stale.
+        if revision != library_revision(&*self.state()?, library)? {
             return Err(error(ErrorCode::NotFound));
         }
+        let current = attachment_id(&parent, &listed, &revision, Some(&text)) == attachment;
         match text {
-            TextState::Text(text) => {
+            TextState::Text(text) if current => {
                 cancel.check()?;
                 Ok((state, parent, text))
             }
+            // Other text than the outline saw, such as a replaced PDF.
+            TextState::Text(_) => Err(error(ErrorCode::NotFound)),
+            // A file that cannot be read now says so, even under an id given
+            // while it could: a timeout is not a stale id.
             TextState::NotIndexed | TextState::NoFile | TextState::NotYet | TextState::Refused(_) => Err(
                 EngineError::because(ErrorCode::SourceUnavailable, ErrorReason::NoAttachmentText),
             ),
@@ -534,16 +528,26 @@ fn own_health(state: &State, parent: &SnapshotObject) -> health::SourceHealth {
     )
 }
 
-/// One check selects the current attachment metadata and library generation;
+/// The content revision an attachment id binds: equal content republished
+/// keeps it, and any change to the library retires its ids.
+fn library_revision(state: &State, library: &LibraryId) -> Result<Fingerprint, EngineError> {
+    state
+        .libraries
+        .get(library)
+        .map(|info| info.revision.clone())
+        .ok_or_else(|| error(ErrorCode::NotFound))
+}
+
+/// One check selects the current attachment metadata and library content;
 /// another binds the indexed text. Reading verifies both before publishing.
 fn attachment_id(
     parent: &SnapshotObject,
     attachment: &SourceAttachment,
-    generation: u64,
+    revision: &Fingerprint,
     text: Option<&TextState>,
 ) -> String {
     let reference = parent.object.id().opaque_reference();
-    let slot = attachment_slot(parent, attachment, generation);
+    let slot = attachment_slot(parent, attachment, revision);
     let check = match text {
         Some(TextState::Text(text)) => text.revision.clone(),
         None => Fingerprint::of_bytes(b"too-large"),
@@ -559,11 +563,12 @@ fn attachment_id(
     )
 }
 
-fn attachment_slot(parent: &SnapshotObject, attachment: &SourceAttachment, generation: u64) -> String {
+fn attachment_slot(parent: &SnapshotObject, attachment: &SourceAttachment, revision: &Fingerprint) -> String {
     let slot = Fingerprint::of_bytes(
         format!(
-            "ibis attachment\0{}\0{generation}\0{:?}\0{}\0{:?}\0{:?}\0{}",
+            "ibis attachment\0{}\0{}\0{:?}\0{}\0{:?}\0{:?}\0{}",
             parent.fingerprints.full.as_str(),
+            revision.as_str(),
             attachment.key,
             attachment.revision.as_str(),
             attachment.title,

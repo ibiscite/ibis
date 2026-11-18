@@ -10407,7 +10407,7 @@
                 "type": "boolean"
               },
               "id": {
-                "description": "Pass to `read` or `find-in` in this library generation, while the\nreference, attachment revision and indexed text remain unchanged.",
+                "description": "Pass to `read` or `find-in` while the library's content, attachment\nrevision and indexed text remain unchanged.",
                 "type": "string"
               },
               "media_type": {
@@ -11198,7 +11198,7 @@
               },
               {
                 "const": "too-large",
-                "description": "Text larger than Ibis reads at once, or a PDF over 256 MiB or 10,000 pages.",
+                "description": "Text larger than Ibis reads at once, or a PDF over 256 MiB or 10,000\npages or needing more than 2 GiB of memory to read.",
                 "type": "string"
               },
               {
