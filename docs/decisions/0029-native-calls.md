@@ -10,9 +10,16 @@ A boundary with no safe binding gets one scoped module allowance, a crate-level
 - The Windows closed-Zotero reader uses Win32 process, drive and attribute
   calls. It opens only its cached database copy; core's private creator owns
   file creation, with no reader-specific ACL or ownership code.
+- `ibis-sources/src/zotero_local/closed/mounts/macos.rs` reads the macOS mount
+  list with `getfsstat(MNT_NOWAIT)` into a buffer it owns, so the locality
+  check starts no process and contacts no mount.
 - `ibis-sources/src/pdf/inheritance.rs` marks every non-stdio Unix descriptor
   close-on-exec in an allocation-free post-fork callback, including descriptors
   inherited from native callers. The exec-error pipe stays usable until exec.
+- `ibis-sources/src/pdf/ceiling.rs` bounds the PDF reader child's memory. On
+  Windows it starts the child suspended, adds it to a Job Object with a process
+  memory limit and reads the job's completion port; on macOS it reads the
+  child's footprint with `proc_pid_rusage`.
 - `crates/ibis-native` holds the paste proofs' native calls; the desktop
   binds them to its windows.
 - Its `paste/macos/secure_input.rs` reads Carbon's `IsSecureEventInputEnabled`
