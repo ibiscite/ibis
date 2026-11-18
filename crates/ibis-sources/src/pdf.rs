@@ -290,7 +290,7 @@ impl PdfReader {
         let bytes = reader.join().ok().and_then(Result::ok);
         if !status?.success() {
             // On Windows a refused commit ends the child before a sample.
-            return Err(if ceiling.exceeded(&child) {
+            return Err(if ceiling.was_exceeded() {
                 Refusal::TooLarge
             } else {
                 Refusal::Damaged

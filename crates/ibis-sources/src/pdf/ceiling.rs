@@ -59,6 +59,16 @@ impl Ceiling {
         }
         self.hit.get()
     }
+
+    /// Once the child has been reaped: whether it passed the ceiling. Unix
+    /// keeps only what was seen while it ran, since its pid may be reused.
+    pub(super) fn was_exceeded(&self) -> bool {
+        #[cfg(windows)]
+        if !self.hit.get() {
+            self.hit.set(self.job.memory_limit_hit());
+        }
+        self.hit.get()
+    }
 }
 
 /// The child's physical footprint in bytes, while it runs.
