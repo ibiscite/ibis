@@ -95,10 +95,12 @@ fn exchange(
         })
         .spawn()
         .map_err(|_| ChildError::Unavailable)?;
-    let mut tree = Tree::new(child, own_group)?;
+    let tree = Tree::new(child, own_group)?;
     let stop = AtomicBool::new(false);
     let stopped = &stop;
-    thread::scope(|scope| {
+    thread::scope(move |scope| {
+        // Drop the tree before the scope joins workers, including if a caller panics.
+        let mut tree = tree;
         let result = (|| {
             let input = tree.child.stdin.take().ok_or(ChildError::Unavailable)?;
             let stdout = tree.child.stdout.take().ok_or(ChildError::Unavailable)?;
@@ -131,14 +133,14 @@ fn exchange(
                 if status.is_none() && tree.exited()? {
                     status = Some(tree.finish(false)?);
                 }
-                if stdin_done {
-                    if let (Some(status), Some(stdout), Some(stderr)) = (status, stdout.as_mut(), stderr.as_mut()) {
-                        return Ok(Output {
-                            status,
-                            stdout: std::mem::take(stdout),
-                            stderr: std::mem::take(stderr),
-                        });
-                    }
+                if stdin_done
+                    && let (Some(status), Some(stdout), Some(stderr)) = (status, stdout.as_mut(), stderr.as_mut())
+                {
+                    return Ok(Output {
+                        status,
+                        stdout: std::mem::take(stdout),
+                        stderr: std::mem::take(stderr),
+                    });
                 }
                 match events.recv_timeout(remaining.min(POLL)) {
                     Ok(Event::Input(result)) => {
@@ -156,7 +158,7 @@ fn exchange(
                 }
             }
         })();
-        stop.store(true, Ordering::Relaxed);
+        stopped.store(true, Ordering::Relaxed);
         if result.is_err() && !tree.reaped {
             let _ = tree.finish(true);
         }
