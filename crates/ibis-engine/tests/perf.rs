@@ -210,7 +210,8 @@ fn process() -> (Duration, u64) {
             "$p = Get-Process -Id {}; '{{0}} {{1}}' -f [int64]$p.TotalProcessorTime.TotalMilliseconds, $p.WorkingSet64",
             std::process::id()
         );
-        let out = std::process::Command::new("powershell")
+        let root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+        let out = std::process::Command::new(format!(r"{root}\System32\WindowsPowerShell\v1.0\powershell.exe"))
             .args(["-NoProfile", "-NonInteractive", "-Command", &script])
             .output()
             .unwrap();
