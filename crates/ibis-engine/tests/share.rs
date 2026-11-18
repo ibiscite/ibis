@@ -46,6 +46,10 @@ struct Fixture {
 }
 
 fn fixture() -> Fixture {
+    fixture_with_library(LIBRARY)
+}
+
+fn fixture_with_library(library_text: &str) -> Fixture {
     let directory = tempfile::tempdir().unwrap();
     let root = directory.path().to_path_buf();
     std::fs::create_dir_all(root.join("library/papers")).unwrap();
@@ -57,7 +61,7 @@ fn fixture() -> Fixture {
     .unwrap();
     std::fs::write(root.join("outside.pdf"), b"%PDF-1.7\noutside the library\n").unwrap();
     let library = root.join("library/refs.bib");
-    std::fs::write(&library, LIBRARY).unwrap();
+    std::fs::write(&library, library_text).unwrap();
     let engine = Engine::new().unwrap().without_file_watches();
     engine
         .dispatch(
@@ -173,6 +177,54 @@ fn the_preview_is_the_pack_and_nothing_private_leaves() {
     let bib = String::from_utf8_lossy(&files[1].1);
     assert_eq!(bib.matches('@').count(), 3, "{bib}");
     assert!(bib.contains("@article{aster2026lanterns,"), "{bib}");
+}
+
+#[test]
+fn pack_keeps_path_shaped_keys_and_filters_home_paths_in_metadata() {
+    let fixture = fixture_with_library(
+        r"@book{a:/_,
+          author = {Aster, Mira},
+          title = {Notes at ~invented-reader/private-title},
+          year = {2026},
+          file = {papers/aster.pdf}
+        }",
+    );
+    let citation = fixture
+        .engine
+        .cite_keys(
+            &serde_json::from_value(json!({
+                "keys": [{"key": "a:/_"}],
+                "output": {"kind": "preset", "name": "bibtex"},
+            }))
+            .unwrap(),
+            &Cancellation::default(),
+        )
+        .unwrap();
+    let copied = citation.copy_content(1).unwrap().text;
+    assert!(copied.contains("@book{a:/_,"), "{copied}");
+    assert!(copied.contains("private-title"), "{copied}");
+
+    let destination = fixture.root.join("pack");
+    let written = share(
+        &fixture.engine,
+        json!({
+            "items": [{"by": "key", "value": "a:/_"}],
+            "folder": true,
+            "pdfs": true,
+            "destination": destination,
+        }),
+    )
+    .unwrap();
+    assert!(written.complete(), "{written:?}");
+    assert_eq!(
+        written.files.iter().map(|file| file.path.as_str()).collect::<Vec<_>>(),
+        ["Reading list.html", "References.bib", "PDFs/Aster 2026.pdf"]
+    );
+    let list = std::fs::read_to_string(destination.join("Reading list.html")).unwrap();
+    let bib = std::fs::read_to_string(destination.join("References.bib")).unwrap();
+    assert!(!list.contains("private-title"), "{list}");
+    assert!(!bib.contains("private-title"), "{bib}");
+    assert!(bib.contains("@book{a:/_,"), "{bib}");
 }
 
 #[test]

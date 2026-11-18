@@ -2,6 +2,7 @@
 use crate::sync::MutexExt;
 use crate::{Method, request::*};
 use ibis_core::{
+    citable::{CitableFields, FieldProjection},
     contract::*,
     search::{MatchField, SnapshotIndex},
 };
@@ -778,12 +779,13 @@ impl Engine {
         cancel: &Cancellation,
     ) -> Result<CitationResult, EngineError> {
         let resolved = crate::outputs::resolve_request(request)?;
-        self.cite_resolved(context, &resolved, cancel)
+        self.cite_resolved(context, &resolved, CitableFields::new, cancel)
     }
     fn cite_resolved(
         &self,
         context: &receipt::CitationContext,
         resolved: &crate::outputs::ResolvedRequest,
+        project_fields: FieldProjection,
         cancel: &Cancellation,
     ) -> Result<CitationResult, EngineError> {
         let request = &resolved.request;
@@ -801,12 +803,15 @@ impl Engine {
                 ibis_core::syntax::scannable::cite(snapshot, request, |library| context.zotero.get(library).copied())
                     .map_err(key_error)?
             }
-            OutputSpec::Key { .. } => ibis_core::syntax::cite(snapshot, request).map_err(key_error)?,
+            OutputSpec::Key { .. } => {
+                ibis_core::syntax::cite_with_fields(snapshot, request, project_fields).map_err(key_error)?
+            }
             OutputSpec::Csl { .. } => self.formatted(
                 snapshot,
                 request,
                 cancel,
                 resolved.formatted.as_ref().ok_or_else(|| error(ErrorCode::Internal))?,
+                project_fields,
             )?,
             OutputSpec::Preset { .. } => return Err(error(ErrorCode::Internal)),
         };

@@ -4,17 +4,16 @@
 //!
 //! Pack metadata is made from share-safe fields: the reading list by the CSL
 //! formatter and the `.bib` by the BibTeX export, both through
-//! `CitableFields`, so notes, annotations, private links and device paths
-//! never enter the pack. PDFs come only from inside their library's folder or
-//! Zotero's storage and are copied as they are, opened under the PDF reader's
-//! rules (a plain local file,
-//! never a link), whatever this computer allows AI apps to read. One plan
+//! `CitableFields`, which filters notes, annotations, private links and device
+//! paths from the metadata. BibTeX keeps the person's valid citation keys.
+//! PDFs come only from inside their library's folder or Zotero's storage and
+//! are copied as they are, opened under the PDF reader's rules (a plain local
+//! file, never a link), whatever this computer allows AI apps to read. One plan
 //! serves the preview and the write, so both name the same files and sizes.
 //! Nothing that exists is replaced, and no location appears in the answer.
 use super::reading::Owner;
 use super::*;
 use crate::request::ShareRequest;
-use ibis_core::citable::CitableFields;
 use ibis_sources::pdf::{LocalPdf, PdfStamp};
 use std::collections::HashSet;
 use std::io::Write;
@@ -124,7 +123,7 @@ impl Engine {
                 expected_annotation_cite: None,
             })
             .collect();
-        let listed = self.prepare_consulting(
+        let listed = self.prepare_with_fields(
             &CitationRequest {
                 strict: false,
                 items: items.clone(),
@@ -140,17 +139,18 @@ impl Engine {
                 output_locale: request.output_locale.clone(),
             },
             every_library,
+            pack_fields,
             cancel,
         )?;
         let source_health = listed.source_health().clone();
         let fields: Vec<CitableFields> = picks
             .iter()
             .map(|(_, pick)| match &pick.object {
-                LibraryObject::Record(record) => CitableFields::new(record.csl.to_map()),
-                _ => CitableFields::new(serde_json::Map::new()),
+                LibraryObject::Record(record) => pack_fields(record.csl.to_map()),
+                _ => pack_fields(serde_json::Map::new()),
             })
             .collect();
-        let bibtex = match self.prepare_citation(
+        let bibtex = match self.prepare_with_fields(
             &CitationRequest {
                 strict: false,
                 items,
@@ -160,6 +160,8 @@ impl Engine {
                 input_language: None,
                 output_locale: None,
             },
+            false,
+            pack_fields,
             cancel,
         ) {
             Ok(bibtex) => Some(bibtex.into_result()),
@@ -327,6 +329,20 @@ impl Engine {
         cancel.check()?;
         Ok(sized)
     }
+}
+
+fn pack_fields(fields: serde_json::Map<String, Value>) -> CitableFields {
+    CitableFields::with_path_filter(fields, |word| {
+        word.strip_prefix('~')
+            .and_then(|rest| rest.split_once('/'))
+            .is_some_and(|(user, tail)| {
+                !tail.is_empty()
+                    && user.starts_with(|c: char| c.is_alphabetic() || c == '_')
+                    && user
+                        .chars()
+                        .all(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '.'))
+            })
+    })
 }
 
 /// The places in the request of the items a result rendered.

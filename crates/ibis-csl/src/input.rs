@@ -1,5 +1,5 @@
 use crate::{FormatError, Limits, catalog};
-use ibis_core::citable::CitableFields;
+use ibis_core::citable::{CitableFields, FieldProjection};
 use ibis_core::citation::{self, ItemSupport};
 use ibis_core::contract::*;
 use serde::Serialize;
@@ -224,7 +224,7 @@ pub(crate) fn prepare(
         return Err(FormatError::UnsupportedStyle);
     };
     let resolved = ResolvedOutput::new(style, request.output_locale.as_deref())?;
-    prepare_resolved(snapshot, request, limits, &resolved)
+    prepare_resolved(snapshot, request, limits, &resolved, CitableFields::new)
 }
 
 /// Compile only trusted formatting material, without waiting for a library.
@@ -250,6 +250,7 @@ pub(crate) fn prepare_resolved(
     request: &CitationRequest,
     limits: &Limits,
     resolved: &ResolvedOutput,
+    project_fields: FieldProjection,
 ) -> Result<Prepared, FormatError> {
     let style = &*resolved.style;
     let traits = style.traits;
@@ -333,7 +334,7 @@ pub(crate) fn prepare_resolved(
                 remaining = remaining.saturating_sub(bytes.len());
                 let value: serde_json::Map<String, Value> =
                     serde_json::from_slice(&bytes).map_err(|_| FormatError::InvalidRequest)?;
-                entry.insert(processor_fields(&CitableFields::new(value))?)
+                entry.insert(processor_fields(&project_fields(value))?)
             }
         };
         if style.sentence_titles

@@ -81,8 +81,10 @@ PDF reader's opener (a regular, resident local file, never a link, at most
 256 MiB). Files refused during planning are left out and their references are
 listed. If a planned PDF changes while the pack is being written, the write
 fails before publication. Attached PDFs are copied as they are, including
-anything inside them. Names come from share-safe fields, and the answer
-reports paths inside the pack. Nothing that exists is replaced. The independent review still comes
+anything inside them. The pack filters named home-directory paths from the
+metadata used by the reading list, BibTeX and filenames. BibTeX preserves valid
+citation keys exactly as stored. The answer reports paths inside the pack.
+Nothing that exists is replaced. The independent review still comes
 before it ships.
 
 ## Agents and the command line

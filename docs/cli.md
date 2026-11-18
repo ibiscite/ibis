@@ -686,11 +686,11 @@ the app shows them before saving. `--to` names a new zip file, or with
 (`destination-exists`) and never replaced. The zip stores its files as they
 are, since PDFs are already compressed, and a pack holds at most 2 GiB.
 
-The reading list, BibTeX and filenames use the same share-safe fields as
-`cite --format bibtex`, omitting library notes, annotations, private links
-and file locations. Attached PDFs are copied as they are, including anything
-inside them. PDFs come only from
-inside the `.bib` library's folder or Zotero's storage, opened as `read`
+The reading list, BibTeX metadata and filenames omit library notes, annotations,
+private links and file locations, including paths into named home directories.
+BibTeX preserves valid citation keys exactly as stored. Attached PDFs are copied
+as they are, including anything inside them. PDFs come only from inside the
+`.bib` library's folder or Zotero's storage, opened as `read`
 opens them (a regular local file, never a link) and at most 256 MiB each,
 whatever **Allow attachment text outside the library’s folder** says. A
 reference the style cannot write, one without a usable citation key for the
