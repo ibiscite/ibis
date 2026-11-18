@@ -26,8 +26,11 @@ pub const READING_LIST: &str = "Reading list.html";
 pub const BIBTEX_FILE: &str = "References.bib";
 /// The folder the PDFs go in.
 pub const PDF_FOLDER: &str = "PDFs";
-/// The most bytes one pack holds, well within what any zip reader opens.
+/// The most bytes one pack holds, well within what any zip reader opens
+/// without the 64-bit extensions.
 pub const MAX_PACK_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+/// The most files one pack holds.
+pub const MAX_PACK_FILES: usize = 10_000;
 /// A PDF's name before `.pdf`, in bytes: short enough for every system.
 const MAX_NAME_BYTES: usize = 120;
 
@@ -205,7 +208,7 @@ impl Engine {
             })
             .collect();
         let total_bytes = packed.iter().map(|file| file.bytes).sum();
-        if total_bytes > MAX_PACK_BYTES {
+        if total_bytes > MAX_PACK_BYTES || packed.len() > MAX_PACK_FILES {
             return Err(error(ErrorCode::ResourceLimit));
         }
         let mut result = ShareResult {
@@ -216,6 +219,7 @@ impl Engine {
             not_in_bibtex: place(&in_bibtex),
             without_pdf,
         };
+        ensure_budget(&result)?;
         if let Some(destination) = &request.destination {
             cancel.check()?;
             if request.folder {
@@ -225,7 +229,6 @@ impl Engine {
             }
             result.written = true;
         }
-        ensure_budget(&result)?;
         Ok(health::Checked {
             source_health,
             value: result,
