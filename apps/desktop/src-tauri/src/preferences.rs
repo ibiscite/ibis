@@ -707,13 +707,13 @@ fn apply_preferences(s: &mut settings::Settings, preferences: PickerPreferencesP
         .output
         .is_some_and(|output| !matches!(output.spec(), ibis_core::contract::OutputSpec::Csl { .. }))
     {
-        return Err(format_problem("document-format", "app-settings-error-document-format"));
+        return Err(CommandError::DocumentFormat);
     }
     if preferences
         .key_output
         .is_some_and(|output| !matches!(output.spec(), ibis_core::contract::OutputSpec::Key { .. }))
     {
-        return Err(format_problem("key-format", "app-settings-error-key-format"));
+        return Err(CommandError::KeyFormat);
     }
 
     if let Some(appearance) = preferences.appearance {
@@ -759,14 +759,6 @@ fn apply_preferences(s: &mut settings::Settings, preferences: PickerPreferencesP
         s.portable.recent_citations = Some(on).filter(|on| !on);
     }
     Ok(())
-}
-
-fn format_problem(code: &str, message: &str) -> CommandError {
-    use ibis_core::contract::{Problem, Recovery, RecoveryInfo};
-    CommandError::Presented(Problem {
-        code: code.into(),
-        info: RecoveryInfo::new(message, Recovery::ChooseStyle),
-    })
 }
 
 #[cfg(test)]

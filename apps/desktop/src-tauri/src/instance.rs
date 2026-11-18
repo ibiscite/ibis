@@ -1,6 +1,6 @@
 //! Decisions for a launch handed to the running app; the launcher exits in the plugin.
 
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -226,6 +226,23 @@ fn is_toggle(args: &[String]) -> bool {
     matches!(args, [_, command] if command == "toggle") || ibis_core::toggle::receipt_path(args).is_some()
 }
 
+/// Answer `ibis toggle` ([`ibis_core::toggle`]). Only an existing, empty
+/// regular file is written, so the argument can never create or overwrite a file.
+pub(crate) fn sign_receipt(path: &Path) -> io::Result<()> {
+    let metadata = std::fs::symlink_metadata(path)?;
+    if !metadata.is_file() || metadata.len() != 0 {
+        return Err(io::ErrorKind::InvalidInput.into());
+    }
+    let mut file = std::fs::OpenOptions::new().write(true).open(path)?;
+    // Check what was opened too, in case the path changed after the first check.
+    let opened = file.metadata()?;
+    if !opened.is_file() || opened.len() != 0 {
+        return Err(io::ErrorKind::InvalidInput.into());
+    }
+    file.write_all(ibis_core::toggle::RECEIPT)?;
+    file.sync_all()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -292,5 +309,22 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn a_receipt_fills_only_an_existing_empty_file() {
+        use ibis_core::toggle::RECEIPT;
+        let dir = tempfile::tempdir().unwrap();
+        let empty = dir.path().join("empty");
+        std::fs::write(&empty, b"").unwrap();
+        sign_receipt(&empty).unwrap();
+        assert_eq!(std::fs::read(&empty).unwrap(), RECEIPT);
+        // Already answered, missing, or a folder: nothing is written.
+        assert!(sign_receipt(&empty).is_err());
+        assert_eq!(std::fs::read(&empty).unwrap(), RECEIPT);
+        let missing = dir.path().join("missing");
+        assert!(sign_receipt(&missing).is_err());
+        assert!(!missing.exists());
+        assert!(sign_receipt(dir.path()).is_err());
     }
 }

@@ -38,6 +38,9 @@ mod panel;
 mod panel_startup;
 mod paste;
 mod picker;
+// The picker window lifecycle core; the platform adapters move onto it next.
+#[cfg_attr(not(test), allow(dead_code))]
+mod picker_window;
 mod placement;
 mod preferences;
 mod project;
@@ -80,7 +83,7 @@ fn main() {
         .map(|arg| arg.to_string_lossy().into_owned())
         .collect();
     if let Some(receipt) = ibis_core::toggle::receipt_path(&args) {
-        let _ = ibis_core::toggle::sign_receipt(receipt);
+        let _ = instance::sign_receipt(receipt);
     }
     let mut context = tauri::generate_context!();
     native_feel::configure(&mut context);
