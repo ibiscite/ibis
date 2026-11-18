@@ -19,7 +19,10 @@ pub(crate) struct XmlRecord {
 
 impl XmlRecord {
     pub(crate) fn one(&self, name: &str) -> Option<&str> {
-        self.fields.get(name).and_then(|values| values.first()).map(String::as_str)
+        self.fields
+            .get(name)
+            .and_then(|values| values.first())
+            .map(String::as_str)
     }
 }
 
@@ -151,10 +154,7 @@ pub(crate) fn records(text: &str) -> Result<Vec<XmlRecord>, XmlError> {
                 if tag.name().as_ref() != "style" {
                     if path == ["xml", "records", "record"] {
                         records.push(std::mem::take(&mut record));
-                    } else if path.len() > 3
-                        && path[..3] == ["xml", "records", "record"]
-                        && !value.trim().is_empty()
-                    {
+                    } else if path.len() > 3 && path[..3] == ["xml", "records", "record"] && !value.trim().is_empty() {
                         let name = path[3..].join("/");
                         work = work.saturating_add(name.len() + value.len());
                         if work > WORK {
@@ -234,7 +234,9 @@ mod tests {
             "<!DOCTYPE xml [<!ENTITY external SYSTEM 'file:///invented-entity-must-not-be-opened'>]>",
             "<!DOCTYPE xml [<!ENTITY % external SYSTEM 'https://example.org/must-not-be-requested'>%external;]>",
         ] {
-            let xml = format!("{declaration}<xml><records><record><titles><title>&external;</title></titles></record></records></xml>");
+            let xml = format!(
+                "{declaration}<xml><records><record><titles><title>&external;</title></titles></record></records></xml>"
+            );
             assert_eq!(records(&xml), Err(XmlError::Invalid));
         }
         let long = "a".repeat(257);

@@ -83,11 +83,19 @@ pub(crate) fn run(
         else {
             continue;
         };
-        let Some(first) = opened.iter().find(|info| info.id.as_str() == first).map(|info| info.id.clone()) else {
+        let Some(first) = opened
+            .iter()
+            .find(|info| info.id.as_str() == first)
+            .map(|info| info.id.clone())
+        else {
             continue;
         };
-        let adapter = SourceAdapter::find(name, program.as_deref(), search.as_deref())
-            .map_err(|_| Failure::new(ErrorCode::SourceUnavailable, format!("no source adapter is called {name}")))?;
+        let adapter = SourceAdapter::find(name, program.as_deref(), search.as_deref()).map_err(|_| {
+            Failure::new(
+                ErrorCode::SourceUnavailable,
+                format!("no source adapter is called {name}"),
+            )
+        })?;
         let mut reads = Vec::new();
         for _ in 0..2 {
             reads.push(engine.open_adapter(adapter.clone(), library, &cancel)?);
@@ -108,7 +116,10 @@ pub(crate) fn run(
                 name: "same-scope-on-reread",
                 passed: ids_agree,
             });
-            let revisions: Vec<_> = reads.iter().map(|(id, _)| revision(engine, id)).collect::<Result<_, _>>()?;
+            let revisions: Vec<_> = reads
+                .iter()
+                .map(|(id, _)| revision(engine, id))
+                .collect::<Result<_, _>>()?;
             let stable = ids_agree && revisions.iter().all(|revision| *revision == before.as_str());
             checks.push(Check {
                 name: "stable-revision-on-reread",
@@ -165,7 +176,10 @@ pub(crate) fn run(
         }
         let passed = checks.iter().all(|check| check.passed);
         all_passed &= passed;
-        let shown = names.get(info.id.as_str()).cloned().unwrap_or_else(|| info.id.as_str().to_owned());
+        let shown = names
+            .get(info.id.as_str())
+            .cloned()
+            .unwrap_or_else(|| info.id.as_str().to_owned());
         text.push_str(&format!(
             "{shown}: {} records, {} warnings, revision {}\n",
             records.len(),
@@ -234,7 +248,12 @@ fn records(engine: &Engine, library: &LibraryId) -> Result<Vec<(Value, bool)>, F
     reason = "A fixture the person names for this check, read once and never written."
 )]
 fn expected_records(path: &std::path::Path) -> Result<Vec<String>, Failure> {
-    let unreadable = || Failure::new(ErrorCode::BadInput, format!("{} is not a JSON array of CSL records", path.display()));
+    let unreadable = || {
+        Failure::new(
+            ErrorCode::BadInput,
+            format!("{} is not a JSON array of CSL records", path.display()),
+        )
+    };
     let text = std::fs::read_to_string(path).map_err(|_| unreadable())?;
     let values: Vec<Value> = serde_json::from_str(&text).map_err(|_| unreadable())?;
     let mut records: Vec<String> = values

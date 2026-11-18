@@ -16,12 +16,12 @@
 //!
 //! EndNote has no citation keys: its Label field holds whatever a person
 //! typed, so no key is claimed. Attachments, notes and abstracts are not read.
-mod mapping;
-mod xml;
 #[cfg(target_os = "macos")]
 mod live;
 #[cfg(any(target_os = "macos", test))]
 mod macroman;
+mod mapping;
+mod xml;
 
 use std::io::{Read, Write};
 use std::path::Path;
@@ -41,11 +41,12 @@ const MAX_FILE_BYTES: u64 = ibis_sources::MAX_LIBRARY_BYTES;
 pub fn serve(input: impl Read, mut output: impl Write) -> u8 {
     let mut request = Vec::new();
     let answer = match input.take(MAX_REQUEST_BYTES + 1).read_to_end(&mut request) {
-        Ok(_) if request.len() as u64 <= MAX_REQUEST_BYTES => match serde_json::from_slice::<AdapterRequest>(&request)
-        {
-            Ok(request) if request.ibis == ADAPTER_PROTOCOL => answer(request.library.as_deref()),
-            _ => Err(AdapterRefusal::Unsupported),
-        },
+        Ok(_) if request.len() as u64 <= MAX_REQUEST_BYTES => {
+            match serde_json::from_slice::<AdapterRequest>(&request) {
+                Ok(request) if request.ibis == ADAPTER_PROTOCOL => answer(request.library.as_deref()),
+                _ => Err(AdapterRefusal::Unsupported),
+            }
+        }
         _ => Err(AdapterRefusal::Unsupported),
     };
     let response = match answer {
@@ -100,10 +101,7 @@ fn exported(path: &Path) -> Result<AdapterRead, AdapterRefusal> {
 
 /// Mapped records, each with its EndNote record number when that is its
 /// identity; otherwise identified by what it says.
-fn read<'a>(
-    scope: Fingerprint,
-    records: impl Iterator<Item = (Option<String>, &'a xml::XmlRecord)>,
-) -> AdapterRead {
+fn read<'a>(scope: Fingerprint, records: impl Iterator<Item = (Option<String>, &'a xml::XmlRecord)>) -> AdapterRead {
     let mut kept: Vec<(String, Map<String, Value>)> = Vec::new();
     let mut skipped = Vec::new();
     for (number, record) in records {
@@ -184,7 +182,10 @@ mod tests {
         assert_eq!(exchange(&request)["refused"], "unreadable");
         let missing = json!({"ibis": 1, "method": "read", "library": directory.path().join("gone.xml")});
         assert_eq!(exchange(&missing.to_string())["refused"], "library-not-found");
-        assert_eq!(exchange("{\"ibis\": 2, \"method\": \"read\"}")["refused"], "unsupported");
+        assert_eq!(
+            exchange("{\"ibis\": 2, \"method\": \"read\"}")["refused"],
+            "unsupported"
+        );
         assert_eq!(exchange("not json")["refused"], "unsupported");
     }
 }

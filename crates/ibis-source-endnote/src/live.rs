@@ -99,7 +99,10 @@ pub(crate) fn read(library: Option<&str>) -> Result<AdapterRead, AdapterRefusal>
         ["closed"] => return Err(AdapterRefusal::ManagerClosed),
         ["needed"] => return Err(AdapterRefusal::LibraryNeeded),
         ["missing"] => return Err(AdapterRefusal::LibraryNotFound),
-        ["ok", path, count] => (path.to_owned(), count.parse::<usize>().map_err(|_| AdapterRefusal::Unreadable)?),
+        ["ok", path, count] => (
+            path.to_owned(),
+            count.parse::<usize>().map_err(|_| AdapterRefusal::Unreadable)?,
+        ),
         _ => return Err(AdapterRefusal::Unreadable),
     };
     let chunks: Vec<&str> = parts.collect();
@@ -108,9 +111,22 @@ pub(crate) fn read(library: Option<&str>) -> Result<AdapterRead, AdapterRefusal>
     if records.len() != count {
         return Err(AdapterRefusal::Unreadable);
     }
-    let db_id = records.iter().find_map(|record| record.db_id.clone()).unwrap_or_default();
+    let db_id = records
+        .iter()
+        .find_map(|record| record.db_id.clone())
+        .unwrap_or_default();
     let identity = file_identity(&path)?;
-    let scope = Fingerprint::of_bytes(&[b"live\0", db_id.as_bytes(), b"\0", path.as_bytes(), b"\0", identity.as_bytes()].concat());
+    let scope = Fingerprint::of_bytes(
+        &[
+            b"live\0",
+            db_id.as_bytes(),
+            b"\0",
+            path.as_bytes(),
+            b"\0",
+            identity.as_bytes(),
+        ]
+        .concat(),
+    );
     let mut skipped = Vec::new();
     let placed: Vec<(Option<String>, &XmlRecord)> = records
         .iter()
@@ -185,7 +201,13 @@ fn decoded(chunks: &[&str], path: &str) -> Result<Vec<XmlRecord>, AdapterRefusal
         .ok_or(AdapterRefusal::Unreadable)?
         .trim()
         .to_owned();
-    let joined = |record: &XmlRecord| record.fields.get(tag).map(|values| values.join("\r")).unwrap_or_default();
+    let joined = |record: &XmlRecord| {
+        record
+            .fields
+            .get(tag)
+            .map(|values| values.join("\r"))
+            .unwrap_or_default()
+    };
     match (joined(a) == shown, joined(b) == shown) {
         (true, false) => Ok(plain),
         (false, true) => Ok(repaired),
@@ -210,13 +232,17 @@ const CHECKED: &[(&str, Labels)] = &[
         "5" => Some("Editor"),
         _ => None,
     }),
-    ("contributors/tertiary-authors/author", |kind| (kind == "6").then_some("Editor")),
+    ("contributors/tertiary-authors/author", |kind| {
+        (kind == "6").then_some("Editor")
+    }),
     ("publisher", |_| Some("Publisher")),
     ("pub-location", |_| Some("Place Published")),
     ("periodical/full-title", |_| None),
     ("volume", |_| Some("Volume")),
     ("number", |kind| (kind == "17").then_some("Issue")),
-    ("pages", |kind| Some(if kind == "6" { "Number of Pages" } else { "Pages" })),
+    ("pages", |kind| {
+        Some(if kind == "6" { "Number of Pages" } else { "Pages" })
+    }),
     ("edition", |_| Some("Edition")),
     ("electronic-resource-num", |_| Some("DOI")),
     ("dates/year", |_| Some("Year")),

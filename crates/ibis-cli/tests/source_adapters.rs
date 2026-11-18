@@ -26,7 +26,10 @@ fn main() {
     }
     let filter: Vec<String> = std::env::args().skip(1).filter(|arg| !arg.starts_with('-')).collect();
     let tests: &[(&str, fn())] = &[
-        ("reads_are_checked_and_stripped_of_what_an_adapter_may_not_claim", checked_and_stripped),
+        (
+            "reads_are_checked_and_stripped_of_what_an_adapter_may_not_claim",
+            checked_and_stripped,
+        ),
         ("rereads_keep_identity_follow_changes_and_retire_old_scopes", rereads),
         ("a_failed_reread_keeps_the_last_good_library", last_good),
         ("keys_count_only_when_declared", keys_when_declared),
@@ -159,17 +162,30 @@ fn checked_and_stripped() {
     answer["skipped"] = json!([{"cause": "unsupported-type", "entry": "An invented talk", "field": "ref-type"}]);
     fake.answer(answer);
     let engine = engine();
-    engine.open_adapter(fake.adapter(), fake.library(), &Cancellation::default()).unwrap();
+    engine
+        .open_adapter(fake.adapter(), fake.library(), &Cancellation::default())
+        .unwrap();
     let listed = libraries(&engine);
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0]["kind"], "adapter");
     assert_eq!(listed[0]["capabilities"], json!(["bibliographic-records"]));
     let objects = objects_of(&engine);
-    assert_eq!(objects.len(), 4, "records only: no attachment from `file`, no invalid record");
+    assert_eq!(
+        objects.len(),
+        4,
+        "records only: no attachment from `file`, no invalid record"
+    );
     for object in &objects {
         assert_eq!(object["kind"], "record");
-        assert_eq!(object["data"]["citation_keys"], json!([]), "keys are claimed only when declared");
-        assert!(object["data"]["csl"].get("URL").is_none(), "private links never enter the library");
+        assert_eq!(
+            object["data"]["citation_keys"],
+            json!([]),
+            "keys are claimed only when declared"
+        );
+        assert!(
+            object["data"]["csl"].get("URL").is_none(),
+            "private links never enter the library"
+        );
         assert!(object["data"]["id"]["key"].as_str().unwrap().starts_with("record:"));
     }
     let warnings = listed[0]["warnings"].as_array().unwrap();
@@ -178,12 +194,26 @@ fn checked_and_stripped() {
     assert!(causes.contains(&json!("unknown-type")), "{causes:?}");
     // Ibis's own refusals name the record's place; the adapter's skip does not.
     assert!(warnings.iter().any(|warning| warning["line"] == json!(5)));
-    assert!(warnings.iter().any(|warning| warning["line"].is_null() && warning["entry"] == "An invented talk"));
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning["line"].is_null() && warning["entry"] == "An invented talk")
+    );
     // A key output refuses with missing-key; a style cites.
     let item = objects[0]["data"]["id"].clone();
-    let keyed = call(&engine, Method::Cite, json!({"items": [{"item": item}], "output": {"kind": "key", "syntax": "pandoc"}})).unwrap();
+    let keyed = call(
+        &engine,
+        Method::Cite,
+        json!({"items": [{"item": item}], "output": {"kind": "key", "syntax": "pandoc"}}),
+    )
+    .unwrap();
     assert_eq!(keyed["outcomes"][0]["error"], "missing-key");
-    let styled = call(&engine, Method::Cite, json!({"items": [{"item": item}], "output": {"kind": "csl", "style": "apa"}})).unwrap();
+    let styled = call(
+        &engine,
+        Method::Cite,
+        json!({"items": [{"item": item}], "output": {"kind": "csl", "style": "apa"}}),
+    )
+    .unwrap();
     assert!(styled["text"].as_str().unwrap().contains("Ångström"), "{styled}");
 }
 
@@ -234,21 +264,48 @@ fn last_good() {
     let revision = libraries(&engine)[0]["revision"].clone();
     let mut bad: Vec<(&str, Value)> = vec![
         ("not json", json!({"mode": "raw", "raw": "not json"})),
-        ("an extra field", json!({"mode": "raw", "raw": "{\"ibis\":1,\"read\":null,\"refused\":null,\"extra\":1}"})),
-        ("another protocol", json!({"response": {"ibis": 2, "read": read(invented())}})),
-        ("both answers", json!({"response": {"ibis": 1, "read": read(invented()), "refused": "unreadable"}})),
-        ("an empty scope", json!({"response": {"ibis": 1, "read": {"scope": "", "revision": "r", "records": []}}})),
+        (
+            "an extra field",
+            json!({"mode": "raw", "raw": "{\"ibis\":1,\"read\":null,\"refused\":null,\"extra\":1}"}),
+        ),
+        (
+            "another protocol",
+            json!({"response": {"ibis": 2, "read": read(invented())}}),
+        ),
+        (
+            "both answers",
+            json!({"response": {"ibis": 1, "read": read(invented()), "refused": "unreadable"}}),
+        ),
+        (
+            "an empty scope",
+            json!({"response": {"ibis": 1, "read": {"scope": "", "revision": "r", "records": []}}}),
+        ),
         ("a failed exit", json!({"mode": "exit"})),
-        ("a refusal", json!({"response": {"ibis": 1, "refused": "manager-closed"}})),
+        (
+            "a refusal",
+            json!({"response": {"ibis": 1, "refused": "manager-closed"}}),
+        ),
     ];
     let pid = fake.scenario.with_file_name("pid");
     bad.push(("no answer in time", json!({"mode": "hang", "pid": pid})));
     for (case, scenario) in bad {
         fake.scenario(scenario);
         let started = Instant::now();
-        let failure = call(&engine, Method::Libraries, json!({"action": "reload", "library": library})).unwrap_err();
-        assert!(started.elapsed() < Duration::from_secs(10), "{case}: the deadline holds");
-        let expected = if case == "a refusal" { "source-manager-closed" } else { "source-failed" };
+        let failure = call(
+            &engine,
+            Method::Libraries,
+            json!({"action": "reload", "library": library}),
+        )
+        .unwrap_err();
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "{case}: the deadline holds"
+        );
+        let expected = if case == "a refusal" {
+            "source-manager-closed"
+        } else {
+            "source-failed"
+        };
         assert_eq!(failure["reason"], expected, "{case}: {failure}");
         let listed = libraries(&engine);
         assert_eq!(listed.len(), 1, "{case}");
@@ -261,7 +318,10 @@ fn last_good() {
     {
         let pid = std::fs::read_to_string(&pid).unwrap();
         std::thread::sleep(Duration::from_millis(200));
-        let alive = std::process::Command::new("kill").args(["-0", pid.trim()]).status().unwrap();
+        let alive = std::process::Command::new("kill")
+            .args(["-0", pid.trim()])
+            .status()
+            .unwrap();
         assert!(!alive.success(), "the adapter's own child stopped with it");
     }
     // The next good read clears the failure.
@@ -278,7 +338,9 @@ fn keys_when_declared() {
     answer["keys"] = json!(true);
     fake.answer(answer);
     let engine = engine();
-    engine.open_adapter(fake.adapter(), fake.library(), &Cancellation::default()).unwrap();
+    engine
+        .open_adapter(fake.adapter(), fake.library(), &Cancellation::default())
+        .unwrap();
     assert_eq!(
         libraries(&engine)[0]["capabilities"],
         json!(["bibliographic-records", "native-citation-keys"])
@@ -296,7 +358,9 @@ fn command_line() {
     let fake = Fake::new("fake");
     fake.answer(read(invented()));
     // A program on PATH with a built-in's name is never run for it.
-    let shadow = fake.program.with_file_name(format!("ibis-source-endnote{}", std::env::consts::EXE_SUFFIX));
+    let shadow = fake
+        .program
+        .with_file_name(format!("ibis-source-endnote{}", std::env::consts::EXE_SUFFIX));
     std::fs::copy(&fake.program, &shadow).unwrap();
     let directory = fake.program.parent().unwrap();
     let ibis = |args: &[&str]| {
@@ -305,18 +369,34 @@ fn command_line() {
             .env("PATH", directory)
             .output()
             .unwrap();
-        (output.status.code(), serde_json::from_slice::<Value>(&output.stdout).unwrap_or_default())
+        (
+            output.status.code(),
+            serde_json::from_slice::<Value>(&output.stdout).unwrap_or_default(),
+        )
     };
     let source = format!("fake={}", fake.scenario.display());
     let (code, found) = ibis(&["search", "lanterns", "--source", &source, "--json"]);
     assert_eq!(code, Some(0), "{found}");
     assert_eq!(found["data"]["hits"].as_array().unwrap().len(), 1);
     let expected = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/endnote/expected.json");
-    let (code, checked) = ibis(&["sources", "check", "--source", &source, "--expect", expected.to_str().unwrap(), "--json"]);
+    let (code, checked) = ibis(&[
+        "sources",
+        "check",
+        "--source",
+        &source,
+        "--expect",
+        expected.to_str().unwrap(),
+        "--json",
+    ]);
     assert_eq!(code, Some(0), "{checked}");
     assert_eq!(checked["data"]["passed"], true);
     let missing = directory.join("missing.xml");
-    let (_, built_in) = ibis(&["libraries", "--source", &format!("endnote={}", missing.display()), "--json"]);
+    let (_, built_in) = ibis(&[
+        "libraries",
+        "--source",
+        &format!("endnote={}", missing.display()),
+        "--json",
+    ]);
     assert_eq!(built_in["error"]["reason"], "source-library-not-found", "{built_in}");
     let (_, unknown) = ibis(&["libraries", "--source", "nothing-here", "--json"]);
     assert_eq!(unknown["error"]["reason"], "source-not-found", "{unknown}");

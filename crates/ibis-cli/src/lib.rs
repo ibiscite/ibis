@@ -1264,7 +1264,10 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
     }
     let names = opened?;
     if name == "sources" {
-        return Ok(Execution::Result(local(sources::run(engine, matches, args, &names)?), None));
+        return Ok(Execution::Result(
+            local(sources::run(engine, matches, args, &names)?),
+            None,
+        ));
     }
     if name == "serve" {
         return Ok(Execution::Stdio(

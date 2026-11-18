@@ -25,7 +25,7 @@ use std::time::{Duration, Instant};
 #[cfg(unix)]
 #[allow(unsafe_code)]
 #[path = "pdf/inheritance.rs"]
-mod inheritance;
+pub(crate) mod inheritance;
 
 /// The argument that makes `ibis` the extractor's child process.
 pub const CHILD_ARGUMENT: &str = "__extract-pdf";

@@ -7,7 +7,7 @@ use std::io;
 use std::os::unix::process::CommandExt;
 use std::process::Command;
 
-pub(super) fn restrict(command: &mut Command) -> io::Result<()> {
+pub(crate) fn restrict(command: &mut Command) -> io::Result<()> {
     use nix::sys::resource::{Resource, getrlimit};
     let (soft, _) = getrlimit(Resource::RLIMIT_NOFILE)?;
     let mut end = i32::try_from(soft).map_err(|_| io::Error::from(io::ErrorKind::Unsupported))?;

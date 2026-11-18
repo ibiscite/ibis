@@ -14,12 +14,6 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-// SAFETY: only the post-fork descriptor boundary needs unsafe calls.
-#[cfg(unix)]
-#[allow(unsafe_code)]
-#[path = "pdf/inheritance.rs"]
-mod inheritance;
-
 /// Why a child gave no answer: fixed reasons, never its output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ChildError {
@@ -59,7 +53,7 @@ pub(crate) fn run(
     {
         use std::os::unix::process::CommandExt;
         command.process_group(0);
-        inheritance::restrict(&mut command).map_err(|_| ChildError::Unavailable)?;
+        crate::pdf::inheritance::restrict(&mut command).map_err(|_| ChildError::Unavailable)?;
     }
     let mut child = command
         .stdin(Stdio::piped())
@@ -114,7 +108,9 @@ pub(crate) fn run(
     }
     // A program that escaped the group may keep the pipe open: wait for
     // the answer no longer than the deadline, never join that thread.
-    let remaining = deadline.saturating_sub(started.elapsed()).max(Duration::from_millis(100));
+    let remaining = deadline
+        .saturating_sub(started.elapsed())
+        .max(Duration::from_millis(100));
     let bytes = match answered.recv_timeout(remaining) {
         Ok(Ok(bytes)) => bytes,
         Ok(Err(_)) => return Err(ChildError::Failed),

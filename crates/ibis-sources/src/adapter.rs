@@ -38,8 +38,10 @@ pub const MAX_ANSWER_BYTES: u64 = crate::MAX_LIBRARY_BYTES;
 pub const MAX_TOKEN_CHARS: usize = 256;
 
 const RECORDS: &[SourceCapability] = &[SourceCapability::BibliographicRecords];
-const RECORDS_AND_KEYS: &[SourceCapability] =
-    &[SourceCapability::BibliographicRecords, SourceCapability::NativeCitationKeys];
+const RECORDS_AND_KEYS: &[SourceCapability] = &[
+    SourceCapability::BibliographicRecords,
+    SourceCapability::NativeCitationKeys,
+];
 
 /// Why a source adapter gave no library: fixed reasons, never its output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -183,10 +185,7 @@ impl SourceAdapter {
         if !token(&read.scope) || !token(&read.revision) || read.records.len() > crate::MAX_LIBRARY_RECORDS {
             return Err(AdapterError::Failed);
         }
-        let library = crate::identity::library_id(
-            LibraryKind::Adapter,
-            &[self.name.as_bytes(), read.scope.as_bytes()],
-        );
+        let library = crate::identity::library_id(LibraryKind::Adapter, &[self.name.as_bytes(), read.scope.as_bytes()]);
         let mut records = read.records;
         if !read.keys {
             for record in &mut records {

@@ -72,7 +72,11 @@ pub(crate) fn csl(record: &XmlRecord) -> Result<Map<String, Value>, AdapterSkip>
         // journal list entry, which may be spelled differently.
         (
             "titles/secondary-title",
-            if kind == "book" { "collection-title" } else { "container-title" },
+            if kind == "book" {
+                "collection-title"
+            } else {
+                "container-title"
+            },
         ),
     ];
     for (source, target) in fields {
@@ -131,7 +135,11 @@ mod tests {
         let mapped = mapped(include_str!("../../../fixtures/endnote/invented.xml"));
         let expected: Vec<Value> =
             serde_json::from_str(include_str!("../../../fixtures/endnote/expected.json")).unwrap_or_default();
-        let kept: Vec<Value> = mapped.iter().filter_map(|r| r.clone().ok()).map(Value::Object).collect();
+        let kept: Vec<Value> = mapped
+            .iter()
+            .filter_map(|r| r.clone().ok())
+            .map(Value::Object)
+            .collect();
         assert_eq!(kept, expected);
         let skipped: Vec<_> = mapped.into_iter().filter_map(Result::err).collect();
         assert_eq!(
@@ -154,7 +162,10 @@ mod tests {
         );
         for (inner, field) in [
             ("<titles><title>A</title><title>B</title></titles>", "titles/title"),
-            ("<titles><title>A</title></titles><volume>1</volume><volume>2</volume>", "volume"),
+            (
+                "<titles><title>A</title></titles><volume>1</volume><volume>2</volume>",
+                "volume",
+            ),
             ("<titles></titles>", "title"),
         ] {
             let xml = format!("<xml><records><record><ref-type>17</ref-type>{inner}</record></records></xml>");

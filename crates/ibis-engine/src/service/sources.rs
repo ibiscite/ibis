@@ -2,8 +2,8 @@
 use super::*;
 use crate::sync::MutexExt;
 use ibis_core::zotero::api::TransportError;
-use ibis_sources::zotero_source::{Library, LiveError, ZoteroError, ZoteroSource};
 use ibis_sources::adapter::{AdapterError, SourceAdapter};
+use ibis_sources::zotero_source::{Library, LiveError, ZoteroError, ZoteroSource};
 use ibis_sources::{LoadedLibrary, SourceError, SourceWatch};
 use std::{
     collections::BTreeMap,
@@ -610,7 +610,12 @@ impl Engine {
         SourceWatch::with_library(path, observation, model, callback)
     }
     /// Read a library through the adapter called `name`.
-    pub(crate) fn open_source(&self, name: &str, library: Option<&str>, cancel: &Cancellation) -> Result<(), EngineError> {
+    pub(crate) fn open_source(
+        &self,
+        name: &str,
+        library: Option<&str>,
+        cancel: &Cancellation,
+    ) -> Result<(), EngineError> {
         cancel.check()?;
         let search = std::env::var_os("PATH");
         let adapter =
