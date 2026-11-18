@@ -49,7 +49,7 @@ Linux desktop app.
 
 The format menu offers key syntaxes and formatted citations. A remembered
 format belongs to the app you came from; an unidentified app uses the default.
-An optional writing project adds its output and bibliography check. The
+An optional project adds its output and bibliography check. The
 Inspector edits page, form, prefix and suffix. Command+/ (Ctrl+/ elsewhere)
 shows the keys.
 

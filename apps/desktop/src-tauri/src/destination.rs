@@ -92,6 +92,8 @@ pub(crate) struct PickerDestination {
     pub(crate) context_version: Option<(u32, u32)>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) writing_context: Option<String>,
+    /// The engine's answer to whether the format palette offers Projects.
+    pub(crate) offers_projects: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -333,6 +335,7 @@ pub(crate) fn present(app: &AppHandle, context: &ibis_engine::app_context::Conte
     let writing = context.writing.clone();
     let writing_context = context.writing_context.clone();
     let context_version = Some(context.context_version);
+    let offers_projects = context.offers_projects;
     let Some((id, name, app_identity)) = last else {
         return PickerDestination {
             app: None,
@@ -349,6 +352,7 @@ pub(crate) fn present(app: &AppHandle, context: &ibis_engine::app_context::Conte
             writing,
             context_version,
             writing_context,
+            offers_projects,
         };
     };
     let can_paste = crate::paste::intends_paste(app, context.paste_enabled);
@@ -374,6 +378,7 @@ pub(crate) fn present(app: &AppHandle, context: &ibis_engine::app_context::Conte
         writing,
         context_version,
         writing_context,
+        offers_projects,
     }
 }
 

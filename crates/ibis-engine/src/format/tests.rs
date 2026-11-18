@@ -100,3 +100,26 @@ fn a_delayed_paste_never_overwrites_a_newer_format_or_reports_the_old_suggestion
     assert_eq!(settings, before);
     assert_eq!(usual(&settings, Some(&word)).from, FormatFrom::Suggestion);
 }
+
+#[test]
+fn projects_are_offered_once_an_app_has_a_second_format_or_one_exists() {
+    let word = app(Macos, "com.microsoft.word");
+    let mut settings = Settings::default();
+    assert!(!offers_projects(&settings, Some(&word)) && !offers_projects(&settings, None));
+    // The first paste saves the suggestion as Word's format: still one format.
+    let suggested = choose(&settings, Some(&word));
+    assert!(accept_suggestion(&mut settings, Some(&word), &suggested));
+    assert!(!offers_projects(&settings, Some(&word)));
+    // A second one, chosen in Word, beside your usual APA.
+    settings.remember_app_output(&word, "modern-language-association".into());
+    assert!(offers_projects(&settings, Some(&word)));
+    assert!(!offers_projects(&settings, Some(&app(Macos, "md.obsidian"))));
+    // A saved project is never hidden, in any app or none.
+    let mut settings = Settings::default();
+    settings.device.writings.push(Writing {
+        name: "Thesis".into(),
+        format: OutputSpec::Key { syntax: KeySyntax::Pandoc, command: None },
+        bibliography: None,
+    });
+    assert!(offers_projects(&settings, None));
+}

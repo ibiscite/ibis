@@ -586,7 +586,7 @@ test("leaving a writing restores the app's output and copies a fresh preview", a
   let selected: string | null = writing.id;
   const view = (): WritingsView => ({ writings: [writing], selected, context: `opening-${generation}`, session_only: false });
   const destination = (): PickerDestination => (fixtureDestination({ app: "Example Editor", app_id: "example.editor", app_identity: null,     unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false, writing: selected ? writing : null,
-    writing_context: `opening-${generation}`, context_version: [generation, 0], format: formatAnswer(selected ? writing.output : "typst", selected ? "writing" : "app") }));
+    writing_context: `opening-${generation}`, context_version: [generation, 0], offers_projects: true, format: formatAnswer(selected ? writing.output : "typst", selected ? "writing" : "app") }));
   const copied: string[] = [];
   backend({
     search: () => [result("a", "Synthetic source")], "destination": destination, writings: view,
@@ -606,14 +606,32 @@ test("leaving a writing restores the app's output and copies a fresh preview", a
   const formatButton = () => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name: /^Citation format / });
   await waitFor(() => expect(formatButton().getAttribute("aria-label")).toContain("Field Guide"));
   fireEvent.click(formatButton());
-  fireEvent.click(await screen.findByRole("option", { name: "New writing…" }));
-  const dialog = await screen.findByRole("dialog", { name: "Writings" });
-  fireEvent.click(await within(dialog).findByRole("button", { name: "No Writing" }));
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Writings" })).toBeNull());
+  fireEvent.click(await screen.findByRole("option", { name: "New project…" }));
+  const dialog = await screen.findByRole("dialog", { name: "Projects" });
+  fireEvent.click(await within(dialog).findByRole("button", { name: "No Project" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Projects" })).toBeNull());
   await waitFor(() => expect(formatButton().getAttribute("aria-label")).toContain("Typst"));
   expect(formatButton().getAttribute("aria-label")).not.toContain("Field Guide");
   await act(async () => { fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" }); });
   await waitFor(() => expect(copied).toEqual(["typst:[2,0]"]));
+});
+
+test("the format palette offers Projects only when the engine does", async () => {
+  let offers = false;
+  backend({ search: () => [result("a", "Synthetic source")], destination: () => fixtureDestination({ app: "Example Editor", app_id: "example.editor", offers_projects: offers, format: formatAnswer("apa", "app") }) });
+  const { unmount } = render(<App />);
+  await screen.findByText("Synthetic source");
+  const formatButton = () => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name: /^Citation format / });
+  fireEvent.click(formatButton());
+  await screen.findByRole("dialog", { name: "Format" });
+  expect(screen.queryByRole("option", { name: "New project…" })).toBeNull();
+  unmount();
+  // A second format saved for this app, or a saved project: the engine offers them.
+  offers = true;
+  render(<App />);
+  await screen.findByText("Synthetic source");
+  fireEvent.click(formatButton());
+  expect(await screen.findByRole("option", { name: "New project…" })).toBeTruthy();
 });
 
 // Editor requests

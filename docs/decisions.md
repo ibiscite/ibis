@@ -40,7 +40,7 @@ the anchor older links use.
 [0016](decisions/0016-settings.md): `settings.json`, atomic saves, no migrations before 1.0, backups and restore.
 
 ## 0031 What Ibis remembers per app
-[0031](decisions/0031-what-ibis-remembers-per-app.md): `apps.json`, recent citations and app-ID evidence. Format and writing rules are replaced by 0042.
+[0031](decisions/0031-what-ibis-remembers-per-app.md): `apps.json`, recent citations and app-ID evidence. Format and project rules are replaced by 0042.
 
 ## 0019 Updates
 [0019](decisions/0019-updates.md): Tauri's updater, opt-in, signed; offers never take Enter; release naming; one Windows package.
@@ -84,7 +84,7 @@ the anchor older links use.
 ## 0041 System appearance follows the Linux desktop's dark preference
 [0041](decisions/0041-linux-system-appearance.md): on Linux, System follows the desktop portal's colour scheme or a dark GTK theme; Light and Dark still win.
 
-## 0042 Formats, apps and writings
+## 0042 Formats, apps and projects
 [0042](decisions/0042-formats-apps-and-writings.md): one visible format; a writing you chose beats this app's format beats your format; Ibis finds inside Zotero; Settings and a live settings file stay in step.
 
 ## 0043 RIS and CSV libraries

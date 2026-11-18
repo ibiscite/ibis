@@ -268,7 +268,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
         activeDescendant={showCitations && results[active] ? `result-${active}` : undefined}
         format={format} formatLabel={destination.formatLabel} formatButtonRef={formatButtonRef} delivery={actions.delivery}
         app={destination.app} formatSource={destination.source} formatPick={destination.pick}
-        writing={destination.writing} usualFormat={destination.usualFormat} onUseUsual={destination.useUsual} onWritings={!editor.label ? menus.openProjects : undefined}
+        writing={destination.writing} usualFormat={destination.usualFormat} onUseUsual={destination.useUsual} onWritings={!editor.label && destination.offersProjects ? menus.openProjects : undefined}
         onFormatOpenChange={onFormatOpenChange}
         pasteChoices={destination.pasteChoices}
         onPasteChange={(paste) => { const asked = state.pendingCopy?.question === "open"; send({ type: "question", answer: "cancel" }); destination.choosePaste(paste, asked); }}

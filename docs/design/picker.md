@@ -9,7 +9,7 @@ Search, list, shelf and footer ([design](../design.md#the-model)). The Inspector
   Remaining (F9): expose the engine tokenizer's filter identities and spans to
   the picker, then use them for chips and the shared empty-Backspace path.
 - **Keep Window Open** [C6] (⇧⌘P, or in More): a choice for this session, so it has no button of its own in the header (control placement, maintainer 2026-11-10). While it is on, a pressed pin sits beside More in the footer, and a click on it turns it off. Esc never unpins.
-- The format pop-up names the exact output and its delivery destination when an app is known (`APA · Word` for a paste, `APA · Clipboard` for a copy); the default without an app carries no suffix. Its palette explains whose remembered format it is. One output has one name everywhere, the engine's (decision 0035). Hidden until a library is chosen. It opens the **format palette** ([decision 0042](../decisions/0042-formats-apps-and-writings.md)): the way back first when the format isn't yours, recent formats, the app's own choices, Writings…, then the catalogue (key formats, citation styles, and the ways to share references, which hold for one copy: [delivery](delivery.md#copying-and-pasting)), also found by typing; More's Change Format… is found by "share", "export", "BibTeX" and "DOI" too. Beside the list, key formats preview the chosen references, citation styles show a labelled example, and a way to share references shows exactly what it would copy of the shown citation, asked of the engine without replacing what Enter copies. Writings directly in the list and real style previews remain the decision's target.
+- The format pop-up names the exact output and its delivery destination when an app is known (`APA · Word` for a paste, `APA · Clipboard` for a copy); the default without an app carries no suffix. Its palette explains whose remembered format it is. One output has one name everywhere, the engine's (decision 0035). Hidden until a library is chosen. It opens the **format palette** ([decision 0042](../decisions/0042-formats-apps-and-writings.md)): the way back first when the format isn't yours, recent formats, the app's own choices, New project… (once offered: [delivery](delivery.md#copying-and-pasting)), then the catalogue (key formats, citation styles, and the ways to share references, which hold for one copy: [delivery](delivery.md#copying-and-pasting)), also found by typing; More's Change Format… is found by "share", "export", "BibTeX" and "DOI" too. Beside the list, key formats preview the chosen references, citation styles show a labelled example, and a way to share references shows exactly what it would copy of the shown citation, asked of the engine without replacing what Enter copies. Projects directly in the list and real style previews remain the decision's target.
 
 ## Results
 
@@ -63,12 +63,12 @@ Built in `ibis-core` so every front end shares them (#1204).
 - Never show an action twice on one screen. With ⌥ held on macOS, or Shift held over the footer on Windows and Linux: "Add to citation ⇧↵", the Esc step, then More. Shift in Search keeps typing capitals without changing the footer. Source opening is ⌘O / ⌥⌘O on macOS and Ctrl+O / Ctrl+Shift+O elsewhere ([decision 0047](../decisions/0047-opening-references-placement-and-back.md)).
 - **One place for each status**: library state lives only in the footer status; a citation refusal lives in the shelf; settings notices, failed actions and anything passing stand in for the list's heading line (see [Notices](delivery.md#notices)).
 - **Delivery agrees**: the header's format and the footer read one delivery
-  description. The header keeps the format's app, writing or This paste context
+  description. The header keeps the format's app, project or This paste context
   for ordinary delivery, including an app that only supports copy. When Keep
   Window Open or warnings turn an available paste into a copy, it says Clipboard; the mode
   (Automatic paste, Clipboard or Editor) is written beside the footer action. The format palette still explains whose
   remembered format it is. An editor request shows its own format as plain
-  words, with **Send** in the footer; format and writing choices, including their
+  words, with **Send** in the footer; format and project choices, including their
   commands and keys, stay hidden or inactive until that request ends.
 - **One reading of a library's health**: the dot, the hover text and the library menu all draw from `libraryCondition`. A problem in words is never a green dot: anything the menu reports makes the dot at least Look.
 

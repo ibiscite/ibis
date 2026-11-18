@@ -64,7 +64,7 @@ the maintainer promotes it.
 ## 0.4 Citation and integration work
 
 - Allow locators without a type where the output can preserve them.
-- Real citation-style previews and writings directly in the format palette.
+- Real citation-style previews and projects directly in the format palette.
 - Overleaf on free plans: read a downloaded project bibliography offline;
   a browser extension requires Overleaf's written agreement.
 - Qualify live Zotero citations through ODF/DOCX Scan and the switch-word-

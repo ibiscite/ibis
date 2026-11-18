@@ -111,6 +111,16 @@ pub fn choose_with(settings: &Settings, app: Option<&AppId>, yours: Option<&Outp
     }
 }
 
+/// Projects stay out of the way until they can help: someone who saved a
+/// format of its own for this app, other than the usual one, may write more
+/// than one kind of document there. A saved project is always offered.
+pub fn offers_projects(settings: &Settings, app: Option<&AppId>) -> bool {
+    !settings.device.writings.is_empty()
+        || app.and_then(|app| settings.app_output(app)).is_some_and(|saved| {
+            usual(settings, app).id.as_deref() != Some(saved)
+        })
+}
+
 fn kind_of(output: &OutputSpec) -> FormatKind {
     if matches!(output, OutputSpec::Key { .. }) {
         FormatKind::Keys

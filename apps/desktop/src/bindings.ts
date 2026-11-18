@@ -857,6 +857,8 @@ export type PickerDestination = {
 	 * chose it (decision 0042). The picker shows it as it is.
 	 */
 	format: FormatChoice;
+	/** The engine's answer to whether the format palette offers Projects. */
+	offers_projects: boolean;
 	/** The separate delivery choice; never inferred from a remembered format. */
 	paste: AppPaste | null;
 	/** An unrecognised app has a proven target but no delivery choice yet. */

@@ -183,7 +183,7 @@ and never combine with `--keep-order`.
 
 One locator parser serves search, the Page field and the CLI (all 29 CSL terms, ranges, quoted labels; a typed label overrides the default type).
 
-A writing is an optional name, format and read-only `.bib` in `settings.json` ([decision 0042](decisions/0042-formats-apps-and-writings.md)); the engine remembers one per app, and CLI/editor clients select one explicitly. `ibis_engine::app_context::Owner` accepts one typed `ContextRequest` and returns the writing, format and bibliography observation together for the captured app. It owns writing edits, session-only selection, bibliography reads and stale-context refusals. The desktop adds native destination names and delivery facts, opens file dialogs and writes the clipboard. Editor requests carry their own context and never borrow the captured app's bibliography. Writings grant no paste authority and receipts never carry paths. Bibliography checks, `--strict` and stale-identity rules are in [writing commands](cli.md#writings).
+A project (stored under `writings` in `settings.json`) is an optional name, format and read-only `.bib` in `settings.json` ([decision 0042](decisions/0042-formats-apps-and-writings.md)); the engine remembers one per app, and CLI/editor clients select one explicitly. `ibis_engine::app_context::Owner` accepts one typed `ContextRequest` and returns the project, format and bibliography observation together for the captured app. It owns project edits, session-only selection, bibliography reads and stale-context refusals. The desktop adds native destination names and delivery facts, opens file dialogs and writes the clipboard. Editor requests carry their own context and never borrow the captured app's bibliography. Projects grant no paste authority and receipts never carry paths. Bibliography checks, `--strict` and stale-identity rules are in [project commands](cli.md#projects).
 
 <a id="task-contexts-planned"></a>
 Cross-client task-context plans are in [the roadmap](../ROADMAP.md#next).
@@ -204,7 +204,7 @@ do not maintain separate output vocabularies.
 the cross-process lock and perform atomic saves. Backup validation and preparation
 are shared; desktop owns dialogs and single-use restore previews.
 
-The engine chooses one output: the selected writing, the app's remembered format, the person's
+The engine chooses one output: the selected project, the app's remembered format, the person's
 format for its kind (documents or keys), then a suggestion, naming its source.
 First run asks nothing; the first successful suggested paste remembers the
 app's format and reports it once per kind. Delayed delivery cannot overwrite

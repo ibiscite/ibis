@@ -8,7 +8,7 @@ Back is a 32 px square (44 px with a coarse pointer, scaled with text), with the
 
 **Check the bibliography.** Does the exact key occur in one chosen read-only `.bib`? Name that file, never "the whole document". Kept separate from loaded search libraries; an unknown result is never "missing", and Ibis never silently swaps a key.
 
-With a writing selected, choosing or removing this bibliography changes that writing. With none selected the check lasts only for this session. A writing with no bibliography never borrows an earlier writing's file.
+With a project selected, choosing or removing this bibliography changes that project. With none selected the check lasts only for this session. A project with no bibliography never borrows an earlier project's file.
 
 | Checked-file state | What the person sees |
 | --- | --- |
