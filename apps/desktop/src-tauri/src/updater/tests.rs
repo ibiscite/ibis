@@ -82,9 +82,9 @@ fn only_ok_dismisses_installation_recovery_and_drop_releases_blur() {
 
 #[test]
 fn installation_failure_offers_recovery_without_claiming_rollback() {
-    assert!(!INSTALL_FAILURE_MESSAGE.contains("unchanged"));
-    assert!(INSTALL_FAILURE_MESSAGE.contains("Try again"));
-    assert!(INSTALL_FAILURE_MESSAGE.contains("download"));
+    assert!(!install_failure().contains("unchanged"));
+    assert!(install_failure().contains("Try again"));
+    assert!(install_failure().contains("download"));
 }
 
 #[test]
@@ -247,7 +247,7 @@ fn the_shipped_config_reads_only_the_fixed_stable_feed() {
 #[test]
 fn the_question_says_what_is_sent() {
     for words in ["GitHub", "IP address", "version", "Nothing from your library"] {
-        assert!(QUESTION.contains(words), "missing {words}");
+        assert!(question().contains(words), "missing {words}");
     }
 }
 

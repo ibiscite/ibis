@@ -214,6 +214,20 @@ app-proposal-tags =
        *[both] إضافة الوسوم { $add } إلى «{ $label }» وإزالة الوسوم { $remove } منه.
     }
 
+app-update-question-title = التحقق من التحديثات تلقائيًا؟
+app-update-question = يستطيع Ibis التحقق من GitHub بحثًا عن إصدار أحدث بضع مرات في اليوم. يطلب من GitHub ملفًا صغيرًا واحدًا؛ ويرى GitHub عنوان IP الخاص بك وإصدار Ibis. لا يُرسل شيء من مكتبتك، ولا تُثبَّت التحديثات إلا بموافقتك.
+app-update-check-automatically = التحقق تلقائيًا
+app-update-not-now = ليس الآن
+app-update-offer-title = يتوفر تحديث
+app-update-offer = يتوفر Ibis { $version }؛ لديك { $current }.
+app-update-offer-steps = سينزّله Ibis ويتحقق من توقيعه ويثبّته ثم يعيد التشغيل.
+app-update-offer-question = تثبيت هذا التحديث وإعادة تشغيل Ibis؟
+app-update-later = لاحقًا
+app-update-install = التثبيت وإعادة التشغيل
+app-update-cancel = إلغاء
+app-update-install-failed = تعذّر تثبيت التحديث. حاول مرة أخرى لاحقًا. إن لم يعد Ibis يفتح، فنزّل أحدث إصدار من GitHub وأعد تثبيته.
+app-updates-title = التحديثات
+
 ## The app’s own sentence about a citation.
 
 app-loss = لا يستطيع هذا الإخراج عرض { $what } بالكامل.

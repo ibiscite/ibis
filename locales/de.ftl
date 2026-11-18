@@ -214,6 +214,20 @@ app-proposal-tags =
        *[both] Die Tags { $add } zu „{ $label }“ hinzufügen und die Tags { $remove } entfernen.
     }
 
+app-update-question-title = Automatisch nach Updates suchen?
+app-update-question = Ibis kann einige Male am Tag auf GitHub nach einer neueren Version suchen. Dabei fragt es GitHub nach einer kleinen Datei; GitHub sieht Ihre IP-Adresse und die Ibis-Version. Nichts aus Ihrer Bibliothek wird gesendet, und Updates werden nur installiert, wenn Sie zustimmen.
+app-update-check-automatically = Automatisch suchen
+app-update-not-now = Nicht jetzt
+app-update-offer-title = Ein Update ist verfügbar
+app-update-offer = Ibis { $version } ist verfügbar; Sie haben { $current }.
+app-update-offer-steps = Ibis lädt es herunter, prüft seine Signatur, installiert es und startet neu.
+app-update-offer-question = Dieses Update installieren und Ibis neu starten?
+app-update-later = Später
+app-update-install = Installieren und neu starten
+app-update-cancel = Abbrechen
+app-update-install-failed = Das Update konnte nicht installiert werden. Versuchen Sie es später erneut. Falls Ibis nicht mehr startet, laden Sie die neueste Version von GitHub herunter und installieren Sie sie neu.
+app-updates-title = Updates
+
 ## The app’s own sentence about a citation.
 
 app-loss = Diese Ausgabe kann { $what } nicht vollständig darstellen.

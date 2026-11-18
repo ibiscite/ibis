@@ -219,6 +219,21 @@ app-proposal-tags =
        *[both] Add the tags { $add } and remove the tags { $remove } on “{ $label }”.
     }
 
+# The updater's dialogs. $version and $current are version numbers.
+app-update-question-title = Check for updates automatically?
+app-update-question = Ibis can check GitHub for a newer version a few times a day. It asks GitHub for one small file; GitHub sees your IP address and the Ibis version. Nothing from your library is sent, and updates install only when you agree.
+app-update-check-automatically = Check Automatically
+app-update-not-now = Not Now
+app-update-offer-title = An update is available
+app-update-offer = Ibis { $version } is available; you have { $current }.
+app-update-offer-steps = Ibis will download it, check its signature, install it and restart.
+app-update-offer-question = Install this update and restart Ibis?
+app-update-later = Later
+app-update-install = Install and Restart
+app-update-cancel = Cancel
+app-update-install-failed = The update could not be installed. Try again later. If Ibis no longer opens, download and reinstall the newest version from GitHub.
+app-updates-title = Updates
+
 ## The app’s own sentence about a citation.
 
 app-loss = This output cannot fully show { $what }.

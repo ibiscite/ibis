@@ -29,10 +29,20 @@ const CHECK_TIMEOUT: Duration = Duration::from_secs(30);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const DOWNLOAD_STALL_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// The updater's words, in the language Ibis speaks (locales/*.ftl, `app-update-`).
+fn say(id: &str, args: &[(&str, &str)]) -> String {
+    ibis_engine::catalogue::text(id, None, args).unwrap_or_else(|| id.to_owned())
+}
+
 /// What the first-launch question and the menu item explain.
-pub(crate) const QUESTION: &str = "Ibis can check GitHub for a newer version a few times a day. \
-It asks GitHub for one small file; GitHub sees your IP address and the Ibis version. \
-Nothing from your library is sent, and updates install only when you agree.";
+pub(crate) fn question() -> String {
+    say("app-update-question", &[])
+}
+
+/// The offer's Install button, and the answer that installs: one lookup for both.
+fn install_label() -> String {
+    say("app-update-install", &[])
+}
 
 #[derive(Default)]
 pub(crate) struct Updates {
@@ -139,11 +149,11 @@ fn present_question(
 ) {
     let dialog = app
         .dialog()
-        .message(QUESTION)
-        .title("Check for updates automatically?")
+        .message(question())
+        .title(say("app-update-question-title", &[]))
         .buttons(MessageDialogButtons::OkCancelCustom(
-            "Check Automatically".into(),
-            "Not Now".into(),
+            say("app-update-check-automatically", &[]),
+            say("app-update-not-now", &[]),
         ));
     // Owned by the picker like an offer, so it opens above the picker.
     #[cfg(target_os = "macos")]
@@ -274,7 +284,7 @@ fn present_offer(
         let dialog = app
             .dialog()
             .message(text)
-            .title("An update is available")
+            .title(say("app-update-offer-title", &[]))
             .buttons(offer_buttons());
         #[cfg(target_os = "macos")]
         let dialog = {
@@ -304,12 +314,12 @@ fn present_offer(
 fn offer_buttons() -> MessageDialogButtons {
     // rfd defaults to the first custom action on Windows and macOS. A separate
     // Cancel slot is essential: the plugin maps Escape/close to that label.
-    MessageDialogButtons::YesNoCancelCustom("Later".into(), "Install and Restart".into(), "Cancel".into())
+    MessageDialogButtons::YesNoCancelCustom(say("app-update-later", &[]), install_label(), say("app-update-cancel", &[]))
 }
 
 #[cfg(any(not(target_os = "linux"), test))]
 fn offer_accepted(result: MessageDialogResult) -> bool {
-    matches!(result, MessageDialogResult::Custom(label) if label == "Install and Restart")
+    matches!(result, MessageDialogResult::Custom(label) if label == install_label())
 }
 
 #[cfg(target_os = "linux")]
@@ -337,12 +347,12 @@ fn gtk_offer_dialog(text: String) -> (gtk::MessageDialog, gtk::Widget) {
     let dialog = gtk::MessageDialog::builder()
         .modal(true)
         .use_header_bar(0)
-        .title("An update is available")
-        .text("An update is available")
+        .title(say("app-update-offer-title", &[]))
+        .text(say("app-update-offer-title", &[]))
         .secondary_text(text)
         .build();
-    let later = dialog.add_button("Later", gtk::ResponseType::Cancel);
-    dialog.add_button("Install and Restart", gtk::ResponseType::Accept);
+    let later = dialog.add_button(&say("app-update-later", &[]), gtk::ResponseType::Cancel);
+    dialog.add_button(&install_label(), gtk::ResponseType::Accept);
     dialog.set_default_response(gtk::ResponseType::Cancel);
     (dialog, later)
 }
@@ -364,14 +374,14 @@ pub(crate) fn offer_text(current: &str, update: &Update) -> String {
         .map(|notes| format!("\n\n{}", shorten(notes, 600)))
         .unwrap_or_default();
     let question = if cfg!(target_os = "windows") {
-        "\n\nInstall this update and restart Ibis?"
+        format!("\n\n{}", say("app-update-offer-question", &[]))
     } else {
-        ""
+        String::new()
     };
-    format!(
-        "Ibis {} is available; you have {current}.{notes}\n\nIbis will download it, check its signature, install it and restart.{question}",
-        update.version
-    )
+    let version = update.version.to_string();
+    let offer = say("app-update-offer", &[("version", &version), ("current", current)]);
+    let steps = say("app-update-offer-steps", &[]);
+    format!("{offer}{notes}\n\n{steps}{question}")
 }
 
 fn shorten(text: &str, limit: usize) -> String {
@@ -382,7 +392,9 @@ fn shorten(text: &str, limit: usize) -> String {
     }
 }
 
-const INSTALL_FAILURE_MESSAGE: &str = "The update could not be installed. Try again later. If Ibis no longer opens, download and reinstall the newest version from GitHub.";
+fn install_failure() -> String {
+    say("app-update-install-failed", &[])
+}
 
 /// The native presentation boundary. Mock runtimes replace only OS actions;
 /// download, retained progress, failure decisions and busy ownership stay here.
@@ -477,7 +489,7 @@ fn installation_failed(app: &AppHandle) {
         present_installation_failure(app, true);
     }
     #[cfg(not(target_os = "macos"))]
-    tell(app, INSTALL_FAILURE_MESSAGE);
+    tell(app, &install_failure());
 }
 
 /// Called after an actual native panel show, never from a timer or at login.
@@ -535,8 +547,8 @@ fn present_installation_failure(app: &AppHandle, show: bool) {
             let callback = handle.clone();
             handle
                 .dialog()
-                .message(INSTALL_FAILURE_MESSAGE)
-                .title("Updates")
+                .message(install_failure())
+                .title(say("app-updates-title", &[]))
                 .buttons(MessageDialogButtons::Ok)
                 .parent(&window)
                 .show_with_result(move |result| {
@@ -549,7 +561,7 @@ fn present_installation_failure(app: &AppHandle, show: bool) {
 }
 
 fn tell(app: &AppHandle, text: &str) {
-    app.dialog().message(text).title("Updates").show(|_| {});
+    app.dialog().message(text).title(say("app-updates-title", &[])).show(|_| {});
 }
 
 #[cfg(test)]
