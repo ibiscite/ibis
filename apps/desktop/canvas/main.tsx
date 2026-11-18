@@ -75,7 +75,6 @@ const fixtures: Partial<Record<Scenario, {
   "format-menu": { library: zoteroLibrary },
   "empty-search": { query: "" },
   "unknown-app-empty": { query: "" },
-  commands: { query: ">" },
   "page-in-search": { query: "invented 417" },
   peek: { keys: [{ key: "y", code: "KeyY", metaKey: true }] },
   shelf: { keys: [{ key: "Enter", shiftKey: true }, { key: "ArrowDown" }, { key: "Enter", shiftKey: true }] },

@@ -4,7 +4,6 @@
 import type { LibraryStatus } from "../../api";
 import { styleOf, type OutputId } from "../../format/outputs";
 import { choiceKey, asTyped } from "./choice";
-import { COMMAND_PREFIX } from "./commands";
 import { destinationFormat, destinationReady, writingVersion, shouldAsk } from "./destination";
 import { ownedPreview, previewKey } from "./preview";
 import { sameInputs, type SearchInputs, type SearchState } from "./search";
@@ -46,15 +45,12 @@ export function searchStatus(search: SearchState, inputs: SearchInputs, session:
   return { sameSnapshot, ready, pending };
 }
 
-/** The query the search runs: ">" asks for commands, never the library. */
-export const searchQuery = (s: SessionState) => s.query.startsWith(COMMAND_PREFIX) ? "" : s.query;
-
 /** The view Enter acts on; null until the outside inputs are known. */
 export function deriveView(s: SessionState): SessionView | null {
   const o = s.inputs;
   if (!o) return null;
   const { search, destination: d } = s;
-  const queryKey = JSON.stringify([searchQuery(s), s.interpretLocators]);
+  const queryKey = JSON.stringify([s.query, s.interpretLocators]);
   // The search the session last heard of must be this query's, in this opening and library.
   const heard = search.inputs !== null && search.session === s.session && search.inputs.queryKey === queryKey
     && search.inputs.library === o.settledLibrary && search.inputs.version === o.version

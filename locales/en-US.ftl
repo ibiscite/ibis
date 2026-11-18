@@ -957,8 +957,6 @@ picker-keep-open = Keep Window Open
 picker-keep-open-menu = Keep Window Open
 picker-change-format = Change Format…
 picker-drag-citation = Drag the citation into any app
-picker-commands = Commands
-picker-no-commands = No matching commands
 picker-more-title = More actions ({ $keys })
 picker-use-zotero = Use Zotero
 picker-library-region = Library
@@ -1100,7 +1098,6 @@ picker-matched-in =
         [identifier] Matched in an ISBN, PubMed ID or arXiv ID
        *[other] Matched in { $field }
     }
-picker-run-command = Run { $title }
 picker-result-count =
     { $count ->
         [one] 1 result

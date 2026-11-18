@@ -9,7 +9,7 @@ import type { OutputId } from "../../format/outputs";
 import { closestMatches, closestMatchWarnings } from "./rows";
 import { initialSearch, reduceSearch, type SearchEffect, type SearchEvent, type SearchState } from "./search";
 import { initialPreview, reducePreview, type PreviewEffect, type PreviewEvent, type PreviewState } from "./preview";
-import { deriveView, searchQuery, type PickerInputs } from "./view";
+import { deriveView, type PickerInputs } from "./view";
 import { initialDestination, writingVersion, reduceDestination, sameOutput, type DestinationEffect, type DestinationEvent, type DestinationState, type OutputToken } from "./destination";
 
 export type { OutputToken };
@@ -144,8 +144,7 @@ const finish = (s: SessionState, f: Flight): SessionState => ({ ...s, flights: s
 // while newer preferences or library status are still on their way from React.
 function advance(s: SessionState, copies: boolean): [SessionState, SessionEffect[]] {
   const p = s.pendingCopy, v = s.view;
-  // A command query never copies.
-  if (!p || !v || searchQuery(s) !== s.query) return [s, []];
+  if (!p || !v) return [s, []];
   // The snapshot supplies the presentation before the window can accept Enter.
   const presentation = s.presentation;
   if (presentation === null) return [s, []];

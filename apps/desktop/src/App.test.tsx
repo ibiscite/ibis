@@ -518,24 +518,21 @@ test("the details open beside a live list; Esc steps back one layer and returns 
   expect(token.getAttribute("aria-expanded")).toBe("false");
 });
 
-// Commands
-test('">" lists commands by name with their keys; typing narrows them and Enter runs one', async () => {
-  const calls = backend({ quit: () => null, search: () => [result("vale2021", "The quiet garden")] });
+// One list of commands
+test('">" is searched like any other text, and More finds a command by what it does', async () => {
+  const asked: string[] = [];
+  backend({ search: ({ query }) => { asked.push(query.text); return query.text ? [result("vale2021", "The quiet garden")] : []; } });
   render(<App />);
   const search = screen.getByLabelText("Search references");
-  fireEvent.change(search, { target: { value: ">" } });
-  const commands = await screen.findByRole("listbox", { name: "Commands" });
-  const names = within(commands).getAllByRole("option").map((row) => row.querySelector(".result-title")?.textContent);
-  expect(names).toEqual(expect.arrayContaining(["Change Format…", "Keep Window Open", "Keyboard Shortcuts", "Settings…", "Quit Ibis"]));
-  // The library is never searched for a command, and nothing would be pasted.
-  expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
-  expect(screen.getByRole("button", { name: /^Run Change Format/ })).toBeTruthy();
-  // Words in the title or the description narrow the list.
-  fireEvent.change(search, { target: { value: "> quit" } });
-  await waitFor(() => expect(within(screen.getByRole("listbox", { name: "Commands" })).getAllByRole("option")).toHaveLength(1));
-  fireEvent.keyDown(search, { key: "Enter" });
-  await waitFor(() => expect(calls).toContain("quit"));
-  expect((search as HTMLInputElement).value).toBe("");
+  fireEvent.change(search, { target: { value: "> quiet" } });
+  await screen.findByRole("option", { name: /The quiet garden/ });
+  expect(asked).toContain("> quiet");
+  expect(screen.queryByRole("listbox", { name: "Commands" })).toBeNull();
+  fireEvent.keyDown(search, { key: "k", ctrlKey: true });
+  const palette = await screen.findByRole("dialog", { name: "Actions" });
+  // A key's description in the keys sheet ("Open Settings") finds its action, as ">" once did.
+  fireEvent.change(within(palette).getByRole("combobox", { name: "Search actions" }), { target: { value: "open settings" } });
+  expect(within(palette).getAllByRole("option").map((row) => row.querySelector(".ui-palette-label")?.textContent)).toEqual(["Settings…"]);
 });
 
 // Opening from Zotero
