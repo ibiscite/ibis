@@ -9,7 +9,7 @@ const dist = process.argv[2], out = process.argv[3];
 await mkdir(path.dirname(out), { recursive: true });
 const surfaces = [
   ["results", "Picker"], ["format-menu", "Format"], ["more", "Actions (More)"],
-  ["cited-since-opening", "Cited Since Opening"], ["writing-projects", "Writing Projects"], ["shortcuts", "Keyboard Shortcuts"],
+  ["cited-since-opening", "Cited Since Opening"], ["writing-projects", "Projects"], ["shortcuts", "Keyboard Shortcuts"],
   ["settings-general", "Settings › General"], ["settings-paste", "Settings › Practice paste"], ["reference-list", "Paste Reference List"], ["settings-look", "Settings › Look"], ["settings-citations", "Settings › Citations"],
   ["settings-ai-apps", "Settings › AI Apps"], ["settings-shortcuts", "Settings › Shortcuts"], ["settings-about", "About"],
   ["first-run", "First run"], ["empty", "Empty library"], ["missing", "Library missing"], ["zotero-closed", "Zotero closed"],

@@ -157,7 +157,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
     picker_snapshot: async () => ({
       presentation: 1, selection: null, library, destination,
       preferences: { Ok: await settings.pickerPreferences() },
-      recents: { Ok: [{ revision: library.revision, results: [] }, false, false] },
+      recents: { Ok: [{ revision: library.revision, results: scenario === "reference-list" ? rows.slice(0, 3).map((row) => ({ ...row, recent: "cited" as const })) : [] }, scenario === "reference-list", false] },
     } satisfies PickerSnapshot),
     picker_rendered: () => {
       if (scenario === "file-drag") void emit("library:file-drag", true);
