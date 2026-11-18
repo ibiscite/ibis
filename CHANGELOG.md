@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.3.12](https://github.com/ibiscite/ibis/compare/v0.3.11...v0.3.12) (2026-11-18)
+
+
+### Features
+
+* **picker:** one platform-free state machine for the picker window ([#1993](https://github.com/ibiscite/ibis/issues/1993)) ([be813eb](https://github.com/ibiscite/ibis/commit/be813eb8caea9c59e7448968ed53035da1930162))
+* **share:** a pack of references with a reading list, BibTeX and PDFs ([#1983](https://github.com/ibiscite/ibis/issues/1983)) ([b34d4cb](https://github.com/ibiscite/ibis/commit/b34d4cb684eff78add1e6d1a8986e232c3ec3e1b))
+
+
+### Bug Fixes
+
+* **core:** a partial date keeps its year ([#2004](https://github.com/ibiscite/ibis/issues/2004)) ([56114a8](https://github.com/ibiscite/ibis/commit/56114a89014c00e0a5e4778b972fdeea6d752c08))
+* **desktop:** typed command failures and closed problem codes ([#1989](https://github.com/ibiscite/ibis/issues/1989)) ([03f761d](https://github.com/ibiscite/ibis/commit/03f761d551cb2194e2ff51b32464d1d7326137eb))
+* main compiles and its generated files are current ([#2006](https://github.com/ibiscite/ibis/issues/2006)) ([dc4ca65](https://github.com/ibiscite/ibis/commit/dc4ca650e8c88100d6b194ba9824d98c58fd9be3))
+* **reading:** stable attachment ids and a memory limit for PDF reading ([#1981](https://github.com/ibiscite/ibis/issues/1981)) ([6986b9d](https://github.com/ibiscite/ibis/commit/6986b9de818334ff9b6d8a006ce6f16bc1d524a3))
+
+
+### Documentation
+
+* **decisions:** one method table for every surface ([#2005](https://github.com/ibiscite/ibis/issues/2005)) ([ffa7c54](https://github.com/ibiscite/ibis/commit/ffa7c540c09fb45f0b7f9d1932114718a7003c84))
+
 ## [0.3.11](https://github.com/ibiscite/ibis/compare/v0.3.10...v0.3.11) (2026-11-18)
 
 
