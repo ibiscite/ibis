@@ -1154,6 +1154,8 @@ mod tests {
             menu_bar: true,
             recent_citations: Some(true),
             small_surprises: Some(true),
+            interface_language: InterfaceLanguage::System,
+            speaking: Language::English,
         };
         let saved = file.save_preferences(chosen, None).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(saved.portable.paste, Some(false));
@@ -1179,6 +1181,8 @@ mod tests {
             menu_bar: true,
             recent_citations: Some(true),
             small_surprises: Some(true),
+            interface_language: InterfaceLanguage::System,
+            speaking: Language::English,
         };
         let saved = file.save_preferences(defaults, None).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(file.picker_placement(), PickerPlacement::Centre);
