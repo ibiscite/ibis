@@ -209,7 +209,7 @@ fn rereads() {
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0]["id"], json!(first));
     assert_ne!(listed[0]["revision"], revision);
-    let shown = call(&engine, Method::Show, json!({"item": {"id": item}})).unwrap();
+    let shown = call(&engine, Method::Show, json!({"item": {"by": "id", "value": item}})).unwrap();
     assert_eq!(shown["object"]["data"]["csl"]["volume"], "13");
     // A new scope: the adapter cannot show the ids still mean the same
     // records, so every earlier handle is retired with the old library.
@@ -220,7 +220,7 @@ fn rereads() {
     let listed = libraries(&engine);
     assert_eq!(listed.len(), 1);
     assert_ne!(listed[0]["id"], json!(first));
-    let gone = call(&engine, Method::Show, json!({"item": {"id": item}})).unwrap_err();
+    let gone = call(&engine, Method::Show, json!({"item": {"by": "id", "value": item}})).unwrap_err();
     assert_eq!(gone["code"], "not-found", "{gone}");
 }
 
