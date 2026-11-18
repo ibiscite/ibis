@@ -473,8 +473,8 @@ fn command() -> Command {
                 .about("Make a pack of references to send: a reading list, a .bib file and, if asked, their PDFs")
                 .after_help(
                     "The pack is one zip file: Reading list.html, the references in your style with their links,\n\
-                     References.bib for any reference manager, and with --pdfs a PDFs folder. Notes, annotations\n\
-                     and private links never go in. Without --to, it says what the pack would hold.\n\n\
+                     References.bib for any reference manager, and with --pdfs a PDFs folder. The reading list\n\
+                     and BibTeX omit library notes, annotations and private links. Without --to, it previews the pack.\n\n\
                      Examples:\n  \
                      ibis share vale2024lanterns fen2023clouds --pdfs\n  \
                      ibis share vale2024lanterns fen2023clouds --pdfs --to \"Reading pack.zip\"\n  \
@@ -504,7 +504,7 @@ fn command() -> Command {
                     Arg::new("pdfs")
                         .long("pdfs")
                         .action(ArgAction::SetTrue)
-                        .help("Add each reference's PDFs that are inside its library's folder or Zotero's storage"),
+                        .help("Add PDFs from the library folder or Zotero storage. Attached PDFs are copied as they are, including anything inside them."),
                 )
                 .arg(
                     Arg::new("folder")

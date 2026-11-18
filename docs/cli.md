@@ -274,7 +274,7 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | `KEY…` | Citation keys of the references, in order |
 | `--keys-from FILE` | Read one citation key per line from FILE, or - for stdin; ignore blanks and # comments |
 | `--to PATH` | Write the pack here, a new zip file or with --folder a new folder; nothing there is replaced |
-| `--pdfs` | Add each reference's PDFs that are inside its library's folder or Zotero's storage |
+| `--pdfs` | Add PDFs from the library folder or Zotero storage. Attached PDFs are copied as they are, including anything inside them. |
 | `--folder` | Write a plain folder instead of a zip file |
 | `--style STYLE_ID` | The CSL style of the reading list, default apa; list them with: ibis styles |
 | `--locale LOCALE` | Language of the reading list, such as de-DE; default the style's own |
@@ -684,8 +684,10 @@ the app shows them before saving. `--to` names a new zip file, or with
 (`destination-exists`) and never replaced. The zip stores its files as they
 are, since PDFs are already compressed, and a pack holds at most 2 GiB.
 
-Every file is made from the same share-safe fields as `cite --format bibtex`:
-no notes, annotations, private links or file locations. PDFs come only from
+The reading list, BibTeX and filenames use the same share-safe fields as
+`cite --format bibtex`, omitting library notes, annotations, private links
+and file locations. Attached PDFs are copied as they are, including anything
+inside them. PDFs come only from
 inside the `.bib` library's folder or Zotero's storage, opened as `read`
 opens them (a regular local file, never a link) and at most 256 MiB each,
 whatever **Allow attachment text outside the library’s folder** says. A

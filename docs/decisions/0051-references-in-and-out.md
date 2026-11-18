@@ -80,8 +80,9 @@ never outside it whatever the attachment-text setting allows; opened by the
 PDF reader's opener (a regular, resident local file, never a link, at most
 256 MiB) and copied from that handle only while its size and time stay as
 opened. A refused file is left out and its reference named, never a reason to
-stop the pack. Names come from share-safe fields; the answer never holds a
-location. Nothing that exists is replaced. The independent review still comes
+stop the pack. Attached PDFs are copied as they are, including anything inside
+them. Names come from share-safe fields, and the answer reports paths inside
+the pack. Nothing that exists is replaced. The independent review still comes
 before it ships.
 
 ## Agents and the command line

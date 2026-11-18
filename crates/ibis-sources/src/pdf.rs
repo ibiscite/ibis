@@ -263,11 +263,11 @@ impl PdfReader {
 /// starting as a PDF does.
 pub struct LocalPdf {
     file: std::fs::File,
-    stamp: (u64, Option<std::time::SystemTime>),
+    stamp: PdfStamp,
 }
 impl std::fmt::Debug for LocalPdf {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "LocalPdf {{ bytes: {}, private }}", self.stamp.0)
+        write!(f, "LocalPdf {{ bytes: {}, private }}", self.stamp.bytes)
     }
 }
 
@@ -287,40 +287,44 @@ impl LocalPdf {
         .ok_or(Refusal::Missing)?
     }
 
-    /// Its size when opened, in bytes.
-    pub fn len(&self) -> u64 {
-        self.stamp.0
-    }
-
-    /// Whether it was empty when opened; a PDF never is.
-    pub fn is_empty(&self) -> bool {
-        self.stamp.0 == 0
-    }
-
-    /// Whether it is the file another opening found: same size and time.
-    pub fn same_as(&self, other: &Self) -> bool {
-        self.stamp == other.stamp
+    /// Identity and version to compare if the path is reopened.
+    pub fn stamp(&self) -> PdfStamp {
+        self.stamp
     }
 
     /// Copy the bytes it held when opened to `out`; a file that changed
     /// meanwhile is refused, and `out` may then hold part of it.
     pub fn copy_to(mut self, out: &mut impl std::io::Write) -> Result<u64, Refusal> {
         self.file.rewind().map_err(|_| Refusal::NotLocal)?;
-        let copied = std::io::copy(&mut (&mut self.file).take(self.stamp.0), out).map_err(|_| Refusal::NotLocal)?;
-        if copied != self.stamp.0 || stamp(&mut self.file)? != self.stamp {
+        let copied = std::io::copy(&mut (&mut self.file).take(self.stamp.bytes), out).map_err(|_| Refusal::NotLocal)?;
+        if copied != self.stamp.bytes || stamp(&mut self.file)? != self.stamp {
             return Err(Refusal::NotLocal);
         }
         Ok(copied)
     }
 }
 
-/// The open file's size and modification time, once it is known to start
-/// as a PDF within the size bound.
+/// Identity, size and modification time from a validated PDF handle.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct PdfStamp {
+    identity: [u64; 2],
+    bytes: u64,
+    modified: std::time::SystemTime,
+}
+
+impl PdfStamp {
+    /// The PDF's byte length when opened.
+    pub fn bytes(&self) -> u64 {
+        self.bytes
+    }
+}
+
+/// Verify the open file as a PDF within the size bound.
 #[allow(
     clippy::disallowed_methods,
     reason = "Opened-handle checks run inside the bounded local-file I/O owner."
 )]
-fn stamp(file: &mut std::fs::File) -> Result<(u64, Option<std::time::SystemTime>), Refusal> {
+fn stamp(file: &mut std::fs::File) -> Result<PdfStamp, Refusal> {
     let metadata = file.metadata().map_err(|_| Refusal::NotLocal)?;
     if metadata.len() > MAX_FILE_BYTES {
         return Err(Refusal::TooLarge);
@@ -335,7 +339,13 @@ fn stamp(file: &mut std::fs::File) -> Result<(u64, Option<std::time::SystemTime>
     if !has_mark(&start) {
         return Err(Refusal::NotPdf);
     }
-    Ok((metadata.len(), metadata.modified().ok()))
+    let identity = crate::zotero_local::closed::unlinked_file_identity(file, &metadata).ok_or(Refusal::NotLocal)?;
+    let modified = metadata.modified().map_err(|_| Refusal::NotLocal)?;
+    Ok(PdfStamp {
+        identity,
+        bytes: metadata.len(),
+        modified,
+    })
 }
 
 /// Whether `%PDF-` starts within the first [`MARK_WITHIN`] bytes.

@@ -177,8 +177,10 @@ impl Verbatim {
     }
 
     pub(crate) fn key(value: &str) -> Option<Self> {
-        (!value.is_empty() && value.chars().all(|c| c.is_alphanumeric() || "-_.:+/".contains(c)))
-            .then(|| Self(value.into()))
+        (!value.is_empty()
+            && value.chars().all(|c| c.is_alphanumeric() || "-_.:+/".contains(c))
+            && !super::points_to_device(value))
+        .then(|| Self(value.into()))
     }
 
     pub fn as_str(&self) -> &str {

@@ -2,11 +2,12 @@
 //! list page in the person's style, a `.bib` file and, only when asked, the
 //! references' PDFs, zipped by default.
 //!
-//! Every file is made from share-safe fields: the reading list by the CSL
+//! Pack metadata is made from share-safe fields: the reading list by the CSL
 //! formatter and the `.bib` by the BibTeX export, both through
 //! `CitableFields`, so notes, annotations, private links and device paths
 //! never enter the pack. PDFs come only from inside their library's folder or
-//! Zotero's storage, opened under the PDF reader's rules (a plain local file,
+//! Zotero's storage and are copied as they are, opened under the PDF reader's
+//! rules (a plain local file,
 //! never a link), whatever this computer allows AI apps to read. One plan
 //! serves the preview and the write, so both name the same files and sizes.
 //! Nothing that exists is replaced, and no location appears in the answer.
@@ -14,7 +15,7 @@ use super::reading::Owner;
 use super::*;
 use crate::request::ShareRequest;
 use ibis_core::citable::CitableFields;
-use ibis_sources::pdf::LocalPdf;
+use ibis_sources::pdf::{LocalPdf, PdfStamp};
 use std::collections::HashSet;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -71,8 +72,12 @@ pub struct PackFile {
 
 enum Content {
     Bytes(Vec<u8>),
-    /// A PDF at this location, of this size when the plan opened it.
-    Pdf(PathBuf, u64),
+    Pdf(PackPdf),
+}
+
+struct PackPdf {
+    path: PathBuf,
+    stamp: PdfStamp,
 }
 
 impl Engine {
@@ -87,12 +92,7 @@ impl Engine {
             return Err(error(ErrorCode::BadInput));
         }
         ibis_core::citation::check_item_limit(request.items.len()).map_err(|_| error(ErrorCode::ResourceLimit))?;
-        if request.destination.as_deref().is_some_and(|path| !path.is_absolute()) {
-            return Err(EngineError::because(
-                ErrorCode::BadInput,
-                ErrorReason::DestinationUnwritable,
-            ));
-        }
+        let destination = request.destination.as_deref().map(destination_path).transpose()?;
         let state = self.state()?;
         let snapshot = state.index.snapshot();
         // Each reference once, at the first place it was asked for.
@@ -187,9 +187,9 @@ impl Engine {
                     without_pdf.push(*index);
                 }
                 let stem = pdf_stem(fields);
-                for (path, bytes) in pdfs {
+                for pdf in pdfs {
                     let name = unique(&stem, &mut taken);
-                    pdf_files.push((format!("{PDF_FOLDER}/{name}"), Content::Pdf(path, bytes)));
+                    pdf_files.push((format!("{PDF_FOLDER}/{name}"), Content::Pdf(pdf)));
                 }
             }
         }
@@ -213,7 +213,7 @@ impl Engine {
                 path: path.clone(),
                 bytes: match content {
                     Content::Bytes(bytes) => bytes.len() as u64,
-                    Content::Pdf(_, bytes) => *bytes,
+                    Content::Pdf(pdf) => pdf.stamp.bytes(),
                 },
             })
             .collect();
@@ -230,7 +230,7 @@ impl Engine {
             without_pdf,
         };
         ensure_budget(&result)?;
-        if let Some(destination) = &request.destination {
+        if let Some(destination) = &destination {
             cancel.check()?;
             if request.folder {
                 write_folder(destination, &files, cancel)?;
@@ -253,7 +253,7 @@ impl Engine {
         state: &State,
         picks: &[(usize, SnapshotObject)],
         cancel: &Cancellation,
-    ) -> Result<Vec<Vec<(PathBuf, u64)>>, EngineError> {
+    ) -> Result<Vec<Vec<PackPdf>>, EngineError> {
         let cancelled: Arc<dyn Fn() -> bool + Send + Sync> = {
             let cancel = cancel.clone();
             Arc::new(move || cancel.is_cancelled())
@@ -309,15 +309,17 @@ impl Engine {
         }
         let mut sized = Vec::with_capacity(found.len());
         for paths in found {
-            let mut pdfs = Vec::new();
+            let mut pdfs: Vec<PackPdf> = Vec::new();
             for path in paths {
                 cancel.check()?;
-                if pdfs.iter().any(|(seen, _)| *seen == path) {
+                if pdfs.iter().any(|pdf| pdf.path == path) {
                     continue;
                 }
                 if let Ok(pdf) = LocalPdf::open(&path, cancelled.clone()) {
-                    let bytes = pdf.len();
-                    pdfs.push((path, bytes));
+                    pdfs.push(PackPdf {
+                        path,
+                        stamp: pdf.stamp(),
+                    });
                 }
             }
             sized.push(pdfs);
@@ -542,12 +544,24 @@ fn file_name(stem: &str) -> String {
     }
     let trimmed = capped.trim_matches(|character: char| character == '.' || character.is_whitespace());
     let name = if trimmed.is_empty() { "Reference" } else { trimmed };
+    if windows_device(name) {
+        format!("_{name}")
+    } else {
+        name.to_owned()
+    }
+}
+
+fn windows_device(name: &str) -> bool {
     let device = name.split('.').next().unwrap_or(name).trim_end().to_ascii_uppercase();
-    let reserved = matches!(device.as_str(), "CON" | "PRN" | "AUX" | "NUL")
-        || (device.len() == 4
-            && (device.starts_with("COM") || device.starts_with("LPT"))
-            && device.as_bytes()[3].is_ascii_digit());
-    if reserved { format!("{name}_") } else { name.to_owned() }
+    matches!(device.as_str(), "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$")
+        || ["COM", "LPT"].into_iter().any(|prefix| {
+            device.strip_prefix(prefix).is_some_and(|suffix| {
+                matches!(
+                    suffix,
+                    "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+                )
+            })
+        })
 }
 
 /// `stem.pdf`, or `stem (2).pdf` and on when a name already in the pack is
@@ -578,12 +592,57 @@ fn written(failure: &std::io::Error) -> EngineError {
     )
 }
 
-fn create_new(path: &Path) -> std::io::Result<std::fs::File> {
-    std::fs::OpenOptions::new().write(true).create_new(true).open(path)
+fn destination_path(path: &Path) -> Result<PathBuf, EngineError> {
+    let invalid = || EngineError::because(ErrorCode::BadInput, ErrorReason::DestinationUnwritable);
+    let name = path.file_name().ok_or_else(invalid)?;
+    if !path.is_absolute() {
+        return Err(invalid());
+    }
+    #[cfg(windows)]
+    if !windows_file_path(path) {
+        return Err(invalid());
+    }
+    let parent = path.parent().ok_or_else(invalid)?;
+    let parent = parent.canonicalize().map_err(|failure| written(&failure))?;
+    let path = parent.join(name);
+    if path.symlink_metadata().is_ok() {
+        return Err(EngineError::because(
+            ErrorCode::BadInput,
+            ErrorReason::DestinationExists,
+        ));
+    }
+    Ok(path)
+}
+
+#[cfg(windows)]
+fn windows_file_path(path: &Path) -> bool {
+    use std::path::{Component, Prefix};
+    let mut components = path.components();
+    let Some(Component::Prefix(prefix)) = components.next() else {
+        return false;
+    };
+    match prefix.kind() {
+        Prefix::Disk(_) | Prefix::VerbatimDisk(_) => {}
+        Prefix::UNC(_, share) | Prefix::VerbatimUNC(_, share)
+            if !["pipe", "mailslot"].iter().any(|name| share.eq_ignore_ascii_case(name)) => {}
+        _ => return false,
+    }
+    components.all(|component| {
+        if let Component::Normal(name) = component {
+            let name = name.to_string_lossy();
+            !windows_device(&name)
+                && !name.ends_with(['.', ' '])
+                && !name
+                    .chars()
+                    .any(|c| c.is_control() || matches!(c, ':' | '*' | '?' | '"' | '<' | '>' | '|'))
+        } else {
+            true
+        }
+    })
 }
 
 fn destination_error(destination: &Path, failure: &std::io::Error) -> EngineError {
-    // Windows can deny a file open when the existing destination is a directory.
+    // Windows can deny publication when the existing destination is a directory.
     if failure.kind() == std::io::ErrorKind::PermissionDenied && destination.symlink_metadata().is_ok() {
         return EngineError::because(ErrorCode::BadInput, ErrorReason::DestinationExists);
     }
@@ -591,88 +650,106 @@ fn destination_error(destination: &Path, failure: &std::io::Error) -> EngineErro
 }
 
 /// Copy a planned PDF, refused if it is no longer the file the plan opened.
-fn copy_pdf(path: &Path, bytes: u64, out: &mut impl Write, cancel: &Cancellation) -> Result<(), EngineError> {
+fn copy_pdf(path: &Path, stamp: PdfStamp, out: &mut impl Write, cancel: &Cancellation) -> Result<(), EngineError> {
     let changed = || error(ErrorCode::SourceUnavailable);
     let cancelled = cancel.clone();
     let pdf = LocalPdf::open(path, Arc::new(move || cancelled.is_cancelled())).map_err(|_| changed())?;
-    if pdf.len() != bytes {
+    if pdf.stamp() != stamp {
         return Err(changed());
     }
     pdf.copy_to(out).map_err(|_| changed())?;
     Ok(())
 }
 
-/// One zip file, created new; stored, not compressed: PDFs already are.
+/// Publish only a finished pack, taking its name without replacing anything.
 fn write_zip(destination: &Path, files: &[(String, Content)], cancel: &Cancellation) -> Result<(), EngineError> {
-    let file = create_new(destination).map_err(|failure| destination_error(destination, &failure))?;
-    let outcome = (|| {
-        let unwritable = || EngineError::because(ErrorCode::BadInput, ErrorReason::DestinationUnwritable);
-        let mut zip = zip::ZipWriter::new(file);
-        let options = zip::write::SimpleFileOptions::default()
-            .compression_method(zip::CompressionMethod::Stored)
-            .last_modified_time(zip::DateTime::default())
-            .unix_permissions(0o644);
-        for (name, content) in files {
-            cancel.check()?;
-            zip.start_file(name.as_str(), options).map_err(|_| unwritable())?;
-            match content {
-                Content::Bytes(bytes) => zip.write_all(bytes).map_err(|failure| written(&failure))?,
-                Content::Pdf(path, bytes) => copy_pdf(path, *bytes, &mut zip, cancel)?,
-            }
-        }
+    let parent = destination.parent().ok_or_else(|| error(ErrorCode::Internal))?;
+    let mut staged = tempfile::NamedTempFile::new_in(parent).map_err(|failure| written(&failure))?;
+    let unwritable = || EngineError::because(ErrorCode::BadInput, ErrorReason::DestinationUnwritable);
+    let mut zip = zip::ZipWriter::new(staged.as_file_mut());
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Stored)
+        .last_modified_time(zip::DateTime::default())
+        .unix_permissions(0o644);
+    for (name, content) in files {
         cancel.check()?;
-        zip.finish()
-            .map_err(|_| unwritable())?
-            .sync_all()
-            .map_err(|failure| written(&failure))
-    })();
-    if outcome.is_err() {
-        let _ = std::fs::remove_file(destination);
+        zip.start_file(name.as_str(), options).map_err(|_| unwritable())?;
+        write_content(content, &mut zip, cancel)?;
     }
-    outcome
+    zip.finish()
+        .map_err(|_| unwritable())?
+        .sync_all()
+        .map_err(|failure| written(&failure))?;
+    cancel.check()?;
+    staged
+        .persist_noclobber(destination)
+        .map_err(|failure| destination_error(destination, &failure.error))?;
+    Ok(())
 }
 
-/// A new folder holding the files; on failure, what was made is removed.
 fn write_folder(destination: &Path, files: &[(String, Content)], cancel: &Cancellation) -> Result<(), EngineError> {
-    std::fs::create_dir(destination).map_err(|failure| destination_error(destination, &failure))?;
-    let mut made: Vec<PathBuf> = Vec::new();
-    let mut folders: Vec<PathBuf> = vec![destination.to_path_buf()];
-    let outcome = (|| {
-        for (name, content) in files {
-            cancel.check()?;
-            let mut path = destination.to_path_buf();
-            let mut parts = name.split('/').peekable();
-            while let Some(part) = parts.next() {
-                path.push(part);
-                if parts.peek().is_some() && !folders.contains(&path) {
-                    std::fs::create_dir(&path).map_err(|failure| written(&failure))?;
-                    folders.push(path.clone());
-                }
-            }
-            let mut file = create_new(&path).map_err(|failure| written(&failure))?;
-            made.push(path);
-            match content {
-                Content::Bytes(bytes) => file.write_all(bytes).map_err(|failure| written(&failure))?,
-                Content::Pdf(path, bytes) => copy_pdf(path, *bytes, &mut file, cancel)?,
-            }
-            file.sync_all().map_err(|failure| written(&failure))?;
-        }
-        Ok(())
-    })();
-    if outcome.is_err() {
-        for file in made.iter().rev() {
-            let _ = std::fs::remove_file(file);
-        }
-        for folder in folders.iter().rev() {
-            let _ = std::fs::remove_dir(folder);
-        }
+    let parent = destination.parent().ok_or_else(|| error(ErrorCode::Internal))?;
+    let mut stage = tempfile::Builder::new();
+    stage.prefix(".ibis-pack-");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        stage.permissions(std::fs::Permissions::from_mode(0o700));
     }
-    outcome
+    let staged = stage.tempdir_in(parent).map_err(|failure| written(&failure))?;
+    let pdfs = staged.path().join(PDF_FOLDER);
+    if files.iter().any(|(_, content)| matches!(content, Content::Pdf(_))) {
+        std::fs::create_dir(&pdfs).map_err(|failure| written(&failure))?;
+    }
+    for (name, content) in files {
+        cancel.check()?;
+        let mut file = std::fs::File::create_new(staged.path().join(name)).map_err(|failure| written(&failure))?;
+        write_content(content, &mut file, cancel)?;
+        file.sync_all().map_err(|failure| written(&failure))?;
+    }
+    cancel.check()?;
+    publish_folder(staged.path(), destination).map_err(|failure| destination_error(destination, &failure))?;
+    let _ = staged.keep();
+    Ok(())
+}
+
+fn write_content(content: &Content, out: &mut impl Write, cancel: &Cancellation) -> Result<(), EngineError> {
+    match content {
+        Content::Bytes(bytes) => out.write_all(bytes).map_err(|failure| written(&failure)),
+        Content::Pdf(pdf) => copy_pdf(&pdf.path, pdf.stamp, out, cancel),
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn publish_folder(staged: &Path, destination: &Path) -> std::io::Result<()> {
+    use rustix::fs::{CWD, RenameFlags, renameat_with};
+    Ok(renameat_with(CWD, staged, CWD, destination, RenameFlags::NOREPLACE)?)
+}
+
+#[cfg(windows)]
+fn publish_folder(staged: &Path, destination: &Path) -> std::io::Result<()> {
+    // Windows rename cannot replace an existing directory with a directory.
+    std::fs::rename(staged, destination)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
+fn publish_folder(_staged: &Path, _destination: &Path) -> std::io::Result<()> {
+    Err(std::io::ErrorKind::Unsupported.into())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn destinations_are_windows_files_and_folders() {
+        assert!(windows_file_path(Path::new(r"C:\Export\pack.zip")));
+        assert!(windows_file_path(Path::new(r"\\?\C:\Export\pack")));
+        assert!(!windows_file_path(Path::new(r"C:\Export\pack.zip:stream")));
+        assert!(!windows_file_path(Path::new(r"C:\Export\COM¹.draft.pdf")));
+        assert!(!windows_file_path(Path::new(r"\\.\C:\Export\pack.zip")));
+    }
 
     #[test]
     fn names_suit_every_system_and_never_collide() {
@@ -680,8 +757,9 @@ mod tests {
             file_name("Aster 2026 - Lanterns: a/b\\c?"),
             "Aster 2026 - Lanterns a b c"
         );
-        assert_eq!(file_name("  ..CON  "), "CON_");
-        assert_eq!(file_name("com1.draft"), "com1.draft_");
+        assert_eq!(file_name("  ..CON  "), "_CON");
+        assert_eq!(file_name("com1.draft"), "_com1.draft");
+        assert_eq!(file_name("LPT².draft"), "_LPT².draft");
         assert_eq!(file_name("Console"), "Console");
         // A direction override could disguise `fdp.exe` as `exe.pdf`.
         assert_eq!(file_name("\u{202e}..."), "Reference");

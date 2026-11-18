@@ -11,6 +11,7 @@ const LIBRARY: &str = r"@article{aster2026lanterns,
   author = {Aster, Mira and Vale, Tomas},
   title = {Brass lanterns at dusk},
   journal = {Journal of Invented Light},
+  publisher = {/home/invented-account/private-library},
   volume = {4},
   year = {2026},
   doi = {10.5555/lantern.1},
@@ -35,6 +36,8 @@ const LIBRARY: &str = r"@article{aster2026lanterns,
 }
 ";
 
+const ORIGINAL_PDF: &[u8] = b"%PDF-1.7\n/path/already/in/the/original.pdf\n";
+
 struct Fixture {
     _directory: tempfile::TempDir,
     root: std::path::PathBuf,
@@ -45,7 +48,7 @@ fn fixture() -> Fixture {
     let directory = tempfile::tempdir().unwrap();
     let root = directory.path().to_path_buf();
     std::fs::create_dir_all(root.join("library/papers")).unwrap();
-    std::fs::write(root.join("library/papers/aster.pdf"), b"%PDF-1.7\ninvented article\n").unwrap();
+    std::fs::write(root.join("library/papers/aster.pdf"), ORIGINAL_PDF).unwrap();
     std::fs::write(
         root.join("library/papers/ASTER-guide.pdf"),
         b"%PDF-1.7\ninvented guide, longer\n",
@@ -137,13 +140,15 @@ fn the_preview_is_the_pack_and_nothing_private_leaves() {
             "PDFs/Aster 2026 - Brass lanterns at dusk (2).pdf",
         ]
     );
-    assert_eq!(files[2].1, b"%PDF-1.7\ninvented article\n");
+    assert_eq!(files[2].1, ORIGINAL_PDF);
     let private = [
         "SECRET-NOTE-TEXT",
         "SECRET-ANNOTATION-TEXT",
         "192.168.1.7",
         "papers/",
         "outside.pdf",
+        "invented-account",
+        "private-library",
         fixture.root.to_str().unwrap(),
     ];
     for (name, bytes) in &files {
@@ -242,7 +247,21 @@ fn a_linked_pdf_is_not_packed() {
 }
 
 #[test]
-fn a_reference_without_a_key_stays_in_the_list_and_out_of_the_bib() {
+fn a_hard_link_to_a_pdf_is_left_out() {
+    let fixture = fixture();
+    let attached = fixture.root.join("library/papers/aster.pdf");
+    std::fs::hard_link(attached, fixture.root.join("another-name.pdf")).unwrap();
+    let result = share(
+        &fixture.engine,
+        json!({"items":[{"by":"key","value":"aster2026lanterns"}], "pdfs": true}),
+    )
+    .unwrap();
+    assert_eq!(result.without_pdf, [0]);
+    assert!(result.files.iter().all(|file| !file.path.starts_with("PDFs/")));
+}
+
+#[test]
+fn a_reference_without_a_usable_key_stays_in_the_list_and_out_of_the_bib() {
     let directory = tempfile::tempdir().unwrap();
     let library = directory.path().join("refs.json");
     std::fs::write(
@@ -250,7 +269,7 @@ fn a_reference_without_a_key_stays_in_the_list_and_out_of_the_bib() {
         json!([
             {"id": "one", "type": "book", "title": "Keyed lanterns", "citation-key": "vale2024keyed",
              "author": [{"family": "Vale", "given": "Ada"}], "issued": {"date-parts": [[2024]]}},
-            {"id": "two", "type": "book", "title": "Keyless clouds",
+            {"id": "two", "type": "book", "title": "Keyless clouds", "citation-key": "/home/invented-account/private-library",
              "author": [{"family": "Fen", "given": "Ola"}], "issued": {"date-parts": [[2025]]}},
         ])
         .to_string(),
@@ -285,6 +304,8 @@ fn a_reference_without_a_key_stays_in_the_list_and_out_of_the_bib() {
     };
     let (mixed, listed) = page("mixed", json!([id("Keyed lanterns"), id("Keyless clouds")]));
     assert_eq!(mixed.not_in_bibtex, [1]);
+    let bib = std::fs::read_to_string(directory.path().join("mixed/References.bib")).unwrap();
+    assert!(!bib.contains("invented-account"));
     assert!(mixed.files.iter().any(|file| file.path == "References.bib"));
     assert!(
         listed.contains("Keyless clouds") && listed.contains("References.bib"),
