@@ -51,6 +51,21 @@ export const floors = {
   open_ms: 50, first_search_ms: 3, summon_ms: 2, typing_p50_ms: 2, typing_p95_ms: 3, first_cite_ms: 10,
   format_p50_ms: 10, format_warmup_ms: 30, refresh_ms: 75, rss_mib: 15,
 };
+const budgetMetrics = [...Object.keys(floors).filter((metric) => metric !== "typing_p50_ms"), "idle_cpu_percent"];
+
+export function missingBudgets(limits) {
+  return cases.flatMap((name) => {
+    const size = name.slice("feel_".length);
+    return budgetMetrics.filter((metric) => !Number.isFinite(limits?.[size]?.[metric])).map((metric) => `${size} ${metric}`);
+  });
+}
+
+function requireBudgets(target) {
+  const limits = budgets[target];
+  const missing = missingBudgets(limits);
+  if (missing.length) throw new Error(`The ${target} budgets are incomplete (${missing.join(", ")}); measure with \`node scripts/perf.mjs run\``);
+  return limits;
+}
 
 export function median(values) {
   const sorted = [...values].sort((a, b) => a - b);
@@ -77,20 +92,25 @@ export function overBudget(summary, limits) {
   for (const [size, metrics] of Object.entries(limits)) {
     for (const [metric, limit] of Object.entries(metrics)) {
       const value = summary[size]?.[metric];
-      if (value === undefined) over.push(`${size} ${metric}: not measured`);
+      if (!Number.isFinite(value)) over.push(`${size} ${metric}: not measured`);
       else if (value > limit) over.push(`${size} ${metric}: ${round(value)} over ${limit}`);
     }
   }
   return over;
 }
 
-export function regressions(head, base) {
+function exceedsRegression(head, base, floor) {
+  return head > base * ratio && head - base > floor;
+}
+
+export function regressions(head, base, confirmation) {
   const slower = [];
   for (const [size, metrics] of Object.entries(head)) {
     for (const [metric, floor] of Object.entries(floors)) {
       const now = metrics[metric], then = base[size]?.[metric];
-      if (now === undefined || then === undefined) continue;
-      if (now > then * ratio && now - then > floor) slower.push(`${size} ${metric}: ${round(then)} → ${round(now)} (+${Math.round((now / then - 1) * 100)}%)`);
+      if (!exceedsRegression(now, then, floor)) continue;
+      if (confirmation && !exceedsRegression(confirmation.head[size]?.[metric], confirmation.base[size]?.[metric], floor)) continue;
+      slower.push(`${size} ${metric}: ${round(then)} → ${round(now)} (+${Math.round((now - then) / then * 100)}%)`);
     }
   }
   return slower;
@@ -132,7 +152,13 @@ export function measure(executable, name, env = {}) {
   // libtest prints `test NAME ... ` on the same line, before the report.
   const found = /PERF (\{.*\})/.exec(out);
   if (!found) throw new Error(`${name} printed no measurements`);
-  return JSON.parse(found[1]);
+  const report = JSON.parse(found[1]);
+  const records = Number(name.slice("feel_".length, -1)) * 1000;
+  if (report.records !== records) throw new Error(`${name} reported ${report.records} records, expected ${records}`);
+  for (const metric of Object.keys(floors)) {
+    if (!Number.isFinite(report[metric])) throw new Error(`${name} did not measure ${metric}`);
+  }
+  return report;
 }
 
 function table(columns, rows) {
@@ -145,7 +171,8 @@ function report(title, summaries, problems) {
   for (const size of Object.keys(summaries[names[0]])) {
     for (const metric of Object.keys(summaries[names[0]][size])) rows.push([size, metric, ...names.map((name) => String(round(summaries[name][size]?.[metric] ?? NaN)))]);
   }
-  const text = `### ${title}\n\n${table(["case", "metric", ...names], rows)}\n\n${problems.length ? problems.map((line) => `- ${line}`).join("\n") : "Within limits."}\n`;
+  const outcome = problems ? (problems.length ? problems.map((line) => `- ${line}`).join("\n") : "Within limits.") : "Measurements only.";
+  const text = `### ${title}\n\n${table(["case", "metric", ...names], rows)}\n\n${outcome}\n`;
   process.stdout.write(text);
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, text);
 }
@@ -158,7 +185,9 @@ function load() {
 
 function rounds(args) {
   const at = args.indexOf("--rounds");
-  return at === -1 ? 3 : Number(args[at + 1]);
+  const count = at === -1 ? 3 : Number(args[at + 1]);
+  if (!Number.isSafeInteger(count) || count < 1) throw new Error("--rounds requires a positive integer");
+  return count;
 }
 
 /** Measure one build alone, judged against `limits` when given. */
@@ -167,9 +196,30 @@ function alone(executable, count, limits, title) {
   for (let round = 0; round < count; round++) for (const name of cases) reports.push(measure(executable, name));
   const summary = summarize(reports);
   console.log(`PERF-SUMMARY ${JSON.stringify({ platform: process.platform, load: load(), rounds: count, summary })}`);
-  const over = limits ? overBudget(summary, limits) : [];
+  const over = limits ? overBudget(summary, limits) : null;
   report(title, { median: summary }, over);
-  return over.length ? 1 : 0;
+  return over?.length ? 1 : 0;
+}
+
+function compareBatch(head, base, count, reverse = false) {
+  const reports = { head: [], base: [] };
+  for (let round = 0; round < count; round++) {
+    for (const name of cases) {
+      const baseFirst = Boolean(round % 2) !== reverse;
+      for (const side of baseFirst ? ["base", "head"] : ["head", "base"]) {
+        if (side === "head") {
+          reports.head.push(measure(head, name));
+          continue;
+        }
+        try {
+          reports.base.push(measure(base, name, { IBIS_PERF_IDLE_SECONDS: "0" }));
+        } catch (error) {
+          return { baseError: error };
+        }
+      }
+    }
+  }
+  return { base: summarize(reports.base), head: summarize(reports.head) };
 }
 
 function main(args) {
@@ -177,48 +227,54 @@ function main(args) {
   const count = rounds(args);
   if (command === "run") return alone(build(root), count, null, "Performance");
   if (command === "check") {
-    if (!(target in budgets)) throw new Error(`Usage: perf.mjs check ${Object.keys(budgets).join("|")}`);
-    if (!budgets[target]) throw new Error(`The ${target} budgets wait for a quiet measurement: run \`perf.mjs run\` and record it`);
-    return alone(build(root), count, budgets[target], `Performance budgets (${target})`);
+    if (!Object.hasOwn(budgets, target)) throw new Error(`Usage: perf.mjs check ${Object.keys(budgets).join("|")}`);
+    const limits = requireBudgets(target);
+    return alone(build(root), count, limits, `Performance budgets (${target})`);
   }
   if (command === "compare" && target) {
     const short = target.slice(0, 12);
+    const limits = requireBudgets("shared");
     // Nothing the engine is built from changed: there is nothing to compare,
     // and the shared budgets still apply.
-    const unchanged = spawnSync("git", ["diff", "--quiet", target, "--", "crates", "Cargo.toml", "Cargo.lock"], { cwd: root }).status === 0;
-    if (unchanged) return alone(build(root), count, budgets.shared, `Performance (the engine is unchanged from ${short})`);
+    const unchanged = spawnSync("git", ["diff", "--quiet", target, "--", "crates", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", ".cargo"], { cwd: root }).status === 0;
+    if (unchanged) return alone(build(root), count, limits, `Performance (the engine is unchanged from ${short})`);
     // Cargo gives both checkouts the same executable path in one target
     // directory: keep head's binary aside before the base build replaces it.
     const directory = mkdtempSync(join(tmpdir(), "ibis-perf-base-"));
     const head = join(directory, `head${process.platform === "win32" ? ".exe" : ""}`);
-    copyFileSync(build(root), head);
     const checkout = join(directory, "base");
     try {
+      copyFileSync(build(root), head);
       run("git", ["worktree", "add", "--detach", checkout, target], { cwd: root });
       // Both sides run head's harness, so a change to the measurement itself
       // never reads as a regression.
       copyFileSync(join(root, harness), join(checkout, harness));
-      const reports = { head: [], base: [] };
+      const withoutBase = (error) => alone(head, count, limits, `Performance (not compared with ${short}: ${error.message})`);
+      let base;
       try {
-        const base = build(checkout);
-        // Interleaved ABBA rounds share whatever the machine is doing; the
-        // base skips the idle wait, which is judged absolutely.
-        for (let round = 0; round < count; round++) {
-          for (const name of cases) {
-            for (const side of round % 2 ? ["base", "head"] : ["head", "base"]) {
-              reports[side].push(measure(side === "head" ? head : base, name, side === "base" ? { IBIS_PERF_IDLE_SECONDS: "0" } : {}));
-            }
-          }
-        }
+        base = build(checkout);
       } catch (error) {
-        // A base that cannot build or run this harness (an engine interface
-        // changed) leaves head to the shared budgets, never to nothing.
-        return alone(head, count, budgets.shared, `Performance (not compared with ${short}: ${error.message})`);
+        return withoutBase(error);
       }
-      const summaries = { base: summarize(reports.base), head: summarize(reports.head) };
-      console.log(`PERF-SUMMARY ${JSON.stringify({ platform: process.platform, load: load(), rounds: count, ...summaries })}`);
-      const problems = [...regressions(summaries.head, summaries.base), ...overBudget(summaries.head, budgets.shared)];
-      report(`Performance against ${short}`, summaries, problems);
+      const summaries = compareBatch(head, base, count);
+      if (summaries.baseError) return withoutBase(summaries.baseError);
+      const absolute = overBudget(summaries.head, limits);
+      let relative = regressions(summaries.head, summaries.base);
+      let confirmation;
+      let confirmedAbsolute = [];
+      // A short load burst can affect several adjacent timings. Before a
+      // relative failure, repeat the comparison with the opposite run order.
+      if (relative.length && !absolute.length) {
+        console.log(`Confirming relative regressions with reversed run order:\n${relative.join("\n")}`);
+        confirmation = compareBatch(head, base, count, true);
+        if (confirmation.baseError) throw confirmation.baseError;
+        relative = regressions(summaries.head, summaries.base, confirmation);
+        confirmedAbsolute = overBudget(confirmation.head, limits);
+      }
+      console.log(`PERF-SUMMARY ${JSON.stringify({ platform: process.platform, load: load(), rounds: count, ...summaries, confirmation })}`);
+      const display = confirmation ? { ...summaries, "base repeat": confirmation.base, "head repeat": confirmation.head } : summaries;
+      const problems = [...relative, ...absolute, ...confirmedAbsolute];
+      report(`Performance against ${short}`, display, problems);
       return problems.length ? 1 : 0;
     } finally {
       spawnSync("git", ["worktree", "remove", "--force", checkout], { cwd: root });

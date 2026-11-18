@@ -268,10 +268,12 @@ sides build with the pull request's harness and run in alternating rounds. A
 metric fails when its median is more than 20% slower than the base **and**
 slower by more than a fixed floor (2–3 ms for searching, 10 ms for citing,
 30 ms for warming the formatter, 50–75 ms for opening and refreshing, 15 MiB
-of memory), so noise on small numbers cannot fail it. When nothing under
-`crates/` or the Cargo files changed, or the base cannot build or run the
-harness, the pull request is measured alone. Every run, compared or not, must
-also meet the `shared` budgets, and pushes and nightlies `check shared`.
+of memory) in both the first comparison and a second comparison that starts
+with the opposite build. This reduces the effect of short bursts of shared
+runner load. When the build inputs are unchanged or the base cannot build or
+run the first comparison, the pull request is measured alone. A failure running
+the pull request's harness fails the check. Every measured batch must also
+meet the `shared` budgets, and pushes and nightlies `check shared`.
 
 Budgets are 2× a fixed machine's median and at least 3 ms over it (a second
 session on the Windows laptop ran twice as slow with background work), memory
@@ -300,8 +302,9 @@ the judged metrics; a build that sleeps 5 ms in each search fails `compare`.
 
 Windows is a 4-core i7-7700HQ laptop on Windows 10, quiet. Hosted is GitHub's
 `ubuntu-24.04` runner in a release check. The Linux desktop has 8 threads and
-was measured at load averages of 8–48, so only its memory is recorded; its
-timings and every macOS figure wait for a quiet run, and `check mac` says so.
+was measured at load averages of 8–48, so only its memory is recorded. Both
+`check linux` and `check mac` fail with the list of pending budgets. Use `run`
+to collect measurements for either system.
 
 Two numbers miss earlier targets that nothing enforced: opening or refreshing
 100k references takes about 6 s on the Windows laptop against 3 s, and Linux

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { budgets, cases, median, overBudget, regressions, summarize } from "./perf.mjs";
+import { budgets, median, missingBudgets, overBudget, regressions, summarize } from "./perf.mjs";
 
 const report = (records, values) => ({ records, typing_n: 252, ...values });
 
@@ -30,15 +30,20 @@ test("a regression needs both the ratio and the floor", () => {
     ["10k typing_p95_ms: 1 → 5 (+400%)", "100k refresh_ms: 3000 → 3700 (+23%)"]);
 });
 
-test("every measured machine class budgets both cases, under what a person notices", () => {
+test("a relative slowdown must repeat on the same metric", () => {
+  const base = { "10k": { open_ms: 250, refresh_ms: 400 } };
+  const head = { "10k": { open_ms: 315, refresh_ms: 510 } };
+  const confirmation = { base, head: { "10k": { open_ms: 254, refresh_ms: 505 } } };
+  assert.deepEqual(regressions(head, base, confirmation), ["10k refresh_ms: 400 → 510 (+28%)"]);
+});
+
+test("only complete machine budgets qualify as performance checks", () => {
   const felt = { typing_p95_ms: 50, first_search_ms: 100, first_cite_ms: 100, format_p50_ms: 100 };
-  for (const [name, limits] of Object.entries(budgets)) {
-    if (limits === null) continue;
-    assert.deepEqual(Object.keys(limits), cases.map((test) => test.replace("feel_", "")), name);
-    if (name === "shared") continue;
-    for (const metrics of Object.values(limits)) {
-      for (const [metric, ceiling] of Object.entries(felt)) if (metric in metrics) assert.ok(metrics[metric] <= ceiling, `${name} ${metric}`);
-    }
+  assert.deepEqual(missingBudgets(budgets.shared), []);
+  assert.deepEqual(missingBudgets(budgets.windows), []);
+  assert.ok(missingBudgets({ "10k": { rss_mib: 65 }, "100k": { rss_mib: 520 } }).includes("100k open_ms"));
+  assert.ok(missingBudgets(null).includes("10k typing_p95_ms"));
+  for (const metrics of Object.values(budgets.windows)) {
+    for (const [metric, ceiling] of Object.entries(felt)) assert.ok(metrics[metric] <= ceiling, `windows ${metric}`);
   }
-  assert.ok(budgets.shared, "every pull request is judged against the shared budgets");
 });
