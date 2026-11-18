@@ -7,9 +7,9 @@
 //!
 //! - **An open library** (macOS): asked of EndNote through its scripting
 //!   interface. Record ids are EndNote's record numbers, which EndNote never
-//!   reuses within a library. The scope is the library's EndNote id, path
-//!   and file identity, so a copy, a replaced file or a moved library gets
-//!   new handles.
+//!   reuses within a library. The scope is the library's EndNote id, its
+//!   path and the identity of its `.Data` folder, so a copied, restored or
+//!   moved library gets new handles.
 //! - **An exported `.xml` file** (every system): record ids are digests of
 //!   what each record says, as for RIS, because an export cannot show that
 //!   a number still names the same record.

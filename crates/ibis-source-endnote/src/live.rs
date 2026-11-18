@@ -224,15 +224,21 @@ const CHECKED: &[(&str, Labels)] = &[
     ("rec-number", |_| None),
 ];
 
-/// The library file's device, inode and creation time: a copy or a
-/// replaced file differs, a library edited in place does not.
+/// The device, inode and creation time of the library's `.Data` folder,
+/// which holds its records. EndNote rewrites the `.enl` file itself when a
+/// library edited in place closes, but keeps the folder; a copied, restored
+/// or replaced library has another one.
 #[allow(
     clippy::disallowed_methods,
     reason = "Metadata of the library EndNote has open; nothing is read from it."
 )]
 fn file_identity(path: &str) -> Result<String, AdapterRefusal> {
     use std::os::unix::fs::MetadataExt;
-    let metadata = std::fs::metadata(path).map_err(|_| AdapterRefusal::Unreadable)?;
+    let data = std::path::Path::new(path).with_extension("Data");
+    let metadata = std::fs::metadata(data).map_err(|_| AdapterRefusal::Unreadable)?;
+    if !metadata.is_dir() {
+        return Err(AdapterRefusal::Unreadable);
+    }
     let created = metadata
         .created()
         .ok()

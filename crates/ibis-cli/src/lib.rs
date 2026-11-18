@@ -22,6 +22,7 @@ mod out;
 pub mod pdf_text;
 mod proposals;
 mod settings_backup;
+mod sources;
 mod toggle;
 mod writings;
 
@@ -588,6 +589,7 @@ fn command() -> Command {
         .subcommand(settings_backup::command())
         .subcommand(writings::command())
         .subcommand(proposals::command())
+        .subcommand(sources::command())
         .subcommand(
             Command::new("completions").about("Print shell completions").arg(
                 Arg::new("shell")
@@ -1261,6 +1263,9 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
         ));
     }
     let names = opened?;
+    if name == "sources" {
+        return Ok(Execution::Result(local(sources::run(engine, matches, args, &names)?), None));
+    }
     if name == "serve" {
         return Ok(Execution::Stdio(
             match ibis_engine::server::serve(engine.clone(), input, output) {
