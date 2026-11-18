@@ -1340,11 +1340,11 @@ fn open_libraries(
         .and_then(|call| call.get_one::<String>("method"));
     let reads_app = matches!(
         name,
-        "search" | "show" | "cite" | "entry" | "libraries" | "outline" | "read" | "find-in"
+        "search" | "show" | "cite" | "entry" | "libraries" | "outline" | "read" | "find-in" | "share"
     ) || called.is_some_and(|called| {
         matches!(
             called.as_str(),
-            "search" | "show" | "cite" | "outline" | "read" | "find-in"
+            "search" | "show" | "cite" | "outline" | "read" | "find-in" | "share"
         )
     });
     let app = if asked || (defaults == Defaults::App && !named && reads_app) {

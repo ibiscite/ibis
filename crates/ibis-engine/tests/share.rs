@@ -69,7 +69,7 @@ fn fixture() -> Fixture {
     }
 }
 
-fn share(engine: &Engine, params: Value) -> Result<(ShareResult, u8), ibis_core::contract::EngineError> {
+fn share(engine: &Engine, params: Value) -> Result<ShareResult, ibis_core::contract::EngineError> {
     let mut params = params;
     if params.get("items").is_none() {
         params["items"] = json!([
@@ -80,8 +80,7 @@ fn share(engine: &Engine, params: Value) -> Result<(ShareResult, u8), ibis_core:
         ]);
     }
     let reply = engine.dispatch(Method::Share, &params, &Cancellation::default())?;
-    let result = serde_json::from_value(reply.data.clone()).unwrap();
-    Ok((result, reply.exit_code.value()))
+    Ok(serde_json::from_value(reply.data).unwrap())
 }
 
 fn paths(result: &ShareResult) -> Vec<(String, u64)> {
@@ -109,13 +108,13 @@ fn unzip(path: &Path) -> Vec<(String, Vec<u8>)> {
 #[test]
 fn the_preview_is_the_pack_and_nothing_private_leaves() {
     let fixture = fixture();
-    let (preview, exit) = share(&fixture.engine, json!({"pdfs": true})).unwrap();
+    let preview = share(&fixture.engine, json!({"pdfs": true})).unwrap();
     assert!(!preview.written);
     // The outside file is not packed, so the clouds reference has no PDF.
     assert_eq!(preview.without_pdf, [2]);
-    assert_eq!(exit, 1, "a reference without its PDF is a finding");
+    assert!(!preview.complete());
     let destination = fixture.root.join("Reading pack.zip");
-    let (written, _) = share(&fixture.engine, json!({"pdfs": true, "destination": destination})).unwrap();
+    let written = share(&fixture.engine, json!({"pdfs": true, "destination": destination})).unwrap();
     assert!(written.written);
     assert_eq!(paths(&written), paths(&preview));
     assert_eq!(written.total_bytes, preview.total_bytes);
@@ -171,15 +170,14 @@ fn the_preview_is_the_pack_and_nothing_private_leaves() {
 #[test]
 fn pdfs_stay_out_until_asked_and_a_folder_holds_the_same_files() {
     let fixture = fixture();
-    let (without, exit) = share(&fixture.engine, json!({})).unwrap();
+    let without = share(&fixture.engine, json!({})).unwrap();
     assert_eq!(
         without.files.iter().map(|file| file.path.as_str()).collect::<Vec<_>>(),
         ["Reading list.html", "References.bib"]
     );
-    assert!(without.without_pdf.is_empty());
-    assert_eq!(exit, 0);
+    assert!(without.complete(), "{without:?}");
     let destination = fixture.root.join("pack");
-    let (written, _) = share(
+    let written = share(
         &fixture.engine,
         json!({"pdfs": true, "folder": true, "destination": destination}),
     )
@@ -234,7 +232,7 @@ fn a_linked_pdf_is_not_packed() {
         .engine
         .dispatch(Method::Libraries, &json!({"action":"reload"}), &Cancellation::default())
         .unwrap();
-    let (result, _) = share(
+    let result = share(
         &fixture.engine,
         json!({"items":[{"by":"key","value":"vale2024links"}], "pdfs": true}),
     )

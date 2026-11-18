@@ -73,6 +73,17 @@ attachments" for that share; the default is metadata only. Attachments are
 private files, so this option gets its own design and an independent review
 before it ships.
 
+The first design, from the pack of references the maintainer shaped in
+[#1953](https://github.com/ibiscite/ibis/issues/1953) (2026-11-16): PDFs only,
+off until asked; each one inside its library's folder or Zotero's storage,
+never outside it whatever the attachment-text setting allows; opened by the
+PDF reader's opener (a regular, resident local file, never a link, at most
+256 MiB) and copied from that handle only while its size and time stay as
+opened. A refused file is left out and its reference named, never a reason to
+stop the pack. Names come from share-safe fields; the answer never holds a
+location. Nothing that exists is replaced. The independent review still comes
+before it ships.
+
 ## Agents and the command line
 
 MCP never gets lookup or write tools. Amended on 2026-11-15 with
