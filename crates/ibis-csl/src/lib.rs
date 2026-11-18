@@ -2,13 +2,13 @@
 //! The pinned Zotero processor has no filesystem, network or native-input API.
 
 mod catalog;
+#[cfg(test)]
+mod conformance;
 mod input;
 mod locale;
 mod output;
 mod runtime;
 mod service;
-#[cfg(test)]
-mod conformance;
 
 pub use catalog::{Curated, LocaleEntry, Release, StyleEntry, StylePage, curated, files, styles};
 use ibis_core::contract::{CitationForm, CitationRequest, CitationResult, OutputSpec, Snapshot};

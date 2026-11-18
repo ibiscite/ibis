@@ -626,7 +626,9 @@ fn with_date_sorts(record: &serde_json::Map<String, Value>) -> serde_json::Map<S
 
 /// One source record as the processor receives it, without its id.
 #[cfg(test)]
-pub(crate) fn processor_item(csl: serde_json::Map<String, Value>) -> Result<serde_json::Map<String, Value>, FormatError> {
+pub(crate) fn processor_item(
+    csl: serde_json::Map<String, Value>,
+) -> Result<serde_json::Map<String, Value>, FormatError> {
     processor_fields(&CitableFields::new(csl)).map(|record| with_date_sorts(&record))
 }
 

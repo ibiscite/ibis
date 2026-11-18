@@ -126,7 +126,11 @@ fn fixtures(manifest: &Value) -> Vec<Fixture> {
         .map(|(name, sha)| {
             let bytes = std::fs::read(suite.join(name))
                 .unwrap_or_else(|_| panic!("{name} is missing: run `node scripts/csl-suite.mjs`"));
-            assert_eq!(Some(hex(&bytes).as_str()), sha.as_str(), "{name} differs from the pinned suite");
+            assert_eq!(
+                Some(hex(&bytes).as_str()),
+                sha.as_str(),
+                "{name} differs from the pinned suite"
+            );
             parse(name, &String::from_utf8(bytes).expect("fixtures are UTF-8"))
         })
         .collect()
@@ -210,6 +214,15 @@ fn quickjs(session: &Session, fixture: &Fixture, mapped: bool) -> Outcome {
     })
 }
 
+/// A fresh shipped runtime with the driver loaded.
+fn session() -> Session {
+    let session = Session::new(&Limits::default(), &control()).expect("the runtime starts");
+    session
+        .with_context(&control(), |ctx| ctx.eval::<(), _>(DRIVER))
+        .expect("the driver loads");
+    session
+}
+
 /// The runtime and Ibis columns, on as many worker threads as `threads`.
 fn shipped(fixtures: &[Fixture], threads: usize) -> Vec<(Outcome, Outcome)> {
     let next = AtomicUsize::new(0);
@@ -219,8 +232,7 @@ fn shipped(fixtures: &[Fixture], threads: usize) -> Vec<(Outcome, Outcome)> {
             std::thread::Builder::new()
                 .stack_size(crate::WORKER_STACK_BYTES)
                 .spawn_scoped(scope, || {
-                    let mut session = Session::new(&Limits::default(), &control()).expect("the runtime starts");
-                    session.with_context(&control(), |ctx| ctx.eval::<(), _>(DRIVER)).expect("the driver loads");
+                    let mut session = session();
                     loop {
                         let index = next.fetch_add(1, Ordering::Relaxed);
                         let Some(fixture) = fixtures.get(index) else { break };
@@ -228,8 +240,7 @@ fn shipped(fixtures: &[Fixture], threads: usize) -> Vec<(Outcome, Outcome)> {
                         let ibis = quickjs(&session, fixture, true);
                         // A runtime that hit a limit is not reused.
                         if [&runtime, &ibis].iter().any(|outcome| outcome.is_err()) {
-                            session = Session::new(&Limits::default(), &control()).expect("the runtime starts");
-                            session.with_context(&control(), |ctx| ctx.eval::<(), _>(DRIVER)).expect("the driver loads");
+                            session = self::session();
                         }
                         results.lock().unwrap().insert(index, (runtime, ibis));
                     }
@@ -295,9 +306,10 @@ fn report(manifest: &Value, rows: &[Row<'_>], reasons: &BTreeMap<&str, &str>) ->
          | citeproc-js under Node, without Ibis's adapter | {node} |\n\
          | Ibis's QuickJS runtime, ICU collation and adapter patches | {runtime} |\n\
          | **Ibis**: that runtime with records read the way Ibis reads them | **{ibis}** |\n\n\
-         citeproc-js's own CI requires every fixture to pass at the suite commit it pins\n\
-         (with its own locales and some fixtures replaced by local copies), so a fixture\n\
-         failing only in the last two columns is a gap in Ibis, not in citeproc-js.\n\n\
+         citeproc-js publishes no per-fixture list; its CI requires every fixture to pass\n\
+         at the suite commit it pins (`d2bd47f`, August 2024), with its own locales and\n\
+         some fixtures replaced by local copies. So a fixture that passes in the first row\n\
+         and fails in a later one is a gap in Ibis, not in citeproc-js.\n\n\
          ## Failures\n\n| Fixture | Cause | Why |\n|---|---|---|\n",
         repo = suite["repo"].as_str().unwrap(),
         commit = suite["commit"].as_str().unwrap(),
@@ -327,8 +339,7 @@ fn report(manifest: &Value, rows: &[Row<'_>], reasons: &BTreeMap<&str, &str>) ->
 #[test]
 #[ignore = "needs the CSL test suite: node scripts/csl-suite.mjs"]
 fn csl_test_suite_failures_are_exactly_the_known_ones() {
-    let manifest: Value =
-        serde_json::from_str(&std::fs::read_to_string(here().join("suite.json")).unwrap()).unwrap();
+    let manifest: Value = serde_json::from_str(&std::fs::read_to_string(here().join("suite.json")).unwrap()).unwrap();
     let fixtures = fixtures(&manifest);
     let threads = std::env::var("IBIS_CONFORMANCE_THREADS")
         .ok()
@@ -337,7 +348,11 @@ fn csl_test_suite_failures_are_exactly_the_known_ones() {
     let started = Instant::now();
     let node = node(&fixtures);
     let shipped = shipped(&fixtures, threads);
-    eprintln!("{} fixtures in {:.1?} on {threads} threads", fixtures.len(), started.elapsed());
+    eprintln!(
+        "{} fixtures in {:.1?} on {threads} threads",
+        fixtures.len(),
+        started.elapsed()
+    );
     let rows: Vec<_> = fixtures
         .iter()
         .zip(node)
@@ -362,9 +377,15 @@ fn csl_test_suite_failures_are_exactly_the_known_ones() {
         serde_json::from_str(&std::fs::read_to_string(here().join("known-failures.json")).unwrap()).unwrap();
     let mut reasons = BTreeMap::new();
     for (reason, names) in &known {
-        assert!(!reason.trim().is_empty() && !reason.contains('|'), "{reason:?} is not a one-line reason");
+        assert!(
+            !reason.trim().is_empty() && !reason.contains('|'),
+            "{reason:?} is not a one-line reason"
+        );
         for name in names {
-            assert!(reasons.insert(name.as_str(), reason.as_str()).is_none(), "{name} is listed twice");
+            assert!(
+                reasons.insert(name.as_str(), reason.as_str()).is_none(),
+                "{name} is listed twice"
+            );
         }
     }
     let mut problems = Vec::new();

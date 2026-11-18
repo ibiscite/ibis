@@ -142,3 +142,32 @@ or proof of the separate picker/search budgets. Output integration tests are
 serialized so another formatter in that binary does not contaminate those
 wall-clock samples. CI on the exact head supplies the Windows/Linux evidence;
 a local macOS run alone does not establish cross-platform success.
+
+# Conformance
+
+The CSL project's own processor tests, the 845 fixtures of
+[citation-style-language/test-suite](https://github.com/citation-style-language/test-suite)
+at the commit in `tests/conformance/suite.json`, run through the shipped
+QuickJS runtime and Ibis's record mapping, beside the pinned citeproc-js under
+Node: [CONFORMANCE.md](CONFORMANCE.md) has the counts and every failure with its
+cause. `tests/conformance/known-failures.json` lists each failure with a
+one-line reason; the run fails when a fixture starts failing or stops failing
+without a change to that list.
+
+The suite is fetched, not vendored, because upstream publishes it without a
+licence. It takes a few minutes, so it runs in the Citation styles workflow:
+weekly, and on every pull request that changes this crate, `ibis-core` or the
+scripts that fetch its data. By hand:
+
+```sh
+node scripts/csl-suite.mjs                                    # fetch and check the pinned suite
+cargo test -p ibis-csl --lib conformance -- --ignored         # run it
+IBIS_CONFORMANCE_UPDATE=1 cargo test -p ibis-csl --lib conformance -- --ignored  # rewrite CONFORMANCE.md
+node scripts/csl-suite.mjs --update                           # move the pin to upstream's newest
+```
+
+The Ibis column covers what every record goes through (the privacy projection,
+processor fields, date sort data and the adapter's item conversion), not the
+single-citation choices of a request: year letters withheld outside a document,
+numbered entries without their numbers, typed affixes and citation forms. The
+tests above cover those.
