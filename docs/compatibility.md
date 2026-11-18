@@ -4,6 +4,13 @@ On macOS and Windows, Enter attempts to paste into the previous app. If the
 target or permission cannot be verified, Ibis copies and says why. Linux
 copies; paste it yourself. Clipboard managers may retain copied text.
 
+## Interface languages
+
+The app speaks English, German and Arabic: the choice in Settings › General ›
+Language, else the first of the system’s preferred languages it speaks. Arabic
+mirrors the window. Citations keep their style’s language. The command line and
+MCP answer in English.
+
 ## Platforms: tested and targeted
 
 These are workflow targets, not certified minimum operating systems. A

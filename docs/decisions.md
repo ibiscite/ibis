@@ -131,3 +131,6 @@ the anchor older links use.
 
 ## 0056 An open layer for research material
 [0056](decisions/0056-open-layer-for-research-material.md): the engine and CLI aim to be the standard way any tool or agent reads and cites research material from any manager; the app stays the first client; source interface, stable surface, one anchor type, then external `ibis-source-<name>` adapters with a conformance kit.
+
+## 0057 Interface language
+[0057](decisions/0057-interface-language.md): one catalogue per language with every English message, checked by tests; the app speaks the Settings choice or the system's language from the next opening, the command line and MCP stay English; citations keep their style's language; right to left by `dir` and logical properties, with isolated arguments for mixed-direction text.
