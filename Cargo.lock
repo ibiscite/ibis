@@ -2145,7 +2145,6 @@ dependencies = [
 name = "ibis"
 version = "0.3.10"
 dependencies = [
- "chrono",
  "clap",
  "console",
  "ibis-core",
@@ -2153,6 +2152,7 @@ dependencies = [
  "ibis-sources",
  "icu_properties",
  "insta",
+ "jiff",
  "lopdf",
  "nix",
  "serde",
