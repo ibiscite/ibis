@@ -7,7 +7,7 @@
 //   node scripts/perf.mjs check CLASS [--rounds N]    fail over CLASS's budgets
 //   node scripts/perf.mjs compare BASE [--rounds N]   fail on a regression against BASE
 import { spawnSync } from "node:child_process";
-import { appendFileSync, copyFileSync, mkdtempSync, rmSync } from "node:fs";
+import { appendFileSync, copyFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -157,23 +157,26 @@ function main(args) {
   if (command === "compare" && target) {
     // Both sides run head's harness, so a change to the measurement itself
     // never reads as a regression. A base it cannot build is skipped, visibly.
-    const head = build(root);
+    // Cargo gives both checkouts the same executable path in one target
+    // directory: keep head's binary aside before the base build replaces it.
     const directory = mkdtempSync(join(tmpdir(), "ibis-perf-base-"));
+    const head = join(directory, `head${process.platform === "win32" ? ".exe" : ""}`);
+    copyFileSync(build(root), head);
+    const checkout = join(directory, "base");
     try {
-      run("git", ["worktree", "add", "--detach", directory, target], { cwd: root });
-      copyFileSync(join(root, harness), join(directory, harness));
+      run("git", ["worktree", "add", "--detach", checkout, target], { cwd: root });
+      copyFileSync(join(root, harness), join(checkout, harness));
       let base;
       try {
-        base = build(directory);
+        base = build(checkout);
       } catch (error) {
         const text = `### Performance against ${target.slice(0, 12)}\n\nSkipped: the base does not build with this harness (${error.message}).\n`;
         process.stdout.write(text);
         if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, text);
         return 0;
       }
-      // One shared target directory must still give each side its own build,
-      // or the comparison could never fail.
-      if (base === head) throw new Error("the base and head builds are the same executable");
+      // Each side must run its own build, or the comparison could never fail.
+      if (readFileSync(base).equals(readFileSync(head))) throw new Error("the base and head builds are the same executable");
       // Interleaved ABBA rounds share whatever the machine is doing; the base
       // skips the idle wait, which is judged absolutely below.
       const reports = { head: [], base: [] };
@@ -191,7 +194,7 @@ function main(args) {
       report(`Performance against ${target.slice(0, 12)}`, summaries, problems);
       return problems.length ? 1 : 0;
     } finally {
-      spawnSync("git", ["worktree", "remove", "--force", directory], { cwd: root });
+      spawnSync("git", ["worktree", "remove", "--force", checkout], { cwd: root });
       rmSync(directory, { recursive: true, force: true });
     }
   }
