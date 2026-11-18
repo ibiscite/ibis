@@ -61,6 +61,7 @@ fn fake() -> i32 {
             // A program the adapter started must stop with it.
             #[cfg(unix)]
             {
+                #[allow(clippy::zombie_processes, reason = "Ibis must stop it, which is what this checks.")]
                 let child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
                 std::fs::write(scenario["pid"].as_str().unwrap(), child.id().to_string()).unwrap();
             }
