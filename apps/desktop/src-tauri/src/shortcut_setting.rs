@@ -102,6 +102,7 @@ fn publish_file_refusal<R: tauri::Runtime>(app: &AppHandle<R>, problem: Shortcut
 
 /// Command identifiers shared with KEY_TABLE and the refusal's translated name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum PickerCommand {
     Format,

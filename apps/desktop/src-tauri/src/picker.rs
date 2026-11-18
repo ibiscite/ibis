@@ -545,7 +545,10 @@ fn foreground_full_screen() -> Option<bool> {
 /// Hide only the originating presentation; a delayed request cannot dismiss a reopen.
 #[tauri::command]
 #[ibis_desktop_macros::command(main)]
-pub(crate) fn hide_picker<R: PickerHideUi>(app: AppHandle<R>, presentation: Option<u64>) -> Result<bool, &'static str> {
+pub(crate) fn hide_picker<R: PickerHideUi>(
+    app: AppHandle<R>,
+    presentation: Option<u64>,
+) -> Result<bool, crate::errors::NativeFailure> {
     // This command must stay synchronous: Tauri spawns async commands before
     // running their bodies. Capture an unknown owner at IPC receipt, before
     // either that runtime scheduling gap or a native-thread dispatch.
@@ -564,11 +567,11 @@ pub(crate) fn hide_picker<R: PickerHideUi>(app: AppHandle<R>, presentation: Opti
             });
         let _ = send.send(hidden);
     })
-    .map_err(|_| "The picker could not be hidden.")?;
+    .map_err(|_| crate::errors::NativeFailure)?;
     // Wry runs main-thread tasks inline when already on that thread. A worker
     // waits without holding application state; the one-slot buffer also lets
     // an inline hide complete before we receive its result.
-    receive.recv().map_err(|_| "The picker could not be hidden.")
+    receive.recv().map_err(|_| crate::errors::NativeFailure)
 }
 
 /// Keep receipt and ownership checks real in tests; replace only native hiding.

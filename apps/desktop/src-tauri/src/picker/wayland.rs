@@ -134,13 +134,13 @@ pub(crate) fn start_shortcut(app: &AppHandle, setting: Option<&str>) {
 /// Only Settings may request the desktop's configuration UI. It never saves.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn configure_shortcuts(app: AppHandle) -> Result<(), &'static str> {
+pub(crate) async fn configure_shortcuts(app: AppHandle) -> Result<(), crate::errors::NativeFailure> {
     #[cfg(target_os = "linux")]
     return linux::configure(&app).await;
     #[cfg(not(target_os = "linux"))]
     {
         let _ = app;
-        Err("The desktop shortcut settings are unavailable.")
+        Err(crate::errors::NativeFailure)
     }
 }
 
@@ -230,15 +230,12 @@ mod linux {
         });
     }
 
-    pub(super) async fn configure(app: &AppHandle) -> Result<(), &'static str> {
+    pub(super) async fn configure(app: &AppHandle) -> Result<(), crate::errors::NativeFailure> {
         let configure = app
             .try_state::<Mutex<Option<Configure>>>()
             .and_then(|state| state.lock().ok().and_then(|value| value.clone()))
-            .ok_or("The desktop shortcut settings are unavailable.")?;
-        configure
-            .open()
-            .await
-            .map_err(|_| "The desktop could not open its shortcut settings. Try again.")
+            .ok_or(crate::errors::NativeFailure)?;
+        configure.open().await.map_err(|_| crate::errors::NativeFailure)
     }
 }
 

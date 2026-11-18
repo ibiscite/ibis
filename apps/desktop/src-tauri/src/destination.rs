@@ -482,13 +482,7 @@ pub(crate) enum AppChoiceError {
 
 impl AppChoiceError {
     fn not_saved() -> Self {
-        Self::from(CommandError::Presented(ibis_core::contract::Problem {
-            code: "not-saved".into(),
-            info: ibis_core::contract::RecoveryInfo::new(
-                "app-command-output-not-saved",
-                ibis_core::contract::Recovery::Retry,
-            ),
-        }))
+        Self::from(CommandError::OutputNotSaved)
     }
 }
 

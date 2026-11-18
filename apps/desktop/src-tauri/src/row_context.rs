@@ -46,10 +46,13 @@ pub(crate) fn selected(app: &AppHandle, event: MenuEvent) {
 /// Show only native Copy and Add/Remove actions. Cancellation returns no action.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn row_context(window: WebviewWindow, added: bool) -> Result<Option<RowAction>, String> {
-    const FAILURE: &str = "the reference menu is not available";
+pub(crate) async fn row_context(
+    window: WebviewWindow,
+    added: bool,
+) -> Result<Option<RowAction>, crate::errors::NativeFailure> {
+    const FAILURE: crate::errors::NativeFailure = crate::errors::NativeFailure;
     if window.label() != "main" {
-        return Err(FAILURE.into());
+        return Err(FAILURE);
     }
     tauri::async_runtime::spawn_blocking(move || {
         let Some(lease) = window.state::<ChooserOpen>().begin() else {
@@ -59,14 +62,15 @@ pub(crate) async fn row_context(window: WebviewWindow, added: bool) -> Result<Op
         if !window.is_visible().map_err(|_| FAILURE)? {
             return Ok(None);
         }
-        let copy = MenuItem::new(&window, "Copy", true, None::<&str>).map_err(|_| FAILURE)?;
+        let words = |id| ibis_engine::catalogue::text(id, None, &[]).unwrap_or_default();
+        let copy = MenuItem::new(&window, words("key-copy"), true, None::<&str>).map_err(|_| FAILURE)?;
         let toggle = MenuItem::new(
             &window,
-            if added {
-                "Remove from Citation"
+            words(if added {
+                "key-remove-from-citation"
             } else {
-                "Add to Citation"
-            },
+                "key-add-to-citation"
+            }),
             true,
             None::<&str>,
         )
@@ -76,7 +80,7 @@ pub(crate) async fn row_context(window: WebviewWindow, added: bool) -> Result<Op
             ids: [copy.id().clone(), toggle.id().clone()],
             action: None,
         });
-        let shown = window.popup_menu(&menu).map_err(|_| FAILURE.to_string());
+        let shown = window.popup_menu(&menu).map_err(|_| FAILURE);
         // Native popup blocks until closed, but Tauri queues the menu event.
         // Enqueue from this worker AFTER popup returns: dispatch from the main
         // thread would run inline, incorrectly treating a selection as cancel.
@@ -88,7 +92,7 @@ pub(crate) async fn row_context(window: WebviewWindow, added: bool) -> Result<Op
                     .state::<RowContext>()
                     .0
                     .lock()
-                    .map_err(|_| FAILURE.to_string())
+                    .map_err(|_| FAILURE)
                     .map(|mut state| state.take().and_then(|pending| pending.action));
                 let result = shown
                     .and(action)
@@ -105,19 +109,19 @@ pub(crate) async fn row_context(window: WebviewWindow, added: bool) -> Result<Op
             if let Ok(mut state) = window.state::<RowContext>().0.lock() {
                 state.take();
             }
-            return Err(FAILURE.to_string());
+            return Err(FAILURE);
         }
-        receive.recv().map_err(|_| FAILURE.to_string())?
+        receive.recv().map_err(|_| FAILURE)?
     })
     .await
-    .map_err(|_| FAILURE.to_string())?
+    .map_err(|_| FAILURE)?
 }
 
 fn finish<T>(
     lease: T,
-    result: Result<Option<RowAction>, String>,
+    result: Result<Option<RowAction>, crate::errors::NativeFailure>,
     cancelled: impl FnOnce(),
-) -> Result<Option<RowAction>, String> {
+) -> Result<Option<RowAction>, crate::errors::NativeFailure> {
     drop(lease);
     if !matches!(result, Ok(Some(_))) {
         cancelled();
