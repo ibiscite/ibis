@@ -1,46 +1,42 @@
-#[cfg(any(target_os = "windows", test))]
+#[cfg(any(target_os = "windows", test, feature = "fixtures"))]
 use std::sync::Mutex;
-#[cfg(any(target_os = "windows", test))]
+#[cfg(any(target_os = "windows", test, feature = "fixtures"))]
 use std::time::Duration;
 
 /// One in-flight native query, with no queue. A timed-out worker retains its
 /// permit until it actually exits; busy callers immediately use their fallback.
-#[cfg(any(target_os = "windows", test))]
+#[cfg(any(target_os = "windows", test, feature = "fixtures"))]
 #[derive(Default)]
-pub(super) struct QueryWorker(pub(super) std::sync::Arc<std::sync::atomic::AtomicBool>);
+pub struct QueryWorker(pub std::sync::Arc<std::sync::atomic::AtomicBool>);
 
 /// Fixed transport failures, without native/provider messages. A timeout is
 /// distinct from a later caller finding that same query still in flight.
-#[cfg(any(target_os = "windows", test))]
+#[cfg(any(target_os = "windows", test, feature = "fixtures"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum QueryFailure {
+pub enum QueryFailure {
     Busy,
     Spawn(Option<i32>),
     Timeout,
     Disconnected,
 }
 
-#[cfg(any(target_os = "windows", test))]
+#[cfg(any(target_os = "windows", test, feature = "fixtures"))]
 struct QueryPermit(std::sync::Arc<std::sync::atomic::AtomicBool>);
 
-#[cfg(any(target_os = "windows", test))]
+#[cfg(any(target_os = "windows", test, feature = "fixtures"))]
 impl Drop for QueryPermit {
     fn drop(&mut self) {
         self.0.store(false, std::sync::atomic::Ordering::Release);
     }
 }
 
-#[cfg(any(target_os = "windows", test))]
+#[cfg(any(target_os = "windows", test, feature = "fixtures"))]
 impl QueryWorker {
-    pub(super) fn run<T: Send + 'static>(
-        &self,
-        limit: Duration,
-        query: impl FnOnce() -> T + Send + 'static,
-    ) -> Option<T> {
+    pub fn run<T: Send + 'static>(&self, limit: Duration, query: impl FnOnce() -> T + Send + 'static) -> Option<T> {
         self.run_result(limit, query).ok()
     }
 
-    pub(super) fn run_result<T: Send + 'static>(
+    pub fn run_result<T: Send + 'static>(
         &self,
         limit: Duration,
         query: impl FnOnce() -> T + Send + 'static,
@@ -59,20 +55,20 @@ impl QueryWorker {
 
 /// A stuck provider blocks only its target process. No queue or idle entries;
 /// at most four native queries may remain outstanding across all processes.
-#[cfg(any(target_os = "windows", test))]
+#[cfg(any(target_os = "windows", test, feature = "fixtures"))]
 #[derive(Default)]
-pub(super) struct PasswordQueries(pub(super) std::sync::Arc<Mutex<Vec<i32>>>);
+pub struct PasswordQueries(pub std::sync::Arc<Mutex<Vec<i32>>>);
 
-#[cfg(any(target_os = "windows", test))]
+#[cfg(any(target_os = "windows", test, feature = "fixtures"))]
 const PASSWORD_QUERY_LIMIT: usize = 4;
 
-#[cfg(any(target_os = "windows", test))]
+#[cfg(any(target_os = "windows", test, feature = "fixtures"))]
 struct PasswordPermit {
     active: std::sync::Arc<Mutex<Vec<i32>>>,
     pid: i32,
 }
 
-#[cfg(any(target_os = "windows", test))]
+#[cfg(any(target_os = "windows", test, feature = "fixtures"))]
 impl Drop for PasswordPermit {
     fn drop(&mut self) {
         if let Ok(mut active) = self.active.lock() {
@@ -81,9 +77,9 @@ impl Drop for PasswordPermit {
     }
 }
 
-#[cfg(any(target_os = "windows", test))]
+#[cfg(any(target_os = "windows", test, feature = "fixtures"))]
 impl PasswordQueries {
-    pub(super) fn run<T: Send + 'static>(
+    pub fn run<T: Send + 'static>(
         &self,
         pid: i32,
         limit: Duration,
@@ -107,7 +103,7 @@ impl PasswordQueries {
     }
 }
 
-#[cfg(any(target_os = "windows", test))]
+#[cfg(any(target_os = "windows", test, feature = "fixtures"))]
 fn run_query<T: Send + 'static>(
     permit: impl Send + 'static,
     limit: Duration,
@@ -126,8 +122,8 @@ fn run_query<T: Send + 'static>(
     })
 }
 
-#[cfg(any(target_os = "windows", test))]
-pub(super) fn display_name(
+#[cfg(any(target_os = "windows", test, feature = "fixtures"))]
+pub fn display_name(
     worker: &QueryWorker,
     executable: String,
     query: impl FnOnce() -> Option<String> + Send + 'static,

@@ -20,9 +20,11 @@ A boundary with no safe binding gets one scoped module allowance, a crate-level
   Windows it starts the child suspended, adds it to a Job Object with a process
   memory limit and reads the job's completion port; on macOS it reads the
   child's footprint with `proc_pid_rusage`.
-- `paste/macos/secure_input.rs` reads Carbon's `IsSecureEventInputEnabled` on
-  the main thread. It is a system-wide flag, not proof of a password field.
-- `paste/macos/focus/native.rs` owns public Accessibility calls and retained
+- `crates/ibis-native` holds the paste proofs' native calls; the desktop
+  binds them to its windows.
+- Its `paste/macos/secure_input.rs` reads Carbon's `IsSecureEventInputEnabled`
+  on the main thread. It is a system-wide flag, not proof of a password field.
+- Its `paste/macos/focus/native.rs` owns public Accessibility calls and retained
   object identities. `paste/macos/safety.rs` owns SDK clocks and notifications.
 - `paste/permission/drag.rs` implements the AppKit drag source and image setter.
   A live Settings drag publishes only the bundled app's file URL, accepts no

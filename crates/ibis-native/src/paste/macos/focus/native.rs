@@ -9,10 +9,10 @@ use std::ptr::NonNull;
 use std::time::Instant;
 
 use ibis_core::destination::CopyReason;
+use objc2::rc::Retained;
 use objc2_app_kit::NSRunningApplication;
 use objc2_core_foundation::{CFBoolean, CFDictionary, CFGetTypeID, CFRetained, CFString, CFType};
 use objc2_foundation::NSThread;
-use tauri_nspanel::objc2::rc::Retained;
 
 use super::super::secure_input;
 use super::{

@@ -233,7 +233,7 @@ pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool
     }
 }
 
-pub(super) fn with_paste_settings(path: &std::path::Path, deliver: impl FnOnce(bool) -> Delivered) -> Delivered {
+pub fn with_paste_settings(path: &std::path::Path, deliver: impl FnOnce(bool) -> Delivered) -> Delivered {
     let loaded = ibis_engine::settings::load(path);
     let Ok(settings) = loaded.cites() else {
         return Delivered::copied(CopyReason::PasteUnavailable);
@@ -241,7 +241,7 @@ pub(super) fn with_paste_settings(path: &std::path::Path, deliver: impl FnOnce(b
     deliver(settings.portable.paste.unwrap_or(true))
 }
 
-pub(super) fn key_release_failed() -> Delivered {
+pub fn key_release_failed() -> Delivered {
     Delivered::Copied {
         reason: super::CopiedReason::Delivery(super::DeliveryFailure::KeyReleaseFailed),
     }

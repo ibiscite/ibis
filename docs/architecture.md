@@ -12,7 +12,8 @@ describes this checkout. Plans live in [ROADMAP.md](../ROADMAP.md).
 | `crates/ibis-csl` | citeproc-js in QuickJS, ICU4X collation, bundled CSL styles and locales. |
 | `crates/ibis-engine` | Typed methods, source lifecycle, prepared citations, settings owner, recents, JSON-RPC and MCP. |
 | `crates/ibis-cli` | The `ibis` executable, and the PDF text extractor it starts as its own child process (`ibis __extract-pdf`, with `lopdf`). Depends on core and engine. |
-| `apps/desktop/src-tauri` | Native windows, clipboard, paste, shortcuts, settings dialogs and updates. Depends on core, engine and its command macro crate. |
+| `crates/ibis-native` | Native paste with no window toolkit: the target capture, its proofs and their platform calls, and every `unsafe` block they need. The host supplies windows, settings and the keyboard layout. Depends on core and engine (the paste setting). |
+| `apps/desktop/src-tauri` | Native windows, clipboard, paste delivery through `ibis-native`, shortcuts, settings dialogs and updates. Depends on core, engine, native and its command macro crate. |
 | `apps/desktop/src` | React interface, shared controls in `ui/`, tokens in `tokens.css`. |
 
 The desktop manages `ibis_engine::library::Owner`: commands submit intents and
