@@ -69,3 +69,15 @@ test.each(translations)("%s builds, formats every count and isolates its argumen
   // Digits stay Latin, as in citations, keys and page numbers.
   expect(messages.text("settings-results-count", { count: 12 })).toMatch(/12/);
 });
+
+test.each(translations.filter((language) => LANGUAGES[language].direction === "rtl"))("%s keeps a Latin word that starts with punctuation in its order", (language) => {
+  // In a right-to-left sentence a leading full stop takes the sentence's
+  // direction, so ".bib" reads "bib.". A left-to-right mark before it keeps it whole.
+  const flipped = LANGUAGES[language].source.split("\n")
+    .filter((line) => !line.startsWith("#"))
+    .map((line) => line.replace(/^\s+\.[a-z-]+ = /, ""))
+    .filter((text) => /(^|[\s(«])\.[A-Za-z]/.test(text));
+  expect(flipped).toEqual([]);
+  const messages = createInterfaceMessages(LANGUAGES[language].source, false, language);
+  expect(messages.text("setup-find-help")).toContain("‎.bib");
+});
