@@ -582,6 +582,14 @@ fn create_new(path: &Path) -> std::io::Result<std::fs::File> {
     std::fs::OpenOptions::new().write(true).create_new(true).open(path)
 }
 
+fn destination_error(destination: &Path, failure: &std::io::Error) -> EngineError {
+    // Windows can deny a file open when the existing destination is a directory.
+    if failure.kind() == std::io::ErrorKind::PermissionDenied && destination.symlink_metadata().is_ok() {
+        return EngineError::because(ErrorCode::BadInput, ErrorReason::DestinationExists);
+    }
+    written(failure)
+}
+
 /// Copy a planned PDF, refused if it is no longer the file the plan opened.
 fn copy_pdf(path: &Path, bytes: u64, out: &mut impl Write, cancel: &Cancellation) -> Result<(), EngineError> {
     let changed = || error(ErrorCode::SourceUnavailable);
@@ -596,7 +604,7 @@ fn copy_pdf(path: &Path, bytes: u64, out: &mut impl Write, cancel: &Cancellation
 
 /// One zip file, created new; stored, not compressed: PDFs already are.
 fn write_zip(destination: &Path, files: &[(String, Content)], cancel: &Cancellation) -> Result<(), EngineError> {
-    let file = create_new(destination).map_err(|failure| written(&failure))?;
+    let file = create_new(destination).map_err(|failure| destination_error(destination, &failure))?;
     let outcome = (|| {
         let unwritable = || EngineError::because(ErrorCode::BadInput, ErrorReason::DestinationUnwritable);
         let mut zip = zip::ZipWriter::new(file);
@@ -626,7 +634,7 @@ fn write_zip(destination: &Path, files: &[(String, Content)], cancel: &Cancellat
 
 /// A new folder holding the files; on failure, what was made is removed.
 fn write_folder(destination: &Path, files: &[(String, Content)], cancel: &Cancellation) -> Result<(), EngineError> {
-    std::fs::create_dir(destination).map_err(|failure| written(&failure))?;
+    std::fs::create_dir(destination).map_err(|failure| destination_error(destination, &failure))?;
     let mut made: Vec<PathBuf> = Vec::new();
     let mut folders: Vec<PathBuf> = vec![destination.to_path_buf()];
     let outcome = (|| {
