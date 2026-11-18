@@ -62,7 +62,7 @@ export function PasteGuide({ name, permission, onOpen, onDrag, practice = false 
   const [tried, setTried] = useState<"pasted" | "skipped" | null>(null);
   const [sentence, setSentence] = useState("");
   const practising = practice && !permission.granted && tried !== "skipped";
-  const trial = practising && <div className="ui-paste-guide-text">
+  const trial = practising && <div className="ui-paste-guide-text ui-paste-guide-practice">
     <h3>{text("general-paste-practice-title")}</h3>
     <p className="ui-paste-guide-note">{text("general-paste-practice-why")}</p>
     <TextField label={text("general-paste-practice-field")} value={sentence} onChange={setSentence} autoFocus onPaste={() => setTried("pasted")} />

@@ -85,7 +85,7 @@ the anchor older links use.
 [0041](decisions/0041-linux-system-appearance.md): on Linux, System follows the desktop portal's colour scheme or a dark GTK theme; Light and Dark still win.
 
 ## 0042 Formats, apps and projects
-[0042](decisions/0042-formats-apps-and-writings.md): one visible format; a writing you chose beats this app's format beats your format; Ibis finds inside Zotero; Settings and a live settings file stay in step.
+[0042](decisions/0042-formats-apps-and-writings.md): one visible format; a project you chose beats this app's format beats your format; Ibis finds inside Zotero; Settings and a live settings file stay in step.
 
 ## 0043 RIS and CSV libraries
 [0043](decisions/0043-ris-and-csv-libraries.md): RIS exports and the CSV template are read-only libraries with no citation keys; a record's identity is a hash of its CSL data.

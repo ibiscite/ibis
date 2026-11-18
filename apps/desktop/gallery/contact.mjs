@@ -10,7 +10,7 @@ await mkdir(path.dirname(out), { recursive: true });
 const surfaces = [
   ["results", "Picker"], ["format-menu", "Format"], ["more", "Actions (More)"],
   ["cited-since-opening", "Cited Since Opening"], ["writing-projects", "Projects"], ["shortcuts", "Keyboard Shortcuts"],
-  ["settings-general", "Settings › General"], ["settings-paste", "Settings › Practice paste"], ["reference-list", "Paste Reference List"], ["settings-look", "Settings › Look"], ["settings-citations", "Settings › Citations"],
+  ["settings-general", "Settings › General"], ["settings-paste", "Settings › Practice paste"], ["reference-list", "Paste Reference List"], ["paste", "Paste"], ["paste-question", "Paste or Copy Only"], ["settings-look", "Settings › Look"], ["settings-citations", "Settings › Citations"],
   ["settings-ai-apps", "Settings › AI Apps"], ["settings-shortcuts", "Settings › Shortcuts"], ["settings-about", "About"],
   ["first-run", "First run"], ["empty", "Empty library"], ["missing", "Library missing"], ["zotero-closed", "Zotero closed"],
   ["unreadable", "Library unreadable"], ["loading", "Opening"], ["error", "Error"],

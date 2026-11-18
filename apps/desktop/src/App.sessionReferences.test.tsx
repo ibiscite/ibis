@@ -33,7 +33,7 @@ test("Enter copies the bibliography, as the footer says, unless a control in the
   expect(sent).toEqual([{ style: "apa", contentHash: "hash-Morgan, A. Taylor, A." }]);
 });
 
-test("an app with citations from this run offers its reference list, pasted as entries in the order cited there", async () => {
+test("an app with citations from this run offers its reference list, pasted as its entries", async () => {
   const delivered: { forms: unknown[]; keys: unknown[] }[] = [];
   const here = (cited: number) => fixtureDestination({ app: "Example Writer", app_id: "example.writer", can_paste: true, cited_here: cited, format: formatAnswer("apa", "app") });
   let cited = 0;
@@ -59,4 +59,10 @@ test("an app with citations from this run offers its reference list, pasted as e
   expect(row.textContent).toContain("The 2 references you cited in Example Writer since Ibis opened");
   fireEvent.click(row);
   await waitFor(() => expect(delivered).toEqual([{ forms: ["bibliography-only", "bibliography-only"], keys: [morgan.id.key, taylor.id.key] }]));
+  // More offers it too, also over a typed search, which it clears.
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "zzz" } });
+  await chooseFromMore("Paste Reference List");
+  await waitFor(() => expect(delivered).toHaveLength(2));
+  expect(delivered[1]?.forms).toEqual(["bibliography-only", "bibliography-only"]);
+  expect((screen.getByLabelText("Search references") as HTMLInputElement).value).toBe("");
 });

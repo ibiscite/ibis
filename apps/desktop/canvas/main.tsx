@@ -138,6 +138,8 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
   const format = fixed?.preferences?.output ? formatAnswer(fixed.preferences.output) : noFormatChosen;
   const destination: PickerSnapshot["destination"] = knownApp ? { Ok: fixtureDestination({
     app: "Invented Editor", app_id: "invented.editor", format, cited_here: scenario === "reference-list" ? 3 : 0,
+    // Paste on, as by default: the footer says Paste; an app Ibis has not seen asks Paste or Copy Only.
+    can_paste: scenario === "paste" || scenario === "paste-question", paste_question: scenario === "paste-question", can_choose_paste: scenario === "paste-question",
     writing: writingContext ? project : null, writing_context: writingContext ? "invented-opening" : null, context_version: [1, 0],
   }) } : { Err: { code: "destination-unavailable", message: { id: "operation-failures-app-read", args: {} }, recovery: { action: "retry" }, focus: "search" } };
   const refusal = ["project-check-conflict", "picker-refusal"].includes(scenario) ? "A key in thesis.bib identifies a different work. Resolve the conflict before citing it." : null;

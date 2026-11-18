@@ -102,5 +102,18 @@ mod tests {
         for query in ["see", "see ", "seeing red", "cfg files", "vale 2021", "vale", "compare"] {
             assert_eq!(read(query), None, "{query:?}");
         }
+        // A title ending in its year keeps every word.
+        assert_eq!(read("Nineteen Eighty-Four 1984"), None);
+    }
+
+    #[test]
+    fn a_title_that_opens_with_a_signal_still_finds_its_words() {
+        // "See You Later" is read as the signal "See" before "You Later": every
+        // title word is still searched, and the picker shows the signal as a
+        // token whose × searches as typed, so it never joins a citation unseen.
+        assert_eq!(
+            read_all("See You Later"),
+            Some(("You Later".into(), Some("See".into()), None))
+        );
     }
 }

@@ -274,7 +274,7 @@ test("Ctrl+K opens More's actions with their keys, Escape closes it before hidin
   const field = within(palette).getByRole("combobox", { name: "Search actions" });
   expect(document.activeElement).toBe(field);
   const label = (row: HTMLElement) => row.querySelector(".ui-palette-label")?.textContent;
-  expect(within(palette).getAllByRole("option").map(label)).toEqual(["Open ⁨refs.bib⁩", "Show in Folder", "Choose Library…", "Check Against a .bib File…", "Change Format…", "Peek at Reference", "Go to Citation", "Edit Page…", "Move Left", "Move Right", "Remove from Citation", "Cited Since Opening…", "Forget Recent Citations", "Keep Window Open", "Keyboard Shortcuts", "Settings…", "Quit Ibis"].filter((name) => within(palette).queryAllByRole("option").some((row) => label(row) === name)));
+  expect(within(palette).getAllByRole("option").map(label)).toEqual(["Open ⁨refs.bib⁩", "Show in Folder", "Choose Library…", "Check Against a .bib File…", "Change Format…", "Peek at Reference", "Go to Citation", "Show Citation Details", "Move Left", "Move Right", "Remove from Citation", "Cited Since Opening…", "Forget Recent Citations", "Keep Window Open", "Keyboard Shortcuts", "Settings…", "Quit Ibis"].filter((name) => within(palette).queryAllByRole("option").some((row) => label(row) === name)));
   expect(paletteRow(palette, "Keep Window Open").getAttribute("aria-current")).toBeNull();
   expect(paletteRow(palette, "Quit Ibis").getAttribute("aria-keyshortcuts")).toBe("Control+Q");
   // A common word finds an action by what it does.
