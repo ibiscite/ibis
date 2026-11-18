@@ -157,11 +157,11 @@ impl SafetyStamp {
 }
 
 /// The app the picker was last opened from, with the source of the unique
-/// token each of Ibis's clipboard writes takes. Windows copies take theirs
-/// before writing, outside this owner.
+/// token each of Ibis's clipboard writes takes. Only macOS writes through
+/// this owner: Windows copies take theirs before writing, and Linux only copies.
 pub struct LastTarget(
     Mutex<TargetState>,
-    #[cfg_attr(all(target_os = "windows", not(test)), allow(dead_code))] fn() -> Result<u32, String>,
+    #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))] fn() -> Result<u32, String>,
 );
 
 #[cfg(test)]
