@@ -324,18 +324,6 @@ fn measure(records: usize) {
         .collect();
     report.insert("format_p50_ms".into(), ms(percentile(warm.clone(), 50)).into());
     report.insert("format_p95_ms".into(), ms(percentile(warm, 95)).into());
-    if std::env::var_os("IBIS_PERF_TRACE").is_some() {
-        for keys in [
-            &["synthetic2"][..],
-            &["synthetic2", "synthetic3"],
-            &["synthetic4", "synthetic5"],
-        ] {
-            let samples: Vec<_> = (0..std::env::var("IBIS_PERF_TRACE").unwrap().parse::<usize>().unwrap())
-                .map(|_| ms(cite(&engine, keys, &cancel)))
-                .collect();
-            eprintln!("trace {keys:?} {samples:?}");
-        }
-    }
 
     // Refresh after an edit while copies keep committing.
     let shown = engine
