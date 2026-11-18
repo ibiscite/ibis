@@ -5,16 +5,15 @@
 set -euo pipefail
 echo "Results: $RESULTS; planned: $SELECTED; workspace: $WORKSPACE; qualification: $QUALIFICATION"
 [ "$RESULTS" = 'success success success success success' ] || { echo '::error::A CI job did not pass.'; exit 1; }
-[ "${CSL:-}" = success ] || { echo '::error::The CSL conformance job did not pass.'; exit 1; }
 read -r -a planned <<< "$SELECTED"
-[ "${#planned[@]}" = 2 ] || { echo '::error::Expected two planned jobs.'; exit 1; }
+[ "${#planned[@]}" = 3 ] || { echo '::error::Expected three planned jobs.'; exit 1; }
 for entry in "${planned[@]}"; do
   case "$EVENT:${entry#*:}" in
     *:true:success|pull_request:false:skipped) ;;
     *) echo "::error::Planned job ${entry%%:*} is ${entry#*:} (selected:result)."; exit 1;;
   esac
 done
-case "${planned[*]%%:*}" in "rust pictures") ;; *) echo '::error::Unexpected planned jobs.'; exit 1;; esac
+case "${planned[*]%%:*}" in "rust pictures csl") ;; *) echo '::error::Unexpected planned jobs.'; exit 1;; esac
 case "$WORKSPACE:${planned[0]}" in
   false:*|true:rust:true:success) ;;
   *) echo '::error::Expected a workspace selection consistent with Rust.'; exit 1;;

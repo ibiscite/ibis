@@ -82,9 +82,11 @@ class CiResultTest(unittest.TestCase):
         # Planned jobs need the plan, which a fork's run skips, so they skip too.
         self.assertEqual(jobs["rust"]["if"], "needs.plan.outputs.rust == 'true'")
         self.assertEqual(jobs["pictures"]["if"], "needs.plan.outputs.pictures == 'true'")
+        self.assertEqual(jobs["conformance"]["if"], "needs.plan.outputs.csl == 'true'")
         self.assertEqual(jobs["rust"]["strategy"]["matrix"]["os"], ["ubuntu-24.04", "macos-15", "windows-2025"])
         self.assertEqual(jobs["rust"]["needs"], ["plan", "interface"])
         self.assertEqual(jobs["pictures"]["needs"], "plan")
+        self.assertEqual(jobs["conformance"]["needs"], "plan")
         self.assertEqual(jobs["release-checks"]["if"], FORK_GUARD)
 
     def test_a_newer_push_replaces_a_pull_requests_run_but_never_mains(self):
@@ -95,7 +97,7 @@ class CiResultTest(unittest.TestCase):
     def test_the_plan_selects_jobs_and_ci_result_checks_each_selection(self):
         jobs = self.workflow["jobs"]
         plan = jobs["plan"]
-        self.assertEqual(plan["outputs"], {name: f"${{{{ steps.plan.outputs.{name} }}}}" for name in ["rust", "workspace", "pictures"]})
+        self.assertEqual(plan["outputs"], {name: f"${{{{ steps.plan.outputs.{name} }}}}" for name in ["rust", "workspace", "pictures", "csl"]})
         checkout = next(step for step in plan["steps"] if "actions/checkout@" in step.get("uses", ""))
         self.assertEqual(checkout["with"]["fetch-depth"], 2)
         self.assertNotIn("ref", checkout["with"])
@@ -106,13 +108,13 @@ class CiResultTest(unittest.TestCase):
         self.assertEqual(choose["env"]["SELECTION"], "${{ vars.CI_SELECTION }}")
         self.assertFalse(choose.get("continue-on-error", False))
         result = next(step for step in jobs["result"]["steps"] if step.get("run") == "scripts/ci-result.sh")
-        self.assertEqual(result["env"]["SELECTED"], "rust:${{ needs.plan.outputs.rust }}:${{ needs.rust.result }} pictures:${{ needs.plan.outputs.pictures }}:${{ needs.pictures.result }}")
+        self.assertEqual(result["env"]["SELECTED"], "rust:${{ needs.plan.outputs.rust }}:${{ needs.rust.result }} pictures:${{ needs.plan.outputs.pictures }}:${{ needs.pictures.result }} csl:${{ needs.plan.outputs.csl }}:${{ needs.conformance.result }}")
         self.assertEqual(result["env"]["WORKSPACE"], "${{ needs.plan.outputs.workspace }}")
         self.assertEqual(result["env"]["RESULTS"], " ".join(f"${{{{ needs.{name}.result }}}}" for name in ["plan", "interface", "web", "dependencies", "release-checks"]))
         # Every job the result needs is either always required, planned or qualification.
-        planned = {"rust", "pictures"}
+        planned = {"rust", "pictures", "conformance"}
         qualification = {"webkit", "bibtex-fuzz", "installed"}
-        self.assertEqual(set(jobs["result"]["needs"]), {"plan", "interface", "web", "dependencies", "release-checks", "conformance"} | planned | qualification)
+        self.assertEqual(set(jobs["result"]["needs"]), {"plan", "interface", "web", "dependencies", "release-checks"} | planned | qualification)
         for name, job in jobs.items():
             if "needs.plan.outputs" in str(job.get("if", "")):
                 self.assertIn(name, planned)
@@ -124,6 +126,13 @@ class CiResultTest(unittest.TestCase):
         by_name = {step.get("name"): step for step in steps}
         for name in ["Lint the app", "Test and build the app", "Check generated files (Linux)", "Format"]:
             self.assertNotIn("needs.plan", str(by_name[name].get("if", "")), name)
+
+    def test_selected_conformance_job_runs_the_suite(self):
+        steps = self.workflow["jobs"]["conformance"]["steps"]
+        for command in ["node scripts/csl-suite.mjs", "cargo test --locked -p ibis-csl --lib conformance -- --ignored"]:
+            step = next(step for step in steps if step.get("run") == command)
+            self.assertNotIn("if", step)
+            self.assertFalse(step.get("continue-on-error", False))
 
     def test_dependency_rules_and_identities_remain_in_confirmation(self):
         jobs = self.workflow["jobs"]

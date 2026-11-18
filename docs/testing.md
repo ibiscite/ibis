@@ -112,16 +112,15 @@ nor reports a status. Keep the worktree until the PR merges, then run
 `land.sh end NAME`.
 
 [CI](../.github/workflows/ci.yml) runs on in-repository PRs and pushes to main.
-**CI result** is the required merge check: interface build, the `Rust and
-desktop` suite, web/script tests, picture comparisons, dependency policy, commit identities and the
-Linux release checks (release mode, minimum Rust, budgets) must all pass, so a
-release tag never meets a check its commits skipped. Every PR before it can
-merge, and every push to main, runs `Rust and desktop` on Ubuntu, macOS and
-Windows, one job per system so each takes a single runner; a newer push to a PR
-cancels its superseded run. A PR runs only the jobs its changed paths can affect: **Plan the checks**
-(`scripts/ci-plan.mjs`) skips the Rust and picture jobs for prose under `docs/` or
+**CI result** is the required merge check. The interface build, web and script
+tests, dependency policy, commit identities and Linux release checks (release
+mode, minimum Rust, budgets) must pass. When selected, `Rust and desktop` runs
+on Ubuntu, macOS and Windows, with one job per system. A newer push to a PR
+cancels its superseded run. **Plan the checks** (`scripts/ci-plan.mjs`) skips
+the Rust and picture jobs for prose under `docs/` or
 the root `*.md` files, the workspace lint and tests for a change to the app alone,
-and the pictures without an interface change. Any other, generated or shared
+the pictures without an interface change, and [CSL conformance](../crates/ibis-csl/CONFORMANCE.md)
+unless the formatter or one of its workspace dependencies changes. Any other, generated or shared
 path (Cargo files, toolchain, `build.rs`, `fixtures/`, `.github/`, `scripts/`,
 `locales/`, `website/`, `plugins/`, `brand/`) and anything it cannot read runs the
 full suite, as do main, schedules, manual runs, the `ci:full` label (then push

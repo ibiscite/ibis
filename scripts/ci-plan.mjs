@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-export const SELECTABLE = ["rust", "workspace", "pictures"];
+export const SELECTABLE = ["rust", "workspace", "pictures", "csl"];
 const FULL = Object.fromEntries(SELECTABLE.map((job) => [job, true]));
 
 // Build inputs and generated files can affect jobs outside their own folder.
@@ -65,6 +65,7 @@ export function plan(paths, workspace) {
     rust: workspaceAffected || tested.some((crate) => crate.name !== "ibis-fuzz") || interfaceChanged,
     workspace: workspaceAffected,
     pictures: interfaceChanged,
+    csl: affected.has("ibis-csl"),
     full: false,
     reason: affected.size || interfaceChanged ? `affects ${[...[...affected].sort(), ...(interfaceChanged ? ["the interface"] : [])].join(", ")}` : "documentation only",
   };

@@ -10,7 +10,6 @@ on:
     - cron: "43 5 * * 1" # Weekly full advisory check and one issue on failure.
   workflow_dispatch:
 
-# Pull requests, main pushes and daily/manual runs test all three systems.
 # A newer push replaces a pull request's running check.
 concurrency:
   group: ci-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
@@ -37,6 +36,7 @@ jobs:
       rust: ${{ steps.plan.outputs.rust }}
       workspace: ${{ steps.plan.outputs.workspace }}
       pictures: ${{ steps.plan.outputs.pictures }}
+      csl: ${{ steps.plan.outputs.csl }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -604,7 +604,8 @@ jobs:
           retention-days: 14
 
   conformance:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: plan
+    if: needs.plan.outputs.csl == 'true'
     name: CSL test suite
     runs-on: ubuntu-24.04
     timeout-minutes: 40
@@ -646,10 +647,9 @@ jobs:
         env:
           RESULTS: ${{ needs.plan.result }} ${{ needs.interface.result }} ${{ needs.web.result }} ${{ needs.dependencies.result }} ${{ needs.release-checks.result }}
           # Each planned job as name:selected:result; see scripts/ci-result.sh.
-          SELECTED: rust:${{ needs.plan.outputs.rust }}:${{ needs.rust.result }} pictures:${{ needs.plan.outputs.pictures }}:${{ needs.pictures.result }}
+          SELECTED: rust:${{ needs.plan.outputs.rust }}:${{ needs.rust.result }} pictures:${{ needs.plan.outputs.pictures }}:${{ needs.pictures.result }} csl:${{ needs.plan.outputs.csl }}:${{ needs.conformance.result }}
           WORKSPACE: ${{ needs.plan.outputs.workspace }}
           QUALIFICATION: ${{ needs.webkit.result }} ${{ needs.bibtex-fuzz.result }} ${{ needs.installed.result }}
-          CSL: ${{ needs.conformance.result }}
           EVENT: ${{ github.event_name }}
         run: scripts/ci-result.sh
 
