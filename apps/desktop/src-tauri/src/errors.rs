@@ -13,7 +13,14 @@ impl From<ibis_engine::settings::SettingsError> for CommandError {
     }
 }
 
-#[derive(serde::Serialize)]
+/// A native step failed. It carries no words: the command that ran it fails
+/// as its own [`NativeOperation`], whose code, message and recovery are fixed
+/// here. `#[command]` makes that conversion, named after the command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct NativeFailure;
+
+#[derive(Debug, Clone, Copy, serde::Serialize, schemars::JsonSchema)]
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum NativeOperation {
     OpenSettingsFile,
@@ -148,5 +155,276 @@ impl From<crate::destination::AppChoiceError> for CommandError {
             code: code.into(),
             info: RecoveryInfo::new(id, R::Retry),
         })
+    }
+}
+
+/// Every value of a unit enum, read from its own schema.
+#[cfg(test)]
+fn every<T: schemars::JsonSchema + serde::de::DeserializeOwned>() -> Vec<T> {
+    let schema = schemars::schema_for!(T).to_value();
+    let names: Vec<serde_json::Value> = match schema.get("enum") {
+        Some(names) => names.as_array().cloned().unwrap_or_default(),
+        None => schema["oneOf"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{} is not a unit enum", T::schema_name()))
+            .iter()
+            .flat_map(|variant| match variant.get("enum") {
+                Some(names) => names.as_array().cloned().unwrap_or_default(),
+                None => vec![variant["const"].clone()],
+            })
+            .collect(),
+    };
+    names
+        .into_iter()
+        .map(|name| serde_json::from_value(name).unwrap_or_else(|e| panic!("{}: {e}", T::schema_name())))
+        .collect()
+}
+
+/// One problem for every code the desktop can send. The bindings close
+/// `Problem.code` over exactly these codes, so the interface switches on a
+/// closed set, and each one must have words in the catalogue.
+///
+/// Families with an `ALL` or a schema are read whole. A family listed here by
+/// hand is followed by an exhaustive match: a new variant does not compile
+/// until it is listed too.
+#[cfg(test)]
+pub(crate) fn every_problem() -> Vec<Problem> {
+    use crate::{destination::AppChoiceError, shortcut_setting::ShortcutRefusal};
+    use ibis_core::contract::{CitationError, EngineError, ErrorCode, ErrorReason};
+    use ibis_engine::{
+        app_context::Error as Context,
+        citations::SessionError as Session,
+        library::LoadError as Load,
+        settings::{SettingsError as Settings, backup::BackupProblem as Backup, writings::WritingError as Writing},
+    };
+    let mut problems: Vec<Problem> = ErrorCode::ALL.map(|code| EngineError::new(code).into()).to_vec();
+    problems.extend(
+        every::<ErrorReason>()
+            .into_iter()
+            .map(|reason| EngineError::because(ErrorCode::BadInput, reason).into()),
+    );
+    problems.extend(CitationError::ALL.map(CitationError::problem));
+    problems.extend(
+        every::<NativeOperation>()
+            .into_iter()
+            .map(|operation| operation.failure().problem()),
+    );
+
+    let session = [
+        Session::SharedCitationKey { key: String::new() },
+        Session::SnapshotChanged,
+        Session::Cancelled,
+        Session::CitationTooLarge,
+        Session::NotPrepared,
+    ];
+    session.iter().for_each(|error| match error {
+        Session::SharedCitationKey { .. }
+        | Session::SnapshotChanged
+        | Session::Cancelled
+        | Session::CitationTooLarge
+        | Session::NotPrepared
+        | Session::Engine(_)
+        | Session::Presented(_) => {}
+    });
+    problems.extend(session.iter().map(Session::problem));
+
+    let settings = || {
+        [
+            Settings::Changed,
+            Settings::Busy,
+            Settings::Unreadable(std::io::ErrorKind::PermissionDenied.into()),
+            Settings::Unreadable(std::io::ErrorKind::NotFound.into()),
+            Settings::Invalid(String::new()),
+            Settings::InvalidZoteroLibraryEntry { position: 1 },
+            Settings::NewerVersion(0),
+        ]
+    };
+    settings().iter().for_each(|error| match error {
+        Settings::Changed
+        | Settings::Busy
+        | Settings::Unreadable(_)
+        | Settings::Invalid(_)
+        | Settings::InvalidZoteroLibraryEntry { .. }
+        | Settings::NewerVersion(_)
+        | Settings::Backup(_) => {}
+    });
+    problems.extend(settings().iter().map(Problem::from));
+
+    let writings = [
+        Writing::InvalidName,
+        Writing::DuplicateName,
+        Writing::NotFound,
+        Writing::TooMany,
+        Writing::Invalid,
+        Writing::ContextUnavailable,
+        Writing::InvalidContext,
+        Writing::AmbiguousContext,
+    ];
+    writings.iter().for_each(|error| match error {
+        Writing::InvalidName
+        | Writing::DuplicateName
+        | Writing::NotFound
+        | Writing::TooMany
+        | Writing::Invalid
+        | Writing::ContextUnavailable
+        | Writing::InvalidContext
+        | Writing::AmbiguousContext
+        | Writing::Settings(_) => {}
+    });
+    problems.extend(writings.iter().map(Problem::from));
+
+    let context = [
+        Context::Stale,
+        Context::Destination,
+        Context::Editor,
+        Context::Unsupported,
+        Context::SnapshotChanged,
+        Context::Cancelled,
+    ];
+    context.iter().for_each(|error| match error {
+        Context::Stale
+        | Context::Destination
+        | Context::Editor
+        | Context::Unsupported
+        | Context::SnapshotChanged
+        | Context::Cancelled
+        | Context::Project(_)
+        | Context::Session(_)
+        | Context::Presented(_) => {}
+    });
+    problems.extend(context.into_iter().map(Problem::from));
+
+    let load = [Load::NotLocal, Load::Stopped];
+    load.iter().for_each(|error| match error {
+        Load::NotLocal | Load::Stopped | Load::File(_) | Load::FileRefresh(_) | Load::Zotero(_) => {}
+    });
+    problems.extend(load.into_iter().map(Load::problem));
+
+    let backup = [
+        Backup::NotDownloaded,
+        Backup::Unreadable,
+        Backup::NotABackup,
+        Backup::SettingsFile,
+        Backup::Newer,
+        Backup::Invalid,
+        Backup::SettingsUnusable,
+        Backup::Busy,
+        Backup::Changed,
+        Backup::NotSaved,
+    ];
+    backup.iter().for_each(|error| match error {
+        Backup::NotDownloaded
+        | Backup::Unreadable
+        | Backup::NotABackup
+        | Backup::SettingsFile
+        | Backup::Newer
+        | Backup::Invalid
+        | Backup::SettingsUnusable
+        | Backup::Busy
+        | Backup::Changed
+        | Backup::NotSaved => {}
+    });
+    problems.extend(backup.into_iter().map(|error| CommandError::from(error).problem()));
+
+    let mut shortcut = vec![
+        ShortcutRefusal::Invalid,
+        ShortcutRefusal::NeedsModifier,
+        ShortcutRefusal::AppShortcut,
+        ShortcutRefusal::AltGr,
+        ShortcutRefusal::InUse,
+        ShortcutRefusal::Unavailable,
+        ShortcutRefusal::NotSaved,
+    ];
+    shortcut.extend(
+        every::<crate::shortcut_setting::PickerCommand>()
+            .into_iter()
+            .map(ShortcutRefusal::PickerShortcut),
+    );
+    shortcut.iter().for_each(|error| match error {
+        ShortcutRefusal::Invalid
+        | ShortcutRefusal::NeedsModifier
+        | ShortcutRefusal::AppShortcut
+        | ShortcutRefusal::PickerShortcut(_)
+        | ShortcutRefusal::AltGr
+        | ShortcutRefusal::InUse
+        | ShortcutRefusal::Unavailable
+        | ShortcutRefusal::NotSaved => {}
+    });
+    problems.extend(shortcut.into_iter().map(|error| CommandError::from(error).problem()));
+
+    let choice = [AppChoiceError::DeliveryNotSaved];
+    choice.iter().for_each(|error| match error {
+        AppChoiceError::DeliveryNotSaved | AppChoiceError::NotSaved { .. } => {}
+    });
+    problems.extend(choice.into_iter().map(|error| CommandError::from(error).problem()));
+
+    let command = [
+        CommandError::SnapshotChanged,
+        CommandError::LibraryLoading,
+        CommandError::Cancelled,
+        CommandError::NotPrepared,
+        CommandError::BibliographyUnavailable,
+        CommandError::BibliographyNotSaved,
+        CommandError::BibliographyNameTaken,
+        CommandError::BibliographyFormat,
+        CommandError::ClipboardUnavailable,
+        CommandError::SettingsUnavailable,
+        CommandError::RecentHistoryNotSaved,
+        CommandError::ProjectConflict { keys: Vec::new() },
+        CommandError::SourceNotOpened,
+        CommandError::SearchFailed,
+        CommandError::RecentReferencesFailed,
+        CommandError::NoLibrary,
+        CommandError::DocumentFormat,
+        CommandError::KeyFormat,
+        CommandError::OutputNotSaved,
+    ];
+    command.iter().for_each(|error| match error {
+        CommandError::SnapshotChanged
+        | CommandError::LibraryLoading
+        | CommandError::Cancelled
+        | CommandError::NotPrepared
+        | CommandError::BibliographyUnavailable
+        | CommandError::BibliographyNotSaved
+        | CommandError::BibliographyNameTaken
+        | CommandError::BibliographyFormat
+        | CommandError::ClipboardUnavailable
+        | CommandError::SettingsUnavailable
+        | CommandError::RecentHistoryNotSaved
+        | CommandError::ProjectConflict { .. }
+        | CommandError::SourceNotOpened
+        | CommandError::SearchFailed
+        | CommandError::RecentReferencesFailed
+        | CommandError::NoLibrary
+        | CommandError::DocumentFormat
+        | CommandError::KeyFormat
+        | CommandError::OutputNotSaved
+        | CommandError::Engine(_)
+        | CommandError::Refused(_)
+        | CommandError::Presented(_) => {}
+    });
+    problems.extend(command.iter().map(CommandError::problem));
+    problems
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn every_problem_has_a_code_words_and_one_recovery() {
+        for problem in super::every_problem() {
+            assert!(!problem.code.is_empty(), "{problem:?} has no code");
+            let id = &problem.info.message.id;
+            assert!(
+                ibis_engine::catalogue::text(id, None, &[]).is_some_and(|text| !text.is_empty()),
+                "{} uses {id}, which the catalogue lacks",
+                problem.code
+            );
+            let wire = serde_json::to_value(&problem).unwrap_or_default();
+            assert!(
+                wire["recovery"]["action"].is_string(),
+                "{} has no recovery",
+                problem.code
+            );
+        }
     }
 }

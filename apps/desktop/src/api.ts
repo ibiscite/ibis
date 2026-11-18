@@ -1,6 +1,6 @@
 // UI conveniences around the generated Rust command contract.
 import type { OutputId } from "./format/outputs";
-import { commands, type CommandError, type PreferenceChange } from "./bindings";
+import { commands, type CommandError, type PreferenceChange, type ProblemCode } from "./bindings";
 import { events, type Source } from "./nativeEvents";
 
 export type { Sources } from "./bindings";
@@ -159,25 +159,34 @@ export const onPreferencesChanged: Source<(change: Partial<PreferenceChange> | n
 /** The bibliography's choice or its read changed. */
 export const onProjectChanged: Source<(version: [number, number] | null) => void> = (handler) => events.onProjectChanged((version) => handler(version ?? null));
 
+/** A thrown command error's code, from the closed set the bindings generate. */
+export function failedCode(error: unknown): ProblemCode | null {
+  const code = typeof error === "object" && error !== null ? (error as { code?: unknown }).code : null;
+  return typeof code === "string" ? code as ProblemCode : null;
+}
+
 /** The citation key another record also has, when that is why citing by key failed. */
 export function sharedCitationKey(error: unknown): string | null {
-  const failed = typeof error === "object" && error !== null ? error as { code?: unknown; message?: { args?: { key?: unknown } } } : null;
-  const key = failed?.message?.args?.key;
-  return failed?.code === "ambiguous-key" && typeof key === "string" ? key : null;
+  const key = (error as Partial<CommandError> | null)?.message?.args?.key;
+  return failedCode(error) === "ambiguous-key" && typeof key === "string" ? key : null;
 }
 
 /** Only the backend's snapshot rejection code becomes a recovery explanation. */
 export function isLibraryLoading(error: unknown): boolean {
-  return typeof error === "object" && error !== null && (error as Partial<CommandError>).code === "library_loading";
+  return failedCode(error) === "library_loading";
 }
 
 /** Work stopped on purpose. It is never a failure and never reaches the person. */
 export function isCancelled(error: unknown): boolean {
-  return typeof error === "object" && error !== null && (error as Partial<CommandError>).code === "cancelled";
+  return failedCode(error) === "cancelled";
 }
 
+/** The library or the chosen references changed under the request. */
+export const STALE_CODES: readonly ProblemCode[] = ["snapshot_changed", "changed-item", "missing-item"];
+
 export function isSnapshotChanged(error: unknown): boolean {
-  return typeof error === "object" && error !== null && ["snapshot_changed", "changed-item", "missing-item"].includes(String((error as Partial<CommandError>).code));
+  const code = failedCode(error);
+  return code !== null && STALE_CODES.includes(code);
 }
 
 export type UpdateProgress = { attempt: number; revision: number; received: number; total: number | null; phase: "downloading" | "installing" | "failed" };

@@ -1,12 +1,15 @@
 //! Fixed app IDs and native environment; the web view never supplies a file or command.
-use crate::{errors::NativeOperation, library::CommandError};
+use crate::{
+    errors::{NativeFailure, NativeOperation},
+    library::CommandError,
+};
 use ibis_engine::agent_apps::{self, AgentApp, Outcome};
 
 /// Every supported AI app, found ones first.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn agent_apps(app: tauri::AppHandle) -> Result<Vec<AgentApp>, String> {
-    operation(app, Step::Status).await
+pub(crate) async fn agent_apps(app: tauri::AppHandle) -> Result<Vec<AgentApp>, NativeFailure> {
+    operation(app, Step::Status).await.map_err(|_| NativeFailure)
 }
 
 /// Connect only if expected is the revision of the displayed entry and proposal.
@@ -20,7 +23,7 @@ pub(crate) async fn connect_agent_app(
 ) -> Result<Vec<AgentApp>, CommandError> {
     operation(app, Step::Connect { id, replace, expected })
         .await
-        .map_err(|detail| connection_failure(detail, NativeOperation::ConnectAgentApp))
+        .map_err(|refused| refused.during(NativeOperation::ConnectAgentApp))
 }
 
 /// Disconnect only if expected is the revision of the displayed connection.
@@ -33,15 +36,30 @@ pub(crate) async fn disconnect_agent_app(
 ) -> Result<Vec<AgentApp>, CommandError> {
     operation(app, Step::Disconnect { id, expected })
         .await
-        .map_err(|detail| connection_failure(detail, NativeOperation::DisconnectAgentApp))
+        .map_err(|refused| refused.during(NativeOperation::DisconnectAgentApp))
 }
 
-/// Private recovery text goes only to the requesting window. The catalogue's
-/// generic diagnostic remains suitable for Display; never log these arguments.
-fn connection_failure(detail: String, operation: NativeOperation) -> CommandError {
-    let mut problem = operation.failure().problem();
-    problem.info = problem.info.argument("detail", detail);
-    CommandError::Presented(problem)
+/// A change that did not happen. `detail` is the app's own status from the
+/// engine, shown beside the catalogue's sentence when the app gave one.
+#[derive(Debug)]
+struct Refused {
+    detail: Option<String>,
+}
+impl From<NativeFailure> for Refused {
+    fn from(NativeFailure: NativeFailure) -> Self {
+        Self { detail: None }
+    }
+}
+impl Refused {
+    /// Private recovery text goes only to the requesting window. The catalogue's
+    /// generic diagnostic remains suitable for Display; never log these arguments.
+    fn during(self, operation: NativeOperation) -> CommandError {
+        let mut problem = operation.failure().problem();
+        if let Some(detail) = self.detail {
+            problem.info = problem.info.argument("detail", detail);
+        }
+        CommandError::Presented(problem)
+    }
 }
 
 enum Step {
@@ -57,7 +75,7 @@ enum Step {
     },
 }
 
-async fn operation(app: tauri::AppHandle, step: Step) -> Result<Vec<AgentApp>, String> {
+async fn operation(app: tauri::AppHandle, step: Step) -> Result<Vec<AgentApp>, Refused> {
     static OWNER: tauri::async_runtime::Mutex<()> = tauri::async_runtime::Mutex::const_new(());
     crate::cli_install::with_owner(&OWNER, move || {
         let home = crate::cli_install::agent_home(&app)?;
@@ -66,17 +84,15 @@ async fn operation(app: tauri::AppHandle, step: Step) -> Result<Vec<AgentApp>, S
     .await
 }
 
-fn apply(home: &agent_apps::Home, step: Step) -> Result<Vec<AgentApp>, String> {
+fn apply(home: &agent_apps::Home, step: Step) -> Result<Vec<AgentApp>, Refused> {
     let (id, expected, replace, connect) = match step {
         Step::Status => return Ok(agent_apps::list(home)),
         Step::Connect { id, replace, expected } => (id, expected, replace, true),
         Step::Disconnect { id, expected } => (id, expected, false, false),
     };
-    let app = agent_apps::plan(home, &[&id])
-        .pop()
-        .ok_or("Could not find that AI app.")?;
+    let app = agent_apps::plan(home, &[&id]).pop().ok_or(NativeFailure)?;
     if app.revision.as_str() != expected {
-        return Err("The AI app settings changed. Check the connection and try again.".into());
+        return Err(NativeFailure.into());
     }
     let change = if connect {
         app.connect(home, true, false, replace)
@@ -84,7 +100,9 @@ fn apply(home: &agent_apps::Home, step: Step) -> Result<Vec<AgentApp>, String> {
         app.disconnect(home, true, false)
     };
     if matches!(change.outcome, Outcome::Failed | Outcome::Blocked | Outcome::Kept) {
-        return Err(change.detail);
+        return Err(Refused {
+            detail: Some(change.detail),
+        });
     }
     Ok(agent_apps::list(home))
 }
@@ -147,11 +165,15 @@ mod tests {
                 },
             )
             .err()
+            .and_then(|refused| refused.detail)
             .unwrap();
             assert!(!settings.exists());
             assert!(error.contains("the old ibis entry was taken out"), "{error}");
             assert!(error.contains(&format!("\"ibis\": {old}")), "{error}");
-            let failure = connection_failure(error.clone(), NativeOperation::ConnectAgentApp);
+            let failure = Refused {
+                detail: Some(error.clone()),
+            }
+            .during(NativeOperation::ConnectAgentApp);
             let wire = serde_json::to_value(&failure).unwrap();
             assert_eq!(wire["message"]["args"]["detail"], error);
             assert!(!failure.to_string().contains("restore this"));
