@@ -175,8 +175,16 @@ function main(args) {
         if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, text);
         return 0;
       }
-      // Each side must run its own build, or the comparison could never fail.
-      if (readFileSync(base).equals(readFileSync(head))) throw new Error("the base and head builds are the same executable");
+      // A change that leaves the engine byte for byte the same has nothing to
+      // compare; it still meets the shared budgets.
+      if (readFileSync(base).equals(readFileSync(head))) {
+        const reports = [];
+        for (let round = 0; round < count; round++) for (const name of cases) reports.push(measure(head, name));
+        const summary = summarize(reports);
+        const over = overBudget(summary, budgets.shared);
+        report(`Performance (the engine is unchanged from ${target.slice(0, 12)})`, { median: summary }, over);
+        return over.length ? 1 : 0;
+      }
       // Interleaved ABBA rounds share whatever the machine is doing; the base
       // skips the idle wait, which is judged absolutely below.
       const reports = { head: [], base: [] };
