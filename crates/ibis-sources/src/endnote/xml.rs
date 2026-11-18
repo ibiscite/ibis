@@ -200,7 +200,7 @@ pub(crate) fn records(text: &str) -> Result<Vec<XmlRecord>, XmlError> {
 mod tests {
     use super::*;
 
-    const XML: &str = include_str!("../../../fixtures/endnote/invented.xml");
+    const XML: &str = include_str!("../../../../fixtures/endnote/invented.xml");
 
     #[test]
     fn styled_text_joins_and_library_attributes_are_kept() {

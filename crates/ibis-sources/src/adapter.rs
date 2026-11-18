@@ -27,8 +27,8 @@ use crate::{LibraryKind, LoadedLibrary, SourceCapability, SourceWarning, Warning
 
 /// The argument that makes `ibis` serve a built-in adapter: `ibis __source NAME`.
 pub const CHILD_ARGUMENT: &str = "__source";
-/// Adapters built into `ibis`.
-pub const BUILT_IN: &[&str] = &["endnote"];
+/// The built-in EndNote adapter, served by the CLI.
+pub const ENDNOTE: &str = "endnote";
 /// How long one read may take. EndNote answers a 10,000-record library in
 /// well under a minute.
 pub const DEADLINE: Duration = Duration::from_secs(120);
@@ -96,7 +96,7 @@ impl SourceAdapter {
         if !valid_name(name) {
             return Err(AdapterError::NotFound);
         }
-        if BUILT_IN.contains(&name) {
+        if name == ENDNOTE {
             let program = built_in.ok_or(AdapterError::NotFound)?;
             return Ok(Self {
                 name: name.into(),

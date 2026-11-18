@@ -16,14 +16,13 @@ use serde_json::Value;
 /// `[build-dependencies]` are not part of what ships, so they are not read.
 ///
 /// Shared capabilities belong in engine methods; clients use core contract types.
-const LAYERS: [(&str, &[&str]); 9] = [
+const LAYERS: [(&str, &[&str]); 8] = [
     ("crates/ibis-core", &[]),
     ("crates/ibis-csl", &["ibis-core"]),
     ("crates/ibis-sources", &["ibis-core"]),
     ("crates/ibis-engine", &["ibis-core", "ibis-csl", "ibis-sources"]),
-    // A built-in source adapter: it speaks only the adapter protocol.
-    ("crates/ibis-source-endnote", &["ibis-core", "ibis-sources"]),
-    ("crates/ibis-cli", &["ibis-core", "ibis-engine", "ibis-source-endnote"]),
+    // The CLI also serves the built-in EndNote adapter in a child process.
+    ("crates/ibis-cli", &["ibis-core", "ibis-engine", "ibis-sources"]),
     (
         "apps/desktop/src-tauri",
         &["ibis-core", "ibis-desktop-macros", "ibis-engine"],

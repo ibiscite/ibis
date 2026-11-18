@@ -3,11 +3,11 @@
 //! volume, issue, pages, edition and DOI. EndNote's XML tags are generic
 //! (`secondary-title` is a journal, a series or a book by type); the roles
 //! below were checked against EndNote 21.3's own field labels for each type.
+use crate::exported::{date_parts, doi, person};
 use ibis_core::contract::adapter::{AdapterSkip, AdapterSkipCause};
-use ibis_sources::csl_parts::{date_parts, doi, person};
 use serde_json::{Map, Value, json};
 
-use crate::xml::XmlRecord;
+use super::xml::XmlRecord;
 
 /// The record as CSL without its `id`, or why it was left out.
 pub(crate) fn csl(record: &XmlRecord) -> Result<Map<String, Value>, AdapterSkip> {
@@ -123,7 +123,7 @@ mod tests {
     use super::*;
 
     fn mapped(xml: &str) -> Vec<Result<Map<String, Value>, AdapterSkip>> {
-        crate::xml::records(xml)
+        super::xml::records(xml)
             .unwrap_or_else(|_| panic!("reads"))
             .iter()
             .map(csl)
@@ -132,9 +132,9 @@ mod tests {
 
     #[test]
     fn the_invented_library_maps_as_endnote_labels_its_fields() {
-        let mapped = mapped(include_str!("../../../fixtures/endnote/invented.xml"));
+        let mapped = mapped(include_str!("../../../../fixtures/endnote/invented.xml"));
         let expected: Vec<Value> =
-            serde_json::from_str(include_str!("../../../fixtures/endnote/expected.json")).unwrap_or_default();
+            serde_json::from_str(include_str!("../../../../fixtures/endnote/expected.json")).unwrap_or_default();
         let kept: Vec<Value> = mapped
             .iter()
             .filter_map(|r| r.clone().ok())

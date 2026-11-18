@@ -8,11 +8,10 @@ describes this checkout. Plans live in [ROADMAP.md](../ROADMAP.md).
 | Location | Responsibility |
 | --- | --- |
 | `crates/ibis-core` | Shared model, citation requests/results, key syntaxes, search and delivery rules. |
-| `crates/ibis-sources` | Read-only file and Zotero readers (`zotero_local`: the local API, closed database and Better BibTeX), discovery, database snapshots and file watches. Each reader declares what its library offers. |
-| `crates/ibis-source-endnote` | The built-in EndNote [source adapter](source-adapters.md): EndNote XML from an open library (macOS scripting) or an export, mapped to CSL. It speaks only the adapter protocol and runs as `ibis __source endnote`. |
+| `crates/ibis-sources` | Read-only file and Zotero readers (`zotero_local`: the local API, closed database and Better BibTeX), discovery, database snapshots and file watches. Includes the built-in EndNote [source adapter](source-adapters.md). Each reader declares what its library offers. |
 | `crates/ibis-csl` | citeproc-js in QuickJS, ICU4X collation, bundled CSL styles and locales. |
 | `crates/ibis-engine` | Typed methods, source lifecycle, prepared citations, settings owner, recents, JSON-RPC and MCP. |
-| `crates/ibis-cli` | The `ibis` executable, and the PDF text extractor and built-in source adapters it starts as its own child processes (`ibis __extract-pdf`, with `lopdf`; `ibis __source NAME`). Depends on core and engine. |
+| `crates/ibis-cli` | The `ibis` executable, and the PDF text extractor and built-in source adapters it starts as its own child processes (`ibis __extract-pdf`, with `lopdf`; `ibis __source NAME`). Depends on core and engine, and enables the EndNote reader in `ibis-sources` for the adapter process. |
 | `apps/desktop/src-tauri` | Native windows, clipboard, paste, shortcuts, settings dialogs and updates. Depends on core, engine and its command macro crate. |
 | `apps/desktop/src` | React interface, shared controls in `ui/`, tokens in `tokens.css`. |
 

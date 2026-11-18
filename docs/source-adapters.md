@@ -112,7 +112,7 @@ fake adapter (`crates/ibis-cli/tests/source_adapters.rs`).
 
 ## EndNote
 
-The built-in `endnote` adapter (`crates/ibis-source-endnote`) reads EndNote's
+The built-in `endnote` adapter (`ibis-sources::endnote`) reads EndNote's
 own XML in two ways, through one reader and one field mapping:
 
 - **An open library, on macOS:** `--source endnote=NAME` reads the open library

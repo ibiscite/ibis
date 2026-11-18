@@ -12,7 +12,7 @@ use std::process::{Command, Stdio};
 use ibis_core::contract::Fingerprint;
 use ibis_core::contract::adapter::{AdapterRead, AdapterRefusal};
 
-use crate::xml::{self, XmlRecord};
+use super::xml::{self, XmlRecord};
 
 const SEPARATOR: char = '\u{1f}';
 const CHUNK: char = '\u{1e}';
@@ -135,12 +135,12 @@ pub(crate) fn read(library: Option<&str>) -> Result<AdapterRead, AdapterRefusal>
                 Some((Some(number.to_owned()), record))
             }
             _ => {
-                skipped.push(crate::unplaced(record));
+                skipped.push(super::unplaced(record));
                 None
             }
         })
         .collect();
-    let mut read = crate::read(scope, placed.into_iter());
+    let mut read = super::read(scope, placed.into_iter());
     read.skipped.extend(skipped);
     Ok(read)
 }
@@ -158,7 +158,7 @@ fn decoded(chunks: &[&str], path: &str) -> Result<Vec<XmlRecord>, AdapterRefusal
         Some(records)
     };
     let plain = parse(chunks);
-    let repaired_texts: Option<Vec<String>> = chunks.iter().map(|text| crate::macroman::repair(text)).collect();
+    let repaired_texts: Option<Vec<String>> = chunks.iter().map(|text| super::macroman::repair(text)).collect();
     let repaired = repaired_texts
         .as_ref()
         .and_then(|texts| parse(&texts.iter().map(String::as_str).collect::<Vec<_>>()));

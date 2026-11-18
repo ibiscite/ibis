@@ -35,7 +35,7 @@ use serde_json::{Map, Value, json};
 /// The largest request read.
 const MAX_REQUEST_BYTES: u64 = 64 * 1024;
 /// The largest export file read: the bound on library files.
-const MAX_FILE_BYTES: u64 = ibis_sources::MAX_LIBRARY_BYTES;
+const MAX_FILE_BYTES: u64 = crate::MAX_LIBRARY_BYTES;
 
 /// Answer one request from `input` on `output`; the exit status.
 pub fn serve(input: impl Read, mut output: impl Write) -> u8 {
@@ -158,7 +158,7 @@ mod tests {
     fn an_export_reads_by_content_and_rereads_the_same() {
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
         let path = directory.path().join("Invented export.xml");
-        let xml = include_str!("../../../fixtures/endnote/invented.xml");
+        let xml = include_str!("../../../../fixtures/endnote/invented.xml");
         std::fs::write(&path, xml).unwrap_or_else(|error| panic!("{error}"));
         let request = json!({"ibis": 1, "method": "read", "library": path}).to_string();
         let first = exchange(&request);

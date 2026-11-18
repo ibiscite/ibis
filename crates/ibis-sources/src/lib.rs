@@ -8,12 +8,9 @@ pub use bibtex::edit as bibtex_edit;
 mod candidates;
 mod child;
 mod csl_json;
+#[cfg(feature = "endnote")]
+pub mod endnote;
 mod exported;
-/// The shared CSL field rules of the exported formats, for adapters that map
-/// a manager's own fields (decision 0056, step 4).
-pub mod csl_parts {
-    pub use crate::exported::{date_parts, doi, person};
-}
 mod file;
 pub mod identity;
 pub mod pdf;

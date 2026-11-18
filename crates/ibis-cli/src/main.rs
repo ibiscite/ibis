@@ -16,7 +16,9 @@ fn main() -> std::process::ExitCode {
         .is_some_and(|argument| argument == ibis_engine::sources::CHILD_ARGUMENT)
     {
         return std::process::ExitCode::from(match arguments.get(2).and_then(|name| name.to_str()) {
-            Some("endnote") => ibis_source_endnote::serve(std::io::stdin().lock(), std::io::stdout().lock()),
+            Some(ibis_sources::adapter::ENDNOTE) => {
+                ibis_sources::endnote::serve(std::io::stdin().lock(), std::io::stdout().lock())
+            }
             _ => 2,
         });
     }
