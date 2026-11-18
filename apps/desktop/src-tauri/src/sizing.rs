@@ -863,8 +863,12 @@ pub(crate) fn window_size(app: AppHandle) -> Option<WindowSize> {
 /// previous frame on the same display; later geometry invalidates it.
 #[tauri::command]
 #[ibis_desktop_macros::command(main)]
-pub(crate) fn set_window_size(app: AppHandle, size: WindowSize, undo: Option<u64>) -> Result<u64, String> {
-    const FAILED: &str = "Ibis could not change the window size. Try again.";
+pub(crate) fn set_window_size(
+    app: AppHandle,
+    size: WindowSize,
+    undo: Option<u64>,
+) -> Result<u64, crate::errors::NativeFailure> {
+    const FAILED: crate::errors::NativeFailure = crate::errors::NativeFailure;
     let (window, monitor) = target(&app).ok_or(FAILED)?;
     let shown = checked(window.is_visible(), NativeIssue::Visibility) == Some(true);
     if shown {
@@ -880,7 +884,7 @@ pub(crate) fn set_window_size(app: AppHandle, size: WindowSize, undo: Option<u64
     let frame = {
         let mut state = sizing.shared.state.lock().map_err(|_| FAILED)?;
         if state.stopping || state.applying {
-            return Err(FAILED.into());
+            return Err(FAILED);
         }
         let frame = if let Some(revision) = undo {
             let previous = state.size_undo_for(revision, &key).ok_or(FAILED)?;
@@ -915,11 +919,11 @@ pub(crate) fn set_window_size(app: AppHandle, size: WindowSize, undo: Option<u64
         });
     }
     if state.stopping {
-        return Err(FAILED.into());
+        return Err(FAILED);
     }
     let revision = if let Some(revision) = undo {
         if !state.restore_size(revision, &key, Instant::now()) {
-            return Err(FAILED.into());
+            return Err(FAILED);
         }
         state.revision
     } else {
@@ -955,7 +959,7 @@ pub(crate) fn reset_window_position(app: AppHandle) {
 
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn undo_window_position(app: AppHandle, revision: u64) -> Result<bool, String> {
+pub(crate) async fn undo_window_position(app: AppHandle, revision: u64) -> Result<bool, crate::errors::NativeFailure> {
     let generation = app.state::<crate::picker::PickerGeneration>().current();
     let (sent, mut received) = tauri::async_runtime::channel(1);
     let handle = app.clone();
@@ -967,15 +971,12 @@ pub(crate) async fn undo_window_position(app: AppHandle, revision: u64) -> Resul
         };
         let _ = sent.try_send(result);
     })
-    .map_err(|_| "Ibis could not restore the window position. Try again.".to_string())?;
-    received
-        .recv()
-        .await
-        .unwrap_or_else(|| Err("Ibis could not restore the window position. Try again.".into()))
+    .map_err(|_| crate::errors::NativeFailure)?;
+    received.recv().await.unwrap_or(Err(crate::errors::NativeFailure))
 }
 
-fn restore_position(app: &AppHandle, revision: u64) -> Result<bool, String> {
-    const FAILED: &str = "Ibis could not restore the window position. Try again.";
+fn restore_position(app: &AppHandle, revision: u64) -> Result<bool, crate::errors::NativeFailure> {
+    const FAILED: crate::errors::NativeFailure = crate::errors::NativeFailure;
     let window = app.get_webview_window("main").ok_or(FAILED)?;
     // Accept an edge drag whose native event arrived before this action, even
     // if MainEventsCleared has not sampled it yet. It retires the old Undo.

@@ -179,7 +179,7 @@ fn contract() -> Value {
         "commands": commands,
         "events": events,
         "input": schemas.input.take_definitions(true),
-        "output": schemas.output.take_definitions(true),
+        "output": closed_codes(schemas.output.take_definitions(true)),
         "constants": {
             "CITATION_FORMS": ibis_core::contract::CitationForm::ALL,
             "OUTPUTS": ibis_engine::outputs::outputs().iter().map(|output| json!({
@@ -195,6 +195,32 @@ fn contract() -> Value {
             "DEFAULT_STYLE": ibis_engine::outputs::DEFAULT_STYLE,
         },
     })
+}
+
+/// Close every problem's `code` over the codes the desktop can send, so the
+/// interface compares against a closed set and a renamed code is a type error.
+#[cfg(test)]
+fn closed_codes(mut output: serde_json::Map<String, Value>) -> serde_json::Map<String, Value> {
+    let codes: std::collections::BTreeSet<String> = crate::errors::every_problem()
+        .into_iter()
+        .map(|problem| problem.code)
+        .collect();
+    for name in ["Problem", "CommandError"] {
+        if let Some(code) = output
+            .get_mut(name)
+            .and_then(|problem| problem.pointer_mut("/properties/code"))
+        {
+            *code = json!({ "$ref": "#/$defs/ProblemCode" });
+        }
+    }
+    output.insert(
+        "ProblemCode".into(),
+        json!({
+            "description": "Every code a desktop problem can carry, from the engine's and the app's own failures.",
+            "enum": codes,
+        }),
+    );
+    output
 }
 
 #[cfg(test)]
@@ -229,6 +255,27 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn every_code_the_interface_reads_is_closed() {
+        let contract = super::contract();
+        let definitions = contract["output"].as_object().unwrap_or_else(|| panic!("definitions"));
+        for (name, definition) in definitions {
+            assert_ne!(
+                definition
+                    .pointer("/properties/code/type")
+                    .and_then(serde_json::Value::as_str),
+                Some("string"),
+                "{name}.code is an open string; give it a closed type"
+            );
+        }
+        assert!(
+            definitions["ProblemCode"]["enum"]
+                .as_array()
+                .is_some_and(|codes| codes.iter().any(|code| code == "cancelled")),
+            "the closed codes come from the desktop's own problems"
+        );
     }
 
     include!("../app_commands.rs");

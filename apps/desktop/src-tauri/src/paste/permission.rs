@@ -64,15 +64,15 @@ pub(crate) fn open_paste_permission(app: tauri::AppHandle) {
 /// Drag only the running app bundle into the permission list.
 #[tauri::command]
 #[ibis_desktop_macros::command(main)]
-pub(crate) fn drag_paste_app(window: tauri::WebviewWindow) -> Result<(), String> {
+pub(crate) fn drag_paste_app(window: tauri::WebviewWindow) -> Result<(), crate::errors::NativeFailure> {
     #[cfg(target_os = "macos")]
     {
-        drag::start(&window).map_err(str::to_owned)
+        drag::start(&window)
     }
     #[cfg(not(target_os = "macos"))]
     {
         let _ = window;
-        Err("App dragging is available only on macOS.".to_owned())
+        Err(crate::errors::NativeFailure)
     }
 }
 

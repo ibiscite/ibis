@@ -24,10 +24,18 @@ pub(crate) enum CommandError {
     ClipboardUnavailable,
     SettingsUnavailable,
     RecentHistoryNotSaved,
-    ProjectConflict { keys: Vec<String> },
+    ProjectConflict {
+        keys: Vec<String>,
+    },
     SourceNotOpened,
     SearchFailed,
     RecentReferencesFailed,
+    NoLibrary,
+    /// A document format was chosen where a style is needed.
+    DocumentFormat,
+    /// A style was chosen where a key format is needed.
+    KeyFormat,
+    OutputNotSaved,
 }
 
 impl schemars::JsonSchema for CommandError {
@@ -126,6 +134,19 @@ impl CommandError {
                 "recent-references-failed",
                 RecoveryInfo::new("app-failure-recent-references", R::SearchReferences),
             ),
+            Self::NoLibrary => (
+                "no-library",
+                RecoveryInfo::new("app-command-no-library", R::ChooseLibrary),
+            ),
+            Self::DocumentFormat => (
+                "document-format",
+                RecoveryInfo::new("app-settings-error-document-format", R::ChooseStyle),
+            ),
+            Self::KeyFormat => (
+                "key-format",
+                RecoveryInfo::new("app-settings-error-key-format", R::ChooseStyle),
+            ),
+            Self::OutputNotSaved => ("not-saved", RecoveryInfo::new("app-command-output-not-saved", R::Retry)),
         };
         Problem {
             code: code.into(),
@@ -133,6 +154,37 @@ impl CommandError {
         }
     }
 }
+/// What a problem asks of the picker, decided from each code's owner so a
+/// renamed code cannot silently become another kind.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Kind {
+    /// Work stopped on purpose; never a failure and never shown.
+    Cancelled,
+    /// The library or the chosen references changed under the request.
+    Stale,
+    /// Citing by key failed because another record has the same key.
+    SharedKey,
+    Other,
+}
+impl Kind {
+    pub(crate) fn of(problem: &ibis_core::contract::Problem) -> Self {
+        use ibis_core::contract::CitationError as C;
+        let is = |owner: ibis_core::contract::Problem| owner.code == problem.code;
+        if is(CommandError::Cancelled.problem()) {
+            Self::Cancelled
+        } else if is(CommandError::SnapshotChanged.problem())
+            || is(C::ChangedItem.problem())
+            || is(C::MissingItem.problem())
+        {
+            Self::Stale
+        } else if is(C::AmbiguousKey.problem()) {
+            Self::SharedKey
+        } else {
+            Self::Other
+        }
+    }
+}
+
 impl From<CommandError> for ibis_core::contract::Problem {
     fn from(error: CommandError) -> Self {
         error.problem()
