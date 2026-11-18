@@ -289,15 +289,15 @@ jobs:
         if: runner.os == 'Linux'
         run: node scripts/gen.mjs --check
 
-      # The public contract against the newest release: additive, or a listed
-      # break with a raised version (decision 0028). The checkout has no tags.
-      - name: Check contract compatibility (Linux)
+      # What changed in the public contract since the newest release. A report
+      # until 1.0, when the script's BLOCKING switch makes breaks fail
+      # (decision 0028). The checkout has no tags, so fetch that one.
+      - name: Report contract changes (Linux)
         if: runner.os == 'Linux'
         run: |
-          tag=$(git ls-remote --tags --refs origin 'v[0-9]*' | sed 's|.*refs/tags/||' | sort -V | tail -n 1)
-          test -n "$tag"
-          git fetch -q --no-tags --depth=1 origin "refs/tags/$tag:refs/tags/$tag"
-          node scripts/contract-compat.mjs --base "$tag"
+          tag=$(git ls-remote --tags --refs origin 'v[0-9]*' | sed 's|.*refs/tags/||' | sort -V | tail -n 1) || tag=''
+          if [ -n "$tag" ]; then git fetch -q --no-tags --depth=1 origin "refs/tags/$tag:refs/tags/$tag" || true; fi
+          node scripts/contract-compat.mjs
 
       - name: Paste into Notepad (Windows)
         if: runner.os == 'Windows'

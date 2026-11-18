@@ -35,8 +35,8 @@ node scripts/contract-compat.mjs
 
 Plain `cargo test` skips desktop Rust tests; `cargo test --workspace --locked`
 includes them. `gen.mjs --check` checks generated files without replacing them;
-`contract-compat.mjs` compares them with the newest release and fails on a
-break that is not listed with a raised contract version
+`contract-compat.mjs` lists how the contract differs from the newest release,
+additive or breaking, and fails nothing before 1.0
 ([decision 0028](decisions/0028-engine-first.md)).
 To update a reviewed Rust snapshot, use `INSTA_UPDATE=always cargo test -p CRATE`
 and inspect the `.snap` diff.
@@ -97,7 +97,7 @@ regression at the layer that owns the cause.
 
 [`land.sh`](../scripts/land.sh) runs fast local feedback from a clean, named
 branch: formatting, workspace `cargo check` with all targets, TypeScript,
-Biome lint, `gen.mjs --check` and `contract-compat.mjs`. While main's latest finished push CI failed,
+Biome lint, `gen.mjs --check` and the `contract-compat.mjs` report. While main's latest finished push CI failed,
 it refuses any title but `fix` or `revert` and names the red run. Dependencies
 must already be installed; Rust uses this worktree's `target` without sccache. These checks are for speed
 only ([decision 0049](decisions/0049-local-gate.md)).

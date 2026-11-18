@@ -21,40 +21,20 @@ and formatter/style/locale versions. `--contract 1` selects it explicitly;
 unsupported versions refuse with the supported list. Requests reject unread
 fields. Clients accept additional response fields and treat unknown findings,
 losses, refusals and outcomes as needing review. Unknown error codes still fail.
-Optional additions can keep a version only when absence preserves the answer;
-renames, removals and changes to meaning require a new contract version.
 Canonical requests in `fixtures/cases` run through each front end.
 
-[`contract-compat.mjs`](../../scripts/contract-compat.mjs) enforces this in
-`land.sh` and in CI. It compares the generated contract
-(`fixtures/engine-contract.schema.json`, `fixtures/cli-schema.json`,
-`fixtures/mcp-tools.json` and the generated parts of `docs/cli.md`) with the
-newest `v*` release. What Ibis accepts may only grow: a new optional field,
-value, method, tool, command, option or error code is additive. What it sends
-may only shrink, except new fields, values and variants of a tagged union, which
-clients accept as above. Everything else breaks: a removed or renamed method,
-tool, field, value, command or option; a newly required input; a narrowed input
-or widened output type or limit; a changed default, pattern or exit code; and
-any difference the check cannot read, which fails until the check learns it.
-The check counts positional arguments but cannot tell whether a new one is
-required, so new positional arguments are optional. A new value in a type
-clients send, such as a source kind, is additive, but clients that read the
-value back should be told in the release notes.
-
-Before 1.0 a break needs no compatibility code, only an announcement. A change
-that breaks the contract on purpose:
-
-1. Raises `CONTRACT_VERSION` in `crates/ibis-core/src/contract/envelope.rs` by
-   one, unless an unreleased change already raised it since the last release,
-   and runs `node scripts/gen.mjs`. Requests, fixtures and documents that state
-   the version move with it.
-2. Lists each break in `fixtures/contract-breaks.json` under the new version,
-   word for word as `node scripts/contract-compat.mjs` prints it, with why.
-3. Names each break and the new version in its pull request description.
-
-The check fails on an unlisted break, on a listed break the change no longer
-makes, and on a raised version with nothing listed. Entries for released
-versions stay as the history of the contract.
+Until the stable 1.0 the contract is unstable: any release may break any part
+of it, and progress wins over compatibility. Breaks are listed, not blocked.
+[`contract-compat.mjs`](../../scripts/contract-compat.mjs) compares the
+generated contract (`fixtures/engine-contract.schema.json`,
+`fixtures/cli-schema.json`, `fixtures/mcp-tools.json` and the generated parts of
+`docs/cli.md`) with the newest `v*` release and prints every difference as
+additive or breaking, in `land.sh` and in CI, for release notes and for agents.
+What Ibis accepts may grow and what it sends may shrink, except that new fields,
+values and variants of a tagged union are additive; everything else, including
+any difference the check cannot read, is breaking. At 1.0 its one `BLOCKING`
+switch turns the report into a gate, and the rules for changing a stable
+contract are decided then.
 
 Receipts record ordered opaque identities, citation fingerprints, resolved
 output, captured source read times, findings and a canonical content hash. CSL

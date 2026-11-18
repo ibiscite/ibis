@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { cliSurface, compare, contract, FILES, verdict } from "./contract-compat.mjs";
+import { BLOCKING, cliSurface, compare, contract, FILES, verdict } from "./contract-compat.mjs";
 
 const root = new URL("..", import.meta.url);
 
@@ -72,8 +72,6 @@ function make({ version = 1, params, result, input, output, request, expected, c
   });
 }
 
-const breaks = (...entries) => ({ breaks: entries.map(([contract, change]) => ({ contract, change, why: "Invented." })) });
-
 test("an unchanged contract has no differences", () => {
   assert.deepEqual(compare(make(), make()), { breaking: [], additive: [] });
 });
@@ -86,7 +84,7 @@ test("the real contract files parse and agree on one version", () => {
   assert.deepEqual(compare(current, current), { breaking: [], additive: [] });
 });
 
-test("additive changes pass under the same version", () => {
+test("additive changes are reported as additive", () => {
   const base = make();
   const head = make({
     // An optional input field, an output field clients may ignore and an output value they treat as unknown.
@@ -96,8 +94,7 @@ test("additive changes pass under the same version", () => {
     commands: { "*": ["--json", "--width N"], search: ["--limit N", "--keys", "--shorthand"], writings: [], "writings list": [], share: ["--to PATH"] },
     errors: { usage: 2, internal: 70, "lookup-off": 3 },
   });
-  const { errors, breaking, additive } = verdict(base, head, breaks());
-  assert.deepEqual(errors, []);
+  const { breaking, additive } = compare(base, head);
   assert.deepEqual(breaking, []);
   assert.deepEqual(additive, [
     "command search: option --shorthand added",
@@ -117,9 +114,8 @@ test("an enumeration rewritten as one of the same values is no change", () => {
 });
 
 /** A contract with one breaking change of each kind. */
-function broken(version = 1) {
+function broken() {
   const head = make({
-    version,
     // Newly required field, removed field and a narrowed type, all on input.
     input: { type: "object", properties: { keys: { type: "array", items: { type: "string" } }, style: { type: "string" }, locale: { type: "string" } }, required: ["keys", "locale"] },
     // A result that may now be null, and a field gone from it.
@@ -131,7 +127,7 @@ function broken(version = 1) {
   head.cli.data[0].params.$defs.Kind = { enum: ["user", "group"], type: "string" };
   head.engine.$defs.Request.properties.keys.maxItems = 5;
   head.mcp.push({ name: "styles", inputSchema: { type: "object" } });
-  head.cli.data.push({ contract: version, method: "share", params: { type: "object" }, result: { type: "object" } });
+  head.cli.data.push({ contract: 1, method: "share", params: { type: "object" }, result: { type: "object" } });
   return head;
 }
 
@@ -148,14 +144,18 @@ const BROKEN = [
   "tool cite input: required field locale added",
 ];
 
-test("every kind of breaking change fails under the same version", () => {
-  const base = make();
-  const head = broken();
-  const { errors, breaking } = verdict(base, head, breaks());
-  assert.deepEqual(breaking, BROKEN);
-  assert.equal(errors.length, 1);
-  assert.match(errors[0], /Raise CONTRACT_VERSION to 2 and list each one in fixtures\/contract-breaks\.json under contract 2/);
-  for (const line of BROKEN) assert.ok(errors[0].includes(`  ${line}`), line);
+test("every kind of breaking change is reported as breaking", () => {
+  assert.deepEqual(compare(make(), broken()).breaking, BROKEN);
+});
+
+test("before 1.0 breaks are reported and pass; the 1.0 switch makes them fail", () => {
+  const before = verdict(make(), broken());
+  assert.equal(BLOCKING, false);
+  assert.equal(before.fails, false);
+  for (const line of BROKEN) assert.ok(before.report.includes(`  ${line}`), line);
+  assert.equal(verdict(make(), broken(), true).fails, true);
+  assert.equal(verdict(make(), make(), true).fails, false);
+  assert.match(verdict(make(), make()).report, /^Breaking:\n {2}none\nAdditive:\n {2}none$/);
 });
 
 test("a removed method or tool is breaking", () => {
@@ -165,40 +165,6 @@ test("a removed method or tool is breaking", () => {
   assert.deepEqual(compare(make(), head).breaking, ["method search removed", "tool cite removed"]);
 });
 
-test("a break passes when the version is raised and the break is listed", () => {
-  const listed = breaks(...BROKEN.map((line) => [2, line]));
-  assert.deepEqual(verdict(make(), broken(2), listed).errors, []);
-});
-
-test("a raised version still fails on an unlisted, stale or misplaced break", () => {
-  const [first, ...rest] = BROKEN;
-  const unlisted = verdict(make(), broken(2), breaks(...rest.map((line) => [2, line]))).errors;
-  assert.equal(unlisted.length, 1);
-  assert.match(unlisted[0], /not listed in fixtures\/contract-breaks\.json under contract 2:\n {2}Kind: value "personal" removed$/);
-
-  const stale = verdict(make(), broken(2), breaks(...BROKEN.map((line) => [2, line]), [2, "tool gone removed"])).errors;
-  assert.deepEqual(stale, ["fixtures/contract-breaks.json lists a break this change no longer makes: tool gone removed"]);
-
-  const early = verdict(make(), broken(2), breaks(...BROKEN.map((line) => [2, line]), [3, first])).errors;
-  assert.deepEqual(early, [`fixtures/contract-breaks.json lists a break for contract 3, but the contract is 2: ${first}`]);
-});
-
-test("the version moves by exactly one, and only with a listed break", () => {
-  assert.match(verdict(make(), broken(3), breaks(...BROKEN.map((line) => [3, line]))).errors[0], /by one per release: 1 → 2, not 3/);
-  assert.match(verdict(make({ version: 2 }), make(), breaks()).errors[0], /went down, from 2 to 1/);
-  assert.deepEqual(verdict(make(), make({ version: 2 }), breaks()).errors, ["The contract version was raised to 2 with no break listed for it in fixtures/contract-breaks.json."]);
-  const unraised = verdict(make(), make(), breaks([2, "Kind: value \"personal\" removed"])).errors;
-  assert.deepEqual(unraised, [`fixtures/contract-breaks.json lists a break for contract 2, but the contract is 1: Kind: value "personal" removed`]);
-});
-
-test("breaks listed for released versions are history", () => {
-  assert.deepEqual(verdict(make({ version: 2 }), make({ version: 2 }), breaks([1, "old"], [2, "older"])).errors, []);
-});
-
-test("each entry gives its version, the change as printed and why", () => {
-  const { errors } = verdict(make(), make(), { breaks: [{ contract: 2, change: "x" }] });
-  assert.match(errors[0], /each entry needs a whole-number contract, the change as printed, and why/);
-});
 
 test("the files must agree on the contract version", () => {
   const texts = Object.fromEntries(FILES.map((path) => [path, readFileSync(new URL(path, root), "utf8")]));

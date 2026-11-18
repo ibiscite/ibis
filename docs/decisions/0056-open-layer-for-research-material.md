@@ -65,9 +65,9 @@ Checked against `main` at 3613e88:
 - Records are CSL-JSON (`Record.csl`) plus a few Ibis fields: an opaque
   `ItemRef`, citation keys with their source, and fingerprints.
 - The wire contract has its own version (`ibis: 1`), is described by
-  `ibis schema`, changes only additively within a version, and has stable error
-  codes, recoveries and exit codes. A check against the newest release refuses
-  an unlisted break ([0028](0028-engine-first.md)).
+  `ibis schema`, and has error codes, recoveries and exit codes. It is unstable
+  until 1.0: breaks against the last release are listed, not blocked
+  ([0028](0028-engine-first.md)).
 - One engine with thin layers: CLI, JSON-RPC with LSP framing, MCP and the Agent
   Skill. Canonical requests in `fixtures/cases` run through every front end.
 - Agent writes are proposals the person confirms in Ibis, with a backup.
@@ -129,9 +129,9 @@ After the six foundation items:
    and that output is the interface step 4 exposes. Left: one whole-library
    read with its `revision`, which tools that mirror a library need first.
 2. **Plumbing and porcelain.** Built on 2026-11-17: [the CLI reference](../cli.md)
-   lists what programs may rely on and what may change. Each contract version
-   stays additive, with the support window that reference already gives; a
-   break raises the version and is listed ([0028](0028-engine-first.md)). Left: the
+   lists what programs may rely on and what may change. Until 1.0 any release
+   may break the contract, and its breaks are listed
+   ([0028](0028-engine-first.md)). Left: the
    engine and CLI limits above, measured and added to the performance checks,
    and one real outside use, such as a Pandoc filter or an agent tool that today
    reads Zotero itself.

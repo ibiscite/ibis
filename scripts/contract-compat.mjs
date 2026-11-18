@@ -4,9 +4,8 @@
 //   node scripts/contract-compat.mjs --base REF   # against any commit
 // The contract is what tools built on Ibis read: the engine schema, each
 // method's parameters and result, the MCP tools, and the CLI's commands,
-// options and exit codes. Every difference is additive or breaking. A breaking
-// one passes only when the same change raises the contract version and lists
-// it, word for word as printed here, in fixtures/contract-breaks.json.
+// options and exit codes. Every difference is reported as additive or
+// breaking. Before 1.0 nothing fails; see BLOCKING below.
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -16,7 +15,6 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 
 /** The files the contract is read from. */
 export const FILES = ["fixtures/engine-contract.schema.json", "fixtures/cli-schema.json", "fixtures/mcp-tools.json", "docs/cli.md"];
-export const BREAKS = "fixtures/contract-breaks.json";
 
 // --- Reading -----------------------------------------------------------------
 
@@ -416,36 +414,20 @@ export function compare(base, head) {
 
 // --- Deciding ----------------------------------------------------------------
 
-/** What fails, given both contracts and the list of breaks. */
-export function verdict(base, head, breaks) {
-  const errors = [];
+/**
+ * THE 1.0 SWITCH. Before the stable 1.0 the contract is unstable: every
+ * difference is reported and nothing fails (decision 0028). Set this to true
+ * at 1.0 to make a breaking difference, or a contract the check cannot read,
+ * fail land.sh and CI.
+ */
+export const BLOCKING = false;
+
+/** The differences as a report, and whether they fail. */
+export function verdict(base, head, blocking = BLOCKING) {
   const { breaking, additive } = compare(base, head);
-  const entries = breaks.breaks ?? [];
-  for (const entry of entries) {
-    if (!Number.isInteger(entry.contract) || typeof entry.change !== "string" || typeof entry.why !== "string" || !entry.why.trim()) {
-      errors.push(`${BREAKS}: each entry needs a whole-number contract, the change as printed, and why: ${show(entry)}`);
-    }
-  }
-  const listed = entries.filter((entry) => entry.contract === head.version).map((entry) => entry.change);
-  if (head.version < base.version) errors.push(`The contract version went down, from ${base.version} to ${head.version}.`);
-  if (head.version > base.version + 1) errors.push(`Raise the contract version by one per release: ${base.version} → ${base.version + 1}, not ${head.version}.`);
-  for (const entry of entries) {
-    if (entry.contract > head.version) errors.push(`${BREAKS} lists a break for contract ${entry.contract}, but the contract is ${head.version}: ${entry.change}`);
-  }
-  if (head.version === base.version) {
-    if (breaking.length) {
-      errors.push(
-        `Breaking changes to contract ${head.version}, which the last release already speaks. Raise CONTRACT_VERSION to ${head.version + 1}` +
-          ` and list each one in ${BREAKS} under contract ${head.version + 1} (decision 0028):\n${breaking.map((line) => `  ${line}`).join("\n")}`,
-      );
-    }
-  } else if (head.version === base.version + 1) {
-    const unlisted = breaking.filter((line) => !listed.includes(line));
-    if (unlisted.length) errors.push(`Breaking changes not listed in ${BREAKS} under contract ${head.version}:\n${unlisted.map((line) => `  ${line}`).join("\n")}`);
-    for (const change of listed) if (!breaking.includes(change)) errors.push(`${BREAKS} lists a break this change no longer makes: ${change}`);
-    if (!listed.length) errors.push(`The contract version was raised to ${head.version} with no break listed for it in ${BREAKS}.`);
-  }
-  return { errors, breaking, additive };
+  const list = (lines) => (lines.length ? lines.map((line) => `  ${line}`).join("\n") : "  none");
+  const report = `Breaking:\n${list(breaking)}\nAdditive:\n${list(additive)}`;
+  return { breaking, additive, report, fails: blocking && breaking.length > 0 };
 }
 
 // --- Running -----------------------------------------------------------------
@@ -472,20 +454,16 @@ function main(argv) {
   const files = (read) => Object.fromEntries(FILES.map((path) => [path, read(path)]));
   const before = contract(files((path) => git("show", `${base}:${path}`)));
   const after = contract(files((path) => readFileSync(join(root, path), "utf8")));
-  const breaks = JSON.parse(readFileSync(join(root, BREAKS), "utf8"));
-  const { errors, breaking, additive } = verdict(before, after, breaks);
-  console.log(`Contract ${after.version} against ${base} (contract ${before.version}): ${breaking.length} breaking, ${additive.length} additive.`);
-  if (errors.length) {
-    console.error(errors.join("\n"));
-    process.exitCode = 1;
-  }
+  const { breaking, additive, report, fails } = verdict(before, after);
+  console.log(`The contract against ${base}: ${breaking.length} breaking, ${additive.length} additive.\n${report}`);
+  if (fails) process.exitCode = 1;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     main(process.argv.slice(2));
   } catch (error) {
-    console.error(error.message);
-    process.exitCode = 1;
+    console.error(`Contract report skipped: ${error.message}`);
+    if (BLOCKING) process.exitCode = 1;
   }
 }
