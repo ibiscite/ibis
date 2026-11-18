@@ -30,6 +30,8 @@ pub use ibis_sources::identity;
 /// The PDF extractor's contract: what `ibis __extract-pdf` answers and the
 /// bounds the engine checks it against (decision 0055).
 pub use ibis_sources::pdf;
+/// The office child's contract: what `ibis __office` reads and answers.
+pub use ibis_sources::office;
 /// The file names a library chooser offers, and whether a dropped file is one.
 pub use ibis_sources::{library_file_extensions, names_a_library};
 pub use service::*;

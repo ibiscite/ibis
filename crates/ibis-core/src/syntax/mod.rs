@@ -8,6 +8,7 @@ use crate::contract::*;
 
 mod bibtex;
 pub(crate) mod escape;
+pub mod marker;
 pub(crate) mod read;
 mod render;
 pub mod scannable;

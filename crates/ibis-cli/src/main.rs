@@ -10,6 +10,13 @@ fn main() -> std::process::ExitCode {
     {
         return std::process::ExitCode::from(ibis::pdf_text::run_child(&arguments[2..]));
     }
+    // `ibis format`'s Word and OpenDocument child, the same way.
+    if arguments
+        .get(1)
+        .is_some_and(|argument| argument == ibis::office::CHILD_ARGUMENT)
+    {
+        return std::process::ExitCode::from(ibis::office::run_child(&arguments[2..]));
+    }
     let output = std::io::stdout();
     let mode = ibis::OutputMode::Streams {
         stdout: output.is_terminal(),

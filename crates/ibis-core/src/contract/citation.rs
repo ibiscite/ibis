@@ -392,6 +392,26 @@ fn is_false(value: &bool) -> bool {
     !value
 }
 
+/// One document's citations, in document order, and its reference list,
+/// formatted as one sequence (`ibis format`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DocumentCitations {
+    pub citations: Vec<Vec<DisplayRun>>,
+    pub entries: Vec<DocumentEntry>,
+    /// The style hangs each entry's later lines.
+    pub hanging_indent: bool,
+}
+
+/// One reference-list entry: its number or label in the margin, when the
+/// style aligns one there, and the rest.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DocumentEntry {
+    pub margin: Vec<DisplayRun>,
+    pub content: Vec<DisplayRun>,
+}
+
 /// Passive CSL layout, independent of HTML class names or CSS.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]

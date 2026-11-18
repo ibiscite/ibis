@@ -31,6 +31,10 @@ pub use formatting::{Cancellation, Formatting};
 mod prepared;
 mod receipt;
 pub use prepared::{CitationCommitError, PreparedCitation};
+mod document;
+pub use document::{
+    DocumentCitation, DocumentProblem, DocumentReply, DocumentRequest, KeyProblem,
+};
 mod project;
 mod reading;
 pub use ibis_sources::project::{Doubt, EntryRefusal, KeyCheck, ProjectProblem, ProjectRead};

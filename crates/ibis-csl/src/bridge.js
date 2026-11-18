@@ -268,7 +268,67 @@
   };
   const oneLine = (text) => text.replace(/\s*\n\s*/g, " ").trim();
   const wrapRtf = (text, bibliography) => `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n${bibliography ? text.split("\n").join("\\par\n") : text}\n}`;
+  // One document's citations as one sequence (`ibis format`): its own
+  // engine and unchanged style, so numbering, year letters and first and
+  // subsequent citations follow the document's order. A narrative citation is
+  // the author, then the rest with the author suppressed, as `cluster` writes it.
+  const document = (request, source) => {
+    const converted = processorItems(request);
+    if (!converted) return JSON.stringify({ status: "refused" });
+    activeItems = new Map(converted.map((item) => [item.id, item]));
+    engines.clear();
+    const engine = new CSL.Engine({ retrieveLocale: __ibisLocaleXml, retrieveItem: (id) => activeItems.get(id), uppercase_subtitles: request.sentence_titles }, source, request.locale ?? undefined, request.locale !== null);
+    engine.opt.development_extensions.throw_on_empty = true;
+    try {
+      const citations = [];
+      const add = (citationItems) => {
+        citations.push({ citationID: `ibis-${citations.length}`, citationItems, properties: { noteIndex: 0 } });
+        return citations.length - 1;
+      };
+      const groups = request.clusters.map((indices) => {
+        const cites = indices.map((index) => request.cites[index]);
+        if (cites.some((cite) => !cite)) throw unverified;
+        if (!(cites.length === 1 && cites[0].narrative)) return { cites, parts: [add(cites)] };
+        const { narrative, prefix, suffix, locator, label, ...cite } = cites[0];
+        return {
+          cites,
+          parts: [
+            add([{ ...cite, prefix, "author-only": true, "suppress-author": false }]),
+            add([{ ...cite, suffix, locator, label, "suppress-author": true, "author-only": false }]),
+          ],
+        };
+      });
+      const results = engine.rebuildProcessorState(citations, "html", []);
+      if (engine.tmp.citation_errors.length) throw unverified;
+      const written = new Map(results.map(([id, , text]) => [id, text]));
+      const out = groups.map(({ cites, parts }) => {
+        const owned = new Set(cites.flatMap((cite) => [cite.prefix, cite.suffix]).filter(Boolean));
+        const html = parts.map((index) => {
+          const text = written.get(citations[index].citationID);
+          if (typeof text !== "string") throw unverified;
+          return text;
+        }).join(" ");
+        return writeAffixes(engine, "html", html, (request.affixes ?? []).filter((affix) => owned.has(affix.placeholder)));
+      });
+      engine.output.checkNestedBrace = undefined;
+      const bibliography = engine.makeBibliography();
+      if (bibliography && bibliography[0].bibliography_errors.length) throw unverified;
+      return JSON.stringify({
+        status: "rendered",
+        citations: out,
+        entries: bibliography ? bibliography[1] : [],
+        hanging_indent: Boolean(bibliography && bibliography[0].hangingindent),
+      });
+    } catch (error) {
+      if (error !== unverified && !(error instanceof TypeError)) throw error;
+      return JSON.stringify({ status: "refused" });
+    } finally {
+      activeItems.clear();
+      literalLessThan = null;
+    }
+  };
   globalThis.__ibisFormat = (request, source) => {
+    if (request.clusters) return document(request, source);
     const converted = processorItems(request);
     if (!converted) return JSON.stringify({ status: "refused" });
     activeItems = new Map(converted.map((item) => [item.id, item]));
