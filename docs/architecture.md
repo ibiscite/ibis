@@ -181,6 +181,17 @@ Receipts, `--strict` and caller-supplied records are specified in the
 [CLI reference](cli.md#receipts-and-strict-citations); records open no library
 and never combine with `--keep-order`.
 
+`ibis format` (`Engine::format_file`) makes a finished copy of a Word or
+OpenDocument file. The office child (`ibis __office`, contract in
+`ibis_sources::office`, parsers in the command line's `office` module) reads
+the zip archive within fixed bounds and returns each paragraph's text; the
+Pandoc marker reader in `ibis_core::syntax::marker` shares the pasted-key
+reader's key and bracket rules; every key resolves in the open libraries;
+`ibis-csl` formats all markers as one document sequence (its own citeproc
+engine, unchanged style, so numbering and year letters are the document's);
+the child writes the copy, checking each replacement against its own reading,
+and the engine creates the output without replacing anything.
+
 One locator parser serves search, the Page field and the CLI (all 29 CSL terms, ranges, quoted labels; a typed label overrides the default type).
 
 A writing is an optional name, format and read-only `.bib` in `settings.json` ([decision 0042](decisions/0042-formats-apps-and-writings.md)); the engine remembers one per app, and CLI/editor clients select one explicitly. `ibis_engine::app_context::Owner` accepts one typed `ContextRequest` and returns the writing, format and bibliography observation together for the captured app. It owns writing edits, session-only selection, bibliography reads and stale-context refusals. The desktop adds native destination names and delivery facts, opens file dialogs and writes the clipboard. Editor requests carry their own context and never borrow the captured app's bibliography. Writings grant no paste authority and receipts never carry paths. Bibliography checks, `--strict` and stale-identity rules are in [writing commands](cli.md#writings).

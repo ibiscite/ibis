@@ -316,7 +316,7 @@ fn text_of(path: &Path) -> Vec<String> {
 const DRAFT: &str = concat!(
     r#"<w:p><w:r><w:t xml:space="preserve">Lanterns guide ships [@va</w:t></w:r><w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">le2024, p. 12]</w:t></w:r>"#,
     r#"<w:r><w:t xml:space="preserve">, and tides follow clouds [@vale2024tides; @fen2023].</w:t></w:r></w:p>"#,
-    r#"<w:p><w:r><w:t xml:space="preserve">Again [-@vale2024], while @fen2023 [ch. 3] disagrees.</w:t></w:r></w:p>"#,
+    r#"<w:p><w:r><w:t xml:space="preserve">Again [@vale2024], while [@fen2023, ch. 3] disagrees.</w:t></w:r></w:p>"#,
     r#"<w:p><w:r><w:t>[bibliography]</w:t></w:r></w:p>"#,
 );
 
@@ -336,7 +336,7 @@ fn a_word_draft_is_cited_in_apa_then_restyled_in_ieee_from_the_same_original() {
         apa[..2],
         [
             "Lanterns guide ships (Vale, 2024a, p. 12), and tides follow clouds (Fen, 2023; Vale, 2024b).",
-            "Again (2024a), while Fen (2023, Chapter 3) disagrees.",
+            "Again (Vale, 2024a), while (Fen, 2023, Chapter 3) disagrees.",
         ]
     );
     assert!(apa[2].starts_with("Fen, R. (2023). Clouds over invented hills."), "{apa:?}");
@@ -355,7 +355,7 @@ fn a_word_draft_is_cited_in_apa_then_restyled_in_ieee_from_the_same_original() {
     assert_eq!(status, 0, "{stdout}{stderr}");
     let ieee = text_of(&folder.path("ieee.docx"));
     // Numbers follow first citation, and so does the list.
-    assert!(ieee[0].starts_with("Lanterns guide ships [1, p. 12], and tides follow clouds [2], [3]."), "{ieee:?}");
+    assert_eq!(ieee[0], "Lanterns guide ships [1, p. 12], and tides follow clouds [2], [3].");
     assert!(ieee[2].starts_with("[1]\tA. Vale, Lanterns of the North"), "{ieee:?}");
     assert!(ieee[3].starts_with("[2]\tA. Vale, Tides of the South"), "{ieee:?}");
     assert!(ieee[4].starts_with("[3]\tR. Fen,"), "{ieee:?}");
@@ -376,14 +376,22 @@ fn an_opendocument_draft_gets_its_reference_list_at_the_end() {
     let folder = Folder::new("odt");
     std::fs::write(
         folder.path("draft.odt"),
-        odt(r#"<text:p>Clouds <text:span text:style-name="T1">[@fen</text:span>2023, pp. 3-4] gather.</text:p>"#),
+        odt(concat!(
+            r#"<text:p>Clouds <text:span text:style-name="T1">[@fen</text:span>2023, pp. 3-4] gather.</text:p>"#,
+            r#"<text:p>As @vale2024 [p. 2] says, and later [-@vale2024].</text:p>"#,
+        )),
     )
     .unwrap();
     let (status, stdout, stderr) = folder.run(&["format", "draft.odt", "-o", "final.odt"]);
     assert_eq!(status, 0, "{stdout}{stderr}");
     let text = text_of(&folder.path("final.odt"));
     assert_eq!(text[0], "Clouds (Fen, 2023, pp. 3–4) gather.");
-    assert!(text[1].starts_with("Fen, R. (2023)."), "{text:?}");
+    assert_eq!(text[1], "As Vale (2024, p. 2) says, and later (2024).");
+    assert!(text[2].starts_with("Fen, R. (2023)."), "{text:?}");
+    // A numeric style has no author to name in a sentence: refused, not guessed.
+    let (status, _, stderr) = folder.run(&["format", "draft.odt", "--style", "ieee", "-o", "ieee.odt"]);
+    assert_eq!(status, 3, "{stderr}");
+    assert!(stderr.contains("'vale2024'"), "{stderr}");
     let (status, _, stderr) = folder.run(&["format", "draft.odt", "-o", "final.docx"]);
     assert_eq!(status, 2, "{stderr}");
 }
@@ -404,15 +412,17 @@ fn every_missing_key_and_damaged_marker_is_named_and_nothing_is_written() {
     assert!(!folder.path("final.docx").exists());
     for expected in [
         "body paragraph 1, character 7, '[@nobody2020]': no open library has the key 'nobody2020'",
-        "body paragraph 1, character 27",
+        "body paragraph 1, character 27, '[@vale2024 @fen2023]': two keys need a ; between them",
         "two keys need a ; between them",
         "body paragraph 2, character 6",
         "the marker has no closing ]",
     ] {
         assert!(stderr.contains(expected), "{expected}\n{stderr}");
     }
-    let (status, _, stderr) = folder.run(&["format", "draft.docx", "-o", "notes.docx", "--style", "chicago-note-bibliography"]);
-    assert_ne!(status, 0, "{stderr}");
+    std::fs::write(folder.path("plain.docx"), docx(r#"<w:p><w:r><w:t>See [@fen2023].</w:t></w:r></w:p>"#)).unwrap();
+    let (status, _, stderr) = folder.run(&["format", "plain.docx", "-o", "notes.docx", "--style", "chicago-notes-bibliography"]);
+    assert_eq!(status, 3, "{stderr}");
+    assert!(stderr.contains("as footnotes"), "{stderr}");
 }
 
 #[test]

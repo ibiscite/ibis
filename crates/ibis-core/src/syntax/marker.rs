@@ -133,7 +133,7 @@ fn key_starts(text: &str) -> Vec<usize> {
 }
 
 /// Split at unescaped `;` outside braces.
-fn segments(body: &str) -> Vec<(usize, &str)> {
+fn segments(body: &str) -> Vec<&str> {
     let mut parts = Vec::new();
     let (mut from, mut braces, mut escaped) = (0, 0_usize, false);
     for (i, c) in body.char_indices() {
@@ -143,13 +143,13 @@ fn segments(body: &str) -> Vec<(usize, &str)> {
             '{' => braces += 1,
             '}' => braces = braces.saturating_sub(1),
             ';' if braces == 0 => {
-                parts.push((from, &body[from..i]));
+                parts.push(&body[from..i]);
                 from = i + 1;
             }
             _ => {}
         }
     }
-    parts.push((from, &body[from..]));
+    parts.push(&body[from..]);
     parts
 }
 
@@ -172,31 +172,26 @@ fn bracket(text: &str, start: usize, work: &mut Work<'_>) -> Option<Found> {
     if body.contains('[') || key_starts(body).is_empty() {
         return None;
     }
-    let problem = |kind, from: usize, to: usize| {
-        Some(Found::Problem(MarkerProblem {
-            kind,
-            start: start + 1 + from,
-            end: start + 1 + to,
-        }))
-    };
+    // A problem names the whole marker, as the person sees it.
+    let problem = |kind| Some(Found::Problem(MarkerProblem { kind, start, end }));
     let mut cites = Vec::new();
-    for (offset, segment) in segments(body) {
+    for segment in segments(body) {
         let keys = key_starts(segment);
         let Some(&at) = keys.first() else {
-            return problem(MarkerProblemKind::WithoutKey, offset, offset + segment.len());
+            return problem(MarkerProblemKind::WithoutKey);
         };
         if keys.len() > 1 {
-            return problem(MarkerProblemKind::TwoKeys, offset, offset + segment.len());
+            return problem(MarkerProblemKind::TwoKeys);
         }
         let (key, used) = bare_key(&segment[at + 1..], work);
         if key.is_empty() {
-            return problem(MarkerProblemKind::WithoutKey, offset, offset + segment.len());
+            return problem(MarkerProblemKind::WithoutKey);
         }
         let before = &segment[..at];
         let suppress_author = before.ends_with('-');
         let prefix = before.strip_suffix('-').unwrap_or(before);
         let Some((locator, suffix)) = notes(&segment[at + 1 + used..]) else {
-            return problem(MarkerProblemKind::Locator, offset, offset + segment.len());
+            return problem(MarkerProblemKind::Locator);
         };
         cites.push(MarkerCite {
             key: key.to_owned(),

@@ -698,7 +698,7 @@ mod tests {
             .cite_document(
                 &DocumentRequest {
                     citations: vec![citation(&[key("fen2023")])],
-                    style: "chicago-note-bibliography".into(),
+                    style: "chicago-notes-bibliography".into(),
                     output_locale: None,
                 },
                 &crate::Cancellation::default(),
