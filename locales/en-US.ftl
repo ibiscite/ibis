@@ -345,6 +345,11 @@ general-paste-description = Otherwise Ibis copies and you press { general-paste-
 # $list is the system's permission-list name, not an interface message code.
 general-paste-allowed = Allowed in Privacy & Security › { $list }
 general-paste-allowed-note = Ibis presses ⌘V once, only in the app you opened it from.
+general-paste-practice-title = Try one paste first
+general-paste-practice-why = Ibis copied your citation. Click in the field below and press ⌘V: once you allow it, Ibis does this for you, where you’re typing in your own app.
+general-paste-practice-field = Practice sentence
+general-paste-practice-done = That’s what Ibis does: the citation lands where you’re typing. Allow it below and Ibis presses ⌘V for you.
+general-paste-practice-skip = Skip
 general-paste-guide-title = Allow Ibis to paste for you
 general-paste-guide-why = To paste safely, Ibis needs Accessibility access to check which window has the keyboard, as well as permission to press ⌘V. It never reads what you type.
 general-paste-step-open = Click Open System Settings.

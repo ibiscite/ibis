@@ -447,6 +447,8 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
   settings.openSettingsFile ??= async () => null;
   // settings.json that does not parse: the engine's own Problem, as the picker gets it.
   if (scenario === "settings-broken") settings.formatSettings = () => Promise.reject({ code: "settings-invalid", message: { id: "app-settings-error-invalid", args: {} }, recovery: { action: "review-settings" }, focus: "settings" });
+  // A paste just refused for want of the grant: the practice paste comes before the ask.
+  if (scenario === "settings-paste") settings.pastePermission = async () => ({ pastes: true, needed: true, granted: false, list: "Accessibility" });
   if (scenario === "settings-newer") settings.formatSettings = async () => ({ apps: [], writings: [], unknown: { future_choice: "Enabled" } });
   // The states and tokens pages use the Settings window's base styles.
   const settingsWindow = scenario.startsWith("settings-") || scenario === "states" || scenario === "tokens" || scenario === "parts";

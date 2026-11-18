@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "../ui/Button";
+import { TextField } from "../ui/TextField";
 import { FileDrag } from "../ui/FileDrag";
 import { useDelayed } from "../ui/timers";
 import "../ui/PasteGuide.css";
@@ -49,10 +50,27 @@ export function usePastePermission(api: Pick<SettingsApi, "pastePermission">, ac
 /** The steps to allow pasting: what macOS asks, where the switch is, and a
  * live answer once both grants are on. Only a deliberate Open action navigates
  * to System Settings; permission reads never request a grant. */
-export function PasteGuide({ name, permission, onOpen, onDrag }: {
+export function PasteGuide({ name, permission, onOpen, onDrag, practice = false }: {
   name: string; permission: ReadPermission; onOpen: () => void; onDrag: () => Promise<void>;
+  /** A paste was just refused for want of the grant, so the citation is on the
+   * clipboard: the person tries one paste here, inside Ibis, before the ask. */
+  practice?: boolean;
 }) {
   const { text } = useInterfaceMessages();
+  // One practice paste, for this opening only: pasting it or Skip shows the ask.
+  // Ibis never reads the clipboard; the person's own ⌘V fills the field.
+  const [tried, setTried] = useState<"pasted" | "skipped" | null>(null);
+  const [sentence, setSentence] = useState("");
+  const practising = practice && !permission.granted && tried !== "skipped";
+  const trial = practising && <div className="ui-paste-guide-text">
+    <h3>{text("general-paste-practice-title")}</h3>
+    <p className="ui-paste-guide-note">{text("general-paste-practice-why")}</p>
+    <TextField label={text("general-paste-practice-field")} value={sentence} onChange={setSentence} autoFocus onPaste={() => setTried("pasted")} />
+    {tried === "pasted" ? <Status className="ui-paste-guide-status" data-done>{text("general-paste-practice-done")}</Status>
+      : <div className="ui-paste-guide-actions"><Button onPress={() => setTried("skipped")}>{text("general-paste-practice-skip")}</Button></div>}
+  </div>;
+  // Until the person pastes or skips, the practice stands in for the ask.
+  const asking = !(practising && tried === null);
   // Each Open starts its own wait before the hint that the switch is slow to show.
   const [opened, setOpened] = useState(0);
   const slow = useDelayed(opened > 0 && !permission.granted, STALE_HINT_MS, opened);
@@ -60,7 +78,8 @@ export function PasteGuide({ name, permission, onOpen, onDrag }: {
   const open = () => { setOpened((count) => count + 1); setDragFailed(false); onOpen(); };
   return (
     <div className="ui-paste-guide" data-granted={permission.granted || undefined}>
-      <div className="ui-paste-guide-art" aria-hidden="true">
+      {trial}
+      {asking && <><div className="ui-paste-guide-art" aria-hidden="true">
         <div className="ui-paste-guide-row">
           <span className="ui-paste-guide-icon" style={{ backgroundImage: `url(${appIcon})` }} />
           <span className="ui-paste-guide-name">{name}</span>
@@ -86,7 +105,7 @@ export function PasteGuide({ name, permission, onOpen, onDrag }: {
         {!permission.granted && <p className="ui-paste-guide-note">{text("general-paste-drag-fallback")}</p>}
         {dragFailed && !permission.granted && <Status className="ui-paste-guide-note" data-problem role="alert">{text("general-paste-drag-failed")}</Status>}
         {slow && <p className="ui-paste-guide-note">{text("general-paste-stale", { name })}</p>}
-      </div>
+      </div></>}
     </div>
   );
 }

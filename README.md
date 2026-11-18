@@ -45,7 +45,9 @@ Linux desktop app.
    Shift+Enter adds references to a citation.
 4. Choose the output beside search, then press Enter. macOS and Windows
    attempt to paste; when unavailable, Ibis copies and explains why. Linux
-   copies. The macOS permission guide is in Settings › General › Pasting.
+   copies. On a new Mac the first paste is copied and Ibis opens its permission
+   guide (Settings › General › Pasting), which first lets you try that one paste
+   into a practice field inside Ibis before asking for Accessibility.
 
 The format menu offers key syntaxes and formatted citations. A remembered
 format belongs to the app you came from; an unidentified app uses the default key
