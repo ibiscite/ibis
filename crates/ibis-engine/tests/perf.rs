@@ -6,6 +6,8 @@
 //! limit (docs/architecture.md › Performance checks). Window paint and the
 //! webview are outside this harness.
 #![cfg(not(debug_assertions))]
+// A measurement harness: any surprise should stop it loudly.
+#![allow(clippy::unwrap_used)]
 use ibis_core::contract::*;
 use ibis_engine::{Cancellation, Engine, Formatting, Method, request::KeyCitationRequest, request::SearchRequest};
 use serde_json::json;

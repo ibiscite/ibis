@@ -30,9 +30,11 @@ export const budgets = {
 // A regression is a median slower than the base by both the ratio and the
 // floor, so 1.0 ms becoming 1.3 ms is noise, not a failure.
 export const ratio = 1.2;
+// Maxima and the p95 of 30 formatting samples move by a third between runs of
+// the same code, so regressions read medians and the 252-sample typing p95.
 export const floors = {
-  open_ms: 50, first_search_ms: 3, summon_ms: 2, typing_p95_ms: 3, first_cite_ms: 15,
-  format_p95_ms: 15, refresh_ms: 75, copy_during_refresh_max_ms: 25, rss_mib: 15,
+  open_ms: 50, first_search_ms: 3, summon_ms: 2, typing_p50_ms: 2, typing_p95_ms: 3, first_cite_ms: 10,
+  format_p50_ms: 10, refresh_ms: 75, rss_mib: 15,
 };
 
 export function median(values) {
