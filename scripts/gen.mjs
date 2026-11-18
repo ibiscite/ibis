@@ -29,11 +29,13 @@ const END = "<!-- End of generated options. -->";
 export function derived(folder, read = (path) => readFileSync(join(root, path), "utf8"), headless = false) {
   const made = (name) => readFileSync(join(folder, name), "utf8");
   const cli = section(read("docs/cli.md"), BEGIN, END, made("cli-options.md"));
-  const errors = JSON.parse(made("cli-errors.json")).map(({ code, exit }) => `| ${exit} | \`${code}\` |\n`).join("");
+  const surface = made("cli-surface.json");
+  const errors = JSON.parse(surface).errors.map(({ code, exit }) => `| ${exit} | \`${code}\` |\n`).join("");
   return {
     "fixtures/engine-contract.schema.json": made("engine-contract.schema.json"),
     "fixtures/mcp-tools.json": made("mcp-tools.json"),
     "fixtures/cli-schema.json": made("cli-schema.json"),
+    "fixtures/cli-surface.json": surface,
     "docs/cli.md": section(cli, "<!-- gen:errors -->", "<!-- /gen:errors -->", `\n| Exit | Error code |\n| --- | --- |\n${errors}\n`),
     ...(headless ? {} : { "apps/desktop/src/bindings.ts": bindings(JSON.parse(made("desktop-contract.json"))) }),
   };

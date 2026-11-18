@@ -17,6 +17,9 @@ use text::Projection;
 pub use text::TextPart;
 pub use values::{DoiLink, ExportName, PublicUrl, Verbatim};
 
+/// Projects the bibliographic fields for a particular output.
+pub type FieldProjection = fn(Map<String, Value>) -> CitableFields;
+
 /// Bibliographic metadata allowed to leave a record. Construction applies the
 /// privacy filter once; callers can read or serialize it, never mutate it.
 #[derive(Debug, serde::Serialize)]
@@ -40,9 +43,15 @@ pub struct CitableFields {
 impl CitableFields {
     /// Apply note overrides, remove private fields and links, and reject embedded
     /// device references or malformed shapes hiding data inside a CSL variable.
-    pub fn new(mut fields: Map<String, Value>) -> Self {
+    pub fn new(fields: Map<String, Value>) -> Self {
+        Self::with_path_filter(fields, |_| false)
+    }
+
+    /// Apply an output's extra path check to decoded metadata as it is projected.
+    pub fn with_path_filter(mut fields: Map<String, Value>, is_private_path: fn(&str) -> bool) -> Self {
+        let project = |value: &mut Value, keep_markup| project_scalar(value, keep_markup, is_private_path);
         let source_id = fields.remove("id").and_then(|mut id| {
-            project_scalar(&mut id, false)?;
+            project(&mut id, false)?;
             id.as_str()
                 .filter(|id| !id.is_empty() && id.chars().all(|c| c.is_alphanumeric() || matches!(c, '-' | '_')))
                 .map(str::to_owned)
@@ -69,7 +78,7 @@ impl CitableFields {
         }
         let mut rich = BTreeMap::new();
         let mut export_names = BTreeMap::new();
-        let scalar = |value: &mut Value| project_scalar(value, false).is_some();
+        let scalar = |value: &mut Value| project(value, false).is_some();
         fields.retain(|name, value| {
             if !is_variable(name) {
                 false
@@ -98,23 +107,7 @@ impl CitableFields {
                     .is_some_and(|raw| !raw.is_empty());
                 parts.retain(|name, value| {
                     if name == "date-parts" {
-                        value.as_array_mut().is_some_and(|dates| {
-                            dates.iter_mut().all(|date| {
-                                date.as_array_mut().is_some_and(|parts| {
-                                    parts.iter_mut().all(|part| {
-                                        if !scalar(part) {
-                                            return false;
-                                        }
-                                        if let Some(number) =
-                                            part.as_str().and_then(|part| part.trim().parse::<i64>().ok())
-                                        {
-                                            *part = json!(number);
-                                        }
-                                        part.is_number()
-                                    })
-                                })
-                            })
-                        })
+                        normalize_date_parts(value)
                     } else {
                         scalar(value)
                     }
@@ -125,7 +118,7 @@ impl CitableFields {
                 }
                 !parts.is_empty()
             } else if matches!(value, Value::String(_) | Value::Number(_)) {
-                let Some(projected) = project_scalar(value, true) else {
+                let Some(projected) = project(value, true) else {
                     return false;
                 };
                 if value.is_string() && RICH_TEXT.contains(&name.as_str()) {
@@ -137,7 +130,7 @@ impl CitableFields {
             }
         });
         let checked_url = |mut value: Value| {
-            project_scalar(&mut value, false)?;
+            project(&mut value, false)?;
             PublicUrl::new(value.as_str()?)
         };
         if let Some(url) = source_url
@@ -217,11 +210,13 @@ const RICH_TEXT: [&str; 6] = [
     "volume-title-short",
 ];
 
-fn project_scalar(value: &mut Value, keep_markup: bool) -> Option<Vec<TextPart>> {
+fn project_scalar(value: &mut Value, keep_markup: bool, is_private_path: fn(&str) -> bool) -> Option<Vec<TextPart>> {
     match value {
         Value::String(source) => {
             let projected = Projection::new(source);
-            if points_to_device(&projected.plain) || points_to_device(&projected.attributes) {
+            if points_to_device_with(&projected.plain, is_private_path)
+                || points_to_device_with(&projected.attributes, is_private_path)
+            {
                 return None;
             }
             *source = projected.plain;
@@ -255,6 +250,68 @@ const NAME_PARTS: [&str; 9] = [
     "parse-names",
 ];
 const DATE_PARTS: [&str; 5] = ["date-parts", "season", "circa", "literal", "raw"];
+
+fn normalize_date_parts(value: &mut Value) -> bool {
+    let Some(dates) = value.as_array_mut() else {
+        return false;
+    };
+    dates.truncate(2);
+    dates.retain_mut(|date| {
+        let Some(parts) = date.as_array_mut() else {
+            return false;
+        };
+        let precision = date_precision(parts);
+        parts.truncate(precision);
+        precision > 0
+    });
+    // CSL ranges need both endpoints at the same precision.
+    if let [Value::Array(start), Value::Array(end)] = dates.as_mut_slice() {
+        let precision = start.len().min(end.len());
+        start.truncate(precision);
+        end.truncate(precision);
+    }
+    !dates.is_empty()
+}
+
+fn date_precision(parts: &mut [Value]) -> usize {
+    let Some(year) = parts.first_mut().and_then(integer_date_part) else {
+        return 0;
+    };
+    let Some(month) = parts
+        .get_mut(1)
+        .and_then(integer_date_part)
+        .filter(|month| (1..=24).contains(month))
+    else {
+        return 1;
+    };
+    let last_day = match month {
+        2 if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        // Citeproc uses 13–24 for seasons, which have no day of month.
+        _ => return 2,
+    };
+    if parts
+        .get_mut(2)
+        .and_then(integer_date_part)
+        .is_some_and(|day| (1..=last_day).contains(&day))
+    {
+        3
+    } else {
+        2
+    }
+}
+
+fn integer_date_part(part: &mut Value) -> Option<i64> {
+    if let Some(number) = part.as_i64() {
+        return Some(number);
+    }
+    project_scalar(part, false)?;
+    let number = part.as_str()?.trim().parse().ok()?;
+    *part = json!(number);
+    Some(number)
+}
 
 /// The numeric year and optional source letters of an already literal year.
 /// Every alphabetic suffix is data here, including calendar and era names.
@@ -330,11 +387,7 @@ pub fn literal_date(value: &str) -> bool {
 // Resolve that priority once for note overrides and CSL dates, before projecting
 // sort data. Curly delimiters need explicit normalization; ASCII stays native.
 fn normalize_raw_date(date: &mut Map<String, Value>, has_raw: bool) {
-    if !has_raw
-        || date
-            .get("date-parts")
-            .is_some_and(|parts| !parts.as_array().is_some_and(Vec::is_empty))
-    {
+    if !has_raw || date.contains_key("date-parts") {
         return;
     }
     // Source raw wins even if normalizing its line breaks left it empty.
@@ -348,7 +401,7 @@ fn normalize_raw_date(date: &mut Map<String, Value>, has_raw: bool) {
         date.insert("literal".into(), literal);
     } else {
         // Keep the exact raw string for native parsing, discarding only fields
-        // that processor would replace (literal, circa, season, empty parts).
+        // that processor would replace (literal, circa and season).
         date.retain(|part, _| part == "raw");
     }
 }
@@ -361,12 +414,17 @@ fn is_variable(name: &str) -> bool {
 
 /// Inspect the fully decoded projection, refusing values beyond the decoding bound.
 pub(crate) fn points_to_device(value: &str) -> bool {
+    points_to_device_with(value, |_| false)
+}
+
+fn points_to_device_with(value: &str, is_private_path: fn(&str) -> bool) -> bool {
     let Some(value) = text::decode_for_privacy(value) else {
         return true;
     };
     let path = |word: &str| {
         let bytes = word.as_bytes();
         (word.starts_with('/') || word.starts_with("~/")) && word.len() > 2
+            || is_private_path(word)
             || word.starts_with("\\\\")
             || (bytes.len() > 3 && bytes[0].is_ascii_alphabetic() && matches!(&bytes[1..3], b":\\" | b":/"))
             || word

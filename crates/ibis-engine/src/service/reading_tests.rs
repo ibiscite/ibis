@@ -286,6 +286,9 @@ fn a_files_pdf_is_read_by_the_child_and_only_while_the_file_holds_the_reference(
     let found = outline(&engine, "atlas").unwrap();
     assert_eq!(found.attachments[0].text, TextAvailability::Missing);
     std::fs::write(directory.path().join("atlas.pdf"), "%PDF-1.7\n").unwrap();
+    // The file's presence is library content. Reload now, so a watch that
+    // notices it later republishes equal content and keeps the id.
+    engine.reload_files(None, &Cancellation::default()).unwrap();
     let found = outline(&engine, "atlas").unwrap();
     let pdf = &found.attachments[0];
     assert_eq!(pdf.text, TextAvailability::Available);
@@ -319,4 +322,37 @@ fn a_files_pdf_is_read_by_the_child_and_only_while_the_file_holds_the_reference(
         engine.find_in(&request, &Cancellation::default()).err().map(|e| e.code),
         Some(ErrorCode::NotFound)
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn rereading_an_unchanged_library_keeps_attachment_ids_and_a_failed_read_says_so() {
+    use std::os::unix::fs::PermissionsExt;
+    let (engine, directory, path) = engine_with("@book{atlas,title={Invented atlas},file={atlas.pdf}}\n");
+    let program = directory.path().join("invented-ibis");
+    let answer = "#!/bin/sh\ncat >/dev/null\nprintf '{\"read\":{\"pages\":1,\"labels\":null,\"text\":[\"Invented lantern.\"]}}'\n";
+    std::fs::write(&program, answer).unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+    // The file's presence is library content: take the id once it is read.
+    std::fs::write(directory.path().join("atlas.pdf"), "%PDF-1.7\n").unwrap();
+    engine.reload_files(None, &Cancellation::default()).unwrap();
+    let engine = engine.with_pdf_reader(program.clone());
+    let id = outline(&engine, "atlas").unwrap().attachments[0].id.clone();
+    let read = |id: &str| {
+        engine.read_attachment(
+            &ReadRequest {
+                attachment: id.into(),
+                ..ReadRequest::default()
+            },
+            &Cancellation::default(),
+        )
+    };
+    // Reloading and reopening publish the library again with the same content.
+    engine.reload_files(None, &Cancellation::default()).unwrap();
+    engine.open_file(&path, &Cancellation::default()).unwrap();
+    assert_eq!(outline(&engine, "atlas").unwrap().attachments[0].id, id);
+    assert_eq!(read(&id).unwrap().value.pages[0].text, "Invented lantern.");
+    // A reader failure is reported as one, not as a stale id.
+    std::fs::write(&program, "#!/bin/sh\nexit 1\n").unwrap();
+    assert_eq!(read(&id).err().map(reason), Some(Some(ErrorReason::NoAttachmentText)));
 }

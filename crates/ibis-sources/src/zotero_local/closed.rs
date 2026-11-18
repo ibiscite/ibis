@@ -310,6 +310,12 @@ pub fn with_local_file<T: Send + 'static>(
     })
 }
 
+/// Identify a local file by its open handle, refusing multiply linked files.
+pub(crate) fn unlinked_file_identity(file: &std::fs::File, metadata: &std::fs::Metadata) -> Option<[u64; 2]> {
+    let (identity, links) = platform::file_identity(file, metadata)?;
+    (links == 1).then_some(identity)
+}
+
 #[derive(Clone)]
 struct Control {
     deadline: Instant,

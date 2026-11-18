@@ -1,5 +1,6 @@
 //! Native-only preparation/commit; the serialized method surface has no clipboard operation.
 use super::{Cancellation, Engine, ProjectAssessment, ProjectAssessmentState, ProjectKey, ProjectRead, error};
+use ibis_core::citable::{CitableFields, FieldProjection};
 use ibis_core::contract::*;
 
 pub struct PreparedCitation {
@@ -204,7 +205,7 @@ impl PreparedCitation {
             output: output.clone(),
             ..self.request.clone()
         };
-        let result = engine.cite_resolved(&self.context, &resolve(&request)?, cancel)?;
+        let result = engine.cite_resolved(&self.context, &resolve(&request)?, CitableFields::new, cancel)?;
         if self.sample && result.copy_content(request.items.len()).is_some() {
             sample_marked(result, request.items.len())
         } else {
@@ -308,6 +309,15 @@ impl Engine {
         every_library: bool,
         cancel: &Cancellation,
     ) -> Result<PreparedCitation, EngineError> {
+        self.prepare_with_fields(request, every_library, CitableFields::new, cancel)
+    }
+    pub(super) fn prepare_with_fields(
+        &self,
+        request: &CitationRequest,
+        every_library: bool,
+        project_fields: FieldProjection,
+        cancel: &Cancellation,
+    ) -> Result<PreparedCitation, EngineError> {
         cancel.check()?;
         let state = self.state()?;
         let context = super::receipt::CitationContext::capture(&state, request);
@@ -340,7 +350,7 @@ impl Engine {
                 .take()
                 .or_else(|| pick.annotation.as_ref().and_then(held));
         }
-        let result = self.cite_resolved(&context, &resolved, cancel)?;
+        let result = self.cite_resolved(&context, &resolved, project_fields, cancel)?;
         let prepared = PreparedCitation {
             context,
             zotero_generation: uses_zotero.then_some(state.zotero_generation),

@@ -26,6 +26,32 @@ The desktop interface uses **Project Fluent** (`@fluent/bundle` 0.19.1 and
 2.0 ([upstream licence](https://github.com/projectfluent/fluent.js/blob/main/LICENSE)).
 Exact package versions and integrity hashes are in `apps/desktop/pnpm-lock.yaml`.
 
+Ibis's CSL conformance test driver adapts code from Frank Bennett's
+`citeproc-test-runner` under the MIT License.
+[Upstream test driver](https://github.com/Juris-M/citeproc-test-runner/blob/5fe8142784874cd814735e3d5554137520820c0f/lib/sys.js)
+
+## citeproc-test-runner — MIT License
+
+Copyright (c) Frank Bennett
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
 ## Project Fluent — Apache License 2.0
 
                                  Apache License

@@ -6,20 +6,42 @@ use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
 use ibis_core::destination::CopyReason;
+use objc2::rc::Retained;
 use objc2_app_kit::{NSApplication, NSPasteboard, NSRunningApplication, NSWorkspace};
 use objc2_core_graphics::{
     CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID, CGEventType, CGPreflightPostEventAccess,
 };
 use objc2_foundation::MainThreadMarker;
-use tauri::{AppHandle, Manager};
-use tauri_nspanel::objc2::rc::Retained;
-use tauri_plugin_global_shortcut::Code;
 
 use super::capture::{Front, SelectedText};
 use super::{
-    CopyProof, DeliveryRequest, Desk, InputPress, PendingPost, PostDesk, PostRequest, PostResult, Selection,
-    check_input_since, checked_post,
+    CopyProof, DeliveryRequest, Desk, InputPress, LastTarget, PendingPost, PostDesk, PostRequest, PostResult,
+    Selection, check_input_since, checked_post,
 };
+
+/// What the app around the picker supplies to a macOS paste. Each call is
+/// made where the paste made it before it moved here, so locks, threads and
+/// deadlines are unchanged.
+pub trait Host: Clone + Send + Sync + 'static {
+    /// Queue `work` on the main thread; `false` if it cannot be queued.
+    fn run_on_main(&self, work: impl FnOnce() + Send + 'static) -> bool;
+    /// The capture and proofs this host's picker shares with every paste.
+    fn last_target(&self) -> &LastTarget;
+    /// Whether the picker window is hidden, read inline on the main thread
+    /// without dispatching or waiting on it.
+    fn picker_hidden(&self) -> bool;
+    /// Open Settings on the paste permission guide.
+    fn open_paste_guide(&self);
+    /// The key that types V with ⌘ on the active layout, read on the main thread.
+    fn paste_key(&self) -> Option<u16>;
+    /// The person's paste choice for `id` and whether paste is on, or `None`
+    /// when either cannot be read.
+    fn paste_choice(
+        &self,
+        id: &ibis_core::destination::AppId,
+        identity: Option<&str>,
+    ) -> Option<(Option<ibis_core::destination::AppPaste>, bool)>;
+}
 
 pub(super) mod diagnostics;
 mod focus;
@@ -41,11 +63,11 @@ pub(super) fn observe_write_stamp() -> (super::SafetyStamp, Option<diagnostics::
     (stamp, trace.snapshot())
 }
 
-pub(super) fn accessibility_granted() -> bool {
+pub fn accessibility_granted() -> bool {
     focus::trusted()
 }
 
-pub(super) fn request_accessibility() {
+pub fn request_accessibility() {
     focus::request_trust();
 }
 
@@ -84,9 +106,9 @@ fn active_app() -> Option<Front> {
 
 /// Capture only a globally verified window owned by the active target. Ibis in
 /// front keeps the old capture, so showing another Ibis window cannot replace it.
-pub(super) fn frontmost(app: &AppHandle) -> Option<Front> {
+pub fn frontmost(host: &impl Host) -> Option<Front> {
     let own = i32::try_from(std::process::id()).ok()?;
-    let main = tauri_nspanel::objc2::MainThreadMarker::new()?;
+    let main = MainThreadMarker::new()?;
     let own_window_key = NSApplication::sharedApplication(main)
         .keyWindow()
         .is_some_and(|window| window.isKeyWindow());
@@ -97,7 +119,7 @@ pub(super) fn frontmost(app: &AppHandle) -> Option<Front> {
     let activation_allowed = !own_window_key
         && active
             .as_ref()
-            .is_some_and(|front| front.pid != own && manual_accessibility_allowed(app, front));
+            .is_some_and(|front| front.pid != own && manual_accessibility_allowed(host, front));
     // Reading follows paste policy too: copy-only, refused and unapproved apps
     // are never asked for text, and paste off turns the whole feature off.
     capture_front(active, own, own_window_key, |pid| {
@@ -115,24 +137,17 @@ pub(super) fn frontmost(app: &AppHandle) -> Option<Front> {
     })
 }
 
-fn manual_accessibility_allowed(app: &AppHandle, front: &Front) -> bool {
+fn manual_accessibility_allowed(host: &impl Host, front: &Front) -> bool {
     use ibis_core::destination::{AppId, System};
     let Some(id) = &front.id else { return false };
     let id = AppId {
         system: System::Macos,
         id: id.clone(),
     };
-    let Ok(preference) = app
-        .state::<crate::destination::AppMemory>()
-        .paste_for(&id, front.app_identity.as_deref())
-    else {
+    let Some((preference, enabled)) = host.paste_choice(&id, front.app_identity.as_deref()) else {
         return false;
     };
-    let settings = ibis_engine::settings::load(&app.state::<crate::preferences::SettingsFile>().path);
-    let Ok(settings) = settings.cites() else {
-        return false;
-    };
-    manual_accessibility_policy(front, id, preference, settings.portable.paste.unwrap_or(true))
+    manual_accessibility_policy(front, id, preference, enabled)
 }
 
 fn manual_accessibility_policy(
@@ -210,18 +225,18 @@ pub(super) fn capture_front(
 /// Settings opens on the permission guide at most once per run.
 static ASKED: AtomicBool = AtomicBool::new(false);
 
-pub(super) struct Mac {
-    app: AppHandle,
+pub(super) struct Mac<H> {
+    host: H,
     trace: diagnostics::Trace,
     started: Duration,
     began: Instant,
     stamp_unavailable: bool,
 }
 
-impl Mac {
-    pub(super) fn new(app: &AppHandle, proof: Option<&CopyProof>, began: Instant) -> Self {
+impl<H: Host> Mac<H> {
+    pub(super) fn new(host: &H, proof: Option<&CopyProof>, began: Instant) -> Self {
         Self {
-            app: app.clone(),
+            host: host.clone(),
             trace: diagnostics::Trace::new(proof.and_then(|p| p.captured.as_ref()?.diagnostic.clone())),
             started: safety::elapsed(),
             began,
@@ -273,16 +288,16 @@ impl Mac {
     fn on_main_for<T: Send + 'static>(&self, limit: Duration, work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
         let (sender, receiver) = mpsc::channel();
         let trace = self.trace.clone();
-        self.app
-            .run_on_main_thread(move || {
-                let _ = sender.send(trace.with(work));
-            })
-            .ok()?;
+        if !self.host.run_on_main(move || {
+            let _ = sender.send(trace.with(work));
+        }) {
+            return None;
+        }
         receiver.recv_timeout(limit).ok()
     }
 }
 
-impl Desk for Mac {
+impl<H: Host> Desk for Mac<H> {
     type Proof = CopyProof;
 
     fn delivery_began(&self) -> Instant {
@@ -307,7 +322,7 @@ impl Desk for Mac {
 
     fn ask_to_post(&self) {
         if !ASKED.swap(true, Ordering::SeqCst) {
-            crate::settings_window::open(&self.app, Some(crate::settings_window::Page::Paste));
+            self.host.open_paste_guide();
         }
     }
 
@@ -335,16 +350,13 @@ impl Desk for Mac {
         )
         .queued(Instant::now());
         let limit = ASK_LIMIT.min(request.deadline.saturating_duration_since(Instant::now()));
-        let app = self.app.clone();
+        let host = self.host.clone();
         self.on_main_for(limit, move || {
             if Instant::now() >= request.deadline {
                 return Err(CopyReason::PasteUnavailable);
             }
-            let owns = || app.state::<super::LastTarget>().owns(&request);
-            let hidden = || {
-                app.get_webview_window("main")
-                    .is_some_and(|window| window.is_visible().ok() == Some(false))
-            };
+            let owns = || host.last_target().owns(&request);
+            let hidden = || host.picker_hidden();
             if !owns() {
                 return Err(CopyReason::TargetChanged);
             }
@@ -397,7 +409,7 @@ impl Desk for Mac {
         let limit = request.deadline.saturating_duration_since(Instant::now());
         let pending = Arc::new(PendingPost::default());
         let queued = Arc::clone(&pending);
-        let app = self.app.clone();
+        let host = self.host.clone();
         self.on_main_for(limit, move || {
             let Some(main) = MainThreadMarker::new() else {
                 return PostResult::Unavailable;
@@ -407,7 +419,7 @@ impl Desk for Mac {
             }
             // Resolve the layout and create the events before the final
             // guards. No separate main-thread wait may follow the flag.
-            let Some(key) = crate::picker::command_key(Code::KeyV, crate::picker::typing()) else {
+            let Some(key) = host.paste_key() else {
                 return PostResult::Refused;
             };
             let source = CGEventSource::new(CGEventSourceStateID::Private);
@@ -423,11 +435,11 @@ impl Desk for Mac {
                 Err(failure) => return failure.result(),
             };
             queued.run(|| {
-                app.state::<super::LastTarget>().post_if_current(&request, || {
+                host.last_target().post_if_current(&request, || {
                     checked_post(
                         &Ready {
                             _main: main,
-                            app: &app,
+                            host: &host,
                             down: &down,
                             up: &up,
                             request: &request,
@@ -447,16 +459,16 @@ impl Desk for Mac {
 }
 
 /// Constructed and used only inside the final main-thread task.
-struct Ready<'a> {
+struct Ready<'a, H> {
     _main: MainThreadMarker,
-    app: &'a AppHandle,
+    host: &'a H,
     down: &'a CGEvent,
     up: &'a CGEvent,
     request: &'a PostRequest,
     probe: safety::PostProbe,
 }
 
-impl PostDesk for Ready<'_> {
+impl<H: Host> PostDesk for Ready<'_, H> {
     fn post_event_granted(&self) -> bool {
         diagnostics::stage("permission.post_event");
         CGPreflightPostEventAccess()
@@ -473,11 +485,9 @@ impl PostDesk for Ready<'_> {
     fn current(&self, _presentation: u64) -> bool {
         diagnostics::stage("presentation");
         // The caller holds LastTarget's ownership lock through checked_post.
-        // Ready requires the main-thread marker: locked Tauri handles this
-        // query inline on that thread, never dispatching or waiting on it.
-        self.app
-            .get_webview_window("main")
-            .is_some_and(|window| window.is_visible().ok() == Some(false))
+        // Ready requires the main-thread marker: the host answers this query
+        // inline on that thread, never dispatching or waiting on it.
+        self.host.picker_hidden()
     }
 
     fn frontmost(&self, refresh: impl FnOnce() -> Result<(), CopyReason>) -> Result<Option<Front>, CopyReason> {

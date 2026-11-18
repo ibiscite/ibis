@@ -1,4 +1,4 @@
-//! Classify cached mount tables before probing a path. `statfs(path)` can
+//! Classify the cached mount table before probing a path. `statfs(path)` can
 //! itself perform a network RPC, so it cannot be the locality gate.
 
 use std::collections::VecDeque;
@@ -9,6 +9,12 @@ use std::path::{Component, Path, PathBuf};
 
 use super::{ClosedError, Control};
 
+// SAFETY: one libc call that fills a buffer this module owns.
+#[cfg(target_os = "macos")]
+#[allow(unsafe_code)]
+mod macos;
+
+#[cfg(any(target_os = "linux", test))]
 const MAX_TABLE_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_MOUNTS: usize = 32_768;
 
@@ -137,26 +143,16 @@ fn decode_mount_path(bytes: &[u8]) -> Option<Vec<u8>> {
     Some(result)
 }
 
+/// A macOS mount list as [`macos::mounts`] gives it.
 #[cfg(any(target_os = "macos", test))]
-fn macos_table(bytes: &[u8]) -> Option<Vec<Mount>> {
-    if bytes.len() as u64 > MAX_TABLE_BYTES {
-        return None;
-    }
-    let value: serde_json::Value = serde_json::from_slice(bytes).ok()?;
-    let rows = value.pointer("/storage-system-information/filesystem")?.as_array()?;
-    if rows.len() > MAX_MOUNTS {
-        return None;
-    }
+fn macos_table(rows: Vec<(OsString, String)>) -> Option<Vec<Mount>> {
     let mounts = rows
-        .iter()
-        .map(|row| {
-            let point = PathBuf::from(row.get("mounted-on")?.as_str()?);
-            if !point.is_absolute() {
-                return None;
-            }
-            Some(Mount {
+        .into_iter()
+        .map(|(point, kind)| {
+            let point = PathBuf::from(point);
+            point.is_absolute().then(|| Mount {
                 point,
-                local: local_kind(row.get("type")?.as_str()?),
+                local: local_kind(&kind),
             })
         })
         .collect::<Option<Vec<_>>>()?;
@@ -178,19 +174,12 @@ fn cached(control: &Control) -> Result<Vec<Mount>, ClosedError> {
 
 #[cfg(target_os = "macos")]
 fn cached(control: &Control) -> Result<Vec<Mount>, ClosedError> {
-    use std::process::Command;
-    // Apple file_cmds/df/df.c: no file operands + -n uses
-    // getmntinfo(MNT_NOWAIT), and never calls statfs on the listed mounts.
-    // Typed JSON avoids ambiguity from whitespace in devices/mount paths.
-    let bytes = super::platform::output(
-        Command::new("/bin/df")
-            .args(["--libxo", "json", "-n", "-a", "-Y"])
-            .env("LC_ALL", "C")
-            .env_remove("LIBXO_OPTIONS"),
-        control,
-    )
-    .map_err(|e| e.context(ClosedError::UnsafeSource))?;
-    let mounts = macos_table(&bytes).ok_or(ClosedError::UnsafeSource);
+    control.check()?;
+    // One system call, not `df`: a read never depends on starting a
+    // process, which fails when the machine is out of processes.
+    let mounts = macos::mounts(MAX_MOUNTS)
+        .and_then(macos_table)
+        .ok_or(ClosedError::UnsafeSource);
     control.check()?;
     mounts
 }
@@ -338,9 +327,10 @@ mod tests {
     }
 
     #[test]
-    fn macos_json_refuses_case_and_unicode_aliases_conservatively() {
-        let bytes = br#"{"storage-system-information":{"filesystem":[{"type":"apfs  ","mounted-on":"/"},{"type":"smbfs","mounted-on":"/Volumes/Remote"},{"type":"nfs","mounted-on":"/Volumes/\u03c2"}]}}"#;
-        let mounts = macos_table(bytes).unwrap_or_else(|| panic!("table"));
+    fn macos_mounts_refuse_case_and_unicode_aliases_conservatively() {
+        let rows = [("/", "apfs"), ("/Volumes/Remote", "smbfs"), ("/Volumes/\u{3c2}", "nfs")]
+            .map(|(point, kind)| (OsString::from(point), kind.to_owned()));
+        let mounts = macos_table(rows.to_vec()).unwrap_or_else(|| panic!("table"));
         assert!(!eligible(Path::new("/volumes/remote/Zotero"), &mounts));
         assert!(!eligible(Path::new("/Volumes/σ/Zotero"), &mounts));
         assert!(eligible(Path::new("/Users/研究/Zotero"), &mounts));

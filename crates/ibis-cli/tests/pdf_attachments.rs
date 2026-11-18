@@ -239,3 +239,28 @@ fn contradicting_pdf_labels_give_no_cite_pages_in_outline_read_or_find_in() {
     let found = library.json(&["find-in", id, "lantern"]);
     assert_eq!(found["data"]["passages"][0]["cite_page"], Value::Null);
 }
+
+#[test]
+fn share_previews_then_writes_a_pack_and_never_replaces_it() {
+    let library = Library::new("share");
+    let (status, preview, stderr) = library.run(&["share", "atlas2026", "--pdfs"]);
+    assert_eq!(status, 0, "{preview}{stderr}");
+    assert!(preview.contains("PDFs/Lee 2026 - An Invented Atlas.pdf\t"), "{preview}");
+    assert!(
+        preview.contains("3 files") && preview.contains("Add --to PATH"),
+        "{preview}"
+    );
+    let pack = library.root.join("pack.zip");
+    let written = library.json(&["share", "atlas2026", "--pdfs", "--to", pack.to_str().unwrap()]);
+    assert_eq!(written["data"]["written"], true, "{written}");
+    assert_eq!(written["data"]["files"].as_array().unwrap().len(), 3);
+    assert!(
+        !written.to_string().contains(library.root.to_str().unwrap()),
+        "{written}"
+    );
+    let size = std::fs::metadata(&pack).unwrap().len();
+    let (status, stdout, stderr) = library.run(&["share", "atlas2026", "--to", pack.to_str().unwrap()]);
+    assert_eq!(status, 3, "{stdout}{stderr}");
+    assert!(stderr.contains("already there"), "{stderr}");
+    assert_eq!(std::fs::metadata(&pack).unwrap().len(), size);
+}

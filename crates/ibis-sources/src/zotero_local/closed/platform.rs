@@ -294,6 +294,26 @@ fn regular(file: File) -> Result<File, ClosedError> {
     Ok(file)
 }
 
+/// Identity and link count from an opened file, without resolving its path again.
+pub(super) fn file_identity(file: &File, metadata: &Metadata) -> Option<([u64; 2], u64)> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let _ = file;
+        Some(([metadata.dev(), metadata.ino()], metadata.nlink()))
+    }
+    #[cfg(windows)]
+    {
+        let _ = metadata;
+        windows::file_identity(file)
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (file, metadata);
+        None
+    }
+}
+
 /// Query existing SQLite byte-range locks; F_GETLK never obtains a lock.
 pub(super) fn passive(file: &File) -> Result<(), ClosedError> {
     #[cfg(unix)]

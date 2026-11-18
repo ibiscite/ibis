@@ -242,6 +242,7 @@ impl EngineError {
                 ErrorReason::NoAttachmentText => R::ReviewLibrary,
                 ErrorReason::AttachmentOutsideLibrary => R::ReviewSettings,
                 ErrorReason::NoSuchPages => R::EditInput,
+                ErrorReason::DestinationExists | ErrorReason::DestinationUnwritable => R::EditInput,
             };
             return RecoveryInfo::new(&format!("reason-{}", name(reason)), recovery);
         }

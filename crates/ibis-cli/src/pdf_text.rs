@@ -16,7 +16,8 @@ use std::io::{Read, Write};
 
 /// The most one stream may inflate to: page content, object and font streams.
 const MAX_STREAM_BYTES: usize = 64 * 1024 * 1024;
-/// Address space on Linux, a backstop for a stream bomb.
+/// Address space on Linux, a hard backstop behind the parent's memory
+/// ceiling (`ibis_engine::pdf::MAX_MEMORY_BYTES`).
 #[cfg(unix)]
 const MAX_MEMORY_BYTES: u64 = 3 * 1024 * 1024 * 1024;
 /// Processor seconds, a backstop behind the parent's ten-second deadline.
@@ -63,8 +64,9 @@ pub fn child(arguments: &[OsString], mut input: impl Read, mut output: impl Writ
 }
 
 /// Lower the child's own limits before parsing: no core dumps, processor
-/// seconds and, on Linux, address space. The parent's deadline, the per-stream
-/// inflation cap and the file-size cap bound the rest everywhere.
+/// seconds and, on Linux, address space. The parent's deadline and memory
+/// ceiling, the per-stream inflation cap and the file-size cap bound the rest
+/// everywhere.
 #[cfg(unix)]
 fn limit_resources() -> nix::Result<()> {
     use nix::sys::resource::{Resource, getrlimit, setrlimit};

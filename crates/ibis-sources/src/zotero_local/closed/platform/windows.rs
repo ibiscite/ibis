@@ -1,12 +1,13 @@
 //! Win32 source-locality, process and free-space checks. Cache files use core's creator.
 use super::{ClosedError, Control, drive_path};
 use std::mem::size_of;
-use std::os::windows::ffi::OsStrExt;
+use std::os::windows::{ffi::OsStrExt, io::AsRawHandle};
 use std::path::Path;
 use std::ptr::null_mut;
 use windows_sys::Win32::Foundation::{CloseHandle, ERROR_NO_MORE_FILES, GetLastError, HANDLE, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::Storage::FileSystem::{
-    GetDiskFreeSpaceExW, GetDriveTypeW, GetFileAttributesW, INVALID_FILE_ATTRIBUTES,
+    BY_HANDLE_FILE_INFORMATION, GetDiskFreeSpaceExW, GetDriveTypeW, GetFileAttributesW, GetFileInformationByHandle,
+    INVALID_FILE_ATTRIBUTES,
 };
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
@@ -30,6 +31,20 @@ impl Drop for Handle {
         // SAFETY: this wrapper owns a valid, non-pseudo handle, closed once.
         unsafe { CloseHandle(self.0) };
     }
+}
+
+/// Identity and link count of an already opened file.
+pub(in crate::zotero_local::closed) fn file_identity(file: &std::fs::File) -> Option<([u64; 2], u64)> {
+    let mut info = BY_HANDLE_FILE_INFORMATION::default();
+    // SAFETY: the borrowed file keeps its handle open and info is writable.
+    if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) } == 0 {
+        return None;
+    }
+    let index = (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow);
+    Some((
+        [u64::from(info.dwVolumeSerialNumber), index],
+        u64::from(info.nNumberOfLinks),
+    ))
 }
 
 fn wide(path: &Path) -> Result<Vec<u16>, ClosedError> {

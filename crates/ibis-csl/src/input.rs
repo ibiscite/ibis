@@ -1,5 +1,5 @@
 use crate::{FormatError, Limits, catalog};
-use ibis_core::citable::CitableFields;
+use ibis_core::citable::{CitableFields, FieldProjection};
 use ibis_core::citation::{self, ItemSupport};
 use ibis_core::contract::*;
 use serde::Serialize;
@@ -224,7 +224,7 @@ pub(crate) fn prepare(
         return Err(FormatError::UnsupportedStyle);
     };
     let resolved = ResolvedOutput::new(style, request.output_locale.as_deref())?;
-    prepare_resolved(snapshot, request, limits, &resolved)
+    prepare_resolved(snapshot, request, limits, &resolved, CitableFields::new)
 }
 
 /// Compile only trusted formatting material, without waiting for a library.
@@ -250,6 +250,7 @@ pub(crate) fn prepare_resolved(
     request: &CitationRequest,
     limits: &Limits,
     resolved: &ResolvedOutput,
+    project_fields: FieldProjection,
 ) -> Result<Prepared, FormatError> {
     let style = &*resolved.style;
     let traits = style.traits;
@@ -333,7 +334,7 @@ pub(crate) fn prepare_resolved(
                 remaining = remaining.saturating_sub(bytes.len());
                 let value: serde_json::Map<String, Value> =
                     serde_json::from_slice(&bytes).map_err(|_| FormatError::InvalidRequest)?;
-                entry.insert(processor_fields(&CitableFields::new(value))?)
+                entry.insert(processor_fields(&project_fields(value))?)
             }
         };
         if style.sentence_titles
@@ -429,14 +430,7 @@ pub(crate) fn prepare_resolved(
             id.clone()
         } else {
             let id = format!("ibis-{}", items.len());
-            let mut value = record.clone();
-            // Private sort metadata never changes the canonical source date or
-            // its rendering. The same year-letter parser owns source detection
-            // and this numeric sort projection.
-            let sorts = date_sorts(record);
-            if !sorts.is_empty() {
-                value.insert("ibis-date-sort".into(), Value::Object(sorts));
-            }
+            let mut value = with_date_sorts(record);
             // Source identities and keys never become JavaScript object lookup keys.
             value.insert("id".into(), json!(id));
             items.push(Value::Object(value));
@@ -617,6 +611,26 @@ fn processor_fields(fields: &CitableFields) -> Result<serde_json::Map<String, Va
         );
     }
     Ok(value)
+}
+
+/// The record the processor reads. Private sort metadata never changes the
+/// canonical source date or its rendering. The same year-letter parser owns
+/// source detection and this numeric sort projection.
+fn with_date_sorts(record: &serde_json::Map<String, Value>) -> serde_json::Map<String, Value> {
+    let mut value = record.clone();
+    let sorts = date_sorts(record);
+    if !sorts.is_empty() {
+        value.insert("ibis-date-sort".into(), Value::Object(sorts));
+    }
+    value
+}
+
+/// One source record as the processor receives it, without its id.
+#[cfg(test)]
+pub(crate) fn processor_item(
+    csl: serde_json::Map<String, Value>,
+) -> Result<serde_json::Map<String, Value>, FormatError> {
+    processor_fields(&CitableFields::new(csl)).map(|record| with_date_sorts(&record))
 }
 
 fn record_controls<'a>(values: impl Iterator<Item = &'a Value>) -> bool {
