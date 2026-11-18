@@ -9,6 +9,7 @@ import german from "../../../../locales/de.ftl?raw";
 import arabic from "../../../../locales/ar.ftl?raw";
 import { PICKER_IDS, PICKER_VARIABLES } from "./picker";
 import { SETTINGS_IDS } from "./settings";
+import { setKeyWords } from "../keys";
 
 /** The interface languages, by the tag Rust's `catalogue::Language` writes.
  * Never inferred from the citation language: a style keeps its own. Digits
@@ -46,7 +47,7 @@ const IDS = [
   "shortcuts-action-choose-source", "shortcuts-action-reveal-source", "shortcuts-action-source", "shortcuts-action-change-last", "shortcuts-action-open", "shortcuts-action-copy", "shortcuts-action-paste", "shortcuts-action-copy-only", "shortcuts-action-add", "shortcuts-action-move", "shortcuts-action-pick", "shortcuts-action-peek", "shortcuts-action-escape",
   "shortcuts-action-format", "shortcuts-action-more", "shortcuts-action-pin", "shortcuts-action-keys", "shortcuts-action-settings", "shortcuts-action-quit", "shortcuts-action-undo", "shortcuts-action-text-size", "shortcuts-action-citation-move", "shortcuts-action-citation-remove", "shortcuts-action-citation-reorder", "shortcuts-action-citation-open", "shortcuts-action-citation-focus",
   "shortcuts-action-menu-move", "shortcuts-action-menu-ends", "shortcuts-action-menu-choose", "shortcuts-action-menu-leave", "shortcuts-or",
-  "key-enter", "key-escape", "key-home", "key-end", "key-tab", "key-space", "key-backspace", "key-delete", "key-plus", "key-minus", "key-ctrl", "key-alt", "key-shift", "key-super", "key-click", "key-with-click",
+  "key-enter", "key-escape", "key-home", "key-end", "key-tab", "key-space", "key-backspace", "key-delete", "key-plus", "key-minus", "key-ctrl", "key-alt", "key-shift", "key-super", "key-click", "key-click-held",
   "about-automatic", "about-automatic-description", "about-check", "about-check-label", "about-checking", "about-check-failed", "about-check-newest", "about-check-busy", "about-mission", "about-updates", "about-links", "about-website", "about-source", "about-problem", "about-licences", "about-free", "about-copied", "about-copy-failed", "about-version", "about-unavailable",
 ] as const;
 export type MessageId = typeof IDS[number];
@@ -141,6 +142,14 @@ export const interfaceLocale = () => current.locale;
 
 /** The picker's words, outside React: one lookup in this window's catalogue. */
 export const say: InterfaceMessages["text"] = (id, variables, audience) => current.text(id, variables, audience);
+
+/** Keys named by a word, in this window's language: German writes Strg, Pos1 and Leertaste. */
+const KEY_WORDS: Readonly<Record<string, MessageId>> = {
+  Enter: "key-enter", Esc: "key-escape", Home: "key-home", End: "key-end", Tab: "key-tab", Space: "key-space",
+  Backspace: "key-backspace", Delete: "key-delete", Plus: "key-plus", Minus: "key-minus",
+  Ctrl: "key-ctrl", Alt: "key-alt", Shift: "key-shift", Super: "key-super", Click: "key-click", click: "key-click-held",
+};
+setKeyWords((label) => KEY_WORDS[label] ? say(KEY_WORDS[label]) : label);
 
 /** First-strong isolation for a name inside a sentence, so a right-to-left name keeps its place. */
 export function isolate(name: string) {

@@ -1,4 +1,4 @@
-import { say, type MessageId } from "./i18n";
+import type { MessageId } from "./i18n";
 import type { SHORTCUT_ACTIONS, SHORTCUT_REGIONS } from "./i18n/settings";
 import { currentPlatform } from "./platform";
 
@@ -81,14 +81,11 @@ const NAMED: Record<string, [mac: string, other: string]> = {
  * Ctrl+Alt+Shift elsewhere. Anything else is the key, and stays last. */
 const MODIFIER_ORDER = { mac: ["⌃", "⌥", "⇧", "⌘"], other: ["Ctrl", "Alt", "Shift", "Super"] };
 
-/** Keys named by a word, in the window's language (German writes Strg and
- * Pos1); symbols and letters are the same everywhere. */
-const KEY_WORDS: Readonly<Record<string, MessageId>> = {
-  Enter: "key-enter", Esc: "key-escape", Home: "key-home", End: "key-end", Tab: "key-tab", Space: "key-space",
-  Backspace: "key-backspace", Delete: "key-delete", Plus: "key-plus", Minus: "key-minus",
-  Ctrl: "key-ctrl", Alt: "key-alt", Shift: "key-shift", Super: "key-super",
-};
-const keyWord = (label: string) => KEY_WORDS[label] ? say(KEY_WORDS[label]) : label;
+/** Keys named by a word (Ctrl, Home, Space, click), in English until the app
+ * gives their names in its language (i18n). The website shares this file and
+ * keeps English; symbols and letters are the same everywhere. */
+let keyWord = (label: string): string => label;
+export function setKeyWords(name: (label: string) => string) { keyWord = name; }
 
 /** Display order only; accelerator matching retains the original binding. */
 function joinKeyLabels(keys: string[], mac: boolean): string {
@@ -107,7 +104,7 @@ const isClick = (accelerator: string) => /(^|\+)Click$/.test(accelerator);
 export function keyLabel(accelerator: string, mac: boolean): string {
   if (isClick(accelerator)) {
     const held = accelerator.slice(0, -"Click".length).replace(/\+$/, "");
-    return held ? say("key-with-click", { keys: keyLabel(held, mac), platform: mac ? "macos" : "other" }) : say("key-click");
+    return held ? `${keyLabel(held, mac)}${mac ? "-" : "+"}${keyWord("click")}` : keyWord("Click");
   }
   // "+" separates keys, so a lone "+" or a trailing one is the key itself.
   const parts = accelerator === "+" ? ["+"] : accelerator.split(/\+(?!$)/);

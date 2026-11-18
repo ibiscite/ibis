@@ -488,11 +488,7 @@ key-alt = Alt
 key-shift = Umschalt
 key-super = Super
 key-click = Klick
-key-with-click =
-    { $platform ->
-        [macos] { $keys }-Klick
-       *[other] { $keys }+Klick
-    }
+key-click-held = Klick
 
 about-automatic = Automatisch nach Updates suchen
 about-automatic-description = Liest einige Male am Tag eine kleine Update-Datei von GitHub.

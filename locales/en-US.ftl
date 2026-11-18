@@ -495,12 +495,8 @@ key-alt = Alt
 key-shift = Shift
 key-super = Super
 key-click = Click
-# $keys: the keys held while clicking, such as ⌘ or Ctrl.
-key-with-click =
-    { $platform ->
-        [macos] { $keys }-click
-       *[other] { $keys }+click
-    }
+# After the keys held while clicking: ⌘-click, Ctrl+click.
+key-click-held = click
 
 about-automatic = Check for updates automatically
 about-automatic-description = Reads a small update file from GitHub a few times a day.

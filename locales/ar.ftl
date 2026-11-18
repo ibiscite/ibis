@@ -488,11 +488,7 @@ key-alt = Alt
 key-shift = Shift
 key-super = Super
 key-click = نقرة
-key-with-click =
-    { $platform ->
-        [macos] { $keys }-نقرة
-       *[other] { $keys }+نقرة
-    }
+key-click-held = نقرة
 
 about-automatic = التحقق من وجود تحديثات تلقائيًا
 about-automatic-description = يقرأ ملف تحديث صغيرًا من GitHub بضع مرات في اليوم.
