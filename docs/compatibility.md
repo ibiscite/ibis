@@ -142,6 +142,7 @@ text means; it is not certification of every writing app.
 | LaTeX, Overleaf | BibLaTeX, Natbib or LaTeX keys | Matching project `.bib`. |
 | Typst | Typst keys | Matching bibliography. |
 | Word, LibreOffice, Google Docs, Pages, email | Formatted text | Static citations; they do not join a managed bibliography or update with a document's style. |
+| Word (`.docx`), LibreOffice (`.odt`) | Pandoc keys, then `ibis format` | A finished copy with citations and a reference list in any in-text style; rerun on the original to restyle. |
 | Zotero RTF/ODF Scan | `scannable-cite` markers | References read from Zotero, then processed by Zotero's scan tools. |
 
 Ibis also writes org-cite, MyST, ConTeXt and other key syntaxes. Supported
@@ -150,6 +151,15 @@ unnumbered reference entry; note styles give a full first note. Ibis cannot
 determine a document's numbering, ibid. or year-letter disambiguation.
 A scan marker being generated does not prove a round trip through a particular
 Zotero or word-processor version.
+
+`ibis format` was tested with invented `.docx` and `.odt` files built by its
+tests: markers split across runs and spans, repeated works, two works by one
+author in one year, locators, APA then IEEE from the same original, and
+refusals for missing keys, damaged markers, existing outputs and hostile
+archives. Its copies were opened by LibreOffice 26.8 on Ubuntu (converted
+headlessly to PDF and read back as text). Footnotes, headers, footers, comments
+and text boxes are not formatted. Microsoft Word itself has not opened a copy
+in these tests.
 
 ## Editors (Cite as You Write)
 

@@ -8,6 +8,8 @@ mod csl_json;
 mod exported;
 mod file;
 pub mod identity;
+pub(crate) mod child;
+pub mod office;
 pub mod pdf;
 pub mod project;
 pub mod reading;

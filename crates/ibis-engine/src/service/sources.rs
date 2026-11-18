@@ -225,6 +225,7 @@ impl Engine {
             resources: Arc::new(resources),
             watch_files: false,
             pdf: self.pdf.clone(),
+            office: self.office.clone(),
             attachment_text_outside_library: self.attachment_text_outside_library,
         };
         let mut expected = base;

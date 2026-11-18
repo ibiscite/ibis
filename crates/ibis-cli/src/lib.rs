@@ -14,10 +14,12 @@ mod agents;
 mod app_libraries;
 mod completions;
 mod doctor;
+mod format;
 #[cfg(test)]
 mod generated;
 mod human;
 mod keys;
+pub mod office;
 mod out;
 pub mod pdf_text;
 mod proposals;
@@ -579,6 +581,7 @@ fn command() -> Command {
         .subcommand(agents::command())
         .subcommand(settings_backup::command())
         .subcommand(writings::command())
+        .subcommand(format::command())
         .subcommand(proposals::command())
         .subcommand(
             Command::new("completions").about("Print shell completions").arg(
@@ -628,9 +631,10 @@ pub fn run<R: BufRead, W: Write + Send, E: Write>(
 ) -> u8 {
     match Engine::new() {
         Ok(engine) => {
-            // PDFs are parsed by this same executable, in a child process.
+            // PDFs and office documents are parsed by this same executable,
+            // in a child process.
             let engine = match std::env::current_exe() {
-                Ok(program) => engine.with_pdf_reader(program),
+                Ok(program) => engine.with_pdf_reader(program.clone()).with_office_reader(program),
                 Err(_) => engine,
             };
             run_engine(engine, arguments, input, output, errors, mode, Defaults::App)
@@ -1223,6 +1227,9 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
         ));
     }
     let names = opened?;
+    if name == "format" {
+        return Ok(Execution::Result(local(format::run(engine, args, errors)?), None));
+    }
     if name == "serve" {
         return Ok(Execution::Stdio(
             match ibis_engine::server::serve(engine.clone(), input, output) {
@@ -1284,7 +1291,7 @@ fn open_libraries(
         .and_then(|call| call.get_one::<String>("method"));
     let reads_app = matches!(
         name,
-        "search" | "show" | "cite" | "entry" | "libraries" | "outline" | "read" | "find-in"
+        "search" | "show" | "cite" | "entry" | "libraries" | "outline" | "read" | "find-in" | "format"
     ) || called.is_some_and(|called| {
         matches!(
             called.as_str(),

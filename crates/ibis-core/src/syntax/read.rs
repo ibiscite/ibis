@@ -398,7 +398,7 @@ fn json<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
     })
 }
 
-fn pandoc_key_start(before: &str) -> bool {
+pub(super) fn pandoc_key_start(before: &str) -> bool {
     before
         .strip_suffix('-')
         .unwrap_or(before)
@@ -439,7 +439,7 @@ fn pandoc<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
     Some(Citation { keys, rest, explicit })
 }
 
-fn pandoc_bracket<'a>(text: &'a str, work: &mut Work<'_>) -> (&'a str, &'a str) {
+pub(super) fn pandoc_bracket<'a>(text: &'a str, work: &mut Work<'_>) -> (&'a str, &'a str) {
     let mut rest = text;
     let mut depth = 1;
     while let Some(c) = rest.chars().next() {
@@ -470,17 +470,27 @@ fn pandoc_bracket<'a>(text: &'a str, work: &mut Work<'_>) -> (&'a str, &'a str) 
     (text, "")
 }
 
-fn at_key<'a>(after: &'a str, work: &mut Work<'_>) -> (&'a str, &'a str) {
-    if let Some(after) = after.strip_prefix('{') {
+/// The key after an `@`, and where its token ends: after a braced key's
+/// closing brace, or before the character that ends a plain key. A plain key
+/// leaves trailing sentence punctuation out, so the token may be longer.
+pub(super) fn bare_key<'a>(after: &'a str, work: &mut Work<'_>) -> (&'a str, usize) {
+    if let Some(inner) = after.strip_prefix('{') {
         // Braced Pandoc keys are literal, including backslashes. The writer
         // rejects braces in keys, so a backslash cannot hide their closing brace.
-        let end = work.find(after, |c| c == '}').unwrap_or(after.len());
-        return (&after[..end], after.get(end + 1..).unwrap_or(""));
+        let end = work.find(inner, |c| c == '}').unwrap_or(inner.len());
+        return (&inner[..end], (end + 2).min(after.len()));
     }
     let end = work
         .find(after, |c: char| c.is_whitespace() || ";,[]{}()\"'".contains(c))
         .unwrap_or(after.len());
-    let key = after[..end].trim_end_matches(['.', ':', '!', '?']);
+    (after[..end].trim_end_matches(['.', ':', '!', '?']), end)
+}
+
+fn at_key<'a>(after: &'a str, work: &mut Work<'_>) -> (&'a str, &'a str) {
+    let (key, end) = bare_key(after, work);
+    if after.starts_with('{') {
+        return (key, &after[end..]);
+    }
     // Attached Typst supplements belong to this citation, not the pasted list.
     let rest = &after[end..];
     (
