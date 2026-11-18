@@ -115,11 +115,15 @@ function run(command, args, options = {}) {
 // that differ.
 export function build(directory) {
   const env = { ...process.env, CARGO_TARGET_DIR: process.env.CARGO_TARGET_DIR ?? join(root, "target") };
-  const out = run("cargo", ["test", "-p", "ibis-engine", "--locked", "--release", "--test", "perf", "--no-run", "--message-format=json"],
-    { cwd: directory, env, stdio: ["ignore", "pipe", "inherit"] });
-  const artifact = out.split("\n").filter(Boolean).map((line) => JSON.parse(line))
-    .find((item) => item.reason === "compiler-artifact" && item.target?.name === "perf" && item.executable);
-  if (!artifact) throw new Error("the perf harness did not build");
+  const result = spawnSync("cargo", ["test", "-p", "ibis-engine", "--locked", "--release", "--test", "perf", "--no-run", "--message-format=json"],
+    { cwd: directory, env, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "inherit"] });
+  if (result.error) throw result.error;
+  const messages = result.stdout.split("\n").filter((line) => line.startsWith("{")).map((line) => JSON.parse(line));
+  const artifact = messages.find((item) => item.reason === "compiler-artifact" && item.target?.name === "perf" && item.executable);
+  if (result.status !== 0 || !artifact) {
+    const error = messages.find((item) => item.message?.level === "error")?.message.message;
+    throw new Error(`the harness does not build${error ? `: ${error}` : ""}`);
+  }
   return artifact.executable;
 }
 
