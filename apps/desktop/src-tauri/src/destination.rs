@@ -94,6 +94,9 @@ pub(crate) struct PickerDestination {
     pub(crate) writing_context: Option<String>,
     /// The engine's answer to whether the format palette offers Projects.
     pub(crate) offers_projects: bool,
+    /// How many references this app's reference list holds: those cited into
+    /// it since Ibis opened. Paste Reference List is offered once there are any.
+    pub(crate) cited_here: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -353,6 +356,7 @@ pub(crate) fn present(app: &AppHandle, context: &ibis_engine::app_context::Conte
             context_version,
             writing_context,
             offers_projects,
+            cited_here: 0,
         };
     };
     let can_paste = crate::paste::intends_paste(app, context.paste_enabled);
@@ -363,6 +367,11 @@ pub(crate) fn present(app: &AppHandle, context: &ibis_engine::app_context::Conte
     let ordinary = lookup(&id).is_none_or(|entry| entry.safety == PasteSafety::Normal);
     let paste = ordinary.then(|| policy.ok().flatten()).flatten();
     let paste_question = lookup(&id).is_none() && paste.is_none() && can_choose_paste;
+    let cited_here = app
+        .state::<crate::session_references::SessionReferences>()
+        .lock()
+        .cited_here(&id.normalized())
+        .len() as u32;
     PickerDestination {
         app: Some(name),
         app_id: Some(id.normalized()),
@@ -379,6 +388,7 @@ pub(crate) fn present(app: &AppHandle, context: &ibis_engine::app_context::Conte
         context_version,
         writing_context,
         offers_projects,
+        cited_here,
     }
 }
 

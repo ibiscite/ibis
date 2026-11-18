@@ -14,6 +14,6 @@ export const formatAnswer = (id: string, from: FormatFrom = "app"): FormatChoice
 export function fixtureDestination(destination: Partial<PickerDestination>): PickerDestination {
   return { app: null, app_id: null, app_identity: null, unreadable: false,
     can_paste: false, paste: null, paste_question: false, can_choose_paste: false,
-    ...destination, find_open: destination.find_open ?? false, usual_format: destination.usual_format ?? "apa", offers_projects: destination.offers_projects ?? false,
+    ...destination, find_open: destination.find_open ?? false, usual_format: destination.usual_format ?? "apa", offers_projects: destination.offers_projects ?? false, cited_here: destination.cited_here ?? 0,
     format: destination.format ?? noFormatChosen };
 }

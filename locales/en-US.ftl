@@ -951,6 +951,15 @@ picker-type-to-find-hint = Search by title, author, year, citation key or DOI.
 picker-more = More
 picker-keep-my-order = Keep My Order
 picker-change-last-citation = Change Last Citation
+picker-paste-reference-list = Paste Reference List
+picker-copy-reference-list = Copy Reference List
+picker-reference-list-title = Reference list
+# $app: the app's own name. The list holds this app's citations from this run of Ibis.
+picker-reference-list-help =
+    { $count ->
+        [one] The reference you cited in { $app } since Ibis opened
+       *[other] The { $count } references you cited in { $app } since Ibis opened
+    }
 picker-forget-recent = Forget Recent Citations
 picker-change-citation = Change Citation · { $format }
 picker-keep-open = Keep Window Open
@@ -1313,6 +1322,7 @@ palette-words-format = style output apa pandoc latex syntax share export bibtex 
 palette-words-share = share export send copy references
 palette-words-peek = details preview quick look info
 palette-words-change-last = edit replace previous citation again
+palette-words-reference-list = bibliography references works cited list entries paste copy
 palette-words-citation-focus = focus token reference citation
 palette-words-citation-edit = edit page locator details citation
 palette-words-citation-move-left = move reorder previous token reference citation

@@ -37,6 +37,8 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
     chooseSource: () => void; revealSource: (() => void) | null;
     /** Offered once this app has a citation from this run of Ibis. */
     changeLast?: (() => void) | null;
+    /** Paste Reference List: this app's citations from this run, as entries. */
+    referenceList?: { label: string; run: () => void } | null;
     /** The highlighted reference's details, as ⌘Y shows them. */
     peek?: (() => void) | null;
     forgetRecent?: (() => void) | null; quit: () => void;
@@ -73,6 +75,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
       ...action("format", say("picker-change-format"), COMMAND_ICONS.format, actions.format, keyed("format")),
       ...action("peek", say("palette-peek"), "peek", actions.peek, keyed("peek")),
       ...action("change-last", say("picker-change-last-citation"), COMMAND_ICONS.changeLast, actions.changeLast, keyed("changeLast")),
+      ...action("reference-list", actions.referenceList?.label ?? "", "history", actions.referenceList?.run),
       ...citation?.tokens ? [
         ...action("citation-focus", say("key-go-to-citation"), "arrow-down", citation.focus, keyed("citationFocus")),
         ...action("citation-edit", say("key-edit-citation"), COMMAND_ICONS.inspector, citation.edit, keyed("inspector")),

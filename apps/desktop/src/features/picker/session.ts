@@ -87,6 +87,8 @@ export type SessionEvent =
   | { type: "toggle"; result?: SearchResult; locator?: Readonly<Locator> | null; prefix?: string }
   | { type: "undo-reference" | "expire-removal"; removal: RemovedReference }
   | { type: "remove-reference"; reference: CitationReference }
+  /** This app's reference list: its references, each as its entry, then delivered as Enter would. */
+  | { type: "reference-list"; references: readonly SearchResult[] }
   /** Move one reference a place along `shown`, the line's order, which a style may have sorted. */
   | { type: "move-reference"; reference: CitationReference; shown: readonly string[]; step: -1 | 1 }
   | { type: "reference"; reference: CitationReference; change: CitationDetailsChange; selectedOnly?: boolean; initialSelection?: readonly CitationReference[] }
@@ -270,6 +272,13 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
         || last.project && last.format !== s.view?.format) return [s, []];
       return [changed(s, { selected: new Map(last.references.map((reference) => [idKey(reference.id), reference])), removed: null, selectionChanged: true,
         query: "", interpretLocators: true, fromDocument: false, active: 0, copyError: null, keepOrder: last.keepOrder, changing: [last.text, ...last.earlier ?? []] }), []];
+    }
+    case "reference-list": {
+      if (!event.references.length || s.hiddenAt !== null) return [s, []];
+      const references = event.references.map((reference): CitationReference => ({ ...reference, form: "bibliography-only" }));
+      const next = changed(s, { selected: new Map(references.map((reference) => [idKey(reference.id), reference])), removed: null, selectionChanged: true,
+        query: "", interpretLocators: true, fromDocument: false, active: 0, copyError: null, keepOrder: false, changing: null });
+      return reduceEvent(next, { type: "enter", choice: choiceKey(references) });
     }
     case "forget-last": return [{ ...s, lastCitations: new Map(), changing: null, flights: s.flights.map((f) => ({ ...f, appId: null })) }, []];
     case "cancel": return [s.pendingCopy ? { ...s, pendingCopy: null } : s, []];

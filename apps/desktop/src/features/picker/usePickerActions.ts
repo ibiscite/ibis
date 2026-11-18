@@ -104,6 +104,16 @@ export function usePickerActions({
     if (lastCitation.format !== format) destination.chooseOnce(lastCitation.format);
     send({ type: "change-last" });
   };
+  /** Paste Reference List: offered once this app has citations from this run of
+   * Ibis, in a style (a key format's list is the document's own bibliography). */
+  const referenceList = showCitations && writesStyle && destination.citedHere > 0 ? {
+    label: say(canPaste ? "picker-paste-reference-list" : "picker-copy-reference-list"),
+    help: say("picker-reference-list-help", { count: destination.citedHere, app: destination.app ?? "" }),
+    run: () => {
+      leaveOverlays();
+      void api.sessionReferences().then((view) => send({ type: "reference-list", references: view.here }), () => undefined);
+    },
+  } : null;
   const toggleHighlighted = () => {
     toggle(highlighted);
     focusHome();
@@ -111,5 +121,5 @@ export function usePickerActions({
   // The keys sheet lists Change Last Citation only while there is one to change, as More does.
   // Keys outputs always keep the order, so only a style offers the choice.
   const keepOrder = writesStyle ? { checked: state.keepOrder, toggle: () => send({ type: "keep-order", value: !state.keepOrder }) } : null;
-  return { delivery, canChooseFormat: destination.canChooseFormat, keepOrder, bindings: bindings.filter((binding) => (lastCitation || binding.action !== "changeLast") && (destination.canChooseFormat || binding.action !== "format")), usingLocator, prepared, canApplyLocator, toggleHighlighted, canChangeLast: Boolean(lastCitation), changeLast, hints: { enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction } };
+  return { delivery, canChooseFormat: destination.canChooseFormat, keepOrder, bindings: bindings.filter((binding) => (lastCitation || binding.action !== "changeLast") && (destination.canChooseFormat || binding.action !== "format")), usingLocator, prepared, canApplyLocator, toggleHighlighted, canChangeLast: Boolean(lastCitation), changeLast, referenceList, hints: { enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction } };
 }

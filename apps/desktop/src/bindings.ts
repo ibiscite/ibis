@@ -849,6 +849,11 @@ export type PickerDestination = {
 	can_choose_paste: boolean;
 	/** The current paste policy permits an attempt; final delivery checks still apply. */
 	can_paste: boolean;
+	/**
+	 * How many references this app's reference list holds: those cited into
+	 * it since Ibis opened. Paste Reference List is offered once there are any.
+	 */
+	cited_here: number;
 	context_version?: [number, number] | null;
 	find_open: boolean;
 	/**
@@ -1249,6 +1254,11 @@ export type SessionReferencesView = {
 	 * bibliography until it is.
 	 */
 	absent: number;
+	/**
+	 * The app Ibis was opened from: its reference list, the listed references
+	 * cited into it since Ibis opened, in that order, that are in the open library.
+	 */
+	here: SearchResult[];
 	/** The list reached its limit, so a later citation was left off. */
 	overflowed: boolean;
 	revision: number;

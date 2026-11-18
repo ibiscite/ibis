@@ -285,7 +285,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
             else rows.onChoose(index, reference, action);
           } }}
           density={density} resultArea={resultArea} setQuery={setQuery} peck={delights.peck}
-          project={styleOf(format) === null ? project.status : null} numbered={numbered} />
+          project={styleOf(format) === null ? project.status : null} numbered={numbered} referenceList={actions.referenceList} />
       </PickerScroll>
       {/* Keep the selection live region mounted when choices remove citation controls. */}
       <PickerCitationShelf

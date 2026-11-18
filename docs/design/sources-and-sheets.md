@@ -39,6 +39,8 @@ Copying captures the list's revision before formatting and checks it again at th
 
 **More › Cited Since Opening…** opens a sheet, named for what Ibis knows: what it copied since it opened or since a reset, never the document's bibliography. Its lead says it covers **every writing since Ibis opened**; choosing a writing neither partitions nor clears the list. It lists each reference once, in the order first cited, with Remove; **Undo** names its action ("Undo Remove Okafor & Lima, 2018"), and undoing keeps anything copied since. **Reset List** is undoable too. Under the list is the bibliography in the output's style (APA when the output is keys), exactly what **Copy Bibliography** writes as rich and plain text together. **Save…** writes it as rich text, a web page or plain text. A reference from a library that isn't open is left out and counted, never guessed. The list holds record identities, in memory only, and leaves it only through explicit Copy or Save.
 
+For the app Ibis came from alone, **Paste Reference List** pastes the same list's references cited there as entries in one step ([picker](picker.md#results)).
+
 Closing the sheet or replacing its list or style cancels unfinished bibliography
 formatting, including Copy and Save. A cancelled action that has not yet written
 the clipboard or file does not deliver later or delay the next citation.

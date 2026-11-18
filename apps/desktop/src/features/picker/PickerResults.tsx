@@ -6,6 +6,8 @@ import { keysFor } from "../../keys";
 import { FrameHeading, FrameNotices } from "../../ui/Frame";
 import { ResultsArea } from "../../ui/ResultsArea";
 import { ResultList } from "./ResultList";
+import { ChoiceList } from "../../ui/ChoiceList";
+import { ChoiceIcon } from "../../icons";
 import { EmptyState, useZoteroRecovery } from "./EmptyState";
 import type { usePickerLibrary } from "./usePickerLibrary";
 import type { useLibrarySearch } from "./useLibrarySearch";
@@ -22,8 +24,10 @@ const noLibrary = () => null;
 
 export function PickerResults({
   api, libraryState, searchState, state, source, scope, shortcut, perform, focusHome, pointer, rows, density,
-  resultArea, setQuery, peck, project, numbered,
+  resultArea, setQuery, peck, project, numbered, referenceList,
 }: {
+  /** Paste Reference List, offered on the opening screen once this app has citations from this run. */
+  referenceList?: { label: string; help: string; run: () => void } | null;
   /** The rows ⌘1–9 picks (useShownRows). */
   numbered?: { first: number; count: number };
   /** The bibliography rows are marked against; null for formatted output. */
@@ -96,6 +100,8 @@ export function PickerResults({
       libraryOf={severalLibraries ? libraryOf : noLibrary} project={project} numbered={numbered} onMouseMove={pointer.onMouseMove}
       onChoose={rows.onChoose} onContext={rows.onContext} onToggle={rows.onToggle} />}
     {!busy && emptyState}
+    {referenceList && listShown && !query && selected.size === 0 && <ChoiceList compact title={say("picker-reference-list-title")}
+      choices={[{ id: "reference-list", title: referenceList.label, help: referenceList.help, icon: <ChoiceIcon name="history" /> }]} onChoose={referenceList.run} />}
     {library?.sample && !choosingLibrary && <SampleLibraryExit useSampleLibrary={api.useSampleLibrary} perform={perform} compact={listShown} />}
   </ResultsArea></>;
 }

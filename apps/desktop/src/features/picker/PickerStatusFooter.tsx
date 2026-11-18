@@ -91,6 +91,7 @@ export function PickerStatusFooter({
           revealSource: sourceState.sourceAvailable && source.kind === "file" ? () => run("revealSource") : null,
           peek,
           changeLast: actions.canChangeLast ? () => run("changeLast") : null,
+          referenceList: actions.referenceList ? { label: actions.referenceList.label, run: actions.referenceList.run } : null,
           settings: () => run("settings"),
           sessionReferences: menus.openSession,
           forgetRecent: recents.forget ? () => { recents.forget!(); focusHome(); } : null,

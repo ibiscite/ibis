@@ -30,6 +30,8 @@ pub struct List {
     /// References left off because the list reached the citation limit.
     pub overflowed: bool,
     pub revision: u32,
+    /// This run's citations per app, in the order first cited there; memory only.
+    here: Vec<(String, Vec<ItemRef>)>,
 }
 
 impl List {
@@ -76,12 +78,43 @@ impl List {
             .find(|(id, _)| Some(id.as_str()) == app)
             .map_or(&[], |(_, items)| items)
     }
+    /// What this app's reference list holds: the references cited into it since
+    /// Ibis opened, in the order first cited there, that are still in the list
+    /// (Remove, Reset List and Undo apply to it too).
+    pub fn cited_here(&self, app: &str) -> Vec<ItemRef> {
+        self.here
+            .iter()
+            .find(|(id, _)| id == app)
+            .map_or_else(Vec::new, |(_, cited)| cited.iter().filter(|item| self.items.contains(item)).cloned().collect())
+    }
     fn forget(&mut self) {
         self.epoch = Arc::new(());
         self.entries = Arc::default();
+        self.here.clear();
         self.forget_failed = true;
     }
+    fn note_here(&mut self, app: &str, items: &[ItemRef]) {
+        let at = match self.here.iter().position(|(id, _)| id == app) {
+            Some(at) => at,
+            None => {
+                if self.here.len() >= 20 {
+                    self.here.remove(0);
+                }
+                self.here.push((app.into(), Vec::new()));
+                self.here.len() - 1
+            }
+        };
+        let cited = &mut self.here[at].1;
+        for item in items {
+            if !cited.contains(item) && cited.len() < MAX_CITATION_ITEMS {
+                cited.push(item.clone());
+            }
+        }
+    }
     fn record(&mut self, epoch: &Arc<()>, app: Option<&str>, items: &[ItemRef]) {
+        if let Some(app) = app.filter(|app| valid(app) && Arc::ptr_eq(epoch, &self.epoch)) {
+            self.note_here(app, items);
+        }
         let Some(app) = app.filter(|app| valid(app) && self.enabled && Arc::ptr_eq(epoch, &self.epoch)) else {
             return;
         };

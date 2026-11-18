@@ -1,13 +1,14 @@
 import { afterEach, expect, test } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { App } from "./App";
 import type { SessionBibliography, SessionReferencesView } from "./api";
-import { backend, chooseFromMore, displayTree, resetApp, result } from "./testing/app";
+import { backend, chooseFromMore, displayTree, lineReceipt, prepared, resetApp, result } from "./testing/app";
+import { fixtureDestination, formatAnswer } from "./testing/format";
 
 afterEach(resetApp);
 
 const taylor = result("taylor2026", "Synthetic signals"), morgan = result("morgan2025", "Synthetic noise");
-const list = (over: Partial<SessionReferencesView> = {}): SessionReferencesView => ({ revision: 1, rows: [taylor, morgan], absent: 0, overflowed: false, undo: null, ...over });
+const list = (over: Partial<SessionReferencesView> = {}): SessionReferencesView => ({ revision: 1, rows: [taylor, morgan], absent: 0, overflowed: false, undo: null, here: [], ...over });
 const formatted = (text: string, left_out: string[] = []): SessionBibliography => ({ text, display: displayTree([{ item: 0, text }]), content_hash: `hash-${text}`, warnings: [], left_out });
 
 async function open() {
@@ -30,4 +31,32 @@ test("Enter copies the bibliography, as the footer says, unless a control in the
   fireEvent.keyDown(dialog, { key: "Enter" });
   await within(dialog).findByText("Copied the bibliography.");
   expect(sent).toEqual([{ style: "apa", contentHash: "hash-Morgan, A. Taylor, A." }]);
+});
+
+test("an app with citations from this run offers its reference list, pasted as entries in the order cited there", async () => {
+  const delivered: { forms: unknown[]; keys: unknown[] }[] = [];
+  const here = (cited: number) => fixtureDestination({ app: "Example Writer", app_id: "example.writer", can_paste: true, cited_here: cited, format: formatAnswer("apa", "app") });
+  let cited = 0;
+  backend({
+    search: ({ query }) => query.text ? [] : [{ ...taylor, recent: "cited" }, { ...morgan, recent: "cited" }],
+    destination: () => here(cited),
+    session_references: () => list({ here: [morgan, taylor] }),
+    preview_file_citation: ({ items }) => lineReceipt((items as { id: unknown }[]).map(() => "Entry.")),
+    deliver_citation: (args) => {
+      const { request } = prepared(args);
+      delivered.push({ forms: request.items.map((item) => item.form), keys: request.items.map((item) => item.id.key) });
+      return { outcome: "retained", copied: { text: "Entry.", warnings: [] }, reason: "pinned" };
+    },
+  });
+  // Nothing cited into this app yet: neither the row nor More offers it.
+  const { unmount } = render(<App />);
+  await screen.findByText("Synthetic signals");
+  expect(screen.queryByRole("option", { name: /Paste Reference List/ })).toBeNull();
+  unmount();
+  cited = 2;
+  render(<App />);
+  const row = await screen.findByRole("option", { name: /Paste Reference List/ });
+  expect(row.textContent).toContain("The 2 references you cited in Example Writer since Ibis opened");
+  fireEvent.click(row);
+  await waitFor(() => expect(delivered).toEqual([{ forms: ["bibliography-only", "bibliography-only"], keys: [morgan.id.key, taylor.id.key] }]));
 });

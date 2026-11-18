@@ -99,6 +99,8 @@ export function useDestination(session: ReturnType<typeof createSessionControlle
     usualFormat: listedOutput(destination?.usual_format), useUsual,
     /** The engine offers Projects once one exists or this app has a second format. */
     offersProjects: Boolean(destination?.offers_projects),
+    /** How many references this app's reference list holds, by the engine's count. */
+    citedHere: !editorFormat && d.ready ? destination?.cited_here ?? 0 : 0,
     writingVersion: () => writingVersion(current()),
     chooseOnce, copyToken, isCurrentCopy, canPaste, askPaste, pasteChoices, choosePaste };
 }
