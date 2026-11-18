@@ -289,16 +289,6 @@ jobs:
         if: runner.os == 'Linux'
         run: node scripts/gen.mjs --check
 
-      # What changed in the public contract since the newest release. A report
-      # until 1.0, when the script's BLOCKING switch makes breaks fail
-      # (decision 0028). The checkout has no tags, so fetch that one.
-      - name: Report contract changes (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          tag=$(git ls-remote --tags --refs origin 'v[0-9]*' | sed 's|.*refs/tags/||' | sort -V | tail -n 1) || tag=''
-          if [ -n "$tag" ]; then git fetch -q --no-tags --depth=1 origin "refs/tags/$tag:refs/tags/$tag" || true; fi
-          node scripts/contract-compat.mjs
-
       - name: Paste into Notepad (Windows)
         if: runner.os == 'Windows'
         run: cargo test -p ibis-desktop --locked one_ctrl_v_pastes_the_clipboard_into_the_app_in_front -- --ignored --nocapture

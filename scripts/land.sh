@@ -98,7 +98,6 @@ cargo check --workspace --all-targets --locked
 pnpm -C apps/desktop exec tsc --noEmit
 pnpm -C apps/desktop lint
 node scripts/gen.mjs --check
-node scripts/contract-compat.mjs
 unchanged
 git push -q -u origin "$sha:refs/heads/$branch"
 body=$(mktemp)

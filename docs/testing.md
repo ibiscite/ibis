@@ -30,14 +30,15 @@ cargo test -p ibis-desktop --locked TEST_FILTER
 pnpm -C apps/desktop exec vitest run FILE --maxWorkers=1
 node --test scripts/doc-links.test.mjs
 node scripts/gen.mjs --check
-node scripts/contract-compat.mjs
+node scripts/contract-compat.mjs --base refs/tags/vX.Y.Z
 ```
 
 Plain `cargo test` skips desktop Rust tests; `cargo test --workspace --locked`
 includes them. `gen.mjs --check` checks generated files without replacing them;
-`contract-compat.mjs` lists how the contract differs from the newest release,
-additive or breaking, and fails nothing before 1.0
-([decision 0028](decisions/0028-engine-first.md)).
+For an offline contract report, pass the tag of a published release already
+available locally. The separate `Contract report` workflow selects the latest
+published release through GitHub. It lists additions, removals and changes
+in its job summary ([decision 0028](decisions/0028-engine-first.md)).
 To update a reviewed Rust snapshot, use `INSTA_UPDATE=always cargo test -p CRATE`
 and inspect the `.snap` diff.
 
@@ -97,7 +98,7 @@ regression at the layer that owns the cause.
 
 [`land.sh`](../scripts/land.sh) runs fast local feedback from a clean, named
 branch: formatting, workspace `cargo check` with all targets, TypeScript,
-Biome lint, `gen.mjs --check` and the `contract-compat.mjs` report. While main's latest finished push CI failed,
+Biome lint and `gen.mjs --check`. While main's latest finished push CI failed,
 it refuses any title but `fix` or `revert` and names the red run. Dependencies
 must already be installed; Rust uses this worktree's `target` without sccache. These checks are for speed
 only ([decision 0049](decisions/0049-local-gate.md)).

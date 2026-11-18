@@ -23,19 +23,18 @@ fields. Clients accept additional response fields and treat unknown findings,
 losses, refusals and outcomes as needing review. Unknown error codes still fail.
 Canonical requests in `fixtures/cases` run through each front end.
 
-Until the stable 1.0 the contract is unstable: any release may break any part
-of it, and progress wins over compatibility. Breaks are listed, not blocked.
+Until the stable 1.0 any release may change any part of the contract, and
+progress wins over compatibility.
 [`contract-compat.mjs`](../../scripts/contract-compat.mjs) compares the
 generated contract (`fixtures/engine-contract.schema.json`,
-`fixtures/cli-schema.json`, `fixtures/mcp-tools.json` and the generated parts of
-`docs/cli.md`) with the newest `v*` release and prints every difference as
-additive or breaking: in `land.sh` and CI for agents, and under "Contract
-changes" in each release's notes, against the previous release.
-What Ibis accepts may grow and what it sends may shrink, except that new fields,
-values and variants of a tagged union are additive; everything else, including
-any difference the check cannot read, is breaking. At 1.0 its one `BLOCKING`
-switch turns the report into a gate, and the rules for changing a stable
-contract are decided then.
+`fixtures/cli-schema.json`, `fixtures/mcp-tools.json` and
+`fixtures/cli-surface.json`) with a published release. It reports structural
+additions, removals and changes, including annotations and constraints. Earlier
+releases provide only the generated CLI help and exit tables for the CLI
+comparison. GitHub runs the advisory report in a separate workflow against its
+latest published, non-prerelease release. Each numbered release's notes compare
+with the previous published release under "Contract changes". The rules for
+changing a stable contract are decided at 1.0.
 
 Receipts record ordered opaque identities, citation fingerprints, resolved
 output, captured source read times, findings and a canonical content hash. CSL
