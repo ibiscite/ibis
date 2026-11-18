@@ -1,0 +1,276 @@
+//! An open EndNote library, read through EndNote's scripting interface
+//! (`EndNote.sdef`): `retrieve "all"` lists the records and `export … as
+//! "RSXML"` gives the same XML as File › Export. EndNote is never started,
+//! and the library is only read.
+//!
+//! macOS asks the person once whether the program that runs Ibis (Terminal,
+//! an editor or the Ibis app) may control EndNote; without that, the read
+//! is refused with `permission-denied`.
+use std::io::Write;
+use std::process::{Command, Stdio};
+
+use ibis_core::contract::Fingerprint;
+use ibis_core::contract::adapter::{AdapterRead, AdapterRefusal};
+
+use crate::xml::{self, XmlRecord};
+
+const SEPARATOR: char = '\u{1f}';
+const CHUNK: char = '\u{1e}';
+
+/// Lists the chosen library and exports its records 200 at a time.
+const EXPORT: &str = r#"on run argv
+  set wanted to item 1 of argv
+  if not (application id "com.ThomsonResearchSoft.EndNote" is running) then return "closed"
+  tell application id "com.ThomsonResearchSoft.EndNote"
+    with timeout of 100 seconds
+      set chosen to missing value
+      if wanted is "" then
+        if (count of documents) is 0 then return "missing"
+        if (count of documents) > 1 then return "needed"
+        set chosen to document 1
+      else
+        repeat with d in documents
+          set p to ""
+          try
+            set p to POSIX path of (file of d as alias)
+          end try
+          considering case
+            if (name of d) is wanted or p is wanted then
+              if chosen is not missing value then return "needed"
+              set chosen to contents of d
+            end if
+          end considering
+        end repeat
+        if chosen is missing value then return "missing"
+      end if
+      set p to POSIX path of (file of chosen as alias)
+      set ids to retrieve "all" records in chosen
+      set n to count of ids
+      set parts to {"ok" & (character id 31) & p & (character id 31) & n}
+      set i to 1
+      repeat while i is less than or equal to n
+        set j to i + 199
+        if j > n then set j to n
+        set end of parts to (export (items i thru j of ids) as "RSXML")
+        set i to j + 1
+      end repeat
+      set AppleScript's text item delimiters to (character id 30)
+      return parts as text
+    end timeout
+  end tell
+end run
+"#;
+
+/// One field of one record, as EndNote shows it.
+const FIELD: &str = r#"on run argv
+  set wantedPath to item 1 of argv
+  set wantedNumber to item 2 of argv
+  set fieldName to item 3 of argv
+  tell application id "com.ThomsonResearchSoft.EndNote"
+    with timeout of 30 seconds
+      repeat with d in documents
+        set p to ""
+        try
+          set p to POSIX path of (file of d as alias)
+        end try
+        considering case
+          if p is wantedPath then
+            repeat with r in (retrieve "all" records in d)
+              if (r as text) contains ("recNum=\"" & wantedNumber & "\"") then
+                set v to field fieldName of record (contents of r)
+                if v is missing value then set v to ""
+                return "ok" & (character id 31) & v
+              end if
+            end repeat
+          end if
+        end considering
+      end repeat
+    end timeout
+  end tell
+  return "missing"
+end run
+"#;
+
+pub(crate) fn read(library: Option<&str>) -> Result<AdapterRead, AdapterRefusal> {
+    let answer = osascript(EXPORT, &[library.unwrap_or("")])?;
+    let mut parts = answer.split(CHUNK);
+    let header: Vec<&str> = parts.next().unwrap_or_default().split(SEPARATOR).collect();
+    let (path, count) = match header[..] {
+        ["closed"] => return Err(AdapterRefusal::ManagerClosed),
+        ["needed"] => return Err(AdapterRefusal::LibraryNeeded),
+        ["missing"] => return Err(AdapterRefusal::LibraryNotFound),
+        ["ok", path, count] => (path.to_owned(), count.parse::<usize>().map_err(|_| AdapterRefusal::Unreadable)?),
+        _ => return Err(AdapterRefusal::Unreadable),
+    };
+    let chunks: Vec<&str> = parts.collect();
+    let records = decoded(&chunks, &path)?;
+    // Every record EndNote listed, or none: a short export is no library.
+    if records.len() != count {
+        return Err(AdapterRefusal::Unreadable);
+    }
+    let db_id = records.iter().find_map(|record| record.db_id.clone()).unwrap_or_default();
+    let identity = file_identity(&path)?;
+    let scope = Fingerprint::of_bytes(&[b"live\0", db_id.as_bytes(), b"\0", path.as_bytes(), b"\0", identity.as_bytes()].concat());
+    let mut skipped = Vec::new();
+    let placed: Vec<(Option<String>, &XmlRecord)> = records
+        .iter()
+        .filter_map(|record| match (record.one("rec-number"), &record.db_id) {
+            (Some(number), Some(id)) if *id == db_id && number.bytes().all(|b| b.is_ascii_digit()) => {
+                Some((Some(number.to_owned()), record))
+            }
+            _ => {
+                skipped.push(crate::unplaced(record));
+                None
+            }
+        })
+        .collect();
+    let mut read = crate::read(scope, placed.into_iter());
+    read.skipped.extend(skipped);
+    Ok(read)
+}
+
+/// The export's records, decoded as EndNote meant them. When the plain and
+/// the Mac Roman repaired texts would map differently, one field EndNote
+/// reads directly decides which is right; if neither matches, the read is
+/// refused rather than guessed.
+fn decoded(chunks: &[&str], path: &str) -> Result<Vec<XmlRecord>, AdapterRefusal> {
+    let parse = |texts: &[&str]| -> Option<Vec<XmlRecord>> {
+        let mut records = Vec::new();
+        for text in texts {
+            records.extend(xml::records(text).ok()?);
+        }
+        Some(records)
+    };
+    let plain = parse(chunks);
+    let repaired_texts: Option<Vec<String>> = chunks.iter().map(|text| crate::macroman::repair(text)).collect();
+    let repaired = repaired_texts
+        .as_ref()
+        .and_then(|texts| parse(&texts.iter().map(String::as_str).collect::<Vec<_>>()));
+    let (plain, repaired) = match (plain, repaired) {
+        (Some(plain), Some(repaired)) => (plain, repaired),
+        (Some(only), None) | (None, Some(only)) => return Ok(only),
+        (None, None) => return Err(AdapterRefusal::Unreadable),
+    };
+    if plain.len() != repaired.len() {
+        return Err(AdapterRefusal::Unreadable);
+    }
+    let mut undecided = false;
+    let mut differing = None;
+    'records: for (a, b) in plain.iter().zip(&repaired) {
+        let kind = a.one("ref-type").unwrap_or_default();
+        for (tag, labels) in CHECKED {
+            if a.fields.get(*tag) != b.fields.get(*tag) {
+                match labels(kind) {
+                    Some(label) => {
+                        differing = Some((a, b, *tag, label));
+                        break 'records;
+                    }
+                    None => undecided = true,
+                }
+            }
+        }
+    }
+    let Some((a, b, tag, label)) = differing else {
+        // Unless a mapped field differs, either reading gives the same records.
+        return if undecided {
+            Err(AdapterRefusal::Unreadable)
+        } else {
+            Ok(repaired)
+        };
+    };
+    let number = a.one("rec-number").ok_or(AdapterRefusal::Unreadable)?;
+    let answer = osascript(FIELD, &[path, number, label])?;
+    let shown = answer
+        .strip_prefix("ok\u{1f}")
+        .ok_or(AdapterRefusal::Unreadable)?
+        .trim()
+        .to_owned();
+    let joined = |record: &XmlRecord| record.fields.get(tag).map(|values| values.join("\r")).unwrap_or_default();
+    match (joined(a) == shown, joined(b) == shown) {
+        (true, false) => Ok(plain),
+        (false, true) => Ok(repaired),
+        _ => Err(AdapterRefusal::Unreadable),
+    }
+}
+
+type Labels = fn(&str) -> Option<&'static str>;
+
+/// The mapped tags, each with EndNote's label for it by reference type.
+const CHECKED: &[(&str, Labels)] = &[
+    ("titles/title", |_| Some("Title")),
+    ("contributors/authors/author", |_| Some("Author")),
+    ("titles/secondary-title", |kind| match kind {
+        "17" => Some("Journal"),
+        "6" => Some("Series Title"),
+        "5" => Some("Book Title"),
+        _ => None,
+    }),
+    ("contributors/secondary-authors/author", |kind| match kind {
+        "6" => Some("Series Editor"),
+        "5" => Some("Editor"),
+        _ => None,
+    }),
+    ("contributors/tertiary-authors/author", |kind| (kind == "6").then_some("Editor")),
+    ("publisher", |_| Some("Publisher")),
+    ("pub-location", |_| Some("Place Published")),
+    ("periodical/full-title", |_| None),
+    ("volume", |_| Some("Volume")),
+    ("number", |kind| (kind == "17").then_some("Issue")),
+    ("pages", |kind| Some(if kind == "6" { "Number of Pages" } else { "Pages" })),
+    ("edition", |_| Some("Edition")),
+    ("electronic-resource-num", |_| Some("DOI")),
+    ("dates/year", |_| Some("Year")),
+    ("ref-type", |_| None),
+    ("rec-number", |_| None),
+];
+
+/// The library file's device, inode and creation time: a copy or a
+/// replaced file differs, a library edited in place does not.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "Metadata of the library EndNote has open; nothing is read from it."
+)]
+fn file_identity(path: &str) -> Result<String, AdapterRefusal> {
+    use std::os::unix::fs::MetadataExt;
+    let metadata = std::fs::metadata(path).map_err(|_| AdapterRefusal::Unreadable)?;
+    let created = metadata
+        .created()
+        .ok()
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |since| since.as_nanos());
+    Ok(format!("{}:{}:{created}", metadata.dev(), metadata.ino()))
+}
+
+/// Run an AppleScript with `arguments`; its answer without the final newline.
+fn osascript(script: &str, arguments: &[&str]) -> Result<String, AdapterRefusal> {
+    let mut child = Command::new("/usr/bin/osascript")
+        .arg("-")
+        .args(arguments)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|_| AdapterRefusal::Unsupported)?;
+    if let Some(mut input) = child.stdin.take() {
+        input
+            .write_all(script.as_bytes())
+            .map_err(|_| AdapterRefusal::Unreadable)?;
+    }
+    let output = child.wait_with_output().map_err(|_| AdapterRefusal::Unreadable)?;
+    if !output.status.success() {
+        let errors = String::from_utf8_lossy(&output.stderr);
+        // Only fixed error numbers are looked at; EndNote's message is never kept.
+        return Err(if errors.contains("(-1743)") {
+            AdapterRefusal::PermissionDenied
+        } else if errors.contains("(-600)") || errors.contains("(-609)") {
+            AdapterRefusal::ManagerClosed
+        } else {
+            AdapterRefusal::Unreadable
+        });
+    }
+    let mut text = String::from_utf8(output.stdout).map_err(|_| AdapterRefusal::Unreadable)?;
+    if text.ends_with('\n') {
+        text.pop();
+    }
+    Ok(text)
+}

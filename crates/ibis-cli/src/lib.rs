@@ -107,6 +107,14 @@ fn command() -> Command {
         .help_heading(LIBRARIES)
         .display_order(1002)
         .help("Read a local Zotero group library by its group ID; repeat for several");
+    let source = Arg::new("source")
+        .long("source")
+        .value_name("NAME[=LIBRARY]")
+        .value_parser(source_spec)
+        .action(ArgAction::Append)
+        .help_heading(LIBRARIES)
+        .display_order(1004)
+        .help("Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several");
     let profile = Arg::new("zotero-profile")
         .long("zotero-profile")
         .value_name("NAME")
@@ -163,13 +171,13 @@ fn command() -> Command {
             .display_order(1001)
             .help("Read the local Zotero personal library, open or closed"),
     );
-    root = root.arg(group.clone()).arg(profile.clone()).arg(
+    root = root.arg(group.clone()).arg(source.clone()).arg(profile.clone()).arg(
         Arg::new("app-libraries")
             .long("app-libraries")
             .global(true)
             .action(ArgAction::SetTrue)
             .help_heading(LIBRARIES)
-            .display_order(1004)
+            .display_order(1005)
             .help(
                 "Read the libraries chosen in the Ibis app, read-only; search, show, cite, libraries and doctor do this when no library is named",
             ),
@@ -606,7 +614,13 @@ fn command() -> Command {
                     .help("The command to explain, such as cite"),
             ),
     )
-    .mut_subcommands(|subcommand| subcommand.arg(file.clone()).arg(group.clone()).arg(profile.clone()))
+    .mut_subcommands(|subcommand| {
+        subcommand
+            .arg(file.clone())
+            .arg(group.clone())
+            .arg(source.clone())
+            .arg(profile.clone())
+    })
 }
 
 /// Help, version and early errors may have no parsed matches.
@@ -629,8 +643,10 @@ pub fn run<R: BufRead, W: Write + Send, E: Write>(
     match Engine::new() {
         Ok(engine) => {
             // PDFs are parsed by this same executable, in a child process.
+            // PDFs and built-in source adapters run in this same executable,
+            // each in a child process.
             let engine = match std::env::current_exe() {
-                Ok(program) => engine.with_pdf_reader(program),
+                Ok(program) => engine.with_pdf_reader(program.clone()).with_built_in_sources(program),
                 Err(_) => engine,
             };
             run_engine(engine, arguments, input, output, errors, mode, Defaults::App)
@@ -861,6 +877,9 @@ fn library_arguments(matches: &ArgMatches) -> Vec<String> {
     for group in source_values::<u64>(matches, "zotero-group") {
         options.extend(["--zotero-group".into(), group.to_string()]);
     }
+    for source in source_values::<String>(matches, "source") {
+        options.extend(["--source".into(), source]);
+    }
     if let Some(profile) = source_values::<String>(matches, "zotero-profile").last() {
         options.extend(["--zotero-profile".into(), profile.clone()]);
     }
@@ -935,6 +954,25 @@ fn zotero_profiles(engine: &Engine, cancel: &Cancellation) -> Vec<String> {
             _ => None,
         })
         .unwrap_or_default()
+}
+
+/// `NAME` or `NAME=LIBRARY`: an adapter's name, then its library in its own terms.
+fn source_spec(value: &str) -> Result<String, String> {
+    let (name, library) = split_source(value);
+    if !ibis_engine::sources::valid_name(name) {
+        return Err("name an adapter in lowercase letters, digits and hyphens, such as endnote".into());
+    }
+    if library.is_some_and(str::is_empty) {
+        return Err("name the library after =, or leave out =".into());
+    }
+    Ok(value.to_owned())
+}
+
+pub(crate) fn split_source(value: &str) -> (&str, Option<&str>) {
+    match value.split_once('=') {
+        Some((name, library)) => (name, Some(library)),
+        None => (value, None),
+    }
 }
 
 fn source_values<T: Clone + Eq + Send + Sync + 'static>(matches: &ArgMatches, id: &str) -> Vec<T> {
@@ -1257,7 +1295,8 @@ fn open_libraries(
     let mut files = source_values::<PathBuf>(matches, "file");
     let mut groups = source_values::<u64>(matches, "zotero-group");
     let mut personal = matches.get_flag("zotero");
-    let named = !files.is_empty() || !groups.is_empty() || personal;
+    let sources = source_values::<String>(matches, "source");
+    let named = !files.is_empty() || !groups.is_empty() || personal || !sources.is_empty();
     // Named libraries replace the app's; servers read the app's only when asked. A
     // preloaded engine never reads the app's settings, and says so if asked to.
     let asked = matches.get_flag("app-libraries");
@@ -1350,6 +1389,22 @@ fn open_libraries(
                     None => path.display().to_string(),
                 };
                 names.insert(library.id.as_str().to_owned(), shown);
+            }
+        }
+    }
+    for source in sources {
+        let (name, library) = split_source(&source);
+        let params = serde_json::to_value(LibrariesRequest::OpenSource {
+            name: name.to_owned(),
+            library: library.map(str::to_owned),
+        })
+        .map_err(|_| EngineError::new(ErrorCode::BadInput))?;
+        let before = engine.libraries()?.libraries;
+        dispatch(engine, Method::Libraries, &params, &cancel)?;
+        // People see the source as they typed it.
+        for library in engine.libraries()?.libraries {
+            if !before.iter().any(|old| old.id == library.id) {
+                names.insert(library.id.as_str().to_owned(), source.clone());
             }
         }
     }

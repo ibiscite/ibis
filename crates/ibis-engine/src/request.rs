@@ -36,6 +36,17 @@ pub enum LibrariesRequest {
     OpenFile {
         path: PathBuf,
     },
+    /// Read a library through a source adapter (decision 0056): one built
+    /// into `ibis`, or an `ibis-source-NAME` program on PATH. `Reload` reads
+    /// it again; a failed read keeps the last good one.
+    OpenSource {
+        #[schemars(length(min = 1, max = 32), regex(pattern = r"^[a-z][a-z0-9-]*$"))]
+        name: String,
+        /// The library in the adapter's own terms, as the person named it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[schemars(length(min = 1, max = 4096))]
+        library: Option<String>,
+    },
     Reload {
         #[serde(default)]
         library: Option<LibraryId>,

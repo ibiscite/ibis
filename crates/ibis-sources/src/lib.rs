@@ -1,11 +1,19 @@
 //! Read-only library sources producing the shared engine snapshot contract.
+/// Libraries an outside program reads for Ibis (decision 0056, step 4).
+pub mod adapter;
 mod attachments;
 mod bibtex;
 /// Edits to a `.bib` file that keep every byte they do not change (decision 0055).
 pub use bibtex::edit as bibtex_edit;
 mod candidates;
+mod child;
 mod csl_json;
 mod exported;
+/// The shared CSL field rules of the exported formats, for adapters that map
+/// a manager's own fields (decision 0056, step 4).
+pub mod csl_parts {
+    pub use crate::exported::{date_parts, doi, person};
+}
 mod file;
 pub mod identity;
 pub mod pdf;
@@ -192,6 +200,8 @@ pub enum LibraryKind {
     Zotero,
     /// Data handed to the engine whole, with no source behind it.
     Snapshot,
+    /// A library a source adapter reads from a reference manager.
+    Adapter,
 }
 
 /// What a library offers, declared by the reader that loaded it. Zotero's two

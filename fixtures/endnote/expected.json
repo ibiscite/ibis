@@ -1,0 +1,50 @@
+[
+  {
+    "type": "article-journal",
+    "title": "Invented tides",
+    "author": [
+      {"family": "Ångström", "given": "Søren"},
+      {"family": "Nguyễn", "given": "Thị Lan"},
+      {"literal": "Invented Tide Consortium"}
+    ],
+    "page": "101-118",
+    "volume": "12",
+    "issue": "3",
+    "container-title": "Journal of Invented Studies",
+    "DOI": "10.0000/invented.1",
+    "issued": {"date-parts": [[2026]]}
+  },
+  {
+    "type": "article-journal",
+    "title": "Invented tides",
+    "author": [{"family": "Roe", "given": "Rafael"}],
+    "page": "7-9",
+    "volume": "4",
+    "container-title": "Annals of Made-up Oceans",
+    "DOI": "10.0000/invented.2",
+    "issued": {"date-parts": [[2025]]}
+  },
+  {
+    "type": "book",
+    "title": "Lanterns of the invented coast",
+    "author": [{"family": "Fen", "given": "Ōsaka"}],
+    "collection-editor": [{"family": "Doe", "given": "Jane"}],
+    "number-of-pages": "320",
+    "volume": "2",
+    "edition": "3",
+    "publisher": "Imaginary Press",
+    "publisher-place": "Nowhere",
+    "collection-title": "Invented Series",
+    "issued": {"date-parts": [[2024]]}
+  },
+  {
+    "type": "chapter",
+    "title": "A chapter on clouds",
+    "author": [{"family": "Doe", "given": "Jane"}],
+    "editor": [{"family": "Fen", "given": "Ōsaka"}],
+    "page": "33-50",
+    "publisher": "Imaginary Press",
+    "container-title": "Collected invented essays",
+    "issued": {"date-parts": [[2023]]}
+  }
+]

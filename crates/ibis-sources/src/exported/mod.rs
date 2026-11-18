@@ -17,7 +17,7 @@ type RecordProblem = (WarningCause, Option<&'static str>);
 
 /// One person as written: `Family, Given` (or `Family, Given, Suffix`) only when
 /// that is clear, otherwise the whole name as a literal. CJK names are never split.
-pub(crate) fn person(text: &str) -> Option<Value> {
+pub fn person(text: &str) -> Option<Value> {
     let text = text.trim();
     if text.is_empty() {
         return None;
@@ -38,7 +38,7 @@ pub(crate) fn person(text: &str) -> Option<Value> {
 }
 
 /// A date's parts, never invented: a year, then a month and a day only when given.
-pub(crate) fn date_parts(year: &str, month: Option<&str>, day: Option<&str>) -> Option<Value> {
+pub fn date_parts(year: &str, month: Option<&str>, day: Option<&str>) -> Option<Value> {
     let number = |text: &str, range: std::ops::RangeInclusive<i64>| {
         (!text.is_empty() && text.bytes().all(|b| b.is_ascii_digit()))
             .then(|| text.parse::<i64>().ok())
@@ -59,7 +59,7 @@ pub(crate) fn date_parts(year: &str, month: Option<&str>, day: Option<&str>) -> 
 }
 
 /// The DOI as written when it is one; `None` drops it with a warning.
-pub(crate) fn doi(text: &str) -> Option<String> {
+pub fn doi(text: &str) -> Option<String> {
     match ibis_core::identifier::parse_query(text)? {
         ibis_core::identifier::Identifier::Doi(canonical) => Some(if text.trim().starts_with("10.") {
             text.trim().to_owned()

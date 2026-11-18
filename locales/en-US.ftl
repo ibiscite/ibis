@@ -106,6 +106,24 @@ reason-attachment-outside-library = This attachment file is outside the libraryâ
 reason-no-such-pages = This attachment has no text for those pages, or where its pages begin is not known.
     .cli = Run ibis outline on its reference to see which pages have text, or read without --pages.
     .agent = Use the pages outline gives, or read with offset instead when its pages are not known.
+reason-source-not-found = No source adapter has this name: Ibis has none built in by it, and no ibis-source program by it is on PATH.
+    .cli = Check the name after --source, or install the adapter's ibis-source program on PATH.
+    .agent = Ask the person to check the source's name or install its adapter.
+reason-source-manager-closed = The reference manager is not open, and this source reads it only while it is.
+    .cli = Open the reference manager and its library, then try again.
+    .agent = Ask the person to open the reference manager and its library.
+reason-source-library-needed = Several of the reference manager's libraries are open, so Ibis needs to know which to read.
+    .cli = Name one after the source, as in --source endnote=NAME.
+    .agent = Ask the person which library to read.
+reason-source-library-not-found = None of the reference manager's open libraries has that name.
+    .cli = Open the library in the reference manager, or check its name after --source.
+    .agent = Ask the person to open the library in the reference manager.
+reason-source-permission = The operating system did not let Ibis ask the reference manager for its library.
+    .cli = On macOS, allow it in System Settings, Privacy & Security, Automation, then try again.
+    .agent = Ask the person to allow Ibis to control the reference manager in their system's privacy settings.
+reason-source-failed = The source adapter did not read the library: it could not, it stopped, it took too long, or it answered in a way Ibis does not accept.
+    .cli = Try again; ibis sources check shows what the adapter answers.
+    .agent = Ask the person to run ibis sources check for this source.
 
 ## What a citation could not say in full.
 

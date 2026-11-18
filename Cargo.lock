@@ -2149,6 +2149,7 @@ dependencies = [
  "console",
  "ibis-core",
  "ibis-engine",
+ "ibis-source-endnote",
  "ibis-sources",
  "icu_properties",
  "insta",
@@ -2276,6 +2277,17 @@ dependencies = [
  "ibis-core",
  "ibis-sources",
  "libfuzzer-sys",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "ibis-source-endnote"
+version = "0.3.10"
+dependencies = [
+ "ibis-core",
+ "ibis-sources",
+ "quick-xml 0.42.0",
  "serde_json",
  "tempfile",
 ]

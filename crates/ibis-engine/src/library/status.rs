@@ -301,7 +301,8 @@ fn refresh_error(kind: LibraryKind, code: Option<ErrorCode>, reason: Option<Erro
     Some(match kind {
         LibraryKind::File => LoadError::file_refresh(error),
         LibraryKind::Zotero => LoadError::Zotero(error),
-        LibraryKind::Snapshot => return None,
+        // The app opens no source adapter yet.
+        LibraryKind::Snapshot | LibraryKind::Adapter => return None,
     })
 }
 

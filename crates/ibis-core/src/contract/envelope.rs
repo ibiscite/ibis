@@ -211,6 +211,20 @@ pub enum ErrorReason {
     /// The attachment has no text for the pages asked for, or its pages are
     /// not known; `outline` says which.
     NoSuchPages,
+    /// No source adapter has this name: neither one built in nor an
+    /// `ibis-source-<name>` program on PATH.
+    SourceNotFound,
+    /// The reference manager must be open to be read.
+    SourceManagerClosed,
+    /// Several of the manager's libraries could be meant; name one.
+    SourceLibraryNeeded,
+    /// None of the manager's libraries has the name given.
+    SourceLibraryNotFound,
+    /// The operating system did not let Ibis ask the reference manager.
+    SourcePermission,
+    /// The source adapter did not read the library: it could not, it
+    /// stopped, it took too long or its answer was not one Ibis accepts.
+    SourceFailed,
 }
 
 /// A fixed database identifier, never a name supplied by an untrusted source.
