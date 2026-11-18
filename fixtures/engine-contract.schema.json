@@ -1313,7 +1313,7 @@
           "const": "no-such-pages"
         },
         {
-          "description": "No source adapter has this name: neither one built in nor an\n`ibis-source-<name>` program on PATH.",
+          "description": "No built-in or explicitly configured adapter could be started.",
           "type": "string",
           "const": "source-not-found"
         },

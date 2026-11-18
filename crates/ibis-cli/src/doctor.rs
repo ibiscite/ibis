@@ -210,7 +210,8 @@ fn report_text(data: &Value, now_ms: u64) -> String {
     let problems = checks
         .iter()
         .filter(|(_, result)| matches!(result["status"].as_str(), Some("findings" | "failed")))
-        .count();
+        .count()
+        + usize::from(adapters["status"] == "failed");
     text.push('\n');
     text.push_str(&match problems {
         0 => cli("cli-doctor-all-good", &[]),

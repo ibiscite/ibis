@@ -123,7 +123,7 @@ mod tests {
     use super::*;
 
     fn mapped(xml: &str) -> Vec<Result<Map<String, Value>, AdapterSkip>> {
-        super::xml::records(xml)
+        crate::endnote::xml::records(xml)
             .unwrap_or_else(|_| panic!("reads"))
             .iter()
             .map(csl)

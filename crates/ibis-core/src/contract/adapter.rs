@@ -1,7 +1,7 @@
-//! The source adapter protocol (decision 0056, step 4): how Ibis asks an
-//! `ibis-source-<name>` program for one library.
+//! The source adapter protocol (decision 0056, step 4): how Ibis asks a
+//! built-in or explicitly configured program for one library.
 //!
-//! Ibis starts the program with no arguments and no environment, writes one
+//! Ibis clears the environment, preserving Windows’ SystemRoot, writes one
 //! [`AdapterRequest`] as JSON to its standard input and closes it, then reads
 //! one [`AdapterResponse`] from its standard output. The program exits with
 //! status 0 whether it reads or refuses. Ibis keeps identity, validation, the

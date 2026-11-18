@@ -108,19 +108,19 @@ reason-no-such-pages = This attachment has no text for those pages, or where its
     .agent = Use the pages outline gives, or read with offset instead when its pages are not known.
 reason-source-not-found = Ibis could not start a source adapter by this name.
     .cli = Check the name after --source and the absolute executable path in source-adapters.json. Run ibis doctor to see the configured adapters.
-    .agent = Ask the person to check the source's name or install its adapter.
+    .agent = Ask the person to check the source name and its configuration in ibis doctor.
 reason-source-manager-closed = The reference manager is not open, and this source reads it only while it is.
     .cli = Open the reference manager and its library, then try again.
     .agent = Ask the person to open the reference manager and its library.
-reason-source-library-needed = Several of the reference manager's libraries are open, so Ibis needs to know which to read.
+reason-source-library-needed = Several of the reference manager’s libraries are open, so Ibis needs to know which to read.
     .cli = Name one after the source, as in --source endnote=NAME.
     .agent = Ask the person which library to read.
-reason-source-library-not-found = None of the reference manager's open libraries has that name.
+reason-source-library-not-found = None of the reference manager’s open libraries has that name.
     .cli = Open the library in the reference manager, or check its name after --source.
     .agent = Ask the person to open the library in the reference manager.
 reason-source-permission = The operating system did not let Ibis ask the reference manager for its library.
     .cli = On macOS, allow it in System Settings, Privacy & Security, Automation, then try again.
-    .agent = Ask the person to allow Ibis to control the reference manager in their system's privacy settings.
+    .agent = Ask the person to allow Ibis to control the reference manager in their system’s privacy settings.
 reason-source-failed = The source adapter did not read the library: it could not, it stopped, it took too long, or it answered in a way Ibis does not accept.
     .cli = Try again; ibis sources check shows what the adapter answers.
     .agent = Ask the person to run ibis sources check for this source.
@@ -360,7 +360,7 @@ general-paste-key =
        *[other] Ctrl+V
     }
 general-paste-description = Otherwise Ibis copies and you press { general-paste-key }.
-# $list is the system's permission-list name, not an interface message code.
+# $list is the system’s permission-list name, not an interface message code.
 general-paste-allowed = Allowed in Privacy & Security › { $list }
 general-paste-allowed-note = Ibis presses ⌘V once, only in the app you opened it from.
 general-paste-guide-title = Allow Ibis to paste for you
