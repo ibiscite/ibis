@@ -207,8 +207,7 @@ mod windows {
                 let mut key = 0usize;
                 let mut overlapped: *mut OVERLAPPED = std::ptr::null_mut();
                 // SAFETY: the out-pointers outlive the call; zero timeout.
-                let got =
-                    unsafe { GetQueuedCompletionStatus(self.port.0, &mut message, &mut key, &mut overlapped, 0) };
+                let got = unsafe { GetQueuedCompletionStatus(self.port.0, &mut message, &mut key, &mut overlapped, 0) };
                 if got == 0 {
                     return hit;
                 }

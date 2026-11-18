@@ -354,8 +354,5 @@ fn rereading_an_unchanged_library_keeps_attachment_ids_and_a_failed_read_says_so
     assert_eq!(read(&id).unwrap().value.pages[0].text, "Invented lantern.");
     // A reader failure is reported as one, not as a stale id.
     std::fs::write(&program, "#!/bin/sh\nexit 1\n").unwrap();
-    assert_eq!(
-        read(&id).err().map(reason),
-        Some(Some(ErrorReason::NoAttachmentText))
-    );
+    assert_eq!(read(&id).err().map(reason), Some(Some(ErrorReason::NoAttachmentText)));
 }
