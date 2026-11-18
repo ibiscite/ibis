@@ -8,7 +8,7 @@
 .update-track { box-sizing: content-box; height: var(--space-1); background: var(--progress-track); border: var(--progress-border-width) solid var(--progress-border); border-radius: var(--r-full); overflow: hidden; margin-block-start: var(--space-1); }
 .update-track > div { height: 100%; background: var(--progress-fill); }
 .update-progress[data-indeterminate] .update-track > div { width: 25%; animation: progress-slide 1s linear infinite alternate; }
-@keyframes progress-slide { to { transform: translateX(300%); } }
+@keyframes progress-slide { to { transform: translateX(calc(var(--inline-sign) * 300%)); } }
 
 /* A task as one line of the notice slot. The track is the ring's own inset edge;
    the fill is its one stroke. */

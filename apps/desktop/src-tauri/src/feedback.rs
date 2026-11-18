@@ -57,12 +57,13 @@ pub(crate) fn open_in_browser(app: &AppHandle, url: String) {
         let opened = crate::system_open::open(url.as_ref(), false).is_ok();
         if !opened {
             let copied = app.clipboard().write_text(url.clone()).is_ok();
+            let say = |id: &str| ibis_engine::catalogue::text(id, None, &[]).unwrap_or_default();
             let text = if copied {
-                "Ibis could not open your browser. The link was copied: paste it into your browser.".to_string()
+                say("app-open-link-copied")
             } else {
-                format!("Ibis could not open your browser. Open this link in your browser:\n{url}")
+                format!("{}\n{url}", say("app-open-link-failed"))
             };
-            app.dialog().message(text).title("Open Link").show(|_| {});
+            app.dialog().message(text).title(say("app-open-link-title")).show(|_| {});
         }
     });
 }

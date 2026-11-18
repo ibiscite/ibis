@@ -32,7 +32,7 @@
   background: var(--thumb); box-shadow: var(--shadow-thumb); transition: transform var(--dur-2) var(--ease-out);
 }
 .ui-paste-guide-switch[data-on] { background: var(--accent); }
-.ui-paste-guide-switch[data-on] > span { background: var(--text-on-accent); transform: translateX(11px); }
+.ui-paste-guide-switch[data-on] > span { background: var(--text-on-accent); transform: translateX(calc(var(--inline-sign) * 11px)); }
 @media (prefers-reduced-motion: reduce) { .ui-paste-guide-switch, .ui-paste-guide-switch > span { transition: none; } }
 @media (prefers-contrast: more), (forced-colors: active) {
   .ui-paste-guide-switch { border: var(--border-width) solid CanvasText; }

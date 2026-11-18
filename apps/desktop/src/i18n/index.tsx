@@ -46,6 +46,7 @@ const IDS = [
   "shortcuts-action-choose-source", "shortcuts-action-reveal-source", "shortcuts-action-source", "shortcuts-action-change-last", "shortcuts-action-open", "shortcuts-action-copy", "shortcuts-action-paste", "shortcuts-action-copy-only", "shortcuts-action-add", "shortcuts-action-move", "shortcuts-action-pick", "shortcuts-action-peek", "shortcuts-action-escape",
   "shortcuts-action-format", "shortcuts-action-more", "shortcuts-action-pin", "shortcuts-action-keys", "shortcuts-action-settings", "shortcuts-action-quit", "shortcuts-action-undo", "shortcuts-action-text-size", "shortcuts-action-citation-move", "shortcuts-action-citation-remove", "shortcuts-action-citation-reorder", "shortcuts-action-citation-open", "shortcuts-action-citation-focus",
   "shortcuts-action-menu-move", "shortcuts-action-menu-ends", "shortcuts-action-menu-choose", "shortcuts-action-menu-leave", "shortcuts-or",
+  "key-enter", "key-escape", "key-home", "key-end", "key-tab", "key-space", "key-backspace", "key-delete", "key-plus", "key-minus", "key-ctrl", "key-alt", "key-shift", "key-super", "key-click", "key-with-click",
   "about-automatic", "about-automatic-description", "about-check", "about-check-label", "about-checking", "about-check-failed", "about-check-newest", "about-check-busy", "about-mission", "about-updates", "about-links", "about-website", "about-source", "about-problem", "about-licences", "about-free", "about-copied", "about-copy-failed", "about-version", "about-unavailable",
 ] as const;
 export type MessageId = typeof IDS[number];

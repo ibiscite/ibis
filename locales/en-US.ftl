@@ -195,6 +195,30 @@ cli-file-unreadable = It cannot be read, or it is not a { -library-formats } lib
 app-file-dialog-title = Choose a library
 app-file-dialog-formats = { -library-formats }
 
+## The app’s native windows and dialogs, and its words about other apps.
+
+app-window-settings = Ibis Settings
+# Read by screen readers; never the citation.
+app-window-notice = Ibis notice
+app-open-link-title = Open Link
+app-open-link-copied = Ibis could not open your browser. The link was copied: paste it into your browser.
+# The link follows on its own line.
+app-open-link-failed = Ibis could not open your browser. Open this link in your browser:
+# The list in System Settings › Privacy & Security that holds the switch, as macOS names it.
+app-paste-list-before-27 = Accessibility
+app-paste-list-since-27 = Device Control and Data Access
+# ChatGPT's own menus, in the words its window uses.
+app-agent-steps-chatgpt = In ChatGPT desktop: Settings › MCP servers › Add server › STDIO, command ibis, arguments mcp --app-libraries.
+# A change an AI app proposes for the library. $title and $label name the reference.
+app-proposal-add = Add “{ $title }” as { $key }.
+app-proposal-fields = Change { $fields } of “{ $label }”.
+app-proposal-tags =
+    { $state ->
+        [add] Add the tags { $add } on “{ $label }”.
+        [remove] Remove the tags { $remove } on “{ $label }”.
+       *[both] Add the tags { $add } and remove the tags { $remove } on “{ $label }”.
+    }
+
 ## The app’s own sentence about a citation.
 
 app-loss = This output cannot fully show { $what }.
@@ -440,6 +464,28 @@ shortcuts-action-menu-ends = Go to the first or last item
 shortcuts-action-menu-choose = Choose the item
 shortcuts-action-menu-leave = Leave the menu and return to the search
 shortcuts-or = or
+# Keys named by a word, as the system's own menus and keyboards write them.
+key-enter = Enter
+key-escape = Esc
+key-home = Home
+key-end = End
+key-tab = Tab
+key-space = Space
+key-backspace = Backspace
+key-delete = Delete
+key-plus = Plus
+key-minus = Minus
+key-ctrl = Ctrl
+key-alt = Alt
+key-shift = Shift
+key-super = Super
+key-click = Click
+# $keys: the keys held while clicking, such as ⌘ or Ctrl.
+key-with-click =
+    { $platform ->
+        [macos] { $keys }-click
+       *[other] { $keys }+click
+    }
 
 about-automatic = Check for updates automatically
 about-automatic-description = Reads a small update file from GitHub a few times a day.
@@ -1110,6 +1156,14 @@ picker-matched-in =
        *[other] Matched in { $field }
     }
 picker-run-command = Run { $title }
+# The list's heading when it shows recent references; $state is cited or added.
+picker-recent-heading =
+    { $state ->
+        [cited] Cited here recently
+       *[added] Recently added
+    }
+# After a copied citation's excerpt: how many more references it holds.
+picker-more-references = +{ $count } more
 picker-result-count =
     { $count ->
         [one] 1 result

@@ -10,7 +10,6 @@ use crate::diagnostics::{NativeIssue, checked, report};
 use crate::picker::{PickerGeneration, PickerHideUi, Takeover, yield_to_window};
 
 pub(crate) const LABEL: &str = "settings";
-const TITLE: &str = "Ibis Settings";
 /// The design canvas's size (docs/design/settings.md).
 const SIZE: (f64, f64) = (920.0, 560.0);
 const MIN_SIZE: (f64, f64) = (800.0, 400.0);
@@ -216,7 +215,7 @@ pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>, p
         .as_ref()
         .map_or((SIZE, MIN_SIZE), |frame| (frame.size, frame.minimum));
     let mut builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(url.into()))
-        .title(TITLE)
+        .title(ibis_engine::catalogue::text("app-window-settings", None, &[]).unwrap_or_default())
         .inner_size(size.0, size.1)
         .min_inner_size(min.0, min.1)
         .maximizable(false)

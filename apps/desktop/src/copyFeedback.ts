@@ -4,7 +4,6 @@ import "./ui/Icon.css";
 // Pure decisions, kept apart from the picker so they can be tested alone.
 import type { NoticeMessage } from "./api";
 import type { CopiedReason, Delivered as WireDelivered } from "./bindings";
-
 import { say } from "./i18n";
 import { currentPlatform, platformOf, type Platform } from "./platform";
 import { listedOutput, outputName } from "./format/outputs";
@@ -143,7 +142,7 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform, onChan
     if (message.more) {
       const more = document.createElement("span");
       more.className = "copy-receipt-more";
-      more.textContent = `+${message.more} more`;
+      more.textContent = say("picker-more-references", { count: message.more });
       code.append(more);
     }
     code.title = message.text;

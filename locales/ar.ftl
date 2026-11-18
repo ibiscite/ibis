@@ -195,6 +195,25 @@ cli-file-unreadable = تتعذّر قراءته، أو ليس مكتبة بتن�
 app-file-dialog-title = اختر مكتبة
 app-file-dialog-formats = { -library-formats }
 
+## The app’s native windows and dialogs, and its words about other apps.
+
+app-window-settings = إعدادات Ibis
+app-window-notice = إشعار Ibis
+app-open-link-title = فتح الرابط
+app-open-link-copied = تعذّر على Ibis فتح متصفحك. نُسخ الرابط: الصقه في متصفحك.
+app-open-link-failed = تعذّر على Ibis فتح متصفحك. افتح هذا الرابط في متصفحك:
+app-paste-list-before-27 = تسهيلات الاستخدام
+app-paste-list-since-27 = التحكم في الجهاز والوصول إلى البيانات
+app-agent-steps-chatgpt = في ChatGPT لسطح المكتب: الإعدادات › خوادم MCP › إضافة خادم › STDIO، الأمر ibis، الوسائط mcp --app-libraries.
+app-proposal-add = إضافة «{ $title }» باسم { $key }.
+app-proposal-fields = تغيير { $fields } في «{ $label }».
+app-proposal-tags =
+    { $state ->
+        [add] إضافة الوسوم { $add } إلى «{ $label }».
+        [remove] إزالة الوسوم { $remove } من «{ $label }».
+       *[both] إضافة الوسوم { $add } إلى «{ $label }» وإزالة الوسوم { $remove } منه.
+    }
+
 ## The app’s own sentence about a citation.
 
 app-loss = لا يستطيع هذا الإخراج عرض { $what } بالكامل.
@@ -439,6 +458,27 @@ shortcuts-action-menu-ends = الانتقال إلى أول عنصر أو آخر
 shortcuts-action-menu-choose = اختيار العنصر
 shortcuts-action-menu-leave = مغادرة القائمة والعودة إلى البحث
 shortcuts-or = أو
+# Keys named by a word, as the system's own menus and keyboards write them.
+key-enter = Enter
+key-escape = Esc
+key-home = Home
+key-end = End
+key-tab = Tab
+key-space = مسافة
+key-backspace = Backspace
+key-delete = Delete
+key-plus = زائد
+key-minus = ناقص
+key-ctrl = Ctrl
+key-alt = Alt
+key-shift = Shift
+key-super = Super
+key-click = نقرة
+key-with-click =
+    { $platform ->
+        [macos] { $keys }-نقرة
+       *[other] { $keys }+نقرة
+    }
 
 about-automatic = التحقق من وجود تحديثات تلقائيًا
 about-automatic-description = يقرأ ملف تحديث صغيرًا من GitHub بضع مرات في اليوم.
@@ -1140,6 +1180,12 @@ picker-matched-in =
        *[other] مطابقة في { $field }
     }
 picker-run-command = تشغيل { $title }
+picker-recent-heading =
+    { $state ->
+        [cited] استُشهد بها هنا مؤخرًا
+       *[added] أُضيفت مؤخرًا
+    }
+picker-more-references = +{ $count } أخرى
 picker-result-count =
     { $count ->
         [zero] لا نتائج

@@ -195,6 +195,25 @@ cli-file-unreadable = Sie kann nicht gelesen werden oder ist keine Bibliothek im
 app-file-dialog-title = Bibliothek wählen
 app-file-dialog-formats = { -library-formats }
 
+## The app’s native windows and dialogs, and its words about other apps.
+
+app-window-settings = Ibis-Einstellungen
+app-window-notice = Ibis-Hinweis
+app-open-link-title = Link öffnen
+app-open-link-copied = Ibis konnte Ihren Browser nicht öffnen. Der Link wurde kopiert: Fügen Sie ihn in Ihren Browser ein.
+app-open-link-failed = Ibis konnte Ihren Browser nicht öffnen. Öffnen Sie diesen Link in Ihrem Browser:
+app-paste-list-before-27 = Bedienungshilfen
+app-paste-list-since-27 = Gerätesteuerung und Datenzugriff
+app-agent-steps-chatgpt = In ChatGPT Desktop: Einstellungen › MCP-Server › Server hinzufügen › STDIO, Befehl ibis, Argumente mcp --app-libraries.
+app-proposal-add = „{ $title }“ als { $key } hinzufügen.
+app-proposal-fields = { $fields } von „{ $label }“ ändern.
+app-proposal-tags =
+    { $state ->
+        [add] Die Tags { $add } zu „{ $label }“ hinzufügen.
+        [remove] Die Tags { $remove } von „{ $label }“ entfernen.
+       *[both] Die Tags { $add } zu „{ $label }“ hinzufügen und die Tags { $remove } entfernen.
+    }
+
 ## The app’s own sentence about a citation.
 
 app-loss = Diese Ausgabe kann { $what } nicht vollständig darstellen.
@@ -439,6 +458,27 @@ shortcuts-action-menu-ends = Zum ersten oder letzten Menüpunkt
 shortcuts-action-menu-choose = Menüpunkt wählen
 shortcuts-action-menu-leave = Menü verlassen und zur Suche zurückkehren
 shortcuts-or = oder
+# Keys named by a word, as the system's own menus and keyboards write them.
+key-enter = Eingabe
+key-escape = Esc
+key-home = Pos1
+key-end = Ende
+key-tab = Tab
+key-space = Leertaste
+key-backspace = Rücktaste
+key-delete = Entf
+key-plus = Plus
+key-minus = Minus
+key-ctrl = Strg
+key-alt = Alt
+key-shift = Umschalt
+key-super = Super
+key-click = Klick
+key-with-click =
+    { $platform ->
+        [macos] { $keys }-Klick
+       *[other] { $keys }+Klick
+    }
 
 about-automatic = Automatisch nach Updates suchen
 about-automatic-description = Liest einige Male am Tag eine kleine Update-Datei von GitHub.
@@ -1108,6 +1148,12 @@ picker-matched-in =
        *[other] Treffer in { $field }
     }
 picker-run-command = { $title } ausführen
+picker-recent-heading =
+    { $state ->
+        [cited] Hier zuletzt zitiert
+       *[added] Zuletzt hinzugefügt
+    }
+picker-more-references = +{ $count } weitere
 picker-result-count =
     { $count ->
         [one] 1 Ergebnis
