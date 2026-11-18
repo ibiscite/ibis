@@ -478,6 +478,61 @@ fn command() -> Command {
                         .required(true)
                         .help("The words to find, ignoring case; quote several words"),
                 ),
+            Method::Share => subcommand
+                .about("Make a pack of references to send: a reading list, a .bib file and, if asked, their PDFs")
+                .after_help(
+                    "The pack is one zip file: Reading list.html, the references in your style with their links,\n\
+                     References.bib for any reference manager, and with --pdfs a PDFs folder. The reading list\n\
+                     and BibTeX omit library notes, annotations and private links. Without --to, it previews the pack.\n\n\
+                     Examples:\n  \
+                     ibis share vale2024lanterns fen2023clouds --pdfs\n  \
+                     ibis share vale2024lanterns fen2023clouds --pdfs --to \"Reading pack.zip\"\n  \
+                     ibis share --keys-from keys.txt --style ieee --folder --to pack",
+                )
+                .arg(
+                    Arg::new("keys")
+                        .value_name("KEY")
+                        .num_args(1..)
+                        .required_unless_present("keys-from")
+                        .conflicts_with("keys-from")
+                        .help("Citation keys of the references, in order"),
+                )
+                .arg(
+                    Arg::new("keys-from").long("keys-from").value_name("FILE")
+                        .value_parser(clap::value_parser!(PathBuf))
+                        .help("Read one citation key per line from FILE, or - for stdin; ignore blanks and # comments"),
+                )
+                .arg(
+                    Arg::new("to")
+                        .long("to")
+                        .value_name("PATH")
+                        .value_parser(clap::value_parser!(PathBuf))
+                        .help("Write the pack here, a new zip file or with --folder a new folder; nothing there is replaced"),
+                )
+                .arg(
+                    Arg::new("pdfs")
+                        .long("pdfs")
+                        .action(ArgAction::SetTrue)
+                        .help("Add PDFs from the library folder or Zotero storage. Attached PDFs are copied as they are, including anything inside them."),
+                )
+                .arg(
+                    Arg::new("folder")
+                        .long("folder")
+                        .action(ArgAction::SetTrue)
+                        .help("Write a plain folder instead of a zip file"),
+                )
+                .arg(
+                    Arg::new("style")
+                        .long("style")
+                        .value_name("STYLE_ID")
+                        .help("The CSL style of the reading list, default apa; list them with: ibis styles"),
+                )
+                .arg(
+                    Arg::new("locale")
+                        .long("locale")
+                        .value_name("LOCALE")
+                        .help("Language of the reading list, such as de-DE; default the style's own"),
+                ),
             Method::Styles => subcommand
                 .about("Find bundled CSL styles and citation languages")
                 .after_help("Examples:\n  ibis styles            # the common styles first\n  ibis styles nature\n  ibis styles \"gb/t 7714\"\n  ibis styles --locales")
@@ -812,7 +867,7 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
     let libraries = library_options(&matches);
     match execute(&engine, &matches, defaults, &mut input, &mut output, &mut errors, mode) {
         Ok(Execution::Stdio(code)) => code,
-        Ok(Execution::Search(result, notes)) => emit(
+        Ok(Execution::Noted(result, notes)) => emit(
             json,
             Ok(result),
             None,
@@ -947,7 +1002,8 @@ fn dispatch(
         .map(|result| result.map_data(Response::Engine))
 }
 enum Execution {
-    Search(DispatchResult, Vec<String>),
+    /// A result with notes for stderr.
+    Noted(DispatchResult, Vec<String>),
     Result(DispatchResult, Option<human::Citing>),
     Stdio(u8),
 }
@@ -1337,11 +1393,11 @@ fn open_libraries(
         .and_then(|call| call.get_one::<String>("method"));
     let reads_app = matches!(
         name,
-        "search" | "show" | "cite" | "entry" | "libraries" | "outline" | "read" | "find-in"
+        "search" | "show" | "cite" | "entry" | "libraries" | "outline" | "read" | "find-in" | "share"
     ) || called.is_some_and(|called| {
         matches!(
             called.as_str(),
-            "search" | "show" | "cite" | "outline" | "read" | "find-in"
+            "search" | "show" | "cite" | "outline" | "read" | "find-in" | "share"
         )
     });
     let app = if asked || (defaults == Defaults::App && !named && reads_app) {
@@ -1606,7 +1662,7 @@ fn run_method<R: BufRead>(
                 });
             }
             result.source_findings = false;
-            return Ok(Execution::Search(result, notes));
+            return Ok(Execution::Noted(result, notes));
         }
         Method::Show => {
             let (params, key) = match args.get_one::<String>("id") {
@@ -1846,6 +1902,65 @@ fn run_method<R: BufRead>(
                 human::with_summary(result, matches.get_flag("json"), holdings(), &names, out),
                 None,
             ));
+        }
+        Method::Share => {
+            let keys = match args.get_one::<PathBuf>("keys-from") {
+                Some(path) if path == Path::new("-") => keys::read(input)?,
+                Some(path) => keys::file(path)?,
+                None => args
+                    .get_many::<String>("keys")
+                    .into_iter()
+                    .flatten()
+                    .map(|key| KeyItem::from(key.as_str()))
+                    .collect(),
+            };
+            let destination = args
+                .get_one::<PathBuf>("to")
+                .map(std::path::absolute)
+                .transpose()
+                .map_err(|_| EngineError::because(ErrorCode::BadInput, ErrorReason::DestinationUnwritable))?;
+            let params = json!({
+                "items": keys.iter().map(|item| json!({"by":"key","value":item.key})).collect::<Vec<_>>(),
+                "style": args.get_one::<String>("style"),
+                "output_locale": args.get_one::<String>("locale"),
+                "pdfs": args.get_flag("pdfs"),
+                "folder": args.get_flag("folder"),
+                "destination": destination,
+            });
+            let result = dispatch(engine, method, &params, &cancel).map_err(|error| match error.reason {
+                Some(ErrorReason::UnknownStyle) => Failure::explained(
+                    error,
+                    cli(
+                        "cli-style-unknown",
+                        &[(
+                            "style",
+                            &human::field(args.get_one::<String>("style").map_or("", String::as_str)),
+                        )],
+                    ),
+                ),
+                Some(ErrorReason::UnknownLocale) => Failure::explained(
+                    error,
+                    cli(
+                        "cli-locale-unknown",
+                        &[(
+                            "locale",
+                            &human::field(args.get_one::<String>("locale").map_or("", String::as_str)),
+                        )],
+                    ),
+                ),
+                Some(ErrorReason::DestinationExists | ErrorReason::DestinationUnwritable) => Failure::from(error),
+                _ => failed_citation_key(engine, matches, &keys, error),
+            })?;
+            let Response::Engine(Reply::Share(share)) = &result.data else {
+                return Err(EngineError::new(ErrorCode::Internal).into());
+            };
+            let labels: Vec<&str> = keys.iter().map(|item| item.key.as_str()).collect();
+            let (text, notes) = human::share_report(&share.value, &labels, destination.as_deref());
+            let mut result = result;
+            if !matches.get_flag("json") {
+                result.text = Some(text);
+            }
+            return Ok(Execution::Noted(result, notes));
         }
         Method::Read | Method::FindIn => {
             let attachment = args.get_one::<String>("attachment").cloned().unwrap_or_default();

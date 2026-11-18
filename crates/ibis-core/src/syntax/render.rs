@@ -2,7 +2,6 @@
 use std::collections::HashSet;
 use std::io::Write;
 
-use crate::citable::CitableFields;
 use serde::{Serialize, Serializer};
 
 use super::escape::*;
@@ -12,6 +11,7 @@ pub(super) fn render(
     caps: &SyntaxCapabilities,
     picks: &[Pick<'_>],
     requested_items: usize,
+    project_fields: FieldProjection,
 ) -> Result<String, CitationError> {
     if picks.is_empty() {
         return Ok(String::new());
@@ -24,8 +24,8 @@ pub(super) fn render(
         KeySyntax::Context => context(caps, picks),
         KeySyntax::Typst => flatten(&typst(picks)),
         KeySyntax::Keys => picks.iter().map(|pick| pick.key).collect::<Vec<_>>().join(", "),
-        KeySyntax::CslJson => return csl_json(picks),
-        KeySyntax::Bibtex | KeySyntax::DoiLinks => return share(caps.syntax, picks),
+        KeySyntax::CslJson => return csl_json(picks, project_fields),
+        KeySyntax::Bibtex | KeySyntax::DoiLinks => return share(caps.syntax, picks, project_fields),
         KeySyntax::OrgCite => org(picks),
         KeySyntax::Myst => format!(
             "{{cite:{}}}`{}`",
@@ -51,6 +51,7 @@ pub(super) fn display(
     caps: &SyntaxCapabilities,
     picks: &[Pick<'_>],
     requested: usize,
+    project_fields: FieldProjection,
 ) -> Result<DisplayTree, CitationError> {
     if picks.is_empty() {
         return Ok(DisplayTree::default());
@@ -70,7 +71,7 @@ pub(super) fn display(
         _ => DisplayTree {
             nodes: vec![node(
                 (picks.len() == 1).then(|| picks[0].index),
-                render(caps, picks, requested)?,
+                render(caps, picks, requested, project_fields)?,
             )],
         },
     };
@@ -566,7 +567,7 @@ fn locator_label(term: LocatorTerm, plural: bool) -> &'static str {
 
 /// Serialize one share-safe record at a time into a bounded writer. Repeated
 /// records are deduplicated and each filtered map is dropped immediately.
-fn csl_json(picks: &[Pick<'_>]) -> Result<String, CitationError> {
+fn csl_json(picks: &[Pick<'_>], project_fields: FieldProjection) -> Result<String, CitationError> {
     #[derive(Serialize)]
     struct RecordExport<'a> {
         id: &'a str,
@@ -575,10 +576,10 @@ fn csl_json(picks: &[Pick<'_>]) -> Result<String, CitationError> {
         #[serde(flatten)]
         fields: &'a CitableFields,
     }
-    struct Export<'a>(&'a Pick<'a>);
+    struct Export<'a>(&'a Pick<'a>, FieldProjection);
     impl Serialize for Export<'_> {
         fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-            let fields = CitableFields::new(self.0.record.csl.to_map());
+            let fields = (self.1)(self.0.record.csl.to_map());
             // Preserve a plain source token; URL-shaped or private source
             // identities never leave through the export's id field.
             RecordExport {
@@ -596,7 +597,7 @@ fn csl_json(picks: &[Pick<'_>]) -> Result<String, CitationError> {
     let records: Vec<_> = picks
         .iter()
         .filter(|pick| seen.insert(&pick.record.id))
-        .map(Export)
+        .map(|pick| Export(pick, project_fields))
         .collect();
     serde_json::to_writer(&mut output, &records).map_err(|failure| {
         if failure.io_error_kind() == Some(std::io::ErrorKind::FileTooLarge) {
@@ -623,7 +624,7 @@ impl Write for Bounded {
     }
 }
 
-fn share(syntax: KeySyntax, picks: &[Pick<'_>]) -> Result<String, CitationError> {
+fn share(syntax: KeySyntax, picks: &[Pick<'_>], project_fields: FieldProjection) -> Result<String, CitationError> {
     let mut output = Bounded(Vec::new());
     let mut seen = HashSet::new();
     for pick in picks.iter().filter(|pick| seen.insert(&pick.record.id)) {
@@ -633,7 +634,7 @@ fn share(syntax: KeySyntax, picks: &[Pick<'_>]) -> Result<String, CitationError>
                 .map_err(|_| CitationError::OutputTooLarge)?;
         }
         if syntax == KeySyntax::Bibtex {
-            let fields = CitableFields::new(pick.record.csl.to_map());
+            let fields = project_fields(pick.record.csl.to_map());
             super::bibtex::write(&mut output, pick.key, &fields).map_err(|_| CitationError::OutputTooLarge)?;
         } else {
             let link = pick.doi_link.as_ref().ok_or(CitationError::MissingDoi)?;

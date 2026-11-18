@@ -5,8 +5,8 @@
 use std::time::{Duration, Instant};
 
 use ibis_core::destination::CopyReason;
+use objc2::rc::Retained;
 use objc2_app_kit::NSRunningApplication;
-use tauri_nspanel::objc2::rc::Retained;
 
 use super::super::capture::{OldCitation, SHORT_SELECTION, SelectedText, Selection};
 use super::diagnostics;

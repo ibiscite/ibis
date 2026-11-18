@@ -138,36 +138,6 @@
           },
           {
             "additionalProperties": false,
-            "description": "Read a library through a built-in or explicitly configured source adapter.\n`Reload` reads it again and keeps the last good read on failure.",
-            "properties": {
-              "action": {
-                "const": "open-source",
-                "type": "string"
-              },
-              "library": {
-                "description": "The library in the adapter's own terms, as the person named it.",
-                "maxLength": 4096,
-                "minLength": 1,
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "name": {
-                "maxLength": 32,
-                "minLength": 1,
-                "pattern": "^[a-z][a-z0-9-]*$",
-                "type": "string"
-              }
-            },
-            "required": [
-              "action",
-              "name"
-            ],
-            "type": "object"
-          },
-          {
-            "additionalProperties": false,
             "properties": {
               "action": {
                 "const": "reload",
@@ -349,33 +319,13 @@
                 "type": "string"
               },
               {
-                "const": "source-not-found",
-                "description": "No built-in or explicitly configured adapter could be started.",
+                "const": "destination-exists",
+                "description": "Something is already where a pack of references was to be written;\nIbis never replaces it.",
                 "type": "string"
               },
               {
-                "const": "source-manager-closed",
-                "description": "The reference manager must be open to be read.",
-                "type": "string"
-              },
-              {
-                "const": "source-library-needed",
-                "description": "Several of the manager's libraries could be meant; name one.",
-                "type": "string"
-              },
-              {
-                "const": "source-library-not-found",
-                "description": "None of the manager's libraries has the name given.",
-                "type": "string"
-              },
-              {
-                "const": "source-permission",
-                "description": "The operating system did not let Ibis ask the reference manager.",
-                "type": "string"
-              },
-              {
-                "const": "source-failed",
-                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
+                "const": "destination-unwritable",
+                "description": "A pack of references could not be written there: the place is not an\nabsolute path, its folder is missing or read-only, or the disk is full.",
                 "type": "string"
               }
             ]
@@ -534,11 +484,6 @@
               {
                 "const": "snapshot",
                 "description": "Data handed to the engine whole, with no source behind it.",
-                "type": "string"
-              },
-              {
-                "const": "adapter",
-                "description": "A library a source adapter reads from a reference manager.",
                 "type": "string"
               }
             ]
@@ -1768,33 +1713,13 @@
                 "type": "string"
               },
               {
-                "const": "source-not-found",
-                "description": "No built-in or explicitly configured adapter could be started.",
+                "const": "destination-exists",
+                "description": "Something is already where a pack of references was to be written;\nIbis never replaces it.",
                 "type": "string"
               },
               {
-                "const": "source-manager-closed",
-                "description": "The reference manager must be open to be read.",
-                "type": "string"
-              },
-              {
-                "const": "source-library-needed",
-                "description": "Several of the manager's libraries could be meant; name one.",
-                "type": "string"
-              },
-              {
-                "const": "source-library-not-found",
-                "description": "None of the manager's libraries has the name given.",
-                "type": "string"
-              },
-              {
-                "const": "source-permission",
-                "description": "The operating system did not let Ibis ask the reference manager.",
-                "type": "string"
-              },
-              {
-                "const": "source-failed",
-                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
+                "const": "destination-unwritable",
+                "description": "A pack of references could not be written there: the place is not an\nabsolute path, its folder is missing or read-only, or the disk is full.",
                 "type": "string"
               }
             ]
@@ -3383,33 +3308,13 @@
                 "type": "string"
               },
               {
-                "const": "source-not-found",
-                "description": "No built-in or explicitly configured adapter could be started.",
+                "const": "destination-exists",
+                "description": "Something is already where a pack of references was to be written;\nIbis never replaces it.",
                 "type": "string"
               },
               {
-                "const": "source-manager-closed",
-                "description": "The reference manager must be open to be read.",
-                "type": "string"
-              },
-              {
-                "const": "source-library-needed",
-                "description": "Several of the manager's libraries could be meant; name one.",
-                "type": "string"
-              },
-              {
-                "const": "source-library-not-found",
-                "description": "None of the manager's libraries has the name given.",
-                "type": "string"
-              },
-              {
-                "const": "source-permission",
-                "description": "The operating system did not let Ibis ask the reference manager.",
-                "type": "string"
-              },
-              {
-                "const": "source-failed",
-                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
+                "const": "destination-unwritable",
+                "description": "A pack of references could not be written there: the place is not an\nabsolute path, its folder is missing or read-only, or the disk is full.",
                 "type": "string"
               }
             ]
@@ -5481,33 +5386,13 @@
                 "type": "string"
               },
               {
-                "const": "source-not-found",
-                "description": "No built-in or explicitly configured adapter could be started.",
+                "const": "destination-exists",
+                "description": "Something is already where a pack of references was to be written;\nIbis never replaces it.",
                 "type": "string"
               },
               {
-                "const": "source-manager-closed",
-                "description": "The reference manager must be open to be read.",
-                "type": "string"
-              },
-              {
-                "const": "source-library-needed",
-                "description": "Several of the manager's libraries could be meant; name one.",
-                "type": "string"
-              },
-              {
-                "const": "source-library-not-found",
-                "description": "None of the manager's libraries has the name given.",
-                "type": "string"
-              },
-              {
-                "const": "source-permission",
-                "description": "The operating system did not let Ibis ask the reference manager.",
-                "type": "string"
-              },
-              {
-                "const": "source-failed",
-                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
+                "const": "destination-unwritable",
+                "description": "A pack of references could not be written there: the place is not an\nabsolute path, its folder is missing or read-only, or the disk is full.",
                 "type": "string"
               }
             ]
@@ -7588,33 +7473,13 @@
                 "type": "string"
               },
               {
-                "const": "source-not-found",
-                "description": "No built-in or explicitly configured adapter could be started.",
+                "const": "destination-exists",
+                "description": "Something is already where a pack of references was to be written;\nIbis never replaces it.",
                 "type": "string"
               },
               {
-                "const": "source-manager-closed",
-                "description": "The reference manager must be open to be read.",
-                "type": "string"
-              },
-              {
-                "const": "source-library-needed",
-                "description": "Several of the manager's libraries could be meant; name one.",
-                "type": "string"
-              },
-              {
-                "const": "source-library-not-found",
-                "description": "None of the manager's libraries has the name given.",
-                "type": "string"
-              },
-              {
-                "const": "source-permission",
-                "description": "The operating system did not let Ibis ask the reference manager.",
-                "type": "string"
-              },
-              {
-                "const": "source-failed",
-                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
+                "const": "destination-unwritable",
+                "description": "A pack of references could not be written there: the place is not an\nabsolute path, its folder is missing or read-only, or the disk is full.",
                 "type": "string"
               }
             ]
@@ -8873,33 +8738,13 @@
                 "type": "string"
               },
               {
-                "const": "source-not-found",
-                "description": "No built-in or explicitly configured adapter could be started.",
+                "const": "destination-exists",
+                "description": "Something is already where a pack of references was to be written;\nIbis never replaces it.",
                 "type": "string"
               },
               {
-                "const": "source-manager-closed",
-                "description": "The reference manager must be open to be read.",
-                "type": "string"
-              },
-              {
-                "const": "source-library-needed",
-                "description": "Several of the manager's libraries could be meant; name one.",
-                "type": "string"
-              },
-              {
-                "const": "source-library-not-found",
-                "description": "None of the manager's libraries has the name given.",
-                "type": "string"
-              },
-              {
-                "const": "source-permission",
-                "description": "The operating system did not let Ibis ask the reference manager.",
-                "type": "string"
-              },
-              {
-                "const": "source-failed",
-                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
+                "const": "destination-unwritable",
+                "description": "A pack of references could not be written there: the place is not an\nabsolute path, its folder is missing or read-only, or the disk is full.",
                 "type": "string"
               }
             ]
@@ -9911,33 +9756,13 @@
                 "type": "string"
               },
               {
-                "const": "source-not-found",
-                "description": "No built-in or explicitly configured adapter could be started.",
+                "const": "destination-exists",
+                "description": "Something is already where a pack of references was to be written;\nIbis never replaces it.",
                 "type": "string"
               },
               {
-                "const": "source-manager-closed",
-                "description": "The reference manager must be open to be read.",
-                "type": "string"
-              },
-              {
-                "const": "source-library-needed",
-                "description": "Several of the manager's libraries could be meant; name one.",
-                "type": "string"
-              },
-              {
-                "const": "source-library-not-found",
-                "description": "None of the manager's libraries has the name given.",
-                "type": "string"
-              },
-              {
-                "const": "source-permission",
-                "description": "The operating system did not let Ibis ask the reference manager.",
-                "type": "string"
-              },
-              {
-                "const": "source-failed",
-                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
+                "const": "destination-unwritable",
+                "description": "A pack of references could not be written there: the place is not an\nabsolute path, its folder is missing or read-only, or the disk is full.",
                 "type": "string"
               }
             ]
@@ -10856,33 +10681,13 @@
                 "type": "string"
               },
               {
-                "const": "source-not-found",
-                "description": "No built-in or explicitly configured adapter could be started.",
+                "const": "destination-exists",
+                "description": "Something is already where a pack of references was to be written;\nIbis never replaces it.",
                 "type": "string"
               },
               {
-                "const": "source-manager-closed",
-                "description": "The reference manager must be open to be read.",
-                "type": "string"
-              },
-              {
-                "const": "source-library-needed",
-                "description": "Several of the manager's libraries could be meant; name one.",
-                "type": "string"
-              },
-              {
-                "const": "source-library-not-found",
-                "description": "None of the manager's libraries has the name given.",
-                "type": "string"
-              },
-              {
-                "const": "source-permission",
-                "description": "The operating system did not let Ibis ask the reference manager.",
-                "type": "string"
-              },
-              {
-                "const": "source-failed",
-                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
+                "const": "destination-unwritable",
+                "description": "A pack of references could not be written there: the place is not an\nabsolute path, its folder is missing or read-only, or the disk is full.",
                 "type": "string"
               }
             ]
@@ -11730,33 +11535,13 @@
                 "type": "string"
               },
               {
-                "const": "source-not-found",
-                "description": "No built-in or explicitly configured adapter could be started.",
+                "const": "destination-exists",
+                "description": "Something is already where a pack of references was to be written;\nIbis never replaces it.",
                 "type": "string"
               },
               {
-                "const": "source-manager-closed",
-                "description": "The reference manager must be open to be read.",
-                "type": "string"
-              },
-              {
-                "const": "source-library-needed",
-                "description": "Several of the manager's libraries could be meant; name one.",
-                "type": "string"
-              },
-              {
-                "const": "source-library-not-found",
-                "description": "None of the manager's libraries has the name given.",
-                "type": "string"
-              },
-              {
-                "const": "source-permission",
-                "description": "The operating system did not let Ibis ask the reference manager.",
-                "type": "string"
-              },
-              {
-                "const": "source-failed",
-                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
+                "const": "destination-unwritable",
+                "description": "A pack of references could not be written there: the place is not an\nabsolute path, its folder is missing or read-only, or the disk is full.",
                 "type": "string"
               }
             ]
@@ -12597,33 +12382,13 @@
                 "type": "string"
               },
               {
-                "const": "source-not-found",
-                "description": "No built-in or explicitly configured adapter could be started.",
+                "const": "destination-exists",
+                "description": "Something is already where a pack of references was to be written;\nIbis never replaces it.",
                 "type": "string"
               },
               {
-                "const": "source-manager-closed",
-                "description": "The reference manager must be open to be read.",
-                "type": "string"
-              },
-              {
-                "const": "source-library-needed",
-                "description": "Several of the manager's libraries could be meant; name one.",
-                "type": "string"
-              },
-              {
-                "const": "source-library-not-found",
-                "description": "None of the manager's libraries has the name given.",
-                "type": "string"
-              },
-              {
-                "const": "source-permission",
-                "description": "The operating system did not let Ibis ask the reference manager.",
-                "type": "string"
-              },
-              {
-                "const": "source-failed",
-                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
+                "const": "destination-unwritable",
+                "description": "A pack of references could not be written there: the place is not an\nabsolute path, its folder is missing or read-only, or the disk is full.",
                 "type": "string"
               }
             ]
@@ -13255,6 +13020,937 @@
     },
     {
       "contract": 1,
+      "method": "share",
+      "params": {
+        "$defs": {
+          "ItemRef": {
+            "additionalProperties": false,
+            "description": "Identity inside one library; citation keys are intentionally separate.\nNon-item kinds use source-namespaced keys (for example `tag:...`) so\nsource tags and collections cannot collide with native item keys.",
+            "properties": {
+              "key": {
+                "$ref": "#/$defs/RecordId"
+              },
+              "library": {
+                "$ref": "#/$defs/LibraryId"
+              }
+            },
+            "required": [
+              "library",
+              "key"
+            ],
+            "type": "object"
+          },
+          "ItemSelector": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "by": {
+                    "const": "id",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/$defs/ItemRef"
+                  }
+                },
+                "required": [
+                  "by",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "by": {
+                    "const": "key",
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "by",
+                  "value"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "LibraryId": {
+            "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "type": "string"
+          },
+          "RecordId": {
+            "type": "string",
+            "x-ibis-opaque": "RecordId"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "A pack of references to hand to someone (#1953): a reading list page,\na `.bib` file and, when asked, the references' PDFs. The pack metadata\npasses the share-safe filter. Attached PDFs are copied as they are,\nincluding anything inside them. Without a destination the answer previews\nthe pack.",
+        "properties": {
+          "destination": {
+            "default": null,
+            "description": "The zip file or folder to create, as an absolute path in a folder\nthat exists. Nothing already there is ever replaced. Omitted, nothing\nis written.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "folder": {
+            "default": false,
+            "description": "Write a plain folder rather than one zip file.",
+            "type": "boolean"
+          },
+          "items": {
+            "description": "The references, in order; a repeated one is packed once.",
+            "items": {
+              "$ref": "#/$defs/ItemSelector"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "type": "array"
+          },
+          "output_locale": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pdfs": {
+            "default": false,
+            "description": "Add each reference's PDFs, only those inside its library's folder or\nZotero's storage.",
+            "type": "boolean"
+          },
+          "style": {
+            "default": null,
+            "description": "The CSL style the reading list is written in; omitted, APA.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ShareRequest",
+        "type": "object"
+      },
+      "result": {
+        "$defs": {
+          "CitationSurface": {
+            "description": "Wording context only; operations choose their recovery before presentation.",
+            "enum": [
+              "bibliography"
+            ],
+            "type": "string"
+          },
+          "ErrorCode": {
+            "enum": [
+              "usage",
+              "bad-input",
+              "not-found",
+              "source-unavailable",
+              "resource-limit",
+              "newer-format",
+              "internal",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "ErrorReason": {
+            "description": "Why a request failed, when the code alone cannot tell a caller what to change.\nFront ends choose their words from it; they never guess a reason from the code.",
+            "oneOf": [
+              {
+                "const": "strict-citation",
+                "description": "Strict citation policy found losses, refusals or unhealthy evidence.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-style",
+                "description": "No style has the requested id; `styles` lists them.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-output",
+                "description": "No output has the requested id; `outputs` lists them.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-locale",
+                "description": "The requested locale is not bundled; `styles` lists the locales.",
+                "type": "string"
+              },
+              {
+                "const": "duplicate-key",
+                "description": "The key is repeated in a library, so every entry under it is skipped.",
+                "type": "string"
+              },
+              {
+                "const": "damaged-entry",
+                "description": "The entry with this key is damaged, so it is skipped; the library's\nwarnings say where and why.",
+                "type": "string"
+              },
+              {
+                "const": "ambiguous-key",
+                "description": "Several references share the key.",
+                "type": "string"
+              },
+              {
+                "const": "missing-key",
+                "description": "A key output needs a citation key this reference does not have.",
+                "type": "string"
+              },
+              {
+                "const": "missing-file",
+                "description": "The selected library file was moved, renamed or removed.",
+                "type": "string"
+              },
+              {
+                "const": "app-missing",
+                "description": "The program started as the Ibis app does not exist.",
+                "type": "string"
+              },
+              {
+                "const": "not-ibis",
+                "description": "The program started as the Ibis app is not Ibis.",
+                "type": "string"
+              },
+              {
+                "const": "no-answer",
+                "description": "The Ibis app started but did not confirm the request in time.",
+                "type": "string"
+              },
+              {
+                "const": "settings-read-timeout",
+                "description": "The app's library settings did not finish loading in time.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-sharing-off",
+                "description": "Zotero is running but does not let other applications read it.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-profile-needed",
+                "description": "Zotero is closed and which profile to read is not settled; name one.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-needs-opening",
+                "description": "A closed read is unsafe or impossible here; opening Zotero is the fix.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-not-found",
+                "description": "No Zotero library is on this computer.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-no-space",
+                "description": "A closed read needs a private copy and there is no room for it.",
+                "type": "string"
+              },
+              {
+                "const": "csv-template",
+                "description": "A CSV file's first row does not name the columns of Ibis's template.",
+                "type": "string"
+              },
+              {
+                "const": "library-cut-short",
+                "description": "Nothing has the key in what was read, and a library was too large to read whole.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-format",
+                "description": "Neither the file's name nor its contents identify a supported library format.",
+                "type": "string"
+              },
+              {
+                "const": "duplicate-record",
+                "description": "Two records a request sends share an `id`, `1` and `\"1\"` included.",
+                "type": "string"
+              },
+              {
+                "const": "rejected-record",
+                "description": "A record a request sends was not valid CSL-JSON, so none is cited.",
+                "type": "string"
+              },
+              {
+                "const": "no-attachment-text",
+                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or its file is missing, damaged or one Ibis cannot read.",
+                "type": "string"
+              },
+              {
+                "const": "attachment-outside-library",
+                "description": "The resolved attachment file is outside its library's folder, and\nthis computer has not explicitly allowed reading it.",
+                "type": "string"
+              },
+              {
+                "const": "no-such-pages",
+                "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
+                "type": "string"
+              },
+              {
+                "const": "destination-exists",
+                "description": "Something is already where a pack of references was to be written;\nIbis never replaces it.",
+                "type": "string"
+              },
+              {
+                "const": "destination-unwritable",
+                "description": "A pack of references could not be written there: the place is not an\nabsolute path, its folder is missing or read-only, or the disk is full.",
+                "type": "string"
+              }
+            ]
+          },
+          "FocusTarget": {
+            "enum": [
+              "format-picker",
+              "library-picker",
+              "source-file",
+              "zotero-sharing-help",
+              "search",
+              "results",
+              "locator",
+              "citation",
+              "citation-form",
+              "session-references",
+              "language",
+              "recovery-action",
+              "project-name",
+              "project-menu",
+              "settings",
+              "request"
+            ],
+            "type": "string"
+          },
+          "HealthStatus": {
+            "oneOf": [
+              {
+                "enum": [
+                  "ok",
+                  "findings"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "LibraryId": {
+            "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "type": "string"
+          },
+          "Message": {
+            "properties": {
+              "args": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "context": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CitationSurface"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "args"
+            ],
+            "type": "object"
+          },
+          "NoRecoveryReason": {
+            "enum": [
+              "cancelled",
+              "in-progress"
+            ],
+            "type": "string"
+          },
+          "PackFile": {
+            "properties": {
+              "bytes": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "bytes"
+            ],
+            "type": "object"
+          },
+          "Recovery": {
+            "description": "Exactly one next action; absence must have an explicit, machine-readable reason.",
+            "oneOf": [
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-output",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-style",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-form",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "locate-file",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-library",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-zotero-sharing-help",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-zotero",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "retry",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "rename-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "reopen-project-menu",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "finish-editor-request",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "review-settings",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-citation",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-locator",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-input",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "search-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "select-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "reduce-selection",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "close",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-locale",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "review-library",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "free-disk-space",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "upgrade-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-backup",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "download-file",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-shortcut",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "restart-session",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "none",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "$ref": "#/$defs/NoRecoveryReason"
+                  }
+                },
+                "required": [
+                  "action",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "SourceFinding": {
+            "description": "A problem with one library a result consulted. Codes only: no source text.",
+            "oneOf": [
+              {
+                "description": "The library changed and could not be read again; the result used the\nreferences from its last successful read.",
+                "properties": {
+                  "code": {
+                    "const": "refresh-failed",
+                    "type": "string"
+                  },
+                  "error": {
+                    "$ref": "#/$defs/ErrorCode"
+                  },
+                  "focus": {
+                    "$ref": "#/$defs/FocusTarget"
+                  },
+                  "last_successful_read_ms": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "library": {
+                    "$ref": "#/$defs/LibraryId"
+                  },
+                  "message": {
+                    "$ref": "#/$defs/Message"
+                  },
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/ErrorReason"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "recovery": {
+                    "$ref": "#/$defs/Recovery"
+                  }
+                },
+                "required": [
+                  "code",
+                  "library",
+                  "error",
+                  "message",
+                  "recovery",
+                  "focus",
+                  "last_successful_read_ms"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Entries were skipped or read with problems; `ibis libraries` lists them.",
+                "properties": {
+                  "code": {
+                    "const": "source-warnings",
+                    "type": "string"
+                  },
+                  "count": {
+                    "format": "uint",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "library": {
+                    "$ref": "#/$defs/LibraryId"
+                  }
+                },
+                "required": [
+                  "code",
+                  "library",
+                  "count"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "SourceHealth": {
+            "description": "Whether the sources behind one result were healthy, read from the same\nlibrary state the result came from: a later refresh never changes it.",
+            "properties": {
+              "findings": {
+                "description": "One entry per problem, in library order; empty when `status` is `ok`.",
+                "items": {
+                  "$ref": "#/$defs/SourceFinding"
+                },
+                "type": "array"
+              },
+              "status": {
+                "$ref": "#/$defs/HealthStatus"
+              }
+            },
+            "required": [
+              "status",
+              "findings"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "A result with the health of the sources it consulted.",
+        "properties": {
+          "files": {
+            "description": "Each file in the pack, by its place in it, with `/` between folders.",
+            "items": {
+              "$ref": "#/$defs/PackFile"
+            },
+            "type": "array"
+          },
+          "not_in_bibtex": {
+            "description": "References without a usable citation key, which the `.bib` leaves out.",
+            "items": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "not_in_list": {
+            "description": "References the style could not write, so the reading list leaves them\nout: their zero-based places in `items`.",
+            "items": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "source_health": {
+            "$ref": "#/$defs/SourceHealth"
+          },
+          "total_bytes": {
+            "description": "The files' bytes together; a zip adds about a hundred bytes a file.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "without_pdf": {
+            "description": "With PDFs asked for, references none of whose PDFs could be added: it\nhas none, or they are outside its library's folder, missing, linked,\nnot on this computer or over 256 MiB.",
+            "items": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "written": {
+            "description": "The pack was written; false when no destination was given.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "written",
+          "files",
+          "total_bytes",
+          "source_health"
+        ],
+        "title": "Checked",
+        "type": "object"
+      }
+    },
+    {
+      "contract": 1,
       "method": "styles",
       "params": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -13632,6 +14328,7 @@
               "outline",
               "read",
               "find-in",
+              "share",
               "styles",
               "outputs",
               "schema",
@@ -13680,6 +14377,7 @@
               "outline",
               "read",
               "find-in",
+              "share",
               "styles",
               "outputs",
               "schema",

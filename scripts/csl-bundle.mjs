@@ -148,7 +148,7 @@ export function pack({ styles, locales, renames, curated, releases, primary }) {
   return Buffer.concat([Buffer.from("IBISCSL1"), lengths, header, rows, ...frames]);
 }
 
-function run(command, args) {
+export function run(command, args) {
   const result = spawnSync(command, args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
   if (result.status !== 0) throw new Error(`${command} failed: ${result.stderr?.trim().slice(0, 500)}`);
   return result.stdout.trim();
@@ -161,7 +161,7 @@ function newestTag(repo) {
   return { tag: ref.replace("refs/tags/", ""), commit: lines.find((line) => line.endsWith(`${ref}^{}`))?.split(/\s+/)[0] ?? commit };
 }
 
-async function download(source, into) {
+export async function download(source, into) {
   const url = `https://codeload.github.com/${source.repo}/tar.gz/${source.commit}`;
   const response = await fetch(url);
   if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
@@ -176,7 +176,7 @@ async function download(source, into) {
 }
 
 /** A regular file from the archive: a link could point outside it. */
-function checkedFile(path) {
+export function checkedFile(path) {
   if (!lstatSync(path).isFile()) throw new Error(`${path}: not a regular file`);
   const bytes = readFileSync(path);
   if (bytes.length > MAX_FILE_BYTES) throw new Error(`${path}: larger than ${MAX_FILE_BYTES} bytes`);

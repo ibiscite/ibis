@@ -12,7 +12,8 @@ describes this checkout. Plans live in [ROADMAP.md](../ROADMAP.md).
 | `crates/ibis-csl` | citeproc-js in QuickJS, ICU4X collation, bundled CSL styles and locales. |
 | `crates/ibis-engine` | Typed methods, source lifecycle, prepared citations, settings owner, recents, JSON-RPC and MCP. |
 | `crates/ibis-cli` | The `ibis` executable, and the PDF text extractor and built-in source adapters it starts as its own child processes (`ibis __extract-pdf`, with `lopdf`; `ibis __source NAME`). Depends on core and engine, and enables the EndNote reader in `ibis-sources` for the adapter process. |
-| `apps/desktop/src-tauri` | Native windows, clipboard, paste, shortcuts, settings dialogs and updates. Depends on core, engine and its command macro crate. |
+| `crates/ibis-native` | Native paste with no window toolkit: the target capture, its proofs and their platform calls, and every `unsafe` block they need. The host supplies windows, settings and the keyboard layout. Depends on core and engine (the paste setting). |
+| `apps/desktop/src-tauri` | Native windows, clipboard, paste delivery through `ibis-native`, shortcuts, settings dialogs and updates. Depends on core, engine, native and its command macro crate. |
 | `apps/desktop/src` | React interface, shared controls in `ui/`, tokens in `tokens.css`. |
 
 The desktop manages `ibis_engine::library::Owner`: commands submit intents and
@@ -159,6 +160,15 @@ Session failures carry a typed `Problem` with its catalogue message, recovery an
 focus. BibTeX and DOI links use the same preview and checked commit as citations;
 record exports pass through `ibis_core::citable::share_fields`
 (`crates/ibis-core/src/citable.rs`), which drops notes, annotations and device links.
+
+A pack of references (`Engine::share`, [#1953](https://github.com/ibiscite/ibis/issues/1953))
+plans its files once for both the preview and the write: the reading list page
+from the formatter's display tree, escaped by the pack writer with links only
+from `DoiLink` and `PublicUrl`; `References.bib` from the `bibtex` output; and,
+when asked, PDFs located by the source's own attachment rules with
+`outside_library` off and opened by `pdf::LocalPdf`. It creates a new zip
+(`zip`, stored entries) or folder and never replaces one; its answer names
+files inside the pack, never a location.
 
 The desktop warms its saved default style, locale and runtime in the background,
 independently of the library, and shares that formatter for the session. Warm-up

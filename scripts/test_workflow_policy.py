@@ -7,7 +7,10 @@ runs every qualifier, even after a failed prerequisite. The reporter is outside
 that result.
 """
 
+import os
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -48,6 +51,25 @@ class CiResultTest(unittest.TestCase):
         needs = jobs[key].get("needs", [])
         needs = [needs] if isinstance(needs, str) else list(needs)
         self.assertEqual(sorted(needs), sorted(name for name in jobs if name not in {key, "nightly-report"}))
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "contract report runs on Linux")
+    def test_contract_report_failure_only_writes_an_advisory_notice(self):
+        workflow = yaml.safe_load((ROOT / ".github/workflows/contract-report.yml").read_text(encoding="utf-8"))
+        self.assertEqual(workflow["permissions"], {"contents": "read"})
+        steps = workflow["jobs"]["report"]["steps"]
+        self.assertIs(steps[0]["with"]["persist-credentials"], False)
+        for job in self.workflow["jobs"].values():
+            self.assertFalse(any("contract-compat.mjs" in step.get("run", "") for step in job.get("steps", [])))
+        # The reporter is unavailable in the temporary checkout.
+        with tempfile.TemporaryDirectory() as directory:
+            summary = Path(directory) / "summary.md"
+            result = subprocess.run(
+                ["bash", "-e", "-c", steps[-1]["run"]], cwd=directory,
+                env={**os.environ, "GITHUB_STEP_SUMMARY": str(summary)},
+                capture_output=True, text=True, timeout=5, check=True,
+            )
+            self.assertIn("::notice::Contract report skipped.", result.stdout)
+            self.assertIn("Contract report skipped.", summary.read_text(encoding="utf-8"))
 
     def test_every_pull_request_and_main_push_tests_all_three_systems(self):
         events = self.workflow.get("on", self.workflow.get(True))

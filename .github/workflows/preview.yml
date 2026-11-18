@@ -403,6 +403,10 @@ jobs:
           git rev-parse --verify --quiet "refs/tags/$previous" >/dev/null
           status=0
           node scripts/style-sweep.mjs release "$previous" "$OUT" || status=$?
+          # The release notes' contract changes; a report, never a failure.
+          if ! timeout --kill-after=2s 40s node scripts/contract-compat.mjs --base "refs/tags/$previous" --notes "$OUT/contract.md"; then
+            echo '::notice::Contract report skipped. See the job log for the reason.'
+          fi
           if [ -f "$OUT/report.md" ]; then cat "$OUT/report.md" >> "$GITHUB_STEP_SUMMARY"; fi
           rm -f "$OUT"/*.jsonl
           exit "$status"

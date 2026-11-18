@@ -2,6 +2,7 @@
 use crate::sync::MutexExt;
 use crate::{Method, request::*};
 use ibis_core::{
+    citable::{CitableFields, FieldProjection},
     contract::*,
     search::{MatchField, SnapshotIndex},
 };
@@ -33,11 +34,13 @@ mod receipt;
 pub use prepared::{CitationCommitError, PreparedCitation};
 mod project;
 mod reading;
+mod share;
 pub use ibis_sources::project::{Doubt, EntryRefusal, KeyCheck, ProjectProblem, ProjectRead};
 pub use project::{
     EntryResult, ProjectAssessment, ProjectAssessmentState, ProjectKey, ProjectResult, WritingCitation, project_name,
 };
 pub use reading::*;
+pub use share::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
@@ -196,6 +199,7 @@ pub enum Reply {
     Outline(health::Checked<OutlineResult>),
     Read(health::Checked<ReadResult>),
     FindIn(health::Checked<FindInResult>),
+    Share(health::Checked<ShareResult>),
     Styles(StylesResult),
     Outputs(crate::outputs::OutputsResult),
     Schema(Value),
@@ -791,12 +795,13 @@ impl Engine {
         cancel: &Cancellation,
     ) -> Result<CitationResult, EngineError> {
         let resolved = crate::outputs::resolve_request(request)?;
-        self.cite_resolved(context, &resolved, cancel)
+        self.cite_resolved(context, &resolved, CitableFields::new, cancel)
     }
     fn cite_resolved(
         &self,
         context: &receipt::CitationContext,
         resolved: &crate::outputs::ResolvedRequest,
+        project_fields: FieldProjection,
         cancel: &Cancellation,
     ) -> Result<CitationResult, EngineError> {
         let request = &resolved.request;
@@ -814,12 +819,15 @@ impl Engine {
                 ibis_core::syntax::scannable::cite(snapshot, request, |library| context.zotero.get(library).copied())
                     .map_err(key_error)?
             }
-            OutputSpec::Key { .. } => ibis_core::syntax::cite(snapshot, request).map_err(key_error)?,
+            OutputSpec::Key { .. } => {
+                ibis_core::syntax::cite_with_fields(snapshot, request, project_fields).map_err(key_error)?
+            }
             OutputSpec::Csl { .. } => self.formatted(
                 snapshot,
                 request,
                 cancel,
                 resolved.formatted.as_ref().ok_or_else(|| error(ErrorCode::Internal))?,
+                project_fields,
             )?,
             OutputSpec::Preset { .. } => return Err(error(ErrorCode::Internal)),
         };
@@ -966,6 +974,16 @@ impl Engine {
                 );
             }
             Method::FindIn => return checked(self.find_in(&parameters(params)?, cancel)?, ExitCode::Ok, Reply::FindIn),
+            Method::Share => {
+                let result = self.share(&parameters(params)?, cancel)?;
+                // A reference left out of a file it was asked for is a finding.
+                let exit_code = if result.value.complete() {
+                    ExitCode::Ok
+                } else {
+                    ExitCode::Findings
+                };
+                return checked(result, exit_code, Reply::Share);
+            }
             Method::Styles => Reply::Styles(self.styles(&parameters(params)?)?),
             Method::Outputs => {
                 let OutputsRequest {} = parameters(params)?;
@@ -1259,6 +1277,7 @@ fn response_schema(method: Method) -> Value {
         Method::Outline => schema_for!(health::Checked<OutlineResult>),
         Method::Read => schema_for!(health::Checked<ReadResult>),
         Method::FindIn => schema_for!(health::Checked<FindInResult>),
+        Method::Share => schema_for!(health::Checked<ShareResult>),
         _ => schema_for!(Value),
     }
     .into()

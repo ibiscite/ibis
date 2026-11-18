@@ -271,6 +271,18 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | `ATTACHMENT` | The attachment's id, as ibis outline prints it |
 | `WORDS` | The words to find, ignoring case; quote several words |
 
+**`ibis share`**: Make a pack of references to send: a reading list, a .bib file and, if asked, their PDFs
+
+| Option | Does |
+| --- | --- |
+| `KEY…` | Citation keys of the references, in order |
+| `--keys-from FILE` | Read one citation key per line from FILE, or - for stdin; ignore blanks and # comments |
+| `--to PATH` | Write the pack here, a new zip file or with --folder a new folder; nothing there is replaced |
+| `--pdfs` | Add PDFs from the library folder or Zotero storage. Attached PDFs are copied as they are, including anything inside them. |
+| `--folder` | Write a plain folder instead of a zip file |
+| `--style STYLE_ID` | The CSL style of the reading list, default apa; list them with: ibis styles |
+| `--locale LOCALE` | Language of the reading list, such as de-DE; default the style's own |
+
 **`ibis styles`**: Find bundled CSL styles and citation languages
 
 | Option | Does |
@@ -463,12 +475,13 @@ control characters; JSON preserves source strings.
 ```
 
 `ibis` is the contract version, now 1. `--contract 1` selects it; unsupported
-versions are refused with the supported versions. Within a version, results
-may gain fields and codes: ignore unknown fields and review unknown codes.
-Other changes require a new version ([decision 0028](decisions/0028-engine-first.md)).
-Unknown request fields are `bad-input`.
+versions are refused with the supported versions. Results may gain fields and
+codes: ignore unknown fields and review unknown codes. Unknown request fields
+are `bad-input`.
 
-Older contracts stay supported for at least two minor releases.
+Until 1.0 the CLI, MCP tools and engine contract are unstable: any release may
+change or remove any part of them, and each release lists its contract
+differences ([decision 0028](decisions/0028-engine-first.md)).
 
 `ibis schema METHOD` describes `data`; `cite --writing` uses
 `ibis writings schema`. Branch on `error.code` and optional
@@ -662,6 +675,43 @@ Choosing one profile's personal library or group never opens another profile's.
 This choice stays on this computer and out of settings backups. The direct
 commands and `ibis call outline|read|find-in` use the app's libraries when none
 is named and do not need this choice.
+
+### A pack of references
+
+```sh
+ibis share vale2024lanterns fen2023clouds --pdfs
+ibis share vale2024lanterns fen2023clouds --pdfs --to "Reading pack.zip"
+ibis share --keys-from keys.txt --style ieee --folder --to pack
+```
+
+`share` makes one pack to send someone ([#1953](https://github.com/ibiscite/ibis/issues/1953)):
+`Reading list.html`, a page any browser opens with each reference written in
+the style (APA unless `--style` names another) and its DOI or address as a
+link; `References.bib`, which loads the references into any reference
+manager; and, only with `--pdfs`, a `PDFs` folder with each reference's PDFs
+named like `Aster 2026 - Title.pdf`. Names suit macOS, Windows and Linux; two
+names one of them would take for the same get ` (2)`, ` (3)` in order. A
+reference picked twice is packed once.
+
+Without `--to`, nothing is written: it lists the files and their sizes, as
+the app shows them before saving. `--to` names a new zip file, or with
+`--folder` a new folder; a file or folder already there is refused
+(`destination-exists`) and never replaced. The zip stores its files as they
+are, since PDFs are already compressed, and a pack holds at most 2 GiB.
+
+The reading list, BibTeX metadata and filenames omit library notes, annotations,
+private links and file locations, including paths into named home directories.
+BibTeX preserves valid citation keys exactly as stored. Attached PDFs are copied
+as they are, including anything inside them. PDFs come only from inside the
+`.bib` library's folder or Zotero's storage, opened as `read`
+opens them (a regular local file, never a link) and at most 256 MiB each,
+whatever **Allow attachment text outside the library’s folder** says. A
+reference the style cannot write, one without a usable citation key for the
+`.bib`, or one whose PDFs cannot be added is named on stderr, with exit
+status 1; `--json` gives their places in the selection as `not_in_list`,
+`not_in_bibtex` and `without_pdf`. No answer holds the pack's location.
+`ibis call share` and JSON-RPC take the same request, with an absolute
+`destination`; MCP has no share tool.
 
 ### Writings
 
