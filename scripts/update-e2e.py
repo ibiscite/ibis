@@ -44,6 +44,7 @@ for the separate paste-permission check.
 """
 
 import argparse
+import concurrent.futures
 import hashlib
 import importlib
 import json
@@ -1432,6 +1433,18 @@ def run(args):
     return 0 if report["status"] == "passed" else 1
 
 
+def contract_runs(script, arguments):
+    """Run the PowerShell contract model once per argument, side by side.
+
+    Each run starts PowerShell and compiles the model; one after another they
+    took most of the Windows self-test. The runs share nothing but the script."""
+    def run(argument):
+        return subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(script), argument],
+                              capture_output=True, timeout=30)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        return dict(zip(arguments, pool.map(run, arguments)))
+
+
 class Tests(unittest.TestCase):
     def macos_probe(self, *, attempted=False, **changes):
         return dict({"stage": "complete", "code": None, "failed": False, "trusted": True,
@@ -2434,18 +2447,19 @@ function Contract-Result($pressed,$how) {
         with tempfile.TemporaryDirectory() as temporary:
             script = Path(temporary) / "update-contract.ps1"
             script.write_text(model + helper, encoding="utf-8")
-            for scenario in ("pane", "button", "native-button", "native-uncertain", "native-refused", "native-timeout", "native-background",
+            scenarios = ("pane", "button", "native-button", "native-uncertain", "native-refused", "native-timeout", "native-background",
                              "native-foreign", "native-hidden", "native-disabled", "native-caption", "native-class", "native-wrong-name", "native-reopened",
                              "standard", "standard-localized", "standard-rtl", "standard-no", "standard-wrong-id", "standard-pane",
                              "standard-disabled", "standard-hidden", "standard-uncertain", "standard-unsupported", "standard-duplicate",
                              "standard-wrong-owner", "mixed-actions", "wrong-owner", "wrong-window", "wrong-name", "disabled", "hidden",
                              "unsupported", "duplicate-action", "duplicate-window", "missing-window", "wrong-window-owner",
                              "window-bound", "case-name", "case-window", "bound", "uncertain", "nested", "nested-foreign",
-                             "other-window-action", "window-replaced", "window-owner-late", "action-owner-late", "action-detached", "owner-before-press"):
+                             "other-window-action", "window-replaced", "window-owner-late", "action-owner-late", "action-detached", "owner-before-press")
+            results = contract_runs(script, scenarios)
+            for scenario in scenarios:
                 with self.subTest(scenario=scenario):
                     expected = scenario in ("pane", "button", "native-button", "standard", "standard-localized", "standard-rtl", "nested")
-                    result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(script), scenario],
-                                            capture_output=True, timeout=30)
+                    result = results[scenario]
                     self.assertEqual(result.returncode, 0, (result.stdout + result.stderr).decode("utf-8", errors="replace"))
                     payload = result.stdout.decode("utf-8")
                     pressed, _, probe = look_result(payload)
@@ -2466,14 +2480,15 @@ function Contract-Result($pressed,$how) {
             picker_helper = picker_helper.replace("System.Windows.Automation.", "IbisUpdateContract.")
             picker_helper = picker_helper.replace("[IbisUpdateFocus]", "[IbisUpdateContract.Focus]")
             script.write_text(model + picker_helper, encoding="utf-8")
-            for scenario in ("success", "hidden", "title", "duplicate", "foreign", "unfocused", "unknown", "no-handle", "empty",
+            scenarios = ("success", "hidden", "title", "duplicate", "foreign", "unfocused", "unknown", "no-handle", "empty",
                              "offer", "offer-duplicate", "offer-foreign", "offer-hidden", "edit", "loading", "search-title",
                              "search-role", "search-disabled", "search-hidden", "search-unfocused", "search-duplicate", "search-bound",
                              "nested-offer", "nested-offer-foreign", "nested-offer-duplicate", "process-bound", "root-bound",
-                             "nested-bound", "total-bound", "native-error"):
+                             "nested-bound", "total-bound", "native-error")
+            results = contract_runs(script, ["picker-" + scenario for scenario in scenarios])
+            for scenario in scenarios:
                 with self.subTest(picker=scenario):
-                    result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(script), "picker-" + scenario],
-                                            capture_output=True, timeout=30)
+                    result = results["picker-" + scenario]
                     self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
                     if scenario in ("duplicate", "foreign", "offer-duplicate", "offer-foreign", "search-duplicate", "search-bound",
                                     "nested-offer-foreign", "nested-offer-duplicate", "process-bound", "root-bound",

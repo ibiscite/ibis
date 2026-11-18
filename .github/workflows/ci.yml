@@ -179,16 +179,14 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Rust and desktop (${{ matrix.os }})
     needs: interface
-    # The macOS job runs on our own Mac when the RUNNERS variable names it
-    # (docs/testing.md): GitHub's macOS runners are scarce. Dependabot's
-    # unreviewed updates never run on our machines.
+    # RUNNERS can send macOS jobs to our own Mac. Dependabot PRs stay hosted.
     runs-on: ${{ matrix.os == 'macos-15' && github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON(vars.RUNNERS || '{}')['macos-15'] || matrix.os }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         # One job per system: every PR tests all three, and each system takes one
-        # runner (hosted macOS runners are the scarce ones) with one shared build.
+        # runner with one shared build.
         os: [ubuntu-24.04, macos-15, windows-2025]
     defaults:
       run:
@@ -583,7 +581,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 2 # The first parent of the PR merge commit or main push.
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -591,33 +588,11 @@ jobs:
           node-version: 26
           package-manager-cache: false
 
-      - name: Check CSL conformance
-        env:
-          EVENT: ${{ github.event_name }}
-          PUSH_BASE: ${{ github.event.before }}
-          SCHEDULE: ${{ github.event.schedule }}
-        run: |
-          if [[ "$EVENT" == schedule && "$SCHEDULE" == '17 5 * * *' ]]; then
-            echo 'The weekly schedule runs the CSL suite.'
-            exit 0
-          fi
+      - name: Fetch the pinned CSL test suite
+        run: node scripts/csl-suite.mjs
 
-          base=
-          case "$EVENT" in
-            pull_request) base=HEAD^1 ;;
-            push) base="$PUSH_BASE" ;;
-          esac
-          # Only skip on a verified clean diff. If the base is unavailable,
-          # including on a multi-commit push, run the suite.
-          if [[ -n "$base" ]] && git diff --quiet --no-renames "$base" HEAD -- \
-            crates/ibis-csl crates/ibis-core Cargo.toml Cargo.lock .cargo \
-            rust-toolchain rust-toolchain.toml scripts/csl-bundle.mjs scripts/csl-suite.mjs \
-            .github/workflows/ci.yml; then
-            echo 'No changes affect the CSL suite.'
-            exit 0
-          fi
-          node scripts/csl-suite.mjs
-          cargo test --locked -p ibis-csl --lib conformance -- --ignored
+      - name: Run it through the shipped formatter
+        run: cargo test --locked -p ibis-csl --lib conformance -- --ignored
 
   # The required merge check and publication evidence; daily/manual runs add
   # qualification. A fork's PR skips every job above, so its result fails.
