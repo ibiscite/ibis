@@ -178,7 +178,7 @@ limit; an unknown key or a refusal still withholds the whole citation.
 
 ```sh
 ibis lookup 10.5555/12345678 --style apa
-ibis lookup https://doi.org/10.5555/12345678 --format bibtex --file refs.bib
+ibis lookup https://doi.org/10.5555/12345678 --style apa --bibliography --file refs.bib
 ```
 
 `ibis lookup DOI` takes a DOI in any spelling search recognizes (`10.…`,
@@ -197,7 +197,9 @@ The DOI alone goes to `doi.org`, and from there to `api.crossref.org` or
 ([privacy](../PRIVACY.md), [decision 0008](decisions/0008-offline-by-default.md)).
 Only the record's CSL variables are kept, and it is cited exactly as
 [`cite --records`](#records-you-send) cites a record, without being added to a
-library. `--json` gives `origin` (`{"from":"library","item":…}` or
+library. A looked-up record has no citation key, so key outputs and the
+`bibtex` and `csl-json` exports refuse it with `missing-key`; styles work.
+`--json` gives `origin` (`{"from":"library","item":…}` or
 `{"from":"lookup","doi":…,"service":…}`) beside the `citation`; stderr says
 which. Refusals have their own reasons: `not-a-doi`, `lookup-declined`,
 `lookup-unreachable`, `lookup-timeout`, `lookup-rate-limited`,

@@ -1177,6 +1177,14 @@ mod tests {
         assert_eq!(settings.device.online_lookup, Some(true));
         let backup = super::backup::export(&settings, "0.0.0").unwrap();
         assert!(!backup.contains("online_lookup") && !backup.contains("doi_lookup"));
+        // A backup someone edited to turn lookup on cannot turn it on here.
+        let mut edited: serde_json::Value = serde_json::from_str(&backup).unwrap();
+        edited["settings"]["online_lookup"] = true.into();
+        edited["settings"]["doi_lookup_confirmed"] = true.into();
+        let edited = super::backup::parse(&edited.to_string()).unwrap();
+        let plan = super::backup::plan(&defaults, &edited, |_| true);
+        assert_eq!(plan.restored.device.online_lookup, None);
+        assert!(!plan.restored.device.doi_lookup_confirmed);
     }
     use super::*;
 

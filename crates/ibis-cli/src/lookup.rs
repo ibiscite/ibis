@@ -22,7 +22,7 @@ pub(crate) fn command() -> Command {
              once, in a terminal, before the first lookup. The record is in none of your libraries.\n\n\
              Examples:\n  \
              ibis lookup 10.5555/12345678 --style apa\n  \
-             ibis lookup https://doi.org/10.5555/12345678 --format bibtex",
+             ibis lookup https://doi.org/10.5555/12345678 --style apa --bibliography",
         )
         .arg(
             Arg::new("doi")

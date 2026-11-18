@@ -1133,9 +1133,6 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
     if name == "proposals" {
         return Ok(Execution::Result(local(proposals::run(args)?), None));
     }
-    if name == "lookup" {
-        return lookup::run(engine, args, input, errors, mode);
-    }
     if name == "completions" {
         let shell = args
             .get_one::<String>("shell")
@@ -1205,6 +1202,9 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
         ));
     }
     let names = opened?;
+    if name == "lookup" {
+        return lookup::run(engine, args, input, errors, mode);
+    }
     if name == "serve" {
         return Ok(Execution::Stdio(
             match ibis_engine::server::serve(engine.clone(), input, output) {

@@ -82,4 +82,6 @@ answer: it asks at a terminal (default no) and otherwise refuses with
 10-second deadline; no system or environment proxy is used, because a proxy is
 a destination this list does not name. Only `type`, the bibliographic CSL
 variables and a DOI matching the one asked for are kept from an answer: no
-service-given `id`, citation key, note or file.
+service-given `id`, citation key, note, abstract or file. Crossref's own work
+types (`journal-article`) are mapped to CSL's; any other type that is not CSL's
+refuses the record.

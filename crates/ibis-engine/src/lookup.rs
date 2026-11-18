@@ -198,6 +198,10 @@ fn in_library(engine: &Engine, doi: &str, cancel: &Cancellation) -> Result<Optio
         },
         cancel,
     )?;
+    result.hits.retain(|hit| hit.matched.contains(&MatchField::Doi));
+    if !result.hits.is_empty() {
+        return Ok(Some(result));
+    }
     // A library read from an older copy may hold the DOI by now: never send it then.
     for finding in &result.source_health.findings {
         match finding {
@@ -211,8 +215,7 @@ fn in_library(engine: &Engine, doi: &str, cancel: &Cancellation) -> Result<Optio
             SourceFinding::Unknown => return Err(EngineError::new(ErrorCode::SourceUnavailable)),
         }
     }
-    result.hits.retain(|hit| hit.matched.contains(&MatchField::Doi));
-    Ok((!result.hits.is_empty()).then_some(result))
+    Ok(None)
 }
 
 /// The one redirect accepted: HTTPS to exactly one named service, nothing else.
@@ -239,6 +242,11 @@ fn checked(answer: &[u8], doi: &str) -> Result<Value, EngineError> {
         return Err(malformed());
     };
     let mut record: Map<String, Value> = ibis_sources::bibliographic_fields(fields);
+    if let Some(Value::String(kind)) = record.get_mut("type")
+        && let Some(csl) = crossref_type(kind)
+    {
+        *kind = csl.to_owned();
+    }
     match record.get("DOI").and_then(Value::as_str) {
         // A service may answer for another DOI only by mistake; never cite that.
         Some(given) if identifier::parse_query(given) != Some(Identifier::Doi(doi.to_owned())) => {
@@ -257,6 +265,24 @@ fn checked(answer: &[u8], doi: &str) -> Result<Value, EngineError> {
         return Err(malformed());
     }
     Ok(record)
+}
+
+/// Crossref's CSL answers name its own work types; these are the CSL types they
+/// mean. Any other type must already be CSL's, or the record is refused.
+fn crossref_type(kind: &str) -> Option<&'static str> {
+    Some(match kind {
+        "journal-article" => "article-journal",
+        "book-chapter" | "book-section" | "book-part" => "chapter",
+        "proceedings-article" => "paper-conference",
+        "posted-content" => "article",
+        "dissertation" => "thesis",
+        "report-component" => "report",
+        "monograph" | "edited-book" | "reference-book" => "book",
+        "reference-entry" => "entry",
+        "database" => "dataset",
+        "peer-review" => "review",
+        _ => return None,
+    })
 }
 
 fn refusal(code: ErrorCode, reason: ErrorReason) -> EngineError {

@@ -37,14 +37,28 @@ pub fn request_records(library: &LibraryId, records: &[Value]) -> Result<Request
 
 /// Keep only the bibliographic CSL variables of a record another service sent,
 /// each in a shape CSL allows, so a lookup answer meets the same vocabulary as
-/// records sent with a request. Its own `id`, a citation key, notes and file
-/// locations are never taken from a service.
+/// records sent with a request. Names keep only CSL's name parts (services add
+/// affiliations and roles). Its own `id`, a citation key, notes, an abstract and
+/// file locations are never taken from a service.
 pub fn bibliographic_fields(record: serde_json::Map<String, Value>) -> serde_json::Map<String, Value> {
     record
         .into_iter()
-        .filter(|(name, value)| {
-            !matches!(name.as_str(), "id" | "citation-key" | "file" | "note" | "annote")
-                && field_kind(name).is_some_and(|kind| valid_field(kind, value))
+        .filter_map(|(name, mut value)| {
+            if matches!(
+                name.as_str(),
+                "id" | "citation-key" | "file" | "note" | "annote" | "abstract"
+            ) {
+                return None;
+            }
+            let kind = field_kind(&name)?;
+            if matches!(kind, FieldKind::Names)
+                && let Value::Array(names) = &mut value
+            {
+                for part in names.iter_mut().filter_map(Value::as_object_mut) {
+                    part.retain(|key, _| NAME_PARTS.contains(&key.as_str()));
+                }
+            }
+            valid_field(kind, &value).then_some((name, value))
         })
         .collect()
 }
@@ -560,6 +574,19 @@ fn valid_field(kind: FieldKind, value: &Value) -> bool {
         FieldKind::Date => valid_date(value),
     }
 }
+
+/// Every key a CSL name object may have.
+const NAME_PARTS: [&str; 9] = [
+    "family",
+    "given",
+    "dropping-particle",
+    "non-dropping-particle",
+    "suffix",
+    "literal",
+    "comma-suffix",
+    "static-ordering",
+    "parse-names",
+];
 
 fn valid_name(value: &Value) -> bool {
     value.as_object().is_some_and(|fields| {

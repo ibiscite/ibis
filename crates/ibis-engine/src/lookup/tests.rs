@@ -90,11 +90,15 @@ fn status_only(status: u16) -> Scripted {
 }
 fn answer() -> Value {
     json!({
-        "type": "article-journal",
+        // As Crossref answers: its own type name, and names with extra keys.
+        "type": "journal-article",
         "id": "https://doi.org/10.5555/new-1",
         "DOI": "10.5555/NEW-1",
         "title": "Lanterns over Invented Harbours",
-        "author": [{"family": "Vale", "given": "Ada"}],
+        "author": [{"family": "Vale", "given": "Ada", "sequence": "first",
+                    "affiliation": [{"name": "Invented University"}], "role": [{"role": "author"}]}],
+        "abstract": "<jats:p>An invented abstract.</jats:p>",
+        "original-title": [],
         "issued": {"date-parts": [[2024]]},
         "container-title": "Journal of Examples",
         "ISSN": ["0000-0000"],
@@ -285,6 +289,8 @@ fn the_answer_keeps_only_bibliographic_csl_and_is_cited_through_the_records_path
         ["DOI", "author", "container-title", "id", "issued", "title", "type"]
     );
     assert_eq!(record["id"], "lookup");
+    assert_eq!(record["type"], "article-journal");
+    assert_eq!(record["author"], json!([{"family": "Vale", "given": "Ada"}]));
     let citation = engine()
         .cite_records(
             &RecordsRequest {
@@ -372,6 +378,13 @@ fn each_failure_is_its_own_typed_refusal() {
         ),
         (
             vec![redirect(CROSSREF), csl(json!({"title": "No type"}))],
+            ErrorReason::LookupMalformed,
+        ),
+        (
+            vec![
+                redirect(CROSSREF),
+                csl(json!({"type": "grant", "title": "Not a CSL type"})),
+            ],
             ErrorReason::LookupMalformed,
         ),
         (
