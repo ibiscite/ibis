@@ -5,1811 +5,1912 @@
 # without words or words without a code. People’s words, not the engine’s
 # (design principle 12), and typographic apostrophes.
 
--library-formats = BibTeX, BibLaTeX, CSL-JSON, RIS or CSV
+-library-formats = BibTeX أو BibLaTeX أو CSL-JSON أو RIS أو CSV
 
 ## Engine errors: what went wrong, by code.
 
-error-usage = The command is not valid.
-    .cli = See: ibis --help
-    .agent = The arguments do not fit this tool’s input schema; check the names, types, limits and combinations it allows.
-error-bad-input = The input is not valid.
-    .cli = See: ibis --help
-    .agent = The arguments do not fit this tool’s input schema; check the names, types, limits and combinations it allows.
-error-not-found = Nothing matched.
-    .agent = Use a ref that search returned.
-error-source-unavailable = A library could not be read just now.
-    .cli = Try again.
-    .agent = Try again shortly.
-    .app = Try again.
-error-resource-limit = The request or its result is too large.
-    .cli = Ask for less.
-    .agent = Ask for fewer results.
-error-newer-format = A newer version of Ibis wrote this data. Update Ibis.
-error-internal = Ibis could not finish this.
-    .cli = Please report it at https://github.com/ibiscite/ibis/issues
-    .agent = Try again.
-    .app = Try again.
-error-cancelled = The request was cancelled.
+error-usage = الأمر غير صالح.
+    .cli = راجع: ibis --help
+    .agent = الوسائط لا تطابق مخطط إدخال هذه الأداة؛ تحقق من الأسماء والأنواع والحدود والتركيبات التي تسمح بها.
+error-bad-input = الإدخال غير صالح.
+    .cli = راجع: ibis --help
+    .agent = الوسائط لا تطابق مخطط إدخال هذه الأداة؛ تحقق من الأسماء والأنواع والحدود والتركيبات التي تسمح بها.
+error-not-found = لا توجد نتائج مطابقة.
+    .agent = استخدم ref أعادته أداة search.
+error-source-unavailable = تعذّرت قراءة إحدى المكتبات الآن.
+    .cli = حاول مرة أخرى.
+    .agent = حاول مرة أخرى بعد قليل.
+    .app = حاول مرة أخرى.
+error-resource-limit = الطلب أو نتيجته كبير جدًا.
+    .cli = اطلب أقل.
+    .agent = اطلب نتائج أقل.
+error-newer-format = كتب إصدار أحدث من Ibis هذه البيانات. حدّث Ibis.
+error-internal = تعذّر على Ibis إكمال هذا.
+    .cli = يُرجى الإبلاغ عنه على https://github.com/ibiscite/ibis/issues
+    .agent = حاول مرة أخرى.
+    .app = حاول مرة أخرى.
+error-cancelled = أُلغي الطلب.
 
 ## Why, when the code alone cannot say.
 
-reason-unknown-style = No style has that name.
-    .cli = List the styles with: ibis styles
-    .agent = The styles tool lists them.
-reason-unknown-output = No output has that id.
-    .cli = List them with: ibis outputs
-    .agent = Use a format from this tool’s input schema.
-reason-unknown-locale = That citation language is not available.
-    .cli = List them with: ibis styles --locales
-    .agent = The styles tool lists the locales.
-reason-duplicate-key = The library gives this citation key to more than one entry, so Ibis skips them all. Give each entry its own key.
-reason-damaged-entry = The library has an entry with this citation key, but Ibis could not read it, so it skips that entry.
-    .cli = Fix the entry; ibis libraries says which line and why.
-    .agent = Tell the person the entry with this key is damaged and needs fixing in their library.
-    .app = Fix the entry in your library.
-reason-ambiguous-key = Several references use this citation key.
-    .cli = Give each one its own key in your library.
-    .agent = Use the ref that search returned.
-    .app = Give each one its own key in your library.
-reason-missing-key = This reference has no citation key.
-    .cli = Give it one in your library, or use --style.
-    .agent = Use a style, or ask the person to give it one.
-    .app = Choose a citation style.
-reason-missing-file = The library file was moved, renamed or removed.
-    .cli = Choose its current location with --file.
-    .agent = Ask the user to locate the library file, then start a new session.
-    .app = Locate the library file.
-reason-app-missing = The Ibis app was not found.
-    .cli = Install it, or give its location with --app <path>.
-reason-not-ibis = The program given as the Ibis app is not Ibis.
-    .cli = Give the Ibis app’s location with --app <path>.
-reason-no-answer = The Ibis app started but did not answer.
-    .cli = Open Ibis once by hand, then try again.
-reason-settings-read-timeout = Reading the Ibis app’s library settings timed out.
-reason-zotero-sharing-off = Zotero is open but is not sharing your library with other apps.
-    .cli = In Zotero, open Settings, Advanced, and turn on Allow other applications on this computer to communicate with Zotero.
-    .agent = Ask the person to turn on Allow other applications in Zotero’s Advanced settings.
-reason-zotero-profile-needed = Zotero is closed, and Ibis needs to know which of its profiles to read.
-    .cli = Open Zotero, or name one with --zotero-profile NAME.
-    .agent = Ask the person to open Zotero, or to choose a profile in Ibis or pass --zotero-profile to ibis mcp.
-    .app = Open Zotero, or choose a profile.
-reason-zotero-needs-opening = Your Zotero library cannot be read while Zotero is closed.
-    .cli = Open Zotero, then try again.
-    .agent = Ask the person to open Zotero.
-reason-zotero-not-found = No Zotero library was found on this computer.
-    .cli = Check that Zotero is installed and has been opened once, or use --file.
-reason-zotero-no-space = There is not enough free space to read Zotero while it is closed.
-    .cli = Free some space, or open Zotero.
-    .app = Free some space, or open Zotero.
-reason-csv-template = The first row of this CSV file does not match Ibis’s template: it must name a type and a title column, and only columns the template lists.
-    .cli = Rename the columns in its first row; the CSV template in Ibis’s compatibility guide lists them.
-    .agent = Ask the person to rename the columns in the file’s first row to the template’s.
-    .app = Rename the columns in its first row; the CSV template in Ibis’s compatibility guide lists them.
-reason-library-cut-short = No reference has this key in what Ibis read, but the library is too large to read in full (Ibis stops at 200,000 entries), so the key may be in the part it did not read.
-    .cli = Split the library into smaller files and give each with --file.
-    .agent = Ask the person to split the source library into smaller files so Ibis can read the missing references.
-    .app = Split the library into smaller files.
-reason-unknown-format = This file is not in a format Ibis reads: { -library-formats }.
-    .cli = Choose another file with --file.
-    .agent = Ask the person to choose another file.
-    .app = Choose another file.
-reason-duplicate-record = Two records sent with the request have the same id, counting 1 and "1" as one, so Ibis cannot tell which is meant.
-    .cli = Give each record its own id.
-    .agent = Give each record its own id.
-reason-rejected-record = A record sent with the request is not valid CSL-JSON, so Ibis cites none rather than leave it out.
-    .cli = Each record needs an id and a CSL type; fix or remove it.
-    .agent = Each record needs an id and a CSL type such as book or article-journal; fix or remove the invalid one.
-reason-no-attachment-text = Ibis cannot read this attachment’s text: Zotero has not indexed it, it is a link, or its file is missing, damaged or one Ibis cannot read.
-    .cli = Run ibis outline on its reference to see which; in Zotero, Reindex Item adds the text.
-    .agent = Tell the user; they can add the text in Zotero with Reindex Item. Do not guess what it says.
-reason-attachment-outside-library = This attachment file is outside the library’s folder. You can allow it in Settings › AI Apps › Attachment text.
-reason-no-such-pages = This attachment has no text for those pages, or where its pages begin is not known.
-    .cli = Run ibis outline on its reference to see which pages have text, or read without --pages.
-    .agent = Use the pages outline gives, or read with offset instead when its pages are not known.
+reason-unknown-style = لا يوجد نمط بهذا الاسم.
+    .cli = اعرض الأنماط باستخدام: ibis styles
+    .agent = تعرضها أداة styles.
+reason-unknown-output = لا يوجد إخراج بهذا المعرّف.
+    .cli = اعرضها باستخدام: ibis outputs
+    .agent = استخدم تنسيقًا من مخطط إدخال هذه الأداة.
+reason-unknown-locale = لغة الاستشهاد هذه غير متاحة.
+    .cli = اعرضها باستخدام: ibis styles --locales
+    .agent = تعرض أداة styles اللغات المتاحة.
+reason-duplicate-key = تعطي المكتبة مفتاح الاستشهاد هذا لأكثر من مُدخل، لذا يتخطاها Ibis كلها. أعطِ كل مُدخل مفتاحًا خاصًا به.
+reason-damaged-entry = في المكتبة مُدخل بمفتاح الاستشهاد هذا، لكن تعذّر على Ibis قراءته، لذا يتخطاه.
+    .cli = أصلح المُدخل؛ يبيّن ibis libraries السطر والسبب.
+    .agent = أخبر الشخص أن المُدخل الذي يحمل هذا المفتاح تالف ويجب إصلاحه في مكتبته.
+    .app = أصلح المُدخل في مكتبتك.
+reason-ambiguous-key = عدة مراجع تستخدم مفتاح الاستشهاد هذا.
+    .cli = أعطِ كلًّا منها مفتاحًا خاصًا به في مكتبتك.
+    .agent = استخدم ref الذي أعادته أداة search.
+    .app = أعطِ كلًّا منها مفتاحًا خاصًا به في مكتبتك.
+reason-missing-key = ليس لهذا المرجع مفتاح استشهاد.
+    .cli = أعطه مفتاحًا في مكتبتك، أو استخدم --style.
+    .agent = استخدم نمطًا، أو اطلب من الشخص أن يعطيه مفتاحًا.
+    .app = اختر نمط استشهاد.
+reason-missing-file = نُقل ملف المكتبة أو أُعيدت تسميته أو أُزيل.
+    .cli = اختر موقعه الحالي باستخدام --file.
+    .agent = اطلب من المستخدم تحديد موقع ملف المكتبة، ثم ابدأ جلسة جديدة.
+    .app = حدّد موقع ملف المكتبة.
+reason-app-missing = لم يُعثر على تطبيق Ibis.
+    .cli = ثبّته، أو حدّد موقعه باستخدام --app <path>.
+reason-not-ibis = البرنامج المحدد على أنه تطبيق Ibis ليس Ibis.
+    .cli = حدّد موقع تطبيق Ibis باستخدام --app <path>.
+reason-no-answer = بدأ تطبيق Ibis لكنه لم يستجب.
+    .cli = افتح Ibis يدويًا مرة واحدة، ثم حاول مرة أخرى.
+reason-settings-read-timeout = انتهت مهلة قراءة إعدادات المكتبة في تطبيق Ibis.
+reason-zotero-sharing-off = Zotero مفتوح لكنه لا يشارك مكتبتك مع التطبيقات الأخرى.
+    .cli = في Zotero، افتح الإعدادات ثم «متقدم»، وفعّل «السماح للتطبيقات الأخرى على هذا الكمبيوتر بالتواصل مع Zotero».
+    .agent = اطلب من الشخص تفعيل «السماح للتطبيقات الأخرى» في إعدادات Zotero المتقدمة.
+reason-zotero-profile-needed = Zotero مغلق، ويحتاج Ibis إلى معرفة أي ملف تعريف من ملفاته يقرأ.
+    .cli = افتح Zotero، أو سمِّ ملف تعريف باستخدام --zotero-profile NAME.
+    .agent = اطلب من الشخص فتح Zotero أو اختيار ملف تعريف في Ibis أو تمرير --zotero-profile إلى ibis mcp.
+    .app = افتح Zotero، أو اختر ملف تعريف.
+reason-zotero-needs-opening = لا يمكن قراءة مكتبة Zotero الخاصة بك وZotero مغلق.
+    .cli = افتح Zotero، ثم حاول مرة أخرى.
+    .agent = اطلب من الشخص فتح Zotero.
+reason-zotero-not-found = لم يُعثر على مكتبة Zotero على هذا الكمبيوتر.
+    .cli = تأكد من أن Zotero مثبّت وفُتح مرة واحدة على الأقل، أو استخدم --file.
+reason-zotero-no-space = لا توجد مساحة فارغة كافية لقراءة Zotero وهو مغلق.
+    .cli = أفرغ بعض المساحة، أو افتح Zotero.
+    .app = أفرغ بعض المساحة، أو افتح Zotero.
+reason-csv-template = الصف الأول من ملف CSV هذا لا يطابق قالب Ibis: يجب أن يسمّي عمودًا للنوع وآخر للعنوان، ولا أعمدة غير التي يذكرها القالب.
+    .cli = أعد تسمية الأعمدة في صفه الأول؛ يذكرها قالب CSV في دليل التوافق الخاص بـ Ibis.
+    .agent = اطلب من الشخص إعادة تسمية الأعمدة في الصف الأول من الملف بأسماء القالب.
+    .app = أعد تسمية الأعمدة في صفه الأول؛ يذكرها قالب CSV في دليل التوافق الخاص بـ Ibis.
+reason-library-cut-short = لا يحمل أي مرجع هذا المفتاح فيما قرأه Ibis، لكن المكتبة أكبر من أن تُقرأ كاملة (يتوقف Ibis عند 200,000 مُدخل)، لذا قد يكون المفتاح في الجزء الذي لم يقرأه.
+    .cli = قسّم المكتبة إلى ملفات أصغر وحدّد كلًّا منها باستخدام --file.
+    .agent = اطلب من الشخص تقسيم المكتبة المصدر إلى ملفات أصغر ليتمكن Ibis من قراءة المراجع الناقصة.
+    .app = قسّم المكتبة إلى ملفات أصغر.
+reason-unknown-format = هذا الملف ليس بتنسيق يقرؤه Ibis: { -library-formats }.
+    .cli = اختر ملفًا آخر باستخدام --file.
+    .agent = اطلب من الشخص اختيار ملف آخر.
+    .app = اختر ملفًا آخر.
+reason-duplicate-record = سجلّان مُرسلان مع الطلب لهما المعرّف نفسه (يُعدّ 1 و"1" معرّفًا واحدًا)، لذا لا يستطيع Ibis معرفة المقصود.
+    .cli = أعطِ كل سجل معرّفًا خاصًا به.
+    .agent = أعطِ كل سجل معرّفًا خاصًا به.
+reason-rejected-record = أحد السجلات المُرسلة مع الطلب ليس CSL-JSON صالحًا، لذا لا يستشهد Ibis بأي منها بدلًا من استبعاده.
+    .cli = يحتاج كل سجل إلى id ونوع CSL؛ أصلحه أو أزله.
+    .agent = يحتاج كل سجل إلى id ونوع CSL مثل book أو article-journal؛ أصلح السجل غير الصالح أو أزله.
+reason-no-attachment-text = لا يستطيع Ibis قراءة نص هذا المرفق: إما أن Zotero لم يفهرسه، أو أنه رابط، أو أن ملفه مفقود أو تالف أو لا يستطيع Ibis قراءته.
+    .cli = شغّل ibis outline على مرجعه لمعرفة السبب؛ في Zotero يضيف «إعادة فهرسة العنصر» النص.
+    .agent = أخبر المستخدم؛ يمكنه إضافة النص في Zotero عبر «إعادة فهرسة العنصر». لا تخمّن ما يقوله.
+reason-attachment-outside-library = ملف هذا المرفق خارج مجلد المكتبة. يمكنك السماح به من الإعدادات › تطبيقات الذكاء الاصطناعي › نص المرفقات.
+reason-no-such-pages = ليس في هذا المرفق نص لتلك الصفحات، أو أن بداية صفحاته غير معروفة.
+    .cli = شغّل ibis outline على مرجعه لمعرفة الصفحات التي فيها نص، أو اقرأ دون --pages.
+    .agent = استخدم الصفحات التي يعطيها outline، أو اقرأ باستخدام offset إذا كانت صفحاته غير معروفة.
 
 ## What a citation could not say in full.
 
-warning-source-field = A field of { $reference } could not be fully converted. Check it in your library.
-warning-sentence-case-expected = APA expects sentence case for the title of { $reference }. Its capitalization was kept as stored, so check it in your document.
-loss-locator = the page or location
-loss-prefix = the text before
-loss-suffix = the text after
-loss-author-suppression = the omitted author
-loss-rich-text = text formatting
-loss-order = the order of the references
-notice-needs-document-context = This style numbers citations or places notes across the whole document, which Ibis does not see. Check the result in your document.
-notice-reference-entry = This is the full reference entry.
-notice-full-first-note = This is the full form a first note uses; later notes to the same work are usually shorter.
-notice-year-suffix-withheld = Two of these works share author and year. Add the year letters (such as 2026a and 2026b) in your document, because they depend on its whole reference list.
-notice-input-language-unsupported = Ibis does not recognize locator words in this language. Give the page or location in English, such as “p. 12”.
+warning-source-field = تعذّر تحويل أحد حقول { $reference } بالكامل. تحقق منه في مكتبتك.
+warning-sentence-case-expected = يتوقع APA أسلوب الجملة في عنوان { $reference }. أُبقيت الأحرف الكبيرة كما هي مخزّنة، فتحقق منها في مستندك.
+loss-locator = الصفحة أو الموضع
+loss-prefix = النص السابق
+loss-suffix = النص اللاحق
+loss-author-suppression = المؤلف المحذوف
+loss-rich-text = تنسيق النص
+loss-order = ترتيب المراجع
+notice-needs-document-context = يرقّم هذا النمط الاستشهادات أو يضع الحواشي على امتداد المستند كله، وهو ما لا يراه Ibis. تحقق من النتيجة في مستندك.
+notice-reference-entry = هذا هو مُدخل المرجع الكامل.
+notice-full-first-note = هذه هي الصيغة الكاملة التي تستخدمها الحاشية الأولى؛ الحواشي اللاحقة للعمل نفسه عادةً أقصر.
+notice-year-suffix-withheld = عملان من هذه الأعمال لهما المؤلف والسنة نفسها. أضف أحرف السنة (مثل 2026a و2026b) في مستندك، لأنها تعتمد على قائمة المراجع كاملة.
+notice-input-language-unsupported = لا يتعرّف Ibis على كلمات الموضع بهذه اللغة. اكتب الصفحة أو الموضع بالإنجليزية، مثل «p. 12».
 
 ## Citation forms, by their one name.
 
-form-normal = Name in brackets
-form-narrative = Name in the sentence
-form-author-only = Name only
-form-year-only = Year only
-form-full = Full reference
-form-bibliography-only = Reference list
+form-normal = الاسم بين قوسين
+form-narrative = الاسم داخل الجملة
+form-author-only = الاسم فقط
+form-year-only = السنة فقط
+form-full = المرجع كاملًا
+form-bibliography-only = قائمة المراجع
 
 ## Why a library skipped a record or asks for a field to be checked. `.field`
 ## is used when the source names the field.
 
-cause-not-closed = it never closes
-cause-no-key = it has no citation key
-cause-missing-value = a field has no value
-    .field = { $field } has no value
-cause-unbalanced = a field’s braces or quotes do not pair up
-    .field = the braces or quotes in { $field } do not pair up
-cause-unexpected-text = it has text where a field should be
-    .field = { $field } has text Ibis cannot read
-cause-unknown-type = its type is not one Ibis knows
-cause-conflicting = it has repeated or conflicting field values
-    .field = { $field } is given more than once
-cause-wrong-cells = it has more or fewer cells than the first row
-cause-missing-field = a required field is empty
-    .field = { $field } is empty
-cause-no-start = its fields come before any TY line
-cause-string-definition = an @string definition cannot be read
-cause-unreadable = it cannot be read
-cause-abbreviation = a field uses an abbreviation that is not defined or cannot be expanded
-    .field = { $field } uses an abbreviation that is not defined or cannot be expanded
-cause-date = a date cannot be read in full
-    .field = { $field } cannot be read in full as a date
-cause-names = a list of names cannot be read
-    .field = the names in { $field } cannot be read
-cause-role = a role has no CSL equivalent, so those names count as contributors
-    .field = { $field } has no CSL equivalent, so those names count as contributors
-cause-link = a link is private or not a web address, so it is left out
-    .field = { $field } is private or not a web address, so it is left out
-cause-inheritance = a cross-reference is missing or loops back
-    .field = { $field } names an entry that is missing or loops back
-cause-inheritance-limit = Ibis reached its limit for reading linked entries
-    .field = { $field } reaches Ibis’s limit for reading linked entries
-cause-too-large = a field is too large to read
-    .field = { $field } is too large to read
-cause-identifier = an identifier is not valid
-    .field = { $field } is not a valid identifier
-cause-language = its language is not one Ibis recognises
-    .field = { $field } names a language Ibis does not recognise
-cause-tex-command = it uses a TeX command Ibis does not understand, kept as written
-cause-unknown-field = a field is not one the format has, so it is left out
-    .field = { $field } is not a field the format has, so it is left out
-cause-value = a value cannot be read as written
-    .field = { $field } cannot be read as written
+cause-not-closed = لا يُغلَق أبدًا
+cause-no-key = ليس له مفتاح استشهاد
+cause-missing-value = أحد الحقول بلا قيمة
+    .field = { $field } بلا قيمة
+cause-unbalanced = أقواس أحد الحقول أو علامات اقتباسه غير متطابقة
+    .field = الأقواس أو علامات الاقتباس في { $field } غير متطابقة
+cause-unexpected-text = فيه نص حيث يجب أن يكون حقل
+    .field = في { $field } نص لا يستطيع Ibis قراءته
+cause-unknown-type = نوعه غير معروف لـ Ibis
+cause-conflicting = فيه قيم حقول مكررة أو متعارضة
+    .field = { $field } مذكور أكثر من مرة
+cause-wrong-cells = عدد خلاياه أكثر أو أقل من الصف الأول
+cause-missing-field = أحد الحقول المطلوبة فارغ
+    .field = { $field } فارغ
+cause-no-start = حقوله تأتي قبل أي سطر TY
+cause-string-definition = تعذّرت قراءة تعريف @string
+cause-unreadable = تعذّرت قراءته
+cause-abbreviation = أحد الحقول يستخدم اختصارًا غير معرَّف أو لا يمكن توسيعه
+    .field = { $field } يستخدم اختصارًا غير معرَّف أو لا يمكن توسيعه
+cause-date = تعذّرت قراءة تاريخ بالكامل
+    .field = تعذّرت قراءة { $field } بالكامل كتاريخ
+cause-names = تعذّرت قراءة قائمة أسماء
+    .field = تعذّرت قراءة الأسماء في { $field }
+cause-role = أحد الأدوار ليس له مقابل في CSL، لذا تُعدّ تلك الأسماء مساهمين
+    .field = ليس لـ { $field } مقابل في CSL، لذا تُعدّ تلك الأسماء مساهمين
+cause-link = أحد الروابط خاص أو ليس عنوان ويب، لذا استُبعد
+    .field = { $field } خاص أو ليس عنوان ويب، لذا استُبعد
+cause-inheritance = إحالة مرجعية مفقودة أو تدور في حلقة
+    .field = يشير { $field } إلى مُدخل مفقود أو يدور في حلقة
+cause-inheritance-limit = بلغ Ibis حدّه في قراءة المُدخلات المرتبطة
+    .field = يبلغ { $field } حدّ Ibis في قراءة المُدخلات المرتبطة
+cause-too-large = أحد الحقول أكبر من أن يُقرأ
+    .field = { $field } أكبر من أن يُقرأ
+cause-identifier = أحد المعرّفات غير صالح
+    .field = { $field } ليس معرّفًا صالحًا
+cause-language = لغته ليست لغة يتعرّف عليها Ibis
+    .field = يذكر { $field } لغة لا يتعرّف عليها Ibis
+cause-tex-command = يستخدم أمر TeX لا يفهمه Ibis، فأُبقي كما هو مكتوب
+cause-unknown-field = أحد الحقول ليس من حقول التنسيق، لذا استُبعد
+    .field = { $field } ليس من حقول التنسيق، لذا استُبعد
+cause-value = تعذّرت قراءة قيمة كما هي مكتوبة
+    .field = تعذّرت قراءة { $field } كما هو مكتوب
 
 ## The command line’s own sentences about a refusal.
 
-cli-together-refused = { $output } cannot write these references together as asked. Cite them one at a time to see which one fails.
-cli-loss-left-out = { $output } cannot show { $what }{ $target }, so it was left out.
-cli-loss-flattened = { $output } wrote { $what }{ $target } as plain text.
-cli-writing-without-bibliography = no .bib file
-cli-loss-unknown = { $output } changed { $what }{ $target } in a way this version of Ibis can’t name. Check the citation.
-cli-loss-something = part of the citation
-cli-doctor-about = Check your libraries and settings offline, without writing or sending anything
-cli-doctor-summary = Ibis { $version } · contract { $contract } · { $methods } engine methods, { $outputs } key outputs, { $styles } citation styles
-cli-spelling-match = (spelling match)
-cli-no-references = No open library holds any references. Add references to it, or open another library with --file or --zotero. A file must be { -library-formats }. For CSV, use Ibis’s template.
-cli-file-help = Open a { -library-formats } file; repeat for several libraries
-cli-file-unreadable = It cannot be read, or it is not a { -library-formats } library; check its permissions and contents.
-app-file-dialog-title = Choose a library
+cli-together-refused = لا يستطيع { $output } كتابة هذه المراجع معًا كما طُلب. استشهد بها واحدًا تلو الآخر لمعرفة أيها يفشل.
+cli-loss-left-out = لا يستطيع { $output } عرض { $what }{ $target }، لذا استُبعد.
+cli-loss-flattened = كتب { $output } { $what }{ $target } نصًا عاديًا.
+cli-writing-without-bibliography = لا يوجد ملف .bib
+cli-loss-unknown = غيّر { $output } { $what }{ $target } بطريقة لا يستطيع هذا الإصدار من Ibis تسميتها. تحقق من الاستشهاد.
+cli-loss-something = جزء من الاستشهاد
+cli-doctor-about = افحص مكتباتك وإعداداتك دون اتصال، دون كتابة أو إرسال أي شيء
+cli-doctor-summary = Ibis { $version } · العقد { $contract } · طرق المحرك: { $methods }، تنسيقات المفاتيح: { $outputs }، أنماط الاستشهاد: { $styles }
+cli-spelling-match = (تطابق إملائي)
+cli-no-references = لا تحتوي أي مكتبة مفتوحة على مراجع. أضف إليها مراجع، أو افتح مكتبة أخرى باستخدام --file أو --zotero. يجب أن يكون الملف بتنسيق { -library-formats }. لملفات CSV، استخدم قالب Ibis.
+cli-file-help = افتح ملفًا بتنسيق { -library-formats }؛ كرّر لعدة مكتبات
+cli-file-unreadable = تتعذّر قراءته، أو ليس مكتبة بتنسيق { -library-formats }؛ تحقق من أذوناته ومحتواه.
+app-file-dialog-title = اختر مكتبة
 app-file-dialog-formats = { -library-formats }
 
 ## The app’s own sentence about a citation.
 
-app-loss = This output cannot fully show { $what }{ $target }.
+app-loss = لا يستطيع هذا الإخراج عرض { $what } بالكامل.
+    .named = لا يستطيع هذا الإخراج عرض { $what } لـ { $reference } بالكامل.
 app-project-warning =
     { $state ->
-        [missing] { $key } is missing from { $name }.
-        [repeated] { $key } appears more than once in { $name }.
-        [may-name-another] { $key } may name another reference in { $name }.
-       *[could-not-check] Couldn’t check { $key } against { $name }.
+        [missing] { $key } غير موجود في { $name }.
+        [repeated] { $key } مذكور أكثر من مرة في { $name }.
+        [may-name-another] قد يشير { $key } إلى مرجع آخر في { $name }.
+       *[could-not-check] تعذّر التحقق من { $key } في { $name }.
     }
-app-tray-open = Open Ibis
-app-tray-open-shortcut = Open Ibis ({ $shortcut })
-app-tray-choose = Choose File…
+app-tray-open = فتح Ibis
+app-tray-open-shortcut = فتح Ibis ({ $shortcut })
+app-tray-choose = اختيار ملف…
 app-tray-zotero = Zotero
-app-tray-retry = Try Again
-app-tray-settings = Settings…
-app-tray-update = Check for Updates…
-app-tray-help = Help
-app-tray-quit = Quit { $name }
-app-tray-shortcuts = Keyboard Shortcuts
-app-tray-whats-new = What’s New
-app-tray-problem = Report a Problem…
-app-tray-idea = Suggest an Idea…
-app-tray-reset = Reset Window Position
-app-tray-fix-library = Fix in Ibis…
-app-tray-library = Library
-app-tray-no-library = No library yet
-app-tray-opening = Opening { $name }…
-app-tray-reading = Reading { $name }…
-app-tray-count = { $name } · { $count } references
-app-tray-count-one = { $name } · 1 reference
-app-tray-zotero-newer = Zotero needs a newer Ibis
-app-tray-file-missing = { $name } was moved or is unavailable
-app-tray-file-unreadable = { $name } could not be read
-app-tray-file-format = { $name } is not a supported library file
-app-tray-file-csv = { $name } needs the Ibis CSV template
-app-tray-file-too-large = { $name } is larger than 64 MiB
-app-tray-file-invalid = { $name } does not contain valid references
-app-tray-zotero-sharing = Zotero is not sharing your library
-app-tray-zotero-profile = Choose which Zotero profile to read
-app-tray-zotero-missing = No Zotero library was found
-app-tray-zotero-closed = Open Zotero to read your library
-app-tray-zotero-no-space = Free some space or open Zotero to read your library
-app-tray-zotero-group-missing = A chosen Zotero group library could not be found
-app-tray-zotero-work-limit = Zotero took too long to read
-app-tray-not-updated = { $name } could not be updated
-app-tray-not-opened = { $name } could not be opened
-app-tray-version-copy-failed = The version could not be copied. Try again.
-app-tray-fix-problem = Fix 1 Problem…
-app-tray-fix-problems = Fix { $count } Problems…
-app-tray-fix-failed = The library could not be opened for editing. Open it from the picker to try again.
-app-tray-spoken-reading = Ibis, reading { $name }
-app-tray-spoken-problem = Ibis, { $problem }
-app-tray-spoken-empty = Ibis, no library yet
-app-tray-spoken-ready = Ibis, ready
-app-saved-title = Save References Cited Since Opening
-app-saved-file = Cited since opening
-app-saved-page = References cited since opening
+app-tray-retry = إعادة المحاولة
+app-tray-settings = الإعدادات…
+app-tray-update = التحقق من وجود تحديثات…
+app-tray-help = مساعدة
+app-tray-quit = إنهاء { $name }
+app-tray-shortcuts = اختصارات لوحة المفاتيح
+app-tray-whats-new = ما الجديد
+app-tray-problem = الإبلاغ عن مشكلة…
+app-tray-idea = اقتراح فكرة…
+app-tray-reset = إعادة تعيين موضع النافذة
+app-tray-fix-library = إصلاح في Ibis…
+app-tray-library = المكتبة
+app-tray-no-library = لا توجد مكتبة بعد
+app-tray-opening = جارٍ فتح { $name }…
+app-tray-reading = جارٍ قراءة { $name }…
+app-tray-count = { $name } · المراجع: { $count }
+app-tray-count-one = { $name } · مرجع واحد
+app-tray-zotero-newer = يحتاج Zotero إلى إصدار أحدث من Ibis
+app-tray-file-missing = نُقل { $name } أو أنه غير متاح
+app-tray-file-unreadable = تعذّرت قراءة { $name }
+app-tray-file-format = { $name } ليس ملف مكتبة مدعومًا
+app-tray-file-csv = يحتاج { $name } إلى قالب CSV الخاص بـ Ibis
+app-tray-file-too-large = حجم { $name } أكبر من 64 MiB
+app-tray-file-invalid = لا يحتوي { $name } على مراجع صالحة
+app-tray-zotero-sharing = Zotero لا يشارك مكتبتك
+app-tray-zotero-profile = اختر ملف تعريف Zotero الذي يُقرأ
+app-tray-zotero-missing = لم يُعثر على مكتبة Zotero
+app-tray-zotero-closed = افتح Zotero لقراءة مكتبتك
+app-tray-zotero-no-space = أفرغ بعض المساحة أو افتح Zotero لقراءة مكتبتك
+app-tray-zotero-group-missing = لم يُعثر على مكتبة مجموعة مختارة في Zotero
+app-tray-zotero-work-limit = استغرقت قراءة Zotero وقتًا طويلًا
+app-tray-not-updated = تعذّر تحديث { $name }
+app-tray-not-opened = تعذّر فتح { $name }
+app-tray-version-copy-failed = تعذّر نسخ الإصدار. حاول مرة أخرى.
+app-tray-fix-problem = إصلاح مشكلة واحدة…
+app-tray-fix-problems = إصلاح المشكلات ({ $count })…
+app-tray-fix-failed = تعذّر فتح المكتبة للتحرير. افتحها من نافذة Ibis لتحاول مرة أخرى.
+app-tray-spoken-reading = Ibis، جارٍ قراءة { $name }
+app-tray-spoken-problem = Ibis، { $problem }
+app-tray-spoken-empty = Ibis، لا توجد مكتبة بعد
+app-tray-spoken-ready = Ibis، جاهز
+app-saved-title = حفظ المراجع المستشهد بها منذ الفتح
+app-saved-file = مستشهد بها منذ الفتح
+app-saved-page = المراجع المستشهد بها منذ الفتح
 
 ## The app’s own words when a library cannot be read or a command fails.
 # Most are joined into a longer line, so they start in lower case.
 
-app-library-file-unavailable = the library file is unavailable; download any online-only file to this computer first
-app-library-file-invalid = the library file does not contain valid reference data
-app-library-file-too-large = the library file is larger than 64 MiB
-app-library-file-unfinished = the library file contains an unfinished entry
-app-library-work-limit = the library exceeded the load work limit
-app-library-file-not-utf8 = the library file is not UTF-8 text; save it as UTF-8
-app-library-zotero-sharing-off = Zotero is open but is not sharing your library with other applications
-app-library-zotero-profile-needed = choose which Zotero profile to read
-app-library-zotero-closed = Zotero’s library cannot be read while it is closed
-app-library-zotero-not-found = no Zotero library was found on this computer
-app-library-zotero-no-space = there is not enough free space to read Zotero while it is closed; free some space or open Zotero
-app-library-zotero-cancelled = reading Zotero was cancelled
-app-library-zotero-work-limit = reading Zotero exceeded its work limit
-app-library-zotero-newer = this Zotero database is newer than Ibis can read
-app-library-zotero-group-not-found = a chosen Zotero group library was not found; check that you are still a member
-app-library-zotero-try-again = Zotero could not be read just now; try again
-app-library-not-local = the chosen file is not on this computer
-app-library-stopped = loading the library stopped unexpectedly
+app-library-file-unavailable = ملف المكتبة غير متاح؛ نزّل أولًا أي ملف متاح عبر الإنترنت فقط إلى هذا الكمبيوتر
+app-library-file-invalid = لا يحتوي ملف المكتبة على بيانات مراجع صالحة
+app-library-file-too-large = حجم ملف المكتبة أكبر من 64 MiB
+app-library-file-unfinished = يحتوي ملف المكتبة على مُدخل غير مكتمل
+app-library-work-limit = تجاوزت المكتبة حدّ العمل المسموح به للتحميل
+app-library-file-not-utf8 = ملف المكتبة ليس نصًا بترميز UTF-8؛ احفظه بترميز UTF-8
+app-library-zotero-sharing-off = Zotero مفتوح لكنه لا يشارك مكتبتك مع التطبيقات الأخرى
+app-library-zotero-profile-needed = اختر ملف تعريف Zotero الذي يُقرأ
+app-library-zotero-closed = لا يمكن قراءة مكتبة Zotero وهو مغلق
+app-library-zotero-not-found = لم يُعثر على مكتبة Zotero على هذا الكمبيوتر
+app-library-zotero-no-space = لا توجد مساحة فارغة كافية لقراءة Zotero وهو مغلق؛ أفرغ بعض المساحة أو افتح Zotero
+app-library-zotero-cancelled = أُلغيت قراءة Zotero
+app-library-zotero-work-limit = تجاوزت قراءة Zotero حدّ العمل المسموح به
+app-library-zotero-newer = قاعدة بيانات Zotero هذه أحدث مما يستطيع Ibis قراءته
+app-library-zotero-group-not-found = لم يُعثر على مكتبة مجموعة مختارة في Zotero؛ تأكد من أنك لا تزال عضوًا فيها
+app-library-zotero-try-again = تعذّرت قراءة Zotero الآن؛ حاول مرة أخرى
+app-library-not-local = الملف المختار ليس على هذا الكمبيوتر
+app-library-stopped = توقف تحميل المكتبة على نحو غير متوقع
 # $error is one of the sentences above.
-app-library-kept = { $error }; keeping the last loaded references
+app-library-kept = { $error }؛ يُحتفظ بآخر المراجع المحمّلة
 # $name is the library’s name; $error is one of the sentences above.
-app-library-retained-not-updated = the retained library { $name } could not be updated: { $error }
-app-library-not-refreshed = The library could not be refreshed; keeping the last loaded references.
-app-library-retained-not-refreshed = The retained library could not be refreshed; keeping the last loaded references.
-app-library-not-saved = the library opened but could not be saved for next time: { $error }
-app-command-snapshot-changed = The library changed. Search again.
-app-command-library-loading = library is loading
-app-command-cancelled = cancelled
-app-command-shared-citation-key = the citation key `{ $key }` belongs to more than one reference
-app-command-citation-too-large = This citation has too much text. Shorten its fields or remove references.
-app-command-not-prepared = The citation could not be prepared. Try again.
-app-command-source-not-opened = The source could not be opened. Try again.
-
+app-library-retained-not-updated = تعذّر تحديث المكتبة المحتفظ بها { $name }: { $error }
+app-library-not-refreshed = تعذّر تحديث المكتبة؛ يُحتفظ بآخر المراجع المحمّلة.
+app-library-retained-not-refreshed = تعذّر تحديث المكتبة المحتفظ بها؛ يُحتفظ بآخر المراجع المحمّلة.
+app-library-not-saved = فُتحت المكتبة لكن تعذّر حفظها للمرة القادمة: { $error }
+app-command-snapshot-changed = تغيّرت المكتبة. ابحث مرة أخرى.
+app-command-library-loading = جارٍ تحميل المكتبة
+app-command-cancelled = أُلغي
+app-command-shared-citation-key = مفتاح الاستشهاد `{ $key }` يخص أكثر من مرجع
+app-command-citation-too-large = يحتوي هذا الاستشهاد على نص كثير جدًا. اختصر حقوله أو أزل بعض المراجع.
+app-command-not-prepared = تعذّر تجهيز الاستشهاد. حاول مرة أخرى.
+app-command-source-not-opened = تعذّر فتح المصدر. حاول مرة أخرى.
 ## The app’s interface.
 
 # Citation language and text direction have separate owners.
 # Settings interface copy; native guidance and key notation keep their owners.
-settings-pages = Settings pages
-settings-general = General
-settings-shortcuts = Shortcuts
-settings-about = About Ibis
-settings-about-description = The version, updates and where Ibis comes from.
+settings-pages = صفحات الإعدادات
+settings-general = عام
+settings-shortcuts = الاختصارات
+settings-about = حول Ibis
+settings-about-description = الإصدار والتحديثات وأصل Ibis.
 
 general-login-label =
     { $platform ->
-        [macos] Open at login
-        [windows] Start when you sign in
-       *[linux] Start on login
+        [macos] الفتح عند تسجيل الدخول
+        [windows] التشغيل عند تسجيل الدخول
+       *[linux] التشغيل عند تسجيل الدخول
     }
-general-login-description = Keeps the shortcut ready after a restart.
+general-login-description = يُبقي الاختصار جاهزًا بعد إعادة التشغيل.
 general-login-place =
     { $platform ->
-        [macos] System Settings > General > Login Items
-        [windows] Settings > Apps > Startup
-       *[linux] your desktop’s startup applications settings
+        [macos] إعدادات النظام > عام > عناصر تسجيل الدخول
+        [windows] الإعدادات > التطبيقات > بدء التشغيل
+       *[linux] إعدادات تطبيقات بدء التشغيل في سطح المكتب لديك
     }
 general-login-when =
     { $platform ->
-        [windows] sign in
-       *[other] log in
+        [windows] تسجيل الدخول
+       *[other] تسجيل الدخول
     }
-general-login-unsupported = This system cannot start { $name } when you { general-login-when }. You can add it in { general-login-place }.
-general-login-needs-approval = macOS is waiting for your approval. Turn on { $name } in { general-login-place }.
-general-login-refused = The system did not let { $name } change this. You can change it in { general-login-place }.
-general-login-unreadable = { $name } could not check whether it starts when you { general-login-when }. Look in { general-login-place }.
+general-login-unsupported = لا يستطيع هذا النظام تشغيل { $name } عند { general-login-when }. يمكنك إضافته من { general-login-place }.
+general-login-needs-approval = ينتظر macOS موافقتك. فعّل { $name } في { general-login-place }.
+general-login-refused = لم يسمح النظام لـ { $name } بتغيير هذا. يمكنك تغييره من { general-login-place }.
+general-login-unreadable = تعذّر على { $name } التحقق مما إذا كان يعمل عند { general-login-when }. راجع { general-login-place }.
 
-general-menu-bar-label = Show in menu bar
-general-placement = Where Ibis opens
-general-placement-description = On the display you’re working on, unless you’ve moved Ibis there.
-general-placement-words = position screen display corner centre center opens
-general-placement-centre = Centre
-general-placement-top-left = Top left
-general-placement-top-right = Top right
-general-placement-bottom-left = Bottom left
-general-placement-bottom-right = Bottom right
-general-menu-bar-description = If hidden, open Ibis from Applications to come back here.
-general-paste-title = Pasting
-general-behavior-title = Behavior
-general-paste-label = Paste into the app you came from
+general-menu-bar-label = الإظهار في شريط القوائم
+general-language = اللغة
+general-language-description = القوائم والإعدادات والرسائل، بدءًا من المرة القادمة التي يُفتح فيها Ibis. تحتفظ الاستشهادات بلغة نمطها.
+general-language-system = مثل النظام
+general-language-words = لغة الواجهة ترجمة الإنجليزية الألمانية العربية language
+# Each language by its own name, the same in every catalogue.
+language-english = English
+language-german = Deutsch
+language-arabic = العربية
+general-placement = مكان فتح Ibis
+general-placement-description = على الشاشة التي تعمل عليها، ما لم تكن قد نقلت Ibis إلى مكان آخر فيها.
+general-placement-words = موضع مكان شاشة عرض زاوية وسط منتصف فتح
+general-placement-centre = الوسط
+general-placement-top-left = أعلى اليسار
+general-placement-top-right = أعلى اليمين
+general-placement-bottom-left = أسفل اليسار
+general-placement-bottom-right = أسفل اليمين
+general-menu-bar-description = إذا أخفيته، فافتح Ibis من مجلد التطبيقات للعودة إلى هنا.
+general-paste-title = اللصق
+general-behavior-title = السلوك
+general-paste-label = اللصق في التطبيق الذي جئت منه
 general-paste-key =
     { $platform ->
         [macos] ⌘V
        *[other] Ctrl+V
     }
-general-paste-description = Otherwise Ibis copies and you press { general-paste-key }.
+general-paste-description = وإلا فسينسخ Ibis وتضغط أنت { general-paste-key }.
 # $list is the system's permission-list name, not an interface message code.
-general-paste-allowed = Allowed in Privacy & Security › { $list }
-general-paste-allowed-note = Ibis presses ⌘V once, only in the app you opened it from.
-general-paste-guide-title = Allow Ibis to paste for you
-general-paste-guide-why = To paste safely, Ibis needs Accessibility access to check which window has the keyboard, as well as permission to press ⌘V. It never reads what you type.
-general-paste-step-open = Click Open System Settings.
-general-paste-step-allow = In Privacy & Security › { $list }, turn on { $name }.
-general-paste-step-return = Return to your document and open Ibis again. Press Enter to try again.
-general-paste-pane = Privacy & Security › { $list }
-general-paste-open = Open System Settings
-general-paste-drag = Drag { $name } to { $list }
-general-paste-drag-keyboard = Press to open System Settings.
-general-paste-drag-fallback = If Ibis is not in the list, drag it there.
-general-paste-drag-failed = Couldn’t drag this copy of Ibis. Use the + button in System Settings to add it.
-general-paste-waiting = Waiting for your OK…
-general-paste-unreadable = Ibis could not read this permission, so pasting stays off until it can.
-general-paste-granted = Ibis can paste now.
-general-paste-return-failed = Couldn’t return to your citation. Open Ibis with your shortcut to continue.
-general-paste-stale = Already on, but still waiting? In System Settings, remove { $name } from the list, add this copy again, then turn it on.
+general-paste-allowed = مسموح في الخصوصية والأمن › { $list }
+general-paste-allowed-note = يضغط Ibis ⌘V مرة واحدة، وفقط في التطبيق الذي فتحته منه.
+general-paste-guide-title = اسمح لـ Ibis باللصق نيابةً عنك
+general-paste-guide-why = ليلصق بأمان، يحتاج Ibis إلى إذن تسهيلات الاستخدام ليتحقق من النافذة التي تتلقى الكتابة، وإلى إذن بضغط ⌘V. ولا يقرأ أبدًا ما تكتبه.
+general-paste-step-open = انقر على «فتح إعدادات النظام».
+general-paste-step-allow = في الخصوصية والأمن › { $list }، فعّل { $name }.
+general-paste-step-return = عُد إلى مستندك وافتح Ibis مجددًا. اضغط Enter للمحاولة مرة أخرى.
+general-paste-pane = الخصوصية والأمن › { $list }
+general-paste-open = فتح إعدادات النظام
+general-paste-drag = اسحب { $name } إلى { $list }
+general-paste-drag-keyboard = اضغط لفتح إعدادات النظام.
+general-paste-drag-fallback = إذا لم يكن Ibis في القائمة، فاسحبه إليها.
+general-paste-drag-failed = تعذّر سحب نسخة Ibis هذه. استخدم الزر + في إعدادات النظام لإضافتها.
+general-paste-waiting = بانتظار موافقتك…
+general-paste-unreadable = تعذّر على Ibis قراءة هذا الإذن، لذا يبقى اللصق متوقفًا حتى يتمكن من ذلك.
+general-paste-granted = يستطيع Ibis اللصق الآن.
+general-paste-return-failed = تعذّرت العودة إلى استشهادك. افتح Ibis باختصارك للمتابعة.
+general-paste-stale = مفعّل بالفعل، لكنه لا يزال ينتظر؟ في إعدادات النظام، أزل { $name } من القائمة، وأضف هذه النسخة مجددًا، ثم فعّلها.
 
-general-rows = Rows
-general-rows-description = Compact rows fit more references; comfortable rows show each one’s authors and source.
-general-density-compact = Compact
-general-density-comfortable = Comfortable
+general-rows = الصفوف
+general-rows-description = الصفوف المضغوطة تعرض مراجع أكثر، والمريحة تعرض مؤلفي كل مرجع ومصدره.
+general-density-compact = مضغوطة
+general-density-comfortable = مريحة
 
-shortcuts-open = Open Ibis
-shortcuts-description = Click the shortcut, then type a new one. Esc cancels.
-shortcuts-record = Type a shortcut…
-shortcuts-use-default = Use Default
-shortcuts-change = Change…
-shortcuts-not-assigned = Not assigned
-shortcuts-configure-failed = The desktop could not open its shortcut settings. Try again.
-shortcuts-failed = Ibis could not change the shortcut. Try again.
-shortcuts-read-failed = Ibis could not check the shortcut. Try reopening Settings.
-shortcuts-refusal-invalid = Ibis cannot use that key combination. Try another shortcut.
-shortcuts-refusal-needs-modifier = Include Control, Alt or Command. Shift alone is not enough.
-shortcuts-refusal-app-shortcut = That shortcut is used for app commands. Add another modifier.
-shortcuts-refusal-alt-gr = Ctrl+Alt with a typing key is used for AltGr on Windows. Try another shortcut.
-shortcuts-refusal-in-use = Another app or the system may be using that shortcut. Try another.
-shortcuts-refusal-unavailable = Global shortcuts are unavailable on this desktop. Open Ibis from your application launcher.
-shortcuts-refusal-not-saved = The shortcut works now, but Ibis could not save it for next time. Try again.
-shortcuts-command-format = Change Format
-shortcuts-command-pin = Keep Window Open
-shortcuts-command-keys = Keyboard Shortcuts
-shortcuts-command-more = More
-shortcuts-command-change-last = Change Last Citation
-shortcuts-command-source = Open the Source
-shortcuts-command-settings = Settings
-shortcuts-command-quit = Quit Ibis
-shortcuts-picker-conflict = That shortcut is used for { $command }. Try another shortcut.
-shortcuts-region-search = While searching
-shortcuts-region-library = Your library
-shortcuts-region-picker = Anywhere in Ibis
-shortcuts-region-menu = In a menu
-shortcuts-region-system = Open Ibis
-shortcuts-region-citation = In the citation
-shortcuts-action-change-last = Edit the citation you just pasted
-shortcuts-action-source = Open the source
-shortcuts-action-choose-source = Choose a library
-shortcuts-action-reveal-source = Show the source in its folder
-shortcuts-action-open = From any app
-shortcuts-action-copy = Paste or copy the citation
-shortcuts-action-paste = Paste the citation
-shortcuts-action-copy-only = Copy the citation
-shortcuts-action-add = Add another reference
-shortcuts-action-move = Move through results
-shortcuts-action-pick = Paste or copy a result by its number
-shortcuts-action-peek = Peek at the highlighted reference
-shortcuts-action-escape = Step back or hide
-shortcuts-action-format = Change the format
-shortcuts-action-more = More actions
-shortcuts-action-pin = Keep the window open
-shortcuts-action-keys = Show keyboard shortcuts
-shortcuts-action-settings = Open Settings
-shortcuts-action-quit = Quit Ibis
-shortcuts-action-undo = Undo
-shortcuts-action-text-size = Make text larger or smaller
-shortcuts-action-citation-move = Move between references
-shortcuts-action-citation-remove = Remove the reference
-shortcuts-action-citation-reorder = Move the reference
-shortcuts-action-citation-open = Show its details
-shortcuts-action-citation-focus = Go to the citation
-shortcuts-action-inspector = Show citation details
-shortcuts-action-send = Send to your editor
-shortcuts-action-menu-move = Move through the menu
-shortcuts-action-menu-ends = Go to the first or last item
-shortcuts-action-menu-choose = Choose the item
-shortcuts-action-menu-leave = Leave the menu and return to the search
-shortcuts-or = or
+shortcuts-open = فتح Ibis
+shortcuts-description = انقر على الاختصار، ثم اكتب اختصارًا جديدًا. Esc للإلغاء.
+shortcuts-record = اكتب اختصارًا…
+shortcuts-use-default = استخدام الافتراضي
+shortcuts-change = تغيير…
+shortcuts-not-assigned = غير معيّن
+shortcuts-configure-failed = تعذّر على سطح المكتب فتح إعدادات الاختصارات. حاول مرة أخرى.
+shortcuts-failed = تعذّر على Ibis تغيير الاختصار. حاول مرة أخرى.
+shortcuts-read-failed = تعذّر على Ibis التحقق من الاختصار. جرّب إعادة فتح الإعدادات.
+shortcuts-refusal-invalid = لا يستطيع Ibis استخدام تركيبة المفاتيح هذه. جرّب اختصارًا آخر.
+shortcuts-refusal-needs-modifier = أضف Control أو Alt أو Command. لا يكفي Shift وحده.
+shortcuts-refusal-app-shortcut = هذا الاختصار مخصص لأوامر التطبيق. أضف مفتاح تعديل آخر.
+shortcuts-refusal-alt-gr = يُستخدم Ctrl+Alt مع مفتاح كتابة بديلًا عن AltGr في Windows. جرّب اختصارًا آخر.
+shortcuts-refusal-in-use = قد يكون هذا الاختصار مستخدمًا من تطبيق آخر أو من النظام. جرّب غيره.
+shortcuts-refusal-unavailable = الاختصارات العامة غير متاحة على سطح المكتب هذا. افتح Ibis من مشغّل التطبيقات.
+shortcuts-refusal-not-saved = الاختصار يعمل الآن، لكن تعذّر على Ibis حفظه للمرة القادمة. حاول مرة أخرى.
+shortcuts-command-format = تغيير التنسيق
+shortcuts-command-pin = إبقاء النافذة مفتوحة
+shortcuts-command-keys = اختصارات لوحة المفاتيح
+shortcuts-command-more = المزيد
+shortcuts-command-change-last = تغيير آخر استشهاد
+shortcuts-command-source = فتح المصدر
+shortcuts-command-settings = الإعدادات
+shortcuts-command-quit = إنهاء Ibis
+shortcuts-picker-conflict = هذا الاختصار مستخدم لـ «{ $command }». جرّب اختصارًا آخر.
+shortcuts-region-search = أثناء البحث
+shortcuts-region-library = مكتبتك
+shortcuts-region-picker = في أي مكان في Ibis
+shortcuts-region-menu = في قائمة
+shortcuts-region-system = فتح Ibis
+shortcuts-region-citation = في الاستشهاد
+shortcuts-action-change-last = تعديل الاستشهاد الذي لصقته للتو
+shortcuts-action-source = فتح المصدر
+shortcuts-action-choose-source = اختيار مكتبة
+shortcuts-action-reveal-source = إظهار المصدر في مجلده
+shortcuts-action-open = من أي تطبيق
+shortcuts-action-copy = لصق الاستشهاد أو نسخه
+shortcuts-action-paste = لصق الاستشهاد
+shortcuts-action-copy-only = نسخ الاستشهاد
+shortcuts-action-add = إضافة مرجع آخر
+shortcuts-action-move = التنقل بين النتائج
+shortcuts-action-pick = لصق نتيجة أو نسخها برقمها
+shortcuts-action-peek = لمحة عن المرجع المحدد
+shortcuts-action-escape = الرجوع أو الإخفاء
+shortcuts-action-format = تغيير التنسيق
+shortcuts-action-more = مزيد من الإجراءات
+shortcuts-action-pin = إبقاء النافذة مفتوحة
+shortcuts-action-keys = إظهار اختصارات لوحة المفاتيح
+shortcuts-action-settings = فتح الإعدادات
+shortcuts-action-quit = إنهاء Ibis
+shortcuts-action-undo = تراجع
+shortcuts-action-text-size = تكبير النص أو تصغيره
+shortcuts-action-citation-move = التنقل بين المراجع
+shortcuts-action-citation-remove = إزالة المرجع
+shortcuts-action-citation-reorder = نقل المرجع
+shortcuts-action-citation-open = إظهار تفاصيله
+shortcuts-action-citation-focus = الانتقال إلى الاستشهاد
+shortcuts-action-inspector = إظهار تفاصيل الاستشهاد
+shortcuts-action-send = الإرسال إلى محررك
+shortcuts-action-menu-move = التنقل في القائمة
+shortcuts-action-menu-ends = الانتقال إلى أول عنصر أو آخره
+shortcuts-action-menu-choose = اختيار العنصر
+shortcuts-action-menu-leave = مغادرة القائمة والعودة إلى البحث
+shortcuts-or = أو
 
-about-automatic = Check for updates automatically
-about-automatic-description = Reads a small update file from GitHub a few times a day.
-about-check = Check for Updates
-about-check-label = Check for updates
-about-check-description = See whether a newer Ibis is ready to install.
-settings-advanced-title = Advanced
-settings-reset-words = reset default restore use default
-about-checking = Checking…
-about-check-failed = Ibis could not check for updates. Try again.
-about-check-newest = You have the newest version.
-about-check-busy = Ibis is already checking, or an update is waiting for your answer.
-about-copied = Copied
-about-copy-failed = The version could not be copied.
-about-version = Version { $version }
-about-mission = One shortcut to cite from your library in any app.
-about-updates = Updates
-about-links = Links
-about-website = Website
-about-source = Source Code
-about-problem = Report a Problem
-about-licences = Licences
-about-free = Free software under the AGPL 3.0
-about-unavailable = This build does not update itself.
+about-automatic = التحقق من وجود تحديثات تلقائيًا
+about-automatic-description = يقرأ ملف تحديث صغيرًا من GitHub بضع مرات في اليوم.
+about-check = التحقق من وجود تحديثات
+about-check-label = التحقق من وجود تحديثات
+about-check-description = معرفة ما إذا كان إصدار أحدث من Ibis جاهزًا للتثبيت.
+settings-advanced-title = متقدم
+settings-reset-words = إعادة تعيين افتراضي استعادة استخدام الافتراضي
+about-checking = جارٍ التحقق…
+about-check-failed = تعذّر على Ibis التحقق من وجود تحديثات. حاول مرة أخرى.
+about-check-newest = لديك أحدث إصدار.
+about-check-busy = يتحقق Ibis بالفعل، أو أن هناك تحديثًا ينتظر ردك.
+about-copied = تم النسخ
+about-copy-failed = تعذّر نسخ الإصدار.
+about-version = الإصدار { $version }
+about-mission = اختصار واحد للاستشهاد من مكتبتك في أي تطبيق.
+about-updates = التحديثات
+about-links = روابط
+about-website = الموقع الإلكتروني
+about-source = الشيفرة المصدرية
+about-problem = الإبلاغ عن مشكلة
+about-licences = التراخيص
+about-free = برنامج حر بموجب رخصة AGPL 3.0
+about-unavailable = هذا الإصدار لا يحدّث نفسه.
 
 
 # Settings window pages and visual choices.
-settings-look = Appearance
-settings-citations = Citations
-attachment-text-title = Attachment text
-attachment-text-label = Let AI apps read attachment text
-attachment-text-description = This switch covers connected AI apps: they can read attachment text with page numbers, never the files. A terminal running ibis does not need this switch.
-attachment-text-words = attachment full text PDF
-attachment-text-empty = No library is open.
-attachment-text-loading = Reading library choices…
-attachment-text-outside-label = Allow attachment text outside the library’s folder
-attachment-text-outside-description = Allow CLI and AI apps to read attachment files outside the library file’s folder or Zotero’s storage folder on this computer.
-settings-search = Search Settings
-settings-no-results = No settings match ‘{ $query }’
-settings-results = Search results
+settings-look = المظهر
+settings-citations = الاستشهادات
+attachment-text-title = نص المرفقات
+attachment-text-label = السماح لتطبيقات الذكاء الاصطناعي بقراءة نص المرفقات
+attachment-text-description = يخص هذا المفتاح تطبيقات الذكاء الاصطناعي المتصلة: يمكنها قراءة نص المرفقات مع أرقام الصفحات، لا الملفات نفسها. ولا تحتاج إليه الطرفية التي تشغّل ibis.
+attachment-text-words = مرفق مرفقات النص الكامل نص PDF
+attachment-text-empty = لا توجد مكتبة مفتوحة.
+attachment-text-loading = جارٍ قراءة خيارات المكتبة…
+attachment-text-outside-label = السماح بنص المرفقات خارج مجلد المكتبة
+attachment-text-outside-description = يسمح لسطر الأوامر وتطبيقات الذكاء الاصطناعي بقراءة ملفات المرفقات خارج مجلد ملف المكتبة أو مجلد تخزين Zotero على هذا الكمبيوتر.
+settings-search = البحث في الإعدادات
+settings-no-results = لا إعدادات تطابق «{ $query }»
+settings-results = نتائج البحث
 settings-results-count = { $count ->
-    [one] 1 result
-   *[other] { $count } results
+    [zero] لا نتائج
+    [one] نتيجة واحدة
+    [two] نتيجتان
+    [few] { $count } نتائج
+    [many] { $count } نتيجةً
+   *[other] { $count } نتيجة
     }
-settings-read-failed = Ibis could not read your settings; reopen Settings to try again.
-settings-forget-failed = Ibis could not forget the app’s format; the saved choice is shown.
-settings-open-failed = Ibis could not open the settings file.
-settings-choice-failed = Ibis could not save this choice; the saved value is shown.
-settings-startup-words = startup launch restart login
-settings-paste-words = paste copy clipboard Enter
-settings-appearance-words = dark mode light theme system
-look-appearance = Appearance
-look-appearance-description = Follow the system, or choose Light or Dark for Ibis.
-look-system = System
-look-light = Light
-look-dark = Dark
-look-accent = Accent
-look-accent-description = The colour of selection and buttons: the Mac’s accent, or Ibis scarlet.
+settings-read-failed = تعذّر على Ibis قراءة إعداداتك؛ أعد فتح الإعدادات للمحاولة مرة أخرى.
+settings-forget-failed = تعذّر على Ibis نسيان تنسيق التطبيق؛ يظهر الخيار المحفوظ.
+settings-open-failed = تعذّر على Ibis فتح ملف الإعدادات.
+settings-choice-failed = تعذّر على Ibis حفظ هذا الخيار؛ تظهر القيمة المحفوظة.
+settings-startup-words = بدء التشغيل تشغيل إعادة تشغيل تسجيل الدخول
+settings-paste-words = لصق نسخ الحافظة Enter
+settings-appearance-words = الوضع الداكن داكن فاتح سمة النظام
+look-appearance = المظهر
+look-appearance-description = اتبع النظام، أو اختر «فاتح» أو «داكن» لـ Ibis.
+look-system = النظام
+look-light = فاتح
+look-dark = داكن
+look-accent = لون التمييز
+look-accent-description = لون التحديد والأزرار: لون تمييز Mac أو قرمزي Ibis.
 look-accent-system =
     { $platform ->
-        [macos] Follow the Mac
-       *[other] Follow the system
+        [macos] مطابقة Mac
+       *[other] مطابقة النظام
     }
-look-accent-ibis = Ibis scarlet
-look-accent-words = colour color scarlet red
-look-window-size = Window size
-look-window-size-description = How large the picker opens.
-look-window-small = Small
-look-window-medium = Medium
-look-window-large = Large
-look-window-custom = Custom
-look-window-custom-note = Drag an edge of the picker to set your own size. Ibis remembers it on each display.
-look-text-size = Text size
-look-text-size-description = The size of the picker’s words, apart from the Mac’s own text size.
-look-default-text = Default
-look-larger-text = Larger
-look-sample-title = The quiet garden
-look-sample-authors = Mira Vale and Noah Reed
-look-sample-journal = Journal of Imagined Studies
-citations-default = Default format
+look-accent-ibis = قرمزي Ibis
+look-accent-words = لون تمييز قرمزي أحمر
+look-window-size = حجم النافذة
+look-window-size-description = الحجم الذي تُفتح به النافذة.
+look-window-small = صغير
+look-window-medium = متوسط
+look-window-large = كبير
+look-window-custom = مخصص
+look-window-custom-note = اسحب أحد أطراف النافذة لتحديد الحجم الذي تريده. يتذكره Ibis على كل شاشة.
+look-text-size = حجم النص
+look-text-size-description = حجم الكلمات في النافذة، بمعزل عن حجم النص في Mac.
+look-default-text = افتراضي
+look-larger-text = أكبر
+look-sample-title = الحديقة الهادئة
+look-sample-authors = Mira Vale وNoah Reed
+look-sample-journal = مجلة الدراسات المتخيَّلة
+citations-default = التنسيق الافتراضي
 
-citations-default-description = Used when an app has no remembered format.
-citations-recent = Recent citations
-citations-recent-description = Shows what you cited recently in each app. Turning this off forgets them.
-citations-recent-words = history recents cited here forget privacy
-citations-editor = Cite from your editor
-citations-editor-description = Lets an editor on this computer open the picker and receive the citation you choose, through Better BibTeX’s Cite as You Write. Web pages can’t use it, and nothing leaves this computer.
-citations-editor-words = cayw cite as you write vs code vscode better bibtex zotero endpoint port url editor
-citations-editor-address = Address for your editor
-citations-editor-address-description = Paste this into the editor’s Cite as You Write URL setting. Anyone with it can open the picker on this computer; switching off and on makes a new one.
-citations-editor-copy = Copy Address
-citations-editor-copied = Copied
-citations-editor-port-in-use = Another program is using the endpoint’s port, so it is off.
-citations-editor-bad-setting = The saved endpoint can’t be used. Switch it off and on to make a new address.
-citations-editor-not-saved = The endpoint could not be changed. Try again.
+citations-default-description = يُستخدم في معالجات النصوص والبريد والمتصفحات حين لا يتذكر التطبيق تنسيقًا.
+citations-recent = الاستشهادات الأخيرة
+citations-recent-description = يعرض ما استشهدت به مؤخرًا في كل تطبيق. إيقافه يمحوها.
+citations-recent-words = السجل الأخيرة استشهدت هنا نسيان الخصوصية
+citations-editor = الاستشهاد من محررك
+citations-editor-description = يتيح لمحرر على هذا الكمبيوتر فتح النافذة وتلقي الاستشهاد الذي تختاره، عبر ميزة Cite as You Write في Better BibTeX. لا تستطيع صفحات الويب استخدامه، ولا يغادر أي شيء هذا الكمبيوتر.
+citations-editor-words = cayw cite as you write vs code vscode better bibtex zotero نقطة وصول منفذ port url محرر
+citations-editor-address = العنوان لمحررك
+citations-editor-address-description = الصق هذا في إعداد عنوان URL لميزة Cite as You Write في المحرر. يستطيع أي شخص لديه هذا العنوان فتح النافذة على هذا الكمبيوتر؛ وإيقافه ثم تشغيله يُنشئ عنوانًا جديدًا.
+citations-editor-copy = نسخ العنوان
+citations-editor-copied = تم النسخ
+citations-editor-port-in-use = برنامج آخر يستخدم منفذ نقطة الوصول، لذا فهي متوقفة.
+citations-editor-bad-setting = لا يمكن استخدام نقطة الوصول المحفوظة. أوقفها ثم شغّلها لإنشاء عنوان جديد.
+citations-editor-not-saved = تعذّر تغيير نقطة الوصول. حاول مرة أخرى.
 
-settings-shortcut-restored = Default shortcut restored
+settings-shortcut-restored = تمت استعادة الاختصار الافتراضي
 
 
-settings-newer-title = From a newer Ibis
-settings-newer-description = This setting is read-only in this version of Ibis.
-settings-read-only = The settings file is read-only; the saved value is shown.
+settings-newer-title = من إصدار أحدث من Ibis
+settings-newer-description = هذا الإعداد للقراءة فقط في هذا الإصدار من Ibis.
+settings-read-only = ملف الإعدادات للقراءة فقط؛ تظهر القيمة المحفوظة.
 
-citations-key-formats = Citation keys
-citations-style-formats = Citation styles
-citations-filter-formats = Filter formats
-look-sample-title-2 = Paths through the orchard
-look-sample-title-3 = A map of quiet places
+citations-key-formats = مفاتيح الاستشهاد
+citations-style-formats = أنماط الاستشهاد
+citations-filter-formats = تصفية التنسيقات
+look-sample-title-2 = دروب عبر البستان
+look-sample-title-3 = خريطة للأماكن الهادئة
 
 # Quiet feedback, counted on this device only.
 delight-ibis = Ibis
-delight-tip = { $keys } keeps Ibis open between citations.
-delight-library100 = 100 references. A good start.
-delight-library1000 = 1,000 references. A solid library.
-delight-library10000 = 10,000 references. A remarkable library.
-delight-empty = Choose a reference to paste.
-delight-loading = Your library is still opening.
-delight-no-library = Open a library to paste a reference.
+delight-tip = { $keys } يُبقي Ibis مفتوحًا بين الاستشهادات.
+delight-library100 = 100 مرجع. بداية جيدة.
+delight-library1000 = 1,000 مرجع. مكتبة متينة.
+delight-library10000 = 10,000 مرجع. مكتبة رائعة.
+delight-empty = اختر مرجعًا للصقه.
+delight-loading = لا تزال مكتبتك قيد الفتح.
+delight-no-library = افتح مكتبة للصق مرجع.
 delight-zoom = { $percent }%
 delight-citation = { $count ->
-    [1] First citation
-   *[other] Citation { NUMBER($count) }
+    [1] أول استشهاد
+   *[other] الاستشهاد رقم { NUMBER($count) }
     }
-delight-anniversary = One year with Ibis today.
-delight-about-words = ibis version about thoth
-canvas-hovered = Hovered
-canvas-pressed = Pressed
-canvas-focused = Keyboard focus
+delight-anniversary = عام كامل مع Ibis اليوم.
+delight-about-words = ibis إصدار حول تحوت
+canvas-hovered = عند التمرير
+canvas-pressed = مضغوط
+canvas-focused = تركيز لوحة المفاتيح
 
-general-small-surprises-label = Bird facts and milestones
-general-small-surprises-description = Bird facts, milestones and anniversaries.
-settings-surprises-words = delight easter egg fun
-delight-name = Named for the bird ancient Egyptians linked with Thoth, god of writing and keeper of records.
-delight-fact-touch = White ibises find food by touch as they probe the mud.
-delight-fact-scarlet = Scarlet ibises get their colour from pigments in the shellfish they eat.
-delight-fact-mummies = Ancient Egyptians mummified ibises as offerings to Thoth.
-delight-fact-national = The scarlet ibis is a national bird of Trinidad and Tobago.
-delight-fact-flight = Northern bald ibises take turns leading their V formation.
-undo-action = Undo { $action }
-undo-remove = Remove { $reference }
-undo-reset-window = Reset Window Position
-undo-shortcut = Restore Default Shortcut
+general-small-surprises-label = معلومات عن الطائر وإنجازات
+general-small-surprises-description = معلومات عن الطائر وإنجازات وذكريات سنوية.
+settings-surprises-words = مفاجآت صغيرة مفاجأة متعة بيضة عيد الفصح
+delight-name = سُمّي على اسم الطائر الذي ربطه المصريون القدماء بتحوت، إله الكتابة وحافظ السجلات.
+delight-fact-touch = يجد أبو منجل الأبيض طعامه باللمس وهو ينقّب في الطين.
+delight-fact-scarlet = يكتسب أبو منجل القرمزي لونه من أصباغ القشريات التي يأكلها.
+delight-fact-mummies = حنّط المصريون القدماء طيور أبي منجل قرابين لتحوت.
+delight-fact-national = أبو منجل القرمزي طائر وطني لترينيداد وتوباغو.
+delight-fact-flight = تتناوب طيور أبي منجل الأصلع الشمالي على قيادة سربها الذي يطير على شكل V.
+undo-action = تراجع عن { $action }
+undo-remove = إزالة { $reference }
+undo-reset-window = إعادة تعيين موضع النافذة
+undo-shortcut = استعادة الاختصار الافتراضي
 
-undo-removed = Removed { $reference }
+undo-removed = تمت إزالة { $reference }
 
-choice-use-zotero = Use Zotero
-choice-zotero-help = Your Zotero library, open or closed
-choice-library-file = Choose a Library File…
+choice-use-zotero = استخدام Zotero
+choice-zotero-help = مكتبة Zotero لديك، سواء كان Zotero مفتوحًا أم مغلقًا
+choice-library-file = اختيار ملف مكتبة…
 choice-library-file-help = { -library-formats }
-choice-drop-file = Or drag a { -library-formats } file into this window.
-keys-title = Keyboard Shortcuts
-keys-close = Back
-keys-action = Action
-keys-shortcut = Shortcut
-shortcuts-filter = Filter shortcuts
-shortcuts-empty = No matching actions
+choice-drop-file = أو اسحب إلى هذه النافذة ملفًا بتنسيق { -library-formats }.
+keys-title = اختصارات لوحة المفاتيح
+keys-close = رجوع
+keys-action = الإجراء
+keys-shortcut = الاختصار
+shortcuts-filter = تصفية الاختصارات
+shortcuts-empty = لا توجد إجراءات مطابقة
 
-choice-use-file = Use { $name }
-choice-back = Choose Another Source
+choice-use-file = استخدام { $name }
+choice-back = اختيار مصدر آخر
 
-backup-words = backup restore export import move migrate new computer sync iCloud OneDrive
-backup-title = Another computer
-backup-label = Back up settings
+backup-words = نسخة احتياطية نسخ احتياطي استعادة تصدير استيراد نقل ترحيل كمبيوتر جديد مزامنة iCloud OneDrive
+backup-title = كمبيوتر آخر
+backup-label = إنشاء نسخة احتياطية من الإعدادات
 backup-description =
     { $platform ->
-        [linux] A file to restore on another computer. Window places stay on this one.
-       *[other] A file to restore on another computer. The apps you let Ibis paste into, and window places, stay on this one.
+        [linux] ملف للاستعادة على كمبيوتر آخر. تبقى مواضع النوافذ على هذا الكمبيوتر.
+       *[other] ملف للاستعادة على كمبيوتر آخر. تبقى التطبيقات التي سمحت لـ Ibis باللصق فيها ومواضع النوافذ على هذا الكمبيوتر.
     }
-backup-button = Back Up…
-backup-saved = Saved to { $file }.
-restore-label = Restore settings
-restore-description = Use a backup’s settings here. Ibis shows what changes first and keeps the current settings as settings.json.bak.
-restore-button = Restore…
-restore-from = Backup from { $system }, made by Ibis { $version }
-restore-same = This computer already has these settings.
-restore-confirm = Restore and Restart
-restore-cancel = Cancel
-restore-restarting = Restarting Ibis with the restored settings…
-backup-change = { $setting }: { $from } → { $to }
-backup-note-library = The backup’s bibliography is not on this computer. It is kept, and Ibis finds it once the file is there.
-backup-note-shortcut = The backup has no opening shortcut for this system, so this computer’s stays.
-backup-note-repairs = The settings file on this computer is damaged or missing. Restoring writes it again, and keeps any damaged file beside it.
-backup-setting-library = Library
-backup-setting-larger-text = Larger text
-backup-setting-shortcut = Opening shortcut on { $system }
-backup-value-default = Default
-backup-value-on = On
-backup-value-off = Off
-backup-value-zotero = Zotero, My Library
-backup-value-zotero-many = { $count } Zotero libraries
-backup-value-zotero-group = Zotero group { $id }
-backup-problem-not-downloaded = The backup isn’t downloaded to this computer yet. Let your cloud folder download it, then try again.
-backup-problem-unreadable = Ibis couldn’t read that file. Nothing changed.
-backup-problem-not-a-backup = That file isn’t an Ibis settings backup. Nothing changed.
-backup-problem-settings-file = That’s Ibis’s own settings file, not a backup. Choose a backup file instead.
-backup-problem-newer = That backup is from a newer version of Ibis. Update Ibis, then try again.
-backup-problem-invalid = That backup is damaged. Nothing changed.
-backup-problem-settings-unusable = Ibis can’t use its settings file as it is. Nothing changed.
-backup-problem-busy = Settings are being saved by another Ibis. Wait for it to finish, then try again. Nothing changed.
-backup-problem-changed = Settings changed after the backup was shown. Choose it again.
-backup-problem-not-saved = Ibis couldn’t save. Nothing changed.
-
+backup-button = نسخ احتياطي…
+backup-saved = تم الحفظ في { $file }.
+restore-label = استعادة الإعدادات
+restore-description = استخدم إعدادات نسخة احتياطية هنا. يعرض Ibis التغييرات أولًا ويحتفظ بالإعدادات الحالية باسم settings.json.bak.
+restore-button = استعادة…
+restore-from = نسخة احتياطية من { $system }، أنشأها Ibis { $version }
+restore-same = لدى هذا الكمبيوتر هذه الإعدادات بالفعل.
+restore-confirm = استعادة وإعادة التشغيل
+restore-cancel = إلغاء
+restore-restarting = جارٍ إعادة تشغيل Ibis بالإعدادات المستعادة…
+backup-change = { $setting }: { $from } ← { $to }
+backup-note-library = ملف المكتبة في النسخة الاحتياطية غير موجود على هذا الكمبيوتر. يُحتفظ به، وسيجده Ibis متى توفر الملف.
+backup-note-shortcut = لا تتضمن النسخة الاحتياطية اختصارًا لفتح Ibis على هذا النظام، لذا يبقى اختصار هذا الكمبيوتر.
+backup-note-repairs = ملف الإعدادات على هذا الكمبيوتر تالف أو مفقود. الاستعادة تكتبه من جديد، وتحتفظ بأي ملف تالف بجانبه.
+backup-setting-library = المكتبة
+backup-setting-larger-text = نص أكبر
+backup-setting-shortcut = اختصار الفتح على { $system }
+backup-value-default = افتراضي
+backup-value-on = تشغيل
+backup-value-off = إيقاف
+backup-value-zotero = Zotero، مكتبتي
+backup-value-zotero-many = مكتبات Zotero: { $count }
+backup-value-zotero-group = مجموعة Zotero { $id }
+backup-problem-not-downloaded = لم يتم تنزيل النسخة الاحتياطية إلى هذا الكمبيوتر بعد. دع مجلد السحابة ينزّلها، ثم حاول مرة أخرى.
+backup-problem-unreadable = تعذّر على Ibis قراءة هذا الملف. لم يتغير شيء.
+backup-problem-not-a-backup = هذا الملف ليس نسخة احتياطية من إعدادات Ibis. لم يتغير شيء.
+backup-problem-settings-file = هذا ملف إعدادات Ibis نفسه، وليس نسخة احتياطية. اختر ملف نسخة احتياطية بدلًا منه.
+backup-problem-newer = هذه النسخة الاحتياطية من إصدار أحدث من Ibis. حدّث Ibis، ثم حاول مرة أخرى.
+backup-problem-invalid = هذه النسخة الاحتياطية تالفة. لم يتغير شيء.
+backup-problem-settings-unusable = لا يستطيع Ibis استخدام ملف إعداداته بحالته الحالية. لم يتغير شيء.
+backup-problem-busy = نسخة أخرى من Ibis تحفظ الإعدادات. انتظر حتى تنتهي، ثم حاول مرة أخرى. لم يتغير شيء.
+backup-problem-changed = تغيّرت الإعدادات بعد عرض النسخة الاحتياطية. اخترها مرة أخرى.
+backup-problem-not-saved = تعذّر على Ibis الحفظ. لم يتغير شيء.
 ## The picker, setup, menus, notices and receipts.
 
-reader-show = Show PDF
-reader-hide = Hide PDF
-reader-cite = Cite This Page
-reader-page-in-view = Page in view
-reader-thumbnails = Pages
-reader-pages = Pages of the PDF
-reader-region = Pages of { $title }
-reader-unknown = PDF page { $index } of { $count } · no printed page
-reader-ask = What number is printed on PDF page { $index }?
-reader-use-nearby = Use for Nearby Pages
-peek-label = Details of { $title }
-peek-container = Published in
-peek-year = Year
-peek-type = Type
-peek-key = Citation key
-citation-details-page = Page
-locator-act = Act
-locator-appendix = Appendix
-locator-article-locator = Article
-locator-book = Book
-locator-canon = Canon
-locator-chapter = Chapter
-locator-column = Column
-locator-elocation = Location
-locator-equation = Equation
-locator-figure = Figure
-locator-folio = Folio
-locator-issue = Issue
-locator-line = Line
-locator-note = Note
-locator-opus = Opus
-locator-page = Page
-locator-paragraph = Paragraph
-locator-part = Part
-locator-rule = Rule
-locator-scene = Scene
-locator-section = Section
-locator-sub-verbo = Sub verbo
-locator-supplement = Supplement
-locator-table = Table
-locator-timestamp = Time
-locator-title-locator = Title
-locator-verse = Verse
-locator-version = Version
-locator-volume = Volume
-citation-details-locator-type = Locator type
-locator-short-page = p.
-locator-short-chapter = ch.
+reader-show = إظهار PDF
+reader-hide = إخفاء PDF
+reader-cite = الاستشهاد بهذه الصفحة
+reader-page-in-view = الصفحة المعروضة
+reader-thumbnails = الصفحات
+reader-pages = صفحات ملف PDF
+reader-region = صفحات { $title }
+reader-unknown = صفحة PDF رقم { $index } من { $count } · بلا رقم صفحة مطبوع
+reader-ask = ما الرقم المطبوع على صفحة PDF رقم { $index }؟
+reader-use-nearby = استخدام للصفحات المجاورة
+peek-label = تفاصيل { $title }
+peek-container = منشور في
+peek-year = السنة
+peek-type = النوع
+peek-key = مفتاح الاستشهاد
+citation-details-page = الصفحة
+locator-act = فصل مسرحي
+locator-appendix = ملحق
+locator-article-locator = مادة
+locator-book = كتاب
+locator-canon = قانون
+locator-chapter = فصل
+locator-column = عمود
+locator-elocation = موقع
+locator-equation = معادلة
+locator-figure = شكل
+locator-folio = ورقة
+locator-issue = عدد
+locator-line = سطر
+locator-note = ملاحظة
+locator-opus = عمل
+locator-page = صفحة
+locator-paragraph = فقرة
+locator-part = جزء
+locator-rule = قاعدة
+locator-scene = مشهد
+locator-section = قسم
+locator-sub-verbo = تحت كلمة
+locator-supplement = تكملة
+locator-table = جدول
+locator-timestamp = الوقت
+locator-title-locator = عنوان
+locator-verse = آية
+locator-version = إصدار
+locator-volume = مجلد
+citation-details-locator-type = نوع الموضع
+locator-short-page = ص
+locator-short-chapter = ف
 locator-short-section = §
 locator-short-paragraph = ¶
-locator-short-line = l.
-locator-short-verse = v.
-locator-short-volume = vol.
-locator-short-book = bk.
-locator-short-part = pt.
-locator-short-figure = fig.
-locator-short-table = tbl.
-locator-short-note = n.
-locator-short-appendix = app.
-locator-short-article-locator = art.
-locator-short-canon = can.
-locator-short-column = col.
-locator-short-elocation = loc.
-locator-short-equation = eq.
-locator-short-folio = fol.
-locator-short-issue = no.
-locator-short-opus = op.
-locator-short-rule = r.
-locator-short-scene = sc.
-locator-short-sub-verbo = s.v.
-locator-short-supplement = supp.
-locator-short-timestamp = at
-locator-short-title-locator = tit.
-locator-short-version = ver.
-locator-short-act = act
-citation-details-add-prefix = Text before
-citation-details-add-suffix = Text after
-citation-token-remove = Remove { $reference }
-citation-details-locator-filter = Find a type
-citation-details-locator-placeholder = Add a value
-key-move-left = Move Left
-key-move-right = Move Right
-key-edit-citation = Edit Page…
-key-go-to-citation = Go to Citation
-picker-order-kept = Keeping your order
-picker-your-order = your order
-citation-details-prefix = Text before
-citation-details-suffix = Text after
-citation-details-none = None
-citation-details-page-placeholder = Add page
-citation-details-page-hint = A page, a range or several, as printed
-citation-details-form = Show as
-citation-details-examples-unavailable = Examples are unavailable
-citation-details-edit = Edit { $reference }
-citation-details-details = Citation details for { $reference }
-operation-failures-recent-history = Recent citations could not be forgotten. Try again.
-operation-failures-project = The .bib file to check against could not be changed. Try again.
-operation-failures-row-context = The row menu could not open. Enter copies, Shift+Enter adds.
-operation-failures-status = Ibis could not check your library. Choose the file again.
-operation-failures-shortcut = Could not check the shortcut. Open Ibis from the menu bar or tray.
-operation-failures-choose = The file chooser did not open. Try again.
-operation-failures-drop-refused = Drop one { -library-formats } file at a time.
-operation-failures-zotero = Ibis could not start reading Zotero. Try again.
-operation-failures-samples = Ibis could not change the sample library. Try again.
-operation-failures-zotero-groups = Ibis could not list your Zotero groups. Check that Zotero is open, then try again.
-operation-failures-reload = Ibis could not reload your library. Choose the file again.
-operation-failures-hide = Ibis could not hide this window. Try again.
-operation-failures-pin = Ibis could not change the pin. Try again.
-operation-failures-preferences = Your picker choices could not be saved. They apply until restart.
-operation-failures-window-size = Ibis could not save the window size. It will be kept until you quit.
-operation-failures-quit = Ibis could not quit. Try again.
-operation-failures-update-events = Update progress is unavailable.
-operation-failures-picker-events = Ibis could not focus the search box. Restart Ibis to try again.
-operation-failures-library-events = Your library may not update automatically. Use Reload, or restart Ibis.
-operation-failures-find-sources = Ibis could not look for libraries here. Choose a file instead.
-operation-failures-open-found = That file could not be opened. Pick it again from the new list.
-operation-failures-settings = Settings could not open. Try again.
-operation-failures-app-choices = App choices were damaged. Choose Paste or Copy Only again.
-operation-failures-app-read = Ibis could not tell which app this is. Your default applies.
-operation-failures-app-choice = Ibis could not save the choice for this app. Try again.
-operation-failures-app-delivery = Ibis saved the format but not Paste or Copy Only. Choose it again.
-setup-sources-title = Where do your references live?
+locator-short-line = س
+locator-short-verse = آ
+locator-short-volume = مج
+locator-short-book = ك
+locator-short-part = ج
+locator-short-figure = ش
+locator-short-table = جدول
+locator-short-note = ملاحظة
+locator-short-appendix = ملحق
+locator-short-article-locator = م
+locator-short-canon = قانون
+locator-short-column = ع
+locator-short-elocation = موقع
+locator-short-equation = معادلة
+locator-short-folio = ورقة
+locator-short-issue = عدد
+locator-short-opus = عمل
+locator-short-rule = قاعدة
+locator-short-scene = مشهد
+locator-short-sub-verbo = تحت كلمة
+locator-short-supplement = تكملة
+locator-short-timestamp = عند
+locator-short-title-locator = عنوان
+locator-short-version = إصدار
+locator-short-act = فصل مسرحي
+citation-details-add-prefix = نص قبله
+citation-details-add-suffix = نص بعده
+citation-token-remove = إزالة { $reference }
+citation-details-locator-filter = ابحث عن نوع
+citation-details-locator-placeholder = أضف قيمة
+key-move-left = نقل إلى اليسار
+key-move-right = نقل إلى اليمين
+key-edit-citation = إظهار تفاصيل الاستشهاد
+key-go-to-citation = الانتقال إلى الاستشهاد
+picker-order-kept = يُحتفظ بترتيبك
+picker-your-order = ترتيبك
+citation-details-prefix = نص قبله
+citation-details-suffix = نص بعده
+citation-details-none = لا شيء
+citation-details-page-placeholder = أضف صفحة
+citation-details-page-hint = صفحة أو نطاق أو عدة صفحات، كما هي مطبوعة
+citation-details-form = طريقة العرض
+citation-details-examples-unavailable = الأمثلة غير متاحة
+citation-details-edit = تعديل { $reference }
+citation-details-details = تفاصيل استشهاد { $reference }
+operation-failures-recent-history = تعذّر نسيان الاستشهادات الأخيرة. حاول مرة أخرى.
+operation-failures-project = تعذّر تغيير ملف .bib المستخدم للمطابقة. حاول مرة أخرى.
+operation-failures-row-context = تعذّر فتح قائمة الصف. Enter ينسخ، وShift+Enter يضيف.
+operation-failures-status = تعذّر على Ibis التحقق من مكتبتك. اختر الملف مرة أخرى.
+operation-failures-shortcut = تعذّر التحقق من الاختصار. افتح Ibis من شريط القوائم أو علبة النظام.
+operation-failures-choose = لم تُفتح نافذة اختيار الملف. حاول مرة أخرى.
+operation-failures-drop-refused = أفلت ملفًا واحدًا في كل مرة ({ -library-formats }).
+operation-failures-zotero = تعذّر على Ibis بدء قراءة Zotero. حاول مرة أخرى.
+operation-failures-samples = تعذّر على Ibis تغيير المكتبة النموذجية. حاول مرة أخرى.
+operation-failures-zotero-groups = تعذّر على Ibis عرض مجموعاتك في Zotero. تأكد من أن Zotero مفتوح، ثم حاول مرة أخرى.
+operation-failures-reload = تعذّر على Ibis إعادة تحميل مكتبتك. اختر الملف مرة أخرى.
+operation-failures-hide = تعذّر على Ibis إخفاء هذه النافذة. حاول مرة أخرى.
+operation-failures-pin = تعذّر على Ibis تغيير التثبيت. حاول مرة أخرى.
+operation-failures-preferences = تعذّر حفظ اختياراتك في النافذة. ستبقى سارية حتى إعادة التشغيل.
+operation-failures-window-size = تعذّر على Ibis حفظ حجم النافذة. سيبقى كما هو حتى تُنهي Ibis.
+operation-failures-quit = تعذّر إنهاء Ibis. حاول مرة أخرى.
+operation-failures-update-events = تقدّم التحديث غير متاح.
+operation-failures-picker-events = تعذّر على Ibis تركيز مربع البحث. أعد تشغيل Ibis لتحاول مرة أخرى.
+operation-failures-library-events = قد لا تتحدّث مكتبتك تلقائيًا. استخدم «إعادة تحميل المكتبة» أو أعد تشغيل Ibis.
+operation-failures-find-sources = تعذّر على Ibis البحث عن مكتبات هنا. اختر ملفًا بدلًا من ذلك.
+operation-failures-open-found = تعذّر فتح هذا الملف. اختره مرة أخرى من القائمة الجديدة.
+operation-failures-settings = تعذّر فتح الإعدادات. حاول مرة أخرى.
+operation-failures-app-choices = تلفت اختيارات التطبيقات. اختر «لصق» أو «نسخ فقط» مرة أخرى.
+operation-failures-app-read = تعذّر على Ibis معرفة هذا التطبيق. سيُطبَّق إعدادك الافتراضي.
+operation-failures-app-choice = تعذّر على Ibis حفظ الاختيار لهذا التطبيق. حاول مرة أخرى.
+operation-failures-app-delivery = حفظ Ibis التنسيق دون «لصق» أو «نسخ فقط». اختره مرة أخرى.
+setup-sources-title = أين توجد مراجعك؟
 setup-sources-line =
     { $platform ->
-        [linux] Ibis finds a reference and copies its citation for you to paste where you’re typing. It only reads your library, never changes it.
-       *[other] Ibis finds a reference and pastes its citation where you’re typing. It only reads your library, never changes it.
+        [linux] يجد Ibis المرجع وينسخ استشهاده لتلصقه حيث تكتب. يقرأ مكتبتك فقط ولا يغيّرها أبدًا.
+       *[other] يجد Ibis المرجع ويلصق استشهاده حيث تكتب. يقرأ مكتبتك فقط ولا يغيّرها أبدًا.
     }
-setup-return-hint = After this, open Ibis from any app with { $shortcut }.
-setup-shortcut-unavailable = The shortcut is unavailable. Open Ibis from the menu bar or tray.
-setup-no-shortcut = No shortcut is set.
-setup-open-without-shortcut = Open Ibis from the menu bar or tray.
-setup-opening-line = Reading your library. Zotero can stay closed.
-setup-samples = Try Sample References
-setup-samples-help = Three invented ones to try
-setup-sample-label = Sample
-setup-sample-title = Sample references
-setup-sample-search-help = Search for “lantern”, choose the lantern gardens reference, then press Enter.
-setup-own-library = Use Your Own Library
-setup-own-library-help = Choose Zotero or a library file instead of samples
-setup-empty-line = Add references to it, or choose another library.
+setup-return-hint = بعد ذلك، افتح Ibis من أي تطبيق بالضغط على { $shortcut }.
+setup-shortcut-unavailable = الاختصار غير متاح. افتح Ibis من شريط القوائم أو علبة النظام.
+setup-no-shortcut = لم يُعيَّن اختصار.
+setup-open-without-shortcut = افتح Ibis من شريط القوائم أو علبة النظام.
+setup-opening-line = جارٍ قراءة مكتبتك. يمكن أن يبقى Zotero مغلقًا.
+setup-samples = تجربة مراجع نموذجية
+setup-samples-help = ثلاثة مراجع وهمية للتجربة
+setup-sample-label = نموذج
+setup-sample-title = مراجع نموذجية
+setup-sample-search-help = ابحث عن «lantern»، واختر مرجع «Lantern gardens»، ثم اضغط Enter.
+setup-own-library = استخدام مكتبتك
+setup-own-library-help = اختر Zotero أو ملف مكتبة بدلًا من النماذج
+setup-empty-line = أضف إليها مراجع، أو اختر مكتبة أخرى.
 setup-zotero = Zotero
-setup-find-libraries = Find Them on This Computer
-setup-found-in = Found in { $folder }
-setup-choose-found = Choose a Found Library
-setup-found-title = Libraries found on this computer
-setup-find-help = Zotero and .bib files nearby
-setup-look-again = Look Again
-setup-looking = Looking for Zotero and .bib files…
-setup-cut-short = Some folders were too large to search fully. Choose the file yourself if it is not listed.
-setup-nothing-found = No Zotero or .bib files found nearby. Choose the file yourself.
-setup-missing-title = Can’t find { $name }
-setup-missing-line = It may have moved, or its drive is disconnected.
-setup-find = Find { $name }
-setup-find-file-help = Choose where it is now
-setup-unreadable-title = Can’t read { $name }
-setup-zotero-closed-title = Open Zotero to read your library
-setup-zotero-closed-line = Ibis usually reads it with Zotero closed, but not this time.
-setup-zotero-missing-title = Ibis can’t find Zotero’s library
-setup-zotero-missing-line = If Zotero isn’t installed, install it and open it once. Ibis will carry on by itself.
-setup-zotero-access-off-title = Zotero isn’t sharing your library
-setup-zotero-access-off-waiting = Ibis will carry on by itself once it’s on.
-setup-open-zotero-help = Ibis carries on by itself once it’s open
-setup-open-file-help = See the file in its own app
-setup-add-references-help = Add references there
-setup-zotero-profiles-title = Which Zotero profile?
-setup-zotero-profiles-line = Zotero is closed. Choose the profile to read.
-setup-zotero-profiles-failed = Ibis could not list your Zotero profiles. Open Zotero and Ibis will carry on by itself.
-setup-other-title = Can’t open { $name }
-setup-the-library = the library
-setup-try-again = Try Again
-setup-try-again-help = Read the library again
-setup-another = Use Another Library
-setup-another-help = Zotero or another library file
-session-menu = Cited Since Opening…
-session-title = Cited Since Opening
-session-about = What you copied with Ibis since it opened, or since you reset this list, in every app. Ibis can’t see your document, so check this against it.
-session-empty = Nothing yet. References you copy appear here.
-session-close = Back
-session-remove = Remove
-session-reset = Reset List
-session-undo-reset = Undo Reset List
-session-full = This list is full, so later references were not added.
-session-copy = Copy Bibliography
-session-save = Save…
-session-copied = Copied the bibliography.
-session-changed = The list changed. Check it, then try again.
-session-not-read = The references could not be read. Try again.
-session-not-formatted = These references could not be written as a bibliography. Try another style.
-session-not-copied = The bibliography could not be copied. Try again.
-session-not-saved = The bibliography could not be saved. Try again.
-writing-title = Writings
-writing-loading = Loading writings…
-writing-saving = Saving writing…
-writing-menu = New writing…
-writing-about = A writing keeps its citation format and optional bibliography together. Your choice is remembered for this app; changes apply wherever you use this writing. Ibis does not identify the document.
-writing-session-only = Ibis can’t identify the app, so this writing applies only until Ibis quits.
-writing-close = Close
-writing-none = No Writing
-writing-empty = No writings yet. Your app’s format applies until you choose one.
-writing-use = Use { $name }
-writing-selected = Selected writing
-writing-selected-label = Selected
-writing-format = Format: { $name }
-writing-bibliography = Bibliography: { $name }
-writing-no-bibliography = No bibliography selected.
-writing-choose-bibliography = Choose Bibliography…
-writing-remove-bibliography = Remove Bibliography
-writing-create = New Writing…
-writing-confirm-create = Create Writing
-writing-starts-with = Starts with { $format }. Change it in the format menu after creating the writing.
-writing-name = Writing name
-writing-rename = Rename Writing…
-writing-save-name = Save Name
-writing-remove = Remove Writing…
-writing-confirm-remove = Remove Writing
-writing-cancel = Cancel
-writing-unsupported = This app version cannot use this writing’s format.
-writing-not-read = The writings could not be read. Close this sheet, then try again.
-writing-not-saved = The writing could not be saved. Your previous choice still applies. Try again.
-writing-bibliography-not-saved = The bibliography choice could not be saved. Try again.
-writing-pick = Your pick changes this writing’s format.
-project-check-retry = Retry
-project-check-locate = Locate Bibliography…
-picker-choose-project = Check Against a .bib File…
-picker-choose-other-project = Check Against Another Bibliography…
-picker-open-zotero = Open Zotero
-picker-show-in-zotero = Show in Zotero
-picker-source-changed = The library changed; select the reference again.
-picker-search-label = Search references
-picker-search-placeholder = Search references…
-picker-drag-search-bar = Drag the search bar edge to move the picker
-picker-search-error = Ibis could not search your library. Use Reload, then try again.
-picker-copy-error = Nothing was copied. Try again, or use Reload.
-picker-snapshot-changed = The library changed. Search again and reselect the references before copying.
-picker-shared-key = More than one reference has the key { $key }, so it can’t be cited by key. Give one of them a different key in Zotero or your .bib file.
-picker-using-shorthand = Using { $value }
-picker-apply = Apply
+setup-find-libraries = البحث عنها في هذا الكمبيوتر
+setup-found-in = عُثر عليها في { $folder }
+setup-choose-found = اختيار مكتبة معثور عليها
+setup-found-title = مكتبات عُثر عليها في هذا الكمبيوتر
+setup-find-help = Zotero وملفات .bib القريبة
+setup-look-again = البحث مجددًا
+setup-looking = جارٍ البحث عن Zotero وملفات .bib…
+setup-cut-short = بعض المجلدات أكبر من أن يُبحث فيها بالكامل. اختر الملف بنفسك إن لم يكن مدرجًا.
+setup-nothing-found = لم يُعثر على Zotero أو ملفات .bib قريبة. اختر الملف بنفسك.
+setup-missing-title = تعذّر العثور على { $name }
+setup-missing-line = ربما نُقل، أو أن القرص الذي يحويه غير متصل.
+setup-find = البحث عن { $name }
+setup-find-file-help = اختر مكانه الحالي
+setup-unreadable-title = تعذّرت قراءة { $name }
+setup-zotero-closed-title = افتح Zotero لقراءة مكتبتك
+setup-zotero-closed-line = يقرأها Ibis عادةً وZotero مغلق، لكن ليس هذه المرة.
+setup-zotero-missing-title = لا يجد Ibis مكتبة Zotero
+setup-zotero-missing-line = إن لم يكن Zotero مثبّتًا، فثبّته وافتحه مرة واحدة. سيتابع Ibis تلقائيًا.
+setup-zotero-access-off-title = Zotero لا يشارك مكتبتك
+setup-zotero-access-off-waiting = سيتابع Ibis تلقائيًا بمجرد تفعيل المشاركة.
+setup-open-zotero-help = يتابع Ibis تلقائيًا بمجرد فتح Zotero
+setup-open-file-help = عرض الملف في تطبيقه
+setup-add-references-help = أضف المراجع هناك
+setup-zotero-profiles-title = أي ملف تعريف في Zotero؟
+setup-zotero-profiles-line = Zotero مغلق. اختر ملف التعريف المراد قراءته.
+setup-zotero-profiles-failed = تعذّر على Ibis عرض ملفات تعريف Zotero. افتح Zotero وسيتابع Ibis تلقائيًا.
+setup-other-title = تعذّر فتح { $name }
+setup-the-library = المكتبة
+setup-try-again = إعادة المحاولة
+setup-try-again-help = قراءة المكتبة مجددًا
+setup-another = استخدام مكتبة أخرى
+setup-another-help = Zotero أو ملف مكتبة آخر
+session-menu = الاستشهادات منذ الفتح…
+session-title = الاستشهادات منذ الفتح
+session-about = ما نسخته باستخدام Ibis منذ فتحه، أو منذ إعادة تعيين هذه القائمة، في كل التطبيقات. لا يرى Ibis مستندك، لذا طابق القائمة معه.
+session-empty = لا شيء بعد. تظهر هنا المراجع التي تنسخها.
+session-close = رجوع
+session-remove = إزالة
+session-reset = إعادة تعيين القائمة
+session-undo-reset = تراجع عن إعادة تعيين القائمة
+session-full = القائمة ممتلئة، لذا لم تُضف المراجع اللاحقة.
+session-copy = نسخ قائمة المراجع
+session-save = حفظ…
+session-copied = نُسخت قائمة المراجع.
+session-changed = تغيّرت القائمة. راجعها، ثم حاول مرة أخرى.
+session-not-read = تعذّرت قراءة المراجع. حاول مرة أخرى.
+session-not-formatted = تعذّرت كتابة هذه المراجع كقائمة مراجع. جرّب نمطًا آخر.
+session-not-copied = تعذّر نسخ قائمة المراجع. حاول مرة أخرى.
+session-not-saved = تعذّر حفظ قائمة المراجع. حاول مرة أخرى.
+writing-title = المشاريع
+writing-loading = جارٍ تحميل المشاريع…
+writing-saving = جارٍ حفظ المشروع…
+writing-menu = مشروع جديد…
+writing-about = يجمع المشروع تنسيق الاستشهاد وقائمة مراجع اختيارية معًا. يُحفظ اختيارك لهذا التطبيق، وتسري التغييرات أينما استخدمت هذا المشروع. لا يتعرّف Ibis على المستند.
+writing-session-only = لا يستطيع Ibis التعرّف على التطبيق، لذا يسري هذا المشروع فقط حتى إنهاء Ibis.
+writing-close = إغلاق
+writing-none = بلا مشروع
+writing-empty = لا توجد مشاريع بعد. يسري تنسيق تطبيقك حتى تختار مشروعًا.
+writing-use = استخدام { $name }
+writing-selected = المشروع المحدد
+writing-selected-label = محدد
+writing-format = التنسيق: { $name }
+writing-bibliography = قائمة المراجع: { $name }
+writing-no-bibliography = لم تُحدَّد قائمة مراجع.
+writing-choose-bibliography = اختيار قائمة مراجع…
+writing-remove-bibliography = إزالة قائمة المراجع
+writing-create = مشروع جديد…
+writing-confirm-create = إنشاء المشروع
+writing-starts-with = يبدأ بـ { $format }. غيّره من قائمة التنسيق بعد إنشاء المشروع.
+writing-name = اسم المشروع
+writing-rename = إعادة تسمية المشروع…
+writing-save-name = حفظ الاسم
+writing-remove = إزالة المشروع…
+writing-confirm-remove = إزالة المشروع
+writing-cancel = إلغاء
+writing-unsupported = لا يستطيع هذا الإصدار من التطبيق استخدام تنسيق هذا المشروع.
+writing-not-read = تعذّرت قراءة المشاريع. أغلق هذه اللوحة، ثم حاول مرة أخرى.
+writing-not-saved = تعذّر حفظ المشروع. لا يزال اختيارك السابق ساريًا. حاول مرة أخرى.
+writing-bibliography-not-saved = تعذّر حفظ اختيار قائمة المراجع. حاول مرة أخرى.
+writing-pick = يغيّر اختيارك تنسيق هذا المشروع.
+project-check-retry = إعادة المحاولة
+project-check-locate = تحديد موقع قائمة المراجع…
+picker-choose-project = المطابقة مع ملف .bib…
+picker-choose-other-project = المطابقة مع قائمة مراجع أخرى…
+picker-open-zotero = فتح Zotero
+picker-show-in-zotero = إظهار في Zotero
+picker-source-changed = تغيّرت المكتبة؛ حدّد المرجع مرة أخرى.
+picker-search-label = البحث في المراجع
+picker-search-placeholder = ابحث في المراجع…
+picker-drag-search-bar = اسحب حافة شريط البحث لتحريك النافذة
+picker-search-error = تعذّر على Ibis البحث في مكتبتك. استخدم «إعادة تحميل المكتبة»، ثم حاول مرة أخرى.
+picker-copy-error = لم يُنسخ شيء. حاول مرة أخرى، أو استخدم «إعادة تحميل المكتبة».
+picker-snapshot-changed = تغيّرت المكتبة. ابحث مجددًا وأعد تحديد المراجع قبل النسخ.
+picker-shared-key = لأكثر من مرجع المفتاح { $key }، لذا لا يمكن الاستشهاد به عبر المفتاح. أعطِ أحدها مفتاحًا مختلفًا في Zotero أو في ملف .bib.
+picker-using-shorthand = يُستخدم { $value }
+picker-apply = تطبيق
 # $word: a word that finds the person’s own cited reference, never a sample one.
-picker-shorthand-hint = “{ $word } 417” for a page, “see { $word }” for “see”.
-picker-search-as-typed = Search as typed
-picker-apply-locator = Apply locator to { $key }
-picker-copied = Copied
-picker-key-formats = Key formats
-picker-formatted-styles = Citation styles
-picker-share-formats = Share references
-picker-filter-formats = Filter formats
+picker-shorthand-hint = «{ $word } 417» لصفحة، و«see { $word }» لـ «see».
+picker-kept-words = أُبقي كلمات. للصفحة، أضف فاصلة: «غرفة, 22».
+picker-practice-offer = جرّب اللصق هنا أولًا: اضغط Enter.
+# $citation: exactly what Enter would paste.
+picker-practice-pasted = لُصق { $citation } هنا. بعد ذلك، يلصق Enter في تطبيقك.
+picker-search-as-typed = البحث كما كُتب
+picker-apply-locator = تطبيق الموضع على { $key }
+picker-copied = تم النسخ
+picker-key-formats = تنسيقات المفاتيح
+picker-formatted-styles = أنماط الاستشهاد
+picker-share-formats = مشاركة المراجع
+picker-filter-formats = تصفية التنسيقات
 picker-format-for-app = { $format } · { $app }
-picker-format-this-paste = { $format } · This paste
-picker-format-remembered = Remembered for { $app }.
-picker-format-suggested = Suggested for { $app }.
-picker-format-app-default = { $app } has no remembered format, so your default applies.
-picker-format-no-app = Ibis can’t tell which app this is for, so your default applies.
-picker-format-held = { $format } applies to this paste only.
-picker-pick-replaces = Your pick replaces it.
-picker-pick-remembered = Your pick is remembered for this app.
-picker-pick-default = Your pick becomes your default.
-picker-pick-this-paste = Your pick applies to this paste only.
-picker-pick-to-remember = Pick a format to remember it for this app.
-picker-pick-to-set-default = Pick a format to make it your default.
-picker-for-app = For { $app }
-picker-pick-heading-default = Default format
-picker-pick-heading-this-paste = This paste only
-picker-paste-from-now-on = Paste into { $app } from Now On
-picker-copy-only = Copy Only
-picker-preview = Preview
-picker-citation-details = Citation details
-picker-details = Details
-picker-citation-warnings = Citation warnings
-picker-window-reset = Window position reset.
-picker-undo = Undo
-picker-notices = Notices
-picker-undo-failed = Could not undo. Try again.
-picker-preview-pending = Formatting…
-picker-preview-error = This citation could not be formatted. Choose another style, or copy citation keys.
-picker-preview-refused = This citation could not be prepared. Close and reopen Ibis to try again.
-picker-preview-style-error = Couldn’t format in { $style }. Choose another style, or copy keys.
-picker-entry-only = { $style } numbers depend on your whole document, so Ibis copies the reference entry instead.
-picker-entry-only-short = Reference entry
-picker-first-note = Later notes to the same work are shortened, and which note comes first depends on your whole document, so Ibis copies the full first note.
-picker-first-note-short = Full first note
-picker-shelf-stale = The library changed. Reading it again…
-picker-dismiss = Dismiss
-picker-dismiss-warnings = Dismiss copy warnings
-picker-copy-warnings = Copy warnings
-picker-citation-selection = Citation selection
-picker-selected-references = Selected references
-picker-references = References
-picker-search-results = Search results
-picker-results = Results
-picker-no-date = No date
-picker-added-to-citation = Added to citation
-picker-add-named = Add { $name } to citation
-picker-remove-named = Remove { $name } from citation
-picker-best-matches = Best matches
-picker-pasted-list = Pasted list
-picker-paste-into = Paste into { $app } · { $output }
-picker-last-outcome = Last outcome. { $outcome }
-picker-closest-matches = Closest matches
-picker-closest-match = Closest match
-picker-spelling-match = Spelling match
-picker-closest-match-warning = “{ $title }” is a closest match: only some search words matched.
-picker-no-matches = No matching references
-picker-no-matches-hint = Try a surname, year or fewer words.
-picker-filter-obstacle = No matches with this filter
-picker-filter-obstacle-hint = A tag, year or field in your search leaves nothing.
-picker-remove-filter = Remove Filter
-picker-scope-obstacle-hint = Some of your Zotero libraries are left out of this search.
-picker-not-in-libraries = Not in your libraries
-picker-not-in-libraries-hint = Add it to your library, then search again.
-picker-clear-search = Clear Search
-picker-search-all-libraries = Search All Zotero Libraries
-picker-type-to-find = Type to find a reference
-picker-type-to-find-hint = Search by title, author, year, citation key or DOI.
-picker-more = More
-picker-keep-my-order = Keep My Order
-picker-change-last-citation = Change Last Citation
-picker-forget-recent = Forget Recent Citations
-picker-change-citation = Change Citation · { $format }
-picker-keep-open = Keep Window Open
-picker-keep-open-menu = Keep Window Open
-picker-change-format = Change Format…
-picker-drag-citation = Drag the citation into any app
-picker-commands = Commands
-picker-no-commands = No matching commands
-picker-more-title = More actions ({ $keys })
-picker-use-zotero = Use Zotero
-picker-library-region = Library
-picker-picker-actions = Picker actions
-picker-library-status = Library status
-picker-reload-library = Reload Library
-picker-choose-zotero-profile = Choose Zotero Profile…
-picker-zotero-profile = Zotero Profile
-picker-choose-library-menu = Choose Library…
-picker-format-label = Citation format
-picker-quit-label = Quit Ibis
-picker-settings = Settings…
-picker-zotero-libraries = Zotero libraries
-picker-search-in = Search in
-picker-all-libraries = All Libraries
-picker-my-library = My Library
-picker-group-library = Group { $id }
-picker-keep-one-library = Keep at least one Zotero library on.
-key-title = Keyboard Shortcuts
-key-close = Close
-key-footer = Keys
-key-copy = Copy
-key-copy-as = Copy as { $format }
-key-copy-several-as = Copy { $count } as { $format }
-key-add-to-citation = Add to Citation
-key-remove-from-citation = Remove from Citation
-key-close-menu = Close Menu
-key-clear-search = Clear Search
-key-hide = Hide Ibis
-library-live-updates-off = Live updates are unavailable. Reload the library after editing it.
-row-et-al = et al.
-copied-notice-title = Copied
-copied-notice-plugin-note = If this document uses a reference manager’s plugin (Zotero, Mendeley, EndNote, Citavi, Paperpile and others), insert with the plugin.
+picker-format-this-paste = { $format } · هذه المرة فقط
+picker-format-remembered = محفوظ لـ { $app }.
+picker-format-suggested = مقترح لـ { $app }.
+picker-format-app-default = لا يوجد تنسيق محفوظ لـ { $app }، لذا يسري تنسيقك الافتراضي.
+picker-format-no-app = لا يعرف Ibis التطبيق المقصود، لذا يسري تنسيقك الافتراضي.
+picker-format-held = يسري { $format } على هذه المرة فقط.
+picker-pick-replaces = اختيارك يحلّ محله.
+picker-pick-remembered = يُحفظ اختيارك لهذا التطبيق.
+picker-pick-default = يصبح اختيارك هو الافتراضي.
+picker-pick-this-paste = يسري اختيارك على هذه المرة فقط.
+picker-pick-to-remember = اختر تنسيقًا ليُحفظ لهذا التطبيق.
+picker-pick-to-set-default = اختر تنسيقًا لجعله الافتراضي.
+picker-for-app = لـ { $app }
+picker-pick-heading-default = التنسيق الافتراضي
+picker-pick-heading-this-paste = هذه المرة فقط
+picker-paste-from-now-on = لصق في { $app } من الآن فصاعدًا
+picker-copy-only = نسخ فقط
+picker-preview = معاينة
+picker-citation-details = تفاصيل الاستشهاد
+picker-details = التفاصيل
+picker-citation-warnings = تحذيرات الاستشهاد
+picker-window-reset = أُعيد تعيين موضع النافذة.
+picker-undo = تراجع
+picker-notices = التنبيهات
+picker-undo-failed = تعذّر التراجع. حاول مرة أخرى.
+picker-preview-pending = جارٍ التنسيق…
+picker-preview-error = تعذّر تنسيق هذا الاستشهاد. اختر نمطًا آخر، أو انسخ مفاتيح الاستشهاد.
+picker-preview-refused = تعذّر تجهيز هذا الاستشهاد. أغلق Ibis وأعد فتحه لتحاول مرة أخرى.
+picker-preview-style-error = تعذّر التنسيق بنمط { $style }. اختر نمطًا آخر، أو انسخ المفاتيح.
+picker-entry-only = تعتمد الأرقام في { $style } على مستندك بأكمله، لذا ينسخ Ibis مُدخل المرجع بدلًا من ذلك.
+picker-entry-only-short = مُدخل المرجع
+picker-first-note = تُختصر الحواشي اللاحقة للعمل نفسه، وترتيبها يعتمد على مستندك بأكمله، لذا ينسخ Ibis الحاشية الأولى كاملة.
+picker-first-note-short = الحاشية الأولى كاملة
+picker-shelf-stale = تغيّرت المكتبة. جارٍ قراءتها مجددًا…
+picker-dismiss = تجاهل
+picker-dismiss-warnings = تجاهل تحذيرات النسخ
+picker-copy-warnings = تحذيرات النسخ
+picker-citation-selection = تحديد الاستشهاد
+picker-selected-references = المراجع المحددة
+picker-references = المراجع
+picker-search-results = نتائج البحث
+picker-results = النتائج
+picker-no-date = بلا تاريخ
+picker-added-to-citation = أُضيف إلى الاستشهاد
+picker-add-named = إضافة { $name } إلى الاستشهاد
+picker-remove-named = إزالة { $name } من الاستشهاد
+picker-best-matches = أفضل التطابقات
+picker-pasted-list = القائمة الملصقة
+picker-paste-into = لصق في { $app } · { $output }
+picker-last-outcome = آخر نتيجة: { $outcome }
+picker-closest-matches = أقرب التطابقات
+picker-closest-match = تطابق تقريبي
+picker-spelling-match = تطابق إملائي
+picker-closest-match-warning = «{ $title }» تطابق تقريبي: تطابقت بعض كلمات البحث فقط.
+picker-no-matches = لا مراجع مطابقة
+picker-no-matches-hint = جرّب اسم عائلة أو سنة أو كلمات أقل.
+picker-filter-obstacle = لا نتائج مع هذه التصفية
+picker-filter-obstacle-hint = وسم أو سنة أو حقل في بحثك لا يُبقي أي نتيجة.
+picker-remove-filter = إزالة التصفية
+picker-scope-obstacle-hint = بعض مكتبات Zotero لديك مستبعدة من هذا البحث.
+picker-not-in-libraries = ليس في مكتباتك
+picker-not-in-libraries-hint = أضفه إلى مكتبتك، ثم ابحث مجددًا.
+picker-clear-search = مسح البحث
+picker-search-all-libraries = البحث في كل مكتبات Zotero
+picker-type-to-find = اكتب للعثور على مرجع
+picker-type-to-find-hint = ابحث بالعنوان أو المؤلف أو السنة أو مفتاح الاستشهاد أو DOI.
+picker-more = المزيد
+picker-keep-my-order = الإبقاء على ترتيبي
+picker-change-last-citation = تغيير آخر استشهاد
+picker-paste-reference-list = لصق قائمة المراجع
+picker-copy-reference-list = نسخ قائمة المراجع
+picker-reference-list-title = قائمة المراجع
+# $app: the app's own name. The list holds this app's citations from this run of Ibis.
+picker-reference-list-help =
+    { $count ->
+        [zero] لم تستشهد بأي مرجع في { $app } منذ فتح Ibis
+        [one] المرجع الذي استشهدت به في { $app } منذ فتح Ibis
+        [two] المرجعان اللذان استشهدت بهما في { $app } منذ فتح Ibis
+        [few] { $count } مراجع استشهدت بها في { $app } منذ فتح Ibis
+        [many] { $count } مرجعًا استشهدت بها في { $app } منذ فتح Ibis
+       *[other] { $count } مرجع استشهدت بها في { $app } منذ فتح Ibis
+    }
+picker-forget-recent = نسيان الاستشهادات الأخيرة
+picker-change-citation = تغيير الاستشهاد · { $format }
+picker-keep-open = إبقاء النافذة مفتوحة
+picker-keep-open-menu = إبقاء النافذة مفتوحة
+picker-change-format = تغيير التنسيق…
+picker-drag-citation = اسحب الاستشهاد إلى أي تطبيق
+picker-more-title = مزيد من الإجراءات ({ $keys })
+picker-use-zotero = استخدام Zotero
+picker-library-region = المكتبة
+picker-picker-actions = إجراءات النافذة
+picker-library-status = حالة المكتبة
+picker-reload-library = إعادة تحميل المكتبة
+picker-choose-zotero-profile = اختيار ملف تعريف Zotero…
+picker-zotero-profile = ملف تعريف Zotero
+picker-choose-library-menu = اختيار المكتبة…
+picker-format-label = تنسيق الاستشهاد
+picker-quit-label = إنهاء Ibis
+picker-settings = الإعدادات…
+picker-zotero-libraries = مكتبات Zotero
+picker-search-in = البحث في
+picker-all-libraries = كل المكتبات
+picker-my-library = مكتبتي
+picker-group-library = المجموعة { $id }
+picker-keep-one-library = أبقِ مكتبة Zotero واحدة على الأقل مفعّلة.
+key-title = اختصارات لوحة المفاتيح
+key-close = إغلاق
+key-footer = المفاتيح
+key-copy = نسخ
+key-copy-as = نسخ بتنسيق { $format }
+key-copy-several-as = نسخ { $count } بتنسيق { $format }
+key-add-to-citation = إضافة إلى الاستشهاد
+key-remove-from-citation = إزالة من الاستشهاد
+key-close-menu = إغلاق القائمة
+key-clear-search = مسح البحث
+key-hide = إخفاء Ibis
+library-live-updates-off = التحديثات المباشرة غير متاحة. أعد تحميل المكتبة بعد تعديلها.
+row-et-al = وآخرون
+copied-notice-title = تم النسخ
+copied-notice-plugin-note = إذا كان هذا المستند يستخدم إضافة مدير مراجع (Zotero وMendeley وEndNote وCitavi وPaperpile وغيرها)، فأدرج الاستشهاد عبر الإضافة.
 copied-notice-source = Ibis
-copied-notice-notice-failed = The Copied notice could not be shown.
+copied-notice-notice-failed = تعذّر عرض تنبيه «تم النسخ».
 # Names inside these sentences arrive isolated (⁨…⁩), so a right-to-left name keeps its place.
-reader-indicator = p. { $printed } · PDF page { $index } of { $count }
+reader-indicator = ص { $printed } · صفحة PDF { $index } من { $count }
 reader-pdf-page = PDF { $index }
 setup-found-on =
     { $platform ->
-        [macos] Found on this Mac
-        [windows] Found on this PC
-       *[other] Found on this computer
+        [macos] موجود على هذا الـ Mac
+        [windows] موجود على هذا الكمبيوتر
+       *[other] موجود على هذا الكمبيوتر
     }
-setup-zotero-access-off = To read your references, in Zotero › Settings › Advanced turn on “Allow other applications on this computer to communicate with Zotero”.
-setup-zotero-open = Zotero is open.
-setup-zotero-installed = Zotero is on this computer.
+setup-zotero-access-off = لقراءة مراجعك، فعّل في Zotero › الإعدادات › متقدم الخيار «السماح للتطبيقات الأخرى على هذا الكمبيوتر بالتواصل مع Zotero».
+setup-zotero-open = Zotero مفتوح.
+setup-zotero-installed = Zotero مثبّت على هذا الكمبيوتر.
 setup-bib-found =
     { $count ->
-        [one] 1 .bib file found.
-       *[other] { $count } .bib files found.
+        [zero] لم يُعثر على ملفات بصيغة .bib.
+        [one] عُثر على ملف واحد بصيغة .bib.
+        [two] عُثر على ملفين بصيغة .bib.
+        [few] عُثر على { $count } ملفات بصيغة .bib.
+        [many] عُثر على { $count } ملفًا بصيغة .bib.
+       *[other] عُثر على { $count } ملف بصيغة .bib.
     }
-session-remove-named = Remove { $name }
-session-undo-remove = Undo Remove
-session-undo-remove-named = Undo Remove { $name }
+session-remove-named = إزالة { $name }
+session-undo-remove = تراجع عن الإزالة
+session-undo-remove-named = تراجع عن إزالة { $name }
 session-absent =
     { $count ->
-        [one] 1 reference isn’t in the open library, so it is left out.
-       *[other] { $count } references aren’t in the open library, so they are left out.
+        [zero] لا مراجع خارج المكتبة المفتوحة.
+        [one] مرجع واحد ليس في المكتبة المفتوحة، لذا استُبعد.
+        [two] مرجعان ليسا في المكتبة المفتوحة، لذا استُبعدا.
+        [few] { $count } مراجع ليست في المكتبة المفتوحة، لذا استُبعدت.
+        [many] { $count } مرجعًا ليست في المكتبة المفتوحة، لذا استُبعدت.
+       *[other] { $count } مرجع ليست في المكتبة المفتوحة، لذا استُبعدت.
     }
-session-left-out = Left out because this style can’t write them: { $names }.
-session-bibliography-in = Bibliography in { $style }
-session-saved = Saved { $name }.
-writing-remove-question = Remove { $name } from Ibis? Its bibliography file stays where it is.
-writing-remembered = Saved for { $name }.
+session-left-out = استُبعدت لأن هذا النمط لا يستطيع كتابتها: { $names }.
+session-bibliography-in = قائمة المراجع بنمط { $style }
+session-saved = تم حفظ { $name }.
+writing-remove-question = إزالة { $name } من Ibis؟ يبقى ملف قائمة المراجع في مكانه.
+writing-remembered = تم الحفظ لـ { $name }.
 picker-project-state =
     { $state ->
-        [in] In { $name }
-        [missing] Missing from { $name }
-        [could-not-check] Couldn’t check { $name }
-        [repeated] Key appears more than once
-       *[may-name-another] Key may name another reference
+        [in] في { $name }
+        [missing] غير موجود في { $name }
+        [could-not-check] تعذّر التحقق من { $name }
+        [repeated] المفتاح مكرر
+       *[may-name-another] قد يشير المفتاح إلى مرجع آخر
     }
 picker-project-lines =
     { $count ->
-        [one] line { $lines }
-       *[other] lines { $lines }
+        [zero] الأسطر { $lines }
+        [one] السطر { $lines }
+        [two] السطران { $lines }
+        [few] الأسطر { $lines }
+        [many] الأسطر { $lines }
+       *[other] الأسطر { $lines }
     }
-picker-project-reading = Reading { $name }
-picker-project-damaged = Couldn’t read all of { $name }, so nothing is called missing.
-picker-project-failed = Couldn’t read { $name }.
-picker-project-checking = Checking against { $name }
+picker-project-reading = جارٍ قراءة { $name }
+picker-project-damaged = تعذّرت قراءة { $name } كاملًا، لذا لا يُعدّ أي مرجع مفقودًا.
+picker-project-failed = تعذّرت قراءة { $name }.
+picker-project-checking = جارٍ المطابقة مع { $name }
 picker-project-check-lines =
     { $count ->
-        [one] Check line { $lines }.
-       *[other] Check lines { $lines }.
+        [zero] تحقق من الأسطر { $lines }.
+        [one] تحقق من السطر { $lines }.
+        [two] تحقق من السطرين { $lines }.
+        [few] تحقق من الأسطر { $lines }.
+        [many] تحقق من الأسطر { $lines }.
+       *[other] تحقق من الأسطر { $lines }.
     }
-picker-stop-project = Stop Checking { $name }
-picker-copy-project-entry = Copy Entry for { $name }
+picker-stop-project = إيقاف المطابقة مع { $name }
+picker-copy-project-entry = نسخ المُدخل لـ { $name }
 picker-project-entry =
     { $outcome ->
-        [copied] Copied the entry for { $key } as your file has it, including any file or note field. Check it, then add it to { $name }.
-        [no-original] This reference has no original BibTeX entry here. Export it from your reference manager in your writing’s dialect, keeping its key.
-        [changed] The library or the bibliography changed. Search again, then try again.
-        [repeated] The library file repeats this key, so Ibis can’t tell which entry to copy.
-       *[dependency] This entry relies on a crossref, xdata or @string that can’t come with it. Export it from your reference manager, keeping its key.
+        [copied] نُسخ مُدخل { $key } كما هو في ملفك، بما في ذلك أي حقل file أو note. راجعه، ثم أضفه إلى { $name }.
+        [no-original] لا يوجد لهذا المرجع مُدخل BibTeX أصلي هنا. صدّره من مدير المراجع بالصيغة التي يستخدمها مشروعك، مع الاحتفاظ بمفتاحه.
+        [changed] تغيّرت المكتبة أو قائمة المراجع. ابحث مجددًا، ثم حاول مرة أخرى.
+        [repeated] يتكرر هذا المفتاح في ملف المكتبة، لذا لا يستطيع Ibis معرفة أي مُدخل ينسخ.
+       *[dependency] يعتمد هذا المُدخل على crossref أو xdata أو @string لا يمكن نسخه معه. صدّره من مدير المراجع، مع الاحتفاظ بمفتاحه.
     }
-picker-editor-waiting = Citing for your editor in { $format }. Esc cancels.
-picker-send = Send · { $format }
-picker-delivery-editor = Editor
-picker-delivery-clipboard = Clipboard
-picker-delivery-paste = Automatic paste
-picker-find-source = Find { $name }…
-picker-find-source-unnamed = Find…
+picker-editor-waiting = استشهاد لمحررك بتنسيق { $format }. Esc للإلغاء.
+picker-send = إرسال · { $format }
+picker-delivery-editor = المحرر
+picker-delivery-clipboard = الحافظة
+picker-delivery-paste = لصق تلقائي
+picker-find-source = البحث عن { $name }…
+picker-find-source-unnamed = بحث…
 picker-show-source-folder =
     { $platform ->
-        [macos] Show in Finder
-       *[other] Show in Folder
+        [macos] إظهار في Finder
+       *[other] إظهار في المجلد
     }
-picker-open-source = Open { $name }
-picker-open-library = Open library
+picker-open-source = فتح { $name }
+picker-open-library = فتح المكتبة
 picker-source-open-failed =
     { $source ->
-        [zotero] Zotero could not open. Try again.
-       *[file] The source file could not open. Try again.
+        [zotero] تعذّر فتح Zotero. حاول مرة أخرى.
+       *[file] تعذّر فتح ملف المصدر. حاول مرة أخرى.
     }
 picker-warning-count =
     { $count ->
-        [one] 1 warning
-       *[other] { $count } warnings
+        [zero] لا تحذيرات
+        [one] تحذير واحد
+        [two] تحذيران
+        [few] { $count } تحذيرات
+        [many] { $count } تحذيرًا
+       *[other] { $count } تحذير
     }
 picker-copy-citations =
     { $count ->
-        [one] Copy 1 citation
-       *[other] Copy { $count } citations
+        [zero] لا استشهادات للنسخ
+        [one] نسخ استشهاد واحد
+        [two] نسخ استشهادين
+        [few] نسخ { $count } استشهادات
+        [many] نسخ { $count } استشهادًا
+       *[other] نسخ { $count } استشهاد
     }
 picker-entry-output =
     { $count ->
-        [one] { $style } entry
-       *[other] { $count } { $style } entries
+        [zero] لا مُدخلات { $style }
+        [one] مُدخل { $style }
+        [two] مُدخلان { $style }
+        [few] { $count } مُدخلات { $style }
+        [many] { $count } مُدخلًا { $style }
+       *[other] { $count } مُدخل { $style }
     }
-picker-missing-citations = Not in your library: { $keys }
+picker-missing-citations = ليست في مكتبتك: { $keys }
 picker-matched-in =
     { $field ->
-        [doi] Matched in the DOI
-        [keyword] Matched in the keywords
-        [container] Matched in the journal or book
-        [abstract] Matched in the abstract
-        [identifier] Matched in an ISBN, PubMed ID or arXiv ID
-       *[other] Matched in { $field }
+        [doi] مطابقة في DOI
+        [keyword] مطابقة في الكلمات المفتاحية
+        [container] مطابقة في المجلة أو الكتاب
+        [abstract] مطابقة في الملخّص
+        [identifier] مطابقة في ISBN أو معرّف PubMed أو arXiv
+       *[other] مطابقة في { $field }
     }
-picker-run-command = Run { $title }
 picker-result-count =
     { $count ->
-        [one] 1 result
-       *[other] { $count } results
+        [zero] لا نتائج
+        [one] نتيجة واحدة
+        [two] نتيجتان
+        [few] { $count } نتائج
+        [many] { $count } نتيجةً
+       *[other] { $count } نتيجة
     }
 picker-selection-count =
     { $count ->
-        [one] 1 reference selected for citation
-       *[other] { $count } references selected for citation
+        [zero] لم يُحدَّد أي مرجع للاستشهاد
+        [one] حُدّد مرجع واحد للاستشهاد
+        [two] حُدّد مرجعان للاستشهاد
+        [few] حُدّد { $count } مراجع للاستشهاد
+        [many] حُدّد { $count } مرجعًا للاستشهاد
+       *[other] حُدّد { $count } مرجع للاستشهاد
     }
-picker-shortcut-not-used = Your shortcut setting was not used: { $reason }
-picker-shortcut-unavailable = The shortcut { $shortcut } is not available: { $reason }
+picker-shortcut-not-used = لم يُستخدم إعداد الاختصار لديك: { $reason }
+picker-shortcut-unavailable = الاختصار { $shortcut } غير متاح: { $reason }
 key-copy-entries =
     { $count ->
-        [one] Copy { $style } entry
-       *[other] Copy { $count } { $style } entries
+        [zero] نسخ مُدخلات { $style }
+        [one] نسخ مُدخل { $style }
+        [two] نسخ مُدخلَي { $style }
+        [few] نسخ { $count } مُدخلات { $style }
+        [many] نسخ { $count } مُدخلًا { $style }
+       *[other] نسخ { $count } مُدخل { $style }
     }
-library-opening = Opening { $name }…
-library-opening-unnamed = Opening library…
-library-reloading = Reloading { $name }…
-library-reloading-unnamed = Reloading library…
-library-zotero-not-read = { $name } could not be read. { $reason }
-library-open-zotero-then-reload = Open Zotero, then reload.
-library-file-not-opened = The library could not be opened: { $name }. { $reason } Choose it again or reconnect the drive.
-library-the-chosen-file = the chosen file
-library-empty-title = No references in { $name }
-library-empty-title-unnamed = No references in this library
-library-checking = Checking library…
-library-details-unavailable = Library details unavailable
-library-none-chosen = No library chosen
-library-not-opened = not opened
-library-moved = moved
-library-not-updated = not updated
-library-no-references = no references
+library-opening = جارٍ فتح { $name }…
+library-opening-unnamed = جارٍ فتح المكتبة…
+library-reloading = جارٍ إعادة تحميل { $name }…
+library-reloading-unnamed = جارٍ إعادة تحميل المكتبة…
+library-zotero-not-read = تعذّرت قراءة { $name }. { $reason }
+library-open-zotero-then-reload = افتح Zotero، ثم أعد التحميل.
+library-file-not-opened = تعذّر فتح المكتبة: { $name }. { $reason } اخترها مجددًا أو أعد توصيل القرص.
+library-the-chosen-file = الملف المختار
+library-empty-title = لا مراجع في { $name }
+library-empty-title-unnamed = لا مراجع في هذه المكتبة
+library-checking = جارٍ التحقق من المكتبة…
+library-details-unavailable = تفاصيل المكتبة غير متاحة
+library-none-chosen = لم تُختر أي مكتبة
+library-not-opened = لم تُفتح
+library-moved = نُقلت
+library-not-updated = لم تُحدَّث
+library-no-references = لا مراجع
 library-references =
     { $count ->
-        [one] { $count } reference
-       *[other] { $count } references
+        [zero] لا مراجع
+        [one] مرجع واحد
+        [two] مرجعان
+        [few] { $count } مراجع
+        [many] { $count } مرجعًا
+       *[other] { $count } مرجع
     }
 library-skipped =
     { $count ->
-        [one] { $count } entry skipped
-       *[other] { $count } entries skipped
+        [zero] لم يُتخطَّ أي مُدخل
+        [one] تم تخطي مُدخل واحد
+        [two] تم تخطي مُدخلين
+        [few] تم تخطي { $count } مُدخلات
+        [many] تم تخطي { $count } مُدخلًا
+       *[other] تم تخطي { $count } مُدخل
     }
-library-to-check = { $count } to check
-library-age-opening = opening…
-library-age-reloading = reloading…
-library-updated = updated { $ago }
-library-checked-at = checked { $ago }, { $time }
-library-last-read-at = last read { $ago }, { $time }
-library-zotero-unreachable = Zotero could not be reached
-library-file-unreadable = the file could not be read
+library-to-check = { $count } للتحقق
+library-age-opening = جارٍ الفتح…
+library-age-reloading = جارٍ إعادة التحميل…
+library-updated = حُدّثت { $ago }
+library-checked-at = تم التحقق { $ago }، { $time }
+library-last-read-at = آخر قراءة { $ago }، { $time }
+library-zotero-unreachable = تعذّر الوصول إلى Zotero
+library-file-unreadable = تعذّرت قراءة الملف
 library-where = ({ $lines })
-library-key-users = { $count } use the key { $key }
+library-key-users = { $count } تستخدم المفتاح { $key }
 library-others-share =
     { $count ->
-        [one] 1 other shares a key
-       *[other] { $count } others share a key
+        [zero] لا مُدخلات أخرى تشترك في مفتاح
+        [one] مُدخل آخر يشترك في مفتاح
+        [two] مُدخلان آخران يشتركان في مفتاح
+        [few] { $count } مُدخلات أخرى تشترك في مفتاح
+        [many] { $count } مُدخلًا آخر تشترك في مفتاح
+       *[other] { $count } مُدخل آخر تشترك في مفتاح
     }
 library-could-not-read =
     { $skipped ->
-        [one] it could not be read
-       *[other] { $count } could not be read
+        [zero] تعذّرت قراءة { $count }
+        [one] تعذّرت قراءته
+        [two] تعذّرت قراءة { $count }
+        [few] تعذّرت قراءة { $count }
+        [many] تعذّرت قراءة { $count }
+       *[other] تعذّرت قراءة { $count }
     }
 library-skipped-because =
     { $skipped ->
-        [one] { $skipped } entry skipped: { $reasons }.
-       *[other] { $skipped } entries skipped: { $reasons }.
+        [zero] لم يُتخطَّ أي مُدخل: { $reasons }.
+        [one] تم تخطي مُدخل واحد: { $reasons }.
+        [two] تم تخطي مُدخلين: { $reasons }.
+        [few] تم تخطي { $skipped } مُدخلات: { $reasons }.
+        [many] تم تخطي { $skipped } مُدخلًا: { $reasons }.
+       *[other] تم تخطي { $skipped } مُدخل: { $reasons }.
     }
-library-check = Check { $lines }.
-library-check-library = Check the library.
-library-line = line { $line }
-library-line-why = line { $line }: { $why }
-library-and-more = and { $count } more
-library-lines = lines { $lines } and { $last }
-library-lines-and-others = lines { $lines } and { $last }, and others
-library-work-limit = The library is too large to read in full.
-library-cloud-synced = It is in a cloud-synced folder, so changes can arrive late.
-library-zotero-newer = Zotero is newer than this version of Ibis was tested with. Results look right, but update Ibis when you can.
-library-keys-unavailable = Better BibTeX keys could not be read, so some items have none.
-time-just-now = just now
-time-on = on { $date }
+library-check = تحقق من { $lines }.
+library-check-library = تحقق من المكتبة.
+library-line = السطر { $line }
+library-line-why = السطر { $line }: { $why }
+library-and-more = و{ $count } أخرى
+library-lines = الأسطر { $lines } و{ $last }
+library-lines-and-others = الأسطر { $lines } و{ $last } وغيرها
+library-work-limit = المكتبة أكبر من أن تُقرأ كاملة.
+library-cloud-synced = إنها في مجلد متزامن مع السحابة، لذا قد تصل التغييرات متأخرة.
+library-zotero-newer = إصدار Zotero أحدث من الإصدار الذي اختُبر عليه هذا الإصدار من Ibis. تبدو النتائج صحيحة، لكن حدّث Ibis متى أمكنك.
+library-keys-unavailable = تعذّرت قراءة مفاتيح Better BibTeX، لذا بعض العناصر بلا مفاتيح.
+time-just-now = الآن
+time-on = في { $date }
 time-short =
     { $unit ->
-        [now] now
-        [minute] { $n } min
-        [hour] { $n } h
-       *[day] { $n } d
+        [now] الآن
+        [minute] { $n } د
+        [hour] { $n } س
+       *[day] { $n } ي
     }
 # Short word for a CSL item type, read by screen readers; other types say none.
 row-item-type =
     { $type ->
-        [article] Article
-        [article-journal] Article
-        [article-magazine] Article
-        [article-newspaper] Article
-        [book] Book
-        [chapter] Chapter
-        [dataset] Dataset
-        [entry-dictionary] Entry
-        [entry-encyclopedia] Entry
-        [manuscript] Manuscript
-        [paper-conference] Paper
-        [patent] Patent
-        [post] Post
-        [post-weblog] Post
-        [report] Report
-        [review] Review
-        [review-book] Review
-        [software] Software
-        [speech] Talk
-        [standard] Standard
-        [thesis] Thesis
-        [webpage] Web page
+        [article] مقالة
+        [article-journal] مقالة
+        [article-magazine] مقالة
+        [article-newspaper] مقالة
+        [book] كتاب
+        [chapter] فصل
+        [dataset] مجموعة بيانات
+        [entry-dictionary] مُدخل
+        [entry-encyclopedia] مُدخل
+        [manuscript] مخطوطة
+        [paper-conference] ورقة مؤتمر
+        [patent] براءة اختراع
+        [post] منشور
+        [post-weblog] منشور مدونة
+        [report] تقرير
+        [review] مراجعة
+        [review-book] مراجعة
+        [software] برمجية
+        [speech] محاضرة
+        [standard] معيار
+        [thesis] أطروحة
+        [webpage] صفحة ويب
        *[other] {""}
     }
-copied-notice-pasted-into = Pasted into { $app }
-copied-notice-pasted = Pasted
+copied-notice-pasted-into = تم اللصق في { $app }
+copied-notice-pasted = تم اللصق
 # Every "copied, not pasted" sentence says why and ends with its fix, written
 # with ⌘V; other systems show Ctrl+V.
 copied-notice-reason =
     { $reason ->
-        [paste-off] Copied. Pasting is off in Settings. Press ⌘V to paste.
-        [unsupported-system] Copied. Ibis can’t paste on this system yet. Press ⌘V to paste.
-        [no-target] Copied. There was no app to paste into. Press ⌘V to paste.
-        [unknown-app] Copied. Automatic paste is not approved for this app. Press ⌘V to paste.
-        [copy-only] Copied. Copy Only is set for this app. Press ⌘V to paste.
-        [nonstandard-shortcut] Copied. This app’s paste key does something else. Use its own paste command.
-        [target-changed] Copied. The target app or window changed. Press ⌘V to paste.
-        [clipboard-changed] Copied. The clipboard changed since. Copy the citation again.
-        [paste-expired] Copied. The paste expired. Press ⌘V to paste.
-        [no-permission] Copied. Ibis needs your OK to paste. Press ⌘V to paste.
-        [accessibility-required] Copied. Ibis needs Accessibility access to paste safely. Press ⌘V to paste.
-        [terminal] Copied. Not pasted into a terminal. Press ⌘V to paste.
-        [remote-desktop] Copied. Not pasted into a remote desktop. Press ⌘V to paste.
-        [virtual-machine] Copied. Not pasted into a virtual machine. Press ⌘V to paste.
-        [secure-field] Copied. This field hides what you type. Press ⌘V to paste.
-        [secure-input] Copied. Secure typing is on, possibly in another app. Press ⌘V to paste.
-        [elevated-app] Copied. Not pasted into an administrator app. Press ⌘V to paste.
-        [key-release-failed] Copied. Ibis couldn’t release the keys it pressed. Press and release Ctrl and V to paste.
-        [selection-not-shown] Copied. Ibis replaces only text it showed you. Press ⌘V to replace it.
-        [citation-not-selected] Copied. Ibis replaces a citation only when it is selected. Select it, then press ⌘V.
-       *[paste-unavailable] Copied. Ibis couldn’t confirm where the text would go. Press ⌘V to paste.
+        [paste-off] تم النسخ. اللصق متوقف في الإعدادات. اضغط ⌘V للصق.
+        [unsupported-system] تم النسخ. لا يستطيع Ibis اللصق على هذا النظام بعد. اضغط ⌘V للصق.
+        [no-target] تم النسخ. لم يكن هناك تطبيق للصق فيه. اضغط ⌘V للصق.
+        [unknown-app] تم النسخ. اللصق التلقائي غير معتمد لهذا التطبيق. اضغط ⌘V للصق.
+        [copy-only] تم النسخ. «نسخ فقط» مضبوط لهذا التطبيق. اضغط ⌘V للصق.
+        [nonstandard-shortcut] تم النسخ. مفتاح اللصق في هذا التطبيق يؤدي أمرًا آخر. استخدم أمر اللصق الخاص به.
+        [target-changed] تم النسخ. تغيّر التطبيق أو النافذة الهدف. اضغط ⌘V للصق.
+        [clipboard-changed] تم النسخ. تغيّرت الحافظة منذ ذلك الحين. انسخ الاستشهاد مجددًا.
+        [paste-expired] تم النسخ. انتهت مهلة اللصق. اضغط ⌘V للصق.
+        [no-permission] تم النسخ. يحتاج Ibis إلى موافقتك للصق. اضغط ⌘V للصق.
+        [accessibility-required] تم النسخ. يحتاج Ibis إلى إذن تسهيلات الاستخدام للصق بأمان. اضغط ⌘V للصق.
+        [terminal] تم النسخ. لم يُلصق في طرفية. اضغط ⌘V للصق.
+        [remote-desktop] تم النسخ. لم يُلصق في سطح مكتب بعيد. اضغط ⌘V للصق.
+        [virtual-machine] تم النسخ. لم يُلصق في جهاز افتراضي. اضغط ⌘V للصق.
+        [secure-field] تم النسخ. هذا الحقل يخفي ما تكتبه. اضغط ⌘V للصق.
+        [secure-input] تم النسخ. الإدخال الآمن من لوحة المفاتيح مفعّل، ربما في تطبيق آخر. اضغط ⌘V للصق.
+        [elevated-app] تم النسخ. لم يُلصق في تطبيق يعمل بصلاحيات المسؤول. اضغط ⌘V للصق.
+        [key-release-failed] تم النسخ. تعذّر على Ibis تحرير المفاتيح التي ضغطها. اضغط Ctrl وV ثم حرّرهما للصق.
+        [selection-not-shown] تم النسخ. لا يستبدل Ibis إلا نصًا عرضه عليك. اضغط ⌘V لاستبداله.
+        [citation-not-selected] تم النسخ. لا يستبدل Ibis الاستشهاد إلا عند تحديده. حدّده، ثم اضغط ⌘V.
+       *[paste-unavailable] تم النسخ. تعذّر على Ibis التأكد من وجهة النص. اضغط ⌘V للصق.
     }
-update-title = Updating Ibis
-app-newer-installed = A newer Ibis is installed. Quit and reopen to use it.
-update-downloading = Downloading
-update-installing = Checking and installing
-update-failed = Update not installed. Use Check for Updates in Settings › About.
+update-title = جارٍ تحديث Ibis
+app-newer-installed = إصدار أحدث من Ibis مثبّت. أنهِ Ibis وأعد فتحه لاستخدامه.
+update-downloading = جارٍ التنزيل
+update-installing = جارٍ التحقق والتثبيت
+update-failed = لم يُثبَّت التحديث. استخدم «التحقق من وجود تحديثات» في الإعدادات › حول Ibis.
 library-entries-to-check =
     { $count ->
-        [one] 1 entry to check
-       *[other] { $count } entries to check
+        [zero] لا مُدخلات للتحقق
+        [one] مُدخل واحد للتحقق
+        [two] مُدخلان للتحقق
+        [few] { $count } مُدخلات للتحقق
+        [many] { $count } مُدخلًا للتحقق
+       *[other] { $count } مُدخل للتحقق
     }
 library-more-not-listed =
     { $count ->
-        [one] 1 more is not listed.
-       *[other] { $count } more are not listed.
+        [zero] لا عناصر أخرى غير مدرجة.
+        [one] عنصر آخر غير مدرج.
+        [two] عنصران آخران غير مدرجين.
+        [few] { $count } عناصر أخرى غير مدرجة.
+        [many] { $count } عنصرًا آخر غير مدرج.
+       *[other] { $count } عنصر آخر غير مدرج.
     }
 
-citations-documents = In documents
-citations-keys = In Markdown, LaTeX and Typst
-citations-keys-description = Used where you write citation keys rather than formatted citations.
-citations-apps = Formats remembered for apps
-citations-forget = Forget
-citations-writings = Writings
-settings-open-file = Open Settings File
-settings-open = Open
-settings-file-description = Edits to settings.json apply while Ibis is running.
-picker-use-usual = Use { $format } in { $app } again
-picker-stop-writing = Stop using { $name } in { $app }
+citations-documents = في Word وLibreOffice والمستندات الأخرى
+citations-keys = في LaTeX وMarkdown وObsidian
+citations-keys-description = يُستخدم حيث تكتب مفاتيح الاستشهاد، وفي التطبيقات التي لا يعرفها Ibis.
+citations-apps = تنسيقات محفوظة للتطبيقات
+citations-forget = نسيان
+citations-writings = المشاريع
+settings-open-file = فتح ملف الإعدادات
+settings-open = فتح
+settings-file-description = تسري التعديلات على settings.json أثناء تشغيل Ibis.
+picker-use-usual = استخدام { $format } في { $app } مجددًا
+picker-stop-writing = إيقاف استخدام { $name } في { $app }
 
-copied-notice-suggested = Pasted in { $format }
-copied-notice-suggestion = Suggested { $format }
-copied-notice-change = Change
+copied-notice-suggested = تم اللصق بتنسيق { $format }
+copied-notice-suggestion = مقترح: { $format }
+copied-notice-change = تغيير
 
-picker-find-open = Open PDF, or show item in Zotero
-shortcuts-action-find-open = Open PDF, or show item
+picker-find-open = فتح PDF، أو إظهار العنصر في Zotero
+shortcuts-action-find-open = فتح PDF، أو إظهار العنصر
 
-citations-unlisted = Custom format
+citations-unlisted = تنسيق مخصّص
 
-picker-format-suggestion = Suggested until you choose a format.
+picker-format-suggestion = مقترح إلى أن تختار تنسيقًا.
 ## The palette: the format chooser and More (ui/Palette).
-palette-back = Back
-palette-run = Run
-palette-recent = Recent
-palette-citation = This citation
-palette-library = This library
+palette-back = رجوع
+palette-run = تنفيذ
+palette-recent = المستخدمة مؤخرًا
+palette-citation = هذا الاستشهاد
+palette-library = هذه المكتبة
 palette-ibis = Ibis
-palette-peek = Peek at Reference
-palette-actions-title = Actions
-palette-search-actions = Search actions
-palette-no-actions = No matching actions
-picker-format-title = Format
-palette-search-formats = Search formats
-palette-no-formats = No matching formats
-palette-use-again = Use { $format } in { $app } Again
-palette-use-for-app = Use for { $app }
-palette-use-default = Use Everywhere
-palette-use-this-paste = Use for This Paste
-palette-style-unavailable = Not available just now
-palette-preview-example = For example
-palette-preview-key = What Ibis pastes
-palette-preview-more = and { $count } more
-palette-preview-unavailable = No preview for this format.
-palette-words-source = open file folder zotero show library
-palette-words-reveal-source = finder explorer folder file location
-palette-words-choose-source = library file bib zotero open switch change
-palette-words-project-entry = bibliography bib entry missing copy
-palette-words-project-choose = bibliography bib check project
-palette-words-project-stop = bibliography bib check stop
-palette-words-format = style output apa pandoc latex syntax share export bibtex doi json
-palette-words-share = share export send copy references
-palette-words-peek = details preview quick look info
-palette-words-change-last = edit replace previous citation again
-palette-words-citation-focus = focus token reference citation
-palette-words-citation-edit = edit page locator details citation
-palette-words-citation-move-left = move reorder previous token reference citation
-palette-words-citation-move-right = move reorder next token reference citation
-palette-words-citation-remove = remove delete token reference citation
-palette-words-keep-order = order sort sequence
-palette-words-session-references = bibliography history cited list references
-palette-words-forget-recent = clear history privacy recents
-palette-words-pin = pin float stay keep open
-palette-words-keys = keyboard shortcuts keys help hotkeys
-palette-words-settings = preferences options configure
-palette-words-quit = exit close stop
-reason-strict-citation = Strict mode requires a complete citation without losses or source problems.
-    .cli = Check the reported source or citation options, or retry without --strict to review the findings.
-    .agent = Fix the source or citation options, or ask the user to review an ordinary citation’s findings.
-    .app = Check the source and citation options before trying again.
+palette-peek = لمحة عن المرجع
+palette-actions-title = الإجراءات
+palette-search-actions = ابحث في الإجراءات
+palette-no-actions = لا توجد إجراءات مطابقة
+picker-format-title = التنسيق
+palette-search-formats = ابحث في التنسيقات
+palette-no-formats = لا توجد تنسيقات مطابقة
+palette-use-again = استخدام { $format } في { $app } مجددًا
+palette-use-for-app = استخدام في { $app }
+palette-use-default = استخدام في كل مكان
+palette-use-this-paste = استخدام لهذه المرة فقط
+palette-style-unavailable = غير متاح الآن
+palette-preview-example = مثال
+palette-preview-key = ما يلصقه Ibis
+palette-preview-more = و{ $count } أخرى
+palette-preview-unavailable = لا توجد معاينة لهذا التنسيق.
+palette-words-source = فتح ملف مجلد zotero إظهار عرض مكتبة
+palette-words-reveal-source = finder explorer مستكشف مجلد ملف موقع
+palette-words-choose-source = مكتبة ملف bib zotero فتح تبديل تغيير
+palette-words-project-entry = مراجع bib مدخل ناقص مفقود نسخ
+palette-words-project-choose = مراجع bib تحقق مشروع
+palette-words-project-stop = مراجع bib تحقق إيقاف
+palette-words-format = نمط إخراج apa pandoc latex صيغة مشاركة تصدير bibtex doi json
+palette-words-share = مشاركة تصدير إرسال نسخ مراجع
+palette-words-peek = تفاصيل معاينة لمحة معلومات
+palette-words-change-last = تعديل استبدال سابق استشهاد مجددا
+palette-words-reference-list = قائمة مراجع أعمال مستشهد مدخلات لصق نسخ
+palette-words-citation-focus = تركيز رمز مرجع استشهاد
+palette-words-citation-edit = تعديل صفحة موضع تفاصيل استشهاد
+palette-words-citation-move-left = نقل ترتيب سابق رمز مرجع استشهاد
+palette-words-citation-move-right = نقل ترتيب تالي رمز مرجع استشهاد
+palette-words-citation-remove = إزالة حذف رمز مرجع استشهاد
+palette-words-keep-order = ترتيب فرز تسلسل
+palette-words-session-references = مراجع سجل مستشهد قائمة
+palette-words-forget-recent = مسح سجل خصوصية أخيرة حديثة
+palette-words-pin = تثبيت عائم إبقاء مفتوح
+palette-words-keys = اختصارات لوحة مفاتيح مساعدة
+palette-words-settings = إعدادات تفضيلات خيارات ضبط
+palette-words-quit = خروج إغلاق إيقاف إنهاء
+reason-strict-citation = يتطلب الوضع الصارم استشهادًا كاملًا بلا فقد أو مشكلات في المصدر.
+    .cli = تحقق من المصدر المُبلَّغ عنه أو من خيارات الاستشهاد، أو أعد المحاولة دون --strict لمراجعة النتائج.
+    .agent = أصلح المصدر أو خيارات الاستشهاد، أو اطلب من المستخدم مراجعة نتائج استشهاد عادي.
+    .app = تحقق من المصدر وخيارات الاستشهاد قبل إعادة المحاولة.
 
-cli-strict-help = Refuse citations with losses, refusals or source problems
-mcp-strict-help = Refuse losses, refusals or source problems.
-mcp-citation-hidden = This citation contains hidden characters and cannot be returned unchanged. Ask the user to fix the source or choose another output.
-mcp-citation-source-failed = A source could not be refreshed; this citation uses its last good copy. The receipt records its last successful read.
-mcp-citation-source-warnings = A cited source has warnings; its receipt records the warning count.
-mcp-cite-description = Cite refs from search, in order, with optional locators. Use the returned text unchanged and tell the user about notices, losses and warnings.
+cli-strict-help = رفض الاستشهادات التي فيها فقد أو رفض أو مشكلات في المصدر
+mcp-strict-help = رفض حالات الفقد أو الرفض أو مشكلات المصدر.
+mcp-citation-hidden = يحتوي هذا الاستشهاد على أحرف مخفية ولا يمكن إرجاعه دون تغيير. اطلب من المستخدم إصلاح المصدر أو اختيار إخراج آخر.
+mcp-citation-source-failed = تعذّر تحديث أحد المصادر؛ يستخدم هذا الاستشهاد آخر نسخة سليمة منه. ويسجّل الإيصال آخر قراءة ناجحة له.
+mcp-citation-source-warnings = في أحد المصادر المستشهد بها تحذيرات؛ ويسجّل إيصاله عددها.
+mcp-cite-description = استشهد بالمراجع (refs) المعادة من search بالترتيب، مع مواضع اختيارية. استخدم النص المُعاد كما هو، وأبلغ المستخدم بالتنبيهات وحالات الفقد والتحذيرات.
 
 # The desktop's bundled command. Never execute another program to check its version.
-command-install = Install the ibis command
-command-install-description = Search and cite from a terminal with the same library and settings.
-command-remove = Remove Command
-command-checking = Checking the ibis command…
-command-missing = Not installed
-command-matching = ibis { $version } — matches this app
-command-different = ibis { $version } — a different version from this app
-command-foreign = Another ibis is used: { $path }. Version unavailable.
-command-profile = Add this line to your shell profile, then reopen your terminal. Ibis checks the PATH available to the app.
-command-copy = Copy
-command-copied = Copied
-command-failed = Could not change the ibis command. Check the folder permissions and try again.
+command-install = تثبيت الأمر ibis
+command-install-description = ابحث واستشهد من الطرفية بالمكتبة والإعدادات نفسها.
+command-remove = إزالة الأمر
+command-checking = جارٍ التحقق من الأمر ibis…
+command-missing = غير مثبّت
+command-matching = ibis { $version } — يطابق هذا التطبيق
+command-different = ibis { $version } — إصدار مختلف عن هذا التطبيق
+command-foreign = يُستخدم ibis آخر: { $path }. الإصدار غير متاح.
+command-profile = أضف هذا السطر إلى ملف تعريف الصدفة، ثم أعد فتح الطرفية. يتحقق Ibis من PATH المتاح للتطبيق.
+command-copy = نسخ
+command-copied = تم النسخ
+command-failed = تعذّر تغيير الأمر ibis. تحقق من أذونات المجلد ثم حاول مرة أخرى.
 
 # Source status and reading warnings; separate from citation warnings.
-source-warning-zotero-newer-than-tested = Zotero is newer than this version of Ibis was tested with. Results look right, but update Ibis when you can.
-source-warning-cloud-synced-directory = The library is in a cloud-synced folder, so changes can be late.
-source-warning-citation-keys-unavailable = Better BibTeX keys could not be read, so some items have none.
-source-warning-syntax = An entry could not be read, so Ibis skips it.
-source-warning-duplicate-key = More than one entry uses the same key or id, so Ibis skips them all.
-source-warning-field = A field could not be fully converted; check this entry.
-source-warning-work-limit = The library is too large to read in full.
-source-warning-invalid-attachment = An attachment link is not valid.
+source-warning-zotero-newer-than-tested = إصدار Zotero أحدث من الإصدار الذي اختُبر عليه هذا الإصدار من Ibis. تبدو النتائج صحيحة، لكن حدّث Ibis متى أمكنك.
+source-warning-cloud-synced-directory = المكتبة في مجلد متزامن مع السحابة، لذا قد تتأخر التغييرات.
+source-warning-citation-keys-unavailable = تعذّرت قراءة مفاتيح Better BibTeX، لذا بعض العناصر بلا مفاتيح.
+source-warning-syntax = تعذّرت قراءة أحد المُدخلات، لذا يتخطاه Ibis.
+source-warning-duplicate-key = أكثر من مُدخل يستخدم المفتاح أو المعرّف نفسه، لذا يتخطاها Ibis كلها.
+source-warning-field = تعذّر تحويل أحد الحقول بالكامل؛ تحقق من هذا المُدخل.
+source-warning-work-limit = المكتبة أكبر من أن تُقرأ كاملة.
+source-warning-invalid-attachment = رابط أحد المرفقات غير صالح.
 
 # Per-setting reset actions name their setting for assistive technology.
-settings-use-default = Use Default for { $setting }
-settings-default-restored = Default restored for { $setting }
-settings-undo-default = Restore Default for { $setting }
-settings-details = Details…
-settings-shortcut-words = keyboard hotkey keybinding
+settings-use-default = استخدام القيمة الافتراضية لإعداد { $setting }
+settings-default-restored = استُعيدت القيمة الافتراضية لإعداد { $setting }
+settings-undo-default = استعادة القيمة الافتراضية لإعداد { $setting }
+settings-details = التفاصيل…
+settings-shortcut-words = لوحة مفاتيح اختصار مفتاح ربط
 
 ## Citation diagnostics carried to clients before rendering.
-cli-ambiguous-suggestion = This key is ambiguous. Choose a result’s id from this search, then use ibis show --id ID_JSON with the same libraries.
-cli-ambiguous-search-keys = note: { $count } hits have ambiguous citation keys and were omitted; search with --json and use the result’s id.
-problem-empty-selection = There is nothing to cite.
-problem-too-many-items = A citation can hold at most { $count } references.
-problem-invalid-locator = Correct the page or location for this reference.
-    .named = The page or location for { $reference } is empty or has control characters.
-problem-invalid-rich-text = Correct the text before or after this reference.
-    .named = The text before or after { $reference } has characters Ibis cannot write.
-problem-output-too-large = The citation is too large to write.
-problem-unsupported-form = This output cannot write the chosen citation form.
-    .app-named = { $reference }: { $form } cannot be expressed in this output or group.
-    .cli-form = Cannot cite { $reference } in { $output } with --form { $form }. Try --form normal.
-    .cli-options = Cannot cite { $reference } with { $options } in { $output }. Try without them.
-    .named = { $output } cannot write { $reference } in this form or with these options.
-    .cli = Cite it on its own, or choose another output.
-    .agent = Try form normal, or another format or style.
-    .app = Choose Name in brackets, cite it alone, or choose another output.
-    .bibliography = Remove the references this style cannot write from this list.
-problem-missing-item = This reference was removed while citing.
-    .named = { $reference } changed or was removed while citing.
-    .cli = Try again.
-    .agent = Search again.
-    .app = Search again.
-problem-changed-item = This reference changed while citing.
-    .named = { $reference } changed while citing.
-    .cli = Try again.
-    .agent = Search again.
-    .app = Search again.
-problem-missing-key = This reference has no citation key.
-    .named = { $reference } has no citation key.
-    .cli = Cite it with --style instead.
-    .agent = A key syntax cannot name it; use a style.
-    .app = Give it one in your library, or choose a style.
-problem-ambiguous-key = Several references share this citation key.
-    .named = Several references share the citation key of { $reference }.
-    .cli = Give each one its own key in your library.
-    .agent = Use a style, or ask the person to give each its own key.
-    .app = Give each one its own key in your library.
-problem-conflicting-key = This reference has conflicting citation keys.
-    .named = { $reference } has more than one citation key in its library.
-    .cli = Keep one.
-    .agent = Use a style, or ask the person to keep one key.
-    .app = Keep one in your library, or choose a style.
-problem-invalid-key = This output cannot write the reference’s citation key.
-    .named = The citation key of { $reference } has characters { $output } cannot write.
-    .agent = Use a style, or ask the person to change the key.
-problem-unsupported-output = This citation output is unavailable.
-    .named = There is no style { $output }.
-    .cli = List the styles with: ibis styles
-    .agent = The styles tool lists them.
-problem-invalid-locale = This citation language is unavailable.
-    .named = That citation language is not available.
-    .cli = List them with: ibis styles --locales
-    .agent = The styles tool lists the locales.
-problem-cancelled = The citation was cancelled.
-problem-formatter-unavailable = The citation could not be written just now.
-    .named = The citation could not be written just now. Try again.
-problem-annotation-mismatch = This annotation belongs to another reference.
-    .named = The annotation given for { $reference } belongs to another reference.
-problem-not-citable = This item cannot be cited as a reference.
-    .named = { $reference } is not a reference, such as a note, so it cannot be cited.
-problem-not-from-zotero = This reference was not read from Zotero.
-    .named = { $reference } was not read from a Zotero library, so Zotero cannot find it.
-    .cli = Read your Zotero library with --zotero, or choose another output.
-    .agent = Use another format, or ask the person to cite it from their Zotero library.
-    .app = Cite it from your Zotero library, or choose another output.
-problem-missing-doi = A selected reference has no usable DOI.
-    .named = { $reference } has no usable DOI.
-    .cli = Share it with --format bibtex instead.
-    .agent = Use format bibtex instead.
-    .app = Choose BibTeX in the citation format menu.
+cli-ambiguous-suggestion = هذا المفتاح ملتبس. اختر id إحدى النتائج من هذا البحث، ثم استخدم ibis show --id ID_JSON مع المكتبات نفسها.
+cli-ambiguous-search-keys = تنبيه: أُغفلت نتائج مفاتيح استشهادها ملتبسة (العدد: { $count })؛ ابحث باستخدام --json واستخدم id النتيجة.
+problem-empty-selection = لا يوجد ما يُستشهد به.
+problem-too-many-items = الحد الأقصى للمراجع في الاستشهاد الواحد: { $count }.
+problem-invalid-locator = صحّح الصفحة أو الموضع لهذا المرجع.
+    .named = الصفحة أو الموضع في { $reference } فارغ أو يحتوي على أحرف تحكم.
+problem-invalid-rich-text = صحّح النص الذي قبل هذا المرجع أو بعده.
+    .named = النص الذي قبل { $reference } أو بعده يحتوي على أحرف لا يستطيع Ibis كتابتها.
+problem-output-too-large = الاستشهاد أكبر من أن يُكتب.
+problem-unsupported-form = لا يستطيع هذا الإخراج كتابة شكل الاستشهاد المختار.
+    .app-named = { $reference }: لا يمكن التعبير عن { $form } في هذا الإخراج أو هذه المجموعة.
+    .cli-form = لا يمكن الاستشهاد بـ { $reference } في { $output } مع --form { $form }. جرّب --form normal.
+    .cli-options = لا يمكن الاستشهاد بـ { $reference } مع { $options } في { $output }. جرّب دونها.
+    .named = لا يستطيع { $output } كتابة { $reference } بهذا الشكل أو مع هذه الخيارات.
+    .cli = استشهد به منفردًا، أو اختر إخراجًا آخر.
+    .agent = جرّب الشكل normal، أو تنسيقًا أو نمطًا آخر.
+    .app = اختر «الاسم بين قوسين»، أو استشهد به منفردًا، أو اختر إخراجًا آخر.
+    .bibliography = أزل من هذه القائمة المراجع التي لا يستطيع هذا النمط كتابتها.
+problem-missing-item = أُزيل هذا المرجع أثناء الاستشهاد.
+    .named = تغيّر { $reference } أو أُزيل أثناء الاستشهاد.
+    .cli = حاول مرة أخرى.
+    .agent = ابحث مجددًا.
+    .app = ابحث مجددًا.
+problem-changed-item = تغيّر هذا المرجع أثناء الاستشهاد.
+    .named = تغيّر { $reference } أثناء الاستشهاد.
+    .cli = حاول مرة أخرى.
+    .agent = ابحث مجددًا.
+    .app = ابحث مجددًا.
+problem-missing-key = ليس لهذا المرجع مفتاح استشهاد.
+    .named = ليس لـ { $reference } مفتاح استشهاد.
+    .cli = استشهد به باستخدام --style بدلًا من ذلك.
+    .agent = لا يمكن لصيغة المفاتيح تسميته؛ استخدم نمطًا.
+    .app = أعطه مفتاحًا في مكتبتك، أو اختر نمطًا.
+problem-ambiguous-key = تشترك عدة مراجع في مفتاح الاستشهاد هذا.
+    .named = تشترك عدة مراجع في مفتاح استشهاد { $reference }.
+    .cli = أعطِ كلًّا منها مفتاحًا خاصًا به في مكتبتك.
+    .agent = استخدم نمطًا، أو اطلب من الشخص إعطاء كل مرجع مفتاحًا خاصًا به.
+    .app = أعطِ كلًّا منها مفتاحًا خاصًا به في مكتبتك.
+problem-conflicting-key = لهذا المرجع مفاتيح استشهاد متعارضة.
+    .named = لـ { $reference } أكثر من مفتاح استشهاد في مكتبته.
+    .cli = أبقِ على واحد.
+    .agent = استخدم نمطًا، أو اطلب من الشخص الإبقاء على مفتاح واحد.
+    .app = أبقِ على واحد في مكتبتك، أو اختر نمطًا.
+problem-invalid-key = لا يستطيع هذا الإخراج كتابة مفتاح استشهاد المرجع.
+    .named = يحتوي مفتاح استشهاد { $reference } على أحرف لا يستطيع { $output } كتابتها.
+    .agent = استخدم نمطًا، أو اطلب من الشخص تغيير المفتاح.
+problem-unsupported-output = إخراج الاستشهاد هذا غير متاح.
+    .named = لا يوجد نمط باسم { $output }.
+    .cli = اعرض الأنماط باستخدام: ibis styles
+    .agent = تعرضها أداة styles.
+problem-invalid-locale = لغة الاستشهاد هذه غير متاحة.
+    .named = لغة الاستشهاد هذه غير متاحة.
+    .cli = اعرضها باستخدام: ibis styles --locales
+    .agent = تعرض أداة styles اللغات المتاحة.
+problem-cancelled = أُلغي الاستشهاد.
+problem-formatter-unavailable = تعذّرت كتابة الاستشهاد الآن.
+    .named = تعذّرت كتابة الاستشهاد الآن. حاول مرة أخرى.
+problem-annotation-mismatch = ينتمي هذا التعليق التوضيحي إلى مرجع آخر.
+    .named = التعليق التوضيحي المعطى لـ { $reference } ينتمي إلى مرجع آخر.
+problem-not-citable = لا يمكن الاستشهاد بهذا العنصر كمرجع.
+    .named = { $reference } ليس مرجعًا (كأن يكون ملاحظة)، لذا لا يمكن الاستشهاد به.
+problem-not-from-zotero = لم يُقرأ هذا المرجع من Zotero.
+    .named = لم يُقرأ { $reference } من مكتبة Zotero، لذا لا يستطيع Zotero العثور عليه.
+    .cli = اقرأ مكتبة Zotero باستخدام --zotero، أو اختر إخراجًا آخر.
+    .agent = استخدم تنسيقًا آخر، أو اطلب من الشخص الاستشهاد به من مكتبة Zotero الخاصة به.
+    .app = استشهد به من مكتبة Zotero، أو اختر إخراجًا آخر.
+problem-missing-doi = ليس لأحد المراجع المحددة DOI صالح للاستخدام.
+    .named = ليس لـ { $reference } DOI صالح للاستخدام.
+    .cli = شاركه باستخدام --format bibtex بدلًا من ذلك.
+    .agent = استخدم format bibtex بدلًا من ذلك.
+    .app = اختر BibTeX من قائمة تنسيق الاستشهاد.
 
 ## Native command failures.
-app-failure-cli-status = The command line setup could not be read.
-app-failure-set-cli-installed = The command line setup could not be changed.
-app-failure-copy-cli-profile = The shell setup could not be copied.
-app-failure-hide-picker = The picker could not be closed.
-app-failure-copy-editor-endpoint = The editor address could not be copied.
-app-failure-set-window-size = The window size could not be saved.
-app-failure-undo-window-position = The window position could not be restored.
-app-failure-copy-project-entry = The reference entry could not be copied.
-app-failure-finish-paste-guide = Paste setup could not be finished.
-app-failure-row-context = The reference details could not be read.
-app-failure-find-zotero = Zotero could not be checked.
-app-failure-find-sources = Libraries could not be found.
-app-failure-open-found-library = This library could not be opened.
-app-failure-configure-shortcuts = Keyboard shortcut setup could not be opened.
-app-failure-use-sample-library = The sample references could not be opened.
-app-failure-use-zotero-libraries = Choose at least one Zotero library, without repeats.
-app-failure-recent-references = Recent references could not be read.
-app-failure-search = The search could not be completed.
-app-failure-drag-paste-app = The Ibis app could not be dragged.
+app-failure-cli-status = تعذّرت قراءة إعداد سطر الأوامر.
+app-failure-set-cli-installed = تعذّر تغيير إعداد سطر الأوامر.
+app-failure-copy-cli-profile = تعذّر نسخ إعداد الصدفة.
+app-failure-hide-picker = تعذّر إغلاق النافذة.
+app-failure-copy-editor-endpoint = تعذّر نسخ عنوان المحرر.
+app-failure-set-window-size = تعذّر حفظ حجم النافذة.
+app-failure-undo-window-position = تعذّرت استعادة موضع النافذة.
+app-failure-copy-project-entry = تعذّر نسخ مُدخل المرجع.
+app-failure-finish-paste-guide = تعذّر إكمال إعداد اللصق.
+app-failure-row-context = تعذّرت قراءة تفاصيل المرجع.
+app-failure-find-zotero = تعذّر التحقق من Zotero.
+app-failure-find-sources = تعذّر العثور على المكتبات.
+app-failure-open-found-library = تعذّر فتح هذه المكتبة.
+app-failure-configure-shortcuts = تعذّر فتح إعداد اختصارات لوحة المفاتيح.
+app-failure-use-sample-library = تعذّر فتح المراجع النموذجية.
+app-failure-use-zotero-libraries = اختر مكتبة Zotero واحدة على الأقل، دون تكرار.
+app-failure-recent-references = تعذّرت قراءة المراجع الأخيرة.
+app-failure-search = تعذّر إكمال البحث.
+app-failure-drag-paste-app = تعذّر سحب تطبيق Ibis.
 
-app-command-no-library = Choose a library to search.
-app-project-error-invalid-name = Give the writing a name of 1 to 80 characters, without control characters.
-app-project-error-duplicate-name = A writing already has that name. Choose another name.
-app-project-error-not-found = That writing is no longer available. Choose a writing again.
-app-project-error-too-many = Ibis can remember at most 64 writings. Remove one before adding another.
-app-project-error-invalid = The writing definitions are not valid. Check Settings.
-app-project-error-changed = The writing or destination changed. Open the format menu again.
-app-project-error-editor = This editor request chooses its own output. Finish it before changing writings.
-app-project-error-output = This writing’s format is not available in the picker. Choose another format.
-app-settings-error-unreadable = The settings file could not be read or saved.
-app-settings-error-invalid = The settings file is not valid. Open Settings to review it.
-    .settings = settings.json isn’t valid, so Ibis is using your last good settings.
-app-settings-error-newer = Settings were written by a newer version of Ibis. Update Ibis before changing them.
-app-settings-error-read-only = Settings are read-only. Make the settings file writable before trying again.
-app-command-output-not-saved = The format choice could not be saved.
-app-command-delivery-not-saved = The format was saved, but the paste choice could not be saved.
+app-command-no-library = اختر مكتبة للبحث فيها.
+app-project-error-invalid-name = سمِّ المشروع باسم من 1 إلى 80 حرفًا، دون أحرف تحكم.
+app-project-error-duplicate-name = يوجد مشروع بهذا الاسم. اختر اسمًا آخر.
+app-project-error-not-found = لم يعد ذلك المشروع متاحًا. اختر مشروعًا مجددًا.
+app-project-error-too-many = يستطيع Ibis تذكّر 64 مشروعًا على الأكثر. أزل واحدًا قبل إضافة آخر.
+app-project-error-invalid = تعريفات المشاريع غير صالحة. تحقق من الإعدادات.
+app-project-error-changed = تغيّر المشروع أو الوجهة. افتح قائمة التنسيق مجددًا.
+app-project-error-editor = طلب المحرر هذا يختار إخراجه بنفسه. أكمله قبل تغيير المشروع.
+app-project-error-output = تنسيق هذا المشروع غير متاح في النافذة. اختر تنسيقًا آخر.
+app-settings-error-unreadable = تعذّرت قراءة ملف الإعدادات أو حفظه.
+app-settings-error-invalid = ملف الإعدادات غير صالح. افتح الإعدادات لمراجعته.
+    .settings = الملف settings.json غير صالح، لذا يستخدم Ibis آخر إعدادات سليمة لديك.
+app-settings-error-newer = كُتبت الإعدادات بإصدار أحدث من Ibis. حدّث Ibis قبل تغييرها.
+app-settings-error-read-only = الإعدادات للقراءة فقط. اجعل ملف الإعدادات قابلًا للكتابة قبل إعادة المحاولة.
+app-command-output-not-saved = تعذّر حفظ اختيار التنسيق.
+app-command-delivery-not-saved = حُفظ التنسيق، لكن تعذّر حفظ اختيار اللصق.
 
-app-command-page-missing = Reference { $number }: { $label } needs a page or range. Enter one after the label, or clear { $label }.
-app-command-page-invalid = Reference { $number }: { $label } needs a valid page or range after its label. Correct it, or clear { $label }.
-app-command-locator-missing = Reference { $number }: { $label } needs a value. Enter one after the label, or clear the locator.
-app-command-locator-invalid = Reference { $number }: { $label } needs a valid value. Correct it, or clear the locator.
-app-reference-number = Reference { $number }
-app-command-locator-conflict = Reference { $number }: a typed locator and a captured locator cannot be combined.
-app-command-bibliography-unsupported = This style can’t write these references: { $references }. Remove them from this list to continue.
+app-command-page-missing = المرجع { $number }: يحتاج { $label } إلى صفحة أو نطاق. أدخله بعد التسمية، أو امسح { $label }.
+app-command-page-invalid = المرجع { $number }: يحتاج { $label } إلى صفحة أو نطاق صالح بعد التسمية. صحّحه، أو امسح { $label }.
+app-command-locator-missing = المرجع { $number }: يحتاج { $label } إلى قيمة. أدخلها بعد التسمية، أو امسح الموضع.
+app-command-locator-invalid = المرجع { $number }: يحتاج { $label } إلى قيمة صالحة. صحّحها، أو امسح الموضع.
+app-reference-number = المرجع { $number }
+app-command-locator-conflict = المرجع { $number }: لا يمكن الجمع بين موضع مكتوب وموضع ملتقط.
+app-command-bibliography-unsupported = لا يستطيع هذا النمط كتابة هذه المراجع: { $references }. أزلها من هذه القائمة للمتابعة.
 
 ## MCP validation facts.
-mcp-error-arguments = arguments must be an object.
-mcp-error-query = query must be a few words: an author surname, title words, a year or a key.
-mcp-error-shorthand = shorthand must be true or false.
-mcp-error-reference = ref must be a ref from search, as text.
-mcp-error-items = items must be a list of objects, each with a ref from search.
-mcp-error-app = for_app must be a macOS bundle ID or Windows executable name.
-mcp-error-keep-order = keep_order must be true or false.
-mcp-error-output-choice = Give either format or style, not both.
-mcp-error-style = style must be a style id, as text.
-mcp-error-locale = locale must be a language tag, as text, such as de-DE.
-mcp-error-key-locale = locale applies only to a style; a key syntax leaves language to the document’s processor.
-mcp-error-form = form must be one of the values in this tool’s input schema.
-mcp-error-records-or-items = Give records or items, not both; for_app needs items.
-mcp-error-records-order = keep_order needs items; it is not supported with records.
-mcp-error-records = records must be a list of CSL-JSON objects, each with an id and a type.
-mcp-error-item = each item must be an object with a ref from search.
-mcp-error-locator = the locator is not readable; write it like "p. 12", "ch. 3" or "12-14".
-mcp-error-omit-author = omit_author must be true or false.
-mcp-error-empty-output = This output produced no text for these items; try another form, format or style.
-mcp-error-style-query = query must be text of at most 1,024 bytes.
-mcp-error-limit = limit must be a whole number, 1 or more; at most { $limit } results are returned.
-mcp-error-unknown-argument = { $tool } has no argument '{ $name }'; it takes: { $names }.
-mcp-error-format = format must be one of: { $formats }.
-mcp-error-text = { $name } must be text.
-mcp-error-number-range = { $name } must be a whole number from 1 to { $limit }.
-mcp-error-number-minimum = { $name } must be a whole number, 0 or more.
-mcp-error-include-receipt = include_receipt must be true or false.
-mcp-error-stale-reference = This reference changed since search returned it; search again and check it is the one you meant.
-mcp-error-attachment-text = The user has not let AI apps read attachment text from this library. Tell them; they can allow it for this library in Ibis settings.
-mcp-error-no-library = No library is open. Ask the user to choose a library in Ibis, or to start `ibis mcp` with --file or --zotero, and then start a new session.
-mcp-error-writes = This server was started without --allow-writes, so it cannot propose changes. Tell the user; they can add --allow-writes to the ibis mcp command in their AI app.
-mcp-error-proposal = Ibis did not record this proposal: { $reason }
+mcp-error-arguments = يجب أن تكون arguments كائنًا.
+mcp-error-query = يجب أن تكون query كلمات قليلة: اسم عائلة مؤلف، أو كلمات من العنوان، أو سنة، أو مفتاح.
+mcp-error-shorthand = يجب أن تكون shorthand إما true أو false.
+mcp-error-reference = يجب أن تكون ref مرجعًا من search، كنص.
+mcp-error-items = يجب أن تكون items قائمة كائنات، لكل منها ref من search.
+mcp-error-app = يجب أن تكون for_app معرّف حزمة macOS أو اسم ملف تنفيذي في Windows.
+mcp-error-keep-order = يجب أن تكون keep_order إما true أو false.
+mcp-error-output-choice = أعطِ format أو style، لا كليهما.
+mcp-error-style = يجب أن تكون style معرّف نمط، كنص.
+mcp-error-locale = يجب أن تكون locale وسم لغة، كنص، مثل de-DE.
+mcp-error-key-locale = تنطبق locale على الأنماط فقط؛ أما صيغة المفاتيح فتترك اللغة لمعالج المستند.
+mcp-error-form = يجب أن تكون form إحدى القيم في مخطط إدخال هذه الأداة.
+mcp-error-records-or-items = أعطِ records أو items، لا كليهما؛ وتحتاج for_app إلى items.
+mcp-error-records-order = تحتاج keep_order إلى items؛ ولا تُدعم مع records.
+mcp-error-records = يجب أن تكون records قائمة كائنات CSL-JSON، لكل منها id وtype.
+mcp-error-item = يجب أن يكون كل item كائنًا فيه ref من search.
+mcp-error-locator = الموضع غير مقروء؛ اكتبه مثل «p. 12» أو «ch. 3» أو «12-14».
+mcp-error-omit-author = يجب أن تكون omit_author إما true أو false.
+mcp-error-empty-output = لم ينتج هذا الإخراج أي نص لهذه العناصر؛ جرّب شكلًا أو تنسيقًا أو نمطًا آخر.
+mcp-error-style-query = يجب أن تكون query نصًا لا يتجاوز 1024 بايت.
+mcp-error-limit = يجب أن تكون limit عددًا صحيحًا لا يقل عن 1؛ والحد الأقصى للنتائج المعادة { $limit }.
+mcp-error-unknown-argument = ليس لـ { $tool } وسيط باسم «{ $name }»؛ وسائطه: { $names }.
+mcp-error-format = يجب أن تكون format إحدى القيم: { $formats }.
+mcp-error-text = يجب أن تكون { $name } نصًا.
+mcp-error-number-range = يجب أن تكون { $name } عددًا صحيحًا من 1 إلى { $limit }.
+mcp-error-number-minimum = يجب أن تكون { $name } عددًا صحيحًا لا يقل عن 0.
+mcp-error-include-receipt = يجب أن تكون include_receipt إما true أو false.
+mcp-error-stale-reference = تغيّر هذا المرجع منذ أن أعاده search؛ ابحث مجددًا وتأكد من أنه المرجع المقصود.
+mcp-error-attachment-text = لم يسمح المستخدم لتطبيقات الذكاء الاصطناعي بقراءة نص المرفقات من هذه المكتبة. أخبره بذلك؛ يمكنه السماح بها لهذه المكتبة في إعدادات Ibis.
+mcp-error-no-library = لا توجد مكتبة مفتوحة. اطلب من المستخدم اختيار مكتبة في Ibis، أو تشغيل `ibis mcp` مع --file أو --zotero، ثم ابدأ جلسة جديدة.
+mcp-error-writes = بدأ هذا الخادم دون --allow-writes، لذا لا يستطيع اقتراح تغييرات. أخبر المستخدم؛ يمكنه إضافة --allow-writes إلى الأمر ibis mcp في تطبيق الذكاء الاصطناعي لديه.
+mcp-error-proposal = لم يسجّل Ibis هذا الاقتراح: { $reason }
 mcp-error-strict = { mcp-strict-help }
 mcp-error-hidden-citation = { mcp-citation-hidden }
-mcp-item-error = Item { $number }: { $reason }
-mcp-item-name = Item { $number }
-mcp-output-name = This output
-mcp-tool-error = error: { $code }. { $reason }
-mcp-error-busy = Ibis is busy. Retry this tool call in a moment.
+mcp-item-error = العنصر { $number }: { $reason }
+mcp-item-name = العنصر { $number }
+mcp-output-name = هذا الإخراج
+mcp-tool-error = خطأ: { $code }. { $reason }
+mcp-error-busy = Ibis مشغول. أعد هذا الاستدعاء بعد لحظة.
 
-cli-key-suggestions = Did you mean { $keys }?
-cli-key-not-found = no reference has the key '{ $key }'{ $choices }
-    Try: { $command }{ $route }
+cli-key-suggestions = هل تقصد { $keys }؟
+cli-key-not-found = لا يوجد مرجع بالمفتاح «{ $key }»{ $choices }
+    جرّب: { $command }{ $route }
 
-mcp-startup-failed = The library could not be opened when this session started. { $error } Resolve the problem, then start a new MCP session.
+mcp-startup-failed = تعذّر فتح المكتبة عند بدء هذه الجلسة. { $error } عالج المشكلة، ثم ابدأ جلسة MCP جديدة.
 
-app-bibliography-unavailable = The bibliography could not be prepared. Try again.
-app-bibliography-not-saved = The bibliography could not be saved. Try again.
-app-bibliography-name-taken = A file with that name is already there. Choose another name.
-app-bibliography-format = Save it as .rtf, .html or .txt.
-app-clipboard-unavailable = The clipboard could not be written. Try again.
+app-bibliography-unavailable = تعذّر إعداد قائمة المراجع. حاول مرة أخرى.
+app-bibliography-not-saved = تعذّر حفظ قائمة المراجع. حاول مرة أخرى.
+app-bibliography-name-taken = يوجد ملف بهذا الاسم هناك. اختر اسمًا آخر.
+app-bibliography-format = احفظها بصيغة .rtf أو .html أو .txt.
+app-clipboard-unavailable = تعذّرت الكتابة إلى الحافظة. حاول مرة أخرى.
 
-app-recent-history-not-saved = Recent citations could not be forgotten. Try again.
-app-project-citation-conflict = Citation keys { $keys } identify different works in the bibliography. Check the bibliography before copying.
+app-recent-history-not-saved = تعذّر نسيان الاستشهادات الأخيرة. حاول مرة أخرى.
+app-project-citation-conflict = مفاتيح الاستشهاد { $keys } تشير إلى أعمال مختلفة في قائمة المراجع. تحقق من قائمة المراجع قبل النسخ.
 
-app-settings-error-changed = Settings changed while saving. Try again.
-app-settings-error-busy = Settings are being saved by another Ibis. Wait for it to finish, then try again.
-app-settings-error-document-format = Choose a style for documents.
-app-settings-error-key-format = Choose a key format for Markdown and LaTeX.
-app-project-error-context-unavailable = The document’s bibliography and citation style could not be read. Try again.
-app-project-error-invalid-context = Name one bibliography and CSL style as plain values in the document.
-app-project-error-ambiguous-context = More than one writing matches this bibliography and citation style. Choose a writing by name.
-mcp-error-citation-format = This format exports records or Zotero markers. Choose a citation format.
+app-settings-error-changed = تغيّرت الإعدادات أثناء الحفظ. حاول مرة أخرى.
+app-settings-error-busy = نسخة أخرى من Ibis تحفظ الإعدادات. انتظر حتى تنتهي، ثم حاول مرة أخرى.
+app-settings-error-document-format = اختر نمطًا للمستندات.
+app-settings-error-key-format = اختر تنسيق مفاتيح لـ LaTeX وMarkdown وObsidian.
+app-project-error-context-unavailable = تعذّرت قراءة قائمة مراجع المستند ونمط الاستشهاد فيه. حاول مرة أخرى.
+app-project-error-invalid-context = حدّد في المستند قائمة مراجع واحدة ونمط CSL واحدًا كقيم بسيطة.
+app-project-error-ambiguous-context = أكثر من مشروع يطابق قائمة المراجع ونمط الاستشهاد هذين. اختر مشروعًا باسمه.
+mcp-error-citation-format = يصدّر هذا التنسيق سجلات أو علامات Zotero. اختر تنسيق استشهاد.
 
-app-failure-open-settings-file = The settings file could not be opened. Try again.
-
+app-failure-open-settings-file = تعذّر فتح ملف الإعدادات. حاول مرة أخرى.
 ## Command-line requests, diagnostics and reports.
 
-cli-keys-unreadable = the key list could not be read; give UTF-8 text with one key per line.
-cli-keys-too-large = the key list is more than 1 MiB; send fewer keys at a time.
-cli-keys-not-utf8 = the key list must be UTF-8 text, with one key per line.
-cli-keys-empty = the key list is empty; give at least one citation key.
-cli-key-file-unavailable = the key file is missing, unreadable or not a regular file; check its path, or use - for stdin.
-cli-key-file-unopened = the key file could not be opened; check its path and permissions.
-cli-key-file-not-regular = --keys-from needs a regular file, or - for stdin.
-cli-key-file-timeout = the key file could not be read in time; try again.
-cli-toggle-unprepared = could not prepare the toggle; check that the temporary folder can be written, then try again.
-cli-app-libraries-unavailable = --app-libraries is not available here; name the libraries to read.
-cli-records-with-libraries = --records cites only the records on stdin; leave out the library options.
-cli-search-words-needed = give some words to search for: an author, title words, a year or a key.
-cli-search-words-too-long = the search words are too long; use fewer.
-cli-id-not-found = no open library holds the reference that --id names.
-cli-attachment-not-found = no open library holds that attachment, or its reference changed; run ibis outline again for a new id.
-cli-find-in-words = give the words to find, up to 200 characters.
-cli-records-too-large = the records on stdin are more than 1 MiB; send fewer at a time.
-cli-bibliography-needs-style = --bibliography needs a style: give --style, or a --format that is a style.
-cli-project-too-many-keys = at most 1000 keys can be checked at once.
-cli-styles-limit = --limit must be between 1 and 20000.
-cli-request-help = stdin must hold one CitationRequest JSON object; see: ibis schema cite
-cli-records-help = stdin must hold one JSON array of CSL-JSON records; see: ibis schema records
-cli-id-help = --id must be a reference’s id, the JSON that ibis search --json prints.
-cli-key-option-owner = --{ $flag } must follow the key it belongs to.
-cli-key-option-repeated = --{ $flag } is given twice for '{ $key }'.
-cli-locator-unreadable = --locator '{ $locator }' is not a locator Ibis reads; write it like "p. 12", "ch. 3" or "12-14".
-cli-method-unknown = there is no method '{ $method }'; choose one of: { $names }
-cli-style-unknown = there is no style '{ $style }'; list the styles with: ibis styles
-cli-locale-unknown = there is no locale '{ $locale }'; list them with: ibis styles --locales
-cli-params-help = --params must be the JSON parameters of { $method }; see: ibis schema { $method }
-cli-source-findings = note: a library has warnings or could not refresh; see: ibis libraries{ $libraries }{ $json }
-cli-keys-waiting = waiting for keys, one per line; end with Ctrl-D.
+cli-keys-unreadable = تعذّرت قراءة قائمة المفاتيح؛ أدخل نصًا بترميز UTF-8 بمفتاح واحد في كل سطر.
+cli-keys-too-large = قائمة المفاتيح أكبر من 1 MiB؛ أرسل مفاتيح أقل في كل مرة.
+cli-keys-not-utf8 = يجب أن تكون قائمة المفاتيح نصًا بترميز UTF-8، بمفتاح واحد في كل سطر.
+cli-keys-empty = قائمة المفاتيح فارغة؛ أدخل مفتاح استشهاد واحدًا على الأقل.
+cli-key-file-unavailable = ملف المفاتيح مفقود أو غير قابل للقراءة أو ليس ملفًا عاديًا؛ تحقق من مساره، أو استخدم - لقراءة stdin.
+cli-key-file-unopened = تعذّر فتح ملف المفاتيح؛ تحقق من مساره وأذوناته.
+cli-key-file-not-regular = يحتاج --keys-from إلى ملف عادي، أو - لقراءة stdin.
+cli-key-file-timeout = تعذّرت قراءة ملف المفاتيح في الوقت المحدد؛ حاول مرة أخرى.
+cli-toggle-unprepared = تعذّر تجهيز التبديل؛ تحقق من إمكانية الكتابة في المجلد المؤقت، ثم حاول مرة أخرى.
+cli-app-libraries-unavailable = الخيار --app-libraries غير متاح هنا؛ حدّد المكتبات المراد قراءتها.
+cli-records-with-libraries = يستشهد --records بالسجلات الواردة من stdin فقط؛ احذف خيارات المكتبة.
+cli-search-words-needed = أدخل كلمات للبحث: مؤلفًا أو كلمات من العنوان أو سنة أو مفتاحًا.
+cli-search-words-too-long = كلمات البحث طويلة جدًا؛ استخدم كلمات أقل.
+cli-id-not-found = لا توجد مكتبة مفتوحة تحتوي على المرجع الذي يحدده --id.
+cli-attachment-not-found = لا توجد مكتبة مفتوحة تحتوي على هذا المرفق، أو تغيّر مرجعه؛ شغّل ibis outline مجددًا للحصول على معرّف جديد.
+cli-find-in-words = أدخل الكلمات المراد إيجادها، بحد أقصى 200 حرف.
+cli-records-too-large = السجلات الواردة من stdin أكبر من 1 MiB؛ أرسل سجلات أقل في كل مرة.
+cli-bibliography-needs-style = يحتاج --bibliography إلى نمط: حدّد --style، أو قيمة --format تكون نمطًا.
+cli-project-too-many-keys = يمكن التحقق من 1000 مفتاح كحد أقصى في المرة الواحدة.
+cli-styles-limit = يجب أن تكون قيمة --limit بين 1 و20000.
+cli-request-help = يجب أن يحتوي stdin على كائن JSON واحد من نوع CitationRequest؛ انظر: ibis schema cite
+cli-records-help = يجب أن يحتوي stdin على مصفوفة JSON واحدة من سجلات CSL-JSON؛ انظر: ibis schema records
+cli-id-help = يجب أن تكون قيمة --id معرّف مرجع، أي JSON الذي يطبعه ibis search --json.
+cli-key-option-owner = يجب أن يأتي --{ $flag } بعد المفتاح الذي يخصه.
+cli-key-option-repeated = الخيار --{ $flag } مذكور مرتين للمفتاح «{ $key }».
+cli-locator-unreadable = القيمة «{ $locator }» في --locator ليست موضعًا يقرؤه Ibis؛ اكتبها مثل «p. 12» أو «ch. 3» أو «12-14».
+cli-method-unknown = لا توجد طريقة باسم «{ $method }»؛ اختر واحدة من: { $names }
+cli-style-unknown = لا يوجد نمط باسم «{ $style }»؛ اعرض الأنماط باستخدام: ibis styles
+cli-locale-unknown = لا توجد لغة محلية باسم «{ $locale }»؛ اعرضها باستخدام: ibis styles --locales
+cli-params-help = يجب أن يكون --params معاملات JSON الخاصة بـ { $method }؛ انظر: ibis schema { $method }
+cli-source-findings = تنبيه: لدى إحدى المكتبات تحذيرات أو تعذّر تحديثها؛ انظر: ibis libraries{ $libraries }{ $json }
+cli-keys-waiting = في انتظار المفاتيح، مفتاح في كل سطر؛ اضغط Ctrl-D للإنهاء.
 cli-search-keyless =
     { $plural ->
-        [one] note: { $count } hit has no citation key; see ibis search { $query }{ $libraries } --json
-       *[other] note: { $count } hits have no citation key; see ibis search { $query }{ $libraries } --json
+        [zero] تنبيه: عدد النتائج بلا مفتاح استشهاد: { $count }؛ انظر ibis search { $query }{ $libraries } --json
+        [one] تنبيه: نتيجة واحدة بلا مفتاح استشهاد؛ انظر ibis search { $query }{ $libraries } --json
+        [two] تنبيه: نتيجتان بلا مفتاح استشهاد؛ انظر ibis search { $query }{ $libraries } --json
+        [few] تنبيه: { $count } نتائج بلا مفتاح استشهاد؛ انظر ibis search { $query }{ $libraries } --json
+        [many] تنبيه: { $count } نتيجةً بلا مفتاح استشهاد؛ انظر ibis search { $query }{ $libraries } --json
+       *[other] تنبيه: عدد النتائج بلا مفتاح استشهاد: { $count }؛ انظر ibis search { $query }{ $libraries } --json
     }
 cli-search-more =
     { $plural ->
-        [one] note: showing the first { $count } match; see more with --limit { $next }
-       *[other] note: showing the first { $count } matches; see more with --limit { $next }
+        [zero] تنبيه: تُعرض أول { $count } من النتائج؛ اعرض المزيد باستخدام --limit { $next }
+        [one] تنبيه: تُعرض أول نتيجة فقط؛ اعرض المزيد باستخدام --limit { $next }
+        [two] تنبيه: تُعرض أول نتيجتين فقط؛ اعرض المزيد باستخدام --limit { $next }
+        [few] تنبيه: تُعرض أول { $count } نتائج؛ اعرض المزيد باستخدام --limit { $next }
+        [many] تنبيه: تُعرض أول { $count } نتيجةً؛ اعرض المزيد باستخدام --limit { $next }
+       *[other] تنبيه: تُعرض أول { $count } من النتائج؛ اعرض المزيد باستخدام --limit { $next }
     }
-cli-search-narrow = note: showing the first { $count } matches; use more distinctive search words
-cli-file-name-invalid = cannot open { $path }: its name is not valid text; rename it.
--cli-name-library = name one with --file PATH, --zotero or --zotero-group ID
-cli-app-settings-timeout = the Ibis app’s settings could not be read in time; try again, or { -cli-name-library }.
-cli-chosen-library-unopened = cannot open the library chosen in { $app }: { $reason } Choose it again there, or { -cli-name-library }.
-cli-app-settings-missing = no library is named and the Ibis app has no settings here; { -cli-name-library }.
-cli-app-formats-unreadable = cannot read the formats chosen in { $app }: { $reason }. Open { $app } to repair its settings.
-cli-app-libraries-unreadable = cannot read the libraries chosen in { $app }: { $reason }. { $fix }, or { -cli-name-library }.
-cli-app-library-unchosen = no library is chosen in { $app } yet; choose one there, or { -cli-name-library }.
-cli-app-library-relative = the library chosen in { $app } is not a full path; choose it again there, or { -cli-name-library }.
-cli-app-settings-changed = its settings changed while saving; try again
-cli-app-settings-permission = this program is not allowed to read its settings file; allow it to, or run it outside the sandbox
-cli-app-settings-file-missing = its settings file is missing
-cli-app-settings-unreadable = its settings file could not be read
-cli-app-settings-invalid = its settings file is not valid
-cli-app-settings-backup-unused = { $reason }, and Ibis does not use its backup here
-cli-app-settings-update = Update this ibis command to match { $app }
-cli-app-settings-repair = Open { $app } to repair its settings
-cli-app-settings-zotero-invalid = its settings file is not valid (Zotero library entry { $position })
-cli-app-settings-newer = its settings were written by a newer version of Ibis (format { $version })
-cli-settings-no-folder = this computer has no folder for app settings (HOME or APPDATA is not set).
-cli-settings-action-needed = choose export or import; see: ibis settings --help
-cli-settings-backup-needed = name the backup file to restore.
-cli-settings-folder-timeout = the settings folder did not respond in time; try again.
-cli-settings-exported = Backed up { $app }’s settings to { $name }.
-    Paste approvals and window places stay on this computer.
-cli-settings-backup-made = a backup made on { $system } by Ibis { $version }
-cli-settings-unchanged = { $app } already has the settings in { $backup }. Nothing changed.
-cli-settings-would-restore = Restoring { $backup } would change { $app }’s settings:
-cli-settings-restored = Restored { $backup } into { $app }:
-cli-settings-library-not-found = Note: the backup’s bibliography file is not on this computer. It is kept, and Ibis finds it once the file is there.
-cli-settings-shortcut-kept = Note: the backup has no opening shortcut for this system, so this computer’s is kept.
-cli-settings-repairs-settings = Note: the settings file on this computer is damaged or missing. Restoring writes it again, and keeps any damaged file beside it.
-cli-settings-dry-run = Nothing changed. Run it again without --dry-run to restore.
-cli-settings-restored-next = The replaced settings are kept as settings.json.bak. Paste approvals and window places stay as they were.
-    Ibis uses the restored settings the next time it opens; quit and reopen it if it is running.
-cli-writing-style-unavailable = That citation style is unavailable. List styles with: ibis styles
-cli-writing-output-unavailable = That output is unavailable. List outputs with: ibis outputs
-cli-writing-bibliography-needed = Choose a BibTeX or BibLaTeX bibliography with a .bib file name.
-cli-writing-folder-unavailable = The current folder is unavailable. Give the bibliography’s full path.
-cli-writing-action-needed = Choose list, create, rename, update or remove.
-cli-writings-empty = No writings yet. Create one with: ibis writings create NAME --format pandoc
-cli-writing-format-needed = Choose --format or --style.
-cli-writing-citation-unavailable = The writing citation is unavailable.
+cli-search-narrow = تنبيه: تُعرض أول { $count } من النتائج؛ استخدم كلمات بحث أكثر تمييزًا
+cli-file-name-invalid = تعذّر فتح { $path }: اسمه ليس نصًا صالحًا؛ أعد تسميته.
+-cli-name-library = حدّد مكتبة باستخدام --file PATH أو --zotero أو --zotero-group ID
+cli-app-settings-timeout = تعذّرت قراءة إعدادات تطبيق Ibis في الوقت المحدد؛ حاول مرة أخرى، أو { -cli-name-library }.
+cli-chosen-library-unopened = تعذّر فتح المكتبة المختارة في { $app }: { $reason } اخترها مجددًا هناك، أو { -cli-name-library }.
+cli-app-settings-missing = لم تُحدَّد أي مكتبة، وليس لتطبيق Ibis إعدادات هنا؛ { -cli-name-library }.
+cli-app-formats-unreadable = تعذّرت قراءة التنسيقات المختارة في { $app }: { $reason }. افتح { $app } لإصلاح إعداداته.
+cli-app-libraries-unreadable = تعذّرت قراءة المكتبات المختارة في { $app }: { $reason }. { $fix }، أو { -cli-name-library }.
+cli-app-library-unchosen = لم تُختر أي مكتبة في { $app } بعد؛ اختر واحدة هناك، أو { -cli-name-library }.
+cli-app-library-relative = المكتبة المختارة في { $app } ليست مسارًا كاملًا؛ اخترها مجددًا هناك، أو { -cli-name-library }.
+cli-app-settings-changed = تغيّرت إعداداته أثناء الحفظ؛ حاول مرة أخرى
+cli-app-settings-permission = هذا البرنامج غير مسموح له بقراءة ملف إعداداته؛ اسمح له بذلك، أو شغّله خارج بيئة العزل
+cli-app-settings-file-missing = ملف إعداداته مفقود
+cli-app-settings-unreadable = تعذّرت قراءة ملف إعداداته
+cli-app-settings-invalid = ملف إعداداته غير صالح
+cli-app-settings-backup-unused = { $reason }، ولا يستخدم Ibis نسخته الاحتياطية هنا
+cli-app-settings-update = حدّث أمر ibis هذا ليطابق { $app }
+cli-app-settings-repair = افتح { $app } لإصلاح إعداداته
+cli-app-settings-zotero-invalid = ملف إعداداته غير صالح (مُدخل مكتبة Zotero رقم { $position })
+cli-app-settings-newer = كتب إعداداته إصدار أحدث من Ibis (التنسيق { $version })
+cli-settings-no-folder = لا يوجد على هذا الكمبيوتر مجلد لإعدادات التطبيقات (لم يُضبط HOME أو APPDATA).
+cli-settings-action-needed = اختر export أو import؛ انظر: ibis settings --help
+cli-settings-backup-needed = حدّد ملف النسخة الاحتياطية المراد استعادته.
+cli-settings-folder-timeout = لم يستجب مجلد الإعدادات في الوقت المحدد؛ حاول مرة أخرى.
+cli-settings-exported = حُفظت نسخة احتياطية من إعدادات { $app } في { $name }.
+    تبقى موافقات اللصق ومواضع النوافذ على هذا الكمبيوتر.
+cli-settings-backup-made = نسخة احتياطية أنشأها Ibis { $version } على { $system }
+cli-settings-unchanged = لدى { $app } الإعدادات الموجودة في { $backup } بالفعل. لم يتغير شيء.
+cli-settings-would-restore = ستؤدي استعادة { $backup } إلى تغيير إعدادات { $app }:
+cli-settings-restored = تمت استعادة { $backup } إلى { $app }:
+cli-settings-library-not-found = تنبيه: ملف المكتبة في النسخة الاحتياطية غير موجود على هذا الكمبيوتر. يُحتفظ به، وسيجده Ibis متى توفر الملف.
+cli-settings-shortcut-kept = تنبيه: لا تتضمن النسخة الاحتياطية اختصارًا لفتح Ibis على هذا النظام، لذا يبقى اختصار هذا الكمبيوتر.
+cli-settings-repairs-settings = تنبيه: ملف الإعدادات على هذا الكمبيوتر تالف أو مفقود. الاستعادة تكتبه من جديد، وتحتفظ بأي ملف تالف بجانبه.
+cli-settings-dry-run = لم يتغير شيء. شغّله مرة أخرى دون --dry-run للاستعادة.
+cli-settings-restored-next = يُحتفظ بالإعدادات المستبدَلة في settings.json.bak. تبقى موافقات اللصق ومواضع النوافذ كما كانت.
+    يستخدم Ibis الإعدادات المستعادة في المرة القادمة التي يُفتح فيها؛ أنهِه وأعد فتحه إن كان قيد التشغيل.
+cli-writing-style-unavailable = نمط الاستشهاد هذا غير متاح. اعرض الأنماط باستخدام: ibis styles
+cli-writing-output-unavailable = هذا الإخراج غير متاح. اعرض أنواع الإخراج باستخدام: ibis outputs
+cli-writing-bibliography-needed = اختر قائمة مراجع BibTeX أو BibLaTeX باسم ملف ينتهي بـ .bib.
+cli-writing-folder-unavailable = المجلد الحالي غير متاح. أدخل المسار الكامل لقائمة المراجع.
+cli-writing-action-needed = اختر list أو create أو rename أو update أو remove.
+cli-writings-empty = لا توجد مشاريع بعد. أنشئ واحدًا باستخدام: ibis projects create NAME --format pandoc
+cli-writing-format-needed = اختر --format أو --style.
+cli-writing-citation-unavailable = استشهاد المشروع غير متاح.
 cli-writing-saved =
     { $action ->
-        [create] Created writing { $name }.
-        [rename] Renamed writing { $name }.
-        [remove] Removed writing { $name }. Its bibliography file was kept.
-       *[update] Updated writing { $name }.
+        [create] تم إنشاء المشروع { $name }.
+        [rename] تمت إعادة تسمية المشروع { $name }.
+        [remove] تمت إزالة المشروع { $name }. واحتُفظ بملف قائمة المراجع الخاص به.
+       *[update] تم تحديث المشروع { $name }.
     }
-cli-no-library = No library is open; add --file <library> or --zotero.
-cli-search-no-match-terminal = No references matched. Try a shorter query.
-cli-search-no-match = No references found.
-cli-libraries-empty = No libraries loaded. Open one with --file <library>.
-cli-styles-no-match = No style matches those words.
-cli-outline-none = This reference has no attachments.
-cli-outline-pages = text, { $count } pages
-cli-outline-printed-pages = text, { $count } pages with printed page numbers
-cli-outline-text = text, pages not known
-cli-outline-not-indexed = no text: Zotero has not indexed it
-cli-outline-no-file = no text: a link, with no file
-cli-outline-too-large = no text: larger than Ibis reads
-cli-outline-not-yet = no text: Ibis cannot read this file yet
-cli-outline-missing = no text: no file where the library says
-cli-outline-not-local = no text: not a plain file on this computer, such as a link or an online-only file
-cli-outline-not-pdf = no text: the file is not a PDF
-cli-outline-damaged = no text: the PDF is damaged
-cli-outline-timed-out = no text: reading the PDF took longer than ten seconds
-cli-read-page = [file page { $page }]
-cli-read-printed-page = [file page { $page }, printed page { $label }]
-cli-read-more = More text: { $command }
-cli-find-in-none = No passage holds those words.
-cli-find-in-more = The first { $count } passages; add words to narrow it.
-cli-entry-no-original = This reference has no original BibTeX entry here: only a .bib library keeps one, and Zotero, CSL-JSON, RIS and CSV libraries don’t. To write an entry from its fields, run ibis cite KEY --format bibtex, or export it from your reference manager in your project’s dialect, keeping its key.
-cli-entry-changed = The library file changed or could not be read. Reload it and try again.
-cli-entry-repeated = The library file repeats this key, so Ibis cannot tell which entry to give.
-cli-entry-dependency = This entry relies on a crossref, xdata or @string that cannot come with it. Export it from your reference manager, keeping its key.
-cli-library-refresh-failed = note: this library could not be refreshed; showing the last successful read
-cli-library-not-watched = note: changes are not picked up automatically
-cli-warning-unknown-field = an unrecognised field was skipped; Ibis kept the reference
-cli-warning-unknown-type = the entry’s type is not supported; Ibis skips this entry
-cli-warning-duplicate-key = more than one entry uses this key or id; Ibis skips them all
-cli-warning-syntax-entry = this entry could not be read; Ibis skips it
-cli-warning-entry-too-large = the entry is too large to read; Ibis skips it
-cli-warning-library-incomplete = Ibis could not read the library in full; some references may be missing
-cli-warning-attachment-skipped = an attachment link is not valid; Ibis leaves it out
-cli-warning-syntax = an entry could not be read, so Ibis skips it
-cli-warning-field = a field could not be fully converted; check this entry
-cli-warning-work-limit = the library is too large to read in full
-cli-warning-invalid-attachment = an attachment link is not valid
-cli-warning-cloud-directory = the library is in a cloud-synced folder, so changes can be late
-cli-warning-keys-unavailable = Better BibTeX keys could not be read, so some items have none
-cli-warning-unknown = something in the library needs checking
-cli-output-disk-full = the output could not be written because the disk is full; free some space and try again.
-cli-output-unwritten = the output could not be written; check where it is sent and try again.
-cli-file-busy = it is being written or cannot be read right now; try again in a moment.
-cli-file-too-large = it is larger than Ibis reads, or too many files are open at once; split the library or open fewer files.
-cli-file-missing = there is no file at that path; check the spelling or give the full path.
-cli-file-is-folder = it is a folder; give the library file inside it.
-cli-file-permission = this program is not allowed to read it; check its permissions, or run it outside the sandbox.
-cli-zotero-unavailable = no local Zotero library was found or it could not be read; check that Zotero is installed and has been opened once, or use --file.
-cli-zotero-damaged = its data could not be understood; open Zotero once so it can repair its database.
-cli-zotero-newer = a newer version of Zotero wrote it; update Ibis.
-cli-zotero-too-large = it is larger than Ibis reads at once.
-cli-key-empty = a citation key cannot be empty.
-cli-search-partial = No reference matches every word. Closest matches:
+cli-no-library = لا توجد مكتبة مفتوحة؛ أضف --file <library> أو --zotero.
+cli-search-no-match-terminal = لا توجد مراجع مطابقة. جرّب بحثًا أقصر.
+cli-search-no-match = لم يُعثر على مراجع.
+cli-libraries-empty = لم تُحمَّل أي مكتبات. افتح واحدة باستخدام --file <library>.
+cli-styles-no-match = لا يوجد نمط يطابق هذه الكلمات.
+cli-outline-none = لا يحتوي هذا المرجع على مرفقات.
+cli-outline-pages = نص، عدد الصفحات: { $count }
+cli-outline-printed-pages = نص، عدد الصفحات: { $count }، بأرقام صفحات مطبوعة
+cli-outline-text = نص، عدد الصفحات غير معروف
+cli-outline-not-indexed = لا يوجد نص: لم يفهرسه Zotero
+cli-outline-no-file = لا يوجد نص: رابط بلا ملف
+cli-outline-too-large = لا يوجد نص: أكبر مما يقرؤه Ibis
+cli-outline-not-yet = لا يوجد نص: لا يستطيع Ibis قراءة هذا الملف بعد
+cli-outline-missing = لا يوجد نص: لا يوجد ملف في المكان الذي تحدده المكتبة
+cli-outline-not-local = لا يوجد نص: ليس ملفًا عاديًا على هذا الكمبيوتر، مثل رابط أو ملف متاح عبر الإنترنت فقط
+cli-outline-not-pdf = لا يوجد نص: الملف ليس PDF
+cli-outline-damaged = لا يوجد نص: ملف PDF تالف
+cli-outline-timed-out = لا يوجد نص: استغرقت قراءة ملف PDF أكثر من عشر ثوانٍ
+cli-read-page = [صفحة الملف { $page }]
+cli-read-printed-page = [صفحة الملف { $page }، الصفحة المطبوعة { $label }]
+cli-read-more = مزيد من النص: { $command }
+cli-find-in-none = لا يوجد مقطع يحتوي على هذه الكلمات.
+cli-find-in-more = أول { $count } من المقاطع؛ أضف كلمات لتضييق النتائج.
+cli-entry-no-original = لا يوجد لهذا المرجع مُدخل BibTeX أصلي هنا: مكتبة .bib وحدها تحتفظ به، أما مكتبات Zotero وCSL-JSON وRIS وCSV فلا. لكتابة مُدخل من حقوله، شغّل ibis cite KEY --format bibtex، أو صدّره من مدير المراجع بالصيغة التي يستخدمها مشروعك مع الاحتفاظ بمفتاحه.
+cli-entry-changed = تغيّر ملف المكتبة أو تعذّرت قراءته. أعد تحميله وحاول مرة أخرى.
+cli-entry-repeated = يتكرر هذا المفتاح في ملف المكتبة، لذا لا يستطيع Ibis تحديد المُدخل المطلوب.
+cli-entry-dependency = يعتمد هذا المُدخل على crossref أو xdata أو @string لا يمكن إرفاقه معه. صدّره من مدير المراجع مع الاحتفاظ بمفتاحه.
+cli-library-refresh-failed = تنبيه: تعذّر تحديث هذه المكتبة؛ تُعرض آخر قراءة ناجحة
+cli-library-not-watched = تنبيه: لا تُرصد التغييرات تلقائيًا
+cli-warning-unknown-field = تم تخطي حقل غير معروف؛ واحتفظ Ibis بالمرجع
+cli-warning-unknown-type = نوع المُدخل غير مدعوم؛ يتخطى Ibis هذا المُدخل
+cli-warning-duplicate-key = يستخدم أكثر من مُدخل هذا المفتاح أو المعرّف؛ يتخطاها Ibis جميعًا
+cli-warning-syntax-entry = تعذّرت قراءة هذا المُدخل؛ يتخطاه Ibis
+cli-warning-entry-too-large = المُدخل أكبر من أن يُقرأ؛ يتخطاه Ibis
+cli-warning-library-incomplete = تعذّر على Ibis قراءة المكتبة كاملة؛ قد تكون بعض المراجع مفقودة
+cli-warning-attachment-skipped = رابط أحد المرفقات غير صالح؛ يستبعده Ibis
+cli-warning-syntax = تعذّرت قراءة أحد المُدخلات، لذا يتخطاه Ibis
+cli-warning-field = تعذّر تحويل أحد الحقول بالكامل؛ تحقق من هذا المُدخل
+cli-warning-work-limit = المكتبة أكبر من أن تُقرأ كاملة
+cli-warning-invalid-attachment = رابط أحد المرفقات غير صالح
+cli-warning-cloud-directory = المكتبة في مجلد متزامن مع السحابة، لذا قد تتأخر التغييرات
+cli-warning-keys-unavailable = تعذّرت قراءة مفاتيح Better BibTeX، لذا بعض العناصر بلا مفاتيح
+cli-warning-unknown = شيء ما في المكتبة يحتاج إلى مراجعة
+cli-output-disk-full = تعذّرت كتابة الإخراج لأن القرص ممتلئ؛ أفرغ بعض المساحة وحاول مرة أخرى.
+cli-output-unwritten = تعذّرت كتابة الإخراج؛ تحقق من وجهته وحاول مرة أخرى.
+cli-file-busy = الملف قيد الكتابة أو تتعذّر قراءته الآن؛ حاول مرة أخرى بعد قليل.
+cli-file-too-large = الملف أكبر مما يقرؤه Ibis، أو هناك ملفات كثيرة مفتوحة في وقت واحد؛ قسّم المكتبة أو افتح ملفات أقل.
+cli-file-missing = لا يوجد ملف في هذا المسار؛ تحقق من الإملاء أو أدخل المسار الكامل.
+cli-file-is-folder = هذا مجلد؛ حدّد ملف المكتبة الموجود داخله.
+cli-file-permission = هذا البرنامج غير مسموح له بقراءة الملف؛ تحقق من أذوناته، أو شغّله خارج بيئة العزل.
+cli-zotero-unavailable = لم يُعثر على مكتبة Zotero محلية أو تعذّرت قراءتها؛ تحقق من أن Zotero مثبّت وفُتح مرة واحدة على الأقل، أو استخدم --file.
+cli-zotero-damaged = تعذّر فهم بياناتها؛ افتح Zotero مرة واحدة ليصلح قاعدة بياناته.
+cli-zotero-newer = كتبها إصدار أحدث من Zotero؛ حدّث Ibis.
+cli-zotero-too-large = حجمها أكبر مما يقرؤه Ibis دفعة واحدة.
+cli-key-empty = لا يمكن أن يكون مفتاح الاستشهاد فارغًا.
+cli-search-partial = لا يوجد مرجع يطابق كل الكلمات. أقرب التطابقات:
     { $rows }
-cli-styles-showing = Showing { $shown } of { $total } styles; narrow it with: ibis styles WORDS
-cli-project-unreadable = Couldn’t read { $name }: { $reason }.
-cli-project-damaged = Couldn’t read all of { $name }: check line { $lines }.
-cli-warning-text-kept = { $subject } could not be fully converted; Ibis uses the text as written
-cli-warning-date = { $subject } could not be fully converted; Ibis kept the reference; check the date before citing
-cli-warning-link = { $subject } is private or is not a web address; Ibis leaves it out
-cli-warning-names = { $subject } could not be fully read; Ibis uses the names it could read
-cli-warning-fields-kept = { $subject } could not be fully converted; Ibis kept the reference with the fields it could read
-cli-warning-syntax-field = { $subject } could not be read; Ibis skips this entry
-cli-warning-duplicate-key-named = more than one entry uses '{ $key }' as its key or id, so Ibis skips them all
-cli-search-stale-at = note: { $name } could not be refreshed; showing results from { $time }
-cli-search-stale = note: { $name } could not be refreshed; showing the last successful read
-cli-file-unopened = cannot open { $path }: { $reason }
-cli-zotero-unreadable-profiles = cannot read the Zotero library: { $reason } Profiles: { $profiles }.
-cli-zotero-unreadable = cannot read the Zotero library: { $reason }
-cli-key-duplicate = the citation key '{ $key }' is used by more than one entry{ $at }, so Ibis skips them all; give each entry its own key.
-cli-key-damaged = the entry '{ $key }'{ $at } could not be read, so Ibis skips it{ $reason }; fix it in your library.
-cli-key-library-incomplete = cannot find '{ $key }': { $reason }
-cli-key-ambiguous = several references use the citation key '{ $key }'; give each one its own key in your library.
-cli-key-without-library = cannot look up '{ $key }': no library is open; add --file <library> or --zotero.
-cli-key-not-found-search = no reference has the citation key '{ $key }'; find the right key with: ibis search <words>
-cli-key-too-long = the citation key '{ $key }…' is too long.
-cli-project-unavailable = the file is not there or is not on this computer yet
-cli-project-not-file = it is not a file
-cli-project-too-large = the file is larger than 64 MiB
-cli-project-not-utf8 = the file is not UTF-8 text
-cli-project-changing = the file is still changing
-cli-project-not-bibtex = a bibliography must be a BibTeX or BibLaTeX file
-cli-project-fields-differ = this entry and the library differ
-cli-project-case-differs = a key differs only by letter case
-cli-project-alias = it is another entry’s alias
-cli-project-helper = it belongs to an @xdata entry, which cannot be cited
-cli-project-commented = it is inside @comment, which some tools still read
-cli-project-key-doubt = Key may name another reference (line { $line }): { $reason }
-cli-destination-paste = note: Ibis pastes into { $name }.
-cli-destination-unknown = note: Ibis does not know this app, so it asks before pasting.
-cli-destination-unsupported = note: Ibis copies here, because it cannot paste on this system yet.
-cli-destination-terminal = note: Ibis copies for { $name }, because a paste runs there as typed input.
-cli-destination-remote = note: Ibis copies for { $name }, because keystrokes reach another system there.
-cli-destination-shortcut = note: Ibis copies for { $name }, because its paste key does something else.
-cli-destination-copy = note: Ibis copies for { $name }.
-cli-doctor-all-good = All good.
-cli-doctor-one-finding = 1 thing to look at.
-cli-doctor-findings = { $count } things to look at.
-cli-doctor-last-read = Last good read: { $age }.
-cli-doctor-check-failed = Check failed.
-cli-search-shorthand = Cited with: { $cited }; searched for: { $words }
-cli-project-key-in = In { $name } (line { $line })
-cli-project-key-missing = Missing from { $name }
-cli-project-key-unchecked = Couldn’t check { $name }
-cli-project-key-repeated = Key appears more than once (lines { $lines })
-cli-citation-language = note: written in { $language }.
-cli-library-stale-note = (last successful read; refresh failed)
-cli-library-watch-note = (changes are not picked up automatically)
-cli-greeting = Ibis { $version } finds references and cites them anywhere.
+cli-styles-showing = تُعرض الأنماط: { $shown } من أصل { $total }؛ ضيّق النتائج باستخدام: ibis styles WORDS
+cli-project-unreadable = تعذّرت قراءة { $name }: { $reason }.
+cli-project-damaged = تعذّرت قراءة { $name } بالكامل: تحقق من السطر { $lines }.
+cli-warning-text-kept = تعذّر تحويل { $subject } بالكامل؛ يستخدم Ibis النص كما كُتب
+cli-warning-date = تعذّر تحويل { $subject } بالكامل؛ احتفظ Ibis بالمرجع؛ تحقق من التاريخ قبل الاستشهاد
+cli-warning-link = { $subject } خاص أو ليس عنوان ويب؛ يستبعده Ibis
+cli-warning-names = تعذّرت قراءة { $subject } بالكامل؛ يستخدم Ibis الأسماء التي أمكن قراءتها
+cli-warning-fields-kept = تعذّر تحويل { $subject } بالكامل؛ احتفظ Ibis بالمرجع مع الحقول التي أمكن قراءتها
+cli-warning-syntax-field = تعذّرت قراءة { $subject }؛ يتخطى Ibis هذا المُدخل
+cli-warning-duplicate-key-named = يستخدم أكثر من مُدخل «{ $key }» مفتاحًا أو معرّفًا، لذا يتخطاها Ibis جميعًا
+cli-search-stale-at = تنبيه: تعذّر تحديث { $name }؛ تُعرض النتائج كما كانت في { $time }
+cli-search-stale = تنبيه: تعذّر تحديث { $name }؛ تُعرض آخر قراءة ناجحة
+cli-file-unopened = تعذّر فتح { $path }: { $reason }
+cli-zotero-unreadable-profiles = تعذّرت قراءة مكتبة Zotero: { $reason } ملفات التعريف: { $profiles }.
+cli-zotero-unreadable = تعذّرت قراءة مكتبة Zotero: { $reason }
+cli-key-duplicate = يستخدم أكثر من مُدخل مفتاح الاستشهاد «{ $key }»{ $at }، لذا يتخطاها Ibis جميعًا؛ أعطِ كل مُدخل مفتاحًا خاصًا به.
+cli-key-damaged = تعذّرت قراءة المُدخل «{ $key }»{ $at }، لذا يتخطاه Ibis{ $reason }؛ أصلحه في مكتبتك.
+cli-key-library-incomplete = تعذّر العثور على «{ $key }»: { $reason }
+cli-key-ambiguous = تستخدم عدة مراجع مفتاح الاستشهاد «{ $key }»؛ أعطِ كلًّا منها مفتاحًا خاصًا به في مكتبتك.
+cli-key-without-library = تعذّر البحث عن «{ $key }»: لا توجد مكتبة مفتوحة؛ أضف --file <library> أو --zotero.
+cli-key-not-found-search = لا يوجد مرجع بمفتاح الاستشهاد «{ $key }»؛ ابحث عن المفتاح الصحيح باستخدام: ibis search <words>
+cli-key-too-long = مفتاح الاستشهاد «{ $key }…» طويل جدًا.
+cli-project-unavailable = الملف غير موجود أو ليس على هذا الكمبيوتر بعد
+cli-project-not-file = ليس ملفًا
+cli-project-too-large = حجم الملف أكبر من 64 MiB
+cli-project-not-utf8 = الملف ليس نصًا بترميز UTF-8
+cli-project-changing = الملف لا يزال يتغيّر
+cli-project-not-bibtex = يجب أن تكون قائمة المراجع ملف BibTeX أو BibLaTeX
+cli-project-fields-differ = يختلف هذا المُدخل عمّا في المكتبة
+cli-project-case-differs = يختلف أحد المفاتيح في حالة الأحرف فقط
+cli-project-alias = إنه اسم بديل لمُدخل آخر
+cli-project-helper = ينتمي إلى مُدخل @xdata، ولا يمكن الاستشهاد به
+cli-project-commented = يقع داخل @comment، الذي لا تزال بعض الأدوات تقرؤه
+cli-project-key-doubt = قد يشير المفتاح إلى مرجع آخر (السطر { $line }): { $reason }
+cli-destination-paste = تنبيه: يلصق Ibis في { $name }.
+cli-destination-unknown = تنبيه: لا يعرف Ibis هذا التطبيق، لذا يسأل قبل اللصق.
+cli-destination-unsupported = تنبيه: ينسخ Ibis هنا، لأنه لا يستطيع اللصق على هذا النظام بعد.
+cli-destination-terminal = تنبيه: ينسخ Ibis من أجل { $name }، لأن اللصق هناك يُنفَّذ كإدخال مكتوب.
+cli-destination-remote = تنبيه: ينسخ Ibis من أجل { $name }، لأن ضغطات المفاتيح تصل هناك إلى نظام آخر.
+cli-destination-shortcut = تنبيه: ينسخ Ibis من أجل { $name }، لأن مفتاح اللصق فيه يؤدي وظيفة أخرى.
+cli-destination-copy = تنبيه: ينسخ Ibis من أجل { $name }.
+cli-doctor-all-good = كل شيء على ما يرام.
+cli-doctor-one-finding = أمر واحد يحتاج إلى مراجعة.
+cli-doctor-findings = أمور تحتاج إلى مراجعة: { $count }.
+cli-doctor-last-read = آخر قراءة ناجحة: { $age }.
+cli-doctor-check-failed = فشل الفحص.
+cli-search-shorthand = مُستشهد به: { $cited }؛ كلمات البحث: { $words }
+cli-project-key-in = في { $name } (السطر { $line })
+cli-project-key-missing = غير موجود في { $name }
+cli-project-key-unchecked = تعذّر التحقق من { $name }
+cli-project-key-repeated = يتكرر المفتاح (الأسطر { $lines })
+cli-citation-language = تنبيه: لغة الاستشهاد { $language }.
+cli-library-stale-note = (آخر قراءة ناجحة؛ فشل التحديث)
+cli-library-watch-note = (لا تُرصد التغييرات تلقائيًا)
+cli-greeting = يجد Ibis { $version } المراجع ويستشهد بها في أي مكان.
 
-    Try it:
-      ibis search lantern --file refs.bib       find a reference
+    جرّبه:
+      ibis search lantern --file refs.bib       ابحث عن مرجع
       ibis cite vale2024lanterns --file refs.bib --style apa
-                                                make a citation
-      ibis doctor --file refs.bib               check a library
+                                                أنشئ استشهادًا
+      ibis doctor --file refs.bib               افحص مكتبة
 
-    With the Ibis app installed you can leave out --file.
-    Add --json to any command for scripts and agents. All commands: ibis --help
+    إذا كان تطبيق Ibis مثبّتًا، يمكنك حذف --file.
+    أضف --json إلى أي أمر للسكربتات والوكلاء. كل الأوامر: ibis --help
 
 # Settings and ibis agents share these app connections.
-settings-ai-apps = AI Apps
-ai-apps-command-line = Command Line
-ai-apps-description = Connect Ibis to the AI apps on this computer.
-ai-apps-words = agents MCP Claude Codex Cursor VS Code Gemini Windsurf LM Studio ChatGPT AI apps
-proposals-title = Proposed changes
-proposals-description = Review and apply library changes proposed by AI apps.
-proposals-words = proposals changes add reference
-proposals-checking = Checking proposed changes…
-proposals-empty = No proposed changes
+settings-ai-apps = تطبيقات الذكاء الاصطناعي
+ai-apps-command-line = سطر الأوامر
+ai-apps-description = اربط Ibis بتطبيقات الذكاء الاصطناعي على هذا الكمبيوتر.
+ai-apps-words = وكلاء ذكاء اصطناعي MCP Claude Codex Cursor VS Code Gemini Windsurf LM Studio ChatGPT تطبيقات مساعد
+proposals-title = التغييرات المقترحة
+proposals-description = راجع تغييرات المكتبة التي تقترحها تطبيقات الذكاء الاصطناعي وطبّقها.
+proposals-words = مقترحات اقتراحات تغييرات إضافة مرجع
+proposals-checking = جارٍ التحقق من التغييرات المقترحة…
+proposals-empty = لا توجد تغييرات مقترحة
 proposals-from = { $app } · { $library }
-proposals-apply = Apply
-proposals-reject = Reject
-proposals-app = { $app } · { $count } proposals
-proposals-reject-app = Reject All
-proposals-applied = Applied; backup kept as { $name }.
-proposals-failed = Could not complete this action. Try again.
-proposals-read-failed = Could not read proposed changes. Return to this page to try again.
+proposals-apply = تطبيق
+proposals-reject = رفض
+proposals-app = { $app } · المقترحات: { $count }
+proposals-reject-app = رفض الكل
+proposals-applied = تم التطبيق؛ وحُفظت نسخة احتياطية باسم { $name }.
+proposals-failed = تعذّر إكمال هذا الإجراء. حاول مرة أخرى.
+proposals-read-failed = تعذّرت قراءة التغييرات المقترحة. عد إلى هذه الصفحة للمحاولة مرة أخرى.
 app-failure-waiting-proposals = { proposals-read-failed }
 app-failure-apply-proposal = { proposals-failed }
 app-failure-reject-proposal = { proposals-failed }
 app-failure-reject-app-proposals = { proposals-failed }
-command-words = command line terminal shell PATH agents MCP
-ai-apps-checking = Checking AI apps…
-ai-apps-not-connected = Not connected.
-ai-apps-connected = Connected. Start a new session in the app to use Ibis.
-ai-apps-stale = The ibis command has moved or is missing.
-ai-apps-different = This app has a different Ibis connection. Review the change below.
-ai-apps-plugin = Connected through the Ibis plugin.
-ai-apps-connect = Connect
-ai-apps-disconnect = Disconnect
-ai-apps-repair = Repair
-ai-apps-replace = Replace…
-ai-apps-command-needed = The ibis command is missing. Install it in Command Line above so this app can start Ibis.
-ai-apps-failed = Could not change the AI app connection. Check the app’s settings and folder permissions, then try again.
-ai-apps-kept = Other servers and settings are kept. A backup is kept beside each changed file, the same as ibis agents in a terminal.
+command-words = سطر الأوامر طرفية terminal shell صدفة PATH وكلاء MCP
+ai-apps-checking = جارٍ التحقق من تطبيقات الذكاء الاصطناعي…
+ai-apps-not-connected = غير متصل.
+ai-apps-connected = متصل. ابدأ جلسة جديدة في التطبيق لاستخدام Ibis.
+ai-apps-stale = نُقل أمر ibis أو أنه مفقود.
+ai-apps-different = لدى هذا التطبيق اتصال مختلف بـ Ibis. راجع التغيير أدناه.
+ai-apps-plugin = متصل عبر إضافة Ibis.
+ai-apps-connect = اتصال
+ai-apps-disconnect = قطع الاتصال
+ai-apps-repair = إصلاح
+ai-apps-replace = استبدال…
+ai-apps-command-needed = أمر ibis مفقود. ثبّته من «سطر الأوامر» أعلاه ليتمكن هذا التطبيق من تشغيل Ibis.
+ai-apps-failed = تعذّر تغيير اتصال تطبيق الذكاء الاصطناعي. تحقق من إعدادات التطبيق وأذونات المجلد، ثم حاول مرة أخرى.
+ai-apps-kept = تبقى الخوادم والإعدادات الأخرى كما هي. وتُحفظ نسخة احتياطية بجانب كل ملف مُعدَّل، كما يفعل ibis agents في الطرفية.
 app-failure-agent-apps = { ai-apps-failed }
 app-failure-connect-agent-app = { ai-apps-failed }
 app-failure-disconnect-agent-app = { ai-apps-failed }
