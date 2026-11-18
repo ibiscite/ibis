@@ -10,7 +10,7 @@ import { Button } from "../src/ui/Button";
 import { KeyCaps } from "../src/ui/KeyCaps";
 import { Group, Row, Section } from "../src/ui/Layout";
 import { useAppearance } from "../src/ui/appearance";
-import { englishMessages } from "../src/i18n";
+import { englishMessages, InterfaceMessagesProvider, setInterfaceLanguage } from "../src/i18n";
 import type { LibraryStatus, SearchResult } from "../src/bindings";
 import { isStyle } from "../src/format/outputs";
 import { setPlatform } from "../src/nativeAppearance";
@@ -36,7 +36,7 @@ import "../src/ui/CopiedNotice.css";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/ui/Window.css?inline";
 import { fixtureDestination, formatAnswer, noFormatChosen } from "../src/testing/format";
-import { scenarios, type Scenario } from "./scenarios";
+import { sceneOf, scenarios, type Scenario } from "./scenarios";
 export { scenarios };
 
 type Theme = "light" | "dark";
@@ -423,9 +423,12 @@ export const parameters = ["--unit", "--radius", "--type-base", "--ibis", "--ibi
 
 export function mount(host: HTMLElement, options: { scenario?: string; theme?: string; params?: Partial<Record<typeof parameters[number], string>>; textZoom?: number } = {}): () => void {
   const params = new URLSearchParams(window.location.search);
-  const scenario = options.scenario ?? (host.dataset.ibisCanvas || params.get("scenario") || "results");
+  const named = options.scenario ?? (host.dataset.ibisCanvas || params.get("scenario") || "results");
   const theme = options.theme ?? host.dataset.theme ?? params.get("theme") ?? "light";
-  if (!scenarios.includes(scenario as Scenario)) throw new Error(`Unknown canvas scenario: ${scenario}`);
+  if (!scenarios.includes(named as Scenario)) throw new Error(`Unknown canvas scenario: ${named}`);
+  // A language scene is its scenario, speaking that language: words, `lang` and direction.
+  const { base: scenario, language } = sceneOf(named);
+  const messages = setInterfaceLanguage(language);
   if (theme !== "light" && theme !== "dark") throw new Error(`Unknown canvas theme: ${theme}`);
   mounts.get(host)?.();
   setPlatform();
@@ -452,13 +455,13 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
   document.documentElement.classList.toggle("settings-window", settingsWindow);
   document.documentElement.classList.toggle("notice-window", scenario === "notice");
   document.documentElement.dataset.nativeAppearance = "opaque";
-  document.documentElement.dir = scenario === "right-to-left" ? "rtl" : "ltr";
+  if (scenario === "right-to-left") document.documentElement.dir = "rtl";
   host.id = scenario === "notice" ? "notice" : settingsWindow ? "settings" : "root";
   const root = createRoot(host);
   const stopPicker = mockPicker(scenario as Scenario, settings, async (page) => {
     mount(host, { scenario: `settings-${page ?? "general"}`, theme });
   });
-  root.render(<Canvas host={host} scenario={scenario as Scenario} settings={settings} theme={theme as Theme} />);
+  root.render(<InterfaceMessagesProvider messages={messages}><Canvas host={host} scenario={scenario as Scenario} settings={settings} theme={theme as Theme} /></InterfaceMessagesProvider>);
   const unmount = () => {
     if (mounts.get(host) !== unmount) return;
     mounts.delete(host);
