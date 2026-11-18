@@ -205,7 +205,7 @@ the cross-process lock and perform atomic saves. Backup validation and preparati
 are shared; desktop owns dialogs and single-use restore previews.
 
 The engine chooses one output: the selected project, the app's remembered format, the person's
-format for its kind (documents or keys), then a suggestion, naming its source.
+format for its kind (keys or documents), then a suggestion, naming its source. Key formats come first: an app Ibis does not list, or none, is suggested the engine's default key output; Word, LibreOffice and other listed document apps a style.
 First run asks nothing; the first successful suggested paste remembers the
 app's format and reports it once per kind. Delayed delivery cannot overwrite
 newer choices. Formats per app live in `settings.json`; paste choices live in

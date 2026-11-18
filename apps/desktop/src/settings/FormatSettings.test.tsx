@@ -19,7 +19,7 @@ vi.mock("@tauri-apps/api/event", () => {
 });
 
 afterEach(cleanup);
-const empty: FormatSettingsView = { apps: [], writings: [], key_output_visible: false };
+const empty: FormatSettingsView = { apps: [], writings: [] };
 const remembered: FormatSettingsView = { ...empty, apps: [{ id: "macos:example.word", app: "Word", format: "apa" }] };
 function api() {
   return { ...settingsApi, formatSettings: vi.fn(async () => remembered), forgetAppFormat: vi.fn(async () => null),

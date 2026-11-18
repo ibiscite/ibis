@@ -22,8 +22,13 @@ fn with_nothing_chosen_each_kind_of_app_gets_its_suggestion() {
         (app(Windows, "texstudio.exe"), "autocite", FormatKind::Keys),
         (app(Macos, "com.microsoft.vscode"), "pandoc", FormatKind::Keys),
         (app(Macos, "com.apple.safari"), "apa", FormatKind::Documents),
-        (app(Macos, "org.example.invented"), "apa", FormatKind::Documents),
-        // Listed apps of unknown kind count as documents too: the native
+        // Word and LibreOffice keep formatted citations on every system Ibis lists.
+        (app(Windows, "winword.exe"), "apa", FormatKind::Documents),
+        (app(Macos, "org.libreoffice.script"), "apa", FormatKind::Documents),
+        (app(Windows, "soffice.exe"), "apa", FormatKind::Documents),
+        // Key formats come first: an app Ibis does not list takes keys.
+        (app(Macos, "org.example.invented"), "pandoc", FormatKind::Keys),
+        // Listed apps of unknown kind count as documents: the native
         // journey pastes into Notepad and copies for a terminal.
         (app(Windows, "notepad.exe"), "apa", FormatKind::Documents),
         (app(Macos, "com.apple.terminal"), "apa", FormatKind::Documents),
@@ -36,7 +41,10 @@ fn with_nothing_chosen_each_kind_of_app_gets_its_suggestion() {
             target.id
         );
     }
-    assert_eq!(said(&settings, None), ("apa".into(), FormatFrom::Suggestion));
+    // With no app, the engine's default output, a key format.
+    assert_eq!(said(&settings, None), ("pandoc".into(), FormatFrom::Suggestion));
+    // Settings still shows the style for documents.
+    assert_eq!(documents(&settings).id.as_deref(), Some("apa"));
 }
 
 #[test]

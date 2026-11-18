@@ -323,6 +323,10 @@ impl Appearance {
     }
 }
 
+fn dropped<'de, D: serde::Deserializer<'de>>(value: D) -> Result<(), D::Error> {
+    serde::de::IgnoredAny::deserialize(value).map(|_| ())
+}
+
 /// Settings retain unknown fields locally, without carrying them in backups.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -409,9 +413,10 @@ pub struct Device {
     /// The editor endpoint; absent means off (decision 0008).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub editor_endpoint: Option<EditorEndpoint>,
-    /// Keep the key-format row visible after a key citation, including copy-only use.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub key_formats_used: bool,
+    /// Once kept the key-format row hidden until a key citation; both rows now
+    /// always show, keys first. A value written before is read and dropped.
+    #[serde(default, skip_serializing, deserialize_with = "dropped")]
+    pub key_formats_used: (),
     /// Whether Ibis checks GitHub for updates (ADR 0019). `None` means the
     /// person has not been asked yet; nothing is checked until they say yes.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -562,7 +567,7 @@ impl From<&Settings> for Interface {
         Self {
             shortcut: portable.shortcut.here().map(str::to_owned),
             update_checks: settings.device.update_checks,
-            output: crate::format::usual(settings, None).id,
+            output: crate::format::documents(settings).id,
             key_output: portable.key_output.clone(),
             appearance: portable.appearance,
             accent: portable.accent,

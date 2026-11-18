@@ -48,7 +48,8 @@ Linux desktop app.
    copies. The macOS permission guide is in Settings › General › Pasting.
 
 The format menu offers key syntaxes and formatted citations. A remembered
-format belongs to the app you came from; an unidentified app uses the default.
+format belongs to the app you came from; an unidentified app uses the default key
+format (Pandoc), while Word, LibreOffice and other known document apps start with APA.
 An optional project adds its output and bibliography check. The
 Inspector edits page, form, prefix and suffix. Command+/ (Ctrl+/ elsewhere)
 shows the keys.

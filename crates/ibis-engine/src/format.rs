@@ -2,10 +2,12 @@
 //! (decision 0042): the writing chosen for this app, then this app's format,
 //! then your format for this kind of app, then a suggestion for the kind.
 //!
-//! Your format is two values: a style for documents (word processors, mail,
-//! browsers and apps Ibis does not know) and a key syntax for Markdown, LaTeX
-//! and Typst apps and code editors. A value of the other kind never applies,
-//! so a style chosen in Word never reaches a LaTeX file. The answer says which
+//! Your format is two values: a key syntax for LaTeX, Markdown, Obsidian and
+//! Typst apps, code editors and apps Ibis does not list, and a style for
+//! documents (word processors, mail, browsers). Key formats come first: the
+//! people Ibis serves first write in LaTeX, Markdown or Obsidian (maintainer,
+//! 2026-11-16). A value of the other kind never applies, so a style chosen in
+//! Word never reaches a LaTeX file. The answer says which
 //! level won, for the picker's header ("MLA · for Word", "Thesis").
 use crate::outputs;
 use crate::settings::Settings;
@@ -14,12 +16,15 @@ use ibis_core::destination::{AppId, OutputClass, lookup};
 pub use ibis_core::destination::{FormatChoice, FormatFrom, FormatKind, WritingName};
 
 /// The kind of `app`, what is suggested for it when nothing is chosen, and
-/// whether Ibis knows its kind; an app it does not counts as documents.
+/// whether Ibis knows its kind. An app Ibis does not list, or none, takes keys
+/// (the engine's default output); a listed app of unknown kind (Notepad, a
+/// terminal, an AI app) counts as documents.
 fn kind(app: Option<&AppId>) -> (FormatKind, &'static str, bool) {
-    match app.and_then(lookup).and_then(|entry| entry.output) {
-        Some(OutputClass::Key(syntax)) => (FormatKind::Keys, key_id(syntax), true),
-        Some(OutputClass::Formatted) => (FormatKind::Documents, outputs::DEFAULT_STYLE, true),
-        None => (FormatKind::Documents, outputs::DEFAULT_STYLE, false),
+    match app.and_then(lookup).map(|entry| entry.output) {
+        Some(Some(OutputClass::Key(syntax))) => (FormatKind::Keys, key_id(syntax), true),
+        Some(Some(OutputClass::Formatted)) => (FormatKind::Documents, outputs::DEFAULT_STYLE, true),
+        Some(None) => (FormatKind::Documents, outputs::DEFAULT_STYLE, false),
+        None => (FormatKind::Keys, outputs::DEFAULT, false),
     }
 }
 
@@ -63,6 +68,15 @@ pub fn choose(settings: &Settings, app: Option<&AppId>) -> FormatChoice {
 /// Your format for this kind, or its suggestion, without an app override.
 pub fn usual(settings: &Settings, app: Option<&AppId>) -> FormatChoice {
     let (kind, suggestion, _) = kind(app);
+    usual_of(settings, kind, suggestion)
+}
+
+/// Your style for documents, or its suggestion: what Settings shows for them.
+pub fn documents(settings: &Settings) -> FormatChoice {
+    usual_of(settings, FormatKind::Documents, outputs::DEFAULT_STYLE)
+}
+
+fn usual_of(settings: &Settings, kind: FormatKind, suggestion: &str) -> FormatChoice {
     let yours = match kind {
         FormatKind::Documents => settings.portable.output.as_deref(),
         FormatKind::Keys => settings.portable.key_output.as_deref(),

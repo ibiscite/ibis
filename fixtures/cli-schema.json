@@ -5088,7 +5088,7 @@
                     "type": "null"
                   }
                 ],
-                "description": "The writing that chose it, when one did."
+                "description": "The project that chose it, when one did."
               }
             },
             "required": [
@@ -5387,7 +5387,7 @@
             "oneOf": [
               {
                 "const": "writing",
-                "description": "The writing chosen for this app.",
+                "description": "The project chosen for this app (its id stays `writing`).",
                 "type": "string"
               },
               {
@@ -7165,7 +7165,7 @@
                     "type": "null"
                   }
                 ],
-                "description": "The writing that chose it, when one did."
+                "description": "The project that chose it, when one did."
               }
             },
             "required": [
@@ -7464,7 +7464,7 @@
             "oneOf": [
               {
                 "const": "writing",
-                "description": "The writing chosen for this app.",
+                "description": "The project chosen for this app (its id stays `writing`).",
                 "type": "string"
               },
               {

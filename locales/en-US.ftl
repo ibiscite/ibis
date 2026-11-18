@@ -512,7 +512,7 @@ look-sample-authors = Mira Vale and Noah Reed
 look-sample-journal = Journal of Imagined Studies
 citations-default = Default format
 
-citations-default-description = Used when an app has no remembered format.
+citations-default-description = Used in word processors, mail and browsers when the app has no remembered format.
 citations-recent = Recent citations
 citations-recent-description = Shows what you cited recently in each app. Turning this off forgets them.
 citations-recent-words = history recents cited here forget privacy
@@ -1258,9 +1258,9 @@ library-more-not-listed =
        *[other] { $count } more are not listed.
     }
 
-citations-documents = In documents
-citations-keys = In Markdown, LaTeX and Typst
-citations-keys-description = Used where you write citation keys rather than formatted citations.
+citations-documents = In Word, LibreOffice and other documents
+citations-keys = In LaTeX, Markdown and Obsidian
+citations-keys-description = Used where you write citation keys, and in apps Ibis does not know.
 citations-apps = Formats remembered for apps
 citations-forget = Forget
 citations-writings = Projects
@@ -1546,7 +1546,7 @@ app-project-citation-conflict = Citation keys { $keys } identify different works
 app-settings-error-changed = Settings changed while saving. Try again.
 app-settings-error-busy = Settings are being saved by another Ibis. Wait for it to finish, then try again.
 app-settings-error-document-format = Choose a style for documents.
-app-settings-error-key-format = Choose a key format for Markdown and LaTeX.
+app-settings-error-key-format = Choose a key format for LaTeX, Markdown and Obsidian.
 app-project-error-context-unavailable = The document’s bibliography and citation style could not be read. Try again.
 app-project-error-invalid-context = Name one bibliography and CSL style as plain values in the document.
 app-project-error-ambiguous-context = More than one project matches this bibliography and citation style. Choose a project by name.

@@ -276,7 +276,7 @@ test("the Ibis default-format menu saves one output by its name, restores refusa
   const { api, state } = fakeApi({ granted: true });
   const mounted = render(<SettingsApp api={api} initialPage="citations" />);
   const choose = async (name: string) => {
-    fireEvent.click(await screen.findByRole("button", { name: /^In documents / }));
+    fireEvent.click(await screen.findByRole("button", { name: /^In Word, LibreOffice and other documents / }));
     expect(await screen.findByRole("menu")).toBeTruthy();
     fireEvent.click(screen.getByRole("menuitemradio", { name }));
     await act(async () => state.closes.at(-1)!());
@@ -288,13 +288,13 @@ test("the Ibis default-format menu saves one output by its name, restores refusa
   vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce(new Error("synthetic refusal"));
   await choose("MLA");
   await screen.findByRole("alert");
-  expect(screen.getByRole("button", { name: "In documents APA" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "In Word, LibreOffice and other documents APA" })).toBeTruthy();
   expect(document.querySelector("select")).toBeNull();
   mounted.unmount();
   render(<SettingsApp api={api} initialPage={null} />);
   expect(screen.getByRole("heading", { level: 1 })).toHaveProperty("textContent", "General");
   fireEvent.click(screen.getByRole("option", { name: "Citations" }));
-  expect(await screen.findByRole("button", { name: "In documents APA" })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: "In Word, LibreOffice and other documents APA" })).toBeTruthy();
 });
 
 test("a read-only refusal names the file constraint beside the restored control", async () => {

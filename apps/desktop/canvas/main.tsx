@@ -440,12 +440,12 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
   else document.documentElement.style.removeProperty("--text-zoom");
   const settings = demoApi({ ...fixtures[scenario as Scenario]?.preferences, appearance: theme, paste: false });
   // Citations with what people have once they cite: an app's remembered format and writings.
-  if (scenario === "settings-citations") settings.formatSettings = async () => ({ apps: [{ id: "invented.editor", app: "Invented Editor", format: "apa" }], writings: writings.writings, key_output_visible: true });
+  if (scenario === "settings-citations") settings.formatSettings = async () => ({ apps: [{ id: "invented.editor", app: "Invented Editor", format: "apa" }], writings: writings.writings });
   // The installed app can always open settings.json (General › Advanced, and a broken file's recovery).
   settings.openSettingsFile ??= async () => null;
   // settings.json that does not parse: the engine's own Problem, as the picker gets it.
   if (scenario === "settings-broken") settings.formatSettings = () => Promise.reject({ code: "settings-invalid", message: { id: "app-settings-error-invalid", args: {} }, recovery: { action: "review-settings" }, focus: "settings" });
-  if (scenario === "settings-newer") settings.formatSettings = async () => ({ apps: [], writings: [], key_output_visible: false, unknown: { future_choice: "Enabled" } });
+  if (scenario === "settings-newer") settings.formatSettings = async () => ({ apps: [], writings: [], unknown: { future_choice: "Enabled" } });
   // The states and tokens pages use the Settings window's base styles.
   const settingsWindow = scenario.startsWith("settings-") || scenario === "states" || scenario === "tokens" || scenario === "parts";
   document.documentElement.classList.toggle("settings-window", settingsWindow);

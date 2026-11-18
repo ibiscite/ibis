@@ -44,7 +44,7 @@ test("a restore shows every change in words first, then restores that preview an
   expect(screen.getByText("Backup from Windows, made by Ibis 0.2.8")).toBeTruthy();
   const items = screen.getAllByRole("listitem").map((item) => item.textContent);
   expect(items).toEqual([
-    "In documents: APA → IEEE",
+    "In Word, LibreOffice and other documents: APA → IEEE",
     "Library: Default → thesis.bib",
     "Rows: Comfortable → Compact",
     "Text size: Default → On",

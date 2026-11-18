@@ -83,8 +83,8 @@ fn each_app_gets_its_output_from_the_bib_to_final_text() -> Result {
         ("obsidian.exe", "[@taylor2026]\n"),
         ("TeXShop", "\\autocite{taylor2026}\n"),
         ("texstudio.exe", "\\autocite{taylor2026}\n"),
-        // An unknown app and a browser are documents; a code editor takes keys.
-        ("com.example.unknown", "(Taylor, 2026)\n"),
+        // A browser is documents; a code editor and an app Ibis does not list take keys.
+        ("com.example.unknown", "[@taylor2026]\n"),
         ("com.apple.Safari", "(Taylor, 2026)\n"),
         ("com.microsoft.VSCode", "[@taylor2026]\n"),
     ];
