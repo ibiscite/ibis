@@ -200,7 +200,9 @@ fn process() -> (Duration, u64) {
         let mut parts = text.split_whitespace();
         let cpu = parts.next().unwrap();
         let (minutes, seconds) = cpu.rsplit_once(':').unwrap();
-        let minutes: f64 = minutes.split(':').fold(0.0, |total, part| total * 60.0 + part.parse::<f64>().unwrap());
+        let minutes: f64 = minutes
+            .split(':')
+            .fold(0.0, |total, part| total * 60.0 + part.parse::<f64>().unwrap());
         let cpu = Duration::from_secs_f64(minutes * 60.0 + seconds.parse::<f64>().unwrap());
         (cpu, parts.next().unwrap().parse::<u64>().unwrap() * 1024)
     }
@@ -264,11 +266,22 @@ fn measure(records: usize) {
     report.insert("summon_ms".into(), ms(summon).into());
 
     // Typing: every prefix of each query is one keystroke's search.
-    const QUERIES: [&str; 5] = ["researcher42 2001", "synthetic signals 9999", "morgan7", "invented letters", "avery"];
+    const QUERIES: [&str; 5] = [
+        "researcher42 2001",
+        "synthetic signals 9999",
+        "morgan7",
+        "invented letters",
+        "avery",
+    ];
     let mut typing = Vec::new();
     for _ in 0..4 {
         for query in QUERIES {
-            for end in query.char_indices().map(|(index, _)| index).skip(1).chain([query.len()]) {
+            for end in query
+                .char_indices()
+                .map(|(index, _)| index)
+                .skip(1)
+                .chain([query.len()])
+            {
                 let prefix = &query[..end];
                 if !prefix.ends_with(' ') {
                     typing.push(search(&engine, prefix, &cancel).0);
@@ -292,20 +305,45 @@ fn measure(records: usize) {
     std::fs::write(&small, library(10, usize::MAX)).unwrap();
     cold.dispatch(Method::Libraries, &json!({"action":"open-file","path":small}), &cancel)
         .unwrap();
-    report.insert("first_cite_cold_ms".into(), ms(cite(&cold, &["synthetic1"], &cancel)).into());
+    report.insert(
+        "first_cite_cold_ms".into(),
+        ms(cite(&cold, &["synthetic1"], &cancel)).into(),
+    );
     drop(cold);
     let formatting = Formatting::default();
     let start = Instant::now();
     formatting.warm("apa", None).unwrap();
     report.insert("format_warmup_ms".into(), ms(start.elapsed()).into());
     let engine = engine.with_formatting(formatting);
-    report.insert("first_cite_ms".into(), ms(cite(&engine, &["synthetic1"], &cancel)).into());
-    let warm: Vec<_> = (0..30).map(|_| cite(&engine, &["synthetic2", "synthetic3"], &cancel)).collect();
+    report.insert(
+        "first_cite_ms".into(),
+        ms(cite(&engine, &["synthetic1"], &cancel)).into(),
+    );
+    let warm: Vec<_> = (0..30)
+        .map(|_| cite(&engine, &["synthetic2", "synthetic3"], &cancel))
+        .collect();
+    report.insert("format_p50_ms".into(), ms(percentile(warm.clone(), 50)).into());
     report.insert("format_p95_ms".into(), ms(percentile(warm, 95)).into());
+    if std::env::var_os("IBIS_PERF_TRACE").is_some() {
+        for keys in [
+            &["synthetic2"][..],
+            &["synthetic2", "synthetic3"],
+            &["synthetic4", "synthetic5"],
+        ] {
+            let samples: Vec<_> = (0..std::env::var("IBIS_PERF_TRACE").unwrap().parse::<usize>().unwrap())
+                .map(|_| ms(cite(&engine, keys, &cancel)))
+                .collect();
+            eprintln!("trace {keys:?} {samples:?}");
+        }
+    }
 
     // Refresh after an edit while copies keep committing.
     let shown = engine
-        .dispatch(Method::Show, &json!({"item":{"by":"key","value":"synthetic1"}}), &cancel)
+        .dispatch(
+            Method::Show,
+            &json!({"item":{"by":"key","value":"synthetic1"}}),
+            &cancel,
+        )
         .unwrap();
     let request: CitationRequest = serde_json::from_value(json!({
         "items": [{"item":shown.data["object"]["data"]["id"],"expected_cite":shown.data["fingerprints"]["cite"]}],
