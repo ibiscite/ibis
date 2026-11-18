@@ -524,7 +524,7 @@ look-sample-authors = Mira Vale وNoah Reed
 look-sample-journal = مجلة الدراسات المتخيَّلة
 citations-default = التنسيق الافتراضي
 
-citations-default-description = يُستخدم في معالجات النصوص والبريد والمتصفحات حين لا يتذكر التطبيق تنسيقًا.
+citations-default-description = يُستخدم حين لا يتذكر التطبيق تنسيقًا.
 citations-recent = الاستشهادات الأخيرة
 citations-recent-description = يعرض ما استشهدت به مؤخرًا في كل تطبيق. إيقافه يمحوها.
 citations-recent-words = السجل الأخيرة استشهدت هنا نسيان الخصوصية
@@ -728,7 +728,7 @@ citation-details-locator-filter = ابحث عن نوع
 citation-details-locator-placeholder = أضف قيمة
 key-move-left = نقل إلى اليسار
 key-move-right = نقل إلى اليمين
-key-edit-citation = إظهار تفاصيل الاستشهاد
+key-edit-citation = تعديل الصفحة…
 key-go-to-citation = الانتقال إلى الاستشهاد
 picker-order-kept = يُحتفظ بترتيبك
 picker-your-order = ترتيبك
@@ -836,37 +836,37 @@ session-not-read = تعذّرت قراءة المراجع. حاول مرة أخ�
 session-not-formatted = تعذّرت كتابة هذه المراجع كقائمة مراجع. جرّب نمطًا آخر.
 session-not-copied = تعذّر نسخ قائمة المراجع. حاول مرة أخرى.
 session-not-saved = تعذّر حفظ قائمة المراجع. حاول مرة أخرى.
-writing-title = المشاريع
-writing-loading = جارٍ تحميل المشاريع…
-writing-saving = جارٍ حفظ المشروع…
-writing-menu = مشروع جديد…
-writing-about = يجمع المشروع تنسيق الاستشهاد وقائمة مراجع اختيارية معًا. يُحفظ اختيارك لهذا التطبيق، وتسري التغييرات أينما استخدمت هذا المشروع. لا يتعرّف Ibis على المستند.
-writing-session-only = لا يستطيع Ibis التعرّف على التطبيق، لذا يسري هذا المشروع فقط حتى إنهاء Ibis.
+writing-title = مشاريع الكتابة
+writing-loading = جارٍ تحميل مشاريع الكتابة…
+writing-saving = جارٍ حفظ مشروع الكتابة…
+writing-menu = مشروع كتابة جديد…
+writing-about = يجمع مشروع الكتابة تنسيق الاستشهاد وقائمة مراجع اختيارية معًا. يُحفظ اختيارك لهذا التطبيق، وتسري التغييرات أينما استخدمت مشروع الكتابة هذا. لا يتعرّف Ibis على المستند.
+writing-session-only = لا يستطيع Ibis التعرّف على التطبيق، لذا يسري مشروع الكتابة هذا فقط حتى إنهاء Ibis.
 writing-close = إغلاق
-writing-none = بلا مشروع
-writing-empty = لا توجد مشاريع بعد. يسري تنسيق تطبيقك حتى تختار مشروعًا.
+writing-none = بلا مشروع كتابة
+writing-empty = لا توجد مشاريع كتابة بعد. يسري تنسيق تطبيقك حتى تختار واحدًا.
 writing-use = استخدام { $name }
-writing-selected = المشروع المحدد
+writing-selected = مشروع الكتابة المحدد
 writing-selected-label = محدد
 writing-format = التنسيق: { $name }
 writing-bibliography = قائمة المراجع: { $name }
 writing-no-bibliography = لم تُحدَّد قائمة مراجع.
 writing-choose-bibliography = اختيار قائمة مراجع…
 writing-remove-bibliography = إزالة قائمة المراجع
-writing-create = مشروع جديد…
-writing-confirm-create = إنشاء المشروع
-writing-starts-with = يبدأ بـ { $format }. غيّره من قائمة التنسيق بعد إنشاء المشروع.
-writing-name = اسم المشروع
-writing-rename = إعادة تسمية المشروع…
+writing-create = مشروع كتابة جديد…
+writing-confirm-create = إنشاء مشروع الكتابة
+writing-starts-with = يبدأ بـ { $format }. غيّره من قائمة التنسيق بعد إنشاء مشروع الكتابة.
+writing-name = اسم مشروع الكتابة
+writing-rename = إعادة تسمية مشروع الكتابة…
 writing-save-name = حفظ الاسم
-writing-remove = إزالة المشروع…
-writing-confirm-remove = إزالة المشروع
+writing-remove = إزالة مشروع الكتابة…
+writing-confirm-remove = إزالة مشروع الكتابة
 writing-cancel = إلغاء
-writing-unsupported = لا يستطيع هذا الإصدار من التطبيق استخدام تنسيق هذا المشروع.
-writing-not-read = تعذّرت قراءة المشاريع. أغلق هذه اللوحة، ثم حاول مرة أخرى.
-writing-not-saved = تعذّر حفظ المشروع. لا يزال اختيارك السابق ساريًا. حاول مرة أخرى.
+writing-unsupported = لا يستطيع هذا الإصدار من التطبيق استخدام تنسيق مشروع الكتابة هذا.
+writing-not-read = تعذّرت قراءة مشاريع الكتابة. أغلق هذه اللوحة، ثم حاول مرة أخرى.
+writing-not-saved = تعذّر حفظ مشروع الكتابة. لا يزال اختيارك السابق ساريًا. حاول مرة أخرى.
 writing-bibliography-not-saved = تعذّر حفظ اختيار قائمة المراجع. حاول مرة أخرى.
-writing-pick = يغيّر اختيارك تنسيق هذا المشروع.
+writing-pick = يغيّر اختيارك تنسيق مشروع الكتابة هذا.
 project-check-retry = إعادة المحاولة
 project-check-locate = تحديد موقع قائمة المراجع…
 picker-choose-project = المطابقة مع ملف .bib…
@@ -885,10 +885,6 @@ picker-using-shorthand = يُستخدم { $value }
 picker-apply = تطبيق
 # $word: a word that finds the person’s own cited reference, never a sample one.
 picker-shorthand-hint = «{ $word } 417» لصفحة، و«see { $word }» لـ «see».
-picker-kept-words = أُبقي كلمات. للصفحة، أضف فاصلة: «غرفة, 22».
-picker-practice-offer = جرّب اللصق هنا أولًا: اضغط Enter.
-# $citation: exactly what Enter would paste.
-picker-practice-pasted = لُصق { $citation } هنا. بعد ذلك، يلصق Enter في تطبيقك.
 picker-search-as-typed = البحث كما كُتب
 picker-apply-locator = تطبيق الموضع على { $key }
 picker-copied = تم النسخ
@@ -966,19 +962,6 @@ picker-type-to-find-hint = ابحث بالعنوان أو المؤلف أو ال
 picker-more = المزيد
 picker-keep-my-order = الإبقاء على ترتيبي
 picker-change-last-citation = تغيير آخر استشهاد
-picker-paste-reference-list = لصق قائمة المراجع
-picker-copy-reference-list = نسخ قائمة المراجع
-picker-reference-list-title = قائمة المراجع
-# $app: the app's own name. The list holds this app's citations from this run of Ibis.
-picker-reference-list-help =
-    { $count ->
-        [zero] لم تستشهد بأي مرجع في { $app } منذ فتح Ibis
-        [one] المرجع الذي استشهدت به في { $app } منذ فتح Ibis
-        [two] المرجعان اللذان استشهدت بهما في { $app } منذ فتح Ibis
-        [few] { $count } مراجع استشهدت بها في { $app } منذ فتح Ibis
-        [many] { $count } مرجعًا استشهدت بها في { $app } منذ فتح Ibis
-       *[other] { $count } مرجع استشهدت بها في { $app } منذ فتح Ibis
-    }
 picker-forget-recent = نسيان الاستشهادات الأخيرة
 picker-change-citation = تغيير الاستشهاد · { $format }
 picker-keep-open = إبقاء النافذة مفتوحة
@@ -987,6 +970,8 @@ picker-change-format = تغيير التنسيق…
 picker-drag-citation = اسحب الاستشهاد إلى أي تطبيق
 picker-more-title = مزيد من الإجراءات ({ $keys })
 picker-use-zotero = استخدام Zotero
+picker-commands = الأوامر
+picker-no-commands = لا توجد أوامر مطابقة
 picker-library-region = المكتبة
 picker-picker-actions = إجراءات النافذة
 picker-library-status = حالة المكتبة
@@ -1093,7 +1078,7 @@ picker-copy-project-entry = نسخ المُدخل لـ { $name }
 picker-project-entry =
     { $outcome ->
         [copied] نُسخ مُدخل { $key } كما هو في ملفك، بما في ذلك أي حقل file أو note. راجعه، ثم أضفه إلى { $name }.
-        [no-original] لا يوجد لهذا المرجع مُدخل BibTeX أصلي هنا. صدّره من مدير المراجع بالصيغة التي يستخدمها مشروعك، مع الاحتفاظ بمفتاحه.
+        [no-original] لا يوجد لهذا المرجع مُدخل BibTeX أصلي هنا. صدّره من مدير المراجع بالصيغة التي يستخدمها مشروع الكتابة، مع الاحتفاظ بمفتاحه.
         [changed] تغيّرت المكتبة أو قائمة المراجع. ابحث مجددًا، ثم حاول مرة أخرى.
         [repeated] يتكرر هذا المفتاح في ملف المكتبة، لذا لا يستطيع Ibis معرفة أي مُدخل ينسخ.
        *[dependency] يعتمد هذا المُدخل على crossref أو xdata أو @string لا يمكن نسخه معه. صدّره من مدير المراجع، مع الاحتفاظ بمفتاحه.
@@ -1154,6 +1139,7 @@ picker-matched-in =
         [identifier] مطابقة في ISBN أو معرّف PubMed أو arXiv
        *[other] مطابقة في { $field }
     }
+picker-run-command = تشغيل { $title }
 picker-result-count =
     { $count ->
         [zero] لا نتائج
@@ -1354,12 +1340,12 @@ library-more-not-listed =
        *[other] { $count } عنصر آخر غير مدرج.
     }
 
-citations-documents = في Word وLibreOffice والمستندات الأخرى
-citations-keys = في LaTeX وMarkdown وObsidian
-citations-keys-description = يُستخدم حيث تكتب مفاتيح الاستشهاد، وفي التطبيقات التي لا يعرفها Ibis.
+citations-documents = في المستندات
+citations-keys = في Markdown وLaTeX وTypst
+citations-keys-description = يُستخدم حيث تكتب مفاتيح الاستشهاد بدلًا من الاستشهادات المنسقة.
 citations-apps = تنسيقات محفوظة للتطبيقات
 citations-forget = نسيان
-citations-writings = المشاريع
+citations-writings = مشاريع الكتابة
 settings-open-file = فتح ملف الإعدادات
 settings-open = فتح
 settings-file-description = تسري التعديلات على settings.json أثناء تشغيل Ibis.
@@ -1409,7 +1395,6 @@ palette-words-format = نمط إخراج apa pandoc latex صيغة مشاركة 
 palette-words-share = مشاركة تصدير إرسال نسخ مراجع
 palette-words-peek = تفاصيل معاينة لمحة معلومات
 palette-words-change-last = تعديل استبدال سابق استشهاد مجددا
-palette-words-reference-list = قائمة مراجع أعمال مستشهد مدخلات لصق نسخ
 palette-words-citation-focus = تركيز رمز مرجع استشهاد
 palette-words-citation-edit = تعديل صفحة موضع تفاصيل استشهاد
 palette-words-citation-move-left = نقل ترتيب سابق رمز مرجع استشهاد
@@ -1560,14 +1545,14 @@ app-failure-search = تعذّر إكمال البحث.
 app-failure-drag-paste-app = تعذّر سحب تطبيق Ibis.
 
 app-command-no-library = اختر مكتبة للبحث فيها.
-app-project-error-invalid-name = سمِّ المشروع باسم من 1 إلى 80 حرفًا، دون أحرف تحكم.
-app-project-error-duplicate-name = يوجد مشروع بهذا الاسم. اختر اسمًا آخر.
-app-project-error-not-found = لم يعد ذلك المشروع متاحًا. اختر مشروعًا مجددًا.
-app-project-error-too-many = يستطيع Ibis تذكّر 64 مشروعًا على الأكثر. أزل واحدًا قبل إضافة آخر.
-app-project-error-invalid = تعريفات المشاريع غير صالحة. تحقق من الإعدادات.
-app-project-error-changed = تغيّر المشروع أو الوجهة. افتح قائمة التنسيق مجددًا.
-app-project-error-editor = طلب المحرر هذا يختار إخراجه بنفسه. أكمله قبل تغيير المشروع.
-app-project-error-output = تنسيق هذا المشروع غير متاح في النافذة. اختر تنسيقًا آخر.
+app-project-error-invalid-name = سمِّ مشروع الكتابة باسم من 1 إلى 80 حرفًا، دون أحرف تحكم.
+app-project-error-duplicate-name = يوجد مشروع كتابة بهذا الاسم. اختر اسمًا آخر.
+app-project-error-not-found = لم يعد مشروع الكتابة ذلك متاحًا. اختر مشروع كتابة مجددًا.
+app-project-error-too-many = يستطيع Ibis تذكّر 64 مشروع كتابة على الأكثر. أزل واحدًا قبل إضافة آخر.
+app-project-error-invalid = تعريفات مشاريع الكتابة غير صالحة. تحقق من الإعدادات.
+app-project-error-changed = تغيّر مشروع الكتابة أو الوجهة. افتح قائمة التنسيق مجددًا.
+app-project-error-editor = طلب المحرر هذا يختار إخراجه بنفسه. أكمله قبل تغيير مشروع الكتابة.
+app-project-error-output = تنسيق مشروع الكتابة هذا غير متاح في النافذة. اختر تنسيقًا آخر.
 app-settings-error-unreadable = تعذّرت قراءة ملف الإعدادات أو حفظه.
 app-settings-error-invalid = ملف الإعدادات غير صالح. افتح الإعدادات لمراجعته.
     .settings = الملف settings.json غير صالح، لذا يستخدم Ibis آخر إعدادات سليمة لديك.
@@ -1643,10 +1628,10 @@ app-project-citation-conflict = مفاتيح الاستشهاد { $keys } تشي
 app-settings-error-changed = تغيّرت الإعدادات أثناء الحفظ. حاول مرة أخرى.
 app-settings-error-busy = نسخة أخرى من Ibis تحفظ الإعدادات. انتظر حتى تنتهي، ثم حاول مرة أخرى.
 app-settings-error-document-format = اختر نمطًا للمستندات.
-app-settings-error-key-format = اختر تنسيق مفاتيح لـ LaTeX وMarkdown وObsidian.
+app-settings-error-key-format = اختر تنسيق مفاتيح لـ Markdown وLaTeX.
 app-project-error-context-unavailable = تعذّرت قراءة قائمة مراجع المستند ونمط الاستشهاد فيه. حاول مرة أخرى.
 app-project-error-invalid-context = حدّد في المستند قائمة مراجع واحدة ونمط CSL واحدًا كقيم بسيطة.
-app-project-error-ambiguous-context = أكثر من مشروع يطابق قائمة المراجع ونمط الاستشهاد هذين. اختر مشروعًا باسمه.
+app-project-error-ambiguous-context = أكثر من مشروع كتابة يطابق قائمة المراجع ونمط الاستشهاد هذين. اختر مشروع كتابة باسمه.
 mcp-error-citation-format = يصدّر هذا التنسيق سجلات أو علامات Zotero. اختر تنسيق استشهاد.
 
 app-failure-open-settings-file = تعذّر فتح ملف الإعدادات. حاول مرة أخرى.
@@ -1743,15 +1728,15 @@ cli-writing-output-unavailable = هذا الإخراج غير متاح. اعرض
 cli-writing-bibliography-needed = اختر قائمة مراجع BibTeX أو BibLaTeX باسم ملف ينتهي بـ .bib.
 cli-writing-folder-unavailable = المجلد الحالي غير متاح. أدخل المسار الكامل لقائمة المراجع.
 cli-writing-action-needed = اختر list أو create أو rename أو update أو remove.
-cli-writings-empty = لا توجد مشاريع بعد. أنشئ واحدًا باستخدام: ibis projects create NAME --format pandoc
+cli-writings-empty = لا توجد مشاريع كتابة بعد. أنشئ واحدًا باستخدام: ibis writings create NAME --format pandoc
 cli-writing-format-needed = اختر --format أو --style.
-cli-writing-citation-unavailable = استشهاد المشروع غير متاح.
+cli-writing-citation-unavailable = استشهاد مشروع الكتابة غير متاح.
 cli-writing-saved =
     { $action ->
-        [create] تم إنشاء المشروع { $name }.
-        [rename] تمت إعادة تسمية المشروع { $name }.
-        [remove] تمت إزالة المشروع { $name }. واحتُفظ بملف قائمة المراجع الخاص به.
-       *[update] تم تحديث المشروع { $name }.
+        [create] تم إنشاء مشروع الكتابة { $name }.
+        [rename] تمت إعادة تسمية مشروع الكتابة { $name }.
+        [remove] تمت إزالة مشروع الكتابة { $name }. واحتُفظ بملف قائمة المراجع الخاص به.
+       *[update] تم تحديث مشروع الكتابة { $name }.
     }
 cli-no-library = لا توجد مكتبة مفتوحة؛ أضف --file <library> أو --zotero.
 cli-search-no-match-terminal = لا توجد مراجع مطابقة. جرّب بحثًا أقصر.

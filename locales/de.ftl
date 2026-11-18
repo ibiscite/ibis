@@ -520,7 +520,7 @@ look-sample-authors = Mira Vale und Noah Reed
 look-sample-journal = Zeitschrift für erdachte Studien
 citations-default = Standardformat
 
-citations-default-description = Für Textverarbeitungen, E-Mail und Browser, wenn sich die App kein Format gemerkt hat.
+citations-default-description = Wird verwendet, wenn sich eine App kein Format gemerkt hat.
 citations-recent = Letzte Zitationen
 citations-recent-description = Zeigt, was Sie zuletzt in jeder App zitiert haben. Beim Ausschalten werden sie vergessen.
 citations-recent-words = verlauf zuletzt zitiert hier vergessen datenschutz privatsphäre
@@ -724,7 +724,7 @@ citation-details-locator-filter = Art suchen
 citation-details-locator-placeholder = Wert hinzufügen
 key-move-left = Nach links verschieben
 key-move-right = Nach rechts verschieben
-key-edit-citation = Zitationsdetails anzeigen
+key-edit-citation = Seite bearbeiten…
 key-go-to-citation = Zur Zitation wechseln
 picker-order-kept = Ihre Reihenfolge bleibt erhalten
 picker-your-order = Ihre Reihenfolge
@@ -832,37 +832,37 @@ session-not-read = Die Referenzen konnten nicht gelesen werden. Versuchen Sie es
 session-not-formatted = Aus diesen Referenzen ließ sich kein Literaturverzeichnis erstellen. Versuchen Sie einen anderen Stil.
 session-not-copied = Das Literaturverzeichnis konnte nicht kopiert werden. Versuchen Sie es erneut.
 session-not-saved = Das Literaturverzeichnis konnte nicht gespeichert werden. Versuchen Sie es erneut.
-writing-title = Projekte
-writing-loading = Projekte werden geladen…
-writing-saving = Projekt wird gespeichert…
-writing-menu = Neues Projekt…
-writing-about = Ein Projekt hält sein Zitationsformat und ein optionales Literaturverzeichnis zusammen. Ihre Wahl wird für diese App gespeichert; Änderungen gelten überall, wo Sie dieses Projekt nutzen. Ibis erkennt das Dokument nicht.
-writing-session-only = Ibis kann die App nicht erkennen, daher gilt dieses Projekt nur, bis Ibis beendet wird.
+writing-title = Schreibprojekte
+writing-loading = Schreibprojekte werden geladen…
+writing-saving = Schreibprojekt wird gespeichert…
+writing-menu = Neues Schreibprojekt…
+writing-about = Ein Schreibprojekt hält sein Zitationsformat und ein optionales Literaturverzeichnis zusammen. Ihre Wahl wird für diese App gespeichert; Änderungen gelten überall, wo Sie dieses Schreibprojekt nutzen. Ibis erkennt das Dokument nicht.
+writing-session-only = Ibis kann die App nicht erkennen, daher gilt dieses Schreibprojekt nur, bis Ibis beendet wird.
 writing-close = Schließen
-writing-none = Kein Projekt
-writing-empty = Noch keine Projekte. Bis Sie eines wählen, gilt das Format Ihrer App.
+writing-none = Kein Schreibprojekt
+writing-empty = Noch keine Schreibprojekte. Bis Sie eines wählen, gilt das Format Ihrer App.
 writing-use = { $name } verwenden
-writing-selected = Ausgewähltes Projekt
+writing-selected = Ausgewähltes Schreibprojekt
 writing-selected-label = Ausgewählt
 writing-format = Format: { $name }
 writing-bibliography = Literaturverzeichnis: { $name }
 writing-no-bibliography = Kein Literaturverzeichnis ausgewählt.
 writing-choose-bibliography = Literaturverzeichnis wählen…
 writing-remove-bibliography = Literaturverzeichnis entfernen
-writing-create = Neues Projekt…
-writing-confirm-create = Projekt erstellen
-writing-starts-with = Beginnt mit { $format }. Ändern Sie es nach dem Erstellen des Projekts im Formatmenü.
-writing-name = Projektname
-writing-rename = Projekt umbenennen…
+writing-create = Neues Schreibprojekt…
+writing-confirm-create = Schreibprojekt erstellen
+writing-starts-with = Beginnt mit { $format }. Ändern Sie es nach dem Erstellen des Schreibprojekts im Formatmenü.
+writing-name = Name des Schreibprojekts
+writing-rename = Schreibprojekt umbenennen…
 writing-save-name = Namen speichern
-writing-remove = Projekt entfernen…
-writing-confirm-remove = Projekt entfernen
+writing-remove = Schreibprojekt entfernen…
+writing-confirm-remove = Schreibprojekt entfernen
 writing-cancel = Abbrechen
-writing-unsupported = Diese App-Version kann das Format dieses Projekts nicht verwenden.
-writing-not-read = Die Projekte konnten nicht gelesen werden. Schließen Sie dieses Fenster und versuchen Sie es erneut.
-writing-not-saved = Das Projekt konnte nicht gespeichert werden. Ihre vorherige Wahl gilt weiter. Versuchen Sie es erneut.
+writing-unsupported = Diese App-Version kann das Format dieses Schreibprojekts nicht verwenden.
+writing-not-read = Die Schreibprojekte konnten nicht gelesen werden. Schließen Sie dieses Fenster und versuchen Sie es erneut.
+writing-not-saved = Das Schreibprojekt konnte nicht gespeichert werden. Ihre vorherige Wahl gilt weiter. Versuchen Sie es erneut.
 writing-bibliography-not-saved = Die Wahl des Literaturverzeichnisses konnte nicht gespeichert werden. Versuchen Sie es erneut.
-writing-pick = Ihre Auswahl ändert das Format dieses Projekts.
+writing-pick = Ihre Auswahl ändert das Format dieses Schreibprojekts.
 project-check-retry = Erneut versuchen
 project-check-locate = Literaturverzeichnis suchen…
 picker-choose-project = Mit einer .bib-Datei abgleichen…
@@ -881,10 +881,6 @@ picker-using-shorthand = Verwendet: { $value }
 picker-apply = Anwenden
 # $word: a word that finds the person’s own cited reference, never a sample one.
 picker-shorthand-hint = „{ $word } 417“ für eine Seite, „see { $word }“ für „see“.
-picker-kept-words = Als Wörter behalten. Für eine Seite ein Komma setzen: „Raum, 22“.
-picker-practice-offer = Testen Sie das Einfügen zuerst hier: Drücken Sie Enter.
-# $citation: exactly what Enter would paste.
-picker-practice-pasted = { $citation } hier eingefügt. Als Nächstes fügt Enter in Ihrer App ein.
 picker-search-as-typed = Wie eingegeben suchen
 picker-apply-locator = Fundstelle auf { $key } anwenden
 picker-copied = Kopiert
@@ -962,15 +958,6 @@ picker-type-to-find-hint = Suchen Sie nach Titel, Autor, Jahr, Zitierschlüssel 
 picker-more = Mehr
 picker-keep-my-order = Meine Reihenfolge beibehalten
 picker-change-last-citation = Letzte Zitation ändern
-picker-paste-reference-list = Referenzliste einfügen
-picker-copy-reference-list = Referenzliste kopieren
-picker-reference-list-title = Referenzliste
-# $app: the app's own name. The list holds this app's citations from this run of Ibis.
-picker-reference-list-help =
-    { $count ->
-        [one] Die Referenz, die Sie seit dem Start von Ibis in { $app } zitiert haben
-       *[other] Die { $count } Referenzen, die Sie seit dem Start von Ibis in { $app } zitiert haben
-    }
 picker-forget-recent = Letzte Zitationen vergessen
 picker-change-citation = Zitation ändern · { $format }
 picker-keep-open = Fenster offen halten
@@ -979,6 +966,8 @@ picker-change-format = Format ändern…
 picker-drag-citation = Ziehen Sie die Zitation in eine beliebige App
 picker-more-title = Weitere Aktionen ({ $keys })
 picker-use-zotero = Zotero verwenden
+picker-commands = Befehle
+picker-no-commands = Keine passenden Befehle
 picker-library-region = Bibliothek
 picker-picker-actions = Fensteraktionen
 picker-library-status = Bibliotheksstatus
@@ -1069,7 +1058,7 @@ picker-copy-project-entry = Eintrag für { $name } kopieren
 picker-project-entry =
     { $outcome ->
         [copied] Der Eintrag für { $key } wurde so kopiert, wie er in Ihrer Datei steht, samt etwaiger file- oder note-Felder. Prüfen Sie ihn und fügen Sie ihn dann zu { $name } hinzu.
-        [no-original] Für diese Referenz gibt es hier keinen ursprünglichen BibTeX-Eintrag. Exportieren Sie sie aus Ihrer Literaturverwaltung im Dialekt Ihres Projekts und behalten Sie den Schlüssel bei.
+        [no-original] Für diese Referenz gibt es hier keinen ursprünglichen BibTeX-Eintrag. Exportieren Sie sie aus Ihrer Literaturverwaltung im Dialekt Ihres Schreibprojekts und behalten Sie den Schlüssel bei.
         [changed] Die Bibliothek oder das Literaturverzeichnis hat sich geändert. Suchen Sie erneut und versuchen Sie es dann noch einmal.
         [repeated] Die Bibliotheksdatei enthält diesen Schlüssel mehrfach, daher weiß Ibis nicht, welcher Eintrag kopiert werden soll.
        *[dependency] Dieser Eintrag hängt von einem crossref, xdata oder @string ab, der nicht mitkopiert werden kann. Exportieren Sie ihn aus Ihrer Literaturverwaltung und behalten Sie den Schlüssel bei.
@@ -1118,6 +1107,7 @@ picker-matched-in =
         [identifier] Treffer in ISBN, PubMed-ID oder arXiv-ID
        *[other] Treffer in { $field }
     }
+picker-run-command = { $title } ausführen
 picker-result-count =
     { $count ->
         [one] 1 Ergebnis
@@ -1278,12 +1268,12 @@ library-more-not-listed =
        *[other] { $count } weitere sind nicht aufgeführt.
     }
 
-citations-documents = In Word, LibreOffice und anderen Dokumenten
-citations-keys = In LaTeX, Markdown und Obsidian
-citations-keys-description = Wird verwendet, wo Sie Zitierschlüssel schreiben, und in Apps, die Ibis nicht kennt.
+citations-documents = In Dokumenten
+citations-keys = In Markdown, LaTeX und Typst
+citations-keys-description = Wird verwendet, wo Sie Zitierschlüssel statt formatierter Zitationen schreiben.
 citations-apps = Für Apps gemerkte Formate
 citations-forget = Vergessen
-citations-writings = Projekte
+citations-writings = Schreibprojekte
 settings-open-file = Einstellungsdatei öffnen
 settings-open = Öffnen
 settings-file-description = Änderungen an settings.json gelten, während Ibis läuft.
@@ -1333,7 +1323,6 @@ palette-words-format = stil ausgabe apa pandoc latex syntax teilen exportieren b
 palette-words-share = teilen exportieren senden kopieren referenzen
 palette-words-peek = details vorschau kurzansicht info
 palette-words-change-last = bearbeiten ersetzen vorherige zitation erneut
-palette-words-reference-list = literaturverzeichnis referenzen quellenverzeichnis liste einträge einfügen kopieren
 palette-words-citation-focus = fokus token referenz zitation
 palette-words-citation-edit = bearbeiten seite fundstelle details zitation
 palette-words-citation-move-left = verschieben anordnen vorherige token referenz zitation
@@ -1484,14 +1473,14 @@ app-failure-search = Die Suche konnte nicht abgeschlossen werden.
 app-failure-drag-paste-app = Die Ibis-App konnte nicht gezogen werden.
 
 app-command-no-library = Wählen Sie eine Bibliothek zum Durchsuchen.
-app-project-error-invalid-name = Geben Sie dem Projekt einen Namen mit 1 bis 80 Zeichen, ohne Steuerzeichen.
-app-project-error-duplicate-name = Ein Projekt mit diesem Namen gibt es schon. Wählen Sie einen anderen Namen.
-app-project-error-not-found = Dieses Projekt ist nicht mehr verfügbar. Wählen Sie erneut ein Projekt.
-app-project-error-too-many = Ibis kann sich höchstens 64 Projekte merken. Entfernen Sie eines, bevor Sie ein weiteres hinzufügen.
-app-project-error-invalid = Die Projektdefinitionen sind ungültig. Prüfen Sie die Einstellungen.
-app-project-error-changed = Projekt oder Ziel haben sich geändert. Öffnen Sie das Formatmenü erneut.
-app-project-error-editor = Diese Editor-Anfrage wählt ihre eigene Ausgabe. Schließen Sie sie ab, bevor Sie das Projekt wechseln.
-app-project-error-output = Das Format dieses Projekts ist im Fenster nicht verfügbar. Wählen Sie ein anderes Format.
+app-project-error-invalid-name = Geben Sie dem Schreibprojekt einen Namen mit 1 bis 80 Zeichen, ohne Steuerzeichen.
+app-project-error-duplicate-name = Ein Schreibprojekt mit diesem Namen gibt es schon. Wählen Sie einen anderen Namen.
+app-project-error-not-found = Dieses Schreibprojekt ist nicht mehr verfügbar. Wählen Sie erneut ein Schreibprojekt.
+app-project-error-too-many = Ibis kann sich höchstens 64 Schreibprojekte merken. Entfernen Sie eines, bevor Sie ein weiteres hinzufügen.
+app-project-error-invalid = Die Definitionen der Schreibprojekte sind ungültig. Prüfen Sie die Einstellungen.
+app-project-error-changed = Schreibprojekt oder Ziel haben sich geändert. Öffnen Sie das Formatmenü erneut.
+app-project-error-editor = Diese Editor-Anfrage wählt ihre eigene Ausgabe. Schließen Sie sie ab, bevor Sie das Schreibprojekt wechseln.
+app-project-error-output = Das Format dieses Schreibprojekts ist im Fenster nicht verfügbar. Wählen Sie ein anderes Format.
 app-settings-error-unreadable = Die Einstellungsdatei konnte nicht gelesen oder gespeichert werden.
 app-settings-error-invalid = Die Einstellungsdatei ist ungültig. Öffnen Sie die Einstellungen, um sie zu prüfen.
     .settings = settings.json ist ungültig, daher verwendet Ibis Ihre letzten gültigen Einstellungen.
@@ -1567,10 +1556,10 @@ app-project-citation-conflict = Die Zitierschlüssel { $keys } bezeichnen im Lit
 app-settings-error-changed = Die Einstellungen haben sich beim Speichern geändert. Versuchen Sie es erneut.
 app-settings-error-busy = Ein anderes Ibis speichert gerade die Einstellungen. Warten Sie, bis es fertig ist, und versuchen Sie es dann erneut.
 app-settings-error-document-format = Wählen Sie einen Stil für Dokumente.
-app-settings-error-key-format = Wählen Sie ein Schlüsselformat für LaTeX, Markdown und Obsidian.
+app-settings-error-key-format = Wählen Sie ein Schlüsselformat für Markdown und LaTeX.
 app-project-error-context-unavailable = Literaturverzeichnis und Zitierstil des Dokuments konnten nicht gelesen werden. Versuchen Sie es erneut.
 app-project-error-invalid-context = Geben Sie im Dokument genau ein Literaturverzeichnis und einen CSL-Stil als einfache Werte an.
-app-project-error-ambiguous-context = Mehrere Projekte passen zu diesem Literaturverzeichnis und Zitierstil. Wählen Sie ein Projekt nach Namen.
+app-project-error-ambiguous-context = Mehrere Schreibprojekte passen zu diesem Literaturverzeichnis und Zitierstil. Wählen Sie ein Schreibprojekt nach Namen.
 mcp-error-citation-format = Dieses Format exportiert Datensätze oder Zotero-Marker. Wählen Sie ein Zitationsformat.
 
 app-failure-open-settings-file = Die Einstellungsdatei konnte nicht geöffnet werden. Versuchen Sie es erneut.
@@ -1659,15 +1648,15 @@ cli-writing-output-unavailable = Diese Ausgabe ist nicht verfügbar. Ausgaben au
 cli-writing-bibliography-needed = Wählen Sie ein BibTeX- oder BibLaTeX-Literaturverzeichnis mit einem .bib-Dateinamen.
 cli-writing-folder-unavailable = Der aktuelle Ordner ist nicht verfügbar. Geben Sie den vollständigen Pfad des Literaturverzeichnisses an.
 cli-writing-action-needed = Wählen Sie list, create, rename, update oder remove.
-cli-writings-empty = Noch keine Projekte. Erstellen Sie eines mit: ibis projects create NAME --format pandoc
+cli-writings-empty = Noch keine Schreibprojekte. Erstellen Sie eines mit: ibis writings create NAME --format pandoc
 cli-writing-format-needed = Wählen Sie --format oder --style.
-cli-writing-citation-unavailable = Die Projektzitation ist nicht verfügbar.
+cli-writing-citation-unavailable = Die Zitation des Schreibprojekts ist nicht verfügbar.
 cli-writing-saved =
     { $action ->
-        [create] Projekt { $name } erstellt.
-        [rename] Projekt { $name } umbenannt.
-        [remove] Projekt { $name } entfernt. Seine .bib-Datei bleibt erhalten.
-       *[update] Projekt { $name } aktualisiert.
+        [create] Schreibprojekt { $name } erstellt.
+        [rename] Schreibprojekt { $name } umbenannt.
+        [remove] Schreibprojekt { $name } entfernt. Seine .bib-Datei bleibt erhalten.
+       *[update] Schreibprojekt { $name } aktualisiert.
     }
 cli-no-library = Keine Bibliothek geöffnet; fügen Sie --file <library> oder --zotero hinzu.
 cli-search-no-match-terminal = Keine passenden Referenzen. Versuchen Sie eine kürzere Suche.
