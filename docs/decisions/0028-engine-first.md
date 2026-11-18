@@ -21,9 +21,20 @@ and formatter/style/locale versions. `--contract 1` selects it explicitly;
 unsupported versions refuse with the supported list. Requests reject unread
 fields. Clients accept additional response fields and treat unknown findings,
 losses, refusals and outcomes as needing review. Unknown error codes still fail.
-Optional additions can keep a version only when absence preserves the answer;
-renames, removals and changes to meaning require a new contract version.
 Canonical requests in `fixtures/cases` run through each front end.
+
+Until the stable 1.0 any release may change any part of the contract, and
+progress wins over compatibility.
+[`contract-compat.mjs`](../../scripts/contract-compat.mjs) compares the
+generated contract (`fixtures/engine-contract.schema.json`,
+`fixtures/cli-schema.json`, `fixtures/mcp-tools.json` and
+`fixtures/cli-surface.json`) with a published release. It reports structural
+additions, removals and changes, including annotations and constraints. Earlier
+releases provide only the generated CLI help and exit tables for the CLI
+comparison. GitHub runs the advisory report in a separate workflow against its
+latest published, non-prerelease release. Each numbered release's notes compare
+with the previous published release under "Contract changes". The rules for
+changing a stable contract are decided at 1.0.
 
 Receipts record ordered opaque identities, citation fingerprints, resolved
 output, captured source read times, findings and a canonical content hash. CSL
