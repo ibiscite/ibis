@@ -247,8 +247,9 @@ references. Each case runs in a fresh release process:
 - `rss_mib` and `idle_cpu_percent`: resident memory after opening and
   searching, and CPU over 10 s with the library open and watched.
 
-Window paint, the webview and the desktop command layer are outside it; the
-desktop adds a few cloned library summaries and 50 row conversions per search.
+Window paint, the webview and the desktop command layer are outside it; read
+from the code, the desktop adds a few cloned library summaries and 50 row
+conversions per search.
 `scripts/picker-budget.mjs` limits the picker's entry JavaScript and CSS to
 400 KiB gzipped, and `ibis-engine/tests/library_memory.rs` counts heap bytes
 at 10,000 records.
@@ -266,47 +267,52 @@ pull request runs `compare` against its base commit on the same runner: both
 sides build with the pull request's harness and run in alternating rounds. A
 metric fails when its median is more than 20% slower than the base **and**
 slower by more than a fixed floor (2–3 ms for searching, 10 ms for citing,
-50–75 ms for opening and refreshing, 15 MiB of memory), so noise on small
-numbers cannot fail it. Pushes and nightlies `check shared`, the absolute
-budgets for hosted runners; pull requests also meet them. Budgets on a fixed
-machine are 1.5× its median and at least 2 ms over it, memory 1.2×, idle 0.5%
-of a core; shared-runner budgets are 2.5× the Windows median and at least
-5 ms over it, memory 1.5× Linux. No budget on a fixed machine sits above what a
-person notices: typing 50 ms; first search, first citation and warm formatting
-100 ms.
+30 ms for warming the formatter, 50–75 ms for opening and refreshing, 15 MiB
+of memory), so noise on small numbers cannot fail it. When nothing under
+`crates/` or the Cargo files changed, or the base cannot build or run the
+harness, the pull request is measured alone. Every run, compared or not, must
+also meet the `shared` budgets, and pushes and nightlies `check shared`.
+
+Budgets are 2× a fixed machine's median and at least 3 ms over it (a second
+session on the Windows laptop ran twice as slow with background work), memory
+1.2×, idle 0.5% of a core, and never above what a person notices: typing
+50 ms; first search, first citation and warm formatting 100 ms. Shared-runner
+budgets are 2.5× the hosted median and at least 5 ms over it, memory 1.2×,
+idle 1%. Run `check` on an idle machine; it prints the load average.
 
 Two runs of the same engine on the Windows laptop differed by at most 11% on
 the judged metrics; a build that sleeps 5 ms in each search fails `compare`.
 
 **Measured 2026-11-18**, medians of three rounds:
 
-| Metric | Windows 10k | Windows 100k | Linux 10k | Linux 100k |
-| --- | --- | --- | --- | --- |
-| Open | 586 ms | 5.83 s | pending | pending |
-| First search | 1.8 ms | 14.5 ms | pending | pending |
-| Recent rows | 0.2 ms | 1.7 ms | pending | pending |
-| Typing p50 / p95 | 1.3 / 2.0 ms | 15.5 / 22.2 ms | pending | pending |
-| First citation (warmed) | 19 ms | 21 ms | pending | pending |
-| Warm two-reference citation p50 | 51 ms | 55 ms | pending | pending |
-| Refresh | 781 ms | 5.57 s | pending | pending |
-| Resident memory | 45 MiB | 374 MiB | 52 MiB | 432 MiB |
-| Idle CPU | 0% | 0% | 0% | 0.1% |
+| Metric | Windows 10k | Windows 100k | Hosted 10k | Hosted 100k | Linux desktop |
+| --- | --- | --- | --- | --- | --- |
+| Open | 586 ms | 5.83 s | 249 ms | 2.58 s | pending |
+| First search | 1.8 ms | 14.5 ms | 0.8 ms | 10.1 ms | pending |
+| Recent rows | 0.2 ms | 1.7 ms | 0.1 ms | 1.9 ms | pending |
+| Typing p50 / p95 | 1.3 / 2.0 ms | 15.5 / 22.2 ms | 0.7 / 1.1 ms | 5.6 / 9.6 ms | pending |
+| First citation (warmed) | 19 ms | 21 ms | 11 ms | 14 ms | pending |
+| Warm two-reference citation p50 | 51 ms | 55 ms | 30 ms | 32 ms | pending |
+| Formatter warm-up at startup | 205 ms | 199 ms | 115 ms | 113 ms | pending |
+| Refresh | 781 ms | 5.57 s | 459 ms | 2.40 s | pending |
+| Resident memory | 45 MiB | 374 MiB | 51 MiB | 433 MiB | 52 / 432 MiB |
+| Idle CPU | 0% | 0% | 0% | 0% | 0% / 0.1% |
 
-Windows is a 4-core i7-7700HQ laptop on Windows 10, quiet. Linux is an 8-thread
-Ubuntu desktop measured at load averages of 8–48, so only its memory is
-recorded; its timings and every macOS figure wait for a quiet run, and
-`check mac` says so. Hosted-runner budgets are derived until a release check
-records their medians.
+Windows is a 4-core i7-7700HQ laptop on Windows 10, quiet. Hosted is GitHub's
+`ubuntu-24.04` runner in a release check. The Linux desktop has 8 threads and
+was measured at load averages of 8–48, so only its memory is recorded; its
+timings and every macOS figure wait for a quiet run, and `check mac` says so.
 
 Two numbers miss earlier targets that nothing enforced: opening or refreshing
-100k references takes about 6 s against 3 s, and Linux memory at 100k is
-432 MiB against 400 MB. The budgets stop both getting worse; they do not
-accept them. Opening is single-threaded BibTeX work (converting entries about
-half, parsing a quarter, resolving crossrefs a sixth) and then the snapshot's
-per-record fingerprints. Converting entries on several threads gave nothing
-on Windows, where that work is allocation-bound. A two-reference citation
-takes 2.5× a single one, because citeproc disambiguates the pair and Ibis
-renders text, HTML and RTF separately.
+100k references takes about 6 s on the Windows laptop against 3 s, and Linux
+memory at 100k is 433 MiB against 400 MB. The budgets stop both getting worse;
+they do not accept them. A profile of opening shows one thread doing the
+BibTeX work (converting entries about half, parsing a quarter, resolving
+crossrefs a sixth) and then the snapshot's per-record fingerprints. Converting
+entries on several threads gave the same records but no faster open on the
+Windows laptop. A two-reference citation takes 2.5× a single one: each of
+citeproc's text, HTML and RTF passes costs four to five times more with the
+second reference.
 
 ## Vocabulary
 

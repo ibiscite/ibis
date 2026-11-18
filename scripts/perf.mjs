@@ -7,7 +7,7 @@
 //   node scripts/perf.mjs check CLASS [--rounds N]    fail over CLASS's budgets
 //   node scripts/perf.mjs compare BASE [--rounds N]   fail on a regression against BASE
 import { spawnSync } from "node:child_process";
-import { appendFileSync, copyFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { appendFileSync, copyFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -17,16 +17,17 @@ const harness = "crates/ibis-engine/tests/perf.rs";
 export const cases = ["feel_10k", "feel_100k"];
 
 // Absolute budgets per machine class, from the medians recorded in
-// docs/architecture.md › Performance checks. On a fixed machine: timings 1.5x
-// the median and at least 2 ms over it, memory 1.2x, idle 0.5% of a core. On
-// shared runners: timings 2.5x the Windows median and at least 5 ms over it,
-// memory 1.5x the Linux median, idle 1%. A budget never sits above what a
-// person notices: typing 50 ms, first search, first citation and warm
+// docs/architecture.md › Performance checks. Timings get 2x the median and at
+// least 3 ms over it on a fixed machine (one Windows session ran 2x slower
+// with background work), 2.5x and at least 5 ms over it on shared runners.
+// Memory barely moves between runs: 1.2x. Idle: 0.5% of a core on a fixed
+// machine, 1% on shared runners. On a person's machine no budget sits above
+// what they notice: typing 50 ms; first search, first citation and warm
 // formatting 100 ms. `null` is a class still waiting for a quiet measurement.
 export const budgets = {
   windows: {
-    "10k": { open_ms: 900, first_search_ms: 4, summon_ms: 3, typing_p95_ms: 4, first_cite_ms: 30, format_p50_ms: 80, refresh_ms: 1200, rss_mib: 55, idle_cpu_percent: 0.5 },
-    "100k": { open_ms: 9000, first_search_ms: 25, summon_ms: 4, typing_p95_ms: 35, first_cite_ms: 35, format_p50_ms: 85, refresh_ms: 8500, rss_mib: 450, idle_cpu_percent: 0.5 },
+    "10k": { open_ms: 1200, first_search_ms: 5, summon_ms: 4, typing_p95_ms: 5, first_cite_ms: 40, format_p50_ms: 100, format_warmup_ms: 420, refresh_ms: 1600, rss_mib: 55, idle_cpu_percent: 0.5 },
+    "100k": { open_ms: 12000, first_search_ms: 30, summon_ms: 5, typing_p95_ms: 45, first_cite_ms: 45, format_p50_ms: 100, format_warmup_ms: 420, refresh_ms: 11500, rss_mib: 450, idle_cpu_percent: 0.5 },
   },
   // Timings wait for a quiet run; memory does not move with load.
   linux: {
@@ -34,9 +35,10 @@ export const budgets = {
     "100k": { rss_mib: 520 },
   },
   mac: null,
+  // GitHub's ubuntu-24.04 runners, the release checks' machine.
   shared: {
-    "10k": { open_ms: 1500, first_search_ms: 8, summon_ms: 6, typing_p95_ms: 8, first_cite_ms: 50, format_p50_ms: 130, refresh_ms: 2000, rss_mib: 80, idle_cpu_percent: 1 },
-    "100k": { open_ms: 15000, first_search_ms: 40, summon_ms: 8, typing_p95_ms: 60, first_cite_ms: 55, format_p50_ms: 140, refresh_ms: 14000, rss_mib: 650, idle_cpu_percent: 1 },
+    "10k": { open_ms: 650, first_search_ms: 6, summon_ms: 6, typing_p95_ms: 7, first_cite_ms: 30, format_p50_ms: 75, format_warmup_ms: 290, refresh_ms: 1200, rss_mib: 65, idle_cpu_percent: 1 },
+    "100k": { open_ms: 6500, first_search_ms: 30, summon_ms: 7, typing_p95_ms: 25, first_cite_ms: 35, format_p50_ms: 80, format_warmup_ms: 290, refresh_ms: 6000, rss_mib: 520, idle_cpu_percent: 1 },
   },
 };
 
@@ -47,7 +49,7 @@ export const ratio = 1.2;
 // the same code, so regressions read medians and the 252-sample typing p95.
 export const floors = {
   open_ms: 50, first_search_ms: 3, summon_ms: 2, typing_p50_ms: 2, typing_p95_ms: 3, first_cite_ms: 10,
-  format_p50_ms: 10, refresh_ms: 75, rss_mib: 15,
+  format_p50_ms: 10, format_warmup_ms: 30, refresh_ms: 75, rss_mib: 15,
 };
 
 export function median(values) {
@@ -155,24 +157,32 @@ function rounds(args) {
   return at === -1 ? 3 : Number(args[at + 1]);
 }
 
+/** Measure one build alone, judged against `limits` when given. */
+function alone(executable, count, limits, title) {
+  const reports = [];
+  for (let round = 0; round < count; round++) for (const name of cases) reports.push(measure(executable, name));
+  const summary = summarize(reports);
+  console.log(`PERF-SUMMARY ${JSON.stringify({ platform: process.platform, load: load(), rounds: count, summary })}`);
+  const over = limits ? overBudget(summary, limits) : [];
+  report(title, { median: summary }, over);
+  return over.length ? 1 : 0;
+}
+
 function main(args) {
   const [command, target] = args;
   const count = rounds(args);
-  if (command === "run" || command === "check") {
-    if (command === "check" && !(target in budgets)) throw new Error(`Usage: perf.mjs check ${Object.keys(budgets).join("|")}`);
-    if (command === "check" && !budgets[target]) throw new Error(`The ${target} budgets wait for a quiet measurement: run \`perf.mjs run\` and record it`);
-    const executable = build(root);
-    const reports = [];
-    for (let round = 0; round < count; round++) for (const name of cases) reports.push(measure(executable, name));
-    const summary = summarize(reports);
-    console.log(`PERF-SUMMARY ${JSON.stringify({ platform: process.platform, load: load(), rounds: count, summary })}`);
-    const over = command === "check" ? overBudget(summary, budgets[target]) : [];
-    report(command === "check" ? `Performance budgets (${target})` : "Performance", { median: summary }, over);
-    return over.length ? 1 : 0;
+  if (command === "run") return alone(build(root), count, null, "Performance");
+  if (command === "check") {
+    if (!(target in budgets)) throw new Error(`Usage: perf.mjs check ${Object.keys(budgets).join("|")}`);
+    if (!budgets[target]) throw new Error(`The ${target} budgets wait for a quiet measurement: run \`perf.mjs run\` and record it`);
+    return alone(build(root), count, budgets[target], `Performance budgets (${target})`);
   }
   if (command === "compare" && target) {
-    // Both sides run head's harness, so a change to the measurement itself
-    // never reads as a regression. A base it cannot build is skipped, visibly.
+    const short = target.slice(0, 12);
+    // Nothing the engine is built from changed: there is nothing to compare,
+    // and the shared budgets still apply.
+    const unchanged = spawnSync("git", ["diff", "--quiet", target, "--", "crates", "Cargo.toml", "Cargo.lock"], { cwd: root }).status === 0;
+    if (unchanged) return alone(build(root), count, budgets.shared, `Performance (the engine is unchanged from ${short})`);
     // Cargo gives both checkouts the same executable path in one target
     // directory: keep head's binary aside before the base build replaces it.
     const directory = mkdtempSync(join(tmpdir(), "ibis-perf-base-"));
@@ -181,41 +191,30 @@ function main(args) {
     const checkout = join(directory, "base");
     try {
       run("git", ["worktree", "add", "--detach", checkout, target], { cwd: root });
+      // Both sides run head's harness, so a change to the measurement itself
+      // never reads as a regression.
       copyFileSync(join(root, harness), join(checkout, harness));
-      let base;
-      try {
-        base = build(checkout);
-      } catch (error) {
-        const text = `### Performance against ${target.slice(0, 12)}\n\nSkipped: the base does not build with this harness (${error.message}).\n`;
-        process.stdout.write(text);
-        if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, text);
-        return 0;
-      }
-      // A change that leaves the engine byte for byte the same has nothing to
-      // compare; it still meets the shared budgets.
-      if (readFileSync(base).equals(readFileSync(head))) {
-        const reports = [];
-        for (let round = 0; round < count; round++) for (const name of cases) reports.push(measure(head, name));
-        const summary = summarize(reports);
-        const over = overBudget(summary, budgets.shared);
-        report(`Performance (the engine is unchanged from ${target.slice(0, 12)})`, { median: summary }, over);
-        return over.length ? 1 : 0;
-      }
-      // Interleaved ABBA rounds share whatever the machine is doing; the base
-      // skips the idle wait, which is judged absolutely below.
       const reports = { head: [], base: [] };
-      for (let round = 0; round < count; round++) {
-        for (const name of cases) {
-          const order = round % 2 ? ["base", "head"] : ["head", "base"];
-          for (const side of order) {
-            reports[side].push(measure(side === "head" ? head : base, name, side === "base" ? { IBIS_PERF_IDLE_SECONDS: "0" } : {}));
+      try {
+        const base = build(checkout);
+        // Interleaved ABBA rounds share whatever the machine is doing; the
+        // base skips the idle wait, which is judged absolutely.
+        for (let round = 0; round < count; round++) {
+          for (const name of cases) {
+            for (const side of round % 2 ? ["base", "head"] : ["head", "base"]) {
+              reports[side].push(measure(side === "head" ? head : base, name, side === "base" ? { IBIS_PERF_IDLE_SECONDS: "0" } : {}));
+            }
           }
         }
+      } catch (error) {
+        // A base that cannot build or run this harness (an engine interface
+        // changed) leaves head to the shared budgets, never to nothing.
+        return alone(head, count, budgets.shared, `Performance (not compared with ${short}: ${error.message})`);
       }
       const summaries = { base: summarize(reports.base), head: summarize(reports.head) };
       console.log(`PERF-SUMMARY ${JSON.stringify({ platform: process.platform, load: load(), rounds: count, ...summaries })}`);
       const problems = [...regressions(summaries.head, summaries.base), ...overBudget(summaries.head, budgets.shared)];
-      report(`Performance against ${target.slice(0, 12)}`, summaries, problems);
+      report(`Performance against ${short}`, summaries, problems);
       return problems.length ? 1 : 0;
     } finally {
       spawnSync("git", ["worktree", "remove", "--force", checkout], { cwd: root });
