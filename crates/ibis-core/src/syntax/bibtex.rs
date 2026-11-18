@@ -171,8 +171,7 @@ pub(super) fn write(out: &mut impl Write, key: &str, fields: &CitableFields) -> 
     ] {
         if let Some(date) = fields.get(csl) {
             if let Some(parts) = date.get("date-parts").and_then(Value::as_array).filter(|dates| {
-                // Validate before emitting the field: a malformed part must
-                // not turn into an empty date or a different partial date.
+                // Only emit a structured date if it has usable parts.
                 !dates.is_empty()
                     && dates.len() <= 2
                     && dates.iter().all(|date| {

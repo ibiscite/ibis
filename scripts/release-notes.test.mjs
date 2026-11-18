@@ -101,3 +101,28 @@ test("lists each change once, even when two commits or PR references repeat it",
 `;
   assert.equal(changes(repeated), ["**Bug Fixes**", "", "- Keep the picker open (#12)", "- Name the key"].join("\n"));
 });
+
+test("adds the contract changes after the styles, and nothing when there are none", () => {
+  const contract = "**Contract changes**\n\nBreaking:\n\n- `command writings removed`\n";
+  const notes = releaseNotes("v0.3.11", generated, "ibiscite/ibis", "**Citation styles**\n\n- None\n", contract);
+  assert.match(notes, /\*\*Citation styles\*\*\n\n- None\n\n\*\*Contract changes\*\*\n\nBreaking:\n\n- `command writings removed`\n\n<details>/);
+  assert.doesNotMatch(releaseNotes("v0.3.11", generated, "ibiscite/ibis", "", " \n"), /Contract changes/);
+});
+
+test("an oversized contract report cannot push release notes over GitHub's limit", () => {
+  const summary = "**Contract changes**\n\nCompared with ` v0.3.10 `. 1 added, 0 removed, 0 changed.";
+  const contract = `${summary}\n\n**Added**\n\n- \`${"x".repeat(125_000)}\`\n`;
+  const styles = "**Citation styles**\n\n- None\n";
+  const notes = releaseNotes("v0.3.11", generated, undefined, styles, contract);
+  assert.ok(notes.length <= 125_000);
+  assert.ok(notes.includes(summary));
+  assert.ok(notes.includes(styles.trim()));
+  assert.match(notes, /scripts\/contract-compat\.mjs --base refs\/tags\/<baseline>/);
+  assert.match(notes, /<summary>Verify a download<\/summary>/);
+
+  const styleLength = 125_000 - releaseNotes("v0.3.11", generated).length - 10;
+  const longStyles = "x".repeat(styleLength);
+  const almostFull = releaseNotes("v0.3.11", generated, undefined, longStyles);
+  assert.ok(almostFull.length <= 125_000);
+  assert.equal(releaseNotes("v0.3.11", generated, undefined, longStyles, contract), almostFull);
+});

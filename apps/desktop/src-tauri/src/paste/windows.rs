@@ -21,10 +21,7 @@ static KEYS: Mutex<PasteKeys> = Mutex::new(PasteKeys {
 /// does not answer in time has not proved that it is safe to paste.
 const ASK_LIMIT: Duration = Duration::from_millis(250);
 
-/// winsafe handles are Send but neither Clone nor Sync. Share an immutable
-/// HWND by borrowing it under a lock; no raw copying or unsafe is needed.
-#[derive(Clone)]
-pub(crate) struct Window(Arc<Mutex<w::HWND>>);
+pub(crate) use ibis_native::paste::windows::Window;
 
 /// The app in front, before the picker shows; its window is kept unless it is
 /// Ibis itself, so showing the picker again keeps the earlier one.

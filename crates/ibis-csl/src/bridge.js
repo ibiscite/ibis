@@ -121,6 +121,20 @@
       ])),
     }));
   };
+  // One request's records as the processor reads them, until they are closed.
+  // The conformance run reads the suite's records through this same path.
+  const items = Object.freeze({
+    open: (request) => {
+      const converted = processorItems(request);
+      if (converted) activeItems = new Map(converted.map((item) => [item.id, item]));
+      return converted;
+    },
+    close: () => {
+      activeItems.clear();
+      literalLessThan = null;
+    },
+  });
+  globalThis.__ibisItems = items;
   // Observe each final cite's newly emitted tree without enabling wrappers,
   // rendering it again or changing blobs. Ownership follows those exact roots
   // through the processor's normal serialization, including sorting/collapse.
@@ -269,9 +283,8 @@
   const oneLine = (text) => text.replace(/\s*\n\s*/g, " ").trim();
   const wrapRtf = (text, bibliography) => `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n${bibliography ? text.split("\n").join("\\par\n") : text}\n}`;
   globalThis.__ibisFormat = (request, source) => {
-    const converted = processorItems(request);
+    const converted = items.open(request);
     if (!converted) return JSON.stringify({ status: "refused" });
-    activeItems = new Map(converted.map((item) => [item.id, item]));
     const key = JSON.stringify([request.style, request.locale, request.keep_order, request.sentence_titles]);
     let engine = engines.get(key);
     if (!engine) {
@@ -423,9 +436,8 @@
     } finally {
       observation = null;
       // No cached engine keeps the last request's source records alive.
-      activeItems.clear();
+      items.close();
       engine.updateItems([]);
-      literalLessThan = null;
     }
     outputs.coverage = request.cites.map((_, index) => index);
     return JSON.stringify(outputs);

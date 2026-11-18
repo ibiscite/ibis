@@ -1,5 +1,6 @@
 //! Files made from the command line itself; `node scripts/gen.mjs` writes them.
 use clap::{Arg, Command};
+use serde_json::{Map, Value, json};
 use std::fmt::Write as _;
 
 /// Every command's options as a Markdown section for `docs/cli.md`.
@@ -63,6 +64,113 @@ fn spelling(arg: &Arg) -> String {
     }
 }
 
+/// The built parser, including options left out of the help reference.
+fn command_surface(command: &Command, inherited: &Map<String, Value>) -> Value {
+    let mut globals = Map::new();
+    let arguments = command
+        .get_arguments()
+        .filter_map(|arg| {
+            let id = arg.get_id().to_string();
+            let details = argument_surface(command, arg);
+            if arg.is_global_set() {
+                globals.insert(id.clone(), details.clone());
+                // Clap copies global arguments into descendants. Record each
+                // definition where it first applies or is overridden.
+                if inherited.get(&id) == Some(&details) {
+                    return None;
+                }
+            }
+            Some((id, details))
+        })
+        .collect::<Map<_, _>>();
+    let subcommands = command
+        .get_subcommands()
+        .map(|command| (command.get_name().to_owned(), command_surface(command, &globals)))
+        .collect::<Map<_, _>>();
+    let groups = command
+        .get_groups()
+        .map(|group| {
+            let mut group = group.clone();
+            (
+                group.get_id().to_string(),
+                json!({
+                    "arguments": group.get_args().map(ToString::to_string).collect::<Vec<_>>(),
+                    "required": group.is_required_set(),
+                    "multiple": group.is_multiple(),
+                }),
+            )
+        })
+        .collect::<Map<_, _>>();
+    json!({
+        "description": command.get_about().map(ToString::to_string),
+        "aliases": command.get_all_aliases().collect::<Vec<_>>(),
+        "shortFlag": command.get_short_flag(),
+        "longFlag": command.get_long_flag(),
+        "shortFlagAliases": command.get_all_short_flag_aliases().collect::<Vec<_>>(),
+        "longFlagAliases": command.get_all_long_flag_aliases().collect::<Vec<_>>(),
+        "hidden": command.is_hide_set(),
+        "subcommandRequired": command.is_subcommand_required_set(),
+        "argumentsRequiredElseHelp": command.is_arg_required_else_help_set(),
+        "arguments": arguments,
+        "groups": groups,
+        "subcommands": subcommands,
+    })
+}
+
+fn argument_surface(command: &Command, arg: &Arg) -> Value {
+    let arity = arg.get_num_args().map(|range| {
+        json!({ "min": range.min_values(), "max": (range.max_values() != usize::MAX).then_some(range.max_values()) })
+    });
+    let mut conflicts: Vec<_> = command
+        .get_arg_conflicts_with(arg)
+        .iter()
+        .map(|other| other.get_id().to_string())
+        .collect();
+    conflicts.sort();
+    conflicts.dedup();
+    let values = arg
+        .get_possible_values()
+        .into_iter()
+        .map(|value| {
+            (
+                value.get_name().to_owned(),
+                json!({
+                    "aliases": value.get_name_and_aliases().skip(1).collect::<Vec<_>>(),
+                    "help": value.get_help().map(ToString::to_string),
+                    "hidden": value.is_hide_set(),
+                }),
+            )
+        })
+        .collect::<Map<_, _>>();
+    json!({
+        "spelling": spelling(arg),
+        "help": arg.get_help().map(ToString::to_string),
+        "long": arg.get_long(),
+        "short": arg.get_short(),
+        "longAliases": arg.get_all_aliases().unwrap_or_default(),
+        "shortAliases": arg.get_all_short_aliases().unwrap_or_default(),
+        "valueNames": arg.get_value_names().unwrap_or_default().iter().map(ToString::to_string).collect::<Vec<_>>(),
+        "index": arg.get_index(),
+        "global": arg.is_global_set(),
+        "hidden": arg.is_hide_set(),
+        "required": arg.is_required_set(),
+        "action": format!("{:?}", arg.get_action()),
+        "arity": arity,
+        "default": arg.get_default_values().iter().map(|value| value.to_string_lossy()).collect::<Vec<_>>(),
+        "possibleValues": values,
+        "delimiter": arg.get_value_delimiter(),
+        "terminator": arg.get_value_terminator().map(ToString::to_string),
+        "conflicts": conflicts,
+        "requireEquals": arg.is_require_equals_set(),
+        "exclusive": arg.is_exclusive_set(),
+        "allowHyphenValues": arg.is_allow_hyphen_values_set(),
+        "allowNegativeNumbers": arg.is_allow_negative_numbers_set(),
+        "ignoreCase": arg.is_ignore_case_set(),
+        "trailingVarArg": arg.is_trailing_var_arg_set(),
+        "last": arg.is_last_set(),
+    })
+}
+
 #[test]
 #[ignore = "writes the generated files for gen.mjs"]
 fn write_generated() {
@@ -88,13 +196,11 @@ fn write_generated() {
         .into_iter()
         .map(|code| serde_json::json!({ "code": code, "exit": code.exit_code().value() }))
         .collect();
-    std::fs::write(
-        directory.join("cli-errors.json"),
-        serde_json::to_string(&errors).unwrap_or_else(|e| panic!("{e}")),
-    )
-    .unwrap_or_else(|e| panic!("{e}"));
     // Building fills in what each option takes, as `--help` shows it.
     let mut root = super::command();
     root.build();
+    let surface = json!({ "command": command_surface(&root, &Map::new()), "errors": errors });
+    let surface = serde_json::to_string_pretty(&surface).unwrap_or_else(|e| panic!("{e}")) + "\n";
+    std::fs::write(directory.join("cli-surface.json"), surface).unwrap_or_else(|e| panic!("{e}"));
     std::fs::write(directory.join("cli-options.md"), reference(&root)).unwrap_or_else(|e| panic!("{e}"));
 }

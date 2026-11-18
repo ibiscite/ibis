@@ -786,9 +786,10 @@ impl ZoteroReading {
         Ok(text)
     }
 
-    /// The attachment's stored file or an absolute linked file. Relative linked
-    /// files require Zotero's base-folder preference, which this source lacks.
-    fn file(&self, attachment: &SourceAttachment, outside_library: bool) -> Result<Option<PathBuf>, ZoteroError> {
+    /// The attachment's stored file or an absolute linked file, inside Zotero's
+    /// storage unless `outside_library`. Relative linked files require Zotero's
+    /// base-folder preference, which this source lacks.
+    pub fn file(&self, attachment: &SourceAttachment, outside_library: bool) -> Result<Option<PathBuf>, ZoteroError> {
         let path = if let Some(name) = attachment.location.strip_prefix("storage:") {
             let mut parts = Path::new(name).components();
             let (Some(std::path::Component::Normal(name)), None) = (parts.next(), parts.next()) else {

@@ -1,0 +1,39 @@
+name: Contract report
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contract-report-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  report:
+    name: Report contract changes
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - name: Compare with the latest published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GIT_TERMINAL_PROMPT: 0
+        run: |
+          if ! timeout --kill-after=2s 40s node scripts/contract-compat.mjs --published >> "$GITHUB_STEP_SUMMARY"; then
+            echo '::notice::Contract report skipped. See the job log for the reason.'
+            echo 'Contract report skipped. See the job log for the reason.' >> "$GITHUB_STEP_SUMMARY"
+          fi

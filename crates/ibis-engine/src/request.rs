@@ -189,6 +189,36 @@ pub struct FindInRequest {
     pub query: String,
 }
 
+/// A pack of references to hand to someone (#1953): a reading list page,
+/// a `.bib` file and, when asked, the references' PDFs. The pack metadata
+/// passes the share-safe filter. Attached PDFs are copied as they are,
+/// including anything inside them. Without a destination the answer previews
+/// the pack.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ShareRequest {
+    /// The references, in order; a repeated one is packed once.
+    #[schemars(length(min = 1, max = 1000))]
+    pub items: Vec<ItemSelector>,
+    /// The CSL style the reading list is written in; omitted, APA.
+    #[serde(default)]
+    pub style: Option<String>,
+    #[serde(default)]
+    pub output_locale: Option<String>,
+    /// Add each reference's PDFs, only those inside its library's folder or
+    /// Zotero's storage.
+    #[serde(default)]
+    pub pdfs: bool,
+    /// Write a plain folder rather than one zip file.
+    #[serde(default)]
+    pub folder: bool,
+    /// The zip file or folder to create, as an absolute path in a folder
+    /// that exists. Nothing already there is ever replaced. Omitted, nothing
+    /// is written.
+    #[serde(default)]
+    pub destination: Option<PathBuf>,
+}
+
 /// A page of the style list: the curated styles first, then the rest by id.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -248,6 +278,7 @@ pub fn request_schema(method: Method) -> Value {
         Method::Outline => schema_for!(OutlineRequest),
         Method::Read => schema_for!(ReadRequest),
         Method::FindIn => schema_for!(FindInRequest),
+        Method::Share => schema_for!(ShareRequest),
         Method::Styles => schema_for!(StylesRequest),
         Method::Outputs => schema_for!(OutputsRequest),
         Method::Schema => schema_for!(SchemaRequest),

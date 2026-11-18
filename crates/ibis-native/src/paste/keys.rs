@@ -3,7 +3,7 @@ use std::time::Duration;
 
 #[cfg(any(target_os = "windows", test))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum PasteEvent {
+pub enum PasteEvent {
     ControlDown,
     VDown,
     VUp,
@@ -14,23 +14,18 @@ pub(super) enum PasteEvent {
 /// instance under a mutex, serializing injections and retaining failed key-ups.
 #[cfg(any(target_os = "windows", test))]
 #[derive(Default)]
-pub(super) struct PasteKeys {
-    pub(super) control: bool,
-    pub(super) v: bool,
+pub struct PasteKeys {
+    pub control: bool,
+    pub v: bool,
 }
 
 #[cfg(any(target_os = "windows", test))]
 impl PasteKeys {
-    pub(super) fn pending(&self) -> bool {
+    pub fn pending(&self) -> bool {
         self.control || self.v
     }
 
-    pub(super) fn release(
-        &mut self,
-        send: impl Fn(&[PasteEvent]) -> u32,
-        wait: impl Fn(Duration),
-        warn: impl Fn(),
-    ) -> bool {
+    pub fn release(&mut self, send: impl Fn(&[PasteEvent]) -> u32, wait: impl Fn(Duration), warn: impl Fn()) -> bool {
         for attempt in 0..3 {
             if self.v && send(&[PasteEvent::VUp]) == 1 {
                 self.v = false;
@@ -49,7 +44,7 @@ impl PasteKeys {
         false
     }
 
-    pub(super) fn paste(
+    pub fn paste(
         &mut self,
         send: impl Fn(&[PasteEvent]) -> u32,
         wait: impl Fn(Duration),

@@ -30,10 +30,15 @@ cargo test -p ibis-desktop --locked TEST_FILTER
 pnpm -C apps/desktop exec vitest run FILE --maxWorkers=1
 node --test scripts/doc-links.test.mjs
 node scripts/gen.mjs --check
+node scripts/contract-compat.mjs --base refs/tags/vX.Y.Z
 ```
 
 Plain `cargo test` skips desktop Rust tests; `cargo test --workspace --locked`
-includes them. `gen.mjs --check` checks generated files without replacing them.
+includes them. `gen.mjs --check` checks generated files without replacing them;
+For an offline contract report, pass the tag of a published release already
+available locally. The separate `Contract report` workflow selects the latest
+published release through GitHub. It lists additions, removals and changes
+in its job summary ([decision 0028](decisions/0028-engine-first.md)).
 To update a reviewed Rust snapshot, use `INSTA_UPDATE=always cargo test -p CRATE`
 and inspect the `.snap` diff.
 

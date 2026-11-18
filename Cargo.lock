@@ -2208,6 +2208,7 @@ dependencies = [
  "ibis-core",
  "ibis-desktop-macros",
  "ibis-engine",
+ "ibis-native",
  "image",
  "objc2-app-kit",
  "objc2-core-foundation",
@@ -2257,6 +2258,7 @@ dependencies = [
  "indexmap 2.14.2",
  "libc",
  "notify",
+ "rustix",
  "schemars 1.2.3",
  "serde",
  "serde_json",
@@ -2266,6 +2268,7 @@ dependencies = [
  "toml 1.1.8+spec-1.1.0",
  "unic-langid",
  "unicode-normalization",
+ "zip",
 ]
 
 [[package]]
@@ -2278,6 +2281,25 @@ dependencies = [
  "libfuzzer-sys",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "ibis-native"
+version = "0.3.11"
+dependencies = [
+ "block2",
+ "ibis-core",
+ "ibis-engine",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-core-foundation",
+ "objc2-core-graphics",
+ "objc2-foundation",
+ "schemars 1.2.3",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "winsafe",
 ]
 
 [[package]]
@@ -5804,6 +5826,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "typed-path"
+version = "0.12.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "54ec2755506471f54baf5e4bb5499d8e510cc1caf271270e778a736bd2d7336c"
+
+[[package]]
 name = "typeid"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7090,6 +7118,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.9",
+]
+
+[[package]]
+name = "zip"
+version = "9.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e04976da629d3b04204ba8105b396a193af8ad2583b2c79bfb3ab8af580a11e"
+dependencies = [
+ "crc32fast",
+ "indexmap 2.14.2",
+ "memchr",
+ "nix",
+ "typed-path",
 ]
 
 [[package]]

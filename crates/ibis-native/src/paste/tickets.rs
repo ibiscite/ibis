@@ -13,7 +13,7 @@ use super::{
 
 /// Windows checks that can be exercised with fake HWNDs on every host.
 #[cfg(any(target_os = "windows", test))]
-pub(super) trait TicketDesk {
+pub trait TicketDesk {
     type Window;
     fn stamp(&self) -> SafetyStamp {
         SafetyStamp::now()
@@ -193,7 +193,7 @@ impl<D: TicketDesk> Desk for TicketDeskGuard<'_, D> {
 }
 
 #[cfg(any(target_os = "windows", test))]
-pub(super) fn deliver_ticket<D: TicketDesk>(
+pub fn deliver_ticket<D: TicketDesk>(
     desk: &D,
     ticket: &DeliveryTicket<D::Window>,
     _text: &str,

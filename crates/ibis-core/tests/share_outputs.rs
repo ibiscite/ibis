@@ -301,15 +301,22 @@ fn record_sharing_removes_device_paths_after_value_delimiters() {
 }
 
 #[test]
-fn malformed_dates_are_omitted_instead_of_writing_empty_or_partial_dates() {
-    for parts in [json!([[2020.5]]), json!([[2020, 3.5]]), json!([[]])] {
+fn bibtex_dates_keep_the_valid_prefix_without_writing_an_empty_date() {
+    for (parts, expected) in [
+        (json!([[2020.5]]), None),
+        (json!([[]]), None),
+        (json!([[2020, 3.5]]), Some("2020")),
+    ] {
         let case = case(
             "bibtex",
             json!({"type":"book","title":"Invented atlas","issued":{"date-parts":parts}}),
             Some("good"),
         );
         let text = syntax::cite(&case.library, &case.request).unwrap().text;
-        assert!(!text.contains("  date ="), "{text}");
+        let date = text
+            .lines()
+            .find_map(|line| line.strip_prefix("  date = {")?.strip_suffix("},"));
+        assert_eq!(date, expected, "{text}");
         assert!(text.contains("Invented atlas"));
     }
 }

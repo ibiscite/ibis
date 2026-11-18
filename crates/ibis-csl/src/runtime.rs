@@ -105,6 +105,16 @@ impl Session {
         })
     }
 }
+#[cfg(test)]
+impl Session {
+    /// A test harness's own trusted script, in this exact runtime and context.
+    #[cfg(test)]
+    pub(crate) fn with_context<R>(&self, control: &Control, run: impl FnOnce(rquickjs::Ctx<'_>) -> R) -> R {
+        install_interrupt(&self.runtime, control);
+        self.context.with(run)
+    }
+}
+
 /// Only fixed classes cross the JavaScript boundary. Exception content is discarded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum JsFailure {

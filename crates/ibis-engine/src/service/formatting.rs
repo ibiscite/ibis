@@ -2,6 +2,7 @@
 use super::{Engine, StylesResult, error};
 use crate::request::StylesRequest;
 use crate::sync::MutexExt;
+use ibis_core::citable::FieldProjection;
 use ibis_core::contract::*;
 use ibis_csl::{CancellationToken, FormatError};
 use std::{
@@ -124,13 +125,13 @@ impl Engine {
         request: &CitationRequest,
         cancel: &Cancellation,
         output: &ibis_csl::ResolvedOutput,
+        project_fields: FieldProjection,
     ) -> Result<CitationResult, EngineError> {
         cancel.check()?;
         let formatter = self.formatting.formatter()?;
-        let task = match formatter.submit_resolved(snapshot.clone(), request.clone(), output) {
-            Ok(task) => task,
-            Err(failure) => return Err(formatter_error(failure)),
-        };
+        let task = formatter
+            .submit_resolved(snapshot.clone(), request.clone(), output, project_fields)
+            .map_err(formatter_error)?;
         let _registration = cancel.track(task.cancellation())?;
         let result = task.wait();
         cancel.check()?;
