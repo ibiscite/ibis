@@ -110,9 +110,9 @@ reason-destination-exists = Something is already there with that name. Choose an
 reason-destination-unwritable = Ibis could not write there. Choose a folder that exists and that you can write to, with room left on its disk.
 
 ## The reading list page in a pack of references (#1953).
-share-page-title = Reading list
-share-page-import = References.bib loads these references into Zotero, EndNote or any other reference manager.
-share-page-pdfs = The PDFs folder holds the PDFs that came with them.
+app-share-page-title = Reading list
+app-share-page-import = References.bib loads these references into Zotero, EndNote or any other reference manager.
+app-share-page-pdfs = The PDFs folder holds the PDFs that came with them.
 
 ## What a citation could not say in full.
 

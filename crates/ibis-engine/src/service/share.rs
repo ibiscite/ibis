@@ -150,30 +150,34 @@ impl Engine {
                 _ => CitableFields::new(serde_json::Map::new()),
             })
             .collect();
-        let (page, listed_items) = reading_list(listed.result(), &fields, request.pdfs)?;
-        let bibtex = self
-            .prepare_citation(
-                &CitationRequest {
-                    strict: false,
-                    items,
-                    keep_order: true,
-                    output: crate::outputs::resolve(&OutputSpec::Preset { name: "bibtex".into() })?,
-                    form: CitationForm::Normal,
-                    input_language: None,
-                    output_locale: None,
-                },
-                cancel,
-            )?
-            .into_result();
-        let in_bibtex = rendered(&bibtex);
-        let mut files = vec![(READING_LIST.to_owned(), Content::Bytes(page.into_bytes()))];
-        if !in_bibtex.is_empty() && !bibtex.text.trim().is_empty() {
-            let mut text = bibtex.text;
-            if !text.ends_with('\n') {
-                text.push('\n');
-            }
-            files.push((BIBTEX_FILE.to_owned(), Content::Bytes(text.into_bytes())));
-        }
+        let bibtex = match self.prepare_citation(
+            &CitationRequest {
+                strict: false,
+                items,
+                keep_order: true,
+                output: crate::outputs::resolve(&OutputSpec::Preset { name: "bibtex".into() })?,
+                form: CitationForm::Normal,
+                input_language: None,
+                output_locale: None,
+            },
+            cancel,
+        ) {
+            Ok(bibtex) => Some(bibtex.into_result()),
+            // No reference has a usable key: the pack goes without a `.bib`.
+            Err(failure) if failure.citation_error.is_some() => None,
+            Err(failure) => return Err(failure),
+        };
+        let in_bibtex = bibtex.as_ref().map(rendered).unwrap_or_default();
+        let bibtex = bibtex
+            .map(|bibtex| bibtex.text)
+            .filter(|text| !in_bibtex.is_empty() && !text.trim().is_empty())
+            .map(|mut text| {
+                if !text.ends_with('\n') {
+                    text.push('\n');
+                }
+                text
+            });
+        let mut pdf_files = Vec::new();
         let mut without_pdf = Vec::new();
         if request.pdfs {
             let found = self.pdfs(&state, &picks, cancel)?;
@@ -185,10 +189,16 @@ impl Engine {
                 let stem = pdf_stem(fields);
                 for (path, bytes) in pdfs {
                     let name = unique(&stem, &mut taken);
-                    files.push((format!("{PDF_FOLDER}/{name}"), Content::Pdf(path, bytes)));
+                    pdf_files.push((format!("{PDF_FOLDER}/{name}"), Content::Pdf(path, bytes)));
                 }
             }
         }
+        let (page, listed_items) = reading_list(listed.result(), &fields, bibtex.is_some(), !pdf_files.is_empty())?;
+        let mut files = vec![(READING_LIST.to_owned(), Content::Bytes(page.into_bytes()))];
+        if let Some(text) = bibtex {
+            files.push((BIBTEX_FILE.to_owned(), Content::Bytes(text.into_bytes())));
+        }
+        files.extend(pdf_files);
         let place = |rendered: &[usize]| -> Vec<usize> {
             picks
                 .iter()
@@ -335,6 +345,7 @@ fn rendered(result: &CitationResult) -> Vec<usize> {
 fn reading_list(
     list: &CitationResult,
     fields: &[CitableFields],
+    bibtex: bool,
     pdfs: bool,
 ) -> Result<(String, Vec<usize>), EngineError> {
     let mut order: Vec<usize> = Vec::new();
@@ -356,7 +367,7 @@ fn reading_list(
         return Err(EngineError::citation(CitationError::UnsupportedForm));
     }
     let words = |id: &str| crate::catalogue::text(id, None, &[]).unwrap_or_default();
-    let title = words("share-page-title");
+    let title = words("app-share-page-title");
     let mut page = String::from("<!doctype html>\n<html");
     if let Some(language) = list
         .language
@@ -390,13 +401,19 @@ fn reading_list(
         page.push_str(entry.trim());
         page.push_str("</li>\n");
     }
-    page.push_str("</ol>\n<p>");
-    escape(&mut page, &words("share-page-import"));
-    if pdfs {
-        page.push(' ');
-        escape(&mut page, &words("share-page-pdfs"));
+    page.push_str("</ol>\n");
+    // Say only what the pack holds.
+    let notes: Vec<String> = [(bibtex, "app-share-page-import"), (pdfs, "app-share-page-pdfs")]
+        .into_iter()
+        .filter(|(held, _)| *held)
+        .map(|(_, id)| words(id))
+        .collect();
+    if !notes.is_empty() {
+        page.push_str("<p>");
+        escape(&mut page, &notes.join(" "));
+        page.push_str("</p>\n");
     }
-    page.push_str("</p>\n</main>\n</body>\n</html>\n");
+    page.push_str("</main>\n</body>\n</html>\n");
     Ok((page, order))
 }
 

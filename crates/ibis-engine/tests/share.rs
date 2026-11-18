@@ -43,7 +43,7 @@ struct Fixture {
 
 fn fixture() -> Fixture {
     let directory = tempfile::tempdir().unwrap();
-    let root = directory.path().canonicalize().unwrap();
+    let root = directory.path().to_path_buf();
     std::fs::create_dir_all(root.join("library/papers")).unwrap();
     std::fs::write(root.join("library/papers/aster.pdf"), b"%PDF-1.7\ninvented article\n").unwrap();
     std::fs::write(
@@ -239,4 +239,66 @@ fn a_linked_pdf_is_not_packed() {
     .unwrap();
     assert_eq!(result.without_pdf, [0]);
     assert!(result.files.iter().all(|file| !file.path.starts_with("PDFs/")));
+}
+
+#[test]
+fn a_reference_without_a_key_stays_in_the_list_and_out_of_the_bib() {
+    let directory = tempfile::tempdir().unwrap();
+    let library = directory.path().join("refs.json");
+    std::fs::write(
+        &library,
+        json!([
+            {"id": "one", "type": "book", "title": "Keyed lanterns", "citation-key": "vale2024keyed",
+             "author": [{"family": "Vale", "given": "Ada"}], "issued": {"date-parts": [[2024]]}},
+            {"id": "two", "type": "book", "title": "Keyless clouds",
+             "author": [{"family": "Fen", "given": "Ola"}], "issued": {"date-parts": [[2025]]}},
+        ])
+        .to_string(),
+    )
+    .unwrap();
+    let engine = Engine::new().unwrap().without_file_watches();
+    engine
+        .dispatch(
+            Method::Libraries,
+            &json!({"action":"open-file","path":library}),
+            &Cancellation::default(),
+        )
+        .unwrap();
+    let snapshot = engine.snapshot().unwrap();
+    let id = |title: &str| {
+        let object = snapshot
+            .objects()
+            .iter()
+            .find(|object| serde_json::to_string(&object.object).unwrap().contains(title))
+            .unwrap();
+        json!({"by": "id", "value": object.object.id()})
+    };
+    let page = |name: &str, items: Value| {
+        let destination = directory.path().join(name);
+        let result = share(
+            &engine,
+            json!({"items": items, "folder": true, "destination": destination}),
+        )
+        .unwrap();
+        let page = std::fs::read_to_string(destination.join("Reading list.html")).unwrap();
+        (result, page)
+    };
+    let (mixed, listed) = page("mixed", json!([id("Keyed lanterns"), id("Keyless clouds")]));
+    assert_eq!(mixed.not_in_bibtex, [1]);
+    assert!(mixed.files.iter().any(|file| file.path == "References.bib"));
+    assert!(
+        listed.contains("Keyless clouds") && listed.contains("References.bib"),
+        "{listed}"
+    );
+    let (keyless, listed) = page("keyless", json!([id("Keyless clouds")]));
+    assert_eq!(keyless.not_in_bibtex, [0]);
+    assert_eq!(
+        keyless.files.iter().map(|file| file.path.as_str()).collect::<Vec<_>>(),
+        ["Reading list.html"]
+    );
+    // The page names no file the pack does not hold.
+    assert!(
+        listed.contains("Keyless clouds") && !listed.contains("References.bib"),
+        "{listed}"
+    );
 }
