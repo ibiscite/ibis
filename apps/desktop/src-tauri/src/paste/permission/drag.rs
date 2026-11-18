@@ -127,7 +127,7 @@ mod tests {
             "file:///tmp/Invented%20Build/Ibis.app/",
         ] {
             let original = url(path);
-            let item = app_item(original.clone()).unwrap_or_else(|e| panic!("{e}"));
+            let item = app_item(original.clone()).unwrap_or_else(|e| panic!("{e:?}"));
             let dragged = item
                 .item()
                 .downcast::<NSURL>()
