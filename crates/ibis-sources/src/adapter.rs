@@ -62,6 +62,7 @@ pub struct SourceAdapter {
     name: String,
     program: PathBuf,
     arguments: Vec<OsString>,
+    deadline: Duration,
 }
 impl std::fmt::Debug for SourceAdapter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -99,6 +100,7 @@ impl SourceAdapter {
                 name: name.into(),
                 program: program.to_path_buf(),
                 arguments: vec![CHILD_ARGUMENT.into(), name.into()],
+                deadline: DEADLINE,
             });
         }
         let file = format!("ibis-source-{name}{}", std::env::consts::EXE_SUFFIX);
@@ -117,25 +119,22 @@ impl SourceAdapter {
             name: name.into(),
             program,
             arguments: vec![],
+            deadline: DEADLINE,
         }
+    }
+
+    /// The same adapter with a shorter deadline than [`DEADLINE`], for tests.
+    pub fn with_deadline(mut self, deadline: Duration) -> Self {
+        self.deadline = deadline.min(DEADLINE);
+        self
     }
 
     pub fn name(&self) -> &str {
         &self.name
     }
 
-    /// Read `library` once, within [`DEADLINE`].
+    /// Read `library` once, within the deadline.
     pub fn read(&self, library: Option<&str>, cancelled: &dyn Fn() -> bool) -> Result<AdapterLoad, AdapterError> {
-        self.read_within(library, DEADLINE, cancelled)
-    }
-
-    /// The same, with a shorter deadline, for tests.
-    pub fn read_within(
-        &self,
-        library: Option<&str>,
-        deadline: Duration,
-        cancelled: &dyn Fn() -> bool,
-    ) -> Result<AdapterLoad, AdapterError> {
         let request = serde_json::to_vec(&AdapterRequest {
             ibis: ADAPTER_PROTOCOL,
             method: AdapterMethod::Read,
@@ -147,7 +146,7 @@ impl SourceAdapter {
             &self.program,
             &arguments,
             request,
-            deadline.min(DEADLINE),
+            self.deadline,
             MAX_ANSWER_BYTES,
             cancelled,
         )
