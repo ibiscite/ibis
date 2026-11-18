@@ -46,11 +46,11 @@ pub use destination::{intended_paste, policy_decision};
 use input_fence::PostResult;
 #[cfg(any(target_os = "macos", test))]
 use input_fence::{InputPress, PendingPost, PostDesk, PostRequest, check_input_since, checked_post};
-#[cfg(any(target_os = "windows", test))]
+#[cfg(test)]
 use keys::{PasteEvent, PasteKeys};
-#[cfg(any(target_os = "windows", test))]
+#[cfg(test)]
 use queries::{PasswordQueries, QueryWorker, display_name};
-#[cfg(any(target_os = "windows", test))]
+#[cfg(test)]
 use tickets::{TicketDesk, deliver_ticket};
 
 #[derive(Clone, Default)]
@@ -157,8 +157,12 @@ impl SafetyStamp {
 }
 
 /// The app the picker was last opened from, with the source of the unique
-/// token each of Ibis's clipboard writes takes.
-pub struct LastTarget(Mutex<TargetState>, fn() -> Result<u32, String>);
+/// token each of Ibis's clipboard writes takes. Windows copies take theirs
+/// before writing, outside this owner.
+pub struct LastTarget(
+    Mutex<TargetState>,
+    #[cfg_attr(all(target_os = "windows", not(test)), allow(dead_code))] fn() -> Result<u32, String>,
+);
 
 #[cfg(test)]
 impl Default for LastTarget {
