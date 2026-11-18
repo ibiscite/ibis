@@ -72,7 +72,8 @@ test("what is copied and pasted is the same in every interface language", async 
     await act(async () => { fireEvent.keyDown(search, { key: "Enter" }); });
     const preview = harness.preview.pending.at(-1)!;
     // What Rust is asked to format never carries the interface language.
-    const asked = JSON.stringify(preview.args);
+    const { items, output } = preview.args;
+    const asked = JSON.stringify({ items, output });
     await act(async () => { preview.complete({ text: "(Aster, 2026, p. 12)", clipboardHtml: "<i>Aster</i> 2026" }); });
     await act(async () => { harness.copy.pending[0]!.complete(); });
     await act(async () => { harness.delivery.pending[0]!.complete(); });

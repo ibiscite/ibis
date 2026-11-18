@@ -152,7 +152,7 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
     >
       <span className="result-body" title={r.key || undefined}>
         <span className="result-line">
-          <strong className="result-title">{r.sample && <><bdi>{say("setup-sample-label")}</bdi>{" · "}</>}{r.title}</strong>
+          <strong className="result-title" dir="auto">{r.sample && <><bdi>{say("setup-sample-label")}</bdi>{" · "}</>}{r.title}</strong>
           {/* Spoken pauses: the parts are separate on screen but one accessible name. */}
           <span className="visually-hidden">, </span>
           {compact && r.first_author && <><span className="result-first-author" dir="auto">{abbreviatedAuthors(r) ? <>{r.first_author} {etAl()}</> : r.authors}</span><span className="visually-hidden">, </span></>}
@@ -169,7 +169,7 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
             {!compact && r.container && r.authors && <><span className="result-separator" aria-hidden="true">{" · "}</span>{pause}</>}
             {!compact && r.container && <span className="result-container" dir="auto">{r.container}</span>}
           </span>
-          {library && <>{pause}<span className="result-library">{library}</span></>}
+          {library && <>{pause}<span className="result-library" dir="auto">{library}</span></>}
         </span>
         {why && <>{pause}<span className="result-why">{say("picker-matched-in", { field: why })}</span></>}
         {/* Only some search words matched this row: it says so itself, not only its group. */}
