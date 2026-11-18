@@ -519,3 +519,11 @@ fn random_event_sequences_keep_every_invariant() {
         }
     }
 }
+
+#[test]
+fn only_windows_waits_out_a_blur_and_only_linux_holds_for_a_move() {
+    let policy = Policy::native();
+    assert_eq!(policy.hide_on_blur, !cfg!(debug_assertions));
+    assert_eq!(policy.blur_grace.is_some(), cfg!(target_os = "windows"));
+    assert_eq!(policy.move_hold.is_some(), cfg!(target_os = "linux"));
+}
