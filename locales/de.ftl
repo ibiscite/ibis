@@ -106,6 +106,11 @@ reason-attachment-outside-library = Diese Anhangsdatei liegt außerhalb des Bibl
 reason-no-such-pages = Dieser Anhang hat keinen Text für diese Seiten, oder es ist nicht bekannt, wo seine Seiten beginnen.
     .cli = Führen Sie ibis outline für seine Referenz aus, um zu sehen, welche Seiten Text haben, oder lesen Sie ohne --pages.
     .agent = Verwenden Sie die Seiten, die outline angibt, oder lesen Sie mit offset, wenn die Seiten nicht bekannt sind.
+reason-destination-exists = Dort gibt es schon etwas mit diesem Namen. Wählen Sie einen anderen Namen oder Ort; Ibis ersetzt es nie.
+reason-destination-unwritable = Ibis konnte dort nicht schreiben. Wählen Sie einen vorhandenen Ordner, in den Sie schreiben dürfen und auf dessen Laufwerk noch Platz ist.
+app-share-page-title = Leseliste
+app-share-page-import = References.bib lädt diese Referenzen in Zotero, EndNote oder jede andere Literaturverwaltung.
+app-share-page-pdfs = Der Ordner PDFs enthält die mitgelieferten PDFs.
 
 ## What a citation could not say in full.
 
@@ -1719,6 +1724,19 @@ cli-search-no-match-terminal = Keine passenden Referenzen. Versuchen Sie eine k�
 cli-search-no-match = Keine Referenzen gefunden.
 cli-libraries-empty = Keine Bibliotheken geladen. Öffnen Sie eine mit --file <library>.
 cli-styles-no-match = Kein Stil passt zu diesen Wörtern.
+cli-share-written =
+    { $count ->
+        [one] 1 Datei, { $size }, nach { $path } geschrieben.
+       *[other] { $count } Dateien, { $size }, nach { $path } geschrieben.
+    }
+cli-share-preview =
+    { $count ->
+        [one] 1 Datei, { $size }. Fügen Sie --to PATH hinzu, um das Paket zu schreiben.
+       *[other] { $count } Dateien, { $size }. Fügen Sie --to PATH hinzu, um das Paket zu schreiben.
+    }
+cli-share-not-in-list = die Leseliste lässt aus, was ihr Stil nicht schreiben kann: { $keys }
+cli-share-not-in-bibtex = References.bib lässt aus, was keinen brauchbaren Zitierschlüssel hat: { $keys }
+cli-share-without-pdf = für diese konnte kein PDF aus ihrer Bibliothek hinzugefügt werden: { $keys }
 cli-outline-none = Diese Referenz hat keine Anhänge.
 cli-outline-pages = Text, { $count } Seiten
 cli-outline-printed-pages = Text, { $count } Seiten mit gedruckten Seitenzahlen

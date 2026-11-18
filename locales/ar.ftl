@@ -106,6 +106,11 @@ reason-attachment-outside-library = ملف هذا المرفق خارج مجلد
 reason-no-such-pages = ليس في هذا المرفق نص لتلك الصفحات، أو أن بداية صفحاته غير معروفة.
     .cli = شغّل ibis outline على مرجعه لمعرفة الصفحات التي فيها نص، أو اقرأ دون --pages.
     .agent = استخدم الصفحات التي يعطيها outline، أو اقرأ باستخدام offset إذا كانت صفحاته غير معروفة.
+reason-destination-exists = يوجد هناك شيء بهذا الاسم. اختر اسمًا أو مكانًا آخر؛ لا يستبدله Ibis أبدًا.
+reason-destination-unwritable = تعذّر على Ibis الكتابة هناك. اختر مجلدًا موجودًا يمكنك الكتابة فيه، وعلى قرصه مساحة متبقية.
+app-share-page-title = قائمة القراءة
+app-share-page-import = يحمّل References.bib هذه المراجع إلى Zotero أو EndNote أو أي مدير مراجع آخر.
+app-share-page-pdfs = يضم مجلد PDFs ملفات PDF التي جاءت معها.
 
 ## What a citation could not say in full.
 
@@ -1799,6 +1804,27 @@ cli-search-no-match-terminal = لا توجد مراجع مطابقة. جرّب �
 cli-search-no-match = لم يُعثر على مراجع.
 cli-libraries-empty = لم تُحمَّل أي مكتبات. افتح واحدة باستخدام --file <library>.
 cli-styles-no-match = لا يوجد نمط يطابق هذه الكلمات.
+cli-share-written =
+    { $count ->
+        [zero] كُتب: لا ملفات، { $size }، إلى { $path }.
+        [one] كُتب: ملف واحد، { $size }، إلى { $path }.
+        [two] كُتب: ملفان، { $size }، إلى { $path }.
+        [few] كُتب: { $count } ملفات، { $size }، إلى { $path }.
+        [many] كُتب: { $count } ملفًا، { $size }، إلى { $path }.
+       *[other] كُتب: { $count } ملف، { $size }، إلى { $path }.
+    }
+cli-share-preview =
+    { $count ->
+        [zero] لا ملفات، { $size }. أضف --to PATH لكتابة الحزمة.
+        [one] ملف واحد، { $size }. أضف --to PATH لكتابة الحزمة.
+        [two] ملفان، { $size }. أضف --to PATH لكتابة الحزمة.
+        [few] { $count } ملفات، { $size }. أضف --to PATH لكتابة الحزمة.
+        [many] { $count } ملفًا، { $size }. أضف --to PATH لكتابة الحزمة.
+       *[other] { $count } ملف، { $size }. أضف --to PATH لكتابة الحزمة.
+    }
+cli-share-not-in-list = تُسقط قائمة القراءة ما لا يستطيع نمطها كتابته: { $keys }
+cli-share-not-in-bibtex = يُسقط References.bib ما ليس له مفتاح استشهاد صالح: { $keys }
+cli-share-without-pdf = تعذّرت إضافة ملف PDF من مكتبتها لـ: { $keys }
 cli-outline-none = لا يحتوي هذا المرجع على مرفقات.
 cli-outline-pages = نص، عدد الصفحات: { $count }
 cli-outline-printed-pages = نص، عدد الصفحات: { $count }، بأرقام صفحات مطبوعة
