@@ -2,6 +2,8 @@
 //! The pinned Zotero processor has no filesystem, network or native-input API.
 
 mod catalog;
+#[cfg(test)]
+mod conformance;
 mod input;
 mod locale;
 mod output;
