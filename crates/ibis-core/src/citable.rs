@@ -17,6 +17,9 @@ use text::Projection;
 pub use text::TextPart;
 pub use values::{DoiLink, ExportName, PublicUrl, Verbatim};
 
+/// Projects the bibliographic fields for a particular output.
+pub type FieldProjection = fn(Map<String, Value>) -> CitableFields;
+
 /// Bibliographic metadata allowed to leave a record. Construction applies the
 /// privacy filter once; callers can read or serialize it, never mutate it.
 #[derive(Debug, serde::Serialize)]
@@ -40,9 +43,15 @@ pub struct CitableFields {
 impl CitableFields {
     /// Apply note overrides, remove private fields and links, and reject embedded
     /// device references or malformed shapes hiding data inside a CSL variable.
-    pub fn new(mut fields: Map<String, Value>) -> Self {
+    pub fn new(fields: Map<String, Value>) -> Self {
+        Self::with_path_filter(fields, |_| false)
+    }
+
+    /// Apply an output's extra path check to decoded metadata as it is projected.
+    pub fn with_path_filter(mut fields: Map<String, Value>, is_private_path: fn(&str) -> bool) -> Self {
+        let project = |value: &mut Value, keep_markup| project_scalar(value, keep_markup, is_private_path);
         let source_id = fields.remove("id").and_then(|mut id| {
-            project_scalar(&mut id, false)?;
+            project(&mut id, false)?;
             id.as_str()
                 .filter(|id| !id.is_empty() && id.chars().all(|c| c.is_alphanumeric() || matches!(c, '-' | '_')))
                 .map(str::to_owned)
@@ -69,7 +78,7 @@ impl CitableFields {
         }
         let mut rich = BTreeMap::new();
         let mut export_names = BTreeMap::new();
-        let scalar = |value: &mut Value| project_scalar(value, false).is_some();
+        let scalar = |value: &mut Value| project(value, false).is_some();
         fields.retain(|name, value| {
             if !is_variable(name) {
                 false
@@ -109,7 +118,7 @@ impl CitableFields {
                 }
                 !parts.is_empty()
             } else if matches!(value, Value::String(_) | Value::Number(_)) {
-                let Some(projected) = project_scalar(value, true) else {
+                let Some(projected) = project(value, true) else {
                     return false;
                 };
                 if value.is_string() && RICH_TEXT.contains(&name.as_str()) {
@@ -121,7 +130,7 @@ impl CitableFields {
             }
         });
         let checked_url = |mut value: Value| {
-            project_scalar(&mut value, false)?;
+            project(&mut value, false)?;
             PublicUrl::new(value.as_str()?)
         };
         if let Some(url) = source_url
@@ -201,11 +210,13 @@ const RICH_TEXT: [&str; 6] = [
     "volume-title-short",
 ];
 
-fn project_scalar(value: &mut Value, keep_markup: bool) -> Option<Vec<TextPart>> {
+fn project_scalar(value: &mut Value, keep_markup: bool, is_private_path: fn(&str) -> bool) -> Option<Vec<TextPart>> {
     match value {
         Value::String(source) => {
             let projected = Projection::new(source);
-            if points_to_device(&projected.plain) || points_to_device(&projected.attributes) {
+            if points_to_device_with(&projected.plain, is_private_path)
+                || points_to_device_with(&projected.attributes, is_private_path)
+            {
                 return None;
             }
             *source = projected.plain;
@@ -403,12 +414,17 @@ fn is_variable(name: &str) -> bool {
 
 /// Inspect the fully decoded projection, refusing values beyond the decoding bound.
 pub(crate) fn points_to_device(value: &str) -> bool {
+    points_to_device_with(value, |_| false)
+}
+
+fn points_to_device_with(value: &str, is_private_path: fn(&str) -> bool) -> bool {
     let Some(value) = text::decode_for_privacy(value) else {
         return true;
     };
     let path = |word: &str| {
         let bytes = word.as_bytes();
         (word.starts_with('/') || word.starts_with("~/")) && word.len() > 2
+            || is_private_path(word)
             || word.starts_with("\\\\")
             || (bytes.len() > 3 && bytes[0].is_ascii_alphabetic() && matches!(&bytes[1..3], b":\\" | b":/"))
             || word

@@ -106,6 +106,13 @@ reason-attachment-outside-library = This attachment file is outside the libraryâ
 reason-no-such-pages = This attachment has no text for those pages, or where its pages begin is not known.
     .cli = Run ibis outline on its reference to see which pages have text, or read without --pages.
     .agent = Use the pages outline gives, or read with offset instead when its pages are not known.
+reason-destination-exists = Something is already there with that name. Choose another name or place; Ibis never replaces it.
+reason-destination-unwritable = Ibis could not write there. Choose a folder that exists and that you can write to, with room left on its disk.
+
+## The reading list page in a pack of references (#1953).
+app-share-page-title = Reading list
+app-share-page-import = References.bib loads these references into Zotero, EndNote or any other reference manager.
+app-share-page-pdfs = The PDFs folder holds the PDFs that came with them.
 
 ## What a citation could not say in full.
 
@@ -1657,6 +1664,19 @@ cli-search-no-match-terminal = No references matched. Try a shorter query.
 cli-search-no-match = No references found.
 cli-libraries-empty = No libraries loaded. Open one with --file <library>.
 cli-styles-no-match = No style matches those words.
+cli-share-written =
+    { $count ->
+        [one] Wrote 1 file, { $size }, to { $path }.
+       *[other] Wrote { $count } files, { $size }, to { $path }.
+    }
+cli-share-preview =
+    { $count ->
+        [one] 1 file, { $size }. Add --to PATH to write the pack.
+       *[other] { $count } files, { $size }. Add --to PATH to write the pack.
+    }
+cli-share-not-in-list = the reading list leaves out what its style cannot write: { $keys }
+cli-share-not-in-bibtex = References.bib leaves out what has no usable citation key: { $keys }
+cli-share-without-pdf = no PDF inside its library could be added for: { $keys }
 cli-outline-none = This reference has no attachments.
 cli-outline-pages = text, { $count } pages
 cli-outline-printed-pages = text, { $count } pages with printed page numbers

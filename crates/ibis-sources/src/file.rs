@@ -418,6 +418,27 @@ pub fn attachment_file(
     outside_library: bool,
     cancelled: &dyn Fn() -> bool,
 ) -> Result<Option<PathBuf>, SourceError> {
+    attachment_files(path, &[(parent, full)], outside_library, cancelled)?
+        .pop()
+        .into_iter()
+        .flatten()
+        .find(|(found, _)| found == key)
+        .map_or(Ok(None), |(_, file)| file)
+}
+
+/// [`attachment_file`] for every attachment of each of `parents`, reading
+/// the library file once: for each parent, in order, its attachments' keys
+/// and where each is, or why it is refused.
+#[allow(
+    clippy::type_complexity,
+    reason = "One answer per attachment, each with its own refusal."
+)]
+pub fn attachment_files(
+    path: &Path,
+    parents: &[(&ibis_core::contract::ItemRef, &Fingerprint)],
+    outside_library: bool,
+    cancelled: &dyn Fn() -> bool,
+) -> Result<Vec<Vec<(String, Result<Option<PathBuf>, SourceError>)>>, SourceError> {
     let observation = SourceSnapshot::read_with(path, || {}, &io::Scope::new(cancelled))?;
     let (source, library, _, parsed) = parse_format(
         &observation.source,
@@ -425,33 +446,39 @@ pub fn attachment_file(
         bibtex::Budget::for_input(observation.text.len()),
         None,
     )?;
-    if library != parent.library {
+    if parents.iter().any(|(parent, _)| library != parent.library) {
         return Err(SourceError::Changing);
     }
     let mut objects: Vec<_> = parsed.records.into_iter().map(LibraryObject::Record).collect();
     let references = attachments::append(parsed.attachments, &mut objects, &mut Vec::new());
-    let location = references
+    let located: Vec<_> = references
         .into_iter()
-        .find_map(|(index, location)| match &objects[index] {
-            LibraryObject::Attachment(attachment)
-                if attachment.id.key == key && attachment.parent.as_ref() == Some(parent) =>
-            {
-                Some(location)
+        .filter_map(|(index, location)| match &objects[index] {
+            LibraryObject::Attachment(attachment) => {
+                Some((attachment.parent.clone()?, attachment.id.key.clone(), location))
             }
             _ => None,
-        });
+        })
+        .collect();
     let snapshot = Snapshot::new(objects).map_err(|_| SourceError::InvalidData)?;
-    if snapshot
-        .get(parent)
-        .is_none_or(|current| current.fingerprints.full != *full)
-    {
+    if parents.iter().any(|(parent, full)| {
+        snapshot
+            .get(parent)
+            .is_none_or(|current| current.fingerprints.full != **full)
+    }) {
         return Err(SourceError::Changing);
     }
     let base = source.parent().ok_or(SourceError::Unavailable)?;
-    location
-        .map(|location| attachment_path(base, Path::new(&location), outside_library))
-        .transpose()
-        .map(Option::flatten)
+    Ok(parents
+        .iter()
+        .map(|(parent, _)| {
+            located
+                .iter()
+                .filter(|(owner, _, _)| owner == *parent)
+                .map(|(_, key, location)| (key.clone(), attachment_path(base, Path::new(location), outside_library)))
+                .collect()
+        })
+        .collect())
 }
 
 /// A file field's location beside its library. On Windows the canonical

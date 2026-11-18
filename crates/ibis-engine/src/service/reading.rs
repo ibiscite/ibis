@@ -154,7 +154,7 @@ pub struct Passage {
 }
 
 /// Where a reference's attachments come from.
-enum Owner {
+pub(super) enum Owner {
     Zotero(ibis_sources::zotero_source::ZoteroReading, u16),
     /// A library file, whose attachments are found from its folder.
     File(std::path::PathBuf),
@@ -304,7 +304,7 @@ impl Engine {
             && settings.attachment_text(library))
     }
 
-    fn owner(&self, state: &State, parent: &SnapshotObject) -> Result<Owner, EngineError> {
+    pub(super) fn owner(&self, state: &State, parent: &SnapshotObject) -> Result<Owner, EngineError> {
         let kind = state
             .libraries
             .get(&parent.object.id().library)
@@ -323,7 +323,7 @@ impl Engine {
         })
     }
 
-    fn listed(
+    pub(super) fn listed(
         &self,
         state: &State,
         owner: &Owner,

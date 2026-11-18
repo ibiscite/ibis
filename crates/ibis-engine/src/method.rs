@@ -17,13 +17,14 @@ pub enum Method {
     Read,
     #[serde(rename = "find-in")]
     FindIn,
+    Share,
     Styles,
     Outputs,
     Schema,
     Call,
 }
 impl Method {
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 15] = [
         Self::Libraries,
         Self::Search,
         Self::Show,
@@ -34,6 +35,7 @@ impl Method {
         Self::Outline,
         Self::Read,
         Self::FindIn,
+        Self::Share,
         Self::Styles,
         Self::Outputs,
         Self::Schema,
@@ -51,6 +53,7 @@ impl Method {
             Self::Outline => "outline",
             Self::Read => "read",
             Self::FindIn => "find-in",
+            Self::Share => "share",
             Self::Styles => "styles",
             Self::Outputs => "outputs",
             Self::Schema => "schema",

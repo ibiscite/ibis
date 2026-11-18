@@ -73,6 +73,20 @@ attachments" for that share; the default is metadata only. Attachments are
 private files, so this option gets its own design and an independent review
 before it ships.
 
+The first design, from the pack of references the maintainer shaped in
+[#1953](https://github.com/ibiscite/ibis/issues/1953) (2026-11-16): PDFs only,
+off until asked; each one inside its library's folder or Zotero's storage,
+never outside it whatever the attachment-text setting allows; opened by the
+PDF reader's opener (a regular, resident local file, never a link, at most
+256 MiB). Files refused during planning are left out and their references are
+listed. If a planned PDF changes while the pack is being written, the write
+fails before publication. Attached PDFs are copied as they are, including
+anything inside them. The pack filters named home-directory paths from the
+metadata used by the reading list, BibTeX and filenames. BibTeX preserves valid
+citation keys exactly as stored. The answer reports paths inside the pack.
+Nothing that exists is replaced. The independent review still comes
+before it ships.
+
 ## Agents and the command line
 
 MCP never gets lookup or write tools. Amended on 2026-11-15 with

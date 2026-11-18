@@ -11,6 +11,7 @@ mod runtime;
 mod service;
 
 pub use catalog::{Curated, LocaleEntry, Release, StyleEntry, StylePage, curated, files, styles};
+use ibis_core::citable::FieldProjection;
 use ibis_core::contract::{CitationForm, CitationRequest, CitationResult, OutputSpec, Snapshot};
 pub use service::{CancellationToken, FormatTask};
 use std::sync::Arc;
@@ -139,18 +140,21 @@ impl Formatter {
     pub fn check_output(output: &OutputSpec, locale: Option<&str>) -> Result<(), FormatError> {
         input::check_output(output, locale)
     }
-    /// An engine request has already resolved and validated output and locale.
+    /// Format an engine request with validated output and locale, projecting the
+    /// bibliographic metadata before it reaches the processor.
     pub fn submit_resolved(
         &self,
         snapshot: Arc<Snapshot>,
         request: CitationRequest,
         output: &ResolvedOutput,
+        project_fields: FieldProjection,
     ) -> Result<FormatTask, FormatError> {
         self.service.submit(input::prepare_resolved(
             &snapshot,
             &request,
             self.service.limits(),
             output,
+            project_fields,
         )?)
     }
     pub fn submit(&self, snapshot: Arc<Snapshot>, request: CitationRequest) -> Result<FormatTask, FormatError> {
