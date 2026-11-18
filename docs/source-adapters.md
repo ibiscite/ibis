@@ -96,7 +96,7 @@ type is skipped. Repeated ids make every record under them unavailable.
 Without `keys`, any `citation-key` is dropped and key outputs refuse with
 `missing-key`. Ibis's `revision` is its own fingerprint of what it read.
 
-An answer is bounded to 64 MiB and 200,000 records, and a read to two minutes;
+An answer is bounded to 64 MiB and 200,000 records. A read has two minutes.
 Ibis stops the Windows job or Unix process group when the adapter exits or
 the read is refused. The live EndNote reader streams XML chunks within
 the same byte and record limits. Libraries are read when opened and when

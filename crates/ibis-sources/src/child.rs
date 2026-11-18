@@ -17,7 +17,11 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant};
 
-const POLL: Duration = Duration::from_millis(5);
+#[cfg(unix)]
+use unix::pipe;
+
+const POLL_MS: u8 = 5;
+const POLL: Duration = Duration::from_millis(POLL_MS as u64);
 
 /// Fixed reasons, never the child's text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,7 +66,7 @@ fn exchange(
     own_group: bool,
 ) -> Result<Output, ChildError> {
     let deadline = Instant::now() + limits.time;
-    if cancelled() {
+    if cancelled() || limits.time.is_zero() {
         return Err(ChildError::TimedOut);
     }
     command.env_clear();
@@ -97,19 +101,20 @@ fn exchange(
     thread::scope(|scope| {
         let result = (|| {
             let input = tree.child.stdin.take().ok_or(ChildError::Unavailable)?;
-            let output = tree.child.stdout.take().ok_or(ChildError::Unavailable)?;
-            let diagnostics = tree.child.stderr.take();
+            let stdout = tree.child.stdout.take().ok_or(ChildError::Unavailable)?;
+            let mut input = pipe(input, stopped).map_err(|_| ChildError::Unavailable)?;
+            let stdout = pipe(stdout, stopped).map_err(|_| ChildError::Unavailable)?;
             let (send, events) = mpsc::channel();
-            worker(scope, &send, "stdin", || {
-                let result = pipe(input, &stop).and_then(|mut pipe| pipe.write_all(request));
-                Event::Input(result.map_err(|_| ChildError::Failed))
+            worker(scope, &send, "stdin", move || {
+                Event::Input(input.write_all(request).map_err(|_| ChildError::Failed))
             })?;
-            worker(scope, &send, "stdout", || {
-                Event::Output(read_pipe(output, limits.stdout, &stop))
+            worker(scope, &send, "stdout", move || {
+                Event::Output(read_bounded(stdout, limits.stdout))
             })?;
-            if let Some((pipe, limit)) = diagnostics.zip(limits.stderr) {
+            if let Some((stderr, limit)) = tree.child.stderr.take().zip(limits.stderr) {
+                let stderr = pipe(stderr, stopped).map_err(|_| ChildError::Unavailable)?;
                 worker(scope, &send, "stderr", move || {
-                    Event::Diagnostics(read_pipe(pipe, limit, stopped))
+                    Event::Diagnostics(read_bounded(stderr, limit))
                 })?;
             }
             drop(send);
@@ -183,11 +188,6 @@ enum Event {
     Diagnostics(Result<Vec<u8>, ChildError>),
 }
 
-fn read_pipe(stream: impl PipeStream, limit: u64, stop: &AtomicBool) -> Result<Vec<u8>, ChildError> {
-    let stream = pipe(stream, stop).map_err(|_| ChildError::Failed)?;
-    read_bounded(stream, limit)
-}
-
 /// Read at most one byte beyond the allowance, returning immediately at the limit
 /// violation even if the producer is still writing.
 pub(crate) fn read_bounded(stream: impl Read, limit: u64) -> Result<Vec<u8>, ChildError> {
@@ -202,69 +202,9 @@ pub(crate) fn read_bounded(stream: impl Read, limit: u64) -> Result<Vec<u8>, Chi
     Ok(bytes)
 }
 
-#[cfg(unix)]
-trait PipeStream: Read + std::os::fd::AsFd {}
-#[cfg(unix)]
-impl PipeStream for std::process::ChildStdout {}
-#[cfg(unix)]
-impl PipeStream for std::process::ChildStderr {}
-#[cfg(windows)]
-trait PipeStream: Read {}
-#[cfg(windows)]
-impl PipeStream for std::process::ChildStdout {}
-#[cfg(windows)]
-impl PipeStream for std::process::ChildStderr {}
-
 #[cfg(windows)]
 fn pipe<T>(stream: T, _stop: &AtomicBool) -> io::Result<T> {
     Ok(stream)
-}
-
-// Even if a Unix program hands off a pipe or leaves the group, a worker can
-// stop without waiting on that file descriptor. The child ends still block.
-#[cfg(unix)]
-struct Pipe<'a, T> {
-    stream: T,
-    stop: &'a AtomicBool,
-}
-
-#[cfg(unix)]
-fn pipe<T: std::os::fd::AsFd>(stream: T, stop: &AtomicBool) -> io::Result<Pipe<'_, T>> {
-    use nix::fcntl::{FcntlArg, OFlag, fcntl};
-    let flags = OFlag::from_bits_retain(fcntl(&stream, FcntlArg::F_GETFL)?);
-    fcntl(&stream, FcntlArg::F_SETFL(flags | OFlag::O_NONBLOCK))?;
-    Ok(Pipe { stream, stop })
-}
-
-#[cfg(unix)]
-impl<T> Pipe<'_, T> {
-    fn io(&mut self, mut operation: impl FnMut(&mut T) -> io::Result<usize>) -> io::Result<usize> {
-        while !self.stop.load(Ordering::Relaxed) {
-            match operation(&mut self.stream) {
-                Err(error) if error.kind() == io::ErrorKind::WouldBlock => thread::sleep(POLL),
-                result => return result,
-            }
-        }
-        Err(io::ErrorKind::TimedOut.into())
-    }
-}
-
-#[cfg(unix)]
-impl<T: Read> Read for Pipe<'_, T> {
-    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
-        self.io(|stream| stream.read(buffer))
-    }
-}
-
-#[cfg(unix)]
-impl<T: Write> Write for Pipe<'_, T> {
-    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
-        self.io(|stream| stream.write(buffer))
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        self.stream.flush()
-    }
 }
 
 struct Tree {

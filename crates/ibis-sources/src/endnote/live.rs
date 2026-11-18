@@ -86,6 +86,7 @@ const FIELD: &str = r#"on run argv
   set wantedPath to item 1 of argv
   set wantedNumber to item 2 of argv
   set fieldName to item 3 of argv
+  set maxRecords to item 4 of argv as integer
   tell application id "com.ThomsonResearchSoft.EndNote"
     with timeout of 30 seconds
       repeat with d in documents
@@ -95,7 +96,9 @@ const FIELD: &str = r#"on run argv
         end try
         considering case
           if p is wantedPath then
-            repeat with r in (retrieve "all" records in d)
+            set ids to retrieve "all" records in d
+            if (count of ids) > maxRecords then error "Record limit"
+            repeat with r in ids
               if (r as text) contains ("recNum=\"" & wantedNumber & "\"") then
                 set v to field fieldName of record (contents of r)
                 if v is missing value then set v to ""
@@ -219,7 +222,12 @@ fn decoded(chunks: &[&str], path: &str, count: usize, deadline: Instant) -> Resu
         };
     };
     let number = a.one("rec-number").ok_or(AdapterRefusal::Unreadable)?;
-    let answer = osascript(FIELD, &[path, number, label], deadline, super::MAX_FILE_BYTES)?;
+    let answer = osascript(
+        FIELD,
+        &[path, number, label, &crate::MAX_LIBRARY_RECORDS.to_string()],
+        deadline,
+        super::MAX_FILE_BYTES,
+    )?;
     let shown = answer
         .strip_prefix("ok\u{1f}")
         .ok_or(AdapterRefusal::Unreadable)?
