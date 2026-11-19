@@ -178,6 +178,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     else rows.copyChosen();
   };
   const practiceLine = practice ? practice.pasted === null ? say("picker-practice-offer") : say("picker-practice-pasted", { citation: practice.pasted }) : null;
+  const waitingForPractice = practice?.pasted === null && !zoomFeedback && !emptyFeedback.feedback;
   const nothingMatched = Boolean(query) && searchState.resultsQuery === queryKey && results.length === 0 && !error;
   const scope = useZoteroScope({
     library, libraryVersion, menuOpen: menus.libraryMenuOpen, nothingMatched,
@@ -251,7 +252,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
       onScrollCapture={pointer.resetHover}
       notice={[
         // What passes (Undo, a remark, an update) first: it goes by itself.
-        <PickerNotices key="passing" state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? practiceLine ?? shorthand.hint ?? (searchState.keptWords ? say("picker-kept-words") : null) ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && !practiceLine && !shorthand.hint && delights.passive} onRemarkPassed={() => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else if (practiceLine) delights.endPractice(); else if (shorthand.hint) shorthand.dismiss(); else delights.dismiss(); }} />,
+        <PickerNotices key="passing" state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? practiceLine ?? shorthand.hint ?? (searchState.keptWords ? say("picker-kept-words") : null) ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && !practiceLine && !shorthand.hint && delights.passive} onRemarkPassed={waitingForPractice ? undefined : () => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else if (practiceLine) delights.endPractice(); else if (shorthand.hint) shorthand.dismiss(); else delights.dismiss(); }} />,
         ...notices({ projectNotice: project.notice, editorNotice: editor.label, library, failures: { ...failures, recentHistory: recents.forgetFailed },
           error: error ?? destination.readProblem, copyError: inspector.panel ? null : copyError, copied, missing: ready ? list?.missing : undefined,
           confirmation: state.copyNotice, onDismissCopied: () => send({ type: "dismiss" }) }),

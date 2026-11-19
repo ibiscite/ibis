@@ -7,6 +7,7 @@ import type { SearchResult } from "../../api";
 import { choiceKey, idKey, type CitationReference } from "./choice";
 import { outputName } from "../../format/outputs";
 import { citationDelivery, enterLabel } from "./enterLabel";
+import { sameOutput } from "./destination";
 import { closestMatchWarnings } from "./rows";
 import type { usePickerSession } from "./usePickerSession";
 import type { usePickerMenus } from "./usePickerMenus";
@@ -111,7 +112,16 @@ export function usePickerActions({
     help: say("picker-reference-list-help", { count: destination.citedHere, app: destination.app ?? "" }),
     run: () => {
       leaveOverlays();
-      void api.sessionReferences().then((view) => send({ type: "reference-list", references: view.here }), () => undefined);
+      const requested = session.getSnapshot();
+      void api.sessionReferences().then((view) => {
+        // The reply can change the shelf and deliver, so it belongs to the invoking interaction.
+        const current = session.getSnapshot();
+        if (current.visibility !== requested.visibility || current.interaction !== requested.interaction
+          || current.nextCopy !== requested.nextCopy || current.pendingCopy !== requested.pendingCopy
+          || current.view?.format !== requested.view?.format
+          || !sameOutput(current.destination.output, requested.destination.output)) return;
+        send({ type: "reference-list", references: view.here });
+      }, () => undefined);
     },
   } : null;
   const toggleHighlighted = () => {

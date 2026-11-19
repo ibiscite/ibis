@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { App } from "./App";
 import type { SessionBibliography, SessionReferencesView } from "./api";
 import { backend, chooseFromMore, displayTree, lineReceipt, prepared, resetApp, result } from "./testing/app";
@@ -65,4 +65,22 @@ test("an app with citations from this run offers its reference list, pasted as i
   await waitFor(() => expect(delivered).toHaveLength(2));
   expect(delivered[1]?.forms).toEqual(["bibliography-only", "bibliography-only"]);
   expect((screen.getByLabelText("Search references") as HTMLInputElement).value).toBe("");
+});
+
+test("a delayed reference list cannot replace a newer search or deliver its entries", async () => {
+  let finishList: (value: SessionReferencesView) => void = () => {};
+  const calls = backend({
+    search: ({ query }) => query.text ? [morgan] : [{ ...taylor, recent: "cited" }],
+    destination: () => fixtureDestination({ app: "Example Writer", app_id: "example.writer", can_paste: true, cited_here: 1, format: formatAnswer("apa", "app") }),
+    session_references: () => new Promise<SessionReferencesView>((resolve) => { finishList = resolve; }),
+  });
+  render(<App />);
+  fireEvent.click(await screen.findByRole("option", { name: /Paste Reference List/ }));
+  expect(calls).toContain("session_references");
+  const search = screen.getByLabelText<HTMLInputElement>("Search references");
+  fireEvent.change(search, { target: { value: "noise" } });
+  await screen.findByText("Synthetic noise");
+  await act(async () => { finishList(list({ here: [taylor] })); });
+  expect(search.value).toBe("noise");
+  expect(calls).not.toContain("deliver_citation");
 });

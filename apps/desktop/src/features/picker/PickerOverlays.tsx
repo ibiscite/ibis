@@ -45,7 +45,7 @@ export function PickerNotices({ state, send, menus, updateProgress, remark, pass
   updateProgress: UpdateProgress | null;
   remark: string | null;
   passive: boolean;
-  onRemarkPassed: () => void;
+  onRemarkPassed?: () => void;
 }) {
   const { text } = useInterfaceMessages();
   const removed = state.removed?.reference;
