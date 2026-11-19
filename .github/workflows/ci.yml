@@ -487,7 +487,8 @@ jobs:
         run: bash scripts/ci-advisories.sh report
 
   release-checks:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: plan
+    if: needs.plan.outputs.workspace == 'true'
     name: Release checks (Linux)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -661,9 +662,9 @@ jobs:
 
       - name: Require every CI job to pass
         env:
-          RESULTS: ${{ needs.plan.result }} ${{ needs.interface.result }} ${{ needs.web.result }} ${{ needs.dependencies.result }} ${{ needs.release-checks.result }}
+          RESULTS: ${{ needs.plan.result }} ${{ needs.interface.result }} ${{ needs.web.result }} ${{ needs.dependencies.result }}
           # Each planned job as name:selected:result; see scripts/ci-result.sh.
-          SELECTED: rust:${{ needs.plan.outputs.rust }}:${{ needs.rust.result }} pictures:${{ needs.plan.outputs.pictures }}:${{ needs.pictures.result }} csl:${{ needs.plan.outputs.csl }}:${{ needs.conformance.result }}
+          SELECTED: rust:${{ needs.plan.outputs.rust }}:${{ needs.rust.result }} pictures:${{ needs.plan.outputs.pictures }}:${{ needs.pictures.result }} csl:${{ needs.plan.outputs.csl }}:${{ needs.conformance.result }} release:${{ needs.plan.outputs.workspace }}:${{ needs.release-checks.result }}
           WORKSPACE: ${{ needs.plan.outputs.workspace }}
           QUALIFICATION: ${{ needs.webkit.result }} ${{ needs.bibtex-fuzz.result }} ${{ needs.installed.result }}
           EVENT: ${{ github.event_name }}

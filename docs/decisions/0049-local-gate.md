@@ -6,7 +6,8 @@ depends on it, from `cargo metadata`), the interface or prose; any other path,
 anything generated or shared, and anything it cannot read selects the full
 suite. Main, schedules, manual runs, the `ci:full` label and the repository
 variable `CI_SELECTION=full` always run everything. **CI result** passes only
-if every selected job passed and every other planned job was skipped. This
+if every selected job passed and every other planned job was skipped. Release
+checks run on a PR only when a workspace crate changes, and always on main. This
 replaces the 2026-11-13 deletion of the path classifier.
 
 2026-11-18 (maintainer): every PR tests all three systems before it can merge,

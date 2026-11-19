@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const script = fileURLToPath(new URL("./ci-result.sh", import.meta.url));
 const check = (env, expected) => {
   const result = spawnSync("bash", [script], { encoding: "utf8", timeout: 5000,
-    env: { ...process.env, EVENT: "push", RESULTS: Array(5).fill("success").join(" "), SELECTED: "rust:true:success pictures:true:success csl:true:success", WORKSPACE: "true", QUALIFICATION: "skipped skipped skipped", ...env } });
+    env: { ...process.env, EVENT: "push", RESULTS: Array(4).fill("success").join(" "), SELECTED: "rust:true:success pictures:true:success csl:true:success release:true:success", WORKSPACE: "true", QUALIFICATION: "skipped skipped skipped", ...env } });
   assert.equal(result.status, expected, `${JSON.stringify(env)}: ${result.stdout}${result.stderr}`);
 };
 
@@ -16,8 +16,8 @@ test("every job must pass; daily qualification cannot skip or fail", () => {
     const env = { EVENT, QUALIFICATION: !daily ? "skipped skipped skipped" : "success success success" };
     check(env, 0);
     for (const state of ["failure", "cancelled", "skipped", "unavailable", ""]) {
-      for (let i = 0; i < 5; i++) {
-        const results = Array(5).fill("success"); results[i] = state;
+      for (let i = 0; i < 4; i++) {
+        const results = Array(4).fill("success"); results[i] = state;
         check({ ...env, RESULTS: results.join(" ") }, 1);
       }
       if (daily) for (let i = 0; i < 3; i++) {
@@ -27,30 +27,32 @@ test("every job must pass; daily qualification cannot skip or fail", () => {
     }
   }
   check({ EVENT: "issues" }, 1);
-  for (const count of [4, 6]) check({ RESULTS: Array(count).fill("success").join(" ") }, 1);
+  for (const count of [3, 5]) check({ RESULTS: Array(count).fill("success").join(" ") }, 1);
 });
 
 test("a planned job passes only as selected-and-succeeded or not-selected-and-skipped", () => {
   for (const rust of ["true:success", "false:skipped"]) for (const pictures of ["true:success", "false:skipped"]) {
-    check({ EVENT: "pull_request", SELECTED: `rust:${rust} pictures:${pictures} csl:false:skipped`, WORKSPACE: "false" }, 0);
+    check({ EVENT: "pull_request", SELECTED: `rust:${rust} pictures:${pictures} csl:false:skipped release:false:skipped`, WORKSPACE: "false" }, 0);
   }
   for (const bad of ["true:skipped", "true:cancelled", "true:failure", "false:success", "false:failure", ":skipped", ":success", "true:", "maybe:success"]) {
-    check({ EVENT: "pull_request", SELECTED: `rust:${bad} pictures:true:success csl:true:success` }, 1);
-    check({ EVENT: "pull_request", SELECTED: `rust:true:success pictures:${bad} csl:true:success` }, 1);
-    check({ EVENT: "pull_request", SELECTED: `rust:true:success pictures:false:skipped csl:${bad}` }, 1);
+    check({ EVENT: "pull_request", SELECTED: `rust:${bad} pictures:true:success csl:true:success release:true:success` }, 1);
+    check({ EVENT: "pull_request", SELECTED: `rust:true:success pictures:${bad} csl:true:success release:true:success` }, 1);
+    check({ EVENT: "pull_request", SELECTED: `rust:true:success pictures:false:skipped csl:${bad} release:true:success` }, 1);
+    check({ EVENT: "pull_request", SELECTED: `rust:true:success pictures:true:success csl:false:skipped release:${bad}` }, 1);
   }
-  for (const SELECTED of ["", "rust:true:success pictures:true:success", "rust:true:success pictures:true:success web:true:success", "pictures:true:success rust:true:success csl:true:success", "rust:true:success rust:true:success csl:true:success"]) {
+  for (const SELECTED of ["", "rust:true:success pictures:true:success", "rust:true:success pictures:true:success csl:true:success web:true:success", "pictures:true:success rust:true:success csl:true:success release:true:success", "rust:true:success rust:true:success csl:true:success release:true:success"]) {
     check({ EVENT: "pull_request", SELECTED }, 1);
   }
 });
 
 test("the workspace selection is required and every non-PR event selects the full suite", () => {
   for (const WORKSPACE of ["", "unknown"]) check({ EVENT: "pull_request", WORKSPACE }, 1);
-  check({ EVENT: "pull_request", SELECTED: "rust:false:skipped pictures:false:skipped csl:false:skipped" }, 1);
+  check({ EVENT: "pull_request", SELECTED: "rust:false:skipped pictures:false:skipped csl:false:skipped release:true:success" }, 1);
   for (const EVENT of ["push", "schedule", "workflow_dispatch"]) {
     const env = { EVENT, QUALIFICATION: EVENT === "push" ? "skipped skipped skipped" : "success success success" };
     check({ ...env, WORKSPACE: "false" }, 1);
-    check({ ...env, SELECTED: "rust:true:success pictures:false:skipped csl:true:success" }, 1);
-    check({ ...env, SELECTED: "rust:true:success pictures:true:success csl:false:skipped" }, 1);
+    check({ ...env, SELECTED: "rust:true:success pictures:false:skipped csl:true:success release:true:success" }, 1);
+    check({ ...env, SELECTED: "rust:true:success pictures:true:success csl:false:skipped release:true:success" }, 1);
+    check({ ...env, SELECTED: "rust:true:success pictures:true:success csl:true:success release:false:skipped" }, 1);
   }
 });
