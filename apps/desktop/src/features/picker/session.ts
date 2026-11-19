@@ -28,7 +28,8 @@ export type SessionView = {
   /** Recent Citations is on: only then is an app's last citation kept to change. */
   remembersLast: boolean;
 };
-type Pending = { keepOrder: boolean; choice: string | null; selection: SessionState["selected"]; queryKey: string;
+export type EnterAction = "deliver" | "practice";
+type Pending = { action: EnterAction; keepOrder: boolean; choice: string | null; selection: SessionState["selected"]; queryKey: string;
   format: OutputId | null; output: OutputToken; question?: "open" | "answered" };
 type Flight = { keepOrder: boolean; id: number; session: number; choice: string; format: OutputId; writingVersion?: string | null; warnings: CitedWarning[];
   shelf: CitationReference[]; replaces: readonly string[] | null; appId: string | null; writingId?: string | null;
@@ -92,7 +93,7 @@ export type SessionEvent =
   /** Move one reference a place along `shown`, the line's order, which a style may have sorted. */
   | { type: "move-reference"; reference: CitationReference; shown: readonly string[]; step: -1 | 1 }
   | { type: "reference"; reference: CitationReference; change: CitationDetailsChange; selectedOnly?: boolean; initialSelection?: readonly CitationReference[] }
-  | { type: "enter"; choice: string | null; output?: OutputToken }
+  | { type: "enter"; choice: string | null; action?: EnterAction; output?: OutputToken }
   | { type: "question"; format?: OutputId; output?: OutputToken; answer: "answered" | "cancel" }
   | { type: "hidden"; now: number }
   | { type: "preparing"; now: number; selection?: string | null }
@@ -102,6 +103,7 @@ export type SessionEvent =
   | (Completion & { type: "copy-failed"; message: string });
 export type SessionEffect =
   | (Completion & { type: "copy"; ticket: string; hash: string; replaces: readonly string[] | null; presentation: number; closestMatches: ClosestMatch[] })
+  | { type: "practice"; text: string }
   | { type: "consume"; output: OutputToken }
   | { type: "refresh" }
   | SearchEffect
@@ -166,11 +168,12 @@ function advance(s: SessionState, copies: boolean): [SessionState, SessionEffect
     return advance({ ...s, pendingCopy: { ...p, choice: key } }, copies);
   }
   if (!v.ready || v.saving) return [s, []];
-  if (!p.question && v.shouldAsk) return [{ ...s, pendingCopy: { ...p, question: "open" } }, []];
+  if (p.action === "deliver" && !p.question && v.shouldAsk) return [{ ...s, pendingCopy: { ...p, question: "open" } }, []];
   if (p.question === "open" || v.shown === null || !copies) return [s, []];
   s = { ...s, pendingCopy: null };
   if (!v.chosen.length || v.shown === "failed") return [s, []];
   if (v.shown === "stale" || !v.chosen[0]?.revision) return [{ ...s, copyError: say("picker-snapshot-changed") }, [{ type: "refresh" }]];
+  if (p.action === "practice") return [s, v.shown.text ? [{ type: "practice", text: v.shown.text }] : []];
   if (v.shown.project_refusal) return [{ ...s, copyError: v.shown.project_refusal }, []];
   if (!v.shown.fileTicket || !v.shown.fileHash) return [{ ...s, copyError: say("picker-preview-error") }, []];
   const owner = { context: s.context, session: s.session, visibility: s.visibility, output: v.output };
@@ -337,7 +340,7 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
     case "enter": {
       if (s.hiddenAt !== null || !s.view) return [s, []];
       const output = event.output ?? s.view.output;
-      const next = { ...s, pendingCopy: { keepOrder: s.keepOrder, choice: event.choice, selection: s.selected, queryKey: sessionQueryKey(s),
+      const next = { ...s, pendingCopy: { action: event.action ?? "deliver", keepOrder: s.keepOrder, choice: event.choice, selection: s.selected, queryKey: sessionQueryKey(s),
         format: s.view.ready && sameOutput(s.view.output, output) ? s.view.format : null, output } };
       return [next, []];
     }

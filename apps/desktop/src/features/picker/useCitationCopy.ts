@@ -1,12 +1,12 @@
 import type * as nativeApi from "../../api";
 import { useLayoutEffect, type RefObject } from "react";
-import type { SessionState } from "./session";
+import type { EnterAction, SessionState } from "./session";
 import type { createSessionController } from "./sessionController";
 import type { useDestination } from "./useDestination";
 import type { OutputId } from "../../format/outputs";
 import type { MenuCloseReason } from "./FormatMenu";
 
-export function useCitationCopy({ api, session, state, destination, formatButtonRef, refreshSnapshot, setFormatOpen }: {
+export function useCitationCopy({ api, session, state, destination, formatButtonRef, refreshSnapshot, setFormatOpen, practise }: {
   api: typeof nativeApi;
   session: ReturnType<typeof createSessionController>;
   state: SessionState;
@@ -14,16 +14,17 @@ export function useCitationCopy({ api, session, state, destination, formatButton
   formatButtonRef: RefObject<HTMLButtonElement | null>;
   refreshSnapshot: () => void;
   setFormatOpen: (open: boolean) => void;
+  practise: (text: string) => void;
 }) {
   const { deliverCitation } = api;
   const send = session.dispatch;
   useLayoutEffect(() => {
-    session.connect({ deliverCitation, refresh: refreshSnapshot });
+    session.connect({ deliverCitation, refresh: refreshSnapshot, practise });
   });
   // An Enter that must first ask opens the format menu once the screen shows its question.
   const asking = state.pendingCopy?.question === "open";
   useLayoutEffect(() => { if (asking) formatButtonRef.current?.click(); }, [asking, formatButtonRef]);
-  const requestCopy = (choice: string | null) => send({ type: "enter", choice, output: destination.copyToken() });
+  const requestCopy = (choice: string | null, action?: EnterAction) => send({ type: "enter", choice, action, output: destination.copyToken() });
   const chooseFormat = (choice: OutputId) => {
     destination.choose(choice);
     send({ type: "question", format: choice, output: destination.copyToken(), answer: destination.askPaste ? "cancel" : "answered" });

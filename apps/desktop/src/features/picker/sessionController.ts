@@ -10,6 +10,7 @@ import { initialSession, reduceSession, type SessionEffect, type SessionEvent } 
 export type SessionPorts = Pick<typeof nativeApi, "deliverCitation" | "search" | "previewFileCitation">
   & Partial<Pick<typeof nativeApi, "pickerDestination" | "rememberAppOutput" | "editWriting">> & {
   refresh: () => void;
+  practise?: (text: string) => void;
   report: (operation: Operation, failed: boolean) => void;
   /** Saves the default format, for a pick with no app to remember it for. */
   chooseDefault: (output: OutputId) => void | Promise<void>;
@@ -46,6 +47,7 @@ export function createSessionController(initial = initialSession()) {
         }
         break;
       }
+      case "practice": ports.practise?.(effect.text); break;
       case "consume": dispatch({ type: "consume-held", output: effect.output }); break;
       case "report": ports.report(effect.operation, effect.failed); break;
       case "choose-default": {

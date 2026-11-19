@@ -132,7 +132,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
   useUpdateOfferActivity(api, state, menus, choosingLibrary);
   const snapshotRevision = library?.revision;
   const { requestCopy, chooseFormat, onFormatOpenChange } = useCitationCopy({
-    api, session, state, destination, formatButtonRef, refreshSnapshot, setFormatOpen,
+    api, session, state, destination, formatButtonRef, refreshSnapshot, setFormatOpen, practise: delights.practise,
   });
   // What the session hears from preferences and the library's lifecycle.
   // biome-ignore lint/correctness/useExhaustiveDependencies: pickerInputs contains exactly these outside inputs.
@@ -170,13 +170,8 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     api, pickerSession, searchState, chosenKey: output.chosenKey, chosen, showCitations, format, snapshotRevision,
     focusHome, pointer, requestCopy, report,
   });
-  // The first screen's one practice paste (maintainer, 2026-11-18): Enter puts what it
-  // would paste into the practice line, inside Ibis, so it needs no permission and asks nothing.
   const practice = delights.practice;
-  const copyChosen = () => {
-    if (practice && practice.pasted === null && checkedPreview?.text && chosen.length > 0) delights.practise(checkedPreview.text);
-    else rows.copyChosen();
-  };
+  const copyChosen = () => rows.copyChosen(practice?.pasted === null ? "practice" : "deliver");
   const practiceLine = practice ? practice.pasted === null ? say("picker-practice-offer") : say("picker-practice-pasted", { citation: practice.pasted }) : null;
   const waitingForPractice = practice?.pasted === null && !zoomFeedback && !emptyFeedback.feedback;
   const nothingMatched = Boolean(query) && searchState.resultsQuery === queryKey && results.length === 0 && !error;
