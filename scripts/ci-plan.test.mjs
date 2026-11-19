@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { test } from "node:test";
-import { crates, decide, plan, wantsFull } from "./ci-plan.mjs";
+import { canvasInputs, crates, decide, plan, wantsFull } from "./ci-plan.mjs";
 
 // The workspace's shape: core at the bottom, the desktop app and its macros apart.
 const metadata = {
@@ -35,6 +36,23 @@ test("documentation alone runs no Rust or picture job", () => {
   assert.deepEqual(selected(["docs/testing.md", "README.md", "docs/design/picker.md", "docs/decisions/0049-local-gate.md"]), { rust: false, workspace: false, pictures: false, csl: false, full: false });
 });
 
+test("a PR must have portable filenames even for prose or a full plan", async () => {
+  for (const paths of [
+    ["docs/AUX.md"],
+    ["docs/COM¹/guide.md"],
+    ["docs/guide?.md"],
+    ["docs/guide. /index.md"],
+    ["docs/GIT~1/guide.md"],
+    ["docs/guide.md", "docs/Guide.md"],
+    ["docs/guide/intro.md", "docs/Guide/install.md"],
+  ]) {
+    const docs = { treePaths: () => paths, changedPaths: () => ["docs/testing.md"], workspaceCrates: () => workspace };
+    for (const SELECTION of ["", "full"]) {
+      await assert.rejects(decide({ EVENT: "pull_request", SELECTION }, docs), /Non-portable filename|Conflicting checkout paths/);
+    }
+  }
+});
+
 test("a desktop-only change keeps the app's tests on all three systems and skips the workspace tests", () => {
   assert.deepEqual(selected(["apps/desktop/src-tauri/src/copy.rs"]), { rust: true, workspace: false, pictures: false, csl: false, full: false });
   assert.deepEqual(selected(["apps/desktop/src-tauri/macros/src/lib.rs", "docs/design.md"]), { rust: true, workspace: false, pictures: false, csl: false, full: false });
@@ -60,6 +78,28 @@ test("an interface change runs the pictures and the app that embeds it", () => {
   assert.deepEqual(selected(["apps/desktop/src/App.tsx", "crates/ibis-engine/src/lib.rs"]), { rust: true, workspace: true, pictures: true, csl: false, full: false });
 });
 
+test("the canvas build can select pictures for a native asset it imports", async () => {
+  const icon = "apps/desktop/src-tauri/icons/128x128.png";
+  const read = {
+    treePaths: () => [icon],
+    changedPaths: () => [icon],
+    workspaceCrates: () => workspace,
+    pictureInputs: async (paths) => new Set(paths.filter((path) => path === icon)),
+  };
+  const { reason, ...jobs } = await decide({ EVENT: "pull_request" }, read);
+  assert.deepEqual(jobs, { rust: true, workspace: false, pictures: true, csl: false, full: false });
+  assert.match(reason, /is a canvas build input/);
+});
+
+// The web job installs Vite before running this suite. The native jobs do not.
+test("Vite reports the icon imported by the settings canvas", {
+  skip: !existsSync(new URL("../apps/desktop/node_modules/vite/package.json", import.meta.url)),
+}, async () => {
+  const icon = "apps/desktop/src-tauri/icons/128x128.png";
+  const paths = [icon, "apps/desktop/src-tauri/src/copy.rs", "docs/testing.md"];
+  assert.deepEqual(await canvasInputs(paths), new Set([icon]));
+});
+
 test("shared, generated, gate and unknown paths run the full suite", () => {
   for (const path of ["Cargo.lock", "Cargo.toml", "rust-toolchain.toml", ".cargo/config.toml", "crates/ibis-core/build.rs", "apps/desktop/src-tauri/build.rs",
     "crates/ibis-sources/Cargo.toml", "apps/desktop/src-tauri/Cargo.lock", "apps/desktop/rust-toolchain", "apps/desktop/.cargo/config.toml", "apps/desktop/src-tauri",
@@ -76,9 +116,9 @@ test("shared, generated, gate and unknown paths run the full suite", () => {
   for (const paths of [[], undefined, [""], [7]]) assert.equal(plan(paths, workspace).full, true, JSON.stringify(paths));
 });
 
-test("non-PR events always select every job", () => {
+test("non-PR events always select every job", async () => {
   for (const EVENT of ["push", "schedule", "workflow_dispatch"]) {
-    const { reason, ...jobs } = decide({ EVENT }, {});
+    const { reason, ...jobs } = await decide({ EVENT }, {});
     assert.deepEqual(jobs, full, EVENT);
   }
 });
@@ -91,17 +131,26 @@ test("main, schedules, manual runs, the label and the rollback variable run ever
   assert.equal(wantsFull({ event: "pull_request", labels: ["documentation"], selection: "" }), "");
 });
 
-test("anything unreadable widens to the full suite instead of failing", () => {
-  const docs = { changedPaths: () => ["docs/testing.md"], workspaceCrates: () => workspace };
-  assert.equal(decide({ EVENT: "pull_request", LABELS: "[]" }, docs).full, false);
-  assert.equal(decide({ EVENT: "pull_request", LABELS: "not json" }, docs).full, true);
+test("unreadable selection inputs widen to the full suite", async () => {
+  const docs = {
+    treePaths: () => ["docs/testing.md"],
+    changedPaths: () => ["docs/testing.md"],
+    workspaceCrates: () => workspace,
+    pictureInputs: async () => new Set(),
+  };
+  assert.equal((await decide({ EVENT: "pull_request", LABELS: "[]" }, docs)).full, false);
+  assert.equal((await decide({ EVENT: "pull_request", LABELS: "not json" }, docs)).full, true);
   for (const LABELS of ["null", "{}", '"ci:full"', "[null]"]) {
-    assert.deepEqual({ ...decide({ EVENT: "pull_request", LABELS }, docs), reason: undefined }, { ...full, reason: undefined });
+    assert.deepEqual({ ...(await decide({ EVENT: "pull_request", LABELS }, docs)), reason: undefined }, { ...full, reason: undefined });
   }
-  assert.equal(decide({ EVENT: "pull_request", LABELS: '["ci:full"]' }, docs).full, true);
-  assert.equal(decide({ EVENT: "push" }, docs).full, true);
-  for (const broken of [{ ...docs, changedPaths: () => { throw new Error("git diff failed"); } }, { ...docs, workspaceCrates: () => { throw new Error("cargo metadata failed"); } }]) {
-    const result = decide({ EVENT: "pull_request", LABELS: "[]" }, broken);
+  assert.equal((await decide({ EVENT: "pull_request", LABELS: '["ci:full"]' }, docs)).full, true);
+  assert.equal((await decide({ EVENT: "push" }, docs)).full, true);
+  for (const broken of [
+    { ...docs, changedPaths: () => { throw new Error("git diff failed"); } },
+    { ...docs, workspaceCrates: () => { throw new Error("cargo metadata failed"); } },
+    { ...docs, pictureInputs: async () => { throw new Error("canvas build failed"); } },
+  ]) {
+    const result = await decide({ EVENT: "pull_request", LABELS: "[]" }, broken);
     assert.deepEqual({ ...result, reason: undefined }, { ...full, reason: undefined });
   }
 });
