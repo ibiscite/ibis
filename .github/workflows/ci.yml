@@ -65,6 +65,7 @@ jobs:
           EVENT: ${{ github.event_name }}
           LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
           SELECTION: ${{ vars.CI_SELECTION }}
+          MACOS_RUNNER_OVERRIDE: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON(vars.RUNNERS || '{}')['macos-15'] && 'true' || '' }}
           # The runner's own stable Cargo reads the workspace without installing the pinned toolchain.
           RUSTUP_TOOLCHAIN: stable
         run: node scripts/ci-plan.mjs

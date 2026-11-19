@@ -84,6 +84,8 @@ class CiResultTest(unittest.TestCase):
         self.assertEqual(jobs["pictures"]["if"], "needs.plan.outputs.pictures == 'true'")
         self.assertEqual(jobs["conformance"]["if"], "needs.plan.outputs.csl == 'true'")
         self.assertEqual(jobs["rust"]["strategy"]["matrix"]["os"], ["ubuntu-24.04", "macos-15", "windows-2025"])
+        native_checkout = next(step for step in jobs["rust"]["steps"] if "actions/checkout@" in step.get("uses", ""))
+        self.assertNotIn("path", native_checkout["with"])  # The path guard uses the hosted workspace roots.
         self.assertEqual(jobs["rust"]["needs"], ["plan", "interface"])
         self.assertEqual(jobs["pictures"]["needs"], "plan")
         self.assertEqual(jobs["conformance"]["needs"], "plan")
@@ -106,6 +108,7 @@ class CiResultTest(unittest.TestCase):
         self.assertEqual(choose["env"]["EVENT"], "${{ github.event_name }}")
         self.assertEqual(choose["env"]["LABELS"], "${{ toJSON(github.event.pull_request.labels.*.name) }}")
         self.assertEqual(choose["env"]["SELECTION"], "${{ vars.CI_SELECTION }}")
+        self.assertEqual(choose["env"]["MACOS_RUNNER_OVERRIDE"], "${{ github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON(vars.RUNNERS || '{}')['macos-15'] && 'true' || '' }}")
         self.assertFalse(choose.get("continue-on-error", False))
         result = next(step for step in jobs["result"]["steps"] if step.get("run") == "scripts/ci-result.sh")
         self.assertEqual(result["env"]["SELECTED"], "rust:${{ needs.plan.outputs.rust }}:${{ needs.rust.result }} pictures:${{ needs.plan.outputs.pictures }}:${{ needs.pictures.result }} csl:${{ needs.plan.outputs.csl }}:${{ needs.conformance.result }}")

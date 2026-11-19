@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { test } from "node:test";
-import { canvasInputs, crates, decide, plan, wantsFull } from "./ci-plan.mjs";
+import { canvasInputs, checkPortablePaths, crates, decide, plan, wantsFull } from "./ci-plan.mjs";
 
 // The workspace's shape: core at the bottom, the desktop app and its macros apart.
 const metadata = {
@@ -36,21 +36,91 @@ test("documentation alone runs no Rust or picture job", () => {
   assert.deepEqual(selected(["docs/testing.md", "README.md", "docs/design/picker.md", "docs/decisions/0049-local-gate.md"]), { rust: false, workspace: false, pictures: false, csl: false, full: false });
 });
 
-test("a PR must have portable filenames even for prose or a full plan", async () => {
+test("Windows rejects reserved names, forbidden characters and trailing dots or spaces", () => {
+  for (const path of [
+    "docs/aux.md", "docs/CON .notes.md", "docs/PrN.md", "docs/nul.md", "docs/COM¹/guide.md",
+    "docs/LPT9/guide.md", "docs/CONIN$.md", "docs/CONOUT$.md", "docs/GIT~1/guide.md",
+    "docs/guide./index.md", "docs/guide /index.md",
+    ...[..."<>:\"\\|?*", "\u0001", "\u001f"].map((character) => `docs/guide${character}.md`),
+  ]) {
+    assert.throws(() => checkPortablePaths([path], "windows-2025"), /Non-portable filename/, path);
+  }
+  checkPortablePaths(["docs/auxiliary.md", "docs/COM10/guide.md", "docs/guide .md"], "windows-2025");
+});
+
+test("case-insensitive checkouts reject file, directory and file-directory collisions", () => {
   for (const paths of [
-    ["docs/AUX.md"],
-    ["docs/COM¹/guide.md"],
-    ["docs/guide?.md"],
-    ["docs/guide. /index.md"],
-    ["docs/GIT~1/guide.md"],
     ["docs/guide.md", "docs/Guide.md"],
     ["docs/guide/intro.md", "docs/Guide/install.md"],
+    ["docs/guide.md", "docs/Guide.md/index.md"],
   ]) {
-    const docs = { treePaths: () => paths, changedPaths: () => ["docs/testing.md"], workspaceCrates: () => workspace };
-    for (const SELECTION of ["", "full"]) {
-      await assert.rejects(decide({ EVENT: "pull_request", SELECTION }, docs), /Non-portable filename|Conflicting checkout paths/);
+    checkPortablePaths(paths, "ubuntu-24.04");
+    for (const system of ["macos-15", "windows-2025"]) {
+      assert.throws(() => checkPortablePaths(paths, system), /Conflicting checkout paths/);
     }
   }
+});
+
+test("macOS rejects canonical name collisions and Git directory aliases", () => {
+  assert.throws(() => checkPortablePaths(["docs/café.md", "docs/cafe\u0301.md"], "macos-15"), /Conflicting checkout paths/);
+  assert.throws(() => checkPortablePaths(["docs/.g\u200dit/guide.md"], "macos-15"), /Non-portable filename/);
+});
+
+test("checkout components have a 255-byte limit on Unix and a 255-code-unit limit on Windows", () => {
+  for (const system of ["ubuntu-24.04", "macos-15"]) {
+    checkPortablePaths([`docs/${"é".repeat(126)}.md`], system);
+    assert.throws(() => checkPortablePaths([`docs/${"é".repeat(126)}x.md`], system), /component exceeds 255 UTF-8 bytes/);
+    assert.throws(() => checkPortablePaths([`docs/${"é".repeat(128)}/guide.md`], system), /component exceeds 255 UTF-8 bytes/);
+  }
+  assert.throws(() => checkPortablePaths([`docs/${"😀".repeat(127)}.md`], "windows-2025"), /component exceeds 255 UTF-16 code units/);
+});
+
+// Build a Markdown path of the given ASCII length with room in each component.
+function markdownPath(length) {
+  const prefix = `docs/${`${"a".repeat(199)}/`.repeat(Math.floor((length - 9) / 200))}`;
+  return `${prefix}${"b".repeat(length - prefix.length - 3)}.md`;
+}
+
+test("Unix path limits count UTF-8 bytes including the hosted checkout root", () => {
+  for (const [system, max, root] of [
+    ["ubuntu-24.04", 4095, "/home/runner/work/ibis/ibis/"],
+    ["macos-15", 1023, "/Users/runner/work/ibis/ibis/"],
+  ]) {
+    const atLimit = markdownPath(max - root.length);
+    checkPortablePaths([atLimit], system);
+    assert.throws(() => checkPortablePaths([atLimit.replace("b", "é")], system), new RegExp(`checkout path exceeds ${max} UTF-8 bytes`));
+  }
+});
+
+test("Windows file and directory limits count UTF-16 code units including the hosted checkout root", () => {
+  const root = "D:\\a\\ibis\\ibis\\";
+  const file = markdownPath(259 - root.length);
+  checkPortablePaths([file], "windows-2025");
+  assert.throws(() => checkPortablePaths([file.replace("b", "😀")], "windows-2025"), /checkout path exceeds 259 UTF-16 code units/);
+  const directory = "a".repeat(247 - root.length - "docs/".length);
+  checkPortablePaths([`docs/${directory}/guide.md`], "windows-2025");
+  assert.throws(() => checkPortablePaths([`docs/${directory}a/guide.md`], "windows-2025"), /checkout directory exceeds 247 UTF-16 code units/);
+});
+
+test("a PR must have portable filenames even for prose or a full plan", async () => {
+  const longProsePath = `docs/${`${"a".repeat(140)}/`.repeat(8)}guide.md`;
+  for (const [paths, error] of [
+    [["docs/AUX.md"], /Non-portable filename/],
+    [["docs/guide.md", "docs/Guide.md"], /Conflicting checkout paths/],
+    [[longProsePath], /macos-15 checkout path exceeds 1023 UTF-8 bytes/],
+  ]) {
+    const docs = { treePaths: () => paths, changedPaths: () => paths, workspaceCrates: () => workspace, pictureInputs: async () => new Set() };
+    for (const SELECTION of ["", "full"]) {
+      await assert.rejects(decide({ EVENT: "pull_request", SELECTION }, docs), error);
+    }
+  }
+});
+
+test("a custom macOS runner always gets a real checkout", async () => {
+  const read = { treePaths: () => ["docs/testing.md"] };
+  const { reason, ...jobs } = await decide({ EVENT: "pull_request", MACOS_RUNNER_OVERRIDE: "true" }, read);
+  assert.deepEqual(jobs, full);
+  assert.match(reason, /custom checkout root/);
 });
 
 test("a desktop-only change keeps the app's tests on all three systems and skips the workspace tests", () => {

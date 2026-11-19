@@ -26,27 +26,71 @@ const INTERFACE = /^apps\/desktop\/(?!src-tauri(?:\/|$))/;
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const DESKTOP = join(ROOT, "apps", "desktop");
 
-// Win32 rejects device names even with an extension. Check each directory
-// component too, including collisions on case-insensitive filesystems.
-const WINDOWS_DEVICE = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³]|conin\$|conout\$)$/i;
-const WINDOWS_FORBIDDEN = /[<>:"\\|?*\u0000-\u001f]|[ .]$/u;
-const NTFS_GIT_DIR = /^(\.git|git~1)$/i;
+// The default actions/checkout paths on the hosted CI matrix. Include the
+// trailing separator. Path limits are exclusive (the terminating NUL must fit).
+const CHECKOUT_LIMITS = {
+  "ubuntu-24.04": {
+    root: "/home/runner/work/ibis/ibis/",
+    measure: Buffer.byteLength,
+    unit: "UTF-8 bytes",
+    componentMax: 255,
+    pathLimit: 4096,
+  },
+  "macos-15": {
+    root: "/Users/runner/work/ibis/ibis/",
+    measure: Buffer.byteLength,
+    unit: "UTF-8 bytes",
+    componentMax: 255,
+    pathLimit: 1024,
+    // APFS compares canonical names. Include ignored characters to catch Git's HFS aliases.
+    fold: (name) => name.normalize("NFD").replace(/\p{Default_Ignorable_Code_Point}/gu, "").toLowerCase().toUpperCase().normalize("NFD"),
+    reserved: /^\.GIT$/,
+  },
+  "windows-2025": {
+    root: "D:\\a\\ibis\\ibis\\",
+    measure: (name) => name.length,
+    unit: "UTF-16 code units",
+    componentMax: 255,
+    pathLimit: 260,
+    // Git for Windows uses 248 for mkdir without core.longpaths.
+    directoryLimit: 248,
+    fold: (name) => name.toLowerCase().toUpperCase(),
+    forbidden: /[<>:"\\|?*\u0000-\u001f]|[ .]$/u,
+    // Win32 rejects device names even with an extension.
+    reserved: /^(?:GIT~1$|(?:CON|PRN|AUX|NUL|COM[0-9¹²³]|LPT[0-9¹²³]|CONIN\$|CONOUT\$) *(?:\.|$))/u,
+  },
+};
 
-function checkPortablePaths(paths) {
+export function checkPortablePaths(paths, system) {
+  const { root, measure, unit, componentMax, pathLimit, directoryLimit, fold, forbidden, reserved } = CHECKOUT_LIMITS[system];
+  const rootLength = measure(root);
   const seen = new Map();
   for (const path of paths) {
+    const parts = path.split("/");
     let prefix = "";
-    for (const part of path.split("/")) {
-      if (WINDOWS_FORBIDDEN.test(part) || WINDOWS_DEVICE.test(part.split(".")[0].trimEnd()) || NTFS_GIT_DIR.test(part)) {
-        throw new Error(`Non-portable filename: ${JSON.stringify(path)}`);
+    let canonical = "";
+    for (const [index, part] of parts.entries()) {
+      const name = fold ? fold(part) : part;
+      if (!name || name === "." || name === ".." || /^\.git$/i.test(part) || forbidden?.test(part) || reserved?.test(name)) {
+        throw new Error(`Non-portable filename on ${system}: ${JSON.stringify(path)}`);
+      }
+      if (measure(part) > componentMax) {
+        throw new Error(`${system} path component exceeds ${componentMax} ${unit}: ${JSON.stringify(part)} in ${JSON.stringify(path)}`);
       }
       prefix = prefix ? `${prefix}/${part}` : part;
-      const canonical = prefix.normalize("NFD").toUpperCase();
+      if (directoryLimit && index < parts.length - 1 && rootLength + measure(prefix) >= directoryLimit) {
+        throw new Error(`${system} checkout directory exceeds ${directoryLimit - 1} ${unit} including the checkout root: ${JSON.stringify(prefix)}`);
+      }
+      if (!fold) continue;
+      canonical += index ? `/${name}` : name;
       const other = seen.get(canonical);
-      if (other && other !== prefix) {
-        throw new Error(`Conflicting checkout paths: ${JSON.stringify(other)} and ${JSON.stringify(prefix)}`);
+      if (other !== undefined && other !== prefix) {
+        throw new Error(`Conflicting checkout paths on ${system}: ${JSON.stringify(other)} and ${JSON.stringify(prefix)}`);
       }
       seen.set(canonical, prefix);
+    }
+    if (rootLength + measure(path) >= pathLimit) {
+      throw new Error(`${system} checkout path exceeds ${pathLimit - 1} ${unit} including the checkout root: ${JSON.stringify(path)}`);
     }
   }
 }
@@ -101,9 +145,10 @@ export function plan(paths, workspace) {
 }
 
 /** Everything runs except on a pull request without the label or the rollback variable. */
-export function wantsFull({ event, labels = [], selection = "" }) {
+export function wantsFull({ event, labels = [], selection = "", macosRunnerOverride = "" }) {
   if (event !== "pull_request") return `a ${event || "unknown"} run`;
   if (selection === "full") return "CI_SELECTION is full";
+  if (macosRunnerOverride === "true") return "the macOS runner has a custom checkout root";
   if (!Array.isArray(labels) || labels.some((label) => typeof label !== "string")) return "the labels could not be read";
   if (labels.includes("ci:full")) return "the ci:full label";
   return "";
@@ -177,10 +222,12 @@ async function pictureInputs(paths) {
 export async function decide(env, read = { changedPaths, treePaths, workspaceCrates, pictureInputs }) {
   // This is a required check, even when selection is disabled or a diff is unreadable.
   const tracked = env.EVENT === "pull_request" ? new Set(read.treePaths()) : new Set();
-  checkPortablePaths(tracked);
+  if (env.EVENT === "pull_request") {
+    for (const system of Object.keys(CHECKOUT_LIMITS)) checkPortablePaths(tracked, system);
+  }
   let labels = [];
   try { labels = JSON.parse(env.LABELS || "[]"); } catch { return { ...FULL, full: true, reason: "the labels could not be read" }; }
-  const why = wantsFull({ event: env.EVENT, labels, selection: env.SELECTION });
+  const why = wantsFull({ event: env.EVENT, labels, selection: env.SELECTION, macosRunnerOverride: env.MACOS_RUNNER_OVERRIDE });
   if (why) return { ...FULL, full: true, reason: why };
   try {
     const paths = read.changedPaths();
