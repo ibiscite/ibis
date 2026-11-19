@@ -351,6 +351,9 @@ pub struct Engine {
     watch_files: bool,
     /// Reads PDFs in a child process; without one, PDFs stay unread.
     pdf: Option<ibis_sources::pdf::PdfReader>,
+    /// The `ibis` executable that serves built-in source adapters.
+    built_in_sources: Option<std::path::PathBuf>,
+    external_sources: Arc<BTreeMap<String, std::path::PathBuf>>,
     attachment_text_outside_library: bool,
 }
 impl Engine {
@@ -369,6 +372,17 @@ impl Engine {
     /// never parses a PDF itself.
     pub fn with_pdf_reader(mut self, program: std::path::PathBuf) -> Self {
         self.pdf = Some(ibis_sources::pdf::PdfReader::new(program));
+        self
+    }
+    /// Serve built-in source adapters with `program`, an `ibis` executable
+    /// started as `ibis __source NAME` for each read (decision 0056).
+    pub fn with_built_in_sources(mut self, program: std::path::PathBuf) -> Self {
+        self.built_in_sources = Some(program);
+        self
+    }
+    /// Approve external adapters by name for the lifetime of this engine.
+    pub fn with_external_sources(mut self, sources: BTreeMap<String, std::path::PathBuf>) -> Self {
+        self.external_sources = Arc::new(sources);
         self
     }
     /// Explicit device permission for the attachment text tools to read
@@ -407,6 +421,8 @@ impl Engine {
             resources: Arc::new(sources::Owners::default()),
             watch_files: true,
             pdf: None,
+            built_in_sources: None,
+            external_sources: Arc::default(),
             attachment_text_outside_library: false,
         }
     }
@@ -858,6 +874,10 @@ impl Engine {
                     LibrariesRequest::ZoteroGroups {} => (None, Some(self.zotero_groups()?)),
                     LibrariesRequest::OpenFile { path } => {
                         self.open_file(&path, cancel)?;
+                        (None, None)
+                    }
+                    LibrariesRequest::OpenSource { name, library } => {
+                        self.open_source(&name, library.as_deref(), cancel)?;
                         (None, None)
                     }
                     LibrariesRequest::Reload { library } => {

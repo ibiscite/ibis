@@ -137,15 +137,25 @@ After the six foundation items:
    reads Zotero itself.
 3. **Anchors.** The anchor type lands in `ibis-core::contract` before
    annotations and passages ship in 0.5.
-4. **External source adapters.** An `ibis-source-<name>` program on PATH, beside
-   0039's `ibis-<name>` commands, speaks contract JSON over stdio: it hands the
+4. **External source adapters.** A named executable the person configures
+   by absolute path speaks contract JSON over stdio: it hands the
    engine CSL-JSON records, keys, attachments and a change token. The engine keeps
    identity, validation, the privacy filter, citation and every rule above.
    It is designed with the first manager that has no built-in reader (EndNote,
    Mendeley, Paperpile, JabRef or an Obsidian vault), not before, together with
    shared invented fixtures and an `ibis` check that every adapter, built-in or
    external, passes. Adapters run in their own process, so they choose their own
-   licence (0039).
+   licence (0039). The maintainer chose EndNote first and Obsidian reference
+   notes second on 2026-11-18. Built on 2026-11-18 with EndNote
+   ([source adapters](../source-adapters.md)): the protocol is one whole-library
+   read (`ibis_core::contract::adapter`), records and keys only, attachments
+   later; built-in adapters are served by `ibis __source NAME` so they ship
+   with `ibis`. External adapters are approved per device in
+   `source-adapters.json`; `ibis doctor` reports the entries.
+   `ibis sources check` checks each read against the snapshot it published. EndNote's XML export
+   reader runs inside that adapter, not in the engine, since it is a new
+   parser of untrusted files. Left: EndNote in the desktop app, which needs
+   the macOS Automation permission, and the Obsidian adapter.
 
 ## Not doing
 

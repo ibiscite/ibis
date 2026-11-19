@@ -16,10 +16,15 @@ A boundary with no safe binding gets one scoped module allowance, a crate-level
 - `ibis-sources/src/pdf/inheritance.rs` marks every non-stdio Unix descriptor
   close-on-exec in an allocation-free post-fork callback, including descriptors
   inherited from native callers. The exec-error pipe stays usable until exec.
-- `ibis-sources/src/pdf/ceiling.rs` bounds the PDF reader child's memory. On
-  Windows it starts the child suspended, adds it to a Job Object with a process
-  memory limit and reads the job's completion port; on macOS it reads the
-  child's footprint with `proc_pid_rusage`.
+- `ibis-sources/src/child/windows.rs` starts source adapters and the PDF
+  reader suspended and assigns them to a kill-on-close Job Object before
+  resuming them. For the PDF reader it also sets a process memory limit
+  and reads the job's completion port.
+- `ibis-sources/src/child/unix.rs` observes when an adapter exits with
+  `waitid(WNOWAIT)`. This reserves the group leader's PID until the group
+  has been signalled. The bounded runner then reaps the leader.
+- `ibis-sources/src/pdf/ceiling.rs` reads the PDF reader child's footprint on
+  macOS with `proc_pid_rusage`.
 - `crates/ibis-native` holds the paste proofs' native calls; the desktop
   binds them to its windows.
 - Its `paste/macos/secure_input.rs` reads Carbon's `IsSecureEventInputEnabled`

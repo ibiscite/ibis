@@ -67,6 +67,7 @@ Shell completions and an fzf recipe are in the
 | `--zotero` | Local Zotero personal library, open or closed. |
 | `--zotero-group ID` | A group library; repeat for several. |
 | `--zotero-profile NAME` | A named closed profile when there are several. |
+| `--source NAME[=LIBRARY]` | A library read by a [source adapter](source-adapters.md), such as `endnote=Invented.enl`; repeat for several. |
 | `--app-libraries` | Libraries chosen in the desktop app. |
 
 Library options before or after the command combine in order; duplicates are ignored. One-shot reads install no watches
@@ -79,7 +80,10 @@ In `libraries --json`, each library lists the `capabilities` its reader
 declares (`bibliographic-records`, key kinds, `attachment-text`, `proposals`)
 and a `revision` that changes whenever its published content may have changed.
 A tool that mirrors a library compares `revision` and rereads only when it
-differs. RIS and CSV files declare records only: they have no citation keys.
+differs. RIS and CSV files declare records only: they have no citation keys,
+and neither do EndNote libraries. `ibis sources check` rereads the libraries
+named with it and checks what every source promises; see
+[source adapters](source-adapters.md#the-conformance-check).
 
 Without explicit libraries, `search`, `show`, `cite`, `libraries` and `call`
 of the first three use the app's choice. Stable settings take precedence;
@@ -424,6 +428,14 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | Option | Does |
 | --- | --- |
 | `ID` | The proposal id printed by ibis proposals list |
+
+**`ibis sources`**: Check that a library's source keeps Ibis's promises, built-in readers and source adapters alike
+
+| Option | Does |
+| --- | --- |
+| `ACTION` | check: read the libraries named here again and check what every source promises |
+| `--expect FILE` | CSL-JSON records the library should hold exactly, without their ids, in any order |
+| `--changed-from REVISION` | A revision an earlier check printed: check that the library changed since |
 
 **`ibis completions`**: Print shell completions
 

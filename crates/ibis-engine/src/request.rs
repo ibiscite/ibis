@@ -36,6 +36,16 @@ pub enum LibrariesRequest {
     OpenFile {
         path: PathBuf,
     },
+    /// Read a library through a built-in or explicitly configured source adapter.
+    /// `Reload` reads it again and keeps the last good read on failure.
+    OpenSource {
+        #[schemars(length(min = 1, max = 32), regex(pattern = r"^[a-z][a-z0-9-]*$"))]
+        name: String,
+        /// The library in the adapter's own terms, as the person named it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[schemars(length(min = 1, max = 4096))]
+        library: Option<String>,
+    },
     Reload {
         #[serde(default)]
         library: Option<LibraryId>,

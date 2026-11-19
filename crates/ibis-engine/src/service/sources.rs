@@ -2,6 +2,7 @@
 use super::*;
 use crate::sync::MutexExt;
 use ibis_core::zotero::api::TransportError;
+use ibis_sources::adapter::{AdapterError, SourceAdapter};
 use ibis_sources::zotero_source::{Library, LiveError, ZoteroError, ZoteroSource};
 use ibis_sources::{LoadedLibrary, SourceError, SourceWatch};
 use std::{
@@ -20,6 +21,8 @@ pub(crate) mod zotero_fixture;
 pub(super) struct Owners {
     operation: Mutex<()>,
     watches: Mutex<BTreeMap<u64, SourceWatch>>,
+    /// Each open adapter library with the adapter and library name that read it.
+    adapters: Mutex<BTreeMap<LibraryId, (SourceAdapter, Option<String>)>>,
     zotero: Mutex<ZoteroSource>,
     zotero_port: Option<u16>,
     /// What the last closed read listed. Apart from `zotero`, which a read
@@ -132,6 +135,20 @@ pub(super) fn zotero_error(failure: ZoteroError) -> EngineError {
     }
 }
 
+pub(super) fn adapter_error(error: AdapterError) -> EngineError {
+    use ibis_core::contract::ErrorReason;
+    let reason = match error {
+        AdapterError::Cancelled => return super::error(ErrorCode::Cancelled),
+        AdapterError::NotFound => ErrorReason::SourceNotFound,
+        AdapterError::ManagerClosed => ErrorReason::SourceManagerClosed,
+        AdapterError::LibraryNeeded => ErrorReason::SourceLibraryNeeded,
+        AdapterError::LibraryNotFound => ErrorReason::SourceLibraryNotFound,
+        AdapterError::PermissionDenied => ErrorReason::SourcePermission,
+        AdapterError::Failed => ErrorReason::SourceFailed,
+    };
+    EngineError::because(ErrorCode::SourceUnavailable, reason)
+}
+
 pub(super) fn source_error(error: SourceError) -> EngineError {
     use ibis_core::contract::ErrorReason;
     super::error(match error {
@@ -218,6 +235,8 @@ impl Engine {
             resources: Arc::new(resources),
             watch_files: false,
             pdf: self.pdf.clone(),
+            built_in_sources: self.built_in_sources.clone(),
+            external_sources: self.external_sources.clone(),
             attachment_text_outside_library: self.attachment_text_outside_library,
         };
         let mut expected = base;
@@ -584,7 +603,86 @@ impl Engine {
         }
         SourceWatch::with_library(path, observation, model, callback)
     }
+    /// Read a library through the adapter called `name`.
+    /// Read and publish a named adapter approved by this engine.
+    pub fn open_source(
+        &self,
+        name: &str,
+        library: Option<&str>,
+        cancel: &Cancellation,
+    ) -> Result<(LibraryInfo, String), EngineError> {
+        cancel.check()?;
+        let configured = self.external_sources.get(name).map(|path| path.as_path());
+        let adapter = SourceAdapter::find(name, self.built_in_sources.as_deref(), configured).map_err(adapter_error)?;
+        self.open_adapter(adapter, library, cancel)
+    }
+
+    /// Read and publish a library, returning the exact published info and the
+    /// adapter’s own change token. A change of scope replaces the library read
+    /// before, so no earlier handle finds a record in it. A failure publishes
+    /// nothing.
+    pub fn open_adapter(
+        &self,
+        adapter: SourceAdapter,
+        library: Option<&str>,
+        cancel: &Cancellation,
+    ) -> Result<(LibraryInfo, String), EngineError> {
+        cancel.check()?;
+        let load = adapter
+            .read(library, &|| cancel.is_cancelled())
+            .map_err(adapter_error)?;
+        cancel.check()?;
+        let _operation = self.resources.operation.recover_lock();
+        let mut loaded = load.loaded;
+        loaded.snapshot.reuse_unchanged(self.snapshot()?.as_ref());
+        let mut adapters = self.resources.adapters.recover_lock();
+        let previous = adapters
+            .iter()
+            .find(|(id, (old, name))| **id != loaded.library && *old == adapter && name.as_deref() == library)
+            .map(|(id, _)| id.clone());
+        if previous.is_none() && !adapters.contains_key(&loaded.library) && adapters.len() >= MAX_FILES {
+            return Err(error(ErrorCode::ResourceLimit));
+        }
+        let observed = info(&loaded);
+        self.shared
+            .install(observed.clone(), &loaded.snapshot, previous.clone())?;
+        if let Some(previous) = previous {
+            adapters.remove(&previous);
+        }
+        adapters.insert(loaded.library.clone(), (adapter, library.map(str::to_owned)));
+        Ok((observed, load.token))
+    }
+
+    /// Read every adapter library again, or only `library`: a failure keeps
+    /// the last good read and reports it in that library's health.
+    fn reload_adapters(&self, library: Option<&LibraryId>, cancel: &Cancellation) -> Result<bool, EngineError> {
+        let chosen: Vec<_> = self
+            .resources
+            .adapters
+            .recover_lock()
+            .iter()
+            .filter(|(id, _)| library.is_none_or(|wanted| wanted == *id))
+            .map(|(id, (adapter, name))| (id.clone(), adapter.clone(), name.clone()))
+            .collect();
+        let found = !chosen.is_empty();
+        for (id, adapter, name) in chosen {
+            if let Err(failure) = self.open_adapter(adapter, name.as_deref(), cancel) {
+                if failure.code == ErrorCode::Cancelled {
+                    return Err(failure);
+                }
+                self.shared.failed(&id, failure)?;
+                if library.is_some() {
+                    return Err(failure);
+                }
+            }
+        }
+        Ok(found)
+    }
+
     pub(crate) fn reload_files(&self, library: Option<&LibraryId>, cancel: &Cancellation) -> Result<(), EngineError> {
+        if self.reload_adapters(library, cancel)? && library.is_some() {
+            return Ok(());
+        }
         let loaded_zotero = self
             .resources
             .zotero

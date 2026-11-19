@@ -217,6 +217,19 @@ pub enum ErrorReason {
     /// A pack of references could not be written there: the place is not an
     /// absolute path, its folder is missing or read-only, or the disk is full.
     DestinationUnwritable,
+    /// No built-in or explicitly configured adapter could be started.
+    SourceNotFound,
+    /// The reference manager must be open to be read.
+    SourceManagerClosed,
+    /// Several of the manager's libraries could be meant; name one.
+    SourceLibraryNeeded,
+    /// None of the manager's libraries has the name given.
+    SourceLibraryNotFound,
+    /// The operating system did not let Ibis ask the reference manager.
+    SourcePermission,
+    /// The source adapter did not read the library: it could not, it
+    /// stopped, it took too long or its answer was not one Ibis accepts.
+    SourceFailed,
 }
 
 /// A fixed database identifier, never a name supplied by an untrusted source.

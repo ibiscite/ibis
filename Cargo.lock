@@ -2313,6 +2313,7 @@ dependencies = [
  "nix",
  "notify",
  "proptest",
+ "quick-xml 0.42.0",
  "rusqlite",
  "ryu-js",
  "schemars 1.2.3",

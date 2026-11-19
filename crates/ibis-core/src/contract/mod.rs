@@ -1,5 +1,6 @@
 //! Shared engine contract (ADR 0028). Front ends consume these same types.
 
+pub mod adapter;
 pub mod citation;
 mod csl;
 pub use csl::{CompactName, Csl, CslRef};

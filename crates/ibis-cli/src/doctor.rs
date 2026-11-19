@@ -91,9 +91,15 @@ pub(super) fn run(
         _ if sources.is_empty() => check("failed", "no-library"),
         _ => check("ok", "sources-reported"),
     };
+    let source_adapters = if defaults == Defaults::App {
+        crate::sources::configuration_report()
+    } else {
+        Value::Null
+    };
     // A check that was skipped on purpose is not a problem.
     let findings = library_check["status"] == "failed"
         || config["status"] == "failed"
+        || source_adapters["status"] == "failed"
         || sources
             .iter()
             .any(|source| !matches!(source["status"].as_str(), Some("ok" | "not-checked")));
@@ -124,6 +130,7 @@ pub(super) fn run(
         "library_check":library_check,
         "library_ids":library_ids,
         "sources":sources,
+        "source_adapters":source_adapters,
     });
     let text = report_text(&data, unix_ms());
     Ok(DispatchResult {
@@ -166,6 +173,21 @@ fn report_text(data: &Value, now_ms: u64) -> String {
         let kind = source["kind"].as_str().unwrap_or("source");
         checks.push((format!("Library {} ({kind})", source["index"]), source));
     }
+    let adapters = &data["source_adapters"];
+    if !adapters.is_null() {
+        if adapters["status"] == "failed" {
+            text.push_str("Source adapter configuration needs attention. Check source-adapters.json.\n");
+        }
+        for adapter in adapters["adapters"].as_array().into_iter().flatten() {
+            let name = adapter["name"].as_str().unwrap_or_default();
+            let status = if adapter["approved"] == true {
+                "approved"
+            } else {
+                "invalid entry"
+            };
+            text.push_str(&format!("Source adapter {name:?}: {status}\n"));
+        }
+    }
     checks.push(("Library ids".to_owned(), &data["library_ids"]));
     for (label, result) in &checks {
         text.push_str(&summary(label, result));
@@ -188,7 +210,8 @@ fn report_text(data: &Value, now_ms: u64) -> String {
     let problems = checks
         .iter()
         .filter(|(_, result)| matches!(result["status"].as_str(), Some("findings" | "failed")))
-        .count();
+        .count()
+        + usize::from(adapters["status"] == "failed");
     text.push('\n');
     text.push_str(&match problems {
         0 => cli("cli-doctor-all-good", &[]),
