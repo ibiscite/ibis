@@ -29,16 +29,16 @@ pub(crate) struct PastePermission {
     pub(crate) list: String,
 }
 
-/// The macOS 27 name of the Accessibility list in Privacy & Security.
+/// The list's name in Privacy & Security on a macOS major version, as that
+/// system names it in the interface language (macOS 27 renamed it).
 #[cfg(any(target_os = "macos", test))]
-const LIST_SINCE_27: &str = "Device Control and Data Access";
-#[cfg(any(target_os = "macos", test))]
-const LIST_BEFORE_27: &str = "Accessibility";
-
-/// The list's name on a macOS major version.
-#[cfg(any(target_os = "macos", test))]
-pub(crate) fn list_name(major: u32) -> &'static str {
-    if major >= 27 { LIST_SINCE_27 } else { LIST_BEFORE_27 }
+pub(crate) fn list_name(major: u32) -> String {
+    let id = if major >= 27 {
+        "app-paste-list-since-27"
+    } else {
+        "app-paste-list-before-27"
+    };
+    ibis_engine::catalogue::text(id, None, &[]).unwrap_or_else(|| id.to_owned())
 }
 
 /// Whether Ibis may paste now. Read each time: the person can change it at any moment.
@@ -91,7 +91,7 @@ fn macos_permissions(post_event: bool, accessibility: bool, major: u32) -> Paste
         pastes: true,
         needed: true,
         granted: post_event && accessibility,
-        list: list_name(major).to_string(),
+        list: list_name(major),
     }
 }
 

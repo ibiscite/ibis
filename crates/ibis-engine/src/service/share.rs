@@ -384,7 +384,11 @@ fn reading_list(
     if order.is_empty() {
         return Err(EngineError::citation(CitationError::UnsupportedForm));
     }
-    let words = |id: &str| crate::catalogue::text(id, None, &[]).unwrap_or_default();
+    // A pack is written for other people: what it holds never follows the
+    // language this app speaks.
+    let words = |id: &str| {
+        crate::catalogue::text_in(crate::catalogue::Language::English, id, None, &[]).unwrap_or_default()
+    };
     let title = words("app-share-page-title");
     let mut page = String::from("<!doctype html>\n<html");
     if let Some(language) = list

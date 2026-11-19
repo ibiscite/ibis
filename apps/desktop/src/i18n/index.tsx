@@ -1,14 +1,25 @@
 import { CITATION_FORMS } from "../bindings";
-import type { CitedWarning, Problem } from "../bindings";
+import type { CitedWarning, Language, Problem } from "../bindings";
 import { FluentBundle, FluentResource } from "@fluent/bundle";
 import { parse } from "@fluent/syntax";
 import { createContext, type ReactNode, useContext } from "react";
+import { I18nProvider } from "react-aria-components";
 import english from "../../../../locales/en-US.ftl?raw";
+import german from "../../../../locales/de.ftl?raw";
+import arabic from "../../../../locales/ar.ftl?raw";
 import { PICKER_IDS, PICKER_VARIABLES } from "./picker";
 import { SETTINGS_IDS } from "./settings";
+import { setKeyWords } from "../keys";
 
-/** Interface default only: never inferred from citation settings or navigator. */
-export const INTERFACE_LOCALE = "en-US";
+/** The interface languages, by the tag Rust's `catalogue::Language` writes.
+ * Never inferred from the citation language: a style keeps its own. Digits
+ * stay Latin in Arabic, as in citations, keys and page numbers. */
+export const LANGUAGES = {
+  "en-US": { source: english, intl: "en-US", direction: "ltr" },
+  de: { source: german, intl: "de", direction: "ltr" },
+  ar: { source: arabic, intl: "ar-u-nu-latn", direction: "rtl" },
+} as const satisfies Record<Language, unknown>;
+export type InterfaceLanguage = keyof typeof LANGUAGES;
 const IDS = [
   ...SETTINGS_IDS,
   ...PICKER_IDS,
@@ -36,6 +47,7 @@ const IDS = [
   "shortcuts-action-choose-source", "shortcuts-action-reveal-source", "shortcuts-action-source", "shortcuts-action-change-last", "shortcuts-action-open", "shortcuts-action-copy", "shortcuts-action-paste", "shortcuts-action-copy-only", "shortcuts-action-add", "shortcuts-action-move", "shortcuts-action-pick", "shortcuts-action-peek", "shortcuts-action-escape",
   "shortcuts-action-format", "shortcuts-action-more", "shortcuts-action-pin", "shortcuts-action-keys", "shortcuts-action-settings", "shortcuts-action-quit", "shortcuts-action-undo", "shortcuts-action-text-size", "shortcuts-action-citation-move", "shortcuts-action-citation-remove", "shortcuts-action-citation-reorder", "shortcuts-action-citation-open", "shortcuts-action-citation-focus",
   "shortcuts-action-menu-move", "shortcuts-action-menu-ends", "shortcuts-action-menu-choose", "shortcuts-action-menu-leave", "shortcuts-or",
+  "key-enter", "key-escape", "key-home", "key-end", "key-tab", "key-space", "key-backspace", "key-delete", "key-plus", "key-minus", "key-ctrl", "key-alt", "key-shift", "key-super", "key-click", "key-click-held",
   "about-automatic", "about-automatic-description", "about-check", "about-check-label", "about-checking", "about-check-failed", "about-check-newest", "about-check-busy", "about-mission", "about-updates", "about-links", "about-website", "about-source", "about-problem", "about-licences", "about-free", "about-copied", "about-copy-failed", "about-version", "about-unavailable",
 ] as const;
 export type MessageId = typeof IDS[number];
@@ -44,7 +56,9 @@ const RUST = /^(error|reason|refusal|problem|warning|source-warning|loss|notice|
 type Variables = Readonly<Record<string, string | number>>;
 type Audience = "app" | "bibliography" | "settings";
 export type InterfaceMessages = Readonly<{
-  locale: typeof INTERFACE_LOCALE;
+  language: InterfaceLanguage;
+  /** The tag for `Intl` formatters, so lists and numbers read as the words do. */
+  locale: string;
   text: (id: MessageId, variables?: Variables, audience?: Audience) => string;
 }>;
 
@@ -58,7 +72,8 @@ function pseudolocalize(value: string): string {
  * fallback strings, network, persisted preference or engine-code interpretation.
  * The bundle remains private; consumers cannot mutate its locale or resources.
  */
-export function createInterfaceMessages(source: string, pseudo = false): InterfaceMessages {
+export function createInterfaceMessages(source: string, pseudo = false, language: InterfaceLanguage = "en-US"): InterfaceMessages {
+  const locale = LANGUAGES[language].intl;
   const invalid = () => new Error("Invalid interface messages");
   const syntax = parse(source, { withSpans: false });
   const ids = new Set<string>();
@@ -72,10 +87,10 @@ export function createInterfaceMessages(source: string, pseudo = false): Interfa
     ids.add(entry.id.name);
   }
   if (IDS.some((id) => !ids.has(id) && !RUST.test(id)) || [...ids].some((id) => !(IDS as readonly string[]).includes(id))) throw invalid();
-  const bundle = new FluentBundle(INTERFACE_LOCALE, {
-    // Preserve existing English text and accessible names byte for byte.
-    // Direction/isolation policy is separate from this interface default.
-    useIsolating: false,
+  const bundle = new FluentBundle(locale, {
+    // English text and accessible names stay byte for byte; a translation
+    // isolates each argument, so a Latin name or key keeps its place in Arabic.
+    useIsolating: language !== "en-US",
     transform: pseudo ? pseudolocalize : undefined,
   });
   if (bundle.addResource(new FluentResource(source)).length) throw invalid();
@@ -99,17 +114,42 @@ export function createInterfaceMessages(source: string, pseudo = false): Interfa
   );
   // Exercise all platform branches before publishing the immutable owner.
   // Errors remain fixed text and cannot disclose variables or source content.
+  // Every count reaches each plural form a language has (Arabic has six).
   try {
     for (const platform of ["macos", "windows", "linux"]) {
-      for (const id of IDS) text(id, { ...synthetic, platform, name: "Ibis", version: "0.0.0", percent: 100, count: 1, id: 1 });
+      for (const count of platform === "macos" ? [0, 1, 2, 3, 11, 100] : [1]) {
+        for (const id of IDS) text(id, { ...synthetic, platform, name: "Ibis", version: "0.0.0", percent: 100, count, id: 1 });
+      }
     }
   } catch { throw invalid(); }
-  return Object.freeze({ locale: INTERFACE_LOCALE, text });
+  return Object.freeze({ language, locale, text });
 }
 
 export const englishMessages = createInterfaceMessages(english);
-/** The picker's words, outside React: one lookup in the one catalogue. */
-export const say = englishMessages.text;
+let current = englishMessages;
+
+/** Speak this language in this window: its words, `lang` and direction.
+ * Each window calls it once before it draws; tests set and restore it. */
+export function setInterfaceLanguage(language: InterfaceLanguage, pseudo = false): InterfaceMessages {
+  current = language === "en-US" && !pseudo ? englishMessages : createInterfaceMessages(LANGUAGES[language].source, pseudo, language);
+  document.documentElement.lang = language;
+  document.documentElement.dir = LANGUAGES[language].direction;
+  return current;
+}
+
+/** This window's tag for `Intl` formatters. */
+export const interfaceLocale = () => current.locale;
+
+/** The picker's words, outside React: one lookup in this window's catalogue. */
+export const say: InterfaceMessages["text"] = (id, variables, audience) => current.text(id, variables, audience);
+
+/** Keys named by a word, in this window's language: German writes Strg, Pos1 and Leertaste. */
+const KEY_WORDS: Readonly<Record<string, MessageId>> = {
+  Enter: "key-enter", Esc: "key-escape", Home: "key-home", End: "key-end", Tab: "key-tab", Space: "key-space",
+  Backspace: "key-backspace", Delete: "key-delete", Plus: "key-plus", Minus: "key-minus",
+  Ctrl: "key-ctrl", Alt: "key-alt", Shift: "key-shift", Super: "key-super", Click: "key-click", click: "key-click-held",
+};
+setKeyWords((label) => KEY_WORDS[label] ? say(KEY_WORDS[label]) : label);
 
 /** First-strong isolation for a name inside a sentence, so a right-to-left name keeps its place. */
 export function isolate(name: string) {
@@ -119,14 +159,17 @@ export function isolate(name: string) {
 /** A reason from Rust as the end of a sentence: with its full stop, capitalised when it starts one. */
 export function fullStop(reason: string, capital = false) {
   const text = capital ? reason.charAt(0).toUpperCase() + reason.slice(1) : reason;
-  return /[.!?]$/.test(text) ? text : `${text}.`;
+  return /[.!?؟。]\u2069?$/.test(text) ? text : `${text}.`;
 }
-const InterfaceContext = createContext<InterfaceMessages>(englishMessages);
+const InterfaceContext = createContext<InterfaceMessages | null>(null);
+/** A window's words, and the same language for React Aria's own direction,
+ * arrow keys and formatting. */
 export function InterfaceMessagesProvider({ messages, children }: { messages: InterfaceMessages; children: ReactNode }) {
-  return <InterfaceContext value={messages}>{children}</InterfaceContext>;
+  return <InterfaceContext value={messages}><I18nProvider locale={messages.locale}>{children}</I18nProvider></InterfaceContext>;
 }
+/** A provider's catalogue (tests, the pseudolocale), else this window's language. */
 export function useInterfaceMessages(): InterfaceMessages {
-  return useContext(InterfaceContext);
+  return useContext(InterfaceContext) ?? current;
 }
 
 /** A citation's warning in the catalogue's words, whichever side declared it. */

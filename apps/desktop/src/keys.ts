@@ -81,6 +81,12 @@ const NAMED: Record<string, [mac: string, other: string]> = {
  * Ctrl+Alt+Shift elsewhere. Anything else is the key, and stays last. */
 const MODIFIER_ORDER = { mac: ["⌃", "⌥", "⇧", "⌘"], other: ["Ctrl", "Alt", "Shift", "Super"] };
 
+/** Keys named by a word (Ctrl, Home, Space, click), in English until the app
+ * gives their names in its language (i18n). The website shares this file and
+ * keeps English; symbols and letters are the same everywhere. */
+let keyWord = (label: string): string => label;
+export function setKeyWords(name: (label: string) => string) { keyWord = name; }
+
 /** Display order only; accelerator matching retains the original binding. */
 function joinKeyLabels(keys: string[], mac: boolean): string {
   const modifiers = mac ? MODIFIER_ORDER.mac : MODIFIER_ORDER.other;
@@ -88,7 +94,7 @@ function joinKeyLabels(keys: string[], mac: boolean): string {
     const index = modifiers.indexOf(key);
     return index < 0 ? modifiers.length : index;
   };
-  return keys.sort((a, b) => order(a) - order(b)).join(mac ? "" : "+");
+  return keys.sort((a, b) => order(a) - order(b)).map(keyWord).join(mac ? "" : "+");
 }
 
 /** A pointer binding such as `CmdOrCtrl+Click`, written as Apple and Microsoft write it: ⌘-click, Ctrl+click. */
@@ -98,7 +104,7 @@ const isClick = (accelerator: string) => /(^|\+)Click$/.test(accelerator);
 export function keyLabel(accelerator: string, mac: boolean): string {
   if (isClick(accelerator)) {
     const held = accelerator.slice(0, -"Click".length).replace(/\+$/, "");
-    return held ? `${keyLabel(held, mac)}${mac ? "-click" : "+click"}` : "Click";
+    return held ? `${keyLabel(held, mac)}${mac ? "-" : "+"}${keyWord("click")}` : keyWord("Click");
   }
   // "+" separates keys, so a lone "+" or a trailing one is the key itself.
   const parts = accelerator === "+" ? ["+"] : accelerator.split(/\+(?!$)/);

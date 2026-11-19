@@ -34,6 +34,8 @@
 /* The disclosure row's chevron points to its rows, then down while they show. */
 .ui-details-mark { display: inline-flex; flex: none; color: var(--text-secondary); rotate: 180deg; }
 .ui-details-toggle[aria-expanded="true"] .ui-details-mark { rotate: -90deg; }
+/* The mirrored glyph turns the other way to point down. */
+.ui-details-toggle[aria-expanded="true"] .ui-details-mark:dir(rtl) { rotate: 90deg; }
 .ui-row-lead { display: flex; flex: 1 1 var(--status-min); align-items: center; gap: var(--row-gap); min-width: 0; }
 .ui-row-text { display: flex; flex: 1; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
 .ui-row > :not(.ui-row-lead, .ui-row-problem, .visually-hidden) { max-inline-size: 100%; }

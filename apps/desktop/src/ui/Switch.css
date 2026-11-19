@@ -15,8 +15,7 @@
   transition: transform var(--dur-1) var(--ease-out);
 }
 .ui-switch[data-selected] .ui-switch-track { background: var(--accent); }
-.ui-switch[data-selected] .ui-switch-thumb { background: var(--text-on-accent); transform: translateX(var(--switch-travel)); }
-.ui-switch[data-selected]:dir(rtl) .ui-switch-thumb { transform: translateX(calc(-1 * var(--switch-travel))); }
+.ui-switch[data-selected] .ui-switch-thumb { background: var(--text-on-accent); transform: translateX(calc(var(--inline-sign) * var(--switch-travel))); }
 .ui-switch[data-focus-visible] .ui-switch-track { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }
 .ui-switch[data-disabled] { opacity: .5; }
 @media (prefers-reduced-motion: reduce) { .ui-switch-track, .ui-switch-thumb { transition: none; } }

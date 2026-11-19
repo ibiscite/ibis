@@ -305,6 +305,34 @@ pub enum Accent {
     Ibis,
 }
 
+/// The interface language chosen in Settings; `System` follows the system's
+/// preferred languages. Citations keep their style's or locale's language.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub enum InterfaceLanguage {
+    #[default]
+    #[serde(rename = "system")]
+    System,
+    #[serde(rename = "en-US")]
+    English,
+    #[serde(rename = "de")]
+    German,
+    #[serde(rename = "ar")]
+    Arabic,
+}
+
+impl InterfaceLanguage {
+    /// The language chosen, or `None` to follow the system.
+    pub fn chosen(self) -> Option<crate::catalogue::Language> {
+        use crate::catalogue::Language;
+        match self {
+            Self::System => None,
+            Self::English => Some(Language::English),
+            Self::German => Some(Language::German),
+            Self::Arabic => Some(Language::Arabic),
+        }
+    }
+}
+
 /// Default picker placement on the active display; a deliberate move wins there.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
@@ -381,6 +409,9 @@ pub struct Portable {
     pub appearance: Option<Appearance>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub accent: Option<Accent>,
+    /// The interface language; absent follows the system.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interface_language: Option<InterfaceLanguage>,
 }
 
 /// Choices and capabilities that belong to this computer.
@@ -477,6 +508,7 @@ impl Default for Portable {
             schema_version: SCHEMA_VERSION,
             appearance: None,
             accent: None,
+            interface_language: None,
             small_surprises: None,
             shortcut: Shortcuts::default(),
             library: None,
@@ -546,6 +578,7 @@ pub struct Interface {
     pub key_output: Option<String>,
     pub appearance: Option<Appearance>,
     pub accent: Option<Accent>,
+    pub interface_language: Option<InterfaceLanguage>,
     pub density: Option<Density>,
     pub picker_placement: Option<PickerPlacement>,
     pub larger_text: Option<bool>,
@@ -566,6 +599,7 @@ impl From<&Settings> for Interface {
             key_output: portable.key_output.clone(),
             appearance: portable.appearance,
             accent: portable.accent,
+            interface_language: portable.interface_language,
             density: portable.density,
             picker_placement: portable.picker_placement,
             larger_text: portable.larger_text,

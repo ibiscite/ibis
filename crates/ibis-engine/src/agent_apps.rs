@@ -37,7 +37,7 @@ enum Store {
         file: fn(&Home) -> PathBuf,
         read: fn(&str) -> Result<Value, String>,
     },
-    /// Set up in the app's own window.
+    /// Set up in the app's own window: `steps` names the catalogue message.
     ByHand { steps: &'static str },
 }
 
@@ -159,7 +159,7 @@ const CLIENTS: [Client; 9] = [
         id: "chatgpt",
         name: "ChatGPT desktop",
         store: Store::ByHand {
-            steps: "In ChatGPT desktop: Settings › MCP servers › Add server › STDIO, command ibis, arguments mcp --app-libraries.",
+            steps: "app-agent-steps-chatgpt",
         },
         found: |home| home.app_config("ChatGPT").is_some_and(|dir| dir.is_dir()),
     },
@@ -457,6 +457,11 @@ fn wanted(client: &Client, home: &Home) -> String {
     }
 }
 
+/// The steps for an app set up by hand, from the catalogue message `steps` names.
+fn by_hand(steps: &str) -> String {
+    crate::catalogue::text(steps, None, &[]).unwrap_or_else(|| steps.to_owned())
+}
+
 fn missing_full_path(client: &Client, home: &Home) -> bool {
     matches!(client.store, Store::Json { absolute: true, .. }) && home.ibis.is_none()
 }
@@ -464,7 +469,7 @@ fn missing_full_path(client: &Client, home: &Home) -> bool {
 fn observe(client: &'static Client, home: &Home) -> AgentApp {
     let planned = state(client, home);
     let (state, detail) = match (&planned, client.store) {
-        (_, Store::ByHand { steps }) => (AgentAppState::ByHand, steps.to_owned()),
+        (_, Store::ByHand { steps }) => (AgentAppState::ByHand, by_hand(steps)),
         (Found::Connected(_), _) => (AgentAppState::Connected, String::new()),
         (Found::Plugin, _) => (AgentAppState::Plugin, "through the Ibis plugin".into()),
         (Found::Missing | Found::Stale(_) | Found::Different(_), _) if missing_full_path(client, home) => {
@@ -575,7 +580,7 @@ impl AgentApp {
             Found::Different(old) | Found::Stale(old) => Some(old),
         };
         if let Store::ByHand { steps } = client.store {
-            return Change::new(Outcome::ByHand, steps.to_owned());
+            return Change::new(Outcome::ByHand, by_hand(steps));
         }
         if missing_full_path(client, home) {
             return Change::new(Outcome::Blocked, "Install the ibis command first".into());
@@ -658,7 +663,7 @@ impl AgentApp {
             Found::Connected(_) | Found::Stale(_) => {}
         }
         if let Store::ByHand { steps } = client.store {
-            return Change::new(Outcome::ByHand, steps.to_owned());
+            return Change::new(Outcome::ByHand, by_hand(steps));
         }
         if dry_run {
             return Change::new(Outcome::WouldRemove, String::new());

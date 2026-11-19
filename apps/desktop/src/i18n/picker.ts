@@ -443,6 +443,8 @@ export const PICKER_IDS = [
   "picker-missing-citations",
   "picker-matched-in",
   "picker-run-command",
+  "picker-recent-heading",
+  "picker-more-references",
   "picker-result-count",
   "picker-selection-count",
   "picker-shortcut-not-used",
