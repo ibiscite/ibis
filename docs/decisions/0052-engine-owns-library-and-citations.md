@@ -36,7 +36,7 @@ layers, split ownership and phase-ordered modules.
   output falls back silently; the command line refuses.
   An absent file with no backup uses defaults for either read. Interface
   reads may use any validated backup, including with a newer or unreadable
-  primary; the retained primary problem supplies the notice. Library, writing
+  primary; the retained primary problem supplies the notice. Library, project
   and format reads use `cites()` and refuse every primary problem. Reads never
   authorize repair or overwrite a newer or unreadable file.
   Interface reads return presentation preferences that cannot be passed to format

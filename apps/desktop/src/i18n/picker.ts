@@ -37,6 +37,7 @@ export const PICKER_IDS = [
   "palette-words-share",
   "palette-words-peek",
   "palette-words-change-last",
+  "palette-words-reference-list",
   "palette-words-citation-focus",
   "palette-words-citation-edit",
   "palette-words-citation-move-left",
@@ -284,6 +285,9 @@ export const PICKER_IDS = [
   "picker-using-shorthand",
   "picker-apply",
   "picker-shorthand-hint",
+  "picker-kept-words",
+  "picker-practice-offer",
+  "picker-practice-pasted",
   "picker-search-as-typed",
   "picker-apply-locator",
   "picker-copied",
@@ -361,14 +365,16 @@ export const PICKER_IDS = [
   "picker-more",
   "picker-keep-my-order",
   "picker-change-last-citation",
+  "picker-paste-reference-list",
+  "picker-copy-reference-list",
+  "picker-reference-list-title",
+  "picker-reference-list-help",
   "picker-forget-recent",
   "picker-change-citation",
   "picker-keep-open",
   "picker-keep-open-menu",
   "picker-change-format",
   "picker-drag-citation",
-  "picker-commands",
-  "picker-no-commands",
   "picker-more-title",
   "picker-use-zotero",
   "picker-library-region",
@@ -442,7 +448,6 @@ export const PICKER_IDS = [
   "picker-entry-output",
   "picker-missing-citations",
   "picker-matched-in",
-  "picker-run-command",
   "picker-result-count",
   "picker-selection-count",
   "picker-shortcut-not-used",
@@ -507,4 +512,4 @@ export const PICKER_IDS = [
 ] as const;
 
 /** The variables those messages take. */
-export const PICKER_VARIABLES = ["ago", "app", "count", "date", "density", "field", "folder", "format", "id", "index", "key", "keys", "label", "last", "library", "line", "lines", "n", "name", "names", "outcome", "output", "platform", "printed", "reason", "reasons", "reference", "shortcut", "skipped", "source", "state", "style", "time", "title", "type", "unit", "value", "why", "word"] as const;
+export const PICKER_VARIABLES = ["ago", "app", "citation", "count", "date", "density", "field", "folder", "format", "id", "index", "key", "keys", "label", "last", "library", "line", "lines", "n", "name", "names", "outcome", "output", "platform", "printed", "reason", "reasons", "reference", "shortcut", "skipped", "source", "state", "style", "time", "title", "type", "unit", "value", "why", "word"] as const;

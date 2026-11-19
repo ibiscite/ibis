@@ -10,7 +10,7 @@ import { anchorBoxes, anchorMoves, frameStates, geometry, heldKeys, layerRoles, 
 type Mount = (host: HTMLElement, options: { scenario: string; theme: string }) => () => void;
 
 /** Picker screens held to the single-picture layout rules (geometry()). */
-export const geometryScreens = ["results", "first-run", "shelf", "reference-details", "show-as-menu", "reader", "commands", "page-in-search", "peek", "update", "undo-notice", "larger-text", "right-to-left", "compact", "long-titles", "stale", "more", "format-menu", "library-menu", "text-80", "text-120"];
+export const geometryScreens = ["results", "first-run", "shelf", "reference-details", "show-as-menu", "reader", "page-in-search", "peek", "update", "undo-notice", "larger-text", "right-to-left", "compact", "long-titles", "stale", "more", "format-menu", "library-menu", "text-80", "text-120"];
 
 /** Scenarios with something floating, for the layer check in every appearance. */
 export const layerScreens = ["more", "format-menu", "library-menu", "show-as-menu", "reference-details", "peek", "shortcuts", "writing-projects", "cited-since-opening"];
@@ -45,6 +45,9 @@ export const slotMessages: Record<keyof typeof slots, { id: MessageId; args?: Re
     { id: "delight-empty" }, { id: "delight-loading" }, { id: "delight-no-library" },
     { id: "delight-zoom", args: { percent: 200 } },
     { id: "picker-shorthand-hint", args: { word: "featherstonehaugh" } },
+    { id: "picker-kept-words" },
+    { id: "picker-practice-offer" },
+    { id: "picker-practice-pasted", args: { citation: "(Aster, 2026)" } },
     { id: "update-failed" },
   ],
   noticeLine: [

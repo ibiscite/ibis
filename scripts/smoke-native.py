@@ -1506,7 +1506,7 @@ def _first_run_preferences_main(args):
 
         def visible_text(text):
             current = snapshot()
-            return current["visible"] and text in strings(current)
+            return current["visible"] and text in strings(current).translate(BIDI_ISOLATES)
 
         def picker_ready(*, typing=False):
             current = snapshot()
@@ -1549,7 +1549,14 @@ def _first_run_preferences_main(args):
         passed("Typst choice is saved before any copy")
         type_query(native, snapshot, "smoke000001", "ctrl+a")
         wait_for_query(snapshot, "smoke000001", "Ibis smoke reference 000001", report, settled=True)
+        citation = "@smoke000001"
+        wait_for(lambda: visible_text("Try a paste here first: press Enter."), "first-run practice offer")
         prime_clipboard(native)
+        native.key("Return")
+        practice = f"{citation} pasted here. Next, Enter pastes in your app."
+        wait_for(lambda: visible_text(practice), "Typst citation in the practice line")
+        assert native.clipboard(timeout=CLIPBOARD_READ_TIMEOUT) == CLIPBOARD_SENTINEL, "Practice paste changed the OS clipboard"
+        passed("first Enter pastes the Typst citation inside Ibis")
         native.key("Return")
         copy_deadline = time.monotonic() + 20
         def copied():
@@ -1557,7 +1564,7 @@ def _first_run_preferences_main(args):
             assert remaining > 0, "Native copy exceeded its clipboard-read budget"
             value = native.clipboard(timeout=remaining)
             assert time.monotonic() < copy_deadline, "Native copy exceeded its clipboard-read budget"
-            return value == "@smoke000001"
+            return value == citation
         wait_for(copied, "saved Typst output on the OS clipboard")
         passed("copy uses the saved Typst format")
         wait_for(lambda: not snapshot()["visible"], "Typst copy hides picker")

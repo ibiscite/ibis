@@ -299,3 +299,66 @@ fn search_reads_shorthand_only_when_asked() {
         .unwrap();
     assert!(literal.data.get("shorthand").is_none());
 }
+
+#[test]
+fn words_that_name_a_title_stay_search_text_and_a_comma_asks_for_the_page() {
+    // Invented titles: a title's number never becomes a page, nor its "See" a signal.
+    let records = [
+        json!({"type":"book","title":"Room 22","author":[{"family":"Aster","given":"Ada"}],"issued":{"date-parts":[[2020]]}}),
+        json!({"type":"book","title":"See You Later","author":[{"family":"Okafor","given":"Tobi"}],"issued":{"date-parts":[[2021]]}}),
+        json!({"type":"book","title":"Nineteen Eighty-Four","author":[{"family":"Vale","given":"Bo"}],"issued":{"date-parts":[[1984]]}}),
+    ];
+    let snapshot = Snapshot::new(
+        records
+            .iter()
+            .enumerate()
+            .map(|(index, csl)| {
+                LibraryObject::Record(Record {
+                    added_at: None,
+                    id: ItemRef {
+                        library: LibraryId::digest(b"invented-shorthand"),
+                        key: format!("work-{index}"),
+                    },
+                    csl: serde_json::from_value(csl.clone()).unwrap(),
+                    citation_keys: vec![],
+                    aliases: vec![],
+                    warnings: vec![],
+                    identifiers: vec![],
+                })
+            })
+            .collect(),
+    )
+    .unwrap();
+    let engine = Engine::from_snapshot(Arc::new(snapshot));
+    let cancel = Cancellation::default();
+    let search = |query: &str| {
+        engine
+            .dispatch(
+                Method::Search,
+                &json!({"query": query, "interpret_locator": true}),
+                &cancel,
+            )
+            .unwrap()
+            .data
+    };
+    let title = |data: &serde_json::Value| data["hits"][0]["item"]["object"]["data"]["csl"]["title"].clone();
+    for (query, expected) in [
+        ("room 22", "Room 22"),
+        ("see you later", "See You Later"),
+        ("Nineteen Eighty-Four 1984", "Nineteen Eighty-Four"),
+    ] {
+        let data = search(query);
+        assert!(data.get("shorthand").is_none(), "{query}: {data}");
+        assert_eq!(title(&data), expected, "{query}: {data}");
+    }
+    assert_eq!(search("room 22")["kept_words"], true);
+    assert_eq!(search("see you later")["kept_words"], true);
+    // A comma asks for the page; words that name nothing are read as before.
+    let asked = search("room, 22");
+    assert_eq!(asked["shorthand"]["locator"]["locator"]["value"], "22");
+    assert!(asked.get("kept_words").is_none());
+    let read = search("see aster 417");
+    assert_eq!(read["shorthand"]["prefix"], "see");
+    assert_eq!(read["shorthand"]["locator"]["locator"]["value"], "417");
+    assert_eq!(title(&read), "Room 22");
+}

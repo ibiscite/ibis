@@ -73,17 +73,14 @@ test("the built scenario list renders, switches and reopens without Tauri or net
       else if (scenario === "shortcuts") expect(window.document.querySelector('[role="dialog"]')).not.toBeNull();
       else if (scenario === "parts") for (const part of ["Button: primary", "Settings rows", "Marks and icons"]) expect(host.textContent).toContain(part);
       else if (scenario === "empty-search") expect(host.textContent).toContain("Type to find");
+      else if (scenario === "paste") expect(host.querySelector("footer")?.textContent).toContain("Paste into Invented Editor");
+      else if (scenario === "first-paste") expect(host.textContent).toContain("Try a paste here first: press Enter.");
+      else if (scenario === "reference-list") expect(host.textContent).toContain("Copy Reference List");
       else if (scenario === "no-matches") expect(host.textContent).toContain("No matching references");
       else if (scenario === "missing") expect(host.textContent).toContain("Can’t find invented.bib");
       else if (scenario === "zotero-closed") expect(host.textContent).toContain("Open Zotero to read your library");
       else if (scenario === "unreadable") expect(host.textContent).toContain("Can’t read invented.bib");
       else if (scenario === "long-titles") expect(host.textContent).toContain("An invented reference whose title");
-      else if (scenario === "commands") {
-        // ">" lists the picker's commands, not the library; the footer runs the highlighted one.
-        expect(host.querySelector('[role="option"]')?.textContent).toContain("Change Format");
-        expect(host.textContent).not.toContain("Invented reference 0");
-        expect(host.querySelector("footer")?.textContent).toContain("Run Change Format");
-      }
       else {
         expect(host.textContent).toContain("Invented reference 0");
         if (scenario === "more") expect(window.document.querySelector('.ui-palette [role="option"]')).not.toBeNull();

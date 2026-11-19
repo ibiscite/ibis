@@ -241,3 +241,36 @@ fn recents_resolve_only_current_records_after_changes_deletion_and_source_close(
     assert!(resolve(&empty, &ids, true).is_empty());
     Ok(())
 }
+#[test]
+fn each_apps_reference_list_holds_this_runs_citations_there_and_follows_the_list() {
+    let (_dir, history) = history();
+    let epoch = history.lock().epoch();
+    let cite = |app: &str, items: &[ItemRef]| {
+        history.lock().add(items.iter().cloned());
+        history.record(&epoch, Some(app), items);
+    };
+    cite("invented.writer", &[item("a"), item("b")]);
+    cite("invented.editor", &[item("c")]);
+    cite("invented.writer", &[item("b"), item("c")]);
+    assert_eq!(
+        history.lock().cited_here("invented.writer"),
+        [item("a"), item("b"), item("c")]
+    );
+    assert_eq!(history.lock().cited_here("invented.editor"), [item("c")]);
+    assert!(history.lock().cited_here("invented.other").is_empty());
+    // Remove, Reset List and its Undo apply to every app's reference list.
+    history.lock().remove(&item("b"));
+    assert_eq!(history.lock().cited_here("invented.writer"), [item("a"), item("c")]);
+    history.lock().reset();
+    assert!(history.lock().cited_here("invented.writer").is_empty());
+    history.lock().undo();
+    assert_eq!(history.lock().cited_here("invented.writer"), [item("a"), item("c")]);
+    // Off the disk: a new run starts with none, and Forget Recent Citations clears them.
+    assert!(
+        List::open(saved(&history), true)
+            .cited_here("invented.writer")
+            .is_empty()
+    );
+    history.forget().unwrap_or_else(|error| panic!("{error}"));
+    assert!(history.lock().cited_here("invented.writer").is_empty());
+}

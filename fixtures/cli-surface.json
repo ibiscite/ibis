@@ -1349,7 +1349,7 @@
             "delimiter": null,
             "exclusive": false,
             "global": false,
-            "help": "Use an explicit document's bibliography/csl front matter to select a writing",
+            "help": "Use an explicit document's bibliography/csl front matter to select a project",
             "hidden": false,
             "ignoreCase": false,
             "index": null,
@@ -1917,7 +1917,7 @@
             "delimiter": null,
             "exclusive": false,
             "global": false,
-            "help": "Read the writing or the app's formats from Ibis Nightly's settings",
+            "help": "Read the project or the app's formats from Ibis Nightly's settings",
             "hidden": false,
             "ignoreCase": false,
             "index": null,
@@ -2198,19 +2198,19 @@
             "delimiter": null,
             "exclusive": false,
             "global": false,
-            "help": "Use this writing's output and bibliography; list names with: ibis writings list",
+            "help": "Use this project's output and bibliography; list names with: ibis projects list",
             "hidden": false,
             "ignoreCase": false,
             "index": null,
             "last": false,
-            "long": "writing",
+            "long": "project",
             "longAliases": [],
             "possibleValues": {},
             "requireEquals": false,
             "required": false,
             "short": null,
             "shortAliases": [],
-            "spelling": "--writing NAME",
+            "spelling": "--project NAME",
             "terminator": null,
             "trailingVarArg": false,
             "valueNames": [
@@ -3132,6 +3132,11 @@
                 "help": null,
                 "hidden": false
               },
+              "projects": {
+                "aliases": [],
+                "help": null,
+                "hidden": false
+              },
               "proposals": {
                 "aliases": [],
                 "help": null,
@@ -3178,11 +3183,6 @@
                 "hidden": false
               },
               "toggle": {
-                "aliases": [],
-                "help": null,
-                "hidden": false
-              },
-              "writings": {
                 "aliases": [],
                 "help": null,
                 "hidden": false
@@ -4203,6 +4203,1182 @@
         "shortFlagAliases": [],
         "subcommandRequired": false,
         "subcommands": {}
+      },
+      "projects": {
+        "aliases": [],
+        "arguments": {
+          "file": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Open a BibTeX, BibLaTeX, CSL-JSON, RIS or CSV file; repeat for several libraries",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "file",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--file PATH",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "PATH"
+            ]
+          },
+          "help": {
+            "action": "Help",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 0,
+              "min": 0
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Print help",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "help",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": "h",
+            "shortAliases": [],
+            "spelling": "--help",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": []
+          },
+          "nightly": {
+            "action": "SetTrue",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 0,
+              "min": 0
+            },
+            "conflicts": [],
+            "default": [
+              "false"
+            ],
+            "delimiter": null,
+            "exclusive": false,
+            "global": true,
+            "help": "Use Ibis Nightly's project definitions",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "nightly",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--nightly",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": []
+          },
+          "zotero-group": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a local Zotero group library by its group ID; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "zotero-group",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--zotero-group GROUP_ID",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "GROUP_ID"
+            ]
+          },
+          "zotero-profile": {
+            "action": "Set",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Which Zotero profile to read while Zotero is closed, when there are several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "zotero-profile",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--zotero-profile NAME",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME"
+            ]
+          }
+        },
+        "argumentsRequiredElseHelp": true,
+        "description": "Remember a project's citation output and optional bibliography",
+        "groups": {},
+        "hidden": false,
+        "longFlag": null,
+        "longFlagAliases": [],
+        "shortFlag": null,
+        "shortFlagAliases": [],
+        "subcommandRequired": true,
+        "subcommands": {
+          "create": {
+            "aliases": [],
+            "arguments": {
+              "bibliography": {
+                "action": "Set",
+                "allowHyphenValues": false,
+                "allowNegativeNumbers": false,
+                "arity": {
+                  "max": 1,
+                  "min": 1
+                },
+                "conflicts": [],
+                "default": [],
+                "delimiter": null,
+                "exclusive": false,
+                "global": false,
+                "help": "The read-only project bibliography to check, as a .bib file",
+                "hidden": false,
+                "ignoreCase": false,
+                "index": null,
+                "last": false,
+                "long": "bibliography",
+                "longAliases": [],
+                "possibleValues": {},
+                "requireEquals": false,
+                "required": false,
+                "short": null,
+                "shortAliases": [],
+                "spelling": "--bibliography FILE",
+                "terminator": null,
+                "trailingVarArg": false,
+                "valueNames": [
+                  "FILE"
+                ]
+              },
+              "format": {
+                "action": "Set",
+                "allowHyphenValues": false,
+                "allowNegativeNumbers": false,
+                "arity": {
+                  "max": 1,
+                  "min": 1
+                },
+                "conflicts": [
+                  "style"
+                ],
+                "default": [],
+                "delimiter": null,
+                "exclusive": false,
+                "global": false,
+                "help": "Output ID from ibis outputs: a key syntax or a common style",
+                "hidden": false,
+                "ignoreCase": false,
+                "index": null,
+                "last": false,
+                "long": "format",
+                "longAliases": [],
+                "possibleValues": {
+                  "american-chemical-society": {
+                    "aliases": [],
+                    "help": "ACS",
+                    "hidden": false
+                  },
+                  "american-medical-association": {
+                    "aliases": [],
+                    "help": "AMA",
+                    "hidden": false
+                  },
+                  "apa": {
+                    "aliases": [],
+                    "help": "APA",
+                    "hidden": false
+                  },
+                  "ascii-doc": {
+                    "aliases": [],
+                    "help": "AsciiDoc",
+                    "hidden": false
+                  },
+                  "autocite": {
+                    "aliases": [],
+                    "help": "BibLaTeX \\autocite",
+                    "hidden": false
+                  },
+                  "bibtex": {
+                    "aliases": [],
+                    "help": "BibTeX",
+                    "hidden": false
+                  },
+                  "cayw-json": {
+                    "aliases": [],
+                    "help": "CAYW JSON",
+                    "hidden": false
+                  },
+                  "chicago-author-date": {
+                    "aliases": [],
+                    "help": "Chicago (author-date)",
+                    "hidden": false
+                  },
+                  "chicago-notes-bibliography": {
+                    "aliases": [],
+                    "help": "Chicago (notes)",
+                    "hidden": false
+                  },
+                  "china-national-standard-gb-t-7714-2025-author-date": {
+                    "aliases": [],
+                    "help": "GB/T 7714 (author-date)",
+                    "hidden": false
+                  },
+                  "china-national-standard-gb-t-7714-2025-note": {
+                    "aliases": [],
+                    "help": "GB/T 7714 (notes)",
+                    "hidden": false
+                  },
+                  "china-national-standard-gb-t-7714-2025-numeric": {
+                    "aliases": [],
+                    "help": "GB/T 7714 (numeric)",
+                    "hidden": false
+                  },
+                  "cite": {
+                    "aliases": [],
+                    "help": "LaTeX \\cite",
+                    "hidden": false
+                  },
+                  "context": {
+                    "aliases": [],
+                    "help": "ConTeXt",
+                    "hidden": false
+                  },
+                  "csl-json": {
+                    "aliases": [],
+                    "help": "CSL-JSON",
+                    "hidden": false
+                  },
+                  "doi-links": {
+                    "aliases": [],
+                    "help": "DOI links",
+                    "hidden": false
+                  },
+                  "harvard-cite-them-right": {
+                    "aliases": [],
+                    "help": "Harvard",
+                    "hidden": false
+                  },
+                  "ieee": {
+                    "aliases": [],
+                    "help": "IEEE",
+                    "hidden": false
+                  },
+                  "jekyll-scholar": {
+                    "aliases": [],
+                    "help": "Jekyll Scholar",
+                    "hidden": false
+                  },
+                  "jupyter": {
+                    "aliases": [],
+                    "help": "Jupyter",
+                    "hidden": false
+                  },
+                  "keys": {
+                    "aliases": [],
+                    "help": "Keys only",
+                    "hidden": false
+                  },
+                  "modern-language-association": {
+                    "aliases": [],
+                    "help": "MLA",
+                    "hidden": false
+                  },
+                  "multi-markdown": {
+                    "aliases": [],
+                    "help": "MultiMarkdown",
+                    "hidden": false
+                  },
+                  "myst": {
+                    "aliases": [],
+                    "help": "MyST",
+                    "hidden": false
+                  },
+                  "natbib": {
+                    "aliases": [],
+                    "help": "natbib",
+                    "hidden": false
+                  },
+                  "nature": {
+                    "aliases": [],
+                    "help": "Nature",
+                    "hidden": false
+                  },
+                  "org-cite": {
+                    "aliases": [],
+                    "help": "Org mode",
+                    "hidden": false
+                  },
+                  "pandoc": {
+                    "aliases": [],
+                    "help": "Pandoc",
+                    "hidden": false
+                  },
+                  "pandoc-bare": {
+                    "aliases": [],
+                    "help": "Pandoc without brackets",
+                    "hidden": false
+                  },
+                  "parencite": {
+                    "aliases": [],
+                    "help": "BibLaTeX \\parencite",
+                    "hidden": false
+                  },
+                  "scannable-cite": {
+                    "aliases": [],
+                    "help": "Zotero RTF/ODF Scan",
+                    "hidden": false
+                  },
+                  "textcite": {
+                    "aliases": [],
+                    "help": "BibLaTeX \\textcite",
+                    "hidden": false
+                  },
+                  "typst": {
+                    "aliases": [],
+                    "help": "Typst",
+                    "hidden": false
+                  },
+                  "vancouver-nlm": {
+                    "aliases": [],
+                    "help": "Vancouver",
+                    "hidden": false
+                  }
+                },
+                "requireEquals": false,
+                "required": false,
+                "short": null,
+                "shortAliases": [],
+                "spelling": "--format FORMAT",
+                "terminator": null,
+                "trailingVarArg": false,
+                "valueNames": [
+                  "FORMAT"
+                ]
+              },
+              "help": {
+                "action": "Help",
+                "allowHyphenValues": false,
+                "allowNegativeNumbers": false,
+                "arity": {
+                  "max": 0,
+                  "min": 0
+                },
+                "conflicts": [],
+                "default": [],
+                "delimiter": null,
+                "exclusive": false,
+                "global": false,
+                "help": "Print help",
+                "hidden": false,
+                "ignoreCase": false,
+                "index": null,
+                "last": false,
+                "long": "help",
+                "longAliases": [],
+                "possibleValues": {},
+                "requireEquals": false,
+                "required": false,
+                "short": "h",
+                "shortAliases": [],
+                "spelling": "--help",
+                "terminator": null,
+                "trailingVarArg": false,
+                "valueNames": []
+              },
+              "name": {
+                "action": "Set",
+                "allowHyphenValues": false,
+                "allowNegativeNumbers": false,
+                "arity": {
+                  "max": 1,
+                  "min": 1
+                },
+                "conflicts": [],
+                "default": [],
+                "delimiter": null,
+                "exclusive": false,
+                "global": false,
+                "help": "A unique name for this project",
+                "hidden": false,
+                "ignoreCase": false,
+                "index": 1,
+                "last": false,
+                "long": null,
+                "longAliases": [],
+                "possibleValues": {},
+                "requireEquals": false,
+                "required": true,
+                "short": null,
+                "shortAliases": [],
+                "spelling": "NAME",
+                "terminator": null,
+                "trailingVarArg": false,
+                "valueNames": [
+                  "NAME"
+                ]
+              },
+              "style": {
+                "action": "Set",
+                "allowHyphenValues": false,
+                "allowNegativeNumbers": false,
+                "arity": {
+                  "max": 1,
+                  "min": 1
+                },
+                "conflicts": [],
+                "default": [],
+                "delimiter": null,
+                "exclusive": false,
+                "global": false,
+                "help": "Any bundled CSL style ID; list them with: ibis styles",
+                "hidden": false,
+                "ignoreCase": false,
+                "index": null,
+                "last": false,
+                "long": "style",
+                "longAliases": [],
+                "possibleValues": {},
+                "requireEquals": false,
+                "required": false,
+                "short": null,
+                "shortAliases": [],
+                "spelling": "--style STYLE_ID",
+                "terminator": null,
+                "trailingVarArg": false,
+                "valueNames": [
+                  "STYLE_ID"
+                ]
+              }
+            },
+            "argumentsRequiredElseHelp": false,
+            "description": "Create a project",
+            "groups": {},
+            "hidden": false,
+            "longFlag": null,
+            "longFlagAliases": [],
+            "shortFlag": null,
+            "shortFlagAliases": [],
+            "subcommandRequired": false,
+            "subcommands": {}
+          },
+          "list": {
+            "aliases": [],
+            "arguments": {
+              "help": {
+                "action": "Help",
+                "allowHyphenValues": false,
+                "allowNegativeNumbers": false,
+                "arity": {
+                  "max": 0,
+                  "min": 0
+                },
+                "conflicts": [],
+                "default": [],
+                "delimiter": null,
+                "exclusive": false,
+                "global": false,
+                "help": "Print help",
+                "hidden": false,
+                "ignoreCase": false,
+                "index": null,
+                "last": false,
+                "long": "help",
+                "longAliases": [],
+                "possibleValues": {},
+                "requireEquals": false,
+                "required": false,
+                "short": "h",
+                "shortAliases": [],
+                "spelling": "--help",
+                "terminator": null,
+                "trailingVarArg": false,
+                "valueNames": []
+              }
+            },
+            "argumentsRequiredElseHelp": false,
+            "description": "List project names, formats and bibliography file names",
+            "groups": {},
+            "hidden": false,
+            "longFlag": null,
+            "longFlagAliases": [],
+            "shortFlag": null,
+            "shortFlagAliases": [],
+            "subcommandRequired": false,
+            "subcommands": {}
+          },
+          "remove": {
+            "aliases": [],
+            "arguments": {
+              "help": {
+                "action": "Help",
+                "allowHyphenValues": false,
+                "allowNegativeNumbers": false,
+                "arity": {
+                  "max": 0,
+                  "min": 0
+                },
+                "conflicts": [],
+                "default": [],
+                "delimiter": null,
+                "exclusive": false,
+                "global": false,
+                "help": "Print help",
+                "hidden": false,
+                "ignoreCase": false,
+                "index": null,
+                "last": false,
+                "long": "help",
+                "longAliases": [],
+                "possibleValues": {},
+                "requireEquals": false,
+                "required": false,
+                "short": "h",
+                "shortAliases": [],
+                "spelling": "--help",
+                "terminator": null,
+                "trailingVarArg": false,
+                "valueNames": []
+              },
+              "id": {
+                "action": "Set",
+                "allowHyphenValues": false,
+                "allowNegativeNumbers": false,
+                "arity": {
+                  "max": 1,
+                  "min": 1
+                },
+                "conflicts": [],
+                "default": [],
+                "delimiter": null,
+                "exclusive": false,
+                "global": false,
+                "help": "The project name printed by ibis projects list",
+                "hidden": false,
+                "ignoreCase": false,
+                "index": 1,
+                "last": false,
+                "long": null,
+                "longAliases": [],
+                "possibleValues": {},
+                "requireEquals": false,
+                "required": true,
+                "short": null,
+                "shortAliases": [],
+                "spelling": "NAME",
+                "terminator": null,
+                "trailingVarArg": false,
+                "valueNames": [
+                  "NAME"
+                ]
+              }
+            },
+            "argumentsRequiredElseHelp": false,
+            "description": "Remove a project and its app selections; keep its bibliography file",
+            "groups": {},
+            "hidden": false,
+            "longFlag": null,
+            "longFlagAliases": [],
+            "shortFlag": null,
+            "shortFlagAliases": [],
+            "subcommandRequired": false,
+            "subcommands": {}
+          },
+          "rename": {
+            "aliases": [],
+            "arguments": {
+              "help": {
+                "action": "Help",
+                "allowHyphenValues": false,
+                "allowNegativeNumbers": false,
+                "arity": {
+                  "max": 0,
+                  "min": 0
+                },
+                "conflicts": [],
+                "default": [],
+                "delimiter": null,
+                "exclusive": false,
+                "global": false,
+                "help": "Print help",
+                "hidden": false,
+                "ignoreCase": false,
+                "index": null,
+                "last": false,
+                "long": "help",
+                "longAliases": [],
+                "possibleValues": {},
+                "requireEquals": false,
+                "required": false,
+                "short": "h",
+                "shortAliases": [],
+                "spelling": "--help",
+                "terminator": null,
+                "trailingVarArg": false,
+                "valueNames": []
+              },
+              "id": {
+                "action": "Set",
+                "allowHyphenValues": false,
+                "allowNegativeNumbers": false,
+                "arity": {
+                  "max": 1,
+                  "min": 1
+                },
+                "conflicts": [],
+                "default": [],
+                "delimiter": null,
+                "exclusive": false,
+                "global": false,
+                "help": "The project name printed by ibis projects list",
+                "hidden": false,
+                "ignoreCase": false,
+                "index": 1,
+                "last": false,
+                "long": null,
+                "longAliases": [],
+                "possibleValues": {},
+                "requireEquals": false,
+                "required": true,
+                "short": null,
+                "shortAliases": [],
+                "spelling": "NAME",
+                "terminator": null,
+                "trailingVarArg": false,
+                "valueNames": [
+                  "NAME"
+                ]
+              },
+              "name": {
+                "action": "Set",
+                "allowHyphenValues": false,
+                "allowNegativeNumbers": false,
+                "arity": {
+                  "max": 1,
+                  "min": 1
+                },
+                "conflicts": [],
+                "default": [],
+                "delimiter": null,
+                "exclusive": false,
+                "global": false,
+                "help": "A unique name for this project",
+                "hidden": false,
+                "ignoreCase": false,
+                "index": 2,
+                "last": false,
+                "long": null,
+                "longAliases": [],
+                "possibleValues": {},
+                "requireEquals": false,
+                "required": true,
+                "short": null,
+                "shortAliases": [],
+                "spelling": "NAME",
+                "terminator": null,
+                "trailingVarArg": false,
+                "valueNames": [
+                  "NAME"
+                ]
+              }
+            },
+            "argumentsRequiredElseHelp": false,
+            "description": "Rename a project",
+            "groups": {},
+            "hidden": false,
+            "longFlag": null,
+            "longFlagAliases": [],
+            "shortFlag": null,
+            "shortFlagAliases": [],
+            "subcommandRequired": false,
+            "subcommands": {}
+          },
+          "schema": {
+            "aliases": [],
+            "arguments": {
+              "help": {
+                "action": "Help",
+                "allowHyphenValues": false,
+                "allowNegativeNumbers": false,
+                "arity": {
+                  "max": 0,
+                  "min": 0
+                },
+                "conflicts": [],
+                "default": [],
+                "delimiter": null,
+                "exclusive": false,
+                "global": false,
+                "help": "Print help",
+                "hidden": false,
+                "ignoreCase": false,
+                "index": null,
+                "last": false,
+                "long": "help",
+                "longAliases": [],
+                "possibleValues": {},
+                "requireEquals": false,
+                "required": false,
+                "short": "h",
+                "shortAliases": [],
+                "spelling": "--help",
+                "terminator": null,
+                "trailingVarArg": false,
+                "valueNames": []
+              }
+            },
+            "argumentsRequiredElseHelp": false,
+            "description": "The JSON Schema of cite --project's result",
+            "groups": {},
+            "hidden": false,
+            "longFlag": null,
+            "longFlagAliases": [],
+            "shortFlag": null,
+            "shortFlagAliases": [],
+            "subcommandRequired": false,
+            "subcommands": {}
+          },
+          "update": {
+            "aliases": [],
+            "arguments": {
+              "bibliography": {
+                "action": "Set",
+                "allowHyphenValues": false,
+                "allowNegativeNumbers": false,
+                "arity": {
+                  "max": 1,
+                  "min": 1
+                },
+                "conflicts": [
+                  "no-bibliography"
+                ],
+                "default": [],
+                "delimiter": null,
+                "exclusive": false,
+                "global": false,
+                "help": "The read-only project bibliography to check, as a .bib file",
+                "hidden": false,
+                "ignoreCase": false,
+                "index": null,
+                "last": false,
+                "long": "bibliography",
+                "longAliases": [],
+                "possibleValues": {},
+                "requireEquals": false,
+                "required": false,
+                "short": null,
+                "shortAliases": [],
+                "spelling": "--bibliography FILE",
+                "terminator": null,
+                "trailingVarArg": false,
+                "valueNames": [
+                  "FILE"
+                ]
+              },
+              "format": {
+                "action": "Set",
+                "allowHyphenValues": false,
+                "allowNegativeNumbers": false,
+                "arity": {
+                  "max": 1,
+                  "min": 1
+                },
+                "conflicts": [
+                  "style"
+                ],
+                "default": [],
+                "delimiter": null,
+                "exclusive": false,
+                "global": false,
+                "help": "Output ID from ibis outputs: a key syntax or a common style",
+                "hidden": false,
+                "ignoreCase": false,
+                "index": null,
+                "last": false,
+                "long": "format",
+                "longAliases": [],
+                "possibleValues": {
+                  "american-chemical-society": {
+                    "aliases": [],
+                    "help": "ACS",
+                    "hidden": false
+                  },
+                  "american-medical-association": {
+                    "aliases": [],
+                    "help": "AMA",
+                    "hidden": false
+                  },
+                  "apa": {
+                    "aliases": [],
+                    "help": "APA",
+                    "hidden": false
+                  },
+                  "ascii-doc": {
+                    "aliases": [],
+                    "help": "AsciiDoc",
+                    "hidden": false
+                  },
+                  "autocite": {
+                    "aliases": [],
+                    "help": "BibLaTeX \\autocite",
+                    "hidden": false
+                  },
+                  "bibtex": {
+                    "aliases": [],
+                    "help": "BibTeX",
+                    "hidden": false
+                  },
+                  "cayw-json": {
+                    "aliases": [],
+                    "help": "CAYW JSON",
+                    "hidden": false
+                  },
+                  "chicago-author-date": {
+                    "aliases": [],
+                    "help": "Chicago (author-date)",
+                    "hidden": false
+                  },
+                  "chicago-notes-bibliography": {
+                    "aliases": [],
+                    "help": "Chicago (notes)",
+                    "hidden": false
+                  },
+                  "china-national-standard-gb-t-7714-2025-author-date": {
+                    "aliases": [],
+                    "help": "GB/T 7714 (author-date)",
+                    "hidden": false
+                  },
+                  "china-national-standard-gb-t-7714-2025-note": {
+                    "aliases": [],
+                    "help": "GB/T 7714 (notes)",
+                    "hidden": false
+                  },
+                  "china-national-standard-gb-t-7714-2025-numeric": {
+                    "aliases": [],
+                    "help": "GB/T 7714 (numeric)",
+                    "hidden": false
+                  },
+                  "cite": {
+                    "aliases": [],
+                    "help": "LaTeX \\cite",
+                    "hidden": false
+                  },
+                  "context": {
+                    "aliases": [],
+                    "help": "ConTeXt",
+                    "hidden": false
+                  },
+                  "csl-json": {
+                    "aliases": [],
+                    "help": "CSL-JSON",
+                    "hidden": false
+                  },
+                  "doi-links": {
+                    "aliases": [],
+                    "help": "DOI links",
+                    "hidden": false
+                  },
+                  "harvard-cite-them-right": {
+                    "aliases": [],
+                    "help": "Harvard",
+                    "hidden": false
+                  },
+                  "ieee": {
+                    "aliases": [],
+                    "help": "IEEE",
+                    "hidden": false
+                  },
+                  "jekyll-scholar": {
+                    "aliases": [],
+                    "help": "Jekyll Scholar",
+                    "hidden": false
+                  },
+                  "jupyter": {
+                    "aliases": [],
+                    "help": "Jupyter",
+                    "hidden": false
+                  },
+                  "keys": {
+                    "aliases": [],
+                    "help": "Keys only",
+                    "hidden": false
+                  },
+                  "modern-language-association": {
+                    "aliases": [],
+                    "help": "MLA",
+                    "hidden": false
+                  },
+                  "multi-markdown": {
+                    "aliases": [],
+                    "help": "MultiMarkdown",
+                    "hidden": false
+                  },
+                  "myst": {
+                    "aliases": [],
+                    "help": "MyST",
+                    "hidden": false
+                  },
+                  "natbib": {
+                    "aliases": [],
+                    "help": "natbib",
+                    "hidden": false
+                  },
+                  "nature": {
+                    "aliases": [],
+                    "help": "Nature",
+                    "hidden": false
+                  },
+                  "org-cite": {
+                    "aliases": [],
+                    "help": "Org mode",
+                    "hidden": false
+                  },
+                  "pandoc": {
+                    "aliases": [],
+                    "help": "Pandoc",
+                    "hidden": false
+                  },
+                  "pandoc-bare": {
+                    "aliases": [],
+                    "help": "Pandoc without brackets",
+                    "hidden": false
+                  },
+                  "parencite": {
+                    "aliases": [],
+                    "help": "BibLaTeX \\parencite",
+                    "hidden": false
+                  },
+                  "scannable-cite": {
+                    "aliases": [],
+                    "help": "Zotero RTF/ODF Scan",
+                    "hidden": false
+                  },
+                  "textcite": {
+                    "aliases": [],
+                    "help": "BibLaTeX \\textcite",
+                    "hidden": false
+                  },
+                  "typst": {
+                    "aliases": [],
+                    "help": "Typst",
+                    "hidden": false
+                  },
+                  "vancouver-nlm": {
+                    "aliases": [],
+                    "help": "Vancouver",
+                    "hidden": false
+                  }
+                },
+                "requireEquals": false,
+                "required": false,
+                "short": null,
+                "shortAliases": [],
+                "spelling": "--format FORMAT",
+                "terminator": null,
+                "trailingVarArg": false,
+                "valueNames": [
+                  "FORMAT"
+                ]
+              },
+              "help": {
+                "action": "Help",
+                "allowHyphenValues": false,
+                "allowNegativeNumbers": false,
+                "arity": {
+                  "max": 0,
+                  "min": 0
+                },
+                "conflicts": [],
+                "default": [],
+                "delimiter": null,
+                "exclusive": false,
+                "global": false,
+                "help": "Print help",
+                "hidden": false,
+                "ignoreCase": false,
+                "index": null,
+                "last": false,
+                "long": "help",
+                "longAliases": [],
+                "possibleValues": {},
+                "requireEquals": false,
+                "required": false,
+                "short": "h",
+                "shortAliases": [],
+                "spelling": "--help",
+                "terminator": null,
+                "trailingVarArg": false,
+                "valueNames": []
+              },
+              "id": {
+                "action": "Set",
+                "allowHyphenValues": false,
+                "allowNegativeNumbers": false,
+                "arity": {
+                  "max": 1,
+                  "min": 1
+                },
+                "conflicts": [],
+                "default": [],
+                "delimiter": null,
+                "exclusive": false,
+                "global": false,
+                "help": "The project name printed by ibis projects list",
+                "hidden": false,
+                "ignoreCase": false,
+                "index": 1,
+                "last": false,
+                "long": null,
+                "longAliases": [],
+                "possibleValues": {},
+                "requireEquals": false,
+                "required": true,
+                "short": null,
+                "shortAliases": [],
+                "spelling": "NAME",
+                "terminator": null,
+                "trailingVarArg": false,
+                "valueNames": [
+                  "NAME"
+                ]
+              },
+              "no-bibliography": {
+                "action": "SetTrue",
+                "allowHyphenValues": false,
+                "allowNegativeNumbers": false,
+                "arity": {
+                  "max": 0,
+                  "min": 0
+                },
+                "conflicts": [],
+                "default": [
+                  "false"
+                ],
+                "delimiter": null,
+                "exclusive": false,
+                "global": false,
+                "help": "Stop checking a bibliography in this project",
+                "hidden": false,
+                "ignoreCase": false,
+                "index": null,
+                "last": false,
+                "long": "no-bibliography",
+                "longAliases": [],
+                "possibleValues": {},
+                "requireEquals": false,
+                "required": false,
+                "short": null,
+                "shortAliases": [],
+                "spelling": "--no-bibliography",
+                "terminator": null,
+                "trailingVarArg": false,
+                "valueNames": []
+              },
+              "style": {
+                "action": "Set",
+                "allowHyphenValues": false,
+                "allowNegativeNumbers": false,
+                "arity": {
+                  "max": 1,
+                  "min": 1
+                },
+                "conflicts": [],
+                "default": [],
+                "delimiter": null,
+                "exclusive": false,
+                "global": false,
+                "help": "Any bundled CSL style ID; list them with: ibis styles",
+                "hidden": false,
+                "ignoreCase": false,
+                "index": null,
+                "last": false,
+                "long": "style",
+                "longAliases": [],
+                "possibleValues": {},
+                "requireEquals": false,
+                "required": false,
+                "short": null,
+                "shortAliases": [],
+                "spelling": "--style STYLE_ID",
+                "terminator": null,
+                "trailingVarArg": false,
+                "valueNames": [
+                  "STYLE_ID"
+                ]
+              }
+            },
+            "argumentsRequiredElseHelp": false,
+            "description": "Change a project's output or bibliography",
+            "groups": {},
+            "hidden": false,
+            "longFlag": null,
+            "longFlagAliases": [],
+            "shortFlag": null,
+            "shortFlagAliases": [],
+            "subcommandRequired": false,
+            "subcommands": {}
+          }
+        }
       },
       "proposals": {
         "aliases": [],
@@ -6876,1182 +8052,6 @@
         "shortFlagAliases": [],
         "subcommandRequired": false,
         "subcommands": {}
-      },
-      "writings": {
-        "aliases": [],
-        "arguments": {
-          "file": {
-            "action": "Append",
-            "allowHyphenValues": false,
-            "allowNegativeNumbers": false,
-            "arity": {
-              "max": 1,
-              "min": 1
-            },
-            "conflicts": [],
-            "default": [],
-            "delimiter": null,
-            "exclusive": false,
-            "global": false,
-            "help": "Open a BibTeX, BibLaTeX, CSL-JSON, RIS or CSV file; repeat for several libraries",
-            "hidden": false,
-            "ignoreCase": false,
-            "index": null,
-            "last": false,
-            "long": "file",
-            "longAliases": [],
-            "possibleValues": {},
-            "requireEquals": false,
-            "required": false,
-            "short": null,
-            "shortAliases": [],
-            "spelling": "--file PATH",
-            "terminator": null,
-            "trailingVarArg": false,
-            "valueNames": [
-              "PATH"
-            ]
-          },
-          "help": {
-            "action": "Help",
-            "allowHyphenValues": false,
-            "allowNegativeNumbers": false,
-            "arity": {
-              "max": 0,
-              "min": 0
-            },
-            "conflicts": [],
-            "default": [],
-            "delimiter": null,
-            "exclusive": false,
-            "global": false,
-            "help": "Print help",
-            "hidden": false,
-            "ignoreCase": false,
-            "index": null,
-            "last": false,
-            "long": "help",
-            "longAliases": [],
-            "possibleValues": {},
-            "requireEquals": false,
-            "required": false,
-            "short": "h",
-            "shortAliases": [],
-            "spelling": "--help",
-            "terminator": null,
-            "trailingVarArg": false,
-            "valueNames": []
-          },
-          "nightly": {
-            "action": "SetTrue",
-            "allowHyphenValues": false,
-            "allowNegativeNumbers": false,
-            "arity": {
-              "max": 0,
-              "min": 0
-            },
-            "conflicts": [],
-            "default": [
-              "false"
-            ],
-            "delimiter": null,
-            "exclusive": false,
-            "global": true,
-            "help": "Use Ibis Nightly's writing definitions",
-            "hidden": false,
-            "ignoreCase": false,
-            "index": null,
-            "last": false,
-            "long": "nightly",
-            "longAliases": [],
-            "possibleValues": {},
-            "requireEquals": false,
-            "required": false,
-            "short": null,
-            "shortAliases": [],
-            "spelling": "--nightly",
-            "terminator": null,
-            "trailingVarArg": false,
-            "valueNames": []
-          },
-          "zotero-group": {
-            "action": "Append",
-            "allowHyphenValues": false,
-            "allowNegativeNumbers": false,
-            "arity": {
-              "max": 1,
-              "min": 1
-            },
-            "conflicts": [],
-            "default": [],
-            "delimiter": null,
-            "exclusive": false,
-            "global": false,
-            "help": "Read a local Zotero group library by its group ID; repeat for several",
-            "hidden": false,
-            "ignoreCase": false,
-            "index": null,
-            "last": false,
-            "long": "zotero-group",
-            "longAliases": [],
-            "possibleValues": {},
-            "requireEquals": false,
-            "required": false,
-            "short": null,
-            "shortAliases": [],
-            "spelling": "--zotero-group GROUP_ID",
-            "terminator": null,
-            "trailingVarArg": false,
-            "valueNames": [
-              "GROUP_ID"
-            ]
-          },
-          "zotero-profile": {
-            "action": "Set",
-            "allowHyphenValues": false,
-            "allowNegativeNumbers": false,
-            "arity": {
-              "max": 1,
-              "min": 1
-            },
-            "conflicts": [],
-            "default": [],
-            "delimiter": null,
-            "exclusive": false,
-            "global": false,
-            "help": "Which Zotero profile to read while Zotero is closed, when there are several",
-            "hidden": false,
-            "ignoreCase": false,
-            "index": null,
-            "last": false,
-            "long": "zotero-profile",
-            "longAliases": [],
-            "possibleValues": {},
-            "requireEquals": false,
-            "required": false,
-            "short": null,
-            "shortAliases": [],
-            "spelling": "--zotero-profile NAME",
-            "terminator": null,
-            "trailingVarArg": false,
-            "valueNames": [
-              "NAME"
-            ]
-          }
-        },
-        "argumentsRequiredElseHelp": true,
-        "description": "Remember a writing's citation output and optional bibliography",
-        "groups": {},
-        "hidden": false,
-        "longFlag": null,
-        "longFlagAliases": [],
-        "shortFlag": null,
-        "shortFlagAliases": [],
-        "subcommandRequired": true,
-        "subcommands": {
-          "create": {
-            "aliases": [],
-            "arguments": {
-              "bibliography": {
-                "action": "Set",
-                "allowHyphenValues": false,
-                "allowNegativeNumbers": false,
-                "arity": {
-                  "max": 1,
-                  "min": 1
-                },
-                "conflicts": [],
-                "default": [],
-                "delimiter": null,
-                "exclusive": false,
-                "global": false,
-                "help": "The read-only writing bibliography to check, as a .bib file",
-                "hidden": false,
-                "ignoreCase": false,
-                "index": null,
-                "last": false,
-                "long": "bibliography",
-                "longAliases": [],
-                "possibleValues": {},
-                "requireEquals": false,
-                "required": false,
-                "short": null,
-                "shortAliases": [],
-                "spelling": "--bibliography FILE",
-                "terminator": null,
-                "trailingVarArg": false,
-                "valueNames": [
-                  "FILE"
-                ]
-              },
-              "format": {
-                "action": "Set",
-                "allowHyphenValues": false,
-                "allowNegativeNumbers": false,
-                "arity": {
-                  "max": 1,
-                  "min": 1
-                },
-                "conflicts": [
-                  "style"
-                ],
-                "default": [],
-                "delimiter": null,
-                "exclusive": false,
-                "global": false,
-                "help": "Output ID from ibis outputs: a key syntax or a common style",
-                "hidden": false,
-                "ignoreCase": false,
-                "index": null,
-                "last": false,
-                "long": "format",
-                "longAliases": [],
-                "possibleValues": {
-                  "american-chemical-society": {
-                    "aliases": [],
-                    "help": "ACS",
-                    "hidden": false
-                  },
-                  "american-medical-association": {
-                    "aliases": [],
-                    "help": "AMA",
-                    "hidden": false
-                  },
-                  "apa": {
-                    "aliases": [],
-                    "help": "APA",
-                    "hidden": false
-                  },
-                  "ascii-doc": {
-                    "aliases": [],
-                    "help": "AsciiDoc",
-                    "hidden": false
-                  },
-                  "autocite": {
-                    "aliases": [],
-                    "help": "BibLaTeX \\autocite",
-                    "hidden": false
-                  },
-                  "bibtex": {
-                    "aliases": [],
-                    "help": "BibTeX",
-                    "hidden": false
-                  },
-                  "cayw-json": {
-                    "aliases": [],
-                    "help": "CAYW JSON",
-                    "hidden": false
-                  },
-                  "chicago-author-date": {
-                    "aliases": [],
-                    "help": "Chicago (author-date)",
-                    "hidden": false
-                  },
-                  "chicago-notes-bibliography": {
-                    "aliases": [],
-                    "help": "Chicago (notes)",
-                    "hidden": false
-                  },
-                  "china-national-standard-gb-t-7714-2025-author-date": {
-                    "aliases": [],
-                    "help": "GB/T 7714 (author-date)",
-                    "hidden": false
-                  },
-                  "china-national-standard-gb-t-7714-2025-note": {
-                    "aliases": [],
-                    "help": "GB/T 7714 (notes)",
-                    "hidden": false
-                  },
-                  "china-national-standard-gb-t-7714-2025-numeric": {
-                    "aliases": [],
-                    "help": "GB/T 7714 (numeric)",
-                    "hidden": false
-                  },
-                  "cite": {
-                    "aliases": [],
-                    "help": "LaTeX \\cite",
-                    "hidden": false
-                  },
-                  "context": {
-                    "aliases": [],
-                    "help": "ConTeXt",
-                    "hidden": false
-                  },
-                  "csl-json": {
-                    "aliases": [],
-                    "help": "CSL-JSON",
-                    "hidden": false
-                  },
-                  "doi-links": {
-                    "aliases": [],
-                    "help": "DOI links",
-                    "hidden": false
-                  },
-                  "harvard-cite-them-right": {
-                    "aliases": [],
-                    "help": "Harvard",
-                    "hidden": false
-                  },
-                  "ieee": {
-                    "aliases": [],
-                    "help": "IEEE",
-                    "hidden": false
-                  },
-                  "jekyll-scholar": {
-                    "aliases": [],
-                    "help": "Jekyll Scholar",
-                    "hidden": false
-                  },
-                  "jupyter": {
-                    "aliases": [],
-                    "help": "Jupyter",
-                    "hidden": false
-                  },
-                  "keys": {
-                    "aliases": [],
-                    "help": "Keys only",
-                    "hidden": false
-                  },
-                  "modern-language-association": {
-                    "aliases": [],
-                    "help": "MLA",
-                    "hidden": false
-                  },
-                  "multi-markdown": {
-                    "aliases": [],
-                    "help": "MultiMarkdown",
-                    "hidden": false
-                  },
-                  "myst": {
-                    "aliases": [],
-                    "help": "MyST",
-                    "hidden": false
-                  },
-                  "natbib": {
-                    "aliases": [],
-                    "help": "natbib",
-                    "hidden": false
-                  },
-                  "nature": {
-                    "aliases": [],
-                    "help": "Nature",
-                    "hidden": false
-                  },
-                  "org-cite": {
-                    "aliases": [],
-                    "help": "Org mode",
-                    "hidden": false
-                  },
-                  "pandoc": {
-                    "aliases": [],
-                    "help": "Pandoc",
-                    "hidden": false
-                  },
-                  "pandoc-bare": {
-                    "aliases": [],
-                    "help": "Pandoc without brackets",
-                    "hidden": false
-                  },
-                  "parencite": {
-                    "aliases": [],
-                    "help": "BibLaTeX \\parencite",
-                    "hidden": false
-                  },
-                  "scannable-cite": {
-                    "aliases": [],
-                    "help": "Zotero RTF/ODF Scan",
-                    "hidden": false
-                  },
-                  "textcite": {
-                    "aliases": [],
-                    "help": "BibLaTeX \\textcite",
-                    "hidden": false
-                  },
-                  "typst": {
-                    "aliases": [],
-                    "help": "Typst",
-                    "hidden": false
-                  },
-                  "vancouver-nlm": {
-                    "aliases": [],
-                    "help": "Vancouver",
-                    "hidden": false
-                  }
-                },
-                "requireEquals": false,
-                "required": false,
-                "short": null,
-                "shortAliases": [],
-                "spelling": "--format FORMAT",
-                "terminator": null,
-                "trailingVarArg": false,
-                "valueNames": [
-                  "FORMAT"
-                ]
-              },
-              "help": {
-                "action": "Help",
-                "allowHyphenValues": false,
-                "allowNegativeNumbers": false,
-                "arity": {
-                  "max": 0,
-                  "min": 0
-                },
-                "conflicts": [],
-                "default": [],
-                "delimiter": null,
-                "exclusive": false,
-                "global": false,
-                "help": "Print help",
-                "hidden": false,
-                "ignoreCase": false,
-                "index": null,
-                "last": false,
-                "long": "help",
-                "longAliases": [],
-                "possibleValues": {},
-                "requireEquals": false,
-                "required": false,
-                "short": "h",
-                "shortAliases": [],
-                "spelling": "--help",
-                "terminator": null,
-                "trailingVarArg": false,
-                "valueNames": []
-              },
-              "name": {
-                "action": "Set",
-                "allowHyphenValues": false,
-                "allowNegativeNumbers": false,
-                "arity": {
-                  "max": 1,
-                  "min": 1
-                },
-                "conflicts": [],
-                "default": [],
-                "delimiter": null,
-                "exclusive": false,
-                "global": false,
-                "help": "A unique name for this writing",
-                "hidden": false,
-                "ignoreCase": false,
-                "index": 1,
-                "last": false,
-                "long": null,
-                "longAliases": [],
-                "possibleValues": {},
-                "requireEquals": false,
-                "required": true,
-                "short": null,
-                "shortAliases": [],
-                "spelling": "NAME",
-                "terminator": null,
-                "trailingVarArg": false,
-                "valueNames": [
-                  "NAME"
-                ]
-              },
-              "style": {
-                "action": "Set",
-                "allowHyphenValues": false,
-                "allowNegativeNumbers": false,
-                "arity": {
-                  "max": 1,
-                  "min": 1
-                },
-                "conflicts": [],
-                "default": [],
-                "delimiter": null,
-                "exclusive": false,
-                "global": false,
-                "help": "Any bundled CSL style ID; list them with: ibis styles",
-                "hidden": false,
-                "ignoreCase": false,
-                "index": null,
-                "last": false,
-                "long": "style",
-                "longAliases": [],
-                "possibleValues": {},
-                "requireEquals": false,
-                "required": false,
-                "short": null,
-                "shortAliases": [],
-                "spelling": "--style STYLE_ID",
-                "terminator": null,
-                "trailingVarArg": false,
-                "valueNames": [
-                  "STYLE_ID"
-                ]
-              }
-            },
-            "argumentsRequiredElseHelp": false,
-            "description": "Create a writing",
-            "groups": {},
-            "hidden": false,
-            "longFlag": null,
-            "longFlagAliases": [],
-            "shortFlag": null,
-            "shortFlagAliases": [],
-            "subcommandRequired": false,
-            "subcommands": {}
-          },
-          "list": {
-            "aliases": [],
-            "arguments": {
-              "help": {
-                "action": "Help",
-                "allowHyphenValues": false,
-                "allowNegativeNumbers": false,
-                "arity": {
-                  "max": 0,
-                  "min": 0
-                },
-                "conflicts": [],
-                "default": [],
-                "delimiter": null,
-                "exclusive": false,
-                "global": false,
-                "help": "Print help",
-                "hidden": false,
-                "ignoreCase": false,
-                "index": null,
-                "last": false,
-                "long": "help",
-                "longAliases": [],
-                "possibleValues": {},
-                "requireEquals": false,
-                "required": false,
-                "short": "h",
-                "shortAliases": [],
-                "spelling": "--help",
-                "terminator": null,
-                "trailingVarArg": false,
-                "valueNames": []
-              }
-            },
-            "argumentsRequiredElseHelp": false,
-            "description": "List writing names, formats and bibliography file names",
-            "groups": {},
-            "hidden": false,
-            "longFlag": null,
-            "longFlagAliases": [],
-            "shortFlag": null,
-            "shortFlagAliases": [],
-            "subcommandRequired": false,
-            "subcommands": {}
-          },
-          "remove": {
-            "aliases": [],
-            "arguments": {
-              "help": {
-                "action": "Help",
-                "allowHyphenValues": false,
-                "allowNegativeNumbers": false,
-                "arity": {
-                  "max": 0,
-                  "min": 0
-                },
-                "conflicts": [],
-                "default": [],
-                "delimiter": null,
-                "exclusive": false,
-                "global": false,
-                "help": "Print help",
-                "hidden": false,
-                "ignoreCase": false,
-                "index": null,
-                "last": false,
-                "long": "help",
-                "longAliases": [],
-                "possibleValues": {},
-                "requireEquals": false,
-                "required": false,
-                "short": "h",
-                "shortAliases": [],
-                "spelling": "--help",
-                "terminator": null,
-                "trailingVarArg": false,
-                "valueNames": []
-              },
-              "id": {
-                "action": "Set",
-                "allowHyphenValues": false,
-                "allowNegativeNumbers": false,
-                "arity": {
-                  "max": 1,
-                  "min": 1
-                },
-                "conflicts": [],
-                "default": [],
-                "delimiter": null,
-                "exclusive": false,
-                "global": false,
-                "help": "The writing name printed by ibis writings list",
-                "hidden": false,
-                "ignoreCase": false,
-                "index": 1,
-                "last": false,
-                "long": null,
-                "longAliases": [],
-                "possibleValues": {},
-                "requireEquals": false,
-                "required": true,
-                "short": null,
-                "shortAliases": [],
-                "spelling": "NAME",
-                "terminator": null,
-                "trailingVarArg": false,
-                "valueNames": [
-                  "NAME"
-                ]
-              }
-            },
-            "argumentsRequiredElseHelp": false,
-            "description": "Remove a writing and its app selections; keep its bibliography file",
-            "groups": {},
-            "hidden": false,
-            "longFlag": null,
-            "longFlagAliases": [],
-            "shortFlag": null,
-            "shortFlagAliases": [],
-            "subcommandRequired": false,
-            "subcommands": {}
-          },
-          "rename": {
-            "aliases": [],
-            "arguments": {
-              "help": {
-                "action": "Help",
-                "allowHyphenValues": false,
-                "allowNegativeNumbers": false,
-                "arity": {
-                  "max": 0,
-                  "min": 0
-                },
-                "conflicts": [],
-                "default": [],
-                "delimiter": null,
-                "exclusive": false,
-                "global": false,
-                "help": "Print help",
-                "hidden": false,
-                "ignoreCase": false,
-                "index": null,
-                "last": false,
-                "long": "help",
-                "longAliases": [],
-                "possibleValues": {},
-                "requireEquals": false,
-                "required": false,
-                "short": "h",
-                "shortAliases": [],
-                "spelling": "--help",
-                "terminator": null,
-                "trailingVarArg": false,
-                "valueNames": []
-              },
-              "id": {
-                "action": "Set",
-                "allowHyphenValues": false,
-                "allowNegativeNumbers": false,
-                "arity": {
-                  "max": 1,
-                  "min": 1
-                },
-                "conflicts": [],
-                "default": [],
-                "delimiter": null,
-                "exclusive": false,
-                "global": false,
-                "help": "The writing name printed by ibis writings list",
-                "hidden": false,
-                "ignoreCase": false,
-                "index": 1,
-                "last": false,
-                "long": null,
-                "longAliases": [],
-                "possibleValues": {},
-                "requireEquals": false,
-                "required": true,
-                "short": null,
-                "shortAliases": [],
-                "spelling": "NAME",
-                "terminator": null,
-                "trailingVarArg": false,
-                "valueNames": [
-                  "NAME"
-                ]
-              },
-              "name": {
-                "action": "Set",
-                "allowHyphenValues": false,
-                "allowNegativeNumbers": false,
-                "arity": {
-                  "max": 1,
-                  "min": 1
-                },
-                "conflicts": [],
-                "default": [],
-                "delimiter": null,
-                "exclusive": false,
-                "global": false,
-                "help": "A unique name for this writing",
-                "hidden": false,
-                "ignoreCase": false,
-                "index": 2,
-                "last": false,
-                "long": null,
-                "longAliases": [],
-                "possibleValues": {},
-                "requireEquals": false,
-                "required": true,
-                "short": null,
-                "shortAliases": [],
-                "spelling": "NAME",
-                "terminator": null,
-                "trailingVarArg": false,
-                "valueNames": [
-                  "NAME"
-                ]
-              }
-            },
-            "argumentsRequiredElseHelp": false,
-            "description": "Rename a writing",
-            "groups": {},
-            "hidden": false,
-            "longFlag": null,
-            "longFlagAliases": [],
-            "shortFlag": null,
-            "shortFlagAliases": [],
-            "subcommandRequired": false,
-            "subcommands": {}
-          },
-          "schema": {
-            "aliases": [],
-            "arguments": {
-              "help": {
-                "action": "Help",
-                "allowHyphenValues": false,
-                "allowNegativeNumbers": false,
-                "arity": {
-                  "max": 0,
-                  "min": 0
-                },
-                "conflicts": [],
-                "default": [],
-                "delimiter": null,
-                "exclusive": false,
-                "global": false,
-                "help": "Print help",
-                "hidden": false,
-                "ignoreCase": false,
-                "index": null,
-                "last": false,
-                "long": "help",
-                "longAliases": [],
-                "possibleValues": {},
-                "requireEquals": false,
-                "required": false,
-                "short": "h",
-                "shortAliases": [],
-                "spelling": "--help",
-                "terminator": null,
-                "trailingVarArg": false,
-                "valueNames": []
-              }
-            },
-            "argumentsRequiredElseHelp": false,
-            "description": "The JSON Schema of cite --writing's result",
-            "groups": {},
-            "hidden": false,
-            "longFlag": null,
-            "longFlagAliases": [],
-            "shortFlag": null,
-            "shortFlagAliases": [],
-            "subcommandRequired": false,
-            "subcommands": {}
-          },
-          "update": {
-            "aliases": [],
-            "arguments": {
-              "bibliography": {
-                "action": "Set",
-                "allowHyphenValues": false,
-                "allowNegativeNumbers": false,
-                "arity": {
-                  "max": 1,
-                  "min": 1
-                },
-                "conflicts": [
-                  "no-bibliography"
-                ],
-                "default": [],
-                "delimiter": null,
-                "exclusive": false,
-                "global": false,
-                "help": "The read-only writing bibliography to check, as a .bib file",
-                "hidden": false,
-                "ignoreCase": false,
-                "index": null,
-                "last": false,
-                "long": "bibliography",
-                "longAliases": [],
-                "possibleValues": {},
-                "requireEquals": false,
-                "required": false,
-                "short": null,
-                "shortAliases": [],
-                "spelling": "--bibliography FILE",
-                "terminator": null,
-                "trailingVarArg": false,
-                "valueNames": [
-                  "FILE"
-                ]
-              },
-              "format": {
-                "action": "Set",
-                "allowHyphenValues": false,
-                "allowNegativeNumbers": false,
-                "arity": {
-                  "max": 1,
-                  "min": 1
-                },
-                "conflicts": [
-                  "style"
-                ],
-                "default": [],
-                "delimiter": null,
-                "exclusive": false,
-                "global": false,
-                "help": "Output ID from ibis outputs: a key syntax or a common style",
-                "hidden": false,
-                "ignoreCase": false,
-                "index": null,
-                "last": false,
-                "long": "format",
-                "longAliases": [],
-                "possibleValues": {
-                  "american-chemical-society": {
-                    "aliases": [],
-                    "help": "ACS",
-                    "hidden": false
-                  },
-                  "american-medical-association": {
-                    "aliases": [],
-                    "help": "AMA",
-                    "hidden": false
-                  },
-                  "apa": {
-                    "aliases": [],
-                    "help": "APA",
-                    "hidden": false
-                  },
-                  "ascii-doc": {
-                    "aliases": [],
-                    "help": "AsciiDoc",
-                    "hidden": false
-                  },
-                  "autocite": {
-                    "aliases": [],
-                    "help": "BibLaTeX \\autocite",
-                    "hidden": false
-                  },
-                  "bibtex": {
-                    "aliases": [],
-                    "help": "BibTeX",
-                    "hidden": false
-                  },
-                  "cayw-json": {
-                    "aliases": [],
-                    "help": "CAYW JSON",
-                    "hidden": false
-                  },
-                  "chicago-author-date": {
-                    "aliases": [],
-                    "help": "Chicago (author-date)",
-                    "hidden": false
-                  },
-                  "chicago-notes-bibliography": {
-                    "aliases": [],
-                    "help": "Chicago (notes)",
-                    "hidden": false
-                  },
-                  "china-national-standard-gb-t-7714-2025-author-date": {
-                    "aliases": [],
-                    "help": "GB/T 7714 (author-date)",
-                    "hidden": false
-                  },
-                  "china-national-standard-gb-t-7714-2025-note": {
-                    "aliases": [],
-                    "help": "GB/T 7714 (notes)",
-                    "hidden": false
-                  },
-                  "china-national-standard-gb-t-7714-2025-numeric": {
-                    "aliases": [],
-                    "help": "GB/T 7714 (numeric)",
-                    "hidden": false
-                  },
-                  "cite": {
-                    "aliases": [],
-                    "help": "LaTeX \\cite",
-                    "hidden": false
-                  },
-                  "context": {
-                    "aliases": [],
-                    "help": "ConTeXt",
-                    "hidden": false
-                  },
-                  "csl-json": {
-                    "aliases": [],
-                    "help": "CSL-JSON",
-                    "hidden": false
-                  },
-                  "doi-links": {
-                    "aliases": [],
-                    "help": "DOI links",
-                    "hidden": false
-                  },
-                  "harvard-cite-them-right": {
-                    "aliases": [],
-                    "help": "Harvard",
-                    "hidden": false
-                  },
-                  "ieee": {
-                    "aliases": [],
-                    "help": "IEEE",
-                    "hidden": false
-                  },
-                  "jekyll-scholar": {
-                    "aliases": [],
-                    "help": "Jekyll Scholar",
-                    "hidden": false
-                  },
-                  "jupyter": {
-                    "aliases": [],
-                    "help": "Jupyter",
-                    "hidden": false
-                  },
-                  "keys": {
-                    "aliases": [],
-                    "help": "Keys only",
-                    "hidden": false
-                  },
-                  "modern-language-association": {
-                    "aliases": [],
-                    "help": "MLA",
-                    "hidden": false
-                  },
-                  "multi-markdown": {
-                    "aliases": [],
-                    "help": "MultiMarkdown",
-                    "hidden": false
-                  },
-                  "myst": {
-                    "aliases": [],
-                    "help": "MyST",
-                    "hidden": false
-                  },
-                  "natbib": {
-                    "aliases": [],
-                    "help": "natbib",
-                    "hidden": false
-                  },
-                  "nature": {
-                    "aliases": [],
-                    "help": "Nature",
-                    "hidden": false
-                  },
-                  "org-cite": {
-                    "aliases": [],
-                    "help": "Org mode",
-                    "hidden": false
-                  },
-                  "pandoc": {
-                    "aliases": [],
-                    "help": "Pandoc",
-                    "hidden": false
-                  },
-                  "pandoc-bare": {
-                    "aliases": [],
-                    "help": "Pandoc without brackets",
-                    "hidden": false
-                  },
-                  "parencite": {
-                    "aliases": [],
-                    "help": "BibLaTeX \\parencite",
-                    "hidden": false
-                  },
-                  "scannable-cite": {
-                    "aliases": [],
-                    "help": "Zotero RTF/ODF Scan",
-                    "hidden": false
-                  },
-                  "textcite": {
-                    "aliases": [],
-                    "help": "BibLaTeX \\textcite",
-                    "hidden": false
-                  },
-                  "typst": {
-                    "aliases": [],
-                    "help": "Typst",
-                    "hidden": false
-                  },
-                  "vancouver-nlm": {
-                    "aliases": [],
-                    "help": "Vancouver",
-                    "hidden": false
-                  }
-                },
-                "requireEquals": false,
-                "required": false,
-                "short": null,
-                "shortAliases": [],
-                "spelling": "--format FORMAT",
-                "terminator": null,
-                "trailingVarArg": false,
-                "valueNames": [
-                  "FORMAT"
-                ]
-              },
-              "help": {
-                "action": "Help",
-                "allowHyphenValues": false,
-                "allowNegativeNumbers": false,
-                "arity": {
-                  "max": 0,
-                  "min": 0
-                },
-                "conflicts": [],
-                "default": [],
-                "delimiter": null,
-                "exclusive": false,
-                "global": false,
-                "help": "Print help",
-                "hidden": false,
-                "ignoreCase": false,
-                "index": null,
-                "last": false,
-                "long": "help",
-                "longAliases": [],
-                "possibleValues": {},
-                "requireEquals": false,
-                "required": false,
-                "short": "h",
-                "shortAliases": [],
-                "spelling": "--help",
-                "terminator": null,
-                "trailingVarArg": false,
-                "valueNames": []
-              },
-              "id": {
-                "action": "Set",
-                "allowHyphenValues": false,
-                "allowNegativeNumbers": false,
-                "arity": {
-                  "max": 1,
-                  "min": 1
-                },
-                "conflicts": [],
-                "default": [],
-                "delimiter": null,
-                "exclusive": false,
-                "global": false,
-                "help": "The writing name printed by ibis writings list",
-                "hidden": false,
-                "ignoreCase": false,
-                "index": 1,
-                "last": false,
-                "long": null,
-                "longAliases": [],
-                "possibleValues": {},
-                "requireEquals": false,
-                "required": true,
-                "short": null,
-                "shortAliases": [],
-                "spelling": "NAME",
-                "terminator": null,
-                "trailingVarArg": false,
-                "valueNames": [
-                  "NAME"
-                ]
-              },
-              "no-bibliography": {
-                "action": "SetTrue",
-                "allowHyphenValues": false,
-                "allowNegativeNumbers": false,
-                "arity": {
-                  "max": 0,
-                  "min": 0
-                },
-                "conflicts": [],
-                "default": [
-                  "false"
-                ],
-                "delimiter": null,
-                "exclusive": false,
-                "global": false,
-                "help": "Stop checking a bibliography in this writing",
-                "hidden": false,
-                "ignoreCase": false,
-                "index": null,
-                "last": false,
-                "long": "no-bibliography",
-                "longAliases": [],
-                "possibleValues": {},
-                "requireEquals": false,
-                "required": false,
-                "short": null,
-                "shortAliases": [],
-                "spelling": "--no-bibliography",
-                "terminator": null,
-                "trailingVarArg": false,
-                "valueNames": []
-              },
-              "style": {
-                "action": "Set",
-                "allowHyphenValues": false,
-                "allowNegativeNumbers": false,
-                "arity": {
-                  "max": 1,
-                  "min": 1
-                },
-                "conflicts": [],
-                "default": [],
-                "delimiter": null,
-                "exclusive": false,
-                "global": false,
-                "help": "Any bundled CSL style ID; list them with: ibis styles",
-                "hidden": false,
-                "ignoreCase": false,
-                "index": null,
-                "last": false,
-                "long": "style",
-                "longAliases": [],
-                "possibleValues": {},
-                "requireEquals": false,
-                "required": false,
-                "short": null,
-                "shortAliases": [],
-                "spelling": "--style STYLE_ID",
-                "terminator": null,
-                "trailingVarArg": false,
-                "valueNames": [
-                  "STYLE_ID"
-                ]
-              }
-            },
-            "argumentsRequiredElseHelp": false,
-            "description": "Change a writing's output or bibliography",
-            "groups": {},
-            "hidden": false,
-            "longFlag": null,
-            "longFlagAliases": [],
-            "shortFlag": null,
-            "shortFlagAliases": [],
-            "subcommandRequired": false,
-            "subcommands": {}
-          }
-        }
       }
     }
   },

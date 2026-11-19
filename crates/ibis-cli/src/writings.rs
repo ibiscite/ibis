@@ -16,13 +16,13 @@ pub(crate) fn command() -> Command {
         Arg::new("id")
             .value_name("NAME")
             .required(true)
-            .help("The writing name printed by ibis writings list")
+            .help("The project name printed by ibis projects list")
     };
     let name = || {
         Arg::new("name")
             .value_name("NAME")
             .required(true)
-            .help("A unique name for this writing")
+            .help("A unique name for this project")
     };
     let format = || {
         Arg::new("format")
@@ -43,21 +43,21 @@ pub(crate) fn command() -> Command {
         Arg::new("bibliography")
             .long("bibliography")
             .value_name("FILE")
-            .help("The read-only writing bibliography to check, as a .bib file")
+            .help("The read-only project bibliography to check, as a .bib file")
             .value_parser(clap::value_parser!(PathBuf))
     };
-    Command::new("writings")
-        .about("Remember a writing's citation output and optional bibliography")
-        .after_help("Writings stay on this computer. Their bibliography is read-only; no writing choice grants paste permission.\nUse a writing for one citation: ibis cite KEY --writing NAME")
+    Command::new("projects")
+        .about("Remember a project's citation output and optional bibliography")
+        .after_help("Projects stay on this computer. Their bibliography is read-only; no project choice grants paste permission.\nUse a project for one citation: ibis cite KEY --project NAME")
         .subcommand_required(true).arg_required_else_help(true)
-        .arg(Arg::new("nightly").long("nightly").global(true).action(ArgAction::SetTrue).help("Use Ibis Nightly's writing definitions"))
-        .subcommand(Command::new("list").about("List writing names, formats and bibliography file names"))
-        .subcommand(Command::new("schema").about("The JSON Schema of cite --writing's result"))
-        .subcommand(Command::new("create").about("Create a writing").arg(name()).arg(format().required_unless_present("style")).arg(style()).arg(bibliography()))
-        .subcommand(Command::new("rename").about("Rename a writing").arg(id()).arg(name()))
-        .subcommand(Command::new("remove").about("Remove a writing and its app selections; keep its bibliography file").arg(id()))
-        .subcommand(Command::new("update").about("Change a writing's output or bibliography").arg(id()).arg(format()).arg(style()).arg(bibliography().conflicts_with("no-bibliography"))
-            .arg(Arg::new("no-bibliography").long("no-bibliography").action(ArgAction::SetTrue).help("Stop checking a bibliography in this writing")))
+        .arg(Arg::new("nightly").long("nightly").global(true).action(ArgAction::SetTrue).help("Use Ibis Nightly's project definitions"))
+        .subcommand(Command::new("list").about("List project names, formats and bibliography file names"))
+        .subcommand(Command::new("schema").about("The JSON Schema of cite --project's result"))
+        .subcommand(Command::new("create").about("Create a project").arg(name()).arg(format().required_unless_present("style")).arg(style()).arg(bibliography()))
+        .subcommand(Command::new("rename").about("Rename a project").arg(id()).arg(name()))
+        .subcommand(Command::new("remove").about("Remove a project and its app selections; keep its bibliography file").arg(id()))
+        .subcommand(Command::new("update").about("Change a project's output or bibliography").arg(id()).arg(format()).arg(style()).arg(bibliography().conflicts_with("no-bibliography"))
+            .arg(Arg::new("no-bibliography").long("no-bibliography").action(ArgAction::SetTrue).help("Stop checking a bibliography in this project")))
 }
 
 fn failure(error: WritingError) -> Failure {

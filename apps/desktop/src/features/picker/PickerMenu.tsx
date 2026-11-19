@@ -10,6 +10,7 @@ import { KeyHint } from "../../ui/KeyCaps";
 import { Palette, type PaletteItem, type PaletteSection } from "../../ui/Palette";
 import { SourceIcon, type SourceActionProps } from "../../ui/SourceAction";
 import { COMMAND_ICONS } from "./commands";
+import { SHORTCUT_ACTIONS } from "../../i18n/settings";
 import { bibliographyDetail } from "./useBibliography";
 
 type Action = PaletteItem & { run: () => void; icon: ReactNode };
@@ -18,7 +19,8 @@ type Action = PaletteItem & { run: () => void; icon: ReactNode };
  * name or a common word for it, each showing its key (control placement, the
  * third door). Grouped by what it acts on: the library, the citation, the
  * window, Ibis. Preferences live in Settings and the format chooser holds the
- * app's own choices. While Keep Window Open is on, the footer shows it. */
+ * app's own choices. It is the one list of commands: each is also found by what
+ * it does, the words the keys sheet uses. While Keep Window Open is on, the footer shows it. */
 export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, libraryDetail, lastOutcome, pinned, keepOrder, citation, actions, source, project }: {
   /** Acts on the focused citation token, or the last one. */
   citation?: { tokens: number; selected: number; focus: () => void; edit: () => void; move: (step: -1 | 1) => void; remove: () => void } | null;
@@ -35,6 +37,8 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
     chooseSource: () => void; revealSource: (() => void) | null;
     /** Offered once this app has a citation from this run of Ibis. */
     changeLast?: (() => void) | null;
+    /** Paste Reference List: this app's citations from this run, as entries. */
+    referenceList?: { label: string; run: () => void } | null;
     /** The highlighted reference's details, as ⌘Y shows them. */
     peek?: (() => void) | null;
     forgetRecent?: (() => void) | null; quit: () => void;
@@ -47,8 +51,11 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
   const mac = platform === "macos";
   // Every action has a glyph on the tile column: the icon is not optional.
   const action = (id: string, label: string, icon: IconName | Exclude<ReactNode, string>, run: (() => void) | null | undefined, more: Partial<Action> = {}): Action[] =>
-    run ? [{ id, label, run, icon: typeof icon === "string" ? <Icon name={icon as IconName} /> : icon, keywords: say(`palette-words-${id}` as never), ...more }] : [];
-  const keyed = (id: Parameters<typeof keysFor>[0]) => ({ keys: keysFor(id, mac) || undefined });
+    run ? [{ id, label, run, icon: typeof icon === "string" ? <Icon name={icon as IconName} /> : icon, ...more,
+      keywords: [say(`palette-words-${id}` as never), more.keywords].filter(Boolean).join(" ") }] : [];
+  // A keyed action is found by its key's description too ("Edit the citation you just pasted").
+  const keyed = (id: Parameters<typeof keysFor>[0]) => ({ keys: keysFor(id, mac) || undefined,
+    keywords: id in SHORTCUT_ACTIONS ? say(SHORTCUT_ACTIONS[id as keyof typeof SHORTCUT_ACTIONS]) : undefined });
   const showSource = say("picker-show-source-folder", { platform: mac ? "macos" : "other" });
   const sections: (PaletteSection & { items: Action[] })[] = [
     // The footer's status already names the library under More; the group's name
@@ -68,6 +75,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
       ...action("format", say("picker-change-format"), COMMAND_ICONS.format, actions.format, keyed("format")),
       ...action("peek", say("palette-peek"), "peek", actions.peek, keyed("peek")),
       ...action("change-last", say("picker-change-last-citation"), COMMAND_ICONS.changeLast, actions.changeLast, keyed("changeLast")),
+      ...action("reference-list", actions.referenceList?.label ?? "", "history", actions.referenceList?.run),
       ...citation?.tokens ? [
         ...action("citation-focus", say("key-go-to-citation"), "arrow-down", citation.focus, keyed("citationFocus")),
         ...action("citation-edit", say("key-edit-citation"), COMMAND_ICONS.inspector, citation.edit, keyed("inspector")),

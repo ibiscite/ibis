@@ -248,8 +248,7 @@ export function geometry(root: ParentNode = document): string[] {
       failures.push(`[C24 frame] the frame spans ${top.toFixed(1)}–${bottom.toFixed(1)}px of a ${edge}px window: it ends ${bottom < edge ? `${(edge - bottom).toFixed(1)}px short of` : `${(bottom - edge).toFixed(1)}px past`} its edge`);
   }
   // [C24] No empty band: the frame's heading line is drawn only with something in
-  // it, and nothing sits between it and the list's first row. A list with no heading
-  // line (the commands) keeps its own group headings.
+  // it, and nothing sits between it and the list's first row.
   const line = root.querySelector(".ui-notice-line"), bar = root.querySelector(".search-bar"), first = root.querySelector('#results [role="option"]');
   if (line && visible(line) && !line.textContent?.trim()) failures.push("[C24 frame] the heading line is drawn empty");
   const area = first?.closest(".results-area");

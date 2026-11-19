@@ -171,6 +171,10 @@ pub(crate) struct SearchReply {
     pub(super) interpretation: Option<LocatorQuery>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) list: Option<ibis_engine::PastedList>,
+    /// The words as typed name something in the library, so no signal or page
+    /// was read from them; the picker says so in one notice line.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(super) kept_words: bool,
     /// Nothing matched and the search has filters: the search without them.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) unfiltered: Option<String>,

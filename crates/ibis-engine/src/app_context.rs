@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-const CHANGED: &str = "The writing changed. Open the format menu again.";
+const CHANGED: &str = "The project changed. Open the format menu again.";
 const REOPEN: &str = "The destination changed. Open the format menu again.";
-const EDITOR: &str = "This editor request chooses its own output. Finish it before changing writings.";
+const EDITOR: &str = "This editor request chooses its own output. Finish it before changing projects.";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct WritingView {
@@ -86,7 +86,7 @@ impl fmt::Display for Error {
                 formatter.write_str(&crate::catalogue::problem(problem, crate::catalogue::Audience::App))
             }
             Self::Unsupported => {
-                formatter.write_str("This writing's format is not available in the picker. Choose another format.")
+                formatter.write_str("This project's format is not available in the picker. Choose another format.")
             }
         }
     }
@@ -377,6 +377,9 @@ pub struct ContextView {
     pub writing_context: Option<String>,
     pub writings: WritingsView,
     pub project: Option<project::ProjectStatus>,
+    /// The format palette offers Projects: once one exists, or once this app
+    /// has a second format saved, its own beside your usual one.
+    pub offers_projects: bool,
     #[serde(skip)]
     pub paste_enabled: bool,
 }
@@ -446,6 +449,7 @@ impl Owner {
                 writing_context: None,
                 writings: view_for(&Settings::default(), &target, None),
                 project: None,
+                offers_projects: false,
                 paste_enabled: false,
             });
         } else {
@@ -529,6 +533,7 @@ impl Owner {
             writing: active.map(|writing| writing.view()),
             context_version,
             writing_context: Some(writings.context.clone()),
+            offers_projects: crate::format::offers_projects(&settings, capture.app.as_ref()),
             writings,
             project,
             paste_enabled: settings.portable.paste.unwrap_or(true),
