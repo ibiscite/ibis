@@ -6,7 +6,7 @@ import type { usePointerSelection } from "../../pointerSelection";
 import type { usePickerSession } from "./usePickerSession";
 import type { useLibrarySearch } from "./useLibrarySearch";
 import type { useOperations } from "./useOperations";
-import type { EnterAction } from "./session";
+import type { RequestedAction } from "./session";
 import { choiceKey, idKey, type CitationDetailsChange, type CitationReference, asTyped, type Typed } from "./choice";
 import type { OutputId } from "../../format/outputs";
 
@@ -24,7 +24,7 @@ export function useCitationRows({
   snapshotRevision: string | undefined;
   focusHome: () => void;
   pointer: ReturnType<typeof usePointerSelection>;
-  requestCopy: (choice: string | null, action?: EnterAction) => void;
+  requestCopy: (choice: string | null, action?: RequestedAction) => void;
   report: ReturnType<typeof useOperations>["report"];
 }) {
   const { session, state, send, cancelCopy, setActive } = pickerSession;
@@ -50,7 +50,7 @@ export function useCitationRows({
   latestRowScope.current = rowScope;
   const contextRequest = useRef(0);
 
-  const copyChosen = (action?: EnterAction) => {
+  const copyChosen = (action?: RequestedAction) => {
     if (chosen.length > 0) requestCopy(chosenKey, action);
     else if (showCitations && searchPending) requestCopy(null, action);
   };

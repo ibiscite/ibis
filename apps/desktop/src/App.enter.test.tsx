@@ -51,3 +51,27 @@ test("Enter on the practice prompt waits for the preview and pastes only in Ibis
   await enter();
   expect(calls.filter((call) => call === "deliver_citation")).toHaveLength(1);
 });
+
+test.each(["offer", "preview"] as const)("first Enter stays in Ibis when the %s replies first", async (first) => {
+  let finishOffer!: () => void;
+  let finishPreview!: () => void;
+  const calls = backend({
+    search: () => [result("aster2026", "Invented gardens")],
+    delight_view: () => new Promise((resolve) => { finishOffer = () => resolve({ practice: true, status: null, peck: false }); }),
+    preview_file_citation: () => new Promise((resolve) => { finishPreview = () => resolve(receipt("[@aster2026]")); }),
+  });
+  await act(async () => { render(<App />); });
+  expect(calls).toContain("delight_view");
+  expect(calls).toContain("preview_file_citation");
+
+  await enter();
+  await act(async () => { (first === "offer" ? finishOffer : finishPreview)(); });
+  if (first === "offer") expect(screen.getByText("Try a paste here first: press Enter.")).toBeTruthy();
+  expect(calls).not.toContain("deliver_citation");
+  await act(async () => { (first === "offer" ? finishPreview : finishOffer)(); });
+  expect(calls).not.toContain("deliver_citation");
+  expect(screen.getByText(/\[@aster2026\].*pasted here/)).toBeTruthy();
+
+  await enter();
+  expect(calls.filter((call) => call === "deliver_citation")).toHaveLength(1);
+});

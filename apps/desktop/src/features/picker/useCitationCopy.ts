@@ -1,6 +1,6 @@
 import type * as nativeApi from "../../api";
 import { useLayoutEffect, type RefObject } from "react";
-import type { EnterAction, SessionState } from "./session";
+import type { RequestedAction, SessionState } from "./session";
 import type { createSessionController } from "./sessionController";
 import type { useDestination } from "./useDestination";
 import type { OutputId } from "../../format/outputs";
@@ -16,15 +16,15 @@ export function useCitationCopy({ api, session, state, destination, formatButton
   setFormatOpen: (open: boolean) => void;
   practise: (text: string) => void;
 }) {
-  const { deliverCitation } = api;
+  const { deliverCitation, sessionReferences } = api;
   const send = session.dispatch;
   useLayoutEffect(() => {
-    session.connect({ deliverCitation, refresh: refreshSnapshot, practise });
+    session.connect({ deliverCitation, sessionReferences, refresh: refreshSnapshot, practise });
   });
   // An Enter that must first ask opens the format menu once the screen shows its question.
   const asking = state.pendingCopy?.question === "open";
   useLayoutEffect(() => { if (asking) formatButtonRef.current?.click(); }, [asking, formatButtonRef]);
-  const requestCopy = (choice: string | null, action?: EnterAction) => send({ type: "enter", choice, action, output: destination.copyToken() });
+  const requestCopy = (choice: string | null, action?: RequestedAction) => send({ type: "enter", choice, action, output: destination.copyToken() });
   const chooseFormat = (choice: OutputId) => {
     destination.choose(choice);
     send({ type: "question", format: choice, output: destination.copyToken(), answer: destination.askPaste ? "cancel" : "answered" });

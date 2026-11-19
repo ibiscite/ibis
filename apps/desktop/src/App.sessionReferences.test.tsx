@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { App } from "./App";
 import type { SessionBibliography, SessionReferencesView } from "./api";
-import { backend, chooseFromMore, displayTree, lineReceipt, prepared, resetApp, result } from "./testing/app";
+import { backend, chooseFromMore, citationKeys, displayTree, lineReceipt, prepared, resetApp, result } from "./testing/app";
 import { fixtureDestination, formatAnswer } from "./testing/format";
 
 afterEach(resetApp);
@@ -83,4 +83,23 @@ test("a delayed reference list cannot replace a newer search or deliver its entr
   await act(async () => { finishList(list({ here: [taylor] })); });
   expect(search.value).toBe("noise");
   expect(calls).not.toContain("deliver_citation");
+});
+
+test("opening Keyboard Shortcuts retires a delayed reference list", async () => {
+  let finishList!: (value: SessionReferencesView) => void;
+  const calls = backend({
+    search: () => [{ ...taylor, recent: "cited" }],
+    destination: () => fixtureDestination({ app: "Example Writer", app_id: "example.writer", can_paste: true, cited_here: 1, format: formatAnswer("apa", "app") }),
+    session_references: () => new Promise<SessionReferencesView>((resolve) => { finishList = resolve; }),
+  });
+  render(<App />);
+  fireEvent.click(await screen.findByRole("option", { name: /Paste Reference List/ }));
+  expect(calls).toContain("session_references");
+  const search = screen.getByLabelText("Search references");
+  fireEvent.keyDown(search, { key: "/", ctrlKey: true });
+  await screen.findByRole("dialog", { name: "Keyboard Shortcuts" });
+
+  await act(async () => { finishList(list({ here: [morgan] })); });
+  expect(calls).not.toContain("deliver_citation");
+  expect(citationKeys()).toEqual([]);
 });

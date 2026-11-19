@@ -29,8 +29,12 @@ export type SessionView = {
   remembersLast: boolean;
 };
 export type EnterAction = "deliver" | "practice";
-type Pending = { action: EnterAction; keepOrder: boolean; choice: string | null; selection: SessionState["selected"]; queryKey: string;
-  format: OutputId | null; output: OutputToken; question?: "open" | "answered" };
+export type RequestedAction = EnterAction | Promise<EnterAction>;
+/** The identity of a delivery request is its token. Leaving the view or
+ * starting a newer request drops its ownership, even before it has a preview. */
+type DeliveryIntent = { readonly action: RequestedAction };
+type Pending = { intent: DeliveryIntent; resolvedAction?: EnterAction; format: OutputId | null; output: OutputToken }
+  & ({ source: "citation"; choice: string | null; question?: "open" | "answered" } | { source: "reference-list"; question?: never });
 type Flight = { keepOrder: boolean; id: number; session: number; choice: string; format: OutputId; writingVersion?: string | null; warnings: CitedWarning[];
   shelf: CitationReference[]; replaces: readonly string[] | null; appId: string | null; writingId?: string | null;
   owner: { context: number; session: number; visibility: number; output: OutputToken } };
@@ -72,6 +76,7 @@ export type SessionState = {
   copied: Copied | null; copyError: string | null; lastOutcome: string | null;
   shelfCopied: ShelfCopied | null; copyNotice: Copied | null; removed: RemovedReference | null;
 };
+type DeliveryReply = { type: "action"; action: EnterAction } | { type: "reference-list"; references: readonly SearchResult[] };
 type Completion = { id: number; session: number };
 export type SessionEvent =
   | SearchEvent
@@ -84,16 +89,17 @@ export type SessionEvent =
   | { type: "keep-order"; value: boolean }
   | { type: "literal" | "escape-search" | "cancel" | "retire" | "sample" | "change-last" | "forget-last" }
   | { type: "dismiss"; copied?: Copied }
-  | { type: "highlight"; index: number; cancel?: boolean }
+  | { type: "highlight"; index: number; fromSearch?: true }
   | { type: "toggle"; result?: SearchResult; locator?: Readonly<Locator> | null; prefix?: string }
   | { type: "undo-reference" | "expire-removal"; removal: RemovedReference }
   | { type: "remove-reference"; reference: CitationReference }
   /** This app's reference list: its references, each as its entry, then delivered as Enter would. */
-  | { type: "reference-list"; references: readonly SearchResult[] }
+  | { type: "reference-list" }
+  | { type: "delivery-reply"; intent: DeliveryIntent; reply: DeliveryReply }
   /** Move one reference a place along `shown`, the line's order, which a style may have sorted. */
   | { type: "move-reference"; reference: CitationReference; shown: readonly string[]; step: -1 | 1 }
   | { type: "reference"; reference: CitationReference; change: CitationDetailsChange; selectedOnly?: boolean; initialSelection?: readonly CitationReference[] }
-  | { type: "enter"; choice: string | null; action?: EnterAction; output?: OutputToken }
+  | { type: "enter"; choice: string | null; action?: RequestedAction; output?: OutputToken }
   | { type: "question"; format?: OutputId; output?: OutputToken; answer: "answered" | "cancel" }
   | { type: "hidden"; now: number }
   | { type: "preparing"; now: number; selection?: string | null }
@@ -104,6 +110,8 @@ export type SessionEvent =
 export type SessionEffect =
   | (Completion & { type: "copy"; ticket: string; hash: string; replaces: readonly string[] | null; presentation: number; closestMatches: ClosestMatch[] })
   | { type: "practice"; text: string }
+  | { type: "enter-action"; intent: DeliveryIntent; answer: Promise<EnterAction> }
+  | { type: "read-reference-list"; intent: DeliveryIntent }
   | { type: "consume"; output: OutputToken }
   | { type: "refresh" }
   | SearchEffect
@@ -152,11 +160,11 @@ function advance(s: SessionState, copies: boolean): [SessionState, SessionEffect
   // The snapshot supplies the presentation before the window can accept Enter.
   const presentation = s.presentation;
   if (presentation === null) return [s, []];
-  const key = choiceKey(v.chosen);
   // While the format question is open, a new format or token is its answer arriving.
   const answering = p.question === "open";
-  if (p.keepOrder !== s.keepOrder || p.selection !== s.selected || p.queryKey !== sessionQueryKey(s) ||
-    !answering && (p.format !== null && p.format !== v.format || !sameOutput(p.output, v.output))) return [{ ...s, pendingCopy: null }, []];
+  if (!answering && (p.format !== null && p.format !== v.format || !sameOutput(p.output, v.output))) return [{ ...s, pendingCopy: null }, []];
+  if (p.source === "reference-list") return [s, []];
+  const key = choiceKey(v.chosen);
   // A destination read can refresh recents and temporarily retire the current
   // rows. Keep the captured choice until the reply can confirm or reject it.
   if (p.choice !== null && p.choice !== key) return v.searchPending ? [s, []] : [{ ...s, pendingCopy: null }, []];
@@ -167,13 +175,14 @@ function advance(s: SessionState, copies: boolean): [SessionState, SessionEffect
     if (!v.chosen.length || s.selected.size === 0 && v.defaultChoice === choiceKey([])) return [{ ...s, pendingCopy: null }, []];
     return advance({ ...s, pendingCopy: { ...p, choice: key } }, copies);
   }
-  if (!v.ready || v.saving) return [s, []];
-  if (p.action === "deliver" && !p.question && v.shouldAsk) return [{ ...s, pendingCopy: { ...p, question: "open" } }, []];
+  const action = p.resolvedAction ?? p.intent.action;
+  if (typeof action !== "string" || !v.ready || v.saving) return [s, []];
+  if (action === "deliver" && !p.question && v.shouldAsk) return [{ ...s, pendingCopy: { ...p, question: "open" } }, []];
   if (p.question === "open" || v.shown === null || !copies) return [s, []];
   s = { ...s, pendingCopy: null };
   if (!v.chosen.length || v.shown === "failed") return [s, []];
   if (v.shown === "stale" || !v.chosen[0]?.revision) return [{ ...s, copyError: say("picker-snapshot-changed") }, [{ type: "refresh" }]];
-  if (p.action === "practice") return [s, v.shown.text ? [{ type: "practice", text: v.shown.text }] : []];
+  if (action === "practice") return [s, v.shown.text ? [{ type: "practice", text: v.shown.text }] : []];
   if (v.shown.project_refusal) return [{ ...s, copyError: v.shown.project_refusal }, []];
   if (!v.shown.fileTicket || !v.shown.fileHash) return [{ ...s, copyError: say("picker-preview-error") }, []];
   const owner = { context: s.context, session: s.session, visibility: s.visibility, output: v.output };
@@ -249,7 +258,7 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
       const step = reduceSearch(s.search, event, s.session);
       if (!step) return [s, []];
       const next = { ...s, search: step.search };
-      return [step.firstRow ? reduceEvent(next, { type: "highlight", index: 0 })[0] : next, step.effects];
+      return [step.firstRow ? reduceEvent(next, { type: "highlight", index: 0, fromSearch: true })[0] : next, step.effects];
     }
     case "destination-snapshot": case "destination-reader": case "read-destination": case "destination-read": case "destination-read-failed": case "project-changed":
     case "choose-format": case "choose-once": case "choose-paste": case "destination-saved": case "destination-save-failed":
@@ -277,18 +286,28 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
         query: "", interpretLocators: true, fromDocument: false, active: 0, copyError: null, keepOrder: last.keepOrder, changing: [last.text, ...last.earlier ?? []] }), []];
     }
     case "reference-list": {
-      if (!event.references.length || s.hiddenAt !== null) return [s, []];
-      const references = event.references.map((reference): CitationReference => ({ ...reference, form: "bibliography-only" }));
+      if (s.presentation === null || s.hiddenAt !== null || !s.view) return [s, []];
+      const intent: DeliveryIntent = { action: "deliver" };
+      return [{ ...s, pendingCopy: { intent, source: "reference-list", format: s.view.format, output: s.view.output } },
+        [{ type: "read-reference-list", intent }]];
+    }
+    case "delivery-reply": {
+      const p = s.pendingCopy, { reply } = event;
+      if (p?.intent !== event.intent) return [s, []];
+      if (reply.type === "action") return [{ ...s, pendingCopy: { ...p, resolvedAction: reply.action } }, []];
+      if (!reply.references.length) return reduceEvent(s, { type: "cancel" });
+      const references = reply.references.map((reference): CitationReference => ({ ...reference, form: "bibliography-only" }));
       const next = changed(s, { selected: new Map(references.map((reference) => [idKey(reference.id), reference])), removed: null, selectionChanged: true,
         query: "", interpretLocators: true, fromDocument: false, active: 0, copyError: null, keepOrder: false, changing: null });
-      return reduceEvent(next, { type: "enter", choice: choiceKey(references) });
+      return [{ ...next, pendingCopy: { ...p, source: "citation", choice: choiceKey(references) } }, []];
     }
     case "forget-last": return [{ ...s, lastCitations: new Map(), changing: null, flights: s.flights.map((f) => ({ ...f, appId: null })) }, []];
     case "cancel": return [s.pendingCopy ? { ...s, pendingCopy: null } : s, []];
     case "dismiss": return [s.copied && (!event.copied || event.copied === s.copied) ? { ...s, copied: null, shelfCopied: null, copyNotice: null } : s, []];
     case "highlight": {
-      if (event.index === s.active) return event.cancel ? reduceEvent(s, { type: "cancel" }) : [s, []];
-      return [{ ...s, active: event.index, shelfCopied: null, copyNotice: null, interaction: s.interaction + 1, context: s.context + (s.selected.size === 0 ? 1 : 0), pendingCopy: event.cancel ? null : s.pendingCopy }, []];
+      if (event.index === s.active) return [s, []];
+      return [{ ...s, active: event.index, shelfCopied: null, copyNotice: null, interaction: s.interaction + 1,
+        context: s.context + (s.selected.size === 0 ? 1 : 0), pendingCopy: event.fromSearch ? s.pendingCopy : null }, []];
     }
     case "toggle": {
       if (!event.result) return reduceEvent(s, { type: "cancel" });
@@ -340,9 +359,10 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
     case "enter": {
       if (s.hiddenAt !== null || !s.view) return [s, []];
       const output = event.output ?? s.view.output;
-      const next = { ...s, pendingCopy: { action: event.action ?? "deliver", keepOrder: s.keepOrder, choice: event.choice, selection: s.selected, queryKey: sessionQueryKey(s),
-        format: s.view.ready && sameOutput(s.view.output, output) ? s.view.format : null, output } };
-      return [next, []];
+      const intent: DeliveryIntent = { action: event.action ?? "deliver" };
+      return [{ ...s, pendingCopy: { intent, source: "citation", choice: event.choice,
+        format: s.view.ready && sameOutput(s.view.output, output) ? s.view.format : null, output } },
+        typeof intent.action === "string" ? [] : [{ type: "enter-action", intent, answer: intent.action }]];
     }
     case "question": {
       const p = s.pendingCopy;
@@ -361,7 +381,7 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
         shown: false, resting: true, preview: { ...s.preview, started: null } }, s.preview.started ? [{ type: "stop-preview" }] : []];
     }
     case "preparing": {
-      s = { ...returning(s, event.now), hiddenAt: null, opened: s.opened + 1, view: null,
+      s = { ...returning(s, event.now), hiddenAt: null, opened: s.opened + 1, view: null, pendingCopy: null,
         search: { ...initialSearch, seq: s.search.seq + 1 }, preview: { ...initialPreview, request: s.preview.request + 1 } };
       if (!event.selection) return [s, []];
       // The paste would replace this text, so it always shows, even after a

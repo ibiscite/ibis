@@ -171,7 +171,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     focusHome, pointer, requestCopy, report,
   });
   const practice = delights.practice;
-  const copyChosen = () => rows.copyChosen(practice?.pasted === null ? "practice" : "deliver");
+  const copyChosen = () => rows.copyChosen(delights.actionForEnter());
   const practiceLine = practice ? practice.pasted === null ? say("picker-practice-offer") : say("picker-practice-pasted", { citation: practice.pasted }) : null;
   const waitingForPractice = practice?.pasted === null && !zoomFeedback && !emptyFeedback.feedback;
   const nothingMatched = Boolean(query) && searchState.resultsQuery === queryKey && results.length === 0 && !error;
