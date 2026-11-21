@@ -414,6 +414,7 @@ pub(crate) struct PickerPreferences {
 
 impl PickerPreferences {
     /// The interface's choices in a settings file that names none.
+    #[cfg(test)]
     pub(crate) fn defaults() -> Self {
         Self::from_settings(&settings::Settings::default())
     }
