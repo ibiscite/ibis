@@ -3,8 +3,8 @@
 use std::io::{self, Read, Write};
 use std::os::fd::AsFd;
 use std::process::Child;
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicUsize, Ordering};
+use std::sync::mpsc;
 
 use nix::errno::Errno;
 use nix::fcntl::{FcntlArg, OFlag, fcntl};
@@ -19,56 +19,75 @@ extern "C" fn terminate(signal: i32) {
     let _ = TERMINATING.compare_exchange(0, signal, Ordering::SeqCst, Ordering::SeqCst);
 }
 
-/// At executable startup, before starting threads, arrange for SIGINT and
-/// SIGTERM to stop and reap all active adapter groups before exiting with
-/// 128 + signal. Embedders retain their own signal and cancellation policy.
-pub fn exit_on_termination() -> io::Result<()> {
-    static INSTALLED: OnceLock<io::Result<()>> = OnceLock::new();
-    INSTALLED
-        .get_or_init(|| {
-            use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal, sigaction};
-            let action = SigAction::new(SigHandler::Handler(terminate), SaFlags::SA_RESTART, SigSet::empty());
-            // SAFETY: the static handler touches only a lock-free atomic and
-            // has the signal ABI. Install at startup, before any child exists.
-            let interrupt = unsafe { sigaction(Signal::SIGINT, &action) }?;
-            // SAFETY: the same static handler; restore SIGINT on partial failure.
-            let termination = match unsafe { sigaction(Signal::SIGTERM, &action) } {
-                Ok(previous) => previous,
-                Err(error) => {
-                    // SAFETY: restore the exact action returned by sigaction.
-                    unsafe { sigaction(Signal::SIGINT, &interrupt) }?;
-                    return Err(error.into());
-                }
-            };
-            match std::thread::Builder::new()
-                .name("ibis-termination".into())
-                .spawn(move || {
-                    let signal = loop {
-                        let signal = TERMINATING.load(Ordering::SeqCst);
-                        if signal != 0 {
-                            break signal;
-                        }
-                        std::thread::sleep(super::POLL);
-                    };
+/// The executable's sole exit path after signal handling is installed.
+#[must_use = "finish the executable through Termination::exit"]
+pub struct Termination {
+    completed: mpsc::Sender<u8>,
+    waiter: std::thread::JoinHandle<()>,
+}
+
+impl Termination {
+    /// Finish a command through the signal waiter. A pending signal takes
+    /// priority over `status`, after all active adapter groups are reaped.
+    pub fn exit(self, status: u8) -> ! {
+        if self.completed.send(status).is_ok() {
+            let _ = self.waiter.join();
+        }
+        // The waiter exits the process. Only a failed waiter reaches here.
+        std::process::exit(70);
+    }
+}
+
+/// Call once at executable startup, before starting threads, then finish
+/// through the returned owner's `exit`. SIGINT and SIGTERM stop and reap
+/// all active adapter groups before exiting with 128 + signal. Embedders
+/// retain their own signal and cancellation policy.
+pub fn exit_on_termination() -> io::Result<Termination> {
+    use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal, sigaction};
+    let action = SigAction::new(SigHandler::Handler(terminate), SaFlags::SA_RESTART, SigSet::empty());
+    // SAFETY: the static handler touches only a lock-free atomic and has the
+    // signal ABI. Install at startup, before any child exists.
+    let interrupt = unsafe { sigaction(Signal::SIGINT, &action) }?;
+    // SAFETY: the same static handler; restore SIGINT on partial failure.
+    let termination = match unsafe { sigaction(Signal::SIGTERM, &action) } {
+        Ok(previous) => previous,
+        Err(error) => {
+            // SAFETY: restore the exact action returned by sigaction.
+            unsafe { sigaction(Signal::SIGINT, &interrupt) }?;
+            return Err(error.into());
+        }
+    };
+    let (completed, normal_exit) = mpsc::channel();
+    let waiter = std::thread::Builder::new()
+        .name("ibis-termination".into())
+        .spawn(move || {
+            loop {
+                let normal = normal_exit.recv_timeout(super::POLL).ok();
+                // Normal completion cannot bypass a signal the handler recorded
+                // while this waiter was asleep, even with no active exchanges.
+                let signal = TERMINATING.load(Ordering::SeqCst);
+                if signal != 0 {
                     while ACTIVE.load(Ordering::SeqCst) != 0 {
                         std::thread::sleep(super::POLL);
                     }
                     std::process::exit(128 + signal);
-                }) {
-                Ok(_) => Ok(()),
-                Err(error) => {
-                    // SAFETY: restore the exact actions returned above.
-                    unsafe {
-                        sigaction(Signal::SIGINT, &interrupt)?;
-                        sigaction(Signal::SIGTERM, &termination)?;
-                    }
-                    Err(error)
+                }
+                if let Some(status) = normal {
+                    std::process::exit(i32::from(status));
                 }
             }
-        })
-        .as_ref()
-        .copied()
-        .map_err(|error| io::Error::new(error.kind(), "could not start adapter termination waiter"))
+        });
+    match waiter {
+        Ok(waiter) => Ok(Termination { completed, waiter }),
+        Err(error) => {
+            // SAFETY: restore the exact actions returned above.
+            unsafe {
+                sigaction(Signal::SIGINT, &interrupt)?;
+                sigaction(Signal::SIGTERM, &termination)?;
+            }
+            Err(error)
+        }
+    }
 }
 
 pub(super) fn terminating() -> bool {

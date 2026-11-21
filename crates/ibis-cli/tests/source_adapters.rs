@@ -44,6 +44,10 @@ fn main() {
             "an_older_adapter_read_cannot_publish_over_a_newer_read",
             stale_publication,
         ),
+        (
+            "selector_aliases_cannot_publish_over_a_newer_library_read",
+            stale_alias_publication,
+        ),
         ("overflow_stops_an_adapter_before_it_finishes_writing", streaming_limit),
         (
             "exiting_adapters_do_not_leave_children_holding_the_pipes",
@@ -51,6 +55,8 @@ fn main() {
         ),
         #[cfg(unix)]
         ("termination_kills_and_reaps_active_adapter_groups", termination),
+        #[cfg(unix)]
+        ("pending_termination_wins_over_stdin_completion", termination_at_eof),
     ];
     for (name, test) in tests {
         if filter.is_empty() || filter.iter().any(|wanted| name.contains(wanted.as_str())) {
@@ -578,6 +584,127 @@ fn wait_for(path: &Path) {
             "adapter did not reach its barrier"
         );
         std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+fn stale_alias_publication() {
+    for (already_open, changed_scope) in [(false, false), (true, false), (true, true)] {
+        let fake = Fake::new("fake");
+        let engine = engine();
+        let alias = fake.directory.path().join("alias.json");
+        if already_open {
+            std::fs::write(
+                &alias,
+                json!({"response":{"ibis":1,"read":read(invented())}}).to_string(),
+            )
+            .unwrap();
+            engine
+                .open_adapter(fake.adapter(), alias.to_str(), &Cancellation::default())
+                .unwrap();
+        }
+        let ready = fake.directory.path().join("ready");
+        let release = fake.directory.path().join("release");
+        fake.scenario(json!({"mode":"paused-answer", "ready":ready, "release":release,
+            "response":{"ibis":1,"read":read(invented())}}));
+        let older = engine.clone();
+        let adapter = fake.adapter().with_deadline(Duration::from_secs(10));
+        let scenario = fake.scenario.clone();
+        let pending =
+            std::thread::spawn(move || older.open_adapter(adapter, scenario.to_str(), &Cancellation::default()));
+        wait_for(&ready);
+
+        let mut edited = read(invented());
+        edited["revision"] = json!("r2");
+        edited["records"][0]["volume"] = json!("99");
+        if changed_scope {
+            edited["scope"] = json!("invented-replacement");
+        }
+        std::fs::write(&alias, json!({"response":{"ibis":1,"read":edited}}).to_string()).unwrap();
+        let (newest, _) = engine
+            .open_adapter(fake.adapter(), alias.to_str(), &Cancellation::default())
+            .unwrap();
+        let newest_objects = objects_of(&engine);
+        std::fs::write(&release, "release").unwrap();
+        let older = pending.join().unwrap();
+
+        let listed = libraries(&engine);
+        assert_eq!(listed.len(), 1, "an alias must not restore a retired scope");
+        assert_eq!(listed[0]["id"], json!(newest.id));
+        assert_eq!(listed[0]["revision"], json!(newest.revision));
+        assert_eq!(
+            objects_of(&engine),
+            newest_objects,
+            "an alias must not restore old records"
+        );
+        assert_eq!(older.unwrap_err().code, ibis_core::contract::ErrorCode::Cancelled);
+    }
+}
+
+#[cfg(unix)]
+fn termination_at_eof() {
+    use nix::sys::signal::{Signal, kill};
+    use nix::unistd::Pid;
+    use std::io::{BufRead, BufReader};
+    use std::process::Stdio;
+    for signal in [Signal::SIGINT, Signal::SIGTERM] {
+        for _ in 0..16 {
+            let directory = tempfile::tempdir().unwrap();
+            let mut ibis = std::process::Command::new(env!("CARGO_BIN_EXE_ibis"))
+                .args(["mcp"])
+                .env("HOME", directory.path())
+                .env("XDG_CONFIG_HOME", directory.path())
+                .env("APPDATA", directory.path())
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap();
+            let mut input = ibis.stdin.take().unwrap();
+            let output = ibis.stdout.take().unwrap();
+            let (ready, reply) = std::sync::mpsc::channel();
+            let reader = std::thread::spawn(move || {
+                let mut line = String::new();
+                BufReader::new(output).read_line(&mut line).unwrap();
+                ready.send(line).unwrap();
+            });
+            writeln!(
+                input,
+                "{}",
+                json!({"jsonrpc":"2.0","id":1,"method":"initialize",
+                "params":{"protocolVersion":ibis_engine::mcp::INITIALIZE_VERSIONS[0],
+                "capabilities":{},"clientInfo":{"name":"invented","version":"1"}}})
+            )
+            .unwrap();
+            // A reply proves startup and signal installation completed; no
+            // startup sleep decides when it is safe to send the signal.
+            let initialized = match reply.recv_timeout(Duration::from_secs(5)) {
+                Ok(initialized) => initialized,
+                Err(error) => {
+                    let _ = ibis.kill();
+                    let _ = ibis.wait();
+                    let _ = reader.join();
+                    panic!("Ibis did not initialize: {error}");
+                }
+            };
+            reader.join().unwrap();
+            kill(Pid::from_raw(i32::try_from(ibis.id()).unwrap()), signal).unwrap();
+            drop(input);
+            let started = Instant::now();
+            let status = loop {
+                if let Some(status) = ibis.try_wait().unwrap() {
+                    break status;
+                }
+                if started.elapsed() > Duration::from_secs(5) {
+                    let _ = ibis.kill();
+                    let _ = ibis.wait();
+                    panic!("Ibis did not finish after {signal} and stdin EOF");
+                }
+                std::thread::sleep(Duration::from_millis(1));
+            };
+            let initialized: Value = serde_json::from_str(&initialized).unwrap();
+            assert!(initialized["result"].is_object(), "{initialized}");
+            assert_eq!(status.code(), Some(128 + signal as i32), "{signal} must win over EOF");
+        }
     }
 }
 

@@ -18,9 +18,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 #[cfg(unix)]
-pub use unix::exit_on_termination;
-#[cfg(unix)]
 use unix::pipe;
+#[cfg(unix)]
+pub use unix::{Termination, exit_on_termination};
 
 const POLL_MS: u8 = 5;
 const POLL: Duration = Duration::from_millis(POLL_MS as u64);

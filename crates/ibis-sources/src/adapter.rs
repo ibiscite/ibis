@@ -24,7 +24,7 @@ use crate::{LibraryKind, LoadedLibrary, SourceCapability, SourceWarning, Warning
 mod response;
 
 #[cfg(unix)]
-pub use crate::child::exit_on_termination;
+pub use crate::child::{Termination, exit_on_termination};
 
 /// The argument that makes `ibis` serve a built-in adapter: `ibis __source NAME`.
 pub const CHILD_ARGUMENT: &str = "__source";

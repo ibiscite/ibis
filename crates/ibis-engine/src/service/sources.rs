@@ -39,7 +39,11 @@ struct Adapters {
     libraries: BTreeMap<LibraryId, (SourceAdapter, Option<String>)>,
     // A generation is kept alive by its read, including before a first
     // library is published. Weak entries let completed/failed reads expire.
-    reads: BTreeMap<(String, Option<String>), Weak<()>>,
+    reads: BTreeMap<(String, Option<String>), Weak<u64>>,
+    /// Publications since the oldest pending read, keyed by resolved identity
+    /// so aliases cannot restore older records. Keep retired scopes too.
+    published: BTreeMap<LibraryId, u64>,
+    publication: u64,
 }
 impl Owners {
     pub(super) fn on_port(port: u16, profile: &[u8]) -> Self {
@@ -636,15 +640,24 @@ impl Engine {
     ) -> Result<(LibraryInfo, String), EngineError> {
         cancel.check()?;
         let source = (adapter.name().to_owned(), library.map(str::to_owned));
-        let generation = Arc::new(());
-        {
+        let generation = {
             let mut adapters = self.resources.adapters.recover_lock();
             adapters.reads.retain(|_, read| read.strong_count() != 0);
+            let oldest = adapters
+                .reads
+                .values()
+                .filter_map(Weak::upgrade)
+                .map(|read| *read)
+                .min()
+                .unwrap_or(adapters.publication);
+            adapters.published.retain(|_, publication| *publication > oldest);
             if !adapters.reads.contains_key(&source) && adapters.reads.len() >= MAX_FILES {
                 return Err(error(ErrorCode::ResourceLimit));
             }
+            let generation = Arc::new(adapters.publication);
             adapters.reads.insert(source.clone(), Arc::downgrade(&generation));
-        }
+            generation
+        };
         let load = adapter
             .read(library, &|| cancel.is_cancelled())
             .map_err(adapter_error)?;
@@ -657,6 +670,10 @@ impl Engine {
             .reads
             .get(&source)
             .is_some_and(|latest| latest.ptr_eq(&Arc::downgrade(&generation)))
+            || adapters
+                .published
+                .get(&load.loaded.library)
+                .is_some_and(|publication| *publication > *generation)
         {
             return Err(error(ErrorCode::Cancelled));
         }
@@ -676,6 +693,10 @@ impl Engine {
             return Err(error(ErrorCode::ResourceLimit));
         }
         let observed = info(&loaded);
+        let publication = adapters
+            .publication
+            .checked_add(1)
+            .ok_or_else(|| error(ErrorCode::ResourceLimit))?;
         let mut state = self.shared.state.write().map_err(|_| error(ErrorCode::Internal))?;
         let next = State::replacement(&state, vec![(observed.clone(), &loaded.snapshot)], |old| {
             previous.as_ref() == Some(&old.id)
@@ -685,7 +706,10 @@ impl Engine {
         drop(state);
         if let Some(previous) = previous {
             adapters.libraries.remove(&previous);
+            adapters.published.insert(previous, publication);
         }
+        adapters.publication = publication;
+        adapters.published.insert(loaded.library.clone(), publication);
         adapters.libraries.insert(loaded.library.clone(), (adapter, source.1));
         self.shared.notify()?;
         Ok((observed, load.token))
