@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type * as nativeApi from "../../api";
 import type { Density, PickerPreferences } from "../../api";
+import { DEFAULT_PREFERENCES } from "../../bindings";
 import { defaultOutput, isStyle, listedOutput, type OutputId } from "../../format/outputs";
 import { useAppearance } from "../../ui/appearance";
 import { PreferencePatchQueue } from "../../preferencePatchQueue";
@@ -39,8 +40,8 @@ export function usePickerPreferences(
     saved: pickerPreferencesSaved,
   }, { readAfterWrites: true }));
   const applyView = useCallback((value: PickerPreferences) => {
-    setSmallSurprises(value.small_surprises ?? true);
-    setRecentCitations(value.recent_citations ?? true);
+    setSmallSurprises(value.small_surprises ?? DEFAULT_PREFERENCES.small_surprises);
+    setRecentCitations(value.recent_citations ?? DEFAULT_PREFERENCES.recent_citations);
     setDensity(value.density);
     setLargerText(value.larger_text);
   }, []);

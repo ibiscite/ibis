@@ -1,4 +1,4 @@
-import type { AgentApp, CommandStatus, DelightFact, PickerPreferences, ShortcutStatus, WindowSize } from "../bindings";
+import { DEFAULT_PREFERENCES, type AgentApp, type CommandStatus, type DelightFact, type PickerPreferences, type ShortcutStatus, type WindowSize } from "../bindings";
 import { DEFAULT_PICKER_SHORTCUT } from "../keys";
 import { exampleProposals } from "../testing/proposals";
 import type { SettingsApi } from "./api";
@@ -41,7 +41,7 @@ export function demoApi(initialPreferences: Partial<PickerPreferences> = {}): Se
     rejectAppProposals: async (id) => { const app = proposals.find((proposal) => proposal.id === id)?.source_app; proposals = proposals.filter((proposal) => proposal.source_app !== app); return { status: "rejected" }; },
     rejectProposal: async (id) => { proposals = proposals.filter((proposal) => proposal.id !== id); return { status: "rejected" }; },
     delightView: async (_now, _presentation, _revision, click) => {
-      const fun = preferences.small_surprises ?? true;
+      const fun = preferences.small_surprises ?? DEFAULT_PREFERENCES.small_surprises;
       if (fun && click) factIndex = (factIndex + 1) % facts.length;
       return { fun, fact: fun && click ? facts[factIndex]! : null, status: null, peck: false, anniversary: false, practice: false, revision, build: "0.2.1 · invented · 2026-11-01" };
     },

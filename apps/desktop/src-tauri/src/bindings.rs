@@ -175,6 +175,13 @@ fn contract() -> Value {
             })
         })
         .collect();
+    // What every unset choice means, from the engine's one owner. Formats
+    // follow the library and the app, so their defaults are the two constants.
+    let mut defaults = json!(crate::preferences::PickerPreferences::defaults());
+    if let Some(fields) = defaults.as_object_mut() {
+        fields.remove("output");
+        fields.remove("key_output");
+    }
     json!({
         "commands": commands,
         "events": events,
@@ -193,6 +200,7 @@ fn contract() -> Value {
             })).collect::<Vec<_>>(),
             "DEFAULT_OUTPUT": ibis_engine::outputs::DEFAULT,
             "DEFAULT_STYLE": ibis_engine::outputs::DEFAULT_STYLE,
+            "DEFAULT_PREFERENCES": defaults,
         },
     })
 }

@@ -536,7 +536,7 @@ impl Owner {
             offers_projects: crate::format::offers_projects(&settings, capture.app.as_ref()),
             writings,
             project,
-            paste_enabled: settings.portable.paste.unwrap_or(true),
+            paste_enabled: settings.portable.paste(),
         })
     }
     pub fn bibliography_owner(

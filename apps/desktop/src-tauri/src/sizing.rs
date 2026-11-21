@@ -176,7 +176,7 @@ impl Sizing {
         if let Ok(mut state) = self.shared.state.lock() {
             state.windows = settings.picker_windows.clone();
         }
-        self.set_larger_text(settings.larger_text.unwrap_or(false));
+        self.set_larger_text(settings.larger_text());
     }
 
     /// An accepted text choice applies until quit even if its flush fails.

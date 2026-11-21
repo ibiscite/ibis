@@ -273,7 +273,7 @@ fn main() {
                     });
                 },
             ));
-            let remember = cites.is_some_and(|settings| settings.portable.recent_citations.unwrap_or(true));
+            let remember = cites.is_some_and(|settings| settings.portable.recent_citations());
             session_references::manage(app.handle(), &settings_path, remember);
             app.state::<sizing::Sizing>().load(&interface);
             if !sizing::start(app.handle()) {
@@ -332,7 +332,7 @@ fn main() {
                 Ok(Err(error)) => report(Err::<(), _>(error), NativeIssue::TrayCreation),
                 Err(_) => application_message("the menu bar item is not available on this system"),
             }
-            tray::show_in_menu_bar(app.handle(), interface.menu_bar.unwrap_or(true), 0);
+            tray::show_in_menu_bar(app.handle(), interface.menu_bar(), 0);
             start_shortcut(app.handle(), interface.shortcut.as_deref());
             // After the tray, so the menu item shows the saved choice.
             updater::start(app.handle(), interface.update_checks, loaded.problem.is_none());

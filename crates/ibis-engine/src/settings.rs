@@ -254,12 +254,56 @@ impl std::fmt::Debug for EditorEndpoint {
 }
 
 /// How much each result row shows (ADR 0020).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Density {
     Compact,
+    #[default]
     Comfortable,
 }
+
+/// What each unset switch means. Choices with several values own theirs as
+/// their type's `Default`. These are the only place a default is written: the
+/// file names only choices that differ ([`unless_default`]), and the app reads
+/// the same values through its generated bindings.
+pub struct Defaults {
+    pub paste: bool,
+    pub menu_bar: bool,
+    pub recent_citations: bool,
+    pub small_surprises: bool,
+    pub larger_text: bool,
+}
+pub const DEFAULTS: Defaults = Defaults {
+    paste: true,
+    menu_bar: true,
+    recent_citations: true,
+    small_surprises: true,
+    larger_text: false,
+};
+
+/// A choice as the file stores it: nothing when it is the default.
+pub fn unless_default<T: PartialEq>(value: T, default: T) -> Option<T> {
+    (value != default).then_some(value)
+}
+
+/// Each saved choice, or its default when unset, read the same way from the
+/// file and from its interface view.
+macro_rules! resolved {
+    ($($owner:ty),*) => {$(
+        impl $owner {
+            pub fn paste(&self) -> bool { self.paste.unwrap_or(DEFAULTS.paste) }
+            pub fn menu_bar(&self) -> bool { self.menu_bar.unwrap_or(DEFAULTS.menu_bar) }
+            pub fn recent_citations(&self) -> bool { self.recent_citations.unwrap_or(DEFAULTS.recent_citations) }
+            pub fn small_surprises(&self) -> bool { self.small_surprises.unwrap_or(DEFAULTS.small_surprises) }
+            pub fn larger_text(&self) -> bool { self.larger_text.unwrap_or(DEFAULTS.larger_text) }
+            pub fn density(&self) -> Density { self.density.unwrap_or_default() }
+            pub fn appearance(&self) -> Appearance { self.appearance.unwrap_or_default() }
+            pub fn accent(&self) -> Accent { self.accent.unwrap_or_default() }
+            pub fn picker_placement(&self) -> PickerPlacement { self.picker_placement.unwrap_or_default() }
+        }
+    )*};
+}
+resolved!(Portable, Interface);
 
 /// Picker content size in logical pixels and optional top-left position as
 /// fractions of the display's usable width and height. Keys are native stable
