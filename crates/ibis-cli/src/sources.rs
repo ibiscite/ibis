@@ -107,6 +107,7 @@ pub(crate) fn run(
     matches: &ArgMatches,
     args: &ArgMatches,
     names: &BTreeMap<String, String>,
+    initial_tokens: &BTreeMap<LibraryId, String>,
 ) -> Result<DispatchResult, Failure> {
     let cancel = Cancellation::default();
     let opened = engine.libraries()?.libraries;
@@ -163,7 +164,10 @@ pub(crate) fn run(
             });
             checks.push(Check {
                 name: "token-agrees-with-revision",
-                passed: (first_token == second_token) == (first.revision == second.revision),
+                passed: initial_tokens.get(&info.id).is_some_and(|initial| {
+                    (initial == first_token) == (before == first.revision)
+                        && (first_token == second_token) == (first.revision == second.revision)
+                }),
             });
             current = second.id.clone();
             token = Some(second_token.clone());

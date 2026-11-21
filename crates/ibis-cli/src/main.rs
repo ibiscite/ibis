@@ -22,6 +22,12 @@ fn main() -> std::process::ExitCode {
             _ => 2,
         });
     }
+    // The shared child runner kills and reaps its groups before we exit on
+    // SIGINT/SIGTERM. Child executables retain their normal signal masks.
+    #[cfg(unix)]
+    if ibis_sources::adapter::exit_on_termination().is_err() {
+        return std::process::ExitCode::from(70);
+    }
     let output = std::io::stdout();
     let mode = ibis::OutputMode::Streams {
         stdout: output.is_terminal(),

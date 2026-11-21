@@ -39,11 +39,18 @@ fn main() {
         ("keys_count_only_when_declared", keys_when_declared),
         ("only_configured_absolute_executables_are_run", command_line),
         ("an_intervening_revision_fails_conformance", changed_during_check),
+        ("an_initial_token_change_fails_conformance", initial_token_change),
+        (
+            "an_older_adapter_read_cannot_publish_over_a_newer_read",
+            stale_publication,
+        ),
         ("overflow_stops_an_adapter_before_it_finishes_writing", streaming_limit),
         (
             "exiting_adapters_do_not_leave_children_holding_the_pipes",
             exited_with_child,
         ),
+        #[cfg(unix)]
+        ("termination_kills_and_reaps_active_adapter_groups", termination),
     ];
     for (name, test) in tests {
         if filter.is_empty() || filter.iter().any(|wanted| name.contains(wanted.as_str())) {
@@ -76,6 +83,9 @@ fn fake() -> i32 {
                 .spawn()
                 .unwrap();
             std::fs::write(scenario["pid"].as_str().unwrap(), child.id().to_string()).unwrap();
+            if let Some(path) = scenario["adapter-pid"].as_str() {
+                std::fs::write(path, std::process::id().to_string()).unwrap();
+            }
             if mode == "exit-with-child" {
                 print!("{}", scenario["response"]);
                 return 0;
@@ -100,6 +110,11 @@ fn fake() -> i32 {
                 .unwrap_or(0);
             std::fs::write(counter, (index + 1).to_string()).unwrap();
             print!("{}", scenario["responses"][index]);
+        }
+        "paused-answer" => {
+            std::fs::write(scenario["ready"].as_str().unwrap(), "ready").unwrap();
+            wait_for(Path::new(scenario["release"].as_str().unwrap()));
+            print!("{}", scenario["response"]);
         }
         _ => print!("{}", scenario["response"]),
     }
@@ -496,6 +511,120 @@ fn changed_during_check() {
     let checks = output["data"]["libraries"][0]["checks"].as_array().unwrap();
     for name in ["stable-revision-on-reread", "token-agrees-with-revision"] {
         assert!(checks.contains(&json!({"check":name,"passed":false})), "{output}");
+    }
+}
+
+fn initial_token_change() {
+    let fake = Fake::new("fake");
+    fake.configure(json!({"fake": fake.program}));
+    let original = read(invented());
+    let mut changed_token = original.clone();
+    changed_token["revision"] = json!("r2");
+    fake.scenario(json!({"mode":"sequence", "responses":[
+        {"ibis":1,"read":original}, {"ibis":1,"read":changed_token}, {"ibis":1,"read":changed_token},
+    ]}));
+    let (code, output) = fake.cli(&["sources", "check", "--source", &fake.source(), "--json"]);
+    assert_eq!(code, Some(1), "{output}");
+    let checks = output["data"]["libraries"][0]["checks"].as_array().unwrap();
+    assert!(
+        checks.contains(&json!({"check":"token-agrees-with-revision","passed":false})),
+        "{output}"
+    );
+}
+
+fn stale_publication() {
+    for changed_scope in [false, true] {
+        let fake = Fake::new("fake");
+        let ready = fake.directory.path().join("ready");
+        let release = fake.directory.path().join("release");
+        fake.scenario(json!({"mode":"paused-answer", "ready":ready, "release":release,
+        "response":{"ibis":1,"read":read(invented())}}));
+        let engine = engine();
+        let older = engine.clone();
+        let adapter = fake.adapter().with_deadline(Duration::from_secs(10));
+        let scenario = fake.scenario.clone();
+        let pending =
+            std::thread::spawn(move || older.open_adapter(adapter, scenario.to_str(), &Cancellation::default()));
+        wait_for(&ready);
+        let mut edited = read(invented());
+        edited["revision"] = json!("r2");
+        edited["records"][0]["volume"] = json!("99");
+        if changed_scope {
+            edited["scope"] = json!("invented-replacement");
+        }
+        fake.answer(edited);
+        let (newest, _) = engine
+            .open_adapter(fake.adapter(), fake.library(), &Cancellation::default())
+            .unwrap();
+        std::fs::write(&release, "release").unwrap();
+        let older = pending.join().unwrap();
+        let listed = libraries(&engine);
+        assert_eq!(listed.len(), 1, "a stale scope must not return");
+        assert_eq!(listed[0]["id"], json!(newest.id));
+        assert_eq!(
+            listed[0]["revision"],
+            json!(newest.revision),
+            "an older read must not publish"
+        );
+        assert_eq!(older.unwrap_err().code, ibis_core::contract::ErrorCode::Cancelled);
+    }
+}
+
+fn wait_for(path: &Path) {
+    let started = Instant::now();
+    while !path.exists() {
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "adapter did not reach its barrier"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[cfg(unix)]
+fn termination() {
+    use nix::sys::signal::{Signal, kill, killpg};
+    use nix::unistd::Pid;
+    for signal in [Signal::SIGINT, Signal::SIGTERM] {
+        let fake = Fake::new("fake");
+        fake.configure(json!({"fake": fake.program}));
+        let pid = fake.directory.path().join("pid");
+        let adapter_pid = fake.directory.path().join("adapter-pid");
+        fake.scenario(json!({"mode":"hang", "pid":pid, "adapter-pid":adapter_pid}));
+        let directory = fake.directory.path();
+        let mut ibis = std::process::Command::new(env!("CARGO_BIN_EXE_ibis"))
+            .args(["libraries", "--source", &fake.source(), "--json"])
+            .env("HOME", directory)
+            .env("XDG_CONFIG_HOME", directory)
+            .env("APPDATA", directory)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        wait_for(&adapter_pid);
+        let adapter = Pid::from_raw(std::fs::read_to_string(&adapter_pid).unwrap().parse().unwrap());
+        kill(Pid::from_raw(i32::try_from(ibis.id()).unwrap()), signal).unwrap();
+        let started = Instant::now();
+        let status = loop {
+            if let Some(status) = ibis.try_wait().unwrap() {
+                break status;
+            }
+            if started.elapsed() > Duration::from_secs(5) {
+                let _ = ibis.kill();
+                let _ = ibis.wait();
+                let _ = killpg(adapter, Signal::SIGKILL);
+                panic!("Ibis did not stop after {signal}");
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        };
+        let adapter_was_running = kill(adapter, None).is_ok();
+        // Also clean up the reproducer when testing the unfixed implementation.
+        if adapter_was_running {
+            let _ = killpg(adapter, Signal::SIGKILL);
+        }
+        assert!(!adapter_was_running, "{signal} left its adapter running");
+        assert!(kill(adapter, None).is_err(), "Ibis must reap its direct adapter child");
+        assert_eq!(status.code(), Some(128 + signal as i32));
     }
 }
 

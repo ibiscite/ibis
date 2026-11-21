@@ -3,7 +3,7 @@
 #[cfg(unix)]
 #[allow(
     unsafe_code,
-    reason = "waitid observes exit without reaping the process group leader"
+    reason = "waitid retains the group leader; sigaction installs the executable's termination flag handler"
 )]
 mod unix;
 #[cfg(windows)]
@@ -17,6 +17,8 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant};
 
+#[cfg(unix)]
+pub use unix::exit_on_termination;
 #[cfg(unix)]
 use unix::pipe;
 
@@ -65,6 +67,12 @@ fn exchange(
     cancelled: &dyn Fn() -> bool,
     own_group: bool,
 ) -> Result<Output, ChildError> {
+    // Register before spawn, including the launch window. The executable's
+    // signal waiter cannot exit until every registered exchange has reaped.
+    #[cfg(unix)]
+    let _active = unix::Active::new();
+    #[cfg(unix)]
+    let cancelled = || unix::terminating() || cancelled();
     let deadline = Instant::now() + limits.time;
     if cancelled() || limits.time.is_zero() {
         return Err(ChildError::TimedOut);

@@ -145,7 +145,7 @@ fn availability(path: &Path) -> Availability {
 #[path = "probe_tests.rs"]
 mod probe_tests;
 
-pub(super) fn read_library_file_sync(path: &Path) -> Result<String, SourceError> {
+pub(crate) fn read_library_file_sync(path: &Path) -> Result<String, SourceError> {
     let pause = || std::thread::sleep(Duration::from_millis(50));
     if path_needs_download(path)? {
         return Err(SourceError::Unavailable);

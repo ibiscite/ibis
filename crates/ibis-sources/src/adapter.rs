@@ -16,13 +16,15 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use ibis_core::contract::adapter::{
-    ADAPTER_PROTOCOL, AdapterMethod, AdapterRead, AdapterRefusal, AdapterRequest, AdapterResponse, AdapterSkipCause,
-};
+use ibis_core::contract::adapter::{ADAPTER_PROTOCOL, AdapterMethod, AdapterRefusal, AdapterRequest, AdapterSkipCause};
 use ibis_core::contract::{LibraryObject, Snapshot};
-use serde_json::Value;
 
 use crate::{LibraryKind, LoadedLibrary, SourceCapability, SourceWarning, WarningCause, WarningCode};
+
+mod response;
+
+#[cfg(unix)]
+pub use crate::child::exit_on_termination;
 
 /// The argument that makes `ibis` serve a built-in adapter: `ibis __source NAME`.
 pub const CHILD_ARGUMENT: &str = "__source";
@@ -167,7 +169,7 @@ impl SourceAdapter {
         if cancelled() {
             return Err(AdapterError::Cancelled);
         }
-        let response: AdapterResponse = serde_json::from_slice(&answer.stdout).map_err(|_| AdapterError::Failed)?;
+        let response = response::decode(&answer.stdout).map_err(|_| AdapterError::Failed)?;
         if response.ibis != ADAPTER_PROTOCOL {
             return Err(AdapterError::Failed);
         }
@@ -185,23 +187,10 @@ impl SourceAdapter {
     }
 
     /// Check a read and make it a library.
-    fn accept(&self, read: AdapterRead) -> Result<AdapterLoad, AdapterError> {
-        let token = |text: &str| {
-            !text.is_empty() && text.chars().count() <= MAX_TOKEN_CHARS && !text.chars().any(char::is_control)
-        };
-        if !token(&read.scope) || !token(&read.revision) || read.records.len() > crate::MAX_LIBRARY_RECORDS {
-            return Err(AdapterError::Failed);
-        }
+    fn accept(&self, read: response::Read<'_>) -> Result<AdapterLoad, AdapterError> {
         let library = crate::identity::library_id(LibraryKind::Adapter, &[self.name.as_bytes(), read.scope.as_bytes()]);
-        let mut records = read.records;
-        if !read.keys {
-            for record in &mut records {
-                if let Value::Object(fields) = record {
-                    fields.remove("citation-key");
-                }
-            }
-        }
-        let checked = crate::request_records(&library, &records).map_err(|_| AdapterError::Failed)?;
+        let checked = crate::csl_json::request_raw_records(&library, &read.records, read.keys)
+            .map_err(|_| AdapterError::Failed)?;
         let mut warnings = checked.warnings;
         warnings.extend(read.skipped.into_iter().map(|skip| {
             let cause = match skip.cause {

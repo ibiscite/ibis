@@ -34,7 +34,8 @@ use serde_json::{Map, Value, json};
 
 /// The largest request read.
 const MAX_REQUEST_BYTES: u64 = 64 * 1024;
-/// The largest export file read: the bound on library files.
+/// The largest live export: the bound on library files.
+#[cfg(target_os = "macos")]
 const MAX_FILE_BYTES: u64 = crate::MAX_LIBRARY_BYTES;
 
 /// Answer one request from `input` on `output`; the exit status.
@@ -80,14 +81,13 @@ fn answer(library: Option<&str>) -> Result<AdapterRead, AdapterRefusal> {
     reason = "The adapter runs in its own process; this one bounded read is its only file access."
 )]
 fn exported(path: &Path) -> Result<AdapterRead, AdapterRefusal> {
+    // The library reader owns placeholder checks, no-recall/nonblocking open,
+    // descriptor checks and the byte bound. The adapter's parent bounds time.
+    let text = crate::file::read_library_file_sync(path).map_err(|error| match error {
+        crate::SourceError::Missing => AdapterRefusal::LibraryNotFound,
+        _ => AdapterRefusal::Unreadable,
+    })?;
     let path = path.canonicalize().map_err(|_| AdapterRefusal::LibraryNotFound)?;
-    let file = std::fs::File::open(&path).map_err(|_| AdapterRefusal::LibraryNotFound)?;
-    let metadata = file.metadata().map_err(|_| AdapterRefusal::Unreadable)?;
-    if !metadata.is_file() || metadata.len() > MAX_FILE_BYTES {
-        return Err(AdapterRefusal::Unreadable);
-    }
-    let bytes = crate::child::read_bounded(file, MAX_FILE_BYTES).map_err(|_| AdapterRefusal::Unreadable)?;
-    let text = String::from_utf8(bytes).map_err(|_| AdapterRefusal::Unreadable)?;
     let records = xml::records(&text).map_err(|_| AdapterRefusal::Unreadable)?;
     let scope = Fingerprint::of_bytes(&[b"xml\0", path.as_os_str().as_encoded_bytes()].concat());
     Ok(read(scope, records.iter().map(|record| (None, record))))
@@ -141,6 +141,15 @@ fn unplaced(record: &xml::XmlRecord) -> AdapterSkip {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn cloud_placeholder_exports_are_refused_before_reading() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join(".Invented.xml.icloud");
+        std::fs::write(&path, include_str!("../../../../fixtures/endnote/invented.xml")).unwrap();
+        assert_eq!(exported(&path), Err(AdapterRefusal::Unreadable));
+    }
 
     fn exchange(request: &str) -> Value {
         let mut output = Vec::new();

@@ -1324,10 +1324,10 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
             },
         ));
     }
-    let names = opened?;
+    let OpenedLibraries { names, tokens } = opened?;
     if name == "sources" {
         return Ok(Execution::Result(
-            local(sources::run(engine, matches, args, &names)?),
+            local(sources::run(engine, matches, args, &names, &tokens)?),
             None,
         ));
     }
@@ -1352,16 +1352,23 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
     run_method(engine, matches, name, args, names, input, mode)
 }
 
-/// Opens the libraries this run names, or the app's choice when it names none,
-/// and returns how people should hear each one called.
+#[derive(Default)]
+struct OpenedLibraries {
+    names: std::collections::BTreeMap<String, String>,
+    tokens: std::collections::BTreeMap<LibraryId, String>,
+}
+
+/// Opens the libraries named here (or chosen in the app), retaining each
+/// display name and the adapter token from that exact initial read.
 fn open_libraries(
     engine: &Engine,
     matches: &ArgMatches,
     name: &str,
     defaults: Defaults,
-) -> Result<std::collections::BTreeMap<String, String>, Failure> {
+) -> Result<OpenedLibraries, Failure> {
     let cancel = Cancellation::default();
     let mut names = std::collections::BTreeMap::new();
+    let mut tokens = std::collections::BTreeMap::new();
     let mut files = source_values::<PathBuf>(matches, "file");
     let mut groups = source_values::<u64>(matches, "zotero-group");
     let mut personal = matches.get_flag("zotero");
@@ -1384,7 +1391,7 @@ fn open_libraries(
         return if named || asked {
             Err(Failure::new(ErrorCode::Usage, cli("cli-records-with-libraries", &[])))
         } else {
-            Ok(names)
+            Ok(OpenedLibraries::default())
         };
     }
     // Generic calls read the same default libraries as their direct commands.
@@ -1464,19 +1471,10 @@ fn open_libraries(
     }
     for source in sources {
         let (name, library) = split_source(&source);
-        let params = serde_json::to_value(LibrariesRequest::OpenSource {
-            name: name.to_owned(),
-            library: library.map(str::to_owned),
-        })
-        .map_err(|_| EngineError::new(ErrorCode::BadInput))?;
-        let before = engine.libraries()?.libraries;
-        dispatch(engine, Method::Libraries, &params, &cancel)?;
+        let (info, token) = engine.open_source(name, library, &cancel)?;
         // People see the source as they typed it.
-        for library in engine.libraries()?.libraries {
-            if !before.iter().any(|old| old.id == library.id) {
-                names.insert(library.id.as_str().to_owned(), source.clone());
-            }
-        }
+        names.insert(info.id.as_str().to_owned(), source);
+        tokens.insert(info.id, token);
     }
     let zotero: Vec<_> = personal
         .then_some(ZoteroLibrary::User)
@@ -1530,7 +1528,7 @@ fn open_libraries(
             }
         }
     }
-    Ok(names)
+    Ok(OpenedLibraries { names, tokens })
 }
 
 /// Runs an engine method once its libraries are open.

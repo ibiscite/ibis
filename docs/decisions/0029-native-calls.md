@@ -22,7 +22,10 @@ A boundary with no safe binding gets one scoped module allowance, a crate-level
   and reads the job's completion port.
 - `ibis-sources/src/child/unix.rs` observes when an adapter exits with
   `waitid(WNOWAIT)`. This reserves the group leader's PID until the group
-  has been signalled. The bounded runner then reaps the leader.
+  has been signalled. The bounded runner then reaps the leader. The CLI also
+  installs SIGINT/SIGTERM handlers here with `sigaction`; the handler only
+  records a signal in a lock-free atomic. Ordinary threads cancel exchanges,
+  kill their groups and reap leaders before the termination thread exits.
 - `ibis-sources/src/pdf/ceiling.rs` reads the PDF reader child's footprint on
   macOS with `proc_pid_rusage`.
 - `crates/ibis-native` holds the paste proofs' native calls; the desktop

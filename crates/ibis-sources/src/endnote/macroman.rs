@@ -36,7 +36,7 @@ pub(crate) fn repair(text: &str) -> Option<String> {
             continue;
         }
         // macOS now reads 0xDB as the euro sign; older tables say ¤.
-        let c = if c == '\u{20ac}' { '\u{a4}' } else { c };
+        let c = if c == '\u{a4}' { '\u{20ac}' } else { c };
         let index = HIGH.iter().position(|high| *high == c)?;
         bytes.push(0x80 + u8::try_from(index).ok()?);
     }
@@ -45,6 +45,13 @@ pub(crate) fn repair(text: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn names_with_utf8_db_repair_from_current_and_older_mac_roman() {
+        // Persian yeh begins with UTF-8 byte 0xDB: Mac Roman renders it €.
+        assert_eq!(super::repair("Par€å").as_deref(), Some("Parی"));
+        assert_eq!(super::repair("Par¤å").as_deref(), Some("Parی"));
+    }
+
     #[test]
     fn mac_roman_reading_of_utf8_is_undone_and_other_text_is_not() {
         // As EndNote 21.3 exported invented names.

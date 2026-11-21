@@ -3,11 +3,95 @@
 use std::io::{self, Read, Write};
 use std::os::fd::AsFd;
 use std::process::Child;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicUsize, Ordering};
 
 use nix::errno::Errno;
 use nix::fcntl::{FcntlArg, OFlag, fcntl};
 use nix::poll::{PollFd, PollFlags, poll};
+
+static TERMINATING: AtomicI32 = AtomicI32::new(0);
+static ACTIVE: AtomicUsize = AtomicUsize::new(0);
+
+extern "C" fn terminate(signal: i32) {
+    // Only a lock-free atomic operation runs in the signal handler. The
+    // ordinary worker threads perform all process and pipe cleanup.
+    let _ = TERMINATING.compare_exchange(0, signal, Ordering::SeqCst, Ordering::SeqCst);
+}
+
+/// At executable startup, before starting threads, arrange for SIGINT and
+/// SIGTERM to stop and reap all active adapter groups before exiting with
+/// 128 + signal. Embedders retain their own signal and cancellation policy.
+pub fn exit_on_termination() -> io::Result<()> {
+    static INSTALLED: OnceLock<io::Result<()>> = OnceLock::new();
+    INSTALLED
+        .get_or_init(|| {
+            use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal, sigaction};
+            let action = SigAction::new(SigHandler::Handler(terminate), SaFlags::SA_RESTART, SigSet::empty());
+            // SAFETY: the static handler touches only a lock-free atomic and
+            // has the signal ABI. Install at startup, before any child exists.
+            let interrupt = unsafe { sigaction(Signal::SIGINT, &action) }?;
+            // SAFETY: the same static handler; restore SIGINT on partial failure.
+            let termination = match unsafe { sigaction(Signal::SIGTERM, &action) } {
+                Ok(previous) => previous,
+                Err(error) => {
+                    // SAFETY: restore the exact action returned by sigaction.
+                    unsafe { sigaction(Signal::SIGINT, &interrupt) }?;
+                    return Err(error.into());
+                }
+            };
+            match std::thread::Builder::new()
+                .name("ibis-termination".into())
+                .spawn(move || {
+                    let signal = loop {
+                        let signal = TERMINATING.load(Ordering::SeqCst);
+                        if signal != 0 {
+                            break signal;
+                        }
+                        std::thread::sleep(super::POLL);
+                    };
+                    while ACTIVE.load(Ordering::SeqCst) != 0 {
+                        std::thread::sleep(super::POLL);
+                    }
+                    std::process::exit(128 + signal);
+                }) {
+                Ok(_) => Ok(()),
+                Err(error) => {
+                    // SAFETY: restore the exact actions returned above.
+                    unsafe {
+                        sigaction(Signal::SIGINT, &interrupt)?;
+                        sigaction(Signal::SIGTERM, &termination)?;
+                    }
+                    Err(error)
+                }
+            }
+        })
+        .as_ref()
+        .copied()
+        .map_err(|error| io::Error::new(error.kind(), "could not start adapter termination waiter"))
+}
+
+pub(super) fn terminating() -> bool {
+    TERMINATING.load(Ordering::SeqCst) != 0
+}
+
+pub(super) struct Active;
+impl Active {
+    pub(super) fn new() -> Self {
+        ACTIVE.fetch_add(1, Ordering::SeqCst);
+        Self
+    }
+}
+impl Drop for Active {
+    fn drop(&mut self) {
+        ACTIVE.fetch_sub(1, Ordering::SeqCst);
+        // Do not return an interrupted read to main while another exchange
+        // is still cleaning up: the waiter owns termination of the process.
+        while terminating() {
+            std::thread::sleep(super::POLL);
+        }
+    }
+}
 
 pub(super) fn exited(child: &Child) -> io::Result<bool> {
     use nix::libc;

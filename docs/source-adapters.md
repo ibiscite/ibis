@@ -96,11 +96,23 @@ type is skipped. Repeated ids make every record under them unavailable.
 Without `keys`, any `citation-key` is dropped and key outputs refuse with
 `missing-key`. Ibis's `revision` is its own fingerprint of what it read.
 
-An answer is bounded to 64 MiB and 200,000 records. A read has two minutes.
+An answer is bounded to 64 MiB, with at most 200,000 entries in each of
+`records` and `skipped`. Each entry is at most 1 MiB of JSON. These limits
+are checked while deserializing borrowed raw entries, before allocating
+record fields or skip details. Only the shared CSL reader materializes the
+record fields it understands. A read has two minutes.
 Ibis stops the Windows job or Unix process group when the adapter exits or
-the read is refused. The live EndNote reader streams XML chunks within
+the read is refused. On Unix, the CLI's SIGINT/SIGTERM handler sets an atomic
+termination flag; the same bounded child runner cancels active exchanges,
+kills their groups and reaps their leaders before Ibis exits (130/143).
+Separate groups preserve deadline and descendant cleanup. Registration starts
+before spawning; the signal handler itself performs no cleanup. Embedders
+keep their own signal policy and supply cancellation to the reader.
+The live EndNote reader streams XML chunks within
 the same byte and record limits. Libraries are read when opened and when
-the person reloads. A read that fails, times out, or answers
+the person reloads. Each adapter name and library selection reserves a new
+generation before reading; only the latest generation may publish, with
+cancellation checked under the publication lock. A read that fails, times out, or answers
 outside the protocol changes nothing: the last good read stays searchable and
 citable, and the library's health names the failure.
 
@@ -114,7 +126,7 @@ failure, `--json` for scripts):
 | --- | --- |
 | `same-scope-on-reread` | An adapter's two further reads give the same library. |
 | `stable-revision-on-reread` | Reading again gives the same revision. |
-| `token-agrees-with-revision` | The adapter's `revision` changes exactly when Ibis's does. |
+| `token-agrees-with-revision` | The adapter's `revision` changes exactly when Ibis's does, across both transitions from the initial read through two rereads. |
 | `no-keys-without-key-capability` | A library that declares no keys has none. |
 | `adapter-sends-valid-csl` | Ibis skipped or corrected no field the adapter sent. |
 | `records-match-expected` | With `--expect FILE`, the records are exactly those CSL records, ids aside. |
@@ -145,7 +157,9 @@ own XML in two ways, through one reader and one field mapping:
 - **An export, on every system:** `--source endnote=export.xml` reads a file
   saved with EndNote's File › Export as XML. Its records are identified by what
   they say, as RIS records are, because an export cannot show that a number
-  still names the same record.
+  still names the same record. The shared library file reader refuses cloud
+  placeholders before opening or reading, including a second metadata check
+  on the opened file; download online-only exports separately first.
 
 The first slice maps journal articles, books and book sections: authors and
 editors in order, title, year, journal, series or book title, publisher and

@@ -22,7 +22,7 @@ pub(super) struct Owners {
     operation: Mutex<()>,
     watches: Mutex<BTreeMap<u64, SourceWatch>>,
     /// Each open adapter library with the adapter and library name that read it.
-    adapters: Mutex<BTreeMap<LibraryId, (SourceAdapter, Option<String>)>>,
+    adapters: Mutex<Adapters>,
     zotero: Mutex<ZoteroSource>,
     zotero_port: Option<u16>,
     /// What the last closed read listed. Apart from `zotero`, which a read
@@ -32,6 +32,14 @@ pub(super) struct Owners {
     fail_watches: std::sync::atomic::AtomicBool,
     #[cfg(test)]
     before_watch: Mutex<Option<Box<dyn Fn() + Send>>>,
+}
+
+#[derive(Default)]
+struct Adapters {
+    libraries: BTreeMap<LibraryId, (SourceAdapter, Option<String>)>,
+    // A generation is kept alive by its read, including before a first
+    // library is published. Weak entries let completed/failed reads expire.
+    reads: BTreeMap<(String, Option<String>), Weak<()>>,
 }
 impl Owners {
     pub(super) fn on_port(port: u16, profile: &[u8]) -> Self {
@@ -603,7 +611,6 @@ impl Engine {
         }
         SourceWatch::with_library(path, observation, model, callback)
     }
-    /// Read a library through the adapter called `name`.
     /// Read and publish a named adapter approved by this engine.
     pub fn open_source(
         &self,
@@ -628,28 +635,59 @@ impl Engine {
         cancel: &Cancellation,
     ) -> Result<(LibraryInfo, String), EngineError> {
         cancel.check()?;
+        let source = (adapter.name().to_owned(), library.map(str::to_owned));
+        let generation = Arc::new(());
+        {
+            let mut adapters = self.resources.adapters.recover_lock();
+            adapters.reads.retain(|_, read| read.strong_count() != 0);
+            if !adapters.reads.contains_key(&source) && adapters.reads.len() >= MAX_FILES {
+                return Err(error(ErrorCode::ResourceLimit));
+            }
+            adapters.reads.insert(source.clone(), Arc::downgrade(&generation));
+        }
         let load = adapter
             .read(library, &|| cancel.is_cancelled())
             .map_err(adapter_error)?;
         cancel.check()?;
         let _operation = self.resources.operation.recover_lock();
+        let mut adapters = self.resources.adapters.recover_lock();
+        let _publication = self.shared.publication.recover_lock();
+        cancel.check()?;
+        if !adapters
+            .reads
+            .get(&source)
+            .is_some_and(|latest| latest.ptr_eq(&Arc::downgrade(&generation)))
+        {
+            return Err(error(ErrorCode::Cancelled));
+        }
         let mut loaded = load.loaded;
         loaded.snapshot.reuse_unchanged(self.snapshot()?.as_ref());
-        let mut adapters = self.resources.adapters.recover_lock();
         let previous = adapters
+            .libraries
             .iter()
-            .find(|(id, (old, name))| **id != loaded.library && *old == adapter && name.as_deref() == library)
+            .find(|(id, (old, name))| {
+                **id != loaded.library && old.name() == adapter.name() && name.as_deref() == library
+            })
             .map(|(id, _)| id.clone());
-        if previous.is_none() && !adapters.contains_key(&loaded.library) && adapters.len() >= MAX_FILES {
+        if previous.is_none()
+            && !adapters.libraries.contains_key(&loaded.library)
+            && adapters.libraries.len() >= MAX_FILES
+        {
             return Err(error(ErrorCode::ResourceLimit));
         }
         let observed = info(&loaded);
-        self.shared
-            .install(observed.clone(), &loaded.snapshot, previous.clone())?;
+        let mut state = self.shared.state.write().map_err(|_| error(ErrorCode::Internal))?;
+        let next = State::replacement(&state, vec![(observed.clone(), &loaded.snapshot)], |old| {
+            previous.as_ref() == Some(&old.id)
+        })?;
+        cancel.check()?;
+        *state = Arc::new(next);
+        drop(state);
         if let Some(previous) = previous {
-            adapters.remove(&previous);
+            adapters.libraries.remove(&previous);
         }
-        adapters.insert(loaded.library.clone(), (adapter, library.map(str::to_owned)));
+        adapters.libraries.insert(loaded.library.clone(), (adapter, source.1));
+        self.shared.notify()?;
         Ok((observed, load.token))
     }
 
@@ -660,6 +698,7 @@ impl Engine {
             .resources
             .adapters
             .recover_lock()
+            .libraries
             .iter()
             .filter(|(id, _)| library.is_none_or(|wanted| wanted == *id))
             .map(|(id, (adapter, name))| (id.clone(), adapter.clone(), name.clone()))
