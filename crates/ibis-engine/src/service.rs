@@ -153,6 +153,11 @@ pub struct SearchResult {
     /// (`see`) and a locator off its end (`417`), with what remains to search.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shorthand: Option<ibis_core::shorthand::Shorthand>,
+    /// A signal or page could have been read, but the words as typed name
+    /// something in the library (a title, key or number), so they were searched
+    /// as words (maintainer, 2026-11-18). A comma asks for the page: `room, 22`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub kept_words: bool,
     /// The libraries searched, as they were when these hits were found.
     pub source_health: health::SourceHealth,
 }
@@ -517,9 +522,32 @@ impl Engine {
             .ok_or_else(|| error(ErrorCode::Cancelled))?;
         // Exact lists win before reading what is typed around the search
         // (`see vale 417`) or closest-match search.
-        let shorthand = (request.interpret_locator && pasted.is_none())
+        let read = (request.interpret_locator && pasted.is_none())
             .then(|| ibis_core::shorthand::read(&request.query))
             .flatten();
+        // The words win when, as typed, they match the library whole: a title's
+        // number never silently becomes a page, nor its opening "See" a signal.
+        let asked_for_page = read
+            .as_ref()
+            .and_then(|read| read.locator.as_ref())
+            .is_some_and(|locator| {
+                request
+                    .query
+                    .trim_end()
+                    .strip_suffix(locator.typed.as_str())
+                    .is_some_and(|before| before.trim_end().ends_with(','))
+            });
+        let kept_words = read.is_some()
+            && !asked_for_page
+            && state
+                .index
+                .search(&request.query, 1, request.libraries.as_deref(), &|| {
+                    cancel.is_cancelled()
+                })
+                .ok_or_else(|| error(ErrorCode::Cancelled))?
+                .iter()
+                .any(|hit| !hit.partial && !hit.typo);
+        let shorthand = read.filter(|_| !kept_words);
         let query = shorthand
             .as_ref()
             .map_or(request.query.as_str(), |read| read.search.as_str());
@@ -595,6 +623,7 @@ impl Engine {
                 })
                 .collect(),
             shorthand,
+            kept_words,
             source_health,
         })
     }

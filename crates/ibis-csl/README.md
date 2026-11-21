@@ -155,9 +155,10 @@ one-line reason; the run fails when a fixture starts failing or stops failing
 without a change to that list.
 
 CI fetches the suite because upstream publishes it without a licence. The
-required **CI result** checks CSL conformance on the weekly and manual CI
-runs, and on pull requests and main pushes that change the formatter, its
-Rust dependencies or the fetch scripts. Run it locally with these commands.
+required **CI result** checks CSL conformance on main pushes, on scheduled and
+manual runs, and when a pull request affects the formatter or one of its
+workspace dependencies or runs the full suite. Run it locally with these
+commands.
 
 ```sh
 node scripts/csl-suite.mjs                                    # fetch and check the pinned suite

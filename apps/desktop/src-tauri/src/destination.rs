@@ -92,6 +92,11 @@ pub(crate) struct PickerDestination {
     pub(crate) context_version: Option<(u32, u32)>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) writing_context: Option<String>,
+    /// The engine's answer to whether the format palette offers Projects.
+    pub(crate) offers_projects: bool,
+    /// How many references this app's reference list holds: those cited into
+    /// it since Ibis opened. Paste Reference List is offered once there are any.
+    pub(crate) cited_here: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -333,6 +338,7 @@ pub(crate) fn present(app: &AppHandle, context: &ibis_engine::app_context::Conte
     let writing = context.writing.clone();
     let writing_context = context.writing_context.clone();
     let context_version = Some(context.context_version);
+    let offers_projects = context.offers_projects;
     let Some((id, name, app_identity)) = last else {
         return PickerDestination {
             app: None,
@@ -349,6 +355,8 @@ pub(crate) fn present(app: &AppHandle, context: &ibis_engine::app_context::Conte
             writing,
             context_version,
             writing_context,
+            offers_projects,
+            cited_here: 0,
         };
     };
     let can_paste = crate::paste::intends_paste(app, context.paste_enabled);
@@ -359,6 +367,18 @@ pub(crate) fn present(app: &AppHandle, context: &ibis_engine::app_context::Conte
     let ordinary = lookup(&id).is_none_or(|entry| entry.safety == PasteSafety::Normal);
     let paste = ordinary.then(|| policy.ok().flatten()).flatten();
     let paste_question = lookup(&id).is_none() && paste.is_none() && can_choose_paste;
+    // The rows the list would paste: those of the open library, as `session_references` gives them.
+    let cited_here = {
+        use crate::library::engine_library::FileLibrary;
+        let items = app
+            .state::<crate::session_references::SessionReferences>()
+            .lock()
+            .cited_here(&id.normalized());
+        app.state::<ibis_engine::library::Owner>()
+            .current()
+            .and_then(|file| file.session_rows(&items).ok())
+            .map_or(0, |rows| rows.len() as u32)
+    };
     PickerDestination {
         app: Some(name),
         app_id: Some(id.normalized()),
@@ -374,6 +394,8 @@ pub(crate) fn present(app: &AppHandle, context: &ibis_engine::app_context::Conte
         writing,
         context_version,
         writing_context,
+        offers_projects,
+        cited_here,
     }
 }
 

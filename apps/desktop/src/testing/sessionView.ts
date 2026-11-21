@@ -8,7 +8,7 @@ import { initialDestination } from "../features/picker/destination";
 import { initialPreview, previewKey } from "../features/picker/preview";
 import { initialSearch, type SearchInputs } from "../features/picker/search";
 import type { SessionEvent, SessionState, SessionView } from "../features/picker/session";
-import { searchQuery, type PickerInputs } from "../features/picker/view";
+import type { PickerInputs } from "../features/picker/view";
 import { testStates } from "../test-fixtures";
 import { formatAnswer } from "./format";
 
@@ -23,8 +23,8 @@ export function arrangeView(state: SessionState, v: SessionView): [SessionState,
   // The highlighted row is the one at the session's active index.
   const filler = { ...testStates[1]!.results[2]!, revision: v.snapshotRevision ?? "synthetic" };
   const rows = chosen.length === 1 ? [...Array.from({ length: state.active }, () => filler), ...chosen] : chosen;
-  const queryKey = JSON.stringify([searchQuery(state), state.interpretLocators]);
-  const heard: SearchInputs = { queryKey, query: searchQuery(state), interpretLocators: state.interpretLocators, library, version: 0, recent: undefined, app: null };
+  const queryKey = JSON.stringify([state.query, state.interpretLocators]);
+  const heard: SearchInputs = { queryKey, query: state.query, interpretLocators: state.interpretLocators, library, version: 0, recent: undefined, app: null };
   const locator = chosen.length === 1 ? (v.chosen[0] as CitationReference).locator : undefined;
   const search = { ...initialSearch, inputs: heard, session: state.session, seq: state.search.seq,
     // A search still out: its rows answer an earlier request.
@@ -37,7 +37,7 @@ export function arrangeView(state: SessionState, v: SessionView): [SessionState,
     app, app_id: app, app_identity: null, find_open: false, usual_format: "apa", format: formatAnswer(v.format, v.writingId ? "writing" : "yours"), unreadable: false, can_paste: false,
     paste: null, paste_question: Boolean(v.shouldAsk), can_choose_paste: false,
     writing: v.writingId ? { id: v.writingId, name: v.writingId, output: null, bibliography: "references.bib" } : null,
-    writing_context: null, context_version: version,
+    writing_context: null, context_version: version, offers_projects: Boolean(v.writingId), cited_here: 0,
   };
   const shownChoice = selected ? [...state.selected.values()] : chosen.length > 1 ? chosen : chosen.map((r) => ({ ...r, locator }));
   const key = previewKey(styleOf(v.format) ?? v.format, 0, choiceKey(shownChoice), version, state.keepOrder);

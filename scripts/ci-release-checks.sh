@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Release-mode, minimum-Rust and performance checks, run on every PR and push and for numbered releases.
+# Release-mode, minimum-Rust and performance checks for workspace changes and releases.
 set -euo pipefail
 cargo test -p ibis-core -p ibis-sources --release --locked
 rustup toolchain install 1.90.0 --profile minimal

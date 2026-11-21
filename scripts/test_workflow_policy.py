@@ -2,9 +2,9 @@
 parser, never with regular expressions.
 
 "CI result" is the required merge check and confirms main before publication.
-Pull requests, main and daily/manual runs test every platform, and daily/manual
-runs every qualifier, even after a failed prerequisite. The reporter is outside
-that result.
+Main and daily/manual runs test every platform. Pull requests select checks by
+changed paths. Daily/manual runs every qualifier. The reporter is outside the
+result.
 """
 
 import os
@@ -71,17 +71,72 @@ class CiResultTest(unittest.TestCase):
             self.assertIn("::notice::Contract report skipped.", result.stdout)
             self.assertIn("Contract report skipped.", summary.read_text(encoding="utf-8"))
 
-    def test_every_pull_request_and_main_push_tests_all_three_systems(self):
+    def test_rust_tests_all_three_systems_when_selected(self):
         events = self.workflow.get("on", self.workflow.get(True))
         self.assertEqual(set(events), {"push", "pull_request", "schedule", "workflow_dispatch"})
         self.assertEqual(events["push"], {"branches": ["main"]})
         self.assertEqual(events["pull_request"], {"branches": ["main"]})
         jobs = self.workflow["jobs"]
-        for name in ["interface", "rust", "web", "pictures", "dependencies"]:
+        for name in ["plan", "interface", "web", "dependencies"]:
             self.assertEqual(jobs[name]["if"], FORK_GUARD)
+        # Planned jobs need the plan, which a fork's run skips, so they skip too.
+        self.assertEqual(jobs["rust"]["if"], "needs.plan.outputs.rust == 'true'")
+        self.assertEqual(jobs["pictures"]["if"], "needs.plan.outputs.pictures == 'true'")
+        self.assertEqual(jobs["conformance"]["if"], "needs.plan.outputs.csl == 'true'")
         self.assertEqual(jobs["rust"]["strategy"]["matrix"]["os"], ["ubuntu-24.04", "macos-15", "windows-2025"])
-        self.assertEqual(jobs["rust"]["needs"], "interface")
-        self.assertEqual(jobs["release-checks"]["if"], FORK_GUARD)
+        native_checkout = next(step for step in jobs["rust"]["steps"] if "actions/checkout@" in step.get("uses", ""))
+        self.assertNotIn("path", native_checkout["with"])  # The path guard uses the hosted workspace roots.
+        self.assertEqual(jobs["rust"]["needs"], ["plan", "interface"])
+        self.assertEqual(jobs["pictures"]["needs"], "plan")
+        self.assertEqual(jobs["conformance"]["needs"], "plan")
+        self.assertEqual(jobs["release-checks"]["needs"], "plan")
+        self.assertEqual(jobs["release-checks"]["if"], "needs.plan.outputs.workspace == 'true'")
+
+    def test_a_newer_push_replaces_a_pull_requests_run_but_never_mains(self):
+        concurrency = self.workflow["concurrency"]
+        self.assertEqual(concurrency["group"], "ci-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}")
+        self.assertEqual(concurrency["cancel-in-progress"], "${{ github.event_name == 'pull_request' }}")
+
+    def test_the_plan_selects_jobs_and_ci_result_checks_each_selection(self):
+        jobs = self.workflow["jobs"]
+        plan = jobs["plan"]
+        self.assertEqual(plan["outputs"], {name: f"${{{{ steps.plan.outputs.{name} }}}}" for name in ["rust", "workspace", "pictures", "csl"]})
+        checkout = next(step for step in plan["steps"] if "actions/checkout@" in step.get("uses", ""))
+        self.assertEqual(checkout["with"]["fetch-depth"], 2)
+        self.assertNotIn("ref", checkout["with"])
+        choose = next(step for step in plan["steps"] if step.get("id") == "plan")
+        self.assertEqual(choose["run"], "node scripts/ci-plan.mjs")
+        self.assertEqual(choose["env"]["EVENT"], "${{ github.event_name }}")
+        self.assertEqual(choose["env"]["LABELS"], "${{ toJSON(github.event.pull_request.labels.*.name) }}")
+        self.assertEqual(choose["env"]["SELECTION"], "${{ vars.CI_SELECTION }}")
+        self.assertEqual(choose["env"]["MACOS_RUNNER_OVERRIDE"], "${{ github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON(vars.RUNNERS || '{}')['macos-15'] && 'true' || '' }}")
+        self.assertFalse(choose.get("continue-on-error", False))
+        result = next(step for step in jobs["result"]["steps"] if step.get("run") == "scripts/ci-result.sh")
+        self.assertEqual(result["env"]["SELECTED"], "rust:${{ needs.plan.outputs.rust }}:${{ needs.rust.result }} pictures:${{ needs.plan.outputs.pictures }}:${{ needs.pictures.result }} csl:${{ needs.plan.outputs.csl }}:${{ needs.conformance.result }} release:${{ needs.plan.outputs.workspace }}:${{ needs.release-checks.result }}")
+        self.assertEqual(result["env"]["WORKSPACE"], "${{ needs.plan.outputs.workspace }}")
+        self.assertEqual(result["env"]["RESULTS"], " ".join(f"${{{{ needs.{name}.result }}}}" for name in ["plan", "interface", "web", "dependencies"]))
+        # Every job the result needs is either always required, planned or qualification.
+        planned = {"rust", "pictures", "conformance", "release-checks"}
+        qualification = {"webkit", "bibtex-fuzz", "installed"}
+        self.assertEqual(set(jobs["result"]["needs"]), {"plan", "interface", "web", "dependencies"} | planned | qualification)
+        for name, job in jobs.items():
+            if "needs.plan.outputs" in str(job.get("if", "")):
+                self.assertIn(name, planned)
+
+    def test_only_workspace_steps_follow_the_workspace_selection(self):
+        steps = self.workflow["jobs"]["rust"]["steps"]
+        conditional = {step["name"] for step in steps if "needs.plan.outputs.workspace" in str(step.get("if", ""))}
+        self.assertEqual(conditional, {"Lint the workspace", "Test", "Install Pandoc", "Compare rendering from BibTeX and from CSL export"})
+        by_name = {step.get("name"): step for step in steps}
+        for name in ["Lint the app", "Test and build the app", "Check generated files (Linux)", "Format"]:
+            self.assertNotIn("needs.plan", str(by_name[name].get("if", "")), name)
+
+    def test_selected_conformance_job_runs_the_suite(self):
+        steps = self.workflow["jobs"]["conformance"]["steps"]
+        for command in ["node scripts/csl-suite.mjs", "cargo test --locked -p ibis-csl --lib conformance -- --ignored"]:
+            step = next(step for step in steps if step.get("run") == command)
+            self.assertNotIn("if", step)
+            self.assertFalse(step.get("continue-on-error", False))
 
     def test_dependency_rules_and_identities_remain_in_confirmation(self):
         jobs = self.workflow["jobs"]
@@ -171,6 +226,13 @@ class CiResultTest(unittest.TestCase):
             for step in job["steps"]:
                 if "Swatinem/rust-cache" in step.get("uses", ""):
                     self.assertEqual(step.get("if"), "runner.environment == 'github-hosted'", name)
+
+    def test_dependabot_pull_requests_stay_on_hosted_macos(self):
+        runs_on = self.workflow["jobs"]["rust"]["runs-on"]
+        self.assertIn(
+            "github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON(vars.RUNNERS || '{}')",
+            runs_on,
+        )
 
     def test_actions_are_pinned_to_immutable_revisions(self):
         for path in (ROOT / ".github/workflows").glob("*.yml"):

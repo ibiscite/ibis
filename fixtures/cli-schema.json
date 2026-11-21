@@ -2959,6 +2959,10 @@
             },
             "type": "array"
           },
+          "kept_words": {
+            "description": "A signal or page could have been read, but the words as typed name\nsomething in the library (a title, key or number), so they were searched\nas words (maintainer, 2026-11-18). A comma asks for the page: `room, 22`.",
+            "type": "boolean"
+          },
           "list": {
             "anyOf": [
               {
@@ -5243,7 +5247,7 @@
                     "type": "null"
                   }
                 ],
-                "description": "The writing that chose it, when one did."
+                "description": "The project that chose it, when one did."
               }
             },
             "required": [
@@ -5582,7 +5586,7 @@
             "oneOf": [
               {
                 "const": "writing",
-                "description": "The writing chosen for this app.",
+                "description": "The project chosen for this app (its id stays `writing`).",
                 "type": "string"
               },
               {
@@ -7360,7 +7364,7 @@
                     "type": "null"
                   }
                 ],
-                "description": "The writing that chose it, when one did."
+                "description": "The project that chose it, when one did."
               }
             },
             "required": [
@@ -7699,7 +7703,7 @@
             "oneOf": [
               {
                 "const": "writing",
-                "description": "The writing chosen for this app.",
+                "description": "The project chosen for this app (its id stays `writing`).",
                 "type": "string"
               },
               {

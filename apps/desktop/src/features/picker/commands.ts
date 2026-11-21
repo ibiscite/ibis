@@ -1,47 +1,8 @@
-// Every picker command by name, for ">" in the search (docs/design/picker.md,
-// Command search). Titles are the words the menus use and keys come from KEY_TABLE, so a
-// command is written once and reads the same in More, the keys sheet and here.
+// The glyph each picker command shows on the tile column in More (⌘K), from the one icon set.
 import type { IconName } from "../../icons";
-import { keysFor } from "../../keys";
-import { say } from "../../i18n";
-import { isMac } from "../../platform";
 import type { PickerCommand } from "./shortcuts";
-import { SHORTCUT_ACTIONS } from "../../i18n/settings";
 
-/** Typed first in the search, it turns the list into commands, as in Raycast. */
-export const COMMAND_PREFIX = ">";
-
-export type PickerCommandEntry = { id: PickerCommand; title: string; about: string; keys: string; icon: IconName };
-
-/** The glyph each command shows on the tile column, here and in More, from the one icon set. */
 export const COMMAND_ICONS: Record<PickerCommand, IconName> = {
   format: "format", source: "file", revealSource: "folder-search", chooseSource: "library-big", changeLast: "write",
   pin: "pin", keys: "keyboard", settings: "settings", quit: "quit", more: "chevrons", inspector: "hash",
 };
-
-/** The commands available now. `source` names the library's own action
- * ("Open thesis.bib", "Show in Zotero"); it is left out when there is none. */
-export function pickerCommands({ source, changeLast, canChooseFormat = true }: { source: string | null; changeLast: boolean; canChooseFormat?: boolean }): PickerCommandEntry[] {
-  const titled: [PickerCommand, string | null][] = [
-    ["format", canChooseFormat ? say("picker-change-format") : null],
-    ["inspector", say("key-edit-citation")],
-    ["source", source],
-    ["revealSource", source && say("picker-show-source-folder", { platform: isMac ? "macos" : "other" })],
-    ["chooseSource", say("picker-choose-library-menu")],
-    ["changeLast", changeLast ? say("picker-change-last-citation") : null],
-    ["pin", say("picker-keep-open-menu")],
-    ["keys", say("key-title")],
-    ["settings", say("picker-settings")],
-    ["quit", say("picker-quit-label")],
-  ];
-  return titled.flatMap(([id, title]) => title ? [{ id, title, about: say(SHORTCUT_ACTIONS[id]), keys: keysFor(id), icon: COMMAND_ICONS[id] }] : []);
-}
-
-/** Commands whose title or description holds every typed word, in table order. */
-export function matchCommands(query: string, commands: readonly PickerCommandEntry[]): PickerCommandEntry[] {
-  const words = query.slice(COMMAND_PREFIX.length).toLocaleLowerCase().split(/\s+/).filter(Boolean);
-  return commands.filter((command) => {
-    const text = `${command.title} ${command.about}`.toLocaleLowerCase();
-    return words.every((word) => text.includes(word));
-  });
-}

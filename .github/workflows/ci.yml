@@ -10,7 +10,6 @@ on:
     - cron: "43 5 * * 1" # Weekly full advisory check and one issue on failure.
   workflow_dispatch:
 
-# Pull requests, main pushes and daily/manual runs test all three systems.
 # A newer push replaces a pull request's running check.
 concurrency:
   group: ci-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
@@ -26,6 +25,51 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
+  # Which jobs this change can affect (scripts/ci-plan.mjs); anything uncertain,
+  # and every main, scheduled or manual run, selects the full suite.
+  plan:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    name: Plan the checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      rust: ${{ steps.plan.outputs.rust }}
+      workspace: ${{ steps.plan.outputs.workspace }}
+      pictures: ${{ steps.plan.outputs.pictures }}
+      csl: ${{ steps.plan.outputs.csl }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2 # A pull request's merge commit and the base it merges into.
+
+      - name: Set up Node.js
+        if: github.event_name == 'pull_request'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          package-manager-cache: false
+
+      - name: Set up pnpm for canvas input discovery
+        if: github.event_name == 'pull_request'
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: apps/desktop/package.json
+          cache: true
+          cache_dependency_path: apps/desktop/pnpm-lock.yaml
+
+      - name: Choose the checks
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          SELECTION: ${{ vars.CI_SELECTION }}
+          MACOS_RUNNER_OVERRIDE: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON(vars.RUNNERS || '{}')['macos-15'] && 'true' || '' }}
+          # The runner's own stable Cargo reads the workspace without installing the pinned toolchain.
+          RUSTUP_TOOLCHAIN: stable
+        run: node scripts/ci-plan.mjs
+
   interface:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Build the web interface
@@ -129,7 +173,8 @@ jobs:
           node ../../scripts/picker-budget.mjs dist
 
   pictures:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: plan
+    if: needs.plan.outputs.pictures == 'true'
     name: Picture gate
     runs-on: ubuntu-24.04
     container:
@@ -176,19 +221,17 @@ jobs:
           retention-days: 14
 
   rust:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: [plan, interface]
+    if: needs.plan.outputs.rust == 'true'
     name: Rust and desktop (${{ matrix.os }})
-    needs: interface
-    # The macOS job runs on our own Mac when the RUNNERS variable names it
-    # (docs/testing.md): GitHub's macOS runners are scarce. Dependabot's
-    # unreviewed updates never run on our machines.
+    # RUNNERS can send macOS jobs to our own Mac. Dependabot PRs stay hosted.
     runs-on: ${{ matrix.os == 'macos-15' && github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON(vars.RUNNERS || '{}')['macos-15'] || matrix.os }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         # One job per system: every PR tests all three, and each system takes one
-        # runner (hosted macOS runners are the scarce ones) with one shared build.
+        # runner with one shared build.
         os: [ubuntu-24.04, macos-15, windows-2025]
     defaults:
       run:
@@ -256,12 +299,15 @@ jobs:
           path: apps/desktop/dist
 
       # Compile every test target first so contract errors report early on every system.
-      - name: Lint
-        run: |
-          cargo clippy --all-targets --locked
-          cargo clippy -p ibis-desktop -p ibis-desktop-macros --all-targets --locked
+      - name: Lint the workspace
+        if: needs.plan.outputs.workspace == 'true'
+        run: cargo clippy --all-targets --locked
+
+      - name: Lint the app
+        run: cargo clippy -p ibis-desktop -p ibis-desktop-macros --all-targets --locked
 
       - name: Test
+        if: needs.plan.outputs.workspace == 'true'
         run: cargo test --locked
 
       - name: Test and build the app
@@ -275,11 +321,11 @@ jobs:
       # Installed only after cargo test: with Pandoc present, cargo test also runs the
       # syntax_contract consumer tests, which fail on Ubuntu's older Pandoc.
       - name: Install Pandoc
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && needs.plan.outputs.workspace == 'true'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pandoc
 
       - name: Compare rendering from BibTeX and from CSL export
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && needs.plan.outputs.workspace == 'true'
         env:
           IBIS_REQUIRE_PANDOC: "1"
         run: cargo test -p ibis --test fidelity --locked
@@ -441,7 +487,8 @@ jobs:
         run: bash scripts/ci-advisories.sh report
 
   release-checks:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: plan
+    if: needs.plan.outputs.workspace == 'true'
     name: Release checks (Linux)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -574,7 +621,8 @@ jobs:
           retention-days: 14
 
   conformance:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: plan
+    if: needs.plan.outputs.csl == 'true'
     name: CSL test suite
     runs-on: ubuntu-24.04
     timeout-minutes: 40
@@ -583,7 +631,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 2 # The first parent of the PR merge commit or main push.
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -591,40 +638,18 @@ jobs:
           node-version: 26
           package-manager-cache: false
 
-      - name: Check CSL conformance
-        env:
-          EVENT: ${{ github.event_name }}
-          PUSH_BASE: ${{ github.event.before }}
-          SCHEDULE: ${{ github.event.schedule }}
-        run: |
-          if [[ "$EVENT" == schedule && "$SCHEDULE" == '17 5 * * *' ]]; then
-            echo 'The weekly schedule runs the CSL suite.'
-            exit 0
-          fi
+      - name: Fetch the pinned CSL test suite
+        run: node scripts/csl-suite.mjs
 
-          base=
-          case "$EVENT" in
-            pull_request) base=HEAD^1 ;;
-            push) base="$PUSH_BASE" ;;
-          esac
-          # Only skip on a verified clean diff. If the base is unavailable,
-          # including on a multi-commit push, run the suite.
-          if [[ -n "$base" ]] && git diff --quiet --no-renames "$base" HEAD -- \
-            crates/ibis-csl crates/ibis-core Cargo.toml Cargo.lock .cargo \
-            rust-toolchain rust-toolchain.toml scripts/csl-bundle.mjs scripts/csl-suite.mjs \
-            .github/workflows/ci.yml; then
-            echo 'No changes affect the CSL suite.'
-            exit 0
-          fi
-          node scripts/csl-suite.mjs
-          cargo test --locked -p ibis-csl --lib conformance -- --ignored
+      - name: Run it through the shipped formatter
+        run: cargo test --locked -p ibis-csl --lib conformance -- --ignored
 
   # The required merge check and publication evidence; daily/manual runs add
   # qualification. A fork's PR skips every job above, so its result fails.
   result:
     name: CI result
     if: always()
-    needs: [interface, rust, web, pictures, webkit, dependencies, release-checks, bibtex-fuzz, installed, conformance]
+    needs: [plan, interface, rust, web, pictures, webkit, dependencies, release-checks, bibtex-fuzz, installed, conformance]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -637,9 +662,11 @@ jobs:
 
       - name: Require every CI job to pass
         env:
-          RESULTS: ${{ needs.interface.result }} ${{ needs.rust.result }} ${{ needs.web.result }} ${{ needs.pictures.result }} ${{ needs.dependencies.result }} ${{ needs.release-checks.result }}
+          RESULTS: ${{ needs.plan.result }} ${{ needs.interface.result }} ${{ needs.web.result }} ${{ needs.dependencies.result }}
+          # Each planned job as name:selected:result; see scripts/ci-result.sh.
+          SELECTED: rust:${{ needs.plan.outputs.rust }}:${{ needs.rust.result }} pictures:${{ needs.plan.outputs.pictures }}:${{ needs.pictures.result }} csl:${{ needs.plan.outputs.csl }}:${{ needs.conformance.result }} release:${{ needs.plan.outputs.workspace }}:${{ needs.release-checks.result }}
+          WORKSPACE: ${{ needs.plan.outputs.workspace }}
           QUALIFICATION: ${{ needs.webkit.result }} ${{ needs.bibtex-fuzz.result }} ${{ needs.installed.result }}
-          CSL: ${{ needs.conformance.result }}
           EVENT: ${{ github.event_name }}
         run: scripts/ci-result.sh
 

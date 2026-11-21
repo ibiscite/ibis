@@ -33,7 +33,7 @@ pub(crate) fn choose_project(app: AppHandle) {
     let mut dialog = app
         .dialog()
         .file()
-        .set_title("Choose the writing's bibliography")
+        .set_title("Choose the project's bibliography")
         .add_filter("BibTeX and BibLaTeX", &["bib", "bibtex", "biblatex"]);
     if let Some(window) = app.get_webview_window("main") {
         dialog = dialog.set_parent(&window);

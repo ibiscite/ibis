@@ -1,5 +1,21 @@
 # 0049 Local machines gate merges (superseded)
 
+2026-11-18 (maintainer): a pull request runs the jobs its changed paths can
+affect. `scripts/ci-plan.mjs` maps each path to a crate (and every crate that
+depends on it, from `cargo metadata`), the interface or prose; any other path,
+anything generated or shared, and anything it cannot read selects the full
+suite. Main, schedules, manual runs, the `ci:full` label and the repository
+variable `CI_SELECTION=full` always run everything. **CI result** passes only
+if every selected job passed and every other planned job was skipped. Release
+checks run on a PR only when a workspace crate changes, and always on main. This
+replaces the 2026-11-13 deletion of the path classifier.
+
+2026-11-18 (maintainer): every PR tests all three systems before it can merge,
+and macOS runs on GitHub's hosted runners again: one self-hosted Mac served every
+PR's macOS job in turn and became the queue. The repository variable `RUNNERS`
+stays the switch back to our own Mac. A newer push cancels the PR's superseded
+run; pushes to main and daily/manual runs test all three.
+
 2026-11-16: every PR and push runs one `Rust and desktop` job per system (hosted
 macOS runners were the queue) and the Linux release checks; `land.sh` requires a
 recorded independent review before merging updater, signing, publishing,
@@ -10,8 +26,8 @@ three systems, and while main's latest push CI failed, `scripts/land.sh` lands
 only `fix` or `revert` titles. One nightly a day is built from main's head once
 its push CI passed; pushes to main publish nothing.
 
-2026-11-15 (maintainer): superseded: hosted CI is the required merge check, no
-merge queue; local machines are for speed and native checks. Pull requests
+2026-11-15 (maintainer): superseded: hosted CI is the required merge check;
+local machines are for speed and native checks. Pull requests
 squash-merge once **CI result** passes, without being up to date with main;
 main's push CI checks the combined commit, and a red main holds the nightly.
 

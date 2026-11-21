@@ -173,6 +173,7 @@ impl FileLibrary for Current {
             revision,
             results,
             interpretation: reply.shorthand.map(Into::into),
+            kept_words: reply.kept_words,
             list: reply.list,
             unfiltered,
         })

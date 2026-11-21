@@ -34,8 +34,8 @@ type Layer = { kind: LayerKind; close: LayerClose; parent: Scope | null };
 // Read when asked: a surface that mounts open registers before the layer around it.
 const within = (layer: Layer, outer: Layer) => { for (let at = layer.parent?.current; at; at = at.parent?.current) if (at === outer) return true; return false; };
 
-/** The window's own keys, where its keyboard rests, and what anything opening
- * over it ends (a pending copy). Without an owner the listener still closes
+/** The window's own keys, where its keyboard rests, and what opening a
+ * layer ends (a pending copy). Without an owner the listener still closes
  * layers, so Settings' menus follow the same rule. */
 export type KeyOwner = { keyDown: (event: KeyboardEvent) => void; home: () => void; opened?: () => void };
 const layers: Layer[] = [];
@@ -186,8 +186,10 @@ export function useLayer(kind: LayerKind, open: boolean, close: LayerClose): Lay
     registered.current = layer;
     layers.push(layer);
     changed();
-    if (of(layer).opens) displace(layer);
-    if (over(layer)) owner?.opened?.();
+    if (of(layer).opens) {
+      displace(layer);
+      owner?.opened?.();
+    }
     return () => {
       registered.current = null;
       const at = layers.indexOf(layer);
