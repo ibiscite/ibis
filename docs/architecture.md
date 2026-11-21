@@ -8,10 +8,10 @@ describes this checkout. Plans live in [ROADMAP.md](../ROADMAP.md).
 | Location | Responsibility |
 | --- | --- |
 | `crates/ibis-core` | Shared model, citation requests/results, key syntaxes, search and delivery rules. |
-| `crates/ibis-sources` | Read-only file and Zotero readers (`zotero_local`: the local API, closed database and Better BibTeX), discovery, database snapshots and file watches. Each reader declares what its library offers. |
+| `crates/ibis-sources` | Read-only file and Zotero readers (`zotero_local`: the local API, closed database and Better BibTeX), discovery, database snapshots and file watches. Includes the built-in EndNote [source adapter](source-adapters.md). Each reader declares what its library offers. |
 | `crates/ibis-csl` | citeproc-js in QuickJS, ICU4X collation, bundled CSL styles and locales. |
 | `crates/ibis-engine` | Typed methods, source lifecycle, prepared citations, settings owner, recents, JSON-RPC and MCP. |
-| `crates/ibis-cli` | The `ibis` executable, and the PDF text extractor it starts as its own child process (`ibis __extract-pdf`, with `lopdf`). Depends on core and engine. |
+| `crates/ibis-cli` | The `ibis` executable, and the PDF text extractor and built-in source adapters it starts as its own child processes (`ibis __extract-pdf`, with `lopdf`; `ibis __source NAME`). Depends on core and engine, and enables the EndNote reader in `ibis-sources` for the adapter process. |
 | `crates/ibis-native` | Native paste with no window toolkit: the target capture, its proofs and their platform calls, and every `unsafe` block they need. The host supplies windows, settings and the keyboard layout. Depends on core and engine (the paste setting). |
 | `apps/desktop/src-tauri` | Native windows, clipboard, paste delivery through `ibis-native`, shortcuts, settings dialogs and updates. Depends on core, engine, native and its command macro crate. |
 | `apps/desktop/src` | React interface, shared controls in `ui/`, tokens in `tokens.css`. |
@@ -81,6 +81,16 @@ BibTeX named as such declares proposals; BibTeX and CSL-JSON declare native
 keys and attachment text; RIS and CSV declare records only; Zotero declares
 its keys, aliases, conflicts and attachment text in both read paths. Each
 library's `revision` is its snapshot's full fingerprint.
+
+[Source adapters](source-adapters.md) are separate programs that read a
+manager Ibis has no reader for and answer one whole-library read over stdio
+(`ibis_core::contract::adapter`). The engine resolves built-in names and
+the absolute executable paths approved in the person’s device configuration.
+`ibis_sources::adapter` bounds the whole read to 64 MiB and two minutes, and
+keeps identity (a keyed digest of the adapter's name and `scope`), CSL
+validation, the private-link filter and key claims to itself. Adapter
+libraries declare records, and keys only when the adapter says it has them.
+They are read on open and on reload; a failed read keeps the last good one.
 
 File formats and limits are in [compatibility](compatibility.md#library-files). Files are bounded to 64 MiB; parsers report skipped records without discarding valid neighbours.
 

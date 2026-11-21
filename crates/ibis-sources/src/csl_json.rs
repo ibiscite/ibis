@@ -6,6 +6,8 @@ use ibis_core::contract::{CitationKey, CitationKeySource, ItemRef, LibraryId, Re
 use serde_json::Value;
 use std::collections::BTreeMap;
 
+pub(crate) const MAX_RECORD_BYTES: usize = 1024 * 1024;
+
 /// CSL-JSON records a caller sent, requiring an `id` before applying the file
 /// reader's rules without touching a file. A `file` field is dropped unread:
 /// no path or `file:` URL is ever probed. Each warning's `line` is the record's place in
@@ -20,8 +22,29 @@ pub fn request_records(library: &LibraryId, records: &[Value]) -> Result<Request
         text.push_str(&serde_json::to_string(record).map_err(|_| SourceError::InvalidData)?);
     }
     text.push_str("\n]");
+    request_text(library, &text, true)
+}
+
+/// Adapter records stay borrowed until the common CSL reader selects fields.
+pub(crate) fn request_raw_records(
+    library: &LibraryId,
+    records: &[&serde_json::value::RawValue],
+    keys: bool,
+) -> Result<RequestRecords, SourceError> {
+    let mut text = String::from("[\n");
+    for (index, record) in records.iter().enumerate() {
+        if index > 0 {
+            text.push_str(",\n");
+        }
+        text.push_str(record.get());
+    }
+    text.push_str("\n]");
+    request_text(library, &text, keys)
+}
+
+fn request_text(library: &LibraryId, text: &str, keys: bool) -> Result<RequestRecords, SourceError> {
     // Even when no record is kept, each refusal names its record.
-    let parsed = read_str(library, &text, Input::Request)?;
+    let parsed = read_str(library, text, Input::Request { keys })?;
     Ok(RequestRecords {
         records: parsed.records,
         warnings: parsed
@@ -49,7 +72,7 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
 #[derive(Clone, Copy)]
 enum Input {
     Library,
-    Request,
+    Request { keys: bool },
 }
 
 fn read_str(library: &LibraryId, text: &str, input: Input) -> Result<ParsedLibrary, SourceError> {
@@ -93,8 +116,16 @@ fn read_str(library: &LibraryId, text: &str, input: Input) -> Result<ParsedLibra
     let candidates = Candidates::collect(
         items.into_iter().take(crate::MAX_LIBRARY_RECORDS).enumerate(),
         |(index, raw)| {
-            let line = spans.get(index).map(|(_, _, line)| *line);
-            let fields = object_fields(raw.get());
+            let line = match input {
+                Input::Request { .. } => Some(index + 2),
+                Input::Library => spans.get(index).map(|(_, _, line)| *line),
+            };
+            let mut fields = object_fields(raw.get());
+            if matches!(input, Input::Request { keys: false })
+                && let Ok(fields) = &mut fields
+            {
+                fields.remove("citation-key");
+            }
             let native_ids = fields
                 .as_ref()
                 .map(|fields| native_ids(fields, input))
@@ -130,7 +161,7 @@ fn read_str(library: &LibraryId, text: &str, input: Input) -> Result<ParsedLibra
         let because = |code, cause, field: &str| warning(code).because(cause, Some(field));
         let id = fields.get("id").and_then(|value| id_string(value));
         // Only library files may use a citation key in place of an ID.
-        if matches!(input, Input::Request) && id.is_none() {
+        if matches!(input, Input::Request { .. }) && id.is_none() {
             let cause = if fields.contains_key("id") {
                 WarningCause::Value
             } else {
@@ -163,7 +194,7 @@ fn read_str(library: &LibraryId, text: &str, input: Input) -> Result<ParsedLibra
             library: library.clone(),
             key: format!("record:{native}"),
         };
-        if raw.get().len() > 1024 * 1024 {
+        if raw.get().len() > MAX_RECORD_BYTES {
             result.warnings.push(warning(WarningCode::WorkLimit));
             continue;
         }
@@ -631,6 +662,26 @@ fn item_spans(text: &str) -> Vec<(usize, usize, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn raw_adapter_records_keep_record_positions_and_drop_undeclared_keys() {
+        let text = r#"[
+            {
+                "id": "one", "type": "book", "citation-key": "unclaimed",
+                "title": "Invented book"
+            },
+            {
+                "title": "Missing id", "type": "book"
+            }
+        ]"#;
+        let records: Vec<&serde_json::value::RawValue> = serde_json::from_str(text).unwrap();
+        let parsed = request_raw_records(&LibraryId::digest(b"invented-raw-csl"), &records, false).unwrap();
+        assert_eq!(parsed.records.len(), 1);
+        assert!(parsed.records[0].citation_keys.is_empty());
+        assert!(parsed.records[0].csl.get("citation-key").is_none());
+        assert_eq!(parsed.warnings.len(), 1);
+        assert_eq!(parsed.warnings[0].line, Some(2));
+    }
 
     #[test]
     fn request_records_require_ids_before_the_library_key_fallback() -> Result<(), SourceError> {

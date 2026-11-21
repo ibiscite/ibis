@@ -25,7 +25,7 @@ use std::time::{Duration, Instant};
 #[cfg(unix)]
 #[allow(unsafe_code)]
 #[path = "pdf/inheritance.rs"]
-mod inheritance;
+pub(crate) mod inheritance;
 
 // SAFETY: only the memory ceiling's process queries and Windows Job Object.
 #[allow(unsafe_code)]

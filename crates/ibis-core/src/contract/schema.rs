@@ -18,6 +18,8 @@ pub struct GoldenCase {
 struct EngineContract {
     case: GoldenCase,
     exit_code: ExitCode,
+    /// The source adapter protocol: what Ibis sends and what it accepts.
+    source_adapter: (super::adapter::AdapterRequest, super::adapter::AdapterResponse),
 }
 
 /// The exact JSON Schema checked into `fixtures/engine-contract.schema.json`.

@@ -16,6 +16,9 @@ use ibis_core::contract::{Fingerprint, LibraryObject, Snapshot};
 mod io;
 mod watch;
 
+#[cfg(feature = "endnote")]
+pub(crate) use io::read_library_file_sync;
+
 pub const MAX_LIBRARY_BYTES: u64 = 64 * 1024 * 1024;
 const SETTLE: Duration = Duration::from_millis(250);
 

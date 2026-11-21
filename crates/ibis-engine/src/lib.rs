@@ -26,6 +26,8 @@ pub mod request;
 pub mod rpc;
 
 mod service;
+/// Source adapters (decision 0056, step 4).
+pub use ibis_sources::adapter as sources;
 pub use ibis_sources::identity;
 /// The PDF extractor's contract: what `ibis __extract-pdf` answers and the
 /// bounds the engine checks it against (decision 0055).

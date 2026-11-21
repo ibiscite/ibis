@@ -319,7 +319,8 @@ impl Engine {
                 Some(path) => Owner::File(path),
                 None => Owner::Snapshot,
             },
-            LibraryKind::Snapshot => Owner::Snapshot,
+            // Adapters hand Ibis records only.
+            LibraryKind::Snapshot | LibraryKind::Adapter => Owner::Snapshot,
         })
     }
 

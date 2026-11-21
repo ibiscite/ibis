@@ -10,17 +10,34 @@ fn main() -> std::process::ExitCode {
     {
         return std::process::ExitCode::from(ibis::pdf_text::run_child(&arguments[2..]));
     }
+    // A built-in source adapter, started only by `ibis` itself (decision 0056).
+    if arguments
+        .get(1)
+        .is_some_and(|argument| argument == ibis_engine::sources::CHILD_ARGUMENT)
+    {
+        return std::process::ExitCode::from(match arguments.get(2).and_then(|name| name.to_str()) {
+            Some(ibis_sources::adapter::ENDNOTE) => {
+                ibis_sources::endnote::serve(std::io::stdin().lock(), std::io::stdout().lock())
+            }
+            _ => 2,
+        });
+    }
+    // The shared child runner kills and reaps its groups before we exit on
+    // SIGINT/SIGTERM. Child executables retain their normal signal masks.
+    #[cfg(unix)]
+    let termination = match ibis_sources::adapter::exit_on_termination() {
+        Ok(termination) => termination,
+        Err(_) => return std::process::ExitCode::from(70),
+    };
     let output = std::io::stdout();
     let mode = ibis::OutputMode::Streams {
         stdout: output.is_terminal(),
         stderr: std::io::stderr().is_terminal(),
         stdin: std::io::stdin().is_terminal(),
     };
-    std::process::ExitCode::from(ibis::run(
-        arguments,
-        std::io::stdin().lock(),
-        output,
-        std::io::stderr(),
-        mode,
-    ))
+    let status = ibis::run(arguments, std::io::stdin().lock(), output, std::io::stderr(), mode);
+    #[cfg(unix)]
+    termination.exit(status);
+    #[cfg(not(unix))]
+    std::process::ExitCode::from(status)
 }

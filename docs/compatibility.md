@@ -101,6 +101,17 @@ and at most 64 MiB. Skipped records produce warnings with line numbers.
 | RIS (`.ris`, `.txt`) | None | Formatted citations only. |
 | [CSV template](#csv-template) (`.csv`) | None | Formatted citations only. |
 
+### EndNote
+
+Ibis reads EndNote 21 through its built-in [source adapter](source-adapters.md#endnote):
+an open library on macOS (`--source endnote=Invented.enl`) or an XML export on
+every system (`--source endnote=export.xml`). Journal articles, books and book
+sections are read; other types are skipped and named. EndNote has no citation
+keys, so citations are formatted, and key outputs refuse. The desktop app does
+not read EndNote yet. On macOS, allow the program running `ibis` to control
+EndNote when asked, or later in System Settings › Privacy & Security ›
+Automation.
+
 ### RIS from a reference manager
 
 Choose Zotero directly or a bibliography manager's `.bib` where available.
