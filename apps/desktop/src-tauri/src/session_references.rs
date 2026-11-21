@@ -360,7 +360,7 @@ pub(crate) fn manage<R: tauri::Runtime>(app: &AppHandle<R>, settings_path: &std:
                 let loaded = ibis_engine::settings::load(&settings_path);
                 let saved = loaded
                     .cites()
-                    .is_ok_and(|settings| settings.portable.recent_citations.unwrap_or(true));
+                    .is_ok_and(|settings| settings.portable.recent_citations());
                 if !on && saved {
                     let _ = history.forget();
                 }

@@ -1,7 +1,7 @@
 // The Copied or Pasted notice window. It shows the message it is sent, fades out by
 // itself and never takes focus; the app closes or hides the window.
 import type { NoticeMessage } from "./api";
-import { commands } from "./bindings";
+import { commands, DEFAULT_PREFERENCES } from "./bindings";
 import { events, listening } from "./nativeEvents";
 import { leaveNotice, noticePlatform, readNotice, renderNotice } from "./copyFeedback";
 import { say } from "./i18n";
@@ -21,7 +21,7 @@ if (root) {
   const render = renderNotice(root, platform, () => { void commands.changeSuggestedFormat().catch(() => undefined); });
   // Ibis's own Light or Dark, as the picker shows it; System follows the Mac.
   const show = (message: NoticeMessage) => {
-    document.documentElement.dataset.appearance = message.appearance ?? "system";
+    document.documentElement.dataset.appearance = message.appearance ?? DEFAULT_PREFERENCES.appearance;
     render(readNotice(message));
   };
   const failed = () => console.error(say("copied-notice-notice-failed"));

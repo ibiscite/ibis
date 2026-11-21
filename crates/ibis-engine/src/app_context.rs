@@ -531,7 +531,7 @@ impl Owner {
             writing_context: Some(writings.context.clone()),
             writings,
             project,
-            paste_enabled: settings.portable.paste.unwrap_or(true),
+            paste_enabled: settings.portable.paste(),
         })
     }
     pub fn bibliography_owner(

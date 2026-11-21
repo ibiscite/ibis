@@ -238,7 +238,7 @@ pub fn with_paste_settings(path: &std::path::Path, deliver: impl FnOnce(bool) ->
     let Ok(settings) = loaded.cites() else {
         return Delivered::copied(CopyReason::PasteUnavailable);
     };
-    deliver(settings.portable.paste.unwrap_or(true))
+    deliver(settings.portable.paste())
 }
 
 pub fn key_release_failed() -> Delivered {

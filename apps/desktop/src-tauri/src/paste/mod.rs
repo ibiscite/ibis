@@ -92,7 +92,7 @@ impl ibis_native::paste::macos::Host for Host {
             .ok()?;
         let settings = ibis_engine::settings::load(&self.0.state::<crate::preferences::SettingsFile>().path);
         let settings = settings.cites().ok()?;
-        Some((preference, settings.portable.paste.unwrap_or(true)))
+        Some((preference, settings.portable.paste()))
     }
 }
 

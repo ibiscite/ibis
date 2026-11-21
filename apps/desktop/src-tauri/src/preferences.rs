@@ -120,7 +120,7 @@ impl SettingsFile {
     pub(crate) fn new(path: PathBuf) -> Self {
         let read = settings::load(&path);
         let loaded = read.interface().unwrap_or_default();
-        let surprises = loaded.small_surprises.unwrap_or(true);
+        let surprises = loaded.small_surprises();
         let last_valid = PickerPreferences::from_interface(&loaded);
         let native = read.cites().map(NativeSettings::from).unwrap_or_default();
         let delights = crate::delights::DelightOwner::new(loaded.delights);
@@ -232,11 +232,10 @@ impl SettingsFile {
             }
             Err(_) => return,
         };
-        self.surprises
-            .store(saved.portable.small_surprises.unwrap_or(true), Ordering::SeqCst);
+        self.surprises.store(saved.portable.small_surprises(), Ordering::SeqCst);
         self.apply_text_size(app, preferences.larger_text, revision);
         if let Some(history) = app.try_state::<crate::session_references::SessionReferences>() {
-            let _ = history.set_enabled(saved.portable.recent_citations.unwrap_or(true));
+            let _ = history.set_enabled(saved.portable.recent_citations());
         }
         crate::shortcut_setting::apply_file_shortcut(app, saved.portable.shortcut.here().map(str::to_owned), revision);
         crate::tray::show_in_menu_bar(app, preferences.menu_bar, revision);
@@ -414,6 +413,10 @@ pub(crate) struct PickerPreferences {
 }
 
 impl PickerPreferences {
+    /// The interface's choices in a settings file that names none.
+    pub(crate) fn defaults() -> Self {
+        Self::from_settings(&settings::Settings::default())
+    }
     fn from_settings(settings: &settings::Settings) -> Self {
         Self::from_interface(&settings.into())
     }
@@ -425,15 +428,15 @@ impl PickerPreferences {
                 .as_deref()
                 .and_then(output::listed)
                 .filter(|output| matches!(output.spec(), ibis_core::contract::OutputSpec::Key { .. })),
-            appearance: Some(settings.appearance.unwrap_or_default()),
-            accent: Some(settings.accent.unwrap_or_default()),
-            density: settings.density.unwrap_or(Density::Comfortable),
-            picker_placement: Some(settings.picker_placement.unwrap_or_default()),
-            larger_text: settings.larger_text.unwrap_or(false),
-            paste: settings.paste.unwrap_or(true),
-            menu_bar: settings.menu_bar.unwrap_or(true),
-            recent_citations: Some(settings.recent_citations.unwrap_or(true)),
-            small_surprises: Some(settings.small_surprises.unwrap_or(true)),
+            appearance: Some(settings.appearance()),
+            accent: Some(settings.accent()),
+            density: settings.density(),
+            picker_placement: Some(settings.picker_placement()),
+            larger_text: settings.larger_text(),
+            paste: settings.paste(),
+            menu_bar: settings.menu_bar(),
+            recent_citations: Some(settings.recent_citations()),
+            small_surprises: Some(settings.small_surprises()),
         }
     }
 }
@@ -577,7 +580,7 @@ pub(crate) fn save_picker_preferences<R: tauri::Runtime>(
         if fields.iter().any(|field| field == "recent_citations")
             && let Some(history) = app.try_state::<crate::session_references::SessionReferences>()
         {
-            let _ = history.set_enabled(saved.portable.recent_citations.unwrap_or(true));
+            let _ = history.set_enabled(saved.portable.recent_citations());
         }
         if changes_menu_bar {
             crate::tray::show_in_menu_bar(app.app_handle(), preferences.menu_bar, receipt);
@@ -658,7 +661,7 @@ impl SettingsFile {
             move |receipt, saved| {
                 let saved = saved.map(|(settings, ())| settings);
                 if let Ok(saved) = &saved {
-                    surprises.store(saved.portable.small_surprises.unwrap_or(true), Ordering::SeqCst);
+                    surprises.store(saved.portable.small_surprises(), Ordering::SeqCst);
                     if let Ok(mut previous) = last_valid.lock() {
                         *previous = PickerPreferences::from_settings(saved);
                     }
@@ -716,20 +719,6 @@ fn apply_preferences(s: &mut settings::Settings, preferences: PickerPreferencesP
         return Err(CommandError::KeyFormat);
     }
 
-    if let Some(appearance) = preferences.appearance {
-        if appearance == Appearance::System {
-            s.portable.appearance = None;
-        } else {
-            s.portable.appearance = Some(appearance);
-        }
-    }
-    if let Some(accent) = preferences.accent {
-        if accent == Accent::System {
-            s.portable.accent = None;
-        } else {
-            s.portable.accent = Some(accent);
-        }
-    }
     if let Some(output) = preferences.output {
         s.portable.output = Some(output.id().to_owned());
     }
@@ -737,26 +726,34 @@ fn apply_preferences(s: &mut settings::Settings, preferences: PickerPreferencesP
         s.portable.key_output = Some(output.id().to_owned());
     }
     // Defaults stay unwritten, so the file only names real choices.
-    if let Some(placement) = preferences.picker_placement {
-        s.portable.picker_placement = Some(placement).filter(|p| *p != PickerPlacement::Centre);
+    let p = &mut s.portable;
+    let d = &settings::DEFAULTS;
+    if let Some(v) = preferences.appearance {
+        p.appearance = settings::unless_default(v, Appearance::default());
     }
-    if let Some(density) = preferences.density {
-        s.portable.density = Some(density).filter(|d| *d != Density::Comfortable);
+    if let Some(v) = preferences.accent {
+        p.accent = settings::unless_default(v, Accent::default());
     }
-    if let Some(larger) = preferences.larger_text {
-        s.portable.larger_text = Some(larger).filter(|larger| *larger);
+    if let Some(v) = preferences.picker_placement {
+        p.picker_placement = settings::unless_default(v, PickerPlacement::default());
     }
-    if let Some(paste) = preferences.paste {
-        s.portable.paste = Some(paste).filter(|paste| !paste);
+    if let Some(v) = preferences.density {
+        p.density = settings::unless_default(v, Density::default());
     }
-    if let Some(enabled) = preferences.small_surprises {
-        s.portable.small_surprises = Some(enabled).filter(|on| !on);
+    if let Some(v) = preferences.larger_text {
+        p.larger_text = settings::unless_default(v, d.larger_text);
     }
-    if let Some(shown) = preferences.menu_bar {
-        s.portable.menu_bar = Some(shown).filter(|shown| !shown);
+    if let Some(v) = preferences.paste {
+        p.paste = settings::unless_default(v, d.paste);
     }
-    if let Some(on) = preferences.recent_citations {
-        s.portable.recent_citations = Some(on).filter(|on| !on);
+    if let Some(v) = preferences.small_surprises {
+        p.small_surprises = settings::unless_default(v, d.small_surprises);
+    }
+    if let Some(v) = preferences.menu_bar {
+        p.menu_bar = settings::unless_default(v, d.menu_bar);
+    }
+    if let Some(v) = preferences.recent_citations {
+        p.recent_citations = settings::unless_default(v, d.recent_citations);
     }
     Ok(())
 }
@@ -1229,6 +1226,34 @@ mod tests {
                 assert_eq!(saved.portable.density, Some(Density::Compact));
             });
         }
+    }
+
+    #[test]
+    fn choosing_every_default_leaves_the_file_naming_none() {
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let path = directory.path().join("settings.json");
+        let file = SettingsFile::new(path.clone());
+        let patch = |value: serde_json::Value| -> PickerPreferencesPatch {
+            serde_json::from_value(value).unwrap_or_else(|e| panic!("{e}"))
+        };
+        let changed = patch(
+            serde_json::json!({"appearance":"dark","accent":"ibis","picker_placement":"top-left",
+            "density":"compact","larger_text":true,"paste":false,"small_surprises":false,"menu_bar":false,"recent_citations":false}),
+        );
+        file.save_preferences(changed, None).unwrap_or_else(|e| panic!("{e}"));
+        let mut defaults = serde_json::json!(PickerPreferences::defaults());
+        let fields = defaults.as_object_mut().unwrap_or_else(|| panic!("an object"));
+        fields.remove("output");
+        fields.remove("key_output");
+        let saved = file
+            .save_preferences(patch(defaults), None)
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(PickerPreferences::from_settings(&saved), PickerPreferences::defaults());
+        let written: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{e}")))
+                .unwrap_or_else(|e| panic!("{e}"));
+        let named: Vec<&String> = written.as_object().map(|o| o.keys().collect()).unwrap_or_default();
+        assert_eq!(named, ["schema_version"], "only real choices are written");
     }
 
     #[test]

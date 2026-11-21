@@ -9,7 +9,7 @@ import { CliCommandRow } from "./CliCommand";
 import { StatusMark } from "../ui/StatusMark";
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { PageIcon } from "../icons";
-import type { CheckResult, LoginItem, LoginItemProblem, PickerPreferences, ShortcutStatus, WindowSize } from "../bindings";
+import { DEFAULT_PREFERENCES, type CheckResult, type LoginItem, type LoginItemProblem, type PickerPreferences, type ShortcutStatus, type WindowSize } from "../bindings";
 import { type MessageId, useInterfaceMessages, problemText } from "../i18n";
 import { type ShortcutProblem, shortcutRefusalMessage } from "../i18n/settings";
 import { PreferencePatchQueue } from "../preferencePatchQueue";
@@ -234,7 +234,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   useAppearance(preferences);
   useEffect(() => {
     const root = document.documentElement;
-    root.dataset.largerText = String(preferences?.larger_text ?? false);
+    root.dataset.largerText = String(preferences?.larger_text ?? DEFAULT_PREFERENCES.larger_text);
     return () => { delete root.dataset.largerText; };
   }, [preferences?.larger_text]);
   // Shortcuts reads it too, to name what Enter does; only General waits for a grant.
