@@ -1,6 +1,6 @@
 # 0031 What Ibis remembers per app
 
-Formats and writings live in `settings.json`, resolved by
+Formats and projects live in `settings.json`, resolved by
 [0042](0042-formats-apps-and-writings.md). `apps.json` holds at most 200 app
 entries: operating system, normalized app ID, delivery choice, identity binding
 and whether the plugin note was shown. Least recently chosen entries leave

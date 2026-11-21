@@ -53,8 +53,6 @@ import { usePickerActions } from "./features/picker/usePickerActions";
 import { useCitationInspector } from "./features/picker/useCitationInspector";
 import { useShorthandHint } from "./features/picker/useShorthandHint";
 import { usePickerKeys } from "./features/picker/usePickerKeys";
-import { useCommandSearch } from "./features/picker/useCommandSearch";
-import { COMMAND_PREFIX } from "./features/picker/commands";
 import { usePickerDelights } from "./features/picker/usePickerDelights";
 import { useEmptyFeedback, useZoomFeedback } from "./ui/Delights";
 import { useInterfaceMessages } from "./i18n";
@@ -101,8 +99,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
   useEffect(() => { if (choosingLibrary) delights.dismiss(); }, [choosingLibrary, delights.dismiss]);
   const recents = useRecentReferences(api.recentReferences, destination.appId, state.session, api.onPreferencesChanged, () => send({ type: "forget-last" }), state.destination.destination);
   const searchState = useLibrarySearch({
-    // ">" asks for commands, never the library.
-    session, state, search: api.search, emptySearch: recents.load, emptyReply: recents.snapshot, app: destination.appId, query: query.startsWith(COMMAND_PREFIX) ? "" : query, interpretLocators,
+    session, state, search: api.search, emptySearch: recents.load, emptyReply: recents.snapshot, app: destination.appId, query, interpretLocators,
     library: settledLibrary, statusFailed: failures.status ?? false, libraryVersion: checkVersion,
   });
   const { queryKey, results, sameSnapshot, ready, list, error, pending: searchPending } = searchState;
@@ -135,7 +132,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
   useUpdateOfferActivity(api, state, menus, choosingLibrary);
   const snapshotRevision = library?.revision;
   const { requestCopy, chooseFormat, onFormatOpenChange } = useCitationCopy({
-    api, session, state, destination, formatButtonRef, refreshSnapshot, setFormatOpen,
+    api, session, state, destination, formatButtonRef, refreshSnapshot, setFormatOpen, practise: delights.practise,
   });
   // What the session hears from preferences and the library's lifecycle.
   // biome-ignore lint/correctness/useExhaustiveDependencies: pickerInputs contains exactly these outside inputs.
@@ -173,6 +170,10 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     api, pickerSession, searchState, chosenKey: output.chosenKey, chosen, showCitations, format, snapshotRevision,
     focusHome, pointer, requestCopy, report,
   });
+  const practice = delights.practice;
+  const copyChosen = () => rows.copyChosen(delights.actionForEnter());
+  const practiceLine = practice ? practice.pasted === null ? say("picker-practice-offer") : say("picker-practice-pasted", { citation: practice.pasted }) : null;
+  const waitingForPractice = practice?.pasted === null && !zoomFeedback && !emptyFeedback.feedback;
   const nothingMatched = Boolean(query) && searchState.resultsQuery === queryKey && results.length === 0 && !error;
   const scope = useZoteroScope({
     library, libraryVersion, menuOpen: menus.libraryMenuOpen, nothingMatched,
@@ -203,20 +204,18 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
   const receipt = !editor.label ? output.previewReceipt : undefined;
   const formatExample = useMemo<FormatExample | null>(() => receipt ? (other, signal) => nativeApi.citationExample(receipt.ticket, receipt.content_hash, other, signal) : null, [receipt]);
   const commandKeys = useRef<((event: KeyboardEvent) => boolean) | null>(null);
-  // The command list (">") stands in for the results: ⌘1–9 has no row then.
-  const commandsShown = useRef(false);
   // The citation line's tokens, for ⌘↓ in Search and the citation's commands in More.
   const citationLine = useRef<CitationLineActions | null>(null);
   // ⌘1–9 picks a row in view, as a double-click on it does, only while the list is shown.
   const numbered = useShownRows(resultArea, results);
   const keys = usePickerKeys({
-    api, pickerSession, menus, source, results, showCitations, copyChosen: rows.copyChosen, actions, pointer, followKeyboard,
+    api, pickerSession, menus, source, results, showCitations, copyChosen, actions, pointer, followKeyboard,
     quitAfterSaving, commandKeys, citationLine, findOpen: destination.findOpen,
     pick: (number) => {
       const index = numbered.first + number - 1, record = results[index];
       // The list must be drawn: reading a PDF folds it away.
       const drawn = resultArea.current?.checkVisibility?.() ?? true;
-      return ready && showCitations && drawn && !commandsShown.current && number <= numbered.count && record ? () => {
+      return ready && showCitations && drawn && number <= numbered.count && record ? () => {
         if (destination.findOpen) source.openReference(record.id, false);
         else rows.onChoose(index, record, "copy");
       } : null;
@@ -228,20 +227,13 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     },
   });
   useNativeEvent(api.onWindowSizeSaved, (saved) => report("windowSize", !saved), { failed: () => report("windowSize") });
-  // ">" in the search lists commands by name (docs/design/picker.md, Command search).
-  const commands = useCommandSearch({
-    query: showCitations ? query : "", run: keys.run, setQuery,
-    source: source.sourceAvailable ? source.sourceAction.label : null, changeLast: actions.canChangeLast, canChooseFormat: destination.canChooseFormat,
-  });
-  commandsShown.current = commands.mode;
   // Peek (⌘Y): the highlighted reference's full details under its row, as Quick Look.
   const [peeked, setPeeked] = useState<string | null>(null);
-  const peekRecord = !commands.mode && showCitations ? results[active] : undefined;
+  const peekRecord = showCitations ? results[active] : undefined;
   const peekOpen = Boolean(peekRecord && peeked === idKey(peekRecord.id));
   const peekAnchor = useRef<Element | null>(null);
   peekAnchor.current = peekOpen ? document.getElementById(`result-${active}`) : null;
   commandKeys.current = (event) => {
-    if (commands.keys(event)) return true;
     if (!matchesAccelerator(event, keysFor("peek"), isMac)) return false;
     event.preventDefault();
     setPeeked(peekOpen || !peekRecord ? null : idKey(peekRecord.id));
@@ -255,7 +247,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
       onScrollCapture={pointer.resetHover}
       notice={[
         // What passes (Undo, a remark, an update) first: it goes by itself.
-        <PickerNotices key="passing" state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? shorthand.hint ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && !shorthand.hint && delights.passive} onRemarkPassed={() => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else if (shorthand.hint) shorthand.dismiss(); else delights.dismiss(); }} />,
+        <PickerNotices key="passing" state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? practiceLine ?? shorthand.hint ?? (searchState.keptWords ? say("picker-kept-words") : null) ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && !practiceLine && !shorthand.hint && delights.passive} onRemarkPassed={waitingForPractice ? undefined : () => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else if (practiceLine) delights.endPractice(); else if (shorthand.hint) shorthand.dismiss(); else delights.dismiss(); }} />,
         ...notices({ projectNotice: project.notice, editorNotice: editor.label, library, failures: { ...failures, recentHistory: recents.forgetFailed },
           error: error ?? destination.readProblem, copyError: inspector.panel ? null : copyError, copied, missing: ready ? list?.missing : undefined,
           confirmation: state.copyNotice, onDismissCopied: () => send({ type: "dismiss" }) }),
@@ -277,10 +269,10 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
           changeLocator={rows.changeLocator} send={send} focusHome={focusHome} />}
         onQueryChange={(value) => { delights.dismiss(); pointer.resetHover(); setQuery(value); }}
         expanded={results.length > 0 && showCitations}
-        activeDescendant={commands.mode ? commands.list.length ? `command-${commands.active}` : undefined : showCitations && results[active] ? `result-${active}` : undefined}
+        activeDescendant={showCitations && results[active] ? `result-${active}` : undefined}
         format={format} formatLabel={destination.formatLabel} formatButtonRef={formatButtonRef} delivery={actions.delivery}
         app={destination.app} formatSource={destination.source} formatPick={destination.pick}
-        writing={destination.writing} usualFormat={destination.usualFormat} onUseUsual={destination.useUsual} onWritings={!editor.label ? menus.openProjects : undefined}
+        writing={destination.writing} usualFormat={destination.usualFormat} onUseUsual={destination.useUsual} onWritings={!editor.label && destination.offersProjects ? menus.openProjects : undefined}
         onFormatOpenChange={onFormatOpenChange}
         pasteChoices={destination.pasteChoices}
         onPasteChange={(paste) => { const asked = state.pendingCopy?.question === "open"; send({ type: "question", answer: "cancel" }); destination.choosePaste(paste, asked); }}
@@ -297,20 +289,20 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
             else rows.onChoose(index, reference, action);
           } }}
           density={density} resultArea={resultArea} setQuery={setQuery} peck={delights.peck}
-          project={styleOf(format) === null ? project.status : null} commands={commands.mode ? commands : null} numbered={numbered} />
+          project={styleOf(format) === null ? project.status : null} numbered={numbered} referenceList={actions.referenceList} />
       </PickerScroll>
       {/* Keep the selection live region mounted when choices remove citation controls. */}
       <PickerCitationShelf
-        state={state} send={send} showCitations={showCitations && !commands.mode} results={results} output={output} chosen={shownChoice}
-        changeReference={rows.changeReference} copyChosen={rows.copyChosen} libraryOf={scope.libraryOf} format={format} input={input} inspector={inspector} citationLine={citationLine}
+        state={state} send={send} showCitations={showCitations} results={results} output={output} chosen={shownChoice}
+        changeReference={rows.changeReference} copyChosen={copyChosen} libraryOf={scope.libraryOf} format={format} input={input} inspector={inspector} citationLine={citationLine}
         deliverable={!searchPending && preferences.ready && library?.state !== "reloading" && destination.ready && !destination.saving} />
       <PickerStatusFooter
         copyProblem={projectRefusal}
         api={api} library={library} scope={scope} sourceState={source} menus={menus} actions={actions} run={keys.run} citationLine={citationLine}
-        copyChosen={rows.copyChosen} recents={recents}
+        copyChosen={copyChosen} recents={recents}
         operations={operations} altHeld={altHeld}  emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
         project={project} highlighted={ready && styleOf(format) === null ? results[active] : undefined}
-        command={commands.footer} peek={peekRecord ? () => setPeeked(idKey(peekRecord.id)) : null} />
+        peek={peekRecord ? () => setPeeked(idKey(peekRecord.id)) : null} />
       <PickerOverlays api={{ ...api, editWriting: destination.editWriting! }} format={format} style={styleOf(format)} menus={menus} bindings={actions.bindings} />
       <HeldKeys />
       {peekRecord && <PeekCard triggerRef={peekAnchor} open={peekOpen} onClose={() => setPeeked(null)}

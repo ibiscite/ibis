@@ -43,7 +43,7 @@ export function demoApi(initialPreferences: Partial<PickerPreferences> = {}): Se
     delightView: async (_now, _presentation, _revision, click) => {
       const fun = preferences.small_surprises ?? true;
       if (fun && click) factIndex = (factIndex + 1) % facts.length;
-      return { fun, fact: fun && click ? facts[factIndex]! : null, status: null, peck: false, anniversary: false, revision, build: "0.2.1 · invented · 2026-11-01" };
+      return { fun, fact: fun && click ? facts[factIndex]! : null, status: null, peck: false, anniversary: false, practice: false, revision, build: "0.2.1 · invented · 2026-11-01" };
     },
     pickerPreferences: async () => preferences,
     savePickerPreferences: async (patch) => { const receipt = ++revision; submitted.set(receipt, patch as Partial<PickerPreferences>); return receipt; },

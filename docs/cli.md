@@ -73,7 +73,7 @@ Library options before or after the command combine in order; duplicates are ign
 and never change library files. Library IDs are opaque and repeatable on one
 computer; [architecture](architecture.md#data-and-identity) explains identity.
 Library commands save only the private identity key; explicit `settings` and
-`writings` commands also write the settings you choose.
+`projects` commands also write the settings you choose.
 
 In `libraries --json`, each library lists the `capabilities` its reader
 declares (`bibliographic-records`, key kinds, `attachment-text`, `proposals`)
@@ -218,9 +218,9 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | `--records` | Cite every CSL-JSON record in the array on stdin, with no library; see: ibis schema records |
 | `--format FORMAT` | Output to write: a key syntax or a common style [default: pandoc]; list them with: ibis outputs |
 | `--style STYLE_ID` | Format with any CSL style instead; list them with: ibis styles |
-| `--writing NAME` | Use this writing's output and bibliography; list names with: ibis writings list |
-| `--nightly` | Read the writing or the app's formats from Ibis Nightly's settings |
-| `--document PATH` | Use an explicit document's bibliography/csl front matter to select a writing |
+| `--project NAME` | Use this project's output and bibliography; list names with: ibis projects list |
+| `--nightly` | Read the project or the app's formats from Ibis Nightly's settings |
+| `--document PATH` | Use an explicit document's bibliography/csl front matter to select a project |
 | `--strict` | Refuse citations with losses, refusals or source problems |
 | `--for-app APP_ID` | Use the format Ibis uses for this app from its settings, a macOS bundle ID or Windows executable; --style or --format stands in for your usual format |
 | `--bibliography` | Format bibliography entries, in --style or a style --format names |
@@ -371,43 +371,43 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | `--dry-run` | Show what would change and change nothing |
 | `--nightly` | Use Ibis Nightly's settings instead of the stable app's |
 
-**`ibis writings`**: Remember a writing's citation output and optional bibliography
+**`ibis projects`**: Remember a project's citation output and optional bibliography
 
-**`ibis writings list`**: List writing names, formats and bibliography file names
+**`ibis projects list`**: List project names, formats and bibliography file names
 
-**`ibis writings schema`**: The JSON Schema of cite --writing's result
+**`ibis projects schema`**: The JSON Schema of cite --project's result
 
-**`ibis writings create`**: Create a writing
+**`ibis projects create`**: Create a project
 
 | Option | Does |
 | --- | --- |
-| `NAME` | A unique name for this writing |
+| `NAME` | A unique name for this project |
 | `--format FORMAT` | Output ID from ibis outputs: a key syntax or a common style |
 | `--style STYLE_ID` | Any bundled CSL style ID; list them with: ibis styles |
-| `--bibliography FILE` | The read-only writing bibliography to check, as a .bib file |
+| `--bibliography FILE` | The read-only project bibliography to check, as a .bib file |
 
-**`ibis writings rename`**: Rename a writing
-
-| Option | Does |
-| --- | --- |
-| `NAME` | The writing name printed by ibis writings list |
-| `NAME` | A unique name for this writing |
-
-**`ibis writings remove`**: Remove a writing and its app selections; keep its bibliography file
+**`ibis projects rename`**: Rename a project
 
 | Option | Does |
 | --- | --- |
-| `NAME` | The writing name printed by ibis writings list |
+| `NAME` | The project name printed by ibis projects list |
+| `NAME` | A unique name for this project |
 
-**`ibis writings update`**: Change a writing's output or bibliography
+**`ibis projects remove`**: Remove a project and its app selections; keep its bibliography file
 
 | Option | Does |
 | --- | --- |
-| `NAME` | The writing name printed by ibis writings list |
+| `NAME` | The project name printed by ibis projects list |
+
+**`ibis projects update`**: Change a project's output or bibliography
+
+| Option | Does |
+| --- | --- |
+| `NAME` | The project name printed by ibis projects list |
 | `--format FORMAT` | Output ID from ibis outputs: a key syntax or a common style |
 | `--style STYLE_ID` | Any bundled CSL style ID; list them with: ibis styles |
-| `--bibliography FILE` | The read-only writing bibliography to check, as a .bib file |
-| `--no-bibliography` | Stop checking a bibliography in this writing |
+| `--bibliography FILE` | The read-only project bibliography to check, as a .bib file |
+| `--no-bibliography` | Stop checking a bibliography in this project |
 
 **`ibis proposals`**: List, show or reject library changes AI apps proposed; apply them in the Ibis app
 
@@ -471,8 +471,8 @@ Until 1.0 the CLI, MCP tools and engine contract are unstable: any release may
 change or remove any part of them, and each release lists its contract
 differences ([decision 0028](decisions/0028-engine-first.md)).
 
-`ibis schema METHOD` describes `data`; `cite --writing` uses
-`ibis writings schema`. Branch on `error.code` and optional
+`ibis schema METHOD` describes `data`; `cite --project` uses
+`ibis projects schema`. Branch on `error.code` and optional
 `reason`, not wording. Exit 1 has `ok: true` with findings; inspect outcomes
 before using citation text. Empty search is success.
 
@@ -701,21 +701,21 @@ status 1; `--json` gives their places in the selection as `not_in_list`,
 `ibis call share` and JSON-RPC take the same request, with an absolute
 `destination`; MCP has no share tool.
 
-### Writings
+### Projects
 
-A writing saves a name, format and optional read-only `.bib` in `settings.json`
+A project saves a name, format and optional read-only `.bib` in `settings.json` (under `writings`)
 ([decision 0042](decisions/0042-formats-apps-and-writings.md)). CLI citations use
-only an explicitly named writing or supplied document context; `--for-app ID`
-explicitly uses that app's writing and bibliography.
+only an explicitly named project or supplied document context; `--for-app ID`
+explicitly uses that app's project and bibliography.
 
 ```sh
-ibis writings create "Field Guide" --format autocite --bibliography refs.bib
-ibis writings list --json
-ibis cite vale2024lanterns --file library.bib --writing "Field Guide"
+ibis projects create "Field Guide" --format autocite --bibliography refs.bib
+ibis projects list --json
+ibis cite vale2024lanterns --file library.bib --project "Field Guide"
 ibis cite vale2024lanterns --file library.bib --document chapter.qmd
-ibis writings rename "Field Guide" "Revised Field Guide"
-ibis writings update "Revised Field Guide" --style apa --no-bibliography
-ibis writings remove "Revised Field Guide"
+ibis projects rename "Field Guide" "Revised Field Guide"
+ibis projects update "Revised Field Guide" --style apa --no-bibliography
+ibis projects remove "Revised Field Guide"
 ```
 
 Create requires `--format` or `--style`; update retains omitted fields.
@@ -728,20 +728,20 @@ need no ID or revision:
 {"name":"Thesis","format":"apa","bibliography":"/invented/work/refs.bib"}
 ```
 
-`--writing` conflicts with `--format`, `--style`, `--for-app` and `--request`.
+`--project` conflicts with `--format`, `--style`, `--for-app` and `--request`.
 `--document PATH` reads only the supplied Markdown/Quarto document's `bibliography`
 and `csl` front matter, using plain or quoted scalars. It selects a unique matching
-writing; ambiguity refuses. Nearby files, names, titles and URLs never select one.
+project; ambiguity refuses. Nearby files, names, titles and URLs never select one.
 
 Only key outputs check the bibliography. Missing, uncertain or unreadable entries
 keep citation text with exit 1; a known conflicting DOI withholds it. `--strict`
 returns an error unless a complete current read finds every emitted key
 unambiguously. It changes no setting and grants no paste permission.
 
-Writing JSON wraps `citation` with `name`, `assessment` (`ready` or `conflict`),
+Project JSON wraps `citation` with `name`, `assessment` (`ready` or `conflict`),
 `bibliography` (the check or null) and `source_health`. Conflicts have typed refusals
 and no copyable text; strict failures return an error envelope.
-`ibis writings schema --json` describes it. Only bibliography file names are shown.
+`ibis projects schema --json` describes it. Only bibliography file names are shown.
 Plain `cite` has no wrapper.
 
 ### Receipts and strict citations

@@ -17,7 +17,7 @@ test("the selected project stays visible and the format menu explains where chan
   expect(format.textContent).toContain("Thesis");
   expect(format.textContent).not.toContain("Example Browser");
   fireEvent.click(format);
-  expect(screen.getByRole("dialog").textContent).toContain("New writing…");
+  expect(screen.getByRole("dialog").textContent).toContain("New project…");
   expect(screen.getAllByText(/Saved for .*Thesis/).length).toBeGreaterThan(0);
-  expect(screen.getByText(/Your pick changes this writing’s format/)).toBeTruthy();
+  expect(screen.getByText(/Your pick changes this project’s format/)).toBeTruthy();
 });

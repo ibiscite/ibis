@@ -51,23 +51,23 @@ mod format {
 }
 #[derive(Debug, Error)]
 pub enum WritingError {
-    #[error("Give the writing a name of 1 to 80 characters, without control characters.")]
+    #[error("Give the project a name of 1 to 80 characters, without control characters.")]
     InvalidName,
-    #[error("A writing already has that name. Choose another name.")]
+    #[error("A project already has that name. Choose another name.")]
     DuplicateName,
-    #[error("That writing is no longer available. Choose a writing again.")]
+    #[error("That project is no longer available. Choose a project again.")]
     NotFound,
-    #[error("Ibis can remember at most 64 writings. Remove one before adding another.")]
+    #[error("Ibis can remember at most 64 projects. Remove one before adding another.")]
     TooMany,
-    #[error("The writing definitions are not valid.")]
+    #[error("The project definitions are not valid.")]
     Invalid,
     #[error("The document context could not be read.")]
     ContextUnavailable,
     #[error("The document context must name one bibliography and CSL style as plain values.")]
     InvalidContext,
-    #[error("More than one writing matches this context. Choose a writing by name.")]
+    #[error("More than one project matches this context. Choose a project by name.")]
     AmbiguousContext,
-    #[error("The writing could not be saved. Try again.")]
+    #[error("The project could not be saved. Try again.")]
     Settings(#[from] SettingsError),
 }
 fn name_key(name: &str) -> String {

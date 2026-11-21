@@ -45,11 +45,14 @@ Linux desktop app.
    Shift+Enter adds references to a citation.
 4. Choose the output beside search, then press Enter. macOS and Windows
    attempt to paste; when unavailable, Ibis copies and explains why. Linux
-   copies. The macOS permission guide is in Settings › General › Pasting.
+   copies. The very first Enter pastes into a practice line inside Ibis, so
+   you see what it does before macOS asks for Accessibility; the permission
+   guide is in Settings › General › Pasting.
 
 The format menu offers key syntaxes and formatted citations. A remembered
-format belongs to the app you came from; an unidentified app uses the default.
-An optional writing project adds its output and bibliography check. The
+format belongs to the app you came from; an unidentified app uses the default key
+format (Pandoc), while Word, LibreOffice and other known document apps start with APA.
+An optional project adds its output and bibliography check. The
 Inspector edits page, form, prefix and suffix. Command+/ (Ctrl+/ elsewhere)
 shows the keys.
 

@@ -227,6 +227,8 @@ mod tests {
             writing: None,
             context_version: None,
             writing_context: None,
+            offers_projects: false,
+            cited_here: 0,
         };
         // The first observation can precede the load and the webview's event
         // listeners. Its destination and selection still belong to this summon.

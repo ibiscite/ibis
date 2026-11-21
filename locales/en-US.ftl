@@ -519,7 +519,7 @@ look-sample-authors = Mira Vale and Noah Reed
 look-sample-journal = Journal of Imagined Studies
 citations-default = Default format
 
-citations-default-description = Used when an app has no remembered format.
+citations-default-description = Used in word processors, mail and browsers when the app has no remembered format.
 citations-recent = Recent citations
 citations-recent-description = Shows what you cited recently in each app. Turning this off forgets them.
 citations-recent-words = history recents cited here forget privacy
@@ -724,7 +724,7 @@ citation-details-locator-filter = Find a type
 citation-details-locator-placeholder = Add a value
 key-move-left = Move Left
 key-move-right = Move Right
-key-edit-citation = Edit Page…
+key-edit-citation = Show Citation Details
 key-go-to-citation = Go to Citation
 picker-order-kept = Keeping your order
 picker-your-order = your order
@@ -832,37 +832,37 @@ session-not-read = The references could not be read. Try again.
 session-not-formatted = These references could not be written as a bibliography. Try another style.
 session-not-copied = The bibliography could not be copied. Try again.
 session-not-saved = The bibliography could not be saved. Try again.
-writing-title = Writings
-writing-loading = Loading writings…
-writing-saving = Saving writing…
-writing-menu = New writing…
-writing-about = A writing keeps its citation format and optional bibliography together. Your choice is remembered for this app; changes apply wherever you use this writing. Ibis does not identify the document.
-writing-session-only = Ibis can’t identify the app, so this writing applies only until Ibis quits.
+writing-title = Projects
+writing-loading = Loading projects…
+writing-saving = Saving project…
+writing-menu = New project…
+writing-about = A project keeps its citation format and optional bibliography together. Your choice is remembered for this app; changes apply wherever you use this project. Ibis does not identify the document.
+writing-session-only = Ibis can’t identify the app, so this project applies only until Ibis quits.
 writing-close = Close
-writing-none = No Writing
-writing-empty = No writings yet. Your app’s format applies until you choose one.
+writing-none = No Project
+writing-empty = No projects yet. Your app’s format applies until you choose one.
 writing-use = Use { $name }
-writing-selected = Selected writing
+writing-selected = Selected project
 writing-selected-label = Selected
 writing-format = Format: { $name }
 writing-bibliography = Bibliography: { $name }
 writing-no-bibliography = No bibliography selected.
 writing-choose-bibliography = Choose Bibliography…
 writing-remove-bibliography = Remove Bibliography
-writing-create = New Writing…
-writing-confirm-create = Create Writing
-writing-starts-with = Starts with { $format }. Change it in the format menu after creating the writing.
-writing-name = Writing name
-writing-rename = Rename Writing…
+writing-create = New Project…
+writing-confirm-create = Create Project
+writing-starts-with = Starts with { $format }. Change it in the format menu after creating the project.
+writing-name = Project name
+writing-rename = Rename Project…
 writing-save-name = Save Name
-writing-remove = Remove Writing…
-writing-confirm-remove = Remove Writing
+writing-remove = Remove Project…
+writing-confirm-remove = Remove Project
 writing-cancel = Cancel
-writing-unsupported = This app version cannot use this writing’s format.
-writing-not-read = The writings could not be read. Close this sheet, then try again.
-writing-not-saved = The writing could not be saved. Your previous choice still applies. Try again.
+writing-unsupported = This app version cannot use this project’s format.
+writing-not-read = The projects could not be read. Close this sheet, then try again.
+writing-not-saved = The project could not be saved. Your previous choice still applies. Try again.
 writing-bibliography-not-saved = The bibliography choice could not be saved. Try again.
-writing-pick = Your pick changes this writing’s format.
+writing-pick = Your pick changes this project’s format.
 project-check-retry = Retry
 project-check-locate = Locate Bibliography…
 picker-choose-project = Check Against a .bib File…
@@ -881,6 +881,10 @@ picker-using-shorthand = Using { $value }
 picker-apply = Apply
 # $word: a word that finds the person’s own cited reference, never a sample one.
 picker-shorthand-hint = “{ $word } 417” for a page, “see { $word }” for “see”.
+picker-kept-words = Kept as words. For a page, add a comma: “room, 22”.
+picker-practice-offer = Try a paste here first: press Enter.
+# $citation: exactly what Enter would paste.
+picker-practice-pasted = { $citation } pasted here. Next, Enter pastes in your app.
 picker-search-as-typed = Search as typed
 picker-apply-locator = Apply locator to { $key }
 picker-copied = Copied
@@ -958,14 +962,21 @@ picker-type-to-find-hint = Search by title, author, year, citation key or DOI.
 picker-more = More
 picker-keep-my-order = Keep My Order
 picker-change-last-citation = Change Last Citation
+picker-paste-reference-list = Paste Reference List
+picker-copy-reference-list = Copy Reference List
+picker-reference-list-title = Reference list
+# $app: the app's own name. The list holds this app's citations from this run of Ibis.
+picker-reference-list-help =
+    { $count ->
+        [one] The reference you cited in { $app } since Ibis opened
+       *[other] The { $count } references you cited in { $app } since Ibis opened
+    }
 picker-forget-recent = Forget Recent Citations
 picker-change-citation = Change Citation · { $format }
 picker-keep-open = Keep Window Open
 picker-keep-open-menu = Keep Window Open
 picker-change-format = Change Format…
 picker-drag-citation = Drag the citation into any app
-picker-commands = Commands
-picker-no-commands = No matching commands
 picker-more-title = More actions ({ $keys })
 picker-use-zotero = Use Zotero
 picker-library-region = Library
@@ -1058,7 +1069,7 @@ picker-copy-project-entry = Copy Entry for { $name }
 picker-project-entry =
     { $outcome ->
         [copied] Copied the entry for { $key } as your file has it, including any file or note field. Check it, then add it to { $name }.
-        [no-original] This reference has no original BibTeX entry here. Export it from your reference manager in your writing’s dialect, keeping its key.
+        [no-original] This reference has no original BibTeX entry here. Export it from your reference manager in your project’s dialect, keeping its key.
         [changed] The library or the bibliography changed. Search again, then try again.
         [repeated] The library file repeats this key, so Ibis can’t tell which entry to copy.
        *[dependency] This entry relies on a crossref, xdata or @string that can’t come with it. Export it from your reference manager, keeping its key.
@@ -1107,7 +1118,6 @@ picker-matched-in =
         [identifier] Matched in an ISBN, PubMed ID or arXiv ID
        *[other] Matched in { $field }
     }
-picker-run-command = Run { $title }
 picker-result-count =
     { $count ->
         [one] 1 result
@@ -1268,12 +1278,12 @@ library-more-not-listed =
        *[other] { $count } more are not listed.
     }
 
-citations-documents = In documents
-citations-keys = In Markdown, LaTeX and Typst
-citations-keys-description = Used where you write citation keys rather than formatted citations.
+citations-documents = In Word, LibreOffice and other documents
+citations-keys = In LaTeX, Markdown and Obsidian
+citations-keys-description = Used where you write citation keys, and in apps Ibis does not know.
 citations-apps = Formats remembered for apps
 citations-forget = Forget
-citations-writings = Writings
+citations-writings = Projects
 settings-open-file = Open Settings File
 settings-open = Open
 settings-file-description = Edits to settings.json apply while Ibis is running.
@@ -1323,6 +1333,7 @@ palette-words-format = style output apa pandoc latex syntax share export bibtex 
 palette-words-share = share export send copy references
 palette-words-peek = details preview quick look info
 palette-words-change-last = edit replace previous citation again
+palette-words-reference-list = bibliography references works cited list entries paste copy
 palette-words-citation-focus = focus token reference citation
 palette-words-citation-edit = edit page locator details citation
 palette-words-citation-move-left = move reorder previous token reference citation
@@ -1473,14 +1484,14 @@ app-failure-search = The search could not be completed.
 app-failure-drag-paste-app = The Ibis app could not be dragged.
 
 app-command-no-library = Choose a library to search.
-app-project-error-invalid-name = Give the writing a name of 1 to 80 characters, without control characters.
-app-project-error-duplicate-name = A writing already has that name. Choose another name.
-app-project-error-not-found = That writing is no longer available. Choose a writing again.
-app-project-error-too-many = Ibis can remember at most 64 writings. Remove one before adding another.
-app-project-error-invalid = The writing definitions are not valid. Check Settings.
-app-project-error-changed = The writing or destination changed. Open the format menu again.
-app-project-error-editor = This editor request chooses its own output. Finish it before changing writings.
-app-project-error-output = This writing’s format is not available in the picker. Choose another format.
+app-project-error-invalid-name = Give the project a name of 1 to 80 characters, without control characters.
+app-project-error-duplicate-name = A project already has that name. Choose another name.
+app-project-error-not-found = That project is no longer available. Choose a project again.
+app-project-error-too-many = Ibis can remember at most 64 projects. Remove one before adding another.
+app-project-error-invalid = The project definitions are not valid. Check Settings.
+app-project-error-changed = The project or destination changed. Open the format menu again.
+app-project-error-editor = This editor request chooses its own output. Finish it before changing projects.
+app-project-error-output = This project’s format is not available in the picker. Choose another format.
 app-settings-error-unreadable = The settings file could not be read or saved.
 app-settings-error-invalid = The settings file is not valid. Open Settings to review it.
     .settings = settings.json isn’t valid, so Ibis is using your last good settings.
@@ -1556,10 +1567,10 @@ app-project-citation-conflict = Citation keys { $keys } identify different works
 app-settings-error-changed = Settings changed while saving. Try again.
 app-settings-error-busy = Settings are being saved by another Ibis. Wait for it to finish, then try again.
 app-settings-error-document-format = Choose a style for documents.
-app-settings-error-key-format = Choose a key format for Markdown and LaTeX.
+app-settings-error-key-format = Choose a key format for LaTeX, Markdown and Obsidian.
 app-project-error-context-unavailable = The document’s bibliography and citation style could not be read. Try again.
 app-project-error-invalid-context = Name one bibliography and CSL style as plain values in the document.
-app-project-error-ambiguous-context = More than one writing matches this bibliography and citation style. Choose a writing by name.
+app-project-error-ambiguous-context = More than one project matches this bibliography and citation style. Choose a project by name.
 mcp-error-citation-format = This format exports records or Zotero markers. Choose a citation format.
 
 app-failure-open-settings-file = The settings file could not be opened. Try again.
@@ -1649,15 +1660,15 @@ cli-writing-output-unavailable = That output is unavailable. List outputs with: 
 cli-writing-bibliography-needed = Choose a BibTeX or BibLaTeX bibliography with a .bib file name.
 cli-writing-folder-unavailable = The current folder is unavailable. Give the bibliography’s full path.
 cli-writing-action-needed = Choose list, create, rename, update or remove.
-cli-writings-empty = No writings yet. Create one with: ibis writings create NAME --format pandoc
+cli-writings-empty = No projects yet. Create one with: ibis projects create NAME --format pandoc
 cli-writing-format-needed = Choose --format or --style.
-cli-writing-citation-unavailable = The writing citation is unavailable.
+cli-writing-citation-unavailable = The project citation is unavailable.
 cli-writing-saved =
     { $action ->
-        [create] Created writing { $name }.
-        [rename] Renamed writing { $name }.
-        [remove] Removed writing { $name }. Its bibliography file was kept.
-       *[update] Updated writing { $name }.
+        [create] Created project { $name }.
+        [rename] Renamed project { $name }.
+        [remove] Removed project { $name }. Its bibliography file was kept.
+       *[update] Updated project { $name }.
     }
 cli-no-library = No library is open; add --file <library> or --zotero.
 cli-search-no-match-terminal = No references matched. Try a shorter query.

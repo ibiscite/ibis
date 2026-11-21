@@ -457,9 +457,6 @@ pub(crate) fn commit_shown(
             session.lock().add(copied.cited.clone());
             record(&copied);
         }
-        if matches!(request.output, ibis_core::contract::OutputSpec::Key { .. }) {
-            app.state::<crate::preferences::SettingsFile>().record_key_format_use();
-        }
         return Ok((copied, true));
     }
     let format = {
@@ -497,12 +494,6 @@ pub(crate) fn commit_shown(
         },
     )?;
     record(&copied);
-    if matches!(
-        recited.citation().request_output(),
-        ibis_core::contract::OutputSpec::Key { .. }
-    ) {
-        app.state::<crate::preferences::SettingsFile>().record_key_format_use();
-    }
     if let Some((id, chosen)) = format {
         app.state::<crate::notice::Notice>()
             .remember_format(copied.delivery, id, chosen);

@@ -19,7 +19,7 @@ vi.mock("@tauri-apps/api/event", () => {
 });
 
 afterEach(cleanup);
-const empty: FormatSettingsView = { apps: [], writings: [], key_output_visible: false };
+const empty: FormatSettingsView = { apps: [], writings: [] };
 const remembered: FormatSettingsView = { ...empty, apps: [{ id: "macos:example.word", app: "Word", format: "apa" }] };
 function api() {
   return { ...settingsApi, formatSettings: vi.fn(async () => remembered), forgetAppFormat: vi.fn(async () => null),
@@ -39,7 +39,7 @@ test("forgetting an app restores its usual format and hides the empty group", as
   fireEvent.click(await screen.findByRole("button", { name: "Forget" }));
   await waitFor(() => expect(screen.queryByText("Word")).toBeNull());
   expect(native.forgetAppFormat).toHaveBeenCalledExactlyOnceWith("macos:example.word");
-  expect(screen.queryByText("Writings")).toBeNull();
+  expect(screen.queryByText("Projects")).toBeNull();
 });
 
 test.each(["refused", "failed I/O"])("a forget that is %s keeps the saved app and reports the failure", async () => {

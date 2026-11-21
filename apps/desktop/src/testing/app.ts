@@ -246,7 +246,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     },
     picker_rendered: () => null,
     picker_preferences: () => preferences,
-    format_settings: () => ({ apps: [], key_output_visible: Boolean(preferences.key_output), writings: [] }),
+    format_settings: () => ({ apps: [], writings: [] }),
     save_picker_preferences: ({ preferences: patch }) => { const receipt = ++revision; submitted.set(receipt, patch as Partial<api.PickerPreferences>); return receipt; },
     picker_preferences_saved: () => null,
     // Opened from no app Ibis knows: the default format applies.

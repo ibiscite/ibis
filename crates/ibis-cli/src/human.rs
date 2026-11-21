@@ -945,6 +945,7 @@ fn test_search(hits: Vec<ibis_engine::SearchHit>) -> Response {
         complete: true,
         list: None,
         shorthand: None,
+        kept_words: false,
         source_health: SourceHealth::of(std::iter::empty()),
     })))
 }

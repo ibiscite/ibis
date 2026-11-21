@@ -637,7 +637,7 @@ fn cite_output() -> Value {
             "warnings": {"type": "array"},
             "receipt": {"type":"object", "description": "Only with include_receipt."},
             "destination": {"type": "object", "description": "Delivery for for_app, with pasting on and permitted."},
-            "bibliography": {"type": "object", "description": "The writing's .bib checks; filenames only."},
+            "bibliography": {"type": "object", "description": "The project's .bib checks; filenames only."},
             "provenance": {"type": "string"},
             "library_notes": {"type": "array", "items": {"type": "string"}},
             "source_health": health_output(false)

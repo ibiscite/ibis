@@ -306,18 +306,18 @@ fn command() -> Command {
                         .help("Format with any CSL style instead; list them with: ibis styles"),
                 )
                 .arg(
-                    Arg::new("writing").long("writing").value_name("NAME")
+                    Arg::new("writing").long("project").value_name("NAME")
                         .help_heading(OUTPUT)
                         .conflicts_with_all(["format", "style", "for-app", "request"])
-                        .help("Use this writing's output and bibliography; list names with: ibis writings list"),
+                        .help("Use this project's output and bibliography; list names with: ibis projects list"),
                 )
                 .arg(Arg::new("nightly").long("nightly").action(ArgAction::SetTrue)
-                    .requires("from-app-settings").help("Read the writing or the app's formats from Ibis Nightly's settings"))
+                    .requires("from-app-settings").help("Read the project or the app's formats from Ibis Nightly's settings"))
                 .group(clap::ArgGroup::new("from-app-settings").args(["writing", "for-app", "document"]).multiple(false))
                 .arg(Arg::new("document").long("document").value_name("PATH")
                     .value_parser(clap::value_parser!(PathBuf))
                     .conflicts_with_all(["writing", "request", "for-app"])
-                    .help("Use an explicit document's bibliography/csl front matter to select a writing"))
+                    .help("Use an explicit document's bibliography/csl front matter to select a project"))
                 .arg(Arg::new("strict").long("strict").action(ArgAction::SetTrue)
                     .help(ibis_engine::catalogue::text("cli-strict-help", None, &[]).unwrap_or_default()))
                 .arg(
@@ -1204,7 +1204,7 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
             None,
         ));
     }
-    if name == "writings" {
+    if name == "projects" {
         return Ok(Execution::Result(local(writings::run(engine, args)?), None));
     }
     if name == "proposals" {

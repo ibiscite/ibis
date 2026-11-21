@@ -70,7 +70,7 @@ person to serve is an academic writing in LaTeX or Markdown, and Ibis should
 feel like an invisible utility: summon, cite, gone, with depth only when asked.
 
 - Allow locators without a type where the output can preserve them.
-- Real citation-style previews and writings directly in the format palette.
+- Real citation-style previews and projects directly in the format palette.
 - Overleaf on free plans: read a downloaded project bibliography offline;
   a browser extension requires Overleaf's written agreement.
 - Qualify live Zotero citations through ODF/DOCX Scan and the switch-word-

@@ -8,8 +8,9 @@ import type { PreviewFailure } from "./preview";
 import { initialSession, reduceSession, type SessionEffect, type SessionEvent } from "./session";
 
 export type SessionPorts = Pick<typeof nativeApi, "deliverCitation" | "search" | "previewFileCitation">
-  & Partial<Pick<typeof nativeApi, "pickerDestination" | "rememberAppOutput" | "editWriting">> & {
+  & Partial<Pick<typeof nativeApi, "pickerDestination" | "rememberAppOutput" | "editWriting" | "sessionReferences">> & {
   refresh: () => void;
+  practise?: (text: string) => void;
   report: (operation: Operation, failed: boolean) => void;
   /** Saves the default format, for a pick with no app to remember it for. */
   chooseDefault: (output: OutputId) => void | Promise<void>;
@@ -44,6 +45,13 @@ export function createSessionController(initial = initialSession()) {
         } catch {
           dispatch({ type: "copy-failed", id: effect.id, session: effect.session, message: say("picker-copy-error") });
         }
+        break;
+      }
+      case "practice": ports.practise?.(effect.text); break;
+      case "enter-action": dispatch({ type: "delivery-reply", intent: effect.intent, reply: { type: "action", action: await effect.answer } }); break;
+      case "read-reference-list": {
+        const references = await ports.sessionReferences?.().then((view) => view.here, () => []);
+        dispatch({ type: "delivery-reply", intent: effect.intent, reply: { type: "reference-list", references: references ?? [] } });
         break;
       }
       case "consume": dispatch({ type: "consume-held", output: effect.output }); break;
