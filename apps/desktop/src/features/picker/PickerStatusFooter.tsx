@@ -22,7 +22,7 @@ import { libraryMessages } from "../../libraryWords";
 
 export function PickerStatusFooter({
   api, library, scope, sourceState, menus, actions, run, copyChosen, recents,
-  operations, altHeld, lastOutcome, emptyAction, project, highlighted, copyProblem, command, peek, citationLine,
+  operations, altHeld, lastOutcome, emptyAction, project, highlighted, copyProblem, peek, citationLine,
 }: {
   /** The highlighted reference's details (⌘Y), when there is one. */
   peek?: (() => void) | null;
@@ -44,8 +44,6 @@ export function PickerStatusFooter({
   lastOutcome: string | null;
   emptyAction?: boolean;
   copyProblem?: string | null;
-  /** ">" in the search: Enter runs this, so the footer says so. */
-  command?: { label: string | null; run: () => void } | null;
 }) {
   const { reloadLibrary, useZotero } = api;
   const { groupName, offeredGroups, isChosen, chosenLibraries, toggleLibrary, searchAllLibraries } = scope;
@@ -55,7 +53,7 @@ export function PickerStatusFooter({
   const { toggleHighlighted, hints } = actions;
   // Read when More opens, the only time it is shown there.
   const libraryDetail = menuOpen ? libraryMessages.detail(library, Date.now(), (status) => zoteroLibraryNames(status, groupName)) : null;
-  return <PickerFooter library={library} groupName={groupName} emptyAction={emptyAction} copyProblem={copyProblem} delivery={!command ? actions.delivery.mode : undefined}
+  return <PickerFooter library={library} groupName={groupName} emptyAction={emptyAction} copyProblem={copyProblem} delivery={actions.delivery.mode}
     status={<PickerLibraryStatus library={library} groupName={groupName} isOpen={libraryMenuOpen}
       onOpenChange={(open) => (open ? openLibrary() : closeLibrary())}
       searchRef={input} sourceAction={sourceAction} sourceFailure={sourceOpen.failure !== null}
@@ -70,8 +68,8 @@ export function PickerStatusFooter({
       listProfiles={api.zoteroProfiles} chooseProfile={api.useZoteroProfile && ((name) => runFromMenu("zotero", async () => api.useZoteroProfile!(name)))}
       groupsFailed={failures.zoteroGroups} failure={sourceOpen.failure?.message ?? [...libraryOperations].filter((operation) => operation !== "zoteroGroups" && failures[operation]).map((operation) => say(OPERATION_FAILURES[operation])).join(" ")} />}
 
-    hints={command ? { ...hints, enter: command.label, shiftEnter: null } : hints}
-    altHeld={altHeld} actions={{ copy: command ? command.run : copyChosen, add: toggleHighlighted, escape: () => goBack() }}
+    hints={hints}
+    altHeld={altHeld} actions={{ copy: copyChosen, add: toggleHighlighted, escape: () => goBack() }}
     more={
       <PickerMenu isOpen={menuOpen} onOpenChange={(open) => (open ? openMore() : closeMore())}
         buttonRef={moreButton} searchRef={input} libraryDetail={libraryDetail}
@@ -93,6 +91,7 @@ export function PickerStatusFooter({
           revealSource: sourceState.sourceAvailable && source.kind === "file" ? () => run("revealSource") : null,
           peek,
           changeLast: actions.canChangeLast ? () => run("changeLast") : null,
+          referenceList: actions.referenceList ? { label: actions.referenceList.label, run: actions.referenceList.run } : null,
           settings: () => run("settings"),
           sessionReferences: menus.openSession,
           forgetRecent: recents.forget ? () => { recents.forget!(); focusHome(); } : null,

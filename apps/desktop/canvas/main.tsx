@@ -74,8 +74,9 @@ const fixtures: Partial<Record<Scenario, {
   more: { library: zoteroLibrary },
   "format-menu": { library: zoteroLibrary },
   "empty-search": { query: "" },
+  // The app has citations from this run, in a style: the opening screen offers its reference list.
+  "reference-list": { query: "", preferences: { output: "apa" } },
   "unknown-app-empty": { query: "" },
-  commands: { query: ">" },
   "page-in-search": { query: "invented 417" },
   peek: { keys: [{ key: "y", code: "KeyY", metaKey: true }] },
   shelf: { keys: [{ key: "Enter", shiftKey: true }, { key: "ArrowDown" }, { key: "Enter", shiftKey: true }] },
@@ -136,7 +137,9 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
   // A fixture's format is the one remembered for the app, as the engine would answer.
   const format = fixed?.preferences?.output ? formatAnswer(fixed.preferences.output) : noFormatChosen;
   const destination: PickerSnapshot["destination"] = knownApp ? { Ok: fixtureDestination({
-    app: "Invented Editor", app_id: "invented.editor", format,
+    app: "Invented Editor", app_id: "invented.editor", format, cited_here: scenario === "reference-list" ? 3 : 0,
+    // Paste on, as by default: the footer says Paste; an app Ibis has not seen asks Paste or Copy Only.
+    can_paste: scenario === "paste" || scenario === "paste-question", paste_question: scenario === "paste-question", can_choose_paste: scenario === "paste-question",
     writing: writingContext ? project : null, writing_context: writingContext ? "invented-opening" : null, context_version: [1, 0],
   }) } : { Err: { code: "unavailable", message: { id: "operation-failures-app-read", args: {} }, recovery: { action: "retry" }, focus: "search" } };
   const refusal = ["project-check-conflict", "picker-refusal"].includes(scenario) ? "A key in thesis.bib identifies a different work. Resolve the conflict before citing it." : null;
@@ -156,7 +159,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
     picker_snapshot: async () => ({
       presentation: 1, selection: null, library, destination,
       preferences: { Ok: await settings.pickerPreferences() },
-      recents: { Ok: [{ revision: library.revision, results: [] }, false, false] },
+      recents: { Ok: [{ revision: library.revision, results: scenario === "reference-list" ? rows.slice(0, 3).map((row) => ({ ...row, recent: "cited" as const })) : [] }, scenario === "reference-list", false] },
     } satisfies PickerSnapshot),
     picker_rendered: () => {
       if (scenario === "file-drag") void emit("library:file-drag", true);
@@ -170,7 +173,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
       return { revision: "1", results: query.text && query.text !== "unmatched" && !fixture ? shown : [],
         ...page ? { interpretation: { search: page[1]!, locator: { term: "page", value: page[2]!.replace("-", "–") }, typed: page[2]! } } : {} };
     },
-    recent_references: () => [{ revision: "1", results: [] }, false, false],
+    recent_references: () => [{ revision: "1", results: scenario === "reference-list" ? rows.slice(0, 3).map((row) => ({ ...row, recent: "cited" as const })) : [] }, scenario === "reference-list", false],
     preview_file_citation: ({ items, output, intent }) => {
       if (intent.cancel) throw { code: "cancelled" };
       const style = isStyle(output), numbered = output === "ieee";
@@ -243,13 +246,13 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
     open_settings: ({ page }) => openSettings(page),
     read_window_position_undo: () => scenario === "undo-notice" ? 1 : null,
     undo_window_position: () => scenario === "undo-notice",
-    delight_view: () => ({ fun: false, status: null, peck: false, anniversary: false, revision: 0, build: "0.0.0 · invented · 2026-11-01" }),
+    delight_view: () => ({ fun: false, status: null, peck: false, anniversary: false, practice: scenario === "first-paste", revision: 0, build: "0.0.0 · invented · 2026-11-01" }),
     shorthand_hint: () => false,
     update_available: () => false,
     check_zotero_sharing: () => scenario === "zotero-closed" ? "closed" : "absent",
     zotero_groups: () => library.zotero ? [{ id: 1, name: "Field Notes" }, { id: 2, name: "Shared Drafts" }] : [],
     zotero_profiles: () => ({ names: [], chosen: null, running: false }),
-    session_references: () => ({ revision: 0, rows: [], absent: 0, overflowed: false, undo: null }),
+    session_references: () => ({ revision: 0, rows: [], absent: 0, overflowed: false, undo: null, here: scenario === "reference-list" ? rows.slice(0, 3) : [] }),
     session_bibliography: () => null,
   };
   for (const command of ["quit", "set_pinned", "picker_moving", "open_library_source", "alignment_tick", "take_search_request",
@@ -402,7 +405,7 @@ function WritingsBoard({ variant }: { variant: Scenario }) {
 
 /** The real Cited Since Opening sheet over the real picker, with invented citations. */
 function CitedSinceOpeningBoard() {
-  const view = { revision: 1, rows: rows.slice(0, 3), absent: 0, overflowed: false, undo: null };
+  const view = { revision: 1, rows: rows.slice(0, 3), absent: 0, overflowed: false, undo: null, here: [] };
   const text = rows.slice(0, 3).map((row) => `Aster. (2026). ${row.title}. Invented Press.`).join("\n");
   return <><style>{pickerStyles}</style><App preview={{ query: "invented" }} />
     <SessionReferencesDialog style="apa" onClose={() => {}} api={{
@@ -441,12 +444,12 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
   else document.documentElement.style.removeProperty("--text-zoom");
   const settings = demoApi({ ...fixtures[scenario as Scenario]?.preferences, appearance: theme, paste: false });
   // Citations with what people have once they cite: an app's remembered format and writings.
-  if (scenario === "settings-citations") settings.formatSettings = async () => ({ apps: [{ id: "invented.editor", app: "Invented Editor", format: "apa" }], writings: writings.writings, key_output_visible: true });
+  if (scenario === "settings-citations") settings.formatSettings = async () => ({ apps: [{ id: "invented.editor", app: "Invented Editor", format: "apa" }], writings: writings.writings });
   // The installed app can always open settings.json (General › Advanced, and a broken file's recovery).
   settings.openSettingsFile ??= async () => null;
   // settings.json that does not parse: the engine's own Problem, as the picker gets it.
   if (scenario === "settings-broken") settings.formatSettings = () => Promise.reject({ code: "settings-invalid", message: { id: "app-settings-error-invalid", args: {} }, recovery: { action: "review-settings" }, focus: "settings" });
-  if (scenario === "settings-newer") settings.formatSettings = async () => ({ apps: [], writings: [], key_output_visible: false, unknown: { future_choice: "Enabled" } });
+  if (scenario === "settings-newer") settings.formatSettings = async () => ({ apps: [], writings: [], unknown: { future_choice: "Enabled" } });
   // The states and tokens pages use the Settings window's base styles.
   const settingsWindow = scenario.startsWith("settings-") || scenario === "states" || scenario === "tokens" || scenario === "parts";
   document.documentElement.classList.toggle("settings-window", settingsWindow);

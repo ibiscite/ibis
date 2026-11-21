@@ -6,9 +6,9 @@ import { keysFor } from "../../keys";
 import { FrameHeading, FrameNotices } from "../../ui/Frame";
 import { ResultsArea } from "../../ui/ResultsArea";
 import { ResultList } from "./ResultList";
+import { ChoiceList } from "../../ui/ChoiceList";
+import { ChoiceIcon } from "../../icons";
 import { EmptyState, useZoteroRecovery } from "./EmptyState";
-import { CommandList } from "./CommandList";
-import type { PickerCommandEntry } from "./commands";
 import type { usePickerLibrary } from "./usePickerLibrary";
 import type { useLibrarySearch } from "./useLibrarySearch";
 import type { usePickerSession } from "./usePickerSession";
@@ -24,12 +24,12 @@ const noLibrary = () => null;
 
 export function PickerResults({
   api, libraryState, searchState, state, source, scope, shortcut, perform, focusHome, pointer, rows, density,
-  resultArea, setQuery, peck, project, commands, numbered,
+  resultArea, setQuery, peck, project, numbered, referenceList,
 }: {
+  /** Paste Reference List, offered on the opening screen once this app has citations from this run. */
+  referenceList?: { label: string; help: string; run: () => void } | null;
   /** The rows ⌘1–9 picks (useShownRows). */
   numbered?: { first: number; count: number };
-  /** ">" in the search: the commands, in place of the references. */
-  commands?: { list: readonly PickerCommandEntry[]; active: number; run: (command: PickerCommandEntry) => void } | null;
   /** The bibliography rows are marked against; null for formatted output. */
   project: ProjectStatus | null;
   setQuery: (value: string) => void;
@@ -82,9 +82,6 @@ export function PickerResults({
       } />
   ) : null);
 
-  if (commands) return <ResultsArea options={commands.list.length > 0} ref={resultArea}>
-    <CommandList commands={commands.list} active={commands.active} hoverAllowed={pointer.hoverAllowed} onRun={commands.run} />
-  </ResultsArea>;
   const recent = results[0]?.recent;
   // A reloading library keeps its list and heading line: its notices stay in that line.
   const listShown = showCitations && results.length > 0;
@@ -103,6 +100,8 @@ export function PickerResults({
       libraryOf={severalLibraries ? libraryOf : noLibrary} project={project} numbered={numbered} onMouseMove={pointer.onMouseMove}
       onChoose={rows.onChoose} onContext={rows.onContext} onToggle={rows.onToggle} />}
     {!busy && emptyState}
+    {referenceList && listShown && !query && selected.size === 0 && <ChoiceList compact title={say("picker-reference-list-title")}
+      choices={[{ id: "reference-list", title: referenceList.label, help: referenceList.help, icon: <ChoiceIcon name="history" /> }]} onChoose={referenceList.run} />}
     {library?.sample && !choosingLibrary && <SampleLibraryExit useSampleLibrary={api.useSampleLibrary} perform={perform} compact={listShown} />}
   </ResultsArea></>;
 }

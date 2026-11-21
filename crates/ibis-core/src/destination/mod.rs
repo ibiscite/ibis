@@ -238,7 +238,7 @@ pub fn decide(target: &Target, permission: PastePermission) -> Decision {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum FormatFrom {
-    /// The writing chosen for this app.
+    /// The project chosen for this app (its id stays `writing`).
     Writing,
     /// The format this app was given when the person changed it there.
     App,
@@ -295,7 +295,7 @@ pub struct Destination {
     pub output: OutputSpec,
     /// Which level chose `output`.
     pub from: FormatFrom,
-    /// The writing that chose it, when one did.
+    /// The project that chose it, when one did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub writing: Option<WritingName>,
     pub delivery: Decision,

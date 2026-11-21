@@ -68,6 +68,10 @@ pub(crate) struct DelightView {
     fun: bool,
     fact: Option<DelightFact>,
     revision: u64,
+    /// The first screen with the person's own library, before any paste: Enter
+    /// pastes the highlighted reference into a practice line inside Ibis once.
+    /// A first-run step, not a surprise, so Small surprises never turns it off.
+    practice: bool,
 }
 
 #[derive(Default)]
@@ -142,6 +146,13 @@ impl SettingsFile {
             view.fact = Some(FACTS[usize::from(index)]);
         }
         if picker {
+            if library.as_ref().is_some_and(|(_, count)| *count > 0)
+                && saved.paste_count == 0
+                && !saved.practice_offered
+            {
+                saved.practice_offered = true;
+                view.practice = true;
+            }
             view.peck = fun && !saved.welcome;
             if fun {
                 saved.welcome = true;

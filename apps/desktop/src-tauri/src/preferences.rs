@@ -147,16 +147,6 @@ impl SettingsFile {
             .ok_or(CommandError::SettingsUnavailable)
     }
 
-    /// Best-effort usage bookkeeping after a successful key citation. Copy
-    /// commits run on the native thread: returning their reply (and hiding the
-    /// picker) must never wait for disk or the owner's outside-edit callbacks.
-    pub(crate) fn record_key_format_use(&self) {
-        let _ = self.owner.submit(|settings| {
-            settings.device.key_formats_used = true;
-            Ok::<_, settings::SettingsError>(())
-        });
-    }
-
     /// Conditional writes test their immutable owner after acquiring the writer.
     pub(crate) fn update_when(
         &self,

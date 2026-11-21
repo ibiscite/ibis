@@ -27,8 +27,8 @@ export const PREFERENCES = {
   accent: { order: 2, id: "accent", default: DEFAULT_PREFERENCES.accent, control: "choice", options: [{ value: "system", label: "look-accent-system" }, { value: "ibis", label: "look-accent-ibis" }], page: "look", label: "look-accent", description: "look-accent-description", keywords: "look-accent-words" },
   density: { order: 3, id: "rows", default: DEFAULT_PREFERENCES.density, control: "choice", options: [{ value: "compact", label: "general-density-compact" }, { value: "comfortable", label: "general-density-comfortable" }], page: "look", label: "general-rows", description: "general-rows-description" },
   larger_text: { order: 5, id: "text-size", default: DEFAULT_PREFERENCES.larger_text, control: "choice", options: [{ value: false, label: "look-default-text" }, { value: true, label: "look-larger-text" }], page: "look", label: "look-text-size", description: "look-text-size-description" },
-  output: { order: 1, id: "default-format", default: defaultStyle, control: "documents", page: "citations", label: "citations-documents", description: "citations-default-description" },
-  key_output: { order: 2, id: "default-key-format", default: defaultOutput, control: "keys", page: "citations", label: "citations-keys", description: "citations-keys-description" },
+  output: { order: 2, id: "default-format", default: defaultStyle, control: "documents", page: "citations", label: "citations-documents", description: "citations-default-description" },
+  key_output: { order: 1, id: "default-key-format", default: defaultOutput, control: "keys", page: "citations", label: "citations-keys", description: "citations-keys-description" },
   recent_citations: { order: 3, id: "recent-citations", default: DEFAULT_PREFERENCES.recent_citations, control: "switch", page: "citations", label: "citations-recent", description: "citations-recent-description", keywords: "citations-recent-words" },
 } satisfies { [K in keyof PickerPreferences]-?: PreferenceDeclaration<K> };
 const preferences: SettingRow[] = Object.entries(PREFERENCES).map(([preference, row]) => ({ ...row, preference: preference as keyof PickerPreferences }));

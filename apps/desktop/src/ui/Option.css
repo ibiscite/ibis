@@ -134,7 +134,3 @@
 .ui-option .result-meta { flex-wrap: nowrap; }
 .ui-option .result-byline, .ui-option .result-library { min-width: 0; }
 .ui-option .result-authors { flex: 0 10 auto; }
-
-/* A command is one line: its title and its keys. Compact rows' height in either density. */
-.command-row { --row-height: var(--row-compact); }
-.command-row .result-title { font-size: var(--type-body-size); line-height: var(--type-body-line); font-weight: 400; letter-spacing: normal; }

@@ -61,7 +61,7 @@ fn writing_format_and_bibliography_work_without_inheriting_gui_selection() {
     )
     .unwrap();
     let (code, made, errors) = home.run(&[
-        "writings",
+        "projects",
         "create",
         "Atlas",
         "--format",
@@ -72,7 +72,7 @@ fn writing_format_and_bibliography_work_without_inheriting_gui_selection() {
     assert_eq!(code, 0, "{made} {errors}");
     let id = made["data"]["writing"]["name"].as_str().unwrap();
     assert!(!made.to_string().contains(home.0.path().to_str().unwrap()));
-    let (code, citation, _) = home.run(&["cite", "vale2024", "--writing", id, "--file", bib.to_str().unwrap()]);
+    let (code, citation, _) = home.run(&["cite", "vale2024", "--project", id, "--file", bib.to_str().unwrap()]);
     assert_eq!(code, 0, "{citation}");
     assert_eq!(citation["data"]["citation"]["text"], "\\cite{vale2024}");
     let (code, ordinary, _) = home.run(&["cite", "vale2024", "--file", bib.to_str().unwrap()]);
@@ -98,7 +98,7 @@ fn writing_format_and_bibliography_work_without_inheriting_gui_selection() {
     let (code, refusal, _) = home.run(&[
         "cite",
         "vale2024",
-        "--writing",
+        "--project",
         id,
         "--style",
         "apa",
@@ -106,24 +106,24 @@ fn writing_format_and_bibliography_work_without_inheriting_gui_selection() {
         bib.to_str().unwrap(),
     ]);
     assert_eq!(code, 2, "{refusal}");
-    let (code, renamed, _) = home.run(&["writings", "rename", id, "Revised Atlas"]);
+    let (code, renamed, _) = home.run(&["projects", "rename", id, "Revised Atlas"]);
     assert_eq!(code, 0, "{renamed}");
     assert_eq!(renamed["data"]["writing"]["name"], "Revised Atlas");
-    let (code, listed, _) = home.run(&["writings", "list"]);
+    let (code, listed, _) = home.run(&["projects", "list"]);
     assert_eq!(code, 0, "{listed}");
     assert_eq!(listed["data"]["writings"].as_array().unwrap().len(), 1);
     // The list names each writing's bibliography file, as its help says.
-    assert!(home.plain(&["writings", "list"]).trim_end().ends_with("\trefs.bib"));
-    assert_eq!(home.run(&["writings", "create", "Loose", "--format", "pandoc"]).0, 0);
-    let rows = home.plain(&["writings", "list"]);
+    assert!(home.plain(&["projects", "list"]).trim_end().ends_with("\trefs.bib"));
+    assert_eq!(home.run(&["projects", "create", "Loose", "--format", "pandoc"]).0, 0);
+    let rows = home.plain(&["projects", "list"]);
     assert!(rows.lines().any(|line| line == "Loose\tPandoc\tno .bib file"), "{rows}");
-    assert_eq!(home.run(&["writings", "remove", "Revised Atlas"]).0, 0);
+    assert_eq!(home.run(&["projects", "remove", "Revised Atlas"]).0, 0);
     assert_ne!(
-        home.run(&["cite", "vale2024", "--writing", id, "--file", bib.to_str().unwrap()])
+        home.run(&["cite", "vale2024", "--project", id, "--file", bib.to_str().unwrap()])
             .0,
         0
     );
-    let (code, schema, _) = home.run(&["writings", "schema"]);
+    let (code, schema, _) = home.run(&["projects", "schema"]);
     assert_eq!(code, 0, "{schema}");
     assert!(schema["data"]["properties"]["citation"].is_object());
 }
@@ -135,7 +135,7 @@ fn failed_or_busy_writes_never_report_an_unsaved_writing() {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, json!({"schema_version":2,"density":"compact"}).to_string()).unwrap();
     let before = std::fs::read(&path).unwrap();
-    assert_ne!(home.run(&["writings", "create", "", "--format", "pandoc"]).0, 0);
+    assert_ne!(home.run(&["projects", "create", "", "--format", "pandoc"]).0, 0);
     assert_eq!(std::fs::read(&path).unwrap(), before);
     let lock = std::fs::OpenOptions::new()
         .read(true)
@@ -145,11 +145,11 @@ fn failed_or_busy_writes_never_report_an_unsaved_writing() {
         .open(path.with_extension("json.lock"))
         .unwrap();
     lock.try_lock().unwrap();
-    let (code, failed, _) = home.run(&["writings", "create", "Atlas", "--format", "pandoc"]);
+    let (code, failed, _) = home.run(&["projects", "create", "Atlas", "--format", "pandoc"]);
     assert_ne!(code, 0, "{failed}");
     assert_eq!(std::fs::read(&path).unwrap(), before);
     lock.unlock().unwrap();
-    assert_eq!(home.run(&["writings", "create", "Atlas", "--format", "pandoc"]).0, 0);
+    assert_eq!(home.run(&["projects", "create", "Atlas", "--format", "pandoc"]).0, 0);
     assert_eq!(
         serde_json::from_slice::<Value>(&std::fs::read(&path).unwrap()).unwrap()["density"],
         "compact"
@@ -168,7 +168,7 @@ fn a_known_wrong_work_key_is_refused() {
     .unwrap();
     std::fs::write(&writing, "@book{vale2024,title={Other Work},doi={10.1000/other}}\n").unwrap();
     let (_, made, _) = home.run(&[
-        "writings",
+        "projects",
         "create",
         "Atlas",
         "--format",
@@ -178,7 +178,7 @@ fn a_known_wrong_work_key_is_refused() {
     ]);
     let id = made["data"]["writing"]["name"].as_str().unwrap();
     for flags in [&[][..], &["--strict"][..]] {
-        let mut args = vec!["cite", "vale2024", "--writing", id, "--file", library.to_str().unwrap()];
+        let mut args = vec!["cite", "vale2024", "--project", id, "--file", library.to_str().unwrap()];
         args.extend_from_slice(flags);
         let (code, refused, _) = home.run(&args);
         if flags.is_empty() {
@@ -202,7 +202,7 @@ fn an_explicit_document_frontmatter_selects_a_writing_and_ambiguous_context_refu
     std::fs::write(&document, "---\nbibliography: refs.bib\n---\nInvented text\n").unwrap();
     assert_eq!(
         home.run(&[
-            "writings",
+            "projects",
             "create",
             "Thesis",
             "--format",
@@ -227,7 +227,7 @@ fn an_explicit_document_frontmatter_selects_a_writing_and_ambiguous_context_refu
     assert_eq!(citation["data"]["citation"]["text"], "\\cite{vale2024}");
     assert_eq!(
         home.run(&[
-            "writings",
+            "projects",
             "create",
             "Article",
             "--format",

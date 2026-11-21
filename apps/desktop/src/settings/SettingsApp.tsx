@@ -77,7 +77,6 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [preference, dispatchPreference] = useReducer(preferenceState, initialPreferences);
   const preferences = preference.value;
   const formatSettings = useFormatSettings(api);
-  const keyFormatVisible = Boolean(formatSettings.view?.key_output_visible || preferences?.key_output);
   const [login, setLogin] = useState<LoginItem | null>(null);
   const [updates, setUpdates] = useState<boolean | null>(null);
   const latestLogin = useRef<LoginItem | null>(null);
@@ -505,7 +504,6 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   };
   const availableRows = settingsRows(enterPastes).filter((row) => (row.id !== "menu-bar" || platform === "macos")
     && (row.id !== "attachment-text" || Boolean(api.attachmentTextLibraries && api.setAttachmentText && api.attachmentTextOutsideLibrary && api.setAttachmentTextOutsideLibrary))
-    && (row.id !== "default-key-format" || keyFormatVisible)
     && (row.id !== "open-settings-file" || Boolean(api.openSettingsFile))
     && (row.id !== "paste-label" || permission?.pastes === true)
     && ((row.id !== "automatic" && row.id !== "check-updates") || updates !== null || readProblems.has("automatic"))

@@ -1,7 +1,7 @@
 # 0040 One owner for shared settings
 
 2026-11-07 (consolidation step 6; design attacked by Sol before code). Settings,
-formats per app, the selected writing and restoring a backup all change
+formats per app, the selected project and restoring a backup all change
 through one owner per settings file, `ibis_engine::settings::Owner`.
 
 - **The owner orders writes by when they were asked for.**

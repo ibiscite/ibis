@@ -274,7 +274,7 @@ test("Ctrl+K opens More's actions with their keys, Escape closes it before hidin
   const field = within(palette).getByRole("combobox", { name: "Search actions" });
   expect(document.activeElement).toBe(field);
   const label = (row: HTMLElement) => row.querySelector(".ui-palette-label")?.textContent;
-  expect(within(palette).getAllByRole("option").map(label)).toEqual(["Open ⁨refs.bib⁩", "Show in Folder", "Choose Library…", "Check Against a .bib File…", "Change Format…", "Peek at Reference", "Go to Citation", "Edit Page…", "Move Left", "Move Right", "Remove from Citation", "Cited Since Opening…", "Forget Recent Citations", "Keep Window Open", "Keyboard Shortcuts", "Settings…", "Quit Ibis"].filter((name) => within(palette).queryAllByRole("option").some((row) => label(row) === name)));
+  expect(within(palette).getAllByRole("option").map(label)).toEqual(["Open ⁨refs.bib⁩", "Show in Folder", "Choose Library…", "Check Against a .bib File…", "Change Format…", "Peek at Reference", "Go to Citation", "Show Citation Details", "Move Left", "Move Right", "Remove from Citation", "Cited Since Opening…", "Forget Recent Citations", "Keep Window Open", "Keyboard Shortcuts", "Settings…", "Quit Ibis"].filter((name) => within(palette).queryAllByRole("option").some((row) => label(row) === name)));
   expect(paletteRow(palette, "Keep Window Open").getAttribute("aria-current")).toBeNull();
   expect(paletteRow(palette, "Quit Ibis").getAttribute("aria-keyshortcuts")).toBe("Control+Q");
   // A common word finds an action by what it does.
@@ -518,24 +518,21 @@ test("the details open beside a live list; Esc steps back one layer and returns 
   expect(token.getAttribute("aria-expanded")).toBe("false");
 });
 
-// Commands
-test('">" lists commands by name with their keys; typing narrows them and Enter runs one', async () => {
-  const calls = backend({ quit: () => null, search: () => [result("vale2021", "The quiet garden")] });
+// One list of commands
+test('">" is searched like any other text, and More finds a command by what it does', async () => {
+  const asked: string[] = [];
+  backend({ search: ({ query }) => { asked.push(query.text); return query.text ? [result("vale2021", "The quiet garden")] : []; } });
   render(<App />);
   const search = screen.getByLabelText("Search references");
-  fireEvent.change(search, { target: { value: ">" } });
-  const commands = await screen.findByRole("listbox", { name: "Commands" });
-  const names = within(commands).getAllByRole("option").map((row) => row.querySelector(".result-title")?.textContent);
-  expect(names).toEqual(expect.arrayContaining(["Change Format…", "Keep Window Open", "Keyboard Shortcuts", "Settings…", "Quit Ibis"]));
-  // The library is never searched for a command, and nothing would be pasted.
-  expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
-  expect(screen.getByRole("button", { name: /^Run Change Format/ })).toBeTruthy();
-  // Words in the title or the description narrow the list.
-  fireEvent.change(search, { target: { value: "> quit" } });
-  await waitFor(() => expect(within(screen.getByRole("listbox", { name: "Commands" })).getAllByRole("option")).toHaveLength(1));
-  fireEvent.keyDown(search, { key: "Enter" });
-  await waitFor(() => expect(calls).toContain("quit"));
-  expect((search as HTMLInputElement).value).toBe("");
+  fireEvent.change(search, { target: { value: "> quiet" } });
+  await screen.findByRole("option", { name: /The quiet garden/ });
+  expect(asked).toContain("> quiet");
+  expect(screen.queryByRole("listbox", { name: "Commands" })).toBeNull();
+  fireEvent.keyDown(search, { key: "k", ctrlKey: true });
+  const palette = await screen.findByRole("dialog", { name: "Actions" });
+  // A key's description in the keys sheet ("Open Settings") finds its action, as ">" once did.
+  fireEvent.change(within(palette).getByRole("combobox", { name: "Search actions" }), { target: { value: "open settings" } });
+  expect(within(palette).getAllByRole("option").map((row) => row.querySelector(".ui-palette-label")?.textContent)).toEqual(["Settings…"]);
 });
 
 // Opening from Zotero
@@ -589,7 +586,7 @@ test("leaving a writing restores the app's output and copies a fresh preview", a
   let selected: string | null = writing.id;
   const view = (): WritingsView => ({ writings: [writing], selected, context: `opening-${generation}`, session_only: false });
   const destination = (): PickerDestination => (fixtureDestination({ app: "Example Editor", app_id: "example.editor", app_identity: null,     unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false, writing: selected ? writing : null,
-    writing_context: `opening-${generation}`, context_version: [generation, 0], format: formatAnswer(selected ? writing.output : "typst", selected ? "writing" : "app") }));
+    writing_context: `opening-${generation}`, context_version: [generation, 0], offers_projects: true, format: formatAnswer(selected ? writing.output : "typst", selected ? "writing" : "app") }));
   const copied: string[] = [];
   backend({
     search: () => [result("a", "Synthetic source")], "destination": destination, writings: view,
@@ -609,14 +606,32 @@ test("leaving a writing restores the app's output and copies a fresh preview", a
   const formatButton = () => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name: /^Citation format / });
   await waitFor(() => expect(formatButton().getAttribute("aria-label")).toContain("Field Guide"));
   fireEvent.click(formatButton());
-  fireEvent.click(await screen.findByRole("option", { name: "New writing…" }));
-  const dialog = await screen.findByRole("dialog", { name: "Writings" });
-  fireEvent.click(await within(dialog).findByRole("button", { name: "No Writing" }));
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Writings" })).toBeNull());
+  fireEvent.click(await screen.findByRole("option", { name: "New project…" }));
+  const dialog = await screen.findByRole("dialog", { name: "Projects" });
+  fireEvent.click(await within(dialog).findByRole("button", { name: "No Project" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Projects" })).toBeNull());
   await waitFor(() => expect(formatButton().getAttribute("aria-label")).toContain("Typst"));
   expect(formatButton().getAttribute("aria-label")).not.toContain("Field Guide");
   await act(async () => { fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" }); });
   await waitFor(() => expect(copied).toEqual(["typst:[2,0]"]));
+});
+
+test("the format palette offers Projects only when the engine does", async () => {
+  let offers = false;
+  backend({ search: () => [result("a", "Synthetic source")], destination: () => fixtureDestination({ app: "Example Editor", app_id: "example.editor", offers_projects: offers, format: formatAnswer("apa", "app") }) });
+  const { unmount } = render(<App />);
+  await screen.findByText("Synthetic source");
+  const formatButton = () => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name: /^Citation format / });
+  fireEvent.click(formatButton());
+  await screen.findByRole("dialog", { name: "Format" });
+  expect(screen.queryByRole("option", { name: "New project…" })).toBeNull();
+  unmount();
+  // A second format saved for this app, or a saved project: the engine offers them.
+  offers = true;
+  render(<App />);
+  await screen.findByText("Synthetic source");
+  fireEvent.click(formatButton());
+  expect(await screen.findByRole("option", { name: "New project…" })).toBeTruthy();
 });
 
 // Editor requests
@@ -649,4 +664,29 @@ test("a shortcut that could not be registered is explained", async () => {
   });
   render(<App />);
   expect((await screen.findByText(/another app may be using it/)).getAttribute("role")).toBe("status");
+});
+
+// First paste and typed words (maintainer, 2026-11-18)
+test("the first screen's one Enter pastes into a practice line inside Ibis, then Enter delivers", async () => {
+  const calls = backend({
+    search: () => [result("aster2026", "Invented gardens")],
+    delight_view: () => ({ status: null, peck: false, anniversary: false, build: "0.0.0 · invented · 2026-11-01", fun: false, fact: null, revision: 1, practice: true }),
+  });
+  render(<App />);
+  const search = screen.getByLabelText("Search references");
+  await screen.findByText("Invented gardens");
+  expect(await screen.findByText("Try a paste here first: press Enter.")).toBeTruthy();
+  await act(async () => { fireEvent.keyDown(search, { key: "Enter" }); });
+  expect(await screen.findByText(/pasted here\. Next, Enter pastes in your app\./)).toBeTruthy();
+  // Nothing left Ibis and no question was asked.
+  expect(calls).not.toContain("deliver_citation");
+  await act(async () => { fireEvent.keyDown(search, { key: "Enter" }); });
+  await waitFor(() => expect(calls).toContain("deliver_citation"));
+});
+
+test("words the engine kept as words say so in one notice line", async () => {
+  backend({ search: ({ query }) => query.text ? { revision: "1", results: [result("room22", "Room 22")], kept_words: true } : [] });
+  render(<App />);
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "room 22" } });
+  expect(await screen.findByText("Kept as words. For a page, add a comma: “room, 22”.")).toBeTruthy();
 });

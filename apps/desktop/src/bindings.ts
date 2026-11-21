@@ -453,6 +453,12 @@ export type DelightView = {
 	fact: DelightFact | null;
 	fun: boolean;
 	peck: boolean;
+	/**
+	 * The first screen with the person's own library, before any paste: Enter
+	 * pastes the highlighted reference into a practice line inside Ibis once.
+	 * A first-run step, not a surprise, so Small surprises never turns it off.
+	 */
+	practice: boolean;
 	revision: number;
 	status: DelightStatus | null;
 };
@@ -620,7 +626,6 @@ export type FormatKind = "documents" | "keys";
 
 export type FormatSettingsView = {
 	apps: AppFormat[];
-	key_output_visible: boolean;
 	unknown?: { [key: string]: unknown } | null;
 	writings: WritingView[];
 };
@@ -852,6 +857,11 @@ export type PickerDestination = {
 	can_choose_paste: boolean;
 	/** The current paste policy permits an attempt; final delivery checks still apply. */
 	can_paste: boolean;
+	/**
+	 * How many references this app's reference list holds: those cited into
+	 * it since Ibis opened. Paste Reference List is offered once there are any.
+	 */
+	cited_here: number;
 	context_version?: [number, number] | null;
 	find_open: boolean;
 	/**
@@ -859,6 +869,8 @@ export type PickerDestination = {
 	 * chose it (decision 0042). The picker shows it as it is.
 	 */
 	format: FormatChoice;
+	/** The engine's answer to whether the format palette offers Projects. */
+	offers_projects: boolean;
 	/** The separate delivery choice; never inferred from a remembered format. */
 	paste: AppPaste | null;
 	/** An unrecognised app has a proven target but no delivery choice yet. */
@@ -1171,6 +1183,11 @@ export type SearchQuery = {
 /** A search keeps its snapshot identity even when no references match. */
 export type SearchReply = {
 	interpretation?: LocatorQuery | null;
+	/**
+	 * The words as typed name something in the library, so no signal or page
+	 * was read from them; the picker says so in one notice line.
+	 */
+	kept_words?: boolean;
 	list?: PastedList | null;
 	results: SearchResult[];
 	revision: string;
@@ -1253,6 +1270,11 @@ export type SessionReferencesView = {
 	 * bibliography until it is.
 	 */
 	absent: number;
+	/**
+	 * The app Ibis was opened from: its reference list, the listed references
+	 * cited into it since Ibis opened, in that order, that are in the open library.
+	 */
+	here: SearchResult[];
 	/** The list reached its limit, so a later citation was left off. */
 	overflowed: boolean;
 	revision: number;

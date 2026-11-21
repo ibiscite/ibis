@@ -41,6 +41,9 @@ pub(crate) struct SessionReferencesView {
     /// The list reached its limit, so a later citation was left off.
     pub(crate) overflowed: bool,
     pub(crate) undo: Option<UndoView>,
+    /// The app Ibis was opened from: its reference list, the listed references
+    /// cited into it since Ibis opened, in that order, that are in the open library.
+    pub(crate) here: Vec<SearchResult>,
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -51,11 +54,20 @@ pub(crate) enum SessionEdit {
     Undo,
 }
 
-fn view(list: &List, file: Option<&Current>) -> Result<SessionReferencesView, CommandError> {
+/// The captured app's key in the list, as copies record it.
+pub(crate) fn here(app: &AppHandle) -> Option<String> {
+    crate::paste::last_app(app).map(|(id, _, _)| id.normalized())
+}
+
+fn view(list: &List, file: Option<&Current>, here: Option<&str>) -> Result<SessionReferencesView, CommandError> {
     let rows = file
         .map(|file| file.session_rows(&list.items))
         .transpose()?
         .unwrap_or_default();
+    let here = match (file, here) {
+        (Some(file), Some(app)) => file.session_rows(&list.cited_here(app))?,
+        _ => Vec::new(),
+    };
     let undo = list.undo.last().map(|undo| match undo {
         Undo::Removed { item, .. } => UndoView::Removed {
             reference: file
@@ -71,23 +83,26 @@ fn view(list: &List, file: Option<&Current>) -> Result<SessionReferencesView, Co
         rows,
         overflowed: list.overflowed,
         undo,
+        here,
     })
 }
 
 #[tauri::command]
 #[ibis_desktop_macros::command(main)]
 pub(crate) fn session_references(
+    app: AppHandle,
     session: State<'_, SessionReferences>,
     library: State<'_, Owner>,
 ) -> Result<SessionReferencesView, CommandError> {
     let file = library.current();
-    view(&session.lock(), file.as_deref())
+    view(&session.lock(), file.as_deref(), here(&app).as_deref())
 }
 
 #[tauri::command]
 #[ibis_desktop_macros::command(main)]
 pub(crate) fn edit_session_references(
     edit: SessionEdit,
+    app: AppHandle,
     session: State<'_, SessionReferences>,
     library: State<'_, Owner>,
 ) -> Result<SessionReferencesView, CommandError> {
@@ -102,7 +117,7 @@ pub(crate) fn edit_session_references(
         SessionEdit::Reset => list.reset(),
         SessionEdit::Undo => list.undo(),
     }
-    view(&list, file.as_deref())
+    view(&list, file.as_deref(), here(&app).as_deref())
 }
 
 /// The style an output id names: only a listed style writes a bibliography.

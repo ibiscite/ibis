@@ -33,9 +33,9 @@ export function useLibrarySearch({ session, state, search, emptySearch, emptyRep
   // biome-ignore lint/correctness/useExhaustiveDependencies: the inputs are the query (queryKey covers query and locator mode), the library and the opening.
   useLayoutEffect(() => { session.dispatch({ type: "search-inputs", inputs }); }, [queryKey, library, libraryVersion, state.session, recentSearch, inputs.app, inputs.recentReply]);
 
-  const { results, interpretation, list, unfiltered, resultsQuery, error, announcement } = state.search;
+  const { results, interpretation, keptWords, list, unfiltered, resultsQuery, error, announcement } = state.search;
   const { sameSnapshot, ready, pending } = searchStatus(state.search, inputs, state.session, statusFailed);
   // The query text the shown results answer; "" before the first reply.
   const answered = resultsQuery === null ? "" : (JSON.parse(resultsQuery) as [string, boolean])[0];
-  return { queryKey, results, sameSnapshot, ready, answered, interpretation, list, unfiltered, announcement, resultsQuery, error, pending };
+  return { queryKey, results, sameSnapshot, ready, answered, interpretation, keptWords, list, unfiltered, announcement, resultsQuery, error, pending };
 }
