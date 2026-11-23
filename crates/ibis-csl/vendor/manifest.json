@@ -7,13 +7,13 @@
     },
     "styles": {
       "repo": "citation-style-language/styles",
-      "tag": "v1.0.22",
-      "commit": "af0aea3fffd44fe798cce9285598d0d5cf62ef23"
+      "tag": "v1.0.30",
+      "commit": "edc263cf0e4b09ed184f8a9e1e1de23deb2a7a9e"
     },
     "locales": {
       "repo": "citation-style-language/locales",
-      "tag": "v0.0.106",
-      "commit": "8bef426f89f38c0789223c50e53ec2197bc50bb3"
+      "tag": "v0.0.107",
+      "commit": "21a175a1d84cc1792dd73f5a627de004fba5b207"
     }
   },
   "files": [

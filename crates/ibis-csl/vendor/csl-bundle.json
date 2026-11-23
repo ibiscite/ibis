@@ -2,19 +2,19 @@
  "releases": {
   "styles": {
    "repo": "citation-style-language/styles",
-   "tag": "v1.0.22",
-   "commit": "af0aea3fffd44fe798cce9285598d0d5cf62ef23"
+   "tag": "v1.0.30",
+   "commit": "edc263cf0e4b09ed184f8a9e1e1de23deb2a7a9e"
   },
   "locales": {
    "repo": "citation-style-language/locales",
-   "tag": "v0.0.106",
-   "commit": "8bef426f89f38c0789223c50e53ec2197bc50bb3"
+   "tag": "v0.0.107",
+   "commit": "21a175a1d84cc1792dd73f5a627de004fba5b207"
   }
  },
  "bundle": {
   "path": "csl-bundle.bin",
-  "bytes": 3041827,
-  "sha256": "e994a8a70acdca04bf74b2a1e9ec2e81cca17e0b0c0e9ccaa2ee051d91e95144"
+  "bytes": 3070425,
+  "sha256": "4ae257ff17bee72823c9cc77b8bd2c9254fc8df0b30bc61406524b1b238efc8f"
  },
  "renames": {
   "aaa": "american-anthropological-association",
@@ -63,6 +63,8 @@
   "archives-of-dermatology": "jama-dermatology",
   "asa": "american-sociological-association",
   "associacao-brasileira-de-normas-tecnicas-ufjf": "universidade-federal-de-juiz-de-fora",
+  "associacao-brasileira-de-normas-tecnicas-eceme": "escola-de-comando-e-estado-maior-do-exercito-instituto-meira-mattos-abnt",
+  "associacao-brasileira-de-normas-tecnicas-instituto-meira-mattos": "escola-de-comando-e-estado-maior-do-exercito-instituto-meira-mattos-abnt",
   "australian-law-journal": "the-australian-law-journal",
   "automated-experimentation": "biomed-central",
   "aviation-space-and-environmental-medicine": "aerospace-medicine-and-human-performance",
@@ -688,7 +690,7 @@
  },
  "files": {
   "locales/locales-af-ZA.xml": "c20462bef7e05b51ad1f9f246b36ed0cf9686254445299ef72ad9b898280b282",
-  "locales/locales-ar.xml": "d25602b8b39497bef229b8aaa75ae92b34a529bed7f55b5367e4a26c99611319",
+  "locales/locales-ar.xml": "4b9240652d3bbf9eb2d9a5fc5894810c2180c40624c55e605f3297f4d8f03215",
   "locales/locales-bal-PK.xml": "e7c0822879ba318f832a8b08ad7e39c2193d613b08af73848478e2c499ebe30b",
   "locales/locales-bg-BG.xml": "7c6dd2fdf0be4f8ada9833c090becb23ebeb58157a858bb0ea00184decb230f5",
   "locales/locales-brh-PK.xml": "c06b830ab39fcdcd184f5279239aefa16aa7091f0144a616e329ae013f4bb681",
@@ -1005,8 +1007,6 @@
   "styles/asian-journal-of-neurosurgery.csl": "b554690d5d19e564c22c61571a1947afa58ffaa4fd8a91da78662a4696dc5b82",
   "styles/asian-myrmecology.csl": "1794655659505af6672e1e29749e133cb4568d38ddd10d9bd9fe2dd7841f2f9e",
   "styles/asian-studies-review.csl": "d233a1e45b045fa5da8c209fb80acf728e25f8d596528efd3bd4a62379e1f454",
-  "styles/associacao-brasileira-de-normas-tecnicas-eceme.csl": "5571a8ca28b2fcbfde33d508b8aa788918f9f6730deb0d00c74a5d3009c02aa1",
-  "styles/associacao-brasileira-de-normas-tecnicas-instituto-meira-mattos.csl": "998c6d2ec88a6c894985e3e9dba221c03d32f5faf453505ec83b8aa924220286",
   "styles/associacao-brasileira-de-normas-tecnicas-ipea.csl": "545e76d10436043017390b97b01a49be7507a5d7ae7256920d55fa1d43fd33c3",
   "styles/associacao-brasileira-de-normas-tecnicas-note.csl": "efc72827082cff18708fce385f3cd7a82cc93517651b9b60c2c5a29dadc6811d",
   "styles/associacao-brasileira-de-normas-tecnicas-numerico.csl": "6f46defbeec4d94c1ba31f402f08dc0eb267f8d347f22436ceb9e976df526def",
@@ -1034,7 +1034,7 @@
   "styles/australian-critical-care.csl": "39094de11cef7a3e3d105260ef929ab34e883d626915274291fab3f4cf97e287",
   "styles/australian-dental-journal.csl": "977ab20f5091f6278e880be0ec63c2b4a68e23c7e7db0d6b6610dc90cef8f170",
   "styles/australian-guide-to-legal-citation-3rd-edition.csl": "736d13950c9c92e3b4a0924727c5f90ab1253e3631c060a42e3dbbe6ad9f0f2c",
-  "styles/australian-guide-to-legal-citation.csl": "670ea6a3b1ab7c72bbb9b23d5d870e66630cdf1e34353fc229eedf4a87725163",
+  "styles/australian-guide-to-legal-citation.csl": "7336f60a91f42982214c8449b1c11b5263fef242b4ceaf61492991c70bb8a1f3",
   "styles/australian-historical-studies.csl": "d486c223e2b5b88129c40b6433b4cf6ac93a3fbd5cc7ec33d7bbc43b637e45e4",
   "styles/australian-journal-of-earth-sciences.csl": "f57dbe0f56e89f3df0426fe6aa70338f5ab8e4b38c71447d2cdf9477c3dccde2",
   "styles/australian-journal-of-grape-and-wine-research.csl": "250b36d27046c637eec3b9961b74f788c922e29d020c2deb57124761e3b7c14f",
@@ -1194,8 +1194,8 @@
   "styles/cancer-biomarkers.csl": "a5ce4141b9e285bb6cd10dc3cb92453eb0ebe7f8b3ca88cef1d3f9366f4fc4f0",
   "styles/cancer-drug-resistance.csl": "ad2c733bd06d92845cd64bf9d650234b2e2097df8474964a0d921408b4c2bcd7",
   "styles/cancer-translational-medicine.csl": "ac871f2186f52d20068e4cdd20fb0132c12ad8be6a54a780702f6fec284dc1e9",
-  "styles/cardiff-university-harvard.csl": "7db7b4e199aa1817ea093c7d470686a675d72ea6399fe9753acd5791c89140c1",
-  "styles/cardiff-university-vancouver.csl": "060d0053e06237b07688f6339af41b24cc08946d04815855a8256d53d8245e36",
+  "styles/cardiff-university-harvard.csl": "90633005763d27df093ef8a05e17316aeddc918d8d65527a95571ed29bf545ba",
+  "styles/cardiff-university-vancouver.csl": "5f8f6e6dc53a9336eccd456887628a825b9592b84a9bd3bf481349db86522de3",
   "styles/cardiocore.csl": "55aaeacc7b2e11b55912409f305a0581dd7cf488bbbcfb5a68742194cb606d68",
   "styles/carolinea.csl": "d99d8e09d0a2b121c9c79f11144bc4203cfd05b7dca45c682e90163edc2b8051",
   "styles/casopis-pro-pravni-vedu-a-praxi.csl": "b0213436bd0379eaa0810d35270cb581eb5cc3e5fa4b25b03b503547291763ca",
@@ -1425,7 +1425,7 @@
   "styles/czech-journal-of-international-relations.csl": "4308ac834803cb0c74b834c0479935e3429e587dac7e2e2dcdaa3f647d6cae2d",
   "styles/data-science-journal.csl": "29c0bb8f9e05c2213b03bd62b4d1c2ce3e81900203048eae124ffdd61c457004",
   "styles/database.csl": "7924b3007bfd0d6047da01257aa0751fa730038e9ac71c9cdafc2d27a6fad11b",
-  "styles/de-buck.csl": "cec46adeec8437a7ee148fd8bb590bbf4bea2af068d4484ebbdbec2f84c0110d",
+  "styles/de-buck.csl": "9f1b63c4fce46d2f9de3b36c3036af0f44fc49c15ec43eff3c84374d4cc7c840",
   "styles/decision-sciences.csl": "53e6cd01680001ff58624863c0b19c54119d5ce00b63c48bb139cf8e0f5efc6d",
   "styles/degruyter-american-chemical-society.csl": "01538bfae696495ea00dafae9d38b112a39c43a1c42bcd97a8c5fec60a28d58f",
   "styles/demographic-research.csl": "c7a1bea9cd0be96987570a7f5835e932f446d7c8a1d1dddffb36c1c5c81fbbde",
@@ -9560,6 +9560,7 @@
   "styles/ergo.csl": "a66a199198bdab55fe86f36c76539de5f376ce61fcd1cd26cabe921ffa0b4f7f",
   "styles/ergoscience.csl": "d67abb703359043dc3c98b961fbab541085f0326e0aaa33bbdcf9c75dfdb6a80",
   "styles/errata.csl": "cc714fbcef8fbfee2b1957f3237eb837cdaf5f0c3b776a04758ab2dcecc0cc1e",
+  "styles/escola-de-comando-e-estado-maior-do-exercito-instituto-meira-mattos-abnt.csl": "e2fc7241306d461c32d2ca6c00eb3a4f98c33c1c6e7ab4f42942685fb8a36a4d",
   "styles/escuela-nacional-de-antropologia-e-historia-author-date.csl": "55a6d07243eb7f261a79ffa1260bcde2f588db4cbede2b90a6451486580e0695",
   "styles/escuela-nacional-de-antropologia-e-historia-full-note.csl": "f3ce4e31a824f2be326df1b51cc2e9ad143aaf1808d044b9af7dab2eca366337",
   "styles/escuela-nacional-de-antropologia-e-historia-short-note.csl": "428c66e10ce18ca248a771da54a2e3615f9779ae221612160c3ef54f177d6531",
@@ -9819,7 +9820,7 @@
   "styles/harvard-university-of-exeter-geography.csl": "6944334ac4df11a4d5c72ca68aeabb1a91e82fb37bc7e70e9e3dfcaa5a83b109",
   "styles/harvard-university-of-greenwich.csl": "c1950edc9ca6525c3c7cb48270a8046efc75b79db64a1c3a3416b1159cd64c17",
   "styles/harvard-university-of-kent.csl": "8f3e1d726aaa1cdd6732c56be77ca342181e8e8a5cc46882917bf7181a9bdb7e",
-  "styles/harvard-university-of-leeds.csl": "d3986305d342d3e5c0a580dbc9c304e5e64dc9f9303199c565b34cf9ed6b6d44",
+  "styles/harvard-university-of-leeds.csl": "b82a707dd9589841790d6bc622d97e98d2b095c02b05803ae2f989d30f88a34e",
   "styles/harvard-university-of-technology-sydney.csl": "55eaad9435064f861097f69ad337d4e1bb29e31f79124c9cc53a2877f8344e75",
   "styles/harvard-university-of-the-west-of-england.csl": "4e245077c17d1c29658dff77630f0ab64fb8eeb465849f398ea5dc4571500de6",
   "styles/harvard-university-of-the-west-of-scotland.csl": "be63a303d74153c8b878a491a9c2dba88274b69a493fbd6fb252bd501ac7a3f5",
@@ -9898,6 +9899,7 @@
   "styles/iainutuban.csl": "81514c717b3b81c808253718863b15770422a91b72dd0aa7184e165d38eb9b82",
   "styles/iawa-journal.csl": "27101620261a3da1a7ab23706d46df3d718f228e82098c82b7a9b09f86bb6159",
   "styles/ib-tauris-note.csl": "91ba3abc568b26b48ad52755e851de0116f55c8d4f2d8e6ebaa9708e6d3d45c7",
+  "styles/ibadica.csl": "9013e2dd6aad90597f1980712e93997a9a54bb3b748677a4c0496651e6a38872",
   "styles/ibis.csl": "71ebb90c2d61162bcad0c1680bdfcc732b5365e3219a02de290723e0dda39b2d",
   "styles/idojaras-quarterly-journal-of-the-hungarian-meteorological-service.csl": "88ccb855d8ae4ffeadf6bff1989685af8cf4c59dd7077f1b97d655a7855581d9",
   "styles/ie-comunicaciones.csl": "49a9490b7c8d5fbed11a88a47c785b2053592e36a17cb78490d515af66141896",
@@ -10669,8 +10671,8 @@
   "styles/norois.csl": "88877aa904864ed544dae7ff7707799e14cda0a8cf77bab18290a41e320a14a3",
   "styles/norsk-apa-manual-note.csl": "90f03c6b3bdc8aa6e9fdece5a019854529540c02fc47683b66827543f176ef23",
   "styles/norsk-apa-manual.csl": "7e3d471ca91539cd596b8e4d4abd0882bc8b23583afe5a8b637b5793592395ff",
-  "styles/norsk-henvisningsstandard-for-rettsvitenskapelige-tekster-full-firstnote.csl": "05eb25a83b0831921d0c44e3327e4b7bdb192077a4fc946bb95605b0cc980605",
-  "styles/norsk-henvisningsstandard-for-rettsvitenskapelige-tekster.csl": "83c11dbd5f45f13279937ccde13c1bee61a5d31447ac964361256a1d0903240d",
+  "styles/norsk-henvisningsstandard-for-rettsvitenskapelige-tekster-full-firstnote.csl": "87bf9b28f39c030f6b76d1d4f0548aa25f3d8e4a76fec335c1cc36dd44e7c138",
+  "styles/norsk-henvisningsstandard-for-rettsvitenskapelige-tekster.csl": "1e3a822c240fd90b6a84bb80071df584461945d92402df0952dcb7881c888d09",
   "styles/north-pacific-anadromous-fish-commission-bulletin.csl": "510b127816a4bef8d5d102c84295485f6b9878568a41e7ce451a49b6955403bd",
   "styles/northeastern-naturalist.csl": "9552009de7f620929e2ab2efb78726037abc0c6247ed384f05fca838b29230e2",
   "styles/nottingham-trent-university-library-harvard.csl": "a475d19e23357c3ee6453ac81c81d21e560edfce1dfe5c6464ba8508b05ba970",
@@ -11048,7 +11050,7 @@
   "styles/society-for-laboratory-automation-and-screening.csl": "abfbb3b5ef0edd529efe1f6fba94fd8d21c0826595fc8cba3a41f5a96f4c1b9d",
   "styles/society-of-automotive-engineers-technical-papers-numeric.csl": "41429930e803f06a24268403db1a3c4a46682c854e5af06ade0258b3a33867af",
   "styles/society-of-biblical-literature-author-date.csl": "cdc0f8f68f631f5c7470d51c565dae22299af02d181bc2df90516a2892983282",
-  "styles/society-of-biblical-literature-fullnote-bibliography.csl": "cabb0958c2ef284957d27c9bb87ad919a1a3ebc91ef69035195ddec2c64dca6e",
+  "styles/society-of-biblical-literature-fullnote-bibliography.csl": "83ff693a4a88c4fbefc57c58d6d9b0b126ab2f0c4f4ee728cff0420bf7cbd84c",
   "styles/sociologia-ruralis.csl": "f8ae20a625977706801980049bd0152cf5d3e9f48f969eac77bcfc927ab7d02f",
   "styles/sociologia-urbana-e-rurale.csl": "c1aea2dcd73b96618d99507339c3919531a0476c568c1c6d3b0f7a5098fd6571",
   "styles/sociologie.csl": "c820a4436b1eb4a9a52c2611d9edc8ef037e1f5880204773a0a96d61ffce6c16",
@@ -11465,7 +11467,7 @@
   "styles/universite-nangui-abrogoua-sciences-de-la-nature-apa.csl": "573a6777085520fe78a42c12d534069f732c07b89507483faaccbe34baccc493",
   "styles/universiteit-utrecht-onderzoeksgids-geschiedenis.csl": "d223b9537130747088d2bf9992f70bb2a950323ec7eec7e8a995c5aa04b5add0",
   "styles/universitetet-i-oslo-rettsvitenskap.csl": "c3e8dae29981dc382a109e1e6e83b70fac6a63ee1534702dde2bc65edf44ad43",
-  "styles/universiti-kebangsaan-malaysia.csl": "dac3de3827cce71b930740e70e6ab8058c8d608111770803af9774b58254f1ee",
+  "styles/universiti-kebangsaan-malaysia.csl": "61106edfb1a2af9259855a81b26fe07d48254b54505a731bc07e8bb3771c3381",
   "styles/university-college-dublin-school-of-history-and-archives.csl": "b0fe73ed18b11740622045e56d1941c5556aa99a539dcb74a20b27be1837247c",
   "styles/university-college-lillebaelt-apa.csl": "62ca0aae9cd7a331745cc4c1d8ad3a42226bca6bc3d971f652a7c45931ef372f",
   "styles/university-of-aberdeen-school-of-education-harvard.csl": "644cdf21993bd02232b8bc031fc465bdcf4879651d7778c206464ce21c487504",
@@ -11617,7 +11619,7 @@
   "styles/zoological-journal-of-the-linnean-society.csl": "7bdd0a543461d9dfb242d51bc7986d1e57178dd311eadef23e3da7c2d27ce075",
   "styles/zoological-science.csl": "ea36905c47ac8537ccdcea91c2806c172921b861975b6abd6a3505d69d853e98",
   "styles/zootaxa.csl": "d8c86f8cc0a866b6e38b5b0951f354ee2a81ca7bb0ed4227cf65fc2fe8327bc1",
-  "styles/zurcher-hochschule-fur-angewandte-wissenschaften-soziale-arbeit.csl": "24d42559fb31413c5c5466186df1d1b9ae38cdb586fdb2c907bd2df43668c976",
+  "styles/zurcher-hochschule-fur-angewandte-wissenschaften-soziale-arbeit.csl": "e74286d31ac005163b891d3c6116a55425057916614c27bca43052684f83ddd1",
   "styles/zwitscher-maschine.csl": "c6f251dd250f80dad13272421af1997745e73e81b4710fc463970b0818b4dd95"
  }
 }
