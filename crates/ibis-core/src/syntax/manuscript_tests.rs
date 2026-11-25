@@ -183,3 +183,16 @@ fn damaged_latex_and_unusual_delimiters_are_read_safely() {
     let begins = "\\begin{".repeat(200_000);
     let _ = scan(TextKind::Latex, &begins, &|| false);
 }
+
+#[test]
+fn typst_statements_strings_and_depth_follow_the_language() {
+    assert_eq!(
+        keys(TextKind::Typst, "#let x = 1; @ghost\n"),
+        of(&[(1, 13, &["ghost"])])
+    );
+    assert!(keys(TextKind::Typst, "#text(\"#cite(<ghost>)\")\n").is_empty());
+    let deep = format!("{}@ghost{}", "#box([".repeat(300), "])".repeat(300));
+    assert!(!scan(TextKind::Typst, &deep, &|| false).complete());
+    let verbatim = "\\begin{verbatim}\n😀😀 \\cite{hidden}\n\\end{verbatim} \\cite{shown}";
+    assert_eq!(keys(TextKind::Latex, verbatim), of(&[(3, 16, &["shown"])]));
+}
