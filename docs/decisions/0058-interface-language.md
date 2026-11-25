@@ -21,10 +21,12 @@ Decided 2026-11-18 with German and Arabic, the 0.4 order's first item
   on the interface language (`languages.test.tsx`).
   Format names that are words (Keys only, Chicago (notes)) are translated in
   the one output presentation (`format/outputs.ts`); proper names such as
-  Pandoc or APA are not.
-- **Settings outlive languages.** A language value this build does not speak,
-  from another build, follows the system without invalidating the settings
-  file.
+  Pandoc or APA are not. Every format menu still finds the engine's English
+  name and description (`outputKeywords`).
+- **Settings outlive languages.** A language this build does not speak, from
+  another build, follows the system and is written back as it was, so a
+  downgrade and upgrade keep the choice; a value that is not text reads as
+  unset. Neither invalidates the settings file.
 - **Left and right are on screen.** Move Left and Move Right, by key or from
   More, go through one shelf action that reads the citation line's direction.
 - **Right to left by `dir` alone.** A right-to-left language sets `dir="rtl"`

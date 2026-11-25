@@ -758,7 +758,8 @@ fn apply_preferences(s: &mut settings::Settings, preferences: PickerPreferencesP
         p.recent_citations = settings::unless_default(v, d.recent_citations);
     }
     if let Some(v) = preferences.interface_language {
-        p.interface_language = settings::unless_default(v, InterfaceLanguage::default());
+        p.interface_language =
+            settings::unless_default(v, InterfaceLanguage::default()).map(settings::SavedLanguage::Known);
     }
     Ok(())
 }
