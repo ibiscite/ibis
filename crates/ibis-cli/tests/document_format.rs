@@ -70,18 +70,20 @@ struct Folder {
 impl Folder {
     fn new() -> Self {
         let folder = tempfile::tempdir().unwrap();
-        std::fs::write(folder.path().join("refs.bib"), LIBRARY).unwrap();
+        // macOS reaches its temporary folder through a link; documents are read without following one.
+        let root = folder.path().canonicalize().unwrap();
+        std::fs::write(root.join("refs.bib"), LIBRARY).unwrap();
         let engine = Engine::new()
             .unwrap()
             .without_file_watches()
             .with_document_reader(env!("CARGO_BIN_EXE_ibis").into());
         engine
-            .open_file_observed(&folder.path().join("refs.bib"), &Cancellation::default())
+            .open_file_observed(&root.join("refs.bib"), &Cancellation::default())
             .unwrap();
         Self { folder, engine }
     }
     fn path(&self, name: &str) -> PathBuf {
-        self.folder.path().join(name)
+        self.folder.path().canonicalize().unwrap().join(name)
     }
     fn format(&self, input: &str, output: &str, style: &str) -> FormatResult {
         self.engine
