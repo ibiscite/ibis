@@ -3,7 +3,7 @@
 //! PDFs in [`pdf`], source-adapter answers and EndNote exports in [`adapter`],
 //! Zotero's local API and Better BibTeX's key export in [`zotero`], and the
 //! other files Ibis reads (edited `.bib`, project bibliography, Zotero's
-//! profiles) in [`files`], and the editor endpoint's requests in [`editor`]. Every
+//! profiles) in [`files`]. Every
 //! target is listed in [`TARGETS`].
 #![allow(clippy::panic, reason = "a fuzz oracle reports a failed property by panicking")]
 
@@ -15,7 +15,6 @@ use ibis_core::contract::{CitationKeySource, LibraryObject, Record, Snapshot};
 use ibis_sources::{SourceError, load_file};
 
 pub mod adapter;
-pub mod editor;
 pub mod files;
 pub mod pdf;
 pub mod zotero;
@@ -39,11 +38,6 @@ pub const TARGETS: &[Target] = &[
     ("bibtex_edit", files::check_bibtex_edit, MAX_INPUT_BYTES),
     ("project_bib", files::check_project_bib, MAX_INPUT_BYTES),
     ("zotero_profiles", files::check_zotero_profiles, MAX_INPUT_BYTES),
-    (
-        "editor_request",
-        editor::check_editor_request,
-        2 * ibis_engine::cayw::MAX_HEAD_BYTES,
-    ),
 ];
 
 pub(crate) const MAX_INPUT_BYTES: usize = 64 * 1024;

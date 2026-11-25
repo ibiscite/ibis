@@ -1,4 +1,0 @@
-GET /0123456789abcdef0123456789abcdef/better-bibtex/cayw?format=pandoc&brackets=1&csl=apa HTTP/1.1
-Host: localhost:23124
-User-Agent: invented-editor
-

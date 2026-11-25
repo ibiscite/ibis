@@ -52,7 +52,7 @@ they exercise parsing, not these size limits, which the tests cover.
 | A `.bib` file Ibis edits in place (decision 0055) | `bibtex_edit::BibFile` | `bibtex_edit` |
 | A project's bibliography, read to check keys | `project::ProjectRead` | `project_bib` |
 | Zotero's `profiles.ini` and `prefs.js` | `zotero_local::discovery::discover` | `zotero_profiles` |
-| An editor endpoint request (opt-in, loopback) | `ibis_engine::cayw::parse` | `editor_request` |
+| An editor endpoint request (opt-in, loopback) | `ibis_engine::cayw::parse` | Not yet: unit tests only (see below) |
 | An open EndNote library (macOS scripting) | the same XML reader as an export | `endnote_export` |
 | Zotero's full-text cache | `zotero_local::fulltext::pages` splits text on page breaks; nothing is parsed | — |
 | Zotero's closed database and Better BibTeX's store | SQLite on a private copy, opened read-only | Not yet: SQLite itself is fuzzed upstream (OSS-Fuzz), and the rows reach the same `map_item` as `zotero_live`, but the reading of rows is not fuzzed here |
@@ -100,9 +100,9 @@ seconds; eight connections at once and one waiting request; fixed refusal
 text that repeats nothing sent. Tests: the `cayw.rs` unit tests (browser
 headers, host names, methods, oversized or broken heads) and the
 `editor_endpoint.rs` tests (probe, pick, a second request, silent or oversized
-clients, the port freed when switched off, a new token per address). Fuzzed:
-`editor_request` runs `cayw::parse` on any head and checks that an accepted
-one is a `GET` within the bound naming the token.
+clients, the port freed when switched off, a new token per address). Not yet
+fuzzed: `cayw::parse` lives in `ibis-engine`, which the fuzz crate may not
+depend on (`engine_boundary.rs`); a target needs that layer allowed first.
 
 Ibis connects to Zotero's local API and Better BibTeX on 127.0.0.1 only. Any
 local program could answer there, so those answers are untrusted input
