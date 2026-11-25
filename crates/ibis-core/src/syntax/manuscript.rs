@@ -300,10 +300,8 @@ fn mask_latex(text: &str, work: &mut Work<'_>) -> Option<String> {
         }
         let rest = &text[i + 1..];
         if let Some(after) = rest.strip_prefix("begin{")
-            && let Some(name) = after
-                .get(..after.len().min(16))
-                .and_then(|head| head.split_once('}'))
-                .map(|(name, _)| name)
+            && let Some(end) = after.bytes().take(16).position(|byte| byte == b'}')
+            && let name = &after[..end]
             && VERBATIM.contains(&name)
         {
             let close = format!("\\end{{{name}}}");
@@ -637,7 +635,7 @@ fn lex_typst(text: &str, work: &mut Work<'_>) -> Option<Typst> {
                     });
                 }
             }
-            (Some(Mode::Code { parens: 0, line: true }), '\n') => {
+            (Some(Mode::Code { parens: 0, line: true }), '\n' | ';') => {
                 stack.pop();
             }
             (Some(Mode::Code { .. }), '[') => stack.push(Mode::Content { brackets: 0 }),
@@ -667,10 +665,13 @@ fn lex_typst(text: &str, work: &mut Work<'_>) -> Option<Typst> {
             _ => {}
         }
         if stack.len() > 256 {
+            // Too deep to follow: stop, so the text reads as read in part.
+            work.spend(usize::MAX);
             return None;
         }
         match (code_from, in_code(&stack)) {
-            (None, true) => code_from = Some(at),
+            // Code starts after `#name`, so the call itself is markup's.
+            (None, true) => code_from = Some(next),
             (Some(from), false) => {
                 code.push(from..next);
                 code_from = None;
@@ -743,6 +744,10 @@ fn typst_text(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mu
             continue;
         }
         if rest.starts_with('#') {
+            if code.contains(start) {
+                at = start + 1;
+                continue;
+            }
             match rest.starts_with("#cite(").then(|| typst(rest, work)).flatten() {
                 Some(read) => {
                     let cites: Vec<Cite> = read
