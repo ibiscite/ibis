@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
-"""Write the CycloneDX SBOMs for one target's packages (#50).
+"""Write the CycloneDX SBOMs for every package Preview builds (#50).
 
-    python3 scripts/sbom.py OUT TARGET CLI_TARGET VERSION
+    python3 scripts/sbom.py OUT VERSION
     python3 scripts/sbom.py --check VERSION FILE...
 
-Preview's build job runs it after collecting the packages. OUT receives two
-CycloneDX 1.6 JSON files named like the downloads they describe:
+Preview's notices job runs it, beside the notices, from the same lockfiles.
+For each system OUT receives two CycloneDX 1.6 JSON files named like the
+downloads they describe:
 
-- `Ibis-PLATFORM.cdx.json`, for every app package of the target (disk image,
-  app archive, setup executable, deb, rpm, AppImage): the Rust crates of the
-  app for TARGET and of the bundled command line for CLI_TARGET, and the npm
-  packages of the interface;
-- `ibis-PLATFORM-cli.cdx.json`, for the command-line archive: its crates
-  alone. (Names differing only in case would collide on macOS and Windows.)
+- `Ibis-SYSTEM.cdx.json`, for every app package (disk image, app archive,
+  setup executable, deb, rpm, AppImage): the Rust crates of the app for that
+  target and of the command line it bundles, and the interface's npm packages;
+- `ibis-SYSTEM-cli.cdx.json`, for the command-line archive: its crates alone,
+  for its own target (static musl on Linux). Names differing only in case
+  would collide on macOS and Windows.
 
 Crates are what Cargo.lock resolves for that platform through normal and build
 dependencies (never dev-only ones), each with its registry checksum; npm
-packages are pnpm's production list. The SBOM job attests each package with
+packages are pnpm's production list. The sbom job attests each package with
 its file, and publishing attaches the files to the release. Offline: Cargo
-reads the crates the build already fetched.
+reads the crates `cargo fetch` already fetched.
 """
 
 import json
@@ -28,11 +29,12 @@ import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+# app target: (download name, the command line's target)
 PLATFORMS = {
-    "aarch64-apple-darwin": "macOS-Apple-silicon",
-    "x86_64-apple-darwin": "macOS-Intel",
-    "x86_64-pc-windows-msvc": "Windows",
-    "x86_64-unknown-linux-gnu": "Linux",
+    "aarch64-apple-darwin": ("macOS-Apple-silicon", "aarch64-apple-darwin"),
+    "x86_64-apple-darwin": ("macOS-Intel", "x86_64-apple-darwin"),
+    "x86_64-pc-windows-msvc": ("Windows", "x86_64-pc-windows-msvc"),
+    "x86_64-unknown-linux-gnu": ("Linux", "x86_64-unknown-linux-musl"),
 }
 # A fixed namespace, so the same inputs always give the same serial number.
 NAMESPACE = uuid.UUID("5f1b9c3e-7a51-4d1e-9a39-6b0b3c2f8e10")
@@ -169,21 +171,23 @@ def main():
     if len(sys.argv) >= 3 and sys.argv[1] == "--check":
         check(sys.argv[2], sys.argv[3:])
         return
-    if len(sys.argv) != 5:
+    if len(sys.argv) != 3:
         print(__doc__.strip(), file=sys.stderr)
         sys.exit(2)
-    out, target, cli_target, version = Path(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4]
-    platform = PLATFORMS.get(target) or fail(f"no packages are known for {target}")
+    out, version = Path(sys.argv[1]), sys.argv[2]
     out.mkdir(parents=True, exist_ok=True)
-    cli = crates("ibis", cli_target)
-    app = crates("ibis-desktop", target) + cli + npm_packages()
-    files = {
-        f"Ibis-{platform}.cdx.json": bom("Ibis", version, f"The Ibis app for {platform}", app),
-        f"ibis-{platform}-cli.cdx.json": bom("ibis", version, f"The ibis command line for {platform}", cli),
-    }
-    for name, document in files.items():
-        (out / name).write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
-        print(f"{name}: {len(document['components'])} components")
+    npm = npm_packages()
+    for target, (platform, cli_target) in PLATFORMS.items():
+        cli = crates("ibis", cli_target)
+        # The app bundles this same command line (scripts/build-cli.sh).
+        app = crates("ibis-desktop", target) + cli + npm
+        files = {
+            f"Ibis-{platform}.cdx.json": bom("Ibis", version, f"The Ibis app for {platform}", app),
+            f"ibis-{platform}-cli.cdx.json": bom("ibis", version, f"The ibis command line for {platform}", cli),
+        }
+        for name, document in files.items():
+            (out / name).write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
+            print(f"{name}: {len(document['components'])} components")
 
 
 if __name__ == "__main__":

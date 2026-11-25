@@ -57,8 +57,8 @@ versions/changelog and tags through the release app token, starting
    and nightly jobs require it. Packages are then installed and started.
    Intel macOS is verified but not run, and its release-notes row says so.
 3. The sbom job attests each final package to its CycloneDX SBOM
-   (`scripts/sbom.py`, written by the build: the Rust crates for that
-   platform and, for the app, the npm packages).
+   (`scripts/sbom.py`, written with the notices from the lockfiles: the Rust
+   crates for that platform and, for the app, the npm packages).
 4. Stable publishing waits in `updates` for approval. It verifies exact-tag
    checksums, provenance and SBOM attestations (`scripts/verify-sboms.sh`),
    signs updater archives, attaches packages and SBOMs to the draft and only
