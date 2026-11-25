@@ -61,32 +61,41 @@ LICENCE_FILE_PREFIXES = ("license", "licence", "copying", "notice", "unlicense")
 THIRD_PARTY_MARKERS = ("thirdparty", "third-party", "third_party")
 ATTRIBUTION_WORDS = ("notice", "licen", "copying", "attribution", "credits")
 LICENCE_FOLDERS = ("license", "licenses", "licence", "licences")
-# A file named LICENSE*, COPYING* or NOTICE* is a licence unless it is code,
-# data or an asset; anything else (in a licence folder, or a third-party
-# attribution name) must be plain text.
+# Code, data, assets and scripts are never licence texts, whatever their name.
 CODE_SUFFIXES = (".rs", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts", ".vue", ".svelte", ".c",
-                 ".h", ".cc", ".cpp", ".hpp", ".py", ".rb", ".go", ".java", ".json", ".toml", ".yml", ".yaml",
-                 ".xml", ".map", ".lock", ".css", ".scss", ".less", ".wasm", ".png", ".svg", ".jpg", ".jpeg",
-                 ".gif", ".webp", ".ico", ".woff", ".woff2", ".ttf", ".otf", ".node", ".dll", ".so",
+                 ".h", ".cc", ".cpp", ".hpp", ".m", ".mm", ".swift", ".kt", ".java", ".cs", ".go", ".py", ".rb",
+                 ".pl", ".php", ".lua", ".sh", ".bash", ".zsh", ".ps1", ".bat", ".cmd", ".json", ".toml", ".yml",
+                 ".yaml", ".xml", ".map", ".lock", ".css", ".scss", ".less", ".wasm", ".png", ".svg", ".jpg",
+                 ".jpeg", ".gif", ".webp", ".ico", ".woff", ".woff2", ".ttf", ".otf", ".node", ".dll", ".so",
                  ".dylib", ".a", ".o", ".exe", ".bin", ".gz", ".zip")
-TEXT_SUFFIXES = ("", ".txt", ".md", ".markdown", ".rst", ".html", ".htm")
+# What counts as a package's own licence for npm review: a licence-named file
+# at its top. Nested and attribution files are passed on as well, but never
+# stand in for it.
+OWN_LICENCE_PREFIXES = ("license", "licence", "copying", "unlicense")
 # Folders a package carries but does not ship in what it builds.
 NOT_SHIPPED = {"node_modules", ".git", "target", "tests", "test", "benches", "examples", "fixtures", "testdata"}
 
 
 def is_licence_file(relative):
-    """Whether a package-relative path names a licence, NOTICE or attribution text."""
+    """Whether a package-relative path names a licence, NOTICE or attribution
+    text: a licence-named file, anything in a licence folder at any depth
+    (licenses/vendor/BSD.txt, licenses/Apache-2.0), or a third-party
+    attribution name. Code, data, assets and scripts never are."""
     path = Path(relative)
     lower = path.name.lower()
-    suffix = path.suffix.lower()
-    if lower.startswith(LICENCE_FILE_PREFIXES):
-        return suffix not in CODE_SUFFIXES
-    if suffix not in TEXT_SUFFIXES:
+    if path.suffix.lower() in CODE_SUFFIXES:
         return False
-    # Anything in a licence folder at any depth, such as licenses/vendor/BSD.txt.
+    if lower.startswith(LICENCE_FILE_PREFIXES):
+        return True
     if any(part.lower() in LICENCE_FOLDERS for part in path.parent.parts):
         return True
     return any(marker in lower for marker in THIRD_PARTY_MARKERS) and any(word in lower for word in ATTRIBUTION_WORDS)
+
+
+def own_licence(relative):
+    """A licence-named file at the package's top: what npm review requires."""
+    path = Path(relative)
+    return len(path.parts) == 1 and path.name.lower().startswith(OWN_LICENCE_PREFIXES) and is_licence_file(path)
 
 
 def licence_files(directory):
@@ -188,11 +197,12 @@ def npm_packages():
         for entry in entries:
             for version, path in zip(entry["versions"], entry["paths"]):
                 key = (entry["name"], version)
-                texts = set()
+                texts, own = set(), False
                 for file in licence_files(path):
-                    label = f"{entry['name']} {file.relative_to(path).as_posix()}"
-                    texts.add((licence, label, file.read_text(encoding="utf-8", errors="replace")))
-                if not texts:
+                    relative = file.relative_to(path).as_posix()
+                    own = own or own_licence(relative)
+                    texts.add((licence, f"{entry['name']} {relative}", file.read_text(encoding="utf-8", errors="replace")))
+                if not own:
                     reviewed = NO_LICENCE_FILE.get(f"{entry['name']}@{version}")
                     if reviewed is None:
                         fail(f"the npm package {entry['name']} {version} ships no licence file; add it to NO_LICENCE_FILE after review")

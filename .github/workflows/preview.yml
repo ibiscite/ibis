@@ -379,10 +379,12 @@ jobs:
       - name: Check the notices in every package
         env:
           TARGET: ${{ matrix.target }}
+          # Matches "Choose the app identity" above.
+          PRODUCT: ${{ startsWith(github.ref, 'refs/tags/v') && 'Ibis' || 'Ibis Nightly' }}
         run: |
           python=python3
           if [ "$RUNNER_OS" = Windows ]; then python=python; fi
-          "$python" scripts/verify-packages.py dist "$TARGET" apps/desktop/src-tauri/notices
+          "$python" scripts/verify-packages.py dist "$TARGET" apps/desktop/src-tauri/notices "$PRODUCT"
 
       - name: Attest build provenance
         id: provenance

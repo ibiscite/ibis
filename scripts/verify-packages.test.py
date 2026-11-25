@@ -83,7 +83,7 @@ class Packages(unittest.TestCase):
         return path
 
     def check(self, path):
-        verify.check_package(path, self.digests)
+        verify.check_package(path, self.digests, "Ibis")
 
     def assertFails(self, path, pattern):
         with self.assertRaisesRegex(verify.Failure, pattern):
@@ -112,13 +112,17 @@ class Packages(unittest.TestCase):
         elsewhere = {k: v for k, v in app_files("./usr/share/doc/ibis").items() if "samples" not in k}
         elsewhere["./usr/lib/Ibis/resources/samples.csljson"] = b"[]"
         self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(elsewhere)), "0 copies of LICENSE in the app's resource folder")
-        # Two apps cannot share one package.
-        two = app_files("Ibis.app/Contents/Resources") | app_files("Old.app/Contents/Resources")
-        self.assertFails(self.write("Ibis-macOS-Intel.app.tar.gz", tar_bytes(two)), "2 macOS apps")
+        # Another product's resource folder is not this app's.
+        self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(app_files("./usr/lib/Ibis Nightly"))), "0 Linux apps")
+        # Another app's complete resources do not stand in for this product's.
+        self.assertFails(self.write("Ibis-macOS-Intel.app.tar.gz", tar_bytes(app_files("Old.app/Contents/Resources"))), "0 macOS apps")
         # Resources and notices moved together out of where the app installs them.
         for name, build, root in [("Ibis-Linux.deb", deb_bytes, "./usr/share/doc/ibis"), ("Ibis-Linux.rpm", rpm_bytes, "./usr/share/doc/ibis"),
                                   ("Ibis-macOS-Intel.app.tar.gz", tar_bytes, "docs")]:
             self.assertFails(self.write(name, build(app_files(root))), "0 (macOS|Linux) apps with resources")
+        # A path leaving the package is refused, not read as one inside it.
+        escaping = tar_bytes({f"../{n}": d for n, d in NOTICES.items()} | {"ibis": b"synthetic"})
+        self.assertFails(self.write("ibis-Linux.tar.gz", escaping), "leaves its folder")
         # Another spelling of the same path is the same path.
         aliased = app_files("Ibis.app/Contents/Resources") | {"Ibis.app/Contents/Resources/notices/./LICENSE": b"stale"}
         self.assertFails(self.write("Ibis-macOS-Intel.app.tar.gz", tar_bytes(aliased)), "2 copies of LICENSE")
@@ -139,7 +143,7 @@ class Packages(unittest.TestCase):
         self.assertFails(self.write("ibis-Linux.tar.gz", tar_bytes(changed)), "THIRD-PARTY-NOTICES.txt differs")
 
     def test_app_archives_debian_and_rpm_packages_are_opened(self):
-        self.check(self.write("Ibis-macOS-Intel.app.tar.gz", tar_bytes(app_files("Ibis Nightly.app/Contents/Resources"))))
+        self.check(self.write("Ibis-macOS-Intel.app.tar.gz", tar_bytes(app_files("Ibis.app/Contents/Resources"))))
         self.check(self.write("Ibis-Linux.deb", deb_bytes(app_files("./usr/lib/Ibis"))))
         self.check(self.write("Ibis-Linux.rpm", rpm_bytes(app_files("./usr/lib/Ibis"))))
         bare = {"./usr/lib/Ibis/ibis-desktop": b"synthetic app", "./usr/lib/Ibis/resources/samples.csljson": b"[]"}
@@ -184,7 +188,7 @@ class Packages(unittest.TestCase):
         (dist / "ibis-Windows.zip").write_bytes(buffer.getvalue())
         (dist / "Ibis-Windows-setup.exe").write_bytes(b"MZ synthetic")
         with self.assertRaisesRegex(verify.Failure, "2 of 2 packages failed"):
-            verify.verify(dist, "x86_64-pc-windows-msvc", self.notices)
+            verify.verify(dist, "x86_64-pc-windows-msvc", self.notices, "Ibis")
 
     @unittest.skipUnless(sys.platform == "darwin", "disk images open only on macOS")
     def test_a_disk_image_is_mounted_and_read(self):

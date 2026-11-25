@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Open every package Preview built for one target and check what it holds.
 
-    python3 scripts/verify-packages.py DIST TARGET NOTICES
+    python3 scripts/verify-packages.py DIST TARGET NOTICES PRODUCT
 
 DIST is the folder of collected packages (scripts/collect-packages.sh),
 TARGET the app's Rust target, NOTICES the folder that
-scripts/third-party-notices.py wrote. Every package must carry those three
+scripts/third-party-notices.py wrote, PRODUCT the app's name ("Ibis" or
+"Ibis Nightly"), which names where its packages install it. Every package must carry those three
 notice files byte for byte: the command-line archive at its top, the app in
 its `notices` resource folder. A missing or unexpected package, a package that
 cannot be opened, a missing tool or a missing or different notice fails.
@@ -75,12 +76,15 @@ def expected_packages(target, names):
 # package carries (tauri.bundle.conf.json), which names the one app in it.
 ANCHOR = "resources/samples.csljson"
 # Where each kind of app package installs its resources, so an anchor (and
-# its notices) anywhere else cannot stand in for the app's own.
-RESOURCE_ROOTS = {
-    "macOS app": re.compile(r"[^/]+\.app/Contents/Resources/"),
-    "Linux app": re.compile(r"usr/lib/[^/]+/"),
-    "Windows app": re.compile(r"(?:\$INSTDIR/)?"),
-}
+# its notices) anywhere else, or another product's, cannot stand in.
+def resource_root(kind, product):
+    """Where a package of this kind installs PRODUCT's resources."""
+    name = re.escape(product)
+    return re.compile({
+        "macOS app": name + r"\.app/Contents/Resources/",
+        "Linux app": r"usr/lib/" + name + "/",
+        "Windows app": r"(?:\$INSTDIR/)?",
+    }[kind])
 
 
 def app_kind(name):
@@ -94,8 +98,13 @@ def app_kind(name):
 def collect(found, path, read):
     """Every notice-named file and every app anchor, by normalized path. A path
     written twice keeps both, so a stale copy cannot hide behind a good one."""
-    # One spelling per path: `a/./b`, `a//b` and `./a/b` are all `a/b`.
-    path = posixpath.normpath("/" + path.replace("\\", "/")).lstrip("/")
+    # One spelling per path: `a/./b`, `a//b` and `./a/b` are all `a/b`; a
+    # path that leaves the package (`../x`, `/x`) is refused, not clamped.
+    path = path.replace("\\", "/")
+    normal = posixpath.normpath(path)
+    if path.startswith("/") or normal == ".." or normal.startswith("../"):
+        raise Failure(f"an archive entry leaves its folder: {path}")
+    path = normal
     if path.rsplit("/", 1)[-1] in NOTICE_FILES:
         found.setdefault(path, []).append(read())
     elif path == ANCHOR or path.endswith("/" + ANCHOR):
@@ -269,7 +278,7 @@ def load_notices(folder):
     return notices
 
 
-def check_package(path, notices):
+def check_package(path, notices, product):
     try:
         found = contents(path)
     except (OSError, ValueError, EOFError, tarfile.TarError, zipfile.BadZipFile, lzma.LZMAError,
@@ -281,9 +290,9 @@ def check_package(path, notices):
     else:
         kind = app_kind(path.name)
         anchors = [member[: -len(ANCHOR)] for member in found if member == ANCHOR or member.endswith("/" + ANCHOR)]
-        roots = [root for root in anchors if RESOURCE_ROOTS[kind].fullmatch(root)]
+        roots = [root for root in anchors if resource_root(kind, product).fullmatch(root)]
         if len(roots) != 1:
-            raise Failure(f"{path.name}: {len(roots)} {kind}s with resources where a {kind} installs them, not one")
+            raise Failure(f"{path.name}: {len(roots)} {kind}s with resources where {product} installs them, not one")
         root, where = roots[0] + "notices/", "in the app's resource folder"
     for name, digest in notices.items():
         copies = found.get(root + name, [])
@@ -295,7 +304,7 @@ def check_package(path, notices):
         raise Failure(f"{path.name}: " + "; ".join(problems))
 
 
-def verify(dist, target, notices_folder):
+def verify(dist, target, notices_folder, product):
     dist = Path(dist)
     notices = load_notices(notices_folder)
     names = sorted(p.name for p in dist.iterdir())
@@ -303,7 +312,7 @@ def verify(dist, target, notices_folder):
     failures = []
     for name in packages:
         try:
-            check_package(dist / name, notices)
+            check_package(dist / name, notices, product)
             print(f"ok   {name}")
         except Failure as failure:
             failures.append(str(failure))
@@ -313,7 +322,7 @@ def verify(dist, target, notices_folder):
 
 
 def main():
-    if len(sys.argv) != 4:
+    if len(sys.argv) != 5:
         print(__doc__.strip(), file=sys.stderr)
         return 2
     try:
