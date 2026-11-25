@@ -462,8 +462,9 @@ pub struct Portable {
     pub appearance: Option<Appearance>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub accent: Option<Accent>,
-    /// The interface language; absent follows the system.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// The interface language; absent, or one this build does not speak,
+    /// follows the system.
+    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "language_or_none")]
     pub interface_language: Option<InterfaceLanguage>,
 }
 
@@ -692,6 +693,12 @@ fn backup_path(path: &Path) -> PathBuf {
 
 /// A stored choice read leniently: anything but text, as another version may
 /// have written, is no choice at all.
+/// A language another build wrote, or one a later build removed, follows the
+/// system instead of making the whole file invalid.
+fn language_or_none<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<InterfaceLanguage>, D::Error> {
+    Ok(serde_json::from_value(Value::deserialize(deserializer)?).ok())
+}
+
 fn text_or_none<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<String>, D::Error> {
     Ok(match Value::deserialize(deserializer)? {
         Value::String(text) => Some(text),
@@ -1615,6 +1622,29 @@ mod tests {
         assert_eq!(saved["output"], "apa");
         assert_eq!(saved["window_position"], newer_build["window_position"]);
         assert_eq!(saved["later_flag"], newer_build["later_flag"]);
+    }
+
+    #[test]
+    fn a_language_this_build_does_not_speak_follows_the_system_and_saves_again() {
+        let directory = dir("language");
+        let path = directory.path().join("settings.json");
+        let other_build =
+            serde_json::json!({"schema_version": 2, "output": "apa", "density": "compact", "interface_language": "fr"});
+        fs::write(&path, other_build.to_string()).unwrap_or_else(|e| panic!("{e}"));
+        let loaded = load(&path);
+        assert!(loaded.problem.is_none(), "{:?}", loaded.problem);
+        assert_eq!(loaded.settings.portable.output.as_deref(), Some("apa"));
+        assert_eq!(loaded.settings.portable.density, Some(Density::Compact));
+        assert_eq!(loaded.settings.portable.interface_language(), InterfaceLanguage::System);
+        let saved = update(&path, |s| s.portable.larger_text = Some(true)).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(saved.portable.output.as_deref(), Some("apa"));
+        assert_eq!(saved.portable.larger_text, Some(true));
+        let saved = update(&path, |s| {
+            s.portable.interface_language = Some(InterfaceLanguage::German)
+        })
+        .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(load(&path).settings, saved);
+        assert_eq!(saved.portable.interface_language(), InterfaceLanguage::German);
     }
 
     #[test]
