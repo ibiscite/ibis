@@ -147,3 +147,10 @@ Programmatic changes within one surface, complete session cycles inside the
 final tail, Windows HWND/PID reuse and focused-field changes remain native
 qualification limits. Windows has no short lock/session epoch. Synthetic tests
 do not establish real provider timing or keyboard placement. Linux only copies.
+
+Turning Paste off in Ibis (Settings, the picker or a restore) revokes every
+waiting delivery before the save returns; delivery also rereads the setting
+from disk as it decides and just before the final post, outside every lock.
+A hand edit to the settings file takes effect when the watcher reports it, so
+one made during the final post's last 250 ms may still paste: an accepted
+limit, because no read is atomic with an outside file edit.
