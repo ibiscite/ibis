@@ -214,7 +214,7 @@ One locator parser serves search, the Page field and the CLI (all 29 CSL terms, 
 A project (stored under `writings` in `settings.json`) is an optional name, format and read-only `.bib` in `settings.json` ([decision 0042](decisions/0042-formats-apps-and-writings.md)); the engine remembers one per app, and CLI/editor clients select one explicitly. `ibis_engine::app_context::Owner` accepts one typed `ContextRequest` and returns the project, format and bibliography observation together for the captured app. It owns project edits, session-only selection, bibliography reads and stale-context refusals. The desktop adds native destination names and delivery facts, opens file dialogs and writes the clipboard. Editor requests carry their own context and never borrow the captured app's bibliography. Projects grant no paste authority and receipts never carry paths. Bibliography checks, `--strict` and stale-identity rules are in [project commands](cli.md#projects).
 
 <a id="task-contexts-planned"></a>
-Cross-client task-context plans are in [the roadmap](../ROADMAP.md#next).
+Cross-client task-context plans are in [the roadmap](../ROADMAP.md#b-04-one-contract-one-context-one-delivery).
 
 ## Desktop app
 

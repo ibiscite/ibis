@@ -10,8 +10,9 @@ use crate::request::*;
 use ibis_core::contract::{
     CitationRequest, CitationResult, CitationWarningCode, EngineError, ErrorCode, ExitCode, SnapshotObject,
 };
+use schemars::JsonSchema;
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 type Answer<T> = Result<DispatchResult<T>, EngineError>;
 type Checked<T> = Answer<health::Checked<T>>;
@@ -149,22 +150,34 @@ pub(crate) fn outputs(_: &Engine, OutputsRequest {}: OutputsRequest, cancel: &Ca
     catalogue(crate::outputs::list(), cancel)
 }
 
-pub(crate) fn schema(_: &Engine, request: SchemaRequest, cancel: &Cancellation) -> Answer<Value> {
+/// One method's contract, as `schema` lists it.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct MethodSchema {
+    pub method: Method,
+    /// The contract version these schemas describe.
+    pub contract: u8,
+    /// The JSON Schema of the method's parameters.
+    #[schemars(with = "schemars::Schema")]
+    pub params: Value,
+    /// The JSON Schema of the method's result.
+    #[schemars(with = "schemars::Schema")]
+    pub result: Value,
+}
+
+pub(crate) fn schema(_: &Engine, request: SchemaRequest, cancel: &Cancellation) -> Answer<Vec<MethodSchema>> {
     let methods = request
         .method
         .map_or_else(|| Method::ALL.to_vec(), |method| vec![method]);
     let schemas = methods
         .into_iter()
-        .map(|method| {
-            json!({
-                "method": method,
-                "contract": ibis_core::contract::CONTRACT_VERSION,
-                "params": (method.row().params)(),
-                "result": (method.row().result)(),
-            })
+        .map(|method| MethodSchema {
+            method,
+            contract: ibis_core::contract::CONTRACT_VERSION,
+            params: (method.row().params)(),
+            result: (method.row().result)(),
         })
         .collect();
-    catalogue(Value::Array(schemas), cancel)
+    catalogue(schemas, cancel)
 }
 
 pub(crate) fn call(engine: &Engine, request: CallRequest, cancel: &Cancellation) -> Answer<Reply> {

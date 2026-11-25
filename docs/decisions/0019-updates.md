@@ -1,7 +1,8 @@
 # 0019 Updates
 
-Tauri's updater runs from Rust. Checks are opt-in and read a small HTTPS feed
-from GitHub. Packages must verify against the built-in update key; stable and
+Tauri's updater runs from Rust. Checks read a small HTTPS feed from GitHub;
+until 1.0 automatic checks are on by default and can be switched off
+([0008](0008-offline-by-default.md)). Packages must verify against the built-in update key; stable and
 Nightly have separate keys, app identifiers, settings, shortcuts and feeds.
 Stable publishing requires the maintainer's one-click approval.
 
