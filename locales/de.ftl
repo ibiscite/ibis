@@ -1567,6 +1567,7 @@ app-failure-set-cli-installed = Die Einrichtung der Befehlszeile konnte nicht ge
 app-failure-copy-cli-profile = Die Shell-Einrichtung konnte nicht kopiert werden.
 app-failure-hide-picker = Das Fenster konnte nicht geschlossen werden.
 app-failure-copy-editor-endpoint = Die Editor-Adresse konnte nicht kopiert werden.
+app-failure-copy-version = Die Version konnte nicht kopiert werden.
 app-failure-set-window-size = Die Fenstergröße konnte nicht gespeichert werden.
 app-failure-undo-window-position = Die Fensterposition konnte nicht wiederhergestellt werden.
 app-failure-copy-project-entry = Der Referenzeintrag konnte nicht kopiert werden.

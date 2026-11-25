@@ -15,6 +15,7 @@ pub const APP_COMMANDS: &[&str] = &[
     "cli_status",
     "set_cli_installed",
     "copy_cli_profile",
+    "copy_version",
     "choose_library",
     "reload_library",
     "use_zotero",

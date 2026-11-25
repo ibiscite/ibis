@@ -36,6 +36,7 @@ pub(crate) enum NativeOperation {
     CopyCliProfile,
     HidePicker,
     CopyEditorEndpoint,
+    CopyVersion,
     SetWindowSize,
     UndoWindowPosition,
     CopyProjectEntry,
@@ -70,6 +71,7 @@ impl NativeOperation {
             | Self::CopyCliProfile
             | Self::HidePicker
             | Self::CopyEditorEndpoint
+            | Self::CopyVersion
             | Self::SetWindowSize
             | Self::UndoWindowPosition
             | Self::CopyProjectEntry

@@ -1643,6 +1643,7 @@ app-failure-set-cli-installed = تعذّر تغيير إعداد سطر الأو
 app-failure-copy-cli-profile = تعذّر نسخ إعداد الصدفة.
 app-failure-hide-picker = تعذّر إغلاق النافذة.
 app-failure-copy-editor-endpoint = تعذّر نسخ عنوان المحرر.
+app-failure-copy-version = تعذّر نسخ الإصدار.
 app-failure-set-window-size = تعذّر حفظ حجم النافذة.
 app-failure-undo-window-position = تعذّرت استعادة موضع النافذة.
 app-failure-copy-project-entry = تعذّر نسخ مُدخل المرجع.

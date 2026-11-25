@@ -53,6 +53,7 @@
     "allow-reject-app-proposals",
     "allow-cli-status",
     "allow-set-cli-installed",
-    "allow-copy-cli-profile"
+    "allow-copy-cli-profile",
+    "allow-copy-version"
   ]
 }

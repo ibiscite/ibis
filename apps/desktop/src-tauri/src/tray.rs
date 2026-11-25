@@ -10,7 +10,6 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Runtime};
-use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_dialog::DialogExt;
 
 use crate::diagnostics::{NativeIssue, report};
@@ -290,6 +289,20 @@ fn help_rows() -> Vec<Row> {
 
 fn version_line(name: &str, version: &str) -> String {
     format!("{name} {version}")
+}
+
+/// About's version line, or with `build` its build line, copied as the tray
+/// copies it: through the clipboard owner, never the web view's clipboard.
+#[tauri::command]
+#[ibis_desktop_macros::command(main)]
+pub(crate) fn copy_version(build: bool, app: AppHandle) -> Result<(), crate::errors::NativeFailure> {
+    let version = if build {
+        crate::delights::about_build()
+    } else {
+        app.package_info().version.to_string()
+    };
+    crate::copy::write_plain(&app, &version_line(&app.package_info().name, &version))
+        .map_err(|_| crate::errors::NativeFailure)
 }
 
 pub(crate) struct OpenMenuItem(MenuItem<tauri::Wry>);
@@ -704,14 +717,8 @@ fn menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
     } else if event.id == Row::Update.id() {
         updater::setting::check_from_menu(app);
     } else if event.id == Row::Version.id() {
-        if app
-            .clipboard()
-            .write_text(version_line(
-                &app.package_info().name,
-                &app.package_info().version.to_string(),
-            ))
-            .is_err()
-        {
+        let line = version_line(&app.package_info().name, &app.package_info().version.to_string());
+        if crate::copy::write_plain(app, &line).is_err() {
             app.dialog()
                 .message(words("app-tray-version-copy-failed", &[]))
                 .title(&app.package_info().name)

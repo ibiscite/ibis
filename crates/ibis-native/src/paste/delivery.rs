@@ -2,18 +2,17 @@ use std::time::{Duration, Instant};
 
 use ibis_core::destination::{CopyReason, Decision, PastePermission};
 
-#[cfg(any(not(target_os = "windows"), test))]
-use super::CopyProof;
 use super::capture::Front;
 use super::destination::delivery_decision;
 use super::{
-    Captured, Delivered, LATE, PostResult, RETURN_CHECKS, RETURN_LIMIT, RETURN_STEP, SETTLE, SYSTEM, SafetyFailure,
+    Captured, Delivered, DeliveryTicket, LATE, PostResult, RETURN_CHECKS, RETURN_LIMIT, RETURN_STEP, SETTLE, SYSTEM,
     SafetyStamp,
 };
 
 /// The system calls a paste needs, so the decision is testable without them.
 pub(super) trait Desk {
-    type Proof: CopyEvidence;
+    /// The window a ticket returns to on this system.
+    type Window;
     /// One immutable start covers policy work, readiness and the queued post.
     #[cfg(any(target_os = "macos", test))]
     fn delivery_began(&self) -> Instant {
@@ -50,48 +49,15 @@ pub(super) trait Desk {
     /// The app in front, or `None` once the picker has been shown again.
     /// A failed proof must keep its reason while waiting for that app.
     fn frontmost(&self) -> Result<Option<Front>, CopyReason>;
-    fn ready(&self, request: &DeliveryRequest, _proof: &Self::Proof) -> Result<bool, CopyReason> {
+    fn ready(&self, request: &DeliveryRequest, _proof: &DeliveryTicket<Self::Window>) -> Result<bool, CopyReason> {
         Ok(self
             .frontmost()?
             .is_some_and(|front| front.pid == request.pid && front.id.as_deref() == Some(&request.id)))
     }
     /// Finish with this platform's proof and final guards. On macOS all
     /// checks and posting run together in one main-thread task.
-    fn finish(&self, request: DeliveryRequest, proof: &Self::Proof) -> PostResult;
+    fn finish(&self, request: DeliveryRequest, proof: &DeliveryTicket<Self::Window>) -> PostResult;
     fn wait(&self, time: Duration);
-}
-
-/// Each system keeps immutable target evidence and lifetime anchors for the
-/// shared policy. Windows starts its lifetime before clipboard I/O.
-pub(super) trait CopyEvidence {
-    fn policy_current(&self) -> bool;
-    fn captured(&self) -> Option<&Captured>;
-    fn written(&self) -> Instant;
-    fn stamp(&self) -> SafetyStamp;
-
-    fn check_age(&self, stamp: SafetyStamp, now: Instant) -> Result<(), SafetyFailure> {
-        self.stamp().check(stamp)?;
-        if now >= self.written() + LATE {
-            return Err(SafetyFailure::Expired);
-        }
-        Ok(())
-    }
-}
-
-#[cfg(any(not(target_os = "windows"), test))]
-impl CopyEvidence for CopyProof {
-    fn policy_current(&self) -> bool {
-        self.policy.current()
-    }
-    fn captured(&self) -> Option<&Captured> {
-        self.captured.as_ref()
-    }
-    fn written(&self) -> Instant {
-        self.written
-    }
-    fn stamp(&self) -> SafetyStamp {
-        self.stamp
-    }
 }
 
 #[cfg_attr(not(any(target_os = "macos", target_os = "windows", test)), allow(dead_code))]
@@ -104,14 +70,14 @@ pub(super) struct DeliveryRequest {
 }
 
 /// Paste a proven copy into its captured app, or say why it stays copied.
-pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool) -> Delivered {
+pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&DeliveryTicket<D::Window>>, enabled: bool) -> Delivered {
     #[cfg(any(target_os = "macos", test))]
     let began = desk.delivery_began();
     if !desk.release_keys() {
         return key_release_failed();
     }
     let unknown = Captured::unknown(SYSTEM);
-    let captured = proof.and_then(CopyEvidence::captured).unwrap_or(&unknown);
+    let captured = proof.and_then(DeliveryTicket::captured).unwrap_or(&unknown);
     let permission = PastePermission {
         enabled,
         granted: enabled && desk.may_post(),
@@ -131,7 +97,7 @@ pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool
             let Some(proof) = proof else {
                 return copied(CopyReason::NoTarget);
             };
-            let deadline = proof.written() + LATE;
+            let deadline = proof.written + LATE;
             if let Err(failure) = proof.check_age(desk.stamp(), desk.delivery_clock()) {
                 return copied(failure.reason());
             }

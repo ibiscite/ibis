@@ -69,6 +69,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     updateChecks: async () => state.updates,
     setUpdateChecks: async (on) => { state.updates = on; for (const changed of state.automatic) changed(on); return undefined as never; },
     openAboutLink: vi.fn(async () => undefined),
+    copyVersion: vi.fn(async () => null),
   checkForUpdates: async () => undefined as never,
     pastePermission: async () => { state.reads += 1; return state.permission; },
     openPastePermission: async () => { state.opened += 1; return undefined as never; },
@@ -335,14 +336,16 @@ test("General cancels recording on Escape, Tab and page changes without saving",
   expect(state.shortcutChoices).toEqual([]);
 });
 
-test("About copies the version and says so", async () => {
+test("About copies the version natively, never through the web view's clipboard, and says so", async () => {
   const writeText = vi.fn().mockResolvedValue(undefined);
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+  const copyVersion = vi.fn().mockResolvedValue(null);
   const pseudo = createInterfaceMessages(english, true);
-  render(<InterfaceMessagesProvider messages={pseudo}><SettingsApp api={fakeApi().api} initialPage="about" /></InterfaceMessagesProvider>);
+  render(<InterfaceMessagesProvider messages={pseudo}><SettingsApp api={{ ...fakeApi().api, copyVersion }} initialPage="about" /></InterfaceMessagesProvider>);
   fireEvent.click(await screen.findByRole("button", { name: pseudo.text("about-version", { version: "0.3.0" }) }));
   await screen.findByRole("button", { name: pseudo.text("about-copied") });
-  expect(writeText).toHaveBeenCalledOnce();
+  expect(copyVersion).toHaveBeenCalledExactlyOnceWith(false);
+  expect(writeText).not.toHaveBeenCalled();
 });
 
 test.each(["macos", "windows"])("settings search on %s uses only keys to find, choose, clear and leave", async (platform) => {
