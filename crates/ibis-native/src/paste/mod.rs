@@ -36,7 +36,6 @@ use capture::Front;
 use capture::Selection;
 #[cfg(target_os = "windows")]
 pub use delivery::key_release_failed;
-pub use delivery::with_paste_setting;
 use delivery::{DeliveryRequest, Desk, deliver};
 pub use destination::{intended_paste, policy_decision};
 use input_fence::PostResult;
@@ -631,20 +630,20 @@ pub struct CopyAttempt<W = HostWindow> {
 /// Paste into the captured app when it is safe to; the notice then says what happened.
 /// `setting` reads the paste setting from its owner when delivery decides.
 #[cfg(target_os = "macos")]
-pub fn deliver_copy(host: &impl macos::Host, setting: impl FnOnce() -> Option<bool>, token: Option<u32>) -> Delivered {
+pub fn deliver_copy(host: &impl macos::Host, setting: impl Fn() -> Option<bool>, token: Option<u32>) -> Delivered {
     let began = Instant::now();
     let ticket = host.last_target().take_ticket(token);
     let desk = macos::Mac::new(host, ticket.as_ref(), began);
-    let outcome = with_paste_setting(setting, |enabled| deliver(&desk, ticket.as_ref(), enabled));
+    let outcome = deliver(&desk, ticket.as_ref(), setting);
     desk.complete(&outcome);
     outcome
 }
 
 /// Linux keeps no clipboard count, so its writes leave no ticket: it only copies.
 #[cfg(target_os = "linux")]
-pub fn deliver_copy(last: &LastTarget, setting: impl FnOnce() -> Option<bool>, token: Option<u32>) -> Delivered {
+pub fn deliver_copy(last: &LastTarget, setting: impl Fn() -> Option<bool>, token: Option<u32>) -> Delivered {
     let ticket = last.take_ticket(token);
-    with_paste_setting(setting, |enabled| deliver(&CopyOnly, ticket.as_ref(), enabled))
+    deliver(&CopyOnly, ticket.as_ref(), setting)
 }
 
 /// Linux captures no target, so it only copies.
@@ -666,6 +665,12 @@ impl Desk for CopyOnly {
         PostResult::Refused
     }
     fn wait(&self, _: Duration) {}
+}
+
+/// The paste setting as a test's owner would answer it, every time.
+#[cfg(test)]
+fn consent(enabled: bool) -> impl Fn() -> Option<bool> {
+    move || Some(enabled)
 }
 
 #[cfg(test)]

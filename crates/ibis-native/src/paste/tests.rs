@@ -423,37 +423,43 @@ fn pasted() -> Delivered {
 }
 
 #[test]
-fn the_paste_setting_is_read_when_delivery_decides_and_unreadable_only_copies() {
+fn the_paste_setting_is_read_when_delivery_decides_and_again_before_the_final_post() {
+    // The proof was taken with Paste on; the setting is read only now, from
+    // its owner, once as delivery decides and once just before posting.
+    for (answers, expected) in [
+        (vec![Some(false)], "paste-off"),
+        (vec![None], "paste-unavailable"),
+        (vec![Some(true), Some(false)], "paste-off"),
+        (vec![Some(true), None], "paste-unavailable"),
+    ] {
+        let desk = Fake::new();
+        let proof = proof();
+        let reads = Cell::new(0);
+        let consent = || {
+            let read = reads.get();
+            reads.set(read + 1);
+            answers.get(read).copied().flatten()
+        };
+        assert_eq!(super::deliver(&desk, Some(&proof), consent), copied(expected));
+        assert!(desk.posts.borrow().is_empty(), "nothing posted after {answers:?}");
+        assert_eq!(desk.asked.get(), 0);
+        assert_eq!(reads.get(), answers.len());
+    }
     let desk = Fake::new();
-    // The proof was taken with Paste on; the setting is read only now.
-    let proof = proof();
     let reads = Cell::new(0);
-    let deliver = |setting: Option<bool>| {
-        with_paste_setting(
-            || {
-                reads.set(reads.get() + 1);
-                setting
-            },
-            |enabled| super::deliver(&desk, Some(&proof), enabled),
-        )
+    let consent = || {
+        reads.set(reads.get() + 1);
+        Some(true)
     };
-    assert_eq!(
-        deliver(Some(false)),
-        copied("paste-off"),
-        "Paste turned off after capture"
-    );
-    assert_eq!(deliver(None), copied("paste-unavailable"), "an unreadable setting");
-    assert!(desk.posts.borrow().is_empty());
-    assert_eq!(desk.asked.get(), 0);
-    assert_eq!(reads.get(), 2, "one read per delivery");
-    assert_eq!(deliver(Some(true)), pasted());
+    assert_eq!(super::deliver(&desk, Some(&proof()), consent), pasted());
+    assert_eq!(reads.get(), 2, "read as delivery decides and before the post");
 }
 
 #[test]
 fn an_editor_with_verified_window_identity_pastes_once_after_returning() {
     let desk = Fake::new();
     desk.fronts.replace(vec![7, 7, 42]);
-    assert_eq!(deliver(&desk, Some(&proof()), true), pasted());
+    assert_eq!(deliver(&desk, Some(&proof()), consent(true)), pasted());
     assert_eq!(*desk.posts.borrow(), [42]);
     assert_eq!(
         *desk.checks.borrow(),
@@ -515,7 +521,7 @@ fn input_switching_a_tab_or_conversation_while_focus_returns_refuses_even_with_t
             // including a middle-click that closes the current Chrome tab.
             // The event itself is emitted by the fake while waiting below.
             desk.input_on_first_wait.set(Some(event));
-            assert_eq!(deliver(&desk, Some(&proof), true), copied("target-changed"));
+            assert_eq!(deliver(&desk, Some(&proof), consent(true)), copied("target-changed"));
             assert!(desk.posts.borrow().is_empty());
             assert!(desk.posted_documents.borrow().is_empty());
             assert_eq!(desk.change_count.get(), proof.clipboard);
@@ -554,7 +560,7 @@ fn granting_access_cannot_repair_a_failed_capture_without_a_fresh_external_activ
         };
         for _fresh_enter_in_failed_presentation in 0..2 {
             let proof = copy();
-            assert_eq!(deliver(&desk, Some(&proof), true), copied(message));
+            assert_eq!(deliver(&desk, Some(&proof), consent(true)), copied(message));
             assert_eq!(desk.change_count.get(), proof.clipboard);
             assert!(desk.posts.borrow().is_empty());
         }
@@ -565,7 +571,7 @@ fn granting_access_cannot_repair_a_failed_capture_without_a_fresh_external_activ
         last.begin_presentation(capture::captured(System::Macos, valid, 7));
         let proof = copy();
         desk.presentation.set(proof.target.presentation);
-        assert_eq!(deliver(&desk, Some(&proof), true), pasted());
+        assert_eq!(deliver(&desk, Some(&proof), consent(true)), pasted());
         assert_eq!(*desk.posted_windows.borrow(), [Some(100)]);
     }
 }
@@ -578,7 +584,7 @@ fn a_changed_closed_minimised_or_unproven_window_never_receives_the_paste() {
             ..Fake::new()
         };
         let proof = proof();
-        assert_eq!(deliver(&desk, Some(&proof), true), copied("target-changed"));
+        assert_eq!(deliver(&desk, Some(&proof), consent(true)), copied("target-changed"));
         assert!(desk.posts.borrow().is_empty());
         assert_eq!(
             desk.change_count.get(),
@@ -594,7 +600,7 @@ fn a_copy_older_than_its_limit_on_the_delivery_clock_never_pastes() {
     let desk = Fake::new();
     let proof = proof();
     desk.clock.set(proof.written + LATE);
-    assert_eq!(deliver(&desk, Some(&proof), true), copied("paste-expired"));
+    assert_eq!(deliver(&desk, Some(&proof), consent(true)), copied("paste-expired"));
     assert!(desk.posts.borrow().is_empty());
 }
 
@@ -683,7 +689,10 @@ fn an_app_that_never_answers_in_time_is_copied_with_that_reason_and_never_pasted
             ..Fake::new()
         },
     ] {
-        assert_eq!(deliver(&desk, Some(&proof()), true), copied("paste-unavailable"));
+        assert_eq!(
+            deliver(&desk, Some(&proof()), consent(true)),
+            copied("paste-unavailable")
+        );
         assert!(desk.posts.borrow().is_empty());
     }
 }
@@ -702,7 +711,7 @@ fn a_field_that_hides_typing_says_so_whether_secure_typing_or_an_unproved_target
             ..Fake::new()
         },
     ] {
-        assert_eq!(deliver(&desk, Some(&proof()), true), copied("secure-field"));
+        assert_eq!(deliver(&desk, Some(&proof()), consent(true)), copied("secure-field"));
         assert!(desk.posts.borrow().is_empty());
     }
 }
@@ -713,7 +722,10 @@ fn clipboard_replaced_during_the_final_check_is_never_read_or_pasted() {
         replace_during_check: true,
         ..Fake::new()
     };
-    assert_eq!(deliver(&desk, Some(&proof()), true), copied("clipboard-changed"));
+    assert_eq!(
+        deliver(&desk, Some(&proof()), consent(true)),
+        copied("clipboard-changed")
+    );
     assert!(desk.posts.borrow().is_empty());
     assert_eq!(*desk.checks.borrow(), ["foreground", "secure-input", "change-count"]);
 }
@@ -744,7 +756,7 @@ fn overlapping_copy_deliveries_leave_the_newer_proof_available() {
     // A's worker is queued but has not taken its proof yet.
     let delivery_a = || {
         let proof = last.take_ticket(Some(token_a));
-        deliver(&desk, proof.as_ref(), true)
+        deliver(&desk, proof.as_ref(), consent(true))
     };
     last.begin_presentation(None);
     let token_b = last
@@ -761,7 +773,7 @@ fn overlapping_copy_deliveries_leave_the_newer_proof_available() {
     assert_eq!(delivery_a(), copied(reason));
     assert!(desk.posts.borrow().is_empty());
     let proof_b = last.take_ticket(Some(token_b));
-    assert_eq!(deliver(&desk, proof_b.as_ref(), true), pasted());
+    assert_eq!(deliver(&desk, proof_b.as_ref(), consent(true)), pasted());
     assert!(last.take_ticket(Some(token_b)).is_none());
     assert_eq!(*desk.posts.borrow(), [42]);
 }
@@ -831,7 +843,10 @@ fn linux_writes_keep_ordered_receipts_and_never_a_ticket_or_a_paste() {
     captured.paste = Ok(Some(AppPaste::Paste));
     let ticket = proof_for(Some(captured));
     for ticket in [None, Some(&ticket)] {
-        assert!(matches!(deliver(&CopyOnly, ticket, true), Delivered::Copied { .. }));
+        assert!(matches!(
+            deliver(&CopyOnly, ticket, consent(true)),
+            Delivered::Copied { .. }
+        ));
     }
 }
 
@@ -849,7 +864,7 @@ fn unsafe_unproven_and_disabled_targets_only_copy() {
     ] {
         let desk = Fake::new();
         let ticket = proof_for(captured);
-        assert_eq!(deliver(&desk, Some(&ticket), enabled), copied(reason));
+        assert_eq!(deliver(&desk, Some(&ticket), consent(enabled)), copied(reason));
         assert!(desk.posts.borrow().is_empty());
     }
 }
@@ -875,7 +890,7 @@ fn unknown_app_approval_is_frozen_before_io_and_each_fresh_enter_pastes_once() {
         )
         .unwrap_or_else(|e| panic!("{e}"));
     let before = last.take_ticket(Some(token)).unwrap_or_else(|| panic!("copy proof"));
-    assert_eq!(deliver(&desk, Some(&before), true), copied("unknown-app"));
+    assert_eq!(deliver(&desk, Some(&before), consent(true)), copied("unknown-app"));
     assert!(desk.posts.borrow().is_empty());
     let token = last
         .copy_at(desk.stamp.get(), |_| Ok(approved.get()), || Ok(Some(COUNT)))
@@ -884,7 +899,7 @@ fn unknown_app_approval_is_frozen_before_io_and_each_fresh_enter_pastes_once() {
         .take_ticket(Some(token))
         .unwrap_or_else(|| panic!("fresh copy proof"));
     desk.presentation.set(after.target.presentation);
-    assert_eq!(deliver(&desk, Some(&after), true), pasted());
+    assert_eq!(deliver(&desk, Some(&after), consent(true)), pasted());
     assert_eq!(*desk.posts.borrow(), [42]);
     assert!(last.take_ticket(Some(token)).is_none(), "one delivery per fresh copy");
 }
@@ -898,7 +913,7 @@ fn a_remembered_copy_only_choice_never_posts() {
     let mut captured = writer(desk.app_id);
     captured.paste = Ok(Some(AppPaste::CopyOnly));
     let proof = proof_for(Some(captured));
-    assert_eq!(deliver(&desk, Some(&proof), true), copied("copy-only"));
+    assert_eq!(deliver(&desk, Some(&proof), consent(true)), copied("copy-only"));
     assert!(desk.posts.borrow().is_empty());
 }
 
@@ -916,14 +931,14 @@ fn a_saved_delivery_change_revokes_a_detached_proof_without_touching_the_clipboa
     let proof = last.take_ticket(Some(token)).unwrap_or_else(|| panic!("copy proof"));
     // The worker already took its proof; removing the pending slot alone cannot revoke it.
     last.0.lock().unwrap_or_else(|e| panic!("{e}")).invalidate_policy();
-    assert_eq!(deliver(&desk, Some(&proof), true), copied("paste-unavailable"));
+    assert_eq!(deliver(&desk, Some(&proof), consent(true)), copied("paste-unavailable"));
     assert!(desk.posts.borrow().is_empty());
     assert_eq!(desk.change_count.get(), COUNT);
     let fresh = last
         .copy_at(desk.stamp.get(), |_| Ok(Some(AppPaste::CopyOnly)), || Ok(Some(COUNT)))
         .unwrap_or_else(|e| panic!("{e}"));
     let fresh = last.take_ticket(Some(fresh)).unwrap_or_else(|| panic!("fresh proof"));
-    assert_eq!(deliver(&desk, Some(&fresh), true), copied("copy-only"));
+    assert_eq!(deliver(&desk, Some(&fresh), consent(true)), copied("copy-only"));
     assert!(desk.posts.borrow().is_empty());
 }
 
@@ -932,12 +947,12 @@ fn a_saved_delivery_change_revokes_a_detached_proof_without_touching_the_clipboa
 fn terminals_and_missing_postevent_permission_keep_the_existing_flow() {
     let desk = Fake::new();
     let terminal = proof_for(Some(writer("com.apple.Terminal")));
-    assert_eq!(deliver(&desk, Some(&terminal), true), copied("terminal"));
+    assert_eq!(deliver(&desk, Some(&terminal), consent(true)), copied("terminal"));
     let desk = Fake {
         may_post: false,
         ..Fake::new()
     };
-    assert_eq!(deliver(&desk, Some(&proof()), true), copied("no-permission"));
+    assert_eq!(deliver(&desk, Some(&proof()), consent(true)), copied("no-permission"));
     assert_eq!(desk.asked.get(), 1);
     assert!(desk.posts.borrow().is_empty());
 }
@@ -954,7 +969,10 @@ fn with_selection(text: &str) -> DeliveryTicket {
 fn enter_pastes_over_the_selection_the_picker_opened_on() {
     let desk = Fake::new();
     *desk.selection_now.borrow_mut() = Some(Ok(Selection::of_text("smith 2020").0));
-    assert_eq!(deliver(&desk, Some(&with_selection("smith 2020")), true), pasted());
+    assert_eq!(
+        deliver(&desk, Some(&with_selection("smith 2020")), consent(true)),
+        pasted()
+    );
     assert_eq!(*desk.posts.borrow(), [42]);
     assert!(desk.checks.borrow().contains(&"selection"));
 }
@@ -965,7 +983,7 @@ fn a_selection_changed_before_enter_is_left_alone_and_says_why() {
         let desk = Fake::new();
         *desk.selection_now.borrow_mut() = Some(Ok(Selection::of_text(now).0));
         assert_eq!(
-            deliver(&desk, Some(&with_selection("smith 2020")), true),
+            deliver(&desk, Some(&with_selection("smith 2020")), consent(true)),
             copied("selection-not-shown")
         );
         assert!(desk.posts.borrow().is_empty());
@@ -983,11 +1001,14 @@ fn an_opening_that_could_not_read_never_pastes_over_text_found_at_enter() {
     };
     let desk = Fake::new();
     *desk.selection_now.borrow_mut() = Some(Err(CopyReason::SelectionNotShown));
-    assert_eq!(deliver(&desk, Some(&unread()), true), copied("selection-not-shown"));
+    assert_eq!(
+        deliver(&desk, Some(&unread()), consent(true)),
+        copied("selection-not-shown")
+    );
     assert!(desk.posts.borrow().is_empty());
     let empty = Fake::new();
     *empty.selection_now.borrow_mut() = Some(Ok(Selection::Unread));
-    assert_eq!(deliver(&empty, Some(&unread()), true), pasted());
+    assert_eq!(deliver(&empty, Some(&unread()), consent(true)), pasted());
     assert_eq!(*empty.posts.borrow(), [42]);
 }
 
@@ -1003,7 +1024,10 @@ fn replacing(old: &str) -> DeliveryTicket {
 fn a_changed_citation_pastes_over_the_selected_old_citation() {
     let desk = Fake::new();
     *desk.selection_now.borrow_mut() = Some(Ok(Selection::Citation(capture::OldCitation::of("(Smith, 2020)"))));
-    assert_eq!(deliver(&desk, Some(&replacing("(Smith, 2020)")), true), pasted());
+    assert_eq!(
+        deliver(&desk, Some(&replacing("(Smith, 2020)")), consent(true)),
+        pasted()
+    );
     assert_eq!(*desk.posts.borrow(), [42]);
 }
 
@@ -1012,7 +1036,7 @@ fn a_changed_citation_never_pastes_when_the_old_one_is_not_selected() {
     let desk = Fake::new();
     *desk.selection_now.borrow_mut() = Some(Err(CopyReason::CitationNotSelected));
     assert_eq!(
-        deliver(&desk, Some(&replacing("(Smith, 2020)")), true),
+        deliver(&desk, Some(&replacing("(Smith, 2020)")), consent(true)),
         copied("citation-not-selected")
     );
     assert!(desk.posts.borrow().is_empty());
