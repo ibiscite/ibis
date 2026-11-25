@@ -3,12 +3,13 @@
 
 use std::collections::HashMap;
 
-use crate::citable::{CitableFields, FieldProjection};
 use crate::citation::{self, ItemSupport};
 use crate::contract::*;
 
 mod bibtex;
 pub(crate) mod escape;
+pub mod manuscript;
+pub mod marker;
 pub(crate) mod read;
 mod render;
 pub mod scannable;
@@ -506,9 +507,8 @@ pub const CAPABILITIES: [SyntaxCapabilities; 21] = [
         author_suppression: Unsupported,
         escaping: Escaping::DoiLinks,
     },
-    // Markers for Zotero's RTF and ODF Scan; tests cover the markers, not what
-    // either scan makes of them. They name Zotero items, so `syntax::scannable`
-    // writes them, not the key path.
+    // Zotero's RTF and ODF Scan read these into live Zotero citations. They
+    // name Zotero items, so `syntax::scannable` writes them, not the key path.
     SyntaxCapabilities {
         id: "scannable-cite",
         name: "Zotero RTF/ODF Scan",
@@ -557,15 +557,6 @@ struct Pick<'a> {
 /// The immutable snapshot is the complete resolution boundary. Engine callers
 /// choose their newest snapshot atomically before invoking this pure method.
 pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationResult, CitationError> {
-    cite_with_fields(snapshot, request, CitableFields::new)
-}
-
-/// Render a key output with a caller's projection for exported metadata.
-pub fn cite_with_fields(
-    snapshot: &Snapshot,
-    request: &CitationRequest,
-    project_fields: FieldProjection,
-) -> Result<CitationResult, CitationError> {
     let mut caps = capabilities(&request.output)?;
     // Markers name Zotero items, which only the engine can vouch for.
     if caps.zotero_items {
@@ -613,7 +604,7 @@ pub fn cite_with_fields(
     // libraries can share one; an export naming both would be unreadable.
     let mut exported = HashMap::<String, &ItemRef>::new();
     for (index, item) in request.items.iter().enumerate() {
-        match checked[index].and_then(|record| resolve(record, item, request.form, caps, &owners, project_fields)) {
+        match checked[index].and_then(|record| resolve(record, item, request.form, caps, &owners)) {
             Err(error) => outcomes.push(ItemOutcome::Refused { item: index, error }),
             Ok((record, key, form, mut doi_link)) => {
                 if let Some(link) = &doi_link {
@@ -707,7 +698,7 @@ pub fn cite_with_fields(
                     });
                 }
                 if caps.syntax == KeySyntax::CslJson {
-                    let fields = project_fields(record.csl.to_map());
+                    let fields = crate::citable::CitableFields::new(record.csl.to_map());
                     let id = fields.source_id().unwrap_or(key).to_owned();
                     if *exported.entry(id).or_insert(&record.id) != &record.id {
                         outcomes.push(ItemOutcome::Refused {
@@ -730,7 +721,7 @@ pub fn cite_with_fields(
             }
         }
     }
-    let display = render::display(caps, &picks, request.items.len(), project_fields)?;
+    let display = render::display(caps, &picks, request.items.len())?;
     let text = render::flatten(&display);
     if text.len() > MAX_OUTPUT_BYTES {
         return Err(CitationError::OutputTooLarge);
@@ -768,14 +759,13 @@ fn resolve<'a>(
     default_form: CitationForm,
     caps: &SyntaxCapabilities,
     owners: &HashMap<&str, Option<&ItemRef>>,
-    project_fields: FieldProjection,
 ) -> Result<(&'a Record, &'a str, CitationForm, Option<crate::citable::DoiLink>), CitationError> {
     let form = item.form.unwrap_or(default_form);
     let mut doi_link = None;
     let key = if caps.syntax == KeySyntax::DoiLinks {
         // DOI links identify the work without needing a citation key.
         doi_link = Some(
-            project_fields(record.csl.to_map())
+            crate::citable::CitableFields::new(record.csl.to_map())
                 .doi()
                 .cloned()
                 .ok_or(CitationError::MissingDoi)?,
