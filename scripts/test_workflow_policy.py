@@ -196,9 +196,12 @@ class CiResultTest(unittest.TestCase):
         self.assertEqual(choose["env"]["SHA"], "${{ github.sha }}")
         self.assertLess(choose["run"].index("node scripts/ci-main.mjs"), choose["run"].index("node scripts/publication-guard.mjs nightly"))
         gate = "${{ !cancelled() && !inputs.update_test && (github.event_name != 'schedule' || needs.nightly-commit.outputs.build == 'true') }}"
-        for name in ["build", "windows-paste"]:
+        for name in ["notices", "windows-paste"]:
             self.assertEqual(jobs[name]["needs"], "nightly-commit")
             self.assertEqual(jobs[name]["if"], gate)
+        # Every package carries the one notices folder (#1271): no build without it.
+        self.assertEqual(jobs["build"]["needs"], ["nightly-commit", "notices"])
+        self.assertEqual(jobs["build"]["if"], gate.replace(" }}", " && needs.notices.result == 'success' }}"))
         self.assertEqual(jobs["nightly"]["if"], "${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish) && needs.build.result == 'success' && needs.install.result == 'success' }}")
         # build needs the nightly choice, which a tag skips; anything after build that
         # relied on the implicit success() check would be skipped with it.

@@ -21,6 +21,10 @@ The `ibis` program contains these unmodified third-party files:
 Exact upstream revisions and hashes are in `crates/ibis-csl/vendor/manifest.json`
 and `crates/ibis-sources/vendor/zotero/manifest.json` in the source.
 
+Every package also carries `THIRD-PARTY-NOTICES.txt`, generated at build time:
+the copyright and licence text of every Rust crate and npm package compiled into
+the `ibis` program and the desktop app.
+
 The desktop interface uses **Project Fluent** (`@fluent/bundle` 0.19.1 and
 `@fluent/syntax` 0.19.0), Copyright Project Fluent Authors, under Apache License
 2.0 ([upstream licence](https://github.com/projectfluent/fluent.js/blob/main/LICENSE)).
