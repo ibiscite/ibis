@@ -3,7 +3,10 @@
     "externalBin": [],
     "resources": {
       "resources/samples.csljson": "resources/samples.csljson",
-      "binaries/ibis": "binaries/ibis"
+      "binaries/ibis": "binaries/ibis",
+      "notices/LICENSE": "notices/LICENSE",
+      "notices/NOTICE.md": "notices/NOTICE.md",
+      "notices/THIRD-PARTY-NOTICES.txt": "notices/THIRD-PARTY-NOTICES.txt"
     }
   }
 }

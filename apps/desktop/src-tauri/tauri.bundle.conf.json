@@ -11,7 +11,10 @@
     },
     "resources": [
       "resources/samples.csljson",
-      "packaging/path.ps1"
+      "packaging/path.ps1",
+      "notices/LICENSE",
+      "notices/NOTICE.md",
+      "notices/THIRD-PARTY-NOTICES.txt"
     ]
   }
 }

@@ -19,7 +19,13 @@ requests a milestone version. Do not edit versions manually.
 Stable and Nightly have separate app IDs and Linux executable/icon names.
 Windows ships one NSIS installer. Nightly omits RPM. Packages use stable names
 such as `Ibis-macOS-Apple-silicon.dmg` and `Ibis-Windows-setup.exe`. CLI archives
-contain `ibis`, the licence and notices. Checksums and provenance accompany packages.
+contain `ibis`, `LICENSE`, `NOTICE.md` and `THIRD-PARTY-NOTICES.txt`; every app
+package carries the same three files in its `notices` resource folder. Preview's
+notices job writes them once from the lockfiles (`scripts/third-party-notices.py`,
+with `cargo about` and `pnpm licenses`) and fails when a dependency has no licence
+text; each build then opens every package and requires them byte for byte
+(`scripts/verify-packages.py`). `cargo deny` remains the licence policy. Checksums
+and provenance accompany packages.
 
 ## The note people read
 
