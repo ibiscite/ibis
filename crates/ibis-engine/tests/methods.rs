@@ -264,18 +264,32 @@ mod typed_calls {
     #[test]
     fn declared_needs_match_what_answers() {
         use ibis_core::contract::ExitCode;
+        use ibis_engine::SourceCapability::AttachmentText;
         let cancel = Cancellation::default();
-        let one = json!({"item": {"by": "key", "value": "one"}});
-        for (name, content, keeps_entries) in [
-            ("invented.bib", "@book{one,title={Invented Lanterns}}", true),
+        for (name, content, keeps_entries, has_attachment_text) in [
+            ("invented.bib", "@book{one,title={Invented Lanterns}}", true, true),
             (
                 "invented.json",
                 r#"[{"id":"one","type":"book","title":"Invented Lanterns","citation-key":"one"}]"#,
+                false,
+                true,
+            ),
+            (
+                "invented.ris",
+                "TY  - BOOK\nTI  - Invented Lanterns\nER  - \n",
+                false,
                 false,
             ),
         ] {
             let (_dir, engine) = opened(name, content);
             let capabilities = engine.libraries().unwrap().libraries[0].capabilities.clone();
+            assert_eq!(capabilities.contains(&AttachmentText), has_attachment_text, "{name}");
+            let hits = engine
+                .dispatch(Method::Search, &json!({"query": "lanterns"}), &cancel)
+                .unwrap();
+            let id = &hits.data["hits"][0]["item"]["object"]["data"]["id"];
+            assert!(id.is_object(), "{name}: {}", hits.data);
+            let one = json!({"item": {"by": "id", "value": id}});
             let has = |method: Method| capabilities.contains(&method.needs().capability().unwrap());
             assert_eq!(has(Method::Entry), keeps_entries, "{name}");
             let entry = engine.dispatch(Method::Entry, &one, &cancel).unwrap();
@@ -285,9 +299,14 @@ mod typed_calls {
                 ExitCode::Findings
             };
             assert_eq!(entry.exit_code, expected, "{name}");
+            if !keeps_entries {
+                assert_eq!(entry.data["outcome"], "refused", "{name}");
+                assert_eq!(entry.data["reason"], "no-original", "{name}");
+            }
             assert!(has(Method::Outline), "{name}");
             let outline = engine.dispatch(Method::Outline, &one, &cancel).unwrap();
             assert_eq!(outline.exit_code, ExitCode::Ok, "{name}");
+            assert_eq!(outline.data["attachments"], json!([]), "{name}");
         }
     }
 }

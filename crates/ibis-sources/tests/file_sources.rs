@@ -538,7 +538,7 @@ fn each_file_format_declares_what_it_offers() -> Result<(), Box<dyn std::error::
     use ibis_sources::SourceCapability::*;
 
     let dir = tempfile::tempdir()?;
-    let bibtex = "@book{one,title={Invented reference}}";
+    let bibtex = "@book{one,title={Invented reference}}\n";
     let cases: [(&str, &str, &[ibis_sources::SourceCapability]); 5] = [
         (
             "refs.bib",
@@ -581,7 +581,54 @@ fn each_file_format_declares_what_it_offers() -> Result<(), Box<dyn std::error::
     for (name, text, expected) in cases {
         let path = dir.path().join(name);
         std::fs::write(&path, text)?;
-        assert_eq!(ibis_sources::load_file(&path)?.capabilities, expected, "{name}");
+        let loaded = ibis_sources::load_file(&path)?;
+        assert_eq!(loaded.capabilities, expected, "{name}");
+        let item = &loaded.snapshot.objects()[0];
+        let entry = ibis_sources::original_entry(&path, item.object.id(), "one", &item.fingerprints.cite);
+        let expected = if expected.contains(&OriginalEntries) {
+            Ok(bibtex.to_owned())
+        } else {
+            Err(ibis_sources::project::EntryRefusal::NoOriginal)
+        };
+        assert_eq!(entry, expected, "{name}");
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn original_entries_follow_the_canonical_files_format() -> Result<(), Box<dyn std::error::Error>> {
+    use ibis_sources::{SourceCapability::OriginalEntries, project::EntryRefusal};
+
+    let dir = tempfile::tempdir()?;
+    let bibtex = "@book{one,title={Invented reference}}\n";
+    for (target, name, text, expected) in [
+        ("real.bib", "linked.json", bibtex, Ok(bibtex.to_owned())),
+        ("real.backup", "linked.bib", bibtex, Ok(bibtex.to_owned())),
+        (
+            "real.json",
+            "linked-to-json.bib",
+            r#"[{"id":"one","type":"book","title":"Invented reference","citation-key":"one"}]"#,
+            Err(EntryRefusal::NoOriginal),
+        ),
+    ] {
+        let real = dir.path().join(target);
+        std::fs::write(&real, text)?;
+        let link = dir.path().join(name);
+        std::os::unix::fs::symlink(&real, &link)?;
+        for loaded in [ibis_sources::load_file(&link)?, ibis_sources::reload_file(&link)?] {
+            assert_eq!(
+                loaded.capabilities.contains(&OriginalEntries),
+                expected.is_ok(),
+                "{name}"
+            );
+            let item = &loaded.snapshot.objects()[0];
+            assert_eq!(
+                ibis_sources::original_entry(&link, item.object.id(), "one", &item.fingerprints.cite),
+                expected,
+                "{name}"
+            );
+        }
     }
     Ok(())
 }
