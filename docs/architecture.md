@@ -21,9 +21,9 @@ read its current library or view. The owner publishes library status; the app
 adds its settings notice and schedules picker and tray effects on the main thread.
 Settings-dependent state is created after the plugins and before the event
 loop runs (`create_state` in `main.rs`), so no handler, command or second
-launch can read it before it exists; setup starts effects. A launch
-handed over before setup finishes waits in `instance::Handoff` and is answered
-at its end.
+launch can read it before it exists; setup starts effects. Handed-over
+launches are answered one at a time, in order, by `instance::Handoff`: one that
+arrives during setup or while another is answered waits its turn.
 Every command is `async` unless marked `#[command(main)]`, which answers at IPC
 receipt and never waits; settings reads use the owner's published view
 (`settings::Owner::view`), so the picker never waits behind a settings write.
