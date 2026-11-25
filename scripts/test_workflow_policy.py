@@ -233,7 +233,7 @@ class CiResultTest(unittest.TestCase):
         jobs = workflow["jobs"]
         sbom = jobs["sbom"]
         # Attested on the final bytes, after macOS signing, by a job without secrets.
-        self.assertEqual(sbom["needs"], ["notices", "build", "sign-macos"])
+        self.assertEqual(sbom["needs"], ["build", "sign-macos"])
         self.assertEqual(sbom["permissions"], {"contents": "read", "id-token": "write", "attestations": "write"})
         self.assertNotIn("secrets.", str(sbom))
         attests = [step for step in sbom["steps"] if str(step.get("uses", "")).startswith("actions/attest@")]

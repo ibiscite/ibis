@@ -1,28 +1,28 @@
 #!/usr/bin/env python3
-"""Write the CycloneDX SBOMs for every package Preview builds (#50).
+"""Write the CycloneDX SBOMs for one target's packages (#50).
 
-    python3 scripts/sbom.py OUT VERSION
+    python3 scripts/sbom.py npm OUT.json
+    python3 scripts/sbom.py OUT TARGET CLI_TARGET VERSION NPM.json
     python3 scripts/sbom.py --check VERSION FILE...
 
-Preview's notices job runs it, beside the notices, from the same lockfiles.
-For each system OUT receives two CycloneDX 1.6 JSON files named like the
-downloads they describe:
+The notices job lists the interface's npm packages once (`npm`, from pnpm's
+production list). Each build job then writes its target's two CycloneDX 1.6
+files, on the system that built them, since build dependencies follow the
+building system:
 
 - `Ibis-SYSTEM.cdx.json`, for every app package (disk image, app archive,
-  setup executable, deb, rpm, AppImage): the Rust crates of the app for that
-  target and of the command line it bundles, and the interface's npm packages;
-- `ibis-SYSTEM-cli.cdx.json`, for the command-line archive: its crates alone,
-  for its own target (static musl on Linux). Names differing only in case
-  would collide on macOS and Windows.
+  setup executable, deb, rpm, AppImage): the Rust crates of the app for
+  TARGET and of the command line it bundles for CLI_TARGET, and the npm list;
+- `ibis-SYSTEM-cli.cdx.json`, for the command-line archive: its crates alone.
+  (Names differing only in case would collide on macOS and Windows.)
 
-Crates are what `cargo tree` shows the package linking for that platform with
-a release build's features, through normal and build dependencies (never
-dev-only or inactive optional ones), each with its registry checksum; the
-citeproc-js, CSL and Zotero files Ibis embeds come from their vendor
-manifests with upstream revisions and hashes; npm packages are pnpm's
-production list. The sbom job attests each package with
-its file, and publishing attaches the files to the release. Offline: Cargo
-reads the crates `cargo fetch` already fetched.
+Crates are what `cargo tree` shows the package linking for its target with a
+release build's features, through normal and build dependencies (never
+dev-only or inactive optional ones), proc-macros included, each with its
+registry checksum. Both files add the citeproc-js, CSL and Zotero files Ibis
+embeds, from their vendor manifests with upstream revisions and hashes. The
+sbom job attests each package with its file, and publishing attaches the
+files to the release.
 """
 
 import json
@@ -62,6 +62,14 @@ def lock_checksums():
     return checksums
 
 
+def workspace_crates():
+    manifest = subprocess.run(["cargo", "metadata", "--format-version", "1", "--no-deps", "--locked", "--offline"],
+                              cwd=ROOT, check=True, capture_output=True, text=True).stdout
+    return {package["name"] for package in json.loads(manifest)["packages"]}
+
+
+WORKSPACE = set()
+
 # The features a release build turns on beyond the defaults (tauri build).
 RELEASE_FEATURES = {"ibis-desktop": ["tauri/custom-protocol"]}
 
@@ -81,12 +89,12 @@ def crates(root_name, target):
     components = {}
     for line in out.splitlines():
         package, _, licence = line.removesuffix(" (*)").partition("|")
-        words = package.split()
+        words = package.split(" ", 2)
         if len(words) < 2 or not words[1].startswith("v"):
             continue
-        if len(words) > 2:
-            continue  # A path crate, Ibis's own: the SBOM's subject, not a dependency.
         name, version = words[0], words[1][1:]
+        if name in WORKSPACE:
+            continue  # Ibis's own crates: the SBOM's subject, not a dependency.
         component = {"type": "library", "name": name, "version": version, "purl": f"pkg:cargo/{name}@{version}"}
         if licence.strip():
             component["licenses"] = [{"expression": licence.strip()}]
@@ -105,7 +113,7 @@ def crates(root_name, target):
 VENDORED = {
     "crates/ibis-csl/vendor/manifest.json": {"zotero": "CPAL-1.0 OR AGPL-3.0-or-later", "styles": "CC-BY-SA-3.0",
                                               "locales": "CC-BY-SA-3.0"},
-    "crates/ibis-sources/vendor/zotero/manifest.json": {},
+    "crates/ibis-sources/vendor/zotero/manifest.json": {"utilities": "AGPL-3.0-or-later", "zotero": "AGPL-3.0-or-later"},
 }
 
 
@@ -203,26 +211,33 @@ def check(version, paths):
 
 
 def main():
-    if len(sys.argv) >= 3 and sys.argv[1] == "--check":
-        check(sys.argv[2], sys.argv[3:])
+    args = sys.argv[1:]
+    if len(args) >= 2 and args[0] == "--check":
+        check(args[1], args[2:])
         return
-    if len(sys.argv) != 3:
+    if len(args) == 2 and args[0] == "npm":
+        Path(args[1]).write_text(json.dumps(npm_packages(), indent=1) + "\n", encoding="utf-8")
+        return
+    if len(args) != 5:
         print(__doc__.strip(), file=sys.stderr)
         sys.exit(2)
-    out, version = Path(sys.argv[1]), sys.argv[2]
+    out, target, cli_target, version, npm_file = Path(args[0]), args[1], args[2], args[3], Path(args[4])
+    platform = PLATFORMS.get(target, (None,))[0] or fail(f"no packages are known for {target}")
+    npm = json.loads(npm_file.read_text(encoding="utf-8"))
+    if not npm:
+        fail("the npm list is empty")
+    WORKSPACE.update(workspace_crates())
     out.mkdir(parents=True, exist_ok=True)
-    npm = npm_packages()
-    for target, (platform, cli_target) in PLATFORMS.items():
-        cli = crates("ibis", cli_target) + vendored()
-        # The app bundles this same command line (scripts/build-cli.sh).
-        app = crates("ibis-desktop", target) + cli + npm
-        files = {
-            f"Ibis-{platform}.cdx.json": bom("Ibis", version, f"The Ibis app for {platform}", app),
-            f"ibis-{platform}-cli.cdx.json": bom("ibis", version, f"The ibis command line for {platform}", cli),
-        }
-        for name, document in files.items():
-            (out / name).write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
-            print(f"{name}: {len(document['components'])} components")
+    cli = crates("ibis", cli_target) + vendored()
+    # The app bundles this same command line (scripts/build-cli.sh).
+    app = crates("ibis-desktop", target) + cli + npm
+    files = {
+        f"Ibis-{platform}.cdx.json": bom("Ibis", version, f"The Ibis app for {platform}", app),
+        f"ibis-{platform}-cli.cdx.json": bom("ibis", version, f"The ibis command line for {platform}", cli),
+    }
+    for name, document in files.items():
+        (out / name).write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
+        print(f"{name}: {len(document['components'])} components")
 
 
 if __name__ == "__main__":
