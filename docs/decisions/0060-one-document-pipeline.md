@@ -5,7 +5,8 @@ Decided 2026-11-25 for "Your document" in
 [0059](0059-works-with-nothing-better-with-more.md). It re-lands the closed
 [#1991](https://github.com/ibiscite/ibis/pull/1991) (`ibis format`) and moves
 the share pack of [0051](0051-references-in-and-out.md) onto the same path.
-Parsing stays under [0055](0055-agent-layers-full-text-writes-remote.md) and
+Every document is parsed in a child, under
+[0055](0055-agent-layers-full-text-writes-remote.md) and
 [0056](0056-open-layer-for-research-material.md).
 
 ## The pipeline
@@ -28,47 +29,53 @@ it, never operations of their own.
 
 ## What is parsed where
 
-The line is the one #1991 drew, made a rule:
+Every document file is parsed only in a child (0056), whatever its format:
 
-- **Containers run in the child.** DOCX and ODT are zips of XML from anywhere,
-  so the office reader runs only in `ibis __document`, a short-lived child
-  through `ibis_sources::child::run` (the same runner, bounds and process
-  group as the source adapters). It gets one framed request on standard input
-  and no path or environment. Its parsers live in `ibis-sources::office`
-  behind a `documents` feature that only `ibis-cli` enables, as `endnote` is.
-  The engine holds the parent side only. The app passes its bundled `ibis` as
-  the child, as it does for PDFs. A test in `ibis-desktop` proves the feature
-  is off in the app's own build. Answers are untrusted and checked again.
-- **Plain text is read in-process**, by the readers in
-  `ibis-core::syntax` that already read pasted text in the app: linear,
-  bounded by the shared work allowance, with no decompression and no XML. The text is the file's bytes
-  as UTF-8, at most 16 MiB. A child adds a process and gains nothing over
-  these. The same readers read the paragraphs the office child returns.
-- Text formats: Markdown and Quarto (Pandoc markers; fenced and inline code,
-  comments and front matter skipped; Quarto's `@fig-`, `@tbl-`, `@sec-`,
-  `@eq-` cross-references are not citations), LaTeX (the citation commands of
-  the capabilities table, `%` comments skipped), Typst (`@key` and
-  `#cite(<key>)`; labels the document defines are not citations). Office
-  documents read Pandoc markers, as #1991 did.
+- `ibis __document` is a short-lived child run through
+  `ibis_sources::child::run` (the runner, bounds and process group of the
+  source adapters). It gets one framed request on standard input (the command,
+  then the file's bytes) and no path or environment. It answers `scan` with
+  the citations it read and their places, and for office files `write` with
+  the new document.
+- Its parsers sit behind a `documents` feature that only `ibis-cli` enables,
+  as `endnote` is: the office readers in `ibis-sources::document::office`, and
+  the manuscript readers in `ibis-core::syntax::manuscript`, which share the
+  pasted-key readers. A test in `ibis-desktop` proves the feature is off in the
+  app's own build, which passes its bundled `ibis` as the child, as it does for
+  PDFs. The engine holds the parent side only and checks every answer again
+  (counts, sizes, places, keys).
+- The parent reads the file once under the local-file rules (a regular local
+  file, never a link; at most 16 MiB of text or 64 MiB of office file) and
+  gives the child those bytes.
+- Text formats: Markdown, Quarto and R Markdown (Pandoc markers; fenced and
+  inline code, comments and front matter skipped; Quarto and pandoc-crossref
+  cross-references such as `@fig-map` are not citations), LaTeX (the citation
+  commands of BibTeX, natbib and BibLaTeX; `%` comments and verbatim skipped),
+  Typst (`@key` and `#cite(<key>)`; labels the document defines are not
+  citations). Office documents read Pandoc markers, as #1991 did.
+- One work allowance covers the whole text inside the child too, so a text
+  read only in part is reported as such and never passes a check.
 
 ## The reference set
 
-A reference set is a **CSL-JSON file**: an array of records, `id` and
-`citation-key` both the key, the fields through the share-safe filter
-(`CitableFields`), nothing else. It is the lock file, the project snapshot and
-the pack's manifest, and every tool that reads CSL-JSON reads it: Ibis opens
-it as a library, Pandoc and Quarto take it as `bibliography:`, Zotero imports
-it.
+Inside the engine a reference set is the ordered selection of cited records,
+each with its key when it has one and its source identity. Written out it is a
+**CSL-JSON file**: share-safe fields (`CitableFields`), `citation-key` where
+there is a key, no library ids, paths or account ids. A record with no key is
+kept without `citation-key`: it reads and formats, and is never cited by key.
+The file is the lock file, the project snapshot and the pack's manifest, and
+every tool that reads CSL-JSON reads it: Ibis opens it as a library, Pandoc
+and Quarto take it as `bibliography:`, Zotero imports it.
 
-- **Fingerprints are derived, not stored**: the canonical form of a record's
-  share-safe fields. `--locked` compares by key: a key cited but not in the
-  set, a key in the set the library no longer has, and a record whose
-  fingerprint changed. Nothing ties a key to a library item, so a set carries
-  no library ids, paths or account ids.
-- **Formatting inputs are not in the set.** The style and locale come from the
-  document (front matter `csl:` and `lang:`), the project, or the request, as
-  they do today. Bundled styles change only with an Ibis release; a set
-  promises the same records, not a byte-identical rendering (#1386, 0028).
+- **Check against a set** (`--set FILE`) compares by key, both sides through
+  the same share-safe export: a cited key the set lacks, and a record that
+  changed since the set was written. Fingerprints are derived, not stored.
+- **Formatting inputs are not locked.** For Markdown, LaTeX and Typst builds
+  the style is a file the project names and versions itself (`csl:`, a `.bst`,
+  a Typst style); Ibis supplies records, so the set locks records. Only
+  `ibis format` renders with Ibis's own styles: its report names the style,
+  locale and Ibis version, and a receipt with their digests (0028) is added
+  with it if co-authors need to reproduce a copy exactly.
 
 ## Outputs
 
@@ -80,15 +87,17 @@ it.
   to restyle. Note styles are refused.
 - **Zotero-managed ODT copy** (`--for zotero`): the same copy, each citation a
   `ZOTERO_ITEM CSL_CITATION` reference mark with a fresh `citationID`, its
-  `formattedCitation`, embedded `itemData` and the item's URI, and the
-  document's `ZOTERO_PREF_*` in `meta.xml`, as the 2026-11-25 trial proved in
-  LibreOffice with Zotero 10. The URI's library segment comes from the closed
-  Zotero reader's private copy of the database (`userID` when synced, else
-  `localUserKey`; a group's `groupID`). Without it the citations still restyle
-  from their `itemData`, unlinked, and the report says so. Only in-text styles,
-  only ODT; Word and note styles refuse with a typed reason and point to the
-  static copy. The URI carries the account's id, so this output is only ever
-  an explicit choice.
+  `formattedCitation`, embedded `itemData` and one nonempty URI per work, and
+  the document's `ZOTERO_PREF_*` in `meta.xml`, as the 2026-11-25 trial proved
+  in LibreOffice with Zotero 10. The URI is the item's Zotero URI when Ibis
+  knows the library's segment (`userID` when synced, else `localUserKey`; a
+  group's `groupID`), remembered from its last closed read of that data folder;
+  otherwise a stable document-local URI per work, so repeated citations stay
+  one item and restyle from `itemData`, unlinked, and the report says so. Its
+  qualification includes repeated citations through Refresh. Only in-text
+  styles, only ODT; Word and note styles refuse with a typed reason and point
+  to the static copy. The URI can carry the account's id, so this output is
+  only ever an explicit choice.
 - **Pack**: the share pack gains `References.json` (the set) beside its
   reading list and `.bib`, and takes a document as its selection. Nothing in it
   needs Ibis; Ibis opens it as a library.
@@ -97,13 +106,17 @@ it.
 
 - **Project-scoped keys.** An item with no key of its own (plain Zotero
   without a native `citationKey`, a CSL-JSON record without `citation-key`)
-  gets one only inside a project: `write::citation_key` mints it against every
-  key the project's `.bib` and libraries hold, and the project pins it to the
-  item's library and item id in `settings.json` beside the project's
-  definition, renamed and removed with it, at most 10,000 per project. The
-  library never changes; a pin whose item is gone is unused, never moved.
-  Without a project, key outputs refuse as today, with the reason "choose a
-  project".
+  gets one only inside a project. `write::citation_key` mints it against every
+  key the project's `.bib`, its pins and the libraries hold. The pin records
+  the item's library and item id and a work digest (DOI, else title, year and
+  first author, normalized). A pin is used only while the item still matches
+  its digest; an item id reused for another work (a replaced CSL-JSON export)
+  gets no key and a typed reason, and its old key stays reserved, never
+  reassigned. Pins live in Ibis's data folder in one bounded file of their own
+  (at most 20,000 pins and 4 MiB across projects, renamed and removed with the
+  project), never in `settings.json` or anything shared, and are written
+  before a minted key is emitted. The library never changes. Without a
+  project, key outputs refuse as today, with the reason "choose a project".
 - **Appending to the project's `.bib`** (0059): a project field
   `append_to_bibliography`, off by default. When on, an emitted key missing
   from the `.bib` adds that record's entry at the end, written by
@@ -117,7 +130,9 @@ it.
 Each operation is one method row with the three fields of 0059, using the
 existing values: `check` and `export` (needs `nothing`; a set file or `.bib`
 is a library), `format` (needs `records`), `share` (as today, plus a
-document). All are offline and none is a ⌘K verb. MCP offers `check` and
+document, keeping its ⌘K selections of one or several references). All are
+offline; `check`, `export` and `format` take a file, so they are not ⌘K
+verbs. MCP offers `check` and
 `export` read-only; `format` and the pack write files and stay with the
 person's front ends.
 
@@ -134,6 +149,6 @@ person's front ends.
 
 ## Not doing
 
-No Ibis field code in Word or Google Docs (0059). No in-process zip or XML
-parser in the app. No footnotes, headers or text boxes in `format` yet; they
+No Ibis field code in Word or Google Docs (0059). No document parser in the
+app's process. No footnotes, headers or text boxes in `format` yet; they
 are listed as left unchanged. No writing of library records.

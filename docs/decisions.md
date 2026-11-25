@@ -142,4 +142,4 @@ the anchor older links use.
 [0059](decisions/0059-works-with-nothing-better-with-more.md): every capability useful with only Ibis and files, better when Zotero or Better BibTeX is present, detected not asked; five nouns (Source, Selection, Anchor, Context, Output and Sink), five operations (find, locate, render, scan, propose); `needs`, `network` and `palette` on every method row; Ibis writes only a project's `.bib` (opt-in) and a folder's `.bib`.
 
 ## 0060 One document pipeline
-[0060](decisions/0060-one-document-pipeline.md): check, export, format and share are one pipeline, scan → reference set → render → sink; office containers parse only in a child, plain text in core's bounded readers; the reference set is a CSL-JSON file of share-safe records; project-scoped keys and the opt-in `.bib` append are the project's own.
+[0060](decisions/0060-one-document-pipeline.md): check, export, format and share are one pipeline, scan → reference set → render → sink; every document file is parsed only in a child behind a CLI-only feature; the reference set is a CSL-JSON file of share-safe records; project-scoped keys and the opt-in `.bib` append are the project's own.
