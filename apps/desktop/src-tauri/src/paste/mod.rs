@@ -21,7 +21,6 @@ use ibis_native::paste::{
     queries::{PasswordQueries, display_name},
     tickets::{TicketDesk, deliver_ticket},
     windows::Window,
-    with_paste_setting,
 };
 use ibis_native::paste::{SYSTEM, intended_paste, policy_decision};
 use tauri::{AppHandle, Manager};
@@ -254,7 +253,7 @@ pub(crate) fn deliver_copy(app: &AppHandle, _text: &str, ticket: Option<Delivery
     let Some(ticket) = ticket else {
         return Delivered::copied(CopyReason::PasteUnavailable);
     };
-    with_paste_setting(|| paste_setting(app), |enabled| deliver_ticket(&desk, &ticket, enabled))
+    deliver_ticket(&desk, &ticket, || paste_setting(app))
 }
 
 /// Paste into the captured app when it is safe to; the notice then says what happened.

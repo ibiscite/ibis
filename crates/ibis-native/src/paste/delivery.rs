@@ -70,12 +70,23 @@ pub(super) struct DeliveryRequest {
 }
 
 /// Paste a proven copy into its captured app, or say why it stays copied.
-pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&DeliveryTicket<D::Window>>, enabled: bool) -> Delivered {
+/// `consent` reads the paste setting from its owner: when delivery decides,
+/// and again just before the final post, off every lock, so Paste turned off
+/// while the app came back still only copies. `None`, a setting that cannot
+/// be read, only copies too.
+pub(super) fn deliver<D: Desk>(
+    desk: &D,
+    proof: Option<&DeliveryTicket<D::Window>>,
+    consent: impl Fn() -> Option<bool>,
+) -> Delivered {
     #[cfg(any(target_os = "macos", test))]
     let began = desk.delivery_began();
     if !desk.release_keys() {
         return key_release_failed();
     }
+    let Some(enabled) = consent() else {
+        return Delivered::copied(CopyReason::PasteUnavailable);
+    };
     let unknown = Captured::unknown(SYSTEM);
     let captured = proof.and_then(DeliveryTicket::captured).unwrap_or(&unknown);
     let permission = PastePermission {
@@ -147,6 +158,11 @@ pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&DeliveryTicket<D::Window
                 // the paste's own deadline still decide.
                 if ready {
                     desk.settle();
+                    match consent() {
+                        Some(true) => {}
+                        Some(false) => return copied(CopyReason::PasteOff),
+                        None => return copied(CopyReason::PasteUnavailable),
+                    }
                     desk.stage("post.queue");
                     let result = desk.finish(
                         DeliveryRequest {
@@ -196,19 +212,6 @@ pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&DeliveryTicket<D::Window
                 PostResult::Refused => copied(CopyReason::PasteUnavailable),
             }
         }
-    }
-}
-
-/// Decide with the paste setting as its owner reads it now, at delivery, so
-/// turning Paste off after the picker opened still only copies. `None`, a
-/// setting that cannot be read, only copies too.
-pub fn with_paste_setting(
-    setting: impl FnOnce() -> Option<bool>,
-    deliver: impl FnOnce(bool) -> Delivered,
-) -> Delivered {
-    match setting() {
-        Some(enabled) => deliver(enabled),
-        None => Delivered::copied(CopyReason::PasteUnavailable),
     }
 }
 
