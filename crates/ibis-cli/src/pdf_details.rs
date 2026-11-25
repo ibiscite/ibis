@@ -202,7 +202,8 @@ fn read_xmp(packet: &str, found: &mut BTreeMap<&'static str, Vec<String>>) -> Re
         }
         match event {
             Event::Start(tag) => {
-                let name: &str = tag.name().as_ref();
+                let qname = tag.name();
+                let name: &str = qname.as_ref();
                 if name.len() > MAX_NAME_BYTES {
                     return Err(Stop);
                 }
@@ -252,7 +253,8 @@ fn read_xmp(packet: &str, found: &mut BTreeMap<&'static str, Vec<String>>) -> Re
             }
             Event::End(tag) => {
                 if let Some(current) = &mut open {
-                    let name: &str = tag.name().as_ref();
+                    let qname = tag.name();
+                    let name: &str = qname.as_ref();
                     if depth == current.depth {
                         let current = open.take().ok_or(Stop)?;
                         let values = match current.default {

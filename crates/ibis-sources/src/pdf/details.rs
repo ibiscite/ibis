@@ -3,11 +3,12 @@
 //! checked here before anything uses them.
 //!
 //! The child reports what the file states, field by field, and decides
-//! nothing. This side bounds every value, drops what is known to be noise
-//! (a title that is a file name or a word processor's caption, an author that
-//! is one word or a producer) and chooses one DOI: the XMP's, then the Info
-//! dictionary's, then the only distinct DOI on the first page. Nothing is
-//! filled in from elsewhere: a detail the file does not state stays unknown.
+//! nothing. This side bounds every value and drops only what is known to be
+//! noise: a title that names a file or a template, an author that is a
+//! program or an account name. The file's DOI is one its metadata names; a
+//! DOI that is merely printed on the first page is only a candidate, since it
+//! may be a cited work's. Nothing is filled in from elsewhere: a detail the
+//! file does not state stays unknown.
 
 use super::{Refusal, MAX_PAGES};
 use ibis_core::contract::Fingerprint;
@@ -84,8 +85,12 @@ pub struct PdfDetails {
     pub page: Option<String>,
     /// `YYYY`, `YYYY-MM` or `YYYY-MM-DD`.
     pub issued: Option<String>,
-    /// Canonical (lowercase, no resolver).
+    /// The DOI the file's metadata names, canonical (lowercase, no resolver).
     pub doi: Option<String>,
+    /// The only distinct DOI printed on the first page, when the metadata
+    /// names none. Unverified: it may be a cited work's, so it is never the
+    /// file's DOI until a person confirms it.
+    pub page_doi: Option<String>,
 }
 
 /// The child's answer once it is within every bound, reduced to what the
@@ -132,7 +137,8 @@ pub fn checked_details(said: Said) -> Result<PdfDetails, Refusal> {
         issue: first(|b| &b.issue).filter(|value| short(value)),
         page,
         issued: first(|b| &b.date).as_deref().and_then(date),
-        doi: doi(&said),
+        doi: named_doi(&said),
+        page_doi: page_doi(&said),
     })
 }
 
@@ -161,11 +167,11 @@ fn short(value: &str) -> bool {
     value.chars().count() <= 32
 }
 
-/// Titles that name a file or a template rather than a work.
+/// Titles that name a file or a template rather than a work, or have no
+/// letter at all.
 fn noise_title(title: &str) -> bool {
     let lower = title.to_lowercase();
-    let letters = title.chars().filter(|c| c.is_alphabetic()).count();
-    letters < 4
+    !title.chars().any(char::is_alphabetic)
         || ["microsoft word -", "microsoft powerpoint -", "untitled", "title", "no title", "document", "slide 1"]
             .iter()
             .any(|noise| lower == *noise || noise.ends_with('-') && lower.starts_with(noise))
@@ -203,13 +209,17 @@ fn split_names(names: &str) -> Vec<&str> {
     names.split(" and ").flat_map(|part| part.split(" & ")).collect()
 }
 
-/// One stated author, when it reads as a person's or body's name: two words
-/// or more, or `Family, Given`, and not a producer.
+/// One stated author, unless it is a program, a file or an account name.
 fn author(name: &str) -> Option<String> {
     let name = value(name)?;
-    let words = name.split(' ').count();
-    let named = words >= 2 || name.contains(',');
-    (named && name.chars().count() <= 200 && !producer(&name) && !file_name(&name.to_lowercase())).then_some(name)
+    let noise = producer(&name) || file_name(&name.to_lowercase()) || login(&name);
+    (name.chars().count() <= 200 && !noise).then_some(name)
+}
+
+/// `jsmith` or `user01`: one lowercase word of ASCII letters and digits, as
+/// an operating system account is named, never as a person signs.
+fn login(name: &str) -> bool {
+    name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
 }
 
 /// `YYYY`, `YYYY-MM` or `YYYY-MM-DD` from the start of an XMP date, with a
@@ -228,23 +238,27 @@ fn date(text: &str) -> Option<String> {
     })
 }
 
-/// The file's DOI: one the XMP names, then the Info dictionary's, then a DOI
-/// among either's identifiers, then the only distinct DOI on the first page.
-/// Several distinct DOIs on that page give none: one is probably a reference.
-fn doi(said: &Said) -> Option<String> {
-    let named = [&said.xmp.doi, &said.info.doi]
+/// The DOI the file's metadata names: the XMP's, then the Info
+/// dictionary's, then one among either's identifiers.
+fn named_doi(said: &Said) -> Option<String> {
+    [&said.xmp.doi, &said.info.doi]
         .into_iter()
         .flatten()
         .chain(said.xmp.identifiers.iter())
         .chain(said.info.identifiers.iter())
-        .find_map(|value| identifier(value));
-    named.or_else(|| {
-        let page = said.text.first()?;
-        let mut found = ibis_core::identifier::dois_in(page);
-        found.sort();
-        found.dedup();
-        (found.len() == 1).then(|| found.remove(0))
-    })
+        .find_map(|value| identifier(value))
+}
+
+/// The only distinct DOI printed on the first page, when the metadata names
+/// none. Several give none.
+fn page_doi(said: &Said) -> Option<String> {
+    if named_doi(said).is_some() {
+        return None;
+    }
+    let mut found = ibis_core::identifier::dois_in(said.text.first()?);
+    found.sort();
+    found.dedup();
+    (found.len() == 1).then(|| found.remove(0))
 }
 
 fn identifier(value: &str) -> Option<String> {

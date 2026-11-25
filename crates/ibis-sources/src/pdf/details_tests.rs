@@ -54,7 +54,6 @@ fn titles_that_name_a_file_or_a_template_are_unknown() {
         "Title",
         "C:\\Invented\\draft",
         "/Users/invented/tides",
-        "abc",
         "  \u{7}  ",
         "\u{fffd}\u{fffd}\u{fffd}\u{fffd}",
         "12345678",
@@ -66,6 +65,8 @@ fn titles_that_name_a_file_or_a_template_are_unknown() {
     assert_eq!(checked_details(said(titled(&long), Stated::default(), "")).unwrap().title, None);
     let details = checked_details(said(titled("Ce\u{301}tacés inventés"), Stated::default(), "")).unwrap();
     assert_eq!(details.title.as_deref(), Some("Cétacés inventés"));
+    // Short is not noise: an invented work may be called that.
+    assert_eq!(checked_details(said(titled("Up"), Stated::default(), "")).unwrap().title.as_deref(), Some("Up"));
 }
 
 #[test]
@@ -76,7 +77,12 @@ fn authors_are_people_or_bodies_never_programs_or_accounts() {
     };
     let details = checked_details(said(info, Stated::default(), "")).unwrap();
     assert_eq!(details.authors, ["Quillfeather, Ada", "Bo Venn-Harrow", "Invented Ocean Society"]);
-    for noise in ["admin", "Microsoft Office User", "LaTeX with hyperref", "owner"] {
+    let one = Stated {
+        creators: vec!["Sol".into()],
+        ..Stated::default()
+    };
+    assert_eq!(checked_details(said(one, Stated::default(), "")).unwrap().authors, ["Sol"]);
+    for noise in ["admin", "Microsoft Office User", "LaTeX with hyperref", "owner", "jsmith", "user01"] {
         let info = Stated {
             creators: vec![noise.into()],
             ..Stated::default()
@@ -86,9 +92,9 @@ fn authors_are_people_or_bodies_never_programs_or_accounts() {
 }
 
 #[test]
-fn one_doi_named_by_the_file_or_alone_on_its_first_page() {
-    let named = |xmp: Option<&str>, info: Option<&str>, ids: &[&str], page: &str| {
-        checked_details(said(
+fn the_doi_is_one_the_metadata_names_and_a_printed_one_is_only_a_candidate() {
+    let both = |xmp: Option<&str>, info: Option<&str>, ids: &[&str], page: &str| {
+        let details = checked_details(said(
             Stated {
                 doi: info.map(Into::into),
                 ..Stated::default()
@@ -100,18 +106,22 @@ fn one_doi_named_by_the_file_or_alone_on_its_first_page() {
             },
             page,
         ))
-        .unwrap()
-        .doi
+        .unwrap();
+        (details.doi, details.page_doi)
     };
+    let named = |xmp, info, ids: &[&str], page| both(xmp, info, ids, page).0;
+    let printed = |page| both(None, None, &[], page);
     let page = "Invented header doi:10.5555/page.one\nReferences 10.5555/cited.two";
     assert_eq!(named(Some("10.5555/XMP"), Some("10.5555/info"), &[], page).as_deref(), Some("10.5555/xmp"));
     assert_eq!(named(Some("not a doi"), Some("https://doi.org/10.5555/Info"), &[], page).as_deref(), Some("10.5555/info"));
     assert_eq!(named(None, None, &["urn:isbn:invented", "doi:10.5555/id"], page).as_deref(), Some("10.5555/id"));
+    // A named DOI leaves no candidate.
+    assert_eq!(both(Some("10.5555/xmp"), None, &[], page).1, None);
     // Two distinct DOIs on the first page: one is probably cited, so neither.
-    assert_eq!(named(None, None, &[], page), None);
+    assert_eq!(printed(page), (None, None));
     let once = "Invented header https://doi.org/10.5555/Page.One\nAgain: doi:10.5555/page.one.";
-    assert_eq!(named(None, None, &[], once).as_deref(), Some("10.5555/page.one"));
-    assert_eq!(named(None, None, &[], ""), None);
+    assert_eq!(printed(once), (None, Some("10.5555/page.one".to_owned())));
+    assert_eq!(printed(""), (None, None));
 }
 
 #[test]
