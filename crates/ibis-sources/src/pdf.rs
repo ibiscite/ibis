@@ -32,10 +32,19 @@ pub(crate) mod inheritance;
 #[path = "pdf/ceiling.rs"]
 mod ceiling;
 
+#[path = "pdf/details.rs"]
+mod details;
+pub use details::{
+    DETAIL_PAGES, MAX_LIST, MAX_PAGE_TEXT_BYTES, MAX_VALUE_CHARS, PdfDetails, Said, Stated, checked_details,
+};
+
 /// The argument that makes `ibis` the extractor's child process.
 pub const CHILD_ARGUMENT: &str = "__extract-pdf";
 /// After [`CHILD_ARGUMENT`]: give page labels and the page count, not text.
 pub const LABELS_ONLY: &str = "--labels-only";
+/// After [`CHILD_ARGUMENT`]: give what the file says about itself and the
+/// text of its first pages (decision 0061).
+pub const DETAILS: &str = "--details";
 /// The largest file read.
 pub const MAX_FILE_BYTES: u64 = 256 * 1024 * 1024;
 /// The most pages a file read may have.
@@ -60,6 +69,7 @@ const MAX_ANSWER_BYTES: u64 = 2 * MAX_TEXT_BYTES as u64 + 4 * 1024 * 1024;
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub enum Answer {
     Read(Extracted),
+    Details(Box<Said>),
     Refused(Refusal),
 }
 
@@ -120,6 +130,23 @@ impl std::fmt::Debug for PdfDocument {
     }
 }
 
+/// What the parent asks the child for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Ask {
+    Text,
+    Labels,
+    Details,
+}
+
+/// A refusal the child sent. Those that belong to the parent, never the
+/// child, mean its answer cannot be trusted.
+fn child_refusal(refusal: Refusal) -> Refusal {
+    match refusal {
+        Refusal::Missing | Refusal::NotLocal | Refusal::TimedOut | Refusal::Unavailable => Refusal::Damaged,
+        refusal => refusal,
+    }
+}
+
 /// Starts the extractor: `program` is an `ibis` executable.
 #[derive(Clone)]
 pub struct PdfReader {
@@ -169,32 +196,49 @@ impl PdfReader {
         labels_only: bool,
         cancelled: Arc<dyn Fn() -> bool + Send + Sync>,
     ) -> Result<PdfDocument, Refusal> {
+        let ask = if labels_only { Ask::Labels } else { Ask::Text };
+        let (answer, before) = self.exchange(path, ask, cancelled)?;
+        let mut document = match answer {
+            Answer::Read(extracted) => checked(extracted, labels_only)?,
+            Answer::Details(_) => return Err(Refusal::Damaged),
+            Answer::Refused(refusal) => return Err(child_refusal(refusal)),
+        };
+        document.revision = Fingerprint::of_bytes(format!("{before}:{}", document.revision.as_str()).as_bytes());
+        Ok(document)
+    }
+
+    /// What the PDF at `path` says about itself (decision 0061).
+    pub fn details(&self, path: &Path, cancelled: Arc<dyn Fn() -> bool + Send + Sync>) -> Result<PdfDetails, Refusal> {
+        let (answer, before) = self.exchange(path, Ask::Details, cancelled)?;
+        let mut details = match answer {
+            Answer::Details(said) => checked_details(*said)?,
+            Answer::Read(_) => return Err(Refusal::Damaged),
+            Answer::Refused(refusal) => return Err(child_refusal(refusal)),
+        };
+        details.revision = Fingerprint::of_bytes(format!("{before}:{}", details.revision.as_str()).as_bytes());
+        Ok(details)
+    }
+
+    /// The child's answer about the file at `path`, opened under the reader's
+    /// rules, and the file's stamp, which held while the child read it.
+    fn exchange(
+        &self,
+        path: &Path,
+        ask: Ask,
+        cancelled: Arc<dyn Fn() -> bool + Send + Sync>,
+    ) -> Result<(Answer, String), Refusal> {
         use crate::zotero_local::closed::{ClosedError, with_local_file};
         let started = Instant::now();
         let reader = self.clone();
         let stop = cancelled.clone();
         with_local_file(path, cancelled, self.deadline, move |mut file| {
             let before = stamp(&mut file)?;
-            let answer = reader.run(
-                file.try_clone().map_err(|_| Refusal::NotLocal)?,
-                labels_only,
-                started,
-                &*stop,
-            )?;
-            let mut document = match answer {
-                Answer::Read(extracted) => checked(extracted, labels_only)?,
-                // These refusals belong to the parent, never the child.
-                Answer::Refused(Refusal::Missing | Refusal::NotLocal | Refusal::TimedOut | Refusal::Unavailable) => {
-                    return Err(Refusal::Damaged);
-                }
-                Answer::Refused(refusal) => return Err(refusal),
-            };
-            // A file changed while parsing cannot publish text or labels.
+            let answer = reader.run(file.try_clone().map_err(|_| Refusal::NotLocal)?, ask, started, &*stop)?;
+            // A file changed while parsing cannot publish what was read.
             if stamp(&mut file)? != before {
                 return Err(Refusal::NotLocal);
             }
-            document.revision = Fingerprint::of_bytes(format!("{before:?}:{}", document.revision.as_str()).as_bytes());
-            Ok(document)
+            Ok((answer, format!("{before:?}")))
         })
         .map_err(|error| match error {
             ClosedError::NotFound => Refusal::Missing,
@@ -207,7 +251,7 @@ impl PdfReader {
     fn run(
         &self,
         file: std::fs::File,
-        labels_only: bool,
+        ask: Ask,
         started: Instant,
         cancelled: &dyn Fn() -> bool,
     ) -> Result<Answer, Refusal> {
@@ -216,8 +260,14 @@ impl PdfReader {
         }
         let mut command = Command::new(&self.program);
         command.arg(CHILD_ARGUMENT);
-        if labels_only {
-            command.arg(LABELS_ONLY);
+        match ask {
+            Ask::Text => {}
+            Ask::Labels => {
+                command.arg(LABELS_ONLY);
+            }
+            Ask::Details => {
+                command.arg(DETAILS);
+            }
         }
         #[cfg(test)]
         if let Some(arguments) = &self.arguments {
