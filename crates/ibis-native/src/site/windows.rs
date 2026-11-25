@@ -44,9 +44,17 @@ impl Drop for Pending {
 
 pub(super) struct Native;
 
+/// A handle can be reused within the same browser process. Keep the UIA
+/// identity too, so the confirmation cannot give a new window the old site.
+#[derive(Clone, PartialEq, Eq)]
+pub(super) struct Window {
+    handle: usize,
+    pid: u32,
+    runtime_id: Vec<i32>,
+}
+
 impl super::Source for Native {
-    /// The foreground window's handle, as a number; it is only compared.
-    type Window = usize;
+    type Window = Window;
 
     fn front(&self) -> Option<(i32, AppId)> {
         let window = w::HWND::GetForegroundWindow()?;
@@ -67,57 +75,86 @@ impl super::Source for Native {
         true
     }
 
-    fn window(&self, pid: i32, _deadline: Instant) -> Option<usize> {
+    fn window(&self, pid: i32, deadline: Instant) -> Option<Window> {
         let window = w::HWND::GetForegroundWindow()?;
         let (_, owner) = window.GetWindowThreadProcessId();
-        (i32::try_from(owner).ok()? == pid).then(|| window.ptr() as usize)
-    }
-
-    fn matches_capture(&self, window: &usize, captured: super::CapturedWindow) -> bool {
-        matches!(captured, super::CapturedWindow::Windows(handle) if handle == *window)
-    }
-
-    fn address(&self, window: &usize, deadline: Instant) -> Option<String> {
-        let foreground = w::HWND::GetForegroundWindow()?;
-        if foreground.ptr() as usize != *window {
+        if i32::try_from(owner).ok()? != pid {
             return None;
         }
-        let (_, pid) = foreground.GetWindowThreadProcessId();
-        let window = *window;
-        // A thread of its own: UI Automation needs COM set up on the thread
-        // that calls it, and a hung browser must not hold the picker. A late
-        // answer is dropped with the channel.
-        let pending = Pending::start()?;
-        let (send, receive) = mpsc::sync_channel(1);
-        std::thread::Builder::new()
-            .name("ibis-site".into())
-            .spawn(move || {
-                let _pending = pending;
-                let _ = send.send(address_field(window, pid));
+        let handle = window.ptr() as usize;
+        with_window(handle, owner, deadline, move |_, element| {
+            let runtime_id = element.get_runtime_id().ok()?;
+            (!runtime_id.is_empty()).then_some(Window {
+                handle,
+                pid: owner,
+                runtime_id,
             })
-            .ok()?;
-        receive
-            .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-            .ok()
-            .flatten()
+        })
+    }
+
+    fn matches_capture(&self, window: &Window, captured: super::CapturedWindow) -> bool {
+        matches!(captured, super::CapturedWindow::Windows(handle) if handle == window.handle)
+    }
+
+    fn address(&self, window: &Window, deadline: Instant) -> Option<String> {
+        let foreground = w::HWND::GetForegroundWindow()?;
+        if foreground.ptr() as usize != window.handle {
+            return None;
+        }
+        let window = window.clone();
+        with_window(window.handle, window.pid, deadline, move |automation, element| {
+            if element.get_runtime_id().ok()? != window.runtime_id {
+                return None;
+            }
+            address_field(automation, element)
+        })
     }
 }
 
-/// The value of the first address field in `window`, the foreground
-/// top-level window checked before this read, when `pid` still owns it.
-fn address_field(window: usize, pid: u32) -> Option<String> {
-    let automation = UIAutomation::new().ok()?;
-    let handle = windows::Win32::Foundation::HWND(window as *mut std::ffi::c_void);
-    let window = automation
-        .element_from_handle(uiautomation::types::Handle::from(handle))
-        .ok()?;
-    if window.get_process_id().ok()? != pid {
+/// Both identity and address reads need COM on their own thread. Keep all
+/// UIA calls under the same worker limit and the caller's deadline; a late
+/// answer is dropped with the channel.
+fn with_window<T: Send + 'static>(
+    handle: usize,
+    pid: u32,
+    deadline: Instant,
+    read: impl FnOnce(&UIAutomation, &UIElement) -> Option<T> + Send + 'static,
+) -> Option<T> {
+    if Instant::now() >= deadline {
         return None;
     }
+    let pending = Pending::start()?;
+    let (send, receive) = mpsc::sync_channel(1);
+    std::thread::Builder::new()
+        .name("ibis-site".into())
+        .spawn(move || {
+            let _pending = pending;
+            let result = (|| {
+                let automation = UIAutomation::new().ok()?;
+                let handle = windows::Win32::Foundation::HWND(handle as *mut std::ffi::c_void);
+                let window = automation
+                    .element_from_handle(uiautomation::types::Handle::from(handle))
+                    .ok()?;
+                if window.get_process_id().ok()? != pid {
+                    return None;
+                }
+                read(&automation, &window)
+            })();
+            let _ = send.send(result);
+        })
+        .ok()?;
+    receive
+        .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+        .ok()
+        .flatten()
+}
+
+/// The value of the first address field in the checked top-level window.
+fn address_field(automation: &UIAutomation, window: &UIElement) -> Option<String> {
     let walker = automation.get_control_view_walker().ok()?;
     // Breadth first through the window's own controls; a document is a page,
     // and is never entered.
-    let mut queue: VecDeque<UIElement> = walker.get_first_child(&window).ok().into_iter().collect();
+    let mut queue: VecDeque<UIElement> = walker.get_first_child(window).ok().into_iter().collect();
     let mut seen = 0;
     while let Some(element) = queue.pop_front() {
         seen += 1;

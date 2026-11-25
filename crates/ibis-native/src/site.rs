@@ -127,8 +127,8 @@ mod tests {
         front: Option<(i32, AppId)>,
         allowed: bool,
         address: Option<&'static str>,
-        /// The focused window at each look, in turn; the last one repeats.
-        windows: RefCell<Vec<u32>>,
+        /// (Handle, identity) at each look, in turn; the last one repeats.
+        windows: RefCell<Vec<(u32, u32)>>,
         asked: Cell<u32>,
         deadline: RefCell<Option<Instant>>,
     }
@@ -139,7 +139,7 @@ mod tests {
                 front: Some((42, AppId { system, id: id.into() })),
                 allowed: true,
                 address,
-                windows: RefCell::new(vec![1]),
+                windows: RefCell::new(vec![(1, 1)]),
                 asked: Cell::new(0),
                 deadline: RefCell::new(None),
             }
@@ -147,14 +147,14 @@ mod tests {
     }
 
     impl Source for Fake {
-        type Window = u32;
+        type Window = (u32, u32);
         fn front(&self) -> Option<(i32, AppId)> {
             self.front.clone()
         }
         fn allowed(&self) -> bool {
             self.allowed
         }
-        fn window(&self, _pid: i32, _deadline: Instant) -> Option<u32> {
+        fn window(&self, _pid: i32, _deadline: Instant) -> Option<Self::Window> {
             let mut windows = self.windows.borrow_mut();
             if windows.len() > 1 {
                 Some(windows.remove(0))
@@ -162,15 +162,15 @@ mod tests {
                 windows.first().copied()
             }
         }
-        fn address(&self, _window: &u32, deadline: Instant) -> Option<String> {
+        fn address(&self, _window: &Self::Window, deadline: Instant) -> Option<String> {
             self.asked.set(self.asked.get() + 1);
             self.deadline.replace(Some(deadline));
             self.address.map(str::to_owned)
         }
-        fn matches_capture(&self, window: &u32, captured: CapturedWindow) -> bool {
+        fn matches_capture(&self, window: &Self::Window, captured: CapturedWindow) -> bool {
             match captured {
-                CapturedWindow::Macos(id) => id == *window,
-                CapturedWindow::Windows(handle) => handle == *window as usize,
+                CapturedWindow::Macos(id) => id == window.0,
+                CapturedWindow::Windows(handle) => handle == window.0 as usize,
             }
         }
     }
@@ -221,8 +221,34 @@ mod tests {
     #[test]
     fn a_window_switched_during_the_capture_gives_no_site() {
         let fake = Fake::new(System::Macos, "com.google.Chrome", Some("https://overleaf.com/"));
-        fake.windows.replace(vec![1, 2]);
+        fake.windows.replace(vec![(1, 1), (2, 2)]);
         assert!(matches!(read(&fake, 7), Some(Front::App { site: None, .. })));
+    }
+
+    #[test]
+    fn reused_windows_handle_with_a_new_identity_uses_the_app_fallback() {
+        let fake = Fake::new(System::Windows, "chrome.exe", Some("https://overleaf.com/"));
+        for (identity, expected) in [(1, site("https://overleaf.com/")), (2, None)] {
+            fake.windows.replace(vec![(1, 1)]);
+            let (front, captured) = read_with(&fake, 7, || {
+                // A closes after the address read; the same process gives
+                // B the same HWND, but a different UIA identity.
+                fake.windows.replace(vec![(1, identity)]);
+                ("captured", Some(CapturedWindow::Windows(1)))
+            });
+            assert_eq!(captured, "captured");
+            assert_eq!(
+                front,
+                Some(Front::App {
+                    app: AppId {
+                        system: System::Windows,
+                        id: "chrome.exe".into(),
+                    },
+                    pid: 42,
+                    site: expected,
+                })
+            );
+        }
     }
 
     #[test]
@@ -246,7 +272,7 @@ mod tests {
                 (Some(windows[1]), site("https://overleaf.com/")),
             ] {
                 // Both surrounding reads see A; capture retained B (or no window).
-                fake.windows.replace(vec![1, 1]);
+                fake.windows.replace(vec![(1, 1), (1, 1)]);
                 let mut captures = 0;
                 let (front, captured) = read_with(&fake, 7, || {
                     captures += 1;
