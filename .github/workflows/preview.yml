@@ -375,17 +375,6 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: bash scripts/collect-packages.sh
 
-      # Opens every package as its format needs and requires the notices.
-      - name: Check the notices in every package
-        env:
-          TARGET: ${{ matrix.target }}
-          # Matches "Choose the app identity" above.
-          PRODUCT: ${{ startsWith(github.ref, 'refs/tags/v') && 'Ibis' || 'Ibis Nightly' }}
-        run: |
-          python=python3
-          if [ "$RUNNER_OS" = Windows ]; then python=python; fi
-          "$python" scripts/verify-packages.py dist "$TARGET" apps/desktop/src-tauri/notices "$PRODUCT"
-
       - name: Attest build provenance
         id: provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -646,14 +635,93 @@ jobs:
           retention-days: 14
           overwrite: true
 
+  # Opens every package on its own system, after signing and as people will
+  # download it, before anything installs or publishes it (#227): checksums,
+  # notices, the version it states and embeds, its processor, the macOS
+  # signature and identity, and the command line it runs. Planted bad copies
+  # of the same packages must be refused first, so the check cannot pass by
+  # opening nothing. Intel macOS is checked here, on Apple silicon, but never
+  # started. Windows and Linux do not wait on macOS signing.
+  verify:
+    name: Verify packages (${{ matrix.name }})
+    needs: [build, sign-macos]
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS (Apple silicon), os: macos-15, target: aarch64-apple-darwin }
+          - { name: macOS (Intel), os: macos-15, target: x86_64-apple-darwin }
+          - { name: Windows, os: windows-2025, target: x86_64-pc-windows-msvc }
+          - { name: Linux, os: ubuntu-24.04, target: x86_64-unknown-linux-gnu }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # A signing failure leaves unsigned macOS packages, which must not pass.
+      - name: Require the signed macOS packages
+        if: contains(matrix.target, 'apple')
+        env:
+          SIGNING: ${{ needs.sign-macos.result }}
+        run: |
+          if [ "$SIGNING" != success ] && [ "$SIGNING" != skipped ]; then
+            echo "::error::macOS signing ended with $SIGNING; its packages are not verified."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Download the packages
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ibis-${{ matrix.target }}
+          path: dist
+
+      - name: Download the notices
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: third-party-notices
+          path: notices
+
+      # The expected version comes from the tag or the commit, never from the build.
+      - name: Verify every package
+        env:
+          TARGET: ${{ matrix.target }}
+          REF: ${{ github.ref }}
+          LEAF: ${{ vars.MACOS_SIGNING_LEAF }}
+          # Matches "Choose the app identity" in the build job.
+          IDENTIFIER: ${{ startsWith(github.ref, 'refs/tags/v') && 'com.ibiscite.ibis' || 'com.ibiscite.ibis.nightly' }}
+          PRODUCT: ${{ startsWith(github.ref, 'refs/tags/v') && 'Ibis' || 'Ibis Nightly' }}
+        run: |
+          if [[ "$REF" == refs/tags/v* ]]; then
+            version=${REF#refs/tags/v}
+            build=$version
+          else
+            version=$(node scripts/update-feed.mjs version)
+            build="$version+${GITHUB_SHA:0:7}"
+          fi
+          signed=()
+          # Whenever signing is configured; a skipped signing job then fails here.
+          if [[ "$TARGET" == *apple* ]] && [ -n "$LEAF" ]; then signed=(--signing-leaf "$LEAF"); fi
+          python=python3
+          if [ "$RUNNER_OS" = Windows ]; then python=python; fi
+          "$python" scripts/verify-packages.py dist "$TARGET" notices --version "$version" --build "$build" \
+            --identifier "$IDENTIFIER" --product "$PRODUCT" "${signed[@]}" --self-test
+
   # Install each package the way a user would, start the installed app and
   # drive it with the native smoke test, so a broken installer or a package
-  # that will not start is never published. The Intel disk image is built but
-  # not installed: this job uses only Apple silicon macOS runners.
+  # that will not start is never published. The Intel disk image is verified
+  # but not installed: this job uses only Apple silicon runners.
   install:
     name: Install and start (${{ matrix.name }})
-    needs: [build, sign-macos, windows-paste]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.windows-paste.result == 'success' && (needs.sign-macos.result == 'success' || needs.sign-macos.result == 'skipped') }}
+    needs: [build, sign-macos, windows-paste, verify]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.windows-paste.result == 'success' && (needs.sign-macos.result == 'success' || needs.sign-macos.result == 'skipped') && needs.verify.result == 'success' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -710,8 +778,8 @@ jobs:
 
   publish:
     name: Publish release
-    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || inputs.publish) && needs.build.result == 'success' && needs.install.result == 'success' && needs.release-checks.result == 'success' && needs.style-changes.result == 'success' }}
-    needs: [build, install, release-checks, style-changes]
+    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || inputs.publish) && needs.build.result == 'success' && needs.verify.result == 'success' && needs.install.result == 'success' && needs.release-checks.result == 'success' && needs.style-changes.result == 'success' }}
+    needs: [build, verify, install, release-checks, style-changes]
     # The Latest read and publish must not interleave.
     concurrency:
       group: publish-numbered-release
@@ -848,8 +916,8 @@ jobs:
 
   nightly:
     name: Publish nightly pre-release
-    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish) && needs.build.result == 'success' && needs.install.result == 'success' }}
-    needs: [build, install]
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish) && needs.build.result == 'success' && needs.verify.result == 'success' && needs.install.result == 'success' }}
+    needs: [build, verify, install]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     # Holds the nightly update signing key, which Ibis (stable) never trusts.

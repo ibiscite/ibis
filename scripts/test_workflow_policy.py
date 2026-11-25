@@ -202,12 +202,31 @@ class CiResultTest(unittest.TestCase):
         # Every package carries the one notices folder (#1271): no build without it.
         self.assertEqual(jobs["build"]["needs"], ["nightly-commit", "notices"])
         self.assertEqual(jobs["build"]["if"], gate.replace(" }}", " && needs.notices.result == 'success' }}"))
-        self.assertEqual(jobs["nightly"]["if"], "${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish) && needs.build.result == 'success' && needs.install.result == 'success' }}")
+        self.assertEqual(jobs["nightly"]["if"], "${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish) && needs.build.result == 'success' && needs.verify.result == 'success' && needs.install.result == 'success' }}")
         # build needs the nightly choice, which a tag skips; anything after build that
         # relied on the implicit success() check would be skipped with it.
-        for name in ["sign-macos", "install", "publish", "stable-feed", "nightly"]:
+        for name in ["sign-macos", "verify", "install", "publish", "stable-feed", "nightly"]:
             self.assertTrue(jobs[name]["if"].startswith("${{ !cancelled() && "), name)
         self.assertEqual(jobs["update-e2e"]["if"], "github.ref == 'refs/heads/main' && (github.event.schedule == '37 4 * * *' || inputs.update_test)")
+
+    def test_nothing_installs_or_publishes_an_unverified_package(self):
+        workflow = yaml.safe_load((ROOT / ".github/workflows/preview.yml").read_text(encoding="utf-8"))
+        jobs = workflow["jobs"]
+        verify = jobs["verify"]
+        self.assertEqual(verify["needs"], ["build", "sign-macos"])
+        targets = {entry["target"] for entry in verify["strategy"]["matrix"]["include"]}
+        self.assertEqual(targets, {entry["target"] for entry in jobs["build"]["strategy"]["matrix"]["include"]})
+        run = next(step for step in verify["steps"] if step.get("name") == "Verify every package")["run"]
+        self.assertIn("--self-test", run)
+        self.assertNotIn("continue-on-error", str(verify))
+        # Each consumer names the verification and requires its success explicitly.
+        for name in ["install", "publish", "nightly"]:
+            self.assertIn("verify", jobs[name]["needs"], name)
+            self.assertIn("needs.verify.result == 'success'", jobs[name]["if"], name)
+        # The verifier holds no secret and writes nothing.
+        self.assertNotIn("secrets.", str(verify))
+        self.assertNotIn("permissions", verify)
+        self.assertEqual(workflow["permissions"], {"contents": "read"})
 
     def test_each_ubuntu_installer_restores_its_package_cache_first(self):
         for name, profile in [("rust", "desktop"), ("web", "web")]:

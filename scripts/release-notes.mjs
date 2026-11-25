@@ -13,7 +13,8 @@ import { fileURLToPath } from "node:url";
 
 const DOWNLOADS = [
   ["macOS, Apple silicon (M1 and later)", "Ibis-macOS-Apple-silicon.dmg"],
-  ["macOS, Intel", "Ibis-macOS-Intel.dmg"],
+  // Checked before publishing but never started: no Intel Mac runs the release (#227).
+  ["macOS, Intel", "Ibis-macOS-Intel.dmg", " (built and checked, but not run on an Intel Mac before release)"],
   ["Windows", "Ibis-Windows-setup.exe"],
   ["Linux", "Ibis-Linux.AppImage", " (also `.deb` and `.rpm` below)"],
 ];
