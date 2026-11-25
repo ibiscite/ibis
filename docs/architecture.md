@@ -19,6 +19,11 @@ describes this checkout. Plans live in [ROADMAP.md](../ROADMAP.md).
 The desktop manages `ibis_engine::library::Owner`: commands submit intents and
 read its current library or view. The owner publishes library status; the app
 adds its settings notice and schedules picker and tray effects on the main thread.
+State that commands and handlers read is created after the plugins and before
+the event loop runs (`create_state` in `main.rs`), so no handler, command or
+second launch can read it before it exists; setup starts effects. A launch
+handed over before setup finishes waits in `instance::Handoff` and is answered
+at its end.
 Every command is `async` unless marked `#[command(main)]`, which answers at IPC
 receipt and never waits; settings reads use the owner's published view
 (`settings::Owner::view`), so the picker never waits behind a settings write.

@@ -38,7 +38,7 @@ pub(crate) fn install(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tau
             let handle = app.clone();
             // Serialize handoff decisions and presentation with shortcuts and OS reopen events.
             report(
-                app.run_on_main_thread(move || activate(&handle, &args, &cwd)),
+                app.run_on_main_thread(move || hand_over(&handle, Launch { args, cwd })),
                 NativeIssue::PickerEvent,
             );
         }))
@@ -85,18 +85,53 @@ fn needs_settings(app: &AppHandle) -> bool {
 /// An OS reopen and an ordinary second launch share the same destination.
 #[cfg(target_os = "macos")]
 pub(crate) fn reopen(app: &AppHandle) {
-    activate(app, &[], "");
+    hand_over(
+        app,
+        Launch {
+            args: Vec::new(),
+            cwd: String::new(),
+        },
+    );
 }
 
-fn activate(app: &AppHandle, args: &[String], cwd: &str) {
+/// The one entry for a launch handed to this copy. Before setup has finished
+/// it waits in [`Handoff`]; nothing is read or shown until [`ready`].
+fn hand_over(app: &AppHandle, launch: Launch) {
+    let Some(launch) = admit(app, launch) else {
+        return;
+    };
+    let visible = app
+        .get_webview_window("main")
+        .and_then(|window| checked(window.is_visible(), NativeIssue::Visibility));
+    activate(app, &launch, visible);
+}
+
+/// Setup has finished: answer the launches that arrived during it, in order.
+/// The picker was hidden when each arrived, so a toggle among them shows it.
+pub(crate) fn ready(app: &AppHandle) {
+    for launch in waiting(app) {
+        activate(app, &launch, None);
+    }
+}
+
+fn admit<R: tauri::Runtime>(app: &AppHandle<R>, launch: Launch) -> Option<Launch> {
+    app.state::<Mutex<Handoff>>().lock().ok()?.admit(launch)
+}
+
+fn waiting<R: tauri::Runtime>(app: &AppHandle<R>) -> Vec<Launch> {
+    app.state::<Mutex<Handoff>>()
+        .lock()
+        .map(|mut handoff| handoff.ready())
+        .unwrap_or_default()
+}
+
+fn activate(app: &AppHandle, launch: &Launch, visible: Option<bool>) {
+    let Launch { args, cwd } = launch;
     let launched = app
         .path()
         .app_cache_dir()
         .ok()
         .and_then(|cache| launched_version(&cache, args, cwd));
-    let visible = app
-        .get_webview_window("main")
-        .and_then(|window| checked(window.is_visible(), NativeIssue::Visibility));
     let action = app.state::<Mutex<Handoff>>().lock().ok().map(|mut handoff| {
         handoff.decide(
             args,
@@ -164,9 +199,26 @@ enum Action {
     Ignore,
 }
 
-#[derive(Default)]
+/// A launch of another copy, as the single-instance plugin forwards it.
+#[derive(Debug, PartialEq, Eq)]
+struct Launch {
+    args: Vec<String>,
+    cwd: String,
+}
+
 struct Handoff {
     notice: Notice,
+    /// `None` once setup has finished; until then, the launches waiting for it.
+    starting: Option<Vec<Launch>>,
+}
+
+impl Default for Handoff {
+    fn default() -> Self {
+        Self {
+            notice: Notice::default(),
+            starting: Some(Vec::new()),
+        }
+    }
 }
 
 #[derive(Default, PartialEq, Eq)]
@@ -178,6 +230,22 @@ enum Notice {
 }
 
 impl Handoff {
+    /// The launch to answer now, or `None` while it waits for setup.
+    fn admit(&mut self, launch: Launch) -> Option<Launch> {
+        match &mut self.starting {
+            Some(waiting) => {
+                waiting.push(launch);
+                None
+            }
+            None => Some(launch),
+        }
+    }
+
+    /// Setup has finished; every later launch is answered as it arrives.
+    fn ready(&mut self) -> Vec<Launch> {
+        self.starting.take().unwrap_or_default()
+    }
+
     fn decide(
         &mut self,
         args: &[String],
@@ -264,6 +332,38 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// The installed-update test launched a second copy while the first was
+    /// still creating its window, and the handoff read the library owner
+    /// before setup had created it. The app here has no owner, settings or
+    /// window at all: a launch must wait without reading any of them.
+    #[test]
+    fn a_launch_during_startup_waits_and_is_answered_once_ready() {
+        let app = tauri::test::mock_builder()
+            .manage(Mutex::new(Handoff::default()))
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let app = app.handle();
+        let launch = |command: &[&str]| Launch {
+            args: args(command),
+            cwd: "/synthetic".into(),
+        };
+        assert_eq!(admit(app, launch(&[])), None);
+        assert_eq!(admit(app, launch(&["toggle"])), None);
+        let early = waiting(app);
+        assert_eq!(early, [launch(&[]), launch(&["toggle"])]);
+        // Each waited while the picker was hidden, so the toggle shows it.
+        let handoff = app.state::<Mutex<Handoff>>();
+        for launch in &early {
+            assert_eq!(
+                handoff.lock().unwrap().decide(&launch.args, None, false, "0.3.6", None),
+                Action::Picker
+            );
+        }
+        // Answered once; later launches are answered as they arrive.
+        assert!(waiting(app).is_empty());
+        assert_eq!(admit(app, launch(&[])), Some(launch(&[])));
     }
 
     #[test]
