@@ -95,3 +95,38 @@ test("the bar names no action until the opening's offer says what Enter does, th
   // After the practice, the bar and Enter both deliver.
   expect(screen.queryByRole("button", { name: "Paste Here to Try" })).toBeNull();
 });
+
+test("an editor's request is sent, never turned into the practice, while the offer is still being read", async () => {
+  let finish!: (view: unknown) => void;
+  const calls = backend({
+    search: () => [result("a", "Invented A")],
+    editor_request: () => ({ request: 1, format: "Pandoc" }),
+    delight_view: () => new Promise((resolve) => { finish = resolve; }),
+    preview_file_citation: () => receipt("[@a]"),
+  });
+  await act(async () => { render(<App />); });
+  expect(screen.getByRole("button", { name: "Send to Editor" })).toBeTruthy();
+  await enter();
+  await act(async () => { finish({ practice: true, status: null, peck: false }); });
+  expect(calls).toContain("deliver_citation");
+  expect(screen.queryByText(/pasted here/)).toBeNull();
+});
+
+test("a refusal is said for Enter on that citation only, never carried to another", async () => {
+  const reason = "A key in thesis.bib identifies a different work.";
+  const calls = backend({
+    search: ({ query }) => [result(query.text || "a", `Invented ${query.text || "a"}`)],
+    preview_file_citation: ({ items }) => ({ ...receipt(`[@${items[0]!.id.key}]`), project_refusal: items[0]!.id.key === recordId("b") ? null : reason }),
+  });
+  await act(async () => { render(<App />); });
+  await enter();
+  await act(async () => { fireEvent.change(searchBox(), { target: { value: "b" } }); });
+  await enter();
+  expect(calls.filter((call) => call === "deliver_citation")).toHaveLength(1);
+  const added: string[] = [];
+  const observer = new MutationObserver((records) => { for (const record of records) for (const node of record.addedNodes) added.push(node.textContent ?? ""); });
+  observer.observe(document.querySelector(".delivery-bar")!, { childList: true, subtree: true });
+  await act(async () => { fireEvent.change(searchBox(), { target: { value: "c" } }); });
+  observer.disconnect();
+  expect(added).not.toContain(`Not pasted or copied. ${reason}`);
+});

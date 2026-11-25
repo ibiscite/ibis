@@ -2,7 +2,7 @@ import * as nativeApi from "./api";
 import { useNativeEvent } from "./nativeEvents";
 import { useTimeout } from "./ui/timers";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { idKey } from "./features/picker/choice";
+import { choiceKey, idKey } from "./features/picker/choice";
 import { keysFor, matchesAccelerator } from "./keys";
 import { isMac } from "./platform";
 import { PeekDrawer } from "./features/picker/PeekDrawer";
@@ -170,11 +170,17 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     focusHome, pointer, requestCopy, report,
   });
   const practice = delights.practice;
-  // Each Enter on a refused citation is said again, once per press (the bar's alert).
-  const [refusedEnter, setRefusedEnter] = useState<{ reason: string; presses: number } | null>(null);
+  // Each Enter on a refused citation is said again, once per press (the bar's
+  // alert). The presses belong to this citation in this opening: another
+  // citation, or the next opening, starts from none.
+  const refusalOwner = `${state.presentation}:${choiceKey(shownChoice)}`;
+  const [refusedEnter, setRefusedEnter] = useState<{ owner: string; presses: number } | null>(null);
+  const refusedPresses = projectRefusal && refusedEnter?.owner === refusalOwner ? refusedEnter.presses : 0;
   const copyChosen = () => {
-    if (projectRefusal) setRefusedEnter((last) => ({ reason: projectRefusal, presses: last?.reason === projectRefusal ? last.presses + 1 : 1 }));
-    rows.copyChosen(delights.actionForEnter());
+    if (projectRefusal) setRefusedEnter((last) => ({ owner: refusalOwner, presses: last?.owner === refusalOwner ? last.presses + 1 : 1 }));
+    // Enter's outcome in the order the bar names it (enterLabel.ts): an
+    // editor's request is sent, never turned into the first-run practice.
+    rows.copyChosen(editor.label ? "deliver" : delights.actionForEnter());
   };
   const practiceLine = practice ? practice.pasted === null ? say("picker-practice-offer") : say("picker-practice-pasted", { citation: practice.pasted }) : null;
   const waitingForPractice = practice?.pasted === null && !zoomFeedback && !emptyFeedback.feedback;
@@ -268,7 +274,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
         </LineNotice>,
       ].filter(Boolean)}
       bar={<PickerStatusFooter
-          refusal={projectRefusal} refusedPresses={projectRefusal && refusedEnter?.reason === projectRefusal ? refusedEnter.presses : 0}
+          refusal={projectRefusal} refusedPresses={refusedPresses}
           refusalActions={<BibliographyCheckFixes {...checkFixes} />}
           api={api} library={library} scope={scope} sourceState={source} menus={menus} actions={actions} run={keys.run} citationLine={citationLine}
           copyChosen={copyChosen} recents={recents}
