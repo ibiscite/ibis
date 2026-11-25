@@ -471,7 +471,7 @@ mod parser_tests {
     /// child (decision 0060): the readers must not be built into the app.
     #[test]
     fn the_app_is_built_without_document_readers() {
-        assert!(!ibis_core::syntax::DOCUMENT_READERS);
+        assert!(!std::hint::black_box(ibis_core::syntax::DOCUMENT_READERS));
     }
 }
 
