@@ -105,10 +105,20 @@ impl Format {
     fn capabilities(self, asked: &Path) -> &'static [crate::SourceCapability] {
         use crate::SourceCapability::*;
         match self {
-            Self::Bibtex if Self::named(asked) == Some(Self::Bibtex) => {
-                &[BibliographicRecords, NativeCitationKeys, AttachmentText, Proposals]
-            }
-            Self::Bibtex | Self::CslJson => &[BibliographicRecords, NativeCitationKeys, AttachmentText],
+            Self::Bibtex if Self::named(asked) == Some(Self::Bibtex) => &[
+                BibliographicRecords,
+                NativeCitationKeys,
+                AttachmentText,
+                Proposals,
+                OriginalEntries,
+            ],
+            Self::Bibtex => &[
+                BibliographicRecords,
+                NativeCitationKeys,
+                AttachmentText,
+                OriginalEntries,
+            ],
+            Self::CslJson => &[BibliographicRecords, NativeCitationKeys, AttachmentText],
             // Decision 0043: no citation keys and no attachments.
             Self::Ris | Self::Csv => &[BibliographicRecords],
         }
