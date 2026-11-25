@@ -1006,6 +1006,11 @@
                 "const": "proposals",
                 "description": "Changes an AI app proposes and the person confirms in Ibis (decision 0055).",
                 "type": "string"
+              },
+              {
+                "const": "original-entries",
+                "description": "Each record's original entry as the file wrote it, which `entry` copies.",
+                "type": "string"
               }
             ]
           },
@@ -9732,7 +9737,7 @@
     {
       "contract": 1,
       "method": "entry",
-      "needs": "records",
+      "needs": "original-entries",
       "network": "offline",
       "palette": [
         "reference"
@@ -10660,7 +10665,7 @@
     {
       "contract": 1,
       "method": "outline",
-      "needs": "attachment-text",
+      "needs": "records",
       "network": "offline",
       "palette": [
         "reference"
@@ -14868,6 +14873,11 @@
                 "type": "string"
               },
               {
+                "const": "original-entries",
+                "description": "Each record's original entry as its file wrote it.",
+                "type": "string"
+              },
+              {
                 "const": "as-called",
                 "description": "Whatever the method it calls needs.",
                 "type": "string"
@@ -17290,6 +17300,11 @@
                 "type": "string"
               },
               {
+                "const": "original-entries",
+                "description": "Each record's original entry as its file wrote it.",
+                "type": "string"
+              },
+              {
                 "const": "as-called",
                 "description": "Whatever the method it calls needs.",
                 "type": "string"
@@ -18337,6 +18352,11 @@
               {
                 "const": "proposals",
                 "description": "Changes an AI app proposes and the person confirms in Ibis (decision 0055).",
+                "type": "string"
+              },
+              {
+                "const": "original-entries",
+                "description": "Each record's original entry as the file wrote it, which `entry` copies.",
                 "type": "string"
               }
             ]

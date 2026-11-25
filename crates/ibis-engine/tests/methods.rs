@@ -257,4 +257,37 @@ mod typed_calls {
             Some(ErrorCode::ResourceLimit)
         );
     }
+
+    /// A method's declared need is what its answer depends on: `entry` copies
+    /// an original entry only a BibTeX file keeps, while `outline` answers for
+    /// any record, attachments or not.
+    #[test]
+    fn declared_needs_match_what_answers() {
+        use ibis_core::contract::ExitCode;
+        let cancel = Cancellation::default();
+        let one = json!({"item": {"by": "key", "value": "one"}});
+        for (name, content, keeps_entries) in [
+            ("invented.bib", "@book{one,title={Invented Lanterns}}", true),
+            (
+                "invented.json",
+                r#"[{"id":"one","type":"book","title":"Invented Lanterns","citation-key":"one"}]"#,
+                false,
+            ),
+        ] {
+            let (_dir, engine) = opened(name, content);
+            let capabilities = engine.libraries().unwrap().libraries[0].capabilities.clone();
+            let has = |method: Method| capabilities.contains(&method.needs().capability().unwrap());
+            assert_eq!(has(Method::Entry), keeps_entries, "{name}");
+            let entry = engine.dispatch(Method::Entry, &one, &cancel).unwrap();
+            let expected = if keeps_entries {
+                ExitCode::Ok
+            } else {
+                ExitCode::Findings
+            };
+            assert_eq!(entry.exit_code, expected, "{name}");
+            assert!(has(Method::Outline), "{name}");
+            let outline = engine.dispatch(Method::Outline, &one, &cancel).unwrap();
+            assert_eq!(outline.exit_code, ExitCode::Ok, "{name}");
+        }
+    }
 }

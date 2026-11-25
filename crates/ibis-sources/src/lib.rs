@@ -216,6 +216,8 @@ pub enum SourceCapability {
     AttachmentText,
     /// Changes an AI app proposes and the person confirms in Ibis (decision 0055).
     Proposals,
+    /// Each record's original entry as the file wrote it, which `entry` copies.
+    OriginalEntries,
 }
 
 impl SourceCapability {
