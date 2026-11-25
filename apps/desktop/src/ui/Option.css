@@ -99,7 +99,7 @@
 /* One line cuts with an ellipsis, never mid-word: the title last of all, then the
    container before the authors, who keep a name's worth of room. */
 :root[data-density="compact"] #results .ui-option:not([data-active]) .result-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-:root[data-density="compact"] #results .ui-option:not([data-active]) .result-authors { flex: 0 1 auto; min-width: min(3em, 100%); }
+:root[data-density="compact"] #results .ui-option:not([data-active]) .result-authors { flex: 0 1 auto; }
 :root[data-density="compact"] #results .ui-option:not([data-active]) .result-container { flex: 0 1000 auto; }
 @media (prefers-contrast: more) {
   /* A 3 px edge drawn inside the row, so the text stays put. */

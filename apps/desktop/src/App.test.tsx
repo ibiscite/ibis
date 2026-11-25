@@ -643,7 +643,7 @@ test("the format palette offers Projects only when the engine does", async () =>
 // Editor requests
 const plain = (text: string | null | undefined) => (text ?? "").replace(/[⁨⁩]/g, "");
 
-test("a waiting editor is named with its format, and its end asks for a fresh preview", async () => {
+test("a waiting editor's format is named once, in the header, and its end asks for a fresh preview", async () => {
   let waiting: { request: number; format: string } | null = { request: 1, format: "Pandoc" };
   let previews = 0;
   backend({
@@ -653,7 +653,10 @@ test("a waiting editor is named with its format, and its end asks for a fresh pr
   });
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "signals" } });
-  await waitFor(() => expect(plain(document.body.textContent)).toContain("Citing for your editor in Pandoc."));
+  await waitFor(() => expect(plain(document.body.textContent)).toContain("Citing for your editor. Esc cancels."));
+  expect(document.querySelector(".search-format-label")?.textContent).toBe("Pandoc");
+  expect(plain(document.body.textContent).match(/Pandoc/g)).toHaveLength(1);
+  expect(screen.getByRole("button", { name: "Send to Editor" })).toBeTruthy();
   await waitFor(() => expect(document.body.textContent).toContain("@taylor2026"));
   const before = previews;
   waiting = null;

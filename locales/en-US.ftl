@@ -1201,6 +1201,8 @@ picker-project-entry =
        *[dependency] This entry relies on a crossref, xdata or @string that can’t come with it. Export it from your reference manager, keeping its key.
     }
 picker-editor-waiting = Citing for your editor in { $format }. Esc cancels.
+# The header names the format an editor asked for; this line says only who asked.
+picker-editor-asking = Citing for your editor. Esc cancels.
 picker-send = Send · { $format }
 picker-delivery-editor = Editor
 picker-delivery-clipboard = Clipboard

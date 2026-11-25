@@ -57,7 +57,7 @@ export const slotMessages: Record<keyof typeof slots, { id: MessageId; args?: Re
     ...(Object.keys(OPERATION_FAILURES) as Operation[]).filter((operation) => !libraryOperations.has(operation)).map((operation) => ({ id: OPERATION_FAILURES[operation] })),
     { id: "picker-search-error" }, { id: "picker-copy-error" },
     { id: "picker-missing-citations", args: { keys: "featherstonehaugh2026, aster2026" } },
-    { id: "picker-editor-waiting", args: { format: "Chicago (author-date)" } },
+    { id: "picker-editor-asking" },
     { id: "picker-shortcut-not-used", args: { reason: "Another app uses it." } },
     { id: "picker-shortcut-unavailable", args: { shortcut: "⌥⇧⌘Y", reason: "Another app uses it." } },
   ],

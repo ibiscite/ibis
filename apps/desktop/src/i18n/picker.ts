@@ -438,6 +438,7 @@ export const PICKER_IDS = [
   "picker-copy-project-entry",
   "picker-project-entry",
   "picker-editor-waiting",
+  "picker-editor-asking",
   "picker-find-source",
   "picker-find-source-unnamed",
   "picker-show-source-folder",
