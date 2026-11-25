@@ -291,6 +291,20 @@ fn version_line(name: &str, version: &str) -> String {
     format!("{name} {version}")
 }
 
+/// About's version line, or with `build` its build line, copied as the tray
+/// copies it: through the clipboard owner, never the web view's clipboard.
+#[tauri::command]
+#[ibis_desktop_macros::command(main)]
+pub(crate) fn copy_version(build: bool, app: AppHandle) -> Result<(), crate::errors::NativeFailure> {
+    let version = if build {
+        crate::delights::about_build()
+    } else {
+        app.package_info().version.to_string()
+    };
+    crate::copy::write_plain(&app, &version_line(&app.package_info().name, &version))
+        .map_err(|_| crate::errors::NativeFailure)
+}
+
 pub(crate) struct OpenMenuItem(MenuItem<tauri::Wry>);
 
 /// Tauri accepts physical accelerator codes, whose Mac equivalents are US

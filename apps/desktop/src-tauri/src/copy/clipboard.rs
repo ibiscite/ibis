@@ -212,7 +212,7 @@ impl WindowsWrite {
 /// Text and HTML; Linux apps read HTML for formatting and rarely RTF. Linux
 /// keeps no clipboard count, so its writes have receipts and never a ticket.
 #[cfg(target_os = "linux")]
-#[allow(clippy::disallowed_methods)] // The owner itself.
+#[allow(clippy::disallowed_methods, clippy::disallowed_types)] // The owner itself.
 pub(crate) fn write(
     app: &tauri::AppHandle,
     attempt: Option<crate::paste::CopyAttempt>,

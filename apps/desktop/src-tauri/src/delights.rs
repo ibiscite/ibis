@@ -33,6 +33,11 @@ pub(crate) enum DelightStatus {
     Library10000,
 }
 
+/// This build's About line.
+pub(crate) fn about_build() -> String {
+    build_line(ibis_core::VERSION, option_env!("GITHUB_SHA"), env!("IBIS_BUILD_DATE"))
+}
+
 /// The About build line. A nightly's version already names its commit.
 fn build_line(version: &str, commit: Option<&str>, date: &str) -> String {
     match commit {
@@ -135,7 +140,7 @@ impl SettingsFile {
         let mut view = DelightView {
             anniversary: fun && anniversary,
             fun,
-            build: build_line(ibis_core::VERSION, option_env!("GITHUB_SHA"), env!("IBIS_BUILD_DATE")),
+            build: about_build(),
             ..DelightView::default()
         };
         if fun && about_click {

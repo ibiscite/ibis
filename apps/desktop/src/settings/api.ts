@@ -22,6 +22,7 @@ export const settingsApi = {
   cliStatus: commands.cliStatus,
   setCliInstalled: commands.setCliInstalled,
   copyCliProfile: commands.copyCliProfile,
+  copyVersion: commands.copyVersion,
   delightView: commands.delightView,
   pickerPreferences: commands.pickerPreferences,
   savePickerPreferences: commands.savePickerPreferences,

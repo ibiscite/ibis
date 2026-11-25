@@ -497,7 +497,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     const operation = ++versionCopy.current;
     clearVersionCopied();
     setVersionCopyFailed(false);
-    void navigator.clipboard.writeText(`${name} ${altHeld && about?.build ? about.build : version}`).then(() => {
+    // Native, through the clipboard owner: a copy here retires older pending ones.
+    void api.copyVersion(altHeld && Boolean(about?.build)).then(() => {
       if (!live.current || operation !== versionCopy.current) return;
       flashVersionCopied(true);
     }, () => { if (live.current && operation === versionCopy.current) setVersionCopyFailed(true); });
