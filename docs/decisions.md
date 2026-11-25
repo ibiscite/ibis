@@ -137,3 +137,6 @@ the anchor older links use.
 
 ## 0058 Interface language
 [0058](decisions/0058-interface-language.md): one catalogue per language with every English message, checked by tests; the app speaks the Settings choice or the system's language from the next opening, the command line and MCP stay English; citations keep their style's language; right to left by `dir` and logical properties, with isolated arguments for mixed-direction text.
+
+## 0060 One document pipeline
+[0060](decisions/0060-one-document-pipeline.md): check, export, format and share are one pipeline, scan → reference set → render → sink; office containers parse only in a child, plain text in core's bounded readers; the reference set is a CSL-JSON file of share-safe records; project-scoped keys and the opt-in `.bib` append are the project's own.
