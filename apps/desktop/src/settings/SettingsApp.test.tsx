@@ -377,7 +377,8 @@ test.each(["macos", "windows"])("settings search on %s uses only keys to find, c
 });
 
 test("setting defaults appear only for changed values, restore with Undo and survive reopening", async () => {
-  const { api, state } = fakeApi({}, { appearance: "dark", density: "compact" });
+  // Compact rows are the default, so Comfortable is the changed value.
+  const { api, state } = fakeApi({}, { appearance: "dark", density: "comfortable" });
   const mounted = render(<SettingsApp api={api} initialPage="look" />);
   const reset = await screen.findByRole("button", { name: "Use Default for Appearance" });
   expect(screen.queryByRole("button", { name: "Use Default for Accent" })).toBeNull();
@@ -392,7 +393,7 @@ test("setting defaults appear only for changed values, restore with Undo and sur
   await screen.findByRole("button", { name: "Undo Restore Default for Rows" });
   mounted.unmount();
   render(<SettingsApp api={api} initialPage="look" />);
-  expect(await screen.findByRole("radio", { name: "Comfortable" })).toHaveProperty("checked", true);
+  expect(await screen.findByRole("radio", { name: "Compact" })).toHaveProperty("checked", true);
   expect(state.preferences.appearance).toBe("dark");
 });
 

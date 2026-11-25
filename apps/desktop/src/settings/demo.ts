@@ -6,7 +6,7 @@ import type { SettingsApi } from "./api";
 /** Explicit development-only fixture: no native commands, files or network. */
 export function demoApi(initialPreferences: Partial<PickerPreferences> = {}): SettingsApi {
   let proposals = exampleProposals();
-  let preferences: PickerPreferences = { output: "pandoc", density: "comfortable", larger_text: false, paste: true, menu_bar: true, appearance: "system", accent: "system", interface_language: "system", speaking: "en-US", ...initialPreferences };
+  let preferences: PickerPreferences = { output: "pandoc", density: DEFAULT_PREFERENCES.density, larger_text: false, paste: true, menu_bar: true, appearance: "system", accent: "system", interface_language: "system", speaking: "en-US", ...initialPreferences };
   let shortcut: ShortcutStatus = { shortcut: DEFAULT_PICKER_SHORTCUT, registered: true, error: null };
   let enabled = false, automatic = false;
   let attachmentText = false;

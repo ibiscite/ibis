@@ -257,8 +257,8 @@ impl std::fmt::Debug for EditorEndpoint {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Density {
-    Compact,
     #[default]
+    Compact,
     Comfortable,
 }
 
@@ -472,7 +472,7 @@ pub struct Portable {
     /// (decision 0042). `output` is your format everywhere else.
     #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "text_or_none")]
     pub key_output: Option<String>,
-    /// Result row density. `None` means comfortable.
+    /// Result row density. `None` means compact.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub density: Option<Density>,
     /// Default position on the active display. `None` means Centre.
