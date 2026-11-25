@@ -12,7 +12,7 @@ only paints. The engine's child extractor
 page text, page labels and Anchors; search inside a document is `find_in`. The
 picker's grants never sit beside untrusted PDF parsing.
 
-PDF.js (`pdfjs-dist`, exactly pinned at 6.2.108 or later, behind one adapter)
+PDF.js (`pdfjs-dist`, exactly pinned to a release no older than 6.2.108, behind one adapter)
 parses in a worker of the reader window, draws pages with a selectable text
 layer and uses the same renderer on each system. Native PDF parsers would put C/C++ parsing beside Ibis's library,
 clipboard and paste permissions or require separate viewers. The PDF adapter

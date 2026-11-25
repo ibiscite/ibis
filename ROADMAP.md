@@ -79,7 +79,8 @@ inputs → model → operations → outputs → thin front ends
   targets. Rows say what they offer or `needs`, their `network` use and whether
   they are a `palette` verb. Consent screens, PRIVACY.md, MCP tools, the ⌘K list
   and the compatibility guide derive from them.
-- **Front ends** are projections with no handlers of their own. Settings have
+- **Front ends** are projections with no handlers of their own
+  ([0059](docs/decisions/0059-works-with-nothing-better-with-more.md)). Settings have
   one schema; everything Ibis says reaches people as a `Problem` in the notice
   slot.
 
@@ -96,9 +97,10 @@ only when asked. The tracking issue holds the order and what is in flight.
 
 Every capability says what a person gets at each rung. **Rung 0:** Ibis with
 files, PDFs or a `.bib`. **Rung 1:** plus Zotero. **Rung 2:** plus Better
-BibTeX or Zotero's ODF/DOCX Scan plugin. A rung is detected from what a read
-returns, never asked; a verb whose needs are unmet is not offered, or refuses
-with a reason and the next-best verb.
+BibTeX or the ODF/DOCX Scan plugin for Zotero. A rung is detected from what a
+read returns, never asked; a verb whose needs are unmet is not offered, or
+refuses with a reason and the next-best verb. Delivery, context, packs, the
+reader and agents work the same at every rung, on whatever the engine can open.
 
 ### A. Public beta (0.3.x)
 
@@ -125,7 +127,8 @@ support claim has proof.
   are unsigned, so the official Homebrew cask waits.
 - **Help:** a documentation site covering install (with pictures of each
   system's first-launch block), first use, privacy and troubleshooting; an
-  offline Copy Diagnostics for bug reports instead of telemetry.
+  offline Copy Diagnostics for bug reports instead of telemetry; help
+  screenshots kept current.
 - **Then** a user study of the whole experience; its results reorder B.
 
 ### B. 0.4 One contract, one context, one delivery
@@ -161,10 +164,15 @@ all three systems; one ⌘K list.
   `--allow-writes` flag, with its review sheet; a library on another computer
   through `ssh HOST ibis mcp`; then the MCP Registry listing.
 - **Foundations,** each just before its feature: 0057 steps 3 to 12 with the
-  three row fields; the Selection request replacing the separate item shapes of
-  `cite`, `records` and `share`; one output descriptor replacing the output
-  booleans; the whole Anchor type replacing the two page vocabularies; the
-  `writings` settings key renamed `projects`.
+  three row fields, which finish moving the app onto the engine (0052); the
+  Selection request replacing the separate item shapes of `cite`, `records` and
+  `share`; one output descriptor replacing the output booleans; the whole Anchor type replacing the two page vocabularies; the
+  `writings` settings key renamed `projects`; the picker controller owning its
+  asynchronous work.
+- **Checks:** tests of supported outcomes instead of source or CSS text;
+  generated action and race sequences for the picker, Settings and delivery,
+  with fake time and reviewed engine snapshots; published engine and CLI limits
+  for start, search, cite and memory in the performance checks.
 - **Last,** once screens stop changing: the design-system pass, accessibility on
   the cite path with VoiceOver, NVDA and input methods, and translations
   refreshed after a string freeze.
@@ -214,11 +222,14 @@ from any library or a folder of PDFs.
   in the app; collections, tags, saved searches, filters and Zotero's selection;
   Chinese, Japanese and Korean names by romanized reading.
 - **Passages:** quotes stay distinct from notes, and physical and printed pages
-  stay distinct; a dropped PDF finds its reference; the evidence brief is a pack
+  stay distinct, and whether passages unfold under references or have their own
+  view is decided after a walkthrough with reference-manager and file users; a
+  dropped PDF finds its reference; the evidence brief is a pack
   of anchors; add a note instead of a citation; `ibid` recall; opt-in agent
   access to passages per library.
-- **Opening:** open at an anchor in the person's chosen viewer or editor. Open
-  actions are named by their target, a failed open offers alternatives, and
+- **Opening:** open at an anchor in the person's chosen viewer or editor, with
+  a menu when a reference has several PDFs. Open actions are named by their
+  target, a failed open offers alternatives, and
   an unknown printed page asks.
 - **The reader** comes last, through
   [the reader boundary](docs/decisions/0036-reader-trust-boundary.md): PDF.js
@@ -237,7 +248,8 @@ from any library or a folder of PDFs.
   layouts, sleep and wake, cloud and network-drive recovery; LibreOffice
   readback on Mac and Windows; winget and Flathub.
 - **Every client:** Claude, Cursor and Codex qualified, and one real outside
-  client on the stable tier. On request: a same-user socket to the running app
+  client on the stable tier; VS Code Citation Picker for Zotero qualified
+  against the editor endpoint. On request: a same-user socket to the running app
   (no network listener) and thin editor clients.
 
 ### F. 1.0 Stable
@@ -279,8 +291,8 @@ exact release.
   network entry.
 - **Local meaning-based search** ([0010](docs/decisions/0010-search.md)):
   keyword search comes first.
-- **A Word clipboard field:** plausible but unproven and large; the Scan and
-  generated-document routes come first.
+- **A Word clipboard field and real footnotes on paste:** plausible but
+  unproven and large; the Scan and generated-document routes come first.
 - **Other managers' annotations** (Paperpile, JabRef, BibDesk and Skim, EndNote,
   Mendeley, Citavi): each through its adapter, when its users ask.
 - **Word Sources.xml:** one output row when Word users ask.
