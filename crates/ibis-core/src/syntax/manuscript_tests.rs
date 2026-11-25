@@ -215,6 +215,6 @@ fn typst_math_never_changes_code_depth() {
     assert!(keys(TextKind::Typst, "$ a @b $\n").is_empty());
     assert_eq!(
         keys(TextKind::Typst, "$ \"dollar: $\" $ @ghost\n"),
-        of(&[(1, 19, &["ghost"])])
+        of(&[(1, 17, &["ghost"])])
     );
 }
