@@ -26,6 +26,7 @@ has neither. Nothing here runs in the app.
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -68,10 +69,17 @@ CODE_SUFFIXES = (".rs", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".
                  ".yaml", ".xml", ".map", ".lock", ".css", ".scss", ".less", ".wasm", ".png", ".svg", ".jpg",
                  ".jpeg", ".gif", ".webp", ".ico", ".woff", ".woff2", ".ttf", ".otf", ".node", ".dll", ".so",
                  ".dylib", ".a", ".o", ".exe", ".bin", ".gz", ".zip")
-# What counts as a package's own licence for npm review: a licence-named file
-# at its top. Nested and attribution files are passed on as well, but never
-# stand in for it.
-OWN_LICENCE_PREFIXES = ("license", "licence", "copying", "unlicense")
+# What counts as a package's own licence for npm review: LICENSE, LICENCE,
+# COPYING or UNLICENSE at its top, alone or with a text extension or a
+# licence name (LICENSE.md, LICENSE-MIT, LICENSE-APACHE-2.0). Nested,
+# attribution (LICENSE-THIRD-PARTY.txt) and other files are passed on as
+# well, but never stand in for it.
+OWN_LICENCE = re.compile(
+    r"(licen[cs]e|copying|unlicense)"
+    r"([-._](mit|apache|apache-?2(\.0)?|bsd|isc|0bsd|zlib|mpl|gpl|lgpl|agpl|unlicense|cc0))?"
+    r"(\.(txt|md|markdown|rst))?",
+    re.IGNORECASE,
+)
 # Folders a package carries but does not ship in what it builds.
 NOT_SHIPPED = {"node_modules", ".git", "target", "tests", "test", "benches", "examples", "fixtures", "testdata"}
 
@@ -95,7 +103,7 @@ def is_licence_file(relative):
 def own_licence(relative):
     """A licence-named file at the package's top: what npm review requires."""
     path = Path(relative)
-    return len(path.parts) == 1 and path.name.lower().startswith(OWN_LICENCE_PREFIXES) and is_licence_file(path)
+    return len(path.parts) == 1 and OWN_LICENCE.fullmatch(path.name) is not None
 
 
 def licence_files(directory):

@@ -40,6 +40,16 @@ class LicenceFiles(unittest.TestCase):
         self.assertEqual(notices.licence_files(self.dir), [])
 
 
+class OwnLicence(unittest.TestCase):
+    def test_only_a_licence_at_the_top_is_the_packages_own(self):
+        for name in ["LICENSE", "LICENCE", "license.md", "LICENSE.txt", "LICENSE-MIT", "LICENSE-APACHE",
+                     "LICENSE-APACHE-2.0", "COPYING", "UNLICENSE", "License.markdown"]:
+            self.assertTrue(notices.own_licence(name), name)
+        for name in ["LICENSE-THIRD-PARTY.txt", "license-check", "license.sh", "licenses/LICENSE", "NOTICE",
+                     "ThirdPartyNotices.txt", "LICENSE.js", "license-checker.md"]:
+            self.assertFalse(notices.own_licence(name), name)
+
+
 class NpmReview(unittest.TestCase):
     def test_a_package_with_only_code_named_third_party_needs_review(self):
         directory = Path(tempfile.mkdtemp(prefix="ibis-notices-"))
