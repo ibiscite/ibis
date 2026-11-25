@@ -1,72 +1,31 @@
-# 0049 Local machines gate merges (superseded)
+# 0049 Hosted CI gates merges
 
-2026-11-18 (maintainer): a pull request runs the jobs its changed paths can
-affect. `scripts/ci-plan.mjs` maps each path to a crate (and every crate that
-depends on it, from `cargo metadata`), the interface or prose; any other path,
-anything generated or shared, and anything it cannot read selects the full
-suite. Main, schedules, manual runs, the `ci:full` label and the repository
-variable `CI_SELECTION=full` always run everything. **CI result** passes only
-if every selected job passed and every other planned job was skipped. Release
-checks run on a PR only when a workspace crate changes, and always on main. This
-replaces the 2026-11-13 deletion of the path classifier.
+Decided by the maintainer on 2026-11-14 and last changed on 2026-11-18.
 
-2026-11-18 (maintainer): every PR tests all three systems before it can merge,
-and macOS runs on GitHub's hosted runners again: one self-hosted Mac served every
-PR's macOS job in turn and became the queue. The repository variable `RUNNERS`
-stays the switch back to our own Mac. A newer push cancels the PR's superseded
-run; pushes to main and daily/manual runs test all three.
+Hosted **CI result** is the required check on main, with no merge queue.
+`scripts/land.sh` runs fast local checks, pushes the branch and requests squash
+auto-merge; a pull request merges once **CI result** passes, without being up to
+date with main, and main's push CI checks the combined commit. Local machines
+are for speed and native checks, never the gate.
 
-2026-11-16: every PR and push runs one `Rust and desktop` job per system (hosted
-macOS runners were the queue) and the Linux release checks; `land.sh` requires a
-recorded independent review before merging updater, signing, publishing,
-workflow or app-permission changes.
-
-2026-11-16 (maintainer): every pull request runs `Test` and `Desktop` on all
-three systems, and while main's latest push CI failed, `scripts/land.sh` lands
-only `fix` or `revert` titles. One nightly a day is built from main's head once
-its push CI passed; pushes to main publish nothing.
-
-2026-11-15 (maintainer): superseded: hosted CI is the required merge check;
-local machines are for speed and native checks. Pull requests
-squash-merge once **CI result** passes, without being up to date with main;
-main's push CI checks the combined commit, and a red main holds the nightly.
-
-2026-11-14 (maintainer): hosted **CI result** is the required check again. The
-local gate reported on itself, and main went red the day it became required.
-`scripts/land.sh` runs fast local checks, pushes the branch and requests
-squash auto-merge.
-
-2026-11-13 (maintainer): this is a solo project; the maintainer and his agents
-are the only writers. **The local machines are the gate; GitHub CI confirms
-after merge.** Waiting for a hosted runner before every merge costs time
-without establishing a new trust boundary.
-
-`scripts/land.sh` owns the complete gate, with no changed-path plan. It pushes
-the clean branch, runs the Mac and Ubuntu in parallel, and adds Windows
-PowerShell 5.1 tests when packaging or PowerShell paths change. Each result
-belongs to the exact head. Ubuntu runs detached with a log/end marker and an
-exclusive checkout/build lock. Warm target directories are kept; no sccache.
-Unreachable machines fail unless explicitly skipped; the PR and status record
-those exceptions. [Testing](../testing.md#where-checks-run) documents commands,
-machines, logs and invocation.
-
-After passing, preserve existing PR text, append one gate line, set the commit
-status **Local gate** to success on that SHA and squash-merge immediately.
-The release app's PR uses this same gate. Delete the path classifier, local
-check-plan runner, PR placeholders and Release Please CI-dispatch refusal.
-Keep title feedback for outside PRs: it is read-only and uses no credentials.
-Nix and syntax-tool builds move to main pushes. Release workflows retain full
-build, signing, provenance, install/start and publication checks.
-
-Main CI always confirms the full three-system matrix. Daily/manual runs add
-heavy qualification. **CI result** still protects nightly publication through
-`scripts/ci-main.mjs`; it no longer authorizes merges. A red main preserves the
-preceding nightly. This updates the merge/check portions of decisions 0027,
-0034 and 0037. Number 0048 was already assigned to Nix.
-
-With warm dependencies and targets, budget about 4–8 minutes from push to merge:
-`max(Mac full gate, Ubuntu Rust + Vitest, optional Windows tests) + API calls`.
-A cold Rust target can take 15–30 minutes. These are estimates, pending one
-real run; hosted confirmation and release builds are outside merge latency.
-
-Applied on 2026-11-13: the required check on main is Local gate; the previous ruleset is kept privately.
+- **What a pull request runs.** `scripts/ci-plan.mjs` maps each changed path to
+  a crate (and every crate that depends on it, from `cargo metadata`), the
+  interface or prose; any other path, anything generated or shared, and anything
+  it cannot read selects the full suite. **CI result** passes only if every
+  selected job passed and every other planned job was skipped. Release checks
+  run on a pull request only when a workspace crate changes. A newer push
+  cancels the pull request's superseded run.
+- **Every system, every time.** The Rust tests run on macOS, Windows and Linux
+  whenever they are selected; macOS uses GitHub's hosted runners, and the
+  repository variable `RUNNERS` is the switch to our own Mac (Dependabot stays
+  hosted).
+- **Main and schedules run everything**, as do manual runs, the `ci:full` label
+  and the repository variable `CI_SELECTION=full`. Daily and manual runs add
+  the heavy qualification jobs.
+- **A red main is repaired first.** While main's latest push CI failed,
+  `land.sh` lands only `fix` or `revert` titles. One nightly a day is built from
+  main's head once its push CI passed; pushes to main publish nothing, and a red
+  main keeps the previous nightly.
+- **Guarded paths need an independent review.** `land.sh` will not request the
+  merge of a change to workflows, scripts, the updater or app permissions
+  without a recorded review of its exact head.

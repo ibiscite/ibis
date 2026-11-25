@@ -140,8 +140,8 @@ feel like an invisible utility: summon, cite, gone, with depth only when asked.
   write proposals that the person confirms in Ibis
   ([0055](docs/decisions/0055-agent-layers-full-text-writes-remote.md)): the engine,
   `ibis mcp --allow-writes` and `ibis proposals` are built and apply to `.bib`
-  files; the app's confirmation screen comes next, and Zotero follows its official
-  local write API.
+  files, and the app previews, applies and rejects them; a review sheet and Undo
+  come next, and Zotero follows its official local write API.
 
 ## 0.7 Everywhere you work
 

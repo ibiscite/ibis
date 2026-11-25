@@ -506,8 +506,9 @@ pub const CAPABILITIES: [SyntaxCapabilities; 21] = [
         author_suppression: Unsupported,
         escaping: Escaping::DoiLinks,
     },
-    // Zotero's RTF and ODF Scan read these into live Zotero citations. They
-    // name Zotero items, so `syntax::scannable` writes them, not the key path.
+    // Markers for Zotero's RTF and ODF Scan; tests cover the markers, not what
+    // either scan makes of them. They name Zotero items, so `syntax::scannable`
+    // writes them, not the key path.
     SyntaxCapabilities {
         id: "scannable-cite",
         name: "Zotero RTF/ODF Scan",

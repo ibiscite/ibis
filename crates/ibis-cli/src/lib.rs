@@ -1851,7 +1851,8 @@ fn run_method<R: BufRead>(
                 _ => failed_citation_key(engine, matches, &keys, error),
             })?;
             result.value.destination = destination;
-            let result = ibis_engine::DispatchResult::citation(result, keys.len(), &output)?.map_data(Response::Engine);
+            let result = ibis_engine::DispatchResult::citation(result, keys.len(), &output)?
+                .map_data(|result| Response::Engine(Reply::Citation(Box::new(result))));
             let result = writings::with_check(result, writing_result)?;
             return Ok(Execution::Result(result, Some(citing)));
         }

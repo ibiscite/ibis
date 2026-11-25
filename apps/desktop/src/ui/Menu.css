@@ -55,8 +55,6 @@
 .menu-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .menu-keys { flex: none; white-space: nowrap; margin-inline-start: var(--space-4); color: var(--text-secondary); font: inherit; }
 .menu-example { flex: none; margin-inline-start: var(--space-4); color: var(--text-secondary); }
-.menu-submenu-arrow { flex: none; margin-inline-start: var(--space-2); }
-[dir="rtl"] .menu-submenu-arrow { transform: scaleX(-1); }
 .menu-item[data-focused] { background: var(--selected); color: var(--selected-text); }
 .menu-item[data-focused] :is(.menu-example, .menu-keys, .source-icon) { color: inherit; }
 .menu-item[aria-disabled="true"] { color: var(--text-secondary); }

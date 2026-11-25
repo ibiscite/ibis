@@ -1,8 +1,8 @@
 //! Method parameters. File locations are headless/native input only and never
 //! appear in method results or diagnostics; the app exposes a narrower surface.
 use crate::Method;
-use ibis_core::contract::{CitationForm, CitationRequest, ItemRef, LibraryId, Locator, OutputSpec, RichText};
-use schemars::{JsonSchema, schema_for};
+use ibis_core::contract::{CitationForm, ItemRef, LibraryId, Locator, OutputSpec, RichText};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
@@ -273,28 +273,6 @@ pub struct CallRequest {
     pub method: Method,
     #[serde(default)]
     pub params: Value,
-}
-
-/// Generated from the same types the dispatcher deserializes.
-pub fn request_schema(method: Method) -> Value {
-    match method {
-        Method::Libraries => schema_for!(LibrariesRequest),
-        Method::Search => schema_for!(SearchRequest),
-        Method::Show => schema_for!(ShowRequest),
-        Method::Cite => schema_for!(CitationRequest),
-        Method::Records => schema_for!(RecordsRequest),
-        Method::Project => schema_for!(ProjectRequest),
-        Method::Entry => schema_for!(EntryRequest),
-        Method::Outline => schema_for!(OutlineRequest),
-        Method::Read => schema_for!(ReadRequest),
-        Method::FindIn => schema_for!(FindInRequest),
-        Method::Share => schema_for!(ShareRequest),
-        Method::Call => schema_for!(CallRequest),
-        Method::Styles | Method::Outputs | Method::Schema => {
-            return method.row().map(|row| (row.params)()).unwrap_or_default();
-        }
-    }
-    .into()
 }
 
 /// One citation key with the options typed after it, as the picker would add them.

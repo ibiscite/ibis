@@ -91,7 +91,7 @@ the anchor older links use.
 [0043](decisions/0043-ris-and-csv-libraries.md): RIS exports and the CSV template are read-only libraries with no citation keys; a record's identity is a hash of its CSL data.
 
 ## 0044 One Lucide icon primitive
-[0044](decisions/0044-lucide-icon-primitive.md) (superseded by 0053): Lucide 1.72.0 under ISC, two fixed pixel sizes with a 1.5px rendered stroke, and Lucide's drawing rules for missing glyphs.
+[0044](decisions/0044-lucide-icon-primitive.md): superseded by 0053; the one Lucide drawing left on the website keeps its notices in the file.
 
 ## 0045 The citation line is a token field
 [0045](decisions/0045-citation-line-token-field.md): each reference in the shelf's line is a token whose details open in a popover above it; the side panel keeps the Reader and warnings.
@@ -109,7 +109,7 @@ the anchor older links use.
 [0048](decisions/0048-nix-install.md): the CLI builds from source on Linux and macOS, the desktop on Linux; independent CI reports hash repairs for agents.
 
 ## 0049 Local machines gate merges
-[0049](decisions/0049-local-gate.md): superseded; hosted CI on all three systems is the required merge check, without a merge queue, and while main is red only fixes and reverts land.
+[0049](decisions/0049-local-gate.md): hosted **CI result** gates merges, with no merge queue; a pull request runs the jobs its paths select, main runs everything, and while main is red only fixes and reverts land.
 
 ## 0050 The menu bar menu
 [0050](decisions/0050-menu-bar-menu.md): one native menu on every system, with one-click library switching, Copy Again for the frontmost app, a spoken state and text drops; no custom card.
@@ -131,6 +131,9 @@ the anchor older links use.
 
 ## 0056 An open layer for research material
 [0056](decisions/0056-open-layer-for-research-material.md): the engine and CLI aim to be the standard way any tool or agent reads and cites research material from any manager; the app stays the first client; source interface, stable surface, one anchor type, then external `ibis-source-<name>` adapters with a conformance kit.
+
+## 0057 One method table for every surface
+[0057](decisions/0057-one-method-table.md): each capability is one row in the engine's method table, which generates routing, schemas and the command line's, MCP's and the app's projections, never handlers.
 
 ## 0058 Interface language
 [0058](decisions/0058-interface-language.md): one catalogue per language with every English message, checked by tests; the app speaks the Settings choice or the system's language from the next opening, the command line and MCP stay English; citations keep their style's language; right to left by `dir` and logical properties, with isolated arguments for mixed-direction text.

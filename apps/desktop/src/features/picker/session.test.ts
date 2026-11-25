@@ -2,7 +2,8 @@ import { expect, test } from "vitest";
 import { testStates } from "../../test-fixtures";
 import { choiceKey, idKey, type CitationReference } from "./choice";
 import { arrangeView } from "../../testing/sessionView";
-import { initialSession, reduceSession, sessionQueryKey, type SessionEvent, type SessionView } from "./session";
+import { initialSession, reduceSession, type SessionEvent, type SessionView } from "./session";
+import { queryKeyOf } from "./search";
 import type { Copied, DeliveryOutcome } from "../../bindings";
 
 const a: CitationReference = { ...testStates[1]!.results[0]!, locator: { term: "page", value: "١٢–١٤" } };
@@ -12,7 +13,7 @@ function scenario() {
   let effects: ReturnType<typeof reduceSession>[1] = [];
   const send = (event: SessionEvent) => { [state, effects] = reduceSession(state, event); return effects; };
   const view = (change: Partial<SessionView> = {}): SessionEvent => {
-    const [arranged, event] = arrangeView(state, { queryKey: sessionQueryKey(state), format: "pandoc", snapshotRevision: "synthetic", defaultChoice: choiceKey([a]),
+    const [arranged, event] = arrangeView(state, { queryKey: queryKeyOf(state), format: "pandoc", snapshotRevision: "synthetic", defaultChoice: choiceKey([a]),
       offered: [a], chosen: [a], shown: prepared, searchPending: false, ready: true, saving: false, shouldAsk: false, remembersLast: true,
       output: { opening: 0, choice: 0, delivery: 0 }, ...change });
     // The screen sends what it shows, then commits it.

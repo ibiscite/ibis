@@ -216,6 +216,13 @@ adapters own I/O with session and operation identities. Search and preview
 cancellation reaches engine workers; late completions cannot replace newer
 work. Library notifications use channels rather than polling.
 
+State that newer work replaces has one owner: `ibis_core::epoch::Epoch` in
+Rust and `latest()` in `apps/desktop/src/latest.ts`. The owner holds the state;
+work reserves a stamp when it is asked for and commits its result, success or
+failure, through that stamp. Beginning newer work, hiding or closing retires
+older stamps, whose updates then never run. There is no setter and no way to
+ask whether work is still current.
+
 `locales/en-US.ftl` supplies interface text and messages for the CLI, MCP and
 native app; `de.ftl` and `ar.ftl` hold the same messages for the app, which
 speaks one language per run ([0058](decisions/0058-interface-language.md)). Generated bindings and output lists come from Rust; front ends
