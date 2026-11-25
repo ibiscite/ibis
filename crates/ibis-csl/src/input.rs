@@ -289,6 +289,7 @@ pub(crate) fn prepare_resolved(
                 .all(|pick| entry(pick.form.unwrap_or(request.form)))
         };
     let checked = citation::check(snapshot, None, request, |pick| ItemSupport {
+        details: true,
         locator: true,
         form: !refuses_form(
             style,

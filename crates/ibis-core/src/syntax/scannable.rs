@@ -49,6 +49,7 @@ pub fn cite(
     origin: impl Fn(&LibraryId) -> Option<Library>,
 ) -> Result<CitationResult, CitationError> {
     let checked = citation::check(snapshot, None, request, |item| ItemSupport {
+        details: true,
         locator: item
             .locator
             .as_ref()

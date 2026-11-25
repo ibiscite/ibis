@@ -7,12 +7,18 @@ use crate::syntax::{MAX_CITATION_BYTES, MAX_CITATION_ITEMS};
 pub struct ItemSupport {
     pub locator: bool,
     pub form: bool,
+    /// The output cites, so a record needs a title, author or editor to be
+    /// cited by (decision 0061). Record exports (BibTeX, CSL-JSON, DOI
+    /// links) carry whatever a record has and do not ask.
+    pub details: bool,
 }
 
 impl ItemSupport {
+    /// Everything allowed: a recheck of what a renderer already accepted.
     pub const ALL: Self = Self {
         locator: true,
         form: true,
+        details: false,
     };
 }
 
@@ -58,12 +64,12 @@ pub fn check<'a>(
             let LibraryObject::Record(record) = &object.object else {
                 return Err(CitationError::NotCitable);
             };
-            // Nothing to cite it by: never filled in from elsewhere (decision 0061).
-            if !has_details(record) {
-                return Err(CitationError::MissingDetails);
-            }
             validate_annotation(now, shown, pick)?;
             let support = form_support(pick);
+            // Nothing to cite it by: never filled in from elsewhere (decision 0061).
+            if support.details && !has_details(record) {
+                return Err(CitationError::MissingDetails);
+            }
             if pick
                 .locator
                 .as_ref()
