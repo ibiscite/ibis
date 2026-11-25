@@ -486,6 +486,7 @@ fn query<P: Provider>(
 // from masquerading as equality, and CFEqual supplies public AX identity.
 #[allow(unsafe_code)]
 mod native;
+pub(crate) use native::matches_window;
 
 pub(super) fn capture(
     pid: i32,

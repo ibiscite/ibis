@@ -45,6 +45,7 @@ pub trait Host: Clone + Send + Sync + 'static {
 
 pub(super) mod diagnostics;
 mod focus;
+pub(crate) use focus::matches_window;
 #[allow(unsafe_code)]
 mod safety;
 #[allow(unsafe_code)]

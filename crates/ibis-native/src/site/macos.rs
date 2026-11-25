@@ -179,6 +179,11 @@ impl super::Source for Native {
         application.window(deadline)
     }
 
+    fn matches_capture(&self, window: &Element, captured: super::CapturedWindow) -> bool {
+        matches!(captured, super::CapturedWindow::Macos(token)
+            if crate::paste::macos::matches_window(token, &window.0))
+    }
+
     fn address(&self, window: &Element, deadline: Instant) -> Option<String> {
         // A window may name the page it shows, as a document window names its file.
         if let Some(address) = window.address(Attribute::Document, deadline) {

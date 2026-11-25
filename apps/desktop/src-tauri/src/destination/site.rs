@@ -1,5 +1,5 @@
 //! The website in front in the browser the picker was opened from, read
-//! beside the paste capture and bound to the same app and process (decision
+//! beside the paste capture and bound to its exact window (decision
 //! 0031). It chooses only the format; paste choices, projects and proofs stay
 //! with the browser. Only the site name is held, in memory, for the latest
 //! opening.
@@ -58,7 +58,13 @@ impl FrontSite {
 /// picker shows; `capture` runs once and its answer is returned.
 pub(crate) fn capture<T>(app: &AppHandle, capture: impl FnOnce() -> T) -> T {
     let own = i32::try_from(std::process::id()).unwrap_or(i32::MAX);
-    let (front, captured) = ibis_native::site::read(own, capture);
+    let (front, captured) = ibis_native::site::read(own, || {
+        let captured = capture();
+        let window = app
+            .try_state::<crate::paste::LastTarget>()
+            .and_then(|last| last.captured_window());
+        (captured, window)
+    });
     if let Some(sites) = app.try_state::<FrontSite>() {
         sites.record(front);
     }

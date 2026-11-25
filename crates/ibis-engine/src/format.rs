@@ -241,18 +241,24 @@ fn writing_for<'s>(settings: &'s Settings, app: &AppId) -> Option<&'s crate::set
 #[cfg(test)]
 mod tests;
 
-/// Confirm the exact suggested format after successful paste. A newer choice
+/// Confirm the exact suggested format after successful paste, remembering it
+/// for the site when present or else the app. A newer choice
 /// makes this an inert stale completion. The return value asks for the one-time
 /// explanation; saving the returned settings makes it durable across launches.
-pub fn accept_suggestion(settings: &mut Settings, app: Option<&AppId>, captured: &FormatChoice) -> bool {
-    if captured.from != FormatFrom::Suggestion || choose(settings, app) != *captured {
+pub fn accept_suggestion(
+    settings: &mut Settings,
+    app: Option<&AppId>,
+    site: Option<&AppId>,
+    captured: &FormatChoice,
+) -> bool {
+    if captured.from != FormatFrom::Suggestion || choose_at(settings, app, site) != *captured {
         return false;
     }
     let Some(id) = captured.id.as_ref() else {
         return false;
     };
-    if let Some(app) = app {
-        settings.remember_app_output(app, id.clone());
+    if let Some(owner) = remembers_for(app, site) {
+        settings.remember_app_output(&owner, id.clone());
     }
     if settings.device.suggestion_reports.contains(&captured.kind) {
         return false;

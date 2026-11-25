@@ -73,6 +73,10 @@ impl super::Source for Native {
         (i32::try_from(owner).ok()? == pid).then(|| window.ptr() as usize)
     }
 
+    fn matches_capture(&self, window: &usize, captured: super::CapturedWindow) -> bool {
+        matches!(captured, super::CapturedWindow::Windows(handle) if handle == *window)
+    }
+
     fn address(&self, window: &usize, deadline: Instant) -> Option<String> {
         let foreground = w::HWND::GetForegroundWindow()?;
         if foreground.ptr() as usize != *window {

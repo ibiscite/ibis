@@ -372,6 +372,19 @@ struct Saved {
 
 thread_local! { static SAVED: RefCell<Saved> = RefCell::default(); }
 
+/// Compare with the retained capture, without querying focus again or
+/// letting its AX object leave this main-thread module.
+pub(crate) fn matches_window(token: u32, window: &CFType) -> bool {
+    NSThread::isMainThread_class()
+        && SAVED.with(|saved| {
+            saved
+                .borrow()
+                .window
+                .as_ref()
+                .is_some_and(|(saved_token, captured)| *saved_token == token && &*captured.window.0 == window)
+        })
+}
+
 // The control the last selection check proved, for the identity read that
 // follows it in the same final check; any other read takes and drops it.
 thread_local! { static PROVED: RefCell<Option<Element>> = const { RefCell::new(None) }; }

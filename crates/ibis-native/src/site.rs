@@ -32,6 +32,15 @@ pub enum Front {
     App { app: AppId, pid: i32, site: Option<AppId> },
 }
 
+/// The exact window retained by paste capture, never a fresh focus query.
+#[derive(Clone, Copy)]
+pub enum CapturedWindow {
+    /// The opaque token for the retained macOS AX document window.
+    Macos(u32),
+    /// The HWND retained for Windows restore.
+    Windows(usize),
+}
+
 /// The platform calls behind [`read`], so tests can stand in for them.
 pub trait Source {
     /// A window's identity, equal only to the same window.
@@ -43,6 +52,8 @@ pub trait Source {
     fn allowed(&self) -> bool;
     /// `pid`'s focused window, by `deadline`.
     fn window(&self, pid: i32, deadline: Instant) -> Option<Self::Window>;
+    /// Whether the read window is the exact window paste capture retained.
+    fn matches_capture(&self, window: &Self::Window, captured: CapturedWindow) -> bool;
     /// The address of the page `window` shows, by `deadline`. Only
     /// [`read_with`] sees it.
     fn address(&self, window: &Self::Window, deadline: Instant) -> Option<String>;
@@ -51,14 +62,18 @@ pub trait Source {
 /// The app in front and its site, read through `source` around `capture`,
 /// the paste capture, which always runs once and whose answer comes back
 /// beside it; `own` is Ibis's process. The site counts only when the same
-/// window is focused before and after the capture, so it is the window the
-/// capture took. No front when the app in front cannot be told.
-pub fn read_with<S: Source, T>(source: &S, own: i32, capture: impl FnOnce() -> T) -> (Option<Front>, T) {
+/// window is focused before and after the capture and equals its retained
+/// window. No front when the app in front cannot be told.
+pub fn read_with<S: Source, T>(
+    source: &S,
+    own: i32,
+    capture: impl FnOnce() -> (T, Option<CapturedWindow>),
+) -> (Option<Front>, T) {
     let Some((pid, app)) = source.front() else {
-        return (None, capture());
+        return (None, capture().0);
     };
     if pid == own {
-        return (Some(Front::Ibis), capture());
+        return (Some(Front::Ibis), capture().0);
     }
     let deadline = Instant::now() + LIMIT;
     let read = (is_browser(&app) && source.allowed())
@@ -68,9 +83,10 @@ pub fn read_with<S: Source, T>(source: &S, own: i32, capture: impl FnOnce() -> T
             let site = source.address(&window, deadline).and_then(|address| site(&address))?;
             Some((window, site))
         });
-    let captured = capture();
+    let (captured, captured_window) = capture();
     let site = read.and_then(|(window, site)| {
-        let same = source.front().is_some_and(|(now, _)| now == pid)
+        let same = captured_window.is_some_and(|captured| source.matches_capture(&window, captured))
+            && source.front().is_some_and(|(now, _)| now == pid)
             && source.window(pid, Instant::now() + CONFIRM).as_ref() == Some(&window);
         same.then_some(site)
     });
@@ -79,20 +95,20 @@ pub fn read_with<S: Source, T>(source: &S, own: i32, capture: impl FnOnce() -> T
 
 /// [`read_with`] on this system.
 #[cfg(target_os = "macos")]
-pub fn read<T>(own: i32, capture: impl FnOnce() -> T) -> (Option<Front>, T) {
+pub fn read<T>(own: i32, capture: impl FnOnce() -> (T, Option<CapturedWindow>)) -> (Option<Front>, T) {
     read_with(&macos::Native, own, capture)
 }
 
 /// [`read_with`] on this system.
 #[cfg(target_os = "windows")]
-pub fn read<T>(own: i32, capture: impl FnOnce() -> T) -> (Option<Front>, T) {
+pub fn read<T>(own: i32, capture: impl FnOnce() -> (T, Option<CapturedWindow>)) -> (Option<Front>, T) {
     read_with(&windows::Native, own, capture)
 }
 
 /// Linux has no permission-free source, so there a browser is one app.
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-pub fn read<T>(_own: i32, capture: impl FnOnce() -> T) -> (Option<Front>, T) {
-    (None, capture())
+pub fn read<T>(_own: i32, capture: impl FnOnce() -> (T, Option<CapturedWindow>)) -> (Option<Front>, T) {
+    (None, capture().0)
 }
 
 #[cfg(target_os = "macos")]
@@ -151,11 +167,17 @@ mod tests {
             self.deadline.replace(Some(deadline));
             self.address.map(str::to_owned)
         }
+        fn matches_capture(&self, window: &u32, captured: CapturedWindow) -> bool {
+            match captured {
+                CapturedWindow::Macos(id) => id == *window,
+                CapturedWindow::Windows(handle) => handle == *window as usize,
+            }
+        }
     }
 
     /// Reads around a stand-in capture, which must run exactly once.
     fn read(fake: &Fake, own: i32) -> Option<Front> {
-        let (front, captured) = read_with(fake, own, || "captured");
+        let (front, captured) = read_with(fake, own, || ("captured", Some(CapturedWindow::Macos(1))));
         assert_eq!(captured, "captured");
         front
     }
@@ -201,6 +223,40 @@ mod tests {
         let fake = Fake::new(System::Macos, "com.google.Chrome", Some("https://overleaf.com/"));
         fake.windows.replace(vec![1, 2]);
         assert!(matches!(read(&fake, 7), Some(Front::App { site: None, .. })));
+    }
+
+    #[test]
+    fn site_requires_the_captured_window_even_when_focus_returns_to_the_read_window() {
+        for (system, id, windows) in [
+            (
+                System::Macos,
+                "com.google.Chrome",
+                [CapturedWindow::Macos(2), CapturedWindow::Macos(1)],
+            ),
+            (
+                System::Windows,
+                "chrome.exe",
+                [CapturedWindow::Windows(2), CapturedWindow::Windows(1)],
+            ),
+        ] {
+            let fake = Fake::new(system, id, Some("https://overleaf.com/"));
+            for (captured_window, expected) in [
+                (Some(windows[0]), None),
+                (None, None),
+                (Some(windows[1]), site("https://overleaf.com/")),
+            ] {
+                // Both surrounding reads see A; capture retained B (or no window).
+                fake.windows.replace(vec![1, 1]);
+                let mut captures = 0;
+                let (front, captured) = read_with(&fake, 7, || {
+                    captures += 1;
+                    ("captured", captured_window)
+                });
+                assert_eq!(captures, 1);
+                assert_eq!(captured, "captured");
+                assert_eq!(site_of(front), expected);
+            }
+        }
     }
 
     #[test]
