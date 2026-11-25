@@ -67,7 +67,7 @@ const MAX_ANSWER_BYTES: u64 = 2 * MAX_TEXT_BYTES as u64 + 4 * 1024 * 1024;
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub enum Answer {
     Read(Extracted),
-    Details(Said),
+    Details(Box<Said>),
     Refused(Refusal),
 }
 
@@ -209,7 +209,7 @@ impl PdfReader {
     pub fn details(&self, path: &Path, cancelled: Arc<dyn Fn() -> bool + Send + Sync>) -> Result<PdfDetails, Refusal> {
         let (answer, before) = self.exchange(path, Ask::Details, cancelled)?;
         let mut details = match answer {
-            Answer::Details(said) => checked_details(said)?,
+            Answer::Details(said) => checked_details(*said)?,
             Answer::Read(_) => return Err(Refusal::Damaged),
             Answer::Refused(refusal) => return Err(child_refusal(refusal)),
         };

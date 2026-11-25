@@ -53,7 +53,7 @@ pub fn child(arguments: &[OsString], mut input: impl Read, mut output: impl Writ
     let answer = match (&mut input).take(MAX_FILE_BYTES + 1).read_to_end(&mut bytes) {
         Err(_) => Answer::Refused(Refusal::Damaged),
         Ok(_) if details => match crate::pdf_details::details(&bytes) {
-            Ok(said) => Answer::Details(said),
+            Ok(said) => Answer::Details(Box::new(said)),
             Err(refusal) => Answer::Refused(refusal),
         },
         Ok(_) => match extract(&bytes, labels_only) {
